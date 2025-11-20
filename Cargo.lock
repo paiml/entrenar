@@ -55,6 +55,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "thiserror",
+ "trueno",
 ]
 
 [[package]]
@@ -447,6 +448,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "trueno"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0279db5799d3d86af3ab8c16295be4fa9c2a7fbc612cd4883a9a44ec1e36e8c4"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]

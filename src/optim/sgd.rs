@@ -35,19 +35,51 @@ impl Optimizer for SGD {
 
         for (i, param) in params.iter_mut().enumerate() {
             if let Some(grad) = param.grad() {
-                if self.momentum > 0.0 {
-                    // v = momentum * v - lr * grad
-                    let velocity = if let Some(v) = &self.velocities[i] {
-                        v * self.momentum - &grad * self.lr
-                    } else {
-                        &grad * (-self.lr)
-                    };
+                // Use SIMD for large tensors (>= 16 elements for meaningful speedup)
+                if grad.len() >= 16 {
+                    let grad_slice = grad.as_slice().unwrap();
+                    let param_slice = param.data_mut().as_slice_mut().unwrap();
 
-                    *param.data_mut() = param.data() + &velocity;
-                    self.velocities[i] = Some(velocity);
+                    if self.momentum > 0.0 {
+                        // Initialize velocity if needed
+                        if self.velocities[i].is_none() {
+                            self.velocities[i] = Some(ndarray::Array1::zeros(grad.len()));
+                        }
+
+                        let velocity = self.velocities[i].as_mut().unwrap();
+                        let velocity_slice = velocity.as_slice_mut().unwrap();
+
+                        // v = momentum * v - lr * grad (using SIMD)
+                        // First scale velocity by momentum
+                        for v in velocity_slice.iter_mut() {
+                            *v *= self.momentum;
+                        }
+
+                        // Then add -lr * grad using SIMD axpy
+                        super::simd::simd_axpy(-self.lr, grad_slice, velocity_slice);
+
+                        // param = param + velocity (using SIMD axpy with a=1.0)
+                        super::simd::simd_axpy(1.0, velocity_slice, param_slice);
+                    } else {
+                        // Simple SGD: param -= lr * grad (using SIMD axpy)
+                        super::simd::simd_axpy(-self.lr, grad_slice, param_slice);
+                    }
                 } else {
-                    // Simple SGD: param -= lr * grad
-                    *param.data_mut() = param.data() - &(&grad * self.lr);
+                    // Fallback to scalar implementation for small tensors
+                    if self.momentum > 0.0 {
+                        // v = momentum * v - lr * grad
+                        let velocity = if let Some(v) = &self.velocities[i] {
+                            v * self.momentum - &grad * self.lr
+                        } else {
+                            &grad * (-self.lr)
+                        };
+
+                        *param.data_mut() = param.data() + &velocity;
+                        self.velocities[i] = Some(velocity);
+                    } else {
+                        // Simple SGD: param -= lr * grad
+                        *param.data_mut() = param.data() - &(&grad * self.lr);
+                    }
                 }
             }
         }
