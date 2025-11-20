@@ -158,6 +158,11 @@ impl LoRALayer {
         self.merged = false;
     }
 
+    /// Get reference to base weight matrix
+    pub fn base_weight(&self) -> &Tensor {
+        &self.base_weight
+    }
+
     /// Get reference to LoRA A matrix
     pub fn lora_a(&self) -> &Tensor {
         &self.lora_a
