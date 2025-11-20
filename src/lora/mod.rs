@@ -6,5 +6,8 @@
 mod config;
 mod layer;
 
+#[cfg(test)]
+mod gradient_tests;
+
 pub use config::LoRAConfig;
 pub use layer::LoRALayer;
