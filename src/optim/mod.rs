@@ -3,6 +3,7 @@
 mod adam;
 mod adamw;
 mod clip;
+mod convergence_tests;
 mod optimizer;
 mod scheduler;
 mod sgd;
