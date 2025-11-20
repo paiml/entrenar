@@ -167,3 +167,18 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+- id: ENT-018
+  github_issue: null
+  item_type: task
+  title: 'New task: ENT-018'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2025-11-20T16:27:50.100364916+00:00
+  updated: 2025-11-20T16:29:31.573922820+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
