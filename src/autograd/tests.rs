@@ -239,6 +239,46 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_attention_forward() {
+        // Simple 2x2 attention example
+        // Q, K, V are all 2x2 matrices
+        let q = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], true); // 2x2 identity
+        let k = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], true); // 2x2 identity
+        let v = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true); // 2x2 values
+
+        let output = attention(&q, &k, &v, 2, 2, 2, 2);
+
+        // Output should have shape seq_len x d_v = 2x2
+        assert_eq!(output.len(), 4);
+    }
+
+    #[test]
+    fn test_attention_backward() {
+        // Simple attention backward test
+        let q = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], true);
+        let k = Tensor::from_vec(vec![1.0, 0.0, 0.0, 1.0], true);
+        let v = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true);
+
+        let mut output = attention(&q, &k, &v, 2, 2, 2, 2);
+
+        // Backward with all ones gradient
+        backward(&mut output, Some(ndarray::arr1(&[1.0, 1.0, 1.0, 1.0])));
+
+        // All three should have gradients
+        assert!(q.grad().is_some());
+        assert!(k.grad().is_some());
+        assert!(v.grad().is_some());
+
+        let grad_q = q.grad().unwrap();
+        let grad_k = k.grad().unwrap();
+        let grad_v = v.grad().unwrap();
+
+        assert_eq!(grad_q.len(), 4);
+        assert_eq!(grad_k.len(), 4);
+        assert_eq!(grad_v.len(), 4);
+    }
+
+    #[test]
     fn test_softmax_forward() {
         let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
         let c = softmax(&a);
@@ -726,6 +766,155 @@ proptest! {
         // Beta gradient should be exactly the upstream gradient (1.0 for all elements)
         for i in 0..n {
             prop_assert_eq!(analytical[i], 1.0);
+        }
+    }
+
+    #[test]
+    fn prop_attention_backward_gradient_check_q(
+        q in prop::collection::vec(-2.0f32..2.0, 4..12),
+        k in prop::collection::vec(-2.0f32..2.0, 4..12),
+        v in prop::collection::vec(-2.0f32..2.0, 4..12)
+    ) {
+        // Use small dimensions for attention to keep test fast
+        let seq_len = 2;
+        let d_k = 2;
+        let d_v = 2;
+        let total_qk = seq_len * d_k;
+        let total_v = seq_len * d_v;
+
+        let q_vec: Vec<f32> = q.into_iter().take(total_qk).collect();
+        let k_vec: Vec<f32> = k.into_iter().take(total_qk).collect();
+        let v_vec: Vec<f32> = v.into_iter().take(total_v).collect();
+
+        // Skip if we don't have enough elements
+        if q_vec.len() < total_qk || k_vec.len() < total_qk || v_vec.len() < total_v {
+            return Ok(());
+        }
+
+        let q_tensor = Tensor::from_vec(q_vec.clone(), true);
+        let k_tensor = Tensor::from_vec(k_vec.clone(), false);
+        let v_tensor = Tensor::from_vec(v_vec.clone(), false);
+
+        let mut output = attention(&q_tensor, &k_tensor, &v_tensor, seq_len, d_k, seq_len, d_v);
+
+        backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
+
+        let analytical = q_tensor.grad().unwrap();
+        let numerical = finite_difference(
+            |q_val| {
+                let qt = Tensor::from_vec(q_val.to_vec(), false);
+                let kt = Tensor::from_vec(k_vec.clone(), false);
+                let vt = Tensor::from_vec(v_vec.clone(), false);
+                let att = attention(&qt, &kt, &vt, seq_len, d_k, seq_len, d_v);
+                att.data().sum()
+            },
+            &q_vec,
+            1e-3,
+        );
+
+        for i in 0..total_qk {
+            let diff = (analytical[i] - numerical[i]).abs();
+            prop_assert!(diff < 0.2,
+                "Attention gradient (Q) mismatch at index {}: analytical={}, numerical={}, diff={}",
+                i, analytical[i], numerical[i], diff);
+        }
+    }
+
+    #[test]
+    fn prop_attention_backward_gradient_check_k(
+        q in prop::collection::vec(-2.0f32..2.0, 4..12),
+        k in prop::collection::vec(-2.0f32..2.0, 4..12),
+        v in prop::collection::vec(-2.0f32..2.0, 4..12)
+    ) {
+        let seq_len = 2;
+        let d_k = 2;
+        let d_v = 2;
+        let total_qk = seq_len * d_k;
+        let total_v = seq_len * d_v;
+
+        let q_vec: Vec<f32> = q.into_iter().take(total_qk).collect();
+        let k_vec: Vec<f32> = k.into_iter().take(total_qk).collect();
+        let v_vec: Vec<f32> = v.into_iter().take(total_v).collect();
+
+        if q_vec.len() < total_qk || k_vec.len() < total_qk || v_vec.len() < total_v {
+            return Ok(());
+        }
+
+        let q_tensor = Tensor::from_vec(q_vec.clone(), false);
+        let k_tensor = Tensor::from_vec(k_vec.clone(), true);
+        let v_tensor = Tensor::from_vec(v_vec.clone(), false);
+
+        let mut output = attention(&q_tensor, &k_tensor, &v_tensor, seq_len, d_k, seq_len, d_v);
+
+        backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
+
+        let analytical = k_tensor.grad().unwrap();
+        let numerical = finite_difference(
+            |k_val| {
+                let qt = Tensor::from_vec(q_vec.clone(), false);
+                let kt = Tensor::from_vec(k_val.to_vec(), false);
+                let vt = Tensor::from_vec(v_vec.clone(), false);
+                let att = attention(&qt, &kt, &vt, seq_len, d_k, seq_len, d_v);
+                att.data().sum()
+            },
+            &k_vec,
+            1e-3,
+        );
+
+        for i in 0..total_qk {
+            let diff = (analytical[i] - numerical[i]).abs();
+            prop_assert!(diff < 0.2,
+                "Attention gradient (K) mismatch at index {}: analytical={}, numerical={}, diff={}",
+                i, analytical[i], numerical[i], diff);
+        }
+    }
+
+    #[test]
+    fn prop_attention_backward_gradient_check_v(
+        q in prop::collection::vec(-2.0f32..2.0, 4..12),
+        k in prop::collection::vec(-2.0f32..2.0, 4..12),
+        v in prop::collection::vec(-2.0f32..2.0, 4..12)
+    ) {
+        let seq_len = 2;
+        let d_k = 2;
+        let d_v = 2;
+        let total_qk = seq_len * d_k;
+        let total_v = seq_len * d_v;
+
+        let q_vec: Vec<f32> = q.into_iter().take(total_qk).collect();
+        let k_vec: Vec<f32> = k.into_iter().take(total_qk).collect();
+        let v_vec: Vec<f32> = v.into_iter().take(total_v).collect();
+
+        if q_vec.len() < total_qk || k_vec.len() < total_qk || v_vec.len() < total_v {
+            return Ok(());
+        }
+
+        let q_tensor = Tensor::from_vec(q_vec.clone(), false);
+        let k_tensor = Tensor::from_vec(k_vec.clone(), false);
+        let v_tensor = Tensor::from_vec(v_vec.clone(), true);
+
+        let mut output = attention(&q_tensor, &k_tensor, &v_tensor, seq_len, d_k, seq_len, d_v);
+
+        backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
+
+        let analytical = v_tensor.grad().unwrap();
+        let numerical = finite_difference(
+            |v_val| {
+                let qt = Tensor::from_vec(q_vec.clone(), false);
+                let kt = Tensor::from_vec(k_vec.clone(), false);
+                let vt = Tensor::from_vec(v_val.to_vec(), false);
+                let att = attention(&qt, &kt, &vt, seq_len, d_k, seq_len, d_v);
+                att.data().sum()
+            },
+            &v_vec,
+            1e-3,
+        );
+
+        for i in 0..total_v {
+            let diff = (analytical[i] - numerical[i]).abs();
+            prop_assert!(diff < 0.2,
+                "Attention gradient (V) mismatch at index {}: analytical={}, numerical={}, diff={}",
+                i, analytical[i], numerical[i], diff);
         }
     }
 }
