@@ -9,6 +9,10 @@ license = "MIT"
 keywords = ["machine-learning", "neural-networks", "autograd", "lora", "quantization"]
 categories = ["science", "mathematics"]
 
+[features]
+default = []
+gguf = []  # Placeholder for future GGUF support via Realizar
+
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
@@ -76,4 +80,9 @@ required-features = []
 [[example]]
 name = "training_loop"
 path = "examples/training_loop.rs"
+required-features = []
+
+[[example]]
+name = "model_io"
+path = "examples/model_io.rs"
 required-features = []

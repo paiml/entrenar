@@ -13,10 +13,12 @@
 //! - **distill**: Knowledge distillation
 //! - **config**: Declarative YAML configuration
 //! - **train**: High-level training loop
+//! - **io**: Model saving and loading (JSON, YAML formats)
 
 pub mod autograd;
 pub mod config;
 pub mod distill;
+pub mod io;
 pub mod lora;
 pub mod merge;
 pub mod optim;
