@@ -1,0 +1,40 @@
+# Example training configuration for Entrenar
+#
+# This demonstrates Ludwig-style declarative training configuration
+
+model:
+  path: llama-7b.gguf
+  layers: [q_proj, k_proj, v_proj, o_proj]
+
+data:
+  train: train.parquet
+  val: val.parquet
+  batch_size: 16
+  auto_infer_types: true
+  seq_len: 2048
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+  beta1: 0.9
+  beta2: 0.999
+  weight_decay: 0.01
+
+lora:
+  rank: 64
+  alpha: 16
+  target_modules: [q_proj, v_proj]
+  dropout: 0.1
+
+quantize:
+  bits: 4
+  symmetric: true
+  per_channel: true
+
+training:
+  epochs: 3
+  grad_clip: 1.0
+  lr_scheduler: cosine
+  warmup_steps: 100
+  save_interval: 1
+  output_dir: ./checkpoints
