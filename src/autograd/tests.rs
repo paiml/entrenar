@@ -143,6 +143,62 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_gelu_forward() {
+        let a = Tensor::from_vec(vec![-2.0, -1.0, 0.0, 1.0, 2.0], true);
+        let c = gelu(&a);
+
+        // GELU is smooth, non-linear activation
+        // GELU(0) = 0
+        assert_abs_diff_eq!(c.data()[2], 0.0, epsilon = 1e-5);
+
+        // GELU is approximately linear for positive values
+        // GELU(x) ≈ x for large positive x
+        assert!(c.data()[4] > 1.5); // GELU(2) should be close to 2
+    }
+
+    #[test]
+    fn test_gelu_backward() {
+        let a = Tensor::from_vec(vec![-1.0, 0.0, 1.0], true);
+        let mut c = gelu(&a);
+
+        backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0])));
+
+        let grad_a = a.grad().unwrap();
+
+        // Gradients should exist
+        assert_eq!(grad_a.len(), 3);
+        // GELU gradient at 0 is 0.5
+        assert_abs_diff_eq!(grad_a[1], 0.5, epsilon = 1e-2);
+    }
+
+    #[test]
+    fn test_swish_forward() {
+        let a = Tensor::from_vec(vec![-2.0, 0.0, 2.0], true);
+        let c = swish(&a);
+
+        // Swish(0) = 0
+        assert_abs_diff_eq!(c.data()[1], 0.0, epsilon = 1e-5);
+
+        // Swish is approximately linear for large positive x
+        assert!(c.data()[2] > 1.5);
+    }
+
+    #[test]
+    fn test_swish_backward() {
+        let a = Tensor::from_vec(vec![-1.0, 0.0, 1.0], true);
+        let mut c = swish(&a);
+
+        backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0])));
+
+        let grad_a = a.grad().unwrap();
+
+        // Gradients should exist
+        assert_eq!(grad_a.len(), 3);
+        // Swish gradient at 0 is 0.5
+        assert_abs_diff_eq!(grad_a[1], 0.5, epsilon = 1e-2);
+    }
+
+    #[test]
     fn test_softmax_forward() {
         let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
         let c = softmax(&a);
@@ -476,5 +532,63 @@ proptest! {
 
         // Output should be m×n
         prop_assert_eq!(c.len(), m * n);
+    }
+
+    #[test]
+    fn prop_gelu_backward_gradient_check(
+        x in prop::collection::vec(-5.0f32..5.0, 2..20)
+    ) {
+        let a = Tensor::from_vec(x.clone(), true);
+        let mut c = gelu(&a);
+
+        let c_len = c.len();
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
+
+        let analytical = a.grad().unwrap();
+        let numerical = finite_difference(
+            |x_val| {
+                let t = Tensor::from_vec(x_val.to_vec(), false);
+                let g = gelu(&t);
+                g.data().sum()
+            },
+            &x,
+            1e-3,
+        );
+
+        for i in 0..x.len() {
+            let diff = (analytical[i] - numerical[i]).abs();
+            prop_assert!(diff < 0.1,
+                "GELU gradient mismatch at index {}: x={}, analytical={}, numerical={}, diff={}",
+                i, x[i], analytical[i], numerical[i], diff);
+        }
+    }
+
+    #[test]
+    fn prop_swish_backward_gradient_check(
+        x in prop::collection::vec(-5.0f32..5.0, 2..20)
+    ) {
+        let a = Tensor::from_vec(x.clone(), true);
+        let mut c = swish(&a);
+
+        let c_len = c.len();
+        backward(&mut c, Some(ndarray::Array1::ones(c_len)));
+
+        let analytical = a.grad().unwrap();
+        let numerical = finite_difference(
+            |x_val| {
+                let t = Tensor::from_vec(x_val.to_vec(), false);
+                let s = swish(&t);
+                s.data().sum()
+            },
+            &x,
+            1e-3,
+        );
+
+        for i in 0..x.len() {
+            let diff = (analytical[i] - numerical[i]).abs();
+            prop_assert!(diff < 0.1,
+                "Swish gradient mismatch at index {}: x={}, analytical={}, numerical={}, diff={}",
+                i, x[i], analytical[i], numerical[i], diff);
+        }
     }
 }
