@@ -64,31 +64,64 @@ impl Optimizer for AdamW {
 
         for (i, param) in params.iter_mut().enumerate() {
             if let Some(grad) = param.grad() {
-                // m_t = β1 * m_{t-1} + (1 - β1) * g
-                let m_t = if let Some(m) = &self.m[i] {
-                    m * self.beta1 + &grad * (1.0 - self.beta1)
+                // Use SIMD for large tensors (>= 16 elements for meaningful speedup)
+                if grad.len() >= 16 {
+                    // Initialize moments if needed
+                    if self.m[i].is_none() {
+                        self.m[i] = Some(ndarray::Array1::zeros(grad.len()));
+                        self.v[i] = Some(ndarray::Array1::zeros(grad.len()));
+                    }
+
+                    let m = self.m[i].as_mut().unwrap();
+                    let v = self.v[i].as_mut().unwrap();
+
+                    // Get mutable slices
+                    let grad_slice = grad.as_slice().unwrap();
+                    let m_slice = m.as_slice_mut().unwrap();
+                    let v_slice = v.as_slice_mut().unwrap();
+                    let param_slice = param.data_mut().as_slice_mut().unwrap();
+
+                    // Use SIMD-accelerated update
+                    super::simd::simd_adamw_update(
+                        grad_slice,
+                        m_slice,
+                        v_slice,
+                        param_slice,
+                        self.beta1,
+                        self.beta2,
+                        self.lr,
+                        lr_t,
+                        self.weight_decay,
+                        self.epsilon,
+                    );
                 } else {
-                    &grad * (1.0 - self.beta1)
-                };
+                    // Fallback to scalar implementation for small tensors
+                    // m_t = β1 * m_{t-1} + (1 - β1) * g
+                    let m_t = if let Some(m) = &self.m[i] {
+                        m * self.beta1 + &grad * (1.0 - self.beta1)
+                    } else {
+                        &grad * (1.0 - self.beta1)
+                    };
 
-                // v_t = β2 * v_{t-1} + (1 - β2) * g²
-                let grad_sq = &grad * &grad;
-                let v_t = if let Some(v) = &self.v[i] {
-                    v * self.beta2 + &grad_sq * (1.0 - self.beta2)
-                } else {
-                    &grad_sq * (1.0 - self.beta2)
-                };
+                    // v_t = β2 * v_{t-1} + (1 - β2) * g²
+                    let grad_sq = &grad * &grad;
+                    let v_t = if let Some(v) = &self.v[i] {
+                        v * self.beta2 + &grad_sq * (1.0 - self.beta2)
+                    } else {
+                        &grad_sq * (1.0 - self.beta2)
+                    };
 
-                // AdamW update with decoupled weight decay:
-                // θ_t = (1 - lr * λ) * θ_{t-1} - lr_t * m_t / (√v_t + ε)
-                let adaptive_update = &m_t / &(v_t.mapv(|x| x.sqrt()) + self.epsilon) * lr_t;
+                    // AdamW update with decoupled weight decay:
+                    // θ_t = (1 - lr * λ) * θ_{t-1} - lr_t * m_t / (√v_t + ε)
+                    let adaptive_update = &m_t / &(v_t.mapv(|x| x.sqrt()) + self.epsilon) * lr_t;
 
-                // Apply weight decay directly to parameters (decoupled)
-                let weight_decay_factor = 1.0 - self.lr * self.weight_decay;
-                *param.data_mut() = param.data() * weight_decay_factor - &adaptive_update;
+                    // Apply weight decay directly to parameters (decoupled)
+                    let weight_decay_factor = 1.0 - self.lr * self.weight_decay;
+                    *param.data_mut() = param.data() * weight_decay_factor - &adaptive_update;
 
-                self.m[i] = Some(m_t);
-                self.v[i] = Some(v_t);
+                    self.m[i] = Some(m_t);
+                    self.v[i] = Some(v_t);
+                }
             }
         }
     }

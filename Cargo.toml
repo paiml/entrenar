@@ -10,8 +10,9 @@ keywords = ["machine-learning", "neural-networks", "autograd", "lora", "quantiza
 categories = ["science", "mathematics"]
 
 [dependencies]
-# Core PAIML stack - we'll use ndarray as a placeholder for trueno until it's available
+# Core PAIML stack
 ndarray = "0.16"
+trueno = "0.4.1"  # SIMD-accelerated compute
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
