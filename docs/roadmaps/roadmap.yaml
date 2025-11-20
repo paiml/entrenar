@@ -242,3 +242,18 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+- id: GH-4
+  github_issue: 4
+  item_type: task
+  title: 'Issue #4'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2025-11-20T20:41:41.725260150+00:00
+  updated: 2025-11-20T20:41:41.725260150+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []

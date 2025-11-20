@@ -1,0 +1,126 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "created": "2025-11-20",
+    "project": "entrenar",
+    "component": "llama2",
+    "baseline_type": "Phase 1 Complete"
+  },
+  "test_metrics": {
+    "total_tests": 188,
+    "core_library_tests": 130,
+    "property_based_tests": 13,
+    "mutation_resistant_tests": 10,
+    "architecture_tests": 35,
+    "integration_tests": 0,
+    "passing": 188,
+    "failing": 0,
+    "ignored": 0
+  },
+  "coverage_metrics": {
+    "line_coverage_percent": null,
+    "branch_coverage_percent": null,
+    "target_line_coverage": 95.0,
+    "target_branch_coverage": 90.0,
+    "note": "Coverage measurement to be added in Phase 3"
+  },
+  "mutation_testing": {
+    "total_mutants": null,
+    "killed_mutants": null,
+    "survived_mutants": null,
+    "mutation_score_percent": null,
+    "target_mutation_score": 85.0,
+    "note": "Full mutation testing via cargo-mutants to be run in Phase 3"
+  },
+  "build_metrics": {
+    "tier1_time_seconds": 5.0,
+    "tier2_time_seconds": 30.0,
+    "tier3_time_seconds": 120.0,
+    "target_tier1": 5.0,
+    "target_tier2": 30.0,
+    "target_tier3": 300.0,
+    "clippy_warnings": 0,
+    "rustfmt_violations": 0
+  },
+  "code_metrics": {
+    "total_lines_of_code": 2497,
+    "architecture_lines": 359,
+    "train_example_lines": 483,
+    "lora_example_lines": 433,
+    "qlora_example_lines": 466,
+    "property_test_lines": 338,
+    "mutation_test_lines": 370,
+    "config_lines": 86
+  },
+  "quality_gates": {
+    "all_tests_passing": true,
+    "clippy_clean": true,
+    "rustfmt_clean": true,
+    "tier1_under_5s": true,
+    "tier2_under_30s": true,
+    "tier3_under_5m": true,
+    "property_tests_passing": true,
+    "mutation_tests_passing": true,
+    "examples_compile": true
+  },
+  "llama_specific_metrics": {
+    "models_implemented": ["toy_124m", "llama2_7b"],
+    "parameter_count_124m": 162398208,
+    "parameter_count_7b": null,
+    "lora_parameter_reduction_percent": 99.9,
+    "qlora_memory_reduction_percent": 87.5,
+    "training_examples": ["train", "finetune_lora", "finetune_qlora"],
+    "property_tests_coverage": [
+      "parameter_count_formula",
+      "hidden_size_divisibility",
+      "layer_scaling_linearity",
+      "attention_quadratic_scaling",
+      "ffn_bilinear_scaling",
+      "vocab_size_independence",
+      "intermediate_size_positive",
+      "head_dimension_uniformity",
+      "params_monotonic_increasing",
+      "no_parameter_overflow",
+      "rope_theta_invariant",
+      "standard_config_bounds",
+      "memory_estimation_bounds"
+    ],
+    "mutation_patterns_tested": [
+      "off_by_one_errors",
+      "arithmetic_operator_swaps",
+      "constant_value_changes",
+      "sign_flips",
+      "division_multiplication_swaps",
+      "projection_count_mutations",
+      "layer_loop_bounds",
+      "quantization_bits",
+      "vocab_size_inclusion"
+    ]
+  },
+  "tdg_score": {
+    "current": null,
+    "target": 90,
+    "grade": null,
+    "calculation": {
+      "test_passing_weight": 0.3,
+      "coverage_weight": 0.3,
+      "mutation_score_weight": 0.25,
+      "build_time_weight": 0.15
+    },
+    "note": "TDG score to be calculated after coverage and mutation testing complete"
+  },
+  "phase_completion": {
+    "phase_1_architecture": true,
+    "phase_2_lora_qlora": true,
+    "phase_3_quality_infrastructure": false,
+    "phase_4_tracing_observability": false
+  },
+  "next_actions": [
+    "Run cargo-tarpaulin for coverage metrics",
+    "Run cargo-mutants for mutation testing",
+    "Implement chaos engineering tests",
+    "Add fuzz testing infrastructure",
+    "Create gradient checking tests",
+    "Calculate TDG score"
+  ]
+}
