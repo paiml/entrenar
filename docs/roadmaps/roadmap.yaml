@@ -137,3 +137,18 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+- id: ENT-015
+  github_issue: null
+  item_type: task
+  title: 'New task: ENT-015'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2025-11-20T16:10:45.007678708+00:00
+  updated: 2025-11-20T16:16:06.214854591+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
