@@ -72,3 +72,8 @@ required-features = []
 name = "distillation"
 path = "examples/distillation.rs"
 required-features = []
+
+[[example]]
+name = "training_loop"
+path = "examples/training_loop.rs"
+required-features = []
