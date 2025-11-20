@@ -9,9 +9,16 @@ mod layer;
 mod qlora;
 
 #[cfg(test)]
+mod benchmarks;
+#[cfg(test)]
 mod gradient_tests;
 
 pub use adapter::{load_adapter, save_adapter, AdapterError, AdapterMetadata, LoRAAdapter};
 pub use config::LoRAConfig;
 pub use layer::LoRALayer;
 pub use qlora::{MemoryStats, QLoRALayer};
+
+#[cfg(test)]
+pub use benchmarks::{
+    benchmark_model, run_transformer_benchmarks, BenchmarkResults, LayerMemoryStats,
+};
