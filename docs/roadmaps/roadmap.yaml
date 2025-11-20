@@ -257,3 +257,18 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+- id: GH-5
+  github_issue: 5
+  item_type: task
+  title: 'Issue #5'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2025-11-20T21:20:23.223548749+00:00
+  updated: 2025-11-20T21:20:23.223548749+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
