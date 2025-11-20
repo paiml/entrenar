@@ -57,3 +57,18 @@ required-features = []
 name = "llama2-memory-benchmarks"
 path = "examples/llama2/memory_benchmarks.rs"
 required-features = []
+
+[[example]]
+name = "merge_models"
+path = "examples/merge_models.rs"
+required-features = []
+
+[[example]]
+name = "train_from_yaml"
+path = "examples/train_from_yaml.rs"
+required-features = []
+
+[[example]]
+name = "distillation"
+path = "examples/distillation.rs"
+required-features = []
