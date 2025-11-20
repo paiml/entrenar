@@ -1,0 +1,298 @@
+# Entrenar Roadmap
+# Total: 824 hours (103 days @ 8h/day)
+# Tickets: ENT-001 through ENT-040
+
+project:
+  name: entrenar
+  description: Training & Optimization Library
+  total_hours: 824
+  total_tickets: 40
+
+# Track actual progress vs estimates
+progress:
+  completed_hours: 0
+  completed_tickets: 0
+  current_phase: 1
+
+phases:
+  - name: "Phase 1: Autograd Engine"
+    hours: 200
+    status: in-progress
+    tickets:
+      - id: ENT-001
+        name: "Tape-based context + lifetime tracking"
+        estimated_hours: 32
+        actual_hours: 4
+        status: complete
+        notes: "Implemented Context and BackwardOp trait"
+
+      - id: ENT-002
+        name: "Matmul backward (gradient check: 200K iters)"
+        estimated_hours: 16
+        actual_hours: 2
+        status: complete
+        notes: "CRITICAL: Required for neural network layers. Implemented with property tests (1000+ cases), gradient validation via finite difference."
+
+      - id: ENT-003
+        name: "Softmax backward + property tests"
+        estimated_hours: 24
+        actual_hours: 3
+        status: complete
+        notes: "Implemented with gradient validation"
+
+      - id: ENT-004
+        name: "Layer norm backward (mean/var gradients)"
+        estimated_hours: 32
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-005
+        name: "Attention backward (Q,K,V chain rule)"
+        estimated_hours: 40
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-006
+        name: "ReLU/GELU/Swish backward (8h each)"
+        estimated_hours: 24
+        actual_hours: 1
+        status: in-progress
+        notes: "ReLU complete, need GELU and Swish"
+
+      - id: ENT-007
+        name: "Finite difference validation framework"
+        estimated_hours: 16
+        actual_hours: 2
+        status: complete
+        notes: "Implemented with property tests"
+
+      - id: ENT-008
+        name: "Mutation testing on backward ops (>80% kill)"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+  - name: "Phase 2: Optimizers"
+    hours: 120
+    status: in-progress
+    tickets:
+      - id: ENT-009
+        name: "SGD + momentum"
+        estimated_hours: 16
+        actual_hours: 1
+        status: complete
+
+      - id: ENT-010
+        name: "Adam (m/v state tracking)"
+        estimated_hours: 24
+        actual_hours: 2
+        status: complete
+
+      - id: ENT-011
+        name: "AdamW (decoupled weight decay)"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-012
+        name: "Cosine LR scheduler"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-013
+        name: "Gradient clipping (global norm)"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-014
+        name: "Optimizer convergence property tests"
+        estimated_hours: 32
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-015
+        name: "SIMD-accelerated param updates via Trueno"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+  - name: "Phase 3: LoRA"
+    hours: 144
+    status: pending
+    tickets:
+      - id: ENT-016
+        name: "LoRA layer (A, B matrices + merge)"
+        estimated_hours: 32
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-017
+        name: "QLoRA (4-bit base + dequant-on-fly)"
+        estimated_hours: 40
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-018
+        name: "Target module selection (q/k/v/o_proj)"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-019
+        name: "Adapter save/load (separate from base)"
+        estimated_hours: 24
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-020
+        name: "Memory benchmarks (QLoRA vs full FP16)"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-021
+        name: "Gradient flow tests (frozen base + trainable adapters)"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+  - name: "Phase 4: Quantization"
+    hours: 136
+    status: pending
+    tickets:
+      - id: ENT-022
+        name: "Fake quantize (STE backward)"
+        estimated_hours: 24
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-023
+        name: "PTQ calibration (min-max, percentile)"
+        estimated_hours: 32
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-024
+        name: "Q4_0/Q8_0 bit packing → GGUF"
+        estimated_hours: 40
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-025
+        name: "Per-channel vs per-tensor quantization"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-026
+        name: "Quantization error property tests"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-027
+        name: "Accuracy degradation benchmarks"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+  - name: "Phase 5: Model Merging"
+    hours: 96
+    status: pending
+    tickets:
+      - id: ENT-028
+        name: "TIES (trim + sign election + merge)"
+        estimated_hours: 32
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-029
+        name: "DARE (dropout + rescale)"
+        estimated_hours: 24
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-030
+        name: "SLERP (spherical interp for 2 models)"
+        estimated_hours: 24
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-031
+        name: "Merge commutativity property tests"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-032
+        name: "Multi-model ensemble (>2 models)"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+  - name: "Phase 6: Declarative Config"
+    hours: 64
+    status: pending
+    tickets:
+      - id: ENT-033
+        name: "YAML schema + serde deserialization"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-034
+        name: "Auto-feature type inference from data"
+        estimated_hours: 24
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-035
+        name: "Config validation (types, paths, ranges)"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-036
+        name: "Single-command training entry point"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+  - name: "Phase 7: Distillation"
+    hours: 64
+    status: pending
+    tickets:
+      - id: ENT-037
+        name: "KD loss (temperature-scaled softmax)"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-038
+        name: "Multi-teacher ensemble distillation"
+        estimated_hours: 24
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-039
+        name: "Progressive distillation (layer-wise)"
+        estimated_hours: 16
+        actual_hours: 0
+        status: pending
+
+      - id: ENT-040
+        name: "Distillation effectiveness property tests"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+
+# Summary Statistics
+summary:
+  total_estimated_hours: 824
+  total_actual_hours: 15
+  completion_percentage: 1.8
+  tickets_complete: 6
+  tickets_in_progress: 0
+  tickets_pending: 34

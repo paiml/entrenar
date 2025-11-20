@@ -1,0 +1,9 @@
+# Clippy configuration for Entrenar
+# Enforce strict quality standards
+
+# Cognitive complexity limit (EXTREME TDD requirement)
+cognitive-complexity-threshold = 15
+
+# Additional strictness
+too-many-arguments-threshold = 7
+type-complexity-threshold = 250

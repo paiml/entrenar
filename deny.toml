@@ -1,0 +1,46 @@
+# cargo-deny configuration for Entrenar
+# Dependency security and license checking
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+ignore = []
+# Warn about vulnerabilities
+vulnerability = "deny"
+# Warn about unmaintained crates
+unmaintained = "warn"
+# Warn about yanked crates
+yanked = "deny"
+
+[licenses]
+# We use MIT license
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+]
+confidence-threshold = 0.8
+
+[[licenses.clarify]]
+name = "ring"
+expression = "ISC"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+[bans]
+# Warn about multiple versions of same crate
+multiple-versions = "warn"
+# Deny specific crates (none for now)
+deny = []
+
+[sources]
+# Only allow crates.io
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
