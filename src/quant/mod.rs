@@ -1,3 +1,7 @@
 //! Quantization: QAT and PTQ
+//!
+//! Provides 4-bit quantization for QLoRA and future quantization schemes.
 
-// Placeholder for quantization implementation
+mod quant4bit;
+
+pub use quant4bit::{dequantize_4bit, quantize_4bit, Quantized4Bit, BLOCK_SIZE};
