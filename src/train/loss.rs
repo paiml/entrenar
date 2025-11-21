@@ -21,7 +21,7 @@ pub trait LossFn {
 /// # Example
 ///
 /// ```
-/// use entrenar::train::MSELoss;
+/// use entrenar::train::{MSELoss, LossFn};
 /// use entrenar::Tensor;
 ///
 /// let loss_fn = MSELoss;
@@ -97,7 +97,7 @@ impl LossFn for MSELoss {
 /// # Example
 ///
 /// ```
-/// use entrenar::train::CrossEntropyLoss;
+/// use entrenar::train::{CrossEntropyLoss, LossFn};
 /// use entrenar::Tensor;
 ///
 /// let loss_fn = CrossEntropyLoss;

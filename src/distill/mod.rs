@@ -11,11 +11,16 @@
 //!
 //! ## Example
 //!
-//! ```no_run
+//! ```
 //! use entrenar::distill::DistillationLoss;
+//! use ndarray::array;
 //!
 //! let loss_fn = DistillationLoss::new(3.0, 0.5);
+//! let student_logits = array![[1.0, 2.0, 1.5]];
+//! let teacher_logits = array![[1.2, 1.8, 1.6]];
+//! let labels = vec![1];
 //! let loss = loss_fn.forward(&student_logits, &teacher_logits, &labels);
+//! assert!(loss > 0.0);
 //! ```
 
 mod loss;
