@@ -22,6 +22,7 @@
 //!   alpha: 16
 //! ```
 
+mod builder;
 mod schema;
 mod validate;
 mod train;
@@ -29,6 +30,7 @@ mod train;
 #[cfg(test)]
 mod tests;
 
+pub use builder::{build_model, build_optimizer};
 pub use schema::{
     DataConfig, LoRASpec, MergeSpec, ModelRef, OptimSpec, QuantSpec, TrainSpec, TrainingParams,
 };
