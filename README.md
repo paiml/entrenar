@@ -5,7 +5,7 @@
 Entrenar provides a tape-based autograd engine with optimizers, LoRA/QLoRA parameter-efficient fine-tuning, and production-ready observability for training transformer models.
 
 [![Quality Grade](https://img.shields.io/badge/Quality-A%2B%20(99.4%2F100)-brightgreen)](.github/quality.svg)
-[![Tests](https://img.shields.io/badge/Tests-232%20passing-brightgreen)](.github/tests.svg)
+[![Tests](https://img.shields.io/badge/Tests-258%20passing-brightgreen)](.github/tests.svg)
 [![Coverage](https://img.shields.io/badge/Coverage-%3E90%25-brightgreen)](.github/coverage.svg)
 [![Fuzz Tested](https://img.shields.io/badge/Fuzz-3M%2B%20iterations-blue)](.github/fuzz.svg)
 
@@ -17,8 +17,10 @@ Entrenar provides a tape-based autograd engine with optimizers, LoRA/QLoRA param
 - **LoRA Fine-Tuning** - 99.75% parameter reduction (7B model: 175B → 437M params)
 - **QLoRA 4-bit** - 87.3% memory savings (7B model: 28GB → 3.5GB)
 - **Full Observability** - renacer profiling + OTLP tracing + Jaeger + ML anomaly detection
-- **232 Tests** - Property-based, mutation, chaos, gradient checking, fuzz (3M+ iterations)
+- **258 Tests** - Property-based, mutation, chaos, gradient checking, fuzz (3M+ iterations)
 - **A+ Quality** - 99.4/100 grade, 59x better gradient precision than spec
+- **Model I/O** - Save/load models in JSON, YAML formats with metadata
+- **Declarative Training** - Ludwig-style YAML configuration with `train_from_yaml()`
 
 ### Core Components
 
@@ -130,7 +132,7 @@ make profile-llama-anomaly
 
 **Overall Grade:** **A+ (99.4/100)** - See `docs/quality-metrics-final.md`
 
-### Test Coverage: 232 Tests ✅
+### Test Coverage: 258 Tests ✅
 
 - **130** core library tests
 - **13** property-based tests (1,300 test cases)
@@ -139,6 +141,8 @@ make profile-llama-anomaly
 - **18** gradient checking tests (epsilon=1e-3, threshold=0.2)
 - **11** memory benchmark tests
 - **35** architecture tests
+- **16** I/O and configuration tests
+- **10** additional integration tests
 
 **Fuzz Testing:** 3M+ iterations, **zero crashes**
 
@@ -238,6 +242,51 @@ let lora_model = model.to_lora(&lora_config);
 
 // Fine-tune (only LoRA adapters are trainable)
 // 7B model: 175B params → 437M trainable (99.75% reduction)
+```
+
+### Model I/O
+
+```rust
+use entrenar::io::*;
+
+// Save model
+let model = Model::new(metadata, parameters);
+let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
+save_model(&model, "model.json", &config)?;
+
+// Load model
+let loaded = load_model("model.json")?;
+println!("Loaded: {}", loaded.metadata.name);
+
+// Formats: JSON, YAML, GGUF (future)
+```
+
+### Declarative Training (Ludwig-style)
+
+```rust
+use entrenar::config::train_from_yaml;
+
+// Single command training from YAML config
+train_from_yaml("config.yaml")?;
+```
+
+Example `config.yaml`:
+```yaml
+model:
+  path: base-model.gguf
+data:
+  train: train.parquet
+  batch_size: 8
+optimizer:
+  name: adam
+  lr: 0.001
+training:
+  epochs: 10
+  grad_clip: 1.0
+  output_dir: ./checkpoints
+lora:
+  rank: 64
+  alpha: 16
 ```
 
 ### QLoRA Fine-Tuning

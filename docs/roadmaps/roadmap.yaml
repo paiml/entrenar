@@ -332,3 +332,18 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+- id: GH-7
+  github_issue: 7
+  item_type: task
+  title: 'Issue #7'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2025-11-21T07:06:47.099723411+00:00
+  updated: 2025-11-21T07:11:07.777427077+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
