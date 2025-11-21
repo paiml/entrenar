@@ -86,3 +86,8 @@ required-features = []
 name = "model_io"
 path = "examples/model_io.rs"
 required-features = []
+
+[[example]]
+name = "train_from_yaml_example"
+path = "examples/train_from_yaml_example.rs"
+required-features = []

@@ -1,40 +1,35 @@
-# Example training configuration for Entrenar
+# Example training configuration for entrenar
 #
-# This demonstrates Ludwig-style declarative training configuration
+# This demonstrates the declarative YAML API for model training
 
 model:
-  path: llama-7b.gguf
-  layers: [q_proj, k_proj, v_proj, o_proj]
+  path: examples/example-model.gguf
+  layers: []
 
 data:
-  train: train.parquet
-  val: val.parquet
-  batch_size: 16
-  auto_infer_types: true
-  seq_len: 2048
+  train: examples/train.parquet
+  batch_size: 2
 
 optimizer:
-  name: adamw
-  lr: 0.0001
+  name: adam
+  lr: 0.01
   beta1: 0.9
   beta2: 0.999
-  weight_decay: 0.01
-
-lora:
-  rank: 64
-  alpha: 16
-  target_modules: [q_proj, v_proj]
-  dropout: 0.1
-
-quantize:
-  bits: 4
-  symmetric: true
-  per_channel: true
 
 training:
-  epochs: 3
+  epochs: 5
   grad_clip: 1.0
-  lr_scheduler: cosine
-  warmup_steps: 100
-  save_interval: 1
-  output_dir: ./checkpoints
+  output_dir: ./output
+
+# Optional: LoRA configuration
+# lora:
+#   rank: 64
+#   alpha: 16
+#   target_modules: [q_proj, v_proj]
+#   dropout: 0.0
+
+# Optional: Quantization
+# quantize:
+#   bits: 4
+#   symmetric: true
+#   per_channel: true
