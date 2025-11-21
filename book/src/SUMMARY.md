@@ -74,15 +74,54 @@
   - [Compression Ratios](./quantization/compression-ratios.md)
 - [Trade-offs and Best Practices](./quantization/tradeoffs.md)
 
+# Model Merging
+
+- [Overview](./merging/overview.md)
+- [TIES Algorithm](./merging/ties.md)
+- [DARE Algorithm](./merging/dare.md)
+- [SLERP Algorithm](./merging/slerp.md)
+- [Multi-Model Ensembles](./merging/multi-model.md)
+- [Merge Best Practices](./merging/best-practices.md)
+
+# Knowledge Distillation
+
+- [What is Distillation?](./distillation/what-is-distillation.md)
+- [Temperature-Scaled KL Divergence](./distillation/temperature-kl.md)
+- [Multi-Teacher Ensemble](./distillation/multi-teacher.md)
+- [Progressive Layer-Wise](./distillation/progressive.md)
+- [Distillation Loss Functions](./distillation/loss-functions.md)
+- [Student-Teacher Architecture](./distillation/student-teacher.md)
+
 # Training Loops
 
+- [Trainer API](./training/trainer-api.md)
+- [Train Config](./training/train-config.md)
 - [Basic Training Loop](./training/basic-loop.md)
 - [Batching and Data Loading](./training/batching.md)
 - [Loss Functions](./training/loss-functions.md)
 - [Validation and Testing](./training/validation.md)
 - [Checkpointing](./training/checkpointing.md)
 - [Early Stopping](./training/early-stopping.md)
-- [Mixed Precision Training](./training/mixed-precision.md)
+
+# Model I/O
+
+- [Overview](./io/overview.md)
+- [Save Models](./io/save-models.md)
+- [Load Models](./io/load-models.md)
+- [Model Metadata](./io/metadata.md)
+- [Supported Formats](./io/formats.md)
+  - [JSON Format](./io/json-format.md)
+  - [YAML Format](./io/yaml-format.md)
+  - [GGUF Format](./io/gguf-format.md)
+
+# Declarative Training
+
+- [Overview](./declarative/overview.md)
+- [YAML Configuration](./declarative/yaml-config.md)
+- [train_from_yaml Function](./declarative/train-from-yaml.md)
+- [Configuration Schema](./declarative/schema.md)
+- [Optimizer Builders](./declarative/optimizer-builders.md)
+- [Model Builders](./declarative/model-builders.md)
 
 # API Reference
 
