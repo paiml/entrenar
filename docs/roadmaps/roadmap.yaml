@@ -134,11 +134,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'New task: ENT-014'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2025-11-20T14:52:53.721495848+00:00
-  updated: 2025-11-26T14:08:59.804230553+00:00
+  updated: 2025-11-26T14:14:59.998126414+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -150,11 +150,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'New task: ENT-015'
-  status: completed
+  status: inprogress
   priority: medium
   assigned_to: null
   created: 2025-11-20T16:10:45.007678708+00:00
-  updated: 2025-11-20T16:16:06.214854591+00:00
+  updated: 2025-11-26T14:33:45.070926205+00:00
   spec: null
   acceptance_criteria: []
   phases: []
