@@ -133,6 +133,7 @@ fn linear_interp_tensor(tensor1: &Tensor, tensor2: &Tensor, t: f32) -> Tensor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_slerp_at_endpoints() {
@@ -203,5 +204,215 @@ mod tests {
         let expected_val = 1.0 / 2.0f32.sqrt();
         assert!((merged["w"].data()[0] - expected_val).abs() < 1e-5);
         assert!((merged["w"].data()[1] - expected_val).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_linear_interp_basic() {
+        let t1 = Tensor::from_vec(vec![0.0, 0.0], false);
+        let t2 = Tensor::from_vec(vec![10.0, 20.0], false);
+
+        let result = linear_interp_tensor(&t1, &t2, 0.3);
+        assert!((result.data()[0] - 3.0).abs() < 1e-6);
+        assert!((result.data()[1] - 6.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_slerp_zero_vector_fallback() {
+        let t1 = Tensor::from_vec(vec![0.0, 0.0], false);
+        let t2 = Tensor::from_vec(vec![1.0, 1.0], false);
+
+        // Should fall back to linear interpolation for zero vector
+        let result = slerp_tensor(&t1, &t2, 0.5);
+        assert!((result.data()[0] - 0.5).abs() < 1e-6);
+        assert!((result.data()[1] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_slerp_negative_vectors() {
+        let t1 = Tensor::from_vec(vec![1.0, 0.0], false);
+        let t2 = Tensor::from_vec(vec![-1.0, 0.0], false); // Opposite direction
+
+        let result = slerp_tensor(&t1, &t2, 0.5);
+
+        // At midpoint of opposite vectors, SLERP rotates through perpendicular
+        // The result should be perpendicular (along y-axis)
+        assert!((result.data()[0]).abs() < 1e-5);
+    }
+
+    // Property tests
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(200))]
+
+        #[test]
+        fn prop_slerp_config_valid_range(t in 0.0f32..=1.0) {
+            let config = SlerpConfig::new(t);
+            prop_assert!(config.is_ok());
+        }
+
+        #[test]
+        fn prop_slerp_config_invalid_negative(t in -10.0f32..-0.01) {
+            let config = SlerpConfig::new(t);
+            prop_assert!(config.is_err());
+        }
+
+        #[test]
+        fn prop_slerp_config_invalid_above_one(t in 1.01f32..10.0) {
+            let config = SlerpConfig::new(t);
+            prop_assert!(config.is_err());
+        }
+
+        #[test]
+        fn prop_slerp_t0_returns_first(
+            values1 in proptest::collection::vec(-10.0f32..10.0, 3..10),
+            values2 in proptest::collection::vec(-10.0f32..10.0, 3..10)
+        ) {
+            let len = values1.len().min(values2.len());
+            let v1: Vec<f32> = values1.into_iter().take(len).collect();
+            let v2: Vec<f32> = values2.into_iter().take(len).collect();
+
+            let t1 = Tensor::from_vec(v1.clone(), false);
+            let t2 = Tensor::from_vec(v2, false);
+
+            let result = slerp_tensor(&t1, &t2, 0.0);
+
+            for (orig, res) in v1.iter().zip(result.data().iter()) {
+                prop_assert!(
+                    (orig - res).abs() < 1e-5,
+                    "t=0 should return first tensor: {} vs {}",
+                    orig,
+                    res
+                );
+            }
+        }
+
+        #[test]
+        fn prop_slerp_t1_returns_second(
+            values1 in proptest::collection::vec(-10.0f32..10.0, 3..10),
+            values2 in proptest::collection::vec(-10.0f32..10.0, 3..10)
+        ) {
+            let len = values1.len().min(values2.len());
+            let v1: Vec<f32> = values1.into_iter().take(len).collect();
+            let v2: Vec<f32> = values2.into_iter().take(len).collect();
+
+            let t1 = Tensor::from_vec(v1, false);
+            let t2 = Tensor::from_vec(v2.clone(), false);
+
+            let result = slerp_tensor(&t1, &t2, 1.0);
+
+            for (orig, res) in v2.iter().zip(result.data().iter()) {
+                prop_assert!(
+                    (orig - res).abs() < 1e-5,
+                    "t=1 should return second tensor: {} vs {}",
+                    orig,
+                    res
+                );
+            }
+        }
+
+        #[test]
+        fn prop_linear_interp_bounded(
+            values1 in proptest::collection::vec(-100.0f32..100.0, 3..10),
+            values2 in proptest::collection::vec(-100.0f32..100.0, 3..10),
+            t in 0.0f32..=1.0
+        ) {
+            let len = values1.len().min(values2.len());
+            let v1: Vec<f32> = values1.into_iter().take(len).collect();
+            let v2: Vec<f32> = values2.into_iter().take(len).collect();
+
+            let t1 = Tensor::from_vec(v1.clone(), false);
+            let t2 = Tensor::from_vec(v2.clone(), false);
+
+            let result = linear_interp_tensor(&t1, &t2, t);
+
+            // Result should be within bounds of inputs
+            for i in 0..len {
+                let min_val = v1[i].min(v2[i]);
+                let max_val = v1[i].max(v2[i]);
+                prop_assert!(
+                    result.data()[i] >= min_val - 1e-5 && result.data()[i] <= max_val + 1e-5,
+                    "Linear interp out of bounds: {} not in [{}, {}]",
+                    result.data()[i],
+                    min_val,
+                    max_val
+                );
+            }
+        }
+
+        #[test]
+        fn prop_slerp_symmetric(
+            values1 in proptest::collection::vec(1.0f32..10.0, 3..6),
+            values2 in proptest::collection::vec(1.0f32..10.0, 3..6),
+            t in 0.1f32..0.9
+        ) {
+            let len = values1.len().min(values2.len());
+            let v1: Vec<f32> = values1.into_iter().take(len).collect();
+            let v2: Vec<f32> = values2.into_iter().take(len).collect();
+
+            let t1 = Tensor::from_vec(v1.clone(), false);
+            let t2 = Tensor::from_vec(v2.clone(), false);
+
+            // slerp(a, b, t) should have similar properties to slerp(b, a, 1-t)
+            let result1 = slerp_tensor(&t1, &t2, t);
+            let result2 = slerp_tensor(&t2, &t1, 1.0 - t);
+
+            for (r1, r2) in result1.data().iter().zip(result2.data().iter()) {
+                prop_assert!(
+                    (r1 - r2).abs() < 1e-4,
+                    "SLERP not symmetric: {} vs {}",
+                    r1,
+                    r2
+                );
+            }
+        }
+
+        #[test]
+        fn prop_linear_interp_t0_returns_first(
+            values1 in proptest::collection::vec(-100.0f32..100.0, 3..10),
+            values2 in proptest::collection::vec(-100.0f32..100.0, 3..10)
+        ) {
+            let len = values1.len().min(values2.len());
+            let v1: Vec<f32> = values1.into_iter().take(len).collect();
+            let v2: Vec<f32> = values2.into_iter().take(len).collect();
+
+            let t1 = Tensor::from_vec(v1.clone(), false);
+            let t2 = Tensor::from_vec(v2, false);
+
+            let result = linear_interp_tensor(&t1, &t2, 0.0);
+
+            for (orig, res) in v1.iter().zip(result.data().iter()) {
+                prop_assert!(
+                    (orig - res).abs() < 1e-6,
+                    "t=0 should return first: {} vs {}",
+                    orig,
+                    res
+                );
+            }
+        }
+
+        #[test]
+        fn prop_linear_interp_midpoint_is_average(
+            values1 in proptest::collection::vec(-100.0f32..100.0, 3..10),
+            values2 in proptest::collection::vec(-100.0f32..100.0, 3..10)
+        ) {
+            let len = values1.len().min(values2.len());
+            let v1: Vec<f32> = values1.into_iter().take(len).collect();
+            let v2: Vec<f32> = values2.into_iter().take(len).collect();
+
+            let t1 = Tensor::from_vec(v1.clone(), false);
+            let t2 = Tensor::from_vec(v2.clone(), false);
+
+            let result = linear_interp_tensor(&t1, &t2, 0.5);
+
+            for i in 0..len {
+                let expected = (v1[i] + v2[i]) / 2.0;
+                prop_assert!(
+                    (result.data()[i] - expected).abs() < 1e-5,
+                    "Midpoint not average: {} vs {}",
+                    result.data()[i],
+                    expected
+                );
+            }
+        }
     }
 }
