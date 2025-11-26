@@ -147,6 +147,105 @@ impl Default for LoRAConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    // ========================================================================
+    // PROPERTY TESTS - Configuration correctness validation
+    // ========================================================================
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(200))]
+
+        /// should_apply should be consistent with target_modules set
+        #[test]
+        fn prop_should_apply_consistent_with_modules(
+            rank in 1usize..64,
+            alpha in 1.0f32..64.0,
+            include_q in proptest::bool::ANY,
+            include_k in proptest::bool::ANY,
+            include_v in proptest::bool::ANY,
+            include_o in proptest::bool::ANY,
+        ) {
+            let mut modules = vec![];
+            if include_q { modules.push("q_proj"); }
+            if include_k { modules.push("k_proj"); }
+            if include_v { modules.push("v_proj"); }
+            if include_o { modules.push("o_proj"); }
+
+            let config = LoRAConfig::new(rank, alpha).target_modules(&modules);
+
+            // should_apply must match what was set
+            prop_assert_eq!(config.should_apply("q_proj", None), include_q);
+            prop_assert_eq!(config.should_apply("k_proj", None), include_k);
+            prop_assert_eq!(config.should_apply("v_proj", None), include_v);
+            prop_assert_eq!(config.should_apply("o_proj", None), include_o);
+            prop_assert_eq!(config.num_target_modules(), modules.len());
+        }
+
+        /// Layer filtering should respect layer indices
+        #[test]
+        fn prop_layer_filtering_respects_indices(
+            layers in prop::collection::vec(0usize..32, 1..8),
+            test_layer in 0usize..32,
+        ) {
+            let config = LoRAConfig::new(8, 8.0)
+                .target_modules(&["q_proj"])
+                .target_layers(&layers);
+
+            // should_apply for a layer should match layer list membership
+            let in_list = layers.contains(&test_layer);
+            prop_assert_eq!(config.should_apply("q_proj", Some(test_layer)), in_list);
+        }
+
+        /// all_linear mode should match any *proj or *linear suffix
+        #[test]
+        fn prop_all_linear_matches_suffixes(
+            prefix in "[a-z]{1,8}",
+        ) {
+            let config = LoRAConfig::new(8, 8.0).all_linear_layers();
+
+            // Should match *_proj and *_linear
+            let proj_name = format!("{}_proj", prefix);
+            let linear_name = format!("{}_linear", prefix);
+            let other_name = format!("{}_norm", prefix);
+
+            prop_assert!(config.should_apply(&proj_name, None));
+            prop_assert!(config.should_apply(&linear_name, None));
+            prop_assert!(!config.should_apply(&other_name, None));
+        }
+
+        /// Config parameters should be preserved after builder chain
+        #[test]
+        fn prop_config_params_preserved(
+            rank in 1usize..128,
+            alpha in 0.1f32..128.0,
+        ) {
+            let config = LoRAConfig::new(rank, alpha)
+                .target_attention_projections()
+                .target_layers(&[0, 1, 2]);
+
+            prop_assert_eq!(config.rank, rank);
+            prop_assert!((config.alpha - alpha).abs() < 1e-6);
+            prop_assert_eq!(config.num_target_modules(), 4);
+        }
+
+        /// None layer index should bypass layer filtering
+        #[test]
+        fn prop_none_layer_bypasses_filter(
+            layers in prop::collection::vec(0usize..16, 1..4),
+        ) {
+            let config = LoRAConfig::new(8, 8.0)
+                .target_modules(&["q_proj"])
+                .target_layers(&layers);
+
+            // None layer index should always pass layer check
+            prop_assert!(config.should_apply("q_proj", None));
+        }
+    }
+
+    // ========================================================================
+    // UNIT TESTS
+    // ========================================================================
 
     #[test]
     fn test_lora_config_creation() {
