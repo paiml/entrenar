@@ -23,6 +23,7 @@
 //! ```
 
 mod builder;
+mod cli;
 mod schema;
 mod validate;
 mod train;
@@ -35,6 +36,10 @@ mod tests;
 mod property_tests;
 
 pub use builder::{build_model, build_optimizer};
+pub use cli::{
+    apply_overrides, parse_args, Cli, Command, InfoArgs, MergeArgs, MergeMethod,
+    OutputFormat, QuantizeArgs, QuantMethod, TrainArgs, ValidateArgs,
+};
 pub use schema::{
     DataConfig, LoRASpec, MergeSpec, ModelRef, OptimSpec, QuantSpec, TrainSpec, TrainingParams,
 };
