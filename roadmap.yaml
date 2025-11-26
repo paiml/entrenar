@@ -154,8 +154,9 @@ phases:
       - id: ENT-018
         name: "Target module selection (q/k/v/o_proj)"
         estimated_hours: 16
-        actual_hours: 0
-        status: pending
+        actual_hours: 1
+        status: complete
+        notes: "LoRAConfig with target module selection, layer filtering, all_linear mode. 15 tests including 5 property tests (200 cases each)."
 
       - id: ENT-019
         name: "Adapter save/load (separate from base)"
@@ -308,8 +309,8 @@ phases:
 # Summary Statistics
 summary:
   total_estimated_hours: 824
-  total_actual_hours: 35
-  completion_percentage: 4.2
-  tickets_complete: 17
+  total_actual_hours: 36
+  completion_percentage: 4.4
+  tickets_complete: 18
   tickets_in_progress: 0
-  tickets_pending: 23
+  tickets_pending: 22
