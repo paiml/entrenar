@@ -307,10 +307,12 @@ pub fn collect_stats_from_samples(
                 }
 
                 // Simple datetime heuristic
-                if s.contains('-') && s.len() >= 10 && s.len() <= 30 {
-                    if s.chars().filter(|c| c.is_ascii_digit()).count() >= 8 {
-                        datetime_count += 1;
-                    }
+                if s.contains('-')
+                    && s.len() >= 10
+                    && s.len() <= 30
+                    && s.chars().filter(|c| c.is_ascii_digit()).count() >= 8
+                {
+                    datetime_count += 1;
                 }
 
                 if stats.sample_values.len() < 10 {
