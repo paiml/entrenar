@@ -122,8 +122,9 @@ phases:
       - id: ENT-014
         name: "Optimizer convergence property tests"
         estimated_hours: 32
-        actual_hours: 0
-        status: pending
+        actual_hours: 2
+        status: complete
+        notes: "Property tests for SGD, Adam, AdamW with Rosenbrock, ill-conditioned, high-dim, numerical stability scenarios. 29 tests, 1000 proptest cases each."
 
       - id: ENT-015
         name: "SIMD-accelerated param updates via Trueno"
