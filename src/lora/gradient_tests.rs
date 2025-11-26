@@ -10,6 +10,112 @@ mod tests {
     use crate::lora::LoRALayer;
     use crate::Tensor;
     use approx::assert_abs_diff_eq;
+    use proptest::prelude::*;
+
+    // ========================================================================
+    // PROPERTY TESTS - Gradient flow correctness
+    // ========================================================================
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(100))]
+
+        /// Base weight should never have requires_grad for any configuration
+        #[test]
+        fn prop_base_weight_always_frozen(
+            d_out in 2usize..16,
+            d_in in 2usize..16,
+            rank in 1usize..4,
+            alpha in 1.0f32..32.0,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let lora = LoRALayer::new(base_weight, d_out, d_in, rank, alpha);
+
+            prop_assert!(
+                !lora.base_weight().requires_grad(),
+                "Base weight should always be frozen"
+            );
+        }
+
+        /// LoRA A and B should always be trainable
+        #[test]
+        fn prop_lora_params_always_trainable(
+            d_out in 2usize..16,
+            d_in in 2usize..16,
+            rank in 1usize..4,
+            alpha in 1.0f32..32.0,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let lora = LoRALayer::new(base_weight, d_out, d_in, rank, alpha);
+
+            prop_assert!(lora.lora_a().requires_grad(), "LoRA A should be trainable");
+            prop_assert!(lora.lora_b().requires_grad(), "LoRA B should be trainable");
+        }
+
+        /// trainable_params should return exactly 2 parameters (A and B)
+        #[test]
+        fn prop_trainable_params_count(
+            d_out in 2usize..16,
+            d_in in 2usize..16,
+            rank in 1usize..4,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let mut lora = LoRALayer::new(base_weight, d_out, d_in, rank, 4.0);
+
+            let params = lora.trainable_params();
+            prop_assert_eq!(params.len(), 2, "Should have exactly 2 trainable params");
+
+            // Check dimensions
+            prop_assert_eq!(params[0].len(), rank * d_in, "A should be [rank * d_in]");
+            prop_assert_eq!(params[1].len(), d_out * rank, "B should be [d_out * rank]");
+        }
+
+        /// Gradients should accumulate correctly
+        #[test]
+        fn prop_gradient_accumulation(
+            d in 2usize..8,
+            initial_grad in prop::collection::vec(-10.0f32..10.0, 2..8),
+            additional_grad in prop::collection::vec(-10.0f32..10.0, 2..8),
+        ) {
+            // Ensure same length
+            let len = initial_grad.len().min(additional_grad.len()).min(d * d);
+            if len < 2 { return Ok(()); }
+
+            let initial: Vec<f32> = initial_grad[..len].to_vec();
+            let additional: Vec<f32> = additional_grad[..len].to_vec();
+
+            let base_weight = Tensor::from_vec(vec![1.0; len], false);
+            let mut lora = LoRALayer::new(base_weight, len, 1, 1, 1.0);
+
+            // Set initial gradient on A (which has len elements when d_in=len, rank=1)
+            // Actually A is [rank * d_in] = [1 * 1] = 1 element
+            // Let me reconsider - for simplicity, just test with fixed small size
+            let a_len = lora.lora_a().len();
+            if initial.len() < a_len { return Ok(()); }
+
+            let init_slice: Vec<f32> = initial[..a_len].to_vec();
+            let add_slice: Vec<f32> = additional[..a_len].to_vec();
+
+            lora.lora_a_mut().set_grad(ndarray::arr1(&init_slice));
+            lora.lora_a_mut().accumulate_grad(ndarray::arr1(&add_slice));
+
+            let grad = lora.lora_a().grad().unwrap();
+            for i in 0..a_len {
+                let expected = init_slice[i] + add_slice[i];
+                prop_assert!(
+                    (grad[i] - expected).abs() < 1e-5,
+                    "Accumulated gradient at {} should be {}, got {}",
+                    i, expected, grad[i]
+                );
+            }
+        }
+    }
+
+    // ========================================================================
+    // UNIT TESTS
+    // ========================================================================
 
     #[test]
     fn test_base_weight_frozen() {
