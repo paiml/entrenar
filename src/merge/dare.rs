@@ -177,6 +177,7 @@ fn average_deltas(deltas: &[Model]) -> Model {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use rand::SeedableRng;
 
     #[test]
@@ -243,6 +244,217 @@ mod tests {
         let r2_data = result2["w"].data();
         for (a, b) in r1_data.iter().zip(r2_data.iter()) {
             assert!((a - b).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_drop_prob_zero_keeps_all() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        // drop_prob=0 means keep all, scale=1
+        let masked = drop_and_rescale_tensor(&tensor, 0.0, 1.0, &mut rng);
+
+        let data = masked.data();
+        assert_eq!(data[0], 1.0);
+        assert_eq!(data[4], 5.0);
+    }
+
+    #[test]
+    fn test_drop_prob_one_drops_all() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        // drop_prob=1.0 means drop all
+        let masked = drop_and_rescale_tensor(&tensor, 1.0, 1.0, &mut rng);
+
+        let data = masked.data();
+        for &val in data.iter() {
+            assert_eq!(val, 0.0);
+        }
+    }
+
+    #[test]
+    fn test_dare_merge_empty_models() {
+        let mut base = HashMap::new();
+        base.insert("w".to_string(), Tensor::from_vec(vec![0.0], false));
+
+        let models: Vec<Model> = vec![];
+        let config = DareConfig::default();
+
+        let result = dare_merge(&models, &base, &config);
+        assert!(matches!(
+            result,
+            Err(MergeError::InsufficientModels { min: 1, got: 0 })
+        ));
+    }
+
+    #[test]
+    fn test_dare_merge_single_model() {
+        let mut base = HashMap::new();
+        base.insert("w".to_string(), Tensor::from_vec(vec![0.0, 0.0], false));
+
+        let mut model1 = HashMap::new();
+        model1.insert("w".to_string(), Tensor::from_vec(vec![1.0, 2.0], false));
+
+        let models = vec![model1];
+        let config = DareConfig::new(0.0).unwrap().with_seed(42); // Keep all
+
+        let result = dare_merge(&models, &base, &config).unwrap();
+
+        // With drop_prob=0, should get model1 back
+        let w = result.get("w").unwrap();
+        assert!((w.data()[0] - 1.0).abs() < 1e-6);
+        assert!((w.data()[1] - 2.0).abs() < 1e-6);
+    }
+
+    // Property tests
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(200))]
+
+        #[test]
+        fn prop_dare_config_valid_range(drop_prob in 0.0f32..=1.0) {
+            let config = DareConfig::new(drop_prob);
+            prop_assert!(config.is_ok());
+        }
+
+        #[test]
+        fn prop_dare_config_invalid_negative(drop_prob in -10.0f32..-0.01) {
+            let config = DareConfig::new(drop_prob);
+            prop_assert!(config.is_err());
+        }
+
+        #[test]
+        fn prop_dare_config_invalid_above_one(drop_prob in 1.01f32..10.0) {
+            let config = DareConfig::new(drop_prob);
+            prop_assert!(config.is_err());
+        }
+
+        #[test]
+        fn prop_drop_and_rescale_output_values(
+            values in proptest::collection::vec(1.0f32..10.0, 10..50),
+            drop_prob in 0.0f32..1.0,
+            seed in 0u64..1000
+        ) {
+            let tensor = Tensor::from_vec(values.clone(), false);
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+            let keep_prob = 1.0 - drop_prob;
+            let scale = if keep_prob > 0.0 { 1.0 / keep_prob } else { 1.0 };
+
+            let masked = drop_and_rescale_tensor(&tensor, drop_prob, scale, &mut rng);
+
+            // Each value should be either 0 (dropped) or original * scale (kept)
+            for (orig, result) in values.iter().zip(masked.data().iter()) {
+                if *result != 0.0 {
+                    let expected = orig * scale;
+                    prop_assert!(
+                        (result - expected).abs() < 1e-4,
+                        "Expected {} * {} = {}, got {}",
+                        orig,
+                        scale,
+                        expected,
+                        result
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn prop_drop_prob_zero_preserves_values(
+            values in proptest::collection::vec(-100.0f32..100.0, 5..20),
+            seed in 0u64..1000
+        ) {
+            let tensor = Tensor::from_vec(values.clone(), false);
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+            // drop_prob=0 with scale=1 should preserve all values
+            let masked = drop_and_rescale_tensor(&tensor, 0.0, 1.0, &mut rng);
+
+            for (orig, result) in values.iter().zip(masked.data().iter()) {
+                prop_assert!(
+                    (orig - result).abs() < 1e-6,
+                    "Value not preserved: {} -> {}",
+                    orig,
+                    result
+                );
+            }
+        }
+
+        #[test]
+        fn prop_drop_prob_one_zeros_all(
+            values in proptest::collection::vec(-100.0f32..100.0, 5..20),
+            seed in 0u64..1000
+        ) {
+            let tensor = Tensor::from_vec(values, false);
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+            // drop_prob=1.0 should zero all values
+            let masked = drop_and_rescale_tensor(&tensor, 1.0, 1.0, &mut rng);
+
+            for &val in masked.data().iter() {
+                prop_assert_eq!(val, 0.0);
+            }
+        }
+
+        #[test]
+        fn prop_average_deltas_is_mean(
+            v1 in proptest::collection::vec(-100.0f32..100.0, 5..10),
+            v2 in proptest::collection::vec(-100.0f32..100.0, 5..10)
+        ) {
+            // Ensure same length
+            let len = v1.len().min(v2.len());
+            let v1: Vec<f32> = v1.into_iter().take(len).collect();
+            let v2: Vec<f32> = v2.into_iter().take(len).collect();
+
+            let mut delta1 = HashMap::new();
+            delta1.insert("w".to_string(), Tensor::from_vec(v1.clone(), false));
+
+            let mut delta2 = HashMap::new();
+            delta2.insert("w".to_string(), Tensor::from_vec(v2.clone(), false));
+
+            let averaged = average_deltas(&[delta1, delta2]);
+            let avg_data = averaged["w"].data();
+
+            for i in 0..len {
+                let expected = (v1[i] + v2[i]) / 2.0;
+                prop_assert!(
+                    (avg_data[i] - expected).abs() < 1e-5,
+                    "Average mismatch at {}: expected {}, got {}",
+                    i,
+                    expected,
+                    avg_data[i]
+                );
+            }
+        }
+
+        #[test]
+        fn prop_dare_deterministic_with_same_seed(
+            delta_values in proptest::collection::vec(-10.0f32..10.0, 5..15),
+            seed in 0u64..1000,
+            drop_prob in 0.1f32..0.9
+        ) {
+            let mut base = HashMap::new();
+            base.insert("w".to_string(), Tensor::from_vec(vec![0.0; delta_values.len()], false));
+
+            let mut model1 = HashMap::new();
+            model1.insert("w".to_string(), Tensor::from_vec(delta_values, false));
+
+            let models = vec![model1];
+            let config = DareConfig::new(drop_prob).unwrap().with_seed(seed);
+
+            let result1 = dare_merge(&models, &base, &config).unwrap();
+            let result2 = dare_merge(&models, &base, &config).unwrap();
+
+            // Same seed should produce identical results
+            for (a, b) in result1["w"].data().iter().zip(result2["w"].data().iter()) {
+                prop_assert!(
+                    (a - b).abs() < 1e-6,
+                    "Non-deterministic result: {} vs {}",
+                    a,
+                    b
+                );
+            }
         }
     }
 }
