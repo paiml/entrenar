@@ -114,6 +114,10 @@
   - [YAML Format](./io/yaml-format.md)
   - [GGUF Format](./io/gguf-format.md)
 
+# Command-Line Interface
+
+- [CLI Reference](./cli/command-line-interface.md)
+
 # Declarative Training
 
 - [Overview](./declarative/overview.md)
