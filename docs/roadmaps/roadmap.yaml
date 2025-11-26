@@ -17,6 +17,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-006
   github_issue: null
   item_type: task
@@ -32,6 +33,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-004
   github_issue: null
   item_type: task
@@ -47,6 +49,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-005
   github_issue: null
   item_type: task
@@ -62,6 +65,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-008
   github_issue: null
   item_type: task
@@ -77,6 +81,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-011
   github_issue: null
   item_type: task
@@ -92,6 +97,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-012
   github_issue: null
   item_type: task
@@ -107,6 +113,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-013
   github_issue: null
   item_type: task
@@ -122,21 +129,23 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-014
   github_issue: null
   item_type: task
   title: 'New task: ENT-014'
-  status: completed
+  status: inprogress
   priority: medium
   assigned_to: null
   created: 2025-11-20T14:52:53.721495848+00:00
-  updated: 2025-11-20T14:59:01.552501654+00:00
+  updated: 2025-11-26T14:08:59.804230553+00:00
   spec: null
   acceptance_criteria: []
   phases: []
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-015
   github_issue: null
   item_type: task
@@ -152,6 +161,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-016
   github_issue: null
   item_type: task
@@ -167,6 +177,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-018
   github_issue: null
   item_type: task
@@ -182,6 +193,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-021
   github_issue: null
   item_type: task
@@ -197,6 +209,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-017
   github_issue: null
   item_type: task
@@ -212,6 +225,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-019
   github_issue: null
   item_type: task
@@ -227,6 +241,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: ENT-020
   github_issue: null
   item_type: task
@@ -242,6 +257,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: GH-4
   github_issue: 4
   item_type: task
@@ -257,6 +273,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: GH-5
   github_issue: 5
   item_type: task
@@ -272,6 +289,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: GH-1
   github_issue: 1
   item_type: task
@@ -287,6 +305,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: GH-2
   github_issue: 2
   item_type: task
@@ -302,6 +321,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: GH-3
   github_issue: null
   item_type: task
@@ -317,6 +337,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: GH-6
   github_issue: 6
   item_type: task
@@ -332,6 +353,7 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
 - id: GH-7
   github_issue: 7
   item_type: task
@@ -347,3 +369,4 @@ roadmap:
   subtasks: []
   estimated_effort: null
   labels: []
+  notes: null
