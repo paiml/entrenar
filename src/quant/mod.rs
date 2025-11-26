@@ -7,7 +7,9 @@
 //! - GGUF-compatible Q4_0/Q8_0 formats
 //! - Per-channel vs per-tensor quantization granularity
 //! - Quantization error analysis and metrics
+//! - Accuracy degradation benchmarks
 
+mod benchmarks;
 mod calibration;
 mod error_analysis;
 mod fake_quantize;
@@ -15,6 +17,11 @@ mod gguf_quant;
 mod granularity;
 mod quant4bit;
 
+pub use benchmarks::{
+    accuracy_retention, compare_bit_width_degradation, generate_gaussian_weights,
+    generate_multi_channel_weights, generate_uniform_weights, generate_weights_with_outliers,
+    run_benchmark, run_full_benchmark_suite, BenchmarkSuite, QuantBenchmarkResult,
+};
 pub use calibration::{
     calibrate_min_max, calibrate_percentile, CalibrationMethod, CalibrationResult, Calibrator,
 };
