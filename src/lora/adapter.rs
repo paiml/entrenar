@@ -216,7 +216,128 @@ pub fn load_adapter<P: AsRef<Path>>(
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use proptest::prelude::*;
     use std::fs;
+
+    // ========================================================================
+    // PROPERTY TESTS - Serialization correctness validation
+    // ========================================================================
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(100))]
+
+        /// Round-trip serialization should preserve all data exactly
+        #[test]
+        fn prop_round_trip_preserves_data(
+            d_out in 2usize..16,
+            d_in in 2usize..16,
+            rank in 1usize..4,
+            alpha in 1.0f32..32.0,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let layer = LoRALayer::new(base_weight.clone(), d_out, d_in, rank, alpha);
+
+            // Create adapter and save
+            let adapter = LoRAAdapter::from_layer(&layer, rank, alpha);
+            let path = format!("/tmp/prop_test_adapter_{}_{}_{}.json", d_out, d_in, rank);
+            adapter.save(&path).unwrap();
+
+            // Load and reconstruct
+            let loaded = LoRAAdapter::load(&path).unwrap();
+            let loaded_layer = loaded.to_layer(base_weight).unwrap();
+
+            // Verify all fields preserved
+            prop_assert_eq!(loaded_layer.d_out(), d_out);
+            prop_assert_eq!(loaded_layer.d_in(), d_in);
+            prop_assert_eq!(loaded_layer.rank(), rank);
+            prop_assert!((loaded_layer.scale() - alpha / rank as f32).abs() < 1e-5);
+
+            // Cleanup
+            fs::remove_file(&path).ok();
+        }
+
+        /// Metadata calculation should be correct for any dimensions
+        #[test]
+        fn prop_metadata_correct(
+            d_out in 2usize..32,
+            d_in in 2usize..32,
+            rank in 1usize..8,
+            alpha in 1.0f32..64.0,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let layer = LoRALayer::new(base_weight, d_out, d_in, rank, alpha);
+
+            let adapter = LoRAAdapter::from_layer(&layer, rank, alpha);
+            let metadata = adapter.metadata();
+
+            // Verify metadata
+            prop_assert_eq!(metadata.d_out, d_out);
+            prop_assert_eq!(metadata.d_in, d_in);
+            prop_assert_eq!(metadata.rank, rank);
+            prop_assert!((metadata.alpha - alpha).abs() < 1e-6);
+            prop_assert_eq!(metadata.num_params, rank * d_in + d_out * rank);
+            prop_assert_eq!(metadata.version, "1.0");
+        }
+
+        /// Forward output should be identical after save/load
+        #[test]
+        fn prop_forward_invariant_after_save_load(
+            d in 4usize..12,
+            rank in 1usize..3,
+        ) {
+            let size = d * d;
+            let base_weight = Tensor::from_vec(vec![0.5; size], false);
+            let layer = LoRALayer::new(base_weight.clone(), d, d, rank, 4.0);
+
+            let x = Tensor::from_vec(vec![0.1; d], true);
+            let original_output = layer.forward(&x);
+
+            // Save and load
+            let path = format!("/tmp/prop_forward_test_{}_{}.json", d, rank);
+            save_adapter(&layer, rank, 4.0, &path).unwrap();
+            let loaded_layer = load_adapter(base_weight, &path).unwrap();
+            let loaded_output = loaded_layer.forward(&x);
+
+            // Forward outputs must match
+            prop_assert_eq!(original_output.len(), loaded_output.len());
+            for i in 0..original_output.len() {
+                prop_assert!(
+                    (original_output.data()[i] - loaded_output.data()[i]).abs() < 1e-5,
+                    "Forward output mismatch at index {}", i
+                );
+            }
+
+            fs::remove_file(&path).ok();
+        }
+
+        /// Invalid dimension should be caught during to_layer
+        #[test]
+        fn prop_dimension_validation_catches_mismatches(
+            d_out in 2usize..8,
+            d_in in 2usize..8,
+            rank in 1usize..3,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let layer = LoRALayer::new(base_weight, d_out, d_in, rank, 4.0);
+
+            let adapter = LoRAAdapter::from_layer(&layer, rank, 4.0);
+
+            // Try loading with wrong size base weight
+            let wrong_size = size + 1;
+            let wrong_base = Tensor::from_vec(vec![1.0; wrong_size], false);
+            let result = adapter.to_layer(wrong_base);
+
+            // Should fail with dimension error
+            prop_assert!(result.is_err());
+        }
+    }
+
+    // ========================================================================
+    // UNIT TESTS
+    // ========================================================================
 
     #[test]
     fn test_adapter_serialization_round_trip() {
