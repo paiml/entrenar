@@ -1,6 +1,13 @@
 # Entrenar Roadmap
 # Total: 824 hours (103 days @ 8h/day)
 # Tickets: ENT-001 through ENT-040
+# Vision Sync: docs/specifications/paiml-sai-vision-sync.md
+
+# Stack Integration Points:
+#   - trueno 0.7.3: SIMD/GPU compute (ENT-015)
+#   - aprender 0.9.1: .apr format output (ENT-019, ENT-024)
+#   - realizar: GGUF export (ENT-024)
+#   - alimentar: .ald dataset input (ENT-033)
 
 project:
   name: entrenar
