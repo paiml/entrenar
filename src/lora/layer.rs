@@ -13,6 +13,7 @@ use crate::autograd::matmul;
 use crate::Tensor;
 
 /// LoRA layer: adds trainable low-rank adaptation to a frozen base weight
+#[derive(Clone)]
 pub struct LoRALayer {
     /// Frozen base weight matrix stored as 1D [d_out * d_in]
     base_weight: Tensor,
