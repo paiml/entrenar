@@ -166,11 +166,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'New task: ENT-016'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2025-11-20T16:18:49.408620602+00:00
-  updated: 2025-11-26T14:37:21.473872024+00:00
+  updated: 2025-11-26T14:41:27.952863064+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -186,7 +186,7 @@ roadmap:
   priority: medium
   assigned_to: null
   created: 2025-11-20T16:27:50.100364916+00:00
-  updated: 2025-11-20T16:29:31.573922820+00:00
+  updated: 2025-11-26T14:45:54.842084862+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -202,7 +202,7 @@ roadmap:
   priority: medium
   assigned_to: null
   created: 2025-11-20T16:35:18.378100037+00:00
-  updated: 2025-11-20T16:39:53.953518909+00:00
+  updated: 2025-11-26T14:49:54.247115261+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -218,7 +218,7 @@ roadmap:
   priority: medium
   assigned_to: null
   created: 2025-11-20T16:42:21.708173612+00:00
-  updated: 2025-11-20T16:45:26.678521654+00:00
+  updated: 2025-11-26T14:43:58.764804554+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -234,7 +234,7 @@ roadmap:
   priority: medium
   assigned_to: null
   created: 2025-11-20T16:54:06.921209005+00:00
-  updated: 2025-11-20T17:02:10.364181517+00:00
+  updated: 2025-11-26T14:49:54.222299449+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -250,7 +250,7 @@ roadmap:
   priority: medium
   assigned_to: null
   created: 2025-11-20T17:03:49.099791399+00:00
-  updated: 2025-11-20T17:06:13.577457570+00:00
+  updated: 2025-11-26T14:49:54.236229395+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -363,6 +363,54 @@ roadmap:
   assigned_to: null
   created: 2025-11-21T07:06:47.099723411+00:00
   updated: 2025-11-21T07:11:07.777427077+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: ENT-022
+  github_issue: null
+  item_type: task
+  title: 'New task: ENT-022'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2025-11-26T14:50:18.528733929+00:00
+  updated: 2025-11-26T14:53:17.869121191+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: ENT-023
+  github_issue: null
+  item_type: task
+  title: 'New task: ENT-023'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2025-11-26T14:53:24.167411263+00:00
+  updated: 2025-11-26T14:57:00.830795367+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: ENT-024
+  github_issue: null
+  item_type: task
+  title: 'New task: ENT-024'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2025-11-26T15:01:07.304577818+00:00
+  updated: 2025-11-26T15:01:07.304577818+00:00
   spec: null
   acceptance_criteria: []
   phases: []

@@ -200,8 +200,9 @@ phases:
       - id: ENT-024
         name: "Q4_0/Q8_0 bit packing → GGUF"
         estimated_hours: 40
-        actual_hours: 0
-        status: pending
+        actual_hours: 2
+        status: complete
+        notes: "GGUF-compatible Q4_0/Q8_0 quantization formats with block-wise quantization. 17 tests including 6 property tests (200 cases each)."
 
       - id: ENT-025
         name: "Per-channel vs per-tensor quantization"
@@ -314,8 +315,8 @@ phases:
 # Summary Statistics
 summary:
   total_estimated_hours: 824
-  total_actual_hours: 44
-  completion_percentage: 5.3
-  tickets_complete: 23
+  total_actual_hours: 46
+  completion_percentage: 5.6
+  tickets_complete: 24
   tickets_in_progress: 0
-  tickets_pending: 17
+  tickets_pending: 16
