@@ -147,8 +147,9 @@ phases:
       - id: ENT-017
         name: "QLoRA (4-bit base + dequant-on-fly)"
         estimated_hours: 40
-        actual_hours: 0
-        status: pending
+        actual_hours: 2
+        status: complete
+        notes: "4-bit quantized base weights with on-the-fly dequantization. 11 tests including 5 property tests (200 cases each) for quantization correctness."
 
       - id: ENT-018
         name: "Target module selection (q/k/v/o_proj)"
@@ -307,8 +308,8 @@ phases:
 # Summary Statistics
 summary:
   total_estimated_hours: 824
-  total_actual_hours: 33
-  completion_percentage: 4.0
-  tickets_complete: 16
+  total_actual_hours: 35
+  completion_percentage: 4.2
+  tickets_complete: 17
   tickets_in_progress: 0
-  tickets_pending: 24
+  tickets_pending: 23
