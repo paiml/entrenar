@@ -30,6 +30,9 @@ mod train;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod property_tests;
+
 pub use builder::{build_model, build_optimizer};
 pub use schema::{
     DataConfig, LoRASpec, MergeSpec, ModelRef, OptimSpec, QuantSpec, TrainSpec, TrainingParams,
