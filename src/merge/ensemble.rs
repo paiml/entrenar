@@ -39,7 +39,7 @@ impl Default for EnsembleStrategy {
 }
 
 /// Configuration for ensemble merging
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct EnsembleConfig {
     /// Base model for delta-based methods (TIES, DARE)
     /// If None, uses first model as base for delta methods
@@ -47,15 +47,6 @@ pub struct EnsembleConfig {
 
     /// Merging strategy
     pub strategy: EnsembleStrategy,
-}
-
-impl Default for EnsembleConfig {
-    fn default() -> Self {
-        Self {
-            base: None,
-            strategy: EnsembleStrategy::default(),
-        }
-    }
 }
 
 impl EnsembleConfig {
