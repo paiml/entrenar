@@ -14,6 +14,9 @@ mod slerp;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod commutativity;
+
 pub use ties::{ties_merge, TiesConfig};
 pub use dare::{dare_merge, DareConfig};
 pub use slerp::{slerp_merge, SlerpConfig};
