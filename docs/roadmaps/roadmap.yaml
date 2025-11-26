@@ -454,11 +454,27 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'New task: ENT-033'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2025-11-26T22:39:47.611155558+00:00
-  updated: 2025-11-26T22:39:47.611155558+00:00
+  updated: 2025-11-26T22:41:51.934858019+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: ENT-034
+  github_issue: null
+  item_type: task
+  title: 'New task: ENT-034'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2025-11-26T22:42:02.565750901+00:00
+  updated: 2025-11-26T22:42:02.565750901+00:00
   spec: null
   acceptance_criteria: []
   phases: []

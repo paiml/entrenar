@@ -26,6 +26,7 @@ mod builder;
 mod schema;
 mod validate;
 mod train;
+mod infer;
 
 #[cfg(test)]
 mod tests;
@@ -39,3 +40,7 @@ pub use schema::{
 };
 pub use train::{load_config, train_from_yaml};
 pub use validate::{validate_config, ValidationError};
+pub use infer::{
+    collect_stats_from_samples, infer_schema, infer_schema_from_path, infer_type,
+    ColumnStats, FeatureType, InferenceConfig, InferredSchema,
+};
