@@ -1,6 +1,6 @@
 [package]
 name = "entrenar"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["PAIML <hello@paiml.com>"]
 description = "Training & Optimization library with autograd, LoRA, quantization, and model merging"
@@ -16,7 +16,7 @@ gguf = []  # Placeholder for future GGUF support via Realizar
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
-trueno = "0.4.1"  # SIMD-accelerated compute
+trueno = "0.7.3"  # SIMD-accelerated compute
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"

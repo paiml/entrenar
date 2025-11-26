@@ -142,7 +142,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "entrenar"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "approx",
  "clap",
@@ -626,9 +626,9 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "trueno"
-version = "0.4.1"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0279db5799d3d86af3ab8c16295be4fa9c2a7fbc612cd4883a9a44ec1e36e8c4"
+checksum = "0d3f0cf1833fe66955de385abe9a4ba017081f3dbce131476b65093b263e5062"
 dependencies = [
  "thiserror",
 ]
