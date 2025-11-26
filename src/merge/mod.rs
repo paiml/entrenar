@@ -10,6 +10,7 @@
 mod ties;
 mod dare;
 mod slerp;
+mod ensemble;
 
 #[cfg(test)]
 mod tests;
@@ -20,6 +21,7 @@ mod commutativity;
 pub use ties::{ties_merge, TiesConfig};
 pub use dare::{dare_merge, DareConfig};
 pub use slerp::{slerp_merge, SlerpConfig};
+pub use ensemble::{ensemble_merge, EnsembleConfig, EnsembleStrategy};
 
 use crate::autograd::Tensor;
 use std::collections::HashMap;
