@@ -283,6 +283,7 @@ mod tests {
 
     /// Test Rosenbrock function convergence (non-convex)
     /// f(x,y) = (a-x)² + b(y-x²)², minimum at (a, a²)
+    #[allow(dead_code)]
     fn test_rosenbrock_convergence<O: Optimizer>(
         mut optimizer: O,
         iterations: usize,
@@ -395,7 +396,7 @@ mod tests {
             lr in 0.0001f32..0.001,
             momentum in 0.8f32..0.99
         ) {
-            let optimizer = SGD::new(lr, momentum);
+            let mut optimizer = SGD::new(lr, momentum);
             // Rosenbrock is hard - just check it doesn't diverge
             let mut params = vec![Tensor::from_vec(vec![0.0, 0.0], true)];
             for _ in 0..500 {
@@ -404,7 +405,7 @@ mod tests {
                 let dx = -2.0 * (1.0 - x) - 400.0 * x * (y - x * x);
                 let dy = 200.0 * (y - x * x);
                 params[0].set_grad(ndarray::arr1(&[dx, dy]));
-                SGD::new(lr, momentum).step(&mut params);
+                optimizer.step(&mut params);
             }
             prop_assert!(params[0].data().iter().all(|&v| v.is_finite()));
         }

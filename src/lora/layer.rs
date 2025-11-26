@@ -218,6 +218,154 @@ impl LoRALayer {
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use proptest::prelude::*;
+
+    // ========================================================================
+    // PROPERTY TESTS
+    // ========================================================================
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(200))]
+
+        #[test]
+        fn prop_zero_b_gives_base_output(
+            d_out in 2usize..10,
+            d_in in 2usize..10,
+            rank in 1usize..5,
+        ) {
+            // When B is zeros, LoRA output should equal base output
+            let size = d_out * d_in;
+            let base_data: Vec<f32> = (0..size).map(|i| (i as f32 * 0.1).sin()).collect();
+            let base_weight = Tensor::from_vec(base_data, false);
+            let lora = LoRALayer::new(base_weight.clone(), d_out, d_in, rank, 1.0);
+
+            // B is initialized to zeros by default
+            let x_data: Vec<f32> = (0..d_in).map(|i| i as f32 * 0.5).collect();
+            let x = Tensor::from_vec(x_data.clone(), true);
+
+            let lora_output = lora.forward(&x);
+
+            // Compute expected base output: W @ x
+            let base_output = matmul(&base_weight, &Tensor::from_vec(x_data, false), d_out, d_in, 1);
+
+            for i in 0..d_out {
+                prop_assert!(
+                    (lora_output.data()[i] - base_output.data()[i]).abs() < 1e-4,
+                    "Zero B should give base output at index {}", i
+                );
+            }
+        }
+
+        #[test]
+        fn prop_merge_preserves_forward_output(
+            d_out in 2usize..8,
+            d_in in 2usize..8,
+            rank in 1usize..4,
+        ) {
+            let size = d_out * d_in;
+            let base_data: Vec<f32> = (0..size).map(|i| (i as f32 * 0.1).cos()).collect();
+            let base_weight = Tensor::from_vec(base_data, false);
+            let mut lora = LoRALayer::new(base_weight, d_out, d_in, rank, 2.0);
+
+            // Set non-zero LoRA weights
+            let a_data: Vec<f32> = (0..rank * d_in).map(|i| (i as f32 * 0.2).sin() * 0.1).collect();
+            let b_data: Vec<f32> = (0..d_out * rank).map(|i| (i as f32 * 0.3).cos() * 0.1).collect();
+            *lora.lora_a_mut().data_mut() = ndarray::Array1::from_vec(a_data);
+            *lora.lora_b_mut().data_mut() = ndarray::Array1::from_vec(b_data);
+
+            let x_data: Vec<f32> = (0..d_in).map(|i| i as f32 + 1.0).collect();
+            let x = Tensor::from_vec(x_data.clone(), true);
+
+            // Forward before merge
+            let output_before = lora.forward(&x);
+
+            // Merge
+            lora.merge();
+            prop_assert!(lora.is_merged());
+
+            // Forward after merge
+            let x2 = Tensor::from_vec(x_data, true);
+            let output_after = lora.forward(&x2);
+
+            // Outputs should match
+            for i in 0..d_out {
+                prop_assert!(
+                    (output_before.data()[i] - output_after.data()[i]).abs() < 1e-3,
+                    "Merge should preserve output at index {}: before={} after={}",
+                    i, output_before.data()[i], output_after.data()[i]
+                );
+            }
+        }
+
+        #[test]
+        fn prop_unmerge_restores_weights(
+            d_out in 2usize..8,
+            d_in in 2usize..8,
+            rank in 1usize..4,
+        ) {
+            let size = d_out * d_in;
+            let base_data: Vec<f32> = (0..size).map(|i| i as f32 * 0.5).collect();
+            let base_weight = Tensor::from_vec(base_data.clone(), false);
+            let mut lora = LoRALayer::new(base_weight, d_out, d_in, rank, 1.0);
+
+            // Set non-zero LoRA weights
+            let a_data: Vec<f32> = (0..rank * d_in).map(|i| i as f32 * 0.01).collect();
+            let b_data: Vec<f32> = (0..d_out * rank).map(|i| i as f32 * 0.02).collect();
+            *lora.lora_a_mut().data_mut() = ndarray::Array1::from_vec(a_data);
+            *lora.lora_b_mut().data_mut() = ndarray::Array1::from_vec(b_data);
+
+            // Merge then unmerge
+            lora.merge();
+            lora.unmerge();
+
+            // Base weights should be restored
+            for i in 0..size {
+                prop_assert!(
+                    (lora.base_weight().data()[i] - base_data[i]).abs() < 1e-4,
+                    "Unmerge should restore weight at index {}", i
+                );
+            }
+        }
+
+        #[test]
+        fn prop_scale_factor_correct(
+            rank in 1usize..32,
+            alpha in 1.0f32..64.0,
+        ) {
+            let base_weight = Tensor::from_vec(vec![1.0], false);
+            let lora = LoRALayer::new(base_weight, 1, 1, rank, alpha);
+
+            let expected_scale = alpha / rank as f32;
+            prop_assert!(
+                (lora.scale() - expected_scale).abs() < 1e-6,
+                "Scale should be alpha/rank: expected {} got {}", expected_scale, lora.scale()
+            );
+        }
+
+        #[test]
+        fn prop_lora_dimensions_correct(
+            d_out in 2usize..20,
+            d_in in 2usize..20,
+            rank in 1usize..10,
+        ) {
+            let size = d_out * d_in;
+            let base_data: Vec<f32> = vec![0.0; size];
+            let base_weight = Tensor::from_vec(base_data, false);
+            let lora = LoRALayer::new(base_weight, d_out, d_in, rank, 1.0);
+
+            // Verify all dimensions
+            prop_assert_eq!(lora.d_out(), d_out);
+            prop_assert_eq!(lora.d_in(), d_in);
+            prop_assert_eq!(lora.rank(), rank);
+            prop_assert_eq!(lora.lora_a().len(), rank * d_in);
+            prop_assert_eq!(lora.lora_b().len(), d_out * rank);
+            prop_assert_eq!(lora.base_weight().len(), d_out * d_in);
+        }
+    }
+
+    // ========================================================================
+    // DETERMINISTIC UNIT TESTS
+    // ========================================================================
 
     #[test]
     fn test_lora_layer_creation() {
