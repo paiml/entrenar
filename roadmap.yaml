@@ -135,7 +135,7 @@ phases:
 
   - name: "Phase 3: LoRA"
     hours: 144
-    status: in-progress
+    status: complete
     tickets:
       - id: ENT-016
         name: "LoRA layer (A, B matrices + merge)"
@@ -161,20 +161,23 @@ phases:
       - id: ENT-019
         name: "Adapter save/load (separate from base)"
         estimated_hours: 24
-        actual_hours: 0
-        status: pending
+        actual_hours: 1
+        status: complete
+        notes: "JSON adapter serialization with round-trip preservation. 10 tests including 4 property tests (100 cases each)."
 
       - id: ENT-020
         name: "Memory benchmarks (QLoRA vs full FP16)"
         estimated_hours: 16
-        actual_hours: 0
-        status: pending
+        actual_hours: 1
+        status: complete
+        notes: "Memory comparison benchmarks for LoRA vs QLoRA. 11 tests including 3 property tests (100 cases each)."
 
       - id: ENT-021
         name: "Gradient flow tests (frozen base + trainable adapters)"
         estimated_hours: 16
-        actual_hours: 0
-        status: pending
+        actual_hours: 1
+        status: complete
+        notes: "Gradient flow validation: frozen base, trainable A/B. 14 tests including 4 property tests (100 cases each)."
 
   - name: "Phase 4: Quantization"
     hours: 136
@@ -309,8 +312,8 @@ phases:
 # Summary Statistics
 summary:
   total_estimated_hours: 824
-  total_actual_hours: 36
-  completion_percentage: 4.4
-  tickets_complete: 18
+  total_actual_hours: 40
+  completion_percentage: 4.9
+  tickets_complete: 21
   tickets_in_progress: 0
-  tickets_pending: 22
+  tickets_pending: 19
