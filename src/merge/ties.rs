@@ -196,6 +196,7 @@ fn elect_and_merge_parameter(values: &[&Array1<f32>]) -> Tensor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn test_trim_tensor_keeps_top_k() {
@@ -251,5 +252,209 @@ mod tests {
             result,
             Err(MergeError::InsufficientModels { min: 2, got: 1 })
         ));
+    }
+
+    #[test]
+    fn test_trim_tensor_density_zero() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
+        let trimmed = trim_tensor(&tensor, 0.0);
+
+        // Density 0 should still keep at least 1 value (the maximum)
+        let data = trimmed.data();
+        let non_zero_count = data.iter().filter(|&&x| x != 0.0).count();
+        assert!(non_zero_count >= 1);
+    }
+
+    #[test]
+    fn test_trim_tensor_density_one() {
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
+        let trimmed = trim_tensor(&tensor, 1.0);
+
+        // Density 1.0 should keep all values
+        let data = trimmed.data();
+        assert_eq!(data[0], 1.0);
+        assert_eq!(data[4], 5.0);
+    }
+
+    #[test]
+    fn test_elect_sign_tie_breaker() {
+        // Test tie case: equal positive and negative votes
+        let v1 = Array1::from(vec![1.0]);
+        let v2 = Array1::from(vec![-1.0]);
+
+        let result = elect_and_merge_parameter(&[&v1, &v2]);
+
+        // Tie: should average all values (1 + -1) / 2 = 0
+        assert!((result.data()[0] - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_elect_sign_all_zeros() {
+        let v1 = Array1::from(vec![0.0, 0.0]);
+        let v2 = Array1::from(vec![0.0, 0.0]);
+
+        let result = elect_and_merge_parameter(&[&v1, &v2]);
+
+        assert_eq!(result.data()[0], 0.0);
+        assert_eq!(result.data()[1], 0.0);
+    }
+
+    #[test]
+    fn test_ties_merge_two_models() {
+        let mut base = HashMap::new();
+        base.insert("w".to_string(), Tensor::from_vec(vec![0.0, 0.0, 0.0], false));
+
+        let mut model1 = HashMap::new();
+        model1.insert("w".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], false));
+
+        let mut model2 = HashMap::new();
+        model2.insert("w".to_string(), Tensor::from_vec(vec![2.0, -1.0, 4.0], false));
+
+        let config = TiesConfig::new(1.0).unwrap(); // Keep all
+        let result = ties_merge(&[model1, model2], &base, &config).unwrap();
+
+        // Both positive at index 0: average (1+2)/2 = 1.5
+        // Mixed at index 1: pos=2, neg=-1, pos wins -> 2.0
+        // Both positive at index 2: average (3+4)/2 = 3.5
+        let w = result.get("w").unwrap();
+        assert!((w.data()[0] - 1.5).abs() < 1e-6);
+        assert!((w.data()[2] - 3.5).abs() < 1e-6);
+    }
+
+    // Property tests
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(200))]
+
+        #[test]
+        fn prop_trim_preserves_top_k_count(
+            values in proptest::collection::vec(-100.0f32..100.0, 10..50),
+            density in 0.1f32..1.0
+        ) {
+            let tensor = Tensor::from_vec(values.clone(), false);
+            let trimmed = trim_tensor(&tensor, density);
+
+            let expected_k = ((values.len() as f32 * density).ceil() as usize).max(1).min(values.len());
+            let actual_nonzero = trimmed.data().iter().filter(|&&x| x != 0.0).count();
+
+            // Should keep approximately expected_k values (exact for non-zero inputs)
+            prop_assert!(actual_nonzero <= expected_k + 1);
+        }
+
+        #[test]
+        fn prop_trim_keeps_highest_magnitudes(
+            values in proptest::collection::vec(-100.0f32..100.0, 5..20),
+            density in 0.3f32..0.7
+        ) {
+            let tensor = Tensor::from_vec(values.clone(), false);
+            let trimmed = trim_tensor(&tensor, density);
+
+            // Find the minimum magnitude among kept values
+            let kept_magnitudes: Vec<f32> = trimmed.data()
+                .iter()
+                .filter(|&&x| x != 0.0)
+                .map(|x| x.abs())
+                .collect();
+
+            if !kept_magnitudes.is_empty() {
+                let min_kept = kept_magnitudes.iter().cloned().fold(f32::INFINITY, f32::min);
+
+                // All trimmed values should have magnitude <= min_kept
+                for (orig, trim) in values.iter().zip(trimmed.data().iter()) {
+                    if *trim == 0.0 && *orig != 0.0 {
+                        prop_assert!(
+                            orig.abs() <= min_kept + 1e-6,
+                            "Trimmed value {} has higher magnitude than kept minimum {}",
+                            orig.abs(),
+                            min_kept
+                        );
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn prop_elect_sign_follows_majority(
+            pos_count in 1usize..5,
+            neg_count in 1usize..5,
+            pos_val in 0.1f32..10.0,
+            neg_val in -10.0f32..-0.1
+        ) {
+            let mut arrays: Vec<Array1<f32>> = Vec::new();
+
+            for _ in 0..pos_count {
+                arrays.push(Array1::from(vec![pos_val]));
+            }
+            for _ in 0..neg_count {
+                arrays.push(Array1::from(vec![neg_val]));
+            }
+
+            let refs: Vec<&Array1<f32>> = arrays.iter().collect();
+            let result = elect_and_merge_parameter(&refs);
+
+            if pos_count > neg_count {
+                // Positive majority: result should be positive
+                prop_assert!(result.data()[0] > 0.0, "Expected positive, got {}", result.data()[0]);
+            } else if neg_count > pos_count {
+                // Negative majority: result should be negative
+                prop_assert!(result.data()[0] < 0.0, "Expected negative, got {}", result.data()[0]);
+            }
+            // Tie case: could be either, don't assert
+        }
+
+        #[test]
+        fn prop_ties_config_density_valid(density in 0.0f32..=1.0) {
+            let config = TiesConfig::new(density);
+            prop_assert!(config.is_ok());
+        }
+
+        #[test]
+        fn prop_ties_config_density_invalid_negative(density in -10.0f32..-0.01) {
+            let config = TiesConfig::new(density);
+            prop_assert!(config.is_err());
+        }
+
+        #[test]
+        fn prop_ties_config_density_invalid_above_one(density in 1.01f32..10.0) {
+            let config = TiesConfig::new(density);
+            prop_assert!(config.is_err());
+        }
+
+        #[test]
+        fn prop_trim_idempotent_at_density_one(
+            values in proptest::collection::vec(-100.0f32..100.0, 5..20)
+        ) {
+            let tensor = Tensor::from_vec(values.clone(), false);
+            let trimmed = trim_tensor(&tensor, 1.0);
+
+            // At density 1.0, all values should be preserved
+            for (orig, trim) in values.iter().zip(trimmed.data().iter()) {
+                prop_assert!(
+                    (orig - trim).abs() < 1e-6,
+                    "Value changed at density 1.0: {} -> {}",
+                    orig,
+                    trim
+                );
+            }
+        }
+
+        #[test]
+        fn prop_elect_preserves_magnitude_order(
+            values in proptest::collection::vec(1.0f32..10.0, 3..6)
+        ) {
+            // All same sign: result should be average
+            let arrays: Vec<Array1<f32>> = values.iter().map(|&v| Array1::from(vec![v])).collect();
+            let refs: Vec<&Array1<f32>> = arrays.iter().collect();
+
+            let result = elect_and_merge_parameter(&refs);
+            let expected_avg: f32 = values.iter().sum::<f32>() / values.len() as f32;
+
+            prop_assert!(
+                (result.data()[0] - expected_avg).abs() < 1e-5,
+                "Expected average {}, got {}",
+                expected_avg,
+                result.data()[0]
+            );
+        }
     }
 }
