@@ -234,6 +234,99 @@ pub fn run_transformer_benchmarks() -> Vec<BenchmarkResults> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    // ========================================================================
+    // PROPERTY TESTS - Memory calculation correctness
+    // ========================================================================
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(100))]
+
+        /// QLoRA should always use less memory than LoRA for large enough dimensions
+        #[test]
+        fn prop_qlora_always_less_memory(
+            d in 16usize..128,
+            rank in 1usize..8,
+            alpha in 1.0f32..32.0,
+        ) {
+            let size = d * d;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+
+            let lora = LoRALayer::new(base_weight.clone(), d, d, rank, alpha);
+            let qlora = QLoRALayer::new(base_weight, d, d, rank, alpha);
+
+            let lora_stats = LayerMemoryStats::from_lora("test".to_string(), &lora);
+            let qlora_stats = LayerMemoryStats::from_qlora("test".to_string(), &qlora);
+
+            // QLoRA total should be less than LoRA for matrices >= 16x16
+            prop_assert!(
+                qlora_stats.total_bytes < lora_stats.total_bytes,
+                "QLoRA {} should be < LoRA {}",
+                qlora_stats.total_bytes,
+                lora_stats.total_bytes
+            );
+        }
+
+        /// Savings percentage should be positive for non-trivial sizes
+        #[test]
+        fn prop_savings_percent_positive(
+            d in 16usize..64,
+            rank in 1usize..4,
+        ) {
+            let size = d * d;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let qlora = QLoRALayer::new(base_weight, d, d, rank, 4.0);
+
+            let stats = LayerMemoryStats::from_qlora("test".to_string(), &qlora);
+            let savings = stats.savings_percent();
+
+            // For d >= 16, should always have positive savings
+            prop_assert!(
+                savings > 0.0,
+                "Savings {} should be positive for d={}",
+                savings, d
+            );
+        }
+
+        /// Benchmark results should be internally consistent
+        #[test]
+        fn prop_benchmark_results_consistent(
+            d in 16usize..64,
+            num_layers in 1usize..4,
+            rank in 1usize..4,
+        ) {
+            let layers: Vec<(&str, usize, usize, usize, f32)> =
+                (0..num_layers)
+                    .map(|i| {
+                        // Use static strings to satisfy lifetime
+                        match i % 4 {
+                            0 => ("q_proj", d, d, rank, rank as f32 * 2.0),
+                            1 => ("k_proj", d, d, rank, rank as f32 * 2.0),
+                            2 => ("v_proj", d, d, rank, rank as f32 * 2.0),
+                            _ => ("o_proj", d, d, rank, rank as f32 * 2.0),
+                        }
+                    })
+                    .collect();
+
+            let results = benchmark_model("Test", &layers);
+
+            // Total should equal sum of individual
+            let sum_lora: usize = results.lora_stats.iter().map(|s| s.total_bytes).sum();
+            let sum_qlora: usize = results.qlora_stats.iter().map(|s| s.total_bytes).sum();
+
+            prop_assert_eq!(results.total_lora_bytes, sum_lora);
+            prop_assert_eq!(results.total_qlora_bytes, sum_qlora);
+
+            // Savings should be non-negative
+            prop_assert!(results.savings_bytes >= 0);
+            prop_assert!(results.savings_percent >= 0.0);
+        }
+    }
+
+    // ========================================================================
+    // UNIT TESTS
+    // ========================================================================
 
     #[test]
     fn test_layer_memory_stats_lora() {
