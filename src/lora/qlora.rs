@@ -197,6 +197,157 @@ pub struct MemoryStats {
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use proptest::prelude::*;
+
+    // ========================================================================
+    // PROPERTY TESTS - Mathematical correctness validation
+    // ========================================================================
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(200))]
+
+        /// Memory savings should be consistent with dimensions
+        #[test]
+        fn prop_qlora_memory_savings_consistent(
+            d in 8usize..32,
+            rank in 1usize..8,
+            alpha in 1.0f32..32.0
+        ) {
+            let size = d * d;
+            let base_weight = Tensor::from_vec(vec![0.5; size], false);
+            let qlora = QLoRALayer::new(base_weight, d, d, rank, alpha);
+
+            let stats = qlora.memory_stats();
+
+            // Quantized should always be smaller than unquantized
+            prop_assert!(stats.base_quantized_bytes <= stats.base_unquantized_bytes);
+
+            // Compression ratio should be > 1.0
+            prop_assert!(stats.compression_ratio >= 1.0);
+
+            // Total bytes = quantized base + lora
+            prop_assert_eq!(
+                stats.total_bytes,
+                stats.base_quantized_bytes + stats.lora_bytes
+            );
+
+            // LoRA bytes = (d*rank + d*rank) * 4 bytes
+            let expected_lora_bytes = (d * rank + d * rank) * 4;
+            prop_assert_eq!(stats.lora_bytes, expected_lora_bytes);
+        }
+
+        /// LoRA parameters should be preserved during quantization
+        #[test]
+        fn prop_lora_params_preserved_after_quantization(
+            d_out in 4usize..16,
+            d_in in 4usize..16,
+            rank in 1usize..4,
+            alpha in 1.0f32..16.0
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let lora = LoRALayer::new(base_weight.clone(), d_out, d_in, rank, alpha);
+
+            let qlora = QLoRALayer::from_lora(lora.clone());
+
+            // Dimensions should match exactly
+            prop_assert_eq!(qlora.d_out(), lora.d_out());
+            prop_assert_eq!(qlora.d_in(), lora.d_in());
+            prop_assert_eq!(qlora.rank(), lora.rank());
+
+            // Scale should match
+            prop_assert!((qlora.scale() - lora.scale()).abs() < 1e-6);
+
+            // LoRA A and B data should be identical
+            prop_assert_eq!(qlora.lora_a().data().len(), lora.lora_a().data().len());
+            prop_assert_eq!(qlora.lora_b().data().len(), lora.lora_b().data().len());
+
+            for (a, b) in qlora.lora_a().data().iter().zip(lora.lora_a().data().iter()) {
+                prop_assert!((a - b).abs() < 1e-6);
+            }
+            for (a, b) in qlora.lora_b().data().iter().zip(lora.lora_b().data().iter()) {
+                prop_assert!((a - b).abs() < 1e-6);
+            }
+        }
+
+        /// Quantization error should be bounded
+        #[test]
+        fn prop_quantization_error_bounded(
+            d in 8usize..24,
+        ) {
+            let size = d * d;
+            // Use values in reasonable range for 4-bit quantization
+            let base_weight = Tensor::from_vec(
+                (0..size).map(|i| ((i % 16) as f32 - 8.0) * 0.1).collect(),
+                false
+            );
+            let lora = LoRALayer::new(base_weight.clone(), d, d, 2, 4.0);
+            let qlora = QLoRALayer::from_lora(lora.clone());
+
+            // Forward with same input
+            let x = Tensor::from_vec(vec![0.1; d], true);
+            let lora_out = lora.forward(&x);
+            let qlora_out = qlora.forward(&x);
+
+            // Outputs should be close (quantization introduces some error)
+            prop_assert_eq!(lora_out.len(), qlora_out.len());
+            for i in 0..lora_out.len() {
+                let diff = (lora_out.data()[i] - qlora_out.data()[i]).abs();
+                // Allow 30% relative error due to 4-bit quantization
+                let max_diff = lora_out.data()[i].abs() * 0.3 + 0.5;
+                prop_assert!(
+                    diff < max_diff,
+                    "Quantization error {} > {} at index {}",
+                    diff, max_diff, i
+                );
+            }
+        }
+
+        /// Forward output dimensions should always be correct
+        #[test]
+        fn prop_forward_dimensions_correct(
+            d_out in 4usize..16,
+            d_in in 4usize..16,
+            rank in 1usize..4,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let qlora = QLoRALayer::new(base_weight, d_out, d_in, rank, 4.0);
+
+            let x = Tensor::from_vec(vec![0.5; d_in], true);
+            let output = qlora.forward(&x);
+
+            prop_assert_eq!(output.len(), d_out);
+        }
+
+        /// Trainable params should have correct dimensions
+        #[test]
+        fn prop_trainable_params_dimensions(
+            d_out in 4usize..16,
+            d_in in 4usize..16,
+            rank in 1usize..4,
+        ) {
+            let size = d_out * d_in;
+            let base_weight = Tensor::from_vec(vec![1.0; size], false);
+            let mut qlora = QLoRALayer::new(base_weight, d_out, d_in, rank, 4.0);
+
+            let params = qlora.trainable_params();
+            prop_assert_eq!(params.len(), 2);
+
+            // A: [rank * d_in]
+            prop_assert_eq!(params[0].len(), rank * d_in);
+            // B: [d_out * rank]
+            prop_assert_eq!(params[1].len(), d_out * rank);
+
+            // Both should require grad
+            prop_assert!(params[0].requires_grad());
+            prop_assert!(params[1].requires_grad());
+        }
+    }
+
+    // ========================================================================
+    // UNIT TESTS
+    // ========================================================================
 
     #[test]
     fn test_qlora_creation() {
