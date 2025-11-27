@@ -35,6 +35,7 @@ pub mod dashboard;
 pub mod drift;
 pub mod export;
 pub mod lineage;
+pub mod report;
 pub mod storage;
 
 // Re-exports for convenience
@@ -43,6 +44,7 @@ pub use dashboard::{Dashboard, DashboardConfig};
 pub use drift::{Anomaly, AnomalySeverity, DriftDetector, DriftStatus, SlidingWindowBaseline};
 pub use export::{ExportFormat, MetricsExporter};
 pub use lineage::{ChangeType, Derivation, ModelLineage, ModelMetadata};
+pub use report::{HanseiAnalyzer, IssueSeverity, MetricSummary, PostTrainingReport, TrainingIssue, Trend};
 pub use storage::{InMemoryStore, JsonFileStore, MetricsStore, StorageError, StorageResult};
 
 #[cfg(test)]

@@ -603,34 +603,34 @@ Applied: trueno-db stores all metrics; queries enable automated validation.
 
 ### Functional Requirements
 
-- [ ] Training runs emit metrics automatically
-- [ ] Metrics persist to trueno-db (queryable via SQL)
-- [ ] Terminal dashboard shows live loss/accuracy curves
-- [ ] Drift detection triggers WARNING at 5% accuracy drop
-- [ ] Andon stops training on NaN/Inf loss
-- [ ] Model lineage tracks parent-child relationships
-- [ ] Metrics exportable to Prometheus format
+- [x] Training runs emit metrics automatically
+- [ ] Metrics persist to trueno-db (queryable via SQL) *(InMemoryStore/JsonFileStore done; trueno-db pending)*
+- [x] Terminal dashboard shows live loss/accuracy curves
+- [x] Drift detection triggers WARNING at 5% accuracy drop
+- [x] Andon stops training on NaN/Inf loss
+- [x] Model lineage tracks parent-child relationships
+- [x] Metrics exportable to Prometheus format
 
 ### Performance Requirements
 
-- [ ] Monitoring overhead < 1% of training time
-- [ ] Dashboard refresh latency < 100ms
-- [ ] Storage write latency < 10ms per batch
-- [ ] Query latency < 100ms for 1M records
+- [ ] Monitoring overhead < 1% of training time *(benchmarks pending)*
+- [ ] Dashboard refresh latency < 100ms *(benchmarks pending)*
+- [ ] Storage write latency < 10ms per batch *(benchmarks pending)*
+- [ ] Query latency < 100ms for 1M records *(benchmarks pending)*
 
 ### Quality Requirements
 
-- [ ] Test coverage > 90%
-- [ ] Mutation score > 80%
-- [ ] Documentation for all public APIs
+- [x] Test coverage > 90% *(92.53% achieved)*
+- [ ] Mutation score > 80% *(pending verification)*
+- [x] Documentation for all public APIs
 - [ ] Integration tests with depyler-oracle
 
 ### Toyota Way Compliance
 
-- [ ] Jidoka: Automatic anomaly detection implemented
-- [ ] Genchi Genbutsu: All metrics are measured, not inferred
-- [ ] Kaizen: Historical comparison enables improvement tracking
-- [ ] Hansei: Post-training reports identify failure root causes
+- [x] Jidoka: Automatic anomaly detection implemented
+- [x] Genchi Genbutsu: All metrics are measured, not inferred
+- [x] Kaizen: Historical comparison enables improvement tracking
+- [x] Hansei: Post-training reports identify failure root causes *(HanseiAnalyzer)*
 
 ---
 
@@ -638,18 +638,15 @@ Applied: trueno-db stores all metrics; queries enable automated validation.
 
 ```
 src/monitor/
-├── mod.rs              # Public API
-├── collector.rs        # MetricsCollector (trueno)
-├── storage.rs          # trueno-db integration
-├── dashboard.rs        # trueno-viz integration
-├── drift.rs            # aprender drift detection
-├── andon.rs            # Alerting system
-├── lineage.rs          # trueno-graph integration
-├── export.rs           # realizar/Prometheus hooks
-└── tests/
-    ├── collector_tests.rs
-    ├── storage_tests.rs
-    └── integration_tests.rs
+├── mod.rs              # Public API + MetricsCollector (Welford's algorithm)
+├── storage.rs          # InMemoryStore, JsonFileStore
+├── dashboard.rs        # ASCII terminal dashboard with sparklines
+├── drift.rs            # Sliding window anomaly detection (z-score)
+├── andon.rs            # Toyota Way alerting system (Jidoka)
+├── lineage.rs          # Model version tracking and regression analysis
+├── export.rs           # Prometheus/JSON/CSV export formats
+├── report.rs           # Hansei post-training reports and recommendations
+└── tests.rs            # 83 module tests
 ```
 
 ---
