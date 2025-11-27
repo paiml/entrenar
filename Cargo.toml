@@ -12,11 +12,14 @@ categories = ["science", "mathematics"]
 [features]
 default = []
 gguf = []  # Placeholder for future GGUF support via Realizar
+monitor = ["trueno-db", "chrono"]  # Training monitoring with persistence
 
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
 trueno = "0.7.3"  # SIMD-accelerated compute
+trueno-db = { version = "0.3", optional = true }  # Time-series storage
+chrono = { version = "0.4", optional = true }  # Timestamps
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"
