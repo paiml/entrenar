@@ -103,6 +103,17 @@
 - [Checkpointing](./training/checkpointing.md)
 - [Early Stopping](./training/early-stopping.md)
 
+# Real-Time Monitoring
+
+- [Overview](./monitor/overview.md)
+- [Metrics Collection](./monitor/metrics-collection.md)
+- [Terminal Dashboard](./monitor/dashboard.md)
+- [Drift Detection](./monitor/drift-detection.md)
+- [Andon Alerting (Jidoka)](./monitor/andon.md)
+- [Model Lineage](./monitor/lineage.md)
+- [Export Formats](./monitor/export.md)
+- [Hansei Reports](./monitor/hansei.md)
+
 # Model I/O
 
 - [Overview](./io/overview.md)
