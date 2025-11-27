@@ -4,7 +4,8 @@
 
 .SUFFIXES:
 
-.PHONY: help test coverage coverage-html coverage-clean mutants mutants-quick clean build release lint format check \
+.PHONY: help test test-fast test-quick test-full coverage coverage-fast coverage-full coverage-open coverage-clean \
+	mutants mutants-quick clean build release lint format check fmt fmt-check \
 	tier1 tier2 tier3 pmat-init pmat-update roadmap-status \
 	llama-tests llama-properties llama-mutations llama-chaos llama-gradients llama-fuzz llama-examples llama-ci \
 	profile-llama profile-llama-otlp profile-llama-anomaly
@@ -41,12 +42,51 @@ tier3: tier2 ## Tier 3: Full validation (<5m) - includes tier1+2, property tests
 	@echo "✅ Tier 3 complete!"
 
 # =============================================================================
-# Basic Development
+# TEST TARGETS (Performance-Optimized with nextest)
 # =============================================================================
 
-test: ## Run tests (fast, no coverage)
-	@echo "🧪 Running tests..."
-	@cargo test --quiet
+# Fast tests (<30s): Uses nextest for parallelism if available
+# Pattern from bashrs: cargo-nextest + RUST_TEST_THREADS
+test-fast: ## Fast unit tests (<30s target)
+	@echo "⚡ Running fast tests (target: <30s)..."
+	@if command -v cargo-nextest >/dev/null 2>&1; then \
+		time cargo nextest run --workspace --lib \
+			--status-level skip \
+			--failure-output immediate; \
+	else \
+		echo "💡 Install cargo-nextest for faster tests: cargo install cargo-nextest"; \
+		time cargo test --workspace --lib; \
+	fi
+	@echo "✅ Fast tests passed"
+
+# Quick alias for test-fast
+test-quick: test-fast
+
+# Standard tests (<2min): All tests including integration
+test: ## Standard tests (<2min target)
+	@echo "🧪 Running standard tests (target: <2min)..."
+	@if command -v cargo-nextest >/dev/null 2>&1; then \
+		time cargo nextest run --workspace \
+			--status-level skip \
+			--failure-output immediate; \
+	else \
+		time cargo test --workspace; \
+	fi
+	@echo "✅ Standard tests passed"
+
+# Full comprehensive tests: All features, all property cases
+test-full: ## Comprehensive tests (all features)
+	@echo "🔬 Running full comprehensive tests..."
+	@if command -v cargo-nextest >/dev/null 2>&1; then \
+		time cargo nextest run --workspace --all-features; \
+	else \
+		time cargo test --workspace --all-features; \
+	fi
+	@echo "✅ Full tests passed"
+
+# =============================================================================
+# Basic Development
+# =============================================================================
 
 build: ## Build debug binary
 	@echo "🔨 Building debug binary..."
@@ -65,6 +105,11 @@ format: ## Format code with rustfmt
 	@echo "📝 Formatting code..."
 	@cargo fmt
 
+fmt: format ## Alias for format
+
+fmt-check: ## Check formatting without modifying
+	@cargo fmt --check
+
 check: ## Type check without building
 	@echo "✅ Type checking..."
 	@cargo check --all-targets --all-features
@@ -76,42 +121,69 @@ clean: ## Clean build artifacts
 	@echo "✅ Clean completed!"
 
 # =============================================================================
-# Code Coverage (EXTREME TDD requirement: >90%)
+# COVERAGE TARGETS (Two-Phase Pattern from bashrs)
 # =============================================================================
+# Pattern: bashrs/Makefile - Two-phase coverage with mold linker workaround
+# CRITICAL: mold linker breaks LLVM coverage instrumentation
+# Solution: Temporarily move ~/.cargo/config.toml during coverage runs
 
-coverage: ## Generate HTML coverage report and open in browser
-	@echo "📊 Running comprehensive test coverage analysis..."
-	@echo "🔍 Checking for cargo-llvm-cov..."
+# Standard coverage (<5 min): Two-phase pattern with nextest
+# CRITICAL: --all-features is REQUIRED or feature-gated code won't compile
+# and coverage will show 0%. DO NOT REMOVE --all-features from the nextest call.
+coverage: ## Generate HTML coverage report (target: <5 min)
+	@echo "📊 Running coverage analysis (target: <5 min)..."
+	@echo "🔍 Checking for cargo-llvm-cov and cargo-nextest..."
 	@which cargo-llvm-cov > /dev/null 2>&1 || (echo "📦 Installing cargo-llvm-cov..." && cargo install cargo-llvm-cov --locked)
-	@if ! rustup component list --installed | grep -q llvm-tools-preview; then \
-		echo "📦 Installing llvm-tools-preview..."; \
-		rustup component add llvm-tools-preview; \
-	fi
+	@which cargo-nextest > /dev/null 2>&1 || (echo "📦 Installing cargo-nextest..." && cargo install cargo-nextest --locked)
+	@echo "⚙️  Temporarily disabling global cargo config (sccache/mold break coverage)..."
+	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
 	@echo "🧹 Cleaning old coverage data..."
 	@cargo llvm-cov clean --workspace
-	@mkdir -p target/coverage/html
-	@echo "⚙️  Temporarily disabling global cargo config (mold/custom linker breaks coverage)..."
-	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
+	@mkdir -p target/coverage
 	@echo "🧪 Phase 1: Running tests with instrumentation (no report)..."
-	@cargo llvm-cov --no-report test --workspace --all-features || true
+	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace --no-fail-fast --all-features
 	@echo "📊 Phase 2: Generating coverage reports..."
-	@cargo llvm-cov report --html --output-dir target/coverage/html || echo "⚠️  No coverage data generated"
-	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info || echo "⚠️  LCOV generation skipped"
+	@cargo llvm-cov report --html --output-dir target/coverage/html
+	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
 	@echo "⚙️  Restoring global cargo config..."
 	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
 	@echo ""
 	@echo "📊 Coverage Summary:"
-	@cargo llvm-cov report --summary-only || echo "Run 'cargo test' to generate coverage data first"
+	@echo "=================="
+	@cargo llvm-cov report --summary-only
 	@echo ""
-	@echo "📊 Coverage reports generated:"
+	@echo "💡 Reports:"
 	@echo "- HTML: target/coverage/html/index.html"
 	@echo "- LCOV: target/coverage/lcov.info"
 	@echo ""
-	@xdg-open target/coverage/html/index.html 2>/dev/null || \
-		open target/coverage/html/index.html 2>/dev/null || \
-		echo "✅ Open target/coverage/html/index.html in your browser"
 
-coverage-html: coverage ## Alias for coverage
+# Fast coverage alias (same as coverage, optimized by default)
+coverage-fast: coverage
+
+# Full coverage: All features (for CI, slower)
+coverage-full: ## Full coverage report (all features, >10 min)
+	@echo "📊 Running full coverage analysis (all features)..."
+	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
+	@which cargo-nextest > /dev/null 2>&1 || cargo install cargo-nextest --locked
+	@cargo llvm-cov clean --workspace
+	@mkdir -p target/coverage
+	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
+	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace --all-features
+	@cargo llvm-cov report --html --output-dir target/coverage/html
+	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
+	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
+	@echo ""
+	@cargo llvm-cov report --summary-only
+
+# Open coverage report in browser
+coverage-open: ## Open HTML coverage report in browser
+	@if [ -f target/coverage/html/index.html ]; then \
+		xdg-open target/coverage/html/index.html 2>/dev/null || \
+		open target/coverage/html/index.html 2>/dev/null || \
+		echo "Open: target/coverage/html/index.html"; \
+	else \
+		echo "❌ Run 'make coverage' first"; \
+	fi
 
 coverage-clean: ## Clean coverage artifacts
 	@echo "🧹 Cleaning coverage artifacts..."
