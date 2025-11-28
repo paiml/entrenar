@@ -8,7 +8,8 @@
 	mutants mutants-quick clean build release lint format check fmt fmt-check \
 	tier1 tier2 tier3 pmat-init pmat-update roadmap-status \
 	llama-tests llama-properties llama-mutations llama-chaos llama-gradients llama-fuzz llama-examples llama-ci \
-	profile-llama profile-llama-otlp profile-llama-anomaly
+	profile-llama profile-llama-otlp profile-llama-anomaly \
+	wasm-build wasm-install wasm-serve wasm-e2e wasm-e2e-ui wasm-e2e-headed wasm-e2e-update wasm-clean
 
 help: ## Show this help message
 	@echo "Entrenar - Training & Optimization Library"
@@ -413,3 +414,39 @@ ci: tier3 coverage mutants-quick pmat-complexity pmat-tdg deny-check ## Run full
 	@echo "- ✅ Complexity <10"
 	@echo "- ✅ TDG score >90"
 	@echo "- ✅ Dependencies secure"
+
+# =============================================================================
+# WASM Dashboard (Playwright e2e tests)
+# =============================================================================
+
+wasm-build: ## Build WASM monitor module
+	@echo "🔨 Building WASM module..."
+	@which wasm-pack > /dev/null 2>&1 || (echo "📦 Installing wasm-pack..." && cargo install wasm-pack)
+	wasm-pack build --target web --out-dir wasm-pkg/pkg --features monitor
+	@echo "✅ WASM build complete: wasm-pkg/pkg/"
+
+wasm-install: ## Install npm dependencies for e2e
+	@echo "📦 Installing e2e dependencies..."
+	cd wasm-pkg && npm install
+	cd wasm-pkg && npx playwright install chromium
+
+wasm-serve: ## Serve WASM demo locally
+	@echo "🌐 Starting demo server at http://localhost:9877"
+	cd wasm-pkg && npx serve . -p 9877
+
+wasm-e2e: wasm-build wasm-install ## Run Playwright e2e tests
+	@echo "🎭 Running Playwright e2e tests..."
+	cd wasm-pkg && npx playwright test
+	@echo "✅ E2E tests complete!"
+
+wasm-e2e-ui: wasm-build wasm-install ## Run Playwright with interactive UI
+	cd wasm-pkg && npx playwright test --ui
+
+wasm-e2e-headed: wasm-build wasm-install ## Run Playwright with visible browser
+	cd wasm-pkg && npx playwright test --headed
+
+wasm-e2e-update: wasm-build wasm-install ## Update Playwright snapshots
+	cd wasm-pkg && npx playwright test --update-snapshots
+
+wasm-clean: ## Clean WASM build artifacts
+	rm -rf wasm-pkg/pkg wasm-pkg/node_modules wasm-pkg/playwright-report
