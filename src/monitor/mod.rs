@@ -49,7 +49,7 @@ pub use report::{
     HanseiAnalyzer, IssueSeverity, MetricSummary, PostTrainingReport, TrainingIssue, Trend,
 };
 pub use storage::{InMemoryStore, JsonFileStore, MetricsStore, StorageError, StorageResult};
-pub use wasm::{WasmDashboardOptions, WasmMetricsCollector};
+pub use wasm::{WasmDashboard, WasmDashboardOptions, WasmMetricsCollector};
 
 #[cfg(test)]
 mod tests;

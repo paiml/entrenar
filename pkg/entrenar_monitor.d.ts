@@ -200,3 +200,108 @@ export class WasmDashboardOptions {
    */
   show_sparklines(show: boolean): WasmDashboardOptions;
 }
+
+/**
+ * Dashboard for canvas rendering and sparkline generation.
+ *
+ * @example
+ * ```typescript
+ * const dashboard = new WasmDashboard();
+ *
+ * // Add metrics during training
+ * for (let epoch = 0; epoch < 100; epoch++) {
+ *   dashboard.add_loss(1.0 / (epoch + 1));
+ *   dashboard.add_accuracy(0.5 + 0.005 * epoch);
+ * }
+ *
+ * // Get sparkline for terminal display
+ * console.log(`Loss: ${dashboard.loss_sparkline()}`);
+ *
+ * // Get state for canvas rendering
+ * const state = JSON.parse(dashboard.state_json());
+ * ```
+ */
+export class WasmDashboard {
+  /**
+   * Create a new dashboard with default options.
+   */
+  constructor();
+
+  /**
+   * Set maximum history length.
+   * @param max - Maximum number of values to keep (default: 100)
+   */
+  max_history(max: number): WasmDashboard;
+
+  /**
+   * Update dashboard with metrics from collector.
+   * @param collector - The metrics collector
+   */
+  update(collector: WasmMetricsCollector): void;
+
+  /**
+   * Add a loss value directly.
+   * @param value - Loss value (NaN/Inf ignored)
+   */
+  add_loss(value: number): void;
+
+  /**
+   * Add an accuracy value directly.
+   * @param value - Accuracy value (NaN/Inf ignored)
+   */
+  add_accuracy(value: number): void;
+
+  /**
+   * Get loss history length.
+   */
+  loss_history_len(): number;
+
+  /**
+   * Get accuracy history length.
+   */
+  accuracy_history_len(): number;
+
+  /**
+   * Clear all history.
+   */
+  clear(): void;
+
+  /**
+   * Get canvas width.
+   */
+  width(): number;
+
+  /**
+   * Get canvas height.
+   */
+  height(): number;
+
+  /**
+   * Generate sparkline characters for loss.
+   */
+  loss_sparkline(): string;
+
+  /**
+   * Generate sparkline characters for accuracy.
+   */
+  accuracy_sparkline(): string;
+
+  /**
+   * Get dashboard state as JSON.
+   * Contains width, height, loss_history, accuracy_history, colors.
+   */
+  state_json(): string;
+}
+
+/**
+ * Dashboard state structure (from state_json()).
+ */
+export interface DashboardState {
+  width: number;
+  height: number;
+  loss_history: number[];
+  accuracy_history: number[];
+  loss_color: string;
+  accuracy_color: string;
+  background_color: string;
+}
