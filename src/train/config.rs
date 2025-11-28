@@ -86,8 +86,11 @@ impl TrainConfig {
 /// Tracks training metrics across epochs
 #[derive(Clone, Debug)]
 pub struct MetricsTracker {
-    /// Loss history (one per epoch)
+    /// Training loss history (one per epoch)
     pub losses: Vec<f32>,
+
+    /// Validation loss history (one per epoch, if validation is used)
+    pub val_losses: Vec<f32>,
 
     /// Learning rates (one per epoch)
     pub learning_rates: Vec<f32>,
@@ -104,17 +107,45 @@ impl MetricsTracker {
     pub fn new() -> Self {
         Self {
             losses: Vec::new(),
+            val_losses: Vec::new(),
             learning_rates: Vec::new(),
             steps: 0,
             epoch: 0,
         }
     }
 
-    /// Record an epoch's metrics
+    /// Record an epoch's training metrics
     pub fn record_epoch(&mut self, loss: f32, lr: f32) {
         self.losses.push(loss);
         self.learning_rates.push(lr);
         self.epoch += 1;
+    }
+
+    /// Record validation loss for the current epoch
+    pub fn record_val_loss(&mut self, val_loss: f32) {
+        self.val_losses.push(val_loss);
+    }
+
+    /// Get best (minimum) validation loss
+    pub fn best_val_loss(&self) -> Option<f32> {
+        self.val_losses
+            .iter()
+            .copied()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+    }
+
+    /// Check if validation loss is improving
+    pub fn is_val_improving(&self, patience: usize) -> bool {
+        if self.val_losses.len() < patience {
+            return true;
+        }
+
+        let recent = self.val_losses[self.val_losses.len() - patience..].to_vec();
+        let mut sorted = recent.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        // Check if val losses are generally decreasing
+        recent != sorted
     }
 
     /// Increment step counter
@@ -234,5 +265,44 @@ mod tests {
         // Should clamp to minimum of 1
         let config = TrainConfig::new().with_gradient_accumulation(0);
         assert_eq!(config.gradient_accumulation_steps, 1);
+    }
+
+    #[test]
+    fn test_validation_loss_tracking() {
+        let mut tracker = MetricsTracker::new();
+
+        tracker.record_epoch(1.0, 0.001);
+        tracker.record_val_loss(0.9);
+        tracker.record_epoch(0.8, 0.001);
+        tracker.record_val_loss(0.7);
+        tracker.record_epoch(0.6, 0.001);
+        tracker.record_val_loss(0.5);
+
+        assert_eq!(tracker.val_losses.len(), 3);
+        assert_eq!(tracker.best_val_loss(), Some(0.5));
+    }
+
+    #[test]
+    fn test_validation_is_improving() {
+        let mut tracker = MetricsTracker::new();
+
+        // Decreasing val losses = improving
+        tracker.record_val_loss(0.9);
+        tracker.record_val_loss(0.7);
+        tracker.record_val_loss(0.5);
+
+        assert!(tracker.is_val_improving(2));
+    }
+
+    #[test]
+    fn test_validation_not_improving() {
+        let mut tracker = MetricsTracker::new();
+
+        // Increasing val losses = not improving
+        tracker.record_val_loss(0.5);
+        tracker.record_val_loss(0.6);
+        tracker.record_val_loss(0.7);
+
+        assert!(!tracker.is_val_improving(2));
     }
 }

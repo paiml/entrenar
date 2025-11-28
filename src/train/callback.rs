@@ -149,6 +149,8 @@ pub struct EarlyStopping {
     epochs_without_improvement: usize,
     /// Whether to restore best weights (placeholder)
     restore_best: bool,
+    /// Monitor validation loss instead of training loss
+    monitor_val: bool,
 }
 
 impl EarlyStopping {
@@ -160,12 +162,22 @@ impl EarlyStopping {
             best_loss: f32::INFINITY,
             epochs_without_improvement: 0,
             restore_best: false,
+            monitor_val: false,
         }
     }
 
     /// Configure to restore best weights on stop
     pub fn with_restore_best(mut self) -> Self {
         self.restore_best = true;
+        self
+    }
+
+    /// Configure to monitor validation loss (requires validation data)
+    ///
+    /// When enabled, early stopping will only consider validation loss.
+    /// If validation loss is not available, training loss is used as fallback.
+    pub fn monitor_validation(mut self) -> Self {
+        self.monitor_val = true;
         self
     }
 
@@ -190,7 +202,12 @@ impl EarlyStopping {
 
 impl TrainerCallback for EarlyStopping {
     fn on_epoch_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
-        let loss = ctx.val_loss.unwrap_or(ctx.loss);
+        // Use val_loss if monitoring validation (with fallback), otherwise use training loss
+        let loss = if self.monitor_val {
+            ctx.val_loss.unwrap_or(ctx.loss)
+        } else {
+            ctx.loss
+        };
         self.check_improvement(loss);
 
         if self.epochs_without_improvement >= self.patience {
