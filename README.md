@@ -1,594 +1,317 @@
-# entrenar
+# Entrenar
 
-**Rust Training & Optimization Library with LLaMA 2 Transformer Support**
+<div align="center">
+  <img src="docs/images/entrenar-logo.svg" alt="Entrenar - Training & Optimization Library" width="400">
+</div>
 
-Entrenar provides a tape-based autograd engine with optimizers, LoRA/QLoRA parameter-efficient fine-tuning, and production-ready observability for training transformer models.
+<div align="center">
 
-[![Quality Grade](https://img.shields.io/badge/Quality-A%2B%20(99.4%2F100)-brightgreen)](.github/quality.svg)
-[![Tests](https://img.shields.io/badge/Tests-258%20passing-brightgreen)](.github/tests.svg)
-[![Coverage](https://img.shields.io/badge/Coverage-%3E90%25-brightgreen)](.github/coverage.svg)
-[![Fuzz Tested](https://img.shields.io/badge/Fuzz-3M%2B%20iterations-blue)](.github/fuzz.svg)
+[![Crates.io](https://img.shields.io/crates/v/entrenar.svg)](https://crates.io/crates/entrenar)
+[![Tests](https://img.shields.io/badge/tests-717%20passing-brightgreen)](https://github.com/paiml/entrenar)
+[![Coverage](https://img.shields.io/badge/coverage-%3E90%25-brightgreen)](https://github.com/paiml/entrenar)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.83+-orange.svg)](https://www.rust-lang.org)
 
-## Features
+**Production-grade neural network training with autograd, optimizers, LoRA, quantization, model merging, and real-time monitoring.**
 
-### ✅ **Production Ready**
+[Quick Start](#quick-start) | [Features](#features) | [Documentation](#documentation) | [PAIML Stack](#paiml-stack)
 
-- **LLaMA 2 Transformer** - Complete implementation with multi-head attention, RoPE, SwiGLU FFN
-- **LoRA Fine-Tuning** - 99.75% parameter reduction (7B model: 175B → 437M params)
-- **QLoRA 4-bit** - 87.3% memory savings (7B model: 28GB → 3.5GB)
-- **Full Observability** - renacer profiling + OTLP tracing + Jaeger + ML anomaly detection
-- **258 Tests** - Property-based, mutation, chaos, gradient checking, fuzz (3M+ iterations)
-- **A+ Quality** - 99.4/100 grade, 59x better gradient precision than spec
-- **Model I/O** - Save/load models in JSON, YAML formats with metadata
-- **Declarative Training** - Ludwig-style YAML configuration with `train_from_yaml()`
+</div>
 
-### Core Components
+---
 
-#### Autograd Engine ✅
-- Tape-based automatic differentiation
-- Gradient checking (epsilon=1e-3, max error <0.02)
-- Operations: matmul, add, mul, relu, gelu, swish, attention, softmax, layer_norm
-- 18 gradient validation tests (all passing)
+## Overview
 
-#### Optimizers ✅
-- SGD with momentum
-- Adam with bias correction
-- AdamW (decoupled weight decay)
-- Learning rate schedulers (step, exponential, cosine)
-- Gradient clipping
+**Entrenar** (Spanish: "to train") is a complete training and optimization library for neural networks, providing:
 
-#### LoRA & QLoRA ✅
-- Low-rank adaptation matrices (rank 4-512)
-- 4-bit quantization (QLoRA)
-- Memory benchmarks (11 tests validating efficiency claims)
-- Adapter save/load/merge
+- **Tape-based Autograd** - Automatic differentiation with gradient checking
+- **Optimizers** - SGD, Adam, AdamW with LR schedulers and gradient clipping
+- **LoRA/QLoRA** - Parameter-efficient fine-tuning (99.75% param reduction)
+- **Quantization** - QAT, PTQ, GGUF-compatible Q4_0/Q8_0 formats
+- **Model Merging** - TIES, DARE, SLERP for combining fine-tuned models
+- **Knowledge Distillation** - Temperature-scaled softmax, multi-teacher ensemble
+- **Training Loop** - Callback system with early stopping, checkpoints, monitoring
+- **Real-time Monitoring** - Toyota Way-inspired Andon system with drift detection
 
-#### LLaMA 2 Transformer ✅
-- Multi-head attention with RoPE positional encoding
-- SwiGLU FFN activation
-- RMSNorm layer normalization
-- Configs: 124M (toy), 7B, 13B, 70B
-- 3 working examples: train, LoRA fine-tuning, QLoRA fine-tuning
-
-#### Observability Stack ✅
-- **renacer profiling** - Syscall-level bottleneck detection
-- **OTLP tracing** - Distributed traces to Jaeger UI
-- **ML anomaly detection** - KMeans clustering with z-score outliers
-- **Real-time monitoring** - Hardware issue detection
-- 3 profiling targets: `profile-llama`, `profile-llama-otlp`, `profile-llama-anomaly`
+Part of the [PAIML Stack](#paiml-stack), built on [trueno](https://github.com/paiml/trueno) for SIMD-accelerated tensor operations.
 
 ## Quick Start
 
-### Installation
-
 ```bash
-# Clone repository
-git clone https://github.com/paiml/entrenar
-cd entrenar
-
-# Build examples
-make llama-examples
-
-# Run tests
-make llama-ci
+cargo add entrenar
 ```
 
-### Training LLaMA from Scratch
-
-```bash
-# Train 124M model (toy example)
-./target/release/examples/llama2-train --config examples/llama2/configs/124m.toml
-
-# Train 7B model
-./target/release/examples/llama2-train --config examples/llama2/configs/7b.toml
-```
-
-### LoRA Fine-Tuning (99.75% parameter reduction)
-
-```bash
-# Fine-tune with LoRA
-./target/release/examples/llama2-finetune-lora --model checkpoints/llama-7b.bin
-
-# 7B model: 175B params → 437M trainable params
-# Memory: ~28GB (FP32) → ~7.5GB (LoRA FP32)
-```
-
-### QLoRA Fine-Tuning (87.3% memory savings)
-
-```bash
-# Fine-tune with QLoRA (4-bit base + FP32 adapters)
-./target/release/examples/llama2-finetune-qlora --model checkpoints/llama-7b.bin
-
-# 7B model: ~28GB (FP32) → ~3.5GB (QLoRA)
-# 73% memory reduction vs full fine-tuning
-```
-
-### Profiling & Observability
-
-```bash
-# Basic syscall profiling
-make profile-llama
-
-# OTLP distributed tracing (view in Jaeger)
-docker-compose -f docker-compose-jaeger.yml up -d
-make profile-llama-otlp
-# Open http://localhost:16686
-
-# ML anomaly detection
-make profile-llama-anomaly
-./scripts/analyze_training.sh
-```
-
-## Project Status
-
-### LLaMA Integration: ✅ **100% COMPLETE** (All 4 Phases)
-
-| Phase | Status | Highlights |
-|-------|--------|------------|
-| **Phase 1: Core Architecture** | ✅ 100% | 3 examples, 58 tests, RoPE attention, SwiGLU FFN |
-| **Phase 2: LoRA/QLoRA** | ✅ 100% | 99.75% param reduction, 87.3% memory savings |
-| **Phase 3: Quality Infrastructure** | ✅ 100% | Chaos tests, fuzz (3M+ iter), gradients (59x better) |
-| **Phase 4: Observability** | ✅ 100% | renacer + OTLP + Jaeger + ML anomaly detection |
-
-**Overall Grade:** **A+ (99.4/100)** - See `docs/quality-metrics-final.md`
-
-### Test Coverage: 258 Tests ✅
-
-- **130** core library tests
-- **13** property-based tests (1,300 test cases)
-- **10** mutation-resistant tests
-- **15** chaos engineering tests
-- **18** gradient checking tests (epsilon=1e-3, threshold=0.2)
-- **11** memory benchmark tests
-- **35** architecture tests
-- **16** I/O and configuration tests
-- **10** additional integration tests
-
-**Fuzz Testing:** 3M+ iterations, **zero crashes**
-
-## Usage Examples
-
-### Basic Autograd
+### Basic Training Loop
 
 ```rust
-use entrenar::autograd::*;
+use entrenar::train::{Trainer, TrainConfig, Batch, MSELoss, EarlyStopping};
+use entrenar::optim::Adam;
+use entrenar::Tensor;
 
-// Create tensors
-let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);  // requires_grad=true
-let b = Tensor::from_vec(vec![4.0, 5.0, 6.0], true);
+// Setup
+let params = vec![Tensor::zeros(784 * 128, true)];
+let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+let config = TrainConfig::default();
 
-// Forward pass
-let c = add(&a, &b);
-let d = relu(&c);
-let mut loss = sum(&d);
+let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+trainer.set_loss(Box::new(MSELoss));
+trainer.add_callback(EarlyStopping::new(5, 0.001));
 
-// Backward pass
-backward(&mut loss, None);
+// Train with callbacks
+let result = trainer.train(100, || batches.clone(), |x| model.forward(x));
 
-// Access gradients
-let grad_a = a.grad().unwrap();
-let grad_b = b.grad().unwrap();
-```
-
-### Using Optimizers
-
-```rust
-use entrenar::autograd::*;
-use entrenar::optim::*;
-
-// Create parameters
-let mut params = vec![
-    Tensor::from_vec(vec![0.5, -0.3], true),
-];
-
-// Create optimizer
-let mut optimizer = Adam::default_params(0.01);
-
-for epoch in 0..100 {
-    // Forward pass
-    let loss = compute_loss(&params);  // your loss function
-
-    // Backward pass
-    backward(&mut loss, None);
-
-    // Update parameters
-    optimizer.step(&mut params);
-    optimizer.zero_grad(&mut params);
+println!("Trained {} epochs, loss: {:.4}", result.final_epoch, result.final_loss);
+if result.stopped_early {
+    println!("Early stopping triggered");
 }
-```
-
-### LLaMA Training
-
-```rust
-use entrenar::llama::*;
-
-// Load config
-let config = LLaMAConfig::from_file("examples/llama2/configs/7b.toml")?;
-
-// Create model
-let model = LLaMAModel::new(&config);
-
-// Training loop
-for epoch in 0..epochs {
-    for batch in dataloader {
-        // Forward
-        let logits = model.forward(&batch.tokens);
-        let loss = cross_entropy_loss(&logits, &batch.targets);
-
-        // Backward
-        backward(&mut loss, None);
-
-        // Update
-        optimizer.step(&model.parameters());
-        optimizer.zero_grad(&model.parameters());
-    }
-}
-```
-
-### LoRA Fine-Tuning
-
-```rust
-use entrenar::lora::*;
-
-// Convert to LoRA model
-let lora_config = LoRAConfig {
-    rank: 16,
-    alpha: 32.0,
-    dropout: 0.05,
-    target_modules: vec!["q_proj", "v_proj"],
-};
-
-let lora_model = model.to_lora(&lora_config);
-
-// Fine-tune (only LoRA adapters are trainable)
-// 7B model: 175B params → 437M trainable (99.75% reduction)
-```
-
-### Model I/O
-
-```rust
-use entrenar::io::*;
-
-// Save model
-let model = Model::new(metadata, parameters);
-let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
-save_model(&model, "model.json", &config)?;
-
-// Load model
-let loaded = load_model("model.json")?;
-println!("Loaded: {}", loaded.metadata.name);
-
-// Formats: JSON, YAML, GGUF (future)
 ```
 
 ### Declarative Training (Ludwig-style)
 
-```rust
-use entrenar::config::train_from_yaml;
-
-// Single command training from YAML config
-train_from_yaml("config.yaml")?;
-```
-
-Example `config.yaml`:
 ```yaml
+# config.yaml
 model:
   path: base-model.gguf
 data:
   train: train.parquet
   batch_size: 8
 optimizer:
-  name: adam
-  lr: 0.001
-training:
-  epochs: 10
-  grad_clip: 1.0
-  output_dir: ./checkpoints
+  name: adamw
+  lr: 0.0001
 lora:
   rank: 64
   alpha: 16
+training:
+  epochs: 10
+  grad_clip: 1.0
 ```
 
-### QLoRA Fine-Tuning
+```bash
+entrenar train config.yaml
+```
+
+## Features
+
+### Autograd Engine
+
+Tape-based automatic differentiation with property-tested gradient checking:
 
 ```rust
-use entrenar::qlora::*;
+use entrenar::autograd::{matmul, softmax, layer_norm, attention};
 
-// Convert to QLoRA model (4-bit base + FP32 adapters)
-let qlora_config = QLoRAConfig {
-    rank: 16,
-    alpha: 32.0,
-    quantize_4bit: true,
+// All ops have verified backward passes
+let y = matmul(&x, &w);           // dL/dX, dL/dW
+let s = softmax(&logits);          // Jacobian-vector product
+let n = layer_norm(&x, &gamma, &beta);  // dx, dgamma, dbeta
+let a = attention(&q, &k, &v);     // dQ, dK, dV
+```
+
+**Operations:** matmul, add, mul, relu, gelu, swish, softmax, layer_norm, attention
+
+### Optimizers
+
+```rust
+use entrenar::optim::{SGD, Adam, AdamW, CosineScheduler, clip_grad_norm};
+
+let sgd = SGD::new(0.01, 0.9);              // With momentum
+let adam = Adam::new(0.001, 0.9, 0.999, 1e-8);
+let adamw = AdamW::new(0.001, 0.9, 0.999, 1e-8, 0.01);
+
+// Learning rate scheduling
+let scheduler = CosineScheduler::new(0.001, 0.0001, 100);
+
+// Gradient clipping
+clip_grad_norm(&mut params, 1.0);
+```
+
+### LoRA / QLoRA
+
+Parameter-efficient fine-tuning with 99.75% parameter reduction:
+
+```rust
+use entrenar::lora::{LoRALayer, LoRAConfig, QLoRALayer};
+
+let config = LoRAConfig::new()
+    .with_rank(16)
+    .with_alpha(32.0)
+    .with_targets(&["q_proj", "k_proj", "v_proj", "o_proj"]);
+
+// Standard LoRA
+let lora = LoRALayer::new(4096, 4096, 16, 32.0);
+
+// QLoRA (4-bit base + FP16 adapters)
+let qlora = QLoRALayer::new(base_weights, 16, 32.0);
+// 7B model: 28GB → 3.5GB (87% memory reduction)
+```
+
+### Quantization
+
+QAT, PTQ, and GGUF-compatible formats:
+
+```rust
+use entrenar::quant::{FakeQuantize, PTQCalibrator, GGUFQuantizer, QuantConfig};
+
+// Quantization-Aware Training (STE backward)
+let fq = FakeQuantize::new(8, true);  // 8-bit symmetric
+let quantized = fq.forward(&weights);
+
+// Post-Training Quantization
+let calibrator = PTQCalibrator::percentile(0.999);
+calibrator.observe(&activations);
+let scale = calibrator.compute_scale();
+
+// GGUF export (llama.cpp compatible)
+let quantizer = GGUFQuantizer::q4_0();
+let packed = quantizer.quantize(&weights);  // Q4_0 block format
+```
+
+### Model Merging
+
+Combine fine-tuned models with TIES, DARE, or SLERP:
+
+```rust
+use entrenar::merge::{TiesMerge, DareMerge, SlerpMerge};
+
+// TIES: Trim + Sign Election + Merge
+let ties = TiesMerge::new(0.2);  // 20% density
+let merged = ties.merge(&[model_a, model_b, model_c], &[0.4, 0.3, 0.3]);
+
+// DARE: Dropout + Rescale
+let dare = DareMerge::new(0.9);  // 90% dropout
+let merged = dare.merge(&base, &finetuned);
+
+// SLERP: Spherical interpolation (2 models)
+let slerp = SlerpMerge::new();
+let merged = slerp.merge(&model_a, &model_b, 0.5);
+```
+
+### Knowledge Distillation
+
+```rust
+use entrenar::distill::{DistillationLoss, EnsembleDistiller, ProgressiveDistiller};
+
+// Temperature-scaled KD
+let kd_loss = DistillationLoss::new(4.0, 0.7);  // temp=4, alpha=0.7
+let loss = kd_loss.compute(&student_logits, &teacher_logits, &labels);
+
+// Multi-teacher ensemble
+let ensemble = EnsembleDistiller::weighted(&[0.5, 0.3, 0.2]);
+let combined = ensemble.combine(&teacher_outputs);
+
+// Progressive layer-wise distillation
+let progressive = ProgressiveDistiller::new(layer_weights);
+let loss = progressive.layer_wise_loss(&student_hiddens, &teacher_hiddens);
+```
+
+### Training Loop & Callbacks
+
+```rust
+use entrenar::train::{
+    Trainer, TrainResult, CallbackManager,
+    EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback,
 };
 
-let qlora_model = model.to_qlora(&qlora_config);
+let mut trainer = Trainer::new(params, optimizer, config);
+trainer.set_loss(loss_fn);
 
-// Fine-tune with 87.3% memory savings
-// 7B model: ~28GB (FP32) → ~3.5GB (QLoRA)
+// Add callbacks
+trainer.add_callback(EarlyStopping::new(5, 0.001));       // Stop after 5 epochs without improvement
+trainer.add_callback(CheckpointCallback::new("./ckpt")); // Save best + periodic
+trainer.add_callback(ProgressCallback::new(10));         // Log every 10 steps
+trainer.add_callback(MonitorCallback::new());            // NaN/Inf detection, metrics
+
+let result: TrainResult = trainer.train(100, batch_fn, forward_fn);
+// result.final_epoch, result.best_loss, result.stopped_early, result.elapsed_secs
+```
+
+### Real-time Monitoring
+
+Toyota Way-inspired quality monitoring with Andon alerts:
+
+```rust
+use entrenar::monitor::{MetricsCollector, DriftDetector, AndonSystem, HanseiAnalyzer};
+
+let mut collector = MetricsCollector::new();
+let mut drift = DriftDetector::new(10);  // 10-epoch window
+let mut andon = AndonSystem::new();
+
+for epoch in 0..max_epochs {
+    collector.record(Metric::Loss, loss);
+    collector.record(Metric::LearningRate, lr);
+
+    // Detect statistical drift (z-score based)
+    if let DriftStatus::Drift(z) = drift.check(loss) {
+        andon.warning(format!("Loss drift: z={:.2}", z));
+    }
+
+    // Andon stop on critical issues
+    if andon.should_stop() {
+        break;
+    }
+}
+
+// Post-training Hansei (reflection) report
+let analyzer = HanseiAnalyzer::new();
+let report = analyzer.analyze("run-001", &collector, elapsed);
+println!("{}", analyzer.format_report(&report));
 ```
 
 ## Architecture
 
 ```
-src/
-├── autograd/         ✅ Tape-based automatic differentiation
-│   ├── tensor.rs     ✅ Tensor with gradient tracking
-│   ├── ops.rs        ✅ Forward/backward operations (matmul, attention, etc.)
-│   ├── backward.rs   ✅ BackwardOp trait
-│   └── tests.rs      ✅ 130 comprehensive tests
-├── optim/            ✅ Optimizers
-│   ├── optimizer.rs  ✅ Optimizer trait
-│   ├── sgd.rs        ✅ SGD with momentum
-│   ├── adam.rs       ✅ Adam/AdamW
-│   └── schedulers.rs ✅ Learning rate schedulers
-├── lora/             ✅ Low-rank adaptation
-│   ├── layer.rs      ✅ LoRA adapter matrices
-│   └── config.rs     ✅ LoRA configuration
-├── qlora/            ✅ Quantized LoRA
-│   ├── layer.rs      ✅ 4-bit quantization + FP32 adapters
-│   └── quant.rs      ✅ Quantization/dequantization
-└── llama/            ✅ LLaMA 2 transformer (in examples/)
-    ├── architecture.rs   ✅ Multi-head attention, RoPE, SwiGLU, RMSNorm
-    ├── train.rs          ✅ Training from scratch
-    ├── finetune_lora.rs  ✅ LoRA fine-tuning
-    └── finetune_qlora.rs ✅ QLoRA fine-tuning
-
-tests/
-├── property_llama.rs     ✅ 13 property-based tests (1,300 cases)
-├── mutation_resistant_llama.rs ✅ 10 mutation tests
-├── chaos_llama.rs        ✅ 15 chaos engineering tests
-├── gradient_llama.rs     ✅ 18 gradient checking tests
-└── llama_architecture.rs ✅ 35 architecture tests
-
-fuzz/
-├── parameter_calc.rs     ✅ 1M+ iterations
-├── tensor_ops.rs         ✅ 1M+ iterations (433 coverage points)
-└── lora_config.rs        ✅ 1M+ iterations
-
-examples/llama2/
-├── train.rs              ✅ Train from scratch
-├── finetune_lora.rs      ✅ LoRA fine-tuning
-├── finetune_qlora.rs     ✅ QLoRA fine-tuning
-└── memory_benchmarks.rs  ✅ Efficiency validation (11 tests)
+entrenar/
+├── autograd/      # Tape-based automatic differentiation
+├── optim/         # SGD, Adam, AdamW, schedulers, gradient clipping
+├── lora/          # LoRA, QLoRA parameter-efficient fine-tuning
+├── quant/         # QAT, PTQ, GGUF Q4_0/Q8_0 quantization
+├── merge/         # TIES, DARE, SLERP model merging
+├── distill/       # Knowledge distillation (KD, ensemble, progressive)
+├── config/        # Declarative YAML training configuration
+├── train/         # Trainer, callbacks, training loop
+├── monitor/       # Real-time metrics, drift detection, Andon alerts
+└── io/            # Model save/load (JSON, YAML, GGUF)
 ```
 
 ## Development
 
-### Quality Gates (Tiered Workflow)
+### Quality Gates
 
 ```bash
-# Tier 1 (Fast <5s) - Before every commit (ON-SAVE)
-make tier1
-# → Format, clippy, unit tests, gradient checks
+# Tier 1 (<5s) - Before commit
+make tier1    # Format, clippy, unit tests
 
-# Tier 2 (Integration <30s) - Before push
-make tier2
-# → Tier1 + property tests + mutation tests
+# Tier 2 (<30s) - Before push
+make tier2    # + Integration tests
 
-# Tier 3 (Full <5m) - Before PR
-make tier3
-# → Tier2 + chaos tests + memory benchmarks
-
-# LLaMA CI Pipeline
-make llama-ci
-# → Build examples + all LLaMA tests + metrics report
+# Tier 3 (<5m) - Before PR
+make tier3    # + Property tests, coverage
 ```
 
-### LLaMA-Specific Commands
+### Test Coverage
 
-```bash
-# Build all LLaMA examples
-make llama-examples
+- **717 tests** passing
+- **>90% code coverage**
+- **Property tests**: 200+ cases per property (proptest)
+- **Gradient checking**: Finite difference validation
 
-# Run test suites
-make llama-tests        # All LLaMA tests
-make llama-properties   # Property-based tests
-make llama-mutations    # Mutation-resistant tests
-make llama-chaos        # Chaos engineering tests
-make llama-gradients    # Gradient checking tests
-make llama-fuzz         # Fuzz testing (1M+ iterations each)
+## PAIML Stack
 
-# Profiling & observability
-make profile-llama            # Basic syscall profiling
-make profile-llama-otlp       # OTLP tracing to Jaeger
-make profile-llama-anomaly    # ML anomaly detection
-```
+Entrenar is part of the PAIML production ML stack:
 
-### Standard Commands
-
-```bash
-# Build
-make build              # Debug
-make release            # Release
-
-# Testing
-make test               # Fast tests
-make coverage           # Coverage report (>90% target)
-make mutants            # Mutation testing
-
-# Code Quality
-make lint               # Clippy (zero warnings enforced)
-make format             # Format code
-make deny-check         # Dependency security
-
-# Clean
-make clean
-
-# View all commands
-make help
-```
-
-## Quality Metrics
-
-**Overall Grade:** **A+ (99.4/100)** 🏆
-
-| Metric | Value | Target | Status |
-|--------|-------|--------|--------|
-| **Tests** | 232 | 150+ | ✅ **155%** |
-| **Fuzz Iterations** | 3M+ | 1M+ | ✅ **300%** |
-| **Gradient Precision** | <0.02 | <0.2 | ✅ **59x better** |
-| **LoRA Param Reduction** | 99.75% | >99% | ✅ **Exceeds** |
-| **QLoRA Memory Savings** | 87.3% | >70% | ✅ **25% better** |
-| **Tier1 Build Time** | 4.5s | <5s | ✅ **10% better** |
-| **Clippy Warnings** | 0 | 0 | ✅ **Perfect** |
-| **Fuzz Crashes** | 0 | 0 | ✅ **Perfect** |
-
-**Detailed Report:** See `docs/quality-metrics-final.md`
-
-### Test Categories
-
-```
-Total: 232 tests
-
-Core Library:        130 tests (56.0%)  ✅
-Property-Based:       13 tests (5.6%)   ✅ → 1,300 test cases
-Mutation-Resistant:   10 tests (4.3%)   ✅
-Chaos Engineering:    15 tests (6.5%)   ✅
-Gradient Checking:    18 tests (7.8%)   ✅
-Memory Benchmarks:    11 tests (4.7%)   ✅
-Architecture:         35 tests (15.1%)  ✅
-```
-
-### Methodologies
-
-- ✅ **EXTREME TDD** - Certeza chaos testing patterns
-- ✅ **PMAT Workflows** - TDG tracking, roadmap management
-- ✅ **Renacer Tracing** - Syscall profiling, OTLP export, ML anomaly detection
-
-## Observability
-
-### Profiling Stack
-
-The observability stack enables production-grade monitoring and debugging:
-
-```
-LLaMA Training → renacer → OTLP → Jaeger → UI
-                     ↓
-              ML Anomaly Detection
-              (KMeans Clustering)
-```
-
-**Features:**
-- **Syscall-level profiling** - Identify I/O and compute bottlenecks
-- **Distributed tracing** - Visualize forward/backward pass timing
-- **ML anomaly detection** - KMeans clustering with z-score outliers
-- **Real-time monitoring** - Catch hardware issues (GPU throttling, disk contention)
-
-**Documentation:** See `book/src/advanced/llama-tracing.md`
-
-### Quick Start
-
-```bash
-# 1. Basic profiling (identifies top 3 bottlenecks)
-make profile-llama
-
-# 2. OTLP tracing (distributed traces)
-docker-compose -f docker-compose-jaeger.yml up -d
-make profile-llama-otlp
-# View at http://localhost:16686
-
-# 3. ML anomaly detection
-make profile-llama-anomaly
-./scripts/analyze_training.sh
-# → Clustering quality, outliers, severity classification
-```
-
-## Memory Benchmarks
-
-**LoRA Parameter Reduction:**
-
-| Model | Rank | Params (Full) | Params (LoRA) | Reduction | Status |
-|-------|------|---------------|---------------|-----------|--------|
-| toy_124m | 16 | 124M | 893K | 99.28% | ✅ |
-| llama2_7b | 16 | 7B | 17.5M | **99.75%** | ✅ |
-| llama2_7b | 64 | 7B | 69.2M | 99.01% | ✅ |
-
-**QLoRA Memory Savings:**
-
-| Model | Rank | Full FP32 | QLoRA 4-bit | Savings | Status |
-|-------|------|-----------|-------------|---------|--------|
-| toy_124m | 16 | ~500 MB | ~66 MB | 86.9% | ✅ |
-| llama2_7b | 16 | ~28 GB | ~3.5 GB | **87.3%** | ✅ |
-| llama2_7b | 64 | ~28 GB | ~3.7 GB | 86.6% | ✅ |
-
-**7B Model Comparison:**
-- Full FP32 fine-tuning: ~28 GB
-- LoRA FP32: ~7.5 GB (73% savings)
-- QLoRA 4-bit: ~3.5 GB (87.3% savings, **20.5 GB freed**)
-
-## Roadmap
-
-### ✅ Completed (Phases 1-4)
-
-- ✅ **Phase 1:** Autograd engine with gradient checking
-- ✅ **Phase 2:** Optimizers (SGD, Adam, AdamW, schedulers)
-- ✅ **Phase 3:** LoRA & QLoRA with memory benchmarks
-- ✅ **Phase 4:** LLaMA 2 transformer integration
-- ✅ **Phase 5:** Quality infrastructure (chaos, fuzz, gradients)
-- ✅ **Phase 6:** Observability stack (renacer, OTLP, Jaeger, ML anomaly)
-
-### ⏳ Future Enhancements (Optional)
-
-**Performance:**
-- [ ] GPU acceleration (CUDA/ROCm backends)
-- [ ] Multi-GPU distributed training
-- [ ] Flash Attention optimization
-- [ ] Quantization-aware training (QAT)
-
-**Architectures:**
-- [ ] Mixtral MoE (Mixture of Experts)
-- [ ] Vision-language models (LLaVA)
-- [ ] Prefix tuning
-- [ ] IA3 adapters
-
-**Observability:**
-- [ ] Prometheus metrics collection
-- [ ] Grafana dashboards
-- [ ] Performance regression detection in CI/CD
-- [ ] Continuous profiling
-
-**Infrastructure:**
-- [ ] Docker containerization
-- [ ] Kubernetes deployment
-- [ ] Model registry integration
-- [ ] Checkpoint compression
+| Library | Purpose | Status |
+|---------|---------|--------|
+| **[trueno](https://github.com/paiml/trueno)** | SIMD/GPU compute | v0.7.3 |
+| **entrenar** | Training & optimization | v0.2.0 |
+| **[aprender](https://github.com/paiml/aprender)** | .apr model format | v0.9.1 |
+| **[realizar](https://github.com/paiml/realizar)** | GGUF export | planned |
+| **[alimentar](https://github.com/paiml/alimentar)** | Dataset loading | planned |
 
 ## Documentation
 
-- **Quick Start:** This README
-- **API Reference:** `book/` (mdBook)
-- **LLaMA Integration:** `docs/llama-integration-complete.md`
-- **Quality Metrics:** `docs/quality-metrics-final.md`
-- **Tracing Guide:** `book/src/advanced/llama-tracing.md`
-- **Specification:** `docs/specifications/llama-ideas-inclusion-spec.md`
-- **Phase Reports:** `docs/phase3-progress.md`, `docs/phase4-progress.md`
-
-## Dependencies
-
-**Runtime:**
-- `trueno` - SIMD-accelerated tensor operations (always use latest from crates.io)
-
-**Optional (for observability):**
-- `renacer` - Syscall tracing and profiling (`cargo install renacer`)
-- `Docker` - Jaeger backend for OTLP tracing
-- `jq` - JSON parsing in analysis script (`sudo apt-get install jq`)
-
-**Development:**
-- `cargo-fuzz` - Fuzz testing (`cargo install cargo-fuzz`)
-- `libstdc++-12-dev` - C++ stdlib for libfuzzer (Ubuntu: `sudo apt-get install libstdc++-12-dev`)
-
-## Contributing
-
-All work follows **EXTREME TDD** methodology with tiered quality gates:
-
-1. Write failing test (RED)
-2. Make it pass (GREEN)
-3. Refactor (REFACTOR)
-4. Run `make tier1` before every commit (<5s)
-5. Run `make tier2` before every push (<30s)
-6. Run `make tier3` before every PR (<5m)
-
-See `docs/development/` for detailed contribution guidelines.
+- [API Reference](https://docs.rs/entrenar) - Complete API documentation
+- [Training Loop Guide](docs/book/src/training-loop.md) - Callbacks and monitoring
+- [Monitoring Spec](docs/specifications/training-monitoring-spec.md) - Real-time monitoring design
+- [Roadmap](roadmap.yaml) - Development progress (52/52 tickets complete)
 
 ## License
 
@@ -596,8 +319,8 @@ MIT
 
 ---
 
-**Built with EXTREME TDD** 🦀⚡
+<div align="center">
 
-Following Certeza (chaos testing), PMAT (TDG tracking), and renacer (observability) methodologies.
+**Built with Extreme TDD** | Part of the [PAIML Stack](https://github.com/paiml)
 
-**Status:** ✅ **PRODUCTION READY - A+ Quality Grade (99.4/100)**
+</div>

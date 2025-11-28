@@ -95,6 +95,7 @@
 # Training Loops
 
 - [Trainer API](./training/trainer-api.md)
+- [Callback System](./training/callback-system.md)
 - [Train Config](./training/train-config.md)
 - [Basic Training Loop](./training/basic-loop.md)
 - [Batching and Data Loading](./training/batching.md)
