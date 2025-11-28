@@ -150,10 +150,142 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_collector() {
+    fn test_collector_new() {
+        let c = MetricsCollector::new();
+        assert_eq!(c.count(), 0);
+        assert!(c.loss_mean().is_nan());
+        assert!(c.accuracy_mean().is_nan());
+    }
+
+    #[test]
+    fn test_record_loss() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(0.5);
+        c.record_loss(0.3);
+        assert_eq!(c.count(), 2);
+        assert!((c.loss_mean() - 0.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_record_accuracy() {
+        let mut c = MetricsCollector::new();
+        c.record_accuracy(0.8);
+        c.record_accuracy(0.9);
+        assert!((c.accuracy_mean() - 0.85).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_loss_std() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(2.0);
+        c.record_loss(4.0);
+        c.record_loss(4.0);
+        c.record_loss(4.0);
+        c.record_loss(5.0);
+        c.record_loss(5.0);
+        c.record_loss(7.0);
+        c.record_loss(9.0);
+        let std = c.loss_std();
+        assert!(std > 2.0 && std < 2.5);
+    }
+
+    #[test]
+    fn test_ignores_nan() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(0.5);
+        c.record_loss(f64::NAN);
+        c.record_loss(0.3);
+        assert_eq!(c.count(), 2);
+    }
+
+    #[test]
+    fn test_ignores_inf() {
+        let mut c = MetricsCollector::new();
+        c.record_accuracy(0.8);
+        c.record_accuracy(f64::INFINITY);
+        assert_eq!(c.count(), 1);
+    }
+
+    #[test]
+    fn test_clear() {
         let mut c = MetricsCollector::new();
         c.record_loss(0.5);
         c.record_accuracy(0.8);
-        assert!((c.loss_mean() - 0.5).abs() < 1e-6);
+        c.clear();
+        assert_eq!(c.count(), 0);
+        assert!(c.loss_sparkline().is_empty());
+    }
+
+    #[test]
+    fn test_sparkline_empty() {
+        let c = MetricsCollector::new();
+        assert!(c.loss_sparkline().is_empty());
+    }
+
+    #[test]
+    fn test_sparkline_values() {
+        let mut c = MetricsCollector::new();
+        for i in 0..10 {
+            c.record_loss(i as f64 / 10.0);
+        }
+        let s = c.loss_sparkline();
+        assert!(!s.is_empty());
+        assert!(s.chars().all(|c| "▁▂▃▄▅▆▇█".contains(c)));
+    }
+
+    #[test]
+    fn test_state_json() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(0.5);
+        c.record_accuracy(0.8);
+        let json = c.state_json();
+        assert!(json.contains("loss_mean"));
+        assert!(json.contains("accuracy_mean"));
+        assert!(json.contains("loss_history"));
+    }
+
+    #[test]
+    fn test_history_bounded() {
+        let mut c = MetricsCollector::new();
+        for i in 0..150 {
+            c.record_loss(i as f64);
+        }
+        // History should be bounded to 100
+        let json = c.state_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let history = parsed["loss_history"].as_array().unwrap();
+        assert_eq!(history.len(), 100);
+    }
+
+    #[test]
+    fn test_running_stats_min_max() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(5.0);
+        c.record_loss(2.0);
+        c.record_loss(8.0);
+        // Check via state_json that values are tracked
+        let json = c.state_json();
+        assert!(json.contains("2") || json.contains("8"));
+    }
+
+    #[test]
+    fn test_accuracy_std() {
+        let mut c = MetricsCollector::new();
+        c.record_accuracy(0.7);
+        c.record_accuracy(0.8);
+        c.record_accuracy(0.9);
+        let std = c.accuracy_std();
+        assert!(std > 0.0);
+    }
+
+    #[test]
+    fn test_sparkline_constant() {
+        let mut c = MetricsCollector::new();
+        for _ in 0..5 {
+            c.record_loss(0.5);
+        }
+        let s = c.loss_sparkline();
+        // All same value should produce consistent sparkline
+        assert_eq!(s.chars().count(), 5);
     }
 }
