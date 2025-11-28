@@ -36,6 +36,7 @@ mod curriculum;
 mod loss;
 mod metrics;
 mod trainer;
+pub mod tui;
 
 #[cfg(test)]
 mod tests;
@@ -57,3 +58,9 @@ pub use loss::{
 };
 pub use metrics::{Accuracy, F1Score, Metric, Precision, R2Score, Recall, MAE, RMSE};
 pub use trainer::{TrainResult, Trainer};
+pub use tui::{
+    format_duration, sparkline, sparkline_range, Alert, AlertLevel, AndonSystem, DashboardLayout,
+    FeatureImportanceChart, GradientFlowHeatmap, KalmanEta, LossCurveDisplay, MetricsBuffer,
+    MonitorConfig, ProgressBar, ReferenceCurve, RefreshPolicy, SeriesSummaryTuple,
+    TerminalCapabilities, TerminalMode, TerminalMonitorCallback, SPARK_CHARS,
+};
