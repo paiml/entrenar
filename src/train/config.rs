@@ -19,6 +19,13 @@ pub struct TrainConfig {
 
     /// Use mixed precision training
     pub mixed_precision: bool,
+
+    /// Gradient accumulation steps (1 = no accumulation)
+    ///
+    /// Simulates larger batch sizes by accumulating gradients over
+    /// multiple mini-batches before performing an optimizer step.
+    /// Effective batch size = batch_size * gradient_accumulation_steps
+    pub gradient_accumulation_steps: usize,
 }
 
 impl Default for TrainConfig {
@@ -29,6 +36,7 @@ impl Default for TrainConfig {
             save_interval: None,
             checkpoint_dir: None,
             mixed_precision: false,
+            gradient_accumulation_steps: 1,
         }
     }
 }
@@ -61,6 +69,16 @@ impl TrainConfig {
     pub fn with_checkpoints(mut self, interval: usize, dir: PathBuf) -> Self {
         self.save_interval = Some(interval);
         self.checkpoint_dir = Some(dir);
+        self
+    }
+
+    /// Set gradient accumulation steps
+    ///
+    /// Simulates larger batch sizes by accumulating gradients over
+    /// multiple mini-batches before performing an optimizer step.
+    /// Effective batch size = batch_size * gradient_accumulation_steps
+    pub fn with_gradient_accumulation(mut self, steps: usize) -> Self {
+        self.gradient_accumulation_steps = steps.max(1);
         self
     }
 }
@@ -154,6 +172,7 @@ mod tests {
         assert_eq!(config.max_grad_norm, Some(1.0));
         assert_eq!(config.log_interval, 10);
         assert!(config.save_interval.is_none());
+        assert_eq!(config.gradient_accumulation_steps, 1);
     }
 
     #[test]
@@ -202,5 +221,18 @@ mod tests {
         tracker.record_epoch(0.6, 0.001);
 
         assert!(tracker.is_improving(2));
+    }
+
+    #[test]
+    fn test_gradient_accumulation_builder() {
+        let config = TrainConfig::new().with_gradient_accumulation(4);
+        assert_eq!(config.gradient_accumulation_steps, 4);
+    }
+
+    #[test]
+    fn test_gradient_accumulation_min_value() {
+        // Should clamp to minimum of 1
+        let config = TrainConfig::new().with_gradient_accumulation(0);
+        assert_eq!(config.gradient_accumulation_steps, 1);
     }
 }

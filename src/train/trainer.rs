@@ -196,6 +196,39 @@ impl Trainer {
         loss_val
     }
 
+    /// Perform forward and backward pass without optimizer step (for gradient accumulation)
+    ///
+    /// This is used internally for gradient accumulation. Gradients accumulate
+    /// across calls until zero_grad is called.
+    fn accumulate_gradients<F>(&mut self, batch: &Batch, forward_fn: F) -> f32
+    where
+        F: FnOnce(&Tensor) -> Tensor,
+    {
+        assert!(
+            self.loss_fn.is_some(),
+            "Loss function must be set before training"
+        );
+
+        // Forward pass
+        let predictions = forward_fn(&batch.inputs);
+
+        // Compute loss
+        let loss = self
+            .loss_fn
+            .as_ref()
+            .unwrap()
+            .forward(&predictions, &batch.targets);
+
+        let loss_val = loss.data()[0];
+
+        // Backward pass (gradients accumulate)
+        if let Some(backward_op) = loss.backward_op() {
+            backward_op.backward();
+        }
+
+        loss_val
+    }
+
     /// Train for one epoch
     ///
     /// # Arguments
@@ -317,9 +350,10 @@ impl Trainer {
             let batches: Vec<Batch> = batch_fn().into_iter().collect();
             let steps_per_epoch = batches.len();
 
-            // Train epoch with step callbacks
+            // Train epoch with step callbacks and gradient accumulation
             let mut total_loss = 0.0;
             let mut num_batches = 0;
+            let accum_steps = self.config.gradient_accumulation_steps.max(1);
 
             for (step, batch) in batches.into_iter().enumerate() {
                 // Fire step_begin
@@ -330,10 +364,30 @@ impl Trainer {
                     break;
                 }
 
-                // Train step
-                let loss = self.train_step(&batch, &forward_fn);
+                // Zero gradients at start of accumulation window
+                if step % accum_steps == 0 {
+                    self.optimizer.zero_grad(&mut self.params);
+                }
+
+                // Accumulate gradients
+                let loss = self.accumulate_gradients(&batch, &forward_fn);
                 total_loss += loss;
                 num_batches += 1;
+
+                // Optimizer step at end of accumulation window (or last batch)
+                let is_accum_boundary = (step + 1) % accum_steps == 0;
+                let is_last_batch = step + 1 == steps_per_epoch;
+                if is_accum_boundary || is_last_batch {
+                    // Gradient clipping
+                    if let Some(max_norm) = self.config.max_grad_norm {
+                        clip_grad_norm(&mut self.params, max_norm);
+                    }
+                    // Optimizer step
+                    self.optimizer.step(&mut self.params);
+                }
+
+                // Update metrics
+                self.metrics.increment_step();
 
                 // Fire step_end
                 let ctx = self.build_context(epoch, max_epochs, step, steps_per_epoch, loss, None);
@@ -578,5 +632,89 @@ mod tests {
 
         // Verify callback was added
         assert!(!trainer.callbacks().is_empty());
+    }
+
+    #[test]
+    fn test_gradient_accumulation() {
+        let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::new()
+            .with_log_interval(100)
+            .with_gradient_accumulation(2);
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+
+        // Create 4 batches - with accum_steps=2, we get 2 optimizer steps per epoch
+        let batches = vec![
+            Batch::new(
+                Tensor::from_vec(vec![1.0, 2.0], false),
+                Tensor::from_vec(vec![2.0, 3.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0, 2.0], false),
+                Tensor::from_vec(vec![2.0, 3.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0, 2.0], false),
+                Tensor::from_vec(vec![2.0, 3.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0, 2.0], false),
+                Tensor::from_vec(vec![2.0, 3.0], false),
+            ),
+        ];
+
+        let result = trainer.train(1, || batches.clone(), |x| x.clone());
+
+        // Should complete successfully
+        assert!(!result.stopped_early);
+        assert_eq!(result.final_epoch, 1);
+        assert!(result.final_loss.is_finite());
+        // 4 batches = 4 steps
+        assert_eq!(trainer.metrics.steps, 4);
+    }
+
+    #[test]
+    fn test_gradient_accumulation_partial_window() {
+        let params = vec![Tensor::from_vec(vec![1.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::new()
+            .with_log_interval(100)
+            .with_gradient_accumulation(3);
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+
+        // Create 5 batches with accum_steps=3
+        // Optimizer steps at: batch 2 (0,1,2), batch 4 (3,4 - partial)
+        let batches = vec![
+            Batch::new(
+                Tensor::from_vec(vec![1.0], false),
+                Tensor::from_vec(vec![2.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0], false),
+                Tensor::from_vec(vec![2.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0], false),
+                Tensor::from_vec(vec![2.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0], false),
+                Tensor::from_vec(vec![2.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0], false),
+                Tensor::from_vec(vec![2.0], false),
+            ),
+        ];
+
+        let result = trainer.train(1, || batches.clone(), |x| x.clone());
+
+        assert!(!result.stopped_early);
+        assert_eq!(trainer.metrics.steps, 5);
+        assert!(result.final_loss.is_finite());
     }
 }
