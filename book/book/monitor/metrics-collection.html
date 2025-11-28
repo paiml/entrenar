@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Metrics Collection - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/metrics-collection.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,73 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="metrics-collection"><a class="header" href="#metrics-collection">Metrics Collection</a></h1>
+<p>The <code>MetricsCollector</code> uses Welford's algorithm for numerically stable running statistics.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{MetricsCollector, Metric};
+
+let mut collector = MetricsCollector::new();
+
+// Record individual metrics
+collector.record(Metric::Loss, 0.5);
+collector.record(Metric::Accuracy, 0.85);
+
+// Record batch of metrics
+collector.record_batch(&amp;[
+    (Metric::Loss, 0.45),
+    (Metric::Accuracy, 0.87),
+    (Metric::GradientNorm, 1.2),
+]);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="available-metrics"><a class="header" href="#available-metrics">Available Metrics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>Metric::Loss</code></td><td>Training loss</td></tr>
+<tr><td><code>Metric::Accuracy</code></td><td>Model accuracy</td></tr>
+<tr><td><code>Metric::LearningRate</code></td><td>Current LR</td></tr>
+<tr><td><code>Metric::GradientNorm</code></td><td>Gradient L2 norm</td></tr>
+<tr><td><code>Metric::Epoch</code></td><td>Current epoch</td></tr>
+<tr><td><code>Metric::Batch</code></td><td>Current batch</td></tr>
+<tr><td><code>Metric::Custom(String)</code></td><td>User-defined</td></tr>
+</tbody></table>
+</div>
+<h2 id="getting-statistics"><a class="header" href="#getting-statistics">Getting Statistics</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let summary = collector.summary();
+
+if let Some(loss_stats) = summary.get(&amp;Metric::Loss) {
+    println!("Loss - mean: {:.4}, std: {:.4}", loss_stats.mean, loss_stats.std);
+    println!("       min: {:.4}, max: {:.4}", loss_stats.min, loss_stats.max);
+
+    if loss_stats.has_nan {
+        println!("WARNING: NaN values detected!");
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="welfords-algorithm"><a class="header" href="#welfords-algorithm">Welford's Algorithm</a></h2>
+<p>The collector uses Welford's online algorithm for O(1) updates:</p>
+<pre><code>mean_new = mean_old + (x - mean_old) / n
+M2_new = M2_old + (x - mean_old) * (x - mean_new)
+variance = M2 / (n - 1)
+</code></pre>
+<p>This provides:</p>
+<ul>
+<li>Numerical stability for large datasets</li>
+<li>Constant memory usage</li>
+<li>O(1) per update</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../monitor/overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/dashboard.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +234,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../monitor/overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/dashboard.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

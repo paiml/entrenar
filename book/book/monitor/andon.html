@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Andon Alerting (Jidoka) - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/andon.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,77 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="andon-alerting-jidoka"><a class="header" href="#andon-alerting-jidoka">Andon Alerting (Jidoka)</a></h1>
+<p>Toyota Way Jidoka (自働化) principle: Stop-the-line on critical failures.</p>
+<h2 id="concept"><a class="header" href="#concept">Concept</a></h2>
+<p>In Toyota manufacturing, the Andon cord allows any worker to stop the production line when they detect a defect. In training, this translates to automatic stopping on critical issues.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{AndonSystem, AlertLevel, AndonConfig};
+
+let config = AndonConfig {
+    stop_on_nan: true,
+    stop_on_inf: true,
+    loss_spike_threshold: 10.0,
+};
+
+let mut andon = AndonSystem::with_config(config);
+
+// During training
+if loss.is_nan() {
+    andon.alert(AlertLevel::Critical, "NaN loss detected");
+}
+
+if andon.should_stop() {
+    println!("Training stopped by Andon system");
+    break;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="alert-levels"><a class="header" href="#alert-levels">Alert Levels</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Level</th><th>Description</th><th>Default Action</th></tr></thead><tbody>
+<tr><td><code>Info</code></td><td>Informational</td><td>Log only</td></tr>
+<tr><td><code>Warning</code></td><td>Potential issue</td><td>Log + notify</td></tr>
+<tr><td><code>Error</code></td><td>Serious issue</td><td>Log + pause</td></tr>
+<tr><td><code>Critical</code></td><td>Training failure</td><td>Stop immediately</td></tr>
+</tbody></table>
+</div>
+<h2 id="automatic-detection"><a class="header" href="#automatic-detection">Automatic Detection</a></h2>
+<p>The AndonSystem automatically detects:</p>
+<ul>
+<li><strong>NaN values</strong> in loss or gradients</li>
+<li><strong>Infinity values</strong> in loss or gradients</li>
+<li><strong>Loss spikes</strong> (sudden large increases)</li>
+<li><strong>Gradient explosion</strong> (norm &gt; threshold)</li>
+</ul>
+<h2 id="integration-with-training-loop"><a class="header" href="#integration-with-training-loop">Integration with Training Loop</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut andon = AndonSystem::new();
+
+for epoch in 0..max_epochs {
+    let loss = train_step(&amp;model);
+
+    // Check for issues
+    andon.check_loss(loss);
+    andon.check_gradients(&amp;gradients);
+
+    if andon.should_stop() {
+        println!("Alerts: {:?}", andon.get_alerts());
+        break;
+    }
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../monitor/drift-detection.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/lineage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +238,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../monitor/drift-detection.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/lineage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

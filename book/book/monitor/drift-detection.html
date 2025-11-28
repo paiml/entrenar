@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Drift Detection - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/drift-detection.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,70 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="drift-detection"><a class="header" href="#drift-detection">Drift Detection</a></h1>
+<p>Sliding window anomaly detection using z-score analysis.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{DriftDetector, DriftStatus};
+
+let mut detector = DriftDetector::new(100); // 100-value window
+
+// During training
+for value in metrics {
+    match detector.check(value) {
+        DriftStatus::Normal =&gt; {},
+        DriftStatus::Warning(z) =&gt; println!("Warning: z-score = {:.2}", z),
+        DriftStatus::Drift(z) =&gt; {
+            println!("DRIFT DETECTED: z-score = {:.2}", z);
+            // Take corrective action
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="severity-levels"><a class="header" href="#severity-levels">Severity Levels</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Z-Score</th><th>Severity</th><th>Action</th></tr></thead><tbody>
+<tr><td>&lt; 3.0</td><td>Normal</td><td>Continue</td></tr>
+<tr><td>3.0 - 4.0</td><td>Warning</td><td>Log and monitor</td></tr>
+<tr><td>4.0 - 5.0</td><td>High</td><td>Alert</td></tr>
+<tr><td>&gt; 5.0</td><td>Critical</td><td>Stop training</td></tr>
+</tbody></table>
+</div>
+<h2 id="sliding-window-baseline"><a class="header" href="#sliding-window-baseline">Sliding Window Baseline</a></h2>
+<p>The detector maintains a sliding window for adaptive baselines:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::SlidingWindowBaseline;
+
+let mut baseline = SlidingWindowBaseline::new(100);
+
+// Add values
+baseline.update(0.5);
+baseline.update(0.48);
+
+// Check if value is anomalous
+if let Some(anomaly) = baseline.detect_anomaly(0.9, 3.0) {
+    println!("Anomaly: {:?}", anomaly.severity);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="z-score-calculation"><a class="header" href="#z-score-calculation">Z-Score Calculation</a></h2>
+<pre><code>z = (x - μ) / σ
+
+where:
+  x = current value
+  μ = window mean
+  σ = window standard deviation
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../monitor/dashboard.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/andon.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +231,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../monitor/dashboard.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/andon.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

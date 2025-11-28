@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Overview - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/overview.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,92 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="real-time-training-monitoring"><a class="header" href="#real-time-training-monitoring">Real-Time Training Monitoring</a></h1>
+<p>The monitor module provides comprehensive real-time visibility into training runs, implementing Toyota Way principles for quality assurance.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Component</th><th>Purpose</th><th>Toyota Way Principle</th></tr></thead><tbody>
+<tr><td>MetricsCollector</td><td>Collect training metrics</td><td>Genchi Genbutsu (現地現物)</td></tr>
+<tr><td>Dashboard</td><td>ASCII terminal visualization</td><td>Visual Management</td></tr>
+<tr><td>DriftDetector</td><td>Anomaly detection</td><td>Jidoka (自働化)</td></tr>
+<tr><td>AndonSystem</td><td>Alert management</td><td>Andon (行灯)</td></tr>
+<tr><td>ModelLineage</td><td>Version tracking</td><td>Kaizen (改善)</td></tr>
+<tr><td>HanseiAnalyzer</td><td>Post-training reports</td><td>Hansei (反省)</td></tr>
+</tbody></table>
+</div>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{MetricsCollector, Metric, Dashboard, HanseiAnalyzer};
+
+// Create collector
+let mut collector = MetricsCollector::new();
+
+// During training loop
+for epoch in 0..100 {
+    let loss = train_epoch(&amp;model, &amp;data);
+    let accuracy = evaluate(&amp;model, &amp;val_data);
+
+    collector.record(Metric::Loss, loss);
+    collector.record(Metric::Accuracy, accuracy);
+    collector.record(Metric::Epoch, epoch as f64);
+}
+
+// Generate post-training report
+let analyzer = HanseiAnalyzer::new();
+let report = analyzer.analyze("my-training-run", &amp;collector, duration_secs);
+println!("{}", analyzer.format_report(&amp;report));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    Training Loop                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │
+│  │ Forward │→│ Backward │→│ Optimize │→│ Metrics │        │
+│  └─────────┘  └─────────┘  └─────────┘  └────┬────┘        │
+└───────────────────────────────────────────────┼─────────────┘
+                                                │
+                                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  MetricsCollector                            │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Welford's Algorithm: O(1) per update                  │  │
+│  │ - Running mean, variance, min, max                    │  │
+│  │ - NaN/Inf detection                                   │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+         │              │              │              │
+         ▼              ▼              ▼              ▼
+    ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
+    │Dashboard│   │  Drift  │   │  Andon  │   │ Hansei  │
+    │ (ASCII) │   │Detector │   │ System  │   │Analyzer │
+    └─────────┘   └─────────┘   └─────────┘   └─────────┘
+</code></pre>
+<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
+<p>The monitor module is designed for minimal overhead:</p>
+<div class="table-wrapper"><table><thead><tr><th>Operation</th><th>Performance</th><th>Complexity</th></tr></thead><tbody>
+<tr><td>Record metric</td><td>&lt; 1μs</td><td>O(1)</td></tr>
+<tr><td>Get summary</td><td>&lt; 100μs</td><td>O(metrics)</td></tr>
+<tr><td>Dashboard render</td><td>&lt; 100ms</td><td>O(history)</td></tr>
+<tr><td>Drift detection</td><td>&lt; 50μs</td><td>O(1)</td></tr>
+</tbody></table>
+</div>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<ul>
+<li><a href="./metrics-collection.html">Metrics Collection</a> - Recording training metrics</li>
+<li><a href="./dashboard.html">Terminal Dashboard</a> - Live visualization</li>
+<li><a href="./drift-detection.html">Drift Detection</a> - Anomaly detection</li>
+<li><a href="./andon.html">Andon Alerting</a> - Stop-the-line on critical failures</li>
+<li><a href="./hansei.html">Hansei Reports</a> - Post-training analysis</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../training/early-stopping.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/metrics-collection.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +253,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../training/early-stopping.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/metrics-collection.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

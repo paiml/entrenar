@@ -3262,6 +3262,504 @@ Student (BERT-tiny, 14M params):
 <div style="break-before: page; page-break-before: always;"></div><h1 id="validation-and-testing"><a class="header" href="#validation-and-testing">Validation and Testing</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="checkpointing-1"><a class="header" href="#checkpointing-1">Checkpointing</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="real-time-training-monitoring"><a class="header" href="#real-time-training-monitoring">Real-Time Training Monitoring</a></h1>
+<p>The monitor module provides comprehensive real-time visibility into training runs, implementing Toyota Way principles for quality assurance.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Component</th><th>Purpose</th><th>Toyota Way Principle</th></tr></thead><tbody>
+<tr><td>MetricsCollector</td><td>Collect training metrics</td><td>Genchi Genbutsu (現地現物)</td></tr>
+<tr><td>Dashboard</td><td>ASCII terminal visualization</td><td>Visual Management</td></tr>
+<tr><td>DriftDetector</td><td>Anomaly detection</td><td>Jidoka (自働化)</td></tr>
+<tr><td>AndonSystem</td><td>Alert management</td><td>Andon (行灯)</td></tr>
+<tr><td>ModelLineage</td><td>Version tracking</td><td>Kaizen (改善)</td></tr>
+<tr><td>HanseiAnalyzer</td><td>Post-training reports</td><td>Hansei (反省)</td></tr>
+</tbody></table>
+</div>
+<h2 id="quick-start-1"><a class="header" href="#quick-start-1">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{MetricsCollector, Metric, Dashboard, HanseiAnalyzer};
+
+// Create collector
+let mut collector = MetricsCollector::new();
+
+// During training loop
+for epoch in 0..100 {
+    let loss = train_epoch(&amp;model, &amp;data);
+    let accuracy = evaluate(&amp;model, &amp;val_data);
+
+    collector.record(Metric::Loss, loss);
+    collector.record(Metric::Accuracy, accuracy);
+    collector.record(Metric::Epoch, epoch as f64);
+}
+
+// Generate post-training report
+let analyzer = HanseiAnalyzer::new();
+let report = analyzer.analyze("my-training-run", &amp;collector, duration_secs);
+println!("{}", analyzer.format_report(&amp;report));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="architecture-1"><a class="header" href="#architecture-1">Architecture</a></h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    Training Loop                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │
+│  │ Forward │→│ Backward │→│ Optimize │→│ Metrics │        │
+│  └─────────┘  └─────────┘  └─────────┘  └────┬────┘        │
+└───────────────────────────────────────────────┼─────────────┘
+                                                │
+                                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  MetricsCollector                            │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Welford's Algorithm: O(1) per update                  │  │
+│  │ - Running mean, variance, min, max                    │  │
+│  │ - NaN/Inf detection                                   │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+         │              │              │              │
+         ▼              ▼              ▼              ▼
+    ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐
+    │Dashboard│   │  Drift  │   │  Andon  │   │ Hansei  │
+    │ (ASCII) │   │Detector │   │ System  │   │Analyzer │
+    └─────────┘   └─────────┘   └─────────┘   └─────────┘
+</code></pre>
+<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
+<p>The monitor module is designed for minimal overhead:</p>
+<div class="table-wrapper"><table><thead><tr><th>Operation</th><th>Performance</th><th>Complexity</th></tr></thead><tbody>
+<tr><td>Record metric</td><td>&lt; 1μs</td><td>O(1)</td></tr>
+<tr><td>Get summary</td><td>&lt; 100μs</td><td>O(metrics)</td></tr>
+<tr><td>Dashboard render</td><td>&lt; 100ms</td><td>O(history)</td></tr>
+<tr><td>Drift detection</td><td>&lt; 50μs</td><td>O(1)</td></tr>
+</tbody></table>
+</div>
+<h2 id="next-steps-4"><a class="header" href="#next-steps-4">Next Steps</a></h2>
+<ul>
+<li><a href="monitor/./metrics-collection.html">Metrics Collection</a> - Recording training metrics</li>
+<li><a href="monitor/./dashboard.html">Terminal Dashboard</a> - Live visualization</li>
+<li><a href="monitor/./drift-detection.html">Drift Detection</a> - Anomaly detection</li>
+<li><a href="monitor/./andon.html">Andon Alerting</a> - Stop-the-line on critical failures</li>
+<li><a href="monitor/./hansei.html">Hansei Reports</a> - Post-training analysis</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="metrics-collection"><a class="header" href="#metrics-collection">Metrics Collection</a></h1>
+<p>The <code>MetricsCollector</code> uses Welford's algorithm for numerically stable running statistics.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{MetricsCollector, Metric};
+
+let mut collector = MetricsCollector::new();
+
+// Record individual metrics
+collector.record(Metric::Loss, 0.5);
+collector.record(Metric::Accuracy, 0.85);
+
+// Record batch of metrics
+collector.record_batch(&amp;[
+    (Metric::Loss, 0.45),
+    (Metric::Accuracy, 0.87),
+    (Metric::GradientNorm, 1.2),
+]);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="available-metrics"><a class="header" href="#available-metrics">Available Metrics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>Metric::Loss</code></td><td>Training loss</td></tr>
+<tr><td><code>Metric::Accuracy</code></td><td>Model accuracy</td></tr>
+<tr><td><code>Metric::LearningRate</code></td><td>Current LR</td></tr>
+<tr><td><code>Metric::GradientNorm</code></td><td>Gradient L2 norm</td></tr>
+<tr><td><code>Metric::Epoch</code></td><td>Current epoch</td></tr>
+<tr><td><code>Metric::Batch</code></td><td>Current batch</td></tr>
+<tr><td><code>Metric::Custom(String)</code></td><td>User-defined</td></tr>
+</tbody></table>
+</div>
+<h2 id="getting-statistics"><a class="header" href="#getting-statistics">Getting Statistics</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let summary = collector.summary();
+
+if let Some(loss_stats) = summary.get(&amp;Metric::Loss) {
+    println!("Loss - mean: {:.4}, std: {:.4}", loss_stats.mean, loss_stats.std);
+    println!("       min: {:.4}, max: {:.4}", loss_stats.min, loss_stats.max);
+
+    if loss_stats.has_nan {
+        println!("WARNING: NaN values detected!");
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="welfords-algorithm"><a class="header" href="#welfords-algorithm">Welford's Algorithm</a></h2>
+<p>The collector uses Welford's online algorithm for O(1) updates:</p>
+<pre><code>mean_new = mean_old + (x - mean_old) / n
+M2_new = M2_old + (x - mean_old) * (x - mean_new)
+variance = M2 / (n - 1)
+</code></pre>
+<p>This provides:</p>
+<ul>
+<li>Numerical stability for large datasets</li>
+<li>Constant memory usage</li>
+<li>O(1) per update</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="terminal-dashboard"><a class="header" href="#terminal-dashboard">Terminal Dashboard</a></h1>
+<p>ASCII terminal dashboard for real-time training visualization.</p>
+<h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{Dashboard, MetricsCollector, Metric};
+
+let mut collector = MetricsCollector::new();
+let mut dashboard = Dashboard::new();
+
+// During training
+for epoch in 0..100 {
+    collector.record(Metric::Loss, loss);
+    collector.record(Metric::Accuracy, accuracy);
+
+    // Update and render
+    dashboard.update(collector.summary());
+    println!("{}", dashboard.render_ascii());
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="output-example"><a class="header" href="#output-example">Output Example</a></h2>
+<pre><code>═══════════════════════════════════════════════════════════════
+                    TRAINING DASHBOARD
+═══════════════════════════════════════════════════════════════
+
+Loss:     0.1234  [▁▂▃▄▅▆▇█▇▆▅▄▃▂▁]  ↓ Improving
+Accuracy: 0.9567  [▁▁▂▃▄▅▆▇▇▇▇▇▇▇█]  ↑ Improving
+
+Statistics:
+  Loss     - mean: 0.3421, std: 0.1234, min: 0.1234, max: 0.8901
+  Accuracy - mean: 0.8234, std: 0.0567, min: 0.5000, max: 0.9567
+
+═══════════════════════════════════════════════════════════════
+</code></pre>
+<h2 id="sparklines"><a class="header" href="#sparklines">Sparklines</a></h2>
+<p>The dashboard uses Unicode sparkline characters to show metric history:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let sparkline = dashboard.sparkline(&amp;Metric::Loss);
+// Returns: "▁▂▃▄▅▆▇█▇▆▅▄▃▂▁"
+<span class="boring">}</span></code></pre></pre>
+<p>Characters map values to 8 levels: <code>▁▂▃▄▅▆▇█</code></p>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::DashboardConfig;
+
+let config = DashboardConfig {
+    width: 80,
+    height: 24,
+    refresh_ms: 1000,
+};
+
+let dashboard = Dashboard::with_config(config);
+<span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="drift-detection"><a class="header" href="#drift-detection">Drift Detection</a></h1>
+<p>Sliding window anomaly detection using z-score analysis.</p>
+<h2 id="usage-2"><a class="header" href="#usage-2">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{DriftDetector, DriftStatus};
+
+let mut detector = DriftDetector::new(100); // 100-value window
+
+// During training
+for value in metrics {
+    match detector.check(value) {
+        DriftStatus::Normal =&gt; {},
+        DriftStatus::Warning(z) =&gt; println!("Warning: z-score = {:.2}", z),
+        DriftStatus::Drift(z) =&gt; {
+            println!("DRIFT DETECTED: z-score = {:.2}", z);
+            // Take corrective action
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="severity-levels"><a class="header" href="#severity-levels">Severity Levels</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Z-Score</th><th>Severity</th><th>Action</th></tr></thead><tbody>
+<tr><td>&lt; 3.0</td><td>Normal</td><td>Continue</td></tr>
+<tr><td>3.0 - 4.0</td><td>Warning</td><td>Log and monitor</td></tr>
+<tr><td>4.0 - 5.0</td><td>High</td><td>Alert</td></tr>
+<tr><td>&gt; 5.0</td><td>Critical</td><td>Stop training</td></tr>
+</tbody></table>
+</div>
+<h2 id="sliding-window-baseline"><a class="header" href="#sliding-window-baseline">Sliding Window Baseline</a></h2>
+<p>The detector maintains a sliding window for adaptive baselines:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::SlidingWindowBaseline;
+
+let mut baseline = SlidingWindowBaseline::new(100);
+
+// Add values
+baseline.update(0.5);
+baseline.update(0.48);
+
+// Check if value is anomalous
+if let Some(anomaly) = baseline.detect_anomaly(0.9, 3.0) {
+    println!("Anomaly: {:?}", anomaly.severity);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="z-score-calculation"><a class="header" href="#z-score-calculation">Z-Score Calculation</a></h2>
+<pre><code>z = (x - μ) / σ
+
+where:
+  x = current value
+  μ = window mean
+  σ = window standard deviation
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="andon-alerting-jidoka"><a class="header" href="#andon-alerting-jidoka">Andon Alerting (Jidoka)</a></h1>
+<p>Toyota Way Jidoka (自働化) principle: Stop-the-line on critical failures.</p>
+<h2 id="concept"><a class="header" href="#concept">Concept</a></h2>
+<p>In Toyota manufacturing, the Andon cord allows any worker to stop the production line when they detect a defect. In training, this translates to automatic stopping on critical issues.</p>
+<h2 id="usage-3"><a class="header" href="#usage-3">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{AndonSystem, AlertLevel, AndonConfig};
+
+let config = AndonConfig {
+    stop_on_nan: true,
+    stop_on_inf: true,
+    loss_spike_threshold: 10.0,
+};
+
+let mut andon = AndonSystem::with_config(config);
+
+// During training
+if loss.is_nan() {
+    andon.alert(AlertLevel::Critical, "NaN loss detected");
+}
+
+if andon.should_stop() {
+    println!("Training stopped by Andon system");
+    break;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="alert-levels"><a class="header" href="#alert-levels">Alert Levels</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Level</th><th>Description</th><th>Default Action</th></tr></thead><tbody>
+<tr><td><code>Info</code></td><td>Informational</td><td>Log only</td></tr>
+<tr><td><code>Warning</code></td><td>Potential issue</td><td>Log + notify</td></tr>
+<tr><td><code>Error</code></td><td>Serious issue</td><td>Log + pause</td></tr>
+<tr><td><code>Critical</code></td><td>Training failure</td><td>Stop immediately</td></tr>
+</tbody></table>
+</div>
+<h2 id="automatic-detection"><a class="header" href="#automatic-detection">Automatic Detection</a></h2>
+<p>The AndonSystem automatically detects:</p>
+<ul>
+<li><strong>NaN values</strong> in loss or gradients</li>
+<li><strong>Infinity values</strong> in loss or gradients</li>
+<li><strong>Loss spikes</strong> (sudden large increases)</li>
+<li><strong>Gradient explosion</strong> (norm &gt; threshold)</li>
+</ul>
+<h2 id="integration-with-training-loop"><a class="header" href="#integration-with-training-loop">Integration with Training Loop</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut andon = AndonSystem::new();
+
+for epoch in 0..max_epochs {
+    let loss = train_step(&amp;model);
+
+    // Check for issues
+    andon.check_loss(loss);
+    andon.check_gradients(&amp;gradients);
+
+    if andon.should_stop() {
+        println!("Alerts: {:?}", andon.get_alerts());
+        break;
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="model-lineage"><a class="header" href="#model-lineage">Model Lineage</a></h1>
+<p>Track model versions, derivations, and identify regression sources.</p>
+<h2 id="usage-4"><a class="header" href="#usage-4">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{ModelLineage, ModelMetadata, ChangeType};
+
+let mut lineage = ModelLineage::new();
+
+// Register base model
+let base = ModelMetadata {
+    id: "llama-7b-base".to_string(),
+    version: "1.0.0".to_string(),
+    parent_id: None,
+    metrics: [("accuracy".to_string(), 0.75)].into(),
+    timestamp: std::time::SystemTime::now(),
+};
+lineage.register(base);
+
+// Register fine-tuned model
+let finetuned = ModelMetadata {
+    id: "llama-7b-lora".to_string(),
+    version: "1.1.0".to_string(),
+    parent_id: Some("llama-7b-base".to_string()),
+    metrics: [("accuracy".to_string(), 0.82)].into(),
+    timestamp: std::time::SystemTime::now(),
+};
+lineage.register(finetuned);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="change-types"><a class="header" href="#change-types">Change Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>FineTune</code></td><td>LoRA/QLoRA adaptation</td></tr>
+<tr><td><code>Merge</code></td><td>Model merging (TIES/DARE/SLERP)</td></tr>
+<tr><td><code>Quantize</code></td><td>Quantization (Q4_0, Q8_0)</td></tr>
+<tr><td><code>Distill</code></td><td>Knowledge distillation</td></tr>
+</tbody></table>
+</div>
+<h2 id="regression-analysis"><a class="header" href="#regression-analysis">Regression Analysis</a></h2>
+<p>Find the source of a regression:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// If new model performs worse
+if new_accuracy &lt; old_accuracy * 0.95 {
+    if let Some(source) = lineage.find_regression_source("llama-7b-v3") {
+        println!("Regression introduced in: {}", source.id);
+        println!("Change type: {:?}", source.change_type);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="lineage-visualization"><a class="header" href="#lineage-visualization">Lineage Visualization</a></h2>
+<pre><code>llama-7b-base (v1.0.0)
+├── llama-7b-lora (v1.1.0) [FineTune]
+│   └── llama-7b-lora-q4 (v1.1.1) [Quantize]
+└── llama-7b-merged (v1.2.0) [Merge]
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="export-formats"><a class="header" href="#export-formats">Export Formats</a></h1>
+<p>Export training metrics to various formats for external tools.</p>
+<h2 id="prometheus-format"><a class="header" href="#prometheus-format">Prometheus Format</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{MetricsExporter, ExportFormat, MetricsCollector};
+
+let collector = MetricsCollector::new();
+// ... record metrics ...
+
+let exporter = MetricsExporter::new();
+let prometheus = exporter.export(&amp;collector, ExportFormat::Prometheus);
+println!("{}", prometheus);
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code># HELP training_loss Training loss
+# TYPE training_loss gauge
+training_loss{run="default"} 0.1234
+
+# HELP training_accuracy Model accuracy
+# TYPE training_accuracy gauge
+training_accuracy{run="default"} 0.9567
+</code></pre>
+<h2 id="json-format"><a class="header" href="#json-format">JSON Format</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let json = exporter.export(&amp;collector, ExportFormat::Json);
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code class="language-json">{
+  "timestamp": "2024-11-28T12:00:00Z",
+  "metrics": {
+    "loss": {"mean": 0.1234, "std": 0.05, "min": 0.08, "max": 0.25},
+    "accuracy": {"mean": 0.95, "std": 0.02, "min": 0.90, "max": 0.98}
+  }
+}
+</code></pre>
+<h2 id="csv-format"><a class="header" href="#csv-format">CSV Format</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let csv = exporter.export(&amp;collector, ExportFormat::Csv);
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code class="language-csv">timestamp,metric,mean,std,min,max
+2024-11-28T12:00:00Z,loss,0.1234,0.05,0.08,0.25
+2024-11-28T12:00:00Z,accuracy,0.95,0.02,0.90,0.98
+</code></pre>
+<h2 id="integration-with-grafana"><a class="header" href="#integration-with-grafana">Integration with Grafana</a></h2>
+<ol>
+<li>Export Prometheus metrics to file or HTTP endpoint</li>
+<li>Configure Prometheus to scrape the endpoint</li>
+<li>Add Grafana dashboard for visualization</li>
+</ol>
+<pre><code class="language-yaml"># prometheus.yml
+scrape_configs:
+  - job_name: 'entrenar'
+    static_configs:
+      - targets: ['localhost:9090']
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="hansei-reports"><a class="header" href="#hansei-reports">Hansei Reports</a></h1>
+<p>Toyota Way Hansei (反省) principle: Reflection and continuous improvement through systematic post-training analysis.</p>
+<h2 id="usage-5"><a class="header" href="#usage-5">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{HanseiAnalyzer, MetricsCollector, Metric};
+
+let mut collector = MetricsCollector::new();
+
+// During training
+for epoch in 0..100 {
+    collector.record(Metric::Loss, loss);
+    collector.record(Metric::Accuracy, accuracy);
+    collector.record(Metric::GradientNorm, grad_norm);
+}
+
+// Generate report
+let analyzer = HanseiAnalyzer::new();
+let report = analyzer.analyze("my-training", &amp;collector, duration_secs);
+println!("{}", analyzer.format_report(&amp;report));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="report-output"><a class="header" href="#report-output">Report Output</a></h2>
+<pre><code>═══════════════════════════════════════════════════════════════
+                    HANSEI POST-TRAINING REPORT
+═══════════════════════════════════════════════════════════════
+
+Training ID: my-training
+Duration: 3600.00s
+Total Steps: 10000
+
+─── Metric Summaries ───────────────────────────────────────────
+
+Loss:
+  Mean: 0.123456  Std: 0.045678
+  Min: 0.089012   Max: 0.567890
+  Trend: ↑ Improving
+
+Accuracy:
+  Mean: 0.945678  Std: 0.023456
+  Min: 0.800000   Max: 0.980000
+  Trend: ↑ Improving
+
+─── Issues Detected ────────────────────────────────────────────
+
+[WARNING] Gradient Health
+  Possible vanishing gradients: mean norm = 1.23e-08
+  → Consider using residual connections or different activation functions
+
+─── Recommendations ────────────────────────────────────────────
+1. Training completed without critical issues.
+2. Consider hyperparameter search for learning rate and batch size.
+
+═══════════════════════════════════════════════════════════════
+</code></pre>
+<h2 id="issue-detection"><a class="header" href="#issue-detection">Issue Detection</a></h2>
+<p>The analyzer automatically detects:</p>
+<div class="table-wrapper"><table><thead><tr><th>Issue</th><th>Severity</th><th>Detection</th></tr></thead><tbody>
+<tr><td>NaN loss</td><td>Critical</td><td><code>has_nan</code> flag</td></tr>
+<tr><td>Inf loss</td><td>Critical</td><td><code>has_inf</code> flag</td></tr>
+<tr><td>Gradient explosion</td><td>Error</td><td>norm &gt; 100</td></tr>
+<tr><td>Vanishing gradients</td><td>Warning</td><td>mean norm &lt; 1e-7</td></tr>
+<tr><td>Loss increasing</td><td>Warning</td><td>trend analysis</td></tr>
+<tr><td>Low accuracy</td><td>Warning</td><td>final &lt; 50%</td></tr>
+</tbody></table>
+</div>
+<h2 id="trend-analysis"><a class="header" href="#trend-analysis">Trend Analysis</a></h2>
+<p>Trends are determined by comparing mean to midpoint:</p>
+<ul>
+<li><strong>Improving</strong>: Mean closer to optimal end (low for loss, high for accuracy)</li>
+<li><strong>Degrading</strong>: Mean closer to suboptimal end</li>
+<li><strong>Stable</strong>: Small range relative to std</li>
+<li><strong>Oscillating</strong>: High coefficient of variation (&gt; 0.5)</li>
+</ul>
+<h2 id="custom-thresholds"><a class="header" href="#custom-thresholds">Custom Thresholds</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut analyzer = HanseiAnalyzer::new();
+analyzer.gradient_explosion_threshold = 50.0;  // Default: 100.0
+analyzer.gradient_vanishing_threshold = 1e-8;  // Default: 1e-7
+analyzer.min_accuracy_improvement = 0.02;      // Default: 0.01
+<span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="model-io-overview"><a class="header" href="#model-io-overview">Model I/O Overview</a></h1>
 <p><strong>Model I/O</strong> provides save/load functionality for neural network models with support for multiple serialization formats.</p>
 <h2 id="the-problem-2"><a class="header" href="#the-problem-2">The Problem</a></h2>
@@ -3300,7 +3798,7 @@ let loaded = load_model("model.json")?;
 <tr><td><strong>GGUF</strong></td><td><code>.gguf</code></td><td>LLaMA-compatible format</td><td>⚠️ Placeholder (future Realizar integration)</td></tr>
 </tbody></table>
 </div>
-<h3 id="json-format"><a class="header" href="#json-format">JSON Format</a></h3>
+<h3 id="json-format-1"><a class="header" href="#json-format-1">JSON Format</a></h3>
 <p><strong>Compact</strong> (single-line):</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -3424,7 +3922,7 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 
     Ok(())
 }</code></pre></pre>
-<h2 id="next-steps-4"><a class="header" href="#next-steps-4">Next Steps</a></h2>
+<h2 id="next-steps-5"><a class="header" href="#next-steps-5">Next Steps</a></h2>
 <ul>
 <li><a href="io/./save-models.html">Save Models</a> - Detailed save functionality</li>
 <li><a href="io/./load-models.html">Load Models</a> - Loading and deserialization</li>
@@ -3477,7 +3975,7 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 <li>Best practices and usage guidelines</li>
 </ul>
 <p>Please check back later for complete content.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="json-format-1"><a class="header" href="#json-format-1">Json Format</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="json-format-2"><a class="header" href="#json-format-2">Json Format</a></h1>
 <p><strong>Content to be added.</strong></p>
 <p>This chapter will cover:</p>
 <ul>
@@ -3808,7 +4306,7 @@ fn main() {
         _ =&gt; {}
     }
 }</code></pre></pre>
-<h2 id="next-steps-5"><a class="header" href="#next-steps-5">Next Steps</a></h2>
+<h2 id="next-steps-6"><a class="header" href="#next-steps-6">Next Steps</a></h2>
 <ul>
 <li><a href="cli/../declarative/yaml-config.html">YAML Configuration Schema</a></li>
 <li><a href="cli/../best-practices/debugging-training.html">Training Best Practices</a></li>
@@ -4032,7 +4530,7 @@ fn main() {
 <li>Checkpointing during training</li>
 <li>TensorBoard logging</li>
 </ul>
-<h2 id="next-steps-6"><a class="header" href="#next-steps-6">Next Steps</a></h2>
+<h2 id="next-steps-7"><a class="header" href="#next-steps-7">Next Steps</a></h2>
 <ul>
 <li><a href="declarative/./yaml-config.html">YAML Configuration</a> - Full schema reference</li>
 <li><a href="declarative/./train-from-yaml.html">train_from_yaml Function</a> - Implementation details</li>

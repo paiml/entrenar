@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Terminal Dashboard - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/dashboard.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,71 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="terminal-dashboard"><a class="header" href="#terminal-dashboard">Terminal Dashboard</a></h1>
+<p>ASCII terminal dashboard for real-time training visualization.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{Dashboard, MetricsCollector, Metric};
+
+let mut collector = MetricsCollector::new();
+let mut dashboard = Dashboard::new();
+
+// During training
+for epoch in 0..100 {
+    collector.record(Metric::Loss, loss);
+    collector.record(Metric::Accuracy, accuracy);
+
+    // Update and render
+    dashboard.update(collector.summary());
+    println!("{}", dashboard.render_ascii());
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="output-example"><a class="header" href="#output-example">Output Example</a></h2>
+<pre><code>═══════════════════════════════════════════════════════════════
+                    TRAINING DASHBOARD
+═══════════════════════════════════════════════════════════════
+
+Loss:     0.1234  [▁▂▃▄▅▆▇█▇▆▅▄▃▂▁]  ↓ Improving
+Accuracy: 0.9567  [▁▁▂▃▄▅▆▇▇▇▇▇▇▇█]  ↑ Improving
+
+Statistics:
+  Loss     - mean: 0.3421, std: 0.1234, min: 0.1234, max: 0.8901
+  Accuracy - mean: 0.8234, std: 0.0567, min: 0.5000, max: 0.9567
+
+═══════════════════════════════════════════════════════════════
+</code></pre>
+<h2 id="sparklines"><a class="header" href="#sparklines">Sparklines</a></h2>
+<p>The dashboard uses Unicode sparkline characters to show metric history:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let sparkline = dashboard.sparkline(&amp;Metric::Loss);
+// Returns: "▁▂▃▄▅▆▇█▇▆▅▄▃▂▁"
+<span class="boring">}</span></code></pre></pre>
+<p>Characters map values to 8 levels: <code>▁▂▃▄▅▆▇█</code></p>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::DashboardConfig;
+
+let config = DashboardConfig {
+    width: 80,
+    height: 24,
+    refresh_ms: 1000,
+};
+
+let dashboard = Dashboard::with_config(config);
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../monitor/metrics-collection.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/drift-detection.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +232,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../monitor/metrics-collection.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/drift-detection.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

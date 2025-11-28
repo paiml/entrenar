@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Model Lineage - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/lineage.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,71 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="model-lineage"><a class="header" href="#model-lineage">Model Lineage</a></h1>
+<p>Track model versions, derivations, and identify regression sources.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{ModelLineage, ModelMetadata, ChangeType};
+
+let mut lineage = ModelLineage::new();
+
+// Register base model
+let base = ModelMetadata {
+    id: "llama-7b-base".to_string(),
+    version: "1.0.0".to_string(),
+    parent_id: None,
+    metrics: [("accuracy".to_string(), 0.75)].into(),
+    timestamp: std::time::SystemTime::now(),
+};
+lineage.register(base);
+
+// Register fine-tuned model
+let finetuned = ModelMetadata {
+    id: "llama-7b-lora".to_string(),
+    version: "1.1.0".to_string(),
+    parent_id: Some("llama-7b-base".to_string()),
+    metrics: [("accuracy".to_string(), 0.82)].into(),
+    timestamp: std::time::SystemTime::now(),
+};
+lineage.register(finetuned);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="change-types"><a class="header" href="#change-types">Change Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>FineTune</code></td><td>LoRA/QLoRA adaptation</td></tr>
+<tr><td><code>Merge</code></td><td>Model merging (TIES/DARE/SLERP)</td></tr>
+<tr><td><code>Quantize</code></td><td>Quantization (Q4_0, Q8_0)</td></tr>
+<tr><td><code>Distill</code></td><td>Knowledge distillation</td></tr>
+</tbody></table>
+</div>
+<h2 id="regression-analysis"><a class="header" href="#regression-analysis">Regression Analysis</a></h2>
+<p>Find the source of a regression:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// If new model performs worse
+if new_accuracy &lt; old_accuracy * 0.95 {
+    if let Some(source) = lineage.find_regression_source("llama-7b-v3") {
+        println!("Regression introduced in: {}", source.id);
+        println!("Change type: {:?}", source.change_type);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="lineage-visualization"><a class="header" href="#lineage-visualization">Lineage Visualization</a></h2>
+<pre><code>llama-7b-base (v1.0.0)
+├── llama-7b-lora (v1.1.0) [FineTune]
+│   └── llama-7b-lora-q4 (v1.1.1) [Quantize]
+└── llama-7b-merged (v1.2.0) [Merge]
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../monitor/andon.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/export.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +232,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../monitor/andon.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/export.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

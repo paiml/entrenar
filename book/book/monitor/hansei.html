@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Hansei Reports - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/hansei.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,97 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="hansei-reports"><a class="header" href="#hansei-reports">Hansei Reports</a></h1>
+<p>Toyota Way Hansei (反省) principle: Reflection and continuous improvement through systematic post-training analysis.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{HanseiAnalyzer, MetricsCollector, Metric};
+
+let mut collector = MetricsCollector::new();
+
+// During training
+for epoch in 0..100 {
+    collector.record(Metric::Loss, loss);
+    collector.record(Metric::Accuracy, accuracy);
+    collector.record(Metric::GradientNorm, grad_norm);
+}
+
+// Generate report
+let analyzer = HanseiAnalyzer::new();
+let report = analyzer.analyze("my-training", &amp;collector, duration_secs);
+println!("{}", analyzer.format_report(&amp;report));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="report-output"><a class="header" href="#report-output">Report Output</a></h2>
+<pre><code>═══════════════════════════════════════════════════════════════
+                    HANSEI POST-TRAINING REPORT
+═══════════════════════════════════════════════════════════════
+
+Training ID: my-training
+Duration: 3600.00s
+Total Steps: 10000
+
+─── Metric Summaries ───────────────────────────────────────────
+
+Loss:
+  Mean: 0.123456  Std: 0.045678
+  Min: 0.089012   Max: 0.567890
+  Trend: ↑ Improving
+
+Accuracy:
+  Mean: 0.945678  Std: 0.023456
+  Min: 0.800000   Max: 0.980000
+  Trend: ↑ Improving
+
+─── Issues Detected ────────────────────────────────────────────
+
+[WARNING] Gradient Health
+  Possible vanishing gradients: mean norm = 1.23e-08
+  → Consider using residual connections or different activation functions
+
+─── Recommendations ────────────────────────────────────────────
+1. Training completed without critical issues.
+2. Consider hyperparameter search for learning rate and batch size.
+
+═══════════════════════════════════════════════════════════════
+</code></pre>
+<h2 id="issue-detection"><a class="header" href="#issue-detection">Issue Detection</a></h2>
+<p>The analyzer automatically detects:</p>
+<div class="table-wrapper"><table><thead><tr><th>Issue</th><th>Severity</th><th>Detection</th></tr></thead><tbody>
+<tr><td>NaN loss</td><td>Critical</td><td><code>has_nan</code> flag</td></tr>
+<tr><td>Inf loss</td><td>Critical</td><td><code>has_inf</code> flag</td></tr>
+<tr><td>Gradient explosion</td><td>Error</td><td>norm &gt; 100</td></tr>
+<tr><td>Vanishing gradients</td><td>Warning</td><td>mean norm &lt; 1e-7</td></tr>
+<tr><td>Loss increasing</td><td>Warning</td><td>trend analysis</td></tr>
+<tr><td>Low accuracy</td><td>Warning</td><td>final &lt; 50%</td></tr>
+</tbody></table>
+</div>
+<h2 id="trend-analysis"><a class="header" href="#trend-analysis">Trend Analysis</a></h2>
+<p>Trends are determined by comparing mean to midpoint:</p>
+<ul>
+<li><strong>Improving</strong>: Mean closer to optimal end (low for loss, high for accuracy)</li>
+<li><strong>Degrading</strong>: Mean closer to suboptimal end</li>
+<li><strong>Stable</strong>: Small range relative to std</li>
+<li><strong>Oscillating</strong>: High coefficient of variation (&gt; 0.5)</li>
+</ul>
+<h2 id="custom-thresholds"><a class="header" href="#custom-thresholds">Custom Thresholds</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut analyzer = HanseiAnalyzer::new();
+analyzer.gradient_explosion_threshold = 50.0;  // Default: 100.0
+analyzer.gradient_vanishing_threshold = 1e-8;  // Default: 1e-7
+analyzer.min_accuracy_improvement = 0.02;      // Default: 0.01
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../monitor/export.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../io/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +258,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../monitor/export.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../io/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

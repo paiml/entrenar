@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Early Stopping - Entrenar - Training &amp; Optimization Library</title>
+        <title>Export Formats - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/early-stopping.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/export.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,75 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+                        <h1 id="export-formats"><a class="header" href="#export-formats">Export Formats</a></h1>
+<p>Export training metrics to various formats for external tools.</p>
+<h2 id="prometheus-format"><a class="header" href="#prometheus-format">Prometheus Format</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::{MetricsExporter, ExportFormat, MetricsCollector};
+
+let collector = MetricsCollector::new();
+// ... record metrics ...
+
+let exporter = MetricsExporter::new();
+let prometheus = exporter.export(&amp;collector, ExportFormat::Prometheus);
+println!("{}", prometheus);
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code># HELP training_loss Training loss
+# TYPE training_loss gauge
+training_loss{run="default"} 0.1234
+
+# HELP training_accuracy Model accuracy
+# TYPE training_accuracy gauge
+training_accuracy{run="default"} 0.9567
+</code></pre>
+<h2 id="json-format"><a class="header" href="#json-format">JSON Format</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let json = exporter.export(&amp;collector, ExportFormat::Json);
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code class="language-json">{
+  "timestamp": "2024-11-28T12:00:00Z",
+  "metrics": {
+    "loss": {"mean": 0.1234, "std": 0.05, "min": 0.08, "max": 0.25},
+    "accuracy": {"mean": 0.95, "std": 0.02, "min": 0.90, "max": 0.98}
+  }
+}
+</code></pre>
+<h2 id="csv-format"><a class="header" href="#csv-format">CSV Format</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let csv = exporter.export(&amp;collector, ExportFormat::Csv);
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code class="language-csv">timestamp,metric,mean,std,min,max
+2024-11-28T12:00:00Z,loss,0.1234,0.05,0.08,0.25
+2024-11-28T12:00:00Z,accuracy,0.95,0.02,0.90,0.98
+</code></pre>
+<h2 id="integration-with-grafana"><a class="header" href="#integration-with-grafana">Integration with Grafana</a></h2>
+<ol>
+<li>Export Prometheus metrics to file or HTTP endpoint</li>
+<li>Configure Prometheus to scrape the endpoint</li>
+<li>Add Grafana dashboard for visualization</li>
+</ol>
+<pre><code class="language-yaml"># prometheus.yml
+scrape_configs:
+  - job_name: 'entrenar'
+    static_configs:
+      - targets: ['localhost:9090']
+</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../training/checkpointing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../monitor/lineage.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/hansei.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +236,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../training/checkpointing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../monitor/lineage.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/hansei.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
