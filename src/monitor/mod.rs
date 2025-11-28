@@ -37,6 +37,7 @@ pub mod export;
 pub mod lineage;
 pub mod report;
 pub mod storage;
+pub mod wasm;
 
 // Re-exports for convenience
 pub use andon::{Alert, AlertLevel, AndonConfig, AndonSystem};
@@ -48,6 +49,7 @@ pub use report::{
     HanseiAnalyzer, IssueSeverity, MetricSummary, PostTrainingReport, TrainingIssue, Trend,
 };
 pub use storage::{InMemoryStore, JsonFileStore, MetricsStore, StorageError, StorageResult};
+pub use wasm::{WasmDashboardOptions, WasmMetricsCollector};
 
 #[cfg(test)]
 mod tests;

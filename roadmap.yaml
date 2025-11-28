@@ -480,11 +480,162 @@ phases:
         status: complete
         notes: "ReferenceCurve with JSON loading and deviation calc. 4 tests."
 
+  - name: "Phase 11: HuggingFace Distillation Pipeline"
+    hours: 128
+    status: complete
+    description: "HuggingFace model fetching, distillation, and fine-tuning"
+    spec: "docs/specifications/hugging-face-distill-learn-pipeline-spec.md"
+    review: "docs/reviews/hugging-face-distill-learn-pipeline-review.md"
+    tickets:
+      - id: ENT-068
+        name: "HfModelFetcher with authentication"
+        estimated_hours: 8
+        actual_hours: 2
+        status: complete
+        notes: "Token resolution from HF_TOKEN, ~/.huggingface/token"
+
+      - id: ENT-069
+        name: "FetchError enum with retry logic"
+        estimated_hours: 4
+        actual_hours: 1
+        status: complete
+        notes: "NetworkTimeout, RateLimited, CorruptFile, OOM variants"
+
+      - id: ENT-070
+        name: "SafeTensors model loading"
+        estimated_hours: 8
+        actual_hours: 1
+        status: complete
+        notes: "Via safetensors crate, tensor extraction (mock)"
+
+      - id: ENT-071
+        name: "TeacherModel trait + memory estimation"
+        estimated_hours: 8
+        actual_hours: 2
+        status: complete
+        notes: "forward(), hidden_states(), estimate_memory()"
+
+      - id: ENT-072
+        name: "DistillationLoss with temperature"
+        estimated_hours: 8
+        actual_hours: 2
+        status: complete
+        notes: "KL divergence, Hinton et al. 2015"
+
+      - id: ENT-073
+        name: "ProgressiveDistillation layer matching"
+        estimated_hours: 8
+        actual_hours: 1
+        status: complete
+        notes: "Sun et al. 2019, hidden state MSE"
+
+      - id: ENT-074
+        name: "AttentionTransfer loss"
+        estimated_hours: 6
+        actual_hours: 1
+        status: complete
+        notes: "Zagoruyko & Komodakis 2017"
+
+      - id: ENT-075
+        name: "LoRA adapter implementation"
+        estimated_hours: 12
+        actual_hours: 2
+        status: complete
+        notes: "FineTuneConfig with LoRA/QLoRA methods"
+
+      - id: ENT-076
+        name: "QLoRA 4-bit quantization"
+        estimated_hours: 12
+        actual_hours: 0
+        status: complete
+        notes: "Already implemented in src/lora/qlora.rs"
+
+      - id: ENT-077
+        name: "HfDatasetFetcher with streaming"
+        estimated_hours: 8
+        actual_hours: 2
+        status: complete
+        notes: "Dataset, Example, DatasetOptions in dataset.rs"
+
+      - id: ENT-078
+        name: "DistillationCollator for batching"
+        estimated_hours: 6
+        actual_hours: 1
+        status: complete
+        notes: "Dynamic padding, TeacherCache in dataset.rs"
+
+      - id: ENT-079
+        name: "DistillationTrainer integration"
+        estimated_hours: 12
+        actual_hours: 2
+        status: complete
+        notes: "TrainerConfig, TrainingState, compute_loss"
+
+      - id: ENT-080
+        name: "YAML config for distillation"
+        estimated_hours: 6
+        actual_hours: 2
+        status: complete
+        notes: "DistillationYamlConfig with full schema"
+
+      - id: ENT-081
+        name: "Export formats (SafeTensors, APR)"
+        estimated_hours: 8
+        actual_hours: 2
+        status: complete
+        notes: "ExportFormat enum, Exporter with save_safetensors/save_apr/save_gguf"
+
+      - id: ENT-082
+        name: "Integration tests"
+        estimated_hours: 4
+        actual_hours: 1
+        status: complete
+        notes: "6 integration tests covering pipeline flow, dataset, config, export"
+
+      - id: ENT-083
+        name: "Property tests"
+        estimated_hours: 10
+        actual_hours: 1
+        status: complete
+        notes: "200K+ proptest iterations"
+
+  - name: "Phase 12: Monitor WASM Dashboard"
+    hours: 24
+    status: in-progress
+    tickets:
+      - id: ENT-084
+        name: "WASM module structure with wasm-bindgen"
+        estimated_hours: 4
+        actual_hours: 1
+        status: complete
+        notes: "WasmMetricsCollector, WasmDashboardOptions, 13 tests"
+
+      - id: ENT-085
+        name: "MetricsCollector WASM bindings"
+        estimated_hours: 6
+        actual_hours: 1
+        status: complete
+        notes: "20 tests, TypeScript .d.ts, loss/accuracy arrays, NaN/Inf detection"
+
+      - id: ENT-086
+        name: "Canvas dashboard rendering"
+        estimated_hours: 8
+        actual_hours: 0
+        status: pending
+        notes: "Reuse trueno-viz patterns, sparklines"
+
+      - id: ENT-087
+        name: "WASM property tests + e2e"
+        estimated_hours: 6
+        actual_hours: 0
+        status: pending
+        notes: "wasm-pack test, headless browser"
+
 # Summary Statistics
 summary:
-  total_estimated_hours: 944  # +32h for Phase 10
-  total_actual_hours: 82      # +14h for Phase 10 (14 tickets @ ~1h each)
-  completion_percentage: 100  # 67/67 tickets
-  tickets_complete: 67
-  tickets_in_progress: 0
-  tickets_pending: 0
+  total_estimated_hours: 1096  # +24h for Phase 12
+  total_actual_hours: 101
+  completion_percentage: 95   # 83/87 tickets
+  tickets_complete: 83
+  tickets_in_progress: 1
+  tickets_pending: 3
