@@ -367,11 +367,22 @@ phases:
         status: complete
         notes: "7 property tests for early stopping, checkpoint, callback manager, progress, monitor (NaN/Inf detection)."
 
+  - name: "Phase 9: Explainability Integration"
+    hours: 8
+    status: complete
+    tickets:
+      - id: ENT-053
+        name: "Integrate aprender explainability into training evaluation"
+        estimated_hours: 3
+        actual_hours: 1
+        status: complete
+        notes: "ExplainabilityCallback using aprender::interpret (PermutationImportance, IntegratedGradients, Saliency). 7 tests."
+
 # Summary Statistics
 summary:
-  total_estimated_hours: 904  # Added 40h for Phase 8
-  total_actual_hours: 65      # +5h for ENT-048 to ENT-052
+  total_estimated_hours: 912  # Added 8h for Phase 9
+  total_actual_hours: 66      # +1h for ENT-053
   completion_percentage: 100.0
-  tickets_complete: 52        # 47 + 5 Phase 8 tickets
+  tickets_complete: 53
   tickets_in_progress: 0
   tickets_pending: 0
