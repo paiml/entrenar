@@ -985,3 +985,145 @@ mod tests {
         assert_eq!(dashboard.width(), 800);
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Property: Recording values always increases count
+        #[test]
+        fn prop_record_increases_count(values in prop::collection::vec(-1e10f64..1e10, 1..100)) {
+            let mut collector = WasmMetricsCollector::new();
+            for v in &values {
+                collector.record_loss(*v);
+            }
+            // Count should equal valid (non-NaN, non-Inf) values
+            let valid_count = values.iter().filter(|v| !v.is_nan() && !v.is_infinite()).count();
+            prop_assert_eq!(collector.count(), valid_count);
+        }
+
+        /// Property: Mean is always within bounds of recorded values
+        #[test]
+        fn prop_mean_within_bounds(values in prop::collection::vec(0.0f64..100.0, 2..50)) {
+            let mut collector = WasmMetricsCollector::new();
+            for v in &values {
+                collector.record_loss(*v);
+            }
+
+            let mean = collector.loss_mean();
+            let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+            prop_assert!(mean >= min - 1e-6);
+            prop_assert!(mean <= max + 1e-6);
+        }
+
+        /// Property: Standard deviation is non-negative
+        #[test]
+        fn prop_std_non_negative(values in prop::collection::vec(0.0f64..100.0, 2..50)) {
+            let mut collector = WasmMetricsCollector::new();
+            for v in &values {
+                collector.record_loss(*v);
+            }
+
+            let std = collector.loss_std();
+            prop_assert!(std >= 0.0 || std.is_nan());
+        }
+
+        /// Property: Normalization always produces values in [0, 1]
+        #[test]
+        fn prop_normalize_bounded(values in prop::collection::vec(-1000.0f64..1000.0, 2..100)) {
+            let normalized = normalize_values(&values);
+
+            for v in &normalized {
+                prop_assert!(*v >= 0.0 - 1e-10);
+                prop_assert!(*v <= 1.0 + 1e-10);
+            }
+        }
+
+        /// Property: Normalization preserves length
+        #[test]
+        fn prop_normalize_preserves_length(values in prop::collection::vec(-1000.0f64..1000.0, 1..100)) {
+            let normalized = normalize_values(&values);
+            prop_assert_eq!(normalized.len(), values.len());
+        }
+
+        /// Property: Dashboard respects max_history
+        #[test]
+        fn prop_dashboard_max_history(
+            max in 5usize..50,
+            count in 10usize..200
+        ) {
+            let mut dashboard = WasmDashboard::new().max_history(max);
+
+            for i in 0..count {
+                dashboard.add_loss(i as f64);
+            }
+
+            prop_assert!(dashboard.loss_history_len() <= max);
+        }
+
+        /// Property: Sparkline length is bounded
+        #[test]
+        fn prop_sparkline_bounded(values in prop::collection::vec(0.0f64..100.0, 1..200)) {
+            let sparkline = generate_sparkline(&values, 20);
+            let char_count = sparkline.chars().count();
+            prop_assert!(char_count <= 20);
+        }
+
+        /// Property: Sparkline chars are valid Unicode blocks
+        #[test]
+        fn prop_sparkline_valid_chars(values in prop::collection::vec(0.0f64..100.0, 1..50)) {
+            let sparkline = generate_sparkline(&values, 20);
+            let valid_chars = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+            for c in sparkline.chars() {
+                prop_assert!(valid_chars.contains(&c));
+            }
+        }
+
+        /// Property: X coordinates span [0, 1]
+        #[test]
+        fn prop_x_coords_span(len in 2usize..100) {
+            let dashboard = WasmDashboard::new();
+            let coords = dashboard.x_coordinates(len);
+
+            prop_assert_eq!(coords.len(), len);
+            prop_assert!((coords[0] - 0.0).abs() < 1e-10);
+            prop_assert!((coords[len - 1] - 1.0).abs() < 1e-10);
+        }
+
+        /// Property: Dashboard ignores NaN values
+        #[test]
+        fn prop_dashboard_ignores_nan(
+            valid_count in 1usize..20,
+            nan_count in 1usize..10
+        ) {
+            let mut dashboard = WasmDashboard::new();
+
+            for i in 0..valid_count {
+                dashboard.add_loss(i as f64);
+            }
+            for _ in 0..nan_count {
+                dashboard.add_loss(f64::NAN);
+            }
+
+            prop_assert_eq!(dashboard.loss_history_len(), valid_count);
+        }
+
+        /// Property: JSON state is valid
+        #[test]
+        fn prop_json_state_valid(values in prop::collection::vec(0.0f64..100.0, 0..50)) {
+            let mut dashboard = WasmDashboard::new();
+            for v in &values {
+                dashboard.add_loss(*v);
+            }
+
+            let json = dashboard.state_json();
+            let parsed: Result<serde_json::Value, _> = serde_json::from_str(&json);
+            prop_assert!(parsed.is_ok());
+        }
+    }
+}
