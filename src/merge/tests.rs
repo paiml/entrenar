@@ -232,10 +232,7 @@ mod integration_tests {
     fn test_three_way_merge_comparison() {
         // Compare all three methods on same inputs
         let base = create_model("w", vec![0.0, 0.0, 0.0]);
-        let models = create_models(vec![
-            vec![1.0, 2.0, 3.0],
-            vec![2.0, 3.0, 4.0],
-        ]);
+        let models = create_models(vec![vec![1.0, 2.0, 3.0], vec![2.0, 3.0, 4.0]]);
 
         // TIES
         let ties_config = TiesConfig::default();

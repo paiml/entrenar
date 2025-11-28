@@ -5,10 +5,7 @@ use ndarray::{array, Array2};
 use proptest::prelude::*;
 
 // Helper to generate random logits
-fn logits_strategy(
-    batch_size: usize,
-    num_classes: usize,
-) -> impl Strategy<Value = Array2<f32>> {
+fn logits_strategy(batch_size: usize, num_classes: usize) -> impl Strategy<Value = Array2<f32>> {
     prop::collection::vec(
         prop::collection::vec(-10.0f32..10.0, num_classes),
         batch_size,
@@ -20,18 +17,13 @@ fn logits_strategy(
 }
 
 // Helper to generate random hidden states
-fn hiddens_strategy(
-    batch_size: usize,
-    hidden_dim: usize,
-) -> impl Strategy<Value = Array2<f32>> {
-    prop::collection::vec(
-        prop::collection::vec(-5.0f32..5.0, hidden_dim),
-        batch_size,
+fn hiddens_strategy(batch_size: usize, hidden_dim: usize) -> impl Strategy<Value = Array2<f32>> {
+    prop::collection::vec(prop::collection::vec(-5.0f32..5.0, hidden_dim), batch_size).prop_map(
+        move |data| {
+            let flat: Vec<f32> = data.into_iter().flatten().collect();
+            Array2::from_shape_vec((batch_size, hidden_dim), flat).unwrap()
+        },
     )
-    .prop_map(move |data| {
-        let flat: Vec<f32> = data.into_iter().flatten().collect();
-        Array2::from_shape_vec((batch_size, hidden_dim), flat).unwrap()
-    })
 }
 
 proptest! {
@@ -256,29 +248,17 @@ mod integration_tests {
         let loss_fn = DistillationLoss::new(3.0, 0.7);
 
         // Teacher has confident predictions
-        let teacher = array![
-            [10.0, 2.0, 1.0],
-            [1.0, 12.0, 2.0],
-            [2.0, 1.0, 11.0]
-        ];
+        let teacher = array![[10.0, 2.0, 1.0], [1.0, 12.0, 2.0], [2.0, 1.0, 11.0]];
 
         // Student initially random
-        let student = array![
-            [5.0, 5.0, 5.0],
-            [5.0, 5.0, 5.0],
-            [5.0, 5.0, 5.0]
-        ];
+        let student = array![[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]];
 
         let labels = vec![0, 1, 2];
 
         let initial_loss = loss_fn.forward(&student, &teacher, &labels);
 
         // After "training", student should have improved predictions
-        let student_improved = array![
-            [9.0, 3.0, 2.0],
-            [2.0, 10.0, 3.0],
-            [3.0, 2.0, 9.0]
-        ];
+        let student_improved = array![[9.0, 3.0, 2.0], [2.0, 10.0, 3.0], [3.0, 2.0, 9.0]];
 
         let final_loss = loss_fn.forward(&student_improved, &teacher, &labels);
 
@@ -309,11 +289,7 @@ mod integration_tests {
         // More weight on later layers
         let distiller = ProgressiveDistiller::new(vec![0.5, 1.0, 2.0], 2.0);
 
-        let student_hiddens = vec![
-            array![[1.0, 2.0]],
-            array![[3.0, 4.0]],
-            array![[5.0, 6.0]],
-        ];
+        let student_hiddens = vec![array![[1.0, 2.0]], array![[3.0, 4.0]], array![[5.0, 6.0]]];
 
         let teacher_hiddens = vec![
             array![[1.1, 2.1]],

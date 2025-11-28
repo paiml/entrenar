@@ -30,7 +30,7 @@ pub use error_analysis::{
     scale_sensitivity, theoretical_max_error, theoretical_sqnr, QuantErrorStats,
 };
 pub use fake_quantize::{fake_quantize, ste_backward, FakeQuantConfig, FakeQuantize};
-pub use gguf_quant::{GGUFQuantType, Q4_0, Q8_0, GGUF_BLOCK_SIZE};
+pub use gguf_quant::{GGUFQuantType, GGUF_BLOCK_SIZE, Q4_0, Q8_0};
 pub use granularity::{
     calibrate_per_channel, calibrate_per_group, calibrate_per_tensor, compare_granularities,
     dequantize_tensor, dequantize_with_params, quantization_mse, quantize_tensor,

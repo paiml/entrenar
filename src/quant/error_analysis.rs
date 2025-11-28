@@ -43,7 +43,11 @@ impl QuantErrorStats {
 /// * `original` - Original f32 values
 /// * `params` - Quantization parameters
 /// * `outlier_threshold` - Error threshold for outlier detection
-pub fn analyze_error(original: &[f32], params: &QuantParams, outlier_threshold: f32) -> QuantErrorStats {
+pub fn analyze_error(
+    original: &[f32],
+    params: &QuantParams,
+    outlier_threshold: f32,
+) -> QuantErrorStats {
     if original.is_empty() {
         return QuantErrorStats::default();
     }

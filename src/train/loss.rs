@@ -55,8 +55,8 @@ impl LossFn for MSELoss {
 
         // Store gradient computation
         use crate::autograd::BackwardOp;
-        use std::rc::Rc;
         use ndarray::Array1;
+        use std::rc::Rc;
 
         struct MSEBackward {
             pred_grad_cell: Rc<std::cell::RefCell<Option<Array1<f32>>>>,

@@ -27,15 +27,20 @@
 //! // }
 //! ```
 
+mod batch;
+pub mod callback;
+mod config;
 mod loss;
 mod trainer;
-mod config;
-mod batch;
 
 #[cfg(test)]
 mod tests;
 
-pub use loss::{LossFn, MSELoss, CrossEntropyLoss};
-pub use trainer::Trainer;
-pub use config::{TrainConfig, MetricsTracker};
 pub use batch::Batch;
+pub use callback::{
+    CallbackAction, CallbackContext, CallbackManager, CheckpointCallback, EarlyStopping,
+    MonitorCallback, ProgressCallback, TrainerCallback,
+};
+pub use config::{MetricsTracker, TrainConfig};
+pub use loss::{CrossEntropyLoss, LossFn, MSELoss};
+pub use trainer::Trainer;

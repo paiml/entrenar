@@ -75,10 +75,7 @@ impl MetricsExporter {
         let mut export: HashMap<String, serde_json::Value> = HashMap::new();
 
         export.insert("prefix".to_string(), self.prefix.clone().into());
-        export.insert(
-            "labels".to_string(),
-            serde_json::to_value(&self.labels)?,
-        );
+        export.insert("labels".to_string(), serde_json::to_value(&self.labels)?);
 
         let metrics: HashMap<String, serde_json::Value> = summary
             .iter()

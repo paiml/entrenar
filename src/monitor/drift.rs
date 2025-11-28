@@ -31,7 +31,7 @@ pub struct SlidingWindowBaseline {
     window_size: usize,
     values: Vec<f64>,
     mean: f64,
-    m2: f64,  // For Welford's algorithm
+    m2: f64, // For Welford's algorithm
     count: usize,
 }
 
@@ -199,9 +199,8 @@ fn z_to_p(z: f64) -> f64 {
     // Approximation using error function
     let t = 1.0 / (1.0 + 0.2316419 * z.abs());
     let d = 0.3989423 * (-z * z / 2.0).exp();
-    let p = d
-        * t
-        * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    let p =
+        d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
 
     2.0 * p // Two-tailed
 }

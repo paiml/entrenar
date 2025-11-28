@@ -27,7 +27,9 @@ pub enum EnsembleStrategy {
     IterativeSlerp { t: f32 },
 
     /// Hierarchical: merge in tree structure for balanced combination
-    Hierarchical { leaf_strategy: Box<EnsembleStrategy> },
+    Hierarchical {
+        leaf_strategy: Box<EnsembleStrategy>,
+    },
 }
 
 impl Default for EnsembleStrategy {
@@ -126,9 +128,7 @@ pub fn ensemble_merge(models: &[Model], config: &EnsembleConfig) -> Result<Model
     }
 
     match &config.strategy {
-        EnsembleStrategy::WeightedAverage { weights } => {
-            weighted_average_merge(models, weights)
-        }
+        EnsembleStrategy::WeightedAverage { weights } => weighted_average_merge(models, weights),
         EnsembleStrategy::Ties { density } => {
             let base = config
                 .base
@@ -186,9 +186,9 @@ fn weighted_average_merge(models: &[Model], weights: &[f32]) -> Result<Model, Me
         // Weighted sum
         let mut weighted_sum = ndarray::Array1::<f32>::zeros(param_len);
         for (model, weight) in models.iter().zip(weights.iter()) {
-            let param = model
-                .get(name)
-                .ok_or_else(|| MergeError::IncompatibleArchitectures(format!("Missing {}", name)))?;
+            let param = model.get(name).ok_or_else(|| {
+                MergeError::IncompatibleArchitectures(format!("Missing {}", name))
+            })?;
             if param.len() != param_len {
                 return Err(MergeError::ShapeMismatch(name.clone()));
             }
@@ -265,14 +265,14 @@ fn merge_pair(
             slerp_merge(m1, m2, &config)
         }
         EnsembleStrategy::Ties { density } => {
-            let base = base
-                .ok_or_else(|| MergeError::InvalidConfig("TIES requires base".to_string()))?;
+            let base =
+                base.ok_or_else(|| MergeError::InvalidConfig("TIES requires base".to_string()))?;
             let config = TiesConfig::new(*density)?;
             ties_merge(&[m1.clone(), m2.clone()], base, &config)
         }
         EnsembleStrategy::Dare { drop_prob, seed } => {
-            let base = base
-                .ok_or_else(|| MergeError::InvalidConfig("DARE requires base".to_string()))?;
+            let base =
+                base.ok_or_else(|| MergeError::InvalidConfig("DARE requires base".to_string()))?;
             let mut config = DareConfig::new(*drop_prob)?;
             if let Some(s) = seed {
                 config = config.with_seed(*s);
@@ -453,8 +453,7 @@ mod tests {
         let m3 = make_model(vec![-1.0, 0.0]);
         let m4 = make_model(vec![0.0, -1.0]);
 
-        let config =
-            EnsembleConfig::hierarchical(EnsembleStrategy::IterativeSlerp { t: 0.5 });
+        let config = EnsembleConfig::hierarchical(EnsembleStrategy::IterativeSlerp { t: 0.5 });
         let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
 
         // Result should be finite

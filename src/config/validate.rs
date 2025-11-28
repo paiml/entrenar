@@ -131,7 +131,9 @@ pub fn validate_config(spec: &TrainSpec) -> Result<(), ValidationError> {
 
     // Validate save interval
     if spec.training.save_interval == 0 {
-        return Err(ValidationError::InvalidSaveInterval(spec.training.save_interval));
+        return Err(ValidationError::InvalidSaveInterval(
+            spec.training.save_interval,
+        ));
     }
 
     // Validate LR scheduler if specified
@@ -394,9 +396,9 @@ mod property_tests {
 
     fn arb_valid_spec() -> impl Strategy<Value = TrainSpec> {
         (
-            1usize..256,           // batch_size
-            1e-6f32..1.0,          // lr
-            1usize..100,           // epochs
+            1usize..256,                        // batch_size
+            1e-6f32..1.0,                       // lr
+            1usize..100,                        // epochs
             proptest::option::of(0.1f32..10.0), // grad_clip
         )
             .prop_map(|(batch_size, lr, epochs, grad_clip)| TrainSpec {

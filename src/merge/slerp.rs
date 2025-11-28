@@ -3,7 +3,7 @@
 //! SLERP blends two models using spherical interpolation, which is better
 //! than linear interpolation for unit-normalized weight spaces.
 
-use super::{validate_models, Model, MergeError};
+use super::{validate_models, MergeError, Model};
 use crate::autograd::Tensor;
 use ndarray::Array1;
 use std::collections::HashMap;

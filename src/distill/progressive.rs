@@ -55,10 +55,7 @@ impl ProgressiveDistiller {
         );
 
         let sum: f32 = layer_weights.iter().sum();
-        assert!(
-            sum > 0.0,
-            "Layer weights must sum to positive value"
-        );
+        assert!(sum > 0.0, "Layer weights must sum to positive value");
 
         // Normalize weights
         let normalized: Vec<f32> = layer_weights.iter().map(|&w| w / sum).collect();

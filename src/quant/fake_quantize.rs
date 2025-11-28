@@ -126,8 +126,7 @@ impl FakeQuantize {
         } else {
             // Asymmetric: scale from range
             self.scale = (max_val - min_val) / (self.config.qmax - self.config.qmin) as f32;
-            self.zero_point =
-                (self.config.qmin as f32 - min_val / self.scale).round() as i32;
+            self.zero_point = (self.config.qmin as f32 - min_val / self.scale).round() as i32;
             self.zero_point = self.zero_point.clamp(self.config.qmin, self.config.qmax);
         }
 
@@ -204,15 +203,13 @@ impl FakeQuantize {
     fn fake_quantize_value(&self, x: f32) -> f32 {
         // Quantize
         let q = if self.config.symmetric {
-            (x / self.scale).round().clamp(
-                self.config.qmin as f32,
-                self.config.qmax as f32,
-            ) as i32
+            (x / self.scale)
+                .round()
+                .clamp(self.config.qmin as f32, self.config.qmax as f32) as i32
         } else {
             ((x / self.scale) + self.zero_point as f32)
                 .round()
-                .clamp(self.config.qmin as f32, self.config.qmax as f32)
-                as i32
+                .clamp(self.config.qmin as f32, self.config.qmax as f32) as i32
         };
 
         // Dequantize

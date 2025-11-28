@@ -34,16 +34,18 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     })?;
 
     // Step 2: Parse YAML
-    let spec: TrainSpec = serde_yaml::from_str(&yaml_content).map_err(|e| {
-        Error::ConfigError(format!("Failed to parse YAML config: {}", e))
-    })?;
+    let spec: TrainSpec = serde_yaml::from_str(&yaml_content)
+        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {}", e)))?;
 
     // Step 3: Validate configuration
     validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {}", e)))?;
 
     println!("✓ Config loaded and validated");
     println!("  Model: {}", spec.model.path.display());
-    println!("  Optimizer: {} (lr={})", spec.optimizer.name, spec.optimizer.lr);
+    println!(
+        "  Optimizer: {} (lr={})",
+        spec.optimizer.name, spec.optimizer.lr
+    );
     println!("  Batch size: {}", spec.data.batch_size);
     println!("  Epochs: {}", spec.training.epochs);
 
@@ -64,8 +66,7 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     // Step 5: Setup trainer
     use crate::train::{Batch, MSELoss, TrainConfig, Trainer};
 
-    let mut train_config = TrainConfig::new()
-        .with_log_interval(100);
+    let mut train_config = TrainConfig::new().with_log_interval(100);
 
     if let Some(clip) = spec.training.grad_clip {
         train_config = train_config.with_grad_clip(clip);
@@ -102,13 +103,24 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
 
     for epoch in 0..spec.training.epochs {
         let avg_loss = trainer.train_epoch(batches.clone(), |x| x.clone());
-        println!("Epoch {}/{}: loss={:.6}", epoch + 1, spec.training.epochs, avg_loss);
+        println!(
+            "Epoch {}/{}: loss={:.6}",
+            epoch + 1,
+            spec.training.epochs,
+            avg_loss
+        );
     }
 
     println!();
     println!("✓ Training complete");
-    println!("  Final loss: {:.6}", trainer.metrics.losses.last().copied().unwrap_or(0.0));
-    println!("  Best loss: {:.6}", trainer.metrics.best_loss().unwrap_or(0.0));
+    println!(
+        "  Final loss: {:.6}",
+        trainer.metrics.losses.last().copied().unwrap_or(0.0)
+    );
+    println!(
+        "  Best loss: {:.6}",
+        trainer.metrics.best_loss().unwrap_or(0.0)
+    );
     println!();
 
     // Step 8: Save the trained model
@@ -118,12 +130,15 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     // Reconstruct model for saving
     let final_model = crate::io::Model::new(
         model.metadata.clone(),
-        trainer.params().iter().enumerate().map(|(i, t)| {
-            (format!("param_{}", i), t.clone())
-        }).collect(),
+        trainer
+            .params()
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (format!("param_{}", i), t.clone()))
+            .collect(),
     );
 
-    use crate::io::{save_model, SaveConfig, ModelFormat};
+    use crate::io::{save_model, ModelFormat, SaveConfig};
     let save_config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
     save_model(&final_model, &output_path, &save_config)?;
 
@@ -145,9 +160,8 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<TrainSpec> {
         ))
     })?;
 
-    let spec: TrainSpec = serde_yaml::from_str(&yaml_content).map_err(|e| {
-        Error::ConfigError(format!("Failed to parse YAML config: {}", e))
-    })?;
+    let spec: TrainSpec = serde_yaml::from_str(&yaml_content)
+        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {}", e)))?;
 
     validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {}", e)))?;
 

@@ -37,10 +37,7 @@ fn test_record_multiple_metrics() {
 #[test]
 fn test_record_batch() {
     let mut collector = MetricsCollector::new();
-    collector.record_batch(&[
-        (Metric::Loss, 0.5),
-        (Metric::Accuracy, 0.85),
-    ]);
+    collector.record_batch(&[(Metric::Loss, 0.5), (Metric::Accuracy, 0.85)]);
     assert_eq!(collector.count(), 2);
 }
 

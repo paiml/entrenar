@@ -44,11 +44,7 @@ pub struct Trainer {
 
 impl Trainer {
     /// Create a new trainer
-    pub fn new(
-        params: Vec<Tensor>,
-        optimizer: Box<dyn Optimizer>,
-        config: TrainConfig,
-    ) -> Self {
+    pub fn new(params: Vec<Tensor>, optimizer: Box<dyn Optimizer>, config: TrainConfig) -> Self {
         Self {
             params,
             optimizer,
@@ -276,10 +272,7 @@ mod tests {
 
         let mut trainer = Trainer::new(params, Box::new(optimizer), config);
 
-        let batch = Batch::new(
-            Tensor::zeros(10, false),
-            Tensor::zeros(10, false),
-        );
+        let batch = Batch::new(Tensor::zeros(10, false), Tensor::zeros(10, false));
 
         trainer.train_step(&batch, |x| x.clone());
     }

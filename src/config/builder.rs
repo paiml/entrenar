@@ -64,7 +64,13 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.01) as f32;
 
-            Ok(Box::new(AdamW::new(spec.lr, beta1, beta2, eps, weight_decay)))
+            Ok(Box::new(AdamW::new(
+                spec.lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+            )))
         }
         name => Err(Error::ConfigError(format!(
             "Unknown optimizer: {}. Supported: sgd, adam, adamw",
@@ -92,10 +98,7 @@ pub fn build_model(spec: &TrainSpec) -> Result<Model> {
             "layer2.weight".to_string(),
             Tensor::from_vec(vec![0.5, 0.6], true),
         ),
-        (
-            "layer2.bias".to_string(),
-            Tensor::from_vec(vec![0.1], true),
-        ),
+        ("layer2.bias".to_string(), Tensor::from_vec(vec![0.1], true)),
     ];
 
     let metadata = ModelMetadata::new(
@@ -175,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_build_model() {
-        use super::super::schema::{DataConfig, TrainSpec, ModelRef, TrainingParams};
+        use super::super::schema::{DataConfig, ModelRef, TrainSpec, TrainingParams};
 
         let spec = TrainSpec {
             model: ModelRef {

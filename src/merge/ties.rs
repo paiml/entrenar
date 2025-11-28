@@ -5,7 +5,7 @@
 //! 2. **Elect Sign**: Majority vote per parameter to resolve conflicts
 //! 3. **Merge**: Average parameters with elected sign
 
-use super::{compute_deltas, merge_with_base, validate_models, Model, MergeError};
+use super::{compute_deltas, merge_with_base, validate_models, MergeError, Model};
 use crate::autograd::Tensor;
 use ndarray::Array1;
 use std::collections::HashMap;
@@ -302,13 +302,22 @@ mod tests {
     #[test]
     fn test_ties_merge_two_models() {
         let mut base = HashMap::new();
-        base.insert("w".to_string(), Tensor::from_vec(vec![0.0, 0.0, 0.0], false));
+        base.insert(
+            "w".to_string(),
+            Tensor::from_vec(vec![0.0, 0.0, 0.0], false),
+        );
 
         let mut model1 = HashMap::new();
-        model1.insert("w".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], false));
+        model1.insert(
+            "w".to_string(),
+            Tensor::from_vec(vec![1.0, 2.0, 3.0], false),
+        );
 
         let mut model2 = HashMap::new();
-        model2.insert("w".to_string(), Tensor::from_vec(vec![2.0, -1.0, 4.0], false));
+        model2.insert(
+            "w".to_string(),
+            Tensor::from_vec(vec![2.0, -1.0, 4.0], false),
+        );
 
         let config = TiesConfig::new(1.0).unwrap(); // Keep all
         let result = ties_merge(&[model1, model2], &base, &config).unwrap();

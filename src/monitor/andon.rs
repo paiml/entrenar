@@ -130,6 +130,7 @@ impl Default for AndonConfig {
 /// Andon system for training monitoring
 ///
 /// Toyota Way principle: 自働化 (Jidoka) - build in quality
+#[derive(Debug)]
 pub struct AndonSystem {
     config: AndonConfig,
     stop_flag: Arc<AtomicBool>,
@@ -184,7 +185,10 @@ impl AndonSystem {
         if should_stop {
             self.stop_flag.store(true, Ordering::SeqCst);
             if self.config.log_alerts {
-                eprintln!("🛑 ANDON: Training stopped due to {} alert", alert.level.as_str());
+                eprintln!(
+                    "🛑 ANDON: Training stopped due to {} alert",
+                    alert.level.as_str()
+                );
             }
         }
 

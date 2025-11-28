@@ -41,17 +41,13 @@ fn standard_distillation_example() {
 
     // Teacher model outputs (confident predictions)
     let teacher_logits = array![
-        [10.0, 2.0, 1.0],  // Strong on class 0
-        [1.0, 12.0, 2.0],  // Strong on class 1
-        [2.0, 1.0, 11.0]   // Strong on class 2
+        [10.0, 2.0, 1.0], // Strong on class 0
+        [1.0, 12.0, 2.0], // Strong on class 1
+        [2.0, 1.0, 11.0]  // Strong on class 2
     ];
 
     // Student model outputs (less confident)
-    let student_logits = array![
-        [7.0, 3.0, 2.0],
-        [2.0, 8.0, 3.0],
-        [3.0, 2.0, 7.0]
-    ];
+    let student_logits = array![[7.0, 3.0, 2.0], [2.0, 8.0, 3.0], [3.0, 2.0, 7.0]];
 
     let labels = vec![0, 1, 2];
 
@@ -85,19 +81,19 @@ fn ensemble_distillation_example() {
 
     // Three specialized teachers
     let teacher1 = array![
-        [10.0, 3.0, 2.0],  // Strong on class 0
+        [10.0, 3.0, 2.0], // Strong on class 0
         [8.0, 4.0, 3.0],
         [7.0, 5.0, 4.0]
     ];
 
     let teacher2 = array![
-        [3.0, 10.0, 2.0],  // Strong on class 1
+        [3.0, 10.0, 2.0], // Strong on class 1
         [4.0, 9.0, 3.0],
         [5.0, 8.0, 4.0]
     ];
 
     let teacher3 = array![
-        [2.0, 3.0, 10.0],  // Strong on class 2
+        [2.0, 3.0, 10.0], // Strong on class 2
         [3.0, 4.0, 9.0],
         [4.0, 5.0, 8.0]
     ];
@@ -115,7 +111,8 @@ fn ensemble_distillation_example() {
 
     println!("Weights: [0.33, 0.33, 0.33]");
     println!("Ensemble logits (first sample):");
-    println!("  [{:.2}, {:.2}, {:.2}]",
+    println!(
+        "  [{:.2}, {:.2}, {:.2}]",
         uniform_ensemble[[0, 0]],
         uniform_ensemble[[0, 1]],
         uniform_ensemble[[0, 2]]
@@ -128,7 +125,8 @@ fn ensemble_distillation_example() {
 
     println!("Weights: [0.60, 0.20, 0.20]");
     println!("Ensemble logits (first sample):");
-    println!("  [{:.2}, {:.2}, {:.2}]",
+    println!(
+        "  [{:.2}, {:.2}, {:.2}]",
         weighted_ensemble[[0, 0]],
         weighted_ensemble[[0, 1]],
         weighted_ensemble[[0, 2]]
@@ -136,11 +134,7 @@ fn ensemble_distillation_example() {
     println!("  → Biased toward class 0 due to higher teacher 1 weight");
 
     // Compute distillation loss
-    let student = array![
-        [6.0, 5.0, 4.0],
-        [5.0, 6.0, 4.0],
-        [4.0, 5.0, 6.0]
-    ];
+    let student = array![[6.0, 5.0, 4.0], [5.0, 6.0, 4.0], [4.0, 5.0, 6.0]];
     let labels = vec![0, 1, 2];
 
     let loss = weighted_distiller.distillation_loss(&student, &teachers, &labels, 0.7);
@@ -152,15 +146,15 @@ fn progressive_distillation_example() {
 
     // Simulate 3 layers of hidden states
     let student_hiddens = vec![
-        array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],  // Layer 1
-        array![[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]],  // Layer 2
-        array![[3.0, 4.0, 5.0], [6.0, 7.0, 8.0]],  // Layer 3
+        array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], // Layer 1
+        array![[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], // Layer 2
+        array![[3.0, 4.0, 5.0], [6.0, 7.0, 8.0]], // Layer 3
     ];
 
     let teacher_hiddens = vec![
-        array![[1.1, 2.1, 3.1], [4.1, 5.1, 6.1]],  // Layer 1
-        array![[2.2, 3.2, 4.2], [5.2, 6.2, 7.2]],  // Layer 2
-        array![[3.5, 4.5, 5.5], [6.5, 7.5, 8.5]],  // Layer 3 (larger diff)
+        array![[1.1, 2.1, 3.1], [4.1, 5.1, 6.1]], // Layer 1
+        array![[2.2, 3.2, 4.2], [5.2, 6.2, 7.2]], // Layer 2
+        array![[3.5, 4.5, 5.5], [6.5, 7.5, 8.5]], // Layer 3 (larger diff)
     ];
 
     println!("Configuration:");
@@ -184,8 +178,10 @@ fn progressive_distillation_example() {
     let progressive_distiller = ProgressiveDistiller::new(vec![0.5, 1.0, 2.0], 2.0);
     println!("Weights: [0.14, 0.29, 0.57] (later layers weighted more)");
 
-    let mse_loss_prog = progressive_distiller.layer_wise_mse_loss(&student_hiddens, &teacher_hiddens);
-    let cosine_loss_prog = progressive_distiller.layer_wise_cosine_loss(&student_hiddens, &teacher_hiddens);
+    let mse_loss_prog =
+        progressive_distiller.layer_wise_mse_loss(&student_hiddens, &teacher_hiddens);
+    let cosine_loss_prog =
+        progressive_distiller.layer_wise_cosine_loss(&student_hiddens, &teacher_hiddens);
 
     println!("  MSE loss: {:.4}", mse_loss_prog);
     println!("  Cosine loss: {:.4}", cosine_loss_prog);
@@ -199,7 +195,7 @@ fn progressive_distillation_example() {
     let labels = vec![0, 1];
 
     let alpha = 0.7; // Soft target weight
-    let beta = 0.3;  // Hidden state weight
+    let beta = 0.3; // Hidden state weight
 
     let combined_loss = progressive_distiller.combined_loss(
         &student_logits,
@@ -214,7 +210,8 @@ fn progressive_distillation_example() {
     println!("Alpha (soft target weight): {}", alpha);
     println!("Beta (hidden state weight): {}", beta);
     println!("Combined loss: {:.4}", combined_loss);
-    println!("  = {:.0}% logit distillation + {:.0}% hidden state matching",
+    println!(
+        "  = {:.0}% logit distillation + {:.0}% hidden state matching",
         (1.0 - beta) * 100.0,
         beta * 100.0
     );

@@ -3,7 +3,7 @@
 //! DARE merges models by randomly dropping delta parameters with probability p,
 //! then rescaling the remaining values to maintain expected magnitude.
 
-use super::{compute_deltas, merge_with_base, validate_models, Model, MergeError};
+use super::{compute_deltas, merge_with_base, validate_models, MergeError, Model};
 use crate::autograd::Tensor;
 use ndarray::Array1;
 use rand::Rng;
@@ -72,10 +72,7 @@ pub fn dare_merge(
     config: &DareConfig,
 ) -> Result<Model, MergeError> {
     if models.is_empty() {
-        return Err(MergeError::InsufficientModels {
-            min: 1,
-            got: 0,
-        });
+        return Err(MergeError::InsufficientModels { min: 1, got: 0 });
     }
 
     validate_models(models)?;
@@ -103,11 +100,7 @@ pub fn dare_merge(
 }
 
 /// Drop parameters with probability p and rescale by 1/(1-p)
-fn drop_and_rescale_deltas<R: Rng>(
-    deltas: &[Model],
-    drop_prob: f32,
-    rng: &mut R,
-) -> Vec<Model> {
+fn drop_and_rescale_deltas<R: Rng>(deltas: &[Model], drop_prob: f32, rng: &mut R) -> Vec<Model> {
     let keep_prob = 1.0 - drop_prob;
     let scale = if keep_prob > 0.0 {
         1.0 / keep_prob
@@ -120,7 +113,10 @@ fn drop_and_rescale_deltas<R: Rng>(
         .map(|delta| {
             let mut masked = HashMap::new();
             for (name, tensor) in delta {
-                masked.insert(name.clone(), drop_and_rescale_tensor(tensor, drop_prob, scale, rng));
+                masked.insert(
+                    name.clone(),
+                    drop_and_rescale_tensor(tensor, drop_prob, scale, rng),
+                );
             }
             masked
         })

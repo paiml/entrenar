@@ -39,11 +39,13 @@ pub fn save_model(model: &Model, path: impl AsRef<Path>, config: &SaveConfig) ->
     let data = match config.format {
         ModelFormat::Json => {
             if config.pretty {
-                serde_json::to_string_pretty(&state)
-                    .map_err(|e| Error::Serialization(format!("JSON serialization failed: {}", e)))?
+                serde_json::to_string_pretty(&state).map_err(|e| {
+                    Error::Serialization(format!("JSON serialization failed: {}", e))
+                })?
             } else {
-                serde_json::to_string(&state)
-                    .map_err(|e| Error::Serialization(format!("JSON serialization failed: {}", e)))?
+                serde_json::to_string(&state).map_err(|e| {
+                    Error::Serialization(format!("JSON serialization failed: {}", e))
+                })?
             }
         }
         ModelFormat::Yaml => serde_yaml::to_string(&state)
@@ -66,14 +68,17 @@ pub fn save_model(model: &Model, path: impl AsRef<Path>, config: &SaveConfig) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::{ModelMetadata, Model};
+    use crate::io::{Model, ModelMetadata};
     use crate::Tensor;
     use tempfile::NamedTempFile;
 
     #[test]
     fn test_save_model_json() {
         let params = vec![
-            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
+            (
+                "weight".to_string(),
+                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
+            ),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 

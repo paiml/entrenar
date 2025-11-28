@@ -10,8 +10,7 @@
 mod tests {
     use crate::autograd::Tensor;
     use crate::merge::{
-        dare_merge, slerp_merge, ties_merge, DareConfig, Model, SlerpConfig,
-        TiesConfig,
+        dare_merge, slerp_merge, ties_merge, DareConfig, Model, SlerpConfig, TiesConfig,
     };
     use proptest::prelude::*;
     use std::collections::HashMap;
@@ -617,7 +616,12 @@ mod tests {
         assert!(slerp_r["w"].data()[0].is_finite());
 
         // DARE
-        let dare_r = dare_merge(&[m1.clone(), m2.clone()], &base, &DareConfig::new(0.0).unwrap()).unwrap();
+        let dare_r = dare_merge(
+            &[m1.clone(), m2.clone()],
+            &base,
+            &DareConfig::new(0.0).unwrap(),
+        )
+        .unwrap();
         assert!((dare_r["w"].data()[0] - 7.5).abs() < 1e-5); // (5+10)/2
 
         // TIES

@@ -536,7 +536,9 @@ mod tests {
 
         // Run 10 steps
         for _ in 0..10 {
-            simd_adam_update(&grad, &mut m, &mut v, &mut param, beta1, beta2, lr_t, epsilon);
+            simd_adam_update(
+                &grad, &mut m, &mut v, &mut param, beta1, beta2, lr_t, epsilon,
+            );
         }
 
         // Momentum should have accumulated
@@ -571,8 +573,16 @@ mod tests {
         // Run several steps
         for _ in 0..10 {
             simd_adamw_update(
-                &grad, &mut m, &mut v, &mut param,
-                beta1, beta2, lr, lr_t, weight_decay, epsilon,
+                &grad,
+                &mut m,
+                &mut v,
+                &mut param,
+                beta1,
+                beta2,
+                lr,
+                lr_t,
+                weight_decay,
+                epsilon,
             );
         }
 

@@ -70,7 +70,10 @@ mod tests {
     fn test_load_model_json() {
         // Create and save a model
         let params = vec![
-            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
+            (
+                "weight".to_string(),
+                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
+            ),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 
@@ -128,9 +131,18 @@ mod tests {
     fn test_save_load_round_trip() {
         // Create a model with multiple parameters
         let params = vec![
-            ("layer1.weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true)),
-            ("layer1.bias".to_string(), Tensor::from_vec(vec![0.1, 0.2], true)),
-            ("layer2.weight".to_string(), Tensor::from_vec(vec![5.0, 6.0], false)),
+            (
+                "layer1.weight".to_string(),
+                Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true),
+            ),
+            (
+                "layer1.bias".to_string(),
+                Tensor::from_vec(vec![0.1, 0.2], true),
+            ),
+            (
+                "layer2.weight".to_string(),
+                Tensor::from_vec(vec![5.0, 6.0], false),
+            ),
         ];
 
         let meta = ModelMetadata::new("round-trip-test", "multi-layer")

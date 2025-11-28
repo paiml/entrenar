@@ -18,9 +18,7 @@ fn main() {
     let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
 
     // Configure training
-    let config = TrainConfig::new()
-        .with_grad_clip(1.0)
-        .with_log_interval(5);
+    let config = TrainConfig::new().with_grad_clip(1.0).with_log_interval(5);
 
     // Create trainer
     let mut trainer = Trainer::new(params, Box::new(optimizer), config);

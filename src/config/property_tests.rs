@@ -21,8 +21,7 @@ mod tests {
     }
 
     fn arb_layer_name() -> impl Strategy<Value = String> {
-        prop::string::string_regex("[a-z][a-z0-9_]{0,15}")
-            .unwrap()
+        prop::string::string_regex("[a-z][a-z0-9_]{0,15}").unwrap()
     }
 
     fn arb_optimizer_name() -> impl Strategy<Value = String> {
@@ -30,7 +29,10 @@ mod tests {
     }
 
     fn arb_model_ref() -> impl Strategy<Value = ModelRef> {
-        (arb_path(), proptest::collection::vec(arb_layer_name(), 0..5))
+        (
+            arb_path(),
+            proptest::collection::vec(arb_layer_name(), 0..5),
+        )
             .prop_map(|(path, layers)| ModelRef { path, layers })
     }
 
@@ -52,12 +54,11 @@ mod tests {
     }
 
     fn arb_optim_spec() -> impl Strategy<Value = OptimSpec> {
-        (arb_optimizer_name(), 1e-6f32..1.0)
-            .prop_map(|(name, lr)| OptimSpec {
-                name,
-                lr,
-                params: HashMap::new(),
-            })
+        (arb_optimizer_name(), 1e-6f32..1.0).prop_map(|(name, lr)| OptimSpec {
+            name,
+            lr,
+            params: HashMap::new(),
+        })
     }
 
     fn arb_lora_spec() -> impl Strategy<Value = LoRASpec> {
@@ -76,7 +77,11 @@ mod tests {
     }
 
     fn arb_quant_spec() -> impl Strategy<Value = QuantSpec> {
-        (prop_oneof![Just(4u8), Just(8u8)], any::<bool>(), any::<bool>())
+        (
+            prop_oneof![Just(4u8), Just(8u8)],
+            any::<bool>(),
+            any::<bool>(),
+        )
             .prop_map(|(bits, symmetric, per_channel)| QuantSpec {
                 bits,
                 symmetric,
@@ -85,11 +90,10 @@ mod tests {
     }
 
     fn arb_merge_spec() -> impl Strategy<Value = MergeSpec> {
-        prop_oneof!["ties", "dare", "slerp"]
-            .prop_map(|method| MergeSpec {
-                method: method.to_string(),
-                params: HashMap::new(),
-            })
+        prop_oneof!["ties", "dare", "slerp"].prop_map(|method| MergeSpec {
+            method: method.to_string(),
+            params: HashMap::new(),
+        })
     }
 
     fn arb_training_params() -> impl Strategy<Value = TrainingParams> {
@@ -122,8 +126,8 @@ mod tests {
             proptest::option::of(arb_merge_spec()),
             arb_training_params(),
         )
-            .prop_map(|(model, data, optimizer, lora, quantize, merge, training)| {
-                TrainSpec {
+            .prop_map(
+                |(model, data, optimizer, lora, quantize, merge, training)| TrainSpec {
                     model,
                     data,
                     optimizer,
@@ -131,8 +135,8 @@ mod tests {
                     quantize,
                     merge,
                     training,
-                }
-            })
+                },
+            )
     }
 
     // ============================================================

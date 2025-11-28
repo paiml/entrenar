@@ -73,10 +73,11 @@ fn log(level: LogLevel, required: LogLevel, msg: &str) {
 }
 
 fn run_train(args: entrenar::config::TrainArgs, level: LogLevel) -> Result<(), String> {
-    log(level, LogLevel::Normal, &format!(
-        "Entrenar: Training from {}",
-        args.config.display()
-    ));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("Entrenar: Training from {}", args.config.display()),
+    );
 
     // Load and validate config
     let mut spec = load_config(&args.config).map_err(|e| format!("Config error: {}", e))?;
@@ -85,11 +86,34 @@ fn run_train(args: entrenar::config::TrainArgs, level: LogLevel) -> Result<(), S
     apply_overrides(&mut spec, &args);
 
     if args.dry_run {
-        log(level, LogLevel::Normal, "Dry run - config validated successfully");
-        log(level, LogLevel::Verbose, &format!("  Model: {}", spec.model.path.display()));
-        log(level, LogLevel::Verbose, &format!("  Optimizer: {} (lr={})", spec.optimizer.name, spec.optimizer.lr));
-        log(level, LogLevel::Verbose, &format!("  Epochs: {}", spec.training.epochs));
-        log(level, LogLevel::Verbose, &format!("  Batch size: {}", spec.data.batch_size));
+        log(
+            level,
+            LogLevel::Normal,
+            "Dry run - config validated successfully",
+        );
+        log(
+            level,
+            LogLevel::Verbose,
+            &format!("  Model: {}", spec.model.path.display()),
+        );
+        log(
+            level,
+            LogLevel::Verbose,
+            &format!(
+                "  Optimizer: {} (lr={})",
+                spec.optimizer.name, spec.optimizer.lr
+            ),
+        );
+        log(
+            level,
+            LogLevel::Verbose,
+            &format!("  Epochs: {}", spec.training.epochs),
+        );
+        log(
+            level,
+            LogLevel::Verbose,
+            &format!("  Batch size: {}", spec.data.batch_size),
+        );
         return Ok(());
     }
 
@@ -101,10 +125,11 @@ fn run_train(args: entrenar::config::TrainArgs, level: LogLevel) -> Result<(), S
 }
 
 fn run_validate(args: entrenar::config::ValidateArgs, level: LogLevel) -> Result<(), String> {
-    log(level, LogLevel::Normal, &format!(
-        "Validating config: {}",
-        args.config.display()
-    ));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("Validating config: {}", args.config.display()),
+    );
 
     let spec = load_config(&args.config).map_err(|e| format!("Config error: {}", e))?;
 
@@ -174,7 +199,10 @@ fn run_info(args: entrenar::config::InfoArgs, level: LogLevel) -> Result<(), Str
             log(level, LogLevel::Normal, "Configuration Info:");
             println!();
             println!("Model: {}", spec.model.path.display());
-            println!("Optimizer: {} (lr={})", spec.optimizer.name, spec.optimizer.lr);
+            println!(
+                "Optimizer: {} (lr={})",
+                spec.optimizer.name, spec.optimizer.lr
+            );
             println!("Epochs: {}", spec.training.epochs);
             println!("Batch size: {}", spec.data.batch_size);
 
@@ -201,50 +229,66 @@ fn run_info(args: entrenar::config::InfoArgs, level: LogLevel) -> Result<(), Str
 }
 
 fn run_quantize(args: entrenar::config::QuantizeArgs, level: LogLevel) -> Result<(), String> {
-    log(level, LogLevel::Normal, &format!(
-        "Quantizing {} to {}-bit",
-        args.model.display(),
-        args.bits
-    ));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("Quantizing {} to {}-bit", args.model.display(), args.bits),
+    );
 
-    log(level, LogLevel::Verbose, &format!(
-        "  Method: {:?}",
-        args.method
-    ));
-    log(level, LogLevel::Verbose, &format!(
-        "  Per-channel: {}",
-        args.per_channel
-    ));
-    log(level, LogLevel::Verbose, &format!(
-        "  Output: {}",
-        args.output.display()
-    ));
+    log(
+        level,
+        LogLevel::Verbose,
+        &format!("  Method: {:?}", args.method),
+    );
+    log(
+        level,
+        LogLevel::Verbose,
+        &format!("  Per-channel: {}", args.per_channel),
+    );
+    log(
+        level,
+        LogLevel::Verbose,
+        &format!("  Output: {}", args.output.display()),
+    );
 
     // TODO: Implement actual quantization via quant module
-    log(level, LogLevel::Normal, "Quantization complete (stub - not yet implemented)");
+    log(
+        level,
+        LogLevel::Normal,
+        "Quantization complete (stub - not yet implemented)",
+    );
     Ok(())
 }
 
 fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), String> {
-    log(level, LogLevel::Normal, &format!(
-        "Merging {} models using {:?}",
-        args.models.len(),
-        args.method
-    ));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!(
+            "Merging {} models using {:?}",
+            args.models.len(),
+            args.method
+        ),
+    );
 
     for (i, model) in args.models.iter().enumerate() {
-        log(level, LogLevel::Verbose, &format!(
-            "  Model {}: {}",
-            i + 1,
-            model.display()
-        ));
+        log(
+            level,
+            LogLevel::Verbose,
+            &format!("  Model {}: {}", i + 1, model.display()),
+        );
     }
-    log(level, LogLevel::Verbose, &format!(
-        "  Output: {}",
-        args.output.display()
-    ));
+    log(
+        level,
+        LogLevel::Verbose,
+        &format!("  Output: {}", args.output.display()),
+    );
 
     // TODO: Implement actual merging via merge module
-    log(level, LogLevel::Normal, "Merge complete (stub - not yet implemented)");
+    log(
+        level,
+        LogLevel::Normal,
+        "Merge complete (stub - not yet implemented)",
+    );
     Ok(())
 }

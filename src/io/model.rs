@@ -180,7 +180,10 @@ mod tests {
     #[test]
     fn test_model_parameter_access() {
         let params = vec![
-            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
+            (
+                "weight".to_string(),
+                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
+            ),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 
@@ -194,7 +197,10 @@ mod tests {
     #[test]
     fn test_model_state_round_trip() {
         let params = vec![
-            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
+            (
+                "weight".to_string(),
+                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
+            ),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 

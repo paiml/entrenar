@@ -159,12 +159,10 @@ impl Calibrator {
     /// Compute calibration result
     pub fn compute(&self) -> CalibrationResult {
         let (observed_min, observed_max) = match &self.method {
-            CalibrationMethod::MinMax | CalibrationMethod::MovingAverage { .. } => {
-                (
-                    self.running_min.unwrap_or(0.0),
-                    self.running_max.unwrap_or(0.0),
-                )
-            }
+            CalibrationMethod::MinMax | CalibrationMethod::MovingAverage { .. } => (
+                self.running_min.unwrap_or(0.0),
+                self.running_max.unwrap_or(0.0),
+            ),
             CalibrationMethod::Percentile { lower, upper } => {
                 self.compute_percentile_bounds(*lower, *upper)
             }
@@ -454,8 +452,14 @@ mod tests {
         // Percentile should ignore outliers
         // 1% of 102 ≈ 1, 99% ≈ 100
         // So bounds should be close to 0.1 and 9.9 (not -1000 and 1000)
-        assert!(result.observed_min > -100.0, "Should ignore negative outlier");
-        assert!(result.observed_max < 100.0, "Should ignore positive outlier");
+        assert!(
+            result.observed_min > -100.0,
+            "Should ignore negative outlier"
+        );
+        assert!(
+            result.observed_max < 100.0,
+            "Should ignore positive outlier"
+        );
     }
 
     #[test]

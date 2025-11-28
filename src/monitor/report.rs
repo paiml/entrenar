@@ -97,10 +97,10 @@ pub struct HanseiAnalyzer {
 impl Default for HanseiAnalyzer {
     fn default() -> Self {
         Self {
-            loss_increase_threshold: 0.1,      // 10% increase
+            loss_increase_threshold: 0.1, // 10% increase
             gradient_explosion_threshold: 100.0,
             gradient_vanishing_threshold: 1e-7,
-            min_accuracy_improvement: 0.01,    // 1% improvement
+            min_accuracy_improvement: 0.01, // 1% improvement
         }
     }
 }
@@ -160,7 +160,7 @@ impl HanseiAnalyzer {
         let trend = self.determine_trend(metric, stats);
 
         MetricSummary {
-            initial: stats.min, // Approximation - would need history for actual initial
+            initial: stats.min,      // Approximation - would need history for actual initial
             final_value: stats.mean, // Approximation - would need last value
             min: stats.min,
             max: stats.max,
@@ -237,7 +237,8 @@ impl HanseiAnalyzer {
                         severity: IssueSeverity::Critical,
                         category: "Numerical Stability".to_string(),
                         description: "Infinity values detected in loss".to_string(),
-                        recommendation: "Check for division by zero, reduce learning rate".to_string(),
+                        recommendation: "Check for division by zero, reduce learning rate"
+                            .to_string(),
                     });
                 }
                 // Check for loss not decreasing
@@ -246,7 +247,8 @@ impl HanseiAnalyzer {
                         severity: IssueSeverity::Warning,
                         category: "Convergence".to_string(),
                         description: "Loss appears to be increasing over training".to_string(),
-                        recommendation: "Consider reducing learning rate or checking data quality".to_string(),
+                        recommendation: "Consider reducing learning rate or checking data quality"
+                            .to_string(),
                     });
                 }
                 // Check for high variance (oscillating loss)
@@ -265,17 +267,25 @@ impl HanseiAnalyzer {
                     issues.push(TrainingIssue {
                         severity: IssueSeverity::Warning,
                         category: "Performance".to_string(),
-                        description: format!("Final accuracy is low: {:.2}%", summary.final_value * 100.0),
-                        recommendation: "Consider model architecture changes or hyperparameter tuning".to_string(),
+                        description: format!(
+                            "Final accuracy is low: {:.2}%",
+                            summary.final_value * 100.0
+                        ),
+                        recommendation:
+                            "Consider model architecture changes or hyperparameter tuning"
+                                .to_string(),
                     });
                 }
                 // Check for no improvement
-                if summary.trend == Trend::Stable && summary.max - summary.min < self.min_accuracy_improvement {
+                if summary.trend == Trend::Stable
+                    && summary.max - summary.min < self.min_accuracy_improvement
+                {
                     issues.push(TrainingIssue {
                         severity: IssueSeverity::Info,
                         category: "Convergence".to_string(),
                         description: "Accuracy shows minimal improvement".to_string(),
-                        recommendation: "Model may have converged or may be stuck in local minimum".to_string(),
+                        recommendation: "Model may have converged or may be stuck in local minimum"
+                            .to_string(),
                     });
                 }
             }
@@ -285,7 +295,10 @@ impl HanseiAnalyzer {
                     issues.push(TrainingIssue {
                         severity: IssueSeverity::Error,
                         category: "Gradient Health".to_string(),
-                        description: format!("Gradient explosion detected: max norm = {:.2e}", stats.max),
+                        description: format!(
+                            "Gradient explosion detected: max norm = {:.2e}",
+                            stats.max
+                        ),
                         recommendation: "Enable gradient clipping (e.g., max_norm=1.0)".to_string(),
                     });
                 }
@@ -294,8 +307,13 @@ impl HanseiAnalyzer {
                     issues.push(TrainingIssue {
                         severity: IssueSeverity::Warning,
                         category: "Gradient Health".to_string(),
-                        description: format!("Possible vanishing gradients: mean norm = {:.2e}", stats.mean),
-                        recommendation: "Consider using residual connections or different activation functions".to_string(),
+                        description: format!(
+                            "Possible vanishing gradients: mean norm = {:.2e}",
+                            stats.mean
+                        ),
+                        recommendation:
+                            "Consider using residual connections or different activation functions"
+                                .to_string(),
                     });
                 }
             }
@@ -330,13 +348,19 @@ impl HanseiAnalyzer {
         }
     }
 
-    fn generate_recommendations(&self, issues: &[TrainingIssue], recommendations: &mut Vec<String>) {
+    fn generate_recommendations(
+        &self,
+        issues: &[TrainingIssue],
+        recommendations: &mut Vec<String>,
+    ) {
         let has_numerical_issues = issues.iter().any(|i| i.category == "Numerical Stability");
         let has_gradient_issues = issues.iter().any(|i| i.category == "Gradient Health");
         let has_convergence_issues = issues.iter().any(|i| i.category == "Convergence");
 
         if has_numerical_issues {
-            recommendations.push("Priority 1: Address numerical stability before continuing training".to_string());
+            recommendations.push(
+                "Priority 1: Address numerical stability before continuing training".to_string(),
+            );
         }
 
         if has_gradient_issues {
@@ -344,11 +368,16 @@ impl HanseiAnalyzer {
         }
 
         if has_convergence_issues {
-            recommendations.push("Consider hyperparameter search for learning rate and batch size".to_string());
+            recommendations.push(
+                "Consider hyperparameter search for learning rate and batch size".to_string(),
+            );
         }
 
         if issues.is_empty() {
-            recommendations.push("Training completed without detected issues. Consider running validation tests.".to_string());
+            recommendations.push(
+                "Training completed without detected issues. Consider running validation tests."
+                    .to_string(),
+            );
         }
     }
 
@@ -356,9 +385,21 @@ impl HanseiAnalyzer {
     pub fn format_report(&self, report: &PostTrainingReport) -> String {
         let mut output = String::new();
 
-        writeln!(output, "═══════════════════════════════════════════════════════════════").unwrap();
-        writeln!(output, "                    HANSEI POST-TRAINING REPORT                 ").unwrap();
-        writeln!(output, "═══════════════════════════════════════════════════════════════").unwrap();
+        writeln!(
+            output,
+            "═══════════════════════════════════════════════════════════════"
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "                    HANSEI POST-TRAINING REPORT                 "
+        )
+        .unwrap();
+        writeln!(
+            output,
+            "═══════════════════════════════════════════════════════════════"
+        )
+        .unwrap();
         writeln!(output).unwrap();
         writeln!(output, "Training ID: {}", report.training_id).unwrap();
         writeln!(output, "Duration: {:.2}s", report.duration_secs).unwrap();
@@ -366,18 +407,36 @@ impl HanseiAnalyzer {
         writeln!(output).unwrap();
 
         // Metric summaries
-        writeln!(output, "─── Metric Summaries ───────────────────────────────────────────").unwrap();
+        writeln!(
+            output,
+            "─── Metric Summaries ───────────────────────────────────────────"
+        )
+        .unwrap();
         for (metric_type, summary) in &report.metric_summaries {
             writeln!(output, "\n{:?}:", metric_type).unwrap();
-            writeln!(output, "  Mean: {:.6}  Std: {:.6}", summary.mean, summary.std_dev).unwrap();
-            writeln!(output, "  Min: {:.6}   Max: {:.6}", summary.min, summary.max).unwrap();
+            writeln!(
+                output,
+                "  Mean: {:.6}  Std: {:.6}",
+                summary.mean, summary.std_dev
+            )
+            .unwrap();
+            writeln!(
+                output,
+                "  Min: {:.6}   Max: {:.6}",
+                summary.min, summary.max
+            )
+            .unwrap();
             writeln!(output, "  Trend: {}", summary.trend).unwrap();
         }
         writeln!(output).unwrap();
 
         // Issues
         if !report.issues.is_empty() {
-            writeln!(output, "─── Issues Detected ────────────────────────────────────────────").unwrap();
+            writeln!(
+                output,
+                "─── Issues Detected ────────────────────────────────────────────"
+            )
+            .unwrap();
             for issue in &report.issues {
                 writeln!(output, "\n[{}] {}", issue.severity, issue.category).unwrap();
                 writeln!(output, "  {}", issue.description).unwrap();
@@ -387,13 +446,21 @@ impl HanseiAnalyzer {
         }
 
         // Recommendations
-        writeln!(output, "─── Recommendations ────────────────────────────────────────────").unwrap();
+        writeln!(
+            output,
+            "─── Recommendations ────────────────────────────────────────────"
+        )
+        .unwrap();
         for (i, rec) in report.recommendations.iter().enumerate() {
             writeln!(output, "{}. {}", i + 1, rec).unwrap();
         }
         writeln!(output).unwrap();
 
-        writeln!(output, "═══════════════════════════════════════════════════════════════").unwrap();
+        writeln!(
+            output,
+            "═══════════════════════════════════════════════════════════════"
+        )
+        .unwrap();
 
         output
     }

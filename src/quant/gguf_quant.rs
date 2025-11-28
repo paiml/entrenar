@@ -48,17 +48,17 @@ impl Q4_0 {
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap_or(0.0);
 
-            let scale = if max_abs < 1e-10 { 1e-10 } else { max_abs / 7.0 };
+            let scale = if max_abs < 1e-10 {
+                1e-10
+            } else {
+                max_abs / 7.0
+            };
             scales.push(scale);
 
             // Quantize block (pad with zeros if incomplete)
             let mut block_data = [0u8; 16];
             for i in 0..GGUF_BLOCK_SIZE {
-                let val = if start + i < end {
-                    block[i]
-                } else {
-                    0.0
-                };
+                let val = if start + i < end { block[i] } else { 0.0 };
 
                 // Quantize to [-8, 7] range
                 let q = ((val / scale).round().clamp(-8.0, 7.0) as i8) & 0x0F;
@@ -168,7 +168,11 @@ impl Q8_0 {
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap_or(0.0);
 
-            let scale = if max_abs < 1e-10 { 1e-10 } else { max_abs / 127.0 };
+            let scale = if max_abs < 1e-10 {
+                1e-10
+            } else {
+                max_abs / 127.0
+            };
             scales.push(scale);
 
             // Quantize block
@@ -452,8 +456,16 @@ mod tests {
         assert_eq!(GGUFQuantType::Q4_0.bytes_per_block(), 18);
         assert_eq!(GGUFQuantType::Q8_0.bytes_per_block(), 34);
 
-        assert_abs_diff_eq!(GGUFQuantType::Q4_0.theoretical_compression(), 8.0, epsilon = 0.1);
-        assert_abs_diff_eq!(GGUFQuantType::Q8_0.theoretical_compression(), 4.0, epsilon = 0.1);
+        assert_abs_diff_eq!(
+            GGUFQuantType::Q4_0.theoretical_compression(),
+            8.0,
+            epsilon = 0.1
+        );
+        assert_abs_diff_eq!(
+            GGUFQuantType::Q8_0.theoretical_compression(),
+            4.0,
+            epsilon = 0.1
+        );
     }
 
     #[test]

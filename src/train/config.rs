@@ -117,7 +117,10 @@ impl MetricsTracker {
 
     /// Get best (minimum) loss
     pub fn best_loss(&self) -> Option<f32> {
-        self.losses.iter().copied().min_by(|a, b| a.partial_cmp(b).unwrap())
+        self.losses
+            .iter()
+            .copied()
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
     }
 
     /// Check if training is improving (loss decreasing)

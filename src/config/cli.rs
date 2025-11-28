@@ -20,7 +20,9 @@ use std::path::PathBuf;
 #[command(name = "entrenar")]
 #[command(author = "PAIML")]
 #[command(version)]
-#[command(about = "Training & Optimization Library with autograd, LoRA, quantization, and model merging")]
+#[command(
+    about = "Training & Optimization Library with autograd, LoRA, quantization, and model merging"
+)]
 pub struct Cli {
     /// Subcommand to execute
     #[command(subcommand)]
@@ -195,7 +197,10 @@ impl std::str::FromStr for OutputFormat {
             "text" => Ok(OutputFormat::Text),
             "json" => Ok(OutputFormat::Json),
             "yaml" => Ok(OutputFormat::Yaml),
-            _ => Err(format!("Unknown output format: {}. Valid formats: text, json, yaml", s)),
+            _ => Err(format!(
+                "Unknown output format: {}. Valid formats: text, json, yaml",
+                s
+            )),
         }
     }
 }
@@ -215,7 +220,10 @@ impl std::str::FromStr for QuantMethod {
         match s.to_lowercase().as_str() {
             "symmetric" | "sym" => Ok(QuantMethod::Symmetric),
             "asymmetric" | "asym" => Ok(QuantMethod::Asymmetric),
-            _ => Err(format!("Unknown quantization method: {}. Valid methods: symmetric, asymmetric", s)),
+            _ => Err(format!(
+                "Unknown quantization method: {}. Valid methods: symmetric, asymmetric",
+                s
+            )),
         }
     }
 }
@@ -239,7 +247,10 @@ impl std::str::FromStr for MergeMethod {
             "dare" => Ok(MergeMethod::Dare),
             "slerp" => Ok(MergeMethod::Slerp),
             "average" | "avg" => Ok(MergeMethod::Average),
-            _ => Err(format!("Unknown merge method: {}. Valid methods: ties, dare, slerp, average", s)),
+            _ => Err(format!(
+                "Unknown merge method: {}. Valid methods: ties, dare, slerp, average",
+                s
+            )),
         }
     }
 }
@@ -254,10 +265,7 @@ where
 }
 
 /// Apply command-line overrides to a TrainSpec
-pub fn apply_overrides(
-    spec: &mut super::TrainSpec,
-    args: &TrainArgs,
-) {
+pub fn apply_overrides(spec: &mut super::TrainSpec, args: &TrainArgs) {
     if let Some(output_dir) = &args.output_dir {
         spec.training.output_dir = output_dir.clone();
     }
@@ -295,12 +303,19 @@ mod tests {
     #[test]
     fn test_parse_train_with_overrides() {
         let cli = parse_args([
-            "entrenar", "train", "config.yaml",
-            "--epochs", "10",
-            "--batch-size", "32",
-            "--lr", "0.001",
-            "--output-dir", "./output",
-        ]).unwrap();
+            "entrenar",
+            "train",
+            "config.yaml",
+            "--epochs",
+            "10",
+            "--batch-size",
+            "32",
+            "--lr",
+            "0.001",
+            "--output-dir",
+            "./output",
+        ])
+        .unwrap();
 
         match cli.command {
             Command::Train(args) => {
@@ -316,9 +331,13 @@ mod tests {
     #[test]
     fn test_parse_train_with_resume() {
         let cli = parse_args([
-            "entrenar", "train", "config.yaml",
-            "--resume", "checkpoint.json",
-        ]).unwrap();
+            "entrenar",
+            "train",
+            "config.yaml",
+            "--resume",
+            "checkpoint.json",
+        ])
+        .unwrap();
 
         match cli.command {
             Command::Train(args) => {
@@ -388,9 +407,13 @@ mod tests {
     #[test]
     fn test_parse_quantize_command() {
         let cli = parse_args([
-            "entrenar", "quantize", "model.gguf",
-            "--output", "model_q4.gguf",
-        ]).unwrap();
+            "entrenar",
+            "quantize",
+            "model.gguf",
+            "--output",
+            "model_q4.gguf",
+        ])
+        .unwrap();
 
         match cli.command {
             Command::Quantize(args) => {
@@ -406,12 +429,18 @@ mod tests {
     #[test]
     fn test_parse_quantize_with_options() {
         let cli = parse_args([
-            "entrenar", "quantize", "model.gguf",
-            "--output", "model_q8.gguf",
-            "--bits", "8",
-            "--method", "asymmetric",
+            "entrenar",
+            "quantize",
+            "model.gguf",
+            "--output",
+            "model_q8.gguf",
+            "--bits",
+            "8",
+            "--method",
+            "asymmetric",
             "--per-channel",
-        ]).unwrap();
+        ])
+        .unwrap();
 
         match cli.command {
             Command::Quantize(args) => {
@@ -426,10 +455,14 @@ mod tests {
     #[test]
     fn test_parse_merge_command() {
         let cli = parse_args([
-            "entrenar", "merge",
-            "model1.gguf", "model2.gguf",
-            "--output", "merged.gguf",
-        ]).unwrap();
+            "entrenar",
+            "merge",
+            "model1.gguf",
+            "model2.gguf",
+            "--output",
+            "merged.gguf",
+        ])
+        .unwrap();
 
         match cli.command {
             Command::Merge(args) => {
@@ -444,12 +477,18 @@ mod tests {
     #[test]
     fn test_parse_merge_slerp() {
         let cli = parse_args([
-            "entrenar", "merge",
-            "model1.gguf", "model2.gguf",
-            "--output", "merged.gguf",
-            "--method", "slerp",
-            "--weight", "0.7",
-        ]).unwrap();
+            "entrenar",
+            "merge",
+            "model1.gguf",
+            "model2.gguf",
+            "--output",
+            "merged.gguf",
+            "--method",
+            "slerp",
+            "--weight",
+            "0.7",
+        ])
+        .unwrap();
 
         match cli.command {
             Command::Merge(args) => {
@@ -463,11 +502,17 @@ mod tests {
     #[test]
     fn test_parse_merge_multiple_models() {
         let cli = parse_args([
-            "entrenar", "merge",
-            "model1.gguf", "model2.gguf", "model3.gguf",
-            "--output", "merged.gguf",
-            "--method", "average",
-        ]).unwrap();
+            "entrenar",
+            "merge",
+            "model1.gguf",
+            "model2.gguf",
+            "model3.gguf",
+            "--output",
+            "merged.gguf",
+            "--method",
+            "average",
+        ])
+        .unwrap();
 
         match cli.command {
             Command::Merge(args) => {
@@ -503,10 +548,22 @@ mod tests {
 
     #[test]
     fn test_quant_method_from_str() {
-        assert_eq!("symmetric".parse::<QuantMethod>().unwrap(), QuantMethod::Symmetric);
-        assert_eq!("sym".parse::<QuantMethod>().unwrap(), QuantMethod::Symmetric);
-        assert_eq!("asymmetric".parse::<QuantMethod>().unwrap(), QuantMethod::Asymmetric);
-        assert_eq!("asym".parse::<QuantMethod>().unwrap(), QuantMethod::Asymmetric);
+        assert_eq!(
+            "symmetric".parse::<QuantMethod>().unwrap(),
+            QuantMethod::Symmetric
+        );
+        assert_eq!(
+            "sym".parse::<QuantMethod>().unwrap(),
+            QuantMethod::Symmetric
+        );
+        assert_eq!(
+            "asymmetric".parse::<QuantMethod>().unwrap(),
+            QuantMethod::Asymmetric
+        );
+        assert_eq!(
+            "asym".parse::<QuantMethod>().unwrap(),
+            QuantMethod::Asymmetric
+        );
         assert!("invalid".parse::<QuantMethod>().is_err());
     }
 
@@ -515,7 +572,10 @@ mod tests {
         assert_eq!("ties".parse::<MergeMethod>().unwrap(), MergeMethod::Ties);
         assert_eq!("dare".parse::<MergeMethod>().unwrap(), MergeMethod::Dare);
         assert_eq!("slerp".parse::<MergeMethod>().unwrap(), MergeMethod::Slerp);
-        assert_eq!("average".parse::<MergeMethod>().unwrap(), MergeMethod::Average);
+        assert_eq!(
+            "average".parse::<MergeMethod>().unwrap(),
+            MergeMethod::Average
+        );
         assert_eq!("avg".parse::<MergeMethod>().unwrap(), MergeMethod::Average);
         assert!("invalid".parse::<MergeMethod>().is_err());
     }

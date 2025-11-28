@@ -7,10 +7,10 @@
 //! - **DARE**: Drop And REscale for stochastic merging
 //! - **SLERP**: Spherical Linear intERPolation for smooth blending
 
-mod ties;
 mod dare;
-mod slerp;
 mod ensemble;
+mod slerp;
+mod ties;
 
 #[cfg(test)]
 mod tests;
@@ -18,10 +18,10 @@ mod tests;
 #[cfg(test)]
 mod commutativity;
 
-pub use ties::{ties_merge, TiesConfig};
 pub use dare::{dare_merge, DareConfig};
-pub use slerp::{slerp_merge, SlerpConfig};
 pub use ensemble::{ensemble_merge, EnsembleConfig, EnsembleStrategy};
+pub use slerp::{slerp_merge, SlerpConfig};
+pub use ties::{ties_merge, TiesConfig};
 
 use crate::autograd::Tensor;
 use std::collections::HashMap;
@@ -46,10 +46,7 @@ pub enum MergeError {
 }
 
 /// Compute delta weights (model - base) for each model
-pub(crate) fn compute_deltas(
-    models: &[Model],
-    base: &Model,
-) -> Result<Vec<Model>, MergeError> {
+pub(crate) fn compute_deltas(models: &[Model], base: &Model) -> Result<Vec<Model>, MergeError> {
     models
         .iter()
         .map(|model| {

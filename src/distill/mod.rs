@@ -23,13 +23,13 @@
 //! assert!(loss > 0.0);
 //! ```
 
-mod loss;
 mod ensemble;
+mod loss;
 mod progressive;
 
 #[cfg(test)]
 mod tests;
 
-pub use loss::DistillationLoss;
 pub use ensemble::EnsembleDistiller;
+pub use loss::DistillationLoss;
 pub use progressive::ProgressiveDistiller;

@@ -24,10 +24,10 @@
 
 mod builder;
 mod cli;
-mod schema;
-mod validate;
-mod train;
 mod infer;
+mod schema;
+mod train;
+mod validate;
 
 #[cfg(test)]
 mod tests;
@@ -37,15 +37,15 @@ mod property_tests;
 
 pub use builder::{build_model, build_optimizer};
 pub use cli::{
-    apply_overrides, parse_args, Cli, Command, InfoArgs, MergeArgs, MergeMethod,
-    OutputFormat, QuantizeArgs, QuantMethod, TrainArgs, ValidateArgs,
+    apply_overrides, parse_args, Cli, Command, InfoArgs, MergeArgs, MergeMethod, OutputFormat,
+    QuantMethod, QuantizeArgs, TrainArgs, ValidateArgs,
+};
+pub use infer::{
+    collect_stats_from_samples, infer_schema, infer_schema_from_path, infer_type, ColumnStats,
+    FeatureType, InferenceConfig, InferredSchema,
 };
 pub use schema::{
     DataConfig, LoRASpec, MergeSpec, ModelRef, OptimSpec, QuantSpec, TrainSpec, TrainingParams,
 };
 pub use train::{load_config, train_from_yaml};
 pub use validate::{validate_config, ValidationError};
-pub use infer::{
-    collect_stats_from_samples, infer_schema, infer_schema_from_path, infer_type,
-    ColumnStats, FeatureType, InferenceConfig, InferredSchema,
-};

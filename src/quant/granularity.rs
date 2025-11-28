@@ -176,12 +176,11 @@ pub fn calibrate_per_channel(
                 scales.push(max_abs / qmax_signed);
             }
             QuantMode::Asymmetric => {
-                let (min_val, max_val) =
-                    channel_values
-                        .iter()
-                        .fold((f32::MAX, f32::MIN), |(min, max), &v| {
-                            (min.min(v), max.max(v))
-                        });
+                let (min_val, max_val) = channel_values
+                    .iter()
+                    .fold((f32::MAX, f32::MIN), |(min, max), &v| {
+                        (min.min(v), max.max(v))
+                    });
 
                 let range = (max_val - min_val).max(1e-8);
                 let scale = range / qmax_unsigned;
@@ -240,12 +239,11 @@ pub fn calibrate_per_group(
                 scales.push(max_abs / qmax_signed);
             }
             QuantMode::Asymmetric => {
-                let (min_val, max_val) =
-                    group_values
-                        .iter()
-                        .fold((f32::MAX, f32::MIN), |(min, max), &v| {
-                            (min.min(v), max.max(v))
-                        });
+                let (min_val, max_val) = group_values
+                    .iter()
+                    .fold((f32::MAX, f32::MIN), |(min, max), &v| {
+                        (min.min(v), max.max(v))
+                    });
 
                 let range = (max_val - min_val).max(1e-8);
                 let scale = range / qmax_unsigned;
@@ -359,7 +357,9 @@ pub fn quantize_tensor(
             let num_channels = shape.first().copied().unwrap_or(1);
             calibrate_per_channel(values, num_channels, bits, mode)
         }
-        QuantGranularity::PerGroup(group_size) => calibrate_per_group(values, group_size, bits, mode),
+        QuantGranularity::PerGroup(group_size) => {
+            calibrate_per_group(values, group_size, bits, mode)
+        }
     };
 
     let data = quantize_with_params(values, &params);
@@ -536,7 +536,13 @@ mod tests {
         let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let shape = vec![2, 3];
 
-        let quantized = quantize_tensor(&values, &shape, QuantGranularity::PerChannel, QuantMode::Symmetric, 8);
+        let quantized = quantize_tensor(
+            &values,
+            &shape,
+            QuantGranularity::PerChannel,
+            QuantMode::Symmetric,
+            8,
+        );
 
         assert_eq!(quantized.shape, vec![2, 3]);
         assert_eq!(quantized.params.scales.len(), 2);
@@ -551,7 +557,13 @@ mod tests {
         let values = vec![1.0; 100];
         let shape = vec![100];
 
-        let quantized = quantize_tensor(&values, &shape, QuantGranularity::PerTensor, QuantMode::Symmetric, 8);
+        let quantized = quantize_tensor(
+            &values,
+            &shape,
+            QuantGranularity::PerTensor,
+            QuantMode::Symmetric,
+            8,
+        );
 
         // 100 bytes data + 4 bytes scale = 104 bytes
         assert_eq!(quantized.memory_bytes(), 104);

@@ -264,9 +264,7 @@ pub fn infer_schema(stats: Vec<ColumnStats>, config: &InferenceConfig) -> Inferr
 
     for col_stats in stats {
         let feature_type = infer_type(&col_stats, config);
-        schema
-            .features
-            .insert(col_stats.name.clone(), feature_type);
+        schema.features.insert(col_stats.name.clone(), feature_type);
         schema.stats.insert(col_stats.name.clone(), col_stats);
     }
 
@@ -274,10 +272,7 @@ pub fn infer_schema(stats: Vec<ColumnStats>, config: &InferenceConfig) -> Inferr
 }
 
 /// Collect statistics from sample values (simplified in-memory analysis)
-pub fn collect_stats_from_samples(
-    name: &str,
-    values: &[Option<&str>],
-) -> ColumnStats {
+pub fn collect_stats_from_samples(name: &str, values: &[Option<&str>]) -> ColumnStats {
     let mut stats = ColumnStats::new(name);
     stats.count = values.len();
 
@@ -501,13 +496,8 @@ mod tests {
 
     #[test]
     fn test_collect_stats_numeric() {
-        let values: Vec<Option<&str>> = vec![
-            Some("1.5"),
-            Some("2.3"),
-            Some("3.7"),
-            None,
-            Some("4.1"),
-        ];
+        let values: Vec<Option<&str>> =
+            vec![Some("1.5"), Some("2.3"), Some("3.7"), None, Some("4.1")];
         let stats = collect_stats_from_samples("price", &values);
 
         assert_eq!(stats.count, 5);
@@ -518,13 +508,7 @@ mod tests {
 
     #[test]
     fn test_collect_stats_integers() {
-        let values: Vec<Option<&str>> = vec![
-            Some("1"),
-            Some("2"),
-            Some("3"),
-            Some("4"),
-            Some("5"),
-        ];
+        let values: Vec<Option<&str>> = vec![Some("1"), Some("2"), Some("3"), Some("4"), Some("5")];
         let stats = collect_stats_from_samples("count", &values);
 
         assert!(stats.all_numeric);
@@ -534,11 +518,8 @@ mod tests {
 
     #[test]
     fn test_collect_stats_datetime() {
-        let values: Vec<Option<&str>> = vec![
-            Some("2024-01-15"),
-            Some("2024-02-20"),
-            Some("2024-03-25"),
-        ];
+        let values: Vec<Option<&str>> =
+            vec![Some("2024-01-15"), Some("2024-02-20"), Some("2024-03-25")];
         let stats = collect_stats_from_samples("date", &values);
 
         assert!(stats.looks_like_datetime);

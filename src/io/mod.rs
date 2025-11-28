@@ -3,15 +3,15 @@
 //! Provides functionality to save and load trained models, supporting
 //! multiple serialization formats.
 
-mod save;
-mod load;
 mod format;
+mod load;
 mod model;
+mod save;
 
 #[cfg(test)]
 mod tests;
 
-pub use save::save_model;
-pub use load::load_model;
 pub use format::{ModelFormat, SaveConfig};
+pub use load::load_model;
 pub use model::{Model, ModelMetadata, ParameterInfo};
+pub use save::save_model;

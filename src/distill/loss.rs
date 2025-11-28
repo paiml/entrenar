@@ -105,7 +105,11 @@ impl DistillationLoss {
     /// Temperature-scaled KL divergence loss
     ///
     /// KL(teacher || student) where both distributions are softened by temperature
-    fn kl_divergence_loss(&self, student_logits: &Array2<f32>, teacher_logits: &Array2<f32>) -> f32 {
+    fn kl_divergence_loss(
+        &self,
+        student_logits: &Array2<f32>,
+        teacher_logits: &Array2<f32>,
+    ) -> f32 {
         let student_soft = softmax_2d(&(student_logits / self.temperature));
         let teacher_soft = softmax_2d(&(teacher_logits / self.temperature));
 
