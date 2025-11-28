@@ -385,10 +385,9 @@ Phase 4 acceptance criteria:
 
 ## References
 
-- [Renacer GitHub](https://github.com/durbanlegend/renacer) - System call tracer
 - [OpenTelemetry](https://opentelemetry.io/) - Distributed tracing standard
 - [Jaeger](https://www.jaegertracing.io/) - Trace visualization
-- [Aprender](https://github.com/durbanlegend/aprender) - ML library (KMeans clustering)
+- [Aprender](https://crates.io/crates/aprender) - ML library (KMeans clustering)
 
 ## Next Steps
 

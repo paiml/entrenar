@@ -5,6 +5,42 @@ All notable changes to Entrenar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-11-28
+
+### Added
+
+#### Training Loop (Phase 8: ENT-048 to ENT-052)
+- **Trainer** - High-level training abstraction with epoch/step methods
+- **CallbackManager** - Composable callback system for training events
+- **EarlyStopping** - Patience-based early stopping with min_delta threshold
+- **CheckpointCallback** - Periodic model saving with best model tracking
+- **ProgressCallback** - Training progress logging with configurable frequency
+- **MonitorCallback** - NaN/Inf detection and Andon alert integration
+- **MetricsTracker** - Loss history, learning rate, and step tracking
+
+#### Explainability Integration (Phase 9: ENT-053)
+- **ExplainabilityCallback** - Feature attribution during training evaluation
+  - Permutation Importance
+  - Integrated Gradients
+  - Saliency Maps
+- Integration with aprender::interpret module
+
+#### CITL Integration (entrenar → depyler)
+- **TieredCurriculum** - Automatic tier advancement (60%→70%→80% thresholds)
+- **AdaptiveCurriculum** - Error-based tier selection with Feldman weighting
+- **efficiency_score()** - E(T) = Accuracy / log(CorpusSize) metric
+
+### Changed
+- Upgraded trueno dependency to 0.7.3
+- Upgraded aprender dependency to 0.12.0
+- Test count increased from 258 to 800+
+
+### Quality
+- 800+ tests passing
+- >90% code coverage
+- Property tests: 200K+ iterations
+- Mutation testing: >80% kill rate
+
 ## [0.1.0] - 2025-11-21
 
 ### Added
