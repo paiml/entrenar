@@ -39,7 +39,7 @@ mod tests;
 pub use batch::Batch;
 pub use callback::{
     CallbackAction, CallbackContext, CallbackManager, CheckpointCallback, EarlyStopping,
-    MonitorCallback, ProgressCallback, TrainerCallback,
+    LRSchedulerCallback, MonitorCallback, ProgressCallback, TrainerCallback,
 };
 pub use config::{MetricsTracker, TrainConfig};
 pub use loss::{CrossEntropyLoss, LossFn, MSELoss};
