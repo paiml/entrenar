@@ -394,4 +394,6 @@ struct NotSendCallback {
 - [Trainer API](./trainer-api.md) - Main trainer documentation
 - [Early Stopping](./early-stopping.md) - Detailed early stopping guide
 - [Checkpointing](./checkpointing.md) - Checkpoint management
+- [Curriculum Learning](./curriculum-learning.md) - Progressive difficulty training (CITL)
+- [Explainability](./explainability.md) - Feature attribution callbacks
 - [Real-Time Monitoring](../monitor/overview.md) - Monitor integration
