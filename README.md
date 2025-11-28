@@ -1,75 +1,75 @@
 # Entrenar
 
 <div align="center">
-  <img src="docs/images/entrenar-logo.svg" alt="Entrenar - Training & Optimization Library" width="400">
-</div>
+  <img src="docs/images/entrenar-logo.svg" alt="Entrenar" width="400">
 
-<div align="center">
+  <p><strong>Production-grade neural network training in pure Rust</strong></p>
 
 [![Crates.io](https://img.shields.io/crates/v/entrenar.svg)](https://crates.io/crates/entrenar)
-[![Tests](https://img.shields.io/badge/tests-717%20passing-brightgreen)](https://github.com/paiml/entrenar)
+[![Documentation](https://docs.rs/entrenar/badge.svg)](https://docs.rs/entrenar)
+[![Tests](https://img.shields.io/badge/tests-800%20passing-brightgreen)](https://github.com/paiml/entrenar)
 [![Coverage](https://img.shields.io/badge/coverage-%3E90%25-brightgreen)](https://github.com/paiml/entrenar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.83+-orange.svg)](https://www.rust-lang.org)
 
-**Production-grade neural network training with autograd, optimizers, LoRA, quantization, model merging, and real-time monitoring.**
-
-[Quick Start](#quick-start) | [Features](#features) | [Documentation](#documentation) | [PAIML Stack](#paiml-stack)
+[Getting Started](#getting-started) | [Features](#features) | [Examples](#examples) | [Documentation](https://docs.rs/entrenar)
 
 </div>
 
 ---
 
-## Overview
+## What is Entrenar?
 
-**Entrenar** (Spanish: "to train") is a complete training and optimization library for neural networks, providing:
+**Entrenar** (Spanish: "to train") provides everything needed to train neural networks in Rust:
 
-- **Tape-based Autograd** - Automatic differentiation with gradient checking
-- **Optimizers** - SGD, Adam, AdamW with LR schedulers and gradient clipping
-- **LoRA/QLoRA** - Parameter-efficient fine-tuning (99.75% param reduction)
-- **Quantization** - QAT, PTQ, GGUF-compatible Q4_0/Q8_0 formats
-- **Model Merging** - TIES, DARE, SLERP for combining fine-tuned models
-- **Knowledge Distillation** - Temperature-scaled softmax, multi-teacher ensemble
-- **Training Loop** - Callback system with early stopping, checkpoints, monitoring
-- **Real-time Monitoring** - Toyota Way-inspired Andon system with drift detection
+- **Autograd Engine** - Tape-based automatic differentiation
+- **Optimizers** - SGD, Adam, AdamW with schedulers and gradient clipping
+- **LoRA/QLoRA** - Parameter-efficient fine-tuning (4-bit quantized)
+- **Quantization** - QAT, PTQ, GGUF-compatible Q4_0/Q8_0
+- **Model Merging** - TIES, DARE, SLERP algorithms
+- **Knowledge Distillation** - Multi-teacher, progressive layer-wise
+- **Training Loop** - Callbacks, checkpoints, early stopping
+- **Monitoring** - Real-time metrics, drift detection, Andon alerts
+- **Explainability** - Feature attribution via SHAP, Integrated Gradients
 
-Part of the [PAIML Stack](#paiml-stack), built on [trueno](https://github.com/paiml/trueno) for SIMD-accelerated tensor operations.
+Part of the [PAIML Stack](https://github.com/paiml), built on [trueno](https://crates.io/crates/trueno) for SIMD-accelerated operations.
 
-## Quick Start
+## Getting Started
 
-```bash
-cargo add entrenar
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+entrenar = "0.2"
 ```
 
-### Basic Training Loop
+### Basic Training
 
 ```rust
 use entrenar::train::{Trainer, TrainConfig, Batch, MSELoss, EarlyStopping};
 use entrenar::optim::Adam;
 use entrenar::Tensor;
 
-// Setup
-let params = vec![Tensor::zeros(784 * 128, true)];
-let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-let config = TrainConfig::default();
+fn main() {
+    // Model parameters
+    let params = vec![Tensor::zeros(784 * 128, true)];
+    let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
 
-let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-trainer.set_loss(Box::new(MSELoss));
-trainer.add_callback(EarlyStopping::new(5, 0.001));
+    // Create trainer with callbacks
+    let mut trainer = Trainer::new(params, Box::new(optimizer), TrainConfig::default());
+    trainer.set_loss(Box::new(MSELoss));
+    trainer.add_callback(EarlyStopping::new(5, 0.001));
 
-// Train with callbacks
-let result = trainer.train(100, || batches.clone(), |x| model.forward(x));
-
-println!("Trained {} epochs, loss: {:.4}", result.final_epoch, result.final_loss);
-if result.stopped_early {
-    println!("Early stopping triggered");
+    // Train
+    let result = trainer.train(100, || batches.clone(), |x| model.forward(x));
+    println!("Final loss: {:.4}", result.final_loss);
 }
 ```
 
-### Declarative Training (Ludwig-style)
+### Declarative Configuration
 
 ```yaml
-# config.yaml
+# train.yaml
 model:
   path: base-model.gguf
 data:
@@ -87,240 +87,189 @@ training:
 ```
 
 ```bash
-entrenar train config.yaml
+entrenar train train.yaml
 ```
 
 ## Features
 
-### Autograd Engine
+### Autograd
 
-Tape-based automatic differentiation with property-tested gradient checking:
+Tape-based automatic differentiation with verified gradients:
 
 ```rust
 use entrenar::autograd::{matmul, softmax, layer_norm, attention};
 
-// All ops have verified backward passes
-let y = matmul(&x, &w);           // dL/dX, dL/dW
-let s = softmax(&logits);          // Jacobian-vector product
-let n = layer_norm(&x, &gamma, &beta);  // dx, dgamma, dbeta
-let a = attention(&q, &k, &v);     // dQ, dK, dV
+let y = matmul(&x, &w);                    // Matrix multiplication
+let s = softmax(&logits);                  // Softmax activation
+let n = layer_norm(&x, &gamma, &beta);     // Layer normalization
+let a = attention(&q, &k, &v);             // Scaled dot-product attention
 ```
-
-**Operations:** matmul, add, mul, relu, gelu, swish, softmax, layer_norm, attention
 
 ### Optimizers
 
 ```rust
-use entrenar::optim::{SGD, Adam, AdamW, CosineScheduler, clip_grad_norm};
+use entrenar::optim::{SGD, Adam, AdamW, CosineScheduler};
 
-let sgd = SGD::new(0.01, 0.9);              // With momentum
+let sgd = SGD::new(0.01, 0.9);
 let adam = Adam::new(0.001, 0.9, 0.999, 1e-8);
 let adamw = AdamW::new(0.001, 0.9, 0.999, 1e-8, 0.01);
 
 // Learning rate scheduling
 let scheduler = CosineScheduler::new(0.001, 0.0001, 100);
-
-// Gradient clipping
-clip_grad_norm(&mut params, 1.0);
 ```
 
 ### LoRA / QLoRA
 
-Parameter-efficient fine-tuning with 99.75% parameter reduction:
+Parameter-efficient fine-tuning with up to 99.75% parameter reduction:
 
 ```rust
-use entrenar::lora::{LoRALayer, LoRAConfig, QLoRALayer};
-
-let config = LoRAConfig::new()
-    .with_rank(16)
-    .with_alpha(32.0)
-    .with_targets(&["q_proj", "k_proj", "v_proj", "o_proj"]);
+use entrenar::lora::{LoRALayer, QLoRALayer, LoRAConfig};
 
 // Standard LoRA
 let lora = LoRALayer::new(4096, 4096, 16, 32.0);
 
-// QLoRA (4-bit base + FP16 adapters)
+// QLoRA: 4-bit base + FP16 adapters
+// 7B model: 28GB -> 3.5GB memory
 let qlora = QLoRALayer::new(base_weights, 16, 32.0);
-// 7B model: 28GB → 3.5GB (87% memory reduction)
 ```
 
 ### Quantization
 
-QAT, PTQ, and GGUF-compatible formats:
-
 ```rust
-use entrenar::quant::{FakeQuantize, PTQCalibrator, GGUFQuantizer, QuantConfig};
+use entrenar::quant::{FakeQuantize, PTQCalibrator, GGUFQuantizer};
 
-// Quantization-Aware Training (STE backward)
-let fq = FakeQuantize::new(8, true);  // 8-bit symmetric
-let quantized = fq.forward(&weights);
+// QAT with straight-through estimator
+let fq = FakeQuantize::new(8, true);
 
-// Post-Training Quantization
+// Post-training quantization
 let calibrator = PTQCalibrator::percentile(0.999);
-calibrator.observe(&activations);
-let scale = calibrator.compute_scale();
 
 // GGUF export (llama.cpp compatible)
 let quantizer = GGUFQuantizer::q4_0();
-let packed = quantizer.quantize(&weights);  // Q4_0 block format
 ```
 
 ### Model Merging
 
-Combine fine-tuned models with TIES, DARE, or SLERP:
-
 ```rust
 use entrenar::merge::{TiesMerge, DareMerge, SlerpMerge};
 
-// TIES: Trim + Sign Election + Merge
-let ties = TiesMerge::new(0.2);  // 20% density
-let merged = ties.merge(&[model_a, model_b, model_c], &[0.4, 0.3, 0.3]);
+// TIES: Trim + Sign Election
+let merged = TiesMerge::new(0.2).merge(&models, &weights);
 
 // DARE: Dropout + Rescale
-let dare = DareMerge::new(0.9);  // 90% dropout
-let merged = dare.merge(&base, &finetuned);
+let merged = DareMerge::new(0.9).merge(&base, &finetuned);
 
-// SLERP: Spherical interpolation (2 models)
-let slerp = SlerpMerge::new();
-let merged = slerp.merge(&model_a, &model_b, 0.5);
+// SLERP: Spherical interpolation
+let merged = SlerpMerge::new().merge(&a, &b, 0.5);
 ```
 
 ### Knowledge Distillation
 
 ```rust
-use entrenar::distill::{DistillationLoss, EnsembleDistiller, ProgressiveDistiller};
+use entrenar::distill::{DistillationLoss, EnsembleDistiller};
 
-// Temperature-scaled KD
-let kd_loss = DistillationLoss::new(4.0, 0.7);  // temp=4, alpha=0.7
-let loss = kd_loss.compute(&student_logits, &teacher_logits, &labels);
+// Temperature-scaled KD loss
+let kd = DistillationLoss::new(4.0, 0.7);
+let loss = kd.compute(&student, &teacher, &labels);
 
 // Multi-teacher ensemble
 let ensemble = EnsembleDistiller::weighted(&[0.5, 0.3, 0.2]);
-let combined = ensemble.combine(&teacher_outputs);
-
-// Progressive layer-wise distillation
-let progressive = ProgressiveDistiller::new(layer_weights);
-let loss = progressive.layer_wise_loss(&student_hiddens, &teacher_hiddens);
 ```
 
-### Training Loop & Callbacks
+### Training Callbacks
 
 ```rust
 use entrenar::train::{
-    Trainer, TrainResult, CallbackManager,
-    EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback,
+    EarlyStopping, CheckpointCallback, ProgressCallback,
+    MonitorCallback, ExplainabilityCallback, ExplainMethod,
 };
 
-let mut trainer = Trainer::new(params, optimizer, config);
-trainer.set_loss(loss_fn);
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+trainer.add_callback(CheckpointCallback::new("./checkpoints"));
+trainer.add_callback(ProgressCallback::new(10));
+trainer.add_callback(MonitorCallback::new());  // NaN/Inf detection
 
-// Add callbacks
-trainer.add_callback(EarlyStopping::new(5, 0.001));       // Stop after 5 epochs without improvement
-trainer.add_callback(CheckpointCallback::new("./ckpt")); // Save best + periodic
-trainer.add_callback(ProgressCallback::new(10));         // Log every 10 steps
-trainer.add_callback(MonitorCallback::new());            // NaN/Inf detection, metrics
-
-let result: TrainResult = trainer.train(100, batch_fn, forward_fn);
-// result.final_epoch, result.best_loss, result.stopped_early, result.elapsed_secs
+// Feature importance tracking
+trainer.add_callback(
+    ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
+        .with_top_k(10)
+);
 ```
 
-### Real-time Monitoring
+### Real-Time Monitoring
 
-Toyota Way-inspired quality monitoring with Andon alerts:
+Toyota Way-inspired quality monitoring:
 
 ```rust
-use entrenar::monitor::{MetricsCollector, DriftDetector, AndonSystem, HanseiAnalyzer};
+use entrenar::monitor::{MetricsCollector, DriftDetector, AndonSystem};
 
 let mut collector = MetricsCollector::new();
-let mut drift = DriftDetector::new(10);  // 10-epoch window
+let mut drift = DriftDetector::new(10);
 let mut andon = AndonSystem::new();
 
-for epoch in 0..max_epochs {
-    collector.record(Metric::Loss, loss);
-    collector.record(Metric::LearningRate, lr);
-
-    // Detect statistical drift (z-score based)
-    if let DriftStatus::Drift(z) = drift.check(loss) {
-        andon.warning(format!("Loss drift: z={:.2}", z));
-    }
-
-    // Andon stop on critical issues
-    if andon.should_stop() {
-        break;
-    }
+// Automatic drift detection and Andon alerts
+if let DriftStatus::Drift(z) = drift.check(loss) {
+    andon.warning(format!("Loss drift: z={:.2}", z));
 }
+```
 
-// Post-training Hansei (reflection) report
-let analyzer = HanseiAnalyzer::new();
-let report = analyzer.analyze("run-001", &collector, elapsed);
-println!("{}", analyzer.format_report(&report));
+## Examples
+
+```bash
+cargo run --example training_loop      # Basic training
+cargo run --example explainability     # Feature attribution
+cargo run --example distillation       # Knowledge distillation
+cargo run --example merge_models       # Model merging
+cargo run --example model_io           # Save/load models
 ```
 
 ## Architecture
 
 ```
 entrenar/
-├── autograd/      # Tape-based automatic differentiation
-├── optim/         # SGD, Adam, AdamW, schedulers, gradient clipping
-├── lora/          # LoRA, QLoRA parameter-efficient fine-tuning
-├── quant/         # QAT, PTQ, GGUF Q4_0/Q8_0 quantization
-├── merge/         # TIES, DARE, SLERP model merging
-├── distill/       # Knowledge distillation (KD, ensemble, progressive)
-├── config/        # Declarative YAML training configuration
-├── train/         # Trainer, callbacks, training loop
-├── monitor/       # Real-time metrics, drift detection, Andon alerts
-└── io/            # Model save/load (JSON, YAML, GGUF)
+├── autograd/     Tape-based automatic differentiation
+├── optim/        SGD, Adam, AdamW, schedulers
+├── lora/         LoRA, QLoRA fine-tuning
+├── quant/        QAT, PTQ, GGUF quantization
+├── merge/        TIES, DARE, SLERP merging
+├── distill/      Knowledge distillation
+├── train/        Trainer, callbacks, metrics
+├── monitor/      Real-time monitoring, Andon
+├── config/       Declarative YAML config
+└── io/           Model persistence
 ```
 
-## Development
+## Quality
 
-### Quality Gates
-
-```bash
-# Tier 1 (<5s) - Before commit
-make tier1    # Format, clippy, unit tests
-
-# Tier 2 (<30s) - Before push
-make tier2    # + Integration tests
-
-# Tier 3 (<5m) - Before PR
-make tier3    # + Property tests, coverage
-```
-
-### Test Coverage
-
-- **717 tests** passing
-- **>90% code coverage**
-- **Property tests**: 200+ cases per property (proptest)
-- **Gradient checking**: Finite difference validation
+| Metric | Value |
+|--------|-------|
+| Tests | 800 passing |
+| Coverage | >90% |
+| Property Tests | 200K+ iterations |
+| Gradient Checking | Finite difference validated |
+| Mutation Testing | >80% kill rate |
 
 ## PAIML Stack
 
-Entrenar is part of the PAIML production ML stack:
-
-| Library | Purpose | Status |
-|---------|---------|--------|
-| **[trueno](https://github.com/paiml/trueno)** | SIMD/GPU compute | v0.7.3 |
-| **entrenar** | Training & optimization | v0.2.0 |
-| **[aprender](https://github.com/paiml/aprender)** | .apr model format | v0.9.1 |
-| **[realizar](https://github.com/paiml/realizar)** | GGUF export | planned |
-| **[alimentar](https://github.com/paiml/alimentar)** | Dataset loading | planned |
+| Library | Purpose | Version |
+|---------|---------|---------|
+| [trueno](https://crates.io/crates/trueno) | SIMD tensor operations | 0.7.3 |
+| **entrenar** | Training & optimization | 0.2.0 |
+| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.12.0 |
+| [realizar](https://crates.io/crates/realizar) | GGUF inference | 0.2.1 |
 
 ## Documentation
 
-- [API Reference](https://docs.rs/entrenar) - Complete API documentation
-- [Training Loop Guide](docs/book/src/training-loop.md) - Callbacks and monitoring
-- [Monitoring Spec](docs/specifications/training-monitoring-spec.md) - Real-time monitoring design
-- [Roadmap](roadmap.yaml) - Development progress (52/52 tickets complete)
+- [API Reference](https://docs.rs/entrenar)
+- [Book](book/) - Comprehensive guide
+- [Roadmap](roadmap.yaml) - 53/53 tickets complete
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
 <div align="center">
-
-**Built with Extreme TDD** | Part of the [PAIML Stack](https://github.com/paiml)
-
+  <sub>Built with Extreme TDD | Part of <a href="https://github.com/paiml">PAIML</a></sub>
 </div>
