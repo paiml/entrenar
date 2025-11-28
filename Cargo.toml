@@ -96,3 +96,8 @@ required-features = []
 name = "train_from_yaml_example"
 path = "examples/train_from_yaml_example.rs"
 required-features = []
+
+[[example]]
+name = "explainability"
+path = "examples/explainability.rs"
+required-features = []

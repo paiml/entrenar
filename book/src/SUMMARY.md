@@ -103,6 +103,7 @@
 - [Validation and Testing](./training/validation.md)
 - [Checkpointing](./training/checkpointing.md)
 - [Early Stopping](./training/early-stopping.md)
+- [Explainability](./training/explainability.md)
 
 # Real-Time Monitoring
 
