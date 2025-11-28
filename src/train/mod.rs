@@ -2,6 +2,7 @@
 //!
 //! This module provides a complete training framework with:
 //! - Loss functions (MSE, Cross-Entropy, Huber/SmoothL1, L1)
+//! - Evaluation metrics (Accuracy, Precision, Recall, F1, R², MAE, RMSE)
 //! - Trainer abstraction
 //! - Training configuration
 //! - Metrics tracking
@@ -31,6 +32,7 @@ mod batch;
 pub mod callback;
 mod config;
 mod loss;
+mod metrics;
 mod trainer;
 
 #[cfg(test)]
@@ -43,4 +45,5 @@ pub use callback::{
 };
 pub use config::{MetricsTracker, TrainConfig};
 pub use loss::{CrossEntropyLoss, HuberLoss, L1Loss, LossFn, MSELoss, SmoothL1Loss};
+pub use metrics::{Accuracy, F1Score, Metric, Precision, R2Score, Recall, MAE, RMSE};
 pub use trainer::{TrainResult, Trainer};
