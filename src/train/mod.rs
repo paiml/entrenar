@@ -50,6 +50,9 @@ pub use curriculum::{
     efficiency_score, select_optimal_tier, AdaptiveCurriculum, CurriculumScheduler,
     LinearCurriculum, TieredCurriculum,
 };
-pub use loss::{CrossEntropyLoss, HuberLoss, L1Loss, LossFn, MSELoss, SmoothL1Loss};
+pub use loss::{
+    CrossEntropyLoss, HuberLoss, L1Loss, LossFn, MSELoss, SampleWeightedLoss, SmoothL1Loss,
+    WeightedLoss,
+};
 pub use metrics::{Accuracy, F1Score, Metric, Precision, R2Score, Recall, MAE, RMSE};
 pub use trainer::{TrainResult, Trainer};
