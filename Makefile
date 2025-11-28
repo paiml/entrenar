@@ -422,7 +422,7 @@ ci: tier3 coverage mutants-quick pmat-complexity pmat-tdg deny-check ## Run full
 wasm-build: ## Build WASM monitor module
 	@echo "🔨 Building WASM module..."
 	@which wasm-pack > /dev/null 2>&1 || (echo "📦 Installing wasm-pack..." && cargo install wasm-pack)
-	wasm-pack build --target web --out-dir wasm-pkg/pkg --features monitor
+	cd crates/entrenar-wasm && wasm-pack build --target web --out-dir ../../wasm-pkg/pkg
 	@echo "✅ WASM build complete: wasm-pkg/pkg/"
 
 wasm-install: ## Install npm dependencies for e2e

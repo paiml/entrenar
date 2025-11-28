@@ -11,11 +11,11 @@ async function init() {
 
   try {
     // Import WASM module (built with wasm-pack)
-    const wasm = await import('./pkg/entrenar_monitor.js');
+    const wasm = await import('./pkg/entrenar_wasm.js');
     await wasm.default();
 
-    collector = new wasm.WasmMetricsCollector();
-    dashboard = new wasm.WasmDashboard();
+    collector = new wasm.MetricsCollector();
+    dashboard = collector;  // Same object handles both
 
     badge.textContent = 'WASM Ready';
     badge.className = 'badge ready';
@@ -45,8 +45,6 @@ function startTraining() {
 
     collector.record_loss(loss);
     collector.record_accuracy(accuracy);
-    dashboard.add_loss(loss);
-    dashboard.add_accuracy(accuracy);
 
     updateDisplay();
   }, 100);
@@ -63,7 +61,6 @@ function clearMetrics() {
   stopTraining();
   epoch = 0;
   collector.clear();
-  dashboard.clear();
   updateDisplay();
 }
 
@@ -76,8 +73,8 @@ function updateDisplay() {
   document.getElementById('acc-value').textContent =
     isNaN(accMean) ? '-' : (accMean * 100).toFixed(1) + '%';
 
-  document.getElementById('loss-sparkline').textContent = dashboard.loss_sparkline();
-  document.getElementById('acc-sparkline').textContent = dashboard.accuracy_sparkline();
+  document.getElementById('loss-sparkline').textContent = collector.loss_sparkline();
+  document.getElementById('acc-sparkline').textContent = collector.accuracy_sparkline();
 
   renderCanvas();
 }
@@ -85,7 +82,7 @@ function updateDisplay() {
 function renderCanvas() {
   const canvas = document.getElementById('chart-canvas');
   const ctx = canvas.getContext('2d');
-  const state = JSON.parse(dashboard.state_json());
+  const state = JSON.parse(collector.state_json());
 
   // Clear
   ctx.fillStyle = '#0f0f1a';
