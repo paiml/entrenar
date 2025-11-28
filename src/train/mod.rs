@@ -43,4 +43,4 @@ pub use callback::{
 };
 pub use config::{MetricsTracker, TrainConfig};
 pub use loss::{CrossEntropyLoss, LossFn, MSELoss};
-pub use trainer::Trainer;
+pub use trainer::{TrainResult, Trainer};

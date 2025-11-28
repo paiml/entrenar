@@ -496,6 +496,16 @@ impl CallbackManager {
         self.callbacks.push(Box::new(callback));
     }
 
+    /// Check if no callbacks are registered
+    pub fn is_empty(&self) -> bool {
+        self.callbacks.is_empty()
+    }
+
+    /// Get number of callbacks
+    pub fn len(&self) -> usize {
+        self.callbacks.len()
+    }
+
     /// Fire train begin event
     pub fn on_train_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
         for cb in &mut self.callbacks {
