@@ -37,9 +37,24 @@ let loaded = load_model("model.json")?;
 
 | Format | Extension | Use Case | Status |
 |--------|-----------|----------|--------|
+| **SafeTensors** | `.safetensors` | Production, HuggingFace Hub | ✅ Recommended |
 | **JSON** | `.json` | Human-readable, debugging | ✅ Implemented |
 | **YAML** | `.yaml`, `.yml` | Configuration-friendly | ✅ Implemented |
 | **GGUF** | `.gguf` | LLaMA-compatible format | ⚠️ Placeholder (future Realizar integration) |
+
+### SafeTensors Format (Recommended)
+
+The recommended format for production use. Provides security (no arbitrary code
+execution), efficiency (zero-copy loading), and HuggingFace Hub compatibility:
+
+```rust
+// Save as SafeTensors
+let config = SaveConfig::new(ModelFormat::SafeTensors);
+save_model(&model, "model.safetensors", &config)?;
+
+// Load (format auto-detected)
+let model = load_model("model.safetensors")?;
+```
 
 ### JSON Format
 
@@ -128,13 +143,16 @@ for (orig, load) in original.parameters.iter().zip(loaded.parameters.iter()) {
 }
 ```
 
-**Validation**: 16 I/O tests ensure round-trip correctness
+**Validation**: 54 I/O tests ensure round-trip correctness
 
 ## Auto-Format Detection
 
 Format automatically detected from file extension:
 
 ```rust
+// Detects SafeTensors from .safetensors extension
+let model = load_model("model.safetensors")?;
+
 // Detects JSON from .json extension
 let model = load_model("model.json")?;
 
@@ -189,6 +207,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [Load Models](./load-models.md) - Loading and deserialization
 - [Model Metadata](./metadata.md) - Metadata management
 - [Supported Formats](./formats.md) - Format details
+- [SafeTensors Format](./safetensors-format.md) - HuggingFace compatible format
 
 ## Implementation
 
@@ -196,6 +215,6 @@ All Model I/O code is in `src/io/`:
 - `mod.rs` - Public API exports
 - `model.rs` - Model and ModelMetadata structs
 - `format.rs` - ModelFormat enum and SaveConfig
-- `save.rs` - save_model() function
-- `load.rs` - load_model() function
-- `tests.rs` - 16 integration tests
+- `save.rs` - save_model() function (incl. SafeTensors serialization)
+- `load.rs` - load_model() function (incl. SafeTensors deserialization)
+- `tests.rs` - Integration tests (54 total across module)

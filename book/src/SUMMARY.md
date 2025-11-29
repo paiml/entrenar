@@ -124,6 +124,7 @@
 - [Load Models](./io/load-models.md)
 - [Model Metadata](./io/metadata.md)
 - [Supported Formats](./io/formats.md)
+  - [SafeTensors Format](./io/safetensors-format.md)
   - [JSON Format](./io/json-format.md)
   - [YAML Format](./io/yaml-format.md)
   - [GGUF Format](./io/gguf-format.md)
