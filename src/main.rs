@@ -358,6 +358,15 @@ fn run_quantize(args: entrenar::config::QuantizeArgs, level: LogLevel) -> Result
 }
 
 fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), String> {
+    use entrenar::autograd::Tensor;
+    use entrenar::config::MergeMethod;
+    use entrenar::merge::{
+        dare_merge, ensemble_merge, slerp_merge, ties_merge, DareConfig, EnsembleConfig, Model,
+        SlerpConfig, TiesConfig,
+    };
+    use safetensors::SafeTensors;
+    use std::collections::HashMap;
+
     log(
         level,
         LogLevel::Normal,
@@ -381,11 +390,112 @@ fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), S
         &format!("  Output: {}", args.output.display()),
     );
 
-    // TODO: Implement actual merging via merge module
+    // Validate we have enough models
+    if args.models.len() < 2 {
+        return Err("Need at least 2 models to merge".to_string());
+    }
+
+    // Load all models
+    let mut models: Vec<Model> = Vec::new();
+    for path in &args.models {
+        let data = std::fs::read(path)
+            .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+
+        let tensors = SafeTensors::deserialize(&data)
+            .map_err(|e| format!("Failed to parse {}: {e}", path.display()))?;
+
+        let mut model: Model = HashMap::new();
+        for name in tensors.names() {
+            let tensor = tensors.tensor(name)
+                .map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
+
+            // Only process F32 tensors
+            if tensor.dtype() != safetensors::tensor::Dtype::F32 {
+                continue;
+            }
+
+            let bytes = tensor.data();
+            let values: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                .collect();
+
+            model.insert((*name).to_string(), Tensor::from_vec(values, false));
+        }
+        models.push(model);
+
+        log(level, LogLevel::Verbose, &format!("  Loaded {} tensors from {}", models.last().map_or(0, |m| m.len()), path.display()));
+    }
+
+    // Perform merge
+    let merged = match args.method {
+        MergeMethod::Ties => {
+            let config = TiesConfig {
+                density: args.density.unwrap_or(0.2),
+            };
+            // First model is base, rest are task-specific
+            let base = &models[0];
+            ties_merge(&models[1..], base, &config)
+                .map_err(|e| format!("TIES merge failed: {e}"))?
+        }
+        MergeMethod::Dare => {
+            let config = DareConfig {
+                drop_prob: 1.0 - args.density.unwrap_or(0.5), // density -> drop_prob
+                seed: None,
+            };
+            let base = &models[0];
+            dare_merge(&models[1..], base, &config)
+                .map_err(|e| format!("DARE merge failed: {e}"))?
+        }
+        MergeMethod::Slerp => {
+            if models.len() != 2 {
+                return Err("SLERP requires exactly 2 models".to_string());
+            }
+            let config = SlerpConfig {
+                t: args.weight.unwrap_or(0.5),
+            };
+            slerp_merge(&models[0], &models[1], &config)
+                .map_err(|e| format!("SLERP merge failed: {e}"))?
+        }
+        MergeMethod::Average => {
+            // Parse weights if provided
+            let config = if let Some(w_str) = &args.weights {
+                let weights: Vec<f32> = w_str
+                    .split(',')
+                    .map(|s| s.trim().parse::<f32>())
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| format!("Invalid weights: {e}"))?;
+                EnsembleConfig::weighted_average(weights)
+            } else {
+                EnsembleConfig::uniform_average()
+            };
+
+            ensemble_merge(&models, &config)
+                .map_err(|e| format!("Average merge failed: {e}"))?
+        }
+    };
+
+    // Save merged model as JSON (safetensors export would be future work)
+    let output_data: HashMap<String, Vec<f32>> = merged
+        .iter()
+        .map(|(name, tensor)| (name.clone(), tensor.data().to_vec()))
+        .collect();
+
+    let json_data = serde_json::to_vec_pretty(&output_data)
+        .map_err(|e| format!("Failed to serialize: {e}"))?;
+
+    std::fs::write(&args.output, &json_data)
+        .map_err(|e| format!("Failed to write output: {e}"))?;
+
     log(
         level,
         LogLevel::Normal,
-        "Merge complete (stub - not yet implemented)",
+        &format!(
+            "Merge complete: {} tensors written to {}",
+            merged.len(),
+            args.output.display()
+        ),
     );
+
     Ok(())
 }
