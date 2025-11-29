@@ -287,4 +287,118 @@ mod tests {
         assert!(prefs.show_progress);
         assert_eq!(prefs.default_batch_size, 32);
     }
+
+    #[test]
+    fn test_session_metrics_success_rate_zero() {
+        let metrics = SessionMetrics::default();
+        assert_eq!(metrics.success_rate(), 100.0);
+    }
+
+    #[test]
+    fn test_session_metrics_avg_duration_zero() {
+        let metrics = SessionMetrics::default();
+        assert_eq!(metrics.avg_duration_ms(), 0.0);
+    }
+
+    #[test]
+    fn test_session_metrics_avg_duration() {
+        let mut state = SessionState::new();
+        state.record_command(100, true);
+        state.record_command(200, true);
+        assert_eq!(state.metrics().avg_duration_ms(), 150.0);
+    }
+
+    #[test]
+    fn test_history_entry_new() {
+        let entry = HistoryEntry::new("test command", 50, true);
+        assert_eq!(entry.command, "test command");
+        assert_eq!(entry.duration_ms, 50);
+        assert!(entry.success);
+        assert!(entry.timestamp > 0);
+    }
+
+    #[test]
+    fn test_loaded_model_equality() {
+        let model1 = LoadedModel {
+            id: "test".to_string(),
+            path: PathBuf::from("/tmp"),
+            architecture: "llama".to_string(),
+            parameters: 7_000_000_000,
+            layers: 32,
+            hidden_dim: 4096,
+            role: ModelRole::None,
+        };
+        let model2 = model1.clone();
+        assert_eq!(model1, model2);
+    }
+
+    #[test]
+    fn test_model_role_equality() {
+        assert_eq!(ModelRole::Teacher, ModelRole::Teacher);
+        assert_ne!(ModelRole::Teacher, ModelRole::Student);
+        assert_ne!(ModelRole::Student, ModelRole::None);
+    }
+
+    #[test]
+    fn test_session_state_save_load() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let state_path = temp_dir.path().join("state.json");
+
+        let mut state = SessionState::new();
+        state.add_to_history(HistoryEntry::new("test", 100, true));
+        state.preferences_mut().default_batch_size = 128;
+
+        state.save(&state_path).unwrap();
+        let loaded = SessionState::load(&state_path).unwrap();
+
+        assert_eq!(state, loaded);
+    }
+
+    #[test]
+    fn test_session_state_load_invalid_json() {
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"not valid json").unwrap();
+
+        let result = SessionState::load(&file.path().to_path_buf());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_preferences_all_fields() {
+        let prefs = Preferences::default();
+        assert_eq!(prefs.output_format, "table");
+        assert!(prefs.show_progress);
+        assert!(prefs.auto_save_history);
+        assert_eq!(prefs.default_batch_size, 32);
+        assert_eq!(prefs.default_seq_len, 512);
+    }
+
+    #[test]
+    fn test_session_state_remove_nonexistent() {
+        let mut state = SessionState::new();
+        let result = state.remove_model("nonexistent");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_session_state_get_nonexistent() {
+        let state = SessionState::new();
+        assert!(state.get_model("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_session_metrics_fields() {
+        let metrics = SessionMetrics {
+            total_commands: 10,
+            successful_commands: 8,
+            total_duration_ms: 1000,
+        };
+        assert_eq!(metrics.success_rate(), 80.0);
+        assert_eq!(metrics.avg_duration_ms(), 100.0);
+    }
 }
