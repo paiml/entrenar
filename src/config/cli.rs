@@ -198,8 +198,7 @@ impl std::str::FromStr for OutputFormat {
             "json" => Ok(OutputFormat::Json),
             "yaml" => Ok(OutputFormat::Yaml),
             _ => Err(format!(
-                "Unknown output format: {}. Valid formats: text, json, yaml",
-                s
+                "Unknown output format: {s}. Valid formats: text, json, yaml"
             )),
         }
     }
@@ -221,8 +220,7 @@ impl std::str::FromStr for QuantMethod {
             "symmetric" | "sym" => Ok(QuantMethod::Symmetric),
             "asymmetric" | "asym" => Ok(QuantMethod::Asymmetric),
             _ => Err(format!(
-                "Unknown quantization method: {}. Valid methods: symmetric, asymmetric",
-                s
+                "Unknown quantization method: {s}. Valid methods: symmetric, asymmetric"
             )),
         }
     }
@@ -248,8 +246,7 @@ impl std::str::FromStr for MergeMethod {
             "slerp" => Ok(MergeMethod::Slerp),
             "average" | "avg" => Ok(MergeMethod::Average),
             _ => Err(format!(
-                "Unknown merge method: {}. Valid methods: ties, dare, slerp, average",
-                s
+                "Unknown merge method: {s}. Valid methods: ties, dare, slerp, average"
             )),
         }
     }
@@ -590,6 +587,181 @@ mod tests {
     fn test_unknown_command() {
         let result = parse_args(["entrenar", "unknown"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_apply_overrides_output_dir() {
+        let mut spec = create_test_spec();
+        let args = TrainArgs {
+            config: PathBuf::from("config.yaml"),
+            output_dir: Some(PathBuf::from("./custom_output")),
+            resume: None,
+            epochs: None,
+            batch_size: None,
+            lr: None,
+            save_every: None,
+            log_every: None,
+            dry_run: false,
+            seed: None,
+        };
+        apply_overrides(&mut spec, &args);
+        assert_eq!(spec.training.output_dir, PathBuf::from("./custom_output"));
+    }
+
+    #[test]
+    fn test_apply_overrides_epochs() {
+        let mut spec = create_test_spec();
+        let args = TrainArgs {
+            config: PathBuf::from("config.yaml"),
+            output_dir: None,
+            resume: None,
+            epochs: Some(50),
+            batch_size: None,
+            lr: None,
+            save_every: None,
+            log_every: None,
+            dry_run: false,
+            seed: None,
+        };
+        apply_overrides(&mut spec, &args);
+        assert_eq!(spec.training.epochs, 50);
+    }
+
+    #[test]
+    fn test_apply_overrides_batch_size() {
+        let mut spec = create_test_spec();
+        let args = TrainArgs {
+            config: PathBuf::from("config.yaml"),
+            output_dir: None,
+            resume: None,
+            epochs: None,
+            batch_size: Some(64),
+            lr: None,
+            save_every: None,
+            log_every: None,
+            dry_run: false,
+            seed: None,
+        };
+        apply_overrides(&mut spec, &args);
+        assert_eq!(spec.data.batch_size, 64);
+    }
+
+    #[test]
+    fn test_apply_overrides_lr() {
+        let mut spec = create_test_spec();
+        let args = TrainArgs {
+            config: PathBuf::from("config.yaml"),
+            output_dir: None,
+            resume: None,
+            epochs: None,
+            batch_size: None,
+            lr: Some(0.0001),
+            save_every: None,
+            log_every: None,
+            dry_run: false,
+            seed: None,
+        };
+        apply_overrides(&mut spec, &args);
+        assert!((spec.optimizer.lr - 0.0001).abs() < 1e-8);
+    }
+
+    #[test]
+    fn test_apply_overrides_save_every() {
+        let mut spec = create_test_spec();
+        let args = TrainArgs {
+            config: PathBuf::from("config.yaml"),
+            output_dir: None,
+            resume: None,
+            epochs: None,
+            batch_size: None,
+            lr: None,
+            save_every: Some(5),
+            log_every: None,
+            dry_run: false,
+            seed: None,
+        };
+        apply_overrides(&mut spec, &args);
+        assert_eq!(spec.training.save_interval, 5);
+    }
+
+    #[test]
+    fn test_apply_overrides_all() {
+        let mut spec = create_test_spec();
+        let args = TrainArgs {
+            config: PathBuf::from("config.yaml"),
+            output_dir: Some(PathBuf::from("./all_overrides")),
+            resume: Some(PathBuf::from("checkpoint.json")),
+            epochs: Some(100),
+            batch_size: Some(128),
+            lr: Some(0.01),
+            save_every: Some(10),
+            log_every: Some(50),
+            dry_run: true,
+            seed: Some(42),
+        };
+        apply_overrides(&mut spec, &args);
+        assert_eq!(spec.training.output_dir, PathBuf::from("./all_overrides"));
+        assert_eq!(spec.training.epochs, 100);
+        assert_eq!(spec.data.batch_size, 128);
+        assert!((spec.optimizer.lr - 0.01).abs() < 1e-8);
+        assert_eq!(spec.training.save_interval, 10);
+    }
+
+    fn create_test_spec() -> super::super::TrainSpec {
+        super::super::TrainSpec {
+            model: super::super::ModelRef {
+                path: PathBuf::from("model.gguf"),
+                layers: vec![],
+            },
+            data: super::super::DataConfig {
+                train: PathBuf::from("train.parquet"),
+                val: None,
+                batch_size: 8,
+                auto_infer_types: true,
+                seq_len: None,
+            },
+            optimizer: super::super::OptimSpec {
+                name: "adam".to_string(),
+                lr: 0.001,
+                params: Default::default(),
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+            training: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_output_format_from_str_yaml() {
+        assert_eq!("yaml".parse::<OutputFormat>().unwrap(), OutputFormat::Yaml);
+    }
+
+    #[test]
+    fn test_output_format_from_str_invalid() {
+        assert!("invalid_format".parse::<OutputFormat>().is_err());
+    }
+
+    #[test]
+    fn test_verbose_and_quiet_flags() {
+        let cli = parse_args(["entrenar", "--verbose", "train", "config.yaml"]).unwrap();
+        assert!(cli.verbose);
+        assert!(!cli.quiet);
+
+        let cli = parse_args(["entrenar", "--quiet", "train", "config.yaml"]).unwrap();
+        assert!(!cli.verbose);
+        assert!(cli.quiet);
+    }
+
+    #[test]
+    fn test_info_yaml_format() {
+        let cli = parse_args(["entrenar", "info", "config.yaml", "--format", "yaml"]).unwrap();
+        match cli.command {
+            Command::Info(args) => {
+                assert_eq!(args.format, OutputFormat::Yaml);
+            }
+            _ => panic!("Expected Info command"),
+        }
     }
 }
 

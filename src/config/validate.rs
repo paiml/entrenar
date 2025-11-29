@@ -384,6 +384,144 @@ mod tests {
             assert!(validate_config(&spec).is_ok());
         }
     }
+
+    // =========================================================================
+    // Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn test_invalid_save_interval() {
+        let mut spec = create_valid_spec();
+        spec.training.save_interval = 0;
+        let err = validate_config(&spec).unwrap_err();
+        assert!(matches!(err, ValidationError::InvalidSaveInterval(0)));
+    }
+
+    #[test]
+    fn test_valid_optimizers() {
+        for opt in ["adam", "adamw", "sgd"] {
+            let mut spec = create_valid_spec();
+            spec.optimizer.name = opt.to_string();
+            assert!(validate_config(&spec).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_valid_quant_bits_4_and_8() {
+        for bits in [4u8, 8u8] {
+            let mut spec = create_valid_spec();
+            spec.quantize = Some(QuantSpec {
+                bits,
+                symmetric: true,
+                per_channel: false,
+            });
+            assert!(validate_config(&spec).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_valid_merge_methods() {
+        for method in ["ties", "dare", "slerp"] {
+            let mut spec = create_valid_spec();
+            spec.merge = Some(MergeSpec {
+                method: method.to_string(),
+                params: HashMap::new(),
+            });
+            assert!(validate_config(&spec).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_validation_error_display() {
+        let e = ValidationError::ModelPathNotFound("model.bin".to_string());
+        assert!(e.to_string().contains("Model path does not exist"));
+
+        let e = ValidationError::TrainDataNotFound("train.csv".to_string());
+        assert!(e.to_string().contains("Training data path"));
+
+        let e = ValidationError::ValDataNotFound("val.csv".to_string());
+        assert!(e.to_string().contains("Validation data path"));
+
+        let e = ValidationError::InvalidLearningRate(0.0);
+        assert!(e.to_string().contains("Invalid learning rate"));
+
+        let e = ValidationError::InvalidBatchSize(0);
+        assert!(e.to_string().contains("Invalid batch size"));
+
+        let e = ValidationError::InvalidEpochs(0);
+        assert!(e.to_string().contains("Invalid epochs"));
+
+        let e = ValidationError::InvalidLoRARank(0);
+        assert!(e.to_string().contains("Invalid LoRA rank"));
+
+        let e = ValidationError::InvalidLoRAAlpha(0.0);
+        assert!(e.to_string().contains("Invalid LoRA alpha"));
+
+        let e = ValidationError::InvalidLoRADropout(1.0);
+        assert!(e.to_string().contains("Invalid LoRA dropout"));
+
+        let e = ValidationError::InvalidQuantBits(3);
+        assert!(e.to_string().contains("Invalid quantization bits"));
+
+        let e = ValidationError::InvalidOptimizer("bad".to_string());
+        assert!(e.to_string().contains("Invalid optimizer"));
+
+        let e = ValidationError::InvalidMergeMethod("bad".to_string());
+        assert!(e.to_string().contains("Invalid merge method"));
+
+        let e = ValidationError::InvalidGradClip(-1.0);
+        assert!(e.to_string().contains("Invalid gradient clip"));
+
+        let e = ValidationError::InvalidSeqLen(0);
+        assert!(e.to_string().contains("Invalid sequence length"));
+
+        let e = ValidationError::InvalidSaveInterval(0);
+        assert!(e.to_string().contains("Invalid save interval"));
+
+        let e = ValidationError::EmptyLoRATargets;
+        assert!(e.to_string().contains("cannot be empty"));
+
+        let e = ValidationError::InvalidLRScheduler("bad".to_string());
+        assert!(e.to_string().contains("Invalid LR scheduler"));
+    }
+
+    #[test]
+    fn test_invalid_lora_dropout_negative() {
+        let mut spec = create_valid_spec();
+        spec.lora = Some(LoRASpec {
+            rank: 64,
+            alpha: 16.0,
+            target_modules: vec!["q_proj".to_string()],
+            dropout: -0.1,
+        });
+        let err = validate_config(&spec).unwrap_err();
+        assert!(matches!(err, ValidationError::InvalidLoRADropout(_)));
+    }
+
+    #[test]
+    fn test_valid_config_with_all_optional_fields() {
+        let mut spec = create_valid_spec();
+        spec.data.val = Some(PathBuf::from("val.parquet"));
+        spec.data.seq_len = Some(512);
+        spec.training.grad_clip = Some(1.0);
+        spec.training.lr_scheduler = Some("cosine".to_string());
+        spec.lora = Some(LoRASpec {
+            rank: 64,
+            alpha: 16.0,
+            target_modules: vec!["q_proj".to_string(), "v_proj".to_string()],
+            dropout: 0.1,
+        });
+        spec.quantize = Some(QuantSpec {
+            bits: 4,
+            symmetric: true,
+            per_channel: true,
+        });
+        spec.merge = Some(MergeSpec {
+            method: "ties".to_string(),
+            params: HashMap::new(),
+        });
+        assert!(validate_config(&spec).is_ok());
+    }
 }
 
 #[cfg(test)]

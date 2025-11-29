@@ -92,7 +92,10 @@ impl LoRALayer {
         // Base forward: W @ x [d_out, d_in] @ [d_in, 1] -> [d_out, 1]
         let base_output = matmul(&self.base_weight, x, self.d_out, self.d_in, 1);
 
-        if !self.merged {
+        if self.merged {
+            // If merged, W already includes LoRA adaptation
+            base_output
+        } else {
             // LoRA forward: scale * (B @ (A @ x))
             // Step 1: A @ x [r, d_in] @ [d_in, 1] -> [r, 1]
             let lora_out_a = matmul(&self.lora_a, x, self.rank, self.d_in, 1);
@@ -102,7 +105,7 @@ impl LoRALayer {
 
             // Step 3: scale * LoRA output
             let mut scaled_lora_data = lora_out_b.data().to_owned();
-            for val in scaled_lora_data.iter_mut() {
+            for val in &mut scaled_lora_data {
                 *val *= self.scale;
             }
             let scaled_lora = Tensor::new(scaled_lora_data, false);
@@ -113,9 +116,6 @@ impl LoRALayer {
                 *val += scaled_lora.data()[i];
             }
             Tensor::new(result_data, base_output.requires_grad())
-        } else {
-            // If merged, W already includes LoRA adaptation
-            base_output
         }
     }
 

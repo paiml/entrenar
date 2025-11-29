@@ -305,4 +305,82 @@ mod tests {
 
         assert!(!tracker.is_val_improving(2));
     }
+
+    #[test]
+    fn test_with_checkpoints() {
+        let config = TrainConfig::new().with_checkpoints(5, PathBuf::from("/tmp/checkpoints"));
+        assert_eq!(config.save_interval, Some(5));
+        assert_eq!(
+            config.checkpoint_dir,
+            Some(PathBuf::from("/tmp/checkpoints"))
+        );
+    }
+
+    #[test]
+    fn test_increment_step() {
+        let mut tracker = MetricsTracker::new();
+        assert_eq!(tracker.steps, 0);
+        tracker.increment_step();
+        assert_eq!(tracker.steps, 1);
+        tracker.increment_step();
+        assert_eq!(tracker.steps, 2);
+    }
+
+    #[test]
+    fn test_metrics_tracker_default() {
+        let tracker = MetricsTracker::default();
+        assert!(tracker.losses.is_empty());
+        assert!(tracker.val_losses.is_empty());
+        assert_eq!(tracker.steps, 0);
+        assert_eq!(tracker.epoch, 0);
+    }
+
+    #[test]
+    fn test_avg_loss_empty() {
+        let tracker = MetricsTracker::new();
+        assert_eq!(tracker.avg_loss(5), 0.0);
+    }
+
+    #[test]
+    fn test_best_loss_empty() {
+        let tracker = MetricsTracker::new();
+        assert!(tracker.best_loss().is_none());
+    }
+
+    #[test]
+    fn test_best_val_loss_empty() {
+        let tracker = MetricsTracker::new();
+        assert!(tracker.best_val_loss().is_none());
+    }
+
+    #[test]
+    fn test_is_improving_insufficient_data() {
+        let mut tracker = MetricsTracker::new();
+        tracker.record_epoch(1.0, 0.001);
+        // With patience=3 and only 1 data point, should return true
+        assert!(tracker.is_improving(3));
+    }
+
+    #[test]
+    fn test_is_val_improving_insufficient_data() {
+        let mut tracker = MetricsTracker::new();
+        tracker.record_val_loss(0.5);
+        // With patience=3 and only 1 data point, should return true
+        assert!(tracker.is_val_improving(3));
+    }
+
+    #[test]
+    fn test_train_config_clone() {
+        let config = TrainConfig::new().with_grad_clip(0.5);
+        let cloned = config.clone();
+        assert_eq!(config.max_grad_norm, cloned.max_grad_norm);
+    }
+
+    #[test]
+    fn test_metrics_tracker_clone() {
+        let mut tracker = MetricsTracker::new();
+        tracker.record_epoch(1.0, 0.001);
+        let cloned = tracker.clone();
+        assert_eq!(tracker.losses, cloned.losses);
+    }
 }

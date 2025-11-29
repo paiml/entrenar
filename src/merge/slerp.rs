@@ -28,8 +28,7 @@ impl SlerpConfig {
     pub fn new(t: f32) -> Result<Self, MergeError> {
         if !(0.0..=1.0).contains(&t) {
             return Err(MergeError::InvalidConfig(format!(
-                "Interpolation parameter t must be in [0.0, 1.0], got {}",
-                t
+                "Interpolation parameter t must be in [0.0, 1.0], got {t}"
             )));
         }
         Ok(Self { t })

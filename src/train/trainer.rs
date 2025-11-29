@@ -123,10 +123,7 @@ impl Trainer {
             lr: self.lr(),
             best_loss: self.best_loss,
             val_loss,
-            elapsed_secs: self
-                .start_time
-                .map(|t| t.elapsed().as_secs_f64())
-                .unwrap_or(0.0),
+            elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
         }
     }
 
@@ -636,7 +633,9 @@ impl Trainer {
 
             // Validation phase
             let val_batches: Vec<Batch> = val_fn().into_iter().collect();
-            let val_loss = if !val_batches.is_empty() {
+            let val_loss = if val_batches.is_empty() {
+                None
+            } else {
                 let mut val_total = 0.0;
                 let mut val_count = 0;
                 for batch in val_batches {
@@ -656,8 +655,6 @@ impl Trainer {
                 };
                 self.metrics.record_val_loss(val_avg);
                 Some(val_avg)
-            } else {
-                None
             };
 
             // Update best loss (prefer val_loss if available)
@@ -1145,5 +1142,259 @@ mod tests {
         assert_eq!(result.final_epoch, 2);
         // No val losses recorded
         assert_eq!(trainer.metrics.val_losses.len(), 0);
+    }
+
+    #[test]
+    fn test_set_lr() {
+        let params = vec![Tensor::zeros(10, true)];
+        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::default();
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        assert_eq!(trainer.lr(), 0.001);
+
+        trainer.set_lr(0.01);
+        assert_eq!(trainer.lr(), 0.01);
+    }
+
+    #[test]
+    fn test_params_mut() {
+        let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
+        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::default();
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        let params = trainer.params_mut();
+        assert_eq!(params.len(), 1);
+        // Params should be mutable
+        params[0] = Tensor::from_vec(vec![3.0, 4.0], true);
+        assert_eq!(trainer.params()[0].data()[0], 3.0);
+    }
+
+    #[test]
+    fn test_callbacks_mut() {
+        use crate::train::ProgressCallback;
+
+        let params = vec![Tensor::zeros(10, true)];
+        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::default();
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        assert!(trainer.callbacks().is_empty());
+
+        // Add callback via mutable ref
+        trainer.callbacks_mut();
+        trainer.add_callback(ProgressCallback::new(10));
+        assert!(!trainer.callbacks().is_empty());
+    }
+
+    #[test]
+    fn test_train_stops_at_train_begin() {
+        struct StopAtBeginCallback;
+        impl TrainerCallback for StopAtBeginCallback {
+            fn on_train_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopAtBegin"
+            }
+        }
+
+        let params = vec![Tensor::from_vec(vec![1.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::default();
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+        trainer.add_callback(StopAtBeginCallback);
+
+        let batches = vec![Batch::new(
+            Tensor::from_vec(vec![1.0], false),
+            Tensor::from_vec(vec![2.0], false),
+        )];
+
+        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        assert!(result.stopped_early);
+        assert_eq!(result.final_epoch, 0);
+    }
+
+    #[test]
+    fn test_train_with_epoch_skip() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        struct SkipFirstEpochCallback {
+            skipped: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for SkipFirstEpochCallback {
+            fn on_epoch_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                if ctx.epoch == 0 {
+                    self.skipped.fetch_add(1, Ordering::SeqCst);
+                    CallbackAction::SkipEpoch
+                } else {
+                    CallbackAction::Continue
+                }
+            }
+            fn name(&self) -> &'static str {
+                "SkipFirstEpoch"
+            }
+        }
+
+        let skipped = Arc::new(AtomicUsize::new(0));
+        let params = vec![Tensor::from_vec(vec![1.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::new().with_log_interval(100);
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+        trainer.add_callback(SkipFirstEpochCallback {
+            skipped: skipped.clone(),
+        });
+
+        let batches = vec![Batch::new(
+            Tensor::from_vec(vec![1.0], false),
+            Tensor::from_vec(vec![2.0], false),
+        )];
+
+        let result = trainer.train(3, || batches.clone(), |x| x.clone());
+        assert!(!result.stopped_early);
+        assert_eq!(skipped.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_train_with_step_begin_stop() {
+        struct StopAtStepBeginCallback;
+        impl TrainerCallback for StopAtStepBeginCallback {
+            fn on_step_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                if ctx.step >= 1 {
+                    CallbackAction::Stop
+                } else {
+                    CallbackAction::Continue
+                }
+            }
+            fn name(&self) -> &'static str {
+                "StopAtStepBegin"
+            }
+        }
+
+        let params = vec![Tensor::from_vec(vec![1.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::new().with_log_interval(100);
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+        trainer.add_callback(StopAtStepBeginCallback);
+
+        let batches = vec![
+            Batch::new(
+                Tensor::from_vec(vec![1.0], false),
+                Tensor::from_vec(vec![2.0], false),
+            ),
+            Batch::new(
+                Tensor::from_vec(vec![1.0], false),
+                Tensor::from_vec(vec![2.0], false),
+            ),
+        ];
+
+        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        assert!(result.stopped_early);
+    }
+
+    #[test]
+    fn test_train_with_step_end_stop() {
+        struct StopAtStepEndCallback;
+        impl TrainerCallback for StopAtStepEndCallback {
+            fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopAtStepEnd"
+            }
+        }
+
+        let params = vec![Tensor::from_vec(vec![1.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::new().with_log_interval(100);
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+        trainer.add_callback(StopAtStepEndCallback);
+
+        let batches = vec![Batch::new(
+            Tensor::from_vec(vec![1.0], false),
+            Tensor::from_vec(vec![2.0], false),
+        )];
+
+        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        assert!(result.stopped_early);
+        // Only one step executed
+        assert_eq!(trainer.metrics.steps, 1);
+    }
+
+    #[test]
+    fn test_train_epoch_with_empty_batches() {
+        let params = vec![Tensor::from_vec(vec![1.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::new().with_log_interval(100);
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+
+        let batches: Vec<Batch> = vec![];
+        let avg_loss = trainer.train_epoch(batches, |x| x.clone());
+
+        // With empty batches, loss is 0.0
+        assert_eq!(avg_loss, 0.0);
+    }
+
+    #[test]
+    fn test_validate_with_empty_batches() {
+        let params = vec![Tensor::from_vec(vec![1.0], true)];
+        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::default();
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+
+        let batches: Vec<Batch> = vec![];
+        let val_loss = trainer.validate(batches, |x| x.clone());
+
+        // With empty batches, loss is 0.0
+        assert_eq!(val_loss, 0.0);
+    }
+
+    #[test]
+    fn test_train_with_grad_clipping() {
+        let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
+        let optimizer = Adam::new(0.1, 0.9, 0.999, 1e-8);
+        let config = TrainConfig::new()
+            .with_log_interval(100)
+            .with_grad_clip(1.0);
+
+        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+        trainer.set_loss(Box::new(MSELoss));
+
+        let batches = vec![Batch::new(
+            Tensor::from_vec(vec![1.0, 2.0], false),
+            Tensor::from_vec(vec![100.0, 200.0], false), // Large targets for big gradients
+        )];
+
+        let result = trainer.train(2, || batches.clone(), |x| x.clone());
+        assert!(!result.stopped_early);
+        assert!(result.final_loss.is_finite());
+    }
+
+    #[test]
+    fn test_train_result_clone() {
+        let result = TrainResult {
+            final_epoch: 5,
+            final_loss: 0.1,
+            best_loss: 0.05,
+            stopped_early: false,
+            elapsed_secs: 10.0,
+        };
+        let cloned = result.clone();
+        assert_eq!(result.final_epoch, cloned.final_epoch);
+        assert_eq!(result.stopped_early, cloned.stopped_early);
     }
 }

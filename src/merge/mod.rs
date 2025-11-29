@@ -54,8 +54,7 @@ pub(crate) fn compute_deltas(models: &[Model], base: &Model) -> Result<Vec<Model
             for (name, tensor) in model {
                 let base_tensor = base.get(name).ok_or_else(|| {
                     MergeError::IncompatibleArchitectures(format!(
-                        "Base model missing parameter: {}",
-                        name
+                        "Base model missing parameter: {name}"
                     ))
                 })?;
 
@@ -98,8 +97,7 @@ pub(crate) fn validate_models(models: &[Model]) -> Result<(), MergeError> {
         for name in reference.keys() {
             if !model.contains_key(name) {
                 return Err(MergeError::IncompatibleArchitectures(format!(
-                    "Model {} missing parameter: {}",
-                    i, name
+                    "Model {i} missing parameter: {name}"
                 )));
             }
         }

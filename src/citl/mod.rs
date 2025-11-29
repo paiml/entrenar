@@ -17,7 +17,9 @@ mod trainer;
 #[cfg(test)]
 mod tests;
 
-pub use pattern_store::{ChunkId, DecisionPatternStore, FixPattern, FixSuggestion, PatternStoreConfig};
+pub use pattern_store::{
+    ChunkId, DecisionPatternStore, FixPattern, FixSuggestion, PatternStoreConfig,
+};
 pub use trainer::{
     CITLConfig, CompilationOutcome, DecisionCITL, DecisionStats, DecisionTrace, ErrorCorrelation,
     SourceSpan, SuspiciousDecision,

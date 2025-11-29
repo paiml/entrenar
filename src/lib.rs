@@ -14,10 +14,15 @@
 //! - **config**: Declarative YAML configuration
 //! - **train**: High-level training loop
 //! - **io**: Model saving and loading (JSON, YAML formats)
+//! - **hf_pipeline**: HuggingFace model fetching and distillation
+//! - **citl**: Compiler-in-the-Loop training with RAG-based fix suggestions (feature-gated)
 
 pub mod autograd;
+#[cfg(feature = "citl")]
+pub mod citl;
 pub mod config;
 pub mod distill;
+pub mod hf_pipeline;
 pub mod io;
 pub mod lora;
 pub mod merge;

@@ -115,8 +115,8 @@ impl FakeQuantize {
             return;
         }
 
-        let min_val = data.iter().cloned().fold(f32::INFINITY, f32::min);
-        let max_val = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let min_val = data.iter().copied().fold(f32::INFINITY, f32::min);
+        let max_val = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
         if self.config.symmetric {
             // Symmetric: scale from max absolute value
@@ -536,5 +536,114 @@ mod tests {
                 out
             );
         }
+    }
+
+    #[test]
+    fn test_fake_quant_config_default() {
+        let config = FakeQuantConfig::default();
+        // Default should be q8_symmetric
+        assert_eq!(config.bits, 8);
+        assert!(config.symmetric);
+        assert_eq!(config.qmin, -127);
+        assert_eq!(config.qmax, 127);
+    }
+
+    #[test]
+    fn test_calibrate_empty_data() {
+        let mut fq = FakeQuantize::q8();
+        fq.calibrate(&[]);
+        // Should not crash, and scale should remain at default
+        assert!(!fq.is_initialized());
+        assert_eq!(fq.scale(), 1.0);
+    }
+
+    #[test]
+    fn test_calibration_asymmetric() {
+        let config = FakeQuantConfig::asymmetric(8);
+        let mut fq = FakeQuantize::new(config);
+
+        // All positive data
+        let data = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+        fq.calibrate(&data);
+
+        assert!(fq.is_initialized());
+        assert!(fq.scale() > 0.0);
+        // For asymmetric, zero_point should be computed
+        // scale = (4-0) / (255-0) ≈ 0.0157
+        // zero_point = round(0 - 0/scale) = 0
+        assert!(fq.zero_point() >= 0);
+    }
+
+    #[test]
+    fn test_calibration_asymmetric_negative_offset() {
+        let config = FakeQuantConfig::asymmetric(8);
+        let mut fq = FakeQuantize::new(config);
+
+        // Shifted data
+        let data = vec![10.0, 11.0, 12.0, 13.0, 14.0];
+        fq.calibrate(&data);
+
+        assert!(fq.is_initialized());
+        assert!(fq.scale() > 0.0);
+    }
+
+    #[test]
+    fn test_asymmetric_forward() {
+        let config = FakeQuantConfig::asymmetric(8);
+        let mut fq = FakeQuantize::new(config);
+
+        let data = vec![0.0, 0.5, 1.0, 1.5, 2.0];
+        fq.calibrate(&data);
+
+        let input = Tensor::from_vec(data.clone(), false);
+        let output = fq.forward(&input);
+
+        assert_eq!(output.len(), 5);
+        // Output should be quantized values
+        for &val in output.data().iter() {
+            assert!(val.is_finite());
+        }
+    }
+
+    #[test]
+    fn test_fake_quantize_asymmetric_convenience() {
+        let input = Tensor::from_vec(vec![0.0, 1.0, 2.0], false);
+        let output = fake_quantize(&input, 8, false);
+        assert_eq!(output.len(), 3);
+    }
+
+    #[test]
+    fn test_fake_quant_config_clone() {
+        let config = FakeQuantConfig::symmetric(4);
+        let cloned = config.clone();
+        assert_eq!(config.bits, cloned.bits);
+        assert_eq!(config.symmetric, cloned.symmetric);
+        assert_eq!(config.qmin, cloned.qmin);
+        assert_eq!(config.qmax, cloned.qmax);
+    }
+
+    #[test]
+    fn test_fake_quantize_clone() {
+        let mut fq = FakeQuantize::q8();
+        fq.scale = 0.5;
+        fq.zero_point = 10;
+        fq.initialized = true;
+
+        let cloned = fq.clone();
+        assert_eq!(fq.scale, cloned.scale);
+        assert_eq!(fq.zero_point, cloned.zero_point);
+        assert_eq!(fq.initialized, cloned.initialized);
+    }
+
+    #[test]
+    fn test_calibration_near_zero_scale() {
+        let mut fq = FakeQuantize::q8();
+        // All zeros - would result in zero scale without protection
+        let data = vec![0.0, 0.0, 0.0];
+        fq.calibrate(&data);
+
+        // Scale should be clamped to minimum
+        assert!(fq.scale() >= 1e-10);
+        assert!(fq.is_initialized());
     }
 }

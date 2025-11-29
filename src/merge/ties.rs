@@ -29,8 +29,7 @@ impl TiesConfig {
     pub fn new(density: f32) -> Result<Self, MergeError> {
         if !(0.0..=1.0).contains(&density) {
             return Err(MergeError::InvalidConfig(format!(
-                "Density must be in [0.0, 1.0], got {}",
-                density
+                "Density must be in [0.0, 1.0], got {density}"
             )));
         }
         Ok(Self { density })

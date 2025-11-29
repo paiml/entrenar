@@ -191,8 +191,8 @@ pub fn infer_type(stats: &ColumnStats, config: &InferenceConfig) -> FeatureType 
     let is_target = config.target_columns.iter().any(|t| {
         let t_lower = t.to_lowercase();
         name_lower == t_lower
-            || name_lower.ends_with(&format!("_{}", t_lower))
-            || name_lower.starts_with(&format!("{}_", t_lower))
+            || name_lower.ends_with(&format!("_{t_lower}"))
+            || name_lower.starts_with(&format!("{t_lower}_"))
     });
 
     // Skip excluded columns
@@ -218,9 +218,8 @@ pub fn infer_type(stats: &ColumnStats, config: &InferenceConfig) -> FeatureType 
                 return FeatureType::BinaryTarget;
             } else if stats.all_integers && stats.unique_count <= 100 {
                 return FeatureType::MultiClassTarget;
-            } else {
-                return FeatureType::RegressionTarget;
             }
+            return FeatureType::RegressionTarget;
         }
 
         // Low cardinality integers -> categorical
@@ -305,7 +304,7 @@ pub fn collect_stats_from_samples(name: &str, values: &[Option<&str>]) -> Column
                 if s.contains('-')
                     && s.len() >= 10
                     && s.len() <= 30
-                    && s.chars().filter(|c| c.is_ascii_digit()).count() >= 8
+                    && s.chars().filter(char::is_ascii_digit).count() >= 8
                 {
                     datetime_count += 1;
                 }
@@ -711,5 +710,140 @@ mod tests {
             // Inputs and targets should partition all columns
             prop_assert_eq!(inputs.len() + targets.len(), num_features + num_targets);
         }
+    }
+
+    // ============================================================
+    // Additional Coverage Tests
+    // ============================================================
+
+    #[test]
+    fn test_feature_type_display_all() {
+        assert_eq!(format!("{}", FeatureType::Text), "text");
+        assert_eq!(format!("{}", FeatureType::DateTime), "datetime");
+        assert_eq!(format!("{}", FeatureType::Embedding), "embedding");
+        assert_eq!(
+            format!("{}", FeatureType::MultiClassTarget),
+            "multiclass_target"
+        );
+        assert_eq!(
+            format!("{}", FeatureType::RegressionTarget),
+            "regression_target"
+        );
+        assert_eq!(format!("{}", FeatureType::TokenSequence), "token_sequence");
+        assert_eq!(format!("{}", FeatureType::Unknown), "unknown");
+    }
+
+    #[test]
+    fn test_column_stats_new() {
+        let stats = ColumnStats::new("my_column");
+        assert_eq!(stats.name, "my_column");
+        assert_eq!(stats.count, 0);
+        assert_eq!(stats.unique_count, 0);
+    }
+
+    #[test]
+    fn test_cardinality_ratio_zero_count() {
+        let stats = ColumnStats {
+            count: 0,
+            unique_count: 0,
+            ..Default::default()
+        };
+        assert_eq!(stats.cardinality_ratio(), 0.0);
+    }
+
+    #[test]
+    fn test_null_ratio_zero_count() {
+        let stats = ColumnStats {
+            count: 0,
+            null_count: 0,
+            ..Default::default()
+        };
+        assert_eq!(stats.null_ratio(), 0.0);
+    }
+
+    #[test]
+    fn test_inference_config_default() {
+        let config = InferenceConfig::default();
+        // Default has some target columns defined
+        assert!(!config.target_columns.is_empty());
+        assert!(config.categorical_threshold > 0.0);
+        assert!(config.text_min_avg_len > 0.0);
+        assert!(config.exclude_columns.is_empty());
+    }
+
+    #[test]
+    fn test_infer_unknown_type() {
+        // Empty column stats with no distinguishing features
+        let stats = ColumnStats {
+            name: "weird".to_string(),
+            count: 0,
+            unique_count: 0,
+            all_numeric: false,
+            all_integers: false,
+            ..Default::default()
+        };
+        let config = InferenceConfig {
+            target_columns: vec![],
+            ..Default::default()
+        };
+        // With count=0, it should fall through to Unknown
+        assert_eq!(infer_type(&stats, &config), FeatureType::Unknown);
+    }
+
+    #[test]
+    fn test_infer_array_type() {
+        let stats = ColumnStats {
+            name: "embedding".to_string(),
+            count: 100,
+            unique_count: 100,
+            is_array: true,
+            array_len: Some(768), // Large enough for embedding
+            all_numeric: true,
+            ..Default::default()
+        };
+        let config = InferenceConfig {
+            target_columns: vec![],
+            ..Default::default()
+        };
+        let result = infer_type(&stats, &config);
+        // Numeric array with large dimension is embedding
+        assert_eq!(result, FeatureType::Embedding);
+    }
+
+    #[test]
+    fn test_collect_stats_text() {
+        let values: Vec<Option<&str>> = vec![
+            Some("This is a long text sentence for testing purposes"),
+            Some("Another lengthy text example with multiple words"),
+            Some("Yet another piece of textual content"),
+        ];
+        let stats = collect_stats_from_samples("content", &values);
+
+        assert!(!stats.all_numeric);
+        assert!(stats.avg_str_len.is_some());
+        assert!(stats.avg_str_len.unwrap() > 30.0);
+    }
+
+    #[test]
+    fn test_collect_stats_all_nulls() {
+        let values: Vec<Option<&str>> = vec![None, None, None];
+        let stats = collect_stats_from_samples("nulls", &values);
+
+        assert_eq!(stats.count, 3);
+        assert_eq!(stats.null_count, 3);
+    }
+
+    #[test]
+    fn test_schema_get_feature_type() {
+        let stats = vec![
+            make_stats("x", 100, 50, true, false),
+            make_stats("y", 100, 2, true, true),
+        ];
+        let config = InferenceConfig::default();
+        let schema = infer_schema(stats, &config);
+
+        assert_eq!(schema.features.get("x"), Some(&FeatureType::Numeric));
+        assert_eq!(schema.features.get("y"), Some(&FeatureType::BinaryTarget));
+        assert_eq!(schema.features.get("nonexistent"), None);
     }
 }

@@ -35,10 +35,10 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
 
     // Step 2: Parse YAML
     let spec: TrainSpec = serde_yaml::from_str(&yaml_content)
-        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {}", e)))?;
+        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {e}")))?;
 
     // Step 3: Validate configuration
-    validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {}", e)))?;
+    validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {e}")))?;
 
     println!("✓ Config loaded and validated");
     println!("  Model: {}", spec.model.path.display());
@@ -102,7 +102,7 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     println!();
 
     for epoch in 0..spec.training.epochs {
-        let avg_loss = trainer.train_epoch(batches.clone(), |x| x.clone());
+        let avg_loss = trainer.train_epoch(batches.clone(), Clone::clone);
         println!(
             "Epoch {}/{}: loss={:.6}",
             epoch + 1,
@@ -134,7 +134,7 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
             .params()
             .iter()
             .enumerate()
-            .map(|(i, t)| (format!("param_{}", i), t.clone()))
+            .map(|(i, t)| (format!("param_{i}"), t.clone()))
             .collect(),
     );
 
@@ -161,9 +161,9 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<TrainSpec> {
     })?;
 
     let spec: TrainSpec = serde_yaml::from_str(&yaml_content)
-        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {}", e)))?;
+        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {e}")))?;
 
-    validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {}", e)))?;
+    validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {e}")))?;
 
     Ok(spec)
 }
@@ -172,7 +172,7 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<TrainSpec> {
 mod tests {
     use super::*;
     use std::io::Write;
-    use tempfile::NamedTempFile;
+    use tempfile::{NamedTempFile, TempDir};
 
     #[test]
     fn test_load_valid_config() {
@@ -228,6 +228,272 @@ optimizer:
         temp_file.write_all(yaml.as_bytes()).unwrap();
 
         let result = load_config(temp_file.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_config_nonexistent_file() {
+        let result = load_config("/nonexistent/path/to/config.yaml");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_config_with_lora() {
+        let yaml = r#"
+model:
+  path: model.gguf
+  layers: [q_proj, v_proj]
+
+data:
+  train: train.parquet
+  batch_size: 4
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+
+lora:
+  rank: 16
+  alpha: 32
+  target_modules: [q_proj, v_proj]
+"#;
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let spec = load_config(temp_file.path()).unwrap();
+        assert!(spec.lora.is_some());
+        let lora = spec.lora.unwrap();
+        assert_eq!(lora.rank, 16);
+        assert_eq!(lora.alpha, 32.0);
+    }
+
+    #[test]
+    fn test_load_config_with_quantize() {
+        let yaml = r#"
+model:
+  path: model.gguf
+  layers: []
+
+data:
+  train: train.parquet
+  batch_size: 4
+
+optimizer:
+  name: adam
+  lr: 0.001
+
+quantize:
+  bits: 4
+  symmetric: true
+"#;
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let spec = load_config(temp_file.path()).unwrap();
+        assert!(spec.quantize.is_some());
+        let quant = spec.quantize.unwrap();
+        assert_eq!(quant.bits, 4);
+    }
+
+    #[test]
+    fn test_load_config_with_training_options() {
+        let yaml = r#"
+model:
+  path: model.gguf
+  layers: []
+
+data:
+  train: train.parquet
+  batch_size: 8
+
+optimizer:
+  name: sgd
+  lr: 0.01
+
+training:
+  epochs: 5
+  grad_clip: 1.0
+"#;
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let spec = load_config(temp_file.path()).unwrap();
+        assert_eq!(spec.training.epochs, 5);
+        assert_eq!(spec.training.grad_clip, Some(1.0));
+    }
+
+    #[test]
+    fn test_train_from_yaml_nonexistent() {
+        let result = train_from_yaml("/nonexistent/config.yaml");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_train_from_yaml_success() {
+        let output_dir = TempDir::new().unwrap();
+        let yaml = format!(
+            r#"
+model:
+  path: model.gguf
+  layers: []
+
+data:
+  train: train.parquet
+  batch_size: 8
+
+optimizer:
+  name: adam
+  lr: 0.001
+
+training:
+  epochs: 2
+  output_dir: "{}"
+"#,
+            output_dir.path().display()
+        );
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let result = train_from_yaml(temp_file.path());
+        assert!(result.is_ok());
+
+        // Check that model file was saved
+        let output_path = output_dir.path().join("final_model.json");
+        assert!(output_path.exists());
+    }
+
+    #[test]
+    fn test_train_from_yaml_with_grad_clip() {
+        let output_dir = TempDir::new().unwrap();
+        let yaml = format!(
+            r#"
+model:
+  path: model.gguf
+  layers: []
+
+data:
+  train: train.parquet
+  batch_size: 4
+
+optimizer:
+  name: sgd
+  lr: 0.01
+
+training:
+  epochs: 1
+  grad_clip: 1.0
+  output_dir: "{}"
+"#,
+            output_dir.path().display()
+        );
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let result = train_from_yaml(temp_file.path());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_train_from_yaml_with_lora() {
+        let output_dir = TempDir::new().unwrap();
+        let yaml = format!(
+            r#"
+model:
+  path: model.gguf
+  layers: [q_proj, v_proj]
+
+data:
+  train: train.parquet
+  batch_size: 4
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+
+lora:
+  rank: 16
+  alpha: 32
+  target_modules: [q_proj, v_proj]
+
+training:
+  epochs: 1
+  output_dir: "{}"
+"#,
+            output_dir.path().display()
+        );
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let result = train_from_yaml(temp_file.path());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_train_from_yaml_with_quantize() {
+        let output_dir = TempDir::new().unwrap();
+        let yaml = format!(
+            r#"
+model:
+  path: model.gguf
+  layers: []
+
+data:
+  train: train.parquet
+  batch_size: 4
+
+optimizer:
+  name: adam
+  lr: 0.001
+
+quantize:
+  bits: 4
+  symmetric: true
+
+training:
+  epochs: 1
+  output_dir: "{}"
+"#,
+            output_dir.path().display()
+        );
+
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let result = train_from_yaml(temp_file.path());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_train_from_yaml_malformed() {
+        let yaml = "not: [valid yaml";
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let result = train_from_yaml(temp_file.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_train_from_yaml_invalid_config() {
+        let yaml = r#"
+model:
+  path: model.gguf
+
+data:
+  train: train.parquet
+  batch_size: 0
+
+optimizer:
+  name: adam
+  lr: 0.001
+"#;
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(yaml.as_bytes()).unwrap();
+
+        let result = train_from_yaml(temp_file.path());
         assert!(result.is_err());
     }
 }

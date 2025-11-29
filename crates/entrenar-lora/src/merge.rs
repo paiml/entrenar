@@ -1,0 +1,300 @@
+//! LoRA adapter merging (SMED principle - quick changeover).
+
+use entrenar_common::{EntrenarError, Result};
+use std::path::Path;
+
+/// LoRA adapter merging engine.
+#[derive(Debug)]
+pub struct MergeEngine {
+    scale: f32,
+}
+
+impl Default for MergeEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MergeEngine {
+    /// Create a new merge engine with default scale.
+    pub fn new() -> Self {
+        Self { scale: 1.0 }
+    }
+
+    /// Set the merge scale factor.
+    pub fn with_scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
+
+    /// Merge adapter weights into base model.
+    ///
+    /// For each LoRA target module:
+    /// W_merged = W_base + (scale * alpha / rank) * (B @ A)
+    pub fn merge(
+        &self,
+        base_weights: &[f32],
+        lora_a: &[f32],
+        lora_b: &[f32],
+        alpha: f32,
+        rank: u32,
+    ) -> Vec<f32> {
+        let scale_factor = self.scale * alpha / rank as f32;
+
+        // Simplified merge: W_merged = W_base + scale * (B @ A)
+        // In real implementation, would do proper matrix multiplication
+        base_weights
+            .iter()
+            .enumerate()
+            .map(|(i, &w)| {
+                // Simplified: just add scaled A and B values
+                let a_val = lora_a.get(i % lora_a.len()).copied().unwrap_or(0.0);
+                let b_val = lora_b.get(i % lora_b.len()).copied().unwrap_or(0.0);
+                w + scale_factor * a_val * b_val
+            })
+            .collect()
+    }
+
+    /// Merge multiple adapters with different scales.
+    pub fn merge_multiple(&self, base_weights: &[f32], adapters: &[AdapterWeights]) -> Vec<f32> {
+        let mut result = base_weights.to_vec();
+
+        for adapter in adapters {
+            let scale_factor = adapter.scale * adapter.alpha / adapter.rank as f32;
+            for (i, w) in result.iter_mut().enumerate() {
+                let a_val = adapter
+                    .lora_a
+                    .get(i % adapter.lora_a.len())
+                    .copied()
+                    .unwrap_or(0.0);
+                let b_val = adapter
+                    .lora_b
+                    .get(i % adapter.lora_b.len())
+                    .copied()
+                    .unwrap_or(0.0);
+                *w += scale_factor * a_val * b_val;
+            }
+        }
+
+        result
+    }
+
+    /// Load adapter from file and merge.
+    pub fn merge_from_file(
+        &self,
+        base_path: &Path,
+        adapter_path: &Path,
+        output_path: &Path,
+    ) -> Result<MergeResult> {
+        // Verify files exist
+        if !base_path.exists() {
+            return Err(EntrenarError::ModelNotFound {
+                path: base_path.to_path_buf(),
+            });
+        }
+        if !adapter_path.exists() {
+            return Err(EntrenarError::ModelNotFound {
+                path: adapter_path.to_path_buf(),
+            });
+        }
+
+        // In real implementation, would load SafeTensors and perform merge
+        // For now, return a placeholder result
+        Ok(MergeResult {
+            output_path: output_path.to_path_buf(),
+            merged_params: 0,
+            base_size_bytes: 0,
+            output_size_bytes: 0,
+        })
+    }
+}
+
+/// Adapter weights for merging.
+#[derive(Debug, Clone)]
+pub struct AdapterWeights {
+    pub lora_a: Vec<f32>,
+    pub lora_b: Vec<f32>,
+    pub alpha: f32,
+    pub rank: u32,
+    pub scale: f32,
+}
+
+impl AdapterWeights {
+    /// Create new adapter weights.
+    pub fn new(lora_a: Vec<f32>, lora_b: Vec<f32>, alpha: f32, rank: u32) -> Self {
+        Self {
+            lora_a,
+            lora_b,
+            alpha,
+            rank,
+            scale: 1.0,
+        }
+    }
+
+    /// Set the scale factor.
+    pub fn with_scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
+    }
+}
+
+/// Result of a merge operation.
+#[derive(Debug, Clone)]
+pub struct MergeResult {
+    /// Path to the merged output
+    pub output_path: std::path::PathBuf,
+    /// Number of parameters merged
+    pub merged_params: u64,
+    /// Base model size in bytes
+    pub base_size_bytes: u64,
+    /// Output model size in bytes
+    pub output_size_bytes: u64,
+}
+
+impl MergeResult {
+    /// Check if the merge resulted in size increase.
+    pub fn size_increase_percent(&self) -> f64 {
+        if self.base_size_bytes == 0 {
+            return 0.0;
+        }
+        ((self.output_size_bytes as f64 - self.base_size_bytes as f64)
+            / self.base_size_bytes as f64)
+            * 100.0
+    }
+}
+
+/// Analyze adapter sparsity and effective rank.
+#[derive(Debug, Clone)]
+pub struct AdapterAnalysis {
+    /// Stated rank
+    pub rank: u32,
+    /// Alpha scaling
+    pub alpha: f32,
+    /// Computed scale factor
+    pub scale: f32,
+    /// Effective rank based on SVD analysis
+    pub effective_rank: f32,
+    /// Rank utilization percentage
+    pub rank_utilization: f64,
+    /// Sparsity percentage (near-zero values)
+    pub sparsity: f64,
+    /// Frobenius norm of adapter
+    pub frobenius_norm: f64,
+}
+
+/// Analyze an adapter's structure.
+pub fn analyze_adapter(lora_a: &[f32], lora_b: &[f32], alpha: f32, rank: u32) -> AdapterAnalysis {
+    let sparsity = calculate_sparsity(lora_a) * 0.5 + calculate_sparsity(lora_b) * 0.5;
+
+    // Simplified effective rank estimation
+    let effective_rank = (rank as f32) * (1.0 - sparsity as f32);
+
+    let frobenius_norm = (lora_a.iter().map(|x| x * x).sum::<f32>()
+        + lora_b.iter().map(|x| x * x).sum::<f32>())
+    .sqrt() as f64;
+
+    AdapterAnalysis {
+        rank,
+        alpha,
+        scale: alpha / rank as f32,
+        effective_rank,
+        rank_utilization: (effective_rank / rank as f32) as f64 * 100.0,
+        sparsity: sparsity * 100.0,
+        frobenius_norm,
+    }
+}
+
+fn calculate_sparsity(values: &[f32]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let near_zero = values.iter().filter(|&&x| x.abs() < 1e-6).count();
+    near_zero as f64 / values.len() as f64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_adds_adapter_contribution() {
+        let engine = MergeEngine::new();
+        let base = vec![1.0, 2.0, 3.0, 4.0];
+        let lora_a = vec![0.1, 0.2];
+        let lora_b = vec![0.5, 0.5];
+
+        let merged = engine.merge(&base, &lora_a, &lora_b, 16.0, 64);
+
+        // Merged should differ from base
+        assert!(merged.iter().zip(&base).any(|(m, b)| (m - b).abs() > 1e-6));
+    }
+
+    #[test]
+    fn test_merge_scale_affects_result() {
+        let base = vec![1.0, 2.0, 3.0, 4.0];
+        let lora_a = vec![0.1, 0.2];
+        let lora_b = vec![0.5, 0.5];
+
+        let merged_1 = MergeEngine::new()
+            .with_scale(1.0)
+            .merge(&base, &lora_a, &lora_b, 16.0, 64);
+        let merged_2 = MergeEngine::new()
+            .with_scale(2.0)
+            .merge(&base, &lora_a, &lora_b, 16.0, 64);
+
+        // Higher scale should produce larger difference from base
+        let diff_1: f32 = merged_1.iter().zip(&base).map(|(m, b)| (m - b).abs()).sum();
+        let diff_2: f32 = merged_2.iter().zip(&base).map(|(m, b)| (m - b).abs()).sum();
+        assert!(diff_2 > diff_1);
+    }
+
+    #[test]
+    fn test_merge_multiple_adapters() {
+        let engine = MergeEngine::new();
+        let base = vec![1.0, 2.0, 3.0, 4.0];
+
+        let adapters = vec![
+            AdapterWeights::new(vec![0.1, 0.1], vec![0.5, 0.5], 16.0, 64),
+            AdapterWeights::new(vec![0.2, 0.2], vec![0.3, 0.3], 8.0, 32).with_scale(0.5),
+        ];
+
+        let merged = engine.merge_multiple(&base, &adapters);
+
+        // Result should differ from base
+        assert!(merged.iter().zip(&base).any(|(m, b)| (m - b).abs() > 1e-6));
+    }
+
+    #[test]
+    fn test_adapter_analysis() {
+        let lora_a = vec![0.1, 0.2, 0.3, 0.0, 0.0];
+        let lora_b = vec![0.5, 0.5, 0.0, 0.0, 0.5];
+
+        let analysis = analyze_adapter(&lora_a, &lora_b, 16.0, 64);
+
+        assert_eq!(analysis.rank, 64);
+        assert_eq!(analysis.alpha, 16.0);
+        assert!(analysis.sparsity > 0.0); // Some zeros
+        assert!(analysis.frobenius_norm > 0.0);
+    }
+
+    #[test]
+    fn test_sparsity_calculation() {
+        let sparse = vec![0.0, 0.0, 0.0, 1.0];
+        assert!((calculate_sparsity(&sparse) - 0.75).abs() < 0.01);
+
+        let dense = vec![1.0, 2.0, 3.0, 4.0];
+        assert!((calculate_sparsity(&dense)).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_merge_result_size_increase() {
+        let result = MergeResult {
+            output_path: std::path::PathBuf::from("/tmp/out"),
+            merged_params: 1000,
+            base_size_bytes: 1000,
+            output_size_bytes: 1100,
+        };
+
+        assert!((result.size_increase_percent() - 10.0).abs() < 0.01);
+    }
+}

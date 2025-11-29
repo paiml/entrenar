@@ -188,7 +188,7 @@ impl HanseiAnalyzer {
             Metric::Loss => {
                 if stats.max - stats.min < stats.std * 0.5 {
                     Trend::Stable
-                } else if stats.mean < (stats.min + stats.max) / 2.0 {
+                } else if stats.mean < f64::midpoint(stats.min, stats.max) {
                     Trend::Improving
                 } else {
                     Trend::Degrading
@@ -197,7 +197,7 @@ impl HanseiAnalyzer {
             Metric::Accuracy => {
                 if stats.max - stats.min < stats.std * 0.5 {
                     Trend::Stable
-                } else if stats.mean > (stats.min + stats.max) / 2.0 {
+                } else if stats.mean > f64::midpoint(stats.min, stats.max) {
                     Trend::Improving
                 } else {
                     Trend::Degrading
@@ -413,7 +413,7 @@ impl HanseiAnalyzer {
         )
         .unwrap();
         for (metric_type, summary) in &report.metric_summaries {
-            writeln!(output, "\n{:?}:", metric_type).unwrap();
+            writeln!(output, "\n{metric_type:?}:").unwrap();
             writeln!(
                 output,
                 "  Mean: {:.6}  Std: {:.6}",
@@ -711,5 +711,125 @@ mod tests {
         assert!(report.metric_summaries.is_empty());
         // Should have warning about missing loss
         assert!(report.issues.iter().any(|i| i.category == "Observability"));
+    }
+
+    #[test]
+    fn test_issue_severity_display() {
+        assert_eq!(format!("{}", IssueSeverity::Info), "INFO");
+        assert_eq!(format!("{}", IssueSeverity::Warning), "WARNING");
+        assert_eq!(format!("{}", IssueSeverity::Error), "ERROR");
+        assert_eq!(format!("{}", IssueSeverity::Critical), "CRITICAL");
+    }
+
+    #[test]
+    fn test_trend_display() {
+        assert_eq!(format!("{}", Trend::Improving), "↑ Improving");
+        assert_eq!(format!("{}", Trend::Degrading), "↓ Degrading");
+        assert_eq!(format!("{}", Trend::Stable), "→ Stable");
+        assert_eq!(format!("{}", Trend::Oscillating), "~ Oscillating");
+    }
+
+    #[test]
+    fn test_trend_detection_degrading() {
+        let analyzer = HanseiAnalyzer::new();
+        let mut collector = MetricsCollector::new();
+
+        // Loss that is biased toward higher values (mean > midpoint)
+        for _ in 0..10 {
+            collector.record(Metric::Loss, 1.0);
+        }
+        for _ in 0..40 {
+            collector.record(Metric::Loss, 2.0);
+        }
+
+        let report = analyzer.analyze("degrading", &collector, 10.0);
+        let loss_summary = report.metric_summaries.get(&Metric::Loss).unwrap();
+
+        // Mean = 1.8, midpoint = 1.5, so mean > midpoint → Degrading
+        assert!(
+            loss_summary.trend == Trend::Degrading,
+            "Expected Degrading, got {:?}",
+            loss_summary.trend
+        );
+    }
+
+    #[test]
+    fn test_trend_detection_stable() {
+        let analyzer = HanseiAnalyzer::new();
+        let mut collector = MetricsCollector::new();
+
+        // GradientNorm with low coefficient of variation (cv < 0.2) is stable
+        // cv = std / mean, so mean=1.0 with values 0.95-1.05 gives cv ≈ 0.03
+        for i in 0..50 {
+            collector.record(Metric::GradientNorm, 1.0 + (i as f64 % 10.0 - 5.0) * 0.01);
+        }
+
+        let report = analyzer.analyze("stable", &collector, 10.0);
+        let grad_summary = report.metric_summaries.get(&Metric::GradientNorm).unwrap();
+
+        // With low CV, gradient norm should be stable
+        assert!(
+            grad_summary.trend == Trend::Stable,
+            "Expected Stable, got {:?}",
+            grad_summary.trend
+        );
+    }
+
+    #[test]
+    fn test_custom_thresholds() {
+        let analyzer = HanseiAnalyzer {
+            loss_increase_threshold: 0.5,
+            gradient_explosion_threshold: 50.0,
+            gradient_vanishing_threshold: 1e-8,
+            min_accuracy_improvement: 0.2,
+        };
+
+        assert_eq!(analyzer.loss_increase_threshold, 0.5);
+        assert_eq!(analyzer.gradient_explosion_threshold, 50.0);
+    }
+
+    #[test]
+    fn test_training_issue_clone() {
+        let issue = TrainingIssue {
+            severity: IssueSeverity::Warning,
+            category: "Test".to_string(),
+            description: "Test description".to_string(),
+            recommendation: "Test recommendation".to_string(),
+        };
+        let cloned = issue.clone();
+        assert_eq!(issue.severity, cloned.severity);
+        assert_eq!(issue.category, cloned.category);
+    }
+
+    #[test]
+    fn test_metric_summary_clone() {
+        let summary = MetricSummary {
+            initial: 1.0,
+            final_value: 0.5,
+            min: 0.3,
+            max: 1.2,
+            mean: 0.6,
+            std_dev: 0.2,
+            trend: Trend::Improving,
+        };
+        let cloned = summary.clone();
+        assert_eq!(summary.initial, cloned.initial);
+        assert_eq!(summary.trend, cloned.trend);
+    }
+
+    #[test]
+    fn test_post_training_report_clone() {
+        let report = PostTrainingReport {
+            training_id: "test".to_string(),
+            duration_secs: 10.0,
+            total_steps: 100,
+            final_metrics: HashMap::new(),
+            metric_summaries: HashMap::new(),
+            issues: vec![],
+            recommendations: vec![],
+        };
+        let cloned = report.clone();
+        assert_eq!(report.training_id, cloned.training_id);
+        assert_eq!(report.total_steps, cloned.total_steps);
     }
 }

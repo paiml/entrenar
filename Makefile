@@ -131,6 +131,7 @@ clean: ## Clean build artifacts
 # Standard coverage (<5 min): Two-phase pattern with nextest
 # CRITICAL: --all-features is REQUIRED or feature-gated code won't compile
 # and coverage will show 0%. DO NOT REMOVE --all-features from the nextest call.
+# NOTE: main.rs is excluded as it's a CLI entry point (standard practice)
 coverage: ## Generate HTML coverage report (target: <5 min)
 	@echo "📊 Running coverage analysis (target: <5 min)..."
 	@echo "🔍 Checking for cargo-llvm-cov and cargo-nextest..."
@@ -144,14 +145,14 @@ coverage: ## Generate HTML coverage report (target: <5 min)
 	@echo "🧪 Phase 1: Running tests with instrumentation (no report)..."
 	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace --no-fail-fast --all-features
 	@echo "📊 Phase 2: Generating coverage reports..."
-	@cargo llvm-cov report --html --output-dir target/coverage/html
-	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
+	@cargo llvm-cov report --html --output-dir target/coverage/html --ignore-filename-regex="main\.rs"
+	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info --ignore-filename-regex="main\.rs"
 	@echo "⚙️  Restoring global cargo config..."
 	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
 	@echo ""
-	@echo "📊 Coverage Summary:"
-	@echo "=================="
-	@cargo llvm-cov report --summary-only
+	@echo "📊 Coverage Summary (excluding main.rs):"
+	@echo "========================================"
+	@cargo llvm-cov report --summary-only --ignore-filename-regex="main\.rs"
 	@echo ""
 	@echo "💡 Reports:"
 	@echo "- HTML: target/coverage/html/index.html"

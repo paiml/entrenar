@@ -143,6 +143,86 @@ mod unit_tests {
     }
 
     #[test]
+    fn test_scale_forward() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let c = scale(&a, 2.5);
+
+        assert_abs_diff_eq!(c.data()[0], 2.5);
+        assert_abs_diff_eq!(c.data()[1], 5.0);
+        assert_abs_diff_eq!(c.data()[2], 7.5);
+    }
+
+    #[test]
+    fn test_scale_backward() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let mut c = scale(&a, 3.0);
+
+        backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0])));
+
+        let grad_a = a.grad().unwrap();
+
+        // Gradient of scale is just the factor
+        assert_abs_diff_eq!(grad_a[0], 3.0);
+        assert_abs_diff_eq!(grad_a[1], 3.0);
+        assert_abs_diff_eq!(grad_a[2], 3.0);
+    }
+
+    #[test]
+    fn test_scale_zero_factor() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let c = scale(&a, 0.0);
+
+        // Scaling by zero should give zeros
+        assert_abs_diff_eq!(c.data()[0], 0.0);
+        assert_abs_diff_eq!(c.data()[1], 0.0);
+        assert_abs_diff_eq!(c.data()[2], 0.0);
+    }
+
+    #[test]
+    fn test_scale_negative_factor() {
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let c = scale(&a, -2.0);
+
+        assert_abs_diff_eq!(c.data()[0], -2.0);
+        assert_abs_diff_eq!(c.data()[1], -4.0);
+        assert_abs_diff_eq!(c.data()[2], -6.0);
+    }
+
+    #[test]
+    fn test_add_no_grad() {
+        let a = Tensor::from_vec(vec![1.0, 2.0], false);
+        let b = Tensor::from_vec(vec![3.0, 4.0], false);
+        let c = add(&a, &b);
+
+        assert!(!c.requires_grad());
+    }
+
+    #[test]
+    fn test_mul_no_grad() {
+        let a = Tensor::from_vec(vec![1.0, 2.0], false);
+        let b = Tensor::from_vec(vec![3.0, 4.0], false);
+        let c = mul(&a, &b);
+
+        assert!(!c.requires_grad());
+    }
+
+    #[test]
+    fn test_scale_no_grad() {
+        let a = Tensor::from_vec(vec![1.0, 2.0], false);
+        let c = scale(&a, 2.0);
+
+        assert!(!c.requires_grad());
+    }
+
+    #[test]
+    fn test_relu_no_grad() {
+        let a = Tensor::from_vec(vec![-1.0, 1.0], false);
+        let c = relu(&a);
+
+        assert!(!c.requires_grad());
+    }
+
+    #[test]
     fn test_gelu_forward() {
         let a = Tensor::from_vec(vec![-2.0, -1.0, 0.0, 1.0, 2.0], true);
         let c = gelu(&a);

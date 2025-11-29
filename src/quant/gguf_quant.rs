@@ -104,7 +104,7 @@ impl Q4_0 {
                     nibble as i8
                 };
 
-                result.push(q as f32 * scale);
+                result.push(f32::from(q) * scale);
             }
         }
 
@@ -199,7 +199,7 @@ impl Q8_0 {
         for (i, &q) in self.data.iter().enumerate() {
             let block_idx = i / GGUF_BLOCK_SIZE;
             let scale = self.scales[block_idx];
-            result.push(q as f32 * scale);
+            result.push(f32::from(q) * scale);
         }
 
         result
@@ -539,5 +539,63 @@ mod tests {
             let error = (orig - deq).abs();
             assert!(error < 2.0, "Error {} too large", error);
         }
+    }
+
+    #[test]
+    fn test_q4_0_partial_block() {
+        // Test with non-multiple of 32 elements
+        let values: Vec<f32> = (0..50).map(|i| i as f32 * 0.1).collect();
+        let quantized = Q4_0::quantize(&values);
+        let dequantized = quantized.dequantize();
+
+        assert_eq!(dequantized.len(), values.len());
+    }
+
+    #[test]
+    fn test_q8_0_partial_block() {
+        // Test with non-multiple of 32 elements
+        let values: Vec<f32> = (0..50).map(|i| i as f32 * 0.1).collect();
+        let quantized = Q8_0::quantize(&values);
+        let dequantized = quantized.dequantize();
+
+        assert_eq!(dequantized.len(), values.len());
+    }
+
+    #[test]
+    fn test_q4_0_clone() {
+        let values = vec![1.0, 2.0, 3.0, 4.0];
+        let quantized = Q4_0::quantize(&values);
+        let cloned = quantized.clone();
+        assert_eq!(quantized.len, cloned.len);
+        assert_eq!(quantized.scales, cloned.scales);
+    }
+
+    #[test]
+    fn test_q8_0_clone() {
+        let values = vec![1.0, 2.0, 3.0, 4.0];
+        let quantized = Q8_0::quantize(&values);
+        let cloned = quantized.clone();
+        assert_eq!(quantized.len, cloned.len);
+        assert_eq!(quantized.scales, cloned.scales);
+    }
+
+    #[test]
+    fn test_q8_0_negative_values() {
+        let values = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0];
+        let quantized = Q8_0::quantize(&values);
+        let dequantized = quantized.dequantize();
+
+        for (&orig, &deq) in values.iter().zip(dequantized.iter()) {
+            assert!(deq < 0.0, "Expected negative, got {}", deq);
+            let error = (orig - deq).abs();
+            assert!(error < 0.5, "Error {} too large for Q8_0", error);
+        }
+    }
+
+    #[test]
+    fn test_gguf_quant_type_clone() {
+        let qt = GGUFQuantType::Q4_0;
+        let cloned = qt.clone();
+        assert_eq!(qt.bits(), cloned.bits());
     }
 }

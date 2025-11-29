@@ -1,0 +1,253 @@
+//! Architecture detection from model weights.
+
+use std::collections::HashMap;
+
+/// Detected model architecture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Architecture {
+    /// LLaMA family
+    Llama,
+    /// Mistral family
+    Mistral,
+    /// GPT-2/GPT-NeoX family
+    Gpt,
+    /// BERT family
+    Bert,
+    /// T5 family
+    T5,
+    /// Falcon family
+    Falcon,
+    /// Unknown architecture
+    Unknown,
+}
+
+impl Architecture {
+    /// Get architecture name as string.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Llama => "llama",
+            Self::Mistral => "mistral",
+            Self::Gpt => "gpt",
+            Self::Bert => "bert",
+            Self::T5 => "t5",
+            Self::Falcon => "falcon",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Check if architecture supports attention distillation.
+    pub fn supports_attention_distill(&self) -> bool {
+        matches!(
+            self,
+            Self::Llama | Self::Mistral | Self::Gpt | Self::Bert | Self::T5
+        )
+    }
+}
+
+/// Architecture detector from tensor names.
+#[derive(Debug, Default)]
+pub struct ArchitectureDetector {
+    tensor_names: Vec<String>,
+}
+
+impl ArchitectureDetector {
+    /// Create a new detector.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add tensor names for detection.
+    pub fn with_tensors(mut self, names: Vec<String>) -> Self {
+        self.tensor_names = names;
+        self
+    }
+
+    /// Detect architecture from tensor names.
+    pub fn detect(&self) -> Architecture {
+        let names_lower: Vec<String> = self.tensor_names.iter().map(|n| n.to_lowercase()).collect();
+
+        // LLaMA patterns
+        if names_lower
+            .iter()
+            .any(|n| n.contains("model.layers") && n.contains("self_attn"))
+        {
+            return Architecture::Llama;
+        }
+
+        // Mistral patterns (similar to LLaMA but with sliding window)
+        if names_lower
+            .iter()
+            .any(|n| n.contains("mistral") || n.contains("sliding_window"))
+        {
+            return Architecture::Mistral;
+        }
+
+        // GPT patterns
+        if names_lower
+            .iter()
+            .any(|n| n.contains("transformer.h") || n.contains("attn.c_attn"))
+        {
+            return Architecture::Gpt;
+        }
+
+        // BERT patterns
+        if names_lower
+            .iter()
+            .any(|n| n.contains("bert.encoder") || n.contains("bert.pooler"))
+        {
+            return Architecture::Bert;
+        }
+
+        // T5 patterns
+        if names_lower
+            .iter()
+            .any(|n| n.contains("encoder.block") && n.contains("decoder.block"))
+        {
+            return Architecture::T5;
+        }
+
+        // Falcon patterns
+        if names_lower
+            .iter()
+            .any(|n| n.contains("transformer.h") && n.contains("self_attention.dense"))
+        {
+            return Architecture::Falcon;
+        }
+
+        Architecture::Unknown
+    }
+
+    /// Detect from a map of tensor name to shape.
+    pub fn detect_from_shapes(&self, shapes: &HashMap<String, Vec<usize>>) -> ArchitectureInfo {
+        let architecture = self.detect();
+
+        // Extract dimensions from common tensors
+        let hidden_dim = shapes
+            .iter()
+            .find(|(name, _)| name.contains("embed") || name.contains("wte"))
+            .map(|(_, shape)| shape.last().copied().unwrap_or(0))
+            .unwrap_or(4096);
+
+        let num_layers = shapes
+            .keys()
+            .filter(|name| name.contains(".layers.") || name.contains(".h."))
+            .filter_map(|name| name.split('.').find_map(|part| part.parse::<u32>().ok()))
+            .max()
+            .map(|n| n + 1)
+            .unwrap_or(32);
+
+        let vocab_size = shapes
+            .iter()
+            .find(|(name, _)| name.contains("embed_tokens") || name.contains("wte"))
+            .map(|(_, shape)| shape.first().copied().unwrap_or(0))
+            .unwrap_or(32000);
+
+        let num_heads = estimate_num_heads(hidden_dim);
+
+        ArchitectureInfo {
+            architecture,
+            hidden_dim,
+            num_layers,
+            vocab_size,
+            num_heads,
+        }
+    }
+}
+
+fn estimate_num_heads(hidden_dim: usize) -> u32 {
+    // Common head dimensions: 64, 128
+    let head_dim_64 = hidden_dim / 64;
+    let head_dim_128 = hidden_dim / 128;
+
+    // Prefer 64-dim heads for standard models
+    if hidden_dim % 64 == 0 && head_dim_64 <= 64 {
+        head_dim_64 as u32
+    } else if hidden_dim % 128 == 0 {
+        head_dim_128 as u32
+    } else {
+        32 // Default
+    }
+}
+
+/// Detected architecture information.
+#[derive(Debug, Clone)]
+pub struct ArchitectureInfo {
+    /// Detected architecture family
+    pub architecture: Architecture,
+    /// Hidden dimension
+    pub hidden_dim: usize,
+    /// Number of layers
+    pub num_layers: u32,
+    /// Vocabulary size
+    pub vocab_size: usize,
+    /// Number of attention heads
+    pub num_heads: u32,
+}
+
+impl ArchitectureInfo {
+    /// Estimate total parameters.
+    pub fn estimate_params(&self) -> u64 {
+        // Simplified estimation
+        let embed_params = self.vocab_size as u64 * self.hidden_dim as u64 * 2; // input + output
+        let layer_params =
+            self.num_layers as u64 * self.hidden_dim as u64 * self.hidden_dim as u64 * 12; // Q,K,V,O + MLP
+        embed_params + layer_params
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_llama() {
+        let detector = ArchitectureDetector::new().with_tensors(vec![
+            "model.layers.0.self_attn.q_proj.weight".to_string(),
+            "model.layers.0.mlp.gate_proj.weight".to_string(),
+        ]);
+
+        assert_eq!(detector.detect(), Architecture::Llama);
+    }
+
+    #[test]
+    fn test_detect_bert() {
+        let detector = ArchitectureDetector::new().with_tensors(vec![
+            "bert.encoder.layer.0.attention.self.query.weight".to_string(),
+            "bert.pooler.dense.weight".to_string(),
+        ]);
+
+        assert_eq!(detector.detect(), Architecture::Bert);
+    }
+
+    #[test]
+    fn test_detect_gpt() {
+        let detector = ArchitectureDetector::new().with_tensors(vec![
+            "transformer.h.0.attn.c_attn.weight".to_string(),
+            "transformer.wte.weight".to_string(),
+        ]);
+
+        assert_eq!(detector.detect(), Architecture::Gpt);
+    }
+
+    #[test]
+    fn test_detect_unknown() {
+        let detector =
+            ArchitectureDetector::new().with_tensors(vec!["some.random.tensor.weight".to_string()]);
+
+        assert_eq!(detector.detect(), Architecture::Unknown);
+    }
+
+    #[test]
+    fn test_architecture_supports_distill() {
+        assert!(Architecture::Llama.supports_attention_distill());
+        assert!(Architecture::Bert.supports_attention_distill());
+        assert!(!Architecture::Unknown.supports_attention_distill());
+    }
+
+    #[test]
+    fn test_estimate_num_heads() {
+        assert_eq!(estimate_num_heads(4096), 64);
+        assert_eq!(estimate_num_heads(2048), 32);
+        assert_eq!(estimate_num_heads(768), 12);
+    }
+}

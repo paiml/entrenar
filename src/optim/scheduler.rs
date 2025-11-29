@@ -521,4 +521,80 @@ mod tests {
             prev_lr = current_lr;
         }
     }
+
+    // =========================================================================
+    // Additional coverage tests
+    // =========================================================================
+
+    #[test]
+    fn test_linear_warmup_apply() {
+        use crate::optim::SGD;
+        let mut optimizer = SGD::new(0.0, 0.0);
+        let mut scheduler = LinearWarmupLR::new(0.01, 10);
+
+        scheduler.step();
+        scheduler.apply(&mut optimizer);
+        assert!(optimizer.lr() > 0.0);
+    }
+
+    #[test]
+    fn test_linear_warmup_zero_steps() {
+        let scheduler = LinearWarmupLR::new(0.01, 0);
+        // With warmup_steps = 0, should immediately return target
+        assert_abs_diff_eq!(scheduler.get_lr(), 0.01, epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_step_decay_apply() {
+        use crate::optim::SGD;
+        let mut optimizer = SGD::new(0.0, 0.0);
+        let scheduler = StepDecayLR::new(0.1, 10, 0.1);
+
+        scheduler.apply(&mut optimizer);
+        assert_abs_diff_eq!(optimizer.lr(), 0.1, epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_step_decay_zero_step_size() {
+        let scheduler = StepDecayLR::new(0.1, 0, 0.1);
+        // With step_size = 0, should always return initial
+        assert_abs_diff_eq!(scheduler.get_lr(), 0.1, epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_warmup_cosine_apply() {
+        use crate::optim::SGD;
+        let mut optimizer = SGD::new(0.0, 0.0);
+        let mut scheduler = WarmupCosineDecayLR::new(0.01, 0.0, 10, 100);
+
+        for _ in 0..10 {
+            scheduler.step();
+        }
+        scheduler.apply(&mut optimizer);
+        assert_abs_diff_eq!(optimizer.lr(), 0.01, epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_warmup_cosine_zero_warmup_steps() {
+        let scheduler = WarmupCosineDecayLR::new(0.01, 0.0, 0, 100);
+        // With warmup_steps = 0, should start at lr_max
+        assert_abs_diff_eq!(scheduler.get_lr(), 0.01, epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_warmup_cosine_zero_total_steps() {
+        let scheduler = WarmupCosineDecayLR::new(0.01, 0.001, 0, 0);
+        // With total_steps = 0 and warmup_steps = 0, decay_steps = 0
+        assert_abs_diff_eq!(scheduler.get_lr(), 0.001, epsilon = 1e-8);
+    }
+
+    #[test]
+    fn test_warmup_cosine_past_total() {
+        let mut scheduler = WarmupCosineDecayLR::new(0.01, 0.001, 10, 50);
+        for _ in 0..100 {
+            scheduler.step();
+        }
+        // Past total steps, should return lr_min
+        assert_abs_diff_eq!(scheduler.get_lr(), 0.001, epsilon = 1e-8);
+    }
 }

@@ -13,7 +13,7 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
             let momentum = spec
                 .params
                 .get("momentum")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0) as f32;
 
             Ok(Box::new(SGD::new(spec.lr, momentum)))
@@ -22,19 +22,19 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
             let beta1 = spec
                 .params
                 .get("beta1")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.9) as f32;
 
             let beta2 = spec
                 .params
                 .get("beta2")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.999) as f32;
 
             let eps = spec
                 .params
                 .get("eps")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(1e-8) as f32;
 
             Ok(Box::new(Adam::new(spec.lr, beta1, beta2, eps)))
@@ -43,25 +43,25 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
             let beta1 = spec
                 .params
                 .get("beta1")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.9) as f32;
 
             let beta2 = spec
                 .params
                 .get("beta2")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.999) as f32;
 
             let eps = spec
                 .params
                 .get("eps")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(1e-8) as f32;
 
             let weight_decay = spec
                 .params
                 .get("weight_decay")
-                .and_then(|v| v.as_f64())
+                .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.01) as f32;
 
             Ok(Box::new(AdamW::new(
@@ -73,8 +73,7 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
             )))
         }
         name => Err(Error::ConfigError(format!(
-            "Unknown optimizer: {}. Supported: sgd, adam, adamw",
-            name
+            "Unknown optimizer: {name}. Supported: sgd, adam, adamw"
         ))),
     }
 }

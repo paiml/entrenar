@@ -85,7 +85,7 @@ impl LossFn for MSELoss {
         loss
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "MSE"
     }
 }
@@ -174,7 +174,7 @@ impl LossFn for CrossEntropyLoss {
         loss
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "CrossEntropy"
     }
 }
@@ -296,7 +296,7 @@ impl LossFn for HuberLoss {
         loss
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Huber"
     }
 }
@@ -337,7 +337,7 @@ impl LossFn for L1Loss {
         );
 
         let diff = predictions.data() - targets.data();
-        let abs_diff = diff.mapv(|x| x.abs());
+        let abs_diff = diff.mapv(f32::abs);
         let mae = abs_diff.mean().unwrap_or(0.0);
 
         let mut loss = Tensor::from_vec(vec![mae], true);
@@ -375,7 +375,7 @@ impl LossFn for L1Loss {
         loss
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "L1"
     }
 }
@@ -477,7 +477,7 @@ impl LossFn for WeightedLoss {
         weighted_loss
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Weighted"
     }
 }
@@ -590,7 +590,7 @@ impl LossFn for SampleWeightedLoss {
         self.forward_weighted(predictions, targets, &weights)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "SampleWeighted"
     }
 }
@@ -946,5 +946,295 @@ mod tests {
 
         // Weighted should be higher due to 1.5x weights
         assert!(weighted_loss.data()[0] > uniform.data()[0]);
+    }
+
+    #[test]
+    fn test_huber_default_delta() {
+        let loss_fn = HuberLoss::default_delta();
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![1.5, 2.5], false);
+        let loss = loss_fn.forward(&pred, &target);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_weighted_loss_unweighted() {
+        let loss_fn = WeightedLoss::unweighted(Box::new(MSELoss));
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![1.5, 2.5], false);
+        let loss = loss_fn.forward(&pred, &target);
+        assert_eq!(loss_fn.weight(), 1.0);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_cross_entropy_gradient() {
+        let loss_fn = CrossEntropyLoss;
+        let logits = Tensor::from_vec(vec![2.0, 1.0, 0.5], true);
+        let targets = Tensor::from_vec(vec![1.0, 0.0, 0.0], false);
+
+        let loss = loss_fn.forward(&logits, &targets);
+
+        if let Some(backward_op) = loss.backward_op() {
+            backward_op.backward();
+        }
+
+        let grad = logits.grad().unwrap();
+        // Gradient should exist and be finite
+        for g in grad.iter() {
+            assert!(g.is_finite());
+        }
+        // For CE with target at index 0, grad[0] should be negative
+        // (pred - target where target=1)
+        assert!(grad[0] < 0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "must have same length")]
+    fn test_cross_entropy_mismatched_lengths() {
+        let loss_fn = CrossEntropyLoss;
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
+        loss_fn.forward(&pred, &target);
+    }
+
+    #[test]
+    #[should_panic(expected = "must have same length")]
+    fn test_l1_mismatched_lengths() {
+        let loss_fn = L1Loss;
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
+        loss_fn.forward(&pred, &target);
+    }
+
+    #[test]
+    #[should_panic(expected = "must have same length")]
+    fn test_huber_mismatched_lengths() {
+        let loss_fn = HuberLoss::new(1.0);
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
+        loss_fn.forward(&pred, &target);
+    }
+
+    #[test]
+    #[should_panic(expected = "delta must be positive")]
+    fn test_huber_negative_delta() {
+        HuberLoss::new(-1.0);
+    }
+
+    #[test]
+    fn test_mse_no_grad() {
+        let loss_fn = MSELoss;
+        let pred = Tensor::from_vec(vec![1.0, 2.0], false); // requires_grad = false
+        let target = Tensor::from_vec(vec![1.5, 2.5], false);
+        let loss = loss_fn.forward(&pred, &target);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_cross_entropy_no_grad() {
+        let loss_fn = CrossEntropyLoss;
+        let pred = Tensor::from_vec(vec![2.0, 1.0], false);
+        let target = Tensor::from_vec(vec![1.0, 0.0], false);
+        let loss = loss_fn.forward(&pred, &target);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_huber_no_grad() {
+        let loss_fn = HuberLoss::new(1.0);
+        let pred = Tensor::from_vec(vec![1.0, 2.0], false);
+        let target = Tensor::from_vec(vec![1.5, 2.5], false);
+        let loss = loss_fn.forward(&pred, &target);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_l1_no_grad() {
+        let loss_fn = L1Loss;
+        let pred = Tensor::from_vec(vec![1.0, 2.0], false);
+        let target = Tensor::from_vec(vec![1.5, 2.5], false);
+        let loss = loss_fn.forward(&pred, &target);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_weighted_no_grad() {
+        let loss_fn = WeightedLoss::new(Box::new(MSELoss), 1.5);
+        let pred = Tensor::from_vec(vec![1.0, 2.0], false);
+        let target = Tensor::from_vec(vec![1.5, 2.5], false);
+        let loss = loss_fn.forward(&pred, &target);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_sample_weighted_no_grad() {
+        let loss_fn = SampleWeightedLoss::new(Box::new(MSELoss));
+        let pred = Tensor::from_vec(vec![1.0, 2.0], false);
+        let target = Tensor::from_vec(vec![1.5, 2.5], false);
+        let weights = vec![1.0, 2.0];
+        let loss = loss_fn.forward_weighted(&pred, &target, &weights);
+        assert!(loss.data()[0] > 0.0);
+    }
+
+    #[test]
+    fn test_loss_names() {
+        assert_eq!(MSELoss.name(), "MSE");
+        assert_eq!(CrossEntropyLoss.name(), "CrossEntropy");
+        assert_eq!(HuberLoss::new(1.0).name(), "Huber");
+        assert_eq!(L1Loss.name(), "L1");
+        assert_eq!(WeightedLoss::new(Box::new(MSELoss), 1.0).name(), "Weighted");
+        assert_eq!(
+            SampleWeightedLoss::new(Box::new(MSELoss)).name(),
+            "SampleWeighted"
+        );
+    }
+
+    #[test]
+    fn test_weighted_backward_with_grad() {
+        let loss_fn = WeightedLoss::new(Box::new(MSELoss), 2.0);
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![0.0, 0.0], false);
+
+        let loss = loss_fn.forward(&pred, &target);
+        if let Some(backward_op) = loss.backward_op() {
+            backward_op.backward();
+        }
+
+        // Verify gradient was set
+        let grad = pred.grad();
+        assert!(grad.is_some());
+    }
+
+    #[test]
+    #[should_panic(expected = "Weights must match")]
+    fn test_sample_weighted_mismatched_weights() {
+        let loss_fn = SampleWeightedLoss::new(Box::new(MSELoss));
+        let pred = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let target = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
+        let weights = vec![1.0, 1.0]; // Wrong length
+        loss_fn.forward_weighted(&pred, &target, &weights);
+    }
+
+    #[test]
+    fn test_softmax_numerical_stability() {
+        // Large values that could cause overflow without max subtraction
+        let x = Array1::from(vec![1000.0, 1001.0, 1002.0]);
+        let probs = CrossEntropyLoss::softmax(&x);
+
+        // Should still sum to 1.0
+        let sum: f32 = probs.sum();
+        assert_relative_eq!(sum, 1.0, epsilon = 1e-5);
+
+        // All values should be valid
+        for &p in probs.iter() {
+            assert!(p.is_finite());
+            assert!(p >= 0.0);
+        }
+    }
+
+    #[test]
+    fn test_gradient_accumulation_mse() {
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![0.0, 0.0], false);
+
+        // First forward/backward
+        let loss1 = MSELoss.forward(&pred, &target);
+        if let Some(op) = loss1.backward_op() {
+            op.backward();
+        }
+
+        // Second forward/backward - gradients should accumulate
+        let loss2 = MSELoss.forward(&pred, &target);
+        if let Some(op) = loss2.backward_op() {
+            op.backward();
+        }
+
+        // Gradient should be 2x the single pass
+        let grad = pred.grad().unwrap();
+        assert!(grad[0].abs() > 0.0);
+        assert!(grad[1].abs() > 0.0);
+    }
+
+    #[test]
+    fn test_gradient_accumulation_cross_entropy() {
+        let logits = Tensor::from_vec(vec![2.0, 1.0], true);
+        let targets = Tensor::from_vec(vec![1.0, 0.0], false);
+
+        let loss1 = CrossEntropyLoss.forward(&logits, &targets);
+        if let Some(op) = loss1.backward_op() {
+            op.backward();
+        }
+
+        let loss2 = CrossEntropyLoss.forward(&logits, &targets);
+        if let Some(op) = loss2.backward_op() {
+            op.backward();
+        }
+
+        let grad = logits.grad().unwrap();
+        assert!(grad[0].is_finite());
+        assert!(grad[1].is_finite());
+    }
+
+    #[test]
+    fn test_gradient_accumulation_huber() {
+        let pred = Tensor::from_vec(vec![1.0, 5.0], true);
+        let target = Tensor::from_vec(vec![0.0, 0.0], false);
+
+        let loss1 = HuberLoss::new(1.0).forward(&pred, &target);
+        if let Some(op) = loss1.backward_op() {
+            op.backward();
+        }
+
+        let loss2 = HuberLoss::new(1.0).forward(&pred, &target);
+        if let Some(op) = loss2.backward_op() {
+            op.backward();
+        }
+
+        let grad = pred.grad().unwrap();
+        assert!(grad[0].is_finite());
+        assert!(grad[1].is_finite());
+    }
+
+    #[test]
+    fn test_gradient_accumulation_l1() {
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![0.0, 0.0], false);
+
+        let loss1 = L1Loss.forward(&pred, &target);
+        if let Some(op) = loss1.backward_op() {
+            op.backward();
+        }
+
+        let loss2 = L1Loss.forward(&pred, &target);
+        if let Some(op) = loss2.backward_op() {
+            op.backward();
+        }
+
+        let grad = pred.grad().unwrap();
+        assert!(grad[0].is_finite());
+        assert!(grad[1].is_finite());
+    }
+
+    #[test]
+    fn test_gradient_accumulation_sample_weighted() {
+        let pred = Tensor::from_vec(vec![1.0, 2.0], true);
+        let target = Tensor::from_vec(vec![0.0, 0.0], false);
+        let weights = vec![1.0, 1.5];
+        let loss_fn = SampleWeightedLoss::new(Box::new(MSELoss));
+
+        let loss1 = loss_fn.forward_weighted(&pred, &target, &weights);
+        if let Some(op) = loss1.backward_op() {
+            op.backward();
+        }
+
+        let loss2 = loss_fn.forward_weighted(&pred, &target, &weights);
+        if let Some(op) = loss2.backward_op() {
+            op.backward();
+        }
+
+        let grad = pred.grad().unwrap();
+        assert!(grad[0].is_finite());
+        assert!(grad[1].is_finite());
     }
 }

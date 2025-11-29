@@ -8,11 +8,7 @@ use entrenar::train::{ExplainMethod, ExplainabilityCallback};
 
 /// Simple linear model: y = w0*x0 + w1*x1 + w2*x2
 fn predict(weights: &[f32], x: &Vector<f32>) -> f32 {
-    weights
-        .iter()
-        .zip(x.as_slice())
-        .map(|(w, xi)| w * xi)
-        .sum()
+    weights.iter().zip(x.as_slice()).map(|(w, xi)| w * xi).sum()
 }
 
 fn main() {
@@ -61,11 +57,8 @@ fn main() {
 
     for epoch in 0..3 {
         // Compute permutation importance
-        let importances = explainer.compute_permutation_importance(
-            |x| predict(&weights, x),
-            &val_x,
-            &val_y,
-        );
+        let importances =
+            explainer.compute_permutation_importance(|x| predict(&weights, x), &val_x, &val_y);
 
         // Record for this epoch
         explainer.record_importances(epoch, importances);

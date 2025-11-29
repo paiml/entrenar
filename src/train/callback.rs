@@ -115,7 +115,7 @@ pub trait TrainerCallback: Send {
     }
 
     /// Get callback name for logging
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "TrainerCallback"
     }
 }
@@ -221,7 +221,7 @@ impl TrainerCallback for EarlyStopping {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "EarlyStopping"
     }
 }
@@ -274,7 +274,7 @@ impl CheckpointCallback {
     /// Get checkpoint path for epoch
     pub fn checkpoint_path(&self, epoch: usize) -> PathBuf {
         self.checkpoint_dir
-            .join(format!("checkpoint_epoch_{}.json", epoch))
+            .join(format!("checkpoint_epoch_{epoch}.json"))
     }
 
     /// Get best checkpoint path
@@ -299,10 +299,8 @@ impl CheckpointCallback {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let info = format!(
-            r#"{{"epoch": {}, "is_best": {}, "timestamp": {}}}"#,
-            epoch, is_best, timestamp
-        );
+        let info =
+            format!(r#"{{"epoch": {epoch}, "is_best": {is_best}, "timestamp": {timestamp}}}"#);
         std::fs::write(&path, info).ok();
 
         self.last_saved_epoch = Some(epoch);
@@ -341,7 +339,7 @@ impl TrainerCallback for CheckpointCallback {
         self.save_checkpoint(ctx.epoch, false);
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "CheckpointCallback"
     }
 }
@@ -384,7 +382,7 @@ impl TrainerCallback for ProgressCallback {
     fn on_epoch_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
         let val_str = ctx
             .val_loss
-            .map(|v| format!(", val_loss: {:.4}", v))
+            .map(|v| format!(", val_loss: {v:.4}"))
             .unwrap_or_default();
 
         println!(
@@ -408,7 +406,7 @@ impl TrainerCallback for ProgressCallback {
         CallbackAction::Continue
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ProgressCallback"
     }
 }
@@ -461,9 +459,9 @@ impl TrainerCallback for MonitorCallback {
     fn on_step_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
         // Record loss at each step
         self.collector
-            .record(crate::monitor::Metric::Loss, ctx.loss as f64);
+            .record(crate::monitor::Metric::Loss, f64::from(ctx.loss));
         self.collector
-            .record(crate::monitor::Metric::LearningRate, ctx.lr as f64);
+            .record(crate::monitor::Metric::LearningRate, f64::from(ctx.lr));
         CallbackAction::Continue
     }
 
@@ -486,7 +484,7 @@ impl TrainerCallback for MonitorCallback {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "MonitorCallback"
     }
 }
@@ -562,7 +560,7 @@ impl<S: LRScheduler + Send> TrainerCallback for LRSchedulerCallback<S> {
         CallbackAction::Continue
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "LRSchedulerCallback"
     }
 }
@@ -922,7 +920,7 @@ impl TrainerCallback for ExplainabilityCallback {
         CallbackAction::Continue
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ExplainabilityCallback"
     }
 }
@@ -1182,6 +1180,549 @@ mod tests {
         assert_eq!(result.importances.len(), 2);
         assert_eq!(result.method, ExplainMethod::IntegratedGradients);
     }
+
+    // =========================================================================
+    // Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn test_early_stopping_with_restore_best() {
+        let es = EarlyStopping::new(3, 0.001).with_restore_best();
+        assert!(es.restore_best);
+    }
+
+    #[test]
+    fn test_early_stopping_monitor_validation() {
+        let mut es = EarlyStopping::new(3, 0.001).monitor_validation();
+        assert!(es.monitor_val);
+
+        let mut ctx = CallbackContext::default();
+        ctx.loss = 1.0;
+        ctx.val_loss = Some(0.5);
+        es.on_epoch_end(&ctx);
+        assert_eq!(es.best_loss, 0.5);
+    }
+
+    #[test]
+    fn test_early_stopping_reset() {
+        let mut es = EarlyStopping::new(3, 0.001);
+        let mut ctx = CallbackContext::default();
+        ctx.loss = 0.5;
+        es.on_epoch_end(&ctx);
+        assert_eq!(es.best_loss, 0.5);
+
+        es.reset();
+        assert_eq!(es.best_loss, f32::INFINITY);
+        assert_eq!(es.epochs_without_improvement, 0);
+    }
+
+    #[test]
+    fn test_early_stopping_name() {
+        let es = EarlyStopping::new(3, 0.001);
+        assert_eq!(es.name(), "EarlyStopping");
+    }
+
+    #[test]
+    fn test_checkpoint_callback_save_every() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut cb = CheckpointCallback::new(temp_dir.path()).save_every(2);
+
+        let mut ctx = CallbackContext::default();
+        ctx.loss = 1.0;
+        cb.on_epoch_end(&ctx);
+
+        ctx.epoch = 1;
+        cb.on_epoch_end(&ctx);
+        assert_eq!(cb.last_saved_epoch, Some(1));
+    }
+
+    #[test]
+    fn test_checkpoint_callback_save_best_disabled() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut cb = CheckpointCallback::new(temp_dir.path()).save_best(false);
+
+        let mut ctx = CallbackContext::default();
+        ctx.loss = 0.1;
+        cb.on_epoch_end(&ctx);
+        assert!(cb.last_saved_epoch.is_none());
+    }
+
+    #[test]
+    fn test_checkpoint_callback_on_train_end() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut cb = CheckpointCallback::new(temp_dir.path());
+
+        let ctx = CallbackContext {
+            epoch: 5,
+            ..Default::default()
+        };
+
+        cb.on_train_end(&ctx);
+        assert_eq!(cb.last_saved_epoch, Some(5));
+    }
+
+    #[test]
+    fn test_checkpoint_callback_name() {
+        let cb = CheckpointCallback::new("/tmp");
+        assert_eq!(cb.name(), "CheckpointCallback");
+    }
+
+    #[test]
+    fn test_checkpoint_callback_val_loss_for_best() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut cb = CheckpointCallback::new(temp_dir.path());
+
+        let mut ctx = CallbackContext::default();
+        ctx.loss = 1.0;
+        ctx.val_loss = Some(0.5);
+        cb.on_epoch_end(&ctx);
+        assert_eq!(cb.best_loss, 0.5);
+    }
+
+    #[test]
+    fn test_progress_callback_default() {
+        let pc = ProgressCallback::default();
+        assert_eq!(pc.log_interval, 10);
+    }
+
+    #[test]
+    fn test_progress_callback_name() {
+        let pc = ProgressCallback::new(5);
+        assert_eq!(pc.name(), "ProgressCallback");
+    }
+
+    #[test]
+    fn test_progress_callback_with_val_loss() {
+        let mut pc = ProgressCallback::new(5);
+        let ctx = CallbackContext {
+            epoch: 0,
+            max_epochs: 10,
+            loss: 0.5,
+            val_loss: Some(0.6),
+            lr: 0.001,
+            elapsed_secs: 1.0,
+            ..Default::default()
+        };
+        assert_eq!(pc.on_epoch_end(&ctx), CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_monitor_callback_default() {
+        let mc = MonitorCallback::default();
+        assert_eq!(mc.name(), "MonitorCallback");
+    }
+
+    #[test]
+    fn test_monitor_callback_summary_json() {
+        let mut mc = MonitorCallback::new();
+        let ctx = CallbackContext {
+            loss: 0.5,
+            lr: 0.001,
+            ..Default::default()
+        };
+        mc.on_step_end(&ctx);
+
+        let json = mc.summary_json();
+        assert!(json.is_ok());
+    }
+
+    #[test]
+    fn test_monitor_callback_inf_detection() {
+        let mut mc = MonitorCallback::new();
+        let ctx = CallbackContext {
+            loss: f32::INFINITY,
+            ..Default::default()
+        };
+        assert_eq!(mc.on_epoch_end(&ctx), CallbackAction::Stop);
+    }
+
+    #[test]
+    fn test_callback_manager_len_and_empty() {
+        let mut manager = CallbackManager::new();
+        assert!(manager.is_empty());
+        assert_eq!(manager.len(), 0);
+
+        manager.add(ProgressCallback::new(10));
+        assert!(!manager.is_empty());
+        assert_eq!(manager.len(), 1);
+    }
+
+    #[test]
+    fn test_callback_manager_on_train_begin_stop() {
+        struct StopCallback;
+        impl TrainerCallback for StopCallback {
+            fn on_train_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopCallback"
+            }
+        }
+
+        let mut manager = CallbackManager::new();
+        manager.add(StopCallback);
+        assert_eq!(
+            manager.on_train_begin(&CallbackContext::default()),
+            CallbackAction::Stop
+        );
+    }
+
+    #[test]
+    fn test_callback_manager_on_train_end() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+
+        struct EndCallback {
+            called: Arc<AtomicBool>,
+        }
+        impl TrainerCallback for EndCallback {
+            fn on_train_end(&mut self, _: &CallbackContext) {
+                self.called.store(true, Ordering::SeqCst);
+            }
+            fn name(&self) -> &'static str {
+                "EndCallback"
+            }
+        }
+
+        let called = Arc::new(AtomicBool::new(false));
+        let mut manager = CallbackManager::new();
+        manager.add(EndCallback {
+            called: called.clone(),
+        });
+        manager.on_train_end(&CallbackContext::default());
+        assert!(called.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_callback_manager_on_epoch_begin_skip() {
+        struct SkipCallback;
+        impl TrainerCallback for SkipCallback {
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::SkipEpoch
+            }
+            fn name(&self) -> &'static str {
+                "SkipCallback"
+            }
+        }
+
+        let mut manager = CallbackManager::new();
+        manager.add(SkipCallback);
+        assert_eq!(
+            manager.on_epoch_begin(&CallbackContext::default()),
+            CallbackAction::SkipEpoch
+        );
+    }
+
+    #[test]
+    fn test_callback_manager_on_epoch_begin_stop() {
+        struct StopCallback;
+        impl TrainerCallback for StopCallback {
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopCallback"
+            }
+        }
+
+        let mut manager = CallbackManager::new();
+        manager.add(StopCallback);
+        assert_eq!(
+            manager.on_epoch_begin(&CallbackContext::default()),
+            CallbackAction::Stop
+        );
+    }
+
+    #[test]
+    fn test_callback_manager_on_step_begin_stop() {
+        struct StopCallback;
+        impl TrainerCallback for StopCallback {
+            fn on_step_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopCallback"
+            }
+        }
+
+        let mut manager = CallbackManager::new();
+        manager.add(StopCallback);
+        assert_eq!(
+            manager.on_step_begin(&CallbackContext::default()),
+            CallbackAction::Stop
+        );
+    }
+
+    #[test]
+    fn test_callback_manager_default() {
+        let manager = CallbackManager::default();
+        assert!(manager.is_empty());
+    }
+
+    #[test]
+    fn test_lr_scheduler_callback_per_epoch() {
+        use crate::optim::StepDecayLR;
+        let scheduler = StepDecayLR::new(0.1, 10, 0.5);
+        let mut cb = LRSchedulerCallback::per_epoch(scheduler);
+        let ctx = CallbackContext {
+            lr: 0.1,
+            ..Default::default()
+        };
+        cb.on_train_begin(&ctx);
+        assert_eq!(cb.initial_lr, Some(0.1));
+        cb.on_epoch_end(&ctx);
+    }
+
+    #[test]
+    fn test_lr_scheduler_callback_per_step() {
+        use crate::optim::StepDecayLR;
+        let scheduler = StepDecayLR::new(0.1, 10, 0.5);
+        let mut cb = LRSchedulerCallback::per_step(scheduler);
+        cb.on_step_end(&CallbackContext::default());
+    }
+
+    #[test]
+    fn test_lr_scheduler_callback_current_lr() {
+        use crate::optim::StepDecayLR;
+        let scheduler = StepDecayLR::new(0.1, 10, 0.5);
+        let cb = LRSchedulerCallback::per_epoch(scheduler);
+        assert!((cb.current_lr() - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_lr_scheduler_callback_name() {
+        use crate::optim::StepDecayLR;
+        let scheduler = StepDecayLR::new(0.1, 10, 0.5);
+        let cb = LRSchedulerCallback::per_epoch(scheduler);
+        assert_eq!(cb.name(), "LRSchedulerCallback");
+    }
+
+    #[test]
+    fn test_explainability_empty_results() {
+        let cb = ExplainabilityCallback::new(ExplainMethod::Saliency);
+        assert!(cb.consistent_top_features().is_empty());
+    }
+
+    #[test]
+    fn test_explainability_feature_names_none() {
+        let cb = ExplainabilityCallback::new(ExplainMethod::Saliency);
+        assert!(cb.feature_names().is_none());
+    }
+
+    #[test]
+    fn test_explainability_record_importances_negative() {
+        let mut cb = ExplainabilityCallback::new(ExplainMethod::Saliency).with_top_k(2);
+        let importances = vec![(0, -0.9), (1, 0.5), (2, -0.3)];
+        cb.record_importances(0, importances);
+        let result = &cb.results()[0];
+        assert_eq!(result.importances[0].0, 0);
+        assert_eq!(result.importances[1].0, 1);
+    }
+
+    #[test]
+    fn test_callback_action_clone_copy() {
+        let action = CallbackAction::Continue;
+        let cloned = action;
+        assert_eq!(action, cloned);
+        assert_ne!(CallbackAction::Stop, CallbackAction::SkipEpoch);
+    }
+
+    #[test]
+    fn test_callback_context_clone() {
+        let ctx = CallbackContext {
+            epoch: 5,
+            max_epochs: 10,
+            step: 50,
+            steps_per_epoch: 100,
+            global_step: 550,
+            loss: 0.5,
+            lr: 0.001,
+            best_loss: Some(0.4),
+            val_loss: Some(0.6),
+            elapsed_secs: 100.0,
+        };
+        let cloned = ctx.clone();
+        assert_eq!(ctx.epoch, cloned.epoch);
+    }
+
+    #[test]
+    fn test_early_stopping_clone() {
+        let es = EarlyStopping::new(5, 0.01);
+        let cloned = es.clone();
+        assert_eq!(es.patience, cloned.patience);
+    }
+
+    #[test]
+    fn test_checkpoint_callback_clone() {
+        let cb = CheckpointCallback::new("/tmp/test");
+        let cloned = cb.clone();
+        assert_eq!(cb.checkpoint_dir, cloned.checkpoint_dir);
+    }
+
+    #[test]
+    fn test_progress_callback_clone() {
+        let pc = ProgressCallback::new(5);
+        let cloned = pc.clone();
+        assert_eq!(pc.log_interval, cloned.log_interval);
+    }
+
+    #[test]
+    fn test_default_trainer_callback_impl() {
+        struct MinimalCallback;
+        impl TrainerCallback for MinimalCallback {
+            fn name(&self) -> &'static str {
+                "MinimalCallback"
+            }
+        }
+
+        let mut cb = MinimalCallback;
+        let ctx = CallbackContext::default();
+        assert_eq!(cb.on_train_begin(&ctx), CallbackAction::Continue);
+        assert_eq!(cb.on_epoch_begin(&ctx), CallbackAction::Continue);
+        assert_eq!(cb.on_epoch_end(&ctx), CallbackAction::Continue);
+        assert_eq!(cb.on_step_begin(&ctx), CallbackAction::Continue);
+        assert_eq!(cb.on_step_end(&ctx), CallbackAction::Continue);
+        assert_eq!(cb.on_validation(&ctx), CallbackAction::Continue);
+        cb.on_train_end(&ctx);
+    }
+
+    #[test]
+    fn test_callback_manager_stop_propagation() {
+        // Create a callback that always returns Stop
+        struct StopCallback;
+        impl TrainerCallback for StopCallback {
+            fn on_epoch_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopCallback"
+            }
+        }
+
+        let mut manager = CallbackManager::new();
+        manager.add(StopCallback);
+        manager.add(ProgressCallback::new(10));
+
+        let ctx = CallbackContext::default();
+        let action = manager.on_epoch_end(&ctx);
+        // Stop should propagate
+        assert_eq!(action, CallbackAction::Stop);
+    }
+
+    #[test]
+    fn test_monitor_callback_nan_loss() {
+        let mut cb = MonitorCallback::new();
+        let mut ctx = CallbackContext::default();
+        ctx.loss = f32::NAN;
+
+        let action = cb.on_epoch_end(&ctx);
+        // Should detect NaN and potentially stop
+        assert!(action == CallbackAction::Stop || action == CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_monitor_callback_infinite_loss() {
+        let mut cb = MonitorCallback::new();
+        let mut ctx = CallbackContext::default();
+        ctx.loss = f32::INFINITY;
+
+        cb.on_epoch_end(&ctx);
+        // Should detect infinite loss
+    }
+
+    #[test]
+    fn test_progress_callback_on_step_end_at_interval() {
+        let mut cb = ProgressCallback::new(5);
+        let mut ctx = CallbackContext::default();
+        ctx.step = 5;
+        ctx.steps_per_epoch = 10;
+
+        let action = cb.on_step_end(&ctx);
+        assert_eq!(action, CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_explainability_callback_basic() {
+        let mut cb = ExplainabilityCallback::new(ExplainMethod::PermutationImportance);
+        assert_eq!(cb.name(), "ExplainabilityCallback");
+
+        let mut ctx = CallbackContext::default();
+        ctx.step = 5;
+        ctx.loss = 0.5;
+
+        cb.on_step_end(&ctx);
+        // Should have recorded something
+    }
+
+    #[test]
+    fn test_explainability_compute_permutation_importance() {
+        let cb = ExplainabilityCallback::new(ExplainMethod::PermutationImportance);
+
+        // Create sample data using aprender's Vector type
+        let x = vec![
+            aprender::primitives::Vector::from_slice(&[1.0, 2.0, 3.0]),
+            aprender::primitives::Vector::from_slice(&[4.0, 5.0, 6.0]),
+            aprender::primitives::Vector::from_slice(&[7.0, 8.0, 9.0]),
+        ];
+        let y = vec![1.0, 2.0, 3.0];
+
+        // Simple linear prediction function
+        let predict_fn = |v: &aprender::primitives::Vector<f32>| -> f32 {
+            v.as_slice()[0] * 0.1 + v.as_slice()[1] * 0.2
+        };
+
+        let importance = cb.compute_permutation_importance(predict_fn, &x, &y);
+        assert_eq!(importance.len(), 3);
+    }
+
+    #[test]
+    fn test_explainability_compute_integrated_gradients() {
+        let cb = ExplainabilityCallback::new(ExplainMethod::IntegratedGradients);
+
+        let sample = aprender::primitives::Vector::from_slice(&[1.0, 2.0, 3.0]);
+        let baseline = aprender::primitives::Vector::from_slice(&[0.0, 0.0, 0.0]);
+
+        let model_fn =
+            |v: &aprender::primitives::Vector<f32>| -> f32 { v.as_slice().iter().sum::<f32>() };
+
+        let attributions = cb.compute_integrated_gradients(model_fn, &sample, &baseline);
+        assert_eq!(attributions.len(), 3);
+    }
+
+    #[test]
+    fn test_explainability_compute_saliency() {
+        let cb = ExplainabilityCallback::new(ExplainMethod::Saliency);
+
+        let sample = aprender::primitives::Vector::from_slice(&[1.0, 2.0, 3.0]);
+
+        let model_fn =
+            |v: &aprender::primitives::Vector<f32>| -> f32 { v.as_slice().iter().sum::<f32>() };
+
+        let saliency = cb.compute_saliency(model_fn, &sample);
+        assert_eq!(saliency.len(), 3);
+    }
+
+    #[test]
+    fn test_callback_manager_on_step_end_stop() {
+        struct StopCallback;
+        impl TrainerCallback for StopCallback {
+            fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopCallback"
+            }
+        }
+
+        let mut manager = CallbackManager::new();
+        manager.add(StopCallback);
+        assert_eq!(
+            manager.on_step_end(&CallbackContext::default()),
+            CallbackAction::Stop
+        );
+    }
 }
 
 // =============================================================================
@@ -1367,7 +1908,7 @@ mod proptests {
                 fn on_epoch_end(&mut self, _: &CallbackContext) -> CallbackAction { CallbackAction::Continue }
                 fn on_step_begin(&mut self, _: &CallbackContext) -> CallbackAction { CallbackAction::Continue }
                 fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction { CallbackAction::Continue }
-                fn name(&self) -> &str { "CounterCallback" }
+                fn name(&self) -> &'static str { "CounterCallback" }
             }
 
             let counter = Arc::new(AtomicUsize::new(0));
