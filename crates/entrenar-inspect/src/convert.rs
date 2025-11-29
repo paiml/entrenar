@@ -195,4 +195,102 @@ mod tests {
         assert_eq!("Q8".parse::<Quantization>().unwrap(), Quantization::Q8_0);
         assert_eq!("fp16".parse::<Quantization>().unwrap(), Quantization::F16);
     }
+
+    #[test]
+    fn test_quantization_parsing_aliases() {
+        assert_eq!("q4".parse::<Quantization>().unwrap(), Quantization::Q4_0);
+        assert_eq!("4bit".parse::<Quantization>().unwrap(), Quantization::Q4_0);
+        assert_eq!("8bit".parse::<Quantization>().unwrap(), Quantization::Q8_0);
+        assert_eq!("half".parse::<Quantization>().unwrap(), Quantization::F16);
+    }
+
+    #[test]
+    fn test_quantization_parsing_none() {
+        let result = "none".parse::<Quantization>();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No quantization"));
+    }
+
+    #[test]
+    fn test_quantization_parsing_invalid() {
+        let result = "q2".parse::<Quantization>();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown quantization"));
+    }
+
+    #[test]
+    fn test_format_converter_default() {
+        let converter = FormatConverter::default();
+        assert!(converter.quantize.is_none());
+    }
+
+    #[test]
+    fn test_compression_ratio_zero_input() {
+        let result = ConversionResult {
+            input_path: std::path::PathBuf::from("in"),
+            output_path: std::path::PathBuf::from("out"),
+            input_size: 0,
+            output_size: 1000,
+            duration_secs: 1.0,
+        };
+        assert_eq!(result.compression_ratio(), 1.0);
+    }
+
+    #[test]
+    fn test_size_change_percent_compression() {
+        let result = ConversionResult {
+            input_path: std::path::PathBuf::from("in"),
+            output_path: std::path::PathBuf::from("out"),
+            input_size: 1000,
+            output_size: 500,
+            duration_secs: 1.0,
+        };
+        assert!((result.size_change_percent() - (-50.0)).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_size_change_percent_expansion() {
+        let result = ConversionResult {
+            input_path: std::path::PathBuf::from("in"),
+            output_path: std::path::PathBuf::from("out"),
+            input_size: 1000,
+            output_size: 1500,
+            duration_secs: 1.0,
+        };
+        assert!((result.size_change_percent() - 50.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_converter_q8_quantization() {
+        let mut input = NamedTempFile::with_suffix(".safetensors").unwrap();
+        input.write_all(&[0u8; 100_000]).unwrap();
+
+        let temp_dir = TempDir::new().unwrap();
+        let output = temp_dir.path().join("out.gguf");
+
+        let converter = FormatConverter::new().with_quantization(Quantization::Q8_0);
+        let result = converter
+            .convert(input.path(), &output, OutputFormat::Gguf)
+            .unwrap();
+
+        // Q8_0 should reduce size by ~2x
+        assert!(result.output_size < result.input_size);
+        assert!(result.output_size == result.input_size / 2);
+    }
+
+    #[test]
+    fn test_converter_no_quantization() {
+        let mut input = NamedTempFile::with_suffix(".safetensors").unwrap();
+        input.write_all(&[0u8; 100_000]).unwrap();
+
+        let temp_dir = TempDir::new().unwrap();
+        let output = temp_dir.path().join("out.safetensors");
+
+        let result = FormatConverter::new()
+            .convert(input.path(), &output, OutputFormat::SafeTensors)
+            .unwrap();
+
+        // No quantization should preserve size
+        assert_eq!(result.output_size, result.input_size);
+    }
 }
