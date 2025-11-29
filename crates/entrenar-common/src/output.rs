@@ -308,4 +308,111 @@ mod tests {
         // The long value should fit in the table
         assert!(rendered.contains("A very long value here"));
     }
+
+    #[test]
+    fn test_empty_table_renders_empty() {
+        let table = TableBuilder::new().build();
+        let rendered = table.render();
+        assert!(rendered.is_empty());
+    }
+
+    #[test]
+    fn test_table_with_no_rows() {
+        let table = TableBuilder::new()
+            .headers(vec!["A", "B"])
+            .build();
+
+        let rendered = table.render();
+        assert!(rendered.contains("A"));
+        assert!(rendered.contains("B"));
+        // Should still have borders
+        assert!(rendered.contains('┌'));
+        assert!(rendered.contains('└'));
+    }
+
+    #[test]
+    fn test_table_builder_rows_method() {
+        let table = TableBuilder::new()
+            .headers(vec!["X", "Y"])
+            .rows(vec![
+                vec!["1", "2"],
+                vec!["3", "4"],
+            ])
+            .build();
+
+        assert_eq!(table.rows().len(), 2);
+        assert_eq!(table.rows()[0], vec!["1", "2"]);
+        assert_eq!(table.rows()[1], vec!["3", "4"]);
+    }
+
+    #[test]
+    fn test_format_bytes_edge_cases() {
+        assert_eq!(format_bytes(0), "0 B");
+        assert_eq!(format_bytes(1), "1 B");
+        assert_eq!(format_bytes(1023), "1023 B");
+        assert_eq!(format_bytes(1024), "1.0 KB");
+    }
+
+    #[test]
+    fn test_format_number_edge_cases() {
+        assert_eq!(format_number(1), "1");
+        assert_eq!(format_number(12), "12");
+        assert_eq!(format_number(123), "123");
+        assert_eq!(format_number(1234), "1,234");
+        assert_eq!(format_number(12345), "12,345");
+        assert_eq!(format_number(123456), "123,456");
+    }
+
+    #[test]
+    fn test_format_duration_edge_cases() {
+        assert_eq!(format_duration(0.0), "0.0s");
+        assert_eq!(format_duration(59.9), "59.9s");
+        assert_eq!(format_duration(60.0), "1m 0s");
+        assert_eq!(format_duration(3599.0), "59m 59s");
+        assert_eq!(format_duration(3600.0), "1h 0m");
+    }
+
+    #[test]
+    fn test_structured_output_to_json() {
+        #[derive(serde::Serialize)]
+        struct TestData {
+            name: String,
+            value: i32,
+        }
+
+        let output = StructuredOutput::new(TestData {
+            name: "test".into(),
+            value: 42,
+        });
+
+        let json = output.to_json();
+        assert!(json.contains("\"name\""));
+        assert!(json.contains("\"test\""));
+        assert!(json.contains("42"));
+    }
+
+    #[test]
+    fn test_table_json_empty_rows() {
+        let table = TableBuilder::new()
+            .headers(vec!["a", "b"])
+            .build();
+
+        let json = table.to_json();
+        assert_eq!(json, "[]");
+    }
+
+    #[test]
+    fn test_table_json_multiple_rows() {
+        let table = TableBuilder::new()
+            .headers(vec!["key", "val"])
+            .row(vec!["x", "1"])
+            .row(vec!["y", "2"])
+            .build();
+
+        let json = table.to_json();
+        assert!(json.contains("\"key\""));
+        assert!(json.contains("\"val\""));
+        assert!(json.contains("\"x\""));
+        assert!(json.contains("\"y\""));
+    }
 }

@@ -252,4 +252,105 @@ mod tests {
         assert_eq!(cli.verbosity, 2);
         assert!(!cli.color);
     }
+
+    #[test]
+    fn test_output_format_aliases() {
+        // "text" is alias for Table
+        assert_eq!("text".parse::<OutputFormat>().unwrap(), OutputFormat::Table);
+        // "line" is alias for Compact
+        assert_eq!("line".parse::<OutputFormat>().unwrap(), OutputFormat::Compact);
+    }
+
+    #[test]
+    fn test_output_format_invalid() {
+        let result = "invalid_format".parse::<OutputFormat>();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown output format"));
+        assert!(err.contains("invalid_format"));
+    }
+
+    #[test]
+    fn test_cli_default_values() {
+        let cli = Cli::default();
+        assert_eq!(cli.format, OutputFormat::Table);
+        assert_eq!(cli.verbosity, 1);
+        assert!(cli.color);
+        assert!(!cli.is_quiet());
+        assert!(!cli.is_verbose());
+    }
+
+    #[test]
+    fn test_cli_builder_pattern() {
+        let cli = Cli::new()
+            .with_format(OutputFormat::Json)
+            .with_verbosity(2)
+            .with_color(false);
+
+        assert_eq!(cli.format, OutputFormat::Json);
+        assert_eq!(cli.verbosity, 2);
+        assert!(!cli.color);
+    }
+
+    #[test]
+    fn test_styles_all_variants() {
+        let success = styles::success("ok");
+        assert!(success.contains('✓'));
+        assert!(success.contains(styles::Colors::GREEN));
+
+        let error = styles::error("fail");
+        assert!(error.contains('✗'));
+        assert!(error.contains(styles::Colors::RED));
+
+        let warning = styles::warning("warn");
+        assert!(warning.contains('⚠'));
+        assert!(warning.contains(styles::Colors::YELLOW));
+
+        let info = styles::info("note");
+        assert!(info.contains('ℹ'));
+        assert!(info.contains(styles::Colors::BLUE));
+
+        let header = styles::header("title");
+        assert!(header.contains("title"));
+        assert!(header.contains(styles::Colors::BOLD));
+
+        let dim = styles::dim("secondary");
+        assert!(dim.contains("secondary"));
+        assert!(dim.contains(styles::Colors::DIM));
+    }
+
+    #[test]
+    fn test_common_args_quiet_mode() {
+        let args = CommonArgs {
+            format: "table".to_string(),
+            quiet: true,
+            verbose: false,
+            no_color: false,
+        };
+        let cli = args.to_cli();
+
+        assert_eq!(cli.verbosity, 0);
+        assert!(cli.is_quiet());
+    }
+
+    #[test]
+    fn test_common_args_default_format_fallback() {
+        let args = CommonArgs {
+            format: "invalid".to_string(),
+            quiet: false,
+            verbose: false,
+            no_color: false,
+        };
+        let cli = args.to_cli();
+
+        // Should fallback to default (Table) on parse error
+        assert_eq!(cli.format, OutputFormat::Table);
+    }
+
+    #[test]
+    fn test_verbosity_level_3_is_verbose() {
+        let cli = Cli::new().with_verbosity(3);
+        assert!(cli.is_verbose());
+        assert!(!cli.is_quiet());
+    }
 }
