@@ -163,7 +163,7 @@ impl SafeTensorsTeacher {
         // Calculate total parameter count
         let mut param_count: u64 = 0;
         for name in &tensor_names {
-            if let Some(info) = tensors.tensor(name).ok() {
+            if let Ok(info) = tensors.tensor(name) {
                 let numel: u64 = info.shape().iter().map(|&x| x as u64).product();
                 param_count += numel;
             }

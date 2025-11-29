@@ -11,6 +11,9 @@ pub enum ModelFormat {
     /// YAML format (human-readable, good for configs)
     Yaml,
 
+    /// SafeTensors format (HuggingFace compatible, efficient binary)
+    SafeTensors,
+
     /// Placeholder for future GGUF support
     #[cfg(feature = "gguf")]
     Gguf,
@@ -22,6 +25,7 @@ impl ModelFormat {
         match self {
             ModelFormat::Json => "json",
             ModelFormat::Yaml => "yaml",
+            ModelFormat::SafeTensors => "safetensors",
             #[cfg(feature = "gguf")]
             ModelFormat::Gguf => "gguf",
         }
@@ -32,6 +36,7 @@ impl ModelFormat {
         match ext.to_lowercase().as_str() {
             "json" => Some(ModelFormat::Json),
             "yaml" | "yml" => Some(ModelFormat::Yaml),
+            "safetensors" => Some(ModelFormat::SafeTensors),
             #[cfg(feature = "gguf")]
             "gguf" => Some(ModelFormat::Gguf),
             _ => None,
@@ -89,6 +94,7 @@ mod tests {
     fn test_format_extension() {
         assert_eq!(ModelFormat::Json.extension(), "json");
         assert_eq!(ModelFormat::Yaml.extension(), "yaml");
+        assert_eq!(ModelFormat::SafeTensors.extension(), "safetensors");
     }
 
     #[test]
@@ -97,7 +103,31 @@ mod tests {
         assert_eq!(ModelFormat::from_extension("JSON"), Some(ModelFormat::Json));
         assert_eq!(ModelFormat::from_extension("yaml"), Some(ModelFormat::Yaml));
         assert_eq!(ModelFormat::from_extension("yml"), Some(ModelFormat::Yaml));
+        assert_eq!(
+            ModelFormat::from_extension("safetensors"),
+            Some(ModelFormat::SafeTensors)
+        );
+        assert_eq!(
+            ModelFormat::from_extension("SAFETENSORS"),
+            Some(ModelFormat::SafeTensors)
+        );
         assert_eq!(ModelFormat::from_extension("unknown"), None);
+    }
+
+    #[test]
+    fn test_safetensors_format_serde() {
+        let format = ModelFormat::SafeTensors;
+        let serialized = serde_json::to_string(&format).unwrap();
+        let deserialized: ModelFormat = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(format, deserialized);
+    }
+
+    #[test]
+    fn test_save_config_safetensors() {
+        let config = SaveConfig::new(ModelFormat::SafeTensors);
+        assert_eq!(config.format, ModelFormat::SafeTensors);
+        // pretty/compress don't apply to binary formats
+        assert!(config.pretty);
     }
 
     #[test]

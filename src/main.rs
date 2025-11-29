@@ -326,7 +326,10 @@ fn run_quantize(args: entrenar::config::QuantizeArgs, level: LogLevel) -> Result
         quantized_tensors.insert((*name).to_string(), quantized);
     }
 
-    // Save quantized model as JSON (for now - GGUF export would be future work)
+    // Save quantized model as JSON
+    // Note: Quantized tensors use custom block formats (Q4_0, Q8_0) that are not
+    // directly compatible with SafeTensors. For SafeTensors output, use GGUF export
+    // or dequantize first. JSON format preserves the quantization parameters.
     let output_data = serde_json::to_vec_pretty(&quantized_tensors)
         .map_err(|e| format!("Failed to serialize: {e}"))?;
 
@@ -424,7 +427,8 @@ fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), S
         }
         models.push(model);
 
-        log(level, LogLevel::Verbose, &format!("  Loaded {} tensors from {}", models.last().map_or(0, |m| m.len()), path.display()));
+        let tensor_count = models.last().map_or(0, HashMap::len);
+        log(level, LogLevel::Verbose, &format!("  Loaded {} tensors from {}", tensor_count, path.display()));
     }
 
     // Perform merge
@@ -475,17 +479,62 @@ fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), S
         }
     };
 
-    // Save merged model as JSON (safetensors export would be future work)
-    let output_data: HashMap<String, Vec<f32>> = merged
-        .iter()
-        .map(|(name, tensor)| (name.clone(), tensor.data().to_vec()))
-        .collect();
+    // Determine output format from file extension
+    let output_ext = args
+        .output
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("json");
 
-    let json_data = serde_json::to_vec_pretty(&output_data)
-        .map_err(|e| format!("Failed to serialize: {e}"))?;
+    if output_ext == "safetensors" {
+        // Export to SafeTensors format (HuggingFace compatible)
+        use safetensors::tensor::{Dtype, TensorView};
 
-    std::fs::write(&args.output, &json_data)
-        .map_err(|e| format!("Failed to write output: {e}"))?;
+        // Collect tensor data with proper lifetime management
+        let tensor_data: Vec<(String, Vec<u8>, Vec<usize>)> = merged
+            .iter()
+            .map(|(name, tensor)| {
+                let data = tensor.data();
+                let bytes: Vec<u8> = bytemuck::cast_slice(data.as_slice().unwrap()).to_vec();
+                let shape = vec![tensor.len()];
+                (name.clone(), bytes, shape)
+            })
+            .collect();
+
+        // Create TensorViews
+        let views: Vec<(&str, TensorView<'_>)> = tensor_data
+            .iter()
+            .map(|(name, bytes, shape)| {
+                let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+                (name.as_str(), view)
+            })
+            .collect();
+
+        // Create metadata
+        let mut metadata = HashMap::new();
+        metadata.insert("name".to_string(), "merged-model".to_string());
+        metadata.insert("merge_method".to_string(), format!("{:?}", args.method));
+        metadata.insert("tensor_count".to_string(), merged.len().to_string());
+
+        // Serialize
+        let safetensor_bytes = safetensors::serialize(views, Some(metadata))
+            .map_err(|e| format!("Failed to serialize SafeTensors: {e}"))?;
+
+        std::fs::write(&args.output, safetensor_bytes)
+            .map_err(|e| format!("Failed to write output: {e}"))?;
+    } else {
+        // Fall back to JSON for other formats
+        let output_data: HashMap<String, Vec<f32>> = merged
+            .iter()
+            .map(|(name, tensor)| (name.clone(), tensor.data().to_vec()))
+            .collect();
+
+        let json_data = serde_json::to_vec_pretty(&output_data)
+            .map_err(|e| format!("Failed to serialize: {e}"))?;
+
+        std::fs::write(&args.output, &json_data)
+            .map_err(|e| format!("Failed to write output: {e}"))?;
+    }
 
     log(
         level,
