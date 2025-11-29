@@ -336,4 +336,162 @@ mod tests {
         assert!(table.contains("Progressive"));
         assert!(table.contains("Significance"));
     }
+
+    #[test]
+    fn test_strategy_constructors() {
+        let kd = DistillStrategy::kd_only();
+        if let DistillStrategy::KDOnly { temperature, alpha } = kd {
+            assert_eq!(temperature, 4.0);
+            assert_eq!(alpha, 0.7);
+        } else {
+            panic!("Expected KDOnly");
+        }
+
+        let prog = DistillStrategy::progressive();
+        if let DistillStrategy::Progressive {
+            temperature,
+            alpha,
+            layer_weight,
+        } = prog
+        {
+            assert_eq!(temperature, 4.0);
+            assert_eq!(alpha, 0.7);
+            assert_eq!(layer_weight, 0.3);
+        } else {
+            panic!("Expected Progressive");
+        }
+
+        let attn = DistillStrategy::attention();
+        if let DistillStrategy::Attention {
+            temperature,
+            alpha,
+            attention_weight,
+        } = attn
+        {
+            assert_eq!(temperature, 4.0);
+            assert_eq!(alpha, 0.7);
+            assert_eq!(attention_weight, 0.1);
+        } else {
+            panic!("Expected Attention");
+        }
+
+        let combined = DistillStrategy::combined();
+        if let DistillStrategy::Combined {
+            temperature,
+            alpha,
+            layer_weight,
+            attention_weight,
+        } = combined
+        {
+            assert_eq!(temperature, 4.0);
+            assert_eq!(alpha, 0.7);
+            assert_eq!(layer_weight, 0.3);
+            assert_eq!(attention_weight, 0.1);
+        } else {
+            panic!("Expected Combined");
+        }
+    }
+
+    #[test]
+    fn test_strategy_simulate_deterministic() {
+        let strategy = DistillStrategy::kd_only();
+        let metrics1 = strategy.simulate(42);
+        let metrics2 = strategy.simulate(42);
+
+        // Same seed should produce same results
+        assert_eq!(metrics1.final_loss, metrics2.final_loss);
+        assert_eq!(metrics1.final_accuracy, metrics2.final_accuracy);
+    }
+
+    #[test]
+    fn test_strategy_simulate_different_seeds() {
+        let strategy = DistillStrategy::kd_only();
+        let metrics1 = strategy.simulate(1);
+        let metrics2 = strategy.simulate(2);
+
+        // Different seeds should produce different results (due to noise)
+        assert_ne!(metrics1.final_loss, metrics2.final_loss);
+    }
+
+    #[test]
+    fn test_strategy_metrics_fields() {
+        let metrics = StrategyMetrics {
+            final_loss: 0.75,
+            final_accuracy: 0.82,
+            training_time_hours: 2.5,
+            peak_memory_gb: 16.0,
+        };
+
+        assert_eq!(metrics.final_loss, 0.75);
+        assert_eq!(metrics.final_accuracy, 0.82);
+        assert_eq!(metrics.training_time_hours, 2.5);
+        assert_eq!(metrics.peak_memory_gb, 16.0);
+    }
+
+    #[test]
+    fn test_strategy_result_fields() {
+        let result = StrategyResult {
+            name: "test".to_string(),
+            mean_loss: 0.7,
+            std_loss: 0.02,
+            mean_accuracy: 0.85,
+            std_accuracy: 0.01,
+            mean_time_hours: 3.0,
+            runs: 5,
+        };
+
+        assert_eq!(result.name, "test");
+        assert_eq!(result.runs, 5);
+    }
+
+    #[test]
+    fn test_pairwise_comparison_fields() {
+        let comp = PairwiseComparison {
+            strategy1: "A".to_string(),
+            strategy2: "B".to_string(),
+            p_value: 0.03,
+            significant: true,
+            effect_size: 0.8,
+        };
+
+        assert!(comp.significant);
+        assert_eq!(comp.effect_size, 0.8);
+    }
+
+    #[test]
+    fn test_comparison_significance_markers() {
+        let strategies = vec![DistillStrategy::kd_only(), DistillStrategy::combined()];
+
+        let comparison = compare(&strategies).unwrap();
+
+        // Should have one pairwise comparison
+        assert_eq!(comparison.significance.len(), 1);
+    }
+
+    #[test]
+    fn test_compare_all_strategies() {
+        let strategies = vec![
+            DistillStrategy::kd_only(),
+            DistillStrategy::progressive(),
+            DistillStrategy::attention(),
+            DistillStrategy::combined(),
+        ];
+
+        let comparison = compare(&strategies).unwrap();
+
+        // 4 choose 2 = 6 pairwise comparisons
+        assert_eq!(comparison.significance.len(), 6);
+        assert_eq!(comparison.results.len(), 4);
+    }
+
+    #[test]
+    fn test_comparison_table_star_markers() {
+        let strategies = vec![DistillStrategy::kd_only(), DistillStrategy::combined()];
+
+        let comparison = compare(&strategies).unwrap();
+        let table = comparison.to_table();
+
+        // Should have star marker for best
+        assert!(table.contains('★'));
+    }
 }
