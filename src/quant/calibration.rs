@@ -205,26 +205,18 @@ impl Calibrator {
     // Internal methods
 
     fn observe_min_max(&mut self, data: &[f32]) {
-        let batch_min = data.iter().cloned().fold(f32::INFINITY, f32::min);
-        let batch_max = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let batch_min = data.iter().copied().fold(f32::INFINITY, f32::min);
+        let batch_max = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
-        self.running_min = Some(
-            self.running_min
-                .map(|m| m.min(batch_min))
-                .unwrap_or(batch_min),
-        );
-        self.running_max = Some(
-            self.running_max
-                .map(|m| m.max(batch_max))
-                .unwrap_or(batch_max),
-        );
+        self.running_min = Some(self.running_min.map_or(batch_min, |m| m.min(batch_min)));
+        self.running_max = Some(self.running_max.map_or(batch_max, |m| m.max(batch_max)));
     }
 
     fn observe_percentile(&mut self, data: &[f32]) {
         // Collect samples (with reservoir sampling if needed)
         if self.samples.len() < self.max_samples {
             let remaining = self.max_samples - self.samples.len();
-            self.samples.extend(data.iter().take(remaining).cloned());
+            self.samples.extend(data.iter().take(remaining).copied());
         } else {
             // Reservoir sampling for samples beyond max_samples
             let total_seen = self.num_batches * data.len() + data.len();
@@ -241,18 +233,16 @@ impl Calibrator {
     }
 
     fn observe_moving_average(&mut self, data: &[f32], momentum: f32) {
-        let batch_min = data.iter().cloned().fold(f32::INFINITY, f32::min);
-        let batch_max = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let batch_min = data.iter().copied().fold(f32::INFINITY, f32::min);
+        let batch_max = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
         self.running_min = Some(
             self.running_min
-                .map(|m| m * (1.0 - momentum) + batch_min * momentum)
-                .unwrap_or(batch_min),
+                .map_or(batch_min, |m| m * (1.0 - momentum) + batch_min * momentum),
         );
         self.running_max = Some(
             self.running_max
-                .map(|m| m * (1.0 - momentum) + batch_max * momentum)
-                .unwrap_or(batch_max),
+                .map_or(batch_max, |m| m * (1.0 - momentum) + batch_max * momentum),
         );
     }
 
@@ -550,5 +540,260 @@ mod tests {
         // 4-bit symmetric: qmax = 7
         let expected_scale = 1.0 / 7.0;
         assert_abs_diff_eq!(result.scale, expected_scale, epsilon = 1e-6);
+    }
+
+    // =========================================================================
+    // Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn test_calibrator_percentile_constructor() {
+        let cal = Calibrator::percentile(8, true, 0.01, 99.99, 1000);
+        assert_eq!(cal.bits, 8);
+        assert!(cal.symmetric);
+        assert_eq!(cal.max_samples, 1000);
+    }
+
+    #[test]
+    fn test_calibrator_percentile_basic() {
+        let mut cal = Calibrator::percentile(8, true, 1.0, 99.0, 10000);
+
+        // Observe data with outliers
+        let mut data: Vec<f32> = (0..100).map(|i| i as f32 * 0.1).collect();
+        data.push(-1000.0); // Outlier
+        data.push(1000.0); // Outlier
+
+        cal.observe(&data);
+        let result = cal.compute();
+
+        // Percentile should filter outliers
+        assert!(result.observed_min > -100.0);
+        assert!(result.observed_max < 100.0);
+    }
+
+    #[test]
+    fn test_calibrator_percentile_multiple_batches() {
+        let mut cal = Calibrator::percentile(8, true, 0.01, 99.99, 1000);
+
+        cal.observe(&[1.0, 2.0, 3.0]);
+        cal.observe(&[4.0, 5.0, 6.0]);
+
+        assert_eq!(cal.num_batches(), 2);
+        assert!(cal.has_data());
+    }
+
+    #[test]
+    fn test_calibrator_moving_average_multiple_batches() {
+        let mut cal = Calibrator::moving_average(8, true, 0.5);
+
+        cal.observe(&[0.0, 1.0, -1.0]);
+        let r1 = cal.compute();
+
+        cal.observe(&[0.0, 4.0, -4.0]);
+        let r2 = cal.compute();
+
+        // Moving average should smooth the values
+        assert!(r2.observed_max > r1.observed_max);
+        assert!(r2.observed_max < 4.0);
+    }
+
+    #[test]
+    fn test_calibration_result_clone() {
+        let result = CalibrationResult {
+            scale: 0.1,
+            zero_point: 0,
+            observed_min: -1.0,
+            observed_max: 1.0,
+            method: CalibrationMethod::MinMax,
+        };
+        let cloned = result.clone();
+        assert_abs_diff_eq!(result.scale, cloned.scale, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_calibration_method_percentile_variant() {
+        let method = CalibrationMethod::Percentile {
+            lower: 0.1,
+            upper: 99.9,
+        };
+        let cloned = method.clone();
+        assert_eq!(method, cloned);
+    }
+
+    #[test]
+    fn test_calibration_method_moving_average_variant() {
+        let method = CalibrationMethod::MovingAverage { momentum: 0.9 };
+        let cloned = method.clone();
+        assert_eq!(method, cloned);
+    }
+
+    #[test]
+    fn test_calibrator_asymmetric() {
+        let mut cal = Calibrator::min_max(8, false); // Asymmetric
+        cal.observe(&[0.0, 1.0, 2.0, 3.0, 4.0]);
+
+        let result = cal.compute();
+        // Asymmetric can have non-zero zero_point
+        assert!(result.scale > 0.0);
+    }
+
+    #[test]
+    fn test_calibrator_empty_compute() {
+        let cal = Calibrator::min_max(8, true);
+        // Empty calibrator should still compute (with default values)
+        let result = cal.compute();
+        assert!(result.scale.is_finite());
+    }
+
+    #[test]
+    fn test_calibrate_min_max_helper() {
+        let data = vec![-2.0, -1.0, 0.0, 1.0, 2.0];
+        let result = calibrate_min_max(&data, 8, true);
+
+        assert_abs_diff_eq!(result.observed_min, -2.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(result.observed_max, 2.0, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_calibrate_percentile_helper() {
+        let data: Vec<f32> = (0..1000).map(|i| i as f32 / 100.0).collect();
+        let result = calibrate_percentile(&data, 8, true, 1.0, 99.0);
+
+        // Should trim 1% from each end
+        assert!(result.observed_min > 0.0);
+        assert!(result.observed_max < 9.99);
+    }
+
+    #[test]
+    fn test_observe_tensors() {
+        let t1 = Tensor::from_vec(vec![0.0, 1.0, 2.0], false);
+        let t2 = Tensor::from_vec(vec![3.0, 4.0, 5.0], false);
+        let mut cal = Calibrator::min_max(8, true);
+
+        cal.observe_tensors(&[&t1, &t2]);
+
+        let result = cal.compute();
+        assert_abs_diff_eq!(result.observed_min, 0.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(result.observed_max, 5.0, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_observe_empty_data() {
+        let mut cal = Calibrator::min_max(8, true);
+        cal.observe(&[]); // Empty data
+        assert_eq!(cal.num_batches(), 0);
+    }
+
+    #[test]
+    fn test_calibrator_method_getter() {
+        let cal = Calibrator::min_max(8, true);
+        assert_eq!(cal.method(), &CalibrationMethod::MinMax);
+
+        let cal2 = Calibrator::percentile(8, false, 1.0, 99.0, 1000);
+        matches!(cal2.method(), CalibrationMethod::Percentile { .. });
+
+        let cal3 = Calibrator::moving_average(8, true, 0.5);
+        matches!(cal3.method(), CalibrationMethod::MovingAverage { .. });
+    }
+
+    #[test]
+    fn test_percentile_reservoir_sampling() {
+        let mut cal = Calibrator::percentile(8, true, 0.01, 99.99, 10);
+
+        // First batch fills reservoir
+        cal.observe(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]);
+
+        // Second batch triggers reservoir sampling
+        cal.observe(&[11.0, 12.0, 13.0, 14.0, 15.0]);
+
+        // Third batch also uses reservoir sampling
+        cal.observe(&[21.0, 22.0, 23.0, 24.0, 25.0]);
+
+        let result = cal.compute();
+        assert!(result.scale > 0.0);
+        assert_eq!(cal.num_batches(), 3);
+    }
+
+    #[test]
+    fn test_asymmetric_with_zero_point() {
+        // Data with significant negative offset
+        let data = vec![-5.0, -4.0, -3.0, -2.0, -1.0, 0.0];
+        let result = calibrate_min_max(&data, 8, false);
+
+        assert_abs_diff_eq!(result.observed_min, -5.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(result.observed_max, 0.0, epsilon = 1e-6);
+        assert!(result.scale > 0.0);
+    }
+
+    #[test]
+    fn test_asymmetric_positive_only() {
+        let data = vec![10.0, 20.0, 30.0, 40.0, 50.0];
+        let result = calibrate_min_max(&data, 8, false);
+
+        assert_abs_diff_eq!(result.observed_min, 10.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(result.observed_max, 50.0, epsilon = 1e-6);
+        // scale = 40 / 255
+        let expected_scale = 40.0 / 255.0;
+        assert_abs_diff_eq!(result.scale, expected_scale, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_percentile_empty_samples_fallback() {
+        let cal = Calibrator::percentile(8, true, 1.0, 99.0, 0);
+        // With max_samples = 0, no samples collected
+        let result = cal.compute();
+        assert!(result.scale.is_finite());
+    }
+
+    #[test]
+    fn test_calibrator_reset_full() {
+        let mut cal = Calibrator::percentile(8, true, 1.0, 99.0, 1000);
+        cal.observe(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert!(cal.has_data());
+
+        cal.reset();
+        assert!(!cal.has_data());
+        assert_eq!(cal.num_batches(), 0);
+
+        // Can observe again after reset
+        cal.observe(&[10.0, 20.0, 30.0]);
+        let result = cal.compute();
+        assert_abs_diff_eq!(result.observed_min, 10.0, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_calibration_result_method_field() {
+        let result = calibrate_min_max(&[1.0, 2.0, 3.0], 8, true);
+        assert_eq!(result.method, CalibrationMethod::MinMax);
+
+        let result2 = calibrate_percentile(&[1.0, 2.0, 3.0], 8, true, 1.0, 99.0);
+        matches!(result2.method, CalibrationMethod::Percentile { .. });
+    }
+
+    #[test]
+    fn test_moving_average_zero_momentum() {
+        let mut cal = Calibrator::moving_average(8, true, 0.0);
+        cal.observe(&[0.0, 1.0, -1.0]);
+        let r1 = cal.compute();
+
+        cal.observe(&[0.0, 10.0, -10.0]);
+        let r2 = cal.compute();
+
+        // With momentum=0, new values should be ignored
+        assert_abs_diff_eq!(r1.observed_max, r2.observed_max, epsilon = 1e-5);
+    }
+
+    #[test]
+    fn test_moving_average_full_momentum() {
+        let mut cal = Calibrator::moving_average(8, true, 1.0);
+        cal.observe(&[0.0, 1.0, -1.0]);
+        let r1 = cal.compute();
+        assert_abs_diff_eq!(r1.observed_max, 1.0, epsilon = 1e-5);
+
+        cal.observe(&[0.0, 10.0, -10.0]);
+        let r2 = cal.compute();
+
+        // With momentum=1, new values should fully replace old
+        assert_abs_diff_eq!(r2.observed_max, 10.0, epsilon = 1e-5);
     }
 }

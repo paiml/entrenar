@@ -275,3 +275,131 @@ mod integration_tests {
         assert!(dare_result.is_err());
     }
 }
+
+// =============================================================================
+// Additional coverage tests for mod.rs functions
+// =============================================================================
+
+#[cfg(test)]
+mod mod_coverage_tests {
+    use super::*;
+    use crate::merge::{compute_deltas, merge_with_base, validate_models, MergeError};
+
+    #[test]
+    fn test_compute_deltas_basic() {
+        let base = create_model("w", vec![0.0, 0.0, 0.0]);
+        let model1 = create_model("w", vec![1.0, 2.0, 3.0]);
+        let model2 = create_model("w", vec![4.0, 5.0, 6.0]);
+
+        let models = vec![model1, model2];
+        let deltas = compute_deltas(&models, &base).unwrap();
+
+        assert_eq!(deltas.len(), 2);
+        assert_eq!(deltas[0]["w"].data()[0], 1.0);
+        assert_eq!(deltas[1]["w"].data()[0], 4.0);
+    }
+
+    #[test]
+    fn test_compute_deltas_missing_param() {
+        let base = create_model("w", vec![0.0]);
+        let mut model = HashMap::new();
+        model.insert("other".to_string(), Tensor::from_vec(vec![1.0], false));
+
+        let result = compute_deltas(&[model], &base);
+        assert!(matches!(
+            result,
+            Err(MergeError::IncompatibleArchitectures(_))
+        ));
+    }
+
+    #[test]
+    fn test_compute_deltas_shape_mismatch() {
+        let base = create_model("w", vec![0.0, 0.0]);
+        let model = create_model("w", vec![1.0, 2.0, 3.0]); // Wrong shape
+
+        let result = compute_deltas(&[model], &base);
+        assert!(matches!(result, Err(MergeError::ShapeMismatch(_))));
+    }
+
+    #[test]
+    fn test_merge_with_base() {
+        let base = create_model("w", vec![10.0, 20.0]);
+        let delta = create_model("w", vec![1.0, 2.0]);
+
+        let merged = merge_with_base(&base, delta);
+        assert_eq!(merged["w"].data()[0], 11.0);
+        assert_eq!(merged["w"].data()[1], 22.0);
+    }
+
+    #[test]
+    fn test_merge_with_base_missing_delta() {
+        let mut base = HashMap::new();
+        base.insert("w".to_string(), Tensor::from_vec(vec![1.0], false));
+        base.insert("b".to_string(), Tensor::from_vec(vec![2.0], false));
+
+        // Delta only has 'w'
+        let delta = create_model("w", vec![0.5]);
+
+        let merged = merge_with_base(&base, delta);
+        // 'w' should be merged, 'b' should be unchanged
+        assert_eq!(merged["w"].data()[0], 1.5);
+        assert_eq!(merged["b"].data()[0], 2.0);
+    }
+
+    #[test]
+    fn test_validate_models_empty() {
+        let models: Vec<Model> = vec![];
+        let result = validate_models(&models);
+        assert!(matches!(
+            result,
+            Err(MergeError::InsufficientModels { min: 1, got: 0 })
+        ));
+    }
+
+    #[test]
+    fn test_validate_models_missing_param() {
+        let model1 = create_model("w", vec![1.0]);
+        let model2 = create_model("b", vec![2.0]); // Different param name
+
+        let models = vec![model1, model2];
+        let result = validate_models(&models);
+        assert!(matches!(
+            result,
+            Err(MergeError::IncompatibleArchitectures(_))
+        ));
+    }
+
+    #[test]
+    fn test_validate_models_shape_mismatch() {
+        let model1 = create_model("w", vec![1.0, 2.0]);
+        let model2 = create_model("w", vec![3.0, 4.0, 5.0]);
+
+        let models = vec![model1, model2];
+        let result = validate_models(&models);
+        assert!(matches!(result, Err(MergeError::ShapeMismatch(_))));
+    }
+
+    #[test]
+    fn test_validate_models_valid() {
+        let model1 = create_model("w", vec![1.0, 2.0]);
+        let model2 = create_model("w", vec![3.0, 4.0]);
+
+        let models = vec![model1, model2];
+        assert!(validate_models(&models).is_ok());
+    }
+
+    #[test]
+    fn test_merge_error_display() {
+        let err1 = MergeError::IncompatibleArchitectures("test".to_string());
+        assert!(err1.to_string().contains("incompatible"));
+
+        let err2 = MergeError::ShapeMismatch("param".to_string());
+        assert!(err2.to_string().contains("shape"));
+
+        let err3 = MergeError::InvalidConfig("bad config".to_string());
+        assert!(err3.to_string().contains("Invalid"));
+
+        let err4 = MergeError::InsufficientModels { min: 2, got: 1 };
+        assert!(err4.to_string().contains("Insufficient"));
+    }
+}

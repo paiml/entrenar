@@ -52,13 +52,11 @@ impl DistillationLoss {
     pub fn new(temperature: f32, alpha: f32) -> Self {
         assert!(
             temperature > 0.0,
-            "Temperature must be positive, got {}",
-            temperature
+            "Temperature must be positive, got {temperature}"
         );
         assert!(
             (0.0..=1.0).contains(&alpha),
-            "Alpha must be in [0, 1], got {}",
-            alpha
+            "Alpha must be in [0, 1], got {alpha}"
         );
 
         Self { temperature, alpha }

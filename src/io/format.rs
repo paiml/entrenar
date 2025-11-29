@@ -110,4 +110,34 @@ mod tests {
         assert!(!config.pretty);
         assert!(config.compress);
     }
+
+    #[test]
+    fn test_save_config_default() {
+        let config = SaveConfig::default();
+        assert_eq!(config.format, ModelFormat::Json);
+        assert!(config.pretty);
+        assert!(!config.compress);
+    }
+
+    #[test]
+    fn test_model_format_serde() {
+        // Test serialization/deserialization
+        let format = ModelFormat::Json;
+        let serialized = serde_json::to_string(&format).unwrap();
+        let deserialized: ModelFormat = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(format, deserialized);
+
+        let format_yaml = ModelFormat::Yaml;
+        let serialized = serde_json::to_string(&format_yaml).unwrap();
+        let deserialized: ModelFormat = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(format_yaml, deserialized);
+    }
+
+    #[test]
+    fn test_save_config_clone() {
+        let config = SaveConfig::new(ModelFormat::Yaml).with_compress(true);
+        let cloned = config.clone();
+        assert_eq!(config.format, cloned.format);
+        assert_eq!(config.compress, cloned.compress);
+    }
 }

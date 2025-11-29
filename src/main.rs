@@ -53,7 +53,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             ExitCode::FAILURE
         }
     }
@@ -68,7 +68,7 @@ enum LogLevel {
 
 fn log(level: LogLevel, required: LogLevel, msg: &str) {
     if level != LogLevel::Quiet && (level == required || required == LogLevel::Normal) {
-        println!("{}", msg);
+        println!("{msg}");
     }
 }
 
@@ -80,7 +80,7 @@ fn run_train(args: entrenar::config::TrainArgs, level: LogLevel) -> Result<(), S
     );
 
     // Load and validate config
-    let mut spec = load_config(&args.config).map_err(|e| format!("Config error: {}", e))?;
+    let mut spec = load_config(&args.config).map_err(|e| format!("Config error: {e}"))?;
 
     // Apply command-line overrides
     apply_overrides(&mut spec, &args);
@@ -118,7 +118,7 @@ fn run_train(args: entrenar::config::TrainArgs, level: LogLevel) -> Result<(), S
     }
 
     // Run training
-    train_from_yaml(&args.config).map_err(|e| format!("Training error: {}", e))?;
+    train_from_yaml(&args.config).map_err(|e| format!("Training error: {e}"))?;
 
     log(level, LogLevel::Normal, "Training complete!");
     Ok(())
@@ -131,9 +131,9 @@ fn run_validate(args: entrenar::config::ValidateArgs, level: LogLevel) -> Result
         &format!("Validating config: {}", args.config.display()),
     );
 
-    let spec = load_config(&args.config).map_err(|e| format!("Config error: {}", e))?;
+    let spec = load_config(&args.config).map_err(|e| format!("Config error: {e}"))?;
 
-    validate_config(&spec).map_err(|e| format!("Validation failed: {}", e))?;
+    validate_config(&spec).map_err(|e| format!("Validation failed: {e}"))?;
 
     log(level, LogLevel::Normal, "Configuration is valid");
 
@@ -152,12 +152,12 @@ fn run_validate(args: entrenar::config::ValidateArgs, level: LogLevel) -> Result
         println!("  Optimizer: {}", spec.optimizer.name);
         println!("  Learning rate: {}", spec.optimizer.lr);
         if let Some(wd) = spec.optimizer.params.get("weight_decay") {
-            println!("  Weight decay: {}", wd);
+            println!("  Weight decay: {wd}");
         }
         println!();
         println!("  Epochs: {}", spec.training.epochs);
         if let Some(clip) = spec.training.grad_clip {
-            println!("  Gradient clipping: {}", clip);
+            println!("  Gradient clipping: {clip}");
         }
         println!("  Output dir: {}", spec.training.output_dir.display());
 
@@ -183,7 +183,7 @@ fn run_validate(args: entrenar::config::ValidateArgs, level: LogLevel) -> Result
             println!("  Merge:");
             println!("    Method: {}", merge.method);
             if let Some(weight) = merge.params.get("weight") {
-                println!("    Weight: {}", weight);
+                println!("    Weight: {weight}");
             }
         }
     }
@@ -192,7 +192,7 @@ fn run_validate(args: entrenar::config::ValidateArgs, level: LogLevel) -> Result
 }
 
 fn run_info(args: entrenar::config::InfoArgs, level: LogLevel) -> Result<(), String> {
-    let spec = load_config(&args.config).map_err(|e| format!("Config error: {}", e))?;
+    let spec = load_config(&args.config).map_err(|e| format!("Config error: {e}"))?;
 
     match args.format {
         OutputFormat::Text => {
@@ -215,13 +215,13 @@ fn run_info(args: entrenar::config::InfoArgs, level: LogLevel) -> Result<(), Str
         }
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&spec)
-                .map_err(|e| format!("JSON serialization error: {}", e))?;
-            println!("{}", json);
+                .map_err(|e| format!("JSON serialization error: {e}"))?;
+            println!("{json}");
         }
         OutputFormat::Yaml => {
             let yaml = serde_yaml::to_string(&spec)
-                .map_err(|e| format!("YAML serialization error: {}", e))?;
-            println!("{}", yaml);
+                .map_err(|e| format!("YAML serialization error: {e}"))?;
+            println!("{yaml}");
         }
     }
 

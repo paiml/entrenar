@@ -48,8 +48,7 @@ impl EnsembleDistiller {
         assert!(!weights.is_empty(), "Must have at least one teacher");
         assert!(
             temperature > 0.0,
-            "Temperature must be positive, got {}",
-            temperature
+            "Temperature must be positive, got {temperature}"
         );
 
         let sum: f32 = weights.iter().sum();

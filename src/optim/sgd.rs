@@ -43,7 +43,7 @@ impl Optimizer for SGD {
                     if self.momentum > 0.0 {
                         // Initialize velocity if needed
                         if self.velocities[i].is_none() {
-                            self.velocities[i] = Some(ndarray::Array1::zeros(grad.len()));
+                            self.velocities[i] = Some(Array1::zeros(grad.len()));
                         }
 
                         let velocity = self.velocities[i].as_mut().unwrap();
@@ -91,5 +91,68 @@ impl Optimizer for SGD {
 
     fn set_lr(&mut self, lr: f32) {
         self.lr = lr;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sgd_small_tensor_no_momentum() {
+        let mut param = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        param.set_grad(Array1::from_vec(vec![0.1, 0.2, 0.3]));
+
+        let mut opt = SGD::new(0.1, 0.0);
+        opt.step(&mut [param.clone()]);
+        // Small tensor path, no momentum
+    }
+
+    #[test]
+    fn test_sgd_small_tensor_with_momentum() {
+        let mut param = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        param.set_grad(Array1::from_vec(vec![0.1, 0.2, 0.3]));
+
+        let mut opt = SGD::new(0.1, 0.9);
+        // First step initializes velocity from scratch
+        opt.step(&mut [param.clone()]);
+
+        // Second step uses existing velocity
+        param.set_grad(Array1::from_vec(vec![0.1, 0.2, 0.3]));
+        opt.step(&mut [param.clone()]);
+    }
+
+    #[test]
+    fn test_sgd_large_tensor_with_momentum() {
+        // >= 16 elements to trigger SIMD path
+        let data: Vec<f32> = (0..20).map(|i| i as f32).collect();
+        let grad: Vec<f32> = vec![0.1; 20];
+
+        let mut param = Tensor::from_vec(data, true);
+        param.set_grad(Array1::from_vec(grad.clone()));
+
+        let mut opt = SGD::new(0.1, 0.9);
+        opt.step(&mut [param.clone()]);
+
+        // Second step with existing velocity
+        param.set_grad(Array1::from_vec(grad));
+        opt.step(&mut [param.clone()]);
+    }
+
+    #[test]
+    fn test_sgd_lr_getter_setter() {
+        let mut opt = SGD::new(0.1, 0.0);
+        assert!((opt.lr() - 0.1).abs() < 1e-6);
+        opt.set_lr(0.01);
+        assert!((opt.lr() - 0.01).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_sgd_no_grad_skips() {
+        let mut param = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
+        // No gradient set
+
+        let mut opt = SGD::new(0.1, 0.0);
+        opt.step(&mut [param.clone()]); // Should not panic
     }
 }

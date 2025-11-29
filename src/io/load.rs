@@ -33,7 +33,7 @@ pub fn load_model(path: impl AsRef<Path>) -> Result<Model> {
         .ok_or_else(|| Error::Serialization("File has no extension".to_string()))?;
 
     let format = ModelFormat::from_extension(ext)
-        .ok_or_else(|| Error::Serialization(format!("Unsupported file extension: {}", ext)))?;
+        .ok_or_else(|| Error::Serialization(format!("Unsupported file extension: {ext}")))?;
 
     // Read file content
     let mut file = File::open(path)?;
@@ -44,9 +44,9 @@ pub fn load_model(path: impl AsRef<Path>) -> Result<Model> {
     // Deserialize based on format
     let state: ModelState = match format {
         ModelFormat::Json => serde_json::from_str(&content)
-            .map_err(|e| Error::Serialization(format!("JSON deserialization failed: {}", e)))?,
+            .map_err(|e| Error::Serialization(format!("JSON deserialization failed: {e}")))?,
         ModelFormat::Yaml => serde_yaml::from_str(&content)
-            .map_err(|e| Error::Serialization(format!("YAML deserialization failed: {}", e)))?,
+            .map_err(|e| Error::Serialization(format!("YAML deserialization failed: {e}")))?,
         #[cfg(feature = "gguf")]
         ModelFormat::Gguf => {
             return Err(Error::Serialization(
@@ -172,6 +172,73 @@ mod tests {
         assert_eq!(original.metadata.custom.len(), loaded.metadata.custom.len());
 
         // Clean up
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn test_load_model_file_not_found() {
+        let result = load_model("nonexistent_file.json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_model_no_extension() {
+        let result = load_model("model_without_extension");
+        assert!(result.is_err());
+        // Use match instead of unwrap_err since Model doesn't implement Debug
+        if let Err(err) = result {
+            assert!(err.to_string().contains("no extension"));
+        }
+    }
+
+    #[test]
+    fn test_load_model_invalid_json() {
+        use std::io::Write;
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().with_extension("json");
+
+        // Write invalid JSON
+        let mut f = File::create(&temp_path).unwrap();
+        f.write_all(b"{ invalid json }").unwrap();
+        drop(f);
+
+        let result = load_model(&temp_path);
+        assert!(result.is_err());
+
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn test_load_model_invalid_yaml() {
+        use std::io::Write;
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().with_extension("yaml");
+
+        // Write invalid YAML
+        let mut f = File::create(&temp_path).unwrap();
+        f.write_all(b"this: is: not: valid: yaml: [}").unwrap();
+        drop(f);
+
+        let result = load_model(&temp_path);
+        assert!(result.is_err());
+
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn test_load_yml_extension() {
+        let params = vec![("weight".to_string(), Tensor::from_vec(vec![1.0], true))];
+        let original = Model::new(ModelMetadata::new("yml-test", "simple"), params);
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().with_extension("yml");
+
+        let config = SaveConfig::new(ModelFormat::Yaml);
+        save_model(&original, &temp_path, &config).unwrap();
+
+        let loaded = load_model(&temp_path).unwrap();
+        assert_eq!(original.metadata.name, loaded.metadata.name);
+
         std::fs::remove_file(temp_path).ok();
     }
 }

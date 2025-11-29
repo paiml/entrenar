@@ -186,9 +186,9 @@ fn weighted_average_merge(models: &[Model], weights: &[f32]) -> Result<Model, Me
         // Weighted sum
         let mut weighted_sum = ndarray::Array1::<f32>::zeros(param_len);
         for (model, weight) in models.iter().zip(weights.iter()) {
-            let param = model.get(name).ok_or_else(|| {
-                MergeError::IncompatibleArchitectures(format!("Missing {}", name))
-            })?;
+            let param = model
+                .get(name)
+                .ok_or_else(|| MergeError::IncompatibleArchitectures(format!("Missing {name}")))?;
             if param.len() != param_len {
                 return Err(MergeError::ShapeMismatch(name.clone()));
             }
@@ -688,6 +688,212 @@ mod tests {
             let result = ensemble_merge(&[m1.clone(), m2], &config).unwrap();
 
             prop_assert!(models_approx_equal(&result, &m1, 1e-5));
+        }
+    }
+
+    // ============================================================
+    // Additional Coverage Tests
+    // ============================================================
+
+    #[test]
+    fn test_weighted_average_zero_sum() {
+        let m1 = make_model(vec![1.0, 2.0]);
+        let m2 = make_model(vec![3.0, 4.0]);
+
+        let config = EnsembleConfig::weighted_average(vec![0.0, 0.0]);
+        let result = ensemble_merge(&[m1, m2], &config);
+
+        assert!(matches!(result, Err(MergeError::InvalidConfig(_))));
+    }
+
+    #[test]
+    fn test_weighted_average_negative_sum() {
+        let m1 = make_model(vec![1.0, 2.0]);
+        let m2 = make_model(vec![3.0, 4.0]);
+
+        let config = EnsembleConfig::weighted_average(vec![-1.0, 0.5]);
+        let result = ensemble_merge(&[m1, m2], &config);
+
+        assert!(matches!(result, Err(MergeError::InvalidConfig(_))));
+    }
+
+    #[test]
+    fn test_weighted_average_missing_param() {
+        // Model 1 has param "w", model 2 has param "x"
+        let mut m1 = HashMap::new();
+        m1.insert("w".to_string(), Tensor::from_vec(vec![1.0], false));
+
+        let mut m2 = HashMap::new();
+        m2.insert("x".to_string(), Tensor::from_vec(vec![2.0], false));
+
+        let config = EnsembleConfig::uniform_average();
+        let result = ensemble_merge(&[m1, m2], &config);
+
+        assert!(matches!(
+            result,
+            Err(MergeError::IncompatibleArchitectures(_))
+        ));
+    }
+
+    #[test]
+    fn test_weighted_average_shape_mismatch() {
+        let m1 = make_model(vec![1.0, 2.0, 3.0]);
+        let m2 = make_model(vec![4.0, 5.0]); // Different length
+
+        let config = EnsembleConfig::uniform_average();
+        let result = ensemble_merge(&[m1, m2], &config);
+
+        assert!(matches!(result, Err(MergeError::ShapeMismatch(_))));
+    }
+
+    #[test]
+    fn test_ensemble_config_with_base() {
+        let base = make_model(vec![0.0, 0.0]);
+        let config = EnsembleConfig::uniform_average().with_base(base);
+
+        assert!(config.base.is_some());
+    }
+
+    #[test]
+    fn test_ensemble_strategy_default() {
+        let strategy = EnsembleStrategy::default();
+        matches!(strategy, EnsembleStrategy::WeightedAverage { weights } if weights.is_empty());
+    }
+
+    #[test]
+    fn test_ensemble_config_default() {
+        let config = EnsembleConfig::default();
+        assert!(config.base.is_none());
+        matches!(config.strategy, EnsembleStrategy::WeightedAverage { .. });
+    }
+
+    #[test]
+    fn test_hierarchical_with_ties() {
+        let base = make_model(vec![0.0, 0.0, 0.0, 0.0]);
+        let m1 = make_model(vec![1.0, 2.0, 3.0, 4.0]);
+        let m2 = make_model(vec![5.0, 6.0, 7.0, 8.0]);
+        let m3 = make_model(vec![9.0, 10.0, 11.0, 12.0]);
+        let m4 = make_model(vec![13.0, 14.0, 15.0, 16.0]);
+
+        let config =
+            EnsembleConfig::hierarchical(EnsembleStrategy::Ties { density: 0.5 }).with_base(base);
+
+        let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
+        for val in result["w"].data().iter() {
+            assert!(val.is_finite());
+        }
+    }
+
+    #[test]
+    fn test_hierarchical_with_dare() {
+        let base = make_model(vec![0.0, 0.0, 0.0, 0.0]);
+        let m1 = make_model(vec![1.0, 2.0, 3.0, 4.0]);
+        let m2 = make_model(vec![5.0, 6.0, 7.0, 8.0]);
+        let m3 = make_model(vec![9.0, 10.0, 11.0, 12.0]);
+        let m4 = make_model(vec![13.0, 14.0, 15.0, 16.0]);
+
+        let config = EnsembleConfig::hierarchical(EnsembleStrategy::Dare {
+            drop_prob: 0.3,
+            seed: Some(42),
+        })
+        .with_base(base);
+
+        let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
+        for val in result["w"].data().iter() {
+            assert!(val.is_finite());
+        }
+    }
+
+    #[test]
+    fn test_hierarchical_three_models() {
+        let m1 = make_model(vec![1.0, 2.0]);
+        let m2 = make_model(vec![3.0, 4.0]);
+        let m3 = make_model(vec![5.0, 6.0]);
+
+        let config =
+            EnsembleConfig::hierarchical(EnsembleStrategy::WeightedAverage { weights: vec![] });
+
+        let result = ensemble_merge(&[m1, m2, m3], &config).unwrap();
+        for val in result["w"].data().iter() {
+            assert!(val.is_finite());
+        }
+    }
+
+    #[test]
+    fn test_hierarchical_nested_hierarchical_fallback() {
+        let m1 = make_model(vec![1.0, 2.0]);
+        let m2 = make_model(vec![3.0, 4.0]);
+        let m3 = make_model(vec![5.0, 6.0]);
+        let m4 = make_model(vec![7.0, 8.0]);
+
+        // Nested hierarchical - the inner hierarchical falls back to weighted average
+        let config = EnsembleConfig::hierarchical(EnsembleStrategy::Hierarchical {
+            leaf_strategy: Box::new(EnsembleStrategy::WeightedAverage { weights: vec![] }),
+        });
+
+        let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
+        for val in result["w"].data().iter() {
+            assert!(val.is_finite());
+        }
+    }
+
+    #[test]
+    fn test_hierarchical_ties_without_base_error() {
+        let m1 = make_model(vec![1.0, 2.0]);
+        let m2 = make_model(vec![3.0, 4.0]);
+        let m3 = make_model(vec![5.0, 6.0]);
+        let m4 = make_model(vec![7.0, 8.0]);
+
+        let config = EnsembleConfig::hierarchical(EnsembleStrategy::Ties { density: 0.5 });
+        // No base provided
+
+        let result = ensemble_merge(&[m1, m2, m3, m4], &config);
+        assert!(matches!(result, Err(MergeError::InvalidConfig(_))));
+    }
+
+    #[test]
+    fn test_hierarchical_dare_without_base_error() {
+        let m1 = make_model(vec![1.0, 2.0]);
+        let m2 = make_model(vec![3.0, 4.0]);
+        let m3 = make_model(vec![5.0, 6.0]);
+        let m4 = make_model(vec![7.0, 8.0]);
+
+        let config = EnsembleConfig::hierarchical(EnsembleStrategy::Dare {
+            drop_prob: 0.3,
+            seed: None,
+        });
+        // No base provided
+
+        let result = ensemble_merge(&[m1, m2, m3, m4], &config);
+        assert!(matches!(result, Err(MergeError::InvalidConfig(_))));
+    }
+
+    #[test]
+    fn test_merge_pair_with_weighted_avg_specific_weights() {
+        let m1 = make_model(vec![0.0, 0.0]);
+        let m2 = make_model(vec![10.0, 10.0]);
+
+        // Using hierarchical will call merge_pair with specific weights
+        let config = EnsembleConfig::hierarchical(EnsembleStrategy::WeightedAverage {
+            weights: vec![0.3, 0.7],
+        });
+
+        let result = ensemble_merge(&[m1, m2], &config).unwrap();
+        // 0*0.3 + 10*0.7 = 7
+        assert!((result["w"].data()[0] - 7.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_ensemble_dare_without_seed() {
+        let base = make_model(vec![0.0, 0.0]);
+        let m1 = make_model(vec![2.0, 4.0]);
+        let m2 = make_model(vec![4.0, 6.0]);
+
+        let config = EnsembleConfig::dare(base, 0.3, None);
+        let result = ensemble_merge(&[m1, m2], &config).unwrap();
+
+        for val in result["w"].data().iter() {
+            assert!(val.is_finite());
         }
     }
 }

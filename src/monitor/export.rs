@@ -54,7 +54,7 @@ impl MetricsExporter {
                 name,
                 metric.as_str()
             ));
-            output.push_str(&format!("# TYPE {} gauge\n", name));
+            output.push_str(&format!("# TYPE {name} gauge\n"));
 
             // Main metric (mean)
             output.push_str(&format!("{}{} {}\n", name, labels, stats.mean));
@@ -129,7 +129,7 @@ impl MetricsExporter {
             let pairs: Vec<String> = self
                 .labels
                 .iter()
-                .map(|(k, v)| format!("{}=\"{}\"", k, v))
+                .map(|(k, v)| format!("{k}=\"{v}\""))
                 .collect();
             format!("{{{}}}", pairs.join(","))
         }

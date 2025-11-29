@@ -311,4 +311,138 @@ mod tests {
         let loaded = ModelLineage::from_json(&json).unwrap();
         assert!(loaded.get_model("v1").is_some());
     }
+
+    // =========================================================================
+    // Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn test_change_type_as_str() {
+        assert_eq!(ChangeType::AddData.as_str(), "add_data");
+        assert_eq!(ChangeType::Hyperparams.as_str(), "hyperparams");
+        assert_eq!(ChangeType::Architecture.as_str(), "architecture");
+        assert_eq!(ChangeType::Retrain.as_str(), "retrain");
+        assert_eq!(ChangeType::FineTune.as_str(), "fine_tune");
+        assert_eq!(ChangeType::Merge.as_str(), "merge");
+    }
+
+    #[test]
+    fn test_all_models() {
+        let mut lineage = ModelLineage::new();
+        lineage.add_model(make_model("v1", "1.0.0", 0.80));
+        lineage.add_model(make_model("v2", "2.0.0", 0.85));
+        lineage.add_model(make_model("v3", "3.0.0", 0.90));
+
+        let models: Vec<_> = lineage.all_models().collect();
+        assert_eq!(models.len(), 3);
+    }
+
+    #[test]
+    fn test_get_parent_no_parent() {
+        let mut lineage = ModelLineage::new();
+        lineage.add_model(make_model("v1", "1.0.0", 0.80));
+
+        assert!(lineage.get_parent("v1").is_none());
+    }
+
+    #[test]
+    fn test_find_regression_source_no_regression() {
+        let mut lineage = ModelLineage::new();
+        lineage.add_model(make_model("v1", "1.0.0", 0.80));
+        lineage.add_model(make_model("v2", "2.0.0", 0.85)); // Improvement
+        lineage.add_derivation("v1", "v2", ChangeType::AddData, "More data");
+
+        // v2 is an improvement, so no regression
+        assert!(lineage.find_regression_source("v2").is_none());
+    }
+
+    #[test]
+    fn test_find_regression_source_nonexistent() {
+        let lineage = ModelLineage::new();
+        assert!(lineage.find_regression_source("v99").is_none());
+    }
+
+    #[test]
+    fn test_compare_nonexistent_models() {
+        let mut lineage = ModelLineage::new();
+        lineage.add_model(make_model("v1", "1.0.0", 0.80));
+
+        assert!(lineage.compare("v1", "v99").is_none());
+        assert!(lineage.compare("v99", "v1").is_none());
+    }
+
+    #[test]
+    fn test_get_children_no_children() {
+        let mut lineage = ModelLineage::new();
+        lineage.add_model(make_model("v1", "1.0.0", 0.80));
+
+        let children = lineage.get_children("v1");
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn test_get_model_nonexistent() {
+        let lineage = ModelLineage::new();
+        assert!(lineage.get_model("v99").is_none());
+    }
+
+    #[test]
+    fn test_lineage_chain_single() {
+        let mut lineage = ModelLineage::new();
+        lineage.add_model(make_model("v1", "1.0.0", 0.80));
+
+        let chain = lineage.get_lineage_chain("v1");
+        assert_eq!(chain, vec!["v1"]);
+    }
+
+    #[test]
+    fn test_model_metadata_with_tags() {
+        let mut tags = HashMap::new();
+        tags.insert("env".to_string(), "production".to_string());
+        tags.insert("owner".to_string(), "team-ml".to_string());
+
+        let model = ModelMetadata {
+            model_id: "v1".to_string(),
+            version: "1.0.0".to_string(),
+            accuracy: 0.95,
+            created_at: 1700000000,
+            config_hash: "abc123".to_string(),
+            tags,
+        };
+
+        assert_eq!(model.tags.len(), 2);
+        assert_eq!(model.created_at, 1700000000);
+    }
+
+    #[test]
+    fn test_derivation_clone() {
+        let d = Derivation {
+            parent_id: "v1".to_string(),
+            child_id: "v2".to_string(),
+            change_type: ChangeType::Merge,
+            description: "merged models".to_string(),
+        };
+        let cloned = d.clone();
+        assert_eq!(d.parent_id, cloned.parent_id);
+        assert_eq!(d.change_type, cloned.change_type);
+    }
+
+    #[test]
+    fn test_model_comparison_clone() {
+        let cmp = ModelComparison {
+            model_a: "v1".to_string(),
+            model_b: "v2".to_string(),
+            accuracy_delta: 0.05,
+            is_improvement: true,
+        };
+        let cloned = cmp.clone();
+        assert_eq!(cmp.accuracy_delta, cloned.accuracy_delta);
+    }
+
+    #[test]
+    fn test_model_lineage_default() {
+        let lineage = ModelLineage::default();
+        assert!(lineage.models.is_empty());
+        assert!(lineage.derivations.is_empty());
+    }
 }

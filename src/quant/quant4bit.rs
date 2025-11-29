@@ -115,7 +115,7 @@ pub fn dequantize_4bit(quantized: &Quantized4Bit) -> Vec<f32> {
         let block_len = end - start;
 
         for i in 0..block_len {
-            let byte_idx = (start + i) / 2;
+            let byte_idx = usize::midpoint(start, i);
             let byte = quantized.data[byte_idx];
 
             // Extract 4-bit value and sign-extend
@@ -140,7 +140,7 @@ pub fn dequantize_4bit(quantized: &Quantized4Bit) -> Vec<f32> {
             };
 
             // Dequantize
-            let deq_val = (q_val as f32) * scale;
+            let deq_val = f32::from(q_val) * scale;
             result.push(deq_val);
         }
     }

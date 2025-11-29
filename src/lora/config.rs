@@ -43,7 +43,7 @@ impl LoRAConfig {
     /// config.target_modules(&["q_proj", "v_proj"]);
     /// ```
     pub fn target_modules(mut self, modules: &[&str]) -> Self {
-        self.target_modules = modules.iter().map(|s| s.to_string()).collect();
+        self.target_modules = modules.iter().map(ToString::to_string).collect();
         self
     }
 
@@ -133,7 +133,7 @@ impl LoRAConfig {
 
     /// Get target module names
     pub fn get_target_modules(&self) -> Vec<&str> {
-        self.target_modules.iter().map(|s| s.as_str()).collect()
+        self.target_modules.iter().map(String::as_str).collect()
     }
 }
 

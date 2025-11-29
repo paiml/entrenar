@@ -69,7 +69,7 @@ impl Dashboard {
         output.push('\n');
 
         if let Some(latest) = self.history.last() {
-            for (metric, stats) in latest.iter() {
+            for (metric, stats) in latest {
                 output.push_str(&format!(
                     "  {:<15} mean={:.4} std={:.4} min={:.4} max={:.4}\n",
                     metric.as_str(),
@@ -101,8 +101,8 @@ impl Dashboard {
             return String::new();
         }
 
-        let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
-        let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let range = max - min;
 
         if range == 0.0 {
@@ -213,5 +213,39 @@ mod tests {
 
         let spark = dashboard.sparkline(&Metric::Loss);
         assert_eq!(spark.chars().count(), 10);
+    }
+
+    #[test]
+    fn test_dashboard_config_default() {
+        let config = DashboardConfig::default();
+        assert_eq!(config.width, 80);
+        assert_eq!(config.height, 24);
+        assert_eq!(config.refresh_ms, 1000);
+        assert!(config.ascii_mode);
+    }
+
+    #[test]
+    fn test_dashboard_with_config() {
+        let config = DashboardConfig {
+            width: 100,
+            height: 30,
+            refresh_ms: 500,
+            ascii_mode: false,
+        };
+        let dashboard = Dashboard::with_config(config.clone());
+        assert_eq!(dashboard.config.width, 100);
+    }
+
+    #[test]
+    fn test_sparkline_empty() {
+        let dashboard = Dashboard::new();
+        let spark = dashboard.sparkline(&Metric::Loss);
+        assert!(spark.is_empty());
+    }
+
+    #[test]
+    fn test_dashboard_default() {
+        let dashboard = Dashboard::default();
+        assert!(dashboard.history.is_empty());
     }
 }

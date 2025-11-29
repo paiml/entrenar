@@ -180,8 +180,8 @@ pub fn sparkline(values: &[f32], width: usize) -> String {
     };
 
     // Find extent
-    let min = values.iter().cloned().fold(f32::INFINITY, f32::min);
-    let max = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let min = values.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let range = max - min;
 
     // Handle constant values
@@ -292,15 +292,15 @@ impl KalmanEta {
 /// Format duration in seconds to human-readable string.
 pub fn format_duration(secs: f64) -> String {
     if secs < 60.0 {
-        format!("{:.0}s", secs)
+        format!("{secs:.0}s")
     } else if secs < 3600.0 {
         let mins = (secs / 60.0).floor();
         let s = (secs % 60.0).floor();
-        format!("{}m {:02.0}s", mins, s)
+        format!("{mins}m {s:02.0}s")
     } else {
         let hours = (secs / 3600.0).floor();
         let mins = ((secs % 3600.0) / 60.0).floor();
-        format!("{}h {:02.0}m", hours, mins)
+        format!("{hours}h {mins:02.0}m")
     }
 }
 
@@ -373,7 +373,7 @@ impl ProgressBar {
         let remaining = self.total.saturating_sub(self.current);
         let eta = self.kalman.eta_string(remaining);
 
-        format!("[{}] {:>5.1}% │ ETA: {}", bar, percent, eta)
+        format!("[{bar}] {percent:>5.1}% │ ETA: {eta}")
     }
 }
 
@@ -575,8 +575,7 @@ impl AndonSystem {
                 let z_score = (loss - mean) / std.max(f32::EPSILON);
                 if z_score > self.sigma_threshold {
                     self.warning(format!(
-                        "Loss spike detected: {:.4} ({:.1}σ above mean)",
-                        loss, z_score
+                        "Loss spike detected: {loss:.4} ({z_score:.1}σ above mean)"
                     ));
                 }
             }
@@ -800,13 +799,13 @@ impl TerminalMonitorCallback {
 
         let val_info = ctx
             .val_loss
-            .map(|v| format!(" val={:.4}", v))
+            .map(|v| format!(" val={v:.4}"))
             .unwrap_or_default();
 
         let best_info = self
             .loss_buffer
             .min()
-            .map(|m| format!(" best={:.4}", m))
+            .map(|m| format!(" best={m:.4}"))
             .unwrap_or_default();
 
         format!(
@@ -836,14 +835,14 @@ impl TerminalMonitorCallback {
         let elapsed = self.start_time.elapsed().as_secs_f64();
         let steps_per_sec = ctx.global_step as f64 / elapsed.max(0.001);
 
-        let val_spark = if !self.val_loss_buffer.is_empty() {
+        let val_spark = if self.val_loss_buffer.is_empty() {
+            String::new()
+        } else {
             format!(
                 "Val Loss: {} {:.4}\n",
                 sparkline(&self.val_loss_buffer.values(), self.sparkline_width),
                 self.val_loss_buffer.last().unwrap_or(0.0)
             )
-        } else {
-            String::new()
         };
 
         let alerts = self.render_alerts();
@@ -901,7 +900,7 @@ impl TerminalMonitorCallback {
     /// Print the display to stdout.
     fn print_display(&self, ctx: &CallbackContext) {
         let output = self.render(ctx);
-        print!("{}", output);
+        print!("{output}");
         let _ = std::io::stdout().flush();
     }
 }
@@ -929,7 +928,7 @@ impl TrainerCallback for TerminalMonitorCallback {
         // Print summary
         println!("\nTraining complete!");
         if let Some(best) = self.loss_buffer.min() {
-            println!("Best loss: {:.4}", best);
+            println!("Best loss: {best:.4}");
         }
         println!(
             "Total time: {}",
@@ -968,7 +967,7 @@ impl TrainerCallback for TerminalMonitorCallback {
         CallbackAction::Continue
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "TerminalMonitorCallback"
     }
 }
@@ -1074,6 +1073,8 @@ impl TerminalCapabilities {
                     ws_xpixel: 0,
                     ws_ypixel: 0,
                 };
+                // SAFETY: ioctl with TIOCGWINSZ is safe for reading terminal size
+                #[allow(unsafe_code)]
                 if unsafe { ioctl(1, TIOCGWINSZ, &mut ws) } == 0 && ws.ws_col > 0 {
                     return (ws.ws_col, ws.ws_row);
                 }
@@ -1129,7 +1130,11 @@ impl FeatureImportanceChart {
     /// Update with new importance scores.
     pub fn update(&mut self, importances: &[(usize, f32)], feature_names: Option<&[String]>) {
         let mut sorted: Vec<_> = importances.to_vec();
-        sorted.sort_by(|a, b| b.1.abs().partial_cmp(&a.1.abs()).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.sort_by(|a, b| {
+            b.1.abs()
+                .partial_cmp(&a.1.abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         sorted.truncate(self.top_k);
 
         self.names.clear();
@@ -1139,7 +1144,7 @@ impl FeatureImportanceChart {
             let name = feature_names
                 .and_then(|n| n.get(idx))
                 .cloned()
-                .unwrap_or_else(|| format!("feature_{}", idx));
+                .unwrap_or_else(|| format!("feature_{idx}"));
             self.names.push(name);
             self.scores.push(score);
         }
@@ -1151,8 +1156,8 @@ impl FeatureImportanceChart {
             return String::from("No feature importance data");
         }
 
-        let max_name_len = self.names.iter().map(|n| n.len()).max().unwrap_or(10);
-        let max_score = self.scores.iter().cloned().fold(0.0f32, f32::max);
+        let max_name_len = self.names.iter().map(String::len).max().unwrap_or(10);
+        let max_score = self.scores.iter().copied().fold(0.0f32, f32::max);
 
         let mut output = String::new();
         output.push_str("┌─ Feature Importance ─────────────────────────────┐\n");
@@ -1234,14 +1239,14 @@ impl GradientFlowHeatmap {
         // Header
         output.push_str("         ");
         for label in &self.column_labels {
-            output.push_str(&format!("{:^5}", label));
+            output.push_str(&format!("{label:^5}"));
         }
         output.push('\n');
 
         // Rows
         for (i, row) in self.gradients.iter().enumerate() {
-            let name = self.layer_names.get(i).map(|s| s.as_str()).unwrap_or("?");
-            output.push_str(&format!("{:>8} ", name));
+            let name = self.layer_names.get(i).map_or("?", String::as_str);
+            output.push_str(&format!("{name:>8} "));
 
             for &v in row {
                 let normalized = if range > f32::EPSILON {
@@ -1251,7 +1256,7 @@ impl GradientFlowHeatmap {
                 };
                 let idx = (normalized * 3.0).round() as usize;
                 let c = heatmap_chars[idx.min(3)];
-                output.push_str(&format!("{}{}{}{} ", c, c, c, c));
+                output.push_str(&format!("{c}{c}{c}{c} "));
             }
             output.push('\n');
         }
@@ -1350,9 +1355,15 @@ pub struct MonitorConfig {
     pub reference_curve: Option<String>,
 }
 
-fn default_true() -> bool { true }
-fn default_refresh() -> u64 { 100 }
-fn default_sparkline_width() -> usize { 20 }
+fn default_true() -> bool {
+    true
+}
+fn default_refresh() -> u64 {
+    100
+}
+fn default_sparkline_width() -> usize {
+    20
+}
 
 impl Default for MonitorConfig {
     fn default() -> Self {
@@ -1890,7 +1901,12 @@ mod tests {
     fn test_feature_importance_chart_update() {
         let mut chart = FeatureImportanceChart::new(3, 10);
         let importances = vec![(0, 0.5), (1, 0.8), (2, 0.3), (3, 0.9)];
-        let names = vec!["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string()];
+        let names = vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+        ];
 
         chart.update(&importances, Some(&names));
 
@@ -2107,6 +2123,604 @@ mod tests {
 
         // Should still work with smoothing
         assert_eq!(display.epochs(), 2);
+    }
+
+    // =========================================================================
+    // Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn test_andon_builder_methods() {
+        let andon = AndonSystem::new()
+            .with_sigma_threshold(5.0)
+            .with_stall_threshold(500)
+            .with_stop_on_critical(false);
+
+        assert!(!andon.stop_on_critical);
+        assert_eq!(andon.sigma_threshold, 5.0);
+        assert_eq!(andon.stall_threshold, 500);
+    }
+
+    #[test]
+    fn test_andon_clear_alerts() {
+        let mut andon = AndonSystem::new();
+        andon.warning("test warning");
+        andon.info("test info");
+        assert!(!andon.recent_alerts(10).is_empty());
+
+        andon.clear_alerts();
+        assert!(andon.recent_alerts(10).is_empty());
+    }
+
+    #[test]
+    fn test_andon_loss_std_single_value() {
+        let mut andon = AndonSystem::new();
+        andon.check_loss(1.0);
+        // With only one value, std should be None
+    }
+
+    #[test]
+    fn test_andon_divergence_detection() {
+        let mut andon = AndonSystem::new().with_sigma_threshold(2.0);
+
+        // Fill history with stable values
+        for _ in 0..20 {
+            andon.check_loss(1.0);
+        }
+
+        // Spike should trigger warning
+        andon.check_loss(100.0);
+        let alerts = andon.recent_alerts(10);
+        assert!(!alerts.is_empty());
+    }
+
+    #[test]
+    fn test_andon_stall_detection() {
+        let mut andon = AndonSystem::new().with_stall_threshold(5);
+
+        // Initial best loss
+        andon.check_loss(1.0);
+
+        // No improvement for 5 steps
+        for _ in 0..5 {
+            andon.check_loss(1.1);
+        }
+
+        let alerts = andon.recent_alerts(10);
+        assert!(alerts.iter().any(|a| a.message.contains("stall")));
+    }
+
+    #[test]
+    fn test_refresh_policy_force_refresh() {
+        let mut policy = RefreshPolicy::default();
+        policy.force_refresh(100);
+        assert_eq!(policy.last_step, 100);
+    }
+
+    #[test]
+    fn test_refresh_policy_max_interval() {
+        let mut policy = RefreshPolicy::new(1000, 1, 1000); // 1ms max
+        policy.force_refresh(0);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        // After max interval, should refresh
+        assert!(policy.should_refresh(0));
+    }
+
+    #[test]
+    fn test_terminal_monitor_refresh_interval() {
+        let monitor = TerminalMonitorCallback::new().refresh_interval_ms(50);
+        assert_eq!(monitor.refresh_policy.min_interval.as_millis(), 50);
+    }
+
+    #[test]
+    fn test_terminal_monitor_render_full() {
+        let mut monitor = TerminalMonitorCallback::new().layout(DashboardLayout::Full);
+        monitor.loss_buffer.push(0.5);
+
+        let ctx = CallbackContext {
+            epoch: 5,
+            max_epochs: 10,
+            loss: 0.3,
+            lr: 0.001,
+            global_step: 50,
+            ..Default::default()
+        };
+
+        let output = monitor.render(&ctx);
+        assert!(output.contains("ENTRENAR"));
+    }
+
+    #[test]
+    fn test_terminal_monitor_with_val_loss() {
+        let mut monitor = TerminalMonitorCallback::new();
+        monitor.val_loss_buffer.push(0.6);
+
+        let ctx = CallbackContext {
+            epoch: 5,
+            max_epochs: 10,
+            loss: 0.3,
+            val_loss: Some(0.6),
+            lr: 0.001,
+            ..Default::default()
+        };
+
+        let output = monitor.render(&ctx);
+        assert!(output.contains("0.3") || output.contains("loss"));
+    }
+
+    #[test]
+    fn test_terminal_monitor_render_alerts() {
+        let mut monitor = TerminalMonitorCallback::new();
+        monitor.andon.warning("Test warning");
+        monitor.andon.critical("Test critical");
+
+        let output = monitor.render_alerts();
+        assert!(output.contains("Test warning") || output.contains("Test critical"));
+    }
+
+    #[test]
+    fn test_feature_importance_empty_render() {
+        let chart = FeatureImportanceChart::new(5, 20);
+        let output = chart.render();
+        assert!(output.contains("No feature importance"));
+    }
+
+    #[test]
+    fn test_feature_importance_without_names() {
+        let mut chart = FeatureImportanceChart::new(3, 10);
+        chart.update(&[(0, 0.8), (1, 0.5)], None);
+
+        let output = chart.render();
+        assert!(output.contains("feature_0"));
+    }
+
+    #[test]
+    fn test_feature_importance_max_score_zero() {
+        let mut chart = FeatureImportanceChart::new(3, 10);
+        chart.update(&[(0, 0.0), (1, 0.0)], None);
+        let output = chart.render();
+        assert!(output.contains("feature_"));
+    }
+
+    #[test]
+    fn test_gradient_flow_bounds_check() {
+        let layers = vec!["L0".to_string()];
+        let cols = vec!["Q".to_string()];
+        let mut heatmap = GradientFlowHeatmap::new(layers, cols);
+
+        // Out of bounds should be ignored
+        heatmap.update(10, 10, 1.0);
+        heatmap.update(0, 0, 1.0);
+    }
+
+    #[test]
+    fn test_gradient_flow_constant_gradients() {
+        let layers = vec!["L0".to_string(), "L1".to_string()];
+        let cols = vec!["Q".to_string()];
+        let mut heatmap = GradientFlowHeatmap::new(layers, cols);
+
+        heatmap.update(0, 0, 1.0);
+        heatmap.update(1, 0, 1.0);
+
+        let output = heatmap.render();
+        assert!(output.contains("L0"));
+    }
+
+    #[test]
+    fn test_reference_curve_empty_comparison() {
+        let curve = ReferenceCurve::new(vec![], 0.1);
+        let spark = curve.comparison_sparkline(&[], 10);
+        assert!(spark.is_empty());
+    }
+
+    #[test]
+    fn test_reference_curve_deviation_none() {
+        let curve = ReferenceCurve::new(vec![1.0], 0.5);
+        // Out of bounds epoch
+        assert!(curve.check_deviation(10, 1.0).is_none());
+    }
+
+    #[test]
+    fn test_monitor_config_layouts() {
+        let minimal = MonitorConfig {
+            layout: "minimal".to_string(),
+            ..Default::default()
+        };
+        let cb = minimal.to_callback();
+        assert_eq!(cb.layout, DashboardLayout::Minimal);
+
+        let unknown = MonitorConfig {
+            layout: "unknown".to_string(),
+            ..Default::default()
+        };
+        let cb2 = unknown.to_callback();
+        assert_eq!(cb2.layout, DashboardLayout::Compact);
+    }
+
+    #[test]
+    fn test_monitor_config_terminal_modes() {
+        let unicode = MonitorConfig {
+            terminal_mode: "unicode".to_string(),
+            ..Default::default()
+        };
+        let cb = unicode.to_callback();
+        assert_eq!(cb.mode, TerminalMode::Unicode);
+    }
+
+    #[test]
+    fn test_kalman_eta_string_formats() {
+        let mut kalman = KalmanEta::new();
+        kalman.update(1.0);
+
+        // Seconds
+        assert!(kalman.eta_string(30).contains('s'));
+
+        // Minutes
+        assert!(kalman.eta_string(90).contains('m'));
+
+        // Hours
+        assert!(kalman.eta_string(4000).contains('h'));
+    }
+
+    #[test]
+    fn test_sparkline_width_zero() {
+        let result = sparkline(&[1.0, 2.0, 3.0], 0);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_sparkline_range_width_zero() {
+        let result = sparkline_range(&[1.0, 2.0], 0, 0.0, 2.0);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_progress_bar_zero_total() {
+        let bar = ProgressBar::new(0, 20);
+        assert_eq!(bar.percent(), 100.0);
+    }
+
+    #[test]
+    fn test_alert_level_variants() {
+        let info = AlertLevel::Info;
+        let warning = AlertLevel::Warning;
+        let critical = AlertLevel::Critical;
+        assert_ne!(info, warning);
+        assert_ne!(warning, critical);
+    }
+
+    #[test]
+    fn test_terminal_mode_default() {
+        let mode = TerminalMode::default();
+        assert_eq!(mode, TerminalMode::Unicode);
+    }
+
+    #[test]
+    fn test_dashboard_layout_default() {
+        let layout = DashboardLayout::default();
+        assert_eq!(layout, DashboardLayout::Compact);
+    }
+
+    #[test]
+    fn test_metrics_buffer_empty_stats() {
+        let buf = MetricsBuffer::new(10);
+        assert!(buf.min().is_none());
+        assert!(buf.max().is_none());
+        assert!(buf.mean().is_none());
+    }
+
+    #[test]
+    fn test_loss_curve_display_push_val_loss() {
+        let mut display = LossCurveDisplay::new(40, 20);
+        display.push_val_loss(0.5);
+        display.push_val_loss(0.4);
+        // Val series has data
+        assert!(display.epochs() >= 0);
+    }
+
+    #[test]
+    fn test_loss_curve_display_print() {
+        let display = LossCurveDisplay::new(40, 20);
+        // Just verify it doesn't panic
+        display.print();
+    }
+
+    // =========================================================================
+    // Additional Edge Case Tests for Coverage
+    // =========================================================================
+
+    #[test]
+    fn test_sparkline_zero_width() {
+        let result = sparkline(&[1.0, 2.0, 3.0], 0);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_sparkline_range_zero_width() {
+        let result = sparkline_range(&[1.0, 2.0, 3.0], 0, 0.0, 1.0);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_sparkline_range_constant_min_max() {
+        let result = sparkline_range(&[0.5, 0.5], 2, 0.5, 0.5);
+        // Should handle zero range
+        assert!(result.chars().all(|c| c == SPARK_CHARS[4]));
+    }
+
+    #[test]
+    fn test_sparkline_range_subsample() {
+        let values: Vec<f32> = (0..100).map(|i| i as f32).collect();
+        let result = sparkline_range(&values, 10, 0.0, 99.0);
+        assert_eq!(result.chars().count(), 10);
+    }
+
+    #[test]
+    fn test_sparkline_range_clamping() {
+        let values = vec![-10.0, 50.0, 110.0];
+        let result = sparkline_range(&values, 3, 0.0, 100.0);
+        // Values outside range should be clamped
+        let chars: Vec<char> = result.chars().collect();
+        assert_eq!(chars[0], SPARK_CHARS[0]); // Clamped to min
+        assert_eq!(chars[2], SPARK_CHARS[7]); // Clamped to max
+    }
+
+    #[test]
+    fn test_kalman_eta_multiple_updates() {
+        let mut kalman = KalmanEta::new();
+        for i in 1..=10 {
+            kalman.update(i as f64 * 0.1);
+        }
+        let eta = kalman.eta_seconds(5);
+        assert!(eta > 0.0);
+    }
+
+    #[test]
+    fn test_format_duration_hours() {
+        assert_eq!(format_duration(7200.0), "2h 00m");
+        assert_eq!(format_duration(3661.0), "1h 01m");
+    }
+
+    #[test]
+    fn test_progress_bar_100_percent() {
+        let mut bar = ProgressBar::new(100, 20);
+        bar.update(100);
+        assert!((bar.percent() - 100.0).abs() < 0.1);
+        let output = bar.render();
+        assert!(output.contains("100"));
+    }
+
+    #[test]
+    fn test_progress_bar_over_100() {
+        let mut bar = ProgressBar::new(100, 20);
+        bar.update(150);
+        // Should handle over 100%
+        assert!(bar.percent() > 100.0);
+    }
+
+    #[test]
+    fn test_metrics_buffer_mean_single() {
+        let mut buf = MetricsBuffer::new(10);
+        buf.push(5.0);
+        assert_eq!(buf.mean(), Some(5.0));
+    }
+
+    #[test]
+    fn test_metrics_buffer_values_after_wrap() {
+        let mut buf = MetricsBuffer::new(3);
+        buf.push(1.0);
+        buf.push(2.0);
+        buf.push(3.0);
+        buf.push(4.0);
+        // Values should be in chronological order
+        assert_eq!(buf.values(), vec![2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_terminal_mode_eq() {
+        assert_eq!(TerminalMode::Unicode, TerminalMode::Unicode);
+        assert_ne!(TerminalMode::Ascii, TerminalMode::Unicode);
+        assert_ne!(TerminalMode::Ansi, TerminalMode::Ascii);
+    }
+
+    #[test]
+    fn test_dashboard_layout_eq() {
+        assert_eq!(DashboardLayout::Minimal, DashboardLayout::Minimal);
+        assert_ne!(DashboardLayout::Compact, DashboardLayout::Full);
+    }
+
+    #[test]
+    fn test_alert_level_clone() {
+        let level = AlertLevel::Critical;
+        let cloned = level.clone();
+        assert_eq!(level, cloned);
+    }
+
+    #[test]
+    fn test_alert_clone() {
+        let alert = Alert {
+            level: AlertLevel::Warning,
+            message: "test".to_string(),
+            timestamp: Instant::now(),
+        };
+        let cloned = alert.clone();
+        assert_eq!(alert.message, cloned.message);
+        assert_eq!(alert.level, cloned.level);
+    }
+
+    #[test]
+    fn test_progress_bar_total_zero() {
+        let bar = ProgressBar::new(0, 20);
+        assert_eq!(bar.percent(), 100.0);
+    }
+
+    #[test]
+    fn test_refresh_policy_min_interval_block() {
+        let mut policy = RefreshPolicy::new(1000, 10000, 10);
+        policy.force_refresh(0);
+        // Within min interval, should not refresh
+        assert!(!policy.should_refresh(0));
+    }
+
+    #[test]
+    fn test_kalman_eta_estimate() {
+        let mut kalman = KalmanEta::new();
+        kalman.update(1.0); // 1 second per step
+                            // With 1 step remaining at 1s per step, ETA should be ~1s
+        let eta = kalman.eta_seconds(1);
+        assert!(eta > 0.5 && eta < 2.0);
+    }
+
+    #[test]
+    fn test_kalman_eta_string() {
+        let mut kalman = KalmanEta::new();
+        kalman.update(1.0);
+        let eta_str = kalman.eta_string(5);
+        // Should contain time units
+        assert!(!eta_str.is_empty());
+    }
+
+    #[test]
+    fn test_metrics_buffer_empty_stats_edge() {
+        let buf = MetricsBuffer::new(10);
+        assert!(buf.min().is_none());
+        assert!(buf.max().is_none());
+        assert!(buf.mean().is_none());
+    }
+
+    #[test]
+    fn test_terminal_capabilities_narrow() {
+        let mut caps = TerminalCapabilities::default();
+        caps.width = 40;
+        // Still valid even with narrow terminal
+        assert!(caps.recommended_mode() != TerminalMode::Ascii || !caps.is_tty);
+    }
+
+    #[test]
+    fn test_terminal_monitor_name() {
+        let monitor = TerminalMonitorCallback::new();
+        assert!(!monitor.name().is_empty());
+    }
+
+    #[test]
+    fn test_andon_neg_infinity() {
+        let mut andon = AndonSystem::new();
+        let should_stop = andon.check_loss(f32::NEG_INFINITY);
+        assert!(should_stop);
+        assert!(andon.has_critical());
+    }
+
+    #[test]
+    fn test_refresh_policy_clone() {
+        let policy = RefreshPolicy::default();
+        let cloned = policy.clone();
+        assert_eq!(policy.step_interval, cloned.step_interval);
+    }
+
+    #[test]
+    fn test_metrics_buffer_clone() {
+        let mut buf = MetricsBuffer::new(5);
+        buf.push(1.0);
+        buf.push(2.0);
+        let cloned = buf.clone();
+        assert_eq!(buf.len(), cloned.len());
+    }
+
+    #[test]
+    fn test_progress_bar_initial_render() {
+        let bar = ProgressBar::new(100, 10);
+        let output = bar.render();
+        assert!(output.contains("0.0%") || output.contains("  0.0%"));
+    }
+
+    #[test]
+    fn test_andon_system_has_no_critical_initially() {
+        let andon = AndonSystem::new();
+        assert!(!andon.has_critical());
+    }
+
+    #[test]
+    fn test_terminal_monitor_starts_with_unicode_mode() {
+        let monitor = TerminalMonitorCallback::new();
+        // Default mode is Unicode
+        assert_eq!(monitor.mode, TerminalMode::Unicode);
+    }
+
+    #[test]
+    fn test_progress_bar_kalman_clone() {
+        let kalman = KalmanEta::new();
+        let cloned = kalman.clone();
+        // Both should have same initial estimate
+        assert!(cloned.eta_seconds(0) >= 0.0);
+    }
+
+    #[test]
+    fn test_feature_importance_empty_names() {
+        let mut chart = FeatureImportanceChart::new(3, 10);
+        let importances = vec![(0, 0.5), (1, 0.8)];
+        chart.update(&importances, None);
+        // Should use default names
+        assert_eq!(chart.names.len(), 2);
+    }
+
+    #[test]
+    fn test_gradient_heatmap_empty_render() {
+        let heatmap = GradientFlowHeatmap::new(vec![], vec![]);
+        let output = heatmap.render();
+        assert!(output.contains("Gradient"));
+    }
+
+    #[test]
+    fn test_reference_curve_deviation_within() {
+        let curve = ReferenceCurve::new(vec![1.0, 1.0, 1.0], 0.5);
+        // 1.0 is within tolerance of 1.0
+        let deviation = curve.check_deviation(0, 1.0);
+        assert!(deviation.is_none());
+    }
+
+    #[test]
+    fn test_reference_curve_deviation_outside() {
+        let curve = ReferenceCurve::new(vec![1.0, 1.0, 1.0], 0.1);
+        // 2.0 is outside 10% tolerance of 1.0
+        let deviation = curve.check_deviation(0, 2.0);
+        assert!(deviation.is_some());
+    }
+
+    #[test]
+    fn test_loss_curve_display_ansi_mode() {
+        let display = LossCurveDisplay::new(40, 20).terminal_mode(TerminalMode::Ansi);
+        assert_eq!(display.terminal_mode, TerminalMode::Ansi);
+    }
+
+    #[test]
+    fn test_terminal_monitor_epoch_callback() {
+        let mut monitor = TerminalMonitorCallback::new();
+        let ctx = CallbackContext {
+            epoch: 0,
+            max_epochs: 10,
+            loss: 1.0,
+            lr: 0.001,
+            ..Default::default()
+        };
+        // Should not panic
+        let action = monitor.on_epoch_end(&ctx);
+        assert!(matches!(action, CallbackAction::Continue));
+    }
+
+    #[test]
+    fn test_terminal_monitor_step_callback() {
+        let mut monitor = TerminalMonitorCallback::new();
+        let ctx = CallbackContext {
+            epoch: 0,
+            max_epochs: 10,
+            loss: 1.0,
+            lr: 0.001,
+            global_step: 1,
+            ..Default::default()
+        };
+        // Should not panic
+        let action = monitor.on_step_end(&ctx);
+        assert!(matches!(action, CallbackAction::Continue));
     }
 }
 

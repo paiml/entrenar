@@ -36,3 +36,37 @@ impl Default for Context {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_context_new() {
+        let ctx = Context::new();
+        assert!(ctx.is_training());
+    }
+
+    #[test]
+    fn test_context_default() {
+        let ctx = Context::default();
+        assert!(ctx.is_training());
+    }
+
+    #[test]
+    fn test_context_train_mode() {
+        let mut ctx = Context::new();
+        ctx.eval();
+        assert!(!ctx.is_training());
+
+        ctx.train();
+        assert!(ctx.is_training());
+    }
+
+    #[test]
+    fn test_context_eval_mode() {
+        let mut ctx = Context::new();
+        ctx.eval();
+        assert!(!ctx.is_training());
+    }
+}

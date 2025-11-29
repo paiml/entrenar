@@ -92,7 +92,7 @@ impl Metric for Accuracy {
         correct as f32 / predictions.len() as f32
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Accuracy"
     }
 }
@@ -155,7 +155,7 @@ impl Metric for Precision {
         true_positives as f32 / predicted_positives as f32
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Precision"
     }
 }
@@ -218,7 +218,7 @@ impl Metric for Recall {
         true_positives as f32 / actual_positives as f32
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Recall"
     }
 }
@@ -273,7 +273,7 @@ impl Metric for F1Score {
         2.0 * (precision * recall) / (precision + recall)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "F1"
     }
 }
@@ -334,7 +334,7 @@ impl Metric for R2Score {
         1.0 - (ss_res / ss_tot)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "R²"
     }
 }
@@ -376,7 +376,7 @@ impl Metric for MAE {
             / predictions.len() as f32
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "MAE"
     }
 
@@ -424,7 +424,7 @@ impl Metric for RMSE {
         mse.sqrt()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "RMSE"
     }
 
@@ -613,5 +613,92 @@ mod tests {
 
         let rec = metric.compute(&pred, &target);
         assert_eq!(rec, 0.0); // No actual positives
+    }
+
+    #[test]
+    fn test_f1_zero_precision_and_recall() {
+        let metric = F1Score::default();
+        // Neither precision nor recall will be > 0
+        let pred = Tensor::from_vec(vec![0.1, 0.2], false);
+        let target = Tensor::from_vec(vec![0.0, 0.0], false);
+
+        let f1 = metric.compute(&pred, &target);
+        assert_eq!(f1, 0.0);
+    }
+
+    #[test]
+    fn test_metric_with_custom_threshold() {
+        let metric = Accuracy::new(0.3);
+        // Predictions > 0.3 are positive
+        let pred = Tensor::from_vec(vec![0.4, 0.2, 0.35], false);
+        let target = Tensor::from_vec(vec![1.0, 0.0, 1.0], false);
+
+        let acc = metric.compute(&pred, &target);
+        assert!((acc - 1.0).abs() < 1e-5); // 3/3 correct
+    }
+
+    #[test]
+    fn test_precision_with_custom_threshold() {
+        let metric = Precision::new(0.3);
+        let pred = Tensor::from_vec(vec![0.4, 0.2, 0.35], false);
+        let target = Tensor::from_vec(vec![1.0, 0.0, 1.0], false);
+
+        let prec = metric.compute(&pred, &target);
+        assert!((prec - 1.0).abs() < 1e-5); // 2 true positives, 0 false positives
+    }
+
+    #[test]
+    fn test_recall_with_custom_threshold() {
+        let metric = Recall::new(0.3);
+        let pred = Tensor::from_vec(vec![0.4, 0.2, 0.35], false);
+        let target = Tensor::from_vec(vec![1.0, 0.0, 1.0], false);
+
+        let rec = metric.compute(&pred, &target);
+        assert!((rec - 1.0).abs() < 1e-5); // 2 true positives out of 2 actual positives
+    }
+
+    #[test]
+    fn test_f1_with_custom_threshold() {
+        let metric = F1Score::new(0.3);
+        let pred = Tensor::from_vec(vec![0.4, 0.2, 0.35], false);
+        let target = Tensor::from_vec(vec![1.0, 0.0, 1.0], false);
+
+        let f1 = metric.compute(&pred, &target);
+        assert!((f1 - 1.0).abs() < 1e-5); // Perfect precision and recall
+    }
+
+    #[test]
+    fn test_accuracy_default_threshold() {
+        let metric = Accuracy::default_threshold();
+        assert!((metric.threshold - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_accuracy_clone() {
+        let metric = Accuracy::new(0.5);
+        let cloned = metric.clone();
+        assert!((metric.threshold - cloned.threshold).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_precision_clone() {
+        let metric = Precision::new(0.5);
+        let cloned = metric.clone();
+        assert!((metric.threshold - cloned.threshold).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_recall_clone() {
+        let metric = Recall::new(0.5);
+        let cloned = metric.clone();
+        assert!((metric.threshold - cloned.threshold).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_f1_clone() {
+        let metric = F1Score::new(0.5);
+        let cloned = metric.clone();
+        // F1 stores precision and recall internally
+        assert_eq!(metric.name(), cloned.name());
     }
 }

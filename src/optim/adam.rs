@@ -59,8 +59,8 @@ impl Optimizer for Adam {
                 if grad.len() >= 16 {
                     // Initialize moments if needed
                     if self.m[i].is_none() {
-                        self.m[i] = Some(ndarray::Array1::zeros(grad.len()));
-                        self.v[i] = Some(ndarray::Array1::zeros(grad.len()));
+                        self.m[i] = Some(Array1::zeros(grad.len()));
+                        self.v[i] = Some(Array1::zeros(grad.len()));
                     }
 
                     let m = self.m[i].as_mut().unwrap();
@@ -101,7 +101,7 @@ impl Optimizer for Adam {
                     };
 
                     // θ_t = θ_{t-1} - lr_t * m_t / (√v_t + ε)
-                    let update = &m_t / &(v_t.mapv(|x| x.sqrt()) + self.epsilon) * lr_t;
+                    let update = &m_t / &(v_t.mapv(f32::sqrt) + self.epsilon) * lr_t;
                     *param.data_mut() = param.data() - &update;
 
                     self.m[i] = Some(m_t);

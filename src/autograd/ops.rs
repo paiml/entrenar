@@ -467,7 +467,7 @@ pub fn attention(
         let row = &scores[row_start..row_end];
 
         // Softmax for numerical stability
-        let max_val = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_vals: Vec<f32> = row.iter().map(|&x| (x - max_val).exp()).collect();
         let sum_exp: f32 = exp_vals.iter().sum();
 
@@ -631,7 +631,7 @@ impl BackwardOp for AttentionBackward {
 
 /// Softmax activation
 pub fn softmax(a: &Tensor) -> Tensor {
-    let max_val = a.data().iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let max_val = a.data().iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let exp_vals = a.data().mapv(|x| (x - max_val).exp());
     let sum_exp = exp_vals.sum();
     let data = exp_vals / sum_exp;

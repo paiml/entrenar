@@ -63,7 +63,7 @@ pub fn analyze_error(
 
     let mse = quantization_mse(original, &dequantized);
     let mae = errors.iter().sum::<f32>() / errors.len() as f32;
-    let max_error = errors.iter().cloned().fold(0.0f32, f32::max);
+    let max_error = errors.iter().copied().fold(0.0f32, f32::max);
 
     let outlier_count = errors.iter().filter(|&&e| e > outlier_threshold).count();
     let outlier_rate = outlier_count as f32 / errors.len() as f32;
@@ -92,7 +92,7 @@ pub fn analyze_error(
 /// For symmetric quantization: max_error = scale / 2 (half quantization step)
 /// For asymmetric: max_error = scale / 2
 pub fn theoretical_max_error(params: &QuantParams) -> f32 {
-    let max_scale = params.scales.iter().cloned().fold(0.0f32, f32::max);
+    let max_scale = params.scales.iter().copied().fold(0.0f32, f32::max);
     max_scale / 2.0
 }
 
@@ -101,7 +101,7 @@ pub fn theoretical_max_error(params: &QuantParams) -> f32 {
 /// Theoretical SQNR for b-bit quantization: 6.02 * b + 1.76 dB
 /// This assumes uniform distribution of input values
 pub fn theoretical_sqnr(bits: u8) -> f32 {
-    6.02 * bits as f32 + 1.76
+    6.02 * f32::from(bits) + 1.76
 }
 
 /// Check if error is within expected bounds

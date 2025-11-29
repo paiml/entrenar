@@ -112,6 +112,116 @@ impl std::fmt::Debug for Tensor {
             .field("data", &self.data)
             .field("grad", &self.grad.borrow())
             .field("requires_grad", &self.requires_grad)
-            .finish()
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tensor_new() {
+        let data = Array1::from(vec![1.0, 2.0, 3.0]);
+        let t = Tensor::new(data.clone(), true);
+        assert_eq!(t.data(), &data);
+        assert!(t.requires_grad());
+    }
+
+    #[test]
+    fn test_tensor_from_vec() {
+        let t = Tensor::from_vec(vec![1.0, 2.0], false);
+        assert_eq!(t.len(), 2);
+        assert!(!t.requires_grad());
+    }
+
+    #[test]
+    fn test_tensor_zeros() {
+        let t = Tensor::zeros(5, true);
+        assert_eq!(t.len(), 5);
+        assert!(t.data().iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    fn test_tensor_ones() {
+        let t = Tensor::ones(3, false);
+        assert_eq!(t.len(), 3);
+        assert!(t.data().iter().all(|&x| x == 1.0));
+    }
+
+    #[test]
+    fn test_tensor_data_mut() {
+        let mut t = Tensor::from_vec(vec![1.0, 2.0], true);
+        t.data_mut()[0] = 5.0;
+        assert_eq!(t.data()[0], 5.0);
+    }
+
+    #[test]
+    fn test_tensor_grad_operations() {
+        let t = Tensor::from_vec(vec![1.0, 2.0], true);
+        assert!(t.grad().is_none());
+
+        t.set_grad(Array1::from(vec![0.1, 0.2]));
+        assert!(t.grad().is_some());
+        assert_eq!(t.grad().unwrap()[0], 0.1);
+
+        t.zero_grad();
+        assert!(t.grad().is_none());
+    }
+
+    #[test]
+    fn test_tensor_accumulate_grad() {
+        let t = Tensor::from_vec(vec![1.0, 2.0], true);
+
+        // First accumulation - should set grad
+        t.accumulate_grad(Array1::from(vec![0.1, 0.2]));
+        assert_eq!(t.grad().unwrap()[0], 0.1);
+
+        // Second accumulation - should add
+        t.accumulate_grad(Array1::from(vec![0.3, 0.4]));
+        let grad = t.grad().unwrap();
+        assert!((grad[0] - 0.4).abs() < 1e-6);
+        assert!((grad[1] - 0.6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_tensor_grad_cell() {
+        let t = Tensor::from_vec(vec![1.0], true);
+        let cell = t.grad_cell();
+        assert!(cell.borrow().is_none());
+    }
+
+    #[test]
+    fn test_tensor_backward_op() {
+        let t = Tensor::from_vec(vec![1.0], true);
+        assert!(t.backward_op().is_none());
+        // Note: Setting backward op requires an actual BackwardOp implementation
+    }
+
+    #[test]
+    fn test_tensor_is_empty() {
+        let t = Tensor::from_vec(vec![], false);
+        assert!(t.is_empty());
+
+        let t2 = Tensor::from_vec(vec![1.0], false);
+        assert!(!t2.is_empty());
+    }
+
+    #[test]
+    fn test_tensor_debug() {
+        let t = Tensor::from_vec(vec![1.0, 2.0], true);
+        let debug_str = format!("{:?}", t);
+        assert!(debug_str.contains("Tensor"));
+        assert!(debug_str.contains("data"));
+    }
+
+    #[test]
+    fn test_tensor_clone() {
+        let t1 = Tensor::from_vec(vec![1.0, 2.0], true);
+        t1.set_grad(Array1::from(vec![0.1, 0.2]));
+        let t2 = t1.clone();
+
+        assert_eq!(t2.data(), t1.data());
+        assert_eq!(t2.requires_grad(), t1.requires_grad());
     }
 }

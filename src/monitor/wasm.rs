@@ -116,8 +116,7 @@ impl WasmMetricsCollector {
         self.inner
             .summary()
             .get(&Metric::Loss)
-            .map(|s| s.mean)
-            .unwrap_or(f64::NAN)
+            .map_or(f64::NAN, |s| s.mean)
     }
 
     /// Get accuracy statistics.
@@ -126,8 +125,7 @@ impl WasmMetricsCollector {
         self.inner
             .summary()
             .get(&Metric::Accuracy)
-            .map(|s| s.mean)
-            .unwrap_or(f64::NAN)
+            .map_or(f64::NAN, |s| s.mean)
     }
 
     /// Get loss values as a Vec for JavaScript Float64Array conversion.
@@ -152,7 +150,11 @@ impl WasmMetricsCollector {
 
     /// Get all timestamps as milliseconds since epoch.
     pub fn timestamps(&self) -> Vec<u64> {
-        self.inner.to_records().iter().map(|r| r.timestamp).collect()
+        self.inner
+            .to_records()
+            .iter()
+            .map(|r| r.timestamp)
+            .collect()
     }
 
     /// Get loss standard deviation.
@@ -161,8 +163,7 @@ impl WasmMetricsCollector {
         self.inner
             .summary()
             .get(&Metric::Loss)
-            .map(|s| s.std)
-            .unwrap_or(f64::NAN)
+            .map_or(f64::NAN, |s| s.std)
     }
 
     /// Get accuracy standard deviation.
@@ -171,8 +172,7 @@ impl WasmMetricsCollector {
         self.inner
             .summary()
             .get(&Metric::Accuracy)
-            .map(|s| s.std)
-            .unwrap_or(f64::NAN)
+            .map_or(f64::NAN, |s| s.std)
     }
 
     /// Check if NaN was detected in loss.
@@ -181,8 +181,7 @@ impl WasmMetricsCollector {
         self.inner
             .summary()
             .get(&Metric::Loss)
-            .map(|s| s.has_nan)
-            .unwrap_or(false)
+            .is_some_and(|s| s.has_nan)
     }
 
     /// Check if Inf was detected in loss.
@@ -191,8 +190,7 @@ impl WasmMetricsCollector {
         self.inner
             .summary()
             .get(&Metric::Loss)
-            .map(|s| s.has_inf)
-            .unwrap_or(false)
+            .is_some_and(|s| s.has_inf)
     }
 }
 
@@ -460,9 +458,7 @@ impl WasmDashboard {
         if len <= 1 {
             return vec![0.5];
         }
-        (0..len)
-            .map(|i| i as f64 / (len - 1) as f64)
-            .collect()
+        (0..len).map(|i| i as f64 / (len - 1) as f64).collect()
     }
 
     /// Generate sparkline characters for terminal display.
@@ -517,18 +513,15 @@ fn normalize_values(values: &[f64]) -> Vec<f64> {
         return Vec::new();
     }
 
-    let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
-    let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
     if (max - min).abs() < 1e-10 {
         // All values are the same
         return vec![0.5; values.len()];
     }
 
-    values
-        .iter()
-        .map(|v| (v - min) / (max - min))
-        .collect()
+    values.iter().map(|v| (v - min) / (max - min)).collect()
 }
 
 /// Generate a sparkline string from values.

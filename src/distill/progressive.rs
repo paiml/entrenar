@@ -50,8 +50,7 @@ impl ProgressiveDistiller {
         );
         assert!(
             temperature > 0.0,
-            "Temperature must be positive, got {}",
-            temperature
+            "Temperature must be positive, got {temperature}"
         );
 
         let sum: f32 = layer_weights.iter().sum();

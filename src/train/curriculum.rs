@@ -126,7 +126,7 @@ impl CurriculumScheduler for LinearCurriculum {
         self.current_epoch = 0;
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "LinearCurriculum"
     }
 }
@@ -237,7 +237,7 @@ impl CurriculumScheduler for TieredCurriculum {
         self.epochs_at_threshold = 0;
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "TieredCurriculum"
     }
 }
@@ -378,7 +378,7 @@ impl CurriculumScheduler for AdaptiveCurriculum {
         self.overall_difficulty = 0.0;
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "AdaptiveCurriculum"
     }
 }
@@ -597,5 +597,87 @@ mod tests {
         );
         assert_eq!(TieredCurriculum::citl_default().name(), "TieredCurriculum");
         assert_eq!(AdaptiveCurriculum::new().name(), "AdaptiveCurriculum");
+    }
+
+    #[test]
+    fn test_adaptive_curriculum_step_and_reset() {
+        let mut curriculum = AdaptiveCurriculum::new();
+
+        // Step with high accuracy should increase overall difficulty
+        curriculum.step(0, 0.9);
+        assert!(curriculum.difficulty() > 0.0);
+
+        curriculum.step(1, 0.8);
+        let difficulty_after_step = curriculum.difficulty();
+        assert!(difficulty_after_step > 0.0);
+
+        // Reset should clear everything
+        curriculum.reset();
+        assert!((curriculum.difficulty() - 0.0).abs() < 1e-5);
+        assert!(curriculum.class_accuracy.is_empty());
+        assert!(curriculum.class_attempts.is_empty());
+    }
+
+    #[test]
+    fn test_adaptive_curriculum_all_tiers() {
+        let mut curriculum = AdaptiveCurriculum::new();
+
+        // Tier 1 when difficulty < 0.25
+        assert_eq!(curriculum.tier(), 1);
+
+        // Push difficulty up
+        for _ in 0..5 {
+            curriculum.step(0, 1.0);
+        }
+        // Should be tier 2, 3, or 4 depending on accumulated difficulty
+        assert!(curriculum.tier() >= 1);
+    }
+
+    #[test]
+    fn test_tiered_curriculum_reset() {
+        let mut curriculum = TieredCurriculum::new(vec![0.5, 0.6, 0.7], 1);
+
+        // Advance to tier 2
+        curriculum.step(0, 1.0);
+        assert!(curriculum.tier() >= 2);
+
+        // Reset should go back to tier 1
+        curriculum.reset();
+        assert_eq!(curriculum.tier(), 1);
+    }
+
+    #[test]
+    fn test_efficiency_score_edge_cases() {
+        // Edge case: corpus_size = 1 (should return accuracy directly)
+        assert!((efficiency_score(0.8, 1) - 0.8).abs() < 1e-5);
+
+        // Edge case: corpus_size = 0 (should return accuracy)
+        assert!((efficiency_score(0.8, 0) - 0.8).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_select_optimal_tier_empty() {
+        let results: Vec<(usize, f32, usize)> = vec![];
+        assert!(select_optimal_tier(&results).is_none());
+    }
+
+    #[test]
+    fn test_select_optimal_tier_single() {
+        let results = vec![(2, 0.75, 5000)];
+        let (tier, _) = select_optimal_tier(&results).unwrap();
+        assert_eq!(tier, 2);
+    }
+
+    #[test]
+    fn test_tiered_curriculum_difficulty() {
+        let curriculum = TieredCurriculum::new(vec![0.5, 0.6, 0.7], 1);
+        // Tier 1 corresponds to difficulty 0.0
+        assert_eq!(curriculum.difficulty(), 0.0);
+    }
+
+    #[test]
+    fn test_linear_curriculum_name() {
+        let curriculum = LinearCurriculum::new(0.0, 1.0, 10);
+        assert!(!curriculum.name().is_empty());
     }
 }

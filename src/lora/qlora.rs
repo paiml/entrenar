@@ -89,14 +89,16 @@ impl QLoRALayer {
         // Base forward: W @ x
         let base_output = matmul(&base_weight, x, self.d_out, self.d_in, 1);
 
-        if !self.merged {
+        if self.merged {
+            base_output
+        } else {
             // LoRA forward: scale * (B @ (A @ x))
             let lora_out_a = matmul(&self.lora_a, x, self.rank, self.d_in, 1);
             let lora_out_b = matmul(&self.lora_b, &lora_out_a, self.d_out, self.rank, 1);
 
             // Scale and add
             let mut scaled_lora_data = lora_out_b.data().to_owned();
-            for val in scaled_lora_data.iter_mut() {
+            for val in &mut scaled_lora_data {
                 *val *= self.scale;
             }
             let scaled_lora = Tensor::new(scaled_lora_data, false);
@@ -106,8 +108,6 @@ impl QLoRALayer {
                 *val += scaled_lora.data()[i];
             }
             Tensor::new(result_data, base_output.requires_grad())
-        } else {
-            base_output
         }
     }
 

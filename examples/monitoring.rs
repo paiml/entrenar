@@ -59,7 +59,9 @@ fn demo_metrics_buffer() {
     let mut buffer = MetricsBuffer::new(10);
 
     // Simulate loss values
-    let losses = [1.0, 0.8, 0.6, 0.5, 0.45, 0.4, 0.38, 0.35, 0.33, 0.31, 0.30, 0.29];
+    let losses = [
+        1.0, 0.8, 0.6, 0.5, 0.45, 0.4, 0.38, 0.35, 0.33, 0.31, 0.30, 0.29,
+    ];
 
     for loss in losses.iter() {
         buffer.push(*loss);
@@ -162,7 +164,10 @@ fn demo_andon_system() {
     for loss in normal_losses.iter() {
         andon.check_loss(*loss);
     }
-    println!("  After normal training: has_critical={}", andon.has_critical());
+    println!(
+        "  After normal training: has_critical={}",
+        andon.has_critical()
+    );
 
     // Stall (no improvement)
     for _ in 0..6 {
@@ -186,8 +191,9 @@ fn demo_reference_curve() {
     println!("--- Reference Curve Demo ---\n");
 
     // Create a reference curve from a "golden" training run (JSON array format)
-    let reference = ReferenceCurve::from_json("[1.0, 0.6, 0.4, 0.3, 0.25, 0.2, 0.18, 0.15, 0.13, 0.12]")
-        .expect("Failed to parse reference");
+    let reference =
+        ReferenceCurve::from_json("[1.0, 0.6, 0.4, 0.3, 0.25, 0.2, 0.18, 0.15, 0.13, 0.12]")
+            .expect("Failed to parse reference");
 
     // Current training progress (slightly worse)
     let current = vec![1.0, 0.65, 0.45, 0.35, 0.28];
@@ -199,7 +205,11 @@ fn demo_reference_curve() {
     println!("\n  Per-epoch deviation from reference:");
     for (epoch, &value) in current.iter().enumerate() {
         if let Some(dev) = reference.check_deviation(epoch, value) {
-            println!("    Epoch {}: +{:.1}% (exceeds 10% tolerance)", epoch, dev * 100.0);
+            println!(
+                "    Epoch {}: +{:.1}% (exceeds 10% tolerance)",
+                epoch,
+                dev * 100.0
+            );
         } else {
             println!("    Epoch {}: within tolerance", epoch);
         }

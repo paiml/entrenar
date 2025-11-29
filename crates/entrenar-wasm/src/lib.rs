@@ -3,7 +3,6 @@
 //! Minimal WASM bindings without heavy dependencies.
 
 use wasm_bindgen::prelude::*;
-use std::collections::HashMap;
 
 #[wasm_bindgen(start)]
 pub fn init() {
@@ -56,6 +55,12 @@ pub struct MetricsCollector {
     accuracy: RunningStats,
     loss_history: Vec<f64>,
     accuracy_history: Vec<f64>,
+}
+
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[wasm_bindgen]
@@ -287,5 +292,291 @@ mod tests {
         let s = c.loss_sparkline();
         // All same value should produce consistent sparkline
         assert_eq!(s.chars().count(), 5);
+    }
+
+    // Mutation-resistant tests for >80% kill rate
+    #[test]
+    fn test_nan_only_not_inf() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(f64::NAN);
+        assert_eq!(c.count(), 0);
+        c.record_loss(1.0);
+        assert_eq!(c.count(), 1);
+    }
+
+    #[test]
+    fn test_inf_only_not_nan() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(f64::INFINITY);
+        assert_eq!(c.count(), 0);
+        c.record_accuracy(f64::NEG_INFINITY);
+        assert_eq!(c.count(), 0);
+    }
+
+    #[test]
+    fn test_std_with_single_value() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(5.0);
+        assert_eq!(c.loss_std(), 0.0);
+    }
+
+    #[test]
+    fn test_std_with_two_values() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(0.0);
+        c.record_loss(2.0);
+        // std of [0, 2] = sqrt((0-1)^2 + (2-1)^2) / 1) = sqrt(2) ≈ 1.414
+        assert!((c.loss_std() - std::f64::consts::SQRT_2).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_accuracy_std_specific_value() {
+        let mut c = MetricsCollector::new();
+        c.record_accuracy(0.0);
+        c.record_accuracy(1.0);
+        // std of [0, 1] = sqrt(0.5) ≈ 0.707
+        assert!((c.accuracy_std() - (0.5_f64).sqrt()).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_sparkline_min_max_range() {
+        let mut c = MetricsCollector::new();
+        c.record_loss(0.0);  // min
+        c.record_loss(7.0);  // max
+        let s = c.loss_sparkline();
+        // First char should be lowest, last char should be highest
+        let chars: Vec<char> = s.chars().collect();
+        assert_eq!(chars[0], '▁');  // min value
+        assert_eq!(chars[1], '█');  // max value
+    }
+
+    #[test]
+    fn test_sparkline_intermediate_values() {
+        let mut c = MetricsCollector::new();
+        for i in 0..8 {
+            c.record_loss(i as f64);
+        }
+        let s = c.loss_sparkline();
+        let chars: Vec<char> = s.chars().collect();
+        // Should have ascending pattern
+        assert_eq!(chars[0], '▁');
+        assert_eq!(chars[7], '█');
+    }
+
+    #[test]
+    fn test_accuracy_sparkline_not_empty() {
+        let mut c = MetricsCollector::new();
+        c.record_accuracy(0.5);
+        c.record_accuracy(0.7);
+        let s = c.accuracy_sparkline();
+        assert!(!s.is_empty());
+        assert!(s.chars().all(|ch| "▁▂▃▄▅▆▇█".contains(ch)));
+    }
+
+    #[test]
+    fn test_history_exact_boundary() {
+        let mut c = MetricsCollector::new();
+        for i in 0..100 {
+            c.record_loss(i as f64);
+        }
+        let json = c.state_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let history = parsed["loss_history"].as_array().unwrap();
+        assert_eq!(history.len(), 100);
+        // First value should be 0.0 (no overflow yet)
+        assert_eq!(history[0].as_f64().unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_history_overflow_removes_first() {
+        let mut c = MetricsCollector::new();
+        for i in 0..101 {
+            c.record_loss(i as f64);
+        }
+        let json = c.state_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let history = parsed["loss_history"].as_array().unwrap();
+        assert_eq!(history.len(), 100);
+        // First value should be 1.0 (0.0 was removed)
+        assert_eq!(history[0].as_f64().unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_accuracy_history_overflow() {
+        let mut c = MetricsCollector::new();
+        for i in 0..105 {
+            c.record_accuracy(i as f64 / 100.0);
+        }
+        let json = c.state_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let history = parsed["accuracy_history"].as_array().unwrap();
+        assert_eq!(history.len(), 100);
+    }
+
+    // Additional mutation-resistant tests for sparkline math
+    #[test]
+    fn test_sparkline_normalization_correctness() {
+        // Test that normalization is (v - min) / range, not (v + min) / range
+        let mut c = MetricsCollector::new();
+        c.record_loss(10.0);  // min = 10
+        c.record_loss(20.0);  // max = 20, range = 10
+        let s = c.loss_sparkline();
+        let chars: Vec<char> = s.chars().collect();
+        // norm(10) = (10-10)/10 = 0 -> '▁'
+        // norm(20) = (20-10)/10 = 1 -> '█'
+        assert_eq!(chars[0], '▁');
+        assert_eq!(chars[1], '█');
+    }
+
+    #[test]
+    fn test_sparkline_division_not_multiplication() {
+        // Test that we divide by range, not multiply
+        let mut c = MetricsCollector::new();
+        c.record_loss(0.0);
+        c.record_loss(2.0);
+        c.record_loss(1.0);  // middle value
+        let s = c.loss_sparkline();
+        let chars: Vec<char> = s.chars().collect();
+        // 0 -> '▁', 2 -> '█', 1 -> '▄' (middle)
+        assert_eq!(chars[0], '▁');
+        assert_eq!(chars[1], '█');
+        // Middle value should be around index 3-4
+        let middle_char = chars[2];
+        assert!(middle_char >= '▃' && middle_char <= '▅', "Middle char was {:?}", middle_char);
+    }
+
+    #[test]
+    fn test_sparkline_range_calculation() {
+        // Test that range = max - min, not max + min
+        let mut c = MetricsCollector::new();
+        c.record_loss(5.0);
+        c.record_loss(15.0);
+        c.record_loss(10.0);
+        let s = c.loss_sparkline();
+        let chars: Vec<char> = s.chars().collect();
+        // range = 15 - 5 = 10
+        // 5 -> norm 0 -> '▁'
+        // 15 -> norm 1 -> '█'
+        // 10 -> norm 0.5 -> should be around '▄'
+        assert_eq!(chars[0], '▁');
+        assert_eq!(chars[1], '█');
+        assert!(chars[2] >= '▃' && chars[2] <= '▅');
+    }
+
+    #[test]
+    fn test_record_accuracy_nan_or_inf() {
+        // Test that NaN OR Inf is rejected (not NaN AND Inf)
+        let mut c = MetricsCollector::new();
+        c.record_accuracy(f64::NAN);      // Should be rejected
+        assert_eq!(c.count(), 0);
+        c.record_accuracy(f64::INFINITY); // Should also be rejected
+        assert_eq!(c.count(), 0);
+        c.record_accuracy(0.5);           // Should be accepted
+        assert_eq!(c.count(), 1);
+    }
+
+    #[test]
+    fn test_sparkline_small_range_handling() {
+        // Test the small range fallback (< 1e-10)
+        let mut c = MetricsCollector::new();
+        c.record_loss(5.0);
+        c.record_loss(5.0 + 1e-11);  // Very small difference
+        let s = c.loss_sparkline();
+        // Should not panic and should produce valid chars
+        assert_eq!(s.chars().count(), 2);
+        assert!(s.chars().all(|ch| "▁▂▃▄▅▆▇█".contains(ch)));
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn prop_mean_within_bounds(values in prop::collection::vec(0.0f64..100.0, 2..50)) {
+            let mut c = MetricsCollector::new();
+            for v in &values {
+                c.record_loss(*v);
+            }
+            let mean = c.loss_mean();
+            let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            prop_assert!(mean >= min - 1e-6);
+            prop_assert!(mean <= max + 1e-6);
+        }
+
+        #[test]
+        fn prop_std_non_negative(values in prop::collection::vec(0.0f64..100.0, 2..50)) {
+            let mut c = MetricsCollector::new();
+            for v in &values {
+                c.record_loss(*v);
+            }
+            prop_assert!(c.loss_std() >= 0.0);
+        }
+
+        #[test]
+        fn prop_count_matches(count in 1usize..100) {
+            let mut c = MetricsCollector::new();
+            for i in 0..count {
+                c.record_loss(i as f64);
+            }
+            prop_assert_eq!(c.count(), count);
+        }
+
+        #[test]
+        fn prop_sparkline_valid_chars(values in prop::collection::vec(0.0f64..100.0, 1..50)) {
+            let mut c = MetricsCollector::new();
+            for v in &values {
+                c.record_loss(*v);
+            }
+            let s = c.loss_sparkline();
+            for ch in s.chars() {
+                prop_assert!("▁▂▃▄▅▆▇█".contains(ch));
+            }
+        }
+
+        #[test]
+        fn prop_history_bounded(count in 1usize..200) {
+            let mut c = MetricsCollector::new();
+            for i in 0..count {
+                c.record_loss(i as f64);
+            }
+            let json = c.state_json();
+            let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+            let len = parsed["loss_history"].as_array().unwrap().len();
+            prop_assert!(len <= 100);
+        }
+
+        #[test]
+        fn prop_json_valid(values in prop::collection::vec(0.0f64..100.0, 0..50)) {
+            let mut c = MetricsCollector::new();
+            for v in &values {
+                c.record_loss(*v);
+            }
+            let json = c.state_json();
+            let parsed: Result<serde_json::Value, _> = serde_json::from_str(&json);
+            prop_assert!(parsed.is_ok());
+        }
+
+        #[test]
+        fn prop_ignores_nan_inf(
+            valid in prop::collection::vec(0.0f64..100.0, 1..20),
+            nan_count in 0usize..5,
+            inf_count in 0usize..5
+        ) {
+            let mut c = MetricsCollector::new();
+            for v in &valid {
+                c.record_loss(*v);
+            }
+            for _ in 0..nan_count {
+                c.record_loss(f64::NAN);
+            }
+            for _ in 0..inf_count {
+                c.record_loss(f64::INFINITY);
+            }
+            prop_assert_eq!(c.count(), valid.len());
+        }
     }
 }

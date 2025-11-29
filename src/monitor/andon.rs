@@ -334,4 +334,58 @@ mod tests {
         andon.critical("Stop!");
         assert!(flag.load(Ordering::SeqCst));
     }
+
+    #[test]
+    fn test_alert_level_as_str() {
+        assert_eq!(AlertLevel::Info.as_str(), "INFO");
+        assert_eq!(AlertLevel::Warning.as_str(), "WARNING");
+        assert_eq!(AlertLevel::Error.as_str(), "ERROR");
+        assert_eq!(AlertLevel::Critical.as_str(), "CRITICAL");
+    }
+
+    #[test]
+    fn test_alert_level_emoji() {
+        assert_eq!(AlertLevel::Info.emoji(), "ℹ️");
+        assert_eq!(AlertLevel::Warning.emoji(), "⚠️");
+        assert_eq!(AlertLevel::Error.emoji(), "❌");
+        assert_eq!(AlertLevel::Critical.emoji(), "🛑");
+    }
+
+    #[test]
+    fn test_alerts_by_level() {
+        let mut andon = AndonSystem::new();
+        andon.info("Info 1");
+        andon.warning("Warning 1");
+        andon.info("Info 2");
+
+        let info_alerts = andon.alerts_by_level(AlertLevel::Info);
+        assert_eq!(info_alerts.len(), 2);
+
+        let warning_alerts = andon.alerts_by_level(AlertLevel::Warning);
+        assert_eq!(warning_alerts.len(), 1);
+    }
+
+    #[test]
+    fn test_andon_default() {
+        let andon = AndonSystem::default();
+        assert!(!andon.should_stop());
+    }
+
+    #[test]
+    fn test_alert_clone() {
+        let alert = Alert::info("Test").with_source("test").with_value(1.0);
+        let cloned = alert.clone();
+        assert_eq!(alert.message, cloned.message);
+        assert_eq!(alert.source, cloned.source);
+        assert_eq!(alert.value, cloned.value);
+    }
+
+    #[test]
+    fn test_alert_level_clone_copy() {
+        let level = AlertLevel::Warning;
+        let copied = level;
+        let cloned = level;
+        assert_eq!(level, copied);
+        assert_eq!(level, cloned);
+    }
 }

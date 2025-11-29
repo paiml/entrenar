@@ -321,11 +321,11 @@ pub fn dequantize_with_params(quantized: &[i8], params: &QuantParams) -> Vec<f32
         let scale = params.scales.get(group_idx).copied().unwrap_or(1.0);
 
         let val = match params.mode {
-            QuantMode::Symmetric => (q_val as f32) * scale,
+            QuantMode::Symmetric => f32::from(q_val) * scale,
             QuantMode::Asymmetric => {
                 let zp = params.zero_points.get(group_idx).copied().unwrap_or(0);
                 // Convert back from signed storage
-                let q_unsigned = (q_val as i32 + 128) as f32;
+                let q_unsigned = (i32::from(q_val) + 128) as f32;
                 (q_unsigned - zp as f32) * scale
             }
         };
@@ -694,5 +694,200 @@ mod tests {
                 mse_4bit
             );
         }
+    }
+
+    // Additional edge case tests
+
+    #[test]
+    fn test_per_channel_asymmetric() {
+        let values = vec![
+            0.0, 1.0, 2.0, 3.0, // Channel 0
+            10.0, 11.0, 12.0, 13.0, // Channel 1
+        ];
+        let params = calibrate_per_channel(&values, 2, 8, QuantMode::Asymmetric);
+
+        assert_eq!(params.scales.len(), 2);
+        assert_eq!(params.zero_points.len(), 2);
+        assert!(params.is_asymmetric());
+
+        // Just verify quantization produces valid output
+        let quantized = quantize_with_params(&values, &params);
+        assert_eq!(quantized.len(), values.len());
+    }
+
+    #[test]
+    fn test_per_group_asymmetric() {
+        let values: Vec<f32> = (0..40).map(|i| i as f32).collect();
+        let params = calibrate_per_group(&values, 10, 8, QuantMode::Asymmetric);
+
+        assert_eq!(params.scales.len(), 4); // 40 values / 10 per group
+        assert_eq!(params.zero_points.len(), 4);
+        assert_eq!(params.granularity, QuantGranularity::PerGroup(10));
+
+        // Just verify quantization produces valid output
+        let quantized = quantize_with_params(&values, &params);
+        assert_eq!(quantized.len(), values.len());
+    }
+
+    #[test]
+    fn test_per_channel_empty_values() {
+        let values: Vec<f32> = vec![];
+        let params = calibrate_per_channel(&values, 0, 8, QuantMode::Symmetric);
+
+        assert_eq!(params.scales.len(), 1);
+        assert_eq!(params.scales[0], 1.0);
+    }
+
+    #[test]
+    fn test_per_group_single_group() {
+        let values = vec![1.0, 2.0, 3.0];
+        let params = calibrate_per_group(&values, 10, 8, QuantMode::Symmetric);
+
+        // Group size > values count: should be 1 group
+        assert_eq!(params.num_groups(), 1);
+    }
+
+    #[test]
+    fn test_quant_params_num_groups() {
+        let params = QuantParams {
+            scales: vec![1.0, 2.0, 3.0],
+            zero_points: vec![],
+            granularity: QuantGranularity::PerChannel,
+            mode: QuantMode::Symmetric,
+            bits: 8,
+        };
+        assert_eq!(params.num_groups(), 3);
+    }
+
+    #[test]
+    fn test_quant_params_is_asymmetric() {
+        let symmetric = QuantParams {
+            scales: vec![1.0],
+            zero_points: vec![],
+            granularity: QuantGranularity::PerTensor,
+            mode: QuantMode::Symmetric,
+            bits: 8,
+        };
+        assert!(!symmetric.is_asymmetric());
+
+        let asymmetric = QuantParams {
+            scales: vec![1.0],
+            zero_points: vec![128],
+            granularity: QuantGranularity::PerTensor,
+            mode: QuantMode::Asymmetric,
+            bits: 8,
+        };
+        assert!(asymmetric.is_asymmetric());
+    }
+
+    #[test]
+    fn test_quantization_mse_mismatched_lengths() {
+        let original = vec![1.0, 2.0, 3.0];
+        let dequantized = vec![1.0, 2.0];
+        let mse = quantization_mse(&original, &dequantized);
+        assert_eq!(mse, f32::MAX);
+    }
+
+    #[test]
+    fn test_quantization_mse_empty() {
+        let original: Vec<f32> = vec![];
+        let dequantized: Vec<f32> = vec![];
+        let mse = quantization_mse(&original, &dequantized);
+        assert_eq!(mse, f32::MAX);
+    }
+
+    #[test]
+    fn test_quantize_tensor_per_group() {
+        let values: Vec<f32> = (0..100).map(|i| (i as f32 * 0.1).sin()).collect();
+        let shape = vec![100];
+
+        let quantized = quantize_tensor(
+            &values,
+            &shape,
+            QuantGranularity::PerGroup(10),
+            QuantMode::Symmetric,
+            8,
+        );
+
+        assert_eq!(quantized.shape, vec![100]);
+        assert_eq!(quantized.params.scales.len(), 10);
+        assert_eq!(quantized.data.len(), 100);
+    }
+
+    #[test]
+    fn test_dequantize_tensor() {
+        let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let shape = vec![2, 3];
+
+        let quantized = quantize_tensor(
+            &values,
+            &shape,
+            QuantGranularity::PerChannel,
+            QuantMode::Symmetric,
+            8,
+        );
+
+        let dequantized = dequantize_tensor(&quantized);
+        assert_eq!(dequantized.len(), 6);
+
+        let mse = quantization_mse(&values, &dequantized);
+        assert!(mse < 0.1, "MSE {} too large", mse);
+    }
+
+    #[test]
+    fn test_4bit_per_channel() {
+        let values = vec![
+            0.1, 0.2, 0.3, 0.4, // Channel 0: small
+            1.0, 2.0, 3.0, 4.0, // Channel 1: larger
+        ];
+        let params = calibrate_per_channel(&values, 2, 4, QuantMode::Symmetric);
+
+        assert_eq!(params.bits, 4);
+        assert_eq!(params.scales.len(), 2);
+
+        let quantized = quantize_with_params(&values, &params);
+        let dequantized = dequantize_with_params(&quantized, &params);
+
+        // 4-bit has coarser quantization
+        for (orig, deq) in values.iter().zip(dequantized.iter()) {
+            assert_abs_diff_eq!(orig, deq, epsilon = 1.0);
+        }
+    }
+
+    #[test]
+    fn test_quantized_tensor_memory_with_zero_points() {
+        let values = vec![1.0; 100];
+        let shape = vec![100];
+
+        let quantized = quantize_tensor(
+            &values,
+            &shape,
+            QuantGranularity::PerTensor,
+            QuantMode::Asymmetric,
+            8,
+        );
+
+        // 100 bytes data + 4 bytes scale + 4 bytes zero_point = 108 bytes
+        assert_eq!(quantized.memory_bytes(), 108);
+    }
+
+    #[test]
+    fn test_per_channel_single_channel() {
+        let values = vec![1.0, 2.0, 3.0, 4.0];
+        let params = calibrate_per_channel(&values, 1, 8, QuantMode::Symmetric);
+
+        assert_eq!(params.scales.len(), 1);
+    }
+
+    #[test]
+    fn test_negative_values_asymmetric() {
+        let values = vec![-5.0, -3.0, -1.0, 0.0, 1.0, 3.0, 5.0];
+        let params = calibrate_per_tensor(&values, 8, QuantMode::Asymmetric);
+
+        let quantized = quantize_with_params(&values, &params);
+        let dequantized = dequantize_with_params(&quantized, &params);
+
+        let mse = quantization_mse(&values, &dequantized);
+        assert!(mse < 0.1, "MSE {} too large for negative values", mse);
     }
 }

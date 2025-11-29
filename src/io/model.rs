@@ -216,4 +216,52 @@ mod tests {
         let rest_weight = restored.get_parameter("weight").unwrap();
         assert_eq!(orig_weight.data(), rest_weight.data());
     }
+
+    #[test]
+    fn test_model_get_parameter_mut() {
+        let params = vec![("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0], true))];
+        let mut model = Model::new(ModelMetadata::new("test", "linear"), params);
+
+        let tensor = model.get_parameter_mut("weight").unwrap();
+        assert!(tensor.requires_grad());
+
+        assert!(model.get_parameter_mut("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_parameter_info_clone() {
+        let info = ParameterInfo {
+            name: "layer1.weight".to_string(),
+            shape: vec![10, 20],
+            dtype: "f32".to_string(),
+            requires_grad: true,
+        };
+        let cloned = info.clone();
+        assert_eq!(info.name, cloned.name);
+        assert_eq!(info.shape, cloned.shape);
+    }
+
+    #[test]
+    fn test_model_state_fields() {
+        let state = ModelState {
+            metadata: ModelMetadata::new("test", "arch"),
+            parameters: vec![ParameterInfo {
+                name: "w".to_string(),
+                shape: vec![5],
+                dtype: "f32".to_string(),
+                requires_grad: true,
+            }],
+            data: vec![1.0, 2.0, 3.0, 4.0, 5.0],
+        };
+        let cloned = state.clone();
+        assert_eq!(state.parameters.len(), cloned.parameters.len());
+        assert_eq!(state.data.len(), cloned.data.len());
+    }
+
+    #[test]
+    fn test_model_metadata_clone() {
+        let meta = ModelMetadata::new("model", "transformer");
+        let cloned = meta.clone();
+        assert_eq!(meta.name, cloned.name);
+    }
 }

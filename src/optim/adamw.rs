@@ -68,8 +68,8 @@ impl Optimizer for AdamW {
                 if grad.len() >= 16 {
                     // Initialize moments if needed
                     if self.m[i].is_none() {
-                        self.m[i] = Some(ndarray::Array1::zeros(grad.len()));
-                        self.v[i] = Some(ndarray::Array1::zeros(grad.len()));
+                        self.m[i] = Some(Array1::zeros(grad.len()));
+                        self.v[i] = Some(Array1::zeros(grad.len()));
                     }
 
                     let m = self.m[i].as_mut().unwrap();
@@ -113,7 +113,7 @@ impl Optimizer for AdamW {
 
                     // AdamW update with decoupled weight decay:
                     // θ_t = (1 - lr * λ) * θ_{t-1} - lr_t * m_t / (√v_t + ε)
-                    let adaptive_update = &m_t / &(v_t.mapv(|x| x.sqrt()) + self.epsilon) * lr_t;
+                    let adaptive_update = &m_t / &(v_t.mapv(f32::sqrt) + self.epsilon) * lr_t;
 
                     // Apply weight decay directly to parameters (decoupled)
                     let weight_decay_factor = 1.0 - self.lr * self.weight_decay;
@@ -205,5 +205,156 @@ mod tests {
         // (weight decay shrinks parameters toward zero)
         assert!(params_adamw[0].data()[0].abs() < params_adam[0].data()[0].abs());
         assert!(params_adamw[0].data()[1].abs() < params_adam[0].data()[1].abs());
+    }
+
+    // =========================================================================
+    // Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn test_adamw_simd_path() {
+        // Test with >= 16 elements to exercise SIMD path
+        let data: Vec<f32> = (0..32).map(|i| i as f32).collect();
+        let mut params = vec![Tensor::from_vec(data, true)];
+        let mut optimizer = AdamW::default_params(0.01);
+
+        for _ in 0..10 {
+            let grad = params[0].data().mapv(|x| 2.0 * x);
+            params[0].set_grad(grad);
+            optimizer.step(&mut params);
+        }
+
+        // Just verify it runs without panic
+        assert_eq!(params[0].data().len(), 32);
+    }
+
+    #[test]
+    fn test_adamw_simd_convergence() {
+        // Test convergence with SIMD path (32 elements)
+        let data: Vec<f32> = (0..32).map(|i| (i as f32) - 16.0).collect();
+        let mut params = vec![Tensor::from_vec(data.clone(), true)];
+        let mut optimizer = AdamW::default_params(0.1);
+
+        let initial_mean: f32 = data.iter().map(|x| x.abs()).sum::<f32>() / 32.0;
+        for _ in 0..100 {
+            let grad = params[0].data().mapv(|x| 2.0 * x);
+            params[0].set_grad(grad);
+            optimizer.step(&mut params);
+        }
+
+        // Should make progress toward 0
+        let final_mean: f32 = params[0].data().iter().map(|x| x.abs()).sum::<f32>() / 32.0;
+        assert!(
+            final_mean < initial_mean,
+            "Mean {} did not improve from {}",
+            final_mean,
+            initial_mean
+        );
+    }
+
+    #[test]
+    fn test_adamw_lr_getter_setter() {
+        let mut optimizer = AdamW::default_params(0.1);
+        assert_abs_diff_eq!(optimizer.lr(), 0.1, epsilon = 1e-6);
+
+        optimizer.set_lr(0.01);
+        assert_abs_diff_eq!(optimizer.lr(), 0.01, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_adamw_multiple_params() {
+        let mut params = vec![
+            Tensor::from_vec(vec![1.0, 2.0], true),
+            Tensor::from_vec(vec![3.0, 4.0], true),
+        ];
+        let mut optimizer = AdamW::default_params(0.1);
+
+        // Set gradients for both
+        params[0].set_grad(ndarray::arr1(&[0.1, 0.2]));
+        params[1].set_grad(ndarray::arr1(&[0.3, 0.4]));
+
+        optimizer.step(&mut params);
+
+        // Both params should be updated
+        assert!(params[0].data()[0] < 1.0);
+        assert!(params[1].data()[0] < 3.0);
+    }
+
+    #[test]
+    fn test_adamw_no_grad() {
+        let mut params = vec![Tensor::from_vec(vec![1.0, 2.0], false)]; // requires_grad=false
+        let mut optimizer = AdamW::default_params(0.1);
+
+        let initial = params[0].data().clone();
+        optimizer.step(&mut params);
+
+        // No gradient, so params unchanged
+        assert_eq!(params[0].data(), &initial);
+    }
+
+    #[test]
+    fn test_adamw_momentum_accumulation() {
+        let mut params = vec![Tensor::from_vec(vec![5.0], true)];
+        let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.0); // No weight decay
+
+        let initial = params[0].data()[0];
+        // Multiple steps with same gradient should accumulate momentum
+        for _ in 0..5 {
+            params[0].set_grad(ndarray::arr1(&[1.0]));
+            optimizer.step(&mut params);
+        }
+
+        // Should have moved due to gradient (direction depends on sign)
+        assert!(params[0].data()[0] != initial, "Parameter did not change");
+    }
+
+    #[test]
+    fn test_adamw_simd_multiple_steps() {
+        // Test multiple steps with SIMD to cover momentum accumulation
+        let data: Vec<f32> = vec![1.0; 20];
+        let mut params = vec![Tensor::from_vec(data, true)];
+        let mut optimizer = AdamW::default_params(0.1);
+
+        for step in 0..5 {
+            let grad = params[0].data().mapv(|_| 1.0);
+            params[0].set_grad(grad);
+            optimizer.step(&mut params);
+
+            // Verify progress
+            assert!(
+                params[0].data()[0] < 1.0 - (step as f32 * 0.05),
+                "Step {} did not make progress",
+                step
+            );
+        }
+    }
+
+    #[test]
+    fn test_adamw_zero_weight_decay() {
+        let mut params = vec![Tensor::from_vec(vec![1.0], true)];
+        let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.0); // Zero weight decay
+
+        // Zero gradient
+        params[0].set_grad(ndarray::arr1(&[0.0]));
+        let initial = params[0].data()[0];
+        optimizer.step(&mut params);
+
+        // With zero gradient and zero weight decay, param should be unchanged
+        assert_abs_diff_eq!(params[0].data()[0], initial, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_adamw_bias_correction() {
+        // Test that bias correction is applied correctly
+        let mut params = vec![Tensor::from_vec(vec![0.0], true)];
+        let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.0);
+
+        // First step should have large bias correction
+        params[0].set_grad(ndarray::arr1(&[1.0]));
+        optimizer.step(&mut params);
+        let after_first = params[0].data()[0];
+
+        // Step size should be close to lr due to bias correction
+        assert!(after_first.abs() > 0.05, "Bias correction not applied");
     }
 }

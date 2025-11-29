@@ -912,8 +912,8 @@ mod tests {
         pattern1.record_success();
         store.index_fix(pattern1).unwrap();
 
-        let pattern2 = FixPattern::new("E0382", "- x\n+ x.clone()")
-            .with_decision("borrow_after_move");
+        let pattern2 =
+            FixPattern::new("E0382", "- x\n+ x.clone()").with_decision("borrow_after_move");
         store.index_fix(pattern2).unwrap();
 
         // Save to temp file
@@ -975,8 +975,7 @@ mod tests {
     fn test_pattern_store_apr_suggest_after_load() {
         let mut store = DecisionPatternStore::new().unwrap();
 
-        let pattern = FixPattern::new("E0308", "type fix")
-            .with_decision("detect_mismatch");
+        let pattern = FixPattern::new("E0308", "type fix").with_decision("detect_mismatch");
         store.index_fix(pattern).unwrap();
 
         let temp_dir = tempfile::tempdir().unwrap();

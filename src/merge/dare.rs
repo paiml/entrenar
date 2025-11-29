@@ -34,8 +34,7 @@ impl DareConfig {
     pub fn new(drop_prob: f32) -> Result<Self, MergeError> {
         if !(0.0..=1.0).contains(&drop_prob) {
             return Err(MergeError::InvalidConfig(format!(
-                "Drop probability must be in [0.0, 1.0], got {}",
-                drop_prob
+                "Drop probability must be in [0.0, 1.0], got {drop_prob}"
             )));
         }
         Ok(Self {
