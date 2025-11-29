@@ -5,6 +5,40 @@ All notable changes to Entrenar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-11-29
+
+### Added
+
+#### SafeTensors Support (ENT-IO)
+- **SafeTensors format** - Full save/load support with metadata preservation
+- **HuggingFace compatibility** - Direct upload/download from HuggingFace Hub
+- **Auto-detection** - Format automatically detected from file extension
+- **Metadata serialization** - Model name, architecture, version in headers
+
+#### HuggingFace Pipeline
+- **HfModelFetcher** - Download models from HuggingFace Hub
+- **SafeTensors parsing** - Load models in SafeTensors format
+- **Projection layers** - Handle dimension-mismatched distillation
+
+#### Sub-Crate Demos
+- **entrenar-common** - CLI utilities, progress bars, structured output (37 tests)
+- **entrenar-lora** - LoRA optimization and memory planning (53 tests)
+- **entrenar-inspect** - Model inspection and validation (64 tests)
+- **entrenar-shell** - Interactive REPL shell (55 tests)
+- **entrenar-bench** - Distillation benchmarking (52 tests)
+- **entrenar-distill** - Distillation pipeline demo
+
+### Changed
+- All clippy warnings resolved across workspace
+- Test count increased to 1,900+
+- Book documentation updated with SafeTensors chapter
+
+### Fixed
+- `&PathBuf` → `&Path` for proper slice semantics
+- Type complexity warnings with allow attributes
+- Manual clamp patterns replaced with `.clamp()`
+- Display trait implemented for TestResult
+
 ## [0.2.0] - 2025-11-28
 
 ### Added
