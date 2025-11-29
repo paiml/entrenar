@@ -250,4 +250,98 @@ mod tests {
         assert_eq!(estimate_num_heads(2048), 32);
         assert_eq!(estimate_num_heads(768), 12);
     }
+
+    #[test]
+    fn test_estimate_num_heads_128_dim() {
+        // Test 128-dim head preference for large hidden dims
+        assert_eq!(estimate_num_heads(8192), 64); // 8192/128 = 64 (uses 128-dim)
+    }
+
+    #[test]
+    fn test_estimate_num_heads_default() {
+        // Non-divisible hidden dim should return default
+        assert_eq!(estimate_num_heads(1000), 32);
+    }
+
+    #[test]
+    fn test_architecture_name() {
+        assert_eq!(Architecture::Llama.name(), "llama");
+        assert_eq!(Architecture::Mistral.name(), "mistral");
+        assert_eq!(Architecture::Gpt.name(), "gpt");
+        assert_eq!(Architecture::Bert.name(), "bert");
+        assert_eq!(Architecture::T5.name(), "t5");
+        assert_eq!(Architecture::Falcon.name(), "falcon");
+        assert_eq!(Architecture::Unknown.name(), "unknown");
+    }
+
+    #[test]
+    fn test_detect_mistral() {
+        let detector = ArchitectureDetector::new()
+            .with_tensors(vec!["model.mistral.layers.0.weight".to_string()]);
+        assert_eq!(detector.detect(), Architecture::Mistral);
+    }
+
+    #[test]
+    fn test_gpt_takes_precedence_over_falcon() {
+        // GPT is checked before Falcon in detection order
+        // transformer.h matches GPT, even with self_attention.dense
+        let detector = ArchitectureDetector::new().with_tensors(vec![
+            "transformer.h.0.self_attention.dense.weight".to_string(),
+        ]);
+        // GPT is detected first due to matching transformer.h
+        assert_eq!(detector.detect(), Architecture::Gpt);
+    }
+
+    #[test]
+    fn test_architecture_info_estimate_params() {
+        let info = ArchitectureInfo {
+            architecture: Architecture::Llama,
+            hidden_dim: 4096,
+            num_layers: 32,
+            vocab_size: 32000,
+            num_heads: 32,
+        };
+        let params = info.estimate_params();
+        // Should be in billions for 7B-class model
+        assert!(params > 1_000_000_000);
+        assert!(params < 20_000_000_000);
+    }
+
+    #[test]
+    fn test_detector_detect_from_shapes() {
+        let mut shapes = HashMap::new();
+        shapes.insert("model.embed_tokens.weight".to_string(), vec![32000, 4096]);
+        shapes.insert(
+            "model.layers.0.self_attn.q_proj.weight".to_string(),
+            vec![4096, 4096],
+        );
+        shapes.insert(
+            "model.layers.31.mlp.gate_proj.weight".to_string(),
+            vec![11008, 4096],
+        );
+
+        let detector = ArchitectureDetector::new().with_tensors(shapes.keys().cloned().collect());
+        let info = detector.detect_from_shapes(&shapes);
+
+        assert_eq!(info.architecture, Architecture::Llama);
+        assert_eq!(info.hidden_dim, 4096);
+        assert_eq!(info.num_layers, 32);
+        assert_eq!(info.vocab_size, 32000);
+    }
+
+    #[test]
+    fn test_architecture_default_new() {
+        let detector = ArchitectureDetector::new();
+        // Empty detector should return Unknown
+        assert_eq!(detector.detect(), Architecture::Unknown);
+    }
+
+    #[test]
+    fn test_t5_not_detected_without_both() {
+        // T5 needs both encoder.block AND decoder.block
+        let detector = ArchitectureDetector::new()
+            .with_tensors(vec!["encoder.block.0.weight".to_string()]);
+        // Should not detect as T5 with only encoder
+        assert_ne!(detector.detect(), Architecture::T5);
+    }
 }

@@ -83,4 +83,26 @@ mod tests {
         assert_eq!("GGUF".parse::<OutputFormat>().unwrap(), OutputFormat::Gguf);
         assert_eq!("apr".parse::<OutputFormat>().unwrap(), OutputFormat::Apr);
     }
+
+    #[test]
+    fn test_output_format_st_alias() {
+        assert_eq!("st".parse::<OutputFormat>().unwrap(), OutputFormat::SafeTensors);
+        assert_eq!("ST".parse::<OutputFormat>().unwrap(), OutputFormat::SafeTensors);
+    }
+
+    #[test]
+    fn test_output_format_invalid() {
+        let result = "pickle".parse::<OutputFormat>();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown format"));
+        assert!(err.contains("pickle"));
+    }
+
+    #[test]
+    fn test_output_format_equality() {
+        assert_eq!(OutputFormat::SafeTensors, OutputFormat::SafeTensors);
+        assert_ne!(OutputFormat::SafeTensors, OutputFormat::Gguf);
+        assert_ne!(OutputFormat::Gguf, OutputFormat::Apr);
+    }
 }

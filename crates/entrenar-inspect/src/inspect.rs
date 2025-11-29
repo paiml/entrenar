@@ -327,7 +327,7 @@ mod tests {
             path: PathBuf::from("test.safetensors"),
             size_bytes: 100,
             format: ModelFormat::SafeTensors,
-            architecture: crate::architecture::ArchitectureInfo {
+            architecture: ArchitectureInfo {
                 architecture: crate::architecture::Architecture::Llama,
                 hidden_dim: 4096,
                 num_layers: 32,
@@ -340,5 +340,124 @@ mod tests {
 
         let breakdown = layer_breakdown(&info);
         assert!(!breakdown.is_empty());
+    }
+
+    #[test]
+    fn test_model_info_size_human() {
+        let info = ModelInfo {
+            path: PathBuf::from("test.safetensors"),
+            size_bytes: 14_000_000_000, // ~14GB
+            format: ModelFormat::SafeTensors,
+            architecture: ArchitectureInfo {
+                architecture: crate::architecture::Architecture::Llama,
+                hidden_dim: 4096,
+                num_layers: 32,
+                vocab_size: 32000,
+                num_heads: 32,
+            },
+            total_params: 7_000_000_000,
+            tensors: vec![],
+        };
+
+        let size = info.size_human();
+        assert!(size.contains("GB"));
+    }
+
+    #[test]
+    fn test_model_info_params_b() {
+        let info = ModelInfo {
+            path: PathBuf::from("test.safetensors"),
+            size_bytes: 14_000_000_000,
+            format: ModelFormat::SafeTensors,
+            architecture: ArchitectureInfo {
+                architecture: crate::architecture::Architecture::Llama,
+                hidden_dim: 4096,
+                num_layers: 32,
+                vocab_size: 32000,
+                num_heads: 32,
+            },
+            total_params: 7_000_000_000,
+            tensors: vec![],
+        };
+
+        assert!((info.params_b() - 7.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_tensor_info_params() {
+        let tensor = TensorInfo {
+            name: "test".to_string(),
+            shape: vec![4096, 4096],
+            dtype: DataType::F16,
+            num_elements: 4096 * 4096,
+            size_bytes: 4096 * 4096 * 2,
+        };
+        assert_eq!(tensor.params(), 4096 * 4096);
+    }
+
+    #[test]
+    fn test_data_type_all_sizes() {
+        assert_eq!(DataType::F32.size(), 4);
+        assert_eq!(DataType::F16.size(), 2);
+        assert_eq!(DataType::BF16.size(), 2);
+        assert_eq!(DataType::I32.size(), 4);
+        assert_eq!(DataType::I8.size(), 1);
+        assert_eq!(DataType::U8.size(), 1);
+        assert_eq!(DataType::Unknown.size(), 0);
+    }
+
+    #[test]
+    fn test_detect_format_pth() {
+        assert_eq!(detect_format(Path::new("model.pth")), ModelFormat::PyTorch);
+    }
+
+    #[test]
+    fn test_detect_format_bin() {
+        assert_eq!(detect_format(Path::new("model.bin")), ModelFormat::PyTorch);
+    }
+
+    #[test]
+    fn test_detect_format_apr() {
+        assert_eq!(detect_format(Path::new("model.apr")), ModelFormat::Apr);
+    }
+
+    #[test]
+    fn test_estimate_params_gguf() {
+        let size = 7_000_000_000u64; // ~7GB
+        let params = estimate_params_from_size(size, &ModelFormat::Gguf);
+        assert_eq!(params, 7_000_000_000); // 1:1 at 8-bit
+    }
+
+    #[test]
+    fn test_generate_mock_tensors_small_model() {
+        let tensors = generate_mock_tensors(100_000_000); // 100M params
+        assert!(!tensors.is_empty());
+        // Smaller model should have smaller hidden dim
+        let embed = tensors.iter().find(|t| t.name.contains("embed")).unwrap();
+        assert!(embed.shape[1] < 4096);
+    }
+
+    #[test]
+    fn test_layer_breakdown_sorted() {
+        let info = ModelInfo {
+            path: PathBuf::from("test.safetensors"),
+            size_bytes: 100,
+            format: ModelFormat::SafeTensors,
+            architecture: ArchitectureInfo {
+                architecture: crate::architecture::Architecture::Llama,
+                hidden_dim: 4096,
+                num_layers: 32,
+                vocab_size: 32000,
+                num_heads: 32,
+            },
+            total_params: 7_000_000_000,
+            tensors: generate_mock_tensors(7_000_000_000),
+        };
+
+        let breakdown = layer_breakdown(&info);
+        // Verify layers are sorted
+        for i in 1..breakdown.len() {
+            assert!(breakdown[i].layer_num >= breakdown[i - 1].layer_num);
+        }
     }
 }

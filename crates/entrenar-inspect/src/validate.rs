@@ -299,4 +299,162 @@ mod tests {
         assert!(report.contains("V001"));
         assert!(report.contains("Fix it"));
     }
+
+    #[test]
+    fn test_validation_report_pass() {
+        let result = ValidationResult {
+            valid: true,
+            issues: vec![],
+            warnings: vec![],
+            checks: vec![ValidationCheck {
+                name: "Test check".to_string(),
+                passed: true,
+                duration_ms: 1,
+            }],
+        };
+
+        let report = result.to_report();
+        assert!(report.contains("PASS"));
+        assert!(report.contains("✓"));
+    }
+
+    #[test]
+    fn test_has_errors_with_error() {
+        let result = ValidationResult {
+            valid: false,
+            issues: vec![ValidationIssue {
+                code: "V001".to_string(),
+                message: "Error".to_string(),
+                severity: Severity::Error,
+                suggestion: None,
+                tensor: None,
+            }],
+            warnings: vec![],
+            checks: vec![],
+        };
+        assert!(result.has_errors());
+    }
+
+    #[test]
+    fn test_has_errors_with_warning_only() {
+        let result = ValidationResult {
+            valid: true,
+            issues: vec![ValidationIssue {
+                code: "V002".to_string(),
+                message: "Warning".to_string(),
+                severity: Severity::Warning,
+                suggestion: None,
+                tensor: None,
+            }],
+            warnings: vec![],
+            checks: vec![],
+        };
+        assert!(!result.has_errors());
+    }
+
+    #[test]
+    fn test_has_errors_with_info_only() {
+        let result = ValidationResult {
+            valid: true,
+            issues: vec![ValidationIssue {
+                code: "V003".to_string(),
+                message: "Info".to_string(),
+                severity: Severity::Info,
+                suggestion: None,
+                tensor: None,
+            }],
+            warnings: vec![],
+            checks: vec![],
+        };
+        assert!(!result.has_errors());
+    }
+
+    #[test]
+    fn test_integrity_checker_default() {
+        let checker = IntegrityChecker::default();
+        // Should be non-strict by default
+        let mut file = NamedTempFile::with_suffix(".pt").unwrap();
+        file.write_all(&[0u8; 2000]).unwrap();
+
+        let result = checker.validate(file.path()).unwrap();
+        // Non-strict mode: unsafe format is warning, not error
+        assert!(result.valid);
+    }
+
+    #[test]
+    fn test_severity_equality() {
+        assert_eq!(Severity::Error, Severity::Error);
+        assert_ne!(Severity::Error, Severity::Warning);
+        assert_ne!(Severity::Warning, Severity::Info);
+    }
+
+    #[test]
+    fn test_report_warning_symbol() {
+        let result = ValidationResult {
+            valid: true,
+            issues: vec![ValidationIssue {
+                code: "V002".to_string(),
+                message: "Warning".to_string(),
+                severity: Severity::Warning,
+                suggestion: None,
+                tensor: None,
+            }],
+            warnings: vec![],
+            checks: vec![],
+        };
+
+        let report = result.to_report();
+        assert!(report.contains("⚠"));
+    }
+
+    #[test]
+    fn test_report_info_symbol() {
+        let result = ValidationResult {
+            valid: true,
+            issues: vec![ValidationIssue {
+                code: "V003".to_string(),
+                message: "Info".to_string(),
+                severity: Severity::Info,
+                suggestion: None,
+                tensor: None,
+            }],
+            warnings: vec![],
+            checks: vec![],
+        };
+
+        let report = result.to_report();
+        assert!(report.contains("ℹ"));
+    }
+
+    #[test]
+    fn test_validation_small_file_warning() {
+        let mut file = NamedTempFile::with_suffix(".safetensors").unwrap();
+        file.write_all(&[0u8; 100]).unwrap(); // Very small file
+
+        let result = validate_model(file.path()).unwrap();
+        // Small file should generate a warning
+        assert!(!result.warnings.is_empty() || !result.checks.iter().all(|c| c.passed));
+    }
+
+    #[test]
+    fn test_validation_gguf_format() {
+        let mut file = NamedTempFile::with_suffix(".gguf").unwrap();
+        file.write_all(&[0u8; 2000]).unwrap();
+
+        let result = validate_model(file.path()).unwrap();
+        let format_check = result.checks.iter().find(|c| c.name == "Safe format");
+        assert!(format_check.is_some());
+        assert!(format_check.unwrap().passed);
+    }
+
+    #[test]
+    fn test_validation_apr_format() {
+        let mut file = NamedTempFile::with_suffix(".apr").unwrap();
+        file.write_all(&[0u8; 2000]).unwrap();
+
+        let result = validate_model(file.path()).unwrap();
+        let format_check = result.checks.iter().find(|c| c.name == "Safe format");
+        assert!(format_check.is_some());
+        assert!(format_check.unwrap().passed);
+    }
 }
