@@ -191,6 +191,15 @@ impl SafeTensorsTeacher {
         &self.tensor_names
     }
 
+    /// Get model weights by tensor name
+    ///
+    /// Note: Currently returns an empty map as weights are loaded on-demand
+    /// for memory efficiency. Future versions will support lazy loading.
+    #[must_use]
+    pub fn weights(&self) -> &std::collections::HashMap<String, Array2<f32>> {
+        &self.weights
+    }
+
     /// Create mock teacher for testing
     #[cfg(test)]
     pub fn mock(num_layers: usize, hidden_size: usize) -> Self {
@@ -248,7 +257,7 @@ fn extract_layer_index(name: &str) -> Option<usize> {
 }
 
 /// Detect hidden size from tensor shapes
-fn detect_hidden_size(tensors: &safetensors::SafeTensors, names: &[String]) -> usize {
+fn detect_hidden_size(tensors: &safetensors::SafeTensors<'_>, names: &[String]) -> usize {
     // Look for attention query weight which is typically [hidden_size, hidden_size]
     let query_patterns = [".query.weight", ".q_proj.weight", ".self_attn.q_proj.weight"];
 
@@ -576,7 +585,7 @@ mod tests {
             })
             .collect();
 
-        let views: Vec<(&str, TensorView)> = tensor_data
+        let views: Vec<(&str, TensorView<'_>)> = tensor_data
             .iter()
             .map(|(name, data, shape)| {
                 let view = TensorView::new(
