@@ -112,20 +112,17 @@ pub struct LoadedModel {
 
 /// Role of a model in the distillation session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ModelRole {
     /// Teacher model (knowledge source)
     Teacher,
     /// Student model (learning target)
     Student,
     /// No specific role assigned
+    #[default]
     None,
 }
 
-impl Default for ModelRole {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// A history entry for a command.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

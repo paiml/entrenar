@@ -117,8 +117,7 @@ fn temperature_command(
     if !cli.is_quiet() {
         println!("{}", styles::header("Temperature Sweep"));
         println!(
-            "Range: {:.1} to {:.1}, step {:.1}, {} runs per point\n",
-            start, end, step, runs
+            "Range: {start:.1} to {end:.1}, step {step:.1}, {runs} runs per point\n"
         );
     }
 
@@ -158,8 +157,7 @@ fn alpha_command(
     if !cli.is_quiet() {
         println!("{}", styles::header("Alpha Sweep"));
         println!(
-            "Range: {:.1} to {:.1}, step {:.1}, {} runs per point\n",
-            start, end, step, runs
+            "Range: {start:.1} to {end:.1}, step {step:.1}, {runs} runs per point\n"
         );
     }
 
@@ -251,7 +249,7 @@ fn compare_command(
         if let Some(best) = &comparison.best_by_accuracy {
             println!(
                 "\n{}",
-                styles::success(&format!("Recommendation: {} for best accuracy", best))
+                styles::success(&format!("Recommendation: {best} for best accuracy"))
             );
         }
     }
@@ -269,7 +267,7 @@ fn ablation_command(
     }
 
     // Run ablation by progressively adding components
-    let ablations = vec![
+    let ablations = [
         (
             "Baseline (CE only)",
             DistillStrategy::KDOnly {
@@ -316,9 +314,7 @@ fn ablation_command(
     for (i, (name, _)) in ablations.iter().enumerate() {
         let result = &comparison.results[i];
         let delta = prev_loss
-            .map(|p: f64| result.mean_loss - p)
-            .map(|d| format!("{:+.4}", d))
-            .unwrap_or_else(|| "-".to_string());
+            .map(|p: f64| result.mean_loss - p).map_or_else(|| "-".to_string(), |d| format!("{d:+.4}"));
 
         println!(
             "│ {:19} │ {:>10.4} │ {:>10} │ {:>9.1}% │",

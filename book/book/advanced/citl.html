@@ -1,0 +1,950 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Compiler-in-the-Loop (CITL) - Entrenar - Training &amp; Optimization Library</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A comprehensive guide to building neural network training systems with autograd, optimizers, LoRA/QLoRA, and quantization using EXTREME TDD methodology">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "rust";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Entrenar - Training &amp; Optimization Library</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/advanced/citl.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="compiler-in-the-loop-citl-training"><a class="header" href="#compiler-in-the-loop-citl-training">Compiler-in-the-Loop (CITL) Training</a></h1>
+<p>This chapter covers entrenar's CITL module, which provides RAG-based fix pattern storage
+and statistical fault localization for compiler-assisted training.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The CITL system provides:</p>
+<ul>
+<li><strong>DecisionPatternStore</strong>: Stores and retrieves fix patterns using hybrid retrieval (BM25 + dense embeddings)</li>
+<li><strong>DecisionCITL</strong>: Correlates compiler decision traces with compilation outcomes for fault localization</li>
+<li><strong>Tarantula scoring</strong>: Statistical suspiciousness analysis of decision types</li>
+<li><strong>Dependency graphs</strong>: Root cause analysis through decision chain tracking</li>
+</ul>
+<h2 id="llm-bootstrapping-the-core-philosophy"><a class="header" href="#llm-bootstrapping-the-core-philosophy">LLM Bootstrapping: The Core Philosophy</a></h2>
+<blockquote>
+<p><strong>"LLM is bootstrap, not runtime dependency."</strong></p>
+</blockquote>
+<p>The CITL module implements a cost-saving MLOps strategy: use expensive LLMs to <em>bootstrap</em>
+pattern libraries during development, then operate cost-free in production using local ML oracles.</p>
+<h3 id="the-problem-with-llm-only-workflows"><a class="header" href="#the-problem-with-llm-only-workflows">The Problem with LLM-Only Workflows</a></h3>
+<p>Traditional LLM-assisted development has a scaling problem:</p>
+<pre><code>Per-developer annual cost (LLM-only):
+├─ 8 hours/day × 250 days = 2,000 hours
+├─ API calls for every edge case
+├─ $0.02/minute average = $2,400/developer/year
+└─ Scales linearly with team size
+</code></pre>
+<h3 id="the-bootstrapping-solution"><a class="header" href="#the-bootstrapping-solution">The Bootstrapping Solution</a></h3>
+<p>Instead of treating LLMs as a runtime dependency, use them to <em>train</em> a local oracle:</p>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                     BOOTSTRAP PHASE (One-time)                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   Overnight LLM Sessions (6-13 hours each)                          │
+│           │                                                         │
+│           ▼                                                         │
+│   ┌───────────────┐    ┌───────────────┐    ┌───────────────┐      │
+│   │   Transpile   │───▶│   Compiler    │───▶│   Decision    │      │
+│   │   Code        │    │   Feedback    │    │   Traces      │      │
+│   └───────────────┘    └───────────────┘    └───────────────┘      │
+│                                                    │                │
+│                                                    ▼                │
+│                                          ┌───────────────┐          │
+│                                          │  Pattern      │          │
+│                                          │  Extraction   │          │
+│                                          └───────────────┘          │
+│                                                    │                │
+│                                                    ▼                │
+│                                          ┌───────────────┐          │
+│                                          │  .apr File    │          │
+│                                          │  (503 KB)     │          │
+│                                          └───────────────┘          │
+│                                                                     │
+│   Cost: ~$156 one-time (10 sessions × 13h × $0.02/min)             │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     PRODUCTION PHASE (Forever)                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   ┌───────────────┐                                                 │
+│   │  Load .apr    │                                                 │
+│   └───────────────┘                                                 │
+│           │                                                         │
+│           ▼                                                         │
+│   ┌───────────────┐    ┌───────────────┐    ┌───────────────┐      │
+│   │  HNSW Index   │───▶│  Pattern      │───▶│  Fix          │      │
+│   │  (Semantic)   │    │  Matching     │    │  Suggestion   │      │
+│   └───────────────┘    └───────────────┘    └───────────────┘      │
+│                                                                     │
+│   Cost: $0 (local inference, zero API calls)                        │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="cost-economics"><a class="header" href="#cost-economics">Cost Economics</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Phase</th><th>Duration</th><th>Cost</th><th>Output</th></tr></thead><tbody>
+<tr><td><strong>Bootstrap</strong></td><td>10 overnight sessions</td><td>~$156 one-time</td><td>Training data</td></tr>
+<tr><td><strong>Capture</strong></td><td>Automatic</td><td>$0</td><td>503 KB .apr model</td></tr>
+<tr><td><strong>Production</strong></td><td>Forever</td><td>$0</td><td>Local inference</td></tr>
+</tbody></table>
+</div>
+<p><strong>ROI Example:</strong></p>
+<ul>
+<li>Team of 5 developers</li>
+<li>LLM-only: $12,000/year</li>
+<li>Bootstrap approach: $156 once, then free</li>
+<li><strong>Break-even: 5 days</strong></li>
+</ul>
+<h3 id="what-gets-captured"><a class="header" href="#what-gets-captured">What Gets Captured</a></h3>
+<p>During bootstrap sessions, the system captures:</p>
+<ol>
+<li><strong>Error Patterns</strong> - rustc error codes with full context</li>
+<li><strong>Fix Patterns</strong> - Code transformations that resolved errors</li>
+<li><strong>Decision Traces</strong> - Codegen decisions that led to errors</li>
+<li><strong>Success Rates</strong> - Historical effectiveness of each fix</li>
+</ol>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Real data from depyler bootstrap sessions:
+// - 298 Python CLI tools transpiled
+// - 4,583 rustc errors captured
+// - 150+ fix patterns extracted
+// - 91% k-fold cross-validation accuracy
+<span class="boring">}</span></code></pre></pre>
+<h3 id="the-self-improving-loop"><a class="header" href="#the-self-improving-loop">The Self-Improving Loop</a></h3>
+<p>Each overnight session improves the oracle:</p>
+<pre><code>Session N:
+├─ Load existing .apr (if any)
+├─ LLM generates fixes for edge cases
+├─ Compiler validates fixes
+├─ Extract new patterns
+├─ Merge with existing patterns
+├─ Save updated .apr
+└─ Next session starts with better oracle
+
+Pattern Accumulation:
+├─ Session 1-3:  LLM handles 100% of cases
+├─ Session 4-6:  Local oracle handles 50%
+├─ Session 7-10: Local oracle handles 80%+
+└─ Session 11+:  LLM only for long-tail novelty
+</code></pre>
+<h3 id="error-priority-during-bootstrap"><a class="header" href="#error-priority-during-bootstrap">Error Priority During Bootstrap</a></h3>
+<p>Focus bootstrap sessions on highest-impact errors:</p>
+<pre><code>Error Distribution (from real transpilation corpus):
+├─ E0308 (Type mismatch)      - 1,050 occurrences (23%)
+├─ E0433 (Failed to resolve)  -   706 occurrences (15%)
+├─ E0599 (Method not found)   -   543 occurrences (12%)
+├─ E0425 (Cannot find value)  -   392 occurrences (9%)
+├─ E0277 (Trait bound)        -   380 occurrences (8%)
+└─ Other                      - 1,512 occurrences (33%)
+</code></pre>
+<p>Fix the top 5 error types → resolve 67% of all errors.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{
+    DecisionCITL, DecisionPatternStore, DecisionTrace, CompilationOutcome,
+    FixPattern, SourceSpan,
+};
+
+// Create a CITL trainer
+let mut trainer = DecisionCITL::new()?;
+
+// Ingest a failed compilation session
+let traces = vec![
+    DecisionTrace::new("d1", "type_inference", "Inferred i32 for string")
+        .with_span(SourceSpan::line("main.rs", 10)),
+];
+
+let outcome = CompilationOutcome::failure(
+    vec!["E0308".to_string()],
+    vec![SourceSpan::line("main.rs", 10)],
+    vec!["expected `&amp;str`, found `i32`".to_string()],
+);
+
+// Optionally provide the fix that resolved the error
+let fix = Some("- let x: i32 = \"hello\";\n+ let x: &amp;str = \"hello\";".to_string());
+
+trainer.ingest_session(traces, outcome, fix)?;
+
+// Later, correlate similar errors
+let error_span = SourceSpan::line("main.rs", 10);
+let correlation = trainer.correlate_error("E0308", &amp;error_span)?;
+
+// Get fix suggestions
+for suggestion in &amp;correlation.fix_suggestions {
+    println!("Suggested fix (score={:.2}): {}",
+             suggestion.weighted_score(),
+             suggestion.pattern.fix_diff);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="components"><a class="header" href="#components">Components</a></h2>
+<h3 id="fixpattern"><a class="header" href="#fixpattern">FixPattern</a></h3>
+<p>A pattern representing a successful fix for a compiler error:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::FixPattern;
+
+// Create a fix pattern
+let mut pattern = FixPattern::new("E0308", "- i32\n+ &amp;str")
+    .with_decision("type_inference")
+    .with_decision("type_coercion");
+
+// Track success rate
+pattern.record_success();  // Fix worked
+pattern.record_failure();  // Fix didn't work
+
+println!("Success rate: {:.0}%", pattern.success_rate() * 100.0);
+<span class="boring">}</span></code></pre></pre>
+<p>Fields:</p>
+<ul>
+<li><code>error_code</code>: The Rust error code (e.g., "E0308", "E0382")</li>
+<li><code>decision_sequence</code>: Compiler decisions that led to this fix</li>
+<li><code>fix_diff</code>: The actual code change in unified diff format</li>
+<li><code>success_count</code> / <code>attempt_count</code>: Track fix effectiveness</li>
+</ul>
+<h3 id="decisionpatternstore"><a class="header" href="#decisionpatternstore">DecisionPatternStore</a></h3>
+<p>Storage for fix patterns with hybrid retrieval using trueno-rag:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{DecisionPatternStore, FixPattern, PatternStoreConfig};
+
+// Create with default config
+let mut store = DecisionPatternStore::new()?;
+
+// Or customize
+let config = PatternStoreConfig {
+    chunk_size: 512,
+    embedding_dim: 384,
+    rrf_k: 60.0,  // Reciprocal Rank Fusion constant
+};
+let mut store = DecisionPatternStore::with_config(config)?;
+
+// Index fix patterns
+store.index_fix(FixPattern::new("E0308", "type fix 1").with_decision("type_inference"))?;
+store.index_fix(FixPattern::new("E0308", "type fix 2").with_decision("type_coercion"))?;
+store.index_fix(FixPattern::new("E0382", "borrow fix").with_decision("borrow_check"))?;
+
+// Query for suggestions
+let context = vec!["type_inference".to_string()];
+let suggestions = store.suggest_fix("E0308", &amp;context, 5)?;
+
+for suggestion in suggestions {
+    println!("Score: {:.3}, Pattern: {}",
+             suggestion.weighted_score(),
+             suggestion.pattern.error_code);
+}
+
+// Export/import for persistence
+let json = store.export_json()?;
+let mut new_store = DecisionPatternStore::new()?;
+new_store.import_json(&amp;json)?;
+<span class="boring">}</span></code></pre></pre>
+<h4 id="hybrid-retrieval"><a class="header" href="#hybrid-retrieval">Hybrid Retrieval</a></h4>
+<p>The pattern store uses trueno-rag for hybrid search:</p>
+<ol>
+<li><strong>BM25 (Lexical)</strong>: Matches error codes and decision keywords</li>
+<li><strong>Dense Embeddings</strong>: Semantic similarity of fix descriptions</li>
+<li><strong>RRF Fusion</strong>: Combines both rankings using Reciprocal Rank Fusion</li>
+</ol>
+<pre><code>RRF_score = Σ 1/(k + rank_i)
+</code></pre>
+<p>Where k=60 (configurable) and rank_i is the position in each retrieval system.</p>
+<h3 id="sourcespan"><a class="header" href="#sourcespan">SourceSpan</a></h3>
+<p>Represents a location in source code:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::SourceSpan;
+
+// Full span with start/end positions
+let span = SourceSpan::new("src/main.rs", 10, 5, 10, 25);
+
+// Single line shorthand
+let line_span = SourceSpan::line("src/main.rs", 10);
+
+// Check overlap
+let other = SourceSpan::line("src/main.rs", 10);
+assert!(span.overlaps(&amp;other));
+
+// Check containment
+let outer = SourceSpan::new("src/main.rs", 1, 1, 100, 80);
+assert!(outer.contains(&amp;span));
+<span class="boring">}</span></code></pre></pre>
+<h3 id="decisiontrace"><a class="header" href="#decisiontrace">DecisionTrace</a></h3>
+<p>A single compiler decision with optional source location:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{DecisionTrace, SourceSpan};
+
+let trace = DecisionTrace::new("decision_001", "type_inference", "Inferred type i32")
+    .with_span(SourceSpan::line("main.rs", 42))
+    .with_timestamp(1_000_000)  // nanoseconds
+    .with_dependency("decision_000");
+
+println!("Decision: {} - {}", trace.decision_type, trace.description);
+<span class="boring">}</span></code></pre></pre>
+<p>Fields:</p>
+<ul>
+<li><code>id</code>: Unique identifier for this decision</li>
+<li><code>decision_type</code>: Category (e.g., "type_inference", "borrow_check", "lifetime_resolution")</li>
+<li><code>description</code>: Human-readable description</li>
+<li><code>span</code>: Optional source location</li>
+<li><code>timestamp_ns</code>: Timing information</li>
+<li><code>depends_on</code>: IDs of decisions this one depends on</li>
+</ul>
+<h3 id="compilationoutcome"><a class="header" href="#compilationoutcome">CompilationOutcome</a></h3>
+<p>Result of a compilation attempt:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{CompilationOutcome, SourceSpan};
+
+// Successful compilation
+let success = CompilationOutcome::success();
+
+// Failed compilation
+let failure = CompilationOutcome::failure(
+    vec!["E0308".to_string(), "E0382".to_string()],  // Error codes
+    vec![SourceSpan::line("main.rs", 10), SourceSpan::line("lib.rs", 25)],
+    vec!["type mismatch".to_string(), "use after move".to_string()],
+);
+
+assert!(success.is_success());
+assert!(!failure.is_success());
+assert_eq!(failure.error_codes(), vec!["E0308", "E0382"]);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="decisioncitl"><a class="header" href="#decisioncitl">DecisionCITL</a></h3>
+<p>The main trainer that correlates decisions with errors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{DecisionCITL, CITLConfig};
+
+// Create with custom config
+let config = CITLConfig {
+    max_suggestions: 5,
+    min_suspiciousness: 0.3,
+    enable_dependency_graph: true,
+};
+let mut trainer = DecisionCITL::with_config(config)?;
+
+// Ingest sessions (see Quick Start)
+// ...
+
+// Analyze suspicious decision types
+let top_suspicious = trainer.top_suspicious_types(5);
+for (decision_type, score) in top_suspicious {
+    println!("{}: {:.2}", decision_type, score);
+}
+
+// Group by file
+let by_file = trainer.decisions_by_file();
+for (file, decisions) in by_file {
+    println!("{}: {} decisions", file, decisions.len());
+}
+
+// Build dependency graph
+let graph = trainer.build_dependency_graph();
+
+// Find root causes for an error
+let roots = trainer.find_root_causes(&amp;error_span);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="fault-localization"><a class="header" href="#fault-localization">Fault Localization</a></h2>
+<h3 id="tarantula-algorithm"><a class="header" href="#tarantula-algorithm">Tarantula Algorithm</a></h3>
+<p>CITL uses Tarantula (Jones &amp; Harrold, 2005) for statistical fault localization:</p>
+<pre><code>suspiciousness = fail_freq / (fail_freq + success_freq)
+
+where:
+  fail_freq = times_in_failed / total_failed
+  success_freq = times_in_successful / total_successful
+</code></pre>
+<p>Interpretation:</p>
+<ul>
+<li><strong>1.0</strong>: Decision appears only in failures (highly suspicious)</li>
+<li><strong>0.5</strong>: Decision appears equally in successes and failures</li>
+<li><strong>0.0</strong>: Decision appears only in successes (not suspicious)</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::DecisionStats;
+
+let stats = DecisionStats {
+    success_count: 2,
+    fail_count: 8,
+    total_success: 10,
+    total_fail: 10,
+};
+
+// fail_freq = 8/10 = 0.8
+// success_freq = 2/10 = 0.2
+// suspiciousness = 0.8 / (0.8 + 0.2) = 0.8
+assert!((stats.tarantula_score() - 0.8).abs() &lt; 0.01);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="error-correlation"><a class="header" href="#error-correlation">Error Correlation</a></h3>
+<p>The <code>correlate_error</code> method combines multiple signals:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let correlation = trainer.correlate_error("E0308", &amp;error_span)?;
+
+// Suspicious decisions (sorted by score)
+for suspicious in &amp;correlation.suspicious_decisions {
+    println!("{} (score={:.2}): {}",
+             suspicious.decision.decision_type,
+             suspicious.suspiciousness,
+             suspicious.reason);
+}
+
+// Fix suggestions
+for suggestion in &amp;correlation.fix_suggestions {
+    println!("Fix: {} (weighted={:.2})",
+             suggestion.pattern.fix_diff,
+             suggestion.weighted_score());
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="dependency-graphs"><a class="header" href="#dependency-graphs">Dependency Graphs</a></h2>
+<p>Track decision chains for root cause analysis:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Build graph from all sessions
+let graph = trainer.build_dependency_graph();
+
+// Graph format: Map&lt;decision_id, Vec&lt;dependency_ids&gt;&gt;
+for (decision, deps) in &amp;graph {
+    if !deps.is_empty() {
+        println!("{} depends on: {:?}", decision, deps);
+    }
+}
+
+// Find root causes (decisions with no dependencies in the suspicious set)
+let roots = trainer.find_root_causes(&amp;error_span);
+for root in roots {
+    println!("Root cause: {} - {}", root.decision_type, root.description);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="weighted-scoring"><a class="header" href="#weighted-scoring">Weighted Scoring</a></h2>
+<p>Fix suggestions are ranked by weighted score:</p>
+<pre><code>weighted_score = retrieval_score * (0.5 + 0.5 * success_rate)
+</code></pre>
+<p>This balances:</p>
+<ul>
+<li><strong>Relevance</strong> (from RAG retrieval score)</li>
+<li><strong>Effectiveness</strong> (from historical success rate)</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let suggestion = store.suggest_fix("E0308", &amp;context, 1)?[0];
+
+println!("Retrieval score: {:.2}", suggestion.score);
+println!("Success rate: {:.0}%", suggestion.pattern.success_rate() * 100.0);
+println!("Weighted score: {:.2}", suggestion.weighted_score());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="persistence-the-apr-advantage"><a class="header" href="#persistence-the-apr-advantage">Persistence: The .apr Advantage</a></h2>
+<p>The <code>.apr</code> format is the key to transitioning from LLM bootstrap to cost-free production.</p>
+<h3 id="why-apr-matters"><a class="header" href="#why-apr-matters">Why .apr Matters</a></h3>
+<p>The <code>.apr</code> file represents <strong>crystallized LLM knowledge</strong>:</p>
+<pre><code>LLM Session ($$$)          .apr File (free)           Production (free)
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│ Claude/GPT API  │──────▶│ 503 KB binary   │──────▶│ Local inference │
+│ $0.02/minute    │       │ zstd compressed │       │ $0.00/query     │
+│ Network latency │       │ CRC32 verified  │       │ &lt;1ms response   │
+└─────────────────┘       └─────────────────┘       └─────────────────┘
+</code></pre>
+<h3 id="apr-format-recommended"><a class="header" href="#apr-format-recommended">APR Format (Recommended)</a></h3>
+<p>The <code>.apr</code> format uses aprender's binary serialization with zstd compression:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::DecisionPatternStore;
+
+// End of overnight bootstrap session
+let mut store = DecisionPatternStore::new()?;
+
+// ... LLM-assisted pattern accumulation ...
+for pattern in llm_generated_patterns {
+    store.index_fix(pattern)?;
+}
+
+// Crystallize to .apr - this is the money shot
+store.save_apr("~/.citl/decision_patterns.apr")?;
+
+// Next day: production mode (zero API calls)
+let oracle = DecisionPatternStore::load_apr("~/.citl/decision_patterns.apr")?;
+let suggestions = oracle.suggest_fix("E0308", &amp;["type_mismatch".into()], 5)?;
+// suggestions are FREE - no LLM call needed
+<span class="boring">}</span></code></pre></pre>
+<h3 id="contents-of-an-apr-file"><a class="header" href="#contents-of-an-apr-file">Contents of an .apr File</a></h3>
+<pre><code>decision_patterns.apr (503 KB)
+├─ Header
+│   ├─ Magic: "APRN"
+│   ├─ Version: 1
+│   └─ Compression: Zstd
+├─ Metadata
+│   ├─ aprender_version: "0.12.0"
+│   ├─ created_at: timestamp
+│   └─ patterns_count: 150
+├─ PatternStoreConfig
+│   ├─ chunk_size: 256
+│   ├─ embedding_dim: 384
+│   └─ rrf_k: 60.0
+└─ Patterns (serialized)
+    ├─ FixPattern[0]: E0308 → type fix
+    ├─ FixPattern[1]: E0382 → borrow fix
+    └─ ...
+</code></pre>
+<h3 id="json-format"><a class="header" href="#json-format">JSON Format</a></h3>
+<p>For debugging, cross-tool sharing, or human inspection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Export for inspection
+let json = store.export_json()?;
+std::fs::write("patterns.json", &amp;json)?;
+
+// Import from another system
+let json = std::fs::read_to_string("shared_patterns.json")?;
+store.import_json(&amp;json)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="format-comparison"><a class="header" href="#format-comparison">Format Comparison</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Use Case</th><th>Size</th><th>Speed</th><th>LLM Cost</th></tr></thead><tbody>
+<tr><td><strong>APR</strong></td><td>Production</td><td>~30% of JSON</td><td>Fast</td><td><strong>$0 forever</strong></td></tr>
+<tr><td>JSON</td><td>Debugging</td><td>Baseline</td><td>Moderate</td><td>N/A</td></tr>
+<tr><td>LLM API</td><td>Bootstrap only</td><td>N/A</td><td>Slow</td><td>$$$/query</td></tr>
+</tbody></table>
+</div>
+<h3 id="complete-bootstrap-to-production-pipeline"><a class="header" href="#complete-bootstrap-to-production-pipeline">Complete Bootstrap-to-Production Pipeline</a></h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│  NIGHT 1: Bootstrap Session                                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  for each example in corpus:                                        │
+│      transpile(example)                                             │
+│      if error:                                                      │
+│          fix = LLM.suggest_fix(error)        # $0.02/call          │
+│          if compiler.validates(fix):                                │
+│              store.index_fix(pattern)                               │
+│                                                                     │
+│  store.save_apr("patterns.apr")              # Crystallize         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  NIGHT 2-10: Incremental Sessions                                    │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  store = load_apr("patterns.apr")            # Start with knowledge │
+│                                                                     │
+│  for each example in corpus:                                        │
+│      transpile(example)                                             │
+│      if error:                                                      │
+│          suggestions = store.suggest_fix(error)  # FREE            │
+│          if suggestions.best().confidence &gt; 0.8:                    │
+│              apply(suggestions.best())           # No LLM needed   │
+│          else:                                                      │
+│              fix = LLM.suggest_fix(error)        # Long-tail only  │
+│              store.index_fix(pattern)                               │
+│                                                                     │
+│  store.save_apr("patterns.apr")              # Update knowledge    │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  DAY 11+: Production Mode                                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  oracle = load_apr("patterns.apr")           # 80%+ coverage       │
+│                                                                     │
+│  for each error:                                                    │
+│      suggestions = oracle.suggest_fix(error) # Always FREE         │
+│      apply(suggestions.best())                                      │
+│                                                                     │
+│  # LLM is no longer needed for common cases                        │
+│  # Only novel long-tail errors require API calls                   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="sharing-patterns-across-teams"><a class="header" href="#sharing-patterns-across-teams">Sharing Patterns Across Teams</a></h3>
+<p>The <code>.apr</code> file is portable:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Team A: Generated patterns from 298 Python→Rust transpilations
+store.save_apr("team_a_patterns.apr")?;
+
+// Team B: Import and benefit immediately
+let mut store = DecisionPatternStore::load_apr("team_a_patterns.apr")?;
+
+// Team B adds their own patterns
+store.index_fix(new_pattern)?;
+store.save_apr("team_b_patterns.apr")?;
+
+// Merge across teams (future: store.merge_apr())
+<span class="boring">}</span></code></pre></pre>
+<h3 id="integration-with-cicd"><a class="header" href="#integration-with-cicd">Integration with CI/CD</a></h3>
+<pre><code class="language-yaml"># .github/workflows/citl.yml
+name: CITL Pattern Update
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 2 AM daily
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load existing patterns
+        run: |
+          aws s3 cp s3://patterns/decision_patterns.apr ./patterns.apr || true
+
+      - name: Run CITL session
+        run: |
+          cargo run --features citl -- citl-train \
+            --load ./patterns.apr \
+            --corpus ./examples \
+            --save ./patterns.apr
+
+      - name: Upload updated patterns
+        run: |
+          aws s3 cp ./patterns.apr s3://patterns/decision_patterns.apr
+</code></pre>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<h3 id="citlconfig"><a class="header" href="#citlconfig">CITLConfig</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::CITLConfig;
+
+let config = CITLConfig {
+    max_suggestions: 5,        // Max fix suggestions per query
+    min_suspiciousness: 0.3,   // Filter low-suspicion decisions
+    enable_dependency_graph: true,
+};
+<span class="boring">}</span></code></pre></pre>
+<h3 id="patternstoreconfig"><a class="header" href="#patternstoreconfig">PatternStoreConfig</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::PatternStoreConfig;
+
+let config = PatternStoreConfig {
+    chunk_size: 256,       // Characters per chunk for RAG
+    embedding_dim: 384,    // Embedding vector dimension
+    rrf_k: 60.0,          // RRF fusion constant
+};
+<span class="boring">}</span></code></pre></pre>
+<h2 id="academic-references"><a class="header" href="#academic-references">Academic References</a></h2>
+<p>The CITL module implements algorithms from peer-reviewed research:</p>
+<h3 id="fault-localization-1"><a class="header" href="#fault-localization-1">Fault Localization</a></h3>
+<ol>
+<li>Jones, J. A., &amp; Harrold, M. J. (2005). "Empirical Evaluation of the Tarantula Automatic Fault-Localization Technique." <em>ASE</em>.</li>
+<li>Zeller, A. (2002). "Isolating cause-effect chains from computer programs." <em>FSE</em>.</li>
+<li>Chilimbi, T. M., et al. (2009). "HOLMES: Effective Statistical Debugging via Efficient Path Profiling." <em>ICSE</em>.</li>
+</ol>
+<h3 id="hybrid-retrieval-1"><a class="header" href="#hybrid-retrieval-1">Hybrid Retrieval</a></h3>
+<ol start="4">
+<li>Cormack, G. V., Clarke, C. L., &amp; Buettcher, S. (2009). "Reciprocal rank fusion outperforms condorcet and individual rank learning methods." <em>SIGIR</em>.</li>
+<li>Lewis, P., et al. (2020). "Retrieval-augmented generation for knowledge-intensive NLP tasks." <em>NeurIPS</em>.</li>
+</ol>
+<h3 id="compiler-feedback-learning-llm-bootstrapping-foundation"><a class="header" href="#compiler-feedback-learning-llm-bootstrapping-foundation">Compiler-Feedback Learning (LLM Bootstrapping Foundation)</a></h3>
+<ol start="6">
+<li>Wang, B., et al. (2022). "Compilable Neural Code Generation with Compiler Feedback." <em>ACL</em>.</li>
+<li>Yasunaga, M., &amp; Liang, P. (2020). "Graph-based, Self-Supervised Program Repair from Diagnostic Feedback." <em>ICML</em>.</li>
+<li>Dou, S., et al. (2024). "StepCoder: Improve Code Generation with Reinforcement Learning from Compiler Feedback." <em>arXiv:2402.01391</em>.</li>
+<li>Le, H., et al. (2022). "CodeRL: Mastering Code Generation through Pretrained Models and Deep Reinforcement Learning." <em>NeurIPS</em>.</li>
+</ol>
+<h3 id="knowledge-distillation-llm-to-local-oracle"><a class="header" href="#knowledge-distillation-llm-to-local-oracle">Knowledge Distillation (LLM to Local Oracle)</a></h3>
+<ol start="10">
+<li>Hinton, G., Vinyals, O., &amp; Dean, J. (2015). "Distilling the Knowledge in a Neural Network." <em>arXiv:1503.02531</em>.</li>
+<li>Sanh, V., et al. (2019). "DistilBERT, a distilled version of BERT." <em>arXiv:1910.01108</em>.</li>
+</ol>
+<h2 id="example-complete-citl-workflow"><a class="header" href="#example-complete-citl-workflow">Example: Complete CITL Workflow</a></h2>
+<pre><pre class="playground"><code class="language-rust">use entrenar::citl::{
+    DecisionCITL, DecisionTrace, CompilationOutcome, SourceSpan, FixPattern,
+};
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let mut trainer = DecisionCITL::new()?;
+
+    // Simulate compilation sessions from CI/CD
+    // Session 1: Type inference failure
+    trainer.ingest_session(
+        vec![
+            DecisionTrace::new("d1", "type_inference", "Inferred i32")
+                .with_span(SourceSpan::line("main.rs", 10)),
+        ],
+        CompilationOutcome::failure(
+            vec!["E0308".to_string()],
+            vec![SourceSpan::line("main.rs", 10)],
+            vec!["expected &amp;str, found i32".to_string()],
+        ),
+        Some("- let x: i32 = s;\n+ let x: &amp;str = s;".to_string()),
+    )?;
+
+    // Session 2: Same pattern
+    trainer.ingest_session(
+        vec![
+            DecisionTrace::new("d2", "type_inference", "Inferred i32")
+                .with_span(SourceSpan::line("lib.rs", 25)),
+        ],
+        CompilationOutcome::failure(
+            vec!["E0308".to_string()],
+            vec![SourceSpan::line("lib.rs", 25)],
+            vec![],
+        ),
+        None,
+    )?;
+
+    // Session 3: Successful compilation
+    trainer.ingest_session(
+        vec![
+            DecisionTrace::new("d3", "type_inference", "Inferred &amp;str correctly")
+                .with_span(SourceSpan::line("main.rs", 10)),
+        ],
+        CompilationOutcome::success(),
+        None,
+    )?;
+
+    // Analyze
+    println!("Sessions: {} success, {} failure",
+             trainer.success_count(),
+             trainer.failure_count());
+
+    println!("\nTop suspicious decision types:");
+    for (dtype, score) in trainer.top_suspicious_types(3) {
+        println!("  {}: {:.2}", dtype, score);
+    }
+
+    // Correlate a new error
+    let correlation = trainer.correlate_error(
+        "E0308",
+        &amp;SourceSpan::line("main.rs", 10)
+    )?;
+
+    println!("\nSuggested fixes for E0308:");
+    for suggestion in &amp;correlation.fix_suggestions {
+        println!("  [score={:.2}] {}",
+                 suggestion.weighted_score(),
+                 suggestion.pattern.fix_diff.lines().next().unwrap_or(""));
+    }
+
+    // Export patterns for reuse
+    let json = trainer.pattern_store().export_json()?;
+    println!("\nExported {} patterns", trainer.pattern_store().len());
+
+    Ok(())
+}</code></pre></pre>
+<h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
+<ul>
+<li><strong>Pattern indexing</strong>: O(n) for RAG chunking and embedding</li>
+<li><strong>Pattern query</strong>: O(log n) for BM25 + dense retrieval</li>
+<li><strong>Session ingestion</strong>: O(d) where d = number of decisions</li>
+<li><strong>Memory</strong>: Patterns stored in HashMap, sessions in Vec</li>
+</ul>
+<p>For large-scale usage:</p>
+<ul>
+<li>Consider periodic pattern cleanup (remove low success rate)</li>
+<li>Use JSON export/import for persistence across runs</li>
+<li>Tune RRF k parameter based on corpus size</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../advanced/model-parallelism.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../specifications/autograd-spec.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../advanced/model-parallelism.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../specifications/autograd-spec.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+        <script src="../ace.js"></script>
+        <script src="../editor.js"></script>
+        <script src="../mode-rust.js"></script>
+        <script src="../theme-dawn.js"></script>
+        <script src="../theme-tomorrow_night.js"></script>
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

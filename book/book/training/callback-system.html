@@ -1,0 +1,585 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Callback System - Entrenar - Training &amp; Optimization Library</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A comprehensive guide to building neural network training systems with autograd, optimizers, LoRA/QLoRA, and quantization using EXTREME TDD methodology">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "rust";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Entrenar - Training &amp; Optimization Library</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/callback-system.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="callback-system"><a class="header" href="#callback-system">Callback System</a></h1>
+<p>The callback system provides extensible hooks into the training loop, enabling behaviors like early stopping, checkpointing, progress logging, and real-time monitoring without modifying the core trainer.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{
+    TrainerCallback, CallbackContext, CallbackAction, CallbackManager,
+    EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback,
+};
+
+// Add multiple callbacks
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+trainer.add_callback(CheckpointCallback::new("./ckpt"));
+trainer.add_callback(ProgressCallback::new(10));
+trainer.add_callback(MonitorCallback::new());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="callback-lifecycle"><a class="header" href="#callback-lifecycle">Callback Lifecycle</a></h2>
+<p>Callbacks fire at six points during training:</p>
+<pre><code>train()
+  │
+  ├─► on_train_begin
+  │
+  ├─► for epoch in 0..max_epochs:
+  │     │
+  │     ├─► on_epoch_begin
+  │     │
+  │     ├─► for batch in batches:
+  │     │     ├─► on_step_begin
+  │     │     ├─► train_step()
+  │     │     └─► on_step_end
+  │     │
+  │     └─► on_epoch_end
+  │
+  └─► on_train_end
+</code></pre>
+<h2 id="callbackaction"><a class="header" href="#callbackaction">CallbackAction</a></h2>
+<p>Callbacks return an action that controls training flow:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum CallbackAction {
+    Continue,   // Continue training normally
+    Stop,       // Stop training immediately
+    SkipEpoch,  // Skip to next epoch (epoch_begin only)
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Behavior:</strong></p>
+<ul>
+<li><code>Continue</code> - Training proceeds normally</li>
+<li><code>Stop</code> - Training stops, <code>TrainResult.stopped_early = true</code></li>
+<li><code>SkipEpoch</code> - Skip remaining steps in current epoch (only valid in <code>on_epoch_begin</code>)</li>
+</ul>
+<h2 id="callbackcontext"><a class="header" href="#callbackcontext">CallbackContext</a></h2>
+<p>Every callback receives context with current training state:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CallbackContext {
+    pub epoch: usize,           // Current epoch (0-indexed)
+    pub max_epochs: usize,      // Maximum epochs configured
+    pub step: usize,            // Current step within epoch
+    pub steps_per_epoch: usize, // Total steps in epoch
+    pub global_step: usize,     // Total steps across all epochs
+    pub loss: f32,              // Current/latest loss
+    pub lr: f32,                // Current learning rate
+    pub best_loss: Option&lt;f32&gt;, // Best loss achieved so far
+    pub val_loss: Option&lt;f32&gt;,  // Validation loss (if provided)
+    pub elapsed_secs: f64,      // Seconds since training started
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="trainercallback-trait"><a class="header" href="#trainercallback-trait">TrainerCallback Trait</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait TrainerCallback: Send {
+    /// Called before training begins
+    fn on_train_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called after training ends
+    fn on_train_end(&amp;mut self, ctx: &amp;CallbackContext) {}
+
+    /// Called at the start of each epoch
+    fn on_epoch_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called at the end of each epoch
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called before each training step
+    fn on_step_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called after each training step
+    fn on_step_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Callback name for logging
+    fn name(&amp;self) -&gt; &amp;str;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="built-in-callbacks"><a class="header" href="#built-in-callbacks">Built-in Callbacks</a></h2>
+<h3 id="earlystopping"><a class="header" href="#earlystopping">EarlyStopping</a></h3>
+<p>Stops training when loss stops improving:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct EarlyStopping {
+    patience: usize,      // Epochs to wait before stopping
+    min_delta: f32,       // Minimum improvement threshold
+    best_loss: f32,       // Best loss seen
+    epochs_without_improvement: usize,
+}
+
+// Usage
+let es = EarlyStopping::new(5, 0.001);
+// Stops if loss doesn't improve by at least 0.001 for 5 epochs
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Behavior:</strong></p>
+<ul>
+<li>Tracks best loss seen during training</li>
+<li>Counts epochs without improvement (loss not decreasing by <code>min_delta</code>)</li>
+<li>Returns <code>CallbackAction::Stop</code> when patience exhausted</li>
+</ul>
+<h3 id="checkpointcallback"><a class="header" href="#checkpointcallback">CheckpointCallback</a></h3>
+<p>Saves model checkpoints periodically and/or when best loss achieved:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CheckpointCallback {
+    save_dir: PathBuf,
+    save_every: Option&lt;usize&gt;,  // Save every N epochs
+    save_best: bool,            // Save when best loss achieved
+    best_loss: f32,
+}
+
+// Usage
+let ckpt = CheckpointCallback::new("./checkpoints")
+    .save_every(5)      // Save every 5 epochs
+    .save_best(true);   // Also save best model
+
+// Creates files like:
+// ./checkpoints/checkpoint_epoch_5.json
+// ./checkpoints/checkpoint_epoch_10.json
+// ./checkpoints/checkpoint_best.json
+<span class="boring">}</span></code></pre></pre>
+<h3 id="progresscallback"><a class="header" href="#progresscallback">ProgressCallback</a></h3>
+<p>Logs training progress to stdout:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ProgressCallback {
+    log_interval: usize,  // Log every N steps
+}
+
+// Usage
+let progress = ProgressCallback::new(10);
+// Logs: "Epoch 1/100 [========&gt;  ] Step 50/500: loss: 0.1234"
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Output format:</strong></p>
+<pre><code>Epoch 1/100 [========&gt;  ] loss: 0.2345, lr: 0.001, elapsed: 12.3s
+  Step 10/100: loss: 0.2456
+  Step 20/100: loss: 0.2234
+</code></pre>
+<h3 id="monitorcallback"><a class="header" href="#monitorcallback">MonitorCallback</a></h3>
+<p>Real-time monitoring with NaN/Inf detection and metrics collection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MonitorCallback {
+    collector: MetricsCollector,
+    andon: AndonSystem,
+}
+
+// Usage
+let monitor = MonitorCallback::new();
+// Automatically:
+// - Records loss, learning rate metrics
+// - Detects NaN/Inf and triggers Stop
+// - Integrates with Andon alerting system
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Automatic detection:</strong></p>
+<ul>
+<li>NaN loss → <code>CallbackAction::Stop</code></li>
+<li>Inf loss → <code>CallbackAction::Stop</code></li>
+<li>Triggers Andon alert for investigation</li>
+</ul>
+<h2 id="custom-callbacks"><a class="header" href="#custom-callbacks">Custom Callbacks</a></h2>
+<h3 id="basic-example"><a class="header" href="#basic-example">Basic Example</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{TrainerCallback, CallbackContext, CallbackAction};
+
+struct LossLogger {
+    losses: Vec&lt;f32&gt;,
+}
+
+impl LossLogger {
+    fn new() -&gt; Self {
+        Self { losses: Vec::new() }
+    }
+}
+
+impl TrainerCallback for LossLogger {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        self.losses.push(ctx.loss);
+        println!("Epoch {}: loss = {:.6}", ctx.epoch, ctx.loss);
+        CallbackAction::Continue
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "LossLogger"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="learning-rate-warmup"><a class="header" href="#learning-rate-warmup">Learning Rate Warmup</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct WarmupCallback {
+    warmup_epochs: usize,
+    target_lr: f32,
+}
+
+impl TrainerCallback for WarmupCallback {
+    fn on_epoch_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        if ctx.epoch &lt; self.warmup_epochs {
+            let warmup_lr = self.target_lr * (ctx.epoch + 1) as f32
+                          / self.warmup_epochs as f32;
+            // Would need trainer access to set LR
+            println!("Warmup LR: {:.6}", warmup_lr);
+        }
+        CallbackAction::Continue
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "WarmupCallback"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="gradient-explosion-detector"><a class="header" href="#gradient-explosion-detector">Gradient Explosion Detector</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct GradientMonitor {
+    max_loss: f32,
+    loss_history: Vec&lt;f32&gt;,
+}
+
+impl TrainerCallback for GradientMonitor {
+    fn on_step_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        self.loss_history.push(ctx.loss);
+
+        // Detect sudden loss spike
+        if self.loss_history.len() &gt; 1 {
+            let prev = self.loss_history[self.loss_history.len() - 2];
+            if ctx.loss &gt; prev * 10.0 {
+                eprintln!("WARNING: Loss spike detected! {} -&gt; {}", prev, ctx.loss);
+                return CallbackAction::Stop;
+            }
+        }
+
+        if ctx.loss &gt; self.max_loss {
+            eprintln!("ERROR: Loss exceeded threshold: {} &gt; {}", ctx.loss, self.max_loss);
+            return CallbackAction::Stop;
+        }
+
+        CallbackAction::Continue
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "GradientMonitor"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="callbackmanager"><a class="header" href="#callbackmanager">CallbackManager</a></h2>
+<p>The <code>CallbackManager</code> orchestrates multiple callbacks:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CallbackManager {
+    callbacks: Vec&lt;Box&lt;dyn TrainerCallback&gt;&gt;,
+}
+
+impl CallbackManager {
+    pub fn new() -&gt; Self;
+    pub fn add&lt;C: TrainerCallback + 'static&gt;(&amp;mut self, callback: C);
+    pub fn is_empty(&amp;self) -&gt; bool;
+    pub fn len(&amp;self) -&gt; usize;
+
+    // Event dispatchers (called by Trainer)
+    pub fn on_train_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_train_end(&amp;mut self, ctx: &amp;CallbackContext);
+    pub fn on_epoch_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_step_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_step_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Dispatch behavior:</strong></p>
+<ul>
+<li>Callbacks fire in order they were added</li>
+<li>If any callback returns <code>Stop</code>, remaining callbacks don't fire</li>
+<li><code>on_train_end</code> always fires (even after early stop)</li>
+</ul>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<h3 id="callback-order"><a class="header" href="#callback-order">Callback Order</a></h3>
+<p>Add callbacks in order of priority:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Critical monitoring first
+trainer.add_callback(MonitorCallback::new());     // NaN detection
+trainer.add_callback(EarlyStopping::new(5, 0.001)); // Early stopping
+
+// Logging/checkpointing after
+trainer.add_callback(ProgressCallback::new(10));
+trainer.add_callback(CheckpointCallback::new("./ckpt"));
+<span class="boring">}</span></code></pre></pre>
+<h3 id="stateful-callbacks"><a class="header" href="#stateful-callbacks">Stateful Callbacks</a></h3>
+<p>Callbacks can maintain state across training:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct StatefulCallback {
+    epoch_losses: Vec&lt;f32&gt;,
+    best_epoch: usize,
+}
+
+impl TrainerCallback for StatefulCallback {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        self.epoch_losses.push(ctx.loss);
+
+        if ctx.best_loss == Some(ctx.loss) {
+            self.best_epoch = ctx.epoch;
+        }
+
+        CallbackAction::Continue
+    }
+
+    fn on_train_end(&amp;mut self, ctx: &amp;CallbackContext) {
+        println!("Best epoch: {} with loss {:.6}",
+            self.best_epoch,
+            self.epoch_losses[self.best_epoch]);
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "StatefulCallback"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="thread-safety"><a class="header" href="#thread-safety">Thread Safety</a></h3>
+<p>Callbacks must be <code>Send</code> to support potential future parallelism:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Good: Uses Arc for shared state
+struct ThreadSafeCallback {
+    counter: Arc&lt;AtomicUsize&gt;,
+}
+
+// Bad: Uses Rc (not Send)
+struct NotSendCallback {
+    counter: Rc&lt;RefCell&lt;usize&gt;&gt;,  // Won't compile!
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./trainer-api.html">Trainer API</a> - Main trainer documentation</li>
+<li><a href="./early-stopping.html">Early Stopping</a> - Detailed early stopping guide</li>
+<li><a href="./checkpointing.html">Checkpointing</a> - Checkpoint management</li>
+<li><a href="./curriculum-learning.html">Curriculum Learning</a> - Progressive difficulty training (CITL)</li>
+<li><a href="./explainability.html">Explainability</a> - Feature attribution callbacks</li>
+<li><a href="../monitor/overview.html">Real-Time Monitoring</a> - Monitor integration</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../training/trainer-api.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../training/train-config.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../training/trainer-api.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../training/train-config.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+        <script src="../ace.js"></script>
+        <script src="../editor.js"></script>
+        <script src="../mode-rust.js"></script>
+        <script src="../theme-dawn.js"></script>
+        <script src="../theme-tomorrow_night.js"></script>
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

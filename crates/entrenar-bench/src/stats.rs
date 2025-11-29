@@ -47,7 +47,7 @@ impl StatisticalAnalyzer {
         let p_value = Self::t_to_p(t.abs(), df);
 
         // Cohen's d effect size
-        let pooled_std = ((var1 + var2) / 2.0).sqrt();
+        let pooled_std = f64::midpoint(var1, var2).sqrt();
         let effect_size = if pooled_std > 0.0 {
             (mean1 - mean2).abs() / pooled_std
         } else {
@@ -118,7 +118,7 @@ impl StatisticalAnalyzer {
         }
 
         let k = groups.len() as f64;
-        let n_total: usize = groups.iter().map(|g| g.len()).sum();
+        let n_total: usize = groups.iter().map(Vec::len).sum();
 
         // Grand mean
         let grand_mean: f64 = groups.iter().flat_map(|g| g.iter()).sum::<f64>() / n_total as f64;
@@ -252,10 +252,12 @@ impl TestResult {
             "large"
         }
     }
+}
 
-    /// Format as human-readable string.
-    pub fn to_string(&self) -> String {
-        format!(
+impl std::fmt::Display for TestResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
             "statistic={:.3}, p={:.4}, significant={}, effect_size={:.3} ({})",
             self.statistic,
             self.p_value,

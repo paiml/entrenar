@@ -95,7 +95,7 @@ impl MemoryPlanner {
 
         // LoRA adapters: 2 matrices per target module (typically 4 modules per layer)
         // A: d × r, B: r × d for each module
-        let adapter_params = (self.hidden_dim * rank as u64 * 2) * 4 * self.num_layers as u64;
+        let adapter_params = (self.hidden_dim * u64::from(rank) * 2) * 4 * u64::from(self.num_layers);
         let adapter_bytes = adapter_params * 2; // FP16
 
         // Optimizer only for adapter params
@@ -120,10 +120,10 @@ impl MemoryPlanner {
     /// Estimate memory for QLoRA fine-tuning.
     pub fn estimate_qlora(&self, rank: u32, bits: u8) -> MemoryRequirement {
         // Base model in quantized format
-        let model_bytes = self.model_params * bits as u64 / 8;
+        let model_bytes = self.model_params * u64::from(bits) / 8;
 
         // LoRA adapters in FP16
-        let adapter_params = (self.hidden_dim * rank as u64 * 2) * 4 * self.num_layers as u64;
+        let adapter_params = (self.hidden_dim * u64::from(rank) * 2) * 4 * u64::from(self.num_layers);
         let adapter_bytes = adapter_params * 2;
 
         // Optimizer only for adapter params
@@ -160,9 +160,9 @@ impl MemoryPlanner {
 
     fn estimate_activations(&self) -> u64 {
         // Activations per layer: batch × seq × hidden × 2 (forward + backward)
-        let per_layer = (self.batch_size as u64) * (self.seq_len as u64) * self.hidden_dim * 2 * 2; // FP16
+        let per_layer = u64::from(self.batch_size) * u64::from(self.seq_len) * self.hidden_dim * 2 * 2; // FP16
 
-        per_layer * self.num_layers as u64
+        per_layer * u64::from(self.num_layers)
     }
 }
 

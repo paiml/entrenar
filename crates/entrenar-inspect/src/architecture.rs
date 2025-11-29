@@ -125,22 +125,19 @@ impl ArchitectureDetector {
         let hidden_dim = shapes
             .iter()
             .find(|(name, _)| name.contains("embed") || name.contains("wte"))
-            .map(|(_, shape)| shape.last().copied().unwrap_or(0))
-            .unwrap_or(4096);
+            .map_or(4096, |(_, shape)| shape.last().copied().unwrap_or(0));
 
         let num_layers = shapes
             .keys()
             .filter(|name| name.contains(".layers.") || name.contains(".h."))
             .filter_map(|name| name.split('.').find_map(|part| part.parse::<u32>().ok()))
             .max()
-            .map(|n| n + 1)
-            .unwrap_or(32);
+            .map_or(32, |n| n + 1);
 
         let vocab_size = shapes
             .iter()
             .find(|(name, _)| name.contains("embed_tokens") || name.contains("wte"))
-            .map(|(_, shape)| shape.first().copied().unwrap_or(0))
-            .unwrap_or(32000);
+            .map_or(32000, |(_, shape)| shape.first().copied().unwrap_or(0));
 
         let num_heads = estimate_num_heads(hidden_dim);
 
@@ -160,9 +157,9 @@ fn estimate_num_heads(hidden_dim: usize) -> u32 {
     let head_dim_128 = hidden_dim / 128;
 
     // Prefer 64-dim heads for standard models
-    if hidden_dim % 64 == 0 && head_dim_64 <= 64 {
+    if hidden_dim.is_multiple_of(64) && head_dim_64 <= 64 {
         head_dim_64 as u32
-    } else if hidden_dim % 128 == 0 {
+    } else if hidden_dim.is_multiple_of(128) {
         head_dim_128 as u32
     } else {
         32 // Default
@@ -190,7 +187,7 @@ impl ArchitectureInfo {
         // Simplified estimation
         let embed_params = self.vocab_size as u64 * self.hidden_dim as u64 * 2; // input + output
         let layer_params =
-            self.num_layers as u64 * self.hidden_dim as u64 * self.hidden_dim as u64 * 12; // Q,K,V,O + MLP
+            u64::from(self.num_layers) * self.hidden_dim as u64 * self.hidden_dim as u64 * 12; // Q,K,V,O + MLP
         embed_params + layer_params
     }
 }

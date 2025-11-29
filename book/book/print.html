@@ -3238,15 +3238,691 @@ Student (BERT-tiny, 14M params):
 <li>Best practices and usage guidelines</li>
 </ul>
 <p>Please check back later for complete content.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="trainer-api"><a class="header" href="#trainer-api">Trainer Api</a></h1>
-<p><strong>Content to be added.</strong></p>
-<p>This chapter will cover:</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="trainer-api"><a class="header" href="#trainer-api">Trainer API</a></h1>
+<p>The <code>Trainer</code> struct provides a high-level abstraction for training neural networks with full callback support, automatic metrics tracking, and gradient management.</p>
+<h2 id="overview-2"><a class="header" href="#overview-2">Overview</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{Trainer, TrainConfig, Batch, MSELoss, EarlyStopping};
+use entrenar::optim::Adam;
+use entrenar::Tensor;
+
+// Create trainer
+let params = vec![Tensor::zeros(784 * 128, true)];
+let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+let config = TrainConfig::default();
+
+let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+trainer.set_loss(Box::new(MSELoss));
+
+// Add callbacks
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+
+// Train
+let result = trainer.train(100, || batches.clone(), |x| model.forward(x));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="trainer-struct"><a class="header" href="#trainer-struct">Trainer Struct</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Trainer {
+    params: Vec&lt;Tensor&gt;,           // Model parameters
+    optimizer: Box&lt;dyn Optimizer&gt;, // Optimizer instance
+    loss_fn: Option&lt;Box&lt;dyn LossFn&gt;&gt;, // Loss function
+    config: TrainConfig,           // Training configuration
+    pub metrics: MetricsTracker,   // Metrics tracking
+    callbacks: CallbackManager,    // Callback system
+    best_loss: Option&lt;f32&gt;,        // Best loss achieved
+    start_time: Option&lt;Instant&gt;,   // Training start time
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="creating-a-trainer"><a class="header" href="#creating-a-trainer">Creating a Trainer</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let trainer = Trainer::new(params, optimizer, config);
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Parameters:</strong></p>
 <ul>
-<li>Key concepts and implementation details</li>
-<li>Code examples from the entrenar codebase</li>
-<li>Best practices and usage guidelines</li>
+<li><code>params: Vec&lt;Tensor&gt;</code> - Model parameters to optimize (must have <code>requires_grad = true</code>)</li>
+<li><code>optimizer: Box&lt;dyn Optimizer&gt;</code> - Optimizer instance (SGD, Adam, AdamW)</li>
+<li><code>config: TrainConfig</code> - Training configuration</li>
 </ul>
-<p>Please check back later for complete content.</p>
+<h2 id="setting-the-loss-function"><a class="header" href="#setting-the-loss-function">Setting the Loss Function</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>trainer.set_loss(Box::new(MSELoss));
+// or
+trainer.set_loss(Box::new(CrossEntropyLoss));
+<span class="boring">}</span></code></pre></pre>
+<p>The loss function must be set before calling <code>train()</code> or <code>train_step()</code>.</p>
+<h2 id="adding-callbacks"><a class="header" href="#adding-callbacks">Adding Callbacks</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback};
+
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+trainer.add_callback(CheckpointCallback::new("./checkpoints"));
+trainer.add_callback(ProgressCallback::new(10));
+trainer.add_callback(MonitorCallback::new());
+<span class="boring">}</span></code></pre></pre>
+<p>See <a href="training/trainer-api.html#callback-system">Callback System</a> for details on available callbacks.</p>
+<h2 id="training-methods"><a class="header" href="#training-methods">Training Methods</a></h2>
+<h3 id="train---full-training-loop"><a class="header" href="#train---full-training-loop"><code>train()</code> - Full Training Loop</a></h3>
+<p>The primary method for training with full callback support:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn train&lt;F, B, I&gt;(
+    &amp;mut self,
+    max_epochs: usize,
+    batch_fn: B,
+    forward_fn: F,
+) -&gt; TrainResult
+where
+    F: Fn(&amp;Tensor) -&gt; Tensor,
+    B: Fn() -&gt; I,
+    I: IntoIterator&lt;Item = Batch&gt;,
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>max_epochs</code> - Maximum number of epochs to train</li>
+<li><code>batch_fn</code> - Function that returns batches for each epoch</li>
+<li><code>forward_fn</code> - Model forward pass (inputs → predictions)</li>
+</ul>
+<p><strong>Returns:</strong> <code>TrainResult</code> with training outcome</p>
+<p><strong>Example:</strong></p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let batches = vec![
+    Batch::new(inputs1, targets1),
+    Batch::new(inputs2, targets2),
+];
+
+let result = trainer.train(
+    100,                          // max epochs
+    || batches.clone(),           // batch function
+    |x| model.forward(x),         // forward function
+);
+
+println!("Final epoch: {}", result.final_epoch);
+println!("Final loss: {:.4}", result.final_loss);
+println!("Best loss: {:.4}", result.best_loss);
+println!("Stopped early: {}", result.stopped_early);
+println!("Elapsed: {:.2}s", result.elapsed_secs);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="train_epoch---single-epoch"><a class="header" href="#train_epoch---single-epoch"><code>train_epoch()</code> - Single Epoch</a></h3>
+<p>Train for one epoch without callback overhead:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn train_epoch&lt;F, I&gt;(&amp;mut self, batches: I, forward_fn: F) -&gt; f32
+where
+    F: Fn(&amp;Tensor) -&gt; Tensor,
+    I: IntoIterator&lt;Item = Batch&gt;,
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Returns:</strong> Average loss for the epoch</p>
+<h3 id="train_step---single-batch"><a class="header" href="#train_step---single-batch"><code>train_step()</code> - Single Batch</a></h3>
+<p>Train on a single batch:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn train_step&lt;F&gt;(&amp;mut self, batch: &amp;Batch, forward_fn: F) -&gt; f32
+where
+    F: FnOnce(&amp;Tensor) -&gt; Tensor,
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Returns:</strong> Loss for this batch</p>
+<h2 id="trainresult"><a class="header" href="#trainresult">TrainResult</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct TrainResult {
+    pub final_epoch: usize,    // Last epoch completed
+    pub final_loss: f32,       // Loss at final epoch
+    pub best_loss: f32,        // Best loss achieved
+    pub stopped_early: bool,   // Whether early stopping triggered
+    pub elapsed_secs: f64,     // Total training time
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="callback-system"><a class="header" href="#callback-system">Callback System</a></h2>
+<p>The trainer fires callbacks at six points in the training lifecycle:</p>
+<div class="table-wrapper"><table><thead><tr><th>Event</th><th>Method</th><th>When</th></tr></thead><tbody>
+<tr><td><code>on_train_begin</code></td><td><code>CallbackAction</code></td><td>Before first epoch</td></tr>
+<tr><td><code>on_train_end</code></td><td><code>()</code></td><td>After training completes</td></tr>
+<tr><td><code>on_epoch_begin</code></td><td><code>CallbackAction</code></td><td>Before each epoch</td></tr>
+<tr><td><code>on_epoch_end</code></td><td><code>CallbackAction</code></td><td>After each epoch</td></tr>
+<tr><td><code>on_step_begin</code></td><td><code>CallbackAction</code></td><td>Before each batch</td></tr>
+<tr><td><code>on_step_end</code></td><td><code>CallbackAction</code></td><td>After each batch</td></tr>
+</tbody></table>
+</div>
+<h3 id="callbackaction"><a class="header" href="#callbackaction">CallbackAction</a></h3>
+<p>Callbacks return an action that controls training flow:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum CallbackAction {
+    Continue,   // Continue training normally
+    Stop,       // Stop training immediately
+    SkipEpoch,  // Skip to next epoch (epoch_begin only)
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="callbackcontext"><a class="header" href="#callbackcontext">CallbackContext</a></h3>
+<p>Callbacks receive context with current training state:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CallbackContext {
+    pub epoch: usize,           // Current epoch (0-indexed)
+    pub max_epochs: usize,      // Maximum epochs
+    pub step: usize,            // Current step in epoch
+    pub steps_per_epoch: usize, // Total steps per epoch
+    pub global_step: usize,     // Total steps across all epochs
+    pub loss: f32,              // Current loss
+    pub lr: f32,                // Current learning rate
+    pub best_loss: Option&lt;f32&gt;, // Best loss so far
+    pub val_loss: Option&lt;f32&gt;,  // Validation loss (if available)
+    pub elapsed_secs: f64,      // Time since training started
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="built-in-callbacks"><a class="header" href="#built-in-callbacks">Built-in Callbacks</a></h3>
+<h4 id="earlystopping"><a class="header" href="#earlystopping">EarlyStopping</a></h4>
+<p>Stop training when loss stops improving:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let es = EarlyStopping::new(
+    5,      // patience: epochs without improvement
+    0.001,  // min_delta: minimum improvement threshold
+);
+trainer.add_callback(es);
+<span class="boring">}</span></code></pre></pre>
+<h4 id="checkpointcallback"><a class="header" href="#checkpointcallback">CheckpointCallback</a></h4>
+<p>Save model checkpoints:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let ckpt = CheckpointCallback::new("./checkpoints")
+    .save_every(5)      // Save every 5 epochs
+    .save_best(true);   // Also save best model
+trainer.add_callback(ckpt);
+<span class="boring">}</span></code></pre></pre>
+<h4 id="progresscallback"><a class="header" href="#progresscallback">ProgressCallback</a></h4>
+<p>Log training progress:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let progress = ProgressCallback::new(10);  // Log every 10 steps
+trainer.add_callback(progress);
+<span class="boring">}</span></code></pre></pre>
+<h4 id="monitorcallback"><a class="header" href="#monitorcallback">MonitorCallback</a></h4>
+<p>Real-time monitoring with NaN/Inf detection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let monitor = MonitorCallback::new();
+trainer.add_callback(monitor);
+// Automatically stops training on NaN/Inf loss
+<span class="boring">}</span></code></pre></pre>
+<h3 id="custom-callbacks"><a class="header" href="#custom-callbacks">Custom Callbacks</a></h3>
+<p>Implement <code>TrainerCallback</code> for custom behavior:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{TrainerCallback, CallbackContext, CallbackAction};
+
+struct CustomCallback {
+    // your state
+}
+
+impl TrainerCallback for CustomCallback {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        println!("Epoch {} complete, loss: {:.4}", ctx.epoch, ctx.loss);
+
+        if ctx.loss &gt; 100.0 {
+            CallbackAction::Stop  // Loss exploded
+        } else {
+            CallbackAction::Continue
+        }
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "CustomCallback"
+    }
+
+    // Other methods have default implementations that return Continue
+}
+
+trainer.add_callback(CustomCallback { /* ... */ });
+<span class="boring">}</span></code></pre></pre>
+<h2 id="accessing-trainer-state"><a class="header" href="#accessing-trainer-state">Accessing Trainer State</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Learning rate
+let lr = trainer.lr();
+trainer.set_lr(0.0001);
+
+// Parameters
+let params = trainer.params();
+let params_mut = trainer.params_mut();
+
+// Callbacks
+let callbacks = trainer.callbacks();
+let callbacks_mut = trainer.callbacks_mut();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use entrenar::train::{
+    Trainer, TrainConfig, TrainResult, Batch, MSELoss,
+    EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback,
+};
+use entrenar::optim::Adam;
+use entrenar::Tensor;
+
+fn main() {
+    // Model parameters
+    let params = vec![
+        Tensor::randn(784 * 256, true),  // Layer 1
+        Tensor::randn(256 * 10, true),   // Layer 2
+    ];
+
+    // Optimizer
+    let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+
+    // Config
+    let config = TrainConfig::new()
+        .with_max_grad_norm(1.0)
+        .with_log_interval(100);
+
+    // Create trainer
+    let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+    trainer.set_loss(Box::new(MSELoss));
+
+    // Add callbacks
+    trainer.add_callback(EarlyStopping::new(10, 0.0001));
+    trainer.add_callback(CheckpointCallback::new("./ckpt").save_every(5));
+    trainer.add_callback(ProgressCallback::new(50));
+    trainer.add_callback(MonitorCallback::new());
+
+    // Training data
+    let batches: Vec&lt;Batch&gt; = load_training_data();
+
+    // Train
+    let result: TrainResult = trainer.train(
+        100,
+        || batches.clone(),
+        |x| forward_pass(x, trainer.params()),
+    );
+
+    // Results
+    println!("Training complete!");
+    println!("  Epochs: {}", result.final_epoch);
+    println!("  Final loss: {:.6}", result.final_loss);
+    println!("  Best loss: {:.6}", result.best_loss);
+    println!("  Early stopped: {}", result.stopped_early);
+    println!("  Time: {:.1}s", result.elapsed_secs);
+}</code></pre></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="training/./train-config.html">Train Config</a> - Configuration options</li>
+<li><a href="training/./early-stopping.html">Early Stopping</a> - Early stopping details</li>
+<li><a href="training/./checkpointing.html">Checkpointing</a> - Checkpoint management</li>
+<li><a href="training/./loss-functions.html">Loss Functions</a> - Available loss functions</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="callback-system-1"><a class="header" href="#callback-system-1">Callback System</a></h1>
+<p>The callback system provides extensible hooks into the training loop, enabling behaviors like early stopping, checkpointing, progress logging, and real-time monitoring without modifying the core trainer.</p>
+<h2 id="overview-3"><a class="header" href="#overview-3">Overview</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{
+    TrainerCallback, CallbackContext, CallbackAction, CallbackManager,
+    EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback,
+};
+
+// Add multiple callbacks
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+trainer.add_callback(CheckpointCallback::new("./ckpt"));
+trainer.add_callback(ProgressCallback::new(10));
+trainer.add_callback(MonitorCallback::new());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="callback-lifecycle"><a class="header" href="#callback-lifecycle">Callback Lifecycle</a></h2>
+<p>Callbacks fire at six points during training:</p>
+<pre><code>train()
+  │
+  ├─► on_train_begin
+  │
+  ├─► for epoch in 0..max_epochs:
+  │     │
+  │     ├─► on_epoch_begin
+  │     │
+  │     ├─► for batch in batches:
+  │     │     ├─► on_step_begin
+  │     │     ├─► train_step()
+  │     │     └─► on_step_end
+  │     │
+  │     └─► on_epoch_end
+  │
+  └─► on_train_end
+</code></pre>
+<h2 id="callbackaction-1"><a class="header" href="#callbackaction-1">CallbackAction</a></h2>
+<p>Callbacks return an action that controls training flow:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum CallbackAction {
+    Continue,   // Continue training normally
+    Stop,       // Stop training immediately
+    SkipEpoch,  // Skip to next epoch (epoch_begin only)
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Behavior:</strong></p>
+<ul>
+<li><code>Continue</code> - Training proceeds normally</li>
+<li><code>Stop</code> - Training stops, <code>TrainResult.stopped_early = true</code></li>
+<li><code>SkipEpoch</code> - Skip remaining steps in current epoch (only valid in <code>on_epoch_begin</code>)</li>
+</ul>
+<h2 id="callbackcontext-1"><a class="header" href="#callbackcontext-1">CallbackContext</a></h2>
+<p>Every callback receives context with current training state:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CallbackContext {
+    pub epoch: usize,           // Current epoch (0-indexed)
+    pub max_epochs: usize,      // Maximum epochs configured
+    pub step: usize,            // Current step within epoch
+    pub steps_per_epoch: usize, // Total steps in epoch
+    pub global_step: usize,     // Total steps across all epochs
+    pub loss: f32,              // Current/latest loss
+    pub lr: f32,                // Current learning rate
+    pub best_loss: Option&lt;f32&gt;, // Best loss achieved so far
+    pub val_loss: Option&lt;f32&gt;,  // Validation loss (if provided)
+    pub elapsed_secs: f64,      // Seconds since training started
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="trainercallback-trait"><a class="header" href="#trainercallback-trait">TrainerCallback Trait</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait TrainerCallback: Send {
+    /// Called before training begins
+    fn on_train_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called after training ends
+    fn on_train_end(&amp;mut self, ctx: &amp;CallbackContext) {}
+
+    /// Called at the start of each epoch
+    fn on_epoch_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called at the end of each epoch
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called before each training step
+    fn on_step_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Called after each training step
+    fn on_step_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        CallbackAction::Continue
+    }
+
+    /// Callback name for logging
+    fn name(&amp;self) -&gt; &amp;str;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="built-in-callbacks-1"><a class="header" href="#built-in-callbacks-1">Built-in Callbacks</a></h2>
+<h3 id="earlystopping-1"><a class="header" href="#earlystopping-1">EarlyStopping</a></h3>
+<p>Stops training when loss stops improving:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct EarlyStopping {
+    patience: usize,      // Epochs to wait before stopping
+    min_delta: f32,       // Minimum improvement threshold
+    best_loss: f32,       // Best loss seen
+    epochs_without_improvement: usize,
+}
+
+// Usage
+let es = EarlyStopping::new(5, 0.001);
+// Stops if loss doesn't improve by at least 0.001 for 5 epochs
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Behavior:</strong></p>
+<ul>
+<li>Tracks best loss seen during training</li>
+<li>Counts epochs without improvement (loss not decreasing by <code>min_delta</code>)</li>
+<li>Returns <code>CallbackAction::Stop</code> when patience exhausted</li>
+</ul>
+<h3 id="checkpointcallback-1"><a class="header" href="#checkpointcallback-1">CheckpointCallback</a></h3>
+<p>Saves model checkpoints periodically and/or when best loss achieved:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CheckpointCallback {
+    save_dir: PathBuf,
+    save_every: Option&lt;usize&gt;,  // Save every N epochs
+    save_best: bool,            // Save when best loss achieved
+    best_loss: f32,
+}
+
+// Usage
+let ckpt = CheckpointCallback::new("./checkpoints")
+    .save_every(5)      // Save every 5 epochs
+    .save_best(true);   // Also save best model
+
+// Creates files like:
+// ./checkpoints/checkpoint_epoch_5.json
+// ./checkpoints/checkpoint_epoch_10.json
+// ./checkpoints/checkpoint_best.json
+<span class="boring">}</span></code></pre></pre>
+<h3 id="progresscallback-1"><a class="header" href="#progresscallback-1">ProgressCallback</a></h3>
+<p>Logs training progress to stdout:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ProgressCallback {
+    log_interval: usize,  // Log every N steps
+}
+
+// Usage
+let progress = ProgressCallback::new(10);
+// Logs: "Epoch 1/100 [========&gt;  ] Step 50/500: loss: 0.1234"
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Output format:</strong></p>
+<pre><code>Epoch 1/100 [========&gt;  ] loss: 0.2345, lr: 0.001, elapsed: 12.3s
+  Step 10/100: loss: 0.2456
+  Step 20/100: loss: 0.2234
+</code></pre>
+<h3 id="monitorcallback-1"><a class="header" href="#monitorcallback-1">MonitorCallback</a></h3>
+<p>Real-time monitoring with NaN/Inf detection and metrics collection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MonitorCallback {
+    collector: MetricsCollector,
+    andon: AndonSystem,
+}
+
+// Usage
+let monitor = MonitorCallback::new();
+// Automatically:
+// - Records loss, learning rate metrics
+// - Detects NaN/Inf and triggers Stop
+// - Integrates with Andon alerting system
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Automatic detection:</strong></p>
+<ul>
+<li>NaN loss → <code>CallbackAction::Stop</code></li>
+<li>Inf loss → <code>CallbackAction::Stop</code></li>
+<li>Triggers Andon alert for investigation</li>
+</ul>
+<h2 id="custom-callbacks-1"><a class="header" href="#custom-callbacks-1">Custom Callbacks</a></h2>
+<h3 id="basic-example"><a class="header" href="#basic-example">Basic Example</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{TrainerCallback, CallbackContext, CallbackAction};
+
+struct LossLogger {
+    losses: Vec&lt;f32&gt;,
+}
+
+impl LossLogger {
+    fn new() -&gt; Self {
+        Self { losses: Vec::new() }
+    }
+}
+
+impl TrainerCallback for LossLogger {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        self.losses.push(ctx.loss);
+        println!("Epoch {}: loss = {:.6}", ctx.epoch, ctx.loss);
+        CallbackAction::Continue
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "LossLogger"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="learning-rate-warmup"><a class="header" href="#learning-rate-warmup">Learning Rate Warmup</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct WarmupCallback {
+    warmup_epochs: usize,
+    target_lr: f32,
+}
+
+impl TrainerCallback for WarmupCallback {
+    fn on_epoch_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        if ctx.epoch &lt; self.warmup_epochs {
+            let warmup_lr = self.target_lr * (ctx.epoch + 1) as f32
+                          / self.warmup_epochs as f32;
+            // Would need trainer access to set LR
+            println!("Warmup LR: {:.6}", warmup_lr);
+        }
+        CallbackAction::Continue
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "WarmupCallback"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="gradient-explosion-detector"><a class="header" href="#gradient-explosion-detector">Gradient Explosion Detector</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct GradientMonitor {
+    max_loss: f32,
+    loss_history: Vec&lt;f32&gt;,
+}
+
+impl TrainerCallback for GradientMonitor {
+    fn on_step_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        self.loss_history.push(ctx.loss);
+
+        // Detect sudden loss spike
+        if self.loss_history.len() &gt; 1 {
+            let prev = self.loss_history[self.loss_history.len() - 2];
+            if ctx.loss &gt; prev * 10.0 {
+                eprintln!("WARNING: Loss spike detected! {} -&gt; {}", prev, ctx.loss);
+                return CallbackAction::Stop;
+            }
+        }
+
+        if ctx.loss &gt; self.max_loss {
+            eprintln!("ERROR: Loss exceeded threshold: {} &gt; {}", ctx.loss, self.max_loss);
+            return CallbackAction::Stop;
+        }
+
+        CallbackAction::Continue
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "GradientMonitor"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="callbackmanager"><a class="header" href="#callbackmanager">CallbackManager</a></h2>
+<p>The <code>CallbackManager</code> orchestrates multiple callbacks:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CallbackManager {
+    callbacks: Vec&lt;Box&lt;dyn TrainerCallback&gt;&gt;,
+}
+
+impl CallbackManager {
+    pub fn new() -&gt; Self;
+    pub fn add&lt;C: TrainerCallback + 'static&gt;(&amp;mut self, callback: C);
+    pub fn is_empty(&amp;self) -&gt; bool;
+    pub fn len(&amp;self) -&gt; usize;
+
+    // Event dispatchers (called by Trainer)
+    pub fn on_train_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_train_end(&amp;mut self, ctx: &amp;CallbackContext);
+    pub fn on_epoch_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_step_begin(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+    pub fn on_step_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction;
+}
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Dispatch behavior:</strong></p>
+<ul>
+<li>Callbacks fire in order they were added</li>
+<li>If any callback returns <code>Stop</code>, remaining callbacks don't fire</li>
+<li><code>on_train_end</code> always fires (even after early stop)</li>
+</ul>
+<h2 id="best-practices-2"><a class="header" href="#best-practices-2">Best Practices</a></h2>
+<h3 id="callback-order"><a class="header" href="#callback-order">Callback Order</a></h3>
+<p>Add callbacks in order of priority:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Critical monitoring first
+trainer.add_callback(MonitorCallback::new());     // NaN detection
+trainer.add_callback(EarlyStopping::new(5, 0.001)); // Early stopping
+
+// Logging/checkpointing after
+trainer.add_callback(ProgressCallback::new(10));
+trainer.add_callback(CheckpointCallback::new("./ckpt"));
+<span class="boring">}</span></code></pre></pre>
+<h3 id="stateful-callbacks"><a class="header" href="#stateful-callbacks">Stateful Callbacks</a></h3>
+<p>Callbacks can maintain state across training:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct StatefulCallback {
+    epoch_losses: Vec&lt;f32&gt;,
+    best_epoch: usize,
+}
+
+impl TrainerCallback for StatefulCallback {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        self.epoch_losses.push(ctx.loss);
+
+        if ctx.best_loss == Some(ctx.loss) {
+            self.best_epoch = ctx.epoch;
+        }
+
+        CallbackAction::Continue
+    }
+
+    fn on_train_end(&amp;mut self, ctx: &amp;CallbackContext) {
+        println!("Best epoch: {} with loss {:.6}",
+            self.best_epoch,
+            self.epoch_losses[self.best_epoch]);
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "StatefulCallback"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="thread-safety"><a class="header" href="#thread-safety">Thread Safety</a></h3>
+<p>Callbacks must be <code>Send</code> to support potential future parallelism:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Good: Uses Arc for shared state
+struct ThreadSafeCallback {
+    counter: Arc&lt;AtomicUsize&gt;,
+}
+
+// Bad: Uses Rc (not Send)
+struct NotSendCallback {
+    counter: Rc&lt;RefCell&lt;usize&gt;&gt;,  // Won't compile!
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also-1"><a class="header" href="#see-also-1">See Also</a></h2>
+<ul>
+<li><a href="training/./trainer-api.html">Trainer API</a> - Main trainer documentation</li>
+<li><a href="training/./early-stopping.html">Early Stopping</a> - Detailed early stopping guide</li>
+<li><a href="training/./checkpointing.html">Checkpointing</a> - Checkpoint management</li>
+<li><a href="training/./curriculum-learning.html">Curriculum Learning</a> - Progressive difficulty training (CITL)</li>
+<li><a href="training/./explainability.html">Explainability</a> - Feature attribution callbacks</li>
+<li><a href="training/../monitor/overview.html">Real-Time Monitoring</a> - Monitor integration</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="train-config"><a class="header" href="#train-config">Train Config</a></h1>
 <p><strong>Content to be added.</strong></p>
 <p>This chapter will cover:</p>
@@ -3262,6 +3938,543 @@ Student (BERT-tiny, 14M params):
 <div style="break-before: page; page-break-before: always;"></div><h1 id="validation-and-testing"><a class="header" href="#validation-and-testing">Validation and Testing</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="checkpointing-1"><a class="header" href="#checkpointing-1">Checkpointing</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="curriculum-learning"><a class="header" href="#curriculum-learning">Curriculum Learning</a></h1>
+<p>Curriculum learning progressively increases training difficulty, starting with easy examples and advancing to harder ones as the model improves. This is particularly effective for CITL (Compiler-in-the-Loop) training where error complexity varies.</p>
+<h2 id="overview-4"><a class="header" href="#overview-4">Overview</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{TieredCurriculum, AdaptiveCurriculum, CurriculumCallback};
+
+// Tiered: Fixed accuracy thresholds
+let curriculum = TieredCurriculum::new(vec![0.6, 0.7, 0.8]);
+
+// Adaptive: Error-based tier selection with Feldman weighting
+let curriculum = AdaptiveCurriculum::new()
+    .with_error_weights(error_frequencies)
+    .with_advancement_threshold(0.85);
+
+trainer.add_callback(curriculum);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tieredcurriculum"><a class="header" href="#tieredcurriculum">TieredCurriculum</a></h2>
+<p>Advances through difficulty tiers when accuracy thresholds are met:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct TieredCurriculum {
+    thresholds: Vec&lt;f32&gt;,   // [0.6, 0.7, 0.8] = 60%, 70%, 80%
+    current_tier: usize,    // 0 = Basic, 1 = Intermediate, etc.
+    tier_epochs: usize,     // Epochs at current tier
+}
+
+impl TieredCurriculum {
+    pub fn new(thresholds: Vec&lt;f32&gt;) -&gt; Self;
+    pub fn current_tier(&amp;self) -&gt; usize;
+    pub fn tier_name(&amp;self) -&gt; &amp;str;
+    pub fn should_advance(&amp;self, accuracy: f32) -&gt; bool;
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="tier-progression"><a class="header" href="#tier-progression">Tier Progression</a></h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                    Tiered Curriculum                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Tier 0 (Basic)         ───► 60% accuracy ───►                  │
+│  Tier 1 (Intermediate)  ───► 70% accuracy ───►                  │
+│  Tier 2 (Advanced)      ───► 80% accuracy ───►                  │
+│  Tier 3 (Expert)        ───► Complete                           │
+│                                                                 │
+│  Example data mapping:                                          │
+│  • Basic: Simple type errors, missing imports                   │
+│  • Intermediate: Borrow checker basics                          │
+│  • Advanced: Lifetime annotations, trait bounds                 │
+│  • Expert: Complex generics, async/await patterns               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="usage-1"><a class="header" href="#usage-1">Usage</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{Trainer, TieredCurriculum, TrainConfig};
+
+// Define tier thresholds
+let curriculum = TieredCurriculum::new(vec![0.6, 0.7, 0.8]);
+
+trainer.add_callback(curriculum);
+
+// During training, curriculum automatically:
+// 1. Tracks accuracy each epoch
+// 2. Advances tier when threshold met
+// 3. Adjusts data sampling based on current tier
+<span class="boring">}</span></code></pre></pre>
+<h3 id="callback-implementation"><a class="header" href="#callback-implementation">Callback Implementation</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>impl TrainerCallback for TieredCurriculum {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        let accuracy = 1.0 - ctx.loss; // Simplified; real impl uses val_accuracy
+
+        if self.should_advance(accuracy) {
+            self.current_tier += 1;
+            self.tier_epochs = 0;
+            println!("Tier {} → {} ↑", self.current_tier - 1, self.current_tier);
+        } else {
+            self.tier_epochs += 1;
+        }
+
+        CallbackAction::Continue
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "TieredCurriculum"
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="adaptivecurriculum"><a class="header" href="#adaptivecurriculum">AdaptiveCurriculum</a></h2>
+<p>Dynamically selects tier based on error category distribution (Feldman 2020):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct AdaptiveCurriculum {
+    error_weights: HashMap&lt;String, f32&gt;,  // Error category → weight
+    advancement_threshold: f32,            // Min accuracy to advance
+    current_difficulty: f32,               // 0.0 (easy) to 1.0 (hard)
+}
+
+impl AdaptiveCurriculum {
+    pub fn new() -&gt; Self;
+    pub fn with_error_weights(self, weights: HashMap&lt;String, f32&gt;) -&gt; Self;
+    pub fn with_advancement_threshold(self, threshold: f32) -&gt; Self;
+
+    /// Compute sample weight based on error rarity
+    pub fn sample_weight(&amp;self, error_category: &amp;str) -&gt; f32;
+
+    /// Update difficulty based on recent performance
+    pub fn update_difficulty(&amp;mut self, recent_accuracy: f32);
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="feldman-reweighting"><a class="header" href="#feldman-reweighting">Feldman Reweighting</a></h3>
+<p>Rare error categories receive higher weights to prevent model bias:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Error frequency in corpus
+let frequencies = hashmap! {
+    "E0308" =&gt; 434,  // Mismatched types (common)
+    "E0599" =&gt; 373,  // Method not found
+    "E0106" =&gt; 45,   // Missing lifetime (rare)
+    "E0621" =&gt; 23,   // Lifetime mismatch (very rare)
+};
+
+// Compute inverse frequency weights
+let weights: HashMap&lt;String, f32&gt; = frequencies.iter()
+    .map(|(code, count)| {
+        let weight = 1.0 / (*count as f32).sqrt();
+        (code.to_string(), weight)
+    })
+    .collect();
+
+let curriculum = AdaptiveCurriculum::new()
+    .with_error_weights(weights)
+    .with_advancement_threshold(0.85);
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Weight Formula</strong>: <code>weight = 1.0 / sqrt(frequency)</code></p>
+<div class="table-wrapper"><table><thead><tr><th>Error Code</th><th>Frequency</th><th>Weight</th></tr></thead><tbody>
+<tr><td>E0308</td><td>434</td><td>0.048</td></tr>
+<tr><td>E0106</td><td>45</td><td>0.149</td></tr>
+<tr><td>E0621</td><td>23</td><td>0.208</td></tr>
+</tbody></table>
+</div>
+<h3 id="usage-with-alimentar"><a class="header" href="#usage-with-alimentar">Usage with alimentar</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use alimentar::{ArrowDataset, WeightedDataLoader};
+use entrenar::train::{Trainer, AdaptiveCurriculum};
+
+// Load corpus with weights
+let dataset = ArrowDataset::from_parquet("training_data.parquet")?;
+let weights: Vec&lt;f32&gt; = dataset.column_as_vec("weight")?;
+
+let loader = WeightedDataLoader::new(dataset, weights)?
+    .batch_size(32)
+    .seed(42);
+
+// Curriculum adjusts sampling as training progresses
+let curriculum = AdaptiveCurriculum::new()
+    .with_advancement_threshold(0.85);
+
+trainer.add_callback(curriculum);
+let result = trainer.train(100, || loader.iter(), |batch| model.forward(batch));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="efficiency-score"><a class="header" href="#efficiency-score">Efficiency Score</a></h2>
+<p>Track curriculum effectiveness with the efficiency metric:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// E(T) = Accuracy / log(CorpusSize)
+/// Higher is better - achieving high accuracy with less data
+pub fn efficiency_score(accuracy: f32, corpus_size: usize) -&gt; f32 {
+    accuracy / (corpus_size as f32).ln()
+}
+
+// Example
+let accuracy = 0.89;
+let corpus_size = 10_000;
+let efficiency = efficiency_score(accuracy, corpus_size);
+// E(T) = 0.89 / ln(10000) = 0.89 / 9.21 = 0.097
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Interpretation:</strong></p>
+<ul>
+<li>Higher efficiency = better generalization</li>
+<li>Useful for comparing models trained on different corpus sizes</li>
+<li>Target: efficiency &gt; 0.08 for production models</li>
+</ul>
+<h2 id="citl-integration"><a class="header" href="#citl-integration">CITL Integration</a></h2>
+<p>Complete curriculum learning setup for CITL training:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use alimentar::{ArrowDataset, WeightedDataLoader, AsyncPrefetchDataset};
+use entrenar::train::{
+    Trainer, TrainConfig, TieredCurriculum, ExplainabilityCallback,
+    EarlyStopping, CheckpointCallback, MonitorCallback,
+};
+use entrenar::optim::AdamW;
+
+fn train_citl_model(corpus_path: &amp;str) -&gt; Result&lt;TrainResult&gt; {
+    // Load corpus with weighted sampling
+    let dataset = ArrowDataset::from_parquet(corpus_path)?;
+    let weights = dataset.column_as_vec::&lt;f32&gt;("weight")?;
+
+    let loader = WeightedDataLoader::new(dataset, weights)?
+        .batch_size(32)
+        .num_samples(10_000)
+        .seed(42);
+
+    // Setup trainer with CITL callbacks
+    let mut trainer = Trainer::new(
+        params,
+        Box::new(AdamW::new(0.0001, 0.9, 0.999, 1e-8, 0.01)),
+        TrainConfig::default(),
+    );
+
+    // Monitoring first (catches NaN/Inf)
+    trainer.add_callback(MonitorCallback::new());
+
+    // Curriculum learning
+    trainer.add_callback(TieredCurriculum::new(vec![0.6, 0.7, 0.8]));
+
+    // Feature attribution
+    trainer.add_callback(
+        ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
+            .with_top_k(10),
+    );
+
+    // Early stopping and checkpoints
+    trainer.add_callback(EarlyStopping::new(5, 0.001));
+    trainer.add_callback(CheckpointCallback::new("./checkpoints"));
+
+    // Train
+    let result = trainer.train(100, || loader.iter(), |batch| model.forward(batch));
+
+    // Report efficiency
+    let efficiency = efficiency_score(result.accuracy, loader.num_samples());
+    println!("Efficiency: {:.4}", efficiency);
+
+    Ok(result)
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="training-output"><a class="header" href="#training-output">Training Output</a></h3>
+<pre><code>Epoch  1/100: loss=2.3456, acc=45.2%, tier=0 (Basic)
+Epoch  5/100: loss=1.8234, acc=58.1%, tier=0 (Basic)
+Epoch 10/100: loss=1.2345, acc=62.1%, tier=0 → tier=1 ↑ (Intermediate)
+Epoch 15/100: loss=0.9876, acc=68.5%, tier=1 (Intermediate)
+Epoch 25/100: loss=0.5678, acc=71.5%, tier=1 → tier=2 ↑ (Advanced)
+Epoch 40/100: loss=0.3456, acc=82.3%, tier=2 → tier=3 ↑ (Expert)
+Epoch 47/100: loss=0.2345, acc=89.3%, tier=3 (Expert)
+Early stopping: patience exhausted
+
+Final: acc=89.3%, efficiency=0.097
+Top features: error_code (0.342), message_length (0.187), has_suggestion (0.156)
+</code></pre>
+<h2 id="best-practices-3"><a class="header" href="#best-practices-3">Best Practices</a></h2>
+<h3 id="threshold-selection"><a class="header" href="#threshold-selection">Threshold Selection</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Conservative: Ensure mastery before advancing
+let conservative = TieredCurriculum::new(vec![0.7, 0.8, 0.9]);
+
+// Aggressive: Faster advancement for quick iteration
+let aggressive = TieredCurriculum::new(vec![0.5, 0.6, 0.7]);
+
+// Balanced (recommended for CITL)
+let balanced = TieredCurriculum::new(vec![0.6, 0.7, 0.8]);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="combining-with-other-callbacks"><a class="header" href="#combining-with-other-callbacks">Combining with Other Callbacks</a></h3>
+<p>Order matters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// 1. Monitoring (critical safety)
+trainer.add_callback(MonitorCallback::new());
+
+// 2. Curriculum (affects data sampling)
+trainer.add_callback(TieredCurriculum::new(vec![0.6, 0.7, 0.8]));
+
+// 3. Explainability (analysis)
+trainer.add_callback(ExplainabilityCallback::new(ExplainMethod::PermutationImportance));
+
+// 4. Early stopping (termination)
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+
+// 5. Checkpointing (persistence)
+trainer.add_callback(CheckpointCallback::new("./ckpt"));
+<span class="boring">}</span></code></pre></pre>
+<h3 id="monitoring-tier-progression"><a class="header" href="#monitoring-tier-progression">Monitoring Tier Progression</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>impl TrainerCallback for TierMonitor {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        if let Some(curriculum) = self.curriculum.as_ref() {
+            let tier = curriculum.current_tier();
+            let tier_name = curriculum.tier_name();
+            let epochs_at_tier = curriculum.tier_epochs();
+
+            println!(
+                "Tier {}: {} ({} epochs at this tier)",
+                tier, tier_name, epochs_at_tier
+            );
+        }
+        CallbackAction::Continue
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also-2"><a class="header" href="#see-also-2">See Also</a></h2>
+<ul>
+<li><a href="training/./callback-system.html">Callback System</a> - Full callback documentation</li>
+<li><a href="training/./explainability.html">Explainability</a> - Feature attribution</li>
+<li><a href="training/../monitor/overview.html">Real-Time Monitoring</a> - Training observability</li>
+<li><a href="https://docs.rs/alimentar">alimentar WeightedDataLoader</a> - Weighted sampling</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="explainability-callback"><a class="header" href="#explainability-callback">Explainability Callback</a></h1>
+<p>The <code>ExplainabilityCallback</code> integrates aprender's interpret module into the training loop, providing feature attribution and importance analysis during model evaluation.</p>
+<h2 id="overview-5"><a class="header" href="#overview-5">Overview</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{
+    ExplainabilityCallback, ExplainMethod, FeatureImportanceResult,
+};
+
+// Create callback with chosen method
+let mut explainer = ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
+    .with_top_k(5)           // Track top 5 features
+    .with_eval_samples(100)  // Use 100 samples for evaluation
+    .with_feature_names(vec!["age".into(), "income".into(), "score".into()]);
+
+trainer.add_callback(explainer);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="available-methods"><a class="header" href="#available-methods">Available Methods</a></h2>
+<h3 id="explainmethod-enum"><a class="header" href="#explainmethod-enum">ExplainMethod Enum</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum ExplainMethod {
+    /// Permutation importance - fast, model-agnostic
+    PermutationImportance,
+    /// Integrated gradients - for differentiable models
+    IntegratedGradients,
+    /// Saliency maps - gradient-based attribution
+    Saliency,
+}
+<span class="boring">}</span></code></pre></pre>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Speed</th><th>Use Case</th></tr></thead><tbody>
+<tr><td><code>PermutationImportance</code></td><td>Fast</td><td>Any model, production monitoring</td></tr>
+<tr><td><code>IntegratedGradients</code></td><td>Medium</td><td>Neural networks, precise attribution</td></tr>
+<tr><td><code>Saliency</code></td><td>Fast</td><td>Neural networks, gradient visualization</td></tr>
+</tbody></table>
+</div>
+<h2 id="computing-attributions"><a class="header" href="#computing-attributions">Computing Attributions</a></h2>
+<p>The callback provides wrapper methods around aprender's interpret module:</p>
+<h3 id="permutation-importance"><a class="header" href="#permutation-importance">Permutation Importance</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use aprender::primitives::Vector;
+
+let x: Vec&lt;Vector&lt;f32&gt;&gt; = /* validation data */;
+let y: Vec&lt;f32&gt; = /* targets */;
+
+let importances = explainer.compute_permutation_importance(
+    |sample| model.predict(sample),
+    &amp;x,
+    &amp;y,
+);
+
+// Record for this epoch
+explainer.record_importances(epoch, importances);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="integrated-gradients"><a class="header" href="#integrated-gradients">Integrated Gradients</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let sample = Vector::from_slice(&amp;[1.0, 2.0, 3.0]);
+let baseline = Vector::from_slice(&amp;[0.0, 0.0, 0.0]);
+
+let attributions = explainer.compute_integrated_gradients(
+    |x| model.predict(x),
+    &amp;sample,
+    &amp;baseline,
+);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="saliency-maps"><a class="header" href="#saliency-maps">Saliency Maps</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let saliency = explainer.compute_saliency(
+    |x| model.predict(x),
+    &amp;sample,
+);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tracking-feature-importance"><a class="header" href="#tracking-feature-importance">Tracking Feature Importance</a></h2>
+<h3 id="recording-per-epoch-results"><a class="header" href="#recording-per-epoch-results">Recording Per-Epoch Results</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>impl TrainerCallback for MyTrainingCallback {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        // Compute importances on validation set
+        let importances = self.explainer.compute_permutation_importance(
+            |x| self.model.predict(x),
+            &amp;self.val_x,
+            &amp;self.val_y,
+        );
+
+        // Record sorted top-k importances
+        self.explainer.record_importances(ctx.epoch, importances);
+
+        CallbackAction::Continue
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="querying-results"><a class="header" href="#querying-results">Querying Results</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get all recorded results
+let results: &amp;[FeatureImportanceResult] = explainer.results();
+
+for result in results {
+    println!("Epoch {}: {:?}", result.epoch, result.importances);
+}
+
+// Get consistently important features across epochs
+let consistent = explainer.consistent_top_features();
+// Returns features ranked by: (1) frequency in top-k, (2) avg score
+<span class="boring">}</span></code></pre></pre>
+<h2 id="featureimportanceresult"><a class="header" href="#featureimportanceresult">FeatureImportanceResult</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct FeatureImportanceResult {
+    /// Epoch when computed
+    pub epoch: usize,
+    /// Feature index to importance score (sorted by abs value)
+    pub importances: Vec&lt;(usize, f32)&gt;,
+    /// Method used for computation
+    pub method: ExplainMethod,
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="complete-example-1"><a class="header" href="#complete-example-1">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use entrenar::train::{
+    Trainer, TrainConfig, ExplainabilityCallback, ExplainMethod,
+    CallbackContext, CallbackAction, TrainerCallback,
+};
+use aprender::primitives::Vector;
+
+// Simple linear model
+fn predict(weights: &amp;[f32], x: &amp;Vector&lt;f32&gt;) -&gt; f32 {
+    weights.iter()
+        .zip(x.as_slice())
+        .map(|(w, xi)| w * xi)
+        .sum()
+}
+
+fn main() {
+    // Setup explainability callback
+    let mut explainer = ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
+        .with_top_k(3)
+        .with_feature_names(vec![
+            "feature_0".into(),
+            "feature_1".into(),
+            "feature_2".into(),
+        ]);
+
+    // Validation data
+    let val_x = vec![
+        Vector::from_slice(&amp;[1.0, 2.0, 3.0]),
+        Vector::from_slice(&amp;[2.0, 3.0, 4.0]),
+        Vector::from_slice(&amp;[3.0, 4.0, 5.0]),
+    ];
+    let val_y = vec![6.0, 9.0, 12.0];
+    let weights = vec![1.0, 1.0, 1.0];
+
+    // Compute and record importances
+    let importances = explainer.compute_permutation_importance(
+        |x| predict(&amp;weights, x),
+        &amp;val_x,
+        &amp;val_y,
+    );
+    explainer.record_importances(0, importances);
+
+    // Query results
+    println!("Top features at epoch 0:");
+    for (idx, score) in &amp;explainer.results()[0].importances {
+        let name = explainer.feature_names()
+            .map(|n| n[*idx].as_str())
+            .unwrap_or("unknown");
+        println!("  {}: {:.4}", name, score);
+    }
+}</code></pre></pre>
+<h2 id="integration-with-monitoring"><a class="header" href="#integration-with-monitoring">Integration with Monitoring</a></h2>
+<p>Combine with <code>MonitorCallback</code> for comprehensive training observability:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>trainer.add_callback(MonitorCallback::new());
+trainer.add_callback(ExplainabilityCallback::new(ExplainMethod::PermutationImportance));
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+<span class="boring">}</span></code></pre></pre>
+<p>This enables:</p>
+<ul>
+<li>Real-time loss/LR tracking (MonitorCallback)</li>
+<li>Feature importance trends (ExplainabilityCallback)</li>
+<li>Automatic early stopping (EarlyStopping)</li>
+</ul>
+<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<h3 id="model-debugging"><a class="header" href="#model-debugging">Model Debugging</a></h3>
+<p>Identify which features drive predictions:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let top = explainer.consistent_top_features();
+if top[0].0 != expected_important_feature {
+    println!("Warning: Model may be using unexpected features");
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="feature-engineering-validation"><a class="header" href="#feature-engineering-validation">Feature Engineering Validation</a></h3>
+<p>Verify new features contribute positively:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// After adding new feature at index 5
+let latest = explainer.results().last().unwrap();
+let has_new_feature = latest.importances.iter().any(|(idx, _)| *idx == 5);
+println!("New feature in top-k: {}", has_new_feature);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="training-stability-analysis"><a class="header" href="#training-stability-analysis">Training Stability Analysis</a></h3>
+<p>Track feature importance stability across epochs:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let results = explainer.results();
+if results.len() &gt;= 2 {
+    let prev = &amp;results[results.len() - 2].importances;
+    let curr = &amp;results[results.len() - 1].importances;
+
+    // Check if top feature changed
+    if prev[0].0 != curr[0].0 {
+        println!("Warning: Top feature changed between epochs");
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also-3"><a class="header" href="#see-also-3">See Also</a></h2>
+<ul>
+<li><a href="training/./callback-system.html">Callback System</a> - Full callback documentation</li>
+<li><a href="training/../monitor/overview.html">Real-Time Monitoring</a> - Monitor integration</li>
+<li><a href="https://docs.rs/aprender/latest/aprender/interpret/">aprender interpret module</a> - Underlying explainability methods</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="real-time-training-monitoring"><a class="header" href="#real-time-training-monitoring">Real-Time Training Monitoring</a></h1>
 <p>The monitor module provides comprehensive real-time visibility into training runs, implementing Toyota Way principles for quality assurance.</p>
 <h2 id="features"><a class="header" href="#features">Features</a></h2>
@@ -3397,7 +4610,7 @@ variance = M2 / (n - 1)
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="terminal-dashboard"><a class="header" href="#terminal-dashboard">Terminal Dashboard</a></h1>
 <p>ASCII terminal dashboard for real-time training visualization.</p>
-<h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
+<h2 id="usage-2"><a class="header" href="#usage-2">Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::{Dashboard, MetricsCollector, Metric};
@@ -3452,7 +4665,7 @@ let dashboard = Dashboard::with_config(config);
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="drift-detection"><a class="header" href="#drift-detection">Drift Detection</a></h1>
 <p>Sliding window anomaly detection using z-score analysis.</p>
-<h2 id="usage-2"><a class="header" href="#usage-2">Usage</a></h2>
+<h2 id="usage-3"><a class="header" href="#usage-3">Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::{DriftDetector, DriftStatus};
@@ -3508,7 +4721,7 @@ where:
 <p>Toyota Way Jidoka (自働化) principle: Stop-the-line on critical failures.</p>
 <h2 id="concept"><a class="header" href="#concept">Concept</a></h2>
 <p>In Toyota manufacturing, the Andon cord allows any worker to stop the production line when they detect a defect. In training, this translates to automatic stopping on critical issues.</p>
-<h2 id="usage-3"><a class="header" href="#usage-3">Usage</a></h2>
+<h2 id="usage-4"><a class="header" href="#usage-4">Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::{AndonSystem, AlertLevel, AndonConfig};
@@ -3567,7 +4780,7 @@ for epoch in 0..max_epochs {
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="model-lineage"><a class="header" href="#model-lineage">Model Lineage</a></h1>
 <p>Track model versions, derivations, and identify regression sources.</p>
-<h2 id="usage-4"><a class="header" href="#usage-4">Usage</a></h2>
+<h2 id="usage-5"><a class="header" href="#usage-5">Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::{ModelLineage, ModelMetadata, ChangeType};
@@ -3681,7 +4894,7 @@ scrape_configs:
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="hansei-reports"><a class="header" href="#hansei-reports">Hansei Reports</a></h1>
 <p>Toyota Way Hansei (反省) principle: Reflection and continuous improvement through systematic post-training analysis.</p>
-<h2 id="usage-5"><a class="header" href="#usage-5">Usage</a></h2>
+<h2 id="usage-6"><a class="header" href="#usage-6">Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::{HanseiAnalyzer, MetricsCollector, Metric};
@@ -3793,11 +5006,24 @@ let loaded = load_model("model.json")?;
 <span class="boring">}</span></code></pre></pre>
 <h2 id="supported-formats"><a class="header" href="#supported-formats">Supported Formats</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>Use Case</th><th>Status</th></tr></thead><tbody>
+<tr><td><strong>SafeTensors</strong></td><td><code>.safetensors</code></td><td>Production, HuggingFace Hub</td><td>✅ Recommended</td></tr>
 <tr><td><strong>JSON</strong></td><td><code>.json</code></td><td>Human-readable, debugging</td><td>✅ Implemented</td></tr>
 <tr><td><strong>YAML</strong></td><td><code>.yaml</code>, <code>.yml</code></td><td>Configuration-friendly</td><td>✅ Implemented</td></tr>
 <tr><td><strong>GGUF</strong></td><td><code>.gguf</code></td><td>LLaMA-compatible format</td><td>⚠️ Placeholder (future Realizar integration)</td></tr>
 </tbody></table>
 </div>
+<h3 id="safetensors-format-recommended"><a class="header" href="#safetensors-format-recommended">SafeTensors Format (Recommended)</a></h3>
+<p>The recommended format for production use. Provides security (no arbitrary code
+execution), efficiency (zero-copy loading), and HuggingFace Hub compatibility:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Save as SafeTensors
+let config = SaveConfig::new(ModelFormat::SafeTensors);
+save_model(&amp;model, "model.safetensors", &amp;config)?;
+
+// Load (format auto-detected)
+let model = load_model("model.safetensors")?;
+<span class="boring">}</span></code></pre></pre>
 <h3 id="json-format-1"><a class="header" href="#json-format-1">JSON Format</a></h3>
 <p><strong>Compact</strong> (single-line):</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -3875,12 +5101,15 @@ for (orig, load) in original.parameters.iter().zip(loaded.parameters.iter()) {
     assert_tensors_equal(&amp;orig.1, &amp;load.1);  // Tensor values
 }
 <span class="boring">}</span></code></pre></pre>
-<p><strong>Validation</strong>: 16 I/O tests ensure round-trip correctness</p>
+<p><strong>Validation</strong>: 54 I/O tests ensure round-trip correctness</p>
 <h2 id="auto-format-detection"><a class="header" href="#auto-format-detection">Auto-Format Detection</a></h2>
 <p>Format automatically detected from file extension:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Detects JSON from .json extension
+</span>// Detects SafeTensors from .safetensors extension
+let model = load_model("model.safetensors")?;
+
+// Detects JSON from .json extension
 let model = load_model("model.json")?;
 
 // Detects YAML from .yaml extension
@@ -3928,6 +5157,7 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 <li><a href="io/./load-models.html">Load Models</a> - Loading and deserialization</li>
 <li><a href="io/./metadata.html">Model Metadata</a> - Metadata management</li>
 <li><a href="io/./formats.html">Supported Formats</a> - Format details</li>
+<li><a href="io/./safetensors-format.html">SafeTensors Format</a> - HuggingFace compatible format</li>
 </ul>
 <h2 id="implementation"><a class="header" href="#implementation">Implementation</a></h2>
 <p>All Model I/O code is in <code>src/io/</code>:</p>
@@ -3935,9 +5165,9 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 <li><code>mod.rs</code> - Public API exports</li>
 <li><code>model.rs</code> - Model and ModelMetadata structs</li>
 <li><code>format.rs</code> - ModelFormat enum and SaveConfig</li>
-<li><code>save.rs</code> - save_model() function</li>
-<li><code>load.rs</code> - load_model() function</li>
-<li><code>tests.rs</code> - 16 integration tests</li>
+<li><code>save.rs</code> - save_model() function (incl. SafeTensors serialization)</li>
+<li><code>load.rs</code> - load_model() function (incl. SafeTensors deserialization)</li>
+<li><code>tests.rs</code> - Integration tests (54 total across module)</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="save-models"><a class="header" href="#save-models">Save Models</a></h1>
 <p><strong>Content to be added.</strong></p>
@@ -3966,15 +5196,257 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
 <li>Best practices and usage guidelines</li>
 </ul>
 <p>Please check back later for complete content.</p>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="formats"><a class="header" href="#formats">Formats</a></h1>
-<p><strong>Content to be added.</strong></p>
-<p>This chapter will cover:</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="supported-formats-1"><a class="header" href="#supported-formats-1">Supported Formats</a></h1>
+<p>Entrenar supports multiple model serialization formats for different use cases.</p>
+<h2 id="format-comparison"><a class="header" href="#format-comparison">Format Comparison</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>Binary</th><th>HF Compatible</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>SafeTensors</td><td><code>.safetensors</code></td><td>Yes</td><td>Yes</td><td>Production, sharing</td></tr>
+<tr><td>JSON</td><td><code>.json</code></td><td>No</td><td>No</td><td>Debugging, inspection</td></tr>
+<tr><td>YAML</td><td><code>.yaml</code></td><td>No</td><td>No</td><td>Configuration</td></tr>
+<tr><td>GGUF</td><td><code>.gguf</code></td><td>Yes</td><td>No</td><td>Quantized models</td></tr>
+</tbody></table>
+</div>
+<h2 id="choosing-a-format"><a class="header" href="#choosing-a-format">Choosing a Format</a></h2>
+<h3 id="safetensors-recommended"><a class="header" href="#safetensors-recommended">SafeTensors (Recommended)</a></h3>
+<p>Use SafeTensors for:</p>
 <ul>
-<li>Key concepts and implementation details</li>
-<li>Code examples from the entrenar codebase</li>
-<li>Best practices and usage guidelines</li>
+<li>Production deployments</li>
+<li>Uploading to HuggingFace Hub</li>
+<li>Large models (supports memory mapping)</li>
+<li>Security-sensitive applications</li>
 </ul>
-<p>Please check back later for complete content.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = SaveConfig::new(ModelFormat::SafeTensors);
+save_model(&amp;model, "model.safetensors", &amp;config)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="json"><a class="header" href="#json">JSON</a></h3>
+<p>Use JSON for:</p>
+<ul>
+<li>Debugging and inspection</li>
+<li>Small models</li>
+<li>Human-readable output</li>
+<li>Version control diffs</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
+save_model(&amp;model, "model.json", &amp;config)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="yaml"><a class="header" href="#yaml">YAML</a></h3>
+<p>Use YAML for:</p>
+<ul>
+<li>Configuration files</li>
+<li>Human-friendly syntax</li>
+<li>Small models with metadata focus</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = SaveConfig::new(ModelFormat::Yaml);
+save_model(&amp;model, "model.yaml", &amp;config)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="gguf-future"><a class="header" href="#gguf-future">GGUF (Future)</a></h3>
+<p>GGUF format will be supported for:</p>
+<ul>
+<li>Quantized model export</li>
+<li>LLaMA.cpp compatibility</li>
+<li>Integration with Realizar crate</li>
+</ul>
+<h2 id="format-detection"><a class="header" href="#format-detection">Format Detection</a></h2>
+<p>Format is auto-detected from file extension:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Auto-detect based on extension
+let model = load_model("model.safetensors")?;  // SafeTensors
+let model = load_model("model.json")?;         // JSON
+let model = load_model("model.yaml")?;         // YAML
+let model = load_model("config.yml")?;         // YAML (alternate extension)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>100MB Save</th><th>100MB Load</th><th>Compression</th></tr></thead><tbody>
+<tr><td>SafeTensors</td><td>~100ms</td><td>~50ms</td><td>1x</td></tr>
+<tr><td>JSON</td><td>~3s</td><td>~2.5s</td><td>~0.33x</td></tr>
+<tr><td>YAML</td><td>~4s</td><td>~3.5s</td><td>~0.29x</td></tr>
+</tbody></table>
+</div>
+<h2 id="see-also-4"><a class="header" href="#see-also-4">See Also</a></h2>
+<ul>
+<li><a href="io/safetensors-format.html">SafeTensors Format</a> - Detailed SafeTensors documentation</li>
+<li><a href="io/json-format.html">JSON Format</a> - JSON specifics</li>
+<li><a href="io/yaml-format.html">YAML Format</a> - YAML specifics</li>
+<li><a href="io/gguf-format.html">GGUF Format</a> - Future GGUF support</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="safetensors-format"><a class="header" href="#safetensors-format">SafeTensors Format</a></h1>
+<p>SafeTensors is the recommended format for production models in entrenar. It provides
+security, efficiency, and full HuggingFace Hub compatibility.</p>
+<h2 id="why-safetensors"><a class="header" href="#why-safetensors">Why SafeTensors?</a></h2>
+<p>SafeTensors was developed by HuggingFace to address security concerns with Python's
+pickle format. Key benefits:</p>
+<ul>
+<li><strong>Security</strong>: No arbitrary code execution (pickle files can run malicious code)</li>
+<li><strong>Zero-copy loading</strong>: Memory-mapped tensor access without full deserialization</li>
+<li><strong>Cross-platform</strong>: Works consistently across Python, Rust, JavaScript</li>
+<li><strong>HuggingFace compatible</strong>: Direct upload/download from HuggingFace Hub</li>
+</ul>
+<h2 id="file-structure"><a class="header" href="#file-structure">File Structure</a></h2>
+<p>SafeTensors files have a simple binary structure:</p>
+<pre><code>┌─────────────────────────────────────────┐
+│ Header Length (8 bytes, little-endian)  │
+├─────────────────────────────────────────┤
+│ JSON Header (variable length)           │
+│ - Tensor metadata (names, shapes, types)│
+│ - Custom metadata (__metadata__ key)    │
+├─────────────────────────────────────────┤
+│ Tensor Data (contiguous binary)         │
+│ - Aligned to 8-byte boundaries          │
+│ - Ordered by dtype then name            │
+└─────────────────────────────────────────┘
+</code></pre>
+<h2 id="saving-to-safetensors"><a class="header" href="#saving-to-safetensors">Saving to SafeTensors</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::io::{Model, ModelMetadata, save_model, SaveConfig, ModelFormat};
+use entrenar::Tensor;
+
+// Create model with parameters
+let params = vec![
+    ("model.embed_tokens.weight".to_string(),
+     Tensor::from_vec(vec![0.1; 4096 * 768], false)),
+    ("model.layers.0.self_attn.q_proj.weight".to_string(),
+     Tensor::from_vec(vec![0.01; 768 * 768], false)),
+];
+
+let metadata = ModelMetadata::new("my-llm", "llama");
+let model = Model::new(metadata, params);
+
+// Save as SafeTensors
+let config = SaveConfig::new(ModelFormat::SafeTensors);
+save_model(&amp;model, "model.safetensors", &amp;config)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="loading-from-safetensors"><a class="header" href="#loading-from-safetensors">Loading from SafeTensors</a></h2>
+<p>Format is auto-detected from file extension:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::io::load_model;
+
+let model = load_model("model.safetensors")?;
+
+// Access metadata
+println!("Model: {}", model.metadata.name);
+println!("Architecture: {}", model.metadata.architecture);
+
+// Access tensors
+for (name, tensor) in &amp;model.parameters {
+    println!("{}: {} elements", name, tensor.len());
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="custom-metadata"><a class="header" href="#custom-metadata">Custom Metadata</a></h2>
+<p>SafeTensors supports custom metadata stored in the <code>__metadata__</code> header field:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// When saving, metadata is automatically included:
+// - name: model name
+// - architecture: model architecture
+// - version: model version
+
+// For merge operations, additional metadata is added:
+// - merge_method: TIES, DARE, SLERP, or Average
+// - tensor_count: number of tensors
+<span class="boring">}</span></code></pre></pre>
+<h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
+<h3 id="merge-to-safetensors"><a class="header" href="#merge-to-safetensors">Merge to SafeTensors</a></h3>
+<pre><code class="language-bash"># Output format is detected from extension
+entrenar merge model1.safetensors model2.safetensors \
+    --method ties \
+    --output merged.safetensors
+</code></pre>
+<h3 id="inspect-safetensors"><a class="header" href="#inspect-safetensors">Inspect SafeTensors</a></h3>
+<pre><code class="language-bash"># Use entrenar-inspect crate
+entrenar-inspect model.safetensors
+</code></pre>
+<h2 id="memory-mapped-loading"><a class="header" href="#memory-mapped-loading">Memory-Mapped Loading</a></h2>
+<p>For large models, use memory mapping to avoid loading entire file into RAM:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use memmap2::MmapOptions;
+use safetensors::SafeTensors;
+
+let file = std::fs::File::open("large_model.safetensors")?;
+let mmap = unsafe { MmapOptions::new().map(&amp;file)? };
+let tensors = SafeTensors::deserialize(&amp;mmap)?;
+
+// Tensors are loaded on-demand from mmap
+for name in tensors.names() {
+    let tensor = tensors.tensor(name)?;
+    // Process tensor...
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="huggingface-hub-integration"><a class="header" href="#huggingface-hub-integration">HuggingFace Hub Integration</a></h2>
+<p>Models saved in SafeTensors format can be directly uploaded:</p>
+<pre><code class="language-bash"># Using HuggingFace CLI
+huggingface-cli upload my-org/my-model ./model.safetensors
+
+# Or programmatically
+huggingface-cli repo create my-org/my-model
+huggingface-cli upload my-org/my-model ./model.safetensors model.safetensors
+</code></pre>
+<p>And downloaded models load directly:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::hf_pipeline::HfModelFetcher;
+use entrenar::io::load_model;
+
+let fetcher = HfModelFetcher::new()?;
+let artifact = fetcher.download_model(
+    "microsoft/codebert-base",
+    Default::default()
+)?;
+
+let model = load_model(&amp;artifact.path)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-1"><a class="header" href="#performance-1">Performance</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>Save Time</th><th>Load Time</th><th>File Size</th></tr></thead><tbody>
+<tr><td>100MB</td><td>~100ms</td><td>~50ms</td><td>100MB</td></tr>
+<tr><td>1GB</td><td>~1s</td><td>~500ms</td><td>1GB</td></tr>
+<tr><td>7GB</td><td>~7s</td><td>~3s</td><td>7GB</td></tr>
+</tbody></table>
+</div>
+<p>Compare to JSON format:</p>
+<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>JSON Save</th><th>JSON Load</th><th>JSON Size</th></tr></thead><tbody>
+<tr><td>100MB</td><td>~3s</td><td>~2.5s</td><td>~300MB</td></tr>
+<tr><td>1GB</td><td>~30s</td><td>~25s</td><td>~3GB</td></tr>
+</tbody></table>
+</div>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::io::load_model;
+use entrenar::Error;
+
+match load_model("model.safetensors") {
+    Ok(model) =&gt; {
+        println!("Loaded {} tensors", model.parameters.len());
+    }
+    Err(Error::Serialization(msg)) =&gt; {
+        // Invalid SafeTensors format
+        eprintln!("Parse error: {}", msg);
+    }
+    Err(Error::Io(e)) =&gt; {
+        // File not found, permission denied, etc.
+        eprintln!("IO error: {}", e);
+    }
+    Err(e) =&gt; {
+        eprintln!("Other error: {}", e);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also-5"><a class="header" href="#see-also-5">See Also</a></h2>
+<ul>
+<li><a href="io/json-format.html">JSON Format</a> - Human-readable alternative</li>
+<li><a href="io/yaml-format.html">YAML Format</a> - Configuration-friendly format</li>
+<li><a href="io/gguf-format.html">GGUF Format</a> - Quantized model format</li>
+<li><a href="io/../advanced/hf-distillation.html">HuggingFace Distillation</a> - Using with distillation</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="json-format-2"><a class="header" href="#json-format-2">Json Format</a></h1>
 <p><strong>Content to be added.</strong></p>
 <p>This chapter will cover:</p>
@@ -4595,7 +6067,7 @@ fn main() {
 <div style="break-before: page; page-break-before: always;"></div><h1 id="lora-api"><a class="header" href="#lora-api">LoRA API</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="qlora-api"><a class="header" href="#qlora-api">QLoRA API</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="configuration-system"><a class="header" href="#configuration-system">Configuration System</a></h1>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="error-handling-1"><a class="header" href="#error-handling-1">Error Handling</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="linear-regression-with-autograd"><a class="header" href="#linear-regression-with-autograd">Linear Regression with Autograd</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="training-a-simple-mlp"><a class="header" href="#training-a-simple-mlp">Training a Simple MLP</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="fine-tuning-with-lora"><a class="header" href="#fine-tuning-with-lora">Fine-Tuning with LoRA</a></h1>
@@ -4631,6 +6103,739 @@ fn main() {
 <div style="break-before: page; page-break-before: always;"></div><h1 id="advanced-quantization"><a class="header" href="#advanced-quantization">Advanced Quantization</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="distributed-training"><a class="header" href="#distributed-training">Distributed Training</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="model-parallelism"><a class="header" href="#model-parallelism">Model Parallelism</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="compiler-in-the-loop-citl-training"><a class="header" href="#compiler-in-the-loop-citl-training">Compiler-in-the-Loop (CITL) Training</a></h1>
+<p>This chapter covers entrenar's CITL module, which provides RAG-based fix pattern storage
+and statistical fault localization for compiler-assisted training.</p>
+<h2 id="overview-6"><a class="header" href="#overview-6">Overview</a></h2>
+<p>The CITL system provides:</p>
+<ul>
+<li><strong>DecisionPatternStore</strong>: Stores and retrieves fix patterns using hybrid retrieval (BM25 + dense embeddings)</li>
+<li><strong>DecisionCITL</strong>: Correlates compiler decision traces with compilation outcomes for fault localization</li>
+<li><strong>Tarantula scoring</strong>: Statistical suspiciousness analysis of decision types</li>
+<li><strong>Dependency graphs</strong>: Root cause analysis through decision chain tracking</li>
+</ul>
+<h2 id="llm-bootstrapping-the-core-philosophy"><a class="header" href="#llm-bootstrapping-the-core-philosophy">LLM Bootstrapping: The Core Philosophy</a></h2>
+<blockquote>
+<p><strong>"LLM is bootstrap, not runtime dependency."</strong></p>
+</blockquote>
+<p>The CITL module implements a cost-saving MLOps strategy: use expensive LLMs to <em>bootstrap</em>
+pattern libraries during development, then operate cost-free in production using local ML oracles.</p>
+<h3 id="the-problem-with-llm-only-workflows"><a class="header" href="#the-problem-with-llm-only-workflows">The Problem with LLM-Only Workflows</a></h3>
+<p>Traditional LLM-assisted development has a scaling problem:</p>
+<pre><code>Per-developer annual cost (LLM-only):
+├─ 8 hours/day × 250 days = 2,000 hours
+├─ API calls for every edge case
+├─ $0.02/minute average = $2,400/developer/year
+└─ Scales linearly with team size
+</code></pre>
+<h3 id="the-bootstrapping-solution"><a class="header" href="#the-bootstrapping-solution">The Bootstrapping Solution</a></h3>
+<p>Instead of treating LLMs as a runtime dependency, use them to <em>train</em> a local oracle:</p>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│                     BOOTSTRAP PHASE (One-time)                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   Overnight LLM Sessions (6-13 hours each)                          │
+│           │                                                         │
+│           ▼                                                         │
+│   ┌───────────────┐    ┌───────────────┐    ┌───────────────┐      │
+│   │   Transpile   │───▶│   Compiler    │───▶│   Decision    │      │
+│   │   Code        │    │   Feedback    │    │   Traces      │      │
+│   └───────────────┘    └───────────────┘    └───────────────┘      │
+│                                                    │                │
+│                                                    ▼                │
+│                                          ┌───────────────┐          │
+│                                          │  Pattern      │          │
+│                                          │  Extraction   │          │
+│                                          └───────────────┘          │
+│                                                    │                │
+│                                                    ▼                │
+│                                          ┌───────────────┐          │
+│                                          │  .apr File    │          │
+│                                          │  (503 KB)     │          │
+│                                          └───────────────┘          │
+│                                                                     │
+│   Cost: ~$156 one-time (10 sessions × 13h × $0.02/min)             │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     PRODUCTION PHASE (Forever)                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   ┌───────────────┐                                                 │
+│   │  Load .apr    │                                                 │
+│   └───────────────┘                                                 │
+│           │                                                         │
+│           ▼                                                         │
+│   ┌───────────────┐    ┌───────────────┐    ┌───────────────┐      │
+│   │  HNSW Index   │───▶│  Pattern      │───▶│  Fix          │      │
+│   │  (Semantic)   │    │  Matching     │    │  Suggestion   │      │
+│   └───────────────┘    └───────────────┘    └───────────────┘      │
+│                                                                     │
+│   Cost: $0 (local inference, zero API calls)                        │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="cost-economics"><a class="header" href="#cost-economics">Cost Economics</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Phase</th><th>Duration</th><th>Cost</th><th>Output</th></tr></thead><tbody>
+<tr><td><strong>Bootstrap</strong></td><td>10 overnight sessions</td><td>~$156 one-time</td><td>Training data</td></tr>
+<tr><td><strong>Capture</strong></td><td>Automatic</td><td>$0</td><td>503 KB .apr model</td></tr>
+<tr><td><strong>Production</strong></td><td>Forever</td><td>$0</td><td>Local inference</td></tr>
+</tbody></table>
+</div>
+<p><strong>ROI Example:</strong></p>
+<ul>
+<li>Team of 5 developers</li>
+<li>LLM-only: $12,000/year</li>
+<li>Bootstrap approach: $156 once, then free</li>
+<li><strong>Break-even: 5 days</strong></li>
+</ul>
+<h3 id="what-gets-captured"><a class="header" href="#what-gets-captured">What Gets Captured</a></h3>
+<p>During bootstrap sessions, the system captures:</p>
+<ol>
+<li><strong>Error Patterns</strong> - rustc error codes with full context</li>
+<li><strong>Fix Patterns</strong> - Code transformations that resolved errors</li>
+<li><strong>Decision Traces</strong> - Codegen decisions that led to errors</li>
+<li><strong>Success Rates</strong> - Historical effectiveness of each fix</li>
+</ol>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Real data from depyler bootstrap sessions:
+// - 298 Python CLI tools transpiled
+// - 4,583 rustc errors captured
+// - 150+ fix patterns extracted
+// - 91% k-fold cross-validation accuracy
+<span class="boring">}</span></code></pre></pre>
+<h3 id="the-self-improving-loop"><a class="header" href="#the-self-improving-loop">The Self-Improving Loop</a></h3>
+<p>Each overnight session improves the oracle:</p>
+<pre><code>Session N:
+├─ Load existing .apr (if any)
+├─ LLM generates fixes for edge cases
+├─ Compiler validates fixes
+├─ Extract new patterns
+├─ Merge with existing patterns
+├─ Save updated .apr
+└─ Next session starts with better oracle
+
+Pattern Accumulation:
+├─ Session 1-3:  LLM handles 100% of cases
+├─ Session 4-6:  Local oracle handles 50%
+├─ Session 7-10: Local oracle handles 80%+
+└─ Session 11+:  LLM only for long-tail novelty
+</code></pre>
+<h3 id="error-priority-during-bootstrap"><a class="header" href="#error-priority-during-bootstrap">Error Priority During Bootstrap</a></h3>
+<p>Focus bootstrap sessions on highest-impact errors:</p>
+<pre><code>Error Distribution (from real transpilation corpus):
+├─ E0308 (Type mismatch)      - 1,050 occurrences (23%)
+├─ E0433 (Failed to resolve)  -   706 occurrences (15%)
+├─ E0599 (Method not found)   -   543 occurrences (12%)
+├─ E0425 (Cannot find value)  -   392 occurrences (9%)
+├─ E0277 (Trait bound)        -   380 occurrences (8%)
+└─ Other                      - 1,512 occurrences (33%)
+</code></pre>
+<p>Fix the top 5 error types → resolve 67% of all errors.</p>
+<h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{
+    DecisionCITL, DecisionPatternStore, DecisionTrace, CompilationOutcome,
+    FixPattern, SourceSpan,
+};
+
+// Create a CITL trainer
+let mut trainer = DecisionCITL::new()?;
+
+// Ingest a failed compilation session
+let traces = vec![
+    DecisionTrace::new("d1", "type_inference", "Inferred i32 for string")
+        .with_span(SourceSpan::line("main.rs", 10)),
+];
+
+let outcome = CompilationOutcome::failure(
+    vec!["E0308".to_string()],
+    vec![SourceSpan::line("main.rs", 10)],
+    vec!["expected `&amp;str`, found `i32`".to_string()],
+);
+
+// Optionally provide the fix that resolved the error
+let fix = Some("- let x: i32 = \"hello\";\n+ let x: &amp;str = \"hello\";".to_string());
+
+trainer.ingest_session(traces, outcome, fix)?;
+
+// Later, correlate similar errors
+let error_span = SourceSpan::line("main.rs", 10);
+let correlation = trainer.correlate_error("E0308", &amp;error_span)?;
+
+// Get fix suggestions
+for suggestion in &amp;correlation.fix_suggestions {
+    println!("Suggested fix (score={:.2}): {}",
+             suggestion.weighted_score(),
+             suggestion.pattern.fix_diff);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="components"><a class="header" href="#components">Components</a></h2>
+<h3 id="fixpattern"><a class="header" href="#fixpattern">FixPattern</a></h3>
+<p>A pattern representing a successful fix for a compiler error:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::FixPattern;
+
+// Create a fix pattern
+let mut pattern = FixPattern::new("E0308", "- i32\n+ &amp;str")
+    .with_decision("type_inference")
+    .with_decision("type_coercion");
+
+// Track success rate
+pattern.record_success();  // Fix worked
+pattern.record_failure();  // Fix didn't work
+
+println!("Success rate: {:.0}%", pattern.success_rate() * 100.0);
+<span class="boring">}</span></code></pre></pre>
+<p>Fields:</p>
+<ul>
+<li><code>error_code</code>: The Rust error code (e.g., "E0308", "E0382")</li>
+<li><code>decision_sequence</code>: Compiler decisions that led to this fix</li>
+<li><code>fix_diff</code>: The actual code change in unified diff format</li>
+<li><code>success_count</code> / <code>attempt_count</code>: Track fix effectiveness</li>
+</ul>
+<h3 id="decisionpatternstore"><a class="header" href="#decisionpatternstore">DecisionPatternStore</a></h3>
+<p>Storage for fix patterns with hybrid retrieval using trueno-rag:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{DecisionPatternStore, FixPattern, PatternStoreConfig};
+
+// Create with default config
+let mut store = DecisionPatternStore::new()?;
+
+// Or customize
+let config = PatternStoreConfig {
+    chunk_size: 512,
+    embedding_dim: 384,
+    rrf_k: 60.0,  // Reciprocal Rank Fusion constant
+};
+let mut store = DecisionPatternStore::with_config(config)?;
+
+// Index fix patterns
+store.index_fix(FixPattern::new("E0308", "type fix 1").with_decision("type_inference"))?;
+store.index_fix(FixPattern::new("E0308", "type fix 2").with_decision("type_coercion"))?;
+store.index_fix(FixPattern::new("E0382", "borrow fix").with_decision("borrow_check"))?;
+
+// Query for suggestions
+let context = vec!["type_inference".to_string()];
+let suggestions = store.suggest_fix("E0308", &amp;context, 5)?;
+
+for suggestion in suggestions {
+    println!("Score: {:.3}, Pattern: {}",
+             suggestion.weighted_score(),
+             suggestion.pattern.error_code);
+}
+
+// Export/import for persistence
+let json = store.export_json()?;
+let mut new_store = DecisionPatternStore::new()?;
+new_store.import_json(&amp;json)?;
+<span class="boring">}</span></code></pre></pre>
+<h4 id="hybrid-retrieval"><a class="header" href="#hybrid-retrieval">Hybrid Retrieval</a></h4>
+<p>The pattern store uses trueno-rag for hybrid search:</p>
+<ol>
+<li><strong>BM25 (Lexical)</strong>: Matches error codes and decision keywords</li>
+<li><strong>Dense Embeddings</strong>: Semantic similarity of fix descriptions</li>
+<li><strong>RRF Fusion</strong>: Combines both rankings using Reciprocal Rank Fusion</li>
+</ol>
+<pre><code>RRF_score = Σ 1/(k + rank_i)
+</code></pre>
+<p>Where k=60 (configurable) and rank_i is the position in each retrieval system.</p>
+<h3 id="sourcespan"><a class="header" href="#sourcespan">SourceSpan</a></h3>
+<p>Represents a location in source code:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::SourceSpan;
+
+// Full span with start/end positions
+let span = SourceSpan::new("src/main.rs", 10, 5, 10, 25);
+
+// Single line shorthand
+let line_span = SourceSpan::line("src/main.rs", 10);
+
+// Check overlap
+let other = SourceSpan::line("src/main.rs", 10);
+assert!(span.overlaps(&amp;other));
+
+// Check containment
+let outer = SourceSpan::new("src/main.rs", 1, 1, 100, 80);
+assert!(outer.contains(&amp;span));
+<span class="boring">}</span></code></pre></pre>
+<h3 id="decisiontrace"><a class="header" href="#decisiontrace">DecisionTrace</a></h3>
+<p>A single compiler decision with optional source location:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{DecisionTrace, SourceSpan};
+
+let trace = DecisionTrace::new("decision_001", "type_inference", "Inferred type i32")
+    .with_span(SourceSpan::line("main.rs", 42))
+    .with_timestamp(1_000_000)  // nanoseconds
+    .with_dependency("decision_000");
+
+println!("Decision: {} - {}", trace.decision_type, trace.description);
+<span class="boring">}</span></code></pre></pre>
+<p>Fields:</p>
+<ul>
+<li><code>id</code>: Unique identifier for this decision</li>
+<li><code>decision_type</code>: Category (e.g., "type_inference", "borrow_check", "lifetime_resolution")</li>
+<li><code>description</code>: Human-readable description</li>
+<li><code>span</code>: Optional source location</li>
+<li><code>timestamp_ns</code>: Timing information</li>
+<li><code>depends_on</code>: IDs of decisions this one depends on</li>
+</ul>
+<h3 id="compilationoutcome"><a class="header" href="#compilationoutcome">CompilationOutcome</a></h3>
+<p>Result of a compilation attempt:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{CompilationOutcome, SourceSpan};
+
+// Successful compilation
+let success = CompilationOutcome::success();
+
+// Failed compilation
+let failure = CompilationOutcome::failure(
+    vec!["E0308".to_string(), "E0382".to_string()],  // Error codes
+    vec![SourceSpan::line("main.rs", 10), SourceSpan::line("lib.rs", 25)],
+    vec!["type mismatch".to_string(), "use after move".to_string()],
+);
+
+assert!(success.is_success());
+assert!(!failure.is_success());
+assert_eq!(failure.error_codes(), vec!["E0308", "E0382"]);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="decisioncitl"><a class="header" href="#decisioncitl">DecisionCITL</a></h3>
+<p>The main trainer that correlates decisions with errors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::{DecisionCITL, CITLConfig};
+
+// Create with custom config
+let config = CITLConfig {
+    max_suggestions: 5,
+    min_suspiciousness: 0.3,
+    enable_dependency_graph: true,
+};
+let mut trainer = DecisionCITL::with_config(config)?;
+
+// Ingest sessions (see Quick Start)
+// ...
+
+// Analyze suspicious decision types
+let top_suspicious = trainer.top_suspicious_types(5);
+for (decision_type, score) in top_suspicious {
+    println!("{}: {:.2}", decision_type, score);
+}
+
+// Group by file
+let by_file = trainer.decisions_by_file();
+for (file, decisions) in by_file {
+    println!("{}: {} decisions", file, decisions.len());
+}
+
+// Build dependency graph
+let graph = trainer.build_dependency_graph();
+
+// Find root causes for an error
+let roots = trainer.find_root_causes(&amp;error_span);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="fault-localization"><a class="header" href="#fault-localization">Fault Localization</a></h2>
+<h3 id="tarantula-algorithm"><a class="header" href="#tarantula-algorithm">Tarantula Algorithm</a></h3>
+<p>CITL uses Tarantula (Jones &amp; Harrold, 2005) for statistical fault localization:</p>
+<pre><code>suspiciousness = fail_freq / (fail_freq + success_freq)
+
+where:
+  fail_freq = times_in_failed / total_failed
+  success_freq = times_in_successful / total_successful
+</code></pre>
+<p>Interpretation:</p>
+<ul>
+<li><strong>1.0</strong>: Decision appears only in failures (highly suspicious)</li>
+<li><strong>0.5</strong>: Decision appears equally in successes and failures</li>
+<li><strong>0.0</strong>: Decision appears only in successes (not suspicious)</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::DecisionStats;
+
+let stats = DecisionStats {
+    success_count: 2,
+    fail_count: 8,
+    total_success: 10,
+    total_fail: 10,
+};
+
+// fail_freq = 8/10 = 0.8
+// success_freq = 2/10 = 0.2
+// suspiciousness = 0.8 / (0.8 + 0.2) = 0.8
+assert!((stats.tarantula_score() - 0.8).abs() &lt; 0.01);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="error-correlation"><a class="header" href="#error-correlation">Error Correlation</a></h3>
+<p>The <code>correlate_error</code> method combines multiple signals:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let correlation = trainer.correlate_error("E0308", &amp;error_span)?;
+
+// Suspicious decisions (sorted by score)
+for suspicious in &amp;correlation.suspicious_decisions {
+    println!("{} (score={:.2}): {}",
+             suspicious.decision.decision_type,
+             suspicious.suspiciousness,
+             suspicious.reason);
+}
+
+// Fix suggestions
+for suggestion in &amp;correlation.fix_suggestions {
+    println!("Fix: {} (weighted={:.2})",
+             suggestion.pattern.fix_diff,
+             suggestion.weighted_score());
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="dependency-graphs"><a class="header" href="#dependency-graphs">Dependency Graphs</a></h2>
+<p>Track decision chains for root cause analysis:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Build graph from all sessions
+let graph = trainer.build_dependency_graph();
+
+// Graph format: Map&lt;decision_id, Vec&lt;dependency_ids&gt;&gt;
+for (decision, deps) in &amp;graph {
+    if !deps.is_empty() {
+        println!("{} depends on: {:?}", decision, deps);
+    }
+}
+
+// Find root causes (decisions with no dependencies in the suspicious set)
+let roots = trainer.find_root_causes(&amp;error_span);
+for root in roots {
+    println!("Root cause: {} - {}", root.decision_type, root.description);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="weighted-scoring"><a class="header" href="#weighted-scoring">Weighted Scoring</a></h2>
+<p>Fix suggestions are ranked by weighted score:</p>
+<pre><code>weighted_score = retrieval_score * (0.5 + 0.5 * success_rate)
+</code></pre>
+<p>This balances:</p>
+<ul>
+<li><strong>Relevance</strong> (from RAG retrieval score)</li>
+<li><strong>Effectiveness</strong> (from historical success rate)</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let suggestion = store.suggest_fix("E0308", &amp;context, 1)?[0];
+
+println!("Retrieval score: {:.2}", suggestion.score);
+println!("Success rate: {:.0}%", suggestion.pattern.success_rate() * 100.0);
+println!("Weighted score: {:.2}", suggestion.weighted_score());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="persistence-the-apr-advantage"><a class="header" href="#persistence-the-apr-advantage">Persistence: The .apr Advantage</a></h2>
+<p>The <code>.apr</code> format is the key to transitioning from LLM bootstrap to cost-free production.</p>
+<h3 id="why-apr-matters"><a class="header" href="#why-apr-matters">Why .apr Matters</a></h3>
+<p>The <code>.apr</code> file represents <strong>crystallized LLM knowledge</strong>:</p>
+<pre><code>LLM Session ($$$)          .apr File (free)           Production (free)
+┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
+│ Claude/GPT API  │──────▶│ 503 KB binary   │──────▶│ Local inference │
+│ $0.02/minute    │       │ zstd compressed │       │ $0.00/query     │
+│ Network latency │       │ CRC32 verified  │       │ &lt;1ms response   │
+└─────────────────┘       └─────────────────┘       └─────────────────┘
+</code></pre>
+<h3 id="apr-format-recommended"><a class="header" href="#apr-format-recommended">APR Format (Recommended)</a></h3>
+<p>The <code>.apr</code> format uses aprender's binary serialization with zstd compression:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::DecisionPatternStore;
+
+// End of overnight bootstrap session
+let mut store = DecisionPatternStore::new()?;
+
+// ... LLM-assisted pattern accumulation ...
+for pattern in llm_generated_patterns {
+    store.index_fix(pattern)?;
+}
+
+// Crystallize to .apr - this is the money shot
+store.save_apr("~/.citl/decision_patterns.apr")?;
+
+// Next day: production mode (zero API calls)
+let oracle = DecisionPatternStore::load_apr("~/.citl/decision_patterns.apr")?;
+let suggestions = oracle.suggest_fix("E0308", &amp;["type_mismatch".into()], 5)?;
+// suggestions are FREE - no LLM call needed
+<span class="boring">}</span></code></pre></pre>
+<h3 id="contents-of-an-apr-file"><a class="header" href="#contents-of-an-apr-file">Contents of an .apr File</a></h3>
+<pre><code>decision_patterns.apr (503 KB)
+├─ Header
+│   ├─ Magic: "APRN"
+│   ├─ Version: 1
+│   └─ Compression: Zstd
+├─ Metadata
+│   ├─ aprender_version: "0.12.0"
+│   ├─ created_at: timestamp
+│   └─ patterns_count: 150
+├─ PatternStoreConfig
+│   ├─ chunk_size: 256
+│   ├─ embedding_dim: 384
+│   └─ rrf_k: 60.0
+└─ Patterns (serialized)
+    ├─ FixPattern[0]: E0308 → type fix
+    ├─ FixPattern[1]: E0382 → borrow fix
+    └─ ...
+</code></pre>
+<h3 id="json-format-3"><a class="header" href="#json-format-3">JSON Format</a></h3>
+<p>For debugging, cross-tool sharing, or human inspection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Export for inspection
+let json = store.export_json()?;
+std::fs::write("patterns.json", &amp;json)?;
+
+// Import from another system
+let json = std::fs::read_to_string("shared_patterns.json")?;
+store.import_json(&amp;json)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="format-comparison-1"><a class="header" href="#format-comparison-1">Format Comparison</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Use Case</th><th>Size</th><th>Speed</th><th>LLM Cost</th></tr></thead><tbody>
+<tr><td><strong>APR</strong></td><td>Production</td><td>~30% of JSON</td><td>Fast</td><td><strong>$0 forever</strong></td></tr>
+<tr><td>JSON</td><td>Debugging</td><td>Baseline</td><td>Moderate</td><td>N/A</td></tr>
+<tr><td>LLM API</td><td>Bootstrap only</td><td>N/A</td><td>Slow</td><td>$$$/query</td></tr>
+</tbody></table>
+</div>
+<h3 id="complete-bootstrap-to-production-pipeline"><a class="header" href="#complete-bootstrap-to-production-pipeline">Complete Bootstrap-to-Production Pipeline</a></h3>
+<pre><code>┌─────────────────────────────────────────────────────────────────────┐
+│  NIGHT 1: Bootstrap Session                                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  for each example in corpus:                                        │
+│      transpile(example)                                             │
+│      if error:                                                      │
+│          fix = LLM.suggest_fix(error)        # $0.02/call          │
+│          if compiler.validates(fix):                                │
+│              store.index_fix(pattern)                               │
+│                                                                     │
+│  store.save_apr("patterns.apr")              # Crystallize         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  NIGHT 2-10: Incremental Sessions                                    │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  store = load_apr("patterns.apr")            # Start with knowledge │
+│                                                                     │
+│  for each example in corpus:                                        │
+│      transpile(example)                                             │
+│      if error:                                                      │
+│          suggestions = store.suggest_fix(error)  # FREE            │
+│          if suggestions.best().confidence &gt; 0.8:                    │
+│              apply(suggestions.best())           # No LLM needed   │
+│          else:                                                      │
+│              fix = LLM.suggest_fix(error)        # Long-tail only  │
+│              store.index_fix(pattern)                               │
+│                                                                     │
+│  store.save_apr("patterns.apr")              # Update knowledge    │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  DAY 11+: Production Mode                                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  oracle = load_apr("patterns.apr")           # 80%+ coverage       │
+│                                                                     │
+│  for each error:                                                    │
+│      suggestions = oracle.suggest_fix(error) # Always FREE         │
+│      apply(suggestions.best())                                      │
+│                                                                     │
+│  # LLM is no longer needed for common cases                        │
+│  # Only novel long-tail errors require API calls                   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="sharing-patterns-across-teams"><a class="header" href="#sharing-patterns-across-teams">Sharing Patterns Across Teams</a></h3>
+<p>The <code>.apr</code> file is portable:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Team A: Generated patterns from 298 Python→Rust transpilations
+store.save_apr("team_a_patterns.apr")?;
+
+// Team B: Import and benefit immediately
+let mut store = DecisionPatternStore::load_apr("team_a_patterns.apr")?;
+
+// Team B adds their own patterns
+store.index_fix(new_pattern)?;
+store.save_apr("team_b_patterns.apr")?;
+
+// Merge across teams (future: store.merge_apr())
+<span class="boring">}</span></code></pre></pre>
+<h3 id="integration-with-cicd"><a class="header" href="#integration-with-cicd">Integration with CI/CD</a></h3>
+<pre><code class="language-yaml"># .github/workflows/citl.yml
+name: CITL Pattern Update
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 2 AM daily
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Load existing patterns
+        run: |
+          aws s3 cp s3://patterns/decision_patterns.apr ./patterns.apr || true
+
+      - name: Run CITL session
+        run: |
+          cargo run --features citl -- citl-train \
+            --load ./patterns.apr \
+            --corpus ./examples \
+            --save ./patterns.apr
+
+      - name: Upload updated patterns
+        run: |
+          aws s3 cp ./patterns.apr s3://patterns/decision_patterns.apr
+</code></pre>
+<h2 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h2>
+<h3 id="citlconfig"><a class="header" href="#citlconfig">CITLConfig</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::CITLConfig;
+
+let config = CITLConfig {
+    max_suggestions: 5,        // Max fix suggestions per query
+    min_suspiciousness: 0.3,   // Filter low-suspicion decisions
+    enable_dependency_graph: true,
+};
+<span class="boring">}</span></code></pre></pre>
+<h3 id="patternstoreconfig"><a class="header" href="#patternstoreconfig">PatternStoreConfig</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::citl::PatternStoreConfig;
+
+let config = PatternStoreConfig {
+    chunk_size: 256,       // Characters per chunk for RAG
+    embedding_dim: 384,    // Embedding vector dimension
+    rrf_k: 60.0,          // RRF fusion constant
+};
+<span class="boring">}</span></code></pre></pre>
+<h2 id="academic-references"><a class="header" href="#academic-references">Academic References</a></h2>
+<p>The CITL module implements algorithms from peer-reviewed research:</p>
+<h3 id="fault-localization-1"><a class="header" href="#fault-localization-1">Fault Localization</a></h3>
+<ol>
+<li>Jones, J. A., &amp; Harrold, M. J. (2005). "Empirical Evaluation of the Tarantula Automatic Fault-Localization Technique." <em>ASE</em>.</li>
+<li>Zeller, A. (2002). "Isolating cause-effect chains from computer programs." <em>FSE</em>.</li>
+<li>Chilimbi, T. M., et al. (2009). "HOLMES: Effective Statistical Debugging via Efficient Path Profiling." <em>ICSE</em>.</li>
+</ol>
+<h3 id="hybrid-retrieval-1"><a class="header" href="#hybrid-retrieval-1">Hybrid Retrieval</a></h3>
+<ol start="4">
+<li>Cormack, G. V., Clarke, C. L., &amp; Buettcher, S. (2009). "Reciprocal rank fusion outperforms condorcet and individual rank learning methods." <em>SIGIR</em>.</li>
+<li>Lewis, P., et al. (2020). "Retrieval-augmented generation for knowledge-intensive NLP tasks." <em>NeurIPS</em>.</li>
+</ol>
+<h3 id="compiler-feedback-learning-llm-bootstrapping-foundation"><a class="header" href="#compiler-feedback-learning-llm-bootstrapping-foundation">Compiler-Feedback Learning (LLM Bootstrapping Foundation)</a></h3>
+<ol start="6">
+<li>Wang, B., et al. (2022). "Compilable Neural Code Generation with Compiler Feedback." <em>ACL</em>.</li>
+<li>Yasunaga, M., &amp; Liang, P. (2020). "Graph-based, Self-Supervised Program Repair from Diagnostic Feedback." <em>ICML</em>.</li>
+<li>Dou, S., et al. (2024). "StepCoder: Improve Code Generation with Reinforcement Learning from Compiler Feedback." <em>arXiv:2402.01391</em>.</li>
+<li>Le, H., et al. (2022). "CodeRL: Mastering Code Generation through Pretrained Models and Deep Reinforcement Learning." <em>NeurIPS</em>.</li>
+</ol>
+<h3 id="knowledge-distillation-llm-to-local-oracle"><a class="header" href="#knowledge-distillation-llm-to-local-oracle">Knowledge Distillation (LLM to Local Oracle)</a></h3>
+<ol start="10">
+<li>Hinton, G., Vinyals, O., &amp; Dean, J. (2015). "Distilling the Knowledge in a Neural Network." <em>arXiv:1503.02531</em>.</li>
+<li>Sanh, V., et al. (2019). "DistilBERT, a distilled version of BERT." <em>arXiv:1910.01108</em>.</li>
+</ol>
+<h2 id="example-complete-citl-workflow"><a class="header" href="#example-complete-citl-workflow">Example: Complete CITL Workflow</a></h2>
+<pre><pre class="playground"><code class="language-rust">use entrenar::citl::{
+    DecisionCITL, DecisionTrace, CompilationOutcome, SourceSpan, FixPattern,
+};
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let mut trainer = DecisionCITL::new()?;
+
+    // Simulate compilation sessions from CI/CD
+    // Session 1: Type inference failure
+    trainer.ingest_session(
+        vec![
+            DecisionTrace::new("d1", "type_inference", "Inferred i32")
+                .with_span(SourceSpan::line("main.rs", 10)),
+        ],
+        CompilationOutcome::failure(
+            vec!["E0308".to_string()],
+            vec![SourceSpan::line("main.rs", 10)],
+            vec!["expected &amp;str, found i32".to_string()],
+        ),
+        Some("- let x: i32 = s;\n+ let x: &amp;str = s;".to_string()),
+    )?;
+
+    // Session 2: Same pattern
+    trainer.ingest_session(
+        vec![
+            DecisionTrace::new("d2", "type_inference", "Inferred i32")
+                .with_span(SourceSpan::line("lib.rs", 25)),
+        ],
+        CompilationOutcome::failure(
+            vec!["E0308".to_string()],
+            vec![SourceSpan::line("lib.rs", 25)],
+            vec![],
+        ),
+        None,
+    )?;
+
+    // Session 3: Successful compilation
+    trainer.ingest_session(
+        vec![
+            DecisionTrace::new("d3", "type_inference", "Inferred &amp;str correctly")
+                .with_span(SourceSpan::line("main.rs", 10)),
+        ],
+        CompilationOutcome::success(),
+        None,
+    )?;
+
+    // Analyze
+    println!("Sessions: {} success, {} failure",
+             trainer.success_count(),
+             trainer.failure_count());
+
+    println!("\nTop suspicious decision types:");
+    for (dtype, score) in trainer.top_suspicious_types(3) {
+        println!("  {}: {:.2}", dtype, score);
+    }
+
+    // Correlate a new error
+    let correlation = trainer.correlate_error(
+        "E0308",
+        &amp;SourceSpan::line("main.rs", 10)
+    )?;
+
+    println!("\nSuggested fixes for E0308:");
+    for suggestion in &amp;correlation.fix_suggestions {
+        println!("  [score={:.2}] {}",
+                 suggestion.weighted_score(),
+                 suggestion.pattern.fix_diff.lines().next().unwrap_or(""));
+    }
+
+    // Export patterns for reuse
+    let json = trainer.pattern_store().export_json()?;
+    println!("\nExported {} patterns", trainer.pattern_store().len());
+
+    Ok(())
+}</code></pre></pre>
+<h2 id="performance-considerations-1"><a class="header" href="#performance-considerations-1">Performance Considerations</a></h2>
+<ul>
+<li><strong>Pattern indexing</strong>: O(n) for RAG chunking and embedding</li>
+<li><strong>Pattern query</strong>: O(log n) for BM25 + dense retrieval</li>
+<li><strong>Session ingestion</strong>: O(d) where d = number of decisions</li>
+<li><strong>Memory</strong>: Patterns stored in HashMap, sessions in Vec</li>
+</ul>
+<p>For large-scale usage:</p>
+<ul>
+<li>Consider periodic pattern cleanup (remove low success rate)</li>
+<li>Use JSON export/import for persistence across runs</li>
+<li>Tune RRF k parameter based on corpus size</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="autograd-specification"><a class="header" href="#autograd-specification">Autograd Specification</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="optimizer-specification"><a class="header" href="#optimizer-specification">Optimizer Specification</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="lora-specification"><a class="header" href="#lora-specification">LoRA Specification</a></h1>

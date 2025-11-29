@@ -158,15 +158,323 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="trainer-api"><a class="header" href="#trainer-api">Trainer Api</a></h1>
-<p><strong>Content to be added.</strong></p>
-<p>This chapter will cover:</p>
+                        <h1 id="trainer-api"><a class="header" href="#trainer-api">Trainer API</a></h1>
+<p>The <code>Trainer</code> struct provides a high-level abstraction for training neural networks with full callback support, automatic metrics tracking, and gradient management.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{Trainer, TrainConfig, Batch, MSELoss, EarlyStopping};
+use entrenar::optim::Adam;
+use entrenar::Tensor;
+
+// Create trainer
+let params = vec![Tensor::zeros(784 * 128, true)];
+let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+let config = TrainConfig::default();
+
+let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+trainer.set_loss(Box::new(MSELoss));
+
+// Add callbacks
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+
+// Train
+let result = trainer.train(100, || batches.clone(), |x| model.forward(x));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="trainer-struct"><a class="header" href="#trainer-struct">Trainer Struct</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Trainer {
+    params: Vec&lt;Tensor&gt;,           // Model parameters
+    optimizer: Box&lt;dyn Optimizer&gt;, // Optimizer instance
+    loss_fn: Option&lt;Box&lt;dyn LossFn&gt;&gt;, // Loss function
+    config: TrainConfig,           // Training configuration
+    pub metrics: MetricsTracker,   // Metrics tracking
+    callbacks: CallbackManager,    // Callback system
+    best_loss: Option&lt;f32&gt;,        // Best loss achieved
+    start_time: Option&lt;Instant&gt;,   // Training start time
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="creating-a-trainer"><a class="header" href="#creating-a-trainer">Creating a Trainer</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let trainer = Trainer::new(params, optimizer, config);
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Parameters:</strong></p>
 <ul>
-<li>Key concepts and implementation details</li>
-<li>Code examples from the entrenar codebase</li>
-<li>Best practices and usage guidelines</li>
+<li><code>params: Vec&lt;Tensor&gt;</code> - Model parameters to optimize (must have <code>requires_grad = true</code>)</li>
+<li><code>optimizer: Box&lt;dyn Optimizer&gt;</code> - Optimizer instance (SGD, Adam, AdamW)</li>
+<li><code>config: TrainConfig</code> - Training configuration</li>
 </ul>
-<p>Please check back later for complete content.</p>
+<h2 id="setting-the-loss-function"><a class="header" href="#setting-the-loss-function">Setting the Loss Function</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>trainer.set_loss(Box::new(MSELoss));
+// or
+trainer.set_loss(Box::new(CrossEntropyLoss));
+<span class="boring">}</span></code></pre></pre>
+<p>The loss function must be set before calling <code>train()</code> or <code>train_step()</code>.</p>
+<h2 id="adding-callbacks"><a class="header" href="#adding-callbacks">Adding Callbacks</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback};
+
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+trainer.add_callback(CheckpointCallback::new("./checkpoints"));
+trainer.add_callback(ProgressCallback::new(10));
+trainer.add_callback(MonitorCallback::new());
+<span class="boring">}</span></code></pre></pre>
+<p>See <a href="#callback-system">Callback System</a> for details on available callbacks.</p>
+<h2 id="training-methods"><a class="header" href="#training-methods">Training Methods</a></h2>
+<h3 id="train---full-training-loop"><a class="header" href="#train---full-training-loop"><code>train()</code> - Full Training Loop</a></h3>
+<p>The primary method for training with full callback support:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn train&lt;F, B, I&gt;(
+    &amp;mut self,
+    max_epochs: usize,
+    batch_fn: B,
+    forward_fn: F,
+) -&gt; TrainResult
+where
+    F: Fn(&amp;Tensor) -&gt; Tensor,
+    B: Fn() -&gt; I,
+    I: IntoIterator&lt;Item = Batch&gt;,
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>max_epochs</code> - Maximum number of epochs to train</li>
+<li><code>batch_fn</code> - Function that returns batches for each epoch</li>
+<li><code>forward_fn</code> - Model forward pass (inputs → predictions)</li>
+</ul>
+<p><strong>Returns:</strong> <code>TrainResult</code> with training outcome</p>
+<p><strong>Example:</strong></p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let batches = vec![
+    Batch::new(inputs1, targets1),
+    Batch::new(inputs2, targets2),
+];
+
+let result = trainer.train(
+    100,                          // max epochs
+    || batches.clone(),           // batch function
+    |x| model.forward(x),         // forward function
+);
+
+println!("Final epoch: {}", result.final_epoch);
+println!("Final loss: {:.4}", result.final_loss);
+println!("Best loss: {:.4}", result.best_loss);
+println!("Stopped early: {}", result.stopped_early);
+println!("Elapsed: {:.2}s", result.elapsed_secs);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="train_epoch---single-epoch"><a class="header" href="#train_epoch---single-epoch"><code>train_epoch()</code> - Single Epoch</a></h3>
+<p>Train for one epoch without callback overhead:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn train_epoch&lt;F, I&gt;(&amp;mut self, batches: I, forward_fn: F) -&gt; f32
+where
+    F: Fn(&amp;Tensor) -&gt; Tensor,
+    I: IntoIterator&lt;Item = Batch&gt;,
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Returns:</strong> Average loss for the epoch</p>
+<h3 id="train_step---single-batch"><a class="header" href="#train_step---single-batch"><code>train_step()</code> - Single Batch</a></h3>
+<p>Train on a single batch:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn train_step&lt;F&gt;(&amp;mut self, batch: &amp;Batch, forward_fn: F) -&gt; f32
+where
+    F: FnOnce(&amp;Tensor) -&gt; Tensor,
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Returns:</strong> Loss for this batch</p>
+<h2 id="trainresult"><a class="header" href="#trainresult">TrainResult</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Debug, Clone)]
+pub struct TrainResult {
+    pub final_epoch: usize,    // Last epoch completed
+    pub final_loss: f32,       // Loss at final epoch
+    pub best_loss: f32,        // Best loss achieved
+    pub stopped_early: bool,   // Whether early stopping triggered
+    pub elapsed_secs: f64,     // Total training time
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="callback-system"><a class="header" href="#callback-system">Callback System</a></h2>
+<p>The trainer fires callbacks at six points in the training lifecycle:</p>
+<div class="table-wrapper"><table><thead><tr><th>Event</th><th>Method</th><th>When</th></tr></thead><tbody>
+<tr><td><code>on_train_begin</code></td><td><code>CallbackAction</code></td><td>Before first epoch</td></tr>
+<tr><td><code>on_train_end</code></td><td><code>()</code></td><td>After training completes</td></tr>
+<tr><td><code>on_epoch_begin</code></td><td><code>CallbackAction</code></td><td>Before each epoch</td></tr>
+<tr><td><code>on_epoch_end</code></td><td><code>CallbackAction</code></td><td>After each epoch</td></tr>
+<tr><td><code>on_step_begin</code></td><td><code>CallbackAction</code></td><td>Before each batch</td></tr>
+<tr><td><code>on_step_end</code></td><td><code>CallbackAction</code></td><td>After each batch</td></tr>
+</tbody></table>
+</div>
+<h3 id="callbackaction"><a class="header" href="#callbackaction">CallbackAction</a></h3>
+<p>Callbacks return an action that controls training flow:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum CallbackAction {
+    Continue,   // Continue training normally
+    Stop,       // Stop training immediately
+    SkipEpoch,  // Skip to next epoch (epoch_begin only)
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="callbackcontext"><a class="header" href="#callbackcontext">CallbackContext</a></h3>
+<p>Callbacks receive context with current training state:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CallbackContext {
+    pub epoch: usize,           // Current epoch (0-indexed)
+    pub max_epochs: usize,      // Maximum epochs
+    pub step: usize,            // Current step in epoch
+    pub steps_per_epoch: usize, // Total steps per epoch
+    pub global_step: usize,     // Total steps across all epochs
+    pub loss: f32,              // Current loss
+    pub lr: f32,                // Current learning rate
+    pub best_loss: Option&lt;f32&gt;, // Best loss so far
+    pub val_loss: Option&lt;f32&gt;,  // Validation loss (if available)
+    pub elapsed_secs: f64,      // Time since training started
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="built-in-callbacks"><a class="header" href="#built-in-callbacks">Built-in Callbacks</a></h3>
+<h4 id="earlystopping"><a class="header" href="#earlystopping">EarlyStopping</a></h4>
+<p>Stop training when loss stops improving:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let es = EarlyStopping::new(
+    5,      // patience: epochs without improvement
+    0.001,  // min_delta: minimum improvement threshold
+);
+trainer.add_callback(es);
+<span class="boring">}</span></code></pre></pre>
+<h4 id="checkpointcallback"><a class="header" href="#checkpointcallback">CheckpointCallback</a></h4>
+<p>Save model checkpoints:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let ckpt = CheckpointCallback::new("./checkpoints")
+    .save_every(5)      // Save every 5 epochs
+    .save_best(true);   // Also save best model
+trainer.add_callback(ckpt);
+<span class="boring">}</span></code></pre></pre>
+<h4 id="progresscallback"><a class="header" href="#progresscallback">ProgressCallback</a></h4>
+<p>Log training progress:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let progress = ProgressCallback::new(10);  // Log every 10 steps
+trainer.add_callback(progress);
+<span class="boring">}</span></code></pre></pre>
+<h4 id="monitorcallback"><a class="header" href="#monitorcallback">MonitorCallback</a></h4>
+<p>Real-time monitoring with NaN/Inf detection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let monitor = MonitorCallback::new();
+trainer.add_callback(monitor);
+// Automatically stops training on NaN/Inf loss
+<span class="boring">}</span></code></pre></pre>
+<h3 id="custom-callbacks"><a class="header" href="#custom-callbacks">Custom Callbacks</a></h3>
+<p>Implement <code>TrainerCallback</code> for custom behavior:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{TrainerCallback, CallbackContext, CallbackAction};
+
+struct CustomCallback {
+    // your state
+}
+
+impl TrainerCallback for CustomCallback {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        println!("Epoch {} complete, loss: {:.4}", ctx.epoch, ctx.loss);
+
+        if ctx.loss &gt; 100.0 {
+            CallbackAction::Stop  // Loss exploded
+        } else {
+            CallbackAction::Continue
+        }
+    }
+
+    fn name(&amp;self) -&gt; &amp;str {
+        "CustomCallback"
+    }
+
+    // Other methods have default implementations that return Continue
+}
+
+trainer.add_callback(CustomCallback { /* ... */ });
+<span class="boring">}</span></code></pre></pre>
+<h2 id="accessing-trainer-state"><a class="header" href="#accessing-trainer-state">Accessing Trainer State</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Learning rate
+let lr = trainer.lr();
+trainer.set_lr(0.0001);
+
+// Parameters
+let params = trainer.params();
+let params_mut = trainer.params_mut();
+
+// Callbacks
+let callbacks = trainer.callbacks();
+let callbacks_mut = trainer.callbacks_mut();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use entrenar::train::{
+    Trainer, TrainConfig, TrainResult, Batch, MSELoss,
+    EarlyStopping, CheckpointCallback, ProgressCallback, MonitorCallback,
+};
+use entrenar::optim::Adam;
+use entrenar::Tensor;
+
+fn main() {
+    // Model parameters
+    let params = vec![
+        Tensor::randn(784 * 256, true),  // Layer 1
+        Tensor::randn(256 * 10, true),   // Layer 2
+    ];
+
+    // Optimizer
+    let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+
+    // Config
+    let config = TrainConfig::new()
+        .with_max_grad_norm(1.0)
+        .with_log_interval(100);
+
+    // Create trainer
+    let mut trainer = Trainer::new(params, Box::new(optimizer), config);
+    trainer.set_loss(Box::new(MSELoss));
+
+    // Add callbacks
+    trainer.add_callback(EarlyStopping::new(10, 0.0001));
+    trainer.add_callback(CheckpointCallback::new("./ckpt").save_every(5));
+    trainer.add_callback(ProgressCallback::new(50));
+    trainer.add_callback(MonitorCallback::new());
+
+    // Training data
+    let batches: Vec&lt;Batch&gt; = load_training_data();
+
+    // Train
+    let result: TrainResult = trainer.train(
+        100,
+        || batches.clone(),
+        |x| forward_pass(x, trainer.params()),
+    );
+
+    // Results
+    println!("Training complete!");
+    println!("  Epochs: {}", result.final_epoch);
+    println!("  Final loss: {:.6}", result.final_loss);
+    println!("  Best loss: {:.6}", result.best_loss);
+    println!("  Early stopped: {}", result.stopped_early);
+    println!("  Time: {:.1}s", result.elapsed_secs);
+}</code></pre></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./train-config.html">Train Config</a> - Configuration options</li>
+<li><a href="./early-stopping.html">Early Stopping</a> - Early stopping details</li>
+<li><a href="./checkpointing.html">Checkpointing</a> - Checkpoint management</li>
+<li><a href="./loss-functions.html">Loss Functions</a> - Available loss functions</li>
+</ul>
 
                     </main>
 
@@ -176,7 +484,7 @@
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../training/train-config.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../training/callback-system.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -190,7 +498,7 @@
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../training/train-config.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../training/callback-system.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

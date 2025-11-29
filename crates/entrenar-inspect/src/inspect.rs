@@ -171,8 +171,7 @@ fn generate_mock_tensors(total_params: u64) -> Vec<TensorInfo> {
     };
 
     let num_layers = (total_params / (hidden_dim as u64 * hidden_dim as u64 * 12))
-        .max(1)
-        .min(80) as usize;
+        .clamp(1, 80) as usize;
     let vocab_size = 32000;
 
     let mut tensors = Vec::new();
@@ -191,7 +190,7 @@ fn generate_mock_tensors(total_params: u64) -> Vec<TensorInfo> {
         // Q, K, V, O projections
         for proj in &["q_proj", "k_proj", "v_proj", "o_proj"] {
             tensors.push(TensorInfo {
-                name: format!("model.layers.{}.self_attn.{}.weight", i, proj),
+                name: format!("model.layers.{i}.self_attn.{proj}.weight"),
                 shape: vec![hidden_dim, hidden_dim],
                 dtype: DataType::F16,
                 num_elements: (hidden_dim * hidden_dim) as u64,
@@ -208,7 +207,7 @@ fn generate_mock_tensors(total_params: u64) -> Vec<TensorInfo> {
                 vec![intermediate, hidden_dim]
             };
             tensors.push(TensorInfo {
-                name: format!("model.layers.{}.mlp.{}.weight", i, proj),
+                name: format!("model.layers.{i}.mlp.{proj}.weight"),
                 shape: shape.clone(),
                 dtype: DataType::F16,
                 num_elements: (shape[0] * shape[1]) as u64,

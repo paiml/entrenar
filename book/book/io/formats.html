@@ -158,15 +158,86 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="formats"><a class="header" href="#formats">Formats</a></h1>
-<p><strong>Content to be added.</strong></p>
-<p>This chapter will cover:</p>
+                        <h1 id="supported-formats"><a class="header" href="#supported-formats">Supported Formats</a></h1>
+<p>Entrenar supports multiple model serialization formats for different use cases.</p>
+<h2 id="format-comparison"><a class="header" href="#format-comparison">Format Comparison</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>Binary</th><th>HF Compatible</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>SafeTensors</td><td><code>.safetensors</code></td><td>Yes</td><td>Yes</td><td>Production, sharing</td></tr>
+<tr><td>JSON</td><td><code>.json</code></td><td>No</td><td>No</td><td>Debugging, inspection</td></tr>
+<tr><td>YAML</td><td><code>.yaml</code></td><td>No</td><td>No</td><td>Configuration</td></tr>
+<tr><td>GGUF</td><td><code>.gguf</code></td><td>Yes</td><td>No</td><td>Quantized models</td></tr>
+</tbody></table>
+</div>
+<h2 id="choosing-a-format"><a class="header" href="#choosing-a-format">Choosing a Format</a></h2>
+<h3 id="safetensors-recommended"><a class="header" href="#safetensors-recommended">SafeTensors (Recommended)</a></h3>
+<p>Use SafeTensors for:</p>
 <ul>
-<li>Key concepts and implementation details</li>
-<li>Code examples from the entrenar codebase</li>
-<li>Best practices and usage guidelines</li>
+<li>Production deployments</li>
+<li>Uploading to HuggingFace Hub</li>
+<li>Large models (supports memory mapping)</li>
+<li>Security-sensitive applications</li>
 </ul>
-<p>Please check back later for complete content.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = SaveConfig::new(ModelFormat::SafeTensors);
+save_model(&amp;model, "model.safetensors", &amp;config)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="json"><a class="header" href="#json">JSON</a></h3>
+<p>Use JSON for:</p>
+<ul>
+<li>Debugging and inspection</li>
+<li>Small models</li>
+<li>Human-readable output</li>
+<li>Version control diffs</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
+save_model(&amp;model, "model.json", &amp;config)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="yaml"><a class="header" href="#yaml">YAML</a></h3>
+<p>Use YAML for:</p>
+<ul>
+<li>Configuration files</li>
+<li>Human-friendly syntax</li>
+<li>Small models with metadata focus</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = SaveConfig::new(ModelFormat::Yaml);
+save_model(&amp;model, "model.yaml", &amp;config)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="gguf-future"><a class="header" href="#gguf-future">GGUF (Future)</a></h3>
+<p>GGUF format will be supported for:</p>
+<ul>
+<li>Quantized model export</li>
+<li>LLaMA.cpp compatibility</li>
+<li>Integration with Realizar crate</li>
+</ul>
+<h2 id="format-detection"><a class="header" href="#format-detection">Format Detection</a></h2>
+<p>Format is auto-detected from file extension:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Auto-detect based on extension
+let model = load_model("model.safetensors")?;  // SafeTensors
+let model = load_model("model.json")?;         // JSON
+let model = load_model("model.yaml")?;         // YAML
+let model = load_model("config.yml")?;         // YAML (alternate extension)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-characteristics"><a class="header" href="#performance-characteristics">Performance Characteristics</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>100MB Save</th><th>100MB Load</th><th>Compression</th></tr></thead><tbody>
+<tr><td>SafeTensors</td><td>~100ms</td><td>~50ms</td><td>1x</td></tr>
+<tr><td>JSON</td><td>~3s</td><td>~2.5s</td><td>~0.33x</td></tr>
+<tr><td>YAML</td><td>~4s</td><td>~3.5s</td><td>~0.29x</td></tr>
+</tbody></table>
+</div>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="safetensors-format.html">SafeTensors Format</a> - Detailed SafeTensors documentation</li>
+<li><a href="json-format.html">JSON Format</a> - JSON specifics</li>
+<li><a href="yaml-format.html">YAML Format</a> - YAML specifics</li>
+<li><a href="gguf-format.html">GGUF Format</a> - Future GGUF support</li>
+</ul>
 
                     </main>
 
@@ -176,7 +247,7 @@
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../io/json-format.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../io/safetensors-format.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -190,7 +261,7 @@
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../io/json-format.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../io/safetensors-format.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

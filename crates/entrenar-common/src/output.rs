@@ -169,7 +169,7 @@ pub fn format_bytes(bytes: u64) -> String {
     } else if bytes >= KB {
         format!("{:.1} KB", bytes as f64 / KB as f64)
     } else {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     }
 }
 
@@ -189,20 +189,21 @@ pub fn format_number(n: u64) -> String {
 /// Format a duration in human-readable form.
 pub fn format_duration(seconds: f64) -> String {
     if seconds < 60.0 {
-        format!("{:.1}s", seconds)
+        format!("{seconds:.1}s")
     } else if seconds < 3600.0 {
         let mins = (seconds / 60.0).floor();
         let secs = seconds % 60.0;
-        format!("{}m {:.0}s", mins, secs)
+        format!("{mins}m {secs:.0}s")
     } else {
         let hours = (seconds / 3600.0).floor();
         let mins = ((seconds % 3600.0) / 60.0).floor();
-        format!("{}h {}m", hours, mins)
+        format!("{hours}h {mins}m")
     }
 }
 
 /// Structured output that can be rendered as table or JSON.
 #[derive(Debug, Clone, Serialize)]
+#[allow(clippy::type_complexity)]
 pub struct StructuredOutput<T: Serialize> {
     pub data: T,
     #[serde(skip)]

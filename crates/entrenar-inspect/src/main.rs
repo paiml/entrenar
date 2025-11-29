@@ -214,7 +214,7 @@ fn memory_command(
 
     let model_bytes = info.size_bytes;
     let activation_bytes =
-        (batch_size as u64) * (seq_len as u64) * (info.architecture.hidden_dim as u64) * 32 * 2;
+        u64::from(batch_size) * (seq_len as u64) * (info.architecture.hidden_dim as u64) * 32 * 2;
     let optimizer_bytes = model_bytes * 4; // Adam states
     let total_bytes = model_bytes + activation_bytes + optimizer_bytes;
 
@@ -233,8 +233,7 @@ fn memory_command(
             println!(
                 "{}",
                 styles::header(&format!(
-                    "Memory Estimate (batch={}, seq={})",
-                    batch_size, seq_len
+                    "Memory Estimate (batch={batch_size}, seq={seq_len})"
                 ))
             );
         }
@@ -254,7 +253,7 @@ fn memory_command(
 }
 
 fn validate_command(
-    path: &PathBuf,
+    path: &std::path::Path,
     strict: bool,
     cli: &entrenar_common::Cli,
 ) -> entrenar_common::Result<()> {
@@ -288,9 +287,9 @@ fn validate_command(
 }
 
 fn convert_command(
-    input: &PathBuf,
+    input: &std::path::Path,
     to: &str,
-    output: &PathBuf,
+    output: &std::path::Path,
     quantize: &str,
     cli: &entrenar_common::Cli,
 ) -> entrenar_common::Result<()> {

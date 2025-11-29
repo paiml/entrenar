@@ -128,7 +128,7 @@ impl std::str::FromStr for Quantization {
             "q8_0" | "q8" | "8bit" => Ok(Self::Q8_0),
             "f16" | "fp16" | "half" => Ok(Self::F16),
             "none" => Err("No quantization".to_string()),
-            _ => Err(format!("Unknown quantization: {}. Use: q4_0, q8_0, f16", s)),
+            _ => Err(format!("Unknown quantization: {s}. Use: q4_0, q8_0, f16")),
         }
     }
 }

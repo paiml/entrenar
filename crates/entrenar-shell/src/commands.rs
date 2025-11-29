@@ -173,7 +173,7 @@ fn parse_export(args: &[&str]) -> Result<Command> {
 }
 
 fn parse_help(args: &[&str]) -> Result<Command> {
-    let topic = args.first().map(|s| s.to_string());
+    let topic = args.first().map(ToString::to_string);
     Ok(Command::Help { topic })
 }
 
@@ -193,7 +193,7 @@ pub fn execute(cmd: &Command, state: &mut SessionState) -> Result<String> {
         Command::Export { format, path } => execute_export(format, path, state),
         Command::History => execute_history(state),
         Command::Help { topic } => execute_help(topic.as_deref()),
-        Command::Clear => Ok("".to_string()),
+        Command::Clear => Ok(String::new()),
         Command::Quit => Ok("Goodbye!".to_string()),
         Command::Unknown { input } => {
             if input.is_empty() {
@@ -201,7 +201,7 @@ pub fn execute(cmd: &Command, state: &mut SessionState) -> Result<String> {
             } else {
                 Err(EntrenarError::ConfigValue {
                     field: "command".into(),
-                    message: format!("Unknown command: {}", input),
+                    message: format!("Unknown command: {input}"),
                     suggestion: "Type 'help' for available commands".into(),
                 })
             }
@@ -220,7 +220,7 @@ pub fn execute(cmd: &Command, state: &mut SessionState) -> Result<String> {
             | Command::Quit
             | Command::Unknown { .. }
     ) {
-        let cmd_str = format!("{:?}", cmd);
+        let cmd_str = format!("{cmd:?}");
         state.add_to_history(HistoryEntry::new(cmd_str, duration_ms, success));
         state.record_command(duration_ms, success);
     }
@@ -245,7 +245,7 @@ fn execute_fetch(model_id: &str, role: ModelRole, state: &mut SessionState) -> R
     } else if role == ModelRole::Student {
         "student"
     } else {
-        model_id.split('/').last().unwrap_or(model_id)
+        model_id.split('/').next_back().unwrap_or(model_id)
     };
 
     state.add_model(name.to_string(), model.clone());
@@ -313,7 +313,7 @@ fn execute_memory(
 
     let total_params: u64 = state.loaded_models().values().map(|m| m.parameters).sum();
     let model_mem = total_params * 2; // FP16
-    let activation_mem = (batch as u64) * (seq as u64) * 4096 * 32 * 2;
+    let activation_mem = u64::from(batch) * (seq as u64) * 4096 * 32 * 2;
     let total = model_mem + activation_mem;
 
     Ok(format!(
@@ -334,7 +334,7 @@ fn execute_set(key: &str, value: &str, state: &mut SessionState) -> Result<Strin
                 suggestion: "Use a positive integer".into(),
             })?;
             state.preferences_mut().default_batch_size = v;
-            Ok(format!("Set batch_size = {}", v))
+            Ok(format!("Set batch_size = {v}"))
         }
         "seq_len" | "seq" => {
             let v: usize = value.parse().map_err(|_| EntrenarError::ConfigValue {
@@ -343,7 +343,7 @@ fn execute_set(key: &str, value: &str, state: &mut SessionState) -> Result<Strin
                 suggestion: "Use a positive integer".into(),
             })?;
             state.preferences_mut().default_seq_len = v;
-            Ok(format!("Set seq_len = {}", v))
+            Ok(format!("Set seq_len = {v}"))
         }
         _ => Err(EntrenarError::ConfigValue {
             field: key.into(),
@@ -391,7 +391,7 @@ fn execute_distill(dry_run: bool, state: &SessionState) -> Result<String> {
 }
 
 fn execute_export(format: &str, path: &str, _state: &SessionState) -> Result<String> {
-    Ok(format!("Exported to {} in {} format", path, format))
+    Ok(format!("Exported to {path} in {format} format"))
 }
 
 fn execute_history(state: &SessionState) -> Result<String> {

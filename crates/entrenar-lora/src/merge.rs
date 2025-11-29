@@ -189,16 +189,16 @@ pub fn analyze_adapter(lora_a: &[f32], lora_b: &[f32], alpha: f32, rank: u32) ->
     // Simplified effective rank estimation
     let effective_rank = (rank as f32) * (1.0 - sparsity as f32);
 
-    let frobenius_norm = (lora_a.iter().map(|x| x * x).sum::<f32>()
+    let frobenius_norm = f64::from((lora_a.iter().map(|x| x * x).sum::<f32>()
         + lora_b.iter().map(|x| x * x).sum::<f32>())
-    .sqrt() as f64;
+    .sqrt());
 
     AdapterAnalysis {
         rank,
         alpha,
         scale: alpha / rank as f32,
         effective_rank,
-        rank_utilization: (effective_rank / rank as f32) as f64 * 100.0,
+        rank_utilization: f64::from(effective_rank / rank as f32) * 100.0,
         sparsity: sparsity * 100.0,
         frobenius_norm,
     }

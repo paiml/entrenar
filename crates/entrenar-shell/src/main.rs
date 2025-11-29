@@ -29,7 +29,7 @@ fn main() {
                 s
             }
             Err(e) => {
-                eprintln!("Failed to load session: {}", e);
+                eprintln!("Failed to load session: {e}");
                 SessionState::new()
             }
         }
@@ -44,16 +44,16 @@ fn main() {
             Ok(parsed) => match entrenar_shell::commands::execute(&parsed, &mut state) {
                 Ok(output) => {
                     if !output.is_empty() {
-                        println!("{}", output);
+                        println!("{output}");
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                     std::process::exit(1);
                 }
             },
             Err(e) => {
-                eprintln!("Parse error: {}", e);
+                eprintln!("Parse error: {e}");
                 std::process::exit(1);
             }
         }
@@ -62,7 +62,7 @@ fn main() {
 
     // Start interactive REPL
     if let Err(e) = start_with_state(state) {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }

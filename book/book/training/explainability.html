@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Overview - Entrenar - Training &amp; Optimization Library</title>
+        <title>Explainability - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/io/overview.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/training/explainability.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,212 +158,242 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="model-io-overview"><a class="header" href="#model-io-overview">Model I/O Overview</a></h1>
-<p><strong>Model I/O</strong> provides save/load functionality for neural network models with support for multiple serialization formats.</p>
-<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
-<p>After training a model, you need to:</p>
-<ul>
-<li><strong>Save model weights</strong> for deployment</li>
-<li><strong>Load trained models</strong> for inference or continued training</li>
-<li><strong>Share models</strong> with collaborators</li>
-<li><strong>Version control</strong> model checkpoints</li>
-<li><strong>Metadata tracking</strong> (hyperparameters, training config, etc.)</li>
-</ul>
-<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
-<p>Entrenar's Model I/O system (from <code>src/io/</code>) provides:</p>
+                        <h1 id="explainability-callback"><a class="header" href="#explainability-callback">Explainability Callback</a></h1>
+<p>The <code>ExplainabilityCallback</code> integrates aprender's interpret module into the training loop, providing feature attribution and importance analysis during model evaluation.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::io::{save_model, load_model, Model, ModelMetadata, SaveConfig, ModelFormat};
+</span>use entrenar::train::{
+    ExplainabilityCallback, ExplainMethod, FeatureImportanceResult,
+};
 
-// Create model with metadata
-let metadata = ModelMetadata::new("my-model", "transformer")
-    .with_version("0.1.0")
-    .with_custom("learning_rate", 0.001);
+// Create callback with chosen method
+let mut explainer = ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
+    .with_top_k(5)           // Track top 5 features
+    .with_eval_samples(100)  // Use 100 samples for evaluation
+    .with_feature_names(vec!["age".into(), "income".into(), "score".into()]);
 
-let model = Model::new(metadata, parameters);
-
-// Save to JSON
-let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
-save_model(&amp;model, "model.json", &amp;config)?;
-
-// Load (format auto-detected from extension)
-let loaded = load_model("model.json")?;
+trainer.add_callback(explainer);
 <span class="boring">}</span></code></pre></pre>
-<h2 id="supported-formats"><a class="header" href="#supported-formats">Supported Formats</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>Use Case</th><th>Status</th></tr></thead><tbody>
-<tr><td><strong>SafeTensors</strong></td><td><code>.safetensors</code></td><td>Production, HuggingFace Hub</td><td>✅ Recommended</td></tr>
-<tr><td><strong>JSON</strong></td><td><code>.json</code></td><td>Human-readable, debugging</td><td>✅ Implemented</td></tr>
-<tr><td><strong>YAML</strong></td><td><code>.yaml</code>, <code>.yml</code></td><td>Configuration-friendly</td><td>✅ Implemented</td></tr>
-<tr><td><strong>GGUF</strong></td><td><code>.gguf</code></td><td>LLaMA-compatible format</td><td>⚠️ Placeholder (future Realizar integration)</td></tr>
+<h2 id="available-methods"><a class="header" href="#available-methods">Available Methods</a></h2>
+<h3 id="explainmethod-enum"><a class="header" href="#explainmethod-enum">ExplainMethod Enum</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub enum ExplainMethod {
+    /// Permutation importance - fast, model-agnostic
+    PermutationImportance,
+    /// Integrated gradients - for differentiable models
+    IntegratedGradients,
+    /// Saliency maps - gradient-based attribution
+    Saliency,
+}
+<span class="boring">}</span></code></pre></pre>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Speed</th><th>Use Case</th></tr></thead><tbody>
+<tr><td><code>PermutationImportance</code></td><td>Fast</td><td>Any model, production monitoring</td></tr>
+<tr><td><code>IntegratedGradients</code></td><td>Medium</td><td>Neural networks, precise attribution</td></tr>
+<tr><td><code>Saliency</code></td><td>Fast</td><td>Neural networks, gradient visualization</td></tr>
 </tbody></table>
 </div>
-<h3 id="safetensors-format-recommended"><a class="header" href="#safetensors-format-recommended">SafeTensors Format (Recommended)</a></h3>
-<p>The recommended format for production use. Provides security (no arbitrary code
-execution), efficiency (zero-copy loading), and HuggingFace Hub compatibility:</p>
+<h2 id="computing-attributions"><a class="header" href="#computing-attributions">Computing Attributions</a></h2>
+<p>The callback provides wrapper methods around aprender's interpret module:</p>
+<h3 id="permutation-importance"><a class="header" href="#permutation-importance">Permutation Importance</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Save as SafeTensors
-let config = SaveConfig::new(ModelFormat::SafeTensors);
-save_model(&amp;model, "model.safetensors", &amp;config)?;
+</span>use aprender::primitives::Vector;
 
-// Load (format auto-detected)
-let model = load_model("model.safetensors")?;
+let x: Vec&lt;Vector&lt;f32&gt;&gt; = /* validation data */;
+let y: Vec&lt;f32&gt; = /* targets */;
+
+let importances = explainer.compute_permutation_importance(
+    |sample| model.predict(sample),
+    &amp;x,
+    &amp;y,
+);
+
+// Record for this epoch
+explainer.record_importances(epoch, importances);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="json-format"><a class="header" href="#json-format">JSON Format</a></h3>
-<p><strong>Compact</strong> (single-line):</p>
+<h3 id="integrated-gradients"><a class="header" href="#integrated-gradients">Integrated Gradients</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let config = SaveConfig::new(ModelFormat::Json).with_pretty(false);
-save_model(&amp;model, "model.json", &amp;config)?;
+</span>let sample = Vector::from_slice(&amp;[1.0, 2.0, 3.0]);
+let baseline = Vector::from_slice(&amp;[0.0, 0.0, 0.0]);
+
+let attributions = explainer.compute_integrated_gradients(
+    |x| model.predict(x),
+    &amp;sample,
+    &amp;baseline,
+);
 <span class="boring">}</span></code></pre></pre>
-<p><strong>Pretty</strong> (indented):</p>
+<h3 id="saliency-maps"><a class="header" href="#saliency-maps">Saliency Maps</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
-save_model(&amp;model, "model.json", &amp;config)?;
+</span>let saliency = explainer.compute_saliency(
+    |x| model.predict(x),
+    &amp;sample,
+);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="yaml-format"><a class="header" href="#yaml-format">YAML Format</a></h3>
-<p>Human-friendly for configuration:</p>
+<h2 id="tracking-feature-importance"><a class="header" href="#tracking-feature-importance">Tracking Feature Importance</a></h2>
+<h3 id="recording-per-epoch-results"><a class="header" href="#recording-per-epoch-results">Recording Per-Epoch Results</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let config = SaveConfig::new(ModelFormat::Yaml);
-save_model(&amp;model, "model.yaml", &amp;config)?;
-<span class="boring">}</span></code></pre></pre>
-<h3 id="gguf-format"><a class="header" href="#gguf-format">GGUF Format</a></h3>
-<p><strong>Placeholder</strong> for future integration with Realizar:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Will be supported in v0.2.0+
-let config = SaveConfig::new(ModelFormat::Gguf);
-save_model(&amp;model, "model.gguf", &amp;config)?;  // Currently returns error
-<span class="boring">}</span></code></pre></pre>
-<h2 id="model-structure"><a class="header" href="#model-structure">Model Structure</a></h2>
-<h3 id="model"><a class="header" href="#model">Model</a></h3>
-<p>Contains parameters and metadata:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct Model {
-    pub metadata: ModelMetadata,
-    pub parameters: Vec&lt;(String, Tensor)&gt;,
+</span>impl TrainerCallback for MyTrainingCallback {
+    fn on_epoch_end(&amp;mut self, ctx: &amp;CallbackContext) -&gt; CallbackAction {
+        // Compute importances on validation set
+        let importances = self.explainer.compute_permutation_importance(
+            |x| self.model.predict(x),
+            &amp;self.val_x,
+            &amp;self.val_y,
+        );
+
+        // Record sorted top-k importances
+        self.explainer.record_importances(ctx.epoch, importances);
+
+        CallbackAction::Continue
+    }
 }
 <span class="boring">}</span></code></pre></pre>
-<h3 id="modelmetadata"><a class="header" href="#modelmetadata">ModelMetadata</a></h3>
-<p>Tracks model information:</p>
+<h3 id="querying-results"><a class="header" href="#querying-results">Querying Results</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub struct ModelMetadata {
-    pub name: String,
-    pub architecture: String,
-    pub version: String,
-    pub training_config: Option&lt;HashMap&lt;String, Value&gt;&gt;,
-    pub custom: HashMap&lt;String, Value&gt;,  // Flexible key-value pairs
+</span>// Get all recorded results
+let results: &amp;[FeatureImportanceResult] = explainer.results();
+
+for result in results {
+    println!("Epoch {}: {:?}", result.epoch, result.importances);
+}
+
+// Get consistently important features across epochs
+let consistent = explainer.consistent_top_features();
+// Returns features ranked by: (1) frequency in top-k, (2) avg score
+<span class="boring">}</span></code></pre></pre>
+<h2 id="featureimportanceresult"><a class="header" href="#featureimportanceresult">FeatureImportanceResult</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct FeatureImportanceResult {
+    /// Epoch when computed
+    pub epoch: usize,
+    /// Feature index to importance score (sorted by abs value)
+    pub importances: Vec&lt;(usize, f32)&gt;,
+    /// Method used for computation
+    pub method: ExplainMethod,
 }
 <span class="boring">}</span></code></pre></pre>
-<p><strong>Example</strong>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let metadata = ModelMetadata::new("llama-7b-lora", "transformer")
-    .with_version("0.1.0")
-    .with_custom("lora_rank", 64)
-    .with_custom("lora_alpha", 128)
-    .with_custom("base_model", "meta-llama/Llama-2-7b");
-<span class="boring">}</span></code></pre></pre>
-<h2 id="round-trip-integrity"><a class="header" href="#round-trip-integrity">Round-Trip Integrity</a></h2>
-<p>All save/load operations maintain <strong>round-trip integrity</strong>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Original model
-let original = create_model();
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use entrenar::train::{
+    Trainer, TrainConfig, ExplainabilityCallback, ExplainMethod,
+    CallbackContext, CallbackAction, TrainerCallback,
+};
+use aprender::primitives::Vector;
 
-// Save and load
-save_model(&amp;original, "temp.json", &amp;config)?;
-let loaded = load_model("temp.json")?;
-
-// Verify parameters match
-assert_eq!(original.parameters.len(), loaded.parameters.len());
-for (orig, load) in original.parameters.iter().zip(loaded.parameters.iter()) {
-    assert_eq!(orig.0, load.0);  // Parameter names
-    assert_tensors_equal(&amp;orig.1, &amp;load.1);  // Tensor values
+// Simple linear model
+fn predict(weights: &amp;[f32], x: &amp;Vector&lt;f32&gt;) -&gt; f32 {
+    weights.iter()
+        .zip(x.as_slice())
+        .map(|(w, xi)| w * xi)
+        .sum()
 }
-<span class="boring">}</span></code></pre></pre>
-<p><strong>Validation</strong>: 54 I/O tests ensure round-trip correctness</p>
-<h2 id="auto-format-detection"><a class="header" href="#auto-format-detection">Auto-Format Detection</a></h2>
-<p>Format automatically detected from file extension:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Detects SafeTensors from .safetensors extension
-let model = load_model("model.safetensors")?;
 
-// Detects JSON from .json extension
-let model = load_model("model.json")?;
+fn main() {
+    // Setup explainability callback
+    let mut explainer = ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
+        .with_top_k(3)
+        .with_feature_names(vec![
+            "feature_0".into(),
+            "feature_1".into(),
+            "feature_2".into(),
+        ]);
 
-// Detects YAML from .yaml extension
-let model = load_model("config.yaml")?;
-<span class="boring">}</span></code></pre></pre>
-<h2 id="example-workflow"><a class="header" href="#example-workflow">Example Workflow</a></h2>
-<p>From <code>examples/model_io.rs</code>:</p>
-<pre><pre class="playground"><code class="language-rust">use entrenar::io::{Model, ModelMetadata, save_model, load_model, SaveConfig, ModelFormat};
-use entrenar::Tensor;
-
-fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    // Create model
-    let params = vec![
-        ("layer1.weight".to_string(), Tensor::from_vec(vec![0.1, 0.2, 0.3, 0.4], true)),
-        ("layer1.bias".to_string(), Tensor::from_vec(vec![0.01, 0.02], true)),
-        ("layer2.weight".to_string(), Tensor::from_vec(vec![0.5, 0.6], true)),
-        ("layer2.bias".to_string(), Tensor::from_vec(vec![0.1], true)),
+    // Validation data
+    let val_x = vec![
+        Vector::from_slice(&amp;[1.0, 2.0, 3.0]),
+        Vector::from_slice(&amp;[2.0, 3.0, 4.0]),
+        Vector::from_slice(&amp;[3.0, 4.0, 5.0]),
     ];
+    let val_y = vec![6.0, 9.0, 12.0];
+    let weights = vec![1.0, 1.0, 1.0];
 
-    let metadata = ModelMetadata::new("example-model", "simple-mlp")
-        .with_version("0.1.0")
-        .with_custom("input_dim", 4)
-        .with_custom("hidden_dim", 2)
-        .with_custom("output_dim", 1);
+    // Compute and record importances
+    let importances = explainer.compute_permutation_importance(
+        |x| predict(&amp;weights, x),
+        &amp;val_x,
+        &amp;val_y,
+    );
+    explainer.record_importances(0, importances);
 
-    let model = Model::new(metadata, params);
-
-    // Save as JSON
-    let json_config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
-    save_model(&amp;model, "example_model.json", &amp;json_config)?;
-
-    // Save as YAML
-    let yaml_config = SaveConfig::new(ModelFormat::Yaml);
-    save_model(&amp;model, "example_model.yaml", &amp;yaml_config)?;
-
-    // Load and verify
-    let loaded = load_model("example_model.json")?;
-    println!("✅ Loaded model: {}", loaded.metadata.name);
-
-    Ok(())
+    // Query results
+    println!("Top features at epoch 0:");
+    for (idx, score) in &amp;explainer.results()[0].importances {
+        let name = explainer.feature_names()
+            .map(|n| n[*idx].as_str())
+            .unwrap_or("unknown");
+        println!("  {}: {:.4}", name, score);
+    }
 }</code></pre></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<h2 id="integration-with-monitoring"><a class="header" href="#integration-with-monitoring">Integration with Monitoring</a></h2>
+<p>Combine with <code>MonitorCallback</code> for comprehensive training observability:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>trainer.add_callback(MonitorCallback::new());
+trainer.add_callback(ExplainabilityCallback::new(ExplainMethod::PermutationImportance));
+trainer.add_callback(EarlyStopping::new(5, 0.001));
+<span class="boring">}</span></code></pre></pre>
+<p>This enables:</p>
 <ul>
-<li><a href="./save-models.html">Save Models</a> - Detailed save functionality</li>
-<li><a href="./load-models.html">Load Models</a> - Loading and deserialization</li>
-<li><a href="./metadata.html">Model Metadata</a> - Metadata management</li>
-<li><a href="./formats.html">Supported Formats</a> - Format details</li>
-<li><a href="./safetensors-format.html">SafeTensors Format</a> - HuggingFace compatible format</li>
+<li>Real-time loss/LR tracking (MonitorCallback)</li>
+<li>Feature importance trends (ExplainabilityCallback)</li>
+<li>Automatic early stopping (EarlyStopping)</li>
 </ul>
-<h2 id="implementation"><a class="header" href="#implementation">Implementation</a></h2>
-<p>All Model I/O code is in <code>src/io/</code>:</p>
+<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<h3 id="model-debugging"><a class="header" href="#model-debugging">Model Debugging</a></h3>
+<p>Identify which features drive predictions:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let top = explainer.consistent_top_features();
+if top[0].0 != expected_important_feature {
+    println!("Warning: Model may be using unexpected features");
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="feature-engineering-validation"><a class="header" href="#feature-engineering-validation">Feature Engineering Validation</a></h3>
+<p>Verify new features contribute positively:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// After adding new feature at index 5
+let latest = explainer.results().last().unwrap();
+let has_new_feature = latest.importances.iter().any(|(idx, _)| *idx == 5);
+println!("New feature in top-k: {}", has_new_feature);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="training-stability-analysis"><a class="header" href="#training-stability-analysis">Training Stability Analysis</a></h3>
+<p>Track feature importance stability across epochs:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let results = explainer.results();
+if results.len() &gt;= 2 {
+    let prev = &amp;results[results.len() - 2].importances;
+    let curr = &amp;results[results.len() - 1].importances;
+
+    // Check if top feature changed
+    if prev[0].0 != curr[0].0 {
+        println!("Warning: Top feature changed between epochs");
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
-<li><code>mod.rs</code> - Public API exports</li>
-<li><code>model.rs</code> - Model and ModelMetadata structs</li>
-<li><code>format.rs</code> - ModelFormat enum and SaveConfig</li>
-<li><code>save.rs</code> - save_model() function (incl. SafeTensors serialization)</li>
-<li><code>load.rs</code> - load_model() function (incl. SafeTensors deserialization)</li>
-<li><code>tests.rs</code> - Integration tests (54 total across module)</li>
+<li><a href="./callback-system.html">Callback System</a> - Full callback documentation</li>
+<li><a href="../monitor/overview.html">Real-Time Monitoring</a> - Monitor integration</li>
+<li><a href="https://docs.rs/aprender/latest/aprender/interpret/">aprender interpret module</a> - Underlying explainability methods</li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../monitor/hansei.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../training/curriculum-learning.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../io/save-models.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../monitor/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -373,11 +403,11 @@ fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../monitor/hansei.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../training/curriculum-learning.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../io/save-models.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../monitor/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

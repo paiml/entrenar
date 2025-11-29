@@ -84,12 +84,12 @@ impl SweepParameter {
                 let mut values = Vec::new();
                 let mut v = *start;
                 while v <= *end {
-                    values.push(v as f64);
+                    values.push(f64::from(v));
                     v += step;
                 }
                 values
             }
-            Self::Rank { values } => values.iter().map(|&v| v as f64).collect(),
+            Self::Rank { values } => values.iter().map(|&v| f64::from(v)).collect(),
             Self::LearningRate { values } => values.clone(),
         }
     }
