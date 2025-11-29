@@ -13,22 +13,45 @@ fn test_module_exports() {
 }
 
 #[test]
-fn test_end_to_end_mock_fetch() {
+fn test_end_to_end_fetch_error_handling() {
     let temp_dir = std::env::temp_dir().join("hf_e2e_test");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    // Create fetcher
+    // Create fetcher with invalid token (intentionally)
     let fetcher = HfModelFetcher::with_token("test_token").cache_dir(&temp_dir);
 
-    // Download (mock)
+    // Attempt download - should fail with appropriate error
+    let result = fetcher.download_model(
+        "nonexistent-org-12345/nonexistent-model-67890",
+        FetchOptions::new()
+            .files(&["model.safetensors", "config.json"])
+            .cache_dir(&temp_dir),
+    );
+
+    // Expect error for nonexistent model
+    assert!(result.is_err(), "Should fail for nonexistent model");
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+#[ignore] // Requires network access and valid HF token
+fn test_end_to_end_real_fetch() {
+    let temp_dir = std::env::temp_dir().join("hf_e2e_real_test");
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    // Create fetcher (uses HF_TOKEN env var if available)
+    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+
+    // Download a small, known model
     let artifact = fetcher
         .download_model(
-            "microsoft/codebert-base",
+            "hf-internal-testing/tiny-random-bert",
             FetchOptions::new()
                 .files(&["model.safetensors", "config.json"])
                 .cache_dir(&temp_dir),
         )
-        .expect("Mock download should succeed");
+        .expect("Download should succeed for test model");
 
     // Verify artifact
     assert_eq!(artifact.format, WeightFormat::SafeTensors);

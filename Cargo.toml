@@ -113,6 +113,7 @@ uuid = { version = "1.11", features = ["v4", "serde"], optional = true }  # UUID
 safetensors = "0.7"  # SafeTensors format parsing
 memmap2 = "0.9"  # Memory-mapped file access for large models
 bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for tensor data
+hf-hub = "0.4"  # HuggingFace Hub API for model downloads
 
 [dev-dependencies]
 proptest = "1.4"

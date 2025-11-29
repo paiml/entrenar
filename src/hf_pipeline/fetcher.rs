@@ -348,8 +348,68 @@ impl HfModelFetcher {
             .find_map(|f| WeightFormat::from_filename(f))
             .unwrap_or(WeightFormat::SafeTensors);
 
-        // TODO: Actual download via hf-hub crate
-        // For now, return artifact pointing to cache location
+        // Use hf-hub for actual downloads
+        let mut api_builder = hf_hub::api::sync::ApiBuilder::new()
+            .with_cache_dir(cache_path.clone());
+
+        if let Some(token) = &self.token {
+            api_builder = api_builder.with_token(Some(token.clone()));
+        }
+
+        let api = api_builder.build().map_err(|e| FetchError::ConfigParseError {
+            message: format!("Failed to initialize HF API: {e}"),
+        })?;
+
+        let repo = api.model(repo_id.to_string());
+
+        // Download each requested file
+        for file in &files {
+            let download_result = if options.revision == "main" {
+                repo.get(file)
+            } else {
+                // For non-main revisions, we need to use repo.revision()
+                let revision_repo = api
+                    .repo(hf_hub::Repo::with_revision(
+                        repo_id.to_string(),
+                        hf_hub::RepoType::Model,
+                        options.revision.clone(),
+                    ));
+                revision_repo.get(file)
+            };
+
+            match download_result {
+                Ok(path) => {
+                    // Copy to our cache structure if not already there
+                    let dest = cache_path.join(file);
+                    if path != dest {
+                        if let Some(parent) = dest.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        // Only copy if source exists and dest doesn't
+                        if path.exists() && !dest.exists() {
+                            std::fs::copy(&path, &dest)?;
+                        }
+                    }
+                }
+                Err(hf_hub::api::sync::ApiError::RequestError(e)) => {
+                    // Check if it's a 404
+                    if e.to_string().contains("404") {
+                        return Err(FetchError::FileNotFound {
+                            repo: repo_id.to_string(),
+                            file: file.clone(),
+                        });
+                    }
+                    return Err(FetchError::ConfigParseError {
+                        message: format!("Download failed: {e}"),
+                    });
+                }
+                Err(e) => {
+                    return Err(FetchError::ConfigParseError {
+                        message: format!("Download failed: {e}"),
+                    });
+                }
+            }
+        }
 
         Ok(ModelArtifact {
             path: cache_path,
@@ -569,38 +629,63 @@ mod tests {
     }
 
     #[test]
-    fn test_download_allows_pytorch_when_enabled() {
-        let temp_dir = std::env::temp_dir().join("hf_test_pytorch");
+    fn test_download_nonexistent_repo_returns_error() {
+        let temp_dir = std::env::temp_dir().join("hf_test_nonexistent");
         let _ = std::fs::remove_dir_all(&temp_dir);
 
-        let fetcher = HfModelFetcher::with_token("test").cache_dir(&temp_dir);
+        let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
         let result = fetcher.download_model(
-            "test/model",
+            "nonexistent-org-xyz123/nonexistent-model-abc456",
             FetchOptions::new()
-                .files(&["pytorch_model.bin"])
-                .allow_pytorch_pickle(true)
+                .files(&["model.safetensors"])
                 .cache_dir(&temp_dir),
         );
-        assert!(result.is_ok());
+
+        // Should fail with some error (network or not found)
+        assert!(result.is_err(), "Non-existent repo should return error");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     #[test]
-    fn test_download_safetensors_ok() {
-        let temp_dir = std::env::temp_dir().join("hf_test_safetensors");
+    fn test_download_security_check_blocks_pytorch() {
+        let temp_dir = std::env::temp_dir().join("hf_test_security");
         let _ = std::fs::remove_dir_all(&temp_dir);
 
-        let fetcher = HfModelFetcher::with_token("test").cache_dir(&temp_dir);
+        let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
         let result = fetcher.download_model(
-            "test/model",
+            "microsoft/codebert-base",
             FetchOptions::new()
-                .files(&["model.safetensors"])
+                .files(&["pytorch_model.bin"]) // PyTorch without allow flag
                 .cache_dir(&temp_dir),
         );
-        assert!(result.is_ok());
+
+        // Should be blocked by security check BEFORE network access
+        assert!(
+            matches!(result, Err(FetchError::PickleSecurityRisk)),
+            "PyTorch files should be blocked without allow_pytorch_pickle"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    #[ignore] // Requires network access
+    fn test_download_real_model_integration() {
+        let temp_dir = std::env::temp_dir().join("hf_test_real");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+        let result = fetcher.download_model(
+            "hf-internal-testing/tiny-random-bert",
+            FetchOptions::new()
+                .files(&["config.json"])
+                .cache_dir(&temp_dir),
+        );
+
+        assert!(result.is_ok(), "Should download from real repo: {:?}", result.err());
         let artifact = result.unwrap();
-        assert_eq!(artifact.format, WeightFormat::SafeTensors);
+        assert!(artifact.path.exists(), "Cache directory should exist");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
