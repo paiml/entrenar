@@ -575,4 +575,293 @@ mod tests {
         let cmd = parse("foobar").unwrap();
         assert!(matches!(cmd, Command::Unknown { .. }));
     }
+
+    #[test]
+    fn test_parse_fetch_missing_model() {
+        let result = parse("fetch");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_set_not_enough_args() {
+        let result = parse("set batch_size");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_export_not_enough_args() {
+        let result = parse("export safetensors");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_export_valid() {
+        let cmd = parse("export safetensors /tmp/model.st").unwrap();
+        if let Command::Export { format, path } = cmd {
+            assert_eq!(format, "safetensors");
+            assert_eq!(path, "/tmp/model.st");
+        } else {
+            panic!("Expected Export command");
+        }
+    }
+
+    #[test]
+    fn test_parse_help_with_topic() {
+        let cmd = parse("help fetch").unwrap();
+        if let Command::Help { topic } = cmd {
+            assert_eq!(topic, Some("fetch".to_string()));
+        } else {
+            panic!("Expected Help command");
+        }
+    }
+
+    #[test]
+    fn test_parse_distill_dry_run() {
+        let cmd = parse("distill --dry-run").unwrap();
+        if let Command::Distill { dry_run } = cmd {
+            assert!(dry_run);
+        } else {
+            panic!("Expected Distill command");
+        }
+    }
+
+    #[test]
+    fn test_parse_distill_short_flag() {
+        let cmd = parse("distill -n").unwrap();
+        if let Command::Distill { dry_run } = cmd {
+            assert!(dry_run);
+        } else {
+            panic!("Expected Distill command");
+        }
+    }
+
+    #[test]
+    fn test_parse_inspect_model() {
+        let cmd = parse("inspect teacher").unwrap();
+        if let Command::Inspect { target } = cmd {
+            assert_eq!(target, InspectTarget::Model("teacher".to_string()));
+        } else {
+            panic!("Expected Inspect command");
+        }
+    }
+
+    #[test]
+    fn test_parse_inspect_memory() {
+        let cmd = parse("inspect memory").unwrap();
+        assert!(matches!(
+            cmd,
+            Command::Inspect {
+                target: InspectTarget::Memory
+            }
+        ));
+    }
+
+    #[test]
+    fn test_parse_command_aliases() {
+        // download = fetch
+        assert!(matches!(
+            parse("download model").unwrap(),
+            Command::Fetch { .. }
+        ));
+        // show = inspect
+        assert!(matches!(
+            parse("show layers").unwrap(),
+            Command::Inspect { .. }
+        ));
+        // mem = memory
+        assert!(matches!(parse("mem").unwrap(), Command::Memory { .. }));
+        // train = distill
+        assert!(matches!(parse("train").unwrap(), Command::Distill { .. }));
+        // save = export (needs args)
+        assert!(matches!(
+            parse("save gguf /tmp/out").unwrap(),
+            Command::Export { .. }
+        ));
+        // cls = clear
+        assert!(matches!(parse("cls").unwrap(), Command::Clear));
+        // ? = help
+        assert!(matches!(parse("?").unwrap(), Command::Help { .. }));
+        // hist = history
+        assert!(matches!(parse("hist").unwrap(), Command::History));
+    }
+
+    #[test]
+    fn test_execute_inspect_no_models() {
+        let state = SessionState::new();
+        let result = execute_inspect(&InspectTarget::All, &state);
+        assert!(result.unwrap().contains("No models loaded"));
+    }
+
+    #[test]
+    fn test_execute_inspect_layers() {
+        let mut state = SessionState::new();
+        let model = LoadedModel {
+            id: "test".to_string(),
+            path: std::path::PathBuf::from("/tmp"),
+            architecture: "llama".to_string(),
+            parameters: 7_000_000_000,
+            layers: 32,
+            hidden_dim: 4096,
+            role: ModelRole::None,
+        };
+        state.add_model("test".to_string(), model);
+
+        let result = execute_inspect(&InspectTarget::Layers, &state).unwrap();
+        assert!(result.contains("32 layers"));
+    }
+
+    #[test]
+    fn test_execute_inspect_model_not_found() {
+        let state = SessionState::new();
+        let result = execute_inspect(&InspectTarget::Model("unknown".to_string()), &state);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_history_empty() {
+        let state = SessionState::new();
+        let result = execute_history(&state).unwrap();
+        assert!(result.contains("No command history"));
+    }
+
+    #[test]
+    fn test_execute_help_topics() {
+        let fetch_help = execute_help(Some("fetch")).unwrap();
+        assert!(fetch_help.contains("Download"));
+
+        let inspect_help = execute_help(Some("inspect")).unwrap();
+        assert!(inspect_help.contains("Inspect"));
+
+        let memory_help = execute_help(Some("memory")).unwrap();
+        assert!(memory_help.contains("memory"));
+
+        let distill_help = execute_help(Some("distill")).unwrap();
+        assert!(distill_help.contains("distill"));
+
+        let general_help = execute_help(None).unwrap();
+        assert!(general_help.contains("Available commands"));
+    }
+
+    #[test]
+    fn test_detect_architecture_variants() {
+        assert_eq!(detect_architecture("meta-llama/Llama-2-7b"), "llama");
+        assert_eq!(detect_architecture("bert-base-uncased"), "bert");
+        assert_eq!(detect_architecture("openai-gpt"), "gpt");
+        assert_eq!(detect_architecture("mistralai/Mistral-7B"), "mistral");
+        assert_eq!(detect_architecture("custom-model"), "unknown");
+    }
+
+    #[test]
+    fn test_estimate_params_variants() {
+        assert_eq!(estimate_params("model-70b"), 70_000_000_000);
+        assert_eq!(estimate_params("model-13b"), 13_000_000_000);
+        assert_eq!(estimate_params("model-7b"), 7_000_000_000);
+        assert_eq!(estimate_params("model-1.1b"), 1_100_000_000);
+        assert_eq!(estimate_params("bert-base"), 350_000_000);
+    }
+
+    #[test]
+    fn test_estimate_layers_variants() {
+        assert_eq!(estimate_layers("model-70b"), 80);
+        assert_eq!(estimate_layers("model-13b"), 40);
+        assert_eq!(estimate_layers("model-7b"), 32);
+        assert_eq!(estimate_layers("bert-base"), 12);
+    }
+
+    #[test]
+    fn test_execute_set_invalid_number() {
+        let mut state = SessionState::new();
+        let result = execute_set("batch_size", "not_a_number", &mut state);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_set_unknown_key() {
+        let mut state = SessionState::new();
+        let result = execute_set("unknown_setting", "value", &mut state);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_distill_no_teacher() {
+        let state = SessionState::new();
+        let result = execute_distill(true, &state);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_distill_no_student() {
+        let mut state = SessionState::new();
+        let model = LoadedModel {
+            id: "teacher".to_string(),
+            path: std::path::PathBuf::from("/tmp"),
+            architecture: "llama".to_string(),
+            parameters: 7_000_000_000,
+            layers: 32,
+            hidden_dim: 4096,
+            role: ModelRole::Teacher,
+        };
+        state.add_model("teacher".to_string(), model);
+
+        let result = execute_distill(true, &state);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_distill_success() {
+        let mut state = SessionState::new();
+
+        let teacher = LoadedModel {
+            id: "teacher/model".to_string(),
+            path: std::path::PathBuf::from("/tmp/t"),
+            architecture: "llama".to_string(),
+            parameters: 7_000_000_000,
+            layers: 32,
+            hidden_dim: 4096,
+            role: ModelRole::Teacher,
+        };
+        state.add_model("teacher".to_string(), teacher);
+
+        let student = LoadedModel {
+            id: "student/model".to_string(),
+            path: std::path::PathBuf::from("/tmp/s"),
+            architecture: "llama".to_string(),
+            parameters: 1_000_000_000,
+            layers: 12,
+            hidden_dim: 2048,
+            role: ModelRole::Student,
+        };
+        state.add_model("student".to_string(), student);
+
+        let result = execute_distill(true, &state).unwrap();
+        assert!(result.contains("Dry run"));
+    }
+
+    #[test]
+    fn test_execute_export() {
+        let state = SessionState::new();
+        let result = execute_export("safetensors", "/tmp/model.st", &state).unwrap();
+        assert!(result.contains("Exported"));
+    }
+
+    #[test]
+    fn test_parse_empty_input() {
+        let cmd = parse("").unwrap();
+        assert!(matches!(cmd, Command::Unknown { .. }));
+    }
+
+    #[test]
+    fn test_execute_memory_with_args() {
+        let state = SessionState::new();
+        let result = execute_memory(Some(64), Some(1024), &state).unwrap();
+        assert!(result.contains("batch=64"));
+        assert!(result.contains("seq=1024"));
+    }
+
+    #[test]
+    fn test_command_enum_equality() {
+        assert_eq!(Command::Quit, Command::Quit);
+        assert_eq!(Command::Clear, Command::Clear);
+        assert_eq!(Command::History, Command::History);
+    }
 }
