@@ -114,9 +114,10 @@ pub trait TeacherModel: Send + Sync {
 
 /// SafeTensors-based teacher model
 pub struct SafeTensorsTeacher {
-    /// Model weights by tensor name (for future SafeTensors parsing)
-    #[allow(dead_code)]
+    /// Model weights by tensor name
     weights: std::collections::HashMap<String, Array2<f32>>,
+    /// Tensor names (in order)
+    tensor_names: Vec<String>,
     /// Number of layers
     num_layers: usize,
     /// Hidden dimension
@@ -136,6 +137,8 @@ impl SafeTensorsTeacher {
     ///
     /// Returns error if file not found or parsing fails.
     pub fn load(path: &Path) -> Result<Self> {
+        use safetensors::SafeTensors;
+
         let model_path = path.join("model.safetensors");
         if !model_path.exists() {
             return Err(FetchError::FileNotFound {
@@ -144,15 +147,48 @@ impl SafeTensorsTeacher {
             });
         }
 
-        // TODO: Actually parse SafeTensors using safetensors crate
-        // For now, create mock model for testing
+        // Read the file into memory (safe approach for models up to ~10GB)
+        let data = std::fs::read(&model_path)?;
+
+        // Parse SafeTensors
+        let tensors = SafeTensors::deserialize(&data).map_err(|e| {
+            FetchError::SafeTensorsParseError {
+                message: e.to_string(),
+            }
+        })?;
+
+        // Extract tensor names and compute statistics
+        let tensor_names: Vec<String> = tensors.names().iter().map(|s| (*s).to_string()).collect();
+
+        // Calculate total parameter count
+        let mut param_count: u64 = 0;
+        for name in &tensor_names {
+            if let Some(info) = tensors.tensor(name).ok() {
+                let numel: u64 = info.shape().iter().map(|&x| x as u64).product();
+                param_count += numel;
+            }
+        }
+
+        // Detect number of layers from tensor naming convention
+        // Common patterns: "encoder.layer.N.", "layers.N.", "h.N."
+        let num_layers = detect_layer_count(&tensor_names);
+
+        // Detect hidden size from weight tensor shapes
+        let hidden_size = detect_hidden_size(&tensors, &tensor_names);
 
         Ok(Self {
-            weights: std::collections::HashMap::new(),
-            num_layers: 12,
-            hidden_size: 768,
-            param_count: 110_000_000, // BERT-base size
+            weights: std::collections::HashMap::new(), // Lazy load on demand
+            tensor_names,
+            num_layers,
+            hidden_size,
+            param_count,
         })
+    }
+
+    /// Get list of tensor names in the model
+    #[must_use]
+    pub fn tensor_names(&self) -> &[String] {
+        &self.tensor_names
     }
 
     /// Create mock teacher for testing
@@ -161,11 +197,88 @@ impl SafeTensorsTeacher {
         let param_count = (num_layers as u64) * (hidden_size as u64).pow(2) * 4;
         Self {
             weights: std::collections::HashMap::new(),
+            tensor_names: Vec::new(),
             num_layers,
             hidden_size,
             param_count,
         }
     }
+}
+
+/// Detect number of layers from tensor naming patterns
+fn detect_layer_count(names: &[String]) -> usize {
+    use std::collections::HashSet;
+
+    let mut layer_indices: HashSet<usize> = HashSet::new();
+
+    for name in names {
+        // Match patterns like "encoder.layer.0.", "layers.0.", "h.0."
+        if let Some(idx) = extract_layer_index(name) {
+            layer_indices.insert(idx);
+        }
+    }
+
+    if layer_indices.is_empty() {
+        // Default to 12 if can't detect (BERT-base assumption)
+        12
+    } else {
+        layer_indices.len()
+    }
+}
+
+/// Extract layer index from tensor name
+fn extract_layer_index(name: &str) -> Option<usize> {
+    // Common patterns for layer indices
+    let patterns = [".layer.", ".layers.", ".h."];
+
+    for pattern in patterns {
+        if let Some(pos) = name.find(pattern) {
+            let after_pattern = &name[pos + pattern.len()..];
+            if let Some(end) = after_pattern.find('.') {
+                if let Ok(idx) = after_pattern[..end].parse::<usize>() {
+                    return Some(idx);
+                }
+            } else if let Ok(idx) = after_pattern.parse::<usize>() {
+                return Some(idx);
+            }
+        }
+    }
+
+    None
+}
+
+/// Detect hidden size from tensor shapes
+fn detect_hidden_size(tensors: &safetensors::SafeTensors, names: &[String]) -> usize {
+    // Look for attention query weight which is typically [hidden_size, hidden_size]
+    let query_patterns = [".query.weight", ".q_proj.weight", ".self_attn.q_proj.weight"];
+
+    for name in names {
+        for pattern in query_patterns {
+            if name.ends_with(pattern) {
+                if let Ok(tensor) = tensors.tensor(name) {
+                    let shape = tensor.shape();
+                    if shape.len() == 2 && shape[0] == shape[1] {
+                        return shape[0];
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: look for any large square weight matrix
+    for name in names {
+        if name.contains("weight") {
+            if let Ok(tensor) = tensors.tensor(name) {
+                let shape = tensor.shape();
+                if shape.len() == 2 && shape[0] == shape[1] && shape[0] >= 256 {
+                    return shape[0];
+                }
+            }
+        }
+    }
+
+    // Default to 768 (BERT-base)
+    768
 }
 
 impl TeacherModel for SafeTensorsTeacher {
@@ -334,5 +447,152 @@ mod tests {
     fn test_load_nonexistent() {
         let result = SafeTensorsTeacher::load(Path::new("/nonexistent/path"));
         assert!(matches!(result, Err(FetchError::FileNotFound { .. })));
+    }
+
+    // =========================================================================
+    // SafeTensors Parsing Tests (TDD - these define expected behavior)
+    // =========================================================================
+
+    #[test]
+    fn test_load_valid_safetensors_file() {
+        use tempfile::TempDir;
+
+        // Create a minimal valid safetensors file
+        let temp_dir = TempDir::new().unwrap();
+        let model_path = temp_dir.path().join("model.safetensors");
+
+        // Create minimal safetensors with one tensor
+        let data = create_test_safetensors(&[("weight", &[2, 3])]);
+        std::fs::write(&model_path, data).unwrap();
+
+        let teacher = SafeTensorsTeacher::load(temp_dir.path());
+        assert!(teacher.is_ok(), "Should load valid safetensors file");
+
+        let teacher = teacher.unwrap();
+        assert!(teacher.param_count() > 0, "Should have non-zero params");
+    }
+
+    #[test]
+    fn test_safetensors_extracts_tensor_names() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let model_path = temp_dir.path().join("model.safetensors");
+
+        // Create safetensors with named tensors
+        let data = create_test_safetensors(&[
+            ("encoder.layer.0.attention.query.weight", &[768, 768]),
+            ("encoder.layer.0.attention.key.weight", &[768, 768]),
+        ]);
+        std::fs::write(&model_path, data).unwrap();
+
+        let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+        assert!(teacher.tensor_names().contains(&"encoder.layer.0.attention.query.weight".to_string()));
+    }
+
+    #[test]
+    fn test_safetensors_param_count_matches_tensors() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let model_path = temp_dir.path().join("model.safetensors");
+
+        // Create safetensors with known parameter count
+        // 2 tensors of 768x768 = 2 * 589,824 = 1,179,648 params
+        let data = create_test_safetensors(&[
+            ("layer.0.weight", &[768, 768]),
+            ("layer.1.weight", &[768, 768]),
+        ]);
+        std::fs::write(&model_path, data).unwrap();
+
+        let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+        assert_eq!(teacher.param_count(), 768 * 768 * 2);
+    }
+
+    #[test]
+    fn test_safetensors_detects_layer_count() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let model_path = temp_dir.path().join("model.safetensors");
+
+        // Create safetensors with 12 layers
+        let mut tensors: Vec<(&str, &[usize])> = Vec::new();
+        let layer_names: Vec<String> = (0..12)
+            .map(|i| format!("encoder.layer.{}.attention.weight", i))
+            .collect();
+
+        for name in &layer_names {
+            tensors.push((name, &[768, 768]));
+        }
+
+        let data = create_test_safetensors_from_names(&tensors);
+        std::fs::write(&model_path, data).unwrap();
+
+        let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+        assert_eq!(teacher.num_layers(), 12);
+    }
+
+    #[test]
+    fn test_safetensors_detects_hidden_size() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let model_path = temp_dir.path().join("model.safetensors");
+
+        // Create safetensors with 1024 hidden size
+        let data = create_test_safetensors(&[
+            ("encoder.layer.0.attention.query.weight", &[1024, 1024]),
+        ]);
+        std::fs::write(&model_path, data).unwrap();
+
+        let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+        assert_eq!(teacher.hidden_size(), 1024);
+    }
+
+    #[test]
+    fn test_safetensors_corrupt_file_error() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let model_path = temp_dir.path().join("model.safetensors");
+
+        // Write garbage data
+        std::fs::write(&model_path, b"not a valid safetensors file").unwrap();
+
+        let result = SafeTensorsTeacher::load(temp_dir.path());
+        assert!(result.is_err(), "Should fail on corrupt file");
+    }
+
+    // Helper function to create minimal safetensors for testing
+    fn create_test_safetensors(tensors: &[(&str, &[usize])]) -> Vec<u8> {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let tensor_data: Vec<(String, Vec<f32>, Vec<usize>)> = tensors
+            .iter()
+            .map(|(name, shape)| {
+                let numel: usize = shape.iter().product();
+                ((*name).to_string(), vec![0.0f32; numel], shape.to_vec())
+            })
+            .collect();
+
+        let views: Vec<(&str, TensorView)> = tensor_data
+            .iter()
+            .map(|(name, data, shape)| {
+                let view = TensorView::new(
+                    Dtype::F32,
+                    shape.clone(),
+                    bytemuck::cast_slice(data),
+                )
+                .unwrap();
+                (name.as_str(), view)
+            })
+            .collect();
+
+        safetensors::serialize(views, None::<std::collections::HashMap<String, String>>).unwrap()
+    }
+
+    fn create_test_safetensors_from_names(tensors: &[(&str, &[usize])]) -> Vec<u8> {
+        create_test_safetensors(tensors)
     }
 }

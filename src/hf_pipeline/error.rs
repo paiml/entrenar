@@ -86,6 +86,10 @@ pub enum FetchError {
     /// JSON parsing error
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// SafeTensors parsing error
+    #[error("SafeTensors parse error: {message}")]
+    SafeTensorsParseError { message: String },
 }
 
 impl FetchError {
