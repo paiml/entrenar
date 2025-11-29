@@ -247,4 +247,90 @@ mod tests {
         assert_eq!(hidden, 1024);
         assert_eq!(layers, 12);
     }
+
+    #[test]
+    fn test_architecture_estimation_all_tiers() {
+        // 70B class
+        let (hidden, layers) = estimate_architecture(70_000_000_000);
+        assert_eq!(hidden, 8192);
+        assert_eq!(layers, 80);
+
+        // 13B class
+        let (hidden, layers) = estimate_architecture(13_000_000_000);
+        assert_eq!(hidden, 5120);
+        assert_eq!(layers, 40);
+
+        // 1-3B class
+        let (hidden, layers) = estimate_architecture(2_000_000_000);
+        assert_eq!(hidden, 2048);
+        assert_eq!(layers, 22);
+
+        // Small models
+        let (hidden, layers) = estimate_architecture(100_000_000);
+        assert_eq!(hidden, 768);
+        assert_eq!(layers, 12);
+    }
+
+    #[test]
+    fn test_with_seq_len() {
+        let planner = MemoryPlanner::new(7_000_000_000).with_seq_len(1024);
+        let full_1024 = planner.estimate_full();
+
+        let planner_short = MemoryPlanner::new(7_000_000_000).with_seq_len(256);
+        let full_256 = planner_short.estimate_full();
+
+        // Longer sequences require more activation memory
+        assert!(full_1024.activation_bytes > full_256.activation_bytes);
+    }
+
+    #[test]
+    fn test_estimate_method_dispatch() {
+        let planner = MemoryPlanner::new(7_000_000_000);
+
+        let full = planner.estimate(Method::Full, 64);
+        assert_eq!(full.adapter_bytes, 0);
+
+        let lora = planner.estimate(Method::LoRA, 64);
+        assert!(lora.adapter_bytes > 0);
+
+        let qlora = planner.estimate(Method::QLoRA, 64);
+        assert!(qlora.model_bytes < lora.model_bytes);
+
+        let auto = planner.estimate(Method::Auto, 64);
+        assert!(auto.savings_percent > 0.0);
+    }
+
+    #[test]
+    fn test_to_human_readable() {
+        let planner = MemoryPlanner::new(7_000_000_000);
+        let req = planner.estimate_full();
+        let readable = req.to_human_readable();
+
+        assert!(readable.contains("Memory Requirement"));
+        assert!(readable.contains("GB"));
+        assert!(readable.contains("Model:"));
+        assert!(readable.contains("Total:"));
+    }
+
+    #[test]
+    fn test_full_has_zero_savings() {
+        let planner = MemoryPlanner::new(7_000_000_000);
+        let full = planner.estimate_full();
+        assert_eq!(full.savings_percent, 0.0);
+    }
+
+    #[test]
+    fn test_lora_has_positive_savings() {
+        let planner = MemoryPlanner::new(7_000_000_000);
+        let lora = planner.estimate_lora(64);
+        assert!(lora.savings_percent > 0.0);
+    }
+
+    #[test]
+    fn test_qlora_saves_more_than_lora() {
+        let planner = MemoryPlanner::new(7_000_000_000);
+        let lora = planner.estimate_lora(64);
+        let qlora = planner.estimate_qlora(64, 4);
+        assert!(qlora.savings_percent > lora.savings_percent);
+    }
 }

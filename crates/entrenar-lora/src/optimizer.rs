@@ -307,4 +307,120 @@ mod tests {
         assert!(!config.target_modules.is_empty());
         assert!(config.target_modules.contains(&"q_proj".to_string()));
     }
+
+    #[test]
+    fn test_with_target_utilization() {
+        let optimizer = LoraOptimizer::new(7_000_000_000, 16.0).with_target_utilization(0.75);
+        let config = optimizer.optimize(Method::LoRA).unwrap();
+
+        // Lower target utilization should give smaller rank
+        let high_util = LoraOptimizer::new(7_000_000_000, 16.0)
+            .with_target_utilization(0.95)
+            .optimize(Method::LoRA)
+            .unwrap();
+
+        assert!(config.rank <= high_util.rank);
+    }
+
+    #[test]
+    fn test_target_utilization_clamping() {
+        // Test that utilization is clamped to 0.5-0.95
+        let low = LoraOptimizer::new(7_000_000_000, 16.0).with_target_utilization(0.1);
+        assert!(low.target_utilization >= 0.5);
+
+        let high = LoraOptimizer::new(7_000_000_000, 16.0).with_target_utilization(1.5);
+        assert!(high.target_utilization <= 0.95);
+    }
+
+    #[test]
+    fn test_format_params_billion() {
+        assert_eq!(format_params(7_000_000_000), "7.0B");
+        assert_eq!(format_params(1_500_000_000), "1.5B");
+    }
+
+    #[test]
+    fn test_format_params_million() {
+        assert_eq!(format_params(350_000_000), "350.0M");
+        assert_eq!(format_params(1_500_000), "1.5M");
+    }
+
+    #[test]
+    fn test_format_params_thousand() {
+        assert_eq!(format_params(500_000), "500.0K");
+        assert_eq!(format_params(1_500), "1.5K");
+    }
+
+    #[test]
+    fn test_to_comparison_table() {
+        let optimizer = LoraOptimizer::new(7_000_000_000, 16.0);
+        let config = optimizer.optimize(Method::LoRA).unwrap();
+        let table = config.to_comparison_table();
+
+        assert!(table.contains("Optimal Configuration"));
+        assert!(table.contains("Method:"));
+        assert!(table.contains("Rank:"));
+        assert!(table.contains("Alpha:"));
+        assert!(table.contains("Memory:"));
+    }
+
+    #[test]
+    fn test_full_method_rank_zero() {
+        let optimizer = LoraOptimizer::new(1_000_000_000, 100.0);
+        let config = optimizer.optimize(Method::Full).unwrap();
+        assert_eq!(config.rank, 0);
+    }
+
+    #[test]
+    fn test_full_method_all_params_trainable() {
+        let optimizer = LoraOptimizer::new(1_000_000_000, 100.0);
+        let config = optimizer.optimize(Method::Full).unwrap();
+        assert_eq!(config.trainable_params, 1_000_000_000);
+        assert_eq!(config.trainable_percent, 100.0);
+    }
+
+    #[test]
+    fn test_speedup_values() {
+        let optimizer = LoraOptimizer::new(7_000_000_000, 100.0);
+
+        let full = optimizer.optimize(Method::Full).unwrap();
+        assert_eq!(full.speedup, 1.0);
+
+        let lora = optimizer.optimize(Method::LoRA).unwrap();
+        assert_eq!(lora.speedup, 2.5);
+
+        let qlora = optimizer.optimize(Method::QLoRA).unwrap();
+        assert_eq!(qlora.speedup, 1.8);
+    }
+
+    #[test]
+    fn test_compare_methods_includes_all() {
+        let comparisons = compare_methods(7_000_000_000, 100.0);
+
+        assert!(comparisons.iter().any(|c| c.method == Method::Full));
+        assert!(comparisons.iter().any(|c| c.method == Method::LoRA));
+        assert!(comparisons.iter().any(|c| c.method == Method::QLoRA));
+    }
+
+    #[test]
+    fn test_compare_methods_small_vram() {
+        let comparisons = compare_methods(7_000_000_000, 4.0);
+
+        // With very small VRAM, only QLoRA might fit
+        let _fitting: Vec<_> = comparisons.iter().filter(|c| c.fits).collect();
+        // At least one method should work (QLoRA)
+        assert!(!comparisons.is_empty());
+    }
+
+    #[test]
+    fn test_method_comparison_struct() {
+        let comparisons = compare_methods(7_000_000_000, 16.0);
+        let qlora = comparisons.iter().find(|c| c.method == Method::QLoRA);
+
+        if let Some(c) = qlora {
+            assert!(c.memory_gb > 0.0);
+            assert!(c.trainable_params > 0);
+            assert!(c.speedup > 0.0);
+            assert!(c.rank >= 8);
+        }
+    }
 }

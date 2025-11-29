@@ -72,4 +72,35 @@ mod tests {
         let config = plan(7_000_000_000, 16.0, Method::Auto);
         assert!(config.is_ok());
     }
+
+    #[test]
+    fn test_method_parsing_full() {
+        assert_eq!("full".parse::<Method>().unwrap(), Method::Full);
+        assert_eq!("FULL".parse::<Method>().unwrap(), Method::Full);
+    }
+
+    #[test]
+    fn test_method_parsing_invalid() {
+        let result = "invalid".parse::<Method>();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown method"));
+    }
+
+    #[test]
+    fn test_method_equality() {
+        assert_eq!(Method::LoRA, Method::LoRA);
+        assert_ne!(Method::LoRA, Method::QLoRA);
+    }
+
+    #[test]
+    fn test_plan_with_specific_methods() {
+        let lora = plan(7_000_000_000, 16.0, Method::LoRA);
+        assert!(lora.is_ok());
+
+        let qlora = plan(7_000_000_000, 16.0, Method::QLoRA);
+        assert!(qlora.is_ok());
+
+        let full = plan(7_000_000_000, 80.0, Method::Full);
+        assert!(full.is_ok());
+    }
 }

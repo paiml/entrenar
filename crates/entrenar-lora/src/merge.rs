@@ -297,4 +297,109 @@ mod tests {
 
         assert!((result.size_increase_percent() - 10.0).abs() < 0.01);
     }
+
+    #[test]
+    fn test_merge_result_zero_base() {
+        let result = MergeResult {
+            output_path: std::path::PathBuf::from("/tmp/out"),
+            merged_params: 1000,
+            base_size_bytes: 0,
+            output_size_bytes: 1100,
+        };
+
+        // Should not panic, returns 0.0
+        assert_eq!(result.size_increase_percent(), 0.0);
+    }
+
+    #[test]
+    fn test_merge_engine_default() {
+        let engine = MergeEngine::default();
+        // Default scale is 1.0
+        let base = vec![1.0, 2.0];
+        let lora_a = vec![1.0];
+        let lora_b = vec![1.0];
+        let merged = engine.merge(&base, &lora_a, &lora_b, 16.0, 16);
+        // With scale=1.0, alpha=16, rank=16: scale_factor = 1.0
+        // merged[0] = 1.0 + 1.0 * 1.0 * 1.0 = 2.0
+        assert!((merged[0] - 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_adapter_weights_with_scale() {
+        let adapter = AdapterWeights::new(vec![0.1], vec![0.2], 8.0, 32).with_scale(0.5);
+        assert_eq!(adapter.scale, 0.5);
+        assert_eq!(adapter.alpha, 8.0);
+        assert_eq!(adapter.rank, 32);
+    }
+
+    #[test]
+    fn test_merge_with_empty_adapters() {
+        let engine = MergeEngine::new();
+        let base = vec![1.0, 2.0, 3.0];
+        let adapters: Vec<AdapterWeights> = vec![];
+
+        let merged = engine.merge_multiple(&base, &adapters);
+        // No adapters = result equals base
+        assert_eq!(merged, base);
+    }
+
+    #[test]
+    fn test_merge_from_file_missing_base() {
+        let engine = MergeEngine::new();
+        let result = engine.merge_from_file(
+            Path::new("/nonexistent/base.safetensors"),
+            Path::new("/nonexistent/adapter.safetensors"),
+            Path::new("/tmp/output.safetensors"),
+        );
+
+        assert!(result.is_err());
+        if let Err(EntrenarError::ModelNotFound { path }) = result {
+            assert!(path.to_string_lossy().contains("base.safetensors"));
+        }
+    }
+
+    #[test]
+    fn test_sparsity_empty_input() {
+        assert_eq!(calculate_sparsity(&[]), 0.0);
+    }
+
+    #[test]
+    fn test_sparsity_all_zeros() {
+        let zeros = vec![0.0, 0.0, 0.0, 0.0];
+        assert!((calculate_sparsity(&zeros) - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_adapter_analysis_effective_rank() {
+        // Dense adapter (no zeros)
+        let lora_a = vec![0.1, 0.2, 0.3, 0.4];
+        let lora_b = vec![0.5, 0.6, 0.7, 0.8];
+        let analysis = analyze_adapter(&lora_a, &lora_b, 16.0, 64);
+
+        // Dense adapter should have high effective rank
+        assert!(analysis.effective_rank > 60.0);
+        assert!(analysis.rank_utilization > 90.0);
+    }
+
+    #[test]
+    fn test_adapter_analysis_scale_calculation() {
+        let lora_a = vec![0.1];
+        let lora_b = vec![0.1];
+        let analysis = analyze_adapter(&lora_a, &lora_b, 32.0, 64);
+
+        // scale = alpha / rank = 32 / 64 = 0.5
+        assert!((analysis.scale - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_merge_engine_with_scale_builder() {
+        let engine = MergeEngine::new().with_scale(0.75);
+        let base = vec![1.0, 1.0];
+        let lora_a = vec![1.0];
+        let lora_b = vec![1.0];
+        // scale_factor = 0.75 * 8.0 / 8 = 0.75
+        let merged = engine.merge(&base, &lora_a, &lora_b, 8.0, 8);
+        // merged[0] = 1.0 + 0.75 * 1.0 * 1.0 = 1.75
+        assert!((merged[0] - 1.75).abs() < 0.01);
+    }
 }
