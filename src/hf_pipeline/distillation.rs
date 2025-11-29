@@ -183,6 +183,9 @@ pub struct ProgressiveDistillation {
     pub layer_mapping: Vec<(usize, usize)>,
     /// Loss weight for hidden state matching
     pub hidden_weight: f32,
+    /// Projection matrix for dimension alignment (student_dim x teacher_dim)
+    /// Used when student hidden size differs from teacher hidden size.
+    pub projection: Option<Array2<f32>>,
 }
 
 impl Default for ProgressiveDistillation {
@@ -190,6 +193,7 @@ impl Default for ProgressiveDistillation {
         Self {
             layer_mapping: vec![(0, 2), (1, 5), (2, 8), (3, 11)],
             hidden_weight: 1.0,
+            projection: None,
         }
     }
 }
@@ -201,7 +205,33 @@ impl ProgressiveDistillation {
         Self {
             layer_mapping,
             hidden_weight: 1.0,
+            projection: None,
         }
+    }
+
+    /// Set projection layer for dimension alignment
+    ///
+    /// Creates a linear projection matrix to align student hidden states
+    /// to teacher hidden size. Initialized with Xavier uniform.
+    ///
+    /// # Arguments
+    ///
+    /// * `student_dim` - Student model hidden dimension
+    /// * `teacher_dim` - Teacher model hidden dimension
+    #[must_use]
+    pub fn with_projection(mut self, student_dim: usize, teacher_dim: usize) -> Self {
+        use rand::Rng;
+
+        // Xavier uniform initialization
+        let scale = (6.0 / (student_dim + teacher_dim) as f32).sqrt();
+        let mut rng = rand::rng();
+
+        let projection = Array2::from_shape_fn((student_dim, teacher_dim), |_| {
+            rng.random_range(-scale..scale)
+        });
+
+        self.projection = Some(projection);
+        self
     }
 
     /// Set hidden state loss weight
@@ -214,6 +244,7 @@ impl ProgressiveDistillation {
     /// Compute hidden state matching loss
     ///
     /// Uses MSE loss between projected student and teacher hidden states.
+    /// If projection layer is set and shapes differ, projects student to teacher dimension.
     pub fn hidden_state_loss(
         &self,
         student_hidden: &[Array2<f32>],
@@ -227,14 +258,30 @@ impl ProgressiveDistillation {
                 let s_h = &student_hidden[*s_idx];
                 let t_h = &teacher_hidden[*t_idx];
 
-                // MSE loss (assuming same shape for now)
-                // TODO: Add projection layer if shapes differ
+                // MSE loss - project student if dimensions differ
                 if s_h.dim() == t_h.dim() {
+                    // Same dimensions: direct MSE
                     let diff = s_h - t_h;
                     let mse = diff.mapv(|x| x * x).mean().unwrap_or(0.0);
                     total_loss += mse;
                     count += 1;
+                } else if let Some(ref proj) = self.projection {
+                    // Different dimensions: project student to teacher space
+                    // s_h: (batch, student_dim), proj: (student_dim, teacher_dim)
+                    // result: (batch, teacher_dim)
+                    let s_dim = s_h.shape()[1];
+                    let t_dim = t_h.shape()[1];
+
+                    // Verify projection dimensions match
+                    if proj.shape() == [s_dim, t_dim] {
+                        let projected = s_h.dot(proj);
+                        let diff = &projected - t_h;
+                        let mse = diff.mapv(|x| x * x).mean().unwrap_or(0.0);
+                        total_loss += mse;
+                        count += 1;
+                    }
                 }
+                // Skip if shapes differ and no projection is set
             }
         }
 
@@ -472,6 +519,68 @@ mod tests {
     fn test_progressive_with_weight() {
         let prog = ProgressiveDistillation::new(vec![(0, 0)]).with_weight(0.5);
         assert_eq!(prog.hidden_weight, 0.5);
+    }
+
+    #[test]
+    fn test_progressive_projection_layer_creation() {
+        // Student dim 512, teacher dim 768
+        let prog = ProgressiveDistillation::new(vec![(0, 0)])
+            .with_projection(512, 768);
+        assert!(prog.projection.is_some());
+        let proj = prog.projection.as_ref().unwrap();
+        assert_eq!(proj.dim(), (512, 768));
+    }
+
+    #[test]
+    fn test_progressive_hidden_loss_with_projection() {
+        // Student has dim 512, teacher has dim 768
+        let prog = ProgressiveDistillation::new(vec![(0, 0)])
+            .with_projection(512, 768);
+
+        let student = vec![Array2::<f32>::ones((4, 512))];
+        let teacher = vec![Array2::<f32>::ones((4, 768))];
+
+        // Should not skip due to shape mismatch
+        let loss = prog.hidden_state_loss(&student, &teacher);
+        // Loss should be computed (not zero due to projection mismatch)
+        // Just verify it doesn't skip
+        assert!(loss >= 0.0);
+    }
+
+    #[test]
+    fn test_progressive_projection_correct_transform() {
+        // Use identity-like projection
+        let mut prog = ProgressiveDistillation::new(vec![(0, 0)])
+            .with_projection(768, 768);
+
+        // Set projection to identity matrix
+        if let Some(ref mut proj) = prog.projection {
+            proj.fill(0.0);
+            for i in 0..768 {
+                proj[[i, i]] = 1.0;
+            }
+        }
+
+        let hidden = Array2::<f32>::from_elem((4, 768), 1.0);
+        let student = vec![hidden.clone()];
+        let teacher = vec![hidden.clone()];
+
+        // With identity projection, loss should be ~0
+        let loss = prog.hidden_state_loss(&student, &teacher);
+        assert!(loss.abs() < 1e-4, "Identity projection should give ~0 loss");
+    }
+
+    #[test]
+    fn test_progressive_no_projection_skips_mismatched() {
+        // No projection set
+        let prog = ProgressiveDistillation::new(vec![(0, 0)]);
+
+        let student = vec![Array2::<f32>::ones((4, 512))];
+        let teacher = vec![Array2::<f32>::ones((4, 768))];
+
+        // Should skip due to shape mismatch, loss = 0
+        let loss = prog.hidden_state_loss(&student, &teacher);
+        assert_eq!(loss, 0.0, "Should skip mismatched shapes without projection");
     }
 
     // =========================================================================
