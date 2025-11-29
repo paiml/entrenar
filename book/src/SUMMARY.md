@@ -197,6 +197,7 @@
 - [Advanced Quantization](./advanced/advanced-quantization.md)
 - [Distributed Training](./advanced/distributed-training.md)
 - [Model Parallelism](./advanced/model-parallelism.md)
+- [Compiler-in-the-Loop (CITL)](./advanced/citl.md)
 
 # Specifications
 
