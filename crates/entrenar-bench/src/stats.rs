@@ -180,7 +180,7 @@ impl StatisticalAnalyzer {
     }
 
     // Approximate F-distribution p-value
-    fn f_to_p(f: f64, df1: f64, df2: f64) -> f64 {
+    fn f_to_p(f: f64, df1: f64, _df2: f64) -> f64 {
         // Very rough approximation using chi-square
         let chi_approx = f * df1;
         Self::chi_square_p(chi_approx, df1)
@@ -360,5 +360,146 @@ mod tests {
             effect_size: 1.0,
         };
         assert_eq!(large.effect_interpretation(), "large");
+    }
+
+    #[test]
+    fn test_effect_interpretation_all_levels() {
+        // negligible
+        let negligible = TestResult {
+            statistic: 0.0,
+            p_value: 0.0,
+            significant: false,
+            effect_size: 0.1,
+        };
+        assert_eq!(negligible.effect_interpretation(), "negligible");
+
+        // medium
+        let medium = TestResult {
+            statistic: 0.0,
+            p_value: 0.0,
+            significant: false,
+            effect_size: 0.6,
+        };
+        assert_eq!(medium.effect_interpretation(), "medium");
+    }
+
+    #[test]
+    fn test_welch_t_test_small_samples() {
+        let sample1 = vec![1.0];
+        let sample2 = vec![2.0];
+
+        let result = StatisticalAnalyzer::welch_t_test(&sample1, &sample2);
+        assert_eq!(result.p_value, 1.0);
+        assert!(!result.significant);
+    }
+
+    #[test]
+    fn test_mann_whitney_empty_samples() {
+        let result = StatisticalAnalyzer::mann_whitney_u(&[], &[1.0, 2.0]);
+        assert_eq!(result.p_value, 1.0);
+        assert!(!result.significant);
+    }
+
+    #[test]
+    fn test_mann_whitney_ties() {
+        // Sample with ties
+        let sample1 = vec![1.0, 2.0, 3.0];
+        let sample2 = vec![2.0, 3.0, 4.0]; // 2.0 and 3.0 tie with sample1
+
+        let result = StatisticalAnalyzer::mann_whitney_u(&sample1, &sample2);
+        assert!(result.statistic >= 0.0);
+    }
+
+    #[test]
+    fn test_anova_single_group() {
+        let groups = vec![vec![1.0, 2.0, 3.0]];
+
+        let result = StatisticalAnalyzer::anova(&groups);
+        assert_eq!(result.p_value, 1.0);
+    }
+
+    #[test]
+    fn test_anova_identical_groups() {
+        let groups = vec![
+            vec![5.0, 5.0, 5.0],
+            vec![5.0, 5.0, 5.0],
+            vec![5.0, 5.0, 5.0],
+        ];
+
+        let result = StatisticalAnalyzer::anova(&groups);
+        // No variance within or between, F should be 0
+        assert!(!result.significant || result.statistic.abs() < 0.001);
+    }
+
+    #[test]
+    fn test_confidence_interval_single_sample() {
+        let sample = vec![5.0];
+        let (lower, upper) = confidence_interval(&sample, 0.95);
+        assert_eq!(lower, 5.0);
+        assert_eq!(upper, 5.0);
+    }
+
+    #[test]
+    fn test_confidence_interval_99() {
+        let sample = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let (lower_95, upper_95) = confidence_interval(&sample, 0.95);
+        let (lower_99, upper_99) = confidence_interval(&sample, 0.99);
+
+        // 99% CI should be wider than 95% CI
+        assert!(lower_99 < lower_95);
+        assert!(upper_99 > upper_95);
+    }
+
+    #[test]
+    fn test_confidence_interval_90() {
+        let sample = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let (lower_95, upper_95) = confidence_interval(&sample, 0.95);
+        let (lower_90, upper_90) = confidence_interval(&sample, 0.90);
+
+        // 90% CI should be narrower than 95% CI
+        assert!(lower_90 > lower_95);
+        assert!(upper_90 < upper_95);
+    }
+
+    #[test]
+    fn test_test_result_to_string() {
+        let result = TestResult {
+            statistic: 2.5,
+            p_value: 0.025,
+            significant: true,
+            effect_size: 0.8,
+        };
+
+        let s = result.to_string();
+        assert!(s.contains("statistic=2.5"));
+        assert!(s.contains("p=0.0250"));
+        assert!(s.contains("significant=true"));
+        assert!(s.contains("large"));
+    }
+
+    #[test]
+    fn test_welch_t_test_zero_variance() {
+        // Samples with zero variance
+        let sample1 = vec![5.0, 5.0, 5.0, 5.0, 5.0];
+        let sample2 = vec![10.0, 10.0, 10.0, 10.0, 10.0];
+
+        let result = StatisticalAnalyzer::welch_t_test(&sample1, &sample2);
+        // Should return p=1 due to zero SE
+        assert_eq!(result.p_value, 1.0);
+    }
+
+    #[test]
+    fn test_normal_cdf_properties() {
+        // Normal CDF at 0 should be 0.5
+        let cdf_0 = StatisticalAnalyzer::normal_cdf(0.0);
+        assert!((cdf_0 - 0.5).abs() < 0.01);
+
+        // CDF at large positive should approach 1
+        let cdf_large = StatisticalAnalyzer::normal_cdf(3.0);
+        assert!(cdf_large > 0.99);
+
+        // CDF at large negative should approach 0
+        let cdf_neg = StatisticalAnalyzer::normal_cdf(-3.0);
+        assert!(cdf_neg < 0.01);
     }
 }

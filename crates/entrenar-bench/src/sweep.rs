@@ -356,4 +356,150 @@ mod tests {
         let std = sweeper.calculate_std(&values);
         assert!((std - 1.58).abs() < 0.1); // sqrt(2.5) ≈ 1.58
     }
+
+    #[test]
+    fn test_std_calculation_single_value() {
+        let sweeper = Sweeper::new(SweepConfig::temperature(1.0..2.0, 1.0));
+
+        let values = vec![5.0];
+        let std = sweeper.calculate_std(&values);
+        assert_eq!(std, 0.0);
+    }
+
+    #[test]
+    fn test_std_calculation_empty() {
+        let sweeper = Sweeper::new(SweepConfig::temperature(1.0..2.0, 1.0));
+
+        let values: Vec<f64> = vec![];
+        let std = sweeper.calculate_std(&values);
+        assert_eq!(std, 0.0);
+    }
+
+    #[test]
+    fn test_sweep_config_with_seed() {
+        let config = SweepConfig::temperature(1.0..5.0, 1.0).with_seed(123);
+        assert_eq!(config.seed, Some(123));
+    }
+
+    #[test]
+    fn test_sweep_config_with_early_stop() {
+        let config = SweepConfig::temperature(1.0..5.0, 1.0).with_early_stop();
+        assert!(config.early_stop);
+    }
+
+    #[test]
+    fn test_sweep_config_with_runs() {
+        let config = SweepConfig::temperature(1.0..5.0, 1.0).with_runs(10);
+        assert_eq!(config.runs_per_point, 10);
+    }
+
+    #[test]
+    fn test_sweep_parameter_rank() {
+        let param = SweepParameter::Rank {
+            values: vec![8, 16, 32, 64],
+        };
+        let values = param.values();
+        assert_eq!(values, vec![8.0, 16.0, 32.0, 64.0]);
+        assert_eq!(param.name(), "rank");
+    }
+
+    #[test]
+    fn test_sweep_parameter_learning_rate() {
+        let param = SweepParameter::LearningRate {
+            values: vec![1e-5, 1e-4, 1e-3],
+        };
+        let values = param.values();
+        assert_eq!(values, vec![1e-5, 1e-4, 1e-3]);
+        assert_eq!(param.name(), "learning_rate");
+    }
+
+    #[test]
+    fn test_sweep_result_fields() {
+        let config = SweepConfig::temperature(1.0..3.0, 1.0);
+        let sweeper = Sweeper::new(config);
+        let result = sweeper.run().unwrap();
+
+        assert_eq!(result.parameter_name, "temperature");
+        assert!(!result.data_points.is_empty());
+    }
+
+    #[test]
+    fn test_data_point_fields() {
+        let point = DataPoint {
+            parameter_value: 4.0,
+            mean_loss: 0.65,
+            std_loss: 0.02,
+            mean_accuracy: 0.83,
+            std_accuracy: 0.01,
+            runs: 5,
+        };
+
+        assert_eq!(point.parameter_value, 4.0);
+        assert_eq!(point.runs, 5);
+    }
+
+    #[test]
+    fn test_training_metrics_fields() {
+        let metrics = TrainingMetrics {
+            loss: 0.75,
+            accuracy: 0.82,
+            throughput: 1200.0,
+            duration_secs: 3600.0,
+        };
+
+        assert_eq!(metrics.loss, 0.75);
+        assert_eq!(metrics.throughput, 1200.0);
+    }
+
+    #[test]
+    fn test_sweep_result_table_optimal() {
+        let config = SweepConfig::temperature(3.0..5.0, 1.0);
+        let sweeper = Sweeper::new(config);
+        let result = sweeper.run().unwrap();
+
+        let table = result.to_table();
+
+        // Should contain "Optimal" section
+        assert!(table.contains("Optimal"));
+        assert!(table.contains('★'));
+    }
+
+    #[test]
+    fn test_sweep_deterministic() {
+        let config = SweepConfig::temperature(1.0..3.0, 1.0).with_seed(42);
+        let sweeper = Sweeper::new(config.clone());
+        let result1 = sweeper.run().unwrap();
+
+        let sweeper2 = Sweeper::new(config);
+        let result2 = sweeper2.run().unwrap();
+
+        // Same seed should produce same results
+        assert_eq!(
+            result1.data_points[0].mean_loss,
+            result2.data_points[0].mean_loss
+        );
+    }
+
+    #[test]
+    fn test_alpha_sweep_finds_optimal() {
+        let config = SweepConfig::alpha(0.3..0.9, 0.2).with_runs(1);
+        let sweeper = Sweeper::new(config);
+        let result = sweeper.run().unwrap();
+
+        // Optimal should be around 0.7
+        let optimal = result.optimal.unwrap();
+        assert!((optimal.parameter_value - 0.7).abs() < 0.3);
+    }
+
+    #[test]
+    fn test_sweep_multiple_runs() {
+        let config = SweepConfig::temperature(3.0..5.0, 1.0).with_runs(3);
+        let sweeper = Sweeper::new(config);
+        let result = sweeper.run().unwrap();
+
+        // Each data point should have 3 runs
+        for point in &result.data_points {
+            assert_eq!(point.runs, 3);
+        }
+    }
 }
