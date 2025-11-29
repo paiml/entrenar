@@ -41,7 +41,7 @@ impl ValidationResult {
                 };
                 report.push_str(&format!("  {} {}: {}\n", prefix, issue.code, issue.message));
                 if let Some(suggestion) = &issue.suggestion {
-                    report.push_str(&format!("    → {}\n", suggestion));
+                    report.push_str(&format!("    → {suggestion}\n"));
                 }
             }
             report.push('\n');

@@ -226,15 +226,15 @@ fn validate_command(
 }
 
 fn export_command(
-    input: &PathBuf,
+    input: &std::path::Path,
     format: &str,
-    output: &PathBuf,
+    output: &std::path::Path,
     quantize: &str,
     cli: &entrenar_common::Cli,
 ) -> entrenar_common::Result<()> {
     if !input.exists() {
         return Err(entrenar_common::EntrenarError::ModelNotFound {
-            path: input.clone(),
+            path: input.to_path_buf(),
         });
     }
 

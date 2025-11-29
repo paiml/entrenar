@@ -82,8 +82,7 @@ impl FromStr for OutputFormat {
             "json" => Ok(Self::Json),
             "compact" | "line" => Ok(Self::Compact),
             _ => Err(format!(
-                "Unknown output format '{}'. Valid options: table, json, compact",
-                s
+                "Unknown output format '{s}'. Valid options: table, json, compact"
             )),
         }
     }

@@ -97,7 +97,7 @@ impl ProgressBar {
             self.message
         );
 
-        print!("{}", bar);
+        print!("{bar}");
         let _ = io::stdout().flush();
     }
 }

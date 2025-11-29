@@ -154,7 +154,7 @@ impl LoraOptimizer {
         let mut best_rank = 64u32;
 
         while low <= high {
-            let mid = (low + high) / 2;
+            let mid = u32::midpoint(low, high);
             let mem = if method == Method::QLoRA {
                 planner.estimate_qlora(mid, 4).total_bytes
             } else {
@@ -202,7 +202,7 @@ impl LoraOptimizer {
 
         // LoRA params: 2 matrices × 4 modules × num_layers
         // Each matrix is either (hidden × rank) or (rank × hidden)
-        (hidden_dim * rank as u64 * 2) * 4 * num_layers
+        (hidden_dim * u64::from(rank) * 2) * 4 * num_layers
     }
 }
 

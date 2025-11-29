@@ -256,9 +256,9 @@ fn compare_command(
 }
 
 fn merge_command(
-    base: &PathBuf,
-    adapter: &PathBuf,
-    output: &PathBuf,
+    base: &std::path::Path,
+    adapter: &std::path::Path,
+    output: &std::path::Path,
     scale: f32,
     cli: &entrenar_common::Cli,
 ) -> entrenar_common::Result<()> {
@@ -279,9 +279,9 @@ fn merge_command(
     Ok(())
 }
 
-fn inspect_command(path: &PathBuf, cli: &entrenar_common::Cli) -> entrenar_common::Result<()> {
+fn inspect_command(path: &std::path::Path, cli: &entrenar_common::Cli) -> entrenar_common::Result<()> {
     if !path.exists() {
-        return Err(entrenar_common::EntrenarError::ModelNotFound { path: path.clone() });
+        return Err(entrenar_common::EntrenarError::ModelNotFound { path: path.to_path_buf() });
     }
 
     // In real implementation, would load and analyze the adapter
@@ -297,5 +297,5 @@ fn inspect_command(path: &PathBuf, cli: &entrenar_common::Cli) -> entrenar_commo
 }
 
 fn format_vram(gb: f64) -> String {
-    format!("{:.0} GB", gb)
+    format!("{gb:.0} GB")
 }

@@ -120,7 +120,7 @@ impl<'a> Pipeline<'a> {
         };
 
         let steps_per_epoch = 1000; // Would be calculated from dataset size
-        metrics.steps_completed = (self.config.training.epochs as u64) * steps_per_epoch;
+        metrics.steps_completed = u64::from(self.config.training.epochs) * steps_per_epoch;
 
         Ok(metrics)
     }

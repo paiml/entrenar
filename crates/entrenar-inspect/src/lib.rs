@@ -63,8 +63,7 @@ impl std::str::FromStr for OutputFormat {
             "gguf" => Ok(Self::Gguf),
             "apr" => Ok(Self::Apr),
             _ => Err(format!(
-                "Unknown format: {}. Use: safetensors, gguf, apr",
-                s
+                "Unknown format: {s}. Use: safetensors, gguf, apr"
             )),
         }
     }

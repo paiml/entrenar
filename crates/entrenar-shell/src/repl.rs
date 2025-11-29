@@ -18,7 +18,7 @@ impl Repl {
     /// Create a new REPL instance.
     pub fn new() -> Result<Self> {
         let editor = DefaultEditor::new().map_err(|e| EntrenarError::Internal {
-            message: format!("Failed to create editor: {}", e),
+            message: format!("Failed to create editor: {e}"),
         })?;
 
         let history_path = dirs::data_dir().map(|p| p.join("entrenar").join("shell_history"));
@@ -78,7 +78,7 @@ impl Repl {
                             match execute(&cmd, &mut self.state) {
                                 Ok(output) => {
                                     if !output.is_empty() {
-                                        println!("{}", output);
+                                        println!("{output}");
                                     }
                                 }
                                 Err(e) => {
@@ -100,7 +100,7 @@ impl Repl {
                     break;
                 }
                 Err(e) => {
-                    println!("{}", styles::error(&format!("Error: {}", e)));
+                    println!("{}", styles::error(&format!("Error: {e}")));
                 }
             }
         }
@@ -117,7 +117,7 @@ impl Repl {
     fn format_prompt(&self) -> String {
         let model_count = self.state.loaded_models().len();
         if model_count > 0 {
-            format!("entrenar ({} models)> ", model_count)
+            format!("entrenar ({model_count} models)> ")
         } else {
             "entrenar> ".to_string()
         }
