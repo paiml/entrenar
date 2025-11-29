@@ -181,4 +181,87 @@ mod tests {
         // Must include actionable suggestions
         assert!(msg.contains("batch_size") || msg.contains("QLoRA"));
     }
+
+    #[test]
+    fn test_io_error_constructor() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = EntrenarError::io("reading config", io_err);
+
+        assert!(matches!(err, EntrenarError::Io { .. }));
+        let msg = err.to_string();
+        assert!(msg.contains("reading config"));
+    }
+
+    #[test]
+    fn test_shape_mismatch_not_user_error() {
+        let err = EntrenarError::ShapeMismatch {
+            expected: vec![1, 2, 3],
+            actual: vec![1, 2, 4],
+        };
+        assert!(!err.is_user_error());
+    }
+
+    #[test]
+    fn test_serialization_error_display() {
+        let err = EntrenarError::Serialization {
+            message: "invalid JSON".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("invalid JSON"));
+    }
+
+    #[test]
+    fn test_config_value_error_includes_suggestion() {
+        let err = EntrenarError::ConfigValue {
+            field: "learning_rate".into(),
+            message: "must be positive".into(),
+            suggestion: "Use a value like 0.001".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("learning_rate"));
+        assert!(msg.contains("must be positive"));
+        assert!(msg.contains("Use a value like 0.001"));
+    }
+
+    #[test]
+    fn test_unsupported_format_lists_alternatives() {
+        let err = EntrenarError::UnsupportedFormat {
+            format: "pickle".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("pickle"));
+        assert!(msg.contains("SafeTensors"));
+    }
+
+    #[test]
+    fn test_huggingface_error_mentions_token() {
+        let err = EntrenarError::HuggingFace {
+            message: "rate limited".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("HF_TOKEN"));
+    }
+
+    #[test]
+    fn test_internal_error_mentions_bug_report() {
+        let err = EntrenarError::Internal {
+            message: "unexpected state".into(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("github.com"));
+        assert!(msg.contains("issues"));
+    }
+
+    #[test]
+    fn test_all_error_codes_start_with_e() {
+        let errors: Vec<EntrenarError> = vec![
+            EntrenarError::ConfigNotFound { path: "".into() },
+            EntrenarError::Cancelled,
+            EntrenarError::Internal { message: "".into() },
+        ];
+
+        for err in errors {
+            assert!(err.code().starts_with('E'));
+        }
+    }
 }
