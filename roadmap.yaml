@@ -601,7 +601,7 @@ phases:
 
   - name: "Phase 12: Monitor WASM Dashboard"
     hours: 24
-    status: in-progress
+    status: complete
     tickets:
       - id: ENT-084
         name: "WASM module structure with wasm-bindgen"
@@ -631,11 +631,44 @@ phases:
         status: complete
         notes: "11 proptest properties: bounds, normalization, sparklines, JSON"
 
+  - name: "Phase 13: Compiler-in-the-Loop Training (CITL)"
+    hours: 16
+    status: complete
+    description: "RAG-based fix pattern storage and error-fix correlation"
+    spec: "https://github.com/paiml/entrenar/issues/28, https://github.com/paiml/entrenar/issues/29"
+    tickets:
+      - id: ENT-088
+        name: "DecisionPatternStore with trueno-rag hybrid retrieval"
+        estimated_hours: 8
+        actual_hours: 2
+        status: complete
+        notes: |
+          FixPattern struct (error_code, decision_sequence, fix_diff, counts).
+          DecisionPatternStore with trueno-rag RagPipeline.
+          BM25 + dense embedding hybrid retrieval with RRF fusion.
+          suggest_fix() with weighted scoring (retrieval * success_rate).
+          JSON import/export. 46 tests including 4 property tests (200 cases each).
+
+      - id: ENT-089
+        name: "DecisionCITL trainer for error-fix correlation"
+        estimated_hours: 8
+        actual_hours: 2
+        status: complete
+        notes: |
+          DecisionTrace with span, timestamp, dependencies.
+          CompilationOutcome (success/failure with error codes).
+          Tarantula fault localization (suspiciousness scoring).
+          ingest_session() for trace processing with pattern indexing.
+          correlate_error() for fault localization.
+          Dependency graph building and root cause analysis.
+          33 tests including 4 property tests (200 cases each).
+          Total: 79 CITL tests.
+
 # Summary Statistics
 summary:
-  total_estimated_hours: 1096  # +24h for Phase 12
-  total_actual_hours: 105     # +4h for Phase 12
-  completion_percentage: 100  # 87/87 tickets
-  tickets_complete: 87
+  total_estimated_hours: 1112  # +16h for Phase 13
+  total_actual_hours: 109     # +4h for Phase 13
+  completion_percentage: 100  # 89/89 tickets
+  tickets_complete: 89
   tickets_in_progress: 0
   tickets_pending: 0          # All complete!
