@@ -18,8 +18,8 @@ pub const BLOCK_SIZE: usize = 64;
 /// 4-bit quantized representation with block-wise scale factors
 ///
 /// Memory layout:
-/// - scales: Vec<f32> with length = ceil(n / BLOCK_SIZE)
-/// - data: Vec<u8> where each byte stores 2 quantized values (4 bits each)
+/// - scales: `Vec<f32>` with length = ceil(n / BLOCK_SIZE)
+/// - data: `Vec<u8>` where each byte stores 2 quantized values (4 bits each)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Quantized4Bit {
     /// Scale factors (one per block)

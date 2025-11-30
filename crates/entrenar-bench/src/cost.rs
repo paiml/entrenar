@@ -206,9 +206,10 @@ impl CostPerformanceAnalysis {
 
         // Mark points that are Pareto optimal
         for point in &mut points {
-            point.is_pareto_optimal =
-                pareto.iter().any(|p| (p.cost_usd - point.cost_usd).abs() < 1e-6 &&
-                                      (p.accuracy - point.accuracy).abs() < 1e-6);
+            point.is_pareto_optimal = pareto.iter().any(|p| {
+                (p.cost_usd - point.cost_usd).abs() < 1e-6
+                    && (p.accuracy - point.accuracy).abs() < 1e-6
+            });
         }
 
         let pareto_frontier = pareto;
@@ -278,7 +279,10 @@ impl CostPerformanceAnalysis {
                 eff_a.partial_cmp(&eff_b).unwrap()
             })
         {
-            if recommendations.iter().all(|r| r.point.name != best_eff.name) {
+            if recommendations
+                .iter()
+                .all(|r| r.point.name != best_eff.name)
+            {
                 recommendations.push(Recommendation {
                     reason: "Best accuracy per dollar within constraints".to_string(),
                     point: (*best_eff).clone(),
@@ -288,8 +292,9 @@ impl CostPerformanceAnalysis {
 
         // Pareto-optimal within constraints
         for point in &self.pareto_frontier {
-            if constraints.is_satisfied(point) &&
-               recommendations.iter().all(|r| r.point.name != point.name) {
+            if constraints.is_satisfied(point)
+                && recommendations.iter().all(|r| r.point.name != point.name)
+            {
                 recommendations.push(Recommendation {
                     reason: "Pareto-optimal configuration".to_string(),
                     point: point.clone(),
@@ -304,9 +309,15 @@ impl CostPerformanceAnalysis {
     pub fn to_table(&self) -> String {
         let mut table = String::new();
         table.push_str("Cost-Performance Analysis\n");
-        table.push_str("┌────────────────────────┬───────────┬───────────┬──────────┬─────────┬─────────┐\n");
-        table.push_str("│ Configuration          │ GPU Hours │ Cost (USD)│ Accuracy │   Loss  │ Pareto? │\n");
-        table.push_str("├────────────────────────┼───────────┼───────────┼──────────┼─────────┼─────────┤\n");
+        table.push_str(
+            "┌────────────────────────┬───────────┬───────────┬──────────┬─────────┬─────────┐\n",
+        );
+        table.push_str(
+            "│ Configuration          │ GPU Hours │ Cost (USD)│ Accuracy │   Loss  │ Pareto? │\n",
+        );
+        table.push_str(
+            "├────────────────────────┼───────────┼───────────┼──────────┼─────────┼─────────┤\n",
+        );
 
         for point in &self.points {
             let pareto_mark = if point.is_pareto_optimal { "★" } else { " " };
@@ -321,8 +332,12 @@ impl CostPerformanceAnalysis {
             ));
         }
 
-        table.push_str("└────────────────────────┴───────────┴───────────┴──────────┴─────────┴─────────┘\n");
-        table.push_str("\n★ = Pareto-optimal (no configuration is both cheaper AND more accurate)\n");
+        table.push_str(
+            "└────────────────────────┴───────────┴───────────┴──────────┴─────────┴─────────┘\n",
+        );
+        table.push_str(
+            "\n★ = Pareto-optimal (no configuration is both cheaper AND more accurate)\n",
+        );
 
         table
     }

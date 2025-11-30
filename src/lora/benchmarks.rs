@@ -319,7 +319,6 @@ mod tests {
             prop_assert_eq!(results.total_qlora_bytes, sum_qlora);
 
             // Savings should be non-negative
-            prop_assert!(results.savings_bytes >= 0);
             prop_assert!(results.savings_percent >= 0.0);
         }
     }

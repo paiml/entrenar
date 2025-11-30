@@ -41,7 +41,7 @@ training:
     temp_file.write_all(yaml.as_bytes()).unwrap();
 
     // Should parse and validate successfully
-    let spec = train::load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).unwrap();
 
     assert_eq!(spec.model.layers.len(), 2);
     assert_eq!(spec.data.batch_size, 16);
@@ -69,7 +69,7 @@ optimizer:
     let mut temp_file = NamedTempFile::new().unwrap();
     temp_file.write_all(yaml.as_bytes()).unwrap();
 
-    let spec = train::load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).unwrap();
 
     // Check defaults are applied
     assert_eq!(spec.training.epochs, 10); // Default

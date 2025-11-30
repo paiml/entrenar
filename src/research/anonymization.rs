@@ -109,9 +109,10 @@ impl AnonymizationConfig {
         };
 
         // Anonymize description if present
-        let description = artifact.description.as_ref().map(|desc| {
-            anonymize_text_internal(desc, &artifact.authors, self)
-        });
+        let description = artifact
+            .description
+            .as_ref()
+            .map(|desc| anonymize_text_internal(desc, &artifact.authors, self));
 
         AnonymizedArtifact {
             anonymous_id,
@@ -190,25 +191,20 @@ impl AnonymizedArtifact {
 }
 
 /// Anonymize a string by replacing author names
-pub fn anonymize_text(
-    text: &str,
-    authors: &[Author],
-    config: &AnonymizationConfig,
-) -> String {
+pub fn anonymize_text(text: &str, authors: &[Author], config: &AnonymizationConfig) -> String {
     anonymize_text_internal(text, authors, config)
 }
 
 /// Internal function for text anonymization
-fn anonymize_text_internal(
-    text: &str,
-    authors: &[Author],
-    config: &AnonymizationConfig,
-) -> String {
+fn anonymize_text_internal(text: &str, authors: &[Author], config: &AnonymizationConfig) -> String {
     let mut result = text.to_string();
 
     for (i, author) in authors.iter().enumerate() {
         // Replace full name
-        result = result.replace(&author.name, &format!("{} {}", config.author_replacement, i + 1));
+        result = result.replace(
+            &author.name,
+            &format!("{} {}", config.author_replacement, i + 1),
+        );
 
         // Replace last name only
         let last_name = author.last_name();
@@ -244,8 +240,8 @@ mod tests {
                     .unwrap(),
             );
 
-        let author2 = Author::new("Bob Jones")
-            .with_affiliation(Affiliation::new("Stanford University"));
+        let author2 =
+            Author::new("Bob Jones").with_affiliation(Affiliation::new("Stanford University"));
 
         ResearchArtifact::new(
             "paper-2024-001",
@@ -377,8 +373,7 @@ mod tests {
 
     #[test]
     fn test_anonymize_text() {
-        let author = Author::new("Alice Smith")
-            .with_affiliation(Affiliation::new("MIT"));
+        let author = Author::new("Alice Smith").with_affiliation(Affiliation::new("MIT"));
 
         let text = "This paper by Alice Smith from MIT presents...";
         let config = AnonymizationConfig::new("salt");
@@ -393,8 +388,7 @@ mod tests {
 
     #[test]
     fn test_anonymize_text_last_name() {
-        let author = Author::new("Alice Marie Smith")
-            .with_affiliation(Affiliation::new("MIT"));
+        let author = Author::new("Alice Marie Smith").with_affiliation(Affiliation::new("MIT"));
 
         let text = "Smith et al. demonstrated...";
         let config = AnonymizationConfig::new("salt");

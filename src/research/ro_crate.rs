@@ -148,9 +148,13 @@ impl RoCrateDescriptor {
     /// Create a new RO-Crate descriptor
     pub fn new() -> Self {
         // Start with the metadata file entity pointing to root
-        let metadata_entity = RoCrateEntity::new("ro-crate-metadata.json", EntityType::CreativeWork)
-            .with_property("conformsTo", json!({ "@id": "https://w3id.org/ro/crate/1.1" }))
-            .with_reference("about", "./");
+        let metadata_entity =
+            RoCrateEntity::new("ro-crate-metadata.json", EntityType::CreativeWork)
+                .with_property(
+                    "conformsTo",
+                    json!({ "@id": "https://w3id.org/ro/crate/1.1" }),
+                )
+                .with_reference("about", "./");
 
         Self {
             context: RO_CRATE_CONTEXT.to_string(),
@@ -196,8 +200,10 @@ impl RoCrate {
         let mut descriptor = RoCrateDescriptor::new();
 
         // Add root dataset
-        let root_entity = RoCrateEntity::root_dataset()
-            .with_property("datePublished", chrono::Utc::now().format("%Y-%m-%d").to_string());
+        let root_entity = RoCrateEntity::root_dataset().with_property(
+            "datePublished",
+            chrono::Utc::now().format("%Y-%m-%d").to_string(),
+        );
         descriptor.add_entity(root_entity);
 
         Self {
@@ -213,19 +219,31 @@ impl RoCrate {
 
         // Update root dataset with artifact metadata
         if let Some(root_entity) = crate_pkg.descriptor.root_dataset_mut() {
-            root_entity.properties.insert("name".to_string(), json!(artifact.title));
+            root_entity
+                .properties
+                .insert("name".to_string(), json!(artifact.title));
             if let Some(desc) = &artifact.description {
-                root_entity.properties.insert("description".to_string(), json!(desc));
+                root_entity
+                    .properties
+                    .insert("description".to_string(), json!(desc));
             }
-            root_entity.properties.insert("version".to_string(), json!(artifact.version));
-            root_entity.properties.insert("license".to_string(), json!(artifact.license.to_string()));
+            root_entity
+                .properties
+                .insert("version".to_string(), json!(artifact.version));
+            root_entity
+                .properties
+                .insert("license".to_string(), json!(artifact.license.to_string()));
 
             if let Some(doi) = &artifact.doi {
-                root_entity.properties.insert("identifier".to_string(), json!(doi));
+                root_entity
+                    .properties
+                    .insert("identifier".to_string(), json!(doi));
             }
 
             if !artifact.keywords.is_empty() {
-                root_entity.properties.insert("keywords".to_string(), json!(artifact.keywords.join(", ")));
+                root_entity
+                    .properties
+                    .insert("keywords".to_string(), json!(artifact.keywords.join(", ")));
             }
         }
 
@@ -238,16 +256,14 @@ impl RoCrate {
             let mut person_entity = RoCrateEntity::person(&author_id, &author.name);
 
             if let Some(orcid) = &author.orcid {
-                person_entity = person_entity.with_property(
-                    "identifier",
-                    format!("https://orcid.org/{orcid}"),
-                );
+                person_entity =
+                    person_entity.with_property("identifier", format!("https://orcid.org/{orcid}"));
             }
 
             if let Some(affiliation) = author.affiliations.first() {
                 let org_id = format!("#org-{}", i + 1);
-                let org_entity =
-                    RoCrateEntity::new(&org_id, EntityType::Organization).with_name(&affiliation.name);
+                let org_entity = RoCrateEntity::new(&org_id, EntityType::Organization)
+                    .with_name(&affiliation.name);
                 crate_pkg.descriptor.add_entity(org_entity);
                 person_entity = person_entity.with_reference("affiliation", &org_id);
             }
@@ -258,11 +274,11 @@ impl RoCrate {
         // Link authors to root dataset
         if !author_ids.is_empty() {
             if let Some(root_entity) = crate_pkg.descriptor.root_dataset_mut() {
-                let author_refs: Vec<serde_json::Value> = author_ids
-                    .iter()
-                    .map(|id| json!({ "@id": id }))
-                    .collect();
-                root_entity.properties.insert("author".to_string(), json!(author_refs));
+                let author_refs: Vec<serde_json::Value> =
+                    author_ids.iter().map(|id| json!({ "@id": id })).collect();
+                root_entity
+                    .properties
+                    .insert("author".to_string(), json!(author_refs));
             }
         }
 
@@ -542,6 +558,9 @@ mod tests {
         assert_eq!(root.properties.get("name"), Some(&json!("Test Dataset")));
         assert_eq!(root.properties.get("version"), Some(&json!("1.0.0")));
         assert_eq!(root.properties.get("license"), Some(&json!("CC-BY-4.0")));
-        assert_eq!(root.properties.get("identifier"), Some(&json!("10.1234/test")));
+        assert_eq!(
+            root.properties.get("identifier"),
+            Some(&json!("10.1234/test"))
+        );
     }
 }

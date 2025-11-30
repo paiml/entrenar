@@ -192,27 +192,27 @@ impl WasmBudget {
     /// Create a strict budget for mobile web
     pub fn mobile() -> Self {
         Self {
-            max_binary_size: 2 * 1024 * 1024,      // 2 MB
-            max_startup_ms: 200,                   // 200 ms
-            max_memory_bytes: 128 * 1024 * 1024,   // 128 MB
+            max_binary_size: 2 * 1024 * 1024,    // 2 MB
+            max_startup_ms: 200,                 // 200 ms
+            max_memory_bytes: 128 * 1024 * 1024, // 128 MB
         }
     }
 
     /// Create a standard budget for desktop web
     pub fn desktop() -> Self {
         Self {
-            max_binary_size: 10 * 1024 * 1024,    // 10 MB
-            max_startup_ms: 1000,                  // 1 second
-            max_memory_bytes: 512 * 1024 * 1024,  // 512 MB
+            max_binary_size: 10 * 1024 * 1024,   // 10 MB
+            max_startup_ms: 1000,                // 1 second
+            max_memory_bytes: 512 * 1024 * 1024, // 512 MB
         }
     }
 
     /// Create a relaxed budget for embedded/IoT
     pub fn embedded() -> Self {
         Self {
-            max_binary_size: 1024 * 1024,         // 1 MB
-            max_startup_ms: 100,                   // 100 ms
-            max_memory_bytes: 64 * 1024 * 1024,   // 64 MB
+            max_binary_size: 1024 * 1024,       // 1 MB
+            max_startup_ms: 100,                // 100 ms
+            max_memory_bytes: 64 * 1024 * 1024, // 64 MB
         }
     }
 
@@ -228,9 +228,9 @@ impl WasmBudget {
 impl Default for WasmBudget {
     fn default() -> Self {
         Self {
-            max_binary_size: 5 * 1024 * 1024,     // 5 MB
-            max_startup_ms: 500,                   // 500 ms
-            max_memory_bytes: 256 * 1024 * 1024,  // 256 MB
+            max_binary_size: 5 * 1024 * 1024,    // 5 MB
+            max_startup_ms: 500,                 // 500 ms
+            max_memory_bytes: 256 * 1024 * 1024, // 256 MB
         }
     }
 }
@@ -366,9 +366,9 @@ mod tests {
     #[test]
     fn test_edge_efficiency_new() {
         let eff = EdgeEfficiency::new(
-            5 * 1024 * 1024, // 5 MB
-            100,             // 100 ms
-            10.0,            // 10 ms p99
+            5 * 1024 * 1024,   // 5 MB
+            100,               // 100 ms
+            10.0,              // 10 ms p99
             128 * 1024 * 1024, // 128 MB
         );
 
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn test_edge_efficiency_size_conversions() {
         let eff = EdgeEfficiency::new(
-            10 * 1024 * 1024,  // 10 MB
+            10 * 1024 * 1024, // 10 MB
             100,
             10.0,
             256 * 1024 * 1024, // 256 MB
@@ -429,8 +429,8 @@ mod tests {
     #[test]
     fn test_edge_efficiency_multiple_violations() {
         let eff = EdgeEfficiency::new(
-            10 * 1024 * 1024,  // 10 MB - exceeds 5 MB
-            1000,              // 1000 ms - exceeds 500 ms
+            10 * 1024 * 1024, // 10 MB - exceeds 5 MB
+            1000,             // 1000 ms - exceeds 500 ms
             10.0,
             300 * 1024 * 1024, // 300 MB - exceeds 256 MB
         );
@@ -508,8 +508,10 @@ mod tests {
         let json = serde_json::to_string(&eff).unwrap();
         let parsed: ServerEfficiency = serde_json::from_str(&json).unwrap();
 
-        assert!((parsed.throughput_samples_per_sec - eff.throughput_samples_per_sec).abs()
-            < f64::EPSILON);
+        assert!(
+            (parsed.throughput_samples_per_sec - eff.throughput_samples_per_sec).abs()
+                < f64::EPSILON
+        );
     }
 
     #[test]

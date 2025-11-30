@@ -684,8 +684,8 @@ fn run_research_preregister(
     let output = if let Some(key_path) = &args.sign_key {
         use ed25519_dalek::SigningKey;
 
-        let key_bytes = std::fs::read(key_path)
-            .map_err(|e| format!("Failed to read signing key: {e}"))?;
+        let key_bytes =
+            std::fs::read(key_path).map_err(|e| format!("Failed to read signing key: {e}"))?;
 
         if key_bytes.len() != 32 {
             return Err("Signing key must be exactly 32 bytes".to_string());
@@ -796,7 +796,11 @@ fn run_research_export(args: entrenar::config::ExportArgs, level: LogLevel) -> R
     log(
         level,
         LogLevel::Normal,
-        &format!("Exporting: {} -> {}", args.input.display(), args.output.display()),
+        &format!(
+            "Exporting: {} -> {}",
+            args.input.display(),
+            args.output.display()
+        ),
     );
 
     match args.format {
@@ -844,14 +848,14 @@ fn run_research_export(args: entrenar::config::ExportArgs, level: LogLevel) -> R
             let yaml = std::fs::read_to_string(&args.input)
                 .map_err(|e| format!("Failed to read artifact: {e}"))?;
 
-            let artifact: ResearchArtifact =
-                serde_yaml::from_str(&yaml).map_err(|e| format!("Failed to parse artifact: {e}"))?;
+            let artifact: ResearchArtifact = serde_yaml::from_str(&yaml)
+                .map_err(|e| format!("Failed to parse artifact: {e}"))?;
 
             let config = AnonymizationConfig::new(salt);
             let anon = config.anonymize(&artifact);
 
-            let json = serde_json::to_string_pretty(&anon)
-                .map_err(|e| format!("JSON error: {e}"))?;
+            let json =
+                serde_json::to_string_pretty(&anon).map_err(|e| format!("JSON error: {e}"))?;
 
             std::fs::write(&args.output, &json)
                 .map_err(|e| format!("Failed to write JSON: {e}"))?;
@@ -991,8 +995,7 @@ fn run_research_bundle(args: entrenar::config::BundleArgs, level: LogLevel) -> R
     if args.zip {
         let zip_path = args.output.with_extension("zip");
         let zip_data = crate_pkg.to_zip().map_err(|e| format!("ZIP error: {e}"))?;
-        std::fs::write(&zip_path, &zip_data)
-            .map_err(|e| format!("Failed to write ZIP: {e}"))?;
+        std::fs::write(&zip_path, &zip_data).map_err(|e| format!("Failed to write ZIP: {e}"))?;
 
         log(
             level,
@@ -1054,27 +1057,27 @@ fn run_research_verify(args: entrenar::config::VerifyArgs, level: LogLevel) -> R
         if args.verify_git {
             if let Some(proof) = &signed.timestamp_proof {
                 if proof.is_git() {
+                    log(level, LogLevel::Normal, "Git timestamp proof: GitCommit");
+                    if let Some(commit) = proof.git_commit() {
+                        log(level, LogLevel::Verbose, &format!("  Commit: {commit}"));
+                    }
+                } else {
                     log(
                         level,
                         LogLevel::Normal,
-                        "Git timestamp proof: GitCommit",
+                        "Timestamp proof is not a git commit",
                     );
-                    if let Some(commit) = proof.git_commit() {
-                        log(
-                            level,
-                            LogLevel::Verbose,
-                            &format!("  Commit: {commit}"),
-                        );
-                    }
-                } else {
-                    log(level, LogLevel::Normal, "Timestamp proof is not a git commit");
                 }
             } else {
                 log(level, LogLevel::Normal, "No git timestamp proof found");
             }
         }
 
-        log(level, LogLevel::Normal, "Pre-registration verified successfully");
+        log(
+            level,
+            LogLevel::Normal,
+            "Pre-registration verified successfully",
+        );
     } else {
         // Try to parse as commitment
         log(

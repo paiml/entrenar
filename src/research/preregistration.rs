@@ -180,17 +180,17 @@ impl SignedPreRegistration {
     /// Verify the signature
     pub fn verify(&self) -> Result<bool, PreRegistrationError> {
         // Decode public key
-        let pk_bytes = hex::decode(&self.public_key)
-            .map_err(|_| PreRegistrationError::InvalidPublicKey)?;
+        let pk_bytes =
+            hex::decode(&self.public_key).map_err(|_| PreRegistrationError::InvalidPublicKey)?;
         let pk_array: [u8; 32] = pk_bytes
             .try_into()
             .map_err(|_| PreRegistrationError::InvalidPublicKey)?;
-        let public_key =
-            VerifyingKey::from_bytes(&pk_array).map_err(|_| PreRegistrationError::InvalidPublicKey)?;
+        let public_key = VerifyingKey::from_bytes(&pk_array)
+            .map_err(|_| PreRegistrationError::InvalidPublicKey)?;
 
         // Decode signature
-        let sig_bytes = hex::decode(&self.signature)
-            .map_err(|_| PreRegistrationError::InvalidSignature)?;
+        let sig_bytes =
+            hex::decode(&self.signature).map_err(|_| PreRegistrationError::InvalidSignature)?;
         let sig_array: [u8; 64] = sig_bytes
             .try_into()
             .map_err(|_| PreRegistrationError::InvalidSignature)?;
@@ -282,7 +282,10 @@ mod tests {
 
         let result = tampered.reveal(&commitment);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PreRegistrationError::HashMismatch));
+        assert!(matches!(
+            result.unwrap_err(),
+            PreRegistrationError::HashMismatch
+        ));
     }
 
     #[test]
@@ -363,8 +366,7 @@ mod tests {
 
     #[test]
     fn test_registration_with_notes() {
-        let reg = create_test_registration()
-            .with_notes("Additional protocol considerations");
+        let reg = create_test_registration().with_notes("Additional protocol considerations");
 
         assert_eq!(
             reg.notes,

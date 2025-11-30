@@ -135,8 +135,7 @@ impl CpuInfo {
     fn detect_physical_cores() -> Option<u32> {
         std::fs::read_to_string("/proc/cpuinfo").ok().map(|info| {
             // Count unique core IDs
-            let mut core_ids: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
+            let mut core_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
             let mut current_physical_id = String::new();
 
             for line in info.lines() {
@@ -587,8 +586,8 @@ mod tests {
 
     #[test]
     fn test_cpu_info_with_cache() {
-        let cpu = CpuInfo::new(8, 16, SimdCapability::Avx2, "Test CPU")
-            .with_cache(30 * 1024 * 1024); // 30 MB
+        let cpu =
+            CpuInfo::new(8, 16, SimdCapability::Avx2, "Test CPU").with_cache(30 * 1024 * 1024); // 30 MB
 
         assert_eq!(cpu.cache_bytes, 30 * 1024 * 1024);
     }

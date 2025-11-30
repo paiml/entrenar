@@ -385,11 +385,7 @@ impl ArchiveDeposit {
         let record_id = format!("{}", rand::random::<u64>() % 10_000_000);
         let doi = format!("10.5281/zenodo.{record_id}");
 
-        let url = format!(
-            "{}/record/{}",
-            self.provider.base_url(),
-            record_id
-        );
+        let url = format!("{}/record/{}", self.provider.base_url(), record_id);
 
         Ok(DepositResult {
             doi,

@@ -168,7 +168,10 @@ impl CitationMetadata {
         cff.push_str(&format!("type: {cff_type}\n"));
 
         // Title
-        cff.push_str(&format!("title: \"{}\"\n", escape_yaml(&self.artifact.title)));
+        cff.push_str(&format!(
+            "title: \"{}\"\n",
+            escape_yaml(&self.artifact.title)
+        ));
 
         // Version
         cff.push_str(&format!("version: \"{}\"\n", self.artifact.version));
@@ -452,8 +455,11 @@ mod tests {
     #[test]
     fn test_keywords_in_bibtex() {
         let artifact = create_test_artifact();
-        let citation = CitationMetadata::new(artifact, 2024)
-            .with_keywords(["machine learning", "transformers", "attention"]);
+        let citation = CitationMetadata::new(artifact, 2024).with_keywords([
+            "machine learning",
+            "transformers",
+            "attention",
+        ]);
 
         let bibtex = citation.to_bibtex();
 

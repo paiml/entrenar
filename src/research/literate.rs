@@ -134,10 +134,7 @@ impl LiterateDocument {
                         // Heading
                         let level = line.chars().take_while(|&c| c == '#').count().min(6);
                         let text = line.trim_start_matches('#').trim();
-                        html.push_str(&format!(
-                            "<h{level}>{}</h{level}>\n",
-                            escape_html(text)
-                        ));
+                        html.push_str(&format!("<h{level}>{}</h{level}>\n", escape_html(text)));
                     } else if line.is_empty() {
                         // Empty line
                     } else {
@@ -181,7 +178,10 @@ fn extract_blocks_with_regex(content: &str, pattern: &Regex) -> Vec<CodeBlock> {
     for cap in pattern.captures_iter(content) {
         let full_match = cap.get(0).unwrap();
         let lang = cap.get(1).map(|m| m.as_str().to_string());
-        let code = cap.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+        let code = cap
+            .get(2)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
 
         // Calculate line number
         let line_number = content[..full_match.start()]

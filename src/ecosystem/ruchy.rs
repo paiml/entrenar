@@ -102,9 +102,7 @@ impl SessionMetrics {
 
     /// Check if metrics are empty.
     pub fn is_empty(&self) -> bool {
-        self.loss_history.is_empty()
-            && self.accuracy_history.is_empty()
-            && self.custom.is_empty()
+        self.loss_history.is_empty() && self.accuracy_history.is_empty() && self.custom.is_empty()
     }
 }
 
@@ -336,7 +334,9 @@ impl From<RuchySession> for EntrenarSession {
 /// Convert a Ruchy session to a research artifact.
 ///
 /// Preserves training history and metadata in the artifact.
-pub fn session_to_artifact(session: &EntrenarSession) -> Result<ResearchArtifact, RuchyBridgeError> {
+pub fn session_to_artifact(
+    session: &EntrenarSession,
+) -> Result<ResearchArtifact, RuchyBridgeError> {
     if !session.has_training_data() && session.code_history.is_empty() {
         return Err(RuchyBridgeError::NoTrainingHistory);
     }
@@ -520,29 +520,23 @@ mod tests {
             start_time: chrono::Utc::now(),
             end_time: None,
             kernel: Some("python3".to_string()),
-            cells: vec![
-                RuchyCell {
-                    id: "cell-1".to_string(),
-                    cell_type: "code".to_string(),
-                    source: "import entrenar".to_string(),
-                    outputs: vec!["OK".to_string()],
-                    execution_count: Some(1),
-                    executed_at: Some(chrono::Utc::now()),
-                },
-            ],
-            variables: HashMap::from([
-                ("lr".to_string(), "0.001".to_string()),
-            ]),
-            training_runs: vec![
-                TrainingRun {
-                    run_id: "run-1".to_string(),
-                    model: "llama".to_string(),
-                    dataset: Some("alpaca".to_string()),
-                    epochs: 3,
-                    losses: vec![0.5, 0.3, 0.2],
-                    metrics: HashMap::new(),
-                },
-            ],
+            cells: vec![RuchyCell {
+                id: "cell-1".to_string(),
+                cell_type: "code".to_string(),
+                source: "import entrenar".to_string(),
+                outputs: vec!["OK".to_string()],
+                execution_count: Some(1),
+                executed_at: Some(chrono::Utc::now()),
+            }],
+            variables: HashMap::from([("lr".to_string(), "0.001".to_string())]),
+            training_runs: vec![TrainingRun {
+                run_id: "run-1".to_string(),
+                model: "llama".to_string(),
+                dataset: Some("alpaca".to_string()),
+                epochs: 3,
+                losses: vec![0.5, 0.3, 0.2],
+                metrics: HashMap::new(),
+            }],
         };
 
         let session: EntrenarSession = ruchy.into();

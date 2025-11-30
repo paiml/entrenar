@@ -61,10 +61,10 @@ impl FineTuneMethod {
                 let lora_overhead = f64::from(*rank) * 0.01;
                 base_compression / (1.0 + lora_overhead)
             }
-            Self::Adapter => 10.0,  // ~10% of full
-            Self::Prefix => 20.0,   // ~5% of full
-            Self::IA3 => 50.0,      // ~2% of full
-            Self::Full => 1.0,      // No reduction
+            Self::Adapter => 10.0, // ~10% of full
+            Self::Prefix => 20.0,  // ~5% of full
+            Self::IA3 => 50.0,     // ~2% of full
+            Self::Full => 1.0,     // No reduction
         }
     }
 
@@ -129,12 +129,12 @@ impl ModelParadigm {
     /// compared to inference-only memory.
     pub fn typical_memory_multiplier(&self) -> f64 {
         match self {
-            Self::TraditionalMl => 1.5,  // Minimal overhead
-            Self::DeepLearning => 4.0,   // Gradients + optimizer state + activations
+            Self::TraditionalMl => 1.5, // Minimal overhead
+            Self::DeepLearning => 4.0,  // Gradients + optimizer state + activations
             Self::FineTuning(method) => {
                 match method {
-                    FineTuneMethod::Full => 4.0, // Same as deep learning
-                    FineTuneMethod::LoRA { .. } => 1.2, // Base frozen + small adapters
+                    FineTuneMethod::Full => 4.0,         // Same as deep learning
+                    FineTuneMethod::LoRA { .. } => 1.2,  // Base frozen + small adapters
                     FineTuneMethod::QLoRA { .. } => 1.1, // Quantized base + adapters
                     FineTuneMethod::Adapter => 1.5,
                     FineTuneMethod::Prefix => 1.3,
@@ -181,16 +181,14 @@ impl ModelParadigm {
         match self {
             Self::TraditionalMl => 0.7, // Depends heavily on task
             Self::DeepLearning => 1.0,  // Baseline
-            Self::FineTuning(method) => {
-                match method {
-                    FineTuneMethod::Full => 1.0,
-                    FineTuneMethod::LoRA { rank, .. } => 0.95 + (f64::from(*rank) / 256.0).min(0.05),
-                    FineTuneMethod::QLoRA { .. } => 0.93,
-                    FineTuneMethod::Adapter => 0.92,
-                    FineTuneMethod::Prefix => 0.88,
-                    FineTuneMethod::IA3 => 0.90,
-                }
-            }
+            Self::FineTuning(method) => match method {
+                FineTuneMethod::Full => 1.0,
+                FineTuneMethod::LoRA { rank, .. } => 0.95 + (f64::from(*rank) / 256.0).min(0.05),
+                FineTuneMethod::QLoRA { .. } => 0.93,
+                FineTuneMethod::Adapter => 0.92,
+                FineTuneMethod::Prefix => 0.88,
+                FineTuneMethod::IA3 => 0.90,
+            },
             Self::Distillation => 0.85, // Student typically slightly worse
             Self::MoE => 1.05,          // Can exceed with specialization
             Self::Ensemble => 1.02,     // Slight improvement from diversity
@@ -199,10 +197,7 @@ impl ModelParadigm {
 
     /// Check if this paradigm requires a pretrained model
     pub fn requires_pretrained(&self) -> bool {
-        matches!(
-            self,
-            Self::FineTuning(_) | Self::Distillation
-        )
+        matches!(self, Self::FineTuning(_) | Self::Distillation)
     }
 
     /// Check if this paradigm is parameter-efficient
@@ -226,16 +221,14 @@ impl ModelParadigm {
         match self {
             Self::TraditionalMl => 10.0,
             Self::DeepLearning => 1.0,
-            Self::FineTuning(method) => {
-                match method {
-                    FineTuneMethod::Full => 1.0,
-                    FineTuneMethod::LoRA { .. } => 2.0,
-                    FineTuneMethod::QLoRA { .. } => 4.0,
-                    FineTuneMethod::Adapter => 1.5,
-                    FineTuneMethod::Prefix => 1.8,
-                    FineTuneMethod::IA3 => 3.0,
-                }
-            }
+            Self::FineTuning(method) => match method {
+                FineTuneMethod::Full => 1.0,
+                FineTuneMethod::LoRA { .. } => 2.0,
+                FineTuneMethod::QLoRA { .. } => 4.0,
+                FineTuneMethod::Adapter => 1.5,
+                FineTuneMethod::Prefix => 1.8,
+                FineTuneMethod::IA3 => 3.0,
+            },
             Self::Distillation => 0.5, // Need memory for both models
             Self::MoE => 1.2,
             Self::Ensemble => 0.3,
@@ -309,7 +302,10 @@ mod tests {
     #[test]
     fn test_fine_tune_method_display() {
         assert_eq!(format!("{}", FineTuneMethod::lora(64)), "LoRA(r=64, α=64)");
-        assert_eq!(format!("{}", FineTuneMethod::qlora(32)), "QLoRA(r=32, 4-bit)");
+        assert_eq!(
+            format!("{}", FineTuneMethod::qlora(32)),
+            "QLoRA(r=32, 4-bit)"
+        );
         assert_eq!(format!("{}", FineTuneMethod::IA3), "IA³");
     }
 
@@ -396,7 +392,10 @@ mod tests {
 
     #[test]
     fn test_model_paradigm_display() {
-        assert_eq!(format!("{}", ModelParadigm::TraditionalMl), "Traditional ML");
+        assert_eq!(
+            format!("{}", ModelParadigm::TraditionalMl),
+            "Traditional ML"
+        );
         assert_eq!(format!("{}", ModelParadigm::DeepLearning), "Deep Learning");
         assert_eq!(format!("{}", ModelParadigm::MoE), "Mixture of Experts");
         assert!(format!("{}", ModelParadigm::lora(64, 64.0)).contains("LoRA"));

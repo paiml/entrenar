@@ -47,7 +47,7 @@ proptest! {
     /// the exact value computed from the formula.
     #[test]
     fn prop_parameter_count_matches_formula(
-        (hidden_size, num_layers, num_heads, vocab_size, intermediate_size)
+        (hidden_size, num_layers, _num_heads, vocab_size, intermediate_size)
         in llama_config_strategy()
     ) {
         // Expected parameter count:
@@ -87,7 +87,7 @@ proptest! {
     /// num_layers * params_per_layer (embedding params stay constant).
     #[test]
     fn prop_params_scale_linearly_with_layers(
-        (hidden_size, num_layers, num_heads, vocab_size, intermediate_size)
+        (hidden_size, num_layers, _num_heads, vocab_size, intermediate_size)
         in llama_config_strategy()
     ) {
         let embed_params = vocab_size * hidden_size * 2;
@@ -209,7 +209,7 @@ proptest! {
     /// total parameters should increase.
     #[test]
     fn prop_params_monotonic_increasing(
-        (hidden_size, num_layers, num_heads, vocab_size, intermediate_size)
+        (hidden_size, num_layers, _num_heads, vocab_size, intermediate_size)
         in llama_config_strategy()
     ) {
         let base_params = (vocab_size * hidden_size * 2)
@@ -235,7 +235,7 @@ proptest! {
     /// large (but realistic) configurations.
     #[test]
     fn prop_no_parameter_count_overflow(
-        (hidden_size, num_layers, num_heads, vocab_size, intermediate_size)
+        (hidden_size, num_layers, _num_heads, vocab_size, intermediate_size)
         in llama_config_strategy()
     ) {
         // Use checked arithmetic to detect overflow
@@ -290,7 +290,7 @@ fn test_rope_theta_invariant() {
 fn test_standard_config_bounds() {
     // 124M config
     let h_124m = 768;
-    let l_124m = 12;
+    let _l_124m = 12;
     let heads_124m = 12;
     let i_124m = 3072;
 
@@ -300,7 +300,7 @@ fn test_standard_config_bounds() {
 
     // 7B config
     let h_7b = 4096;
-    let l_7b = 32;
+    let _l_7b = 32;
     let heads_7b = 32;
     let i_7b = 11008;
 

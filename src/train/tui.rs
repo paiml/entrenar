@@ -2201,7 +2201,7 @@ mod tests {
     fn test_refresh_policy_max_interval() {
         let mut policy = RefreshPolicy::new(1000, 1, 1000); // 1ms max
         policy.force_refresh(0);
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(5));
         // After max interval, should refresh
         assert!(policy.should_refresh(0));
     }
@@ -2415,7 +2415,7 @@ mod tests {
         display.push_val_loss(0.5);
         display.push_val_loss(0.4);
         // Val series has data
-        assert!(display.epochs() >= 0);
+
     }
 
     #[test]

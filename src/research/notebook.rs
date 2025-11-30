@@ -284,9 +284,7 @@ impl NotebookExporter {
                         .map_or(content.len(), |p| {
                             absolute_start
                                 + p
-                                + content[absolute_start + p..]
-                                    .find('\n')
-                                    .unwrap_or(3)
+                                + content[absolute_start + p..].find('\n').unwrap_or(3)
                                 + 1
                         });
 

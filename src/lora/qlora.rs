@@ -75,10 +75,10 @@ impl QLoRALayer {
     /// Forward pass with on-the-fly dequantization
     ///
     /// # Arguments
-    /// * `x` - Input tensor [d_in]
+    /// * `x` - Input tensor `[d_in]`
     ///
     /// # Returns
-    /// Output tensor [d_out]
+    /// Output tensor `[d_out]`
     pub fn forward(&self, x: &Tensor) -> Tensor {
         assert_eq!(x.len(), self.d_in, "Input size must match d_in");
 

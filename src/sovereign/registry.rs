@@ -122,9 +122,7 @@ impl ModelEntry {
 
     /// Check if model is available locally
     pub fn is_local(&self) -> bool {
-        self.local_path
-            .as_ref()
-            .is_some_and(|p| p.exists())
+        self.local_path.as_ref().is_some_and(|p| p.exists())
     }
 
     /// Get size in megabytes
@@ -242,7 +240,8 @@ impl OfflineModelRegistry {
     /// Load manifest from file
     fn load_manifest(path: &Path) -> Result<RegistryManifest> {
         let content = fs::read_to_string(path)?;
-        serde_json::from_str(&content).map_err(|e| Error::Io(io::Error::new(io::ErrorKind::InvalidData, e)))
+        serde_json::from_str(&content)
+            .map_err(|e| Error::Io(io::Error::new(io::ErrorKind::InvalidData, e)))
     }
 
     /// Save manifest to file
@@ -288,7 +287,10 @@ impl OfflineModelRegistry {
     /// Register a local model file
     pub fn register_local(&mut self, name: &str, path: &Path) -> Result<ModelEntry> {
         if !path.exists() {
-            return Err(Error::ConfigError(format!("Model file not found: {}", path.display())));
+            return Err(Error::ConfigError(format!(
+                "Model file not found: {}",
+                path.display()
+            )));
         }
 
         let metadata = fs::metadata(path)?;
@@ -298,19 +300,10 @@ impl OfflineModelRegistry {
         let sha256 = Self::compute_file_sha256(path)?;
 
         // Determine format from extension
-        let format = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(String::from);
+        let format = path.extension().and_then(|e| e.to_str()).map(String::from);
 
-        let entry = ModelEntry::new(
-            name,
-            "local",
-            sha256,
-            size_bytes,
-            ModelSource::local(path),
-        )
-        .with_local_path(path);
+        let entry = ModelEntry::new(name, "local", sha256, size_bytes, ModelSource::local(path))
+            .with_local_path(path);
 
         let entry = if let Some(fmt) = format {
             entry.with_format(fmt)
@@ -355,7 +348,10 @@ impl OfflineModelRegistry {
             .ok_or_else(|| Error::ConfigError(format!("Model not available locally: {name}")))?;
 
         if !path.exists() {
-            return Err(Error::ConfigError(format!("Model file missing: {}", path.display())));
+            return Err(Error::ConfigError(format!(
+                "Model file missing: {}",
+                path.display()
+            )));
         }
 
         Ok(path.clone())
@@ -481,8 +477,14 @@ mod tests {
             .with_metadata("architecture", "llama")
             .with_metadata("quantization", "q4_0");
 
-        assert_eq!(entry.metadata.get("architecture"), Some(&"llama".to_string()));
-        assert_eq!(entry.metadata.get("quantization"), Some(&"q4_0".to_string()));
+        assert_eq!(
+            entry.metadata.get("architecture"),
+            Some(&"llama".to_string())
+        );
+        assert_eq!(
+            entry.metadata.get("quantization"),
+            Some(&"q4_0".to_string())
+        );
     }
 
     #[test]
@@ -524,8 +526,20 @@ mod tests {
     fn test_registry_manifest_total_size() {
         let mut manifest = RegistryManifest::new();
 
-        manifest.add(ModelEntry::new("a", "1", "", 100, ModelSource::huggingface("a")));
-        manifest.add(ModelEntry::new("b", "1", "", 200, ModelSource::huggingface("b")));
+        manifest.add(ModelEntry::new(
+            "a",
+            "1",
+            "",
+            100,
+            ModelSource::huggingface("a"),
+        ));
+        manifest.add(ModelEntry::new(
+            "b",
+            "1",
+            "",
+            200,
+            ModelSource::huggingface("b"),
+        ));
 
         assert_eq!(manifest.total_size_bytes(), 300);
     }
@@ -645,7 +659,13 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
-        registry.add_model(ModelEntry::new("test", "1.0", "", 100, ModelSource::huggingface("test")));
+        registry.add_model(ModelEntry::new(
+            "test",
+            "1.0",
+            "",
+            100,
+            ModelSource::huggingface("test"),
+        ));
         assert_eq!(registry.manifest.len(), 1);
 
         let removed = registry.remove("test");
@@ -659,7 +679,13 @@ mod tests {
 
         {
             let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
-            registry.add_model(ModelEntry::new("test", "1.0", "abc", 100, ModelSource::huggingface("test")));
+            registry.add_model(ModelEntry::new(
+                "test",
+                "1.0",
+                "abc",
+                100,
+                ModelSource::huggingface("test"),
+            ));
             registry.save_manifest().unwrap();
         }
 
@@ -671,9 +697,15 @@ mod tests {
 
     #[test]
     fn test_model_entry_serialization() {
-        let entry = ModelEntry::new("test", "1.0", "abc123", 1000, ModelSource::huggingface("test/model"))
-            .with_format("gguf")
-            .with_metadata("arch", "llama");
+        let entry = ModelEntry::new(
+            "test",
+            "1.0",
+            "abc123",
+            1000,
+            ModelSource::huggingface("test/model"),
+        )
+        .with_format("gguf")
+        .with_metadata("arch", "llama");
 
         let json = serde_json::to_string(&entry).unwrap();
         let parsed: ModelEntry = serde_json::from_str(&json).unwrap();

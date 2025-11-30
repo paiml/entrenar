@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_sgd_small_tensor_no_momentum() {
-        let mut param = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let param = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
         param.set_grad(Array1::from_vec(vec![0.1, 0.2, 0.3]));
 
         let mut opt = SGD::new(0.1, 0.0);
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_sgd_small_tensor_with_momentum() {
-        let mut param = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let param = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
         param.set_grad(Array1::from_vec(vec![0.1, 0.2, 0.3]));
 
         let mut opt = SGD::new(0.1, 0.9);
@@ -128,7 +128,7 @@ mod tests {
         let data: Vec<f32> = (0..20).map(|i| i as f32).collect();
         let grad: Vec<f32> = vec![0.1; 20];
 
-        let mut param = Tensor::from_vec(data, true);
+        let param = Tensor::from_vec(data, true);
         param.set_grad(Array1::from_vec(grad.clone()));
 
         let mut opt = SGD::new(0.1, 0.9);
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_sgd_no_grad_skips() {
-        let mut param = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
+        let param = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
         // No gradient set
 
         let mut opt = SGD::new(0.1, 0.0);

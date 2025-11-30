@@ -142,7 +142,7 @@ impl EnsembleDistiller {
     ///
     /// * `student_logits` - Logits from student [batch_size, num_classes]
     /// * `teacher_logits` - Vector of teacher logits
-    /// * `labels` - Ground truth labels [batch_size]
+    /// * `labels` - Ground truth labels `[batch_size]`
     /// * `alpha` - Weight for distillation vs hard loss
     pub fn distillation_loss(
         &self,
