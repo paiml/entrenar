@@ -54,6 +54,9 @@ pub enum Command {
 
     /// Merge multiple models
     Merge(MergeArgs),
+
+    /// Academic research artifacts and workflows
+    Research(ResearchArgs),
 }
 
 /// Arguments for the train command
@@ -178,6 +181,459 @@ pub struct MergeArgs {
     /// Model weights (comma-separated, for weighted average)
     #[arg(long)]
     pub weights: Option<String>,
+}
+
+/// Arguments for the research command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct ResearchArgs {
+    /// Research subcommand to execute
+    #[command(subcommand)]
+    pub command: ResearchCommand,
+}
+
+/// Research subcommands
+#[derive(Subcommand, Debug, Clone, PartialEq)]
+pub enum ResearchCommand {
+    /// Initialize a new research artifact
+    Init(ResearchInitArgs),
+
+    /// Create a pre-registration with cryptographic commitment
+    Preregister(PreregisterArgs),
+
+    /// Generate citations in various formats
+    Cite(CiteArgs),
+
+    /// Export artifacts to various formats
+    Export(ExportArgs),
+
+    /// Deposit to academic archives
+    Deposit(DepositArgs),
+
+    /// Bundle artifacts into RO-Crate package
+    Bundle(BundleArgs),
+
+    /// Verify pre-registration commitments or signatures
+    Verify(VerifyArgs),
+}
+
+/// Arguments for research init command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct ResearchInitArgs {
+    /// Artifact ID (unique identifier)
+    #[arg(long)]
+    pub id: String,
+
+    /// Artifact title
+    #[arg(long)]
+    pub title: String,
+
+    /// Artifact type
+    #[arg(long, default_value = "dataset")]
+    pub artifact_type: ArtifactTypeArg,
+
+    /// License (e.g., CC-BY-4.0, MIT, Apache-2.0)
+    #[arg(long, default_value = "cc-by-4.0")]
+    pub license: LicenseArg,
+
+    /// Output path for artifact YAML
+    #[arg(short, long, default_value = "artifact.yaml")]
+    pub output: PathBuf,
+
+    /// Author name
+    #[arg(long)]
+    pub author: Option<String>,
+
+    /// Author ORCID (format: 0000-0002-1825-0097)
+    #[arg(long)]
+    pub orcid: Option<String>,
+
+    /// Author affiliation
+    #[arg(long)]
+    pub affiliation: Option<String>,
+
+    /// Description of the artifact
+    #[arg(long)]
+    pub description: Option<String>,
+
+    /// Keywords (comma-separated)
+    #[arg(long)]
+    pub keywords: Option<String>,
+
+    /// DOI (if already assigned)
+    #[arg(long)]
+    pub doi: Option<String>,
+}
+
+/// Arguments for preregister command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct PreregisterArgs {
+    /// Research question or title
+    #[arg(long)]
+    pub title: String,
+
+    /// Hypothesis being tested
+    #[arg(long)]
+    pub hypothesis: String,
+
+    /// Methodology description
+    #[arg(long)]
+    pub methodology: String,
+
+    /// Statistical analysis plan
+    #[arg(long)]
+    pub analysis_plan: String,
+
+    /// Additional notes
+    #[arg(long)]
+    pub notes: Option<String>,
+
+    /// Output path for pre-registration
+    #[arg(short, long, default_value = "preregistration.yaml")]
+    pub output: PathBuf,
+
+    /// Path to Ed25519 private key for signing
+    #[arg(long)]
+    pub sign_key: Option<PathBuf>,
+
+    /// Add git commit hash as timestamp proof
+    #[arg(long)]
+    pub git_timestamp: bool,
+}
+
+/// Arguments for cite command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct CiteArgs {
+    /// Path to artifact YAML file
+    #[arg(value_name = "ARTIFACT")]
+    pub artifact: PathBuf,
+
+    /// Publication year
+    #[arg(long)]
+    pub year: u16,
+
+    /// Output format
+    #[arg(short, long, default_value = "bibtex")]
+    pub format: CitationFormat,
+
+    /// Output file (stdout if not specified)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Journal name
+    #[arg(long)]
+    pub journal: Option<String>,
+
+    /// Volume number
+    #[arg(long)]
+    pub volume: Option<String>,
+
+    /// Page range
+    #[arg(long)]
+    pub pages: Option<String>,
+
+    /// URL
+    #[arg(long)]
+    pub url: Option<String>,
+}
+
+/// Arguments for export command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct ExportArgs {
+    /// Path to artifact or document
+    #[arg(value_name = "INPUT")]
+    pub input: PathBuf,
+
+    /// Export format
+    #[arg(short, long)]
+    pub format: ExportFormat,
+
+    /// Output file
+    #[arg(short, long)]
+    pub output: PathBuf,
+
+    /// Anonymize for double-blind review
+    #[arg(long)]
+    pub anonymize: bool,
+
+    /// Salt for anonymization (required with --anonymize)
+    #[arg(long)]
+    pub anon_salt: Option<String>,
+
+    /// Jupyter kernel (for notebook export)
+    #[arg(long, default_value = "python3")]
+    pub kernel: String,
+}
+
+/// Arguments for deposit command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct DepositArgs {
+    /// Path to artifact YAML
+    #[arg(value_name = "ARTIFACT")]
+    pub artifact: PathBuf,
+
+    /// Archive provider
+    #[arg(short, long)]
+    pub provider: ArchiveProviderArg,
+
+    /// API token (or use env var ZENODO_TOKEN, etc.)
+    #[arg(long)]
+    pub token: Option<String>,
+
+    /// Use sandbox/test environment
+    #[arg(long)]
+    pub sandbox: bool,
+
+    /// Community to submit to
+    #[arg(long)]
+    pub community: Option<String>,
+
+    /// Files to include (can be repeated)
+    #[arg(short, long)]
+    pub file: Vec<PathBuf>,
+
+    /// Dry run (validate without uploading)
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+/// Arguments for bundle command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct BundleArgs {
+    /// Path to artifact YAML
+    #[arg(value_name = "ARTIFACT")]
+    pub artifact: PathBuf,
+
+    /// Output directory for RO-Crate
+    #[arg(short, long)]
+    pub output: PathBuf,
+
+    /// Files to include (can be repeated)
+    #[arg(short, long)]
+    pub file: Vec<PathBuf>,
+
+    /// Create ZIP archive instead of directory
+    #[arg(long)]
+    pub zip: bool,
+
+    /// Include citation graph
+    #[arg(long)]
+    pub include_citations: bool,
+}
+
+/// Arguments for verify command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct VerifyArgs {
+    /// Path to pre-registration or signed artifact
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+
+    /// Path to Ed25519 public key for signature verification
+    #[arg(long)]
+    pub public_key: Option<PathBuf>,
+
+    /// Original content to verify against commitment
+    #[arg(long)]
+    pub original: Option<PathBuf>,
+
+    /// Verify git timestamp proof
+    #[arg(long)]
+    pub verify_git: bool,
+}
+
+/// Artifact type for CLI
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ArtifactTypeArg {
+    #[default]
+    Dataset,
+    Paper,
+    Model,
+    Code,
+    Notebook,
+    Workflow,
+}
+
+impl std::str::FromStr for ArtifactTypeArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "dataset" => Ok(ArtifactTypeArg::Dataset),
+            "paper" => Ok(ArtifactTypeArg::Paper),
+            "model" => Ok(ArtifactTypeArg::Model),
+            "code" => Ok(ArtifactTypeArg::Code),
+            "notebook" => Ok(ArtifactTypeArg::Notebook),
+            "workflow" => Ok(ArtifactTypeArg::Workflow),
+            _ => Err(format!(
+                "Unknown artifact type: {s}. Valid types: dataset, paper, model, code, notebook, workflow"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for ArtifactTypeArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArtifactTypeArg::Dataset => write!(f, "dataset"),
+            ArtifactTypeArg::Paper => write!(f, "paper"),
+            ArtifactTypeArg::Model => write!(f, "model"),
+            ArtifactTypeArg::Code => write!(f, "code"),
+            ArtifactTypeArg::Notebook => write!(f, "notebook"),
+            ArtifactTypeArg::Workflow => write!(f, "workflow"),
+        }
+    }
+}
+
+/// License for CLI
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum LicenseArg {
+    #[default]
+    CcBy4,
+    CcBySa4,
+    Cc0,
+    Mit,
+    Apache2,
+    Gpl3,
+    Bsd3,
+}
+
+impl std::str::FromStr for LicenseArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().replace(['-', '.'], "").as_str() {
+            "ccby4" | "ccby40" => Ok(LicenseArg::CcBy4),
+            "ccbysa4" | "ccbysa40" => Ok(LicenseArg::CcBySa4),
+            "cc0" => Ok(LicenseArg::Cc0),
+            "mit" => Ok(LicenseArg::Mit),
+            "apache2" | "apache20" => Ok(LicenseArg::Apache2),
+            "gpl3" | "gplv3" => Ok(LicenseArg::Gpl3),
+            "bsd3" | "bsd3clause" => Ok(LicenseArg::Bsd3),
+            _ => Err(format!(
+                "Unknown license: {s}. Valid licenses: CC-BY-4.0, CC-BY-SA-4.0, CC0, MIT, Apache-2.0, GPL-3.0, BSD-3-Clause"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for LicenseArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LicenseArg::CcBy4 => write!(f, "CC-BY-4.0"),
+            LicenseArg::CcBySa4 => write!(f, "CC-BY-SA-4.0"),
+            LicenseArg::Cc0 => write!(f, "CC0"),
+            LicenseArg::Mit => write!(f, "MIT"),
+            LicenseArg::Apache2 => write!(f, "Apache-2.0"),
+            LicenseArg::Gpl3 => write!(f, "GPL-3.0"),
+            LicenseArg::Bsd3 => write!(f, "BSD-3-Clause"),
+        }
+    }
+}
+
+/// Citation format for CLI
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum CitationFormat {
+    #[default]
+    Bibtex,
+    Cff,
+    Json,
+}
+
+impl std::str::FromStr for CitationFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "bibtex" | "bib" => Ok(CitationFormat::Bibtex),
+            "cff" | "citation.cff" => Ok(CitationFormat::Cff),
+            "json" => Ok(CitationFormat::Json),
+            _ => Err(format!(
+                "Unknown citation format: {s}. Valid formats: bibtex, cff, json"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for CitationFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CitationFormat::Bibtex => write!(f, "bibtex"),
+            CitationFormat::Cff => write!(f, "cff"),
+            CitationFormat::Json => write!(f, "json"),
+        }
+    }
+}
+
+/// Export format for CLI
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ExportFormat {
+    Notebook,
+    Html,
+    AnonymizedJson,
+    RoCrate,
+}
+
+impl std::str::FromStr for ExportFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "notebook" | "ipynb" | "jupyter" => Ok(ExportFormat::Notebook),
+            "html" => Ok(ExportFormat::Html),
+            "anonymized" | "anon" | "anonymized-json" => Ok(ExportFormat::AnonymizedJson),
+            "ro-crate" | "rocrate" => Ok(ExportFormat::RoCrate),
+            _ => Err(format!(
+                "Unknown export format: {s}. Valid formats: notebook, html, anonymized, ro-crate"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for ExportFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExportFormat::Notebook => write!(f, "notebook"),
+            ExportFormat::Html => write!(f, "html"),
+            ExportFormat::AnonymizedJson => write!(f, "anonymized-json"),
+            ExportFormat::RoCrate => write!(f, "ro-crate"),
+        }
+    }
+}
+
+/// Archive provider for CLI
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ArchiveProviderArg {
+    #[default]
+    Zenodo,
+    Figshare,
+    Dryad,
+    Dataverse,
+}
+
+impl std::str::FromStr for ArchiveProviderArg {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "zenodo" => Ok(ArchiveProviderArg::Zenodo),
+            "figshare" => Ok(ArchiveProviderArg::Figshare),
+            "dryad" => Ok(ArchiveProviderArg::Dryad),
+            "dataverse" => Ok(ArchiveProviderArg::Dataverse),
+            _ => Err(format!(
+                "Unknown archive provider: {s}. Valid providers: zenodo, figshare, dryad, dataverse"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for ArchiveProviderArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArchiveProviderArg::Zenodo => write!(f, "zenodo"),
+            ArchiveProviderArg::Figshare => write!(f, "figshare"),
+            ArchiveProviderArg::Dryad => write!(f, "dryad"),
+            ArchiveProviderArg::Dataverse => write!(f, "dataverse"),
+        }
+    }
 }
 
 /// Output format for info command
@@ -762,6 +1218,390 @@ mod tests {
             }
             _ => panic!("Expected Info command"),
         }
+    }
+
+    // Research command tests
+
+    #[test]
+    fn test_parse_research_init() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "init",
+            "--id",
+            "dataset-2024",
+            "--title",
+            "My Dataset",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Init(init_args) => {
+                    assert_eq!(init_args.id, "dataset-2024");
+                    assert_eq!(init_args.title, "My Dataset");
+                    assert_eq!(init_args.artifact_type, ArtifactTypeArg::Dataset);
+                    assert_eq!(init_args.license, LicenseArg::CcBy4);
+                }
+                _ => panic!("Expected Init subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_init_with_options() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "init",
+            "--id",
+            "paper-2024",
+            "--title",
+            "Novel Approach",
+            "--artifact-type",
+            "paper",
+            "--license",
+            "mit",
+            "--author",
+            "Alice Smith",
+            "--orcid",
+            "0000-0002-1825-0097",
+            "--affiliation",
+            "MIT",
+            "--output",
+            "custom.yaml",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Init(init_args) => {
+                    assert_eq!(init_args.artifact_type, ArtifactTypeArg::Paper);
+                    assert_eq!(init_args.license, LicenseArg::Mit);
+                    assert_eq!(init_args.author, Some("Alice Smith".to_string()));
+                    assert_eq!(init_args.orcid, Some("0000-0002-1825-0097".to_string()));
+                    assert_eq!(init_args.output, PathBuf::from("custom.yaml"));
+                }
+                _ => panic!("Expected Init subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_preregister() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "preregister",
+            "--title",
+            "Effect of X on Y",
+            "--hypothesis",
+            "X improves Y by 20%",
+            "--methodology",
+            "RCT, n=100",
+            "--analysis-plan",
+            "t-test, alpha=0.05",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Preregister(prereg_args) => {
+                    assert_eq!(prereg_args.title, "Effect of X on Y");
+                    assert_eq!(prereg_args.hypothesis, "X improves Y by 20%");
+                    assert_eq!(prereg_args.methodology, "RCT, n=100");
+                    assert_eq!(prereg_args.analysis_plan, "t-test, alpha=0.05");
+                }
+                _ => panic!("Expected Preregister subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_cite() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "cite",
+            "artifact.yaml",
+            "--year",
+            "2024",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Cite(cite_args) => {
+                    assert_eq!(cite_args.artifact, PathBuf::from("artifact.yaml"));
+                    assert_eq!(cite_args.year, 2024);
+                    assert_eq!(cite_args.format, CitationFormat::Bibtex);
+                }
+                _ => panic!("Expected Cite subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_cite_cff_format() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "cite",
+            "artifact.yaml",
+            "--year",
+            "2024",
+            "--format",
+            "cff",
+            "--journal",
+            "Nature",
+            "--output",
+            "CITATION.cff",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Cite(cite_args) => {
+                    assert_eq!(cite_args.format, CitationFormat::Cff);
+                    assert_eq!(cite_args.journal, Some("Nature".to_string()));
+                    assert_eq!(cite_args.output, Some(PathBuf::from("CITATION.cff")));
+                }
+                _ => panic!("Expected Cite subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_export() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "export",
+            "document.md",
+            "--format",
+            "notebook",
+            "--output",
+            "analysis.ipynb",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Export(export_args) => {
+                    assert_eq!(export_args.input, PathBuf::from("document.md"));
+                    assert_eq!(export_args.format, ExportFormat::Notebook);
+                    assert_eq!(export_args.output, PathBuf::from("analysis.ipynb"));
+                }
+                _ => panic!("Expected Export subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_export_anonymized() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "export",
+            "artifact.yaml",
+            "--format",
+            "anonymized",
+            "--output",
+            "anon.json",
+            "--anonymize",
+            "--anon-salt",
+            "review-2024",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Export(export_args) => {
+                    assert!(export_args.anonymize);
+                    assert_eq!(export_args.anon_salt, Some("review-2024".to_string()));
+                }
+                _ => panic!("Expected Export subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_deposit() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "deposit",
+            "artifact.yaml",
+            "--provider",
+            "zenodo",
+            "--sandbox",
+            "--file",
+            "data.csv",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Deposit(deposit_args) => {
+                    assert_eq!(deposit_args.provider, ArchiveProviderArg::Zenodo);
+                    assert!(deposit_args.sandbox);
+                    assert_eq!(deposit_args.file, vec![PathBuf::from("data.csv")]);
+                }
+                _ => panic!("Expected Deposit subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_bundle() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "bundle",
+            "artifact.yaml",
+            "--output",
+            "./ro-crate",
+            "--file",
+            "data.csv",
+            "--file",
+            "README.md",
+            "--zip",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Bundle(bundle_args) => {
+                    assert_eq!(bundle_args.output, PathBuf::from("./ro-crate"));
+                    assert_eq!(bundle_args.file.len(), 2);
+                    assert!(bundle_args.zip);
+                }
+                _ => panic!("Expected Bundle subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_parse_research_verify() {
+        let cli = parse_args([
+            "entrenar",
+            "research",
+            "verify",
+            "preregistration.yaml",
+            "--verify-git",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Research(args) => match args.command {
+                ResearchCommand::Verify(verify_args) => {
+                    assert_eq!(verify_args.file, PathBuf::from("preregistration.yaml"));
+                    assert!(verify_args.verify_git);
+                }
+                _ => panic!("Expected Verify subcommand"),
+            },
+            _ => panic!("Expected Research command"),
+        }
+    }
+
+    #[test]
+    fn test_artifact_type_from_str() {
+        assert_eq!(
+            "dataset".parse::<ArtifactTypeArg>().unwrap(),
+            ArtifactTypeArg::Dataset
+        );
+        assert_eq!(
+            "paper".parse::<ArtifactTypeArg>().unwrap(),
+            ArtifactTypeArg::Paper
+        );
+        assert_eq!(
+            "model".parse::<ArtifactTypeArg>().unwrap(),
+            ArtifactTypeArg::Model
+        );
+        assert_eq!(
+            "code".parse::<ArtifactTypeArg>().unwrap(),
+            ArtifactTypeArg::Code
+        );
+        assert!("invalid".parse::<ArtifactTypeArg>().is_err());
+    }
+
+    #[test]
+    fn test_license_from_str() {
+        assert_eq!("cc-by-4.0".parse::<LicenseArg>().unwrap(), LicenseArg::CcBy4);
+        assert_eq!("mit".parse::<LicenseArg>().unwrap(), LicenseArg::Mit);
+        assert_eq!(
+            "apache-2.0".parse::<LicenseArg>().unwrap(),
+            LicenseArg::Apache2
+        );
+        assert_eq!("cc0".parse::<LicenseArg>().unwrap(), LicenseArg::Cc0);
+        assert!("invalid".parse::<LicenseArg>().is_err());
+    }
+
+    #[test]
+    fn test_citation_format_from_str() {
+        assert_eq!(
+            "bibtex".parse::<CitationFormat>().unwrap(),
+            CitationFormat::Bibtex
+        );
+        assert_eq!("bib".parse::<CitationFormat>().unwrap(), CitationFormat::Bibtex);
+        assert_eq!("cff".parse::<CitationFormat>().unwrap(), CitationFormat::Cff);
+        assert_eq!(
+            "json".parse::<CitationFormat>().unwrap(),
+            CitationFormat::Json
+        );
+        assert!("invalid".parse::<CitationFormat>().is_err());
+    }
+
+    #[test]
+    fn test_export_format_from_str() {
+        assert_eq!(
+            "notebook".parse::<ExportFormat>().unwrap(),
+            ExportFormat::Notebook
+        );
+        assert_eq!(
+            "ipynb".parse::<ExportFormat>().unwrap(),
+            ExportFormat::Notebook
+        );
+        assert_eq!("html".parse::<ExportFormat>().unwrap(), ExportFormat::Html);
+        assert_eq!(
+            "anonymized".parse::<ExportFormat>().unwrap(),
+            ExportFormat::AnonymizedJson
+        );
+        assert_eq!(
+            "ro-crate".parse::<ExportFormat>().unwrap(),
+            ExportFormat::RoCrate
+        );
+        assert!("invalid".parse::<ExportFormat>().is_err());
+    }
+
+    #[test]
+    fn test_archive_provider_from_str() {
+        assert_eq!(
+            "zenodo".parse::<ArchiveProviderArg>().unwrap(),
+            ArchiveProviderArg::Zenodo
+        );
+        assert_eq!(
+            "figshare".parse::<ArchiveProviderArg>().unwrap(),
+            ArchiveProviderArg::Figshare
+        );
+        assert_eq!(
+            "dryad".parse::<ArchiveProviderArg>().unwrap(),
+            ArchiveProviderArg::Dryad
+        );
+        assert_eq!(
+            "dataverse".parse::<ArchiveProviderArg>().unwrap(),
+            ArchiveProviderArg::Dataverse
+        );
+        assert!("invalid".parse::<ArchiveProviderArg>().is_err());
     }
 }
 

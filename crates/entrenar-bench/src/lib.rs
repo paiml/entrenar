@@ -4,6 +4,7 @@
 //! - Systematic hyperparameter sweeps
 //! - Statistical analysis of results
 //! - Comparison of distillation strategies
+//! - Cost-performance analysis and recommendations
 //!
 //! # Toyota Way Principles
 //!
@@ -11,10 +12,15 @@
 //! - **Muda Elimination**: Avoid wasted training runs through early stopping
 //! - **Visual Control**: Clear visualization of benchmark results
 
+pub mod cost;
 pub mod stats;
 pub mod strategies;
 pub mod sweep;
 
+pub use cost::{
+    ConfigParams, Constraints, CostModel, CostPerformanceAnalysis, CostPerformancePoint,
+    Recommendation,
+};
 pub use stats::{StatisticalAnalyzer, TestResult};
 pub use strategies::{DistillStrategy, StrategyComparison};
 pub use sweep::{SweepConfig, SweepResult, Sweeper};
