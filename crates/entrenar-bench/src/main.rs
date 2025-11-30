@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 use entrenar_bench::{
+    cost::{generate_sample_points, Constraints, CostModel, CostPerformanceAnalysis},
     strategies::{compare, DistillStrategy},
     sweep::{SweepConfig, Sweeper},
 };
@@ -76,6 +77,40 @@ enum Commands {
         #[arg(short, long)]
         config: Option<std::path::PathBuf>,
     },
+
+    /// Analyze cost vs performance trade-offs
+    CostPerformance {
+        /// GPU type for cost calculation
+        #[arg(long, default_value = "a100-80gb")]
+        gpu: String,
+
+        /// Path to benchmark results file (JSON)
+        #[arg(long)]
+        results: Option<std::path::PathBuf>,
+    },
+
+    /// Recommend configurations based on constraints
+    Recommend {
+        /// Maximum GPU-hours
+        #[arg(long)]
+        max_gpu_hours: Option<f64>,
+
+        /// Maximum cost in USD
+        #[arg(long)]
+        max_cost: Option<f64>,
+
+        /// Minimum accuracy required (0.0 - 1.0)
+        #[arg(long)]
+        min_accuracy: Option<f64>,
+
+        /// Maximum memory in GB
+        #[arg(long)]
+        max_memory: Option<f64>,
+
+        /// GPU type for cost calculation
+        #[arg(long, default_value = "a100-80gb")]
+        gpu: String,
+    },
 }
 
 fn main() {
@@ -97,6 +132,16 @@ fn main() {
         } => alpha_command(start, end, step, runs, &config),
         Commands::Compare { strategies, runs } => compare_command(&strategies, runs, &config),
         Commands::Ablation { config: cfg_path } => ablation_command(cfg_path.as_deref(), &config),
+        Commands::CostPerformance { gpu, results } => {
+            cost_performance_command(&gpu, results.as_deref(), &config)
+        }
+        Commands::Recommend {
+            max_gpu_hours,
+            max_cost,
+            min_accuracy,
+            max_memory,
+            gpu,
+        } => recommend_command(max_gpu_hours, max_cost, min_accuracy, max_memory, &gpu, &config),
     };
 
     if let Err(e) = result {
@@ -327,4 +372,203 @@ fn ablation_command(
     println!("└─────────────────────┴────────────┴────────────┴────────────┘");
 
     Ok(())
+}
+
+fn cost_performance_command(
+    gpu: &str,
+    _results_path: Option<&std::path::Path>,
+    cli: &entrenar_common::Cli,
+) -> entrenar_common::Result<()> {
+    // Parse GPU type
+    let cost_model = parse_gpu_model(gpu)?;
+
+    if !cli.is_quiet() {
+        println!("{}", styles::header("Cost-Performance Analysis"));
+        println!(
+            "GPU: {} (${:.2}/hour)\n",
+            cost_model.gpu_type, cost_model.cost_per_hour
+        );
+    }
+
+    // Generate sample data points (in a real scenario, load from results file)
+    let points = generate_sample_points(&cost_model);
+    let analysis = CostPerformanceAnalysis::from_points(points);
+
+    if cli.format == entrenar_common::OutputFormat::Json {
+        let json = serde_json::json!({
+            "gpu": cost_model.gpu_type,
+            "cost_per_hour": cost_model.cost_per_hour,
+            "points": analysis.points,
+            "pareto_frontier": analysis.pareto_frontier,
+            "best_accuracy": analysis.best_accuracy,
+            "best_efficiency": analysis.best_efficiency,
+            "lowest_cost": analysis.lowest_cost,
+        });
+        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+    } else {
+        println!("{}", analysis.to_table());
+
+        if let Some(best) = &analysis.best_accuracy {
+            println!(
+                "{}",
+                styles::info(&format!(
+                    "Best accuracy: {} ({:.1}%)",
+                    best.name,
+                    best.accuracy * 100.0
+                ))
+            );
+        }
+
+        if let Some(best) = &analysis.best_efficiency {
+            let efficiency = best.accuracy / best.cost_usd;
+            println!(
+                "{}",
+                styles::info(&format!(
+                    "Best efficiency: {} ({:.4}% per $)",
+                    best.name,
+                    efficiency * 100.0
+                ))
+            );
+        }
+
+        println!("\nPareto-optimal configurations:");
+        for point in &analysis.pareto_frontier {
+            println!(
+                "  • {} - ${:.2}, {:.1}% accuracy",
+                point.name,
+                point.cost_usd,
+                point.accuracy * 100.0
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn recommend_command(
+    max_gpu_hours: Option<f64>,
+    max_cost: Option<f64>,
+    min_accuracy: Option<f64>,
+    max_memory: Option<f64>,
+    gpu: &str,
+    cli: &entrenar_common::Cli,
+) -> entrenar_common::Result<()> {
+    // Parse GPU type
+    let cost_model = parse_gpu_model(gpu)?;
+
+    if !cli.is_quiet() {
+        println!("{}", styles::header("Configuration Recommendation"));
+        println!(
+            "GPU: {} (${:.2}/hour)\n",
+            cost_model.gpu_type, cost_model.cost_per_hour
+        );
+
+        println!("Constraints:");
+        if let Some(h) = max_gpu_hours {
+            println!("  • Max GPU-hours: {h}");
+        }
+        if let Some(c) = max_cost {
+            println!("  • Max cost: ${c}");
+        }
+        if let Some(a) = min_accuracy {
+            println!("  • Min accuracy: {:.1}%", a * 100.0);
+        }
+        if let Some(m) = max_memory {
+            println!("  • Max memory: {m} GB");
+        }
+        if max_gpu_hours.is_none()
+            && max_cost.is_none()
+            && min_accuracy.is_none()
+            && max_memory.is_none()
+        {
+            println!("  (none specified - showing all recommendations)");
+        }
+        println!();
+    }
+
+    // Build constraints
+    let mut constraints = Constraints::new();
+    if let Some(h) = max_gpu_hours {
+        constraints = constraints.with_max_gpu_hours(h);
+    }
+    if let Some(c) = max_cost {
+        constraints = constraints.with_max_cost(c);
+    }
+    if let Some(a) = min_accuracy {
+        constraints = constraints.with_min_accuracy(a);
+    }
+    if let Some(m) = max_memory {
+        constraints = constraints.with_max_memory(m);
+    }
+
+    // Generate sample data and analyze
+    let points = generate_sample_points(&cost_model);
+    let analysis = CostPerformanceAnalysis::from_points(points);
+    let recommendations = analysis.recommend(&constraints);
+
+    if cli.format == entrenar_common::OutputFormat::Json {
+        let json = serde_json::json!({
+            "constraints": {
+                "max_gpu_hours": max_gpu_hours,
+                "max_cost": max_cost,
+                "min_accuracy": min_accuracy,
+                "max_memory": max_memory,
+            },
+            "recommendations": recommendations,
+        });
+        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+    } else if recommendations.is_empty() {
+        println!(
+            "{}",
+            styles::warning("No configurations match the specified constraints.")
+        );
+        println!("\nTry relaxing your constraints:");
+        println!("  • Increase max-cost or max-gpu-hours");
+        println!("  • Decrease min-accuracy");
+        println!("  • Increase max-memory");
+    } else {
+        println!("Recommendations:\n");
+        for (i, rec) in recommendations.iter().enumerate() {
+            let bullet = if i == 0 { "★" } else { "•" };
+            println!("{bullet} {} ({})", rec.point.name, rec.reason);
+            println!("    GPU hours: {:.1}", rec.point.gpu_hours);
+            println!("    Cost: ${:.2}", rec.point.cost_usd);
+            println!("    Accuracy: {:.1}%", rec.point.accuracy * 100.0);
+            println!("    Memory: {:.0} GB", rec.point.memory_gb);
+
+            if let Some(rank) = rec.point.config.lora_rank {
+                println!("    LoRA rank: {rank}");
+            }
+            if let Some(bits) = rec.point.config.quant_bits {
+                println!("    Quantization: {bits}-bit");
+            }
+            if let Some(temp) = rec.point.config.temperature {
+                println!("    Temperature: {temp}");
+            }
+            println!();
+        }
+
+        if let Some(top) = recommendations.first() {
+            println!(
+                "{}",
+                styles::success(&format!("Top recommendation: {}", top.point.name))
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_gpu_model(gpu: &str) -> entrenar_common::Result<CostModel> {
+    match gpu.to_lowercase().as_str() {
+        "a100-80gb" | "a100_80gb" => Ok(CostModel::a100_80gb()),
+        "a100-40gb" | "a100_40gb" => Ok(CostModel::a100_40gb()),
+        "v100" => Ok(CostModel::v100()),
+        "t4" => Ok(CostModel::t4()),
+        _ => Err(entrenar_common::EntrenarError::ConfigValue {
+            field: "gpu".into(),
+            message: format!("Unknown GPU type: {gpu}"),
+            suggestion: "Use: a100-80gb, a100-40gb, v100, t4".into(),
+        }),
+    }
 }
