@@ -21,6 +21,7 @@
 //! - **research**: Academic research artifacts, citations, and archive deposits
 //! - **ecosystem**: PAIML stack integrations (Batuta, Realizar, Ruchy)
 //! - **dashboard**: Real-time training monitoring and WASM bindings
+//! - **yaml_mode**: Declarative YAML Mode Training (v1.0 spec)
 
 pub mod autograd;
 #[cfg(feature = "citl")]
@@ -44,6 +45,7 @@ pub mod run;
 pub mod sovereign;
 pub mod storage;
 pub mod train;
+pub mod yaml_mode;
 
 pub mod error;
 

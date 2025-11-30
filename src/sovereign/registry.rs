@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
@@ -241,7 +241,7 @@ impl OfflineModelRegistry {
     fn load_manifest(path: &Path) -> Result<RegistryManifest> {
         let content = fs::read_to_string(path)?;
         serde_json::from_str(&content)
-            .map_err(|e| Error::Io(io::Error::new(io::ErrorKind::InvalidData, e)))
+            .map_err(|e| Error::Io(format!("Invalid manifest data: {e}")))
     }
 
     /// Save manifest to file
@@ -252,7 +252,7 @@ impl OfflineModelRegistry {
         }
 
         let content = serde_json::to_string_pretty(&self.manifest)
-            .map_err(|e| Error::Io(io::Error::new(io::ErrorKind::InvalidData, e)))?;
+            .map_err(|e| Error::Io(format!("Failed to serialize manifest: {e}")))?;
         fs::write(&self.manifest_path, content)?;
         Ok(())
     }

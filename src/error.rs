@@ -20,13 +20,25 @@ pub enum Error {
     ConfigError(String),
 
     #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(String),
 
     #[error("Serialization error: {0}")]
     Serialization(String),
 
     #[error("Invalid parameter: {0}")]
     InvalidParameter(String),
+
+    #[error("Parse error: {0}")]
+    Parse(String),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::Io(err.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

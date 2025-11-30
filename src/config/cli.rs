@@ -49,6 +49,9 @@ pub enum Command {
     /// Display information about a configuration
     Info(InfoArgs),
 
+    /// Initialize a new YAML Mode training manifest
+    Init(InitArgs),
+
     /// Quantize a model
     Quantize(QuantizeArgs),
 
@@ -125,6 +128,71 @@ pub struct InfoArgs {
     /// Output format (text, json, yaml)
     #[arg(short, long, default_value = "text")]
     pub format: OutputFormat,
+}
+
+/// Arguments for the init command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct InitArgs {
+    /// Template to use for initialization
+    #[arg(short, long, default_value = "minimal")]
+    pub template: InitTemplate,
+
+    /// Output path (stdout if not specified)
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Experiment name
+    #[arg(long, default_value = "my-experiment")]
+    pub name: String,
+
+    /// Model source path or URI
+    #[arg(long)]
+    pub model: Option<String>,
+
+    /// Data source path or URI
+    #[arg(long)]
+    pub data: Option<String>,
+}
+
+/// Init template type
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum InitTemplate {
+    /// Minimal manifest with required fields only
+    #[default]
+    Minimal,
+    /// LoRA fine-tuning template
+    Lora,
+    /// QLoRA fine-tuning template
+    Qlora,
+    /// Full template with all sections
+    Full,
+}
+
+impl std::str::FromStr for InitTemplate {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "minimal" | "min" => Ok(InitTemplate::Minimal),
+            "lora" => Ok(InitTemplate::Lora),
+            "qlora" => Ok(InitTemplate::Qlora),
+            "full" | "complete" => Ok(InitTemplate::Full),
+            _ => Err(format!(
+                "Unknown template: {s}. Valid templates: minimal, lora, qlora, full"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for InitTemplate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InitTemplate::Minimal => write!(f, "minimal"),
+            InitTemplate::Lora => write!(f, "lora"),
+            InitTemplate::Qlora => write!(f, "qlora"),
+            InitTemplate::Full => write!(f, "full"),
+        }
+    }
 }
 
 /// Arguments for the quantize command

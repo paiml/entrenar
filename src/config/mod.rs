@@ -38,9 +38,9 @@ mod property_tests;
 pub use builder::{build_model, build_optimizer};
 pub use cli::{
     apply_overrides, parse_args, ArchiveProviderArg, ArtifactTypeArg, BundleArgs, CitationFormat,
-    CiteArgs, Cli, Command, DepositArgs, ExportArgs, ExportFormat, InfoArgs, LicenseArg, MergeArgs,
-    MergeMethod, OutputFormat, PreregisterArgs, QuantMethod, QuantizeArgs, ResearchArgs,
-    ResearchCommand, ResearchInitArgs, TrainArgs, ValidateArgs, VerifyArgs,
+    CiteArgs, Cli, Command, DepositArgs, ExportArgs, ExportFormat, InfoArgs, InitArgs, InitTemplate,
+    LicenseArg, MergeArgs, MergeMethod, OutputFormat, PreregisterArgs, QuantMethod, QuantizeArgs,
+    ResearchArgs, ResearchCommand, ResearchInitArgs, TrainArgs, ValidateArgs, VerifyArgs,
 };
 pub use infer::{
     collect_stats_from_samples, infer_schema, infer_schema_from_path, infer_type, ColumnStats,

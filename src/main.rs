@@ -47,6 +47,7 @@ fn main() -> ExitCode {
         Command::Train(args) => run_train(args, log_level),
         Command::Validate(args) => run_validate(args, log_level),
         Command::Info(args) => run_info(args, log_level),
+        Command::Init(args) => run_init(args, log_level),
         Command::Quantize(args) => run_quantize(args, log_level),
         Command::Merge(args) => run_merge(args, log_level),
         Command::Research(args) => run_research(args, log_level),
@@ -225,6 +226,47 @@ fn run_info(args: entrenar::config::InfoArgs, level: LogLevel) -> Result<(), Str
                 .map_err(|e| format!("YAML serialization error: {e}"))?;
             println!("{yaml}");
         }
+    }
+
+    Ok(())
+}
+
+fn run_init(args: entrenar::config::InitArgs, level: LogLevel) -> Result<(), String> {
+    use entrenar::config::InitTemplate;
+    use entrenar::yaml_mode::{generate_yaml, Template};
+
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("Generating {} template for: {}", args.template, args.name),
+    );
+
+    // Convert CLI InitTemplate to yaml_mode Template
+    let template = match args.template {
+        InitTemplate::Minimal => Template::Minimal,
+        InitTemplate::Lora => Template::Lora,
+        InitTemplate::Qlora => Template::Qlora,
+        InitTemplate::Full => Template::Full,
+    };
+
+    // Generate YAML manifest
+    let yaml = generate_yaml(
+        template,
+        &args.name,
+        args.model.as_deref(),
+        args.data.as_deref(),
+    );
+
+    // Output to file or stdout
+    if let Some(output_path) = &args.output {
+        std::fs::write(output_path, &yaml).map_err(|e| format!("Failed to write file: {e}"))?;
+        log(
+            level,
+            LogLevel::Normal,
+            &format!("Manifest saved to: {}", output_path.display()),
+        );
+    } else {
+        println!("{yaml}");
     }
 
     Ok(())
