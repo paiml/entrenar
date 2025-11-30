@@ -16,12 +16,14 @@
 //! - **io**: Model saving and loading (JSON, YAML formats)
 //! - **hf_pipeline**: HuggingFace model fetching and distillation
 //! - **citl**: Compiler-in-the-Loop training with RAG-based fix suggestions (feature-gated)
+//! - **efficiency**: Cost tracking, device detection, and performance benchmarking
 
 pub mod autograd;
 #[cfg(feature = "citl")]
 pub mod citl;
 pub mod config;
 pub mod distill;
+pub mod efficiency;
 pub mod hf_pipeline;
 pub mod integrity;
 pub mod io;
