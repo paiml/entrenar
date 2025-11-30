@@ -85,9 +85,10 @@ workspace = true
 [features]
 default = []
 gguf = []  # Placeholder for future GGUF support via Realizar
-monitor = ["trueno-db", "chrono"]  # Training monitoring with persistence
+monitor = ["trueno-db"]  # Training monitoring with persistence
 wasm = ["wasm-bindgen", "getrandom"]  # WASM bindings for browser dashboard
 citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG-based fix suggestions
+tracing = ["renacer"]  # Renacer distributed tracing integration
 
 [dependencies]
 # Core PAIML stack
@@ -95,8 +96,9 @@ ndarray = "0.16"
 trueno = "0.7.3"  # SIMD-accelerated compute
 aprender = "0.12.0"  # ML interpret module for explainability
 trueno-viz = { version = "0.1.1", features = ["terminal"] }  # Terminal visualization
-trueno-db = { version = "0.3", optional = true }  # Time-series storage
-chrono = { version = "0.4", optional = true }  # Timestamps
+trueno-db = { path = "../trueno-db", optional = true }  # Time-series storage (local until 0.4 published)
+chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
+renacer = { version = "0.6", optional = true }  # Distributed tracing
 wasm-bindgen = { version = "0.2", optional = true }  # WASM bindings
 getrandom = { version = "0.3", features = ["wasm_js"], optional = true }  # WASM random
 serde = { version = "1.0", features = ["derive"] }
@@ -111,6 +113,8 @@ trueno-rag = { version = "0.1.0", optional = true }  # RAG pipeline for CITL
 tokio = { version = "1.41", features = ["rt"], optional = true }  # Async runtime for RAG
 uuid = { version = "1.11", features = ["v4", "serde"], optional = true }  # UUIDs for CITL patterns
 safetensors = "0.7"  # SafeTensors format parsing
+sha2 = "0.10"  # SHA256 hashing for artifact CAS
+hex = "0.4"  # Hex encoding for hashes
 memmap2 = "0.9"  # Memory-mapped file access for large models
 bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for tensor data
 hf-hub = "0.4"  # HuggingFace Hub API for model downloads

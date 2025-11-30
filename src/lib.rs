@@ -29,6 +29,8 @@ pub mod merge;
 pub mod monitor;
 pub mod optim;
 pub mod quant;
+pub mod run;
+pub mod storage;
 pub mod train;
 
 pub mod error;
