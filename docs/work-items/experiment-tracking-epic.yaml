@@ -2,7 +2,8 @@
 # Version: 1.8.0
 # Spec: docs/specifications/experiment-tracking-spec.md
 # Created: 2025-11-30
-# Status: Planning
+# Completed: 2025-11-30
+# Status: COMPLETE
 
 epic:
   id: "ENT-EPIC-001"
@@ -10,6 +11,27 @@ epic:
   spec_version: "1.8.0"
   spec_path: "docs/specifications/experiment-tracking-spec.md"
   toyota_principles: ["Jidoka", "Genchi Genbutsu", "Heijunka", "Kaizen", "Mieruka"]
+  status: "RELEASED"
+  completed: "2025-11-30"
+  released: "2025-11-30"
+  work_items_total: 35
+  work_items_completed: 35
+  qa_verification:
+    score: 100
+    status: "APPROVED"
+    inspector: "Gemini"
+    report: "docs/qa-reports/qa-verification-report-v1.8.0.md"
+    methodology: "Toyota Way (Genchi Genbutsu, Jidoka, Poka-Yoke)"
+    sign_off:
+      - role: "Lead Developer"
+        name: "Noah"
+        date: "2025-11-30"
+      - role: "QA Lead"
+        name: "Gemini"
+        date: "2025-11-30"
+      - role: "PM"
+        name: "Claude"
+        date: "2025-11-30"
 
 # =============================================================================
 # PHASE 1: Core Infrastructure
@@ -122,7 +144,10 @@ phases:
   - id: "phase-2"
     name: "Live Dashboard"
     description: "DashboardSource trait + trueno-viz TUI"
-    status: "planned"
+    status: "completed"
+    started: "2025-11-30"
+    completed: "2025-11-30"
+    commit: "1de2da0"
     target_sections: ["§7", "§21"]
 
     work_items:
@@ -133,13 +158,22 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/34"
         spec_sections: ["§7.1", "§7.2"]
         priority: "P1"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "1de2da0"
         dependencies: ["ENT-001", "ENT-002"]
         acceptance_criteria:
           - "DashboardSource trait defined"
           - "Run implements DashboardSource"
           - "Real-time metric streaming"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/dashboard/mod.rs: DashboardSource trait
+          - MetricSnapshot with min/max/mean/trend
+          - ResourceSnapshot for GPU/CPU/memory
+          - Trend enum with linear regression detection
+          - 22 tests
 
       - id: "ENT-004"
         title: "Implement WasmRun for browser dashboard"
@@ -148,13 +182,21 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/60"
         spec_sections: ["§7.3"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "1de2da0"
         dependencies: ["ENT-003"]
         acceptance_criteria:
           - "WasmRun compiles to WASM"
           - "IndexedDB storage backend"
           - "WebSocket metric streaming"
         estimated_complexity: "large"
+        implementation_notes: |
+          - src/dashboard/wasm.rs: IndexedDbStorage, WasmRun
+          - Feature-gated with "wasm"
+          - JavaScript-friendly wasm_bindgen bindings
+          - 12 tests
 
       - id: "TVZ-001"
         title: "Add experiment dashboard components to trueno-viz"
@@ -163,13 +205,20 @@ phases:
         gh_issue: "https://github.com/paiml/trueno-viz/issues/1"
         spec_sections: ["§21"]
         priority: "P1"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
         dependencies: []
         acceptance_criteria:
           - "Sparkline for loss/accuracy"
           - "Resource bar chart (Plan vs Actual)"
           - "Run status table component"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/widgets/experiment/sparkline.rs: Sparkline with TrendDirection (7 tests)
+          - src/widgets/experiment/resource_bar.rs: ResourceBar with is_over_budget() (7 tests)
+          - src/widgets/experiment/run_table.rs: RunTable, RunRow, RunStatus (9 tests)
+          - 23 widget tests, 460 total passing
 
   # =============================================================================
   # PHASE 3: Quality Gates (Jidoka)
@@ -797,8 +846,10 @@ phases:
   - id: "phase-8"
     name: "CLI & Integration"
     description: "entrenar CLI subcommands and cross-project integration"
-    status: "in_progress"
+    status: "completed"
     started: "2025-11-30"
+    completed: "2025-11-30"
+    commit: "bb44397"
     target_sections: ["§31.9", "§31.16"]
 
     work_items:
@@ -809,7 +860,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/58"
         spec_sections: ["§31.9", "§31.16"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "bb44397"
         dependencies: ["ENT-019", "ENT-020", "ENT-022", "ENT-023", "ENT-026"]
         acceptance_criteria:
           - "entrenar research init"
@@ -820,6 +874,11 @@ phases:
           - "entrenar research bundle"
           - "entrenar research verify"
         estimated_complexity: "large"
+        implementation_notes: |
+          - src/config/cli.rs: 7 research subcommands with clap
+          - src/main.rs: Command handlers
+          - CRediT roles, Ed25519 signing, RO-Crate bundling
+          - BibTeX/CFF citation generation
 
       - id: "ENT-029"
         title: "Implement 'entrenar benchmark' CLI subcommand"
@@ -828,7 +887,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/59"
         spec_sections: ["§24.3"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "bb44397"
         dependencies: ["ENT-011"]
         acceptance_criteria:
           - "entrenar benchmark --dataset --task"
@@ -836,6 +898,11 @@ phases:
           - "Cost-performance table"
           - "Recommendation output"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - crates/entrenar-bench/src/cost.rs: Cost-performance module
+          - GPU cost models: A100-80GB, A100-40GB, V100, T4
+          - Pareto-optimal detection
+          - Constraint-based recommendations (budget, accuracy, memory)
 
   # =============================================================================
   # PHASE 9: Ecosystem Integration (Code Review Additions)
@@ -843,7 +910,10 @@ phases:
   - id: "phase-9"
     name: "Ecosystem Integration"
     description: "Deep integration with Pacha, Batuta, Realizar, Ruchy - avoid Muda"
-    status: "planned"
+    status: "completed"
+    started: "2025-11-30"
+    completed: "2025-11-30"
+    commit: "54749fe"
     target_sections: ["§14.1", "§17", "§22.3", "§30.1"]
 
     work_items:
@@ -854,13 +924,20 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/61"
         spec_sections: ["§22.3"]
         priority: "P1"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "54749fe"
         dependencies: ["ENT-009"]
         acceptance_criteria:
           - "Fetch hourly rates from Batuta API"
           - "Calculate total_cost_usd dynamically"
           - "Fallback to config-based rates when unavailable"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/ecosystem/batuta.rs: BatutaClient, FallbackPricing
+          - GPU pricing with fallback when unavailable
+          - 16 tests (combined with ENT-031)
 
       - id: "ENT-031"
         title: "Integrate Batuta Queue State for ETA"
@@ -869,13 +946,19 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/62"
         spec_sections: ["§17"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "54749fe"
         dependencies: []
         acceptance_criteria:
           - "Query Batuta queue depth"
           - "Adjust ETA based on cluster load"
           - "Incorporate into Kalman filter state"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/ecosystem/batuta.rs: QueueState, adjust_eta()
+          - ETA adjustment based on queue depth
 
       - id: "ENT-032"
         title: "Integrate Realizar GGUF Export"
@@ -884,13 +967,21 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/63"
         spec_sections: ["§30.1"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "54749fe"
         dependencies: ["ENT-016"]
         acceptance_criteria:
           - "entrenar export --format gguf delegates to realizar"
           - "Quantization options exposed (Q4_K_M, Q5_K_M, etc.)"
           - "GGUF metadata includes experiment provenance"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/ecosystem/realizar.rs: GgufExporter, QuantizationType
+          - Q4_K_M, Q5_K_M, Q8_0, F16 quantization types
+          - ExperimentProvenance in GGUF metadata
+          - 14 tests
 
       - id: "ENT-033"
         title: "Implement Ruchy Session Bridge"
@@ -899,13 +990,20 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/64"
         spec_sections: ["§14.1"]
         priority: "P3"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "54749fe"
         dependencies: ["ENT-021"]
         acceptance_criteria:
           - "From<RuchySession> for EntrenarSession implementation"
           - "Feature flag 'ruchy-sessions' working"
           - "Session history preserved as experiment artifact"
         estimated_complexity: "small"
+        implementation_notes: |
+          - src/ecosystem/ruchy.rs: RuchyBridge, session_to_artifact()
+          - Feature-gated with "ruchy-sessions"
+          - 12 tests
 
 # =============================================================================
 # Cross-Project Dependencies
