@@ -18,6 +18,7 @@
 //! - **citl**: Compiler-in-the-Loop training with RAG-based fix suggestions (feature-gated)
 //! - **efficiency**: Cost tracking, device detection, and performance benchmarking
 //! - **sovereign**: Air-gapped deployment and distribution packaging
+//! - **research**: Academic research artifacts, citations, and archive deposits
 
 pub mod autograd;
 #[cfg(feature = "citl")]
@@ -34,6 +35,7 @@ pub mod monitor;
 pub mod optim;
 pub mod quality;
 pub mod quant;
+pub mod research;
 pub mod run;
 pub mod sovereign;
 pub mod storage;
