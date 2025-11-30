@@ -110,6 +110,7 @@
 
 - [Overview](./monitor/overview.md)
 - [Experiment Tracking](./monitor/experiment-tracking.md)
+- [Quality Gates (Jidoka)](./monitor/quality-gates.md)
 - [Metrics Collection](./monitor/metrics-collection.md)
 - [Terminal Dashboard](./monitor/dashboard.md)
 - [Drift Detection](./monitor/drift-detection.md)
