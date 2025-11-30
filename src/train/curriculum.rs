@@ -101,7 +101,14 @@ impl LinearCurriculum {
 impl CurriculumScheduler for LinearCurriculum {
     fn difficulty(&self) -> f32 {
         let progress = (self.current_epoch as f32 / self.ramp_epochs as f32).min(1.0);
-        self.start_difficulty + progress * (self.end_difficulty - self.start_difficulty)
+        let difficulty =
+            self.start_difficulty + progress * (self.end_difficulty - self.start_difficulty);
+        let (min, max) = if self.start_difficulty <= self.end_difficulty {
+            (self.start_difficulty, self.end_difficulty)
+        } else {
+            (self.end_difficulty, self.start_difficulty)
+        };
+        difficulty.clamp(min, max)
     }
 
     fn tier(&self) -> usize {
