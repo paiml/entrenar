@@ -119,6 +119,19 @@
 - [Export Formats](./monitor/export.md)
 - [Hansei Reports](./monitor/hansei.md)
 
+# Dashboard
+
+- [Overview](./dashboard/overview.md)
+- [DashboardSource Trait](./dashboard/dashboard-source.md)
+- [WASM Bindings](./dashboard/wasm.md)
+
+# Ecosystem Integration
+
+- [Overview](./ecosystem/overview.md)
+- [Batuta Integration](./ecosystem/batuta.md)
+- [Realizar GGUF Export](./ecosystem/realizar.md)
+- [Ruchy Session Bridge](./ecosystem/ruchy.md)
+
 # Model I/O
 
 - [Overview](./io/overview.md)
