@@ -23,6 +23,7 @@ pub mod citl;
 pub mod config;
 pub mod distill;
 pub mod hf_pipeline;
+pub mod integrity;
 pub mod io;
 pub mod lora;
 pub mod merge;
