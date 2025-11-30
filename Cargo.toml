@@ -89,6 +89,7 @@ monitor = ["trueno-db"]  # Training monitoring with persistence
 wasm = ["wasm-bindgen", "getrandom"]  # WASM bindings for browser dashboard
 citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG-based fix suggestions
 tracing = ["renacer"]  # Renacer distributed tracing integration
+ruchy-sessions = []  # Ruchy session bridge for preserving training history
 
 [dependencies]
 # Core PAIML stack

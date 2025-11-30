@@ -19,12 +19,14 @@
 //! - **efficiency**: Cost tracking, device detection, and performance benchmarking
 //! - **sovereign**: Air-gapped deployment and distribution packaging
 //! - **research**: Academic research artifacts, citations, and archive deposits
+//! - **ecosystem**: PAIML stack integrations (Batuta, Realizar, Ruchy)
 
 pub mod autograd;
 #[cfg(feature = "citl")]
 pub mod citl;
 pub mod config;
 pub mod distill;
+pub mod ecosystem;
 pub mod efficiency;
 pub mod hf_pipeline;
 pub mod integrity;
