@@ -28,6 +28,7 @@ pub mod lora;
 pub mod merge;
 pub mod monitor;
 pub mod optim;
+pub mod quality;
 pub mod quant;
 pub mod run;
 pub mod storage;
