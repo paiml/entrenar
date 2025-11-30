@@ -111,8 +111,7 @@ pub struct LoadedModel {
 }
 
 /// Role of a model in the distillation session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ModelRole {
     /// Teacher model (knowledge source)
     Teacher,
@@ -122,7 +121,6 @@ pub enum ModelRole {
     #[default]
     None,
 }
-
 
 /// A history entry for a command.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -355,8 +353,8 @@ mod tests {
 
     #[test]
     fn test_session_state_load_invalid_json() {
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(b"not valid json").unwrap();

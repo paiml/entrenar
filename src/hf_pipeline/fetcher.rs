@@ -349,16 +349,18 @@ impl HfModelFetcher {
             .unwrap_or(WeightFormat::SafeTensors);
 
         // Use hf-hub for actual downloads
-        let mut api_builder = hf_hub::api::sync::ApiBuilder::new()
-            .with_cache_dir(cache_path.clone());
+        let mut api_builder =
+            hf_hub::api::sync::ApiBuilder::new().with_cache_dir(cache_path.clone());
 
         if let Some(token) = &self.token {
             api_builder = api_builder.with_token(Some(token.clone()));
         }
 
-        let api = api_builder.build().map_err(|e| FetchError::ConfigParseError {
-            message: format!("Failed to initialize HF API: {e}"),
-        })?;
+        let api = api_builder
+            .build()
+            .map_err(|e| FetchError::ConfigParseError {
+                message: format!("Failed to initialize HF API: {e}"),
+            })?;
 
         let repo = api.model(repo_id.to_string());
 
@@ -368,12 +370,11 @@ impl HfModelFetcher {
                 repo.get(file)
             } else {
                 // For non-main revisions, we need to use repo.revision()
-                let revision_repo = api
-                    .repo(hf_hub::Repo::with_revision(
-                        repo_id.to_string(),
-                        hf_hub::RepoType::Model,
-                        options.revision.clone(),
-                    ));
+                let revision_repo = api.repo(hf_hub::Repo::with_revision(
+                    repo_id.to_string(),
+                    hf_hub::RepoType::Model,
+                    options.revision.clone(),
+                ));
                 revision_repo.get(file)
             };
 
@@ -683,7 +684,11 @@ mod tests {
                 .cache_dir(&temp_dir),
         );
 
-        assert!(result.is_ok(), "Should download from real repo: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Should download from real repo: {:?}",
+            result.err()
+        );
         let artifact = result.unwrap();
         assert!(artifact.path.exists(), "Cache directory should exist");
 

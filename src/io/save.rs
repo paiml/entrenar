@@ -323,7 +323,10 @@ mod tests {
                 "layer1.weight".to_string(),
                 Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true),
             ),
-            ("layer1.bias".to_string(), Tensor::from_vec(vec![0.5], false)),
+            (
+                "layer1.bias".to_string(),
+                Tensor::from_vec(vec![0.5], false),
+            ),
         ];
 
         let model = Model::new(ModelMetadata::new("roundtrip-test", "mlp"), params);
@@ -371,7 +374,10 @@ mod tests {
     #[test]
     fn test_save_safetensors_large_tensor() {
         let large_data: Vec<f32> = (0..10000).map(|i| i as f32 * 0.001).collect();
-        let params = vec![("large_weights".to_string(), Tensor::from_vec(large_data.clone(), false))];
+        let params = vec![(
+            "large_weights".to_string(),
+            Tensor::from_vec(large_data.clone(), false),
+        )];
         let model = Model::new(ModelMetadata::new("large", "test"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
@@ -415,10 +421,22 @@ mod tests {
     #[test]
     fn test_save_safetensors_multiple_tensors() {
         let params = vec![
-            ("encoder.layer1.weight".to_string(), Tensor::from_vec(vec![1.0, 2.0], true)),
-            ("encoder.layer1.bias".to_string(), Tensor::from_vec(vec![0.1], true)),
-            ("encoder.layer2.weight".to_string(), Tensor::from_vec(vec![3.0, 4.0, 5.0], false)),
-            ("decoder.layer1.weight".to_string(), Tensor::from_vec(vec![6.0, 7.0], false)),
+            (
+                "encoder.layer1.weight".to_string(),
+                Tensor::from_vec(vec![1.0, 2.0], true),
+            ),
+            (
+                "encoder.layer1.bias".to_string(),
+                Tensor::from_vec(vec![0.1], true),
+            ),
+            (
+                "encoder.layer2.weight".to_string(),
+                Tensor::from_vec(vec![3.0, 4.0, 5.0], false),
+            ),
+            (
+                "decoder.layer1.weight".to_string(),
+                Tensor::from_vec(vec![6.0, 7.0], false),
+            ),
         ];
         let model = Model::new(ModelMetadata::new("encoder-decoder", "transformer"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);

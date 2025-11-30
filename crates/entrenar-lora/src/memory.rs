@@ -95,7 +95,8 @@ impl MemoryPlanner {
 
         // LoRA adapters: 2 matrices per target module (typically 4 modules per layer)
         // A: d × r, B: r × d for each module
-        let adapter_params = (self.hidden_dim * u64::from(rank) * 2) * 4 * u64::from(self.num_layers);
+        let adapter_params =
+            (self.hidden_dim * u64::from(rank) * 2) * 4 * u64::from(self.num_layers);
         let adapter_bytes = adapter_params * 2; // FP16
 
         // Optimizer only for adapter params
@@ -123,7 +124,8 @@ impl MemoryPlanner {
         let model_bytes = self.model_params * u64::from(bits) / 8;
 
         // LoRA adapters in FP16
-        let adapter_params = (self.hidden_dim * u64::from(rank) * 2) * 4 * u64::from(self.num_layers);
+        let adapter_params =
+            (self.hidden_dim * u64::from(rank) * 2) * 4 * u64::from(self.num_layers);
         let adapter_bytes = adapter_params * 2;
 
         // Optimizer only for adapter params
@@ -160,7 +162,8 @@ impl MemoryPlanner {
 
     fn estimate_activations(&self) -> u64 {
         // Activations per layer: batch × seq × hidden × 2 (forward + backward)
-        let per_layer = u64::from(self.batch_size) * u64::from(self.seq_len) * self.hidden_dim * 2 * 2; // FP16
+        let per_layer =
+            u64::from(self.batch_size) * u64::from(self.seq_len) * self.hidden_dim * 2 * 2; // FP16
 
         per_layer * u64::from(self.num_layers)
     }

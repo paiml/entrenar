@@ -62,9 +62,7 @@ impl std::str::FromStr for OutputFormat {
             "safetensors" | "st" => Ok(Self::SafeTensors),
             "gguf" => Ok(Self::Gguf),
             "apr" => Ok(Self::Apr),
-            _ => Err(format!(
-                "Unknown format: {s}. Use: safetensors, gguf, apr"
-            )),
+            _ => Err(format!("Unknown format: {s}. Use: safetensors, gguf, apr")),
         }
     }
 }
@@ -85,8 +83,14 @@ mod tests {
 
     #[test]
     fn test_output_format_st_alias() {
-        assert_eq!("st".parse::<OutputFormat>().unwrap(), OutputFormat::SafeTensors);
-        assert_eq!("ST".parse::<OutputFormat>().unwrap(), OutputFormat::SafeTensors);
+        assert_eq!(
+            "st".parse::<OutputFormat>().unwrap(),
+            OutputFormat::SafeTensors
+        );
+        assert_eq!(
+            "ST".parse::<OutputFormat>().unwrap(),
+            OutputFormat::SafeTensors
+        );
     }
 
     #[test]

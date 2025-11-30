@@ -202,6 +202,10 @@
 - [Model Parallelism](./advanced/model-parallelism.md)
 - [Compiler-in-the-Loop (CITL)](./advanced/citl.md)
 
+# Sovereign Deployment
+
+- [Overview](./sovereign/overview.md)
+
 # Specifications
 
 - [Autograd Specification](./specifications/autograd-spec.md)

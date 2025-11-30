@@ -257,7 +257,10 @@ mod tests {
         // "text" is alias for Table
         assert_eq!("text".parse::<OutputFormat>().unwrap(), OutputFormat::Table);
         // "line" is alias for Compact
-        assert_eq!("line".parse::<OutputFormat>().unwrap(), OutputFormat::Compact);
+        assert_eq!(
+            "line".parse::<OutputFormat>().unwrap(),
+            OutputFormat::Compact
+        );
     }
 
     #[test]

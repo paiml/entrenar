@@ -279,9 +279,14 @@ fn merge_command(
     Ok(())
 }
 
-fn inspect_command(path: &std::path::Path, cli: &entrenar_common::Cli) -> entrenar_common::Result<()> {
+fn inspect_command(
+    path: &std::path::Path,
+    cli: &entrenar_common::Cli,
+) -> entrenar_common::Result<()> {
     if !path.exists() {
-        return Err(entrenar_common::EntrenarError::ModelNotFound { path: path.to_path_buf() });
+        return Err(entrenar_common::EntrenarError::ModelNotFound {
+            path: path.to_path_buf(),
+        });
     }
 
     // In real implementation, would load and analyze the adapter

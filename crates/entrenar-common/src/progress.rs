@@ -319,7 +319,7 @@ mod tests {
     fn test_spinner_tick_cycles_frames() {
         let mut spinner = Spinner::new();
         spinner.enabled = false; // Disable output but keep frame cycling
-        // Manually cycle since tick() returns early when disabled
+                                 // Manually cycle since tick() returns early when disabled
         spinner.current_frame = (spinner.current_frame + 1) % spinner.frames.len();
         assert_eq!(spinner.current_frame, 1);
         spinner.current_frame = (spinner.current_frame + 1) % spinner.frames.len();

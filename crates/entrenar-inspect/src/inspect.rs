@@ -170,8 +170,8 @@ fn generate_mock_tensors(total_params: u64) -> Vec<TensorInfo> {
         768
     };
 
-    let num_layers = (total_params / (hidden_dim as u64 * hidden_dim as u64 * 12))
-        .clamp(1, 80) as usize;
+    let num_layers =
+        (total_params / (hidden_dim as u64 * hidden_dim as u64 * 12)).clamp(1, 80) as usize;
     let vocab_size = 32000;
 
     let mut tensors = Vec::new();

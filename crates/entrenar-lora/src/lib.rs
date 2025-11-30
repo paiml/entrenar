@@ -48,9 +48,7 @@ impl std::str::FromStr for Method {
             "lora" => Ok(Self::LoRA),
             "qlora" => Ok(Self::QLoRA),
             "auto" => Ok(Self::Auto),
-            _ => Err(format!(
-                "Unknown method: {s}. Use: full, lora, qlora, auto"
-            )),
+            _ => Err(format!("Unknown method: {s}. Use: full, lora, qlora, auto")),
         }
     }
 }

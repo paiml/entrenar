@@ -116,9 +116,7 @@ fn temperature_command(
 ) -> entrenar_common::Result<()> {
     if !cli.is_quiet() {
         println!("{}", styles::header("Temperature Sweep"));
-        println!(
-            "Range: {start:.1} to {end:.1}, step {step:.1}, {runs} runs per point\n"
-        );
+        println!("Range: {start:.1} to {end:.1}, step {step:.1}, {runs} runs per point\n");
     }
 
     let config = SweepConfig::temperature(start..end, step).with_runs(runs);
@@ -156,9 +154,7 @@ fn alpha_command(
 ) -> entrenar_common::Result<()> {
     if !cli.is_quiet() {
         println!("{}", styles::header("Alpha Sweep"));
-        println!(
-            "Range: {start:.1} to {end:.1}, step {step:.1}, {runs} runs per point\n"
-        );
+        println!("Range: {start:.1} to {end:.1}, step {step:.1}, {runs} runs per point\n");
     }
 
     let config = SweepConfig::alpha(start..end, step).with_runs(runs);
@@ -314,7 +310,8 @@ fn ablation_command(
     for (i, (name, _)) in ablations.iter().enumerate() {
         let result = &comparison.results[i];
         let delta = prev_loss
-            .map(|p: f64| result.mean_loss - p).map_or_else(|| "-".to_string(), |d| format!("{d:+.4}"));
+            .map(|p: f64| result.mean_loss - p)
+            .map_or_else(|| "-".to_string(), |d| format!("{d:+.4}"));
 
         println!(
             "│ {:19} │ {:>10.4} │ {:>10} │ {:>9.1}% │",

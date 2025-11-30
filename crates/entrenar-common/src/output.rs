@@ -319,9 +319,7 @@ mod tests {
 
     #[test]
     fn test_table_with_no_rows() {
-        let table = TableBuilder::new()
-            .headers(vec!["A", "B"])
-            .build();
+        let table = TableBuilder::new().headers(vec!["A", "B"]).build();
 
         let rendered = table.render();
         assert!(rendered.contains("A"));
@@ -335,10 +333,7 @@ mod tests {
     fn test_table_builder_rows_method() {
         let table = TableBuilder::new()
             .headers(vec!["X", "Y"])
-            .rows(vec![
-                vec!["1", "2"],
-                vec!["3", "4"],
-            ])
+            .rows(vec![vec!["1", "2"], vec!["3", "4"]])
             .build();
 
         assert_eq!(table.rows().len(), 2);
@@ -394,9 +389,7 @@ mod tests {
 
     #[test]
     fn test_table_json_empty_rows() {
-        let table = TableBuilder::new()
-            .headers(vec!["a", "b"])
-            .build();
+        let table = TableBuilder::new().headers(vec!["a", "b"]).build();
 
         let json = table.to_json();
         assert_eq!(json, "[]");

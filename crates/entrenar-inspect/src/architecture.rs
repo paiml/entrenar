@@ -336,8 +336,8 @@ mod tests {
     #[test]
     fn test_t5_not_detected_without_both() {
         // T5 needs both encoder.block AND decoder.block
-        let detector = ArchitectureDetector::new()
-            .with_tensors(vec!["encoder.block.0.weight".to_string()]);
+        let detector =
+            ArchitectureDetector::new().with_tensors(vec!["encoder.block.0.weight".to_string()]);
         // Should not detect as T5 with only encoder
         assert_ne!(detector.detect(), Architecture::T5);
     }

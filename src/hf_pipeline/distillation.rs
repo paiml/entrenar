@@ -524,8 +524,7 @@ mod tests {
     #[test]
     fn test_progressive_projection_layer_creation() {
         // Student dim 512, teacher dim 768
-        let prog = ProgressiveDistillation::new(vec![(0, 0)])
-            .with_projection(512, 768);
+        let prog = ProgressiveDistillation::new(vec![(0, 0)]).with_projection(512, 768);
         assert!(prog.projection.is_some());
         let proj = prog.projection.as_ref().unwrap();
         assert_eq!(proj.dim(), (512, 768));
@@ -534,8 +533,7 @@ mod tests {
     #[test]
     fn test_progressive_hidden_loss_with_projection() {
         // Student has dim 512, teacher has dim 768
-        let prog = ProgressiveDistillation::new(vec![(0, 0)])
-            .with_projection(512, 768);
+        let prog = ProgressiveDistillation::new(vec![(0, 0)]).with_projection(512, 768);
 
         let student = vec![Array2::<f32>::ones((4, 512))];
         let teacher = vec![Array2::<f32>::ones((4, 768))];
@@ -550,8 +548,7 @@ mod tests {
     #[test]
     fn test_progressive_projection_correct_transform() {
         // Use identity-like projection
-        let mut prog = ProgressiveDistillation::new(vec![(0, 0)])
-            .with_projection(768, 768);
+        let mut prog = ProgressiveDistillation::new(vec![(0, 0)]).with_projection(768, 768);
 
         // Set projection to identity matrix
         if let Some(ref mut proj) = prog.projection {
@@ -580,7 +577,10 @@ mod tests {
 
         // Should skip due to shape mismatch, loss = 0
         let loss = prog.hidden_state_loss(&student, &teacher);
-        assert_eq!(loss, 0.0, "Should skip mismatched shapes without projection");
+        assert_eq!(
+            loss, 0.0,
+            "Should skip mismatched shapes without projection"
+        );
     }
 
     // =========================================================================

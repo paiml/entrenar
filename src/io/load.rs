@@ -68,8 +68,8 @@ pub fn load_model(path: impl AsRef<Path>) -> Result<Model> {
 /// Load model from SafeTensors format (HuggingFace compatible)
 fn load_safetensors(path: &Path) -> Result<Model> {
     // Read binary file
-    let data =
-        std::fs::read(path).map_err(|e| Error::Serialization(format!("Failed to read file: {e}")))?;
+    let data = std::fs::read(path)
+        .map_err(|e| Error::Serialization(format!("Failed to read file: {e}")))?;
 
     // Parse SafeTensors and get metadata
     let (_, st_metadata) = safetensors::SafeTensors::read_metadata(&data)
@@ -376,8 +376,14 @@ mod tests {
     fn test_load_safetensors_large_model() {
         let large_data: Vec<f32> = (0..5000).map(|i| i as f32 * 0.001).collect();
         let params = vec![
-            ("large_weight".to_string(), Tensor::from_vec(large_data.clone(), false)),
-            ("small_bias".to_string(), Tensor::from_vec(vec![0.1, 0.2], false)),
+            (
+                "large_weight".to_string(),
+                Tensor::from_vec(large_data.clone(), false),
+            ),
+            (
+                "small_bias".to_string(),
+                Tensor::from_vec(vec![0.1, 0.2], false),
+            ),
         ];
 
         let original = Model::new(ModelMetadata::new("large-model", "test"), params);

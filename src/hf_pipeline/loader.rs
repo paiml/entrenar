@@ -151,11 +151,10 @@ impl SafeTensorsTeacher {
         let data = std::fs::read(&model_path)?;
 
         // Parse SafeTensors
-        let tensors = SafeTensors::deserialize(&data).map_err(|e| {
-            FetchError::SafeTensorsParseError {
+        let tensors =
+            SafeTensors::deserialize(&data).map_err(|e| FetchError::SafeTensorsParseError {
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         // Extract tensor names and compute statistics
         let tensor_names: Vec<String> = tensors.names().iter().map(|s| (*s).to_string()).collect();
@@ -259,7 +258,11 @@ fn extract_layer_index(name: &str) -> Option<usize> {
 /// Detect hidden size from tensor shapes
 fn detect_hidden_size(tensors: &safetensors::SafeTensors<'_>, names: &[String]) -> usize {
     // Look for attention query weight which is typically [hidden_size, hidden_size]
-    let query_patterns = [".query.weight", ".q_proj.weight", ".self_attn.q_proj.weight"];
+    let query_patterns = [
+        ".query.weight",
+        ".q_proj.weight",
+        ".self_attn.q_proj.weight",
+    ];
 
     for name in names {
         for pattern in query_patterns {
@@ -496,7 +499,9 @@ mod tests {
         std::fs::write(&model_path, data).unwrap();
 
         let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
-        assert!(teacher.tensor_names().contains(&"encoder.layer.0.attention.query.weight".to_string()));
+        assert!(teacher
+            .tensor_names()
+            .contains(&"encoder.layer.0.attention.query.weight".to_string()));
     }
 
     #[test]
@@ -550,9 +555,8 @@ mod tests {
         let model_path = temp_dir.path().join("model.safetensors");
 
         // Create safetensors with 1024 hidden size
-        let data = create_test_safetensors(&[
-            ("encoder.layer.0.attention.query.weight", &[1024, 1024]),
-        ]);
+        let data =
+            create_test_safetensors(&[("encoder.layer.0.attention.query.weight", &[1024, 1024])]);
         std::fs::write(&model_path, data).unwrap();
 
         let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
@@ -588,12 +592,8 @@ mod tests {
         let views: Vec<(&str, TensorView<'_>)> = tensor_data
             .iter()
             .map(|(name, data, shape)| {
-                let view = TensorView::new(
-                    Dtype::F32,
-                    shape.clone(),
-                    bytemuck::cast_slice(data),
-                )
-                .unwrap();
+                let view =
+                    TensorView::new(Dtype::F32, shape.clone(), bytemuck::cast_slice(data)).unwrap();
                 (name.as_str(), view)
             })
             .collect();

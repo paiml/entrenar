@@ -258,18 +258,14 @@ fn run_quantize(args: entrenar::config::QuantizeArgs, level: LogLevel) -> Result
 
     // Validate bit width
     if args.bits != 4 && args.bits != 8 {
-        return Err(format!(
-            "Unsupported bit width: {}. Use 4 or 8.",
-            args.bits
-        ));
+        return Err(format!("Unsupported bit width: {}. Use 4 or 8.", args.bits));
     }
 
     // Load safetensors model
-    let data = std::fs::read(&args.model)
-        .map_err(|e| format!("Failed to read model file: {e}"))?;
+    let data = std::fs::read(&args.model).map_err(|e| format!("Failed to read model file: {e}"))?;
 
-    let tensors = SafeTensors::deserialize(&data)
-        .map_err(|e| format!("Failed to parse safetensors: {e}"))?;
+    let tensors =
+        SafeTensors::deserialize(&data).map_err(|e| format!("Failed to parse safetensors: {e}"))?;
 
     // Convert CLI args to quant module types
     let mode = match args.method {
@@ -289,11 +285,17 @@ fn run_quantize(args: entrenar::config::QuantizeArgs, level: LogLevel) -> Result
     let mut total_quantized_bytes = 0usize;
 
     for name in tensors.names() {
-        let tensor = tensors.tensor(name).map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
+        let tensor = tensors
+            .tensor(name)
+            .map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
 
         // Only quantize float tensors
         if tensor.dtype() != safetensors::tensor::Dtype::F32 {
-            log(level, LogLevel::Verbose, &format!("  Skipping {name} (not F32)"));
+            log(
+                level,
+                LogLevel::Verbose,
+                &format!("  Skipping {name} (not F32)"),
+            );
             continue;
         }
 
@@ -401,15 +403,16 @@ fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), S
     // Load all models
     let mut models: Vec<Model> = Vec::new();
     for path in &args.models {
-        let data = std::fs::read(path)
-            .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+        let data =
+            std::fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
         let tensors = SafeTensors::deserialize(&data)
             .map_err(|e| format!("Failed to parse {}: {e}", path.display()))?;
 
         let mut model: Model = HashMap::new();
         for name in tensors.names() {
-            let tensor = tensors.tensor(name)
+            let tensor = tensors
+                .tensor(name)
                 .map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
 
             // Only process F32 tensors
@@ -428,7 +431,11 @@ fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), S
         models.push(model);
 
         let tensor_count = models.last().map_or(0, HashMap::len);
-        log(level, LogLevel::Verbose, &format!("  Loaded {} tensors from {}", tensor_count, path.display()));
+        log(
+            level,
+            LogLevel::Verbose,
+            &format!("  Loaded {} tensors from {}", tensor_count, path.display()),
+        );
     }
 
     // Perform merge
@@ -474,8 +481,7 @@ fn run_merge(args: entrenar::config::MergeArgs, level: LogLevel) -> Result<(), S
                 EnsembleConfig::uniform_average()
             };
 
-            ensemble_merge(&models, &config)
-                .map_err(|e| format!("Average merge failed: {e}"))?
+            ensemble_merge(&models, &config).map_err(|e| format!("Average merge failed: {e}"))?
         }
     };
 
