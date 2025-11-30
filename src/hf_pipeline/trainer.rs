@@ -626,7 +626,7 @@ mod tests {
     #[test]
     fn test_training_state_elapsed() {
         let state = TrainingState::new();
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        std::thread::sleep(Duration::from_millis(5));
         assert!(state.elapsed().as_millis() >= 4);
     }
 
@@ -635,7 +635,7 @@ mod tests {
         let mut state = TrainingState::new();
         state.step();
         state.step();
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(10));
         // Should be positive if steps completed
         let sps = state.steps_per_second();
         assert!(sps > 0.0);
@@ -653,7 +653,7 @@ mod tests {
     fn test_training_state_eta() {
         let mut state = TrainingState::new();
         state.step();
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        std::thread::sleep(Duration::from_millis(10));
         let eta = state.eta(100);
         // ETA should be some duration (could be very large or zero)
         assert!(eta.as_secs_f32() >= 0.0);
@@ -663,7 +663,7 @@ mod tests {
     fn test_training_state_eta_zero_steps() {
         let state = TrainingState::new();
         let eta = state.eta(100);
-        assert_eq!(eta, std::time::Duration::ZERO);
+        assert_eq!(eta, Duration::ZERO);
     }
 
     #[test]

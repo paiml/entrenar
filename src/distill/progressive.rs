@@ -74,8 +74,8 @@ impl ProgressiveDistiller {
     ///
     /// # Arguments
     ///
-    /// * `student_hiddens` - Hidden states from student layers [num_layers]
-    /// * `teacher_hiddens` - Hidden states from teacher layers [num_layers]
+    /// * `student_hiddens` - Hidden states from student layers `[num_layers]`
+    /// * `teacher_hiddens` - Hidden states from teacher layers `[num_layers]`
     ///
     /// # Returns
     ///

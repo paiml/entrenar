@@ -123,9 +123,10 @@ impl CostPerformanceBenchmark {
         let mut frontier = Vec::new();
 
         for entry in &self.entries {
-            let is_dominated = self.entries.iter().any(|other| {
-                !std::ptr::eq(entry, other) && other.dominates(entry)
-            });
+            let is_dominated = self
+                .entries
+                .iter()
+                .any(|other| !std::ptr::eq(entry, other) && other.dominates(entry));
 
             if !is_dominated {
                 frontier.push(entry);
@@ -259,7 +260,10 @@ impl CostPerformanceBenchmark {
         let frontier = self.pareto_frontier();
 
         let mut report = String::new();
-        report.push_str(&format!("=== Benchmark Report ({} entries) ===\n\n", stats.count));
+        report.push_str(&format!(
+            "=== Benchmark Report ({} entries) ===\n\n",
+            stats.count
+        ));
 
         report.push_str("Quality Scores:\n");
         report.push_str(&format!(

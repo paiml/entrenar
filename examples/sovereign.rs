@@ -43,10 +43,7 @@ fn main() -> entrenar::Result<()> {
     // Generate manifest JSON
     let manifest_json = full_dist.to_manifest_json();
     println!("Manifest JSON (truncated):");
-    println!(
-        "  {}...",
-        &manifest_json[..manifest_json.len().min(200)]
-    );
+    println!("  {}...", &manifest_json[..manifest_json.len().min(200)]);
     println!();
 
     // 2. Offline Model Registry (ENT-017)

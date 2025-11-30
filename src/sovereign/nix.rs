@@ -180,8 +180,12 @@ impl NixFlakeConfig {
         ];
 
         // Set features
-        config.features.insert("trueno".to_string(), vec!["simd".to_string()]);
-        config.features.insert("entrenar".to_string(), vec!["full".to_string()]);
+        config
+            .features
+            .insert("trueno".to_string(), vec!["simd".to_string()]);
+        config
+            .features
+            .insert("entrenar".to_string(), vec!["full".to_string()]);
 
         config.rust_version = "1.75.0".to_string();
         config.include_dev_shell = true;
@@ -514,8 +518,12 @@ mod tests {
     #[test]
     fn test_crate_spec_nix_source() {
         assert!(CrateSpec::local("a", "path").nix_source().contains("path"));
-        assert!(CrateSpec::crates_io("b", "1.0").nix_source().contains("1.0"));
-        assert!(CrateSpec::git("c", "url", "rev").nix_source().contains("rev"));
+        assert!(CrateSpec::crates_io("b", "1.0")
+            .nix_source()
+            .contains("1.0"));
+        assert!(CrateSpec::git("c", "url", "rev")
+            .nix_source()
+            .contains("rev"));
     }
 
     #[test]
@@ -561,8 +569,7 @@ mod tests {
 
     #[test]
     fn test_nix_flake_config_add_crate() {
-        let config = NixFlakeConfig::new("Test")
-            .add_crate(CrateSpec::crates_io("test", "1.0"));
+        let config = NixFlakeConfig::new("Test").add_crate(CrateSpec::crates_io("test", "1.0"));
 
         assert_eq!(config.crates.len(), 1);
         assert_eq!(config.crates[0].name, "test");
@@ -570,8 +577,7 @@ mod tests {
 
     #[test]
     fn test_nix_flake_config_with_features() {
-        let config = NixFlakeConfig::new("Test")
-            .with_features("test", ["feat1", "feat2"]);
+        let config = NixFlakeConfig::new("Test").with_features("test", ["feat1", "feat2"]);
 
         let features = config.features.get("test").unwrap();
         assert_eq!(features.len(), 2);
@@ -579,8 +585,7 @@ mod tests {
 
     #[test]
     fn test_nix_flake_config_with_systems() {
-        let config = NixFlakeConfig::new("Test")
-            .with_systems(NixSystem::linux_only());
+        let config = NixFlakeConfig::new("Test").with_systems(NixSystem::linux_only());
 
         assert_eq!(config.systems.len(), 2);
     }

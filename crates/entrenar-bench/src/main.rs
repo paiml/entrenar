@@ -141,7 +141,14 @@ fn main() {
             min_accuracy,
             max_memory,
             gpu,
-        } => recommend_command(max_gpu_hours, max_cost, min_accuracy, max_memory, &gpu, &config),
+        } => recommend_command(
+            max_gpu_hours,
+            max_cost,
+            min_accuracy,
+            max_memory,
+            &gpu,
+            &config,
+        ),
     };
 
     if let Err(e) = result {

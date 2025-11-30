@@ -90,12 +90,14 @@ wasm = ["wasm-bindgen", "getrandom", "js-sys"]  # WASM bindings for browser dash
 citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG-based fix suggestions
 tracing = ["renacer"]  # Renacer distributed tracing integration
 ruchy-sessions = []  # Ruchy session bridge for preserving training history
+gpu = ["trueno/gpu", "tokio"]  # GPU-accelerated training via wgpu
 
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
 trueno = "0.7.3"  # SIMD-accelerated compute
-aprender = "0.12.0"  # ML interpret module for explainability
+aprender = "0.12.0"  # ML interpret module for explainability + .apr model format
+alimentar = { path = "../alimentar" }  # Dataset loading with MNIST (local until 0.2.2 published)
 trueno-viz = { version = "0.1.1", features = ["terminal"] }  # Terminal visualization
 trueno-db = { path = "../trueno-db", optional = true }  # Time-series storage (local until 0.4 published)
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
@@ -112,7 +114,7 @@ rand = "0.9"
 clap = { version = "4.5", features = ["derive"] }
 dirs = "5.0"  # Cache directory resolution for HF pipeline
 trueno-rag = { version = "0.1.0", optional = true }  # RAG pipeline for CITL
-tokio = { version = "1.41", features = ["rt"], optional = true }  # Async runtime for RAG
+tokio = { version = "1.41", features = ["rt", "macros"], optional = true }  # Async runtime for RAG and GPU
 uuid = { version = "1.11", features = ["v4", "serde"], optional = true }  # UUIDs for CITL patterns
 safetensors = "0.7"  # SafeTensors format parsing
 sha2 = "0.10"  # SHA256 hashing for artifact CAS
@@ -129,6 +131,7 @@ proptest = "1.4"
 approx = "0.5"
 tempfile = "3.8"
 criterion = "0.5"
+arrow = { version = "53", default-features = false }  # For MNIST example array access
 
 [[bench]]
 name = "monitor_bench"
@@ -217,3 +220,13 @@ required-features = []
 name = "citl"
 path = "examples/citl.rs"
 required-features = ["citl"]
+
+[[example]]
+name = "mnist_train"
+path = "examples/mnist_train.rs"
+required-features = []
+
+[[example]]
+name = "mnist_train_gpu"
+path = "examples/mnist_train_gpu.rs"
+required-features = ["gpu"]

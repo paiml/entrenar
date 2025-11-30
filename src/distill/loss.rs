@@ -68,7 +68,7 @@ impl DistillationLoss {
     ///
     /// * `student_logits` - Logits from student model [batch_size, num_classes]
     /// * `teacher_logits` - Logits from teacher model [batch_size, num_classes]
-    /// * `labels` - Ground truth labels [batch_size]
+    /// * `labels` - Ground truth labels `[batch_size]`
     ///
     /// # Returns
     ///

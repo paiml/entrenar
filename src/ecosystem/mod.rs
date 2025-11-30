@@ -16,9 +16,7 @@ pub mod realizar;
 #[cfg(feature = "ruchy-sessions")]
 pub mod ruchy;
 
-pub use batuta::{
-    adjust_eta, BatutaClient, BatutaError, FallbackPricing, GpuPricing, QueueState,
-};
+pub use batuta::{adjust_eta, BatutaClient, BatutaError, FallbackPricing, GpuPricing, QueueState};
 pub use realizar::{
     ExperimentProvenance, GgufExportError, GgufExporter, GgufMetadata, QuantizationType,
 };

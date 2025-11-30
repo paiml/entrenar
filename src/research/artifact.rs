@@ -397,7 +397,10 @@ mod tests {
             format!("{}", ContributorRole::Conceptualization),
             "Conceptualization"
         );
-        assert_eq!(format!("{}", ContributorRole::DataCuration), "Data curation");
+        assert_eq!(
+            format!("{}", ContributorRole::DataCuration),
+            "Data curation"
+        );
         assert_eq!(
             format!("{}", ContributorRole::FormalAnalysis),
             "Formal analysis"

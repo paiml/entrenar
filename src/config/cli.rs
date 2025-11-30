@@ -1536,7 +1536,10 @@ mod tests {
 
     #[test]
     fn test_license_from_str() {
-        assert_eq!("cc-by-4.0".parse::<LicenseArg>().unwrap(), LicenseArg::CcBy4);
+        assert_eq!(
+            "cc-by-4.0".parse::<LicenseArg>().unwrap(),
+            LicenseArg::CcBy4
+        );
         assert_eq!("mit".parse::<LicenseArg>().unwrap(), LicenseArg::Mit);
         assert_eq!(
             "apache-2.0".parse::<LicenseArg>().unwrap(),
@@ -1552,8 +1555,14 @@ mod tests {
             "bibtex".parse::<CitationFormat>().unwrap(),
             CitationFormat::Bibtex
         );
-        assert_eq!("bib".parse::<CitationFormat>().unwrap(), CitationFormat::Bibtex);
-        assert_eq!("cff".parse::<CitationFormat>().unwrap(), CitationFormat::Cff);
+        assert_eq!(
+            "bib".parse::<CitationFormat>().unwrap(),
+            CitationFormat::Bibtex
+        );
+        assert_eq!(
+            "cff".parse::<CitationFormat>().unwrap(),
+            CitationFormat::Cff
+        );
         assert_eq!(
             "json".parse::<CitationFormat>().unwrap(),
             CitationFormat::Json

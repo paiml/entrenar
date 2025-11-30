@@ -221,7 +221,12 @@ impl SovereignDistribution {
     /// Create Core tier distribution (~50MB)
     pub fn core() -> Self {
         let version = env!("CARGO_PKG_VERSION");
-        let mut dist = Self::new("entrenar-sovereign-core", version, DistributionTier::Core, DistributionFormat::Tarball);
+        let mut dist = Self::new(
+            "entrenar-sovereign-core",
+            version,
+            DistributionTier::Core,
+            DistributionFormat::Tarball,
+        );
 
         dist.components = vec![
             ComponentManifest::entrenar_core(version),
@@ -235,7 +240,12 @@ impl SovereignDistribution {
     /// Create Standard tier distribution (~200MB)
     pub fn standard() -> Self {
         let version = env!("CARGO_PKG_VERSION");
-        let mut dist = Self::new("entrenar-sovereign-standard", version, DistributionTier::Standard, DistributionFormat::Tarball);
+        let mut dist = Self::new(
+            "entrenar-sovereign-standard",
+            version,
+            DistributionTier::Standard,
+            DistributionFormat::Tarball,
+        );
 
         dist.components = vec![
             ComponentManifest::entrenar_core(version),
@@ -252,7 +262,12 @@ impl SovereignDistribution {
     /// Create Full tier distribution (~500MB)
     pub fn full() -> Self {
         let version = env!("CARGO_PKG_VERSION");
-        let mut dist = Self::new("entrenar-sovereign-full", version, DistributionTier::Full, DistributionFormat::Tarball);
+        let mut dist = Self::new(
+            "entrenar-sovereign-full",
+            version,
+            DistributionTier::Full,
+            DistributionFormat::Tarball,
+        );
 
         dist.components = vec![
             ComponentManifest::entrenar_core(version),
@@ -261,7 +276,8 @@ impl SovereignDistribution {
             ComponentManifest::renacer("0.1"),
             ComponentManifest::new("trueno-db", "0.1", "trueno-db"),
             ComponentManifest::new("ruchy", "0.1", "ruchy"),
-            ComponentManifest::new("entrenar-gpu", version, "entrenar-gpu").with_features(["cuda", "rocm"]),
+            ComponentManifest::new("entrenar-gpu", version, "entrenar-gpu")
+                .with_features(["cuda", "rocm"]),
             ComponentManifest::new("entrenar-bench", version, "entrenar-bench"),
             ComponentManifest::new("entrenar-inspect", version, "entrenar-inspect"),
             ComponentManifest::new("entrenar-lora", version, "entrenar-lora"),
@@ -315,12 +331,7 @@ impl SovereignDistribution {
 
     /// Get the suggested filename for this distribution
     pub fn suggested_filename(&self) -> String {
-        format!(
-            "{}-{}.{}",
-            self.name,
-            self.version,
-            self.format.extension()
-        )
+        format!("{}-{}.{}", self.name, self.version, self.format.extension())
     }
 
     /// Get total component count
@@ -432,8 +443,8 @@ mod tests {
 
     #[test]
     fn test_component_manifest_with_features() {
-        let comp = ComponentManifest::new("test", "1.0.0", "test-crate")
-            .with_features(["gpu", "cuda"]);
+        let comp =
+            ComponentManifest::new("test", "1.0.0", "test-crate").with_features(["gpu", "cuda"]);
 
         assert_eq!(comp.features.len(), 2);
         assert!(comp.features.contains(&"gpu".to_string()));
