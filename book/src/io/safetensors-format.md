@@ -196,4 +196,4 @@ match load_model("model.safetensors") {
 - [JSON Format](json-format.md) - Human-readable alternative
 - [YAML Format](yaml-format.md) - Configuration-friendly format
 - [GGUF Format](gguf-format.md) - Quantized model format
-- [HuggingFace Distillation](../advanced/hf-distillation.md) - Using with distillation
+- [Knowledge Distillation](../distillation/what-is-distillation.md) - Using with distillation

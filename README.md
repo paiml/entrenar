@@ -7,7 +7,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/entrenar.svg)](https://crates.io/crates/entrenar)
 [![Documentation](https://docs.rs/entrenar/badge.svg)](https://docs.rs/entrenar)
-[![Tests](https://img.shields.io/badge/tests-800%20passing-brightgreen)](https://github.com/paiml/entrenar)
+[![Tests](https://img.shields.io/badge/tests-2155%20passing-brightgreen)](https://github.com/paiml/entrenar)
 [![Coverage](https://img.shields.io/badge/coverage-%3E90%25-brightgreen)](https://github.com/paiml/entrenar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.83+-orange.svg)](https://www.rust-lang.org)
@@ -215,12 +215,37 @@ if let DriftStatus::Drift(z) = drift.check(loss) {
 
 ## Examples
 
+### Programmatic
+
 ```bash
 cargo run --example training_loop      # Basic training
 cargo run --example explainability     # Feature attribution
 cargo run --example distillation       # Knowledge distillation
 cargo run --example merge_models       # Model merging
 cargo run --example model_io           # Save/load models
+cargo run --example cli_bench          # Latency benchmarking
+cargo run --example cli_audit          # Bias detection
+cargo run --example cli_monitor        # Drift detection (PSI)
+```
+
+### CLI Commands
+
+```bash
+# Training
+entrenar train config.yaml --epochs 10
+
+# Model operations
+entrenar quantize model.safetensors --bits 4 --output model_q4.json
+entrenar merge model1.safetensors model2.safetensors --method ties
+
+# Benchmarking & Monitoring
+entrenar bench config.yaml --warmup 5 --iterations 100
+entrenar inspect model.safetensors -v
+entrenar audit predictions.parquet --type bias --threshold 0.8
+entrenar monitor data.parquet --threshold 0.2
+
+# Shell completions
+entrenar completion bash > ~/.local/share/bash-completion/completions/entrenar
 ```
 
 ## Architecture
@@ -243,7 +268,7 @@ entrenar/
 
 | Metric | Value |
 |--------|-------|
-| Tests | 800 passing |
+| Tests | 2155 passing |
 | Coverage | >90% |
 | Property Tests | 200K+ iterations |
 | Gradient Checking | Finite difference validated |

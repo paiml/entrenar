@@ -514,4 +514,4 @@ YAML Mode Training is informed by:
 3. Dettmers, T., et al. (2023). QLoRA: Efficient Finetuning of Quantized LLMs.
 4. Sculley, D., et al. (2015). Hidden Technical Debt in Machine Learning Systems.
 
-See [docs/specifications/yaml-mode-train.md](../../docs/specifications/yaml-mode-train.md) for the complete specification with all 20 peer-reviewed citations.
+See [docs/specifications/yaml-mode-train.md](../../../docs/specifications/yaml-mode-train.md) for the complete specification with all 20 peer-reviewed citations.
