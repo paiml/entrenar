@@ -93,13 +93,13 @@ pub struct Run<S: ExperimentStorage> {
     /// Parent experiment ID
     pub experiment_id: String,
     /// Storage backend (shared)
-    storage: Arc<Mutex<S>>,
+    pub(crate) storage: Arc<Mutex<S>>,
     /// Renacer span ID (if tracing enabled)
     span: Option<String>,
     /// Tracing configuration
     config: TracingConfig,
     /// Current step counters per metric key
-    step_counters: HashMap<String, u64>,
+    pub(crate) step_counters: HashMap<String, u64>,
     /// Whether the run has been finished
     finished: bool,
 }

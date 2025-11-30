@@ -86,7 +86,7 @@ workspace = true
 default = []
 gguf = []  # Placeholder for future GGUF support via Realizar
 monitor = ["trueno-db"]  # Training monitoring with persistence
-wasm = ["wasm-bindgen", "getrandom"]  # WASM bindings for browser dashboard
+wasm = ["wasm-bindgen", "getrandom", "js-sys"]  # WASM bindings for browser dashboard
 citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG-based fix suggestions
 tracing = ["renacer"]  # Renacer distributed tracing integration
 ruchy-sessions = []  # Ruchy session bridge for preserving training history
@@ -102,6 +102,7 @@ chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric stor
 renacer = { version = "0.6", optional = true }  # Distributed tracing
 wasm-bindgen = { version = "0.2", optional = true }  # WASM bindings
 getrandom = { version = "0.3", features = ["wasm_js"], optional = true }  # WASM random
+js-sys = { version = "0.3", optional = true }  # JavaScript types for WASM
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"

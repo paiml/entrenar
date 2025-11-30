@@ -1231,6 +1231,7 @@ dependencies = [
  "getrandom 0.3.4",
  "hex",
  "hf-hub",
+ "js-sys",
  "memmap2",
  "ndarray",
  "proptest",
