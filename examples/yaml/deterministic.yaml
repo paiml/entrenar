@@ -1,0 +1,54 @@
+# YAML-005: Deterministic Replay
+# QA Focus: Run twice; artifacts must have identical SHA256
+# Validation: 25-point checklist required (Heijunka verification)
+
+entrenar: "1.0"
+name: "deterministic-replay"
+version: "1.0.0"
+description: "Reproducible training with bit-exact outputs"
+
+# Critical: Fixed seed for reproducibility
+seed: 42
+
+data:
+  source: "mnist"
+  split:
+    train: 0.8
+    val: 0.2
+    seed: 42  # Explicit split seed
+  loader:
+    batch_size: 32
+    shuffle: true
+    num_workers: 0  # Single-threaded for determinism
+
+model:
+  source: "builtin://mlp"
+  architecture:
+    type: "sequential"
+    layers:
+      - {type: "linear", in_features: 784, out_features: 64}
+      - {type: "relu"}
+      - {type: "linear", in_features: 64, out_features: 10}
+  device: "cpu"  # CPU for determinism
+  dtype: "float32"
+
+optimizer:
+  name: "sgd"
+  lr: 0.01
+  momentum: 0.9
+
+training:
+  epochs: 3
+  deterministic: true
+  benchmark: false
+  gradient:
+    accumulation_steps: 1
+
+output:
+  dir: "./outputs/deterministic-${seed}"
+  model:
+    format: "safetensors"
+    save_optimizer: true
+  report:
+    enabled: true
+    include_plots: false

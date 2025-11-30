@@ -240,8 +240,7 @@ impl OfflineModelRegistry {
     /// Load manifest from file
     fn load_manifest(path: &Path) -> Result<RegistryManifest> {
         let content = fs::read_to_string(path)?;
-        serde_json::from_str(&content)
-            .map_err(|e| Error::Io(format!("Invalid manifest data: {e}")))
+        serde_json::from_str(&content).map_err(|e| Error::Io(format!("Invalid manifest data: {e}")))
     }
 
     /// Save manifest to file

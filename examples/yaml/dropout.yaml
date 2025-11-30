@@ -1,0 +1,53 @@
+# YAML-025: Dropout Regularization
+# QA Focus: Training loss > Training loss (no dropout); Val loss improves
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "dropout-regularization"
+version: "1.0.0"
+description: "Dropout stochasticity verification"
+
+seed: 42
+
+model:
+  source: "builtin://mlp"
+  architecture:
+    type: "sequential"
+    layers:
+      - {type: "linear", in_features: 784, out_features: 256}
+      - {type: "relu"}
+      - {type: "dropout", p: 0.5}
+      - {type: "linear", in_features: 256, out_features: 128}
+      - {type: "relu"}
+      - {type: "dropout", p: 0.5}
+      - {type: "linear", in_features: 128, out_features: 10}
+  device: "auto"
+
+data:
+  source: "mnist"
+  split:
+    train: 0.8
+    val: 0.2
+  loader:
+    batch_size: 64
+    shuffle: true
+
+optimizer:
+  name: "adam"
+  lr: 0.001
+
+training:
+  epochs: 20
+  validation:
+    every_epoch: true
+    metrics: ["accuracy", "loss"]
+
+monitoring:
+  terminal:
+    enabled: true
+    metrics: ["train_loss", "val_loss", "accuracy"]
+    charts:
+      - {type: "line", metric: "loss", window: 100}
+
+output:
+  dir: "./outputs/dropout-${timestamp}"

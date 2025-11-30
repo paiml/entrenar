@@ -1,0 +1,30 @@
+# YAML-062: Inference Latency Benchmark
+# QA Focus: P99 latency within spec
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "latency-benchmark"
+version: "1.0.0"
+description: "Inference latency measurement and SLA verification"
+
+benchmark:
+  mode: "inference"
+  warmup: 10
+  iterations: 1000
+  batch_sizes: [1, 4, 8, 16, 32]
+  percentiles: ["p50", "p95", "p99", "p999"]
+
+model:
+  source: "./models/production.safetensors"
+  device: "cuda"
+  dtype: "float16"
+
+output:
+  dir: "./outputs/benchmark-${timestamp}"
+  metrics:
+    format: "json"
+    include: ["latency_p50", "latency_p95", "latency_p99", "throughput"]
+  report:
+    enabled: true
+    format: "html"
+    include_plots: true

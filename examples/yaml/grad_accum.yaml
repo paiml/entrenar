@@ -1,0 +1,47 @@
+# YAML-037: Gradient Accumulation
+# QA Focus: Math equivalence to large batch size verified
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "gradient-accumulation"
+version: "1.0.0"
+description: "Simulated large batch training via gradient accumulation"
+
+seed: 42
+
+data:
+  source: "mnist"
+  loader:
+    batch_size: 4  # Micro-batch size
+    shuffle: true
+    num_workers: 2
+
+model:
+  source: "builtin://mlp"
+  architecture:
+    type: "sequential"
+    layers:
+      - {type: "linear", in_features: 784, out_features: 256}
+      - {type: "relu"}
+      - {type: "linear", in_features: 256, out_features: 10}
+  device: "auto"
+
+optimizer:
+  name: "sgd"
+  lr: 0.01
+  momentum: 0.9
+
+training:
+  epochs: 10
+  gradient:
+    accumulation_steps: 16  # Effective batch = 4 * 16 = 64
+  validation:
+    every_epoch: true
+
+monitoring:
+  terminal:
+    enabled: true
+    metrics: ["loss", "effective_batch_size", "lr"]
+
+output:
+  dir: "./outputs/grad-accum-${timestamp}"

@@ -2415,7 +2415,6 @@ mod tests {
         display.push_val_loss(0.5);
         display.push_val_loss(0.4);
         // Val series has data
-
     }
 
     #[test]

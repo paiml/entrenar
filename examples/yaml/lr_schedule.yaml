@@ -1,0 +1,59 @@
+# YAML-040: Learning Rate Scheduling
+# QA Focus: LR follows exact curve (visual verify)
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "lr-scheduling"
+version: "1.0.0"
+description: "Cosine annealing learning rate schedule"
+
+seed: 42
+
+data:
+  source: "mnist"
+  loader:
+    batch_size: 64
+    shuffle: true
+
+model:
+  source: "builtin://mlp"
+  architecture:
+    type: "sequential"
+    layers:
+      - {type: "linear", in_features: 784, out_features: 128}
+      - {type: "relu"}
+      - {type: "linear", in_features: 128, out_features: 10}
+  device: "auto"
+
+optimizer:
+  name: "adamw"
+  lr: 0.0001
+  weight_decay: 0.01
+
+scheduler:
+  name: "cosine"
+  warmup:
+    steps: 100
+    start_lr: 0.0
+  T_max: 1000
+  eta_min: 0.000001
+
+training:
+  epochs: 10
+  validation:
+    every_epoch: true
+
+callbacks:
+  - type: "lr_monitor"
+    trigger: "step"
+    interval: 10
+
+monitoring:
+  terminal:
+    enabled: true
+    metrics: ["loss", "lr"]
+    charts:
+      - {type: "line", metric: "lr", window: 500}
+
+output:
+  dir: "./outputs/lr-schedule-${timestamp}"

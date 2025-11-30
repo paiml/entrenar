@@ -20,9 +20,7 @@ use alimentar::{datasets::mnist, Dataset};
 use aprender::format::{save, ModelType, SaveOptions};
 use arrow::array::{Float32Array, Int32Array};
 use entrenar::efficiency::device::{ComputeDevice, SimdCapability};
-use entrenar::train::{
-    sparkline, AndonSystem, LossCurveDisplay, MetricsBuffer, TerminalMode,
-};
+use entrenar::train::{sparkline, AndonSystem, LossCurveDisplay, MetricsBuffer, TerminalMode};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{Duration, Instant};
@@ -73,9 +71,17 @@ impl SystemMetrics {
             let mut available = 0u64;
             for line in meminfo.lines() {
                 if line.starts_with("MemTotal:") {
-                    total = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    total = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
                 } else if line.starts_with("MemAvailable:") {
-                    available = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    available = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
                 }
             }
             self.memory_total_mb = total as f32 / 1024.0;
@@ -84,7 +90,11 @@ impl SystemMetrics {
     }
 
     fn memory_percent(&self) -> f32 {
-        if self.memory_total_mb > 0.0 { 100.0 * self.memory_used_mb / self.memory_total_mb } else { 0.0 }
+        if self.memory_total_mb > 0.0 {
+            100.0 * self.memory_used_mb / self.memory_total_mb
+        } else {
+            0.0
+        }
     }
 
     fn render_bar(percent: f32, width: usize) -> String {
@@ -97,10 +107,10 @@ impl SystemMetrics {
 /// GPU-accelerated 2-layer neural network for MNIST
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GpuMnistModel {
-    w1: Vec<f32>,  // 784 x 64
-    b1: Vec<f32>,  // 64
-    w2: Vec<f32>,  // 64 x 10
-    b2: Vec<f32>,  // 10
+    w1: Vec<f32>, // 784 x 64
+    b1: Vec<f32>, // 64
+    w2: Vec<f32>, // 64 x 10
+    b2: Vec<f32>, // 10
 }
 
 impl GpuMnistModel {
@@ -111,15 +121,23 @@ impl GpuMnistModel {
         let scale2 = (2.0 / 64.0_f32).sqrt();
 
         Self {
-            w1: (0..784 * 64).map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0).collect(),
+            w1: (0..784 * 64)
+                .map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0)
+                .collect(),
             b1: vec![0.0; 64],
-            w2: (0..64 * 10).map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0).collect(),
+            w2: (0..64 * 10)
+                .map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0)
+                .collect(),
             b2: vec![0.0; 10],
         }
     }
 
     /// GPU-accelerated forward pass
-    async fn forward_gpu(&self, batch: &mut GpuCommandBatch, input: &[f32]) -> Result<Vec<f32>, String> {
+    async fn forward_gpu(
+        &self,
+        batch: &mut GpuCommandBatch,
+        input: &[f32],
+    ) -> Result<Vec<f32>, String> {
         // Upload data to GPU
         let input_buf = batch.upload(input);
         let w1_buf = batch.upload(&self.w1);
@@ -163,7 +181,10 @@ impl GpuMnistModel {
 
         let max_val = output.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = output.iter().map(|x| (x - max_val).exp()).sum();
-        output.iter().map(|x| (x - max_val).exp() / exp_sum).collect()
+        output
+            .iter()
+            .map(|x| (x - max_val).exp() / exp_sum)
+            .collect()
     }
 
     /// Backward pass with gradient update
@@ -211,7 +232,9 @@ impl GpuMnistModel {
         }
 
         for h in 0..64 {
-            if hidden_pre_relu[h] <= 0.0 { d_hidden[h] = 0.0; }
+            if hidden_pre_relu[h] <= 0.0 {
+                d_hidden[h] = 0.0;
+            }
         }
 
         for h in 0..64 {
@@ -226,7 +249,12 @@ impl GpuMnistModel {
 
     fn predict(&self, input: &[f32]) -> usize {
         let probs = self.forward_cpu(input);
-        probs.iter().enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).map(|(i, _)| i).unwrap()
+        probs
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .map(|(i, _)| i)
+            .unwrap()
     }
 }
 
@@ -252,7 +280,11 @@ async fn main() -> Result<(), String> {
     println!("Loading MNIST dataset from alimentar...");
     let dataset = mnist().expect("Failed to load MNIST");
     let split = dataset.split().expect("Failed to split dataset");
-    println!("  Train: {} | Test: {}\n", split.train.len(), split.test.len());
+    println!(
+        "  Train: {} | Test: {}\n",
+        split.train.len(),
+        split.test.len()
+    );
 
     // Extract train/test data (stratified split ensures all 10 classes in both sets)
     let (train_images, train_labels) = extract_data(&split.train);
@@ -262,7 +294,14 @@ async fn main() -> Result<(), String> {
     println!("Initializing GPU neural network...");
     let mut model = GpuMnistModel::new();
     println!("  Architecture: 784 -> 64 (ReLU) -> 10 (Softmax)");
-    println!("  Backend: {}\n", if gpu_available { "GPU (wgpu)" } else { "CPU (SIMD)" });
+    println!(
+        "  Backend: {}\n",
+        if gpu_available {
+            "GPU (wgpu)"
+        } else {
+            "CPU (SIMD)"
+        }
+    );
 
     // Training config
     let training_duration = Duration::from_secs(60);
@@ -272,7 +311,9 @@ async fn main() -> Result<(), String> {
     // Visualization
     let mut loss_display = LossCurveDisplay::new(60, 8).terminal_mode(TerminalMode::Unicode);
     let mut metrics_buffer = MetricsBuffer::new(100);
-    let mut andon = AndonSystem::new().with_sigma_threshold(5.0).with_stall_threshold(50);
+    let mut andon = AndonSystem::new()
+        .with_sigma_threshold(5.0)
+        .with_stall_threshold(50);
 
     // System metrics
     let mut sys_metrics = SystemMetrics::new();
@@ -280,10 +321,13 @@ async fn main() -> Result<(), String> {
 
     // Device info
     let devices = ComputeDevice::detect();
-    let simd_level = devices.iter().find_map(|d| match d {
-        ComputeDevice::Cpu(info) => Some(info.simd),
-        _ => None,
-    }).unwrap_or(SimdCapability::None);
+    let simd_level = devices
+        .iter()
+        .find_map(|d| match d {
+            ComputeDevice::Cpu(info) => Some(info.simd),
+            _ => None,
+        })
+        .unwrap_or(SimdCapability::None);
 
     let start_time = Instant::now();
     let mut epoch = 0;
@@ -329,10 +373,14 @@ async fn main() -> Result<(), String> {
                 let probs = model.forward_cpu(img);
                 val_total_loss += -probs[label].ln();
                 let pred = model.predict(img);
-                if pred == label { correct += 1; }
+                if pred == label {
+                    correct += 1;
+                }
             }
             let accuracy = correct as f32 / test_images.len() as f32 * 100.0;
-            if accuracy > best_accuracy { best_accuracy = accuracy; }
+            if accuracy > best_accuracy {
+                best_accuracy = accuracy;
+            }
             val_total_loss / test_images.len() as f32
         } else {
             avg_loss * 1.1
@@ -343,7 +391,9 @@ async fn main() -> Result<(), String> {
         // Update metrics
         sys_metrics.update();
         cpu_history.push(sys_metrics.cpu_percent);
-        if cpu_history.len() > 20 { cpu_history.remove(0); }
+        if cpu_history.len() > 20 {
+            cpu_history.remove(0);
+        }
 
         let elapsed = start_time.elapsed().as_secs();
         let remaining = training_duration.as_secs().saturating_sub(elapsed);
@@ -357,14 +407,26 @@ async fn main() -> Result<(), String> {
         println!("╚══════════════════════════════════════════════════════════════╝\n");
 
         println!("┌─ Training Progress ─────────────────────────────────────────┐");
-        println!("│ Epoch: {:4}  │  Samples: {:6}  │  Time: {:2}s / {:2}s ({}s left)",
-                 epoch, total_samples, elapsed, training_duration.as_secs(), remaining);
-        println!("│ Throughput: {:.0} samples/sec  │  GPU ops: {}", throughput, gpu_ops_count);
+        println!(
+            "│ Epoch: {:4}  │  Samples: {:6}  │  Time: {:2}s / {:2}s ({}s left)",
+            epoch,
+            total_samples,
+            elapsed,
+            training_duration.as_secs(),
+            remaining
+        );
+        println!(
+            "│ Throughput: {:.0} samples/sec  │  GPU ops: {}",
+            throughput, gpu_ops_count
+        );
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
         println!("┌─ Loss Metrics ──────────────────────────────────────────────┐");
         let losses: Vec<f32> = metrics_buffer.last_n(25).iter().copied().collect();
-        println!("│ Train Loss: {:.4}  │  Best Accuracy: {:.1}%", avg_loss, best_accuracy);
+        println!(
+            "│ Train Loss: {:.4}  │  Best Accuracy: {:.1}%",
+            avg_loss, best_accuracy
+        );
         println!("│ Trend: {}", sparkline(&losses, 25));
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
@@ -373,20 +435,27 @@ async fn main() -> Result<(), String> {
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
         println!("┌─ Compute Resources ─────────────────────────────────────────┐");
-        println!("│ CPU:  {:5.1}% {} {} ({})",
-                 sys_metrics.cpu_percent,
-                 SystemMetrics::render_bar(sys_metrics.cpu_percent, 15),
-                 sparkline(&cpu_history, 10),
-                 simd_level);
-        println!("│ RAM:  {:5.1}% {} {:5.0}/{:.0} MB",
-                 sys_metrics.memory_percent(),
-                 SystemMetrics::render_bar(sys_metrics.memory_percent(), 15),
-                 sys_metrics.memory_used_mb,
-                 sys_metrics.memory_total_mb);
+        println!(
+            "│ CPU:  {:5.1}% {} {} ({})",
+            sys_metrics.cpu_percent,
+            SystemMetrics::render_bar(sys_metrics.cpu_percent, 15),
+            sparkline(&cpu_history, 10),
+            simd_level
+        );
+        println!(
+            "│ RAM:  {:5.1}% {} {:5.0}/{:.0} MB",
+            sys_metrics.memory_percent(),
+            SystemMetrics::render_bar(sys_metrics.memory_percent(), 15),
+            sys_metrics.memory_used_mb,
+            sys_metrics.memory_total_mb
+        );
         if gpu_available {
             println!("│ GPU:  Active (wgpu) - {} ops executed", gpu_ops_count);
         } else {
-            println!("│ GPU:  Not available (CPU fallback with {} SIMD)", simd_level);
+            println!(
+                "│ GPU:  Not available (CPU fallback with {} SIMD)",
+                simd_level
+            );
         }
         println!("└──────────────────────────────────────────────────────────────┘");
 
@@ -394,20 +463,34 @@ async fn main() -> Result<(), String> {
             println!("\n[ANDON] Training anomaly detected!");
         }
 
-        if start_time.elapsed() >= training_duration { break; }
+        if start_time.elapsed() >= training_duration {
+            break;
+        }
     }
 
     // Final results
     println!("\n┌─ Training Complete ──────────────────────────────────────────┐");
     let mut correct = 0;
     for (img, &label) in test_images.iter().zip(test_labels.iter()) {
-        if model.predict(img) == label { correct += 1; }
+        if model.predict(img) == label {
+            correct += 1;
+        }
     }
     let final_accuracy = correct as f32 / test_images.len() as f32 * 100.0;
 
-    println!("│ Epochs: {}  │  Samples: {}  │  GPU ops: {}", epoch, total_samples, gpu_ops_count);
+    println!(
+        "│ Epochs: {}  │  Samples: {}  │  GPU ops: {}",
+        epoch, total_samples, gpu_ops_count
+    );
     println!("│ Final Accuracy: {:.1}%", final_accuracy);
-    println!("│ Backend: {}", if gpu_available { "GPU (wgpu)" } else { "CPU (SIMD)" });
+    println!(
+        "│ Backend: {}",
+        if gpu_available {
+            "GPU (wgpu)"
+        } else {
+            "CPU (SIMD)"
+        }
+    );
     println!("└──────────────────────────────────────────────────────────────┘\n");
 
     // Save model
@@ -417,7 +500,8 @@ async fn main() -> Result<(), String> {
         .with_name("MNIST Classifier (GPU)")
         .with_description(format!(
             "GPU-trained 784->64->10 network. Accuracy: {:.1}%, Backend: {}",
-            final_accuracy, if gpu_available { "GPU" } else { "CPU" }
+            final_accuracy,
+            if gpu_available { "GPU" } else { "CPU" }
         ));
 
     match save(&model, ModelType::NeuralSequential, model_path, save_opts) {
@@ -437,13 +521,21 @@ fn extract_data(dataset: &alimentar::ArrowDataset) -> (Vec<Vec<f32>>, Vec<usize>
     for row in 0..num_rows {
         let mut pixels = Vec::with_capacity(784);
         for col in 0..784 {
-            let arr = batch.column(col).as_any().downcast_ref::<Float32Array>().expect("Float32Array");
+            let arr = batch
+                .column(col)
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .expect("Float32Array");
             // alimentar already returns normalized 0-1 values
             pixels.push(arr.value(row));
         }
         images.push(pixels);
 
-        let label_arr = batch.column(784).as_any().downcast_ref::<Int32Array>().expect("Int32Array");
+        let label_arr = batch
+            .column(784)
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .expect("Int32Array");
         labels.push(label_arr.value(row) as usize);
     }
 

@@ -857,6 +857,26 @@ quality:
 
 [10] Womack, J.P., Jones, D.T., & Roos, D. (1990). *The Machine That Changed the World: The Story of Lean Production*. Free Press. ISBN: 978-0743299794. **Validation**: Establishes quantitative quality metrics as foundational to continuous improvement.
 
+[11] Sculley, D., et al. (2015). "Hidden Technical Debt in Machine Learning Systems." *Advances in Neural Information Processing Systems (NeurIPS)*. **Validation**: Identifies specific forms of "Muda" (waste) in ML pipelines, reinforcing the need for the declarative, simplified configuration interface defined in this spec to reduce maintenance overhead.
+
+[12] Breck, E., et al. (2017). "The ML Test Score: A Rubric for ML Production Readiness and Technical Debt Reduction." *IEEE International Conference on Big Data*. **Validation**: Provides a checklist-based approach to reliability, mirroring the "Standardized Work" principle; our schema validation implements several of these tests automatically.
+
+[13] Amershi, S., et al. (2019). "Software Engineering for Machine Learning: A Case Study." *International Conference on Software Engineering (ICSE)*. **Validation**: Highlights the friction points in ML workflows at Microsoft, validating our focus on "Heijunka" (leveling) through consistent tooling and "Genchi Genbutsu" (data monitoring).
+
+[14] Sato, D., Wider, A., & Windheuser, C. (2019). "Continuous Delivery for Machine Learning." *Automating the End-to-End Lifecycle of Machine Learning Applications*. **Validation**: Adapts "Jidoka" (automation) to ML; our "Poka-yoke" CI/CD integration plan (Phase 2) is directly supported by these findings on automated release pipelines.
+
+[15] Renggli, C., et al. (2019). "Continuous Integration of Machine Learning Models with EASE.ML/CI." *Proceedings of the 2nd SysML Conference*. **Validation**: Demonstrates that automated quality gates (Jidoka) prevent degradation; our `early_stopping` and `validation` schemas implement these quality gates declaratively.
+
+[16] Vartak, M., et al. (2016). "ModelDB: A System for Machine Learning Model Management." *Workshop on Human-In-the-Loop Data Analytics (HILDA)*. **Validation**: Addresses the "Visual Control" principle; our `monitoring.tracking` specification aligns with this work to ensure full visibility of the model lifecycle.
+
+[17] Zaharia, M., et al. (2018). "Accelerating the Machine Learning Lifecycle with MLflow." *IEEE Data Engineering Bulletin*. **Validation**: Confirms that standardized packaging (like our YAML manifest) reduces the "switching cost" waste (Muda) between experimentation and production.
+
+[18] Basiri, A., et al. (2016). "Chaos Engineering." *IEEE Software*. **Validation**: While primarily about resilience, this relates to "Poka-yoke" by actively testing system limits; our `monitoring.alerts` system is designed to catch the failure modes identified by such stress testing.
+
+[19] Polyzotis, N., et al. (2017). "Data Validation for Machine Learning." *Proceedings of ML Systems (MLSys)*. **Validation**: Directly supports our schema-based "Poka-yoke"; shows that catching data errors early (at configuration/ingestion) prevents costly downstream failures (waste).
+
+[20] Baylor, D., et al. (2017). "TFX: A TensorFlow-Based Production-Scale Machine Learning Platform." *Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining*. **Validation**: Describes an industrial-scale implementation of these principles; our `entrenar` spec democratizes these "Toyota Way" patterns found in TFX for general use.
+
 ---
 
 ## Appendix A: Default Values

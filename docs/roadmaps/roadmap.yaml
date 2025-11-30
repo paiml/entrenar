@@ -498,3 +498,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: GH-66
+  github_issue: 66
+  item_type: task
+  title: 'Issue #66'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2025-11-30T12:59:38.100736431+00:00
+  updated: 2025-11-30T12:59:38.100736431+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null

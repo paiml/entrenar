@@ -1,0 +1,52 @@
+# YAML-009: Multi-Worker Dataloading
+# QA Focus: No deadlocks or race conditions in log
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "multiworker-dataload"
+version: "1.0.0"
+description: "Thread safety validation for parallel data loading"
+
+seed: 42
+
+data:
+  source: "mnist"
+  loader:
+    batch_size: 64
+    shuffle: true
+    num_workers: 8
+    pin_memory: true
+    prefetch_factor: 4
+    drop_last: false
+
+model:
+  source: "builtin://mlp"
+  architecture:
+    type: "sequential"
+    layers:
+      - {type: "linear", in_features: 784, out_features: 128}
+      - {type: "relu"}
+      - {type: "linear", in_features: 128, out_features: 10}
+  device: "auto"
+
+optimizer:
+  name: "adam"
+  lr: 0.001
+
+training:
+  epochs: 5
+  validation:
+    every_epoch: true
+
+monitoring:
+  system:
+    enabled: true
+    interval: 500
+    metrics: ["cpu_percent", "memory_percent", "thread_count"]
+  alerts:
+    - condition: "thread_count > 100"
+      action: "warn"
+      message: "Excessive thread creation detected"
+
+output:
+  dir: "./outputs/multiworker-${timestamp}"

@@ -1,0 +1,61 @@
+# YAML-028: Gradient Clipping (Jidoka)
+# QA Focus: Max gradient norm never exceeds 1.0
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "gradient-clipping"
+version: "1.0.0"
+description: "Exploding gradient prevention (Jidoka quality gate)"
+
+seed: 42
+
+model:
+  source: "builtin://transformer"
+  architecture:
+    type: "transformer"
+    hidden_size: 256
+    num_layers: 6
+    num_heads: 8
+  device: "auto"
+
+data:
+  source: "./data/text.parquet"
+  preprocessing:
+    - tokenize:
+        tokenizer: "builtin://bpe"
+        max_length: 512
+  loader:
+    batch_size: 16
+    shuffle: true
+
+optimizer:
+  name: "adam"
+  lr: 0.0001
+
+training:
+  epochs: 10
+  gradient:
+    clip_norm: 1.0
+    clip_value: null
+  validation:
+    every_epoch: true
+
+monitoring:
+  terminal:
+    enabled: true
+    metrics: ["loss", "grad_norm", "lr"]
+  alerts:
+    - condition: "grad_norm > 1.0"
+      action: "error"
+      message: "JIDOKA: Gradient norm exceeded clip threshold"
+
+callbacks:
+  - type: "gradient_monitor"
+    trigger: "step"
+    interval: 10
+    config:
+      log_histogram: true
+      alert_threshold: 1.0
+
+output:
+  dir: "./outputs/grad-clip-${timestamp}"

@@ -34,7 +34,10 @@ description: "MNIST digit classification experiment"
 seed: 42
 "#;
         let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(manifest.description, Some("MNIST digit classification experiment".to_string()));
+        assert_eq!(
+            manifest.description,
+            Some("MNIST digit classification experiment".to_string())
+        );
         assert_eq!(manifest.seed, Some(42));
     }
 
@@ -602,7 +605,10 @@ lora:
 "#;
         let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
         let result = validate_manifest(&manifest);
-        assert!(result.is_ok(), "Disabled LoRA should not require target_modules");
+        assert!(
+            result.is_ok(),
+            "Disabled LoRA should not require target_modules"
+        );
     }
 }
 
@@ -679,6 +685,571 @@ training: {}
 // SERIALIZATION ROUNDTRIP TESTS (TDD RED)
 // ============================================================================
 
+// ============================================================================
+// EXTENDED CONFIG TESTS (YAML Mode QA Epic)
+// ============================================================================
+
+mod extended_configs {
+    use super::*;
+
+    #[test]
+    fn test_parse_citl_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "citl-test"
+version: "1.0.0"
+
+citl:
+  mode: "error_suggest"
+  error_code: "E0308"
+  top_k: 5
+  workspace: true
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let citl = manifest.citl.unwrap();
+        assert_eq!(citl.mode, "error_suggest");
+        assert_eq!(citl.error_code, Some("E0308".to_string()));
+        assert_eq!(citl.top_k, Some(5));
+        assert_eq!(citl.workspace, Some(true));
+    }
+
+    #[test]
+    fn test_parse_rag_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "rag-test"
+version: "1.0.0"
+
+rag:
+  store: "vectordb://localhost:6333"
+  similarity_threshold: 0.85
+  max_results: 10
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let rag = manifest.rag.unwrap();
+        assert_eq!(rag.store, "vectordb://localhost:6333");
+        assert_eq!(rag.similarity_threshold, Some(0.85));
+        assert_eq!(rag.max_results, Some(10));
+    }
+
+    #[test]
+    fn test_parse_graph_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "graph-test"
+version: "1.0.0"
+
+graph:
+  output: "./graphs/model.dot"
+  format: "dot"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let graph = manifest.graph.unwrap();
+        assert_eq!(graph.output, "./graphs/model.dot");
+        assert_eq!(graph.format, Some("dot".to_string()));
+    }
+
+    #[test]
+    fn test_parse_distillation_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "distill-test"
+version: "1.0.0"
+
+distillation:
+  teacher:
+    source: "hf://teacher-model"
+  student:
+    source: "hf://student-model"
+  temperature: 4.0
+  alpha: 0.5
+  loss: "kl_div"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let distill = manifest.distillation.unwrap();
+        assert_eq!(distill.teacher.source, "hf://teacher-model");
+        assert_eq!(distill.student.source, "hf://student-model");
+        assert_eq!(distill.temperature, 4.0);
+        assert_eq!(distill.alpha, 0.5);
+        assert_eq!(distill.loss, Some("kl_div".to_string()));
+    }
+
+    #[test]
+    fn test_parse_inspect_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "inspect-test"
+version: "1.0.0"
+
+inspect:
+  mode: "detect"
+  z_threshold: 3.0
+  columns:
+    - column_1
+    - column_2
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let inspect = manifest.inspect.unwrap();
+        assert_eq!(inspect.mode, "detect");
+        assert_eq!(inspect.z_threshold, Some(3.0));
+        assert_eq!(
+            inspect.columns,
+            Some(vec!["column_1".to_string(), "column_2".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_privacy_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "privacy-test"
+version: "1.0.0"
+
+privacy:
+  differential: true
+  epsilon: 1.0
+  delta: 1e-5
+  max_grad_norm: 1.0
+  noise_multiplier: 1.1
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let privacy = manifest.privacy.unwrap();
+        assert!(privacy.differential);
+        assert_eq!(privacy.epsilon, 1.0);
+        assert_eq!(privacy.delta, Some(1e-5));
+        assert_eq!(privacy.max_grad_norm, Some(1.0));
+        assert_eq!(privacy.noise_multiplier, Some(1.1));
+    }
+
+    #[test]
+    fn test_parse_audit_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "audit-test"
+version: "1.0.0"
+
+audit:
+  type: "fairness"
+  protected_attr: "gender"
+  threshold: 0.1
+  metrics:
+    - demographic_parity
+    - equalized_odds
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let audit = manifest.audit.unwrap();
+        assert_eq!(audit.audit_type, "fairness");
+        assert_eq!(audit.protected_attr, Some("gender".to_string()));
+        assert_eq!(audit.threshold, Some(0.1));
+        assert_eq!(
+            audit.metrics,
+            Some(vec![
+                "demographic_parity".to_string(),
+                "equalized_odds".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_parse_session_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "session-test"
+version: "1.0.0"
+
+session:
+  id: "session-001"
+  auto_save: true
+  state_dir: "./checkpoints/session-001"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let session = manifest.session.unwrap();
+        assert_eq!(session.id, "session-001");
+        assert_eq!(session.auto_save, Some(true));
+        assert_eq!(
+            session.state_dir,
+            Some("./checkpoints/session-001".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_stress_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "stress-test"
+version: "1.0.0"
+
+stress:
+  parallel_jobs: 8
+  duration: "4h"
+  memory_limit: 0.9
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let stress = manifest.stress.unwrap();
+        assert_eq!(stress.parallel_jobs, 8);
+        assert_eq!(stress.duration, Some("4h".to_string()));
+        assert_eq!(stress.memory_limit, Some(0.9));
+    }
+
+    #[test]
+    fn test_parse_benchmark_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "benchmark-test"
+version: "1.0.0"
+
+benchmark:
+  mode: "latency"
+  warmup: 10
+  iterations: 100
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let benchmark = manifest.benchmark.unwrap();
+        assert_eq!(benchmark.mode, "latency");
+        assert_eq!(benchmark.warmup, Some(10));
+        assert_eq!(benchmark.iterations, Some(100));
+    }
+
+    #[test]
+    fn test_parse_debug_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "debug-test"
+version: "1.0.0"
+
+debug:
+  memory_profile: true
+  log_interval: 100
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let debug = manifest.debug.unwrap();
+        assert_eq!(debug.memory_profile, Some(true));
+        assert_eq!(debug.log_interval, Some(100));
+    }
+
+    #[test]
+    fn test_parse_signing_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "signing-test"
+version: "1.0.0"
+
+signing:
+  enabled: true
+  algorithm: "ed25519"
+  key: "${SIGNING_KEY}"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let signing = manifest.signing.unwrap();
+        assert!(signing.enabled);
+        assert_eq!(signing.algorithm, Some("ed25519".to_string()));
+        assert_eq!(signing.key, Some("${SIGNING_KEY}".to_string()));
+    }
+
+    #[test]
+    fn test_parse_verification_config() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "verification-test"
+version: "1.0.0"
+
+verification:
+  all_25_checks: true
+  qa_lead_sign_off: "required"
+  eng_lead_sign_off: "required"
+  safety_officer_sign_off: "required"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let verification = manifest.verification.unwrap();
+        assert_eq!(verification.all_25_checks, Some(true));
+        assert_eq!(verification.qa_lead_sign_off, Some("required".to_string()));
+    }
+
+    #[test]
+    fn test_parse_strict_mode() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "strict-test"
+version: "1.0.0"
+
+strict_validation: true
+require_peer_review: true
+lockfile: "./train.lock"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(manifest.strict_validation, Some(true));
+        assert_eq!(manifest.require_peer_review, Some(true));
+        assert_eq!(manifest.lockfile, Some("./train.lock".to_string()));
+    }
+}
+
+// ============================================================================
+// EXAMPLE FILE PARSING TESTS (30 YAML files)
+// ============================================================================
+
+mod example_file_parsing {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    fn parse_example_file(filename: &str) -> TrainingManifest {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("examples/yaml")
+            .join(filename);
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {}", filename, e));
+        serde_yaml::from_str(&content)
+            .unwrap_or_else(|e| panic!("Failed to parse {}: {}", filename, e))
+    }
+
+    // Section A: Data Loading & Preprocessing (YAML-001 to YAML-010)
+    #[test]
+    fn test_mnist_cpu_yaml() {
+        let manifest = parse_example_file("mnist_cpu.yaml");
+        assert_eq!(manifest.entrenar, "1.0");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.data.is_some());
+    }
+
+    #[test]
+    fn test_csv_data_yaml() {
+        let manifest = parse_example_file("csv_data.yaml");
+        assert!(!manifest.name.is_empty());
+        let data = manifest.data.unwrap();
+        assert_eq!(data.format, Some("csv".to_string()));
+    }
+
+    #[test]
+    fn test_parquet_data_yaml() {
+        let manifest = parse_example_file("parquet_data.yaml");
+        assert!(!manifest.name.is_empty());
+        let data = manifest.data.unwrap();
+        assert_eq!(data.format, Some("parquet".to_string()));
+    }
+
+    #[test]
+    fn test_deterministic_yaml() {
+        let manifest = parse_example_file("deterministic.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.seed.is_some());
+        let training = manifest.training.unwrap();
+        assert_eq!(training.deterministic, Some(true));
+    }
+
+    #[test]
+    fn test_multiworker_yaml() {
+        let manifest = parse_example_file("multiworker.yaml");
+        assert!(!manifest.name.is_empty());
+        let loader = manifest.data.unwrap().loader.unwrap();
+        assert!(loader.num_workers.unwrap() > 1);
+    }
+
+    // Section B: CITL (YAML-011 to YAML-020)
+    #[test]
+    fn test_citl_suggest_yaml() {
+        let manifest = parse_example_file("citl_suggest.yaml");
+        assert!(!manifest.name.is_empty());
+        let citl = manifest.citl.unwrap();
+        assert!(!citl.mode.is_empty());
+    }
+
+    #[test]
+    fn test_citl_workspace_yaml() {
+        let manifest = parse_example_file("citl_workspace.yaml");
+        assert!(!manifest.name.is_empty());
+        let citl = manifest.citl.unwrap();
+        assert!(citl.workspace.is_some());
+    }
+
+    // Section C: Model Loading (YAML-021 to YAML-030)
+    #[test]
+    fn test_llama2_mock_yaml() {
+        let manifest = parse_example_file("llama2_mock.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.model.is_some());
+    }
+
+    #[test]
+    fn test_custom_arch_yaml() {
+        let manifest = parse_example_file("custom_arch.yaml");
+        assert!(!manifest.name.is_empty());
+        let model = manifest.model.unwrap();
+        assert!(model.architecture.is_some());
+    }
+
+    // Section D: Regularization & Training (YAML-031 to YAML-040)
+    #[test]
+    fn test_dropout_yaml() {
+        let manifest = parse_example_file("dropout.yaml");
+        assert!(!manifest.name.is_empty());
+    }
+
+    #[test]
+    fn test_grad_clip_yaml() {
+        let manifest = parse_example_file("grad_clip.yaml");
+        assert!(!manifest.name.is_empty());
+        let grad = manifest.training.unwrap().gradient.unwrap();
+        assert!(grad.clip_norm.is_some());
+    }
+
+    // Section E: LoRA & Fine-tuning (YAML-041 to YAML-050)
+    #[test]
+    fn test_lora_yaml() {
+        let manifest = parse_example_file("lora.yaml");
+        assert!(!manifest.name.is_empty());
+        let lora = manifest.lora.unwrap();
+        assert!(lora.enabled);
+    }
+
+    #[test]
+    fn test_qlora_yaml() {
+        let manifest = parse_example_file("qlora.yaml");
+        assert!(!manifest.name.is_empty());
+        let lora = manifest.lora.unwrap();
+        assert!(lora.enabled);
+        assert!(lora.quantize_base.unwrap());
+    }
+
+    #[test]
+    fn test_distillation_yaml() {
+        let manifest = parse_example_file("distillation.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.distillation.is_some());
+    }
+
+    #[test]
+    fn test_grad_accum_yaml() {
+        let manifest = parse_example_file("grad_accum.yaml");
+        assert!(!manifest.name.is_empty());
+        let grad = manifest.training.unwrap().gradient.unwrap();
+        assert!(grad.accumulation_steps.unwrap() > 1);
+    }
+
+    #[test]
+    fn test_lr_schedule_yaml() {
+        let manifest = parse_example_file("lr_schedule.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.scheduler.is_some());
+    }
+
+    // Section F: Monitoring & Alerts (YAML-051 to YAML-060)
+    #[test]
+    fn test_andon_yaml() {
+        let manifest = parse_example_file("andon.yaml");
+        assert!(!manifest.name.is_empty());
+        let mon = manifest.monitoring.unwrap();
+        assert!(mon.alerts.is_some());
+    }
+
+    #[test]
+    fn test_outlier_yaml() {
+        let manifest = parse_example_file("outlier.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.inspect.is_some());
+    }
+
+    // Section G: Checkpointing (YAML-061 to YAML-070)
+    #[test]
+    fn test_checkpoint_yaml() {
+        let manifest = parse_example_file("checkpoint.yaml");
+        assert!(!manifest.name.is_empty());
+        let training = manifest.training.unwrap();
+        assert!(training.checkpoint.is_some());
+    }
+
+    #[test]
+    fn test_config_validate_yaml() {
+        let manifest = parse_example_file("config_validate.yaml");
+        assert!(!manifest.name.is_empty());
+        assert_eq!(manifest.strict_validation, Some(true));
+    }
+
+    #[test]
+    fn test_long_run_yaml() {
+        let manifest = parse_example_file("long_run.yaml");
+        assert!(!manifest.name.is_empty());
+        // Long run should have epochs or max_steps for extended training
+        assert!(manifest.training.is_some());
+    }
+
+    #[test]
+    fn test_locked_yaml() {
+        let manifest = parse_example_file("locked.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.lockfile.is_some());
+    }
+
+    // Section H: Output & Metrics (YAML-071 to YAML-080)
+    #[test]
+    fn test_latency_yaml() {
+        let manifest = parse_example_file("latency.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.benchmark.is_some());
+    }
+
+    #[test]
+    fn test_json_output_yaml() {
+        let manifest = parse_example_file("json_output.yaml");
+        assert!(!manifest.name.is_empty());
+        let output = manifest.output.unwrap();
+        let report = output.report.unwrap();
+        assert_eq!(report.format, Some("json".to_string()));
+    }
+
+    // Section I: Safety & Ethics (YAML-081 to YAML-090)
+    #[test]
+    fn test_dp_yaml() {
+        let manifest = parse_example_file("dp.yaml");
+        assert!(!manifest.name.is_empty());
+        let privacy = manifest.privacy.unwrap();
+        assert!(privacy.differential);
+    }
+
+    #[test]
+    fn test_bias_yaml() {
+        let manifest = parse_example_file("bias.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.audit.is_some());
+    }
+
+    // Section J: Edge Cases & Stress (YAML-091 to YAML-100)
+    #[test]
+    fn test_session_yaml() {
+        let manifest = parse_example_file("session.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.session.is_some());
+    }
+
+    #[test]
+    fn test_soak_yaml() {
+        let manifest = parse_example_file("soak.yaml");
+        assert!(!manifest.name.is_empty());
+        assert!(manifest.stress.is_some());
+    }
+
+    #[test]
+    fn test_drift_yaml() {
+        let manifest = parse_example_file("drift.yaml");
+        assert!(!manifest.name.is_empty());
+        let monitoring = manifest.monitoring.unwrap();
+        assert!(monitoring.drift_detection.is_some());
+    }
+
+    #[test]
+    fn test_release_yaml() {
+        let manifest = parse_example_file("release.yaml");
+        assert!(!manifest.name.is_empty());
+        assert_eq!(manifest.strict_validation, Some(true));
+        assert_eq!(manifest.require_peer_review, Some(true));
+        assert!(manifest.signing.is_some());
+        assert!(manifest.verification.is_some());
+    }
+}
+
+// ============================================================================
+// SERIALIZATION ROUNDTRIP TESTS (TDD RED)
+// ============================================================================
+
 mod serialization {
     use super::*;
 
@@ -743,6 +1314,9 @@ output:
         let deserialized: TrainingManifest = serde_yaml::from_str(&serialized).unwrap();
 
         assert_eq!(manifest.seed, deserialized.seed);
-        assert_eq!(manifest.lora.as_ref().unwrap().rank, deserialized.lora.as_ref().unwrap().rank);
+        assert_eq!(
+            manifest.lora.as_ref().unwrap().rank,
+            deserialized.lora.as_ref().unwrap().rank
+        );
     }
 }
