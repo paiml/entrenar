@@ -20,11 +20,13 @@
 //! - **sovereign**: Air-gapped deployment and distribution packaging
 //! - **research**: Academic research artifacts, citations, and archive deposits
 //! - **ecosystem**: PAIML stack integrations (Batuta, Realizar, Ruchy)
+//! - **dashboard**: Real-time training monitoring and WASM bindings
 
 pub mod autograd;
 #[cfg(feature = "citl")]
 pub mod citl;
 pub mod config;
+pub mod dashboard;
 pub mod distill;
 pub mod ecosystem;
 pub mod efficiency;
