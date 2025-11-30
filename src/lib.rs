@@ -17,6 +17,7 @@
 //! - **hf_pipeline**: HuggingFace model fetching and distillation
 //! - **citl**: Compiler-in-the-Loop training with RAG-based fix suggestions (feature-gated)
 //! - **efficiency**: Cost tracking, device detection, and performance benchmarking
+//! - **sovereign**: Air-gapped deployment and distribution packaging
 
 pub mod autograd;
 #[cfg(feature = "citl")]
@@ -34,6 +35,7 @@ pub mod optim;
 pub mod quality;
 pub mod quant;
 pub mod run;
+pub mod sovereign;
 pub mod storage;
 pub mod train;
 
