@@ -149,6 +149,10 @@
 - [CLI Overview](./cli/overview.md)
 - [Research Commands](./cli/research.md)
 - [Benchmark Commands](./cli/benchmark.md)
+- [Inspect Command](./cli/inspect.md)
+- [Audit Command](./cli/audit.md)
+- [Monitor Command](./cli/monitor.md)
+- [Completion Command](./cli/completion.md)
 
 # Declarative Training
 

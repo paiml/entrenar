@@ -22,9 +22,15 @@ Commands:
   train      Train a model from YAML configuration
   validate   Validate a configuration file without training
   info       Display information about a configuration
+  init       Generate a YAML configuration template
   quantize   Quantize a model
   merge      Merge multiple models
   research   Academic research artifacts and workflows
+  bench      Run latency benchmarks
+  inspect    Inspect model/data files
+  audit      Run bias, fairness, privacy, or security audits
+  monitor    Monitor for data drift
+  completion Generate shell completions
 ```
 
 ### Global Options
@@ -75,6 +81,71 @@ entrenar research cite artifact.yaml --year 2024 --format bibtex
 
 # Create RO-Crate package
 entrenar research bundle artifact.yaml --output ./package --zip
+```
+
+### Benchmarking
+
+```bash
+# Run latency benchmark
+entrenar bench config.yaml --warmup 5 --iterations 100
+
+# Benchmark with multiple batch sizes
+entrenar bench config.yaml --batch-sizes 1,8,32,64
+
+# JSON output for CI
+entrenar bench config.yaml --format json
+```
+
+### Data & Model Inspection
+
+```bash
+# Inspect SafeTensors model
+entrenar inspect model.safetensors
+
+# Inspect with verbose tensor details
+entrenar inspect model.safetensors -v
+
+# Inspect data file
+entrenar inspect data/train.parquet --mode summary
+```
+
+### Auditing
+
+```bash
+# Bias audit
+entrenar audit predictions.parquet --type bias --threshold 0.8
+
+# Security audit
+entrenar audit model.safetensors --type security
+
+# Privacy audit
+entrenar audit data.parquet --type privacy
+```
+
+### Drift Monitoring
+
+```bash
+# Monitor for data drift
+entrenar monitor data/current.parquet --threshold 0.2
+
+# Monitor with baseline
+entrenar monitor data/current.parquet --baseline data/training.parquet
+
+# JSON output for alerting
+entrenar monitor data/current.parquet --format json
+```
+
+### Shell Completions
+
+```bash
+# Generate bash completions
+entrenar completion bash > ~/.local/share/bash-completion/completions/entrenar
+
+# Generate zsh completions
+entrenar completion zsh > ~/.zsh/completions/_entrenar
+
+# Generate fish completions
+entrenar completion fish > ~/.config/fish/completions/entrenar.fish
 ```
 
 ## Benchmark CLI Commands
@@ -134,5 +205,9 @@ Both CLIs support multiple output formats:
 ## See Also
 
 - [Research Commands](./research.md) - Academic research CLI reference
-- [Benchmark Commands](./benchmark.md) - Benchmarking CLI reference
+- [Benchmark Commands](./benchmark.md) - Distillation benchmarking CLI reference
+- [Inspect Command](./inspect.md) - Model and data inspection
+- [Audit Command](./audit.md) - Bias, fairness, privacy, security audits
+- [Monitor Command](./monitor.md) - Drift detection and monitoring
+- [Completion Command](./completion.md) - Shell completion generation
 - [Declarative Training](../declarative/overview.md) - YAML configuration

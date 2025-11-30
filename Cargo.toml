@@ -231,3 +231,23 @@ required-features = []
 name = "mnist_train_gpu"
 path = "examples/mnist_train_gpu.rs"
 required-features = ["gpu"]
+
+[[example]]
+name = "cli_bench"
+path = "examples/cli_bench.rs"
+required-features = []
+
+[[example]]
+name = "cli_inspect"
+path = "examples/cli_inspect.rs"
+required-features = []
+
+[[example]]
+name = "cli_audit"
+path = "examples/cli_audit.rs"
+required-features = []
+
+[[example]]
+name = "cli_monitor"
+path = "examples/cli_monitor.rs"
+required-features = []
