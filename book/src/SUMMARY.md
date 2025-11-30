@@ -133,7 +133,9 @@
 
 # Command-Line Interface
 
-- [CLI Reference](./cli/command-line-interface.md)
+- [CLI Overview](./cli/overview.md)
+- [Research Commands](./cli/research.md)
+- [Benchmark Commands](./cli/benchmark.md)
 
 # Declarative Training
 
