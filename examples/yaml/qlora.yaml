@@ -1,0 +1,67 @@
+# YAML-032: QLoRA (4-bit)
+# QA Focus: VRAM usage reduction > 50%
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "qlora-4bit"
+version: "1.0.0"
+description: "4-bit quantized LoRA for memory efficiency"
+
+seed: 42
+
+model:
+  source: "./models/llama-3-7b.gguf"
+  device: "cuda"
+  dtype: "float16"
+
+lora:
+  enabled: true
+  rank: 64
+  alpha: 16.0
+  dropout: 0.1
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
+  bias: "none"
+  # QLoRA-specific settings
+  quantize_base: true
+  quantize_bits: 4
+  double_quantize: true
+  quant_type: "nf4"
+
+data:
+  source: "./data/instruction.parquet"
+  preprocessing:
+    - tokenize:
+        tokenizer: "./models/llama-3-7b"
+        max_length: 1024
+  loader:
+    batch_size: 2
+    shuffle: true
+
+optimizer:
+  name: "adamw"
+  lr: 0.0002
+  betas: [0.9, 0.999]
+  weight_decay: 0.0
+
+scheduler:
+  name: "linear"
+  warmup:
+    steps: 100
+
+training:
+  epochs: 1
+  gradient:
+    accumulation_steps: 16
+    clip_norm: 0.3
+  checkpoint:
+    save_every: 500
+    keep_last: 2
+
+monitoring:
+  system:
+    enabled: true
+    interval: 1000
+    metrics: ["gpu_memory_used", "gpu_memory_total", "gpu_utilization"]
+
+output:
+  dir: "./outputs/qlora-${timestamp}"

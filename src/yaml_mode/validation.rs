@@ -388,7 +388,11 @@ mod tests {
                 centered: None,
                 param_groups: None,
             };
-            assert!(validate_optimizer(&optim).is_ok(), "Optimizer {} should be valid", opt);
+            assert!(
+                validate_optimizer(&optim).is_ok(),
+                "Optimizer {} should be valid",
+                opt
+            );
         }
     }
 
@@ -405,7 +409,11 @@ mod tests {
                 calibration: None,
                 exclude: None,
             };
-            assert!(validate_quantize(&quant).is_ok(), "Quant bits {} should be valid", bits);
+            assert!(
+                validate_quantize(&quant).is_ok(),
+                "Quant bits {} should be valid",
+                bits
+            );
         }
     }
 }

@@ -1,0 +1,22 @@
+# YAML-014: Automated Fix Suggestion
+# QA Focus: Top 3 suggestions contain correct fix
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "citl-fix-suggest"
+version: "1.0.0"
+description: "RAG-based compiler fix suggestions"
+
+citl:
+  mode: "suggest"
+  error_code: "E0308"
+  top_k: 3
+
+rag:
+  store: "./patterns.apr"
+  similarity_threshold: 0.7
+  max_results: 10
+
+output:
+  dir: "./outputs/citl-suggest"
+  format: "json"

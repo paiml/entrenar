@@ -20,9 +20,7 @@ use alimentar::{datasets::mnist, Dataset};
 use aprender::format::{save, ModelType, SaveOptions};
 use arrow::array::{Float32Array, Int32Array};
 use entrenar::efficiency::device::{ComputeDevice, SimdCapability};
-use entrenar::train::{
-    sparkline, AndonSystem, LossCurveDisplay, MetricsBuffer, TerminalMode,
-};
+use entrenar::train::{sparkline, AndonSystem, LossCurveDisplay, MetricsBuffer, TerminalMode};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::time::{Duration, Instant};
@@ -76,9 +74,17 @@ impl SystemMetrics {
             let mut available = 0u64;
             for line in meminfo.lines() {
                 if line.starts_with("MemTotal:") {
-                    total = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    total = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
                 } else if line.starts_with("MemAvailable:") {
-                    available = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    available = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
                 }
             }
             self.memory_total_mb = total as f32 / 1024.0;
@@ -125,9 +131,13 @@ impl MnistModel {
         let scale2 = (2.0 / 64.0_f32).sqrt();
 
         Self {
-            w1: (0..784 * 64).map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0).collect(),
+            w1: (0..784 * 64)
+                .map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0)
+                .collect(),
             b1: vec![0.0; 64],
-            w2: (0..64 * 10).map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0).collect(),
+            w2: (0..64 * 10)
+                .map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0)
+                .collect(),
             b2: vec![0.0; 10],
         }
     }
@@ -157,7 +167,10 @@ impl MnistModel {
         // Softmax
         let max_val = output.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = output.iter().map(|x| (x - max_val).exp()).sum();
-        output.iter().map(|x| (x - max_val).exp() / exp_sum).collect()
+        output
+            .iter()
+            .map(|x| (x - max_val).exp() / exp_sum)
+            .collect()
     }
 
     /// Compute cross-entropy loss and gradients
@@ -350,8 +363,12 @@ fn main() {
         sys_metrics.update();
         cpu_history.push(sys_metrics.cpu_percent);
         mem_history.push(sys_metrics.memory_percent());
-        if cpu_history.len() > 30 { cpu_history.remove(0); }
-        if mem_history.len() > 30 { mem_history.remove(0); }
+        if cpu_history.len() > 30 {
+            cpu_history.remove(0);
+        }
+        if mem_history.len() > 30 {
+            mem_history.remove(0);
+        }
 
         // Calculate throughput
         let elapsed_secs = start_time.elapsed().as_secs_f32();
@@ -372,15 +389,24 @@ fn main() {
 
         // Training progress
         println!("┌─ Training Progress ─────────────────────────────────────────┐");
-        println!("│ Epoch: {:4}  │  Samples: {:6}  │  Time: {:2}s / {:2}s ({}s left)",
-                 epoch, total_samples, elapsed, training_duration.as_secs(), remaining);
+        println!(
+            "│ Epoch: {:4}  │  Samples: {:6}  │  Time: {:2}s / {:2}s ({}s left)",
+            epoch,
+            total_samples,
+            elapsed,
+            training_duration.as_secs(),
+            remaining
+        );
         println!("│ Throughput: {:.0} samples/sec", samples_per_sec);
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
         // Loss metrics
         println!("┌─ Loss Metrics ──────────────────────────────────────────────┐");
         let losses: Vec<f32> = metrics_buffer.last_n(30).iter().copied().collect();
-        println!("│ Train Loss: {:.4}  │  Best Accuracy: {:.1}%", avg_loss, best_accuracy);
+        println!(
+            "│ Train Loss: {:.4}  │  Best Accuracy: {:.1}%",
+            avg_loss, best_accuracy
+        );
         println!("│ Loss Trend (last 30 epochs): {}", sparkline(&losses, 30));
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
@@ -391,16 +417,20 @@ fn main() {
 
         // System metrics
         println!("┌─ System Resources ──────────────────────────────────────────┐");
-        println!("│ CPU:  {:5.1}% {} {} ({})",
-                 sys_metrics.cpu_percent,
-                 SystemMetrics::render_bar(sys_metrics.cpu_percent, 20),
-                 sparkline(&cpu_history, 12),
-                 simd_level);
-        println!("│ RAM:  {:5.1}% {} {:5.0}/{:.0} MB",
-                 sys_metrics.memory_percent(),
-                 SystemMetrics::render_bar(sys_metrics.memory_percent(), 20),
-                 sys_metrics.memory_used_mb,
-                 sys_metrics.memory_total_mb);
+        println!(
+            "│ CPU:  {:5.1}% {} {} ({})",
+            sys_metrics.cpu_percent,
+            SystemMetrics::render_bar(sys_metrics.cpu_percent, 20),
+            sparkline(&cpu_history, 12),
+            simd_level
+        );
+        println!(
+            "│ RAM:  {:5.1}% {} {:5.0}/{:.0} MB",
+            sys_metrics.memory_percent(),
+            SystemMetrics::render_bar(sys_metrics.memory_percent(), 20),
+            sys_metrics.memory_used_mb,
+            sys_metrics.memory_total_mb
+        );
         if gpu_available {
             println!("│ GPU:  Available (use trueno gpu feature for acceleration)");
         } else {

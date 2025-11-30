@@ -36,10 +36,13 @@ mod validation;
 mod tests;
 
 pub use manifest::{
-    CallbackConfig, CallbackType, DataConfig, DataLoader, DataSplit, GradientConfig, LoraConfig,
+    AuditConfig, BackpressureConfig, BenchmarkConfig, CallbackConfig, CallbackType, CitlConfig,
+    DataConfig, DataLoader, DataSplit, DebugConfig, DistillModelRef, DistillationConfig,
+    DriftDetectionConfig, GradientConfig, GraphConfig, InspectConfig, LoraConfig,
     MixedPrecisionConfig, ModelConfig, MonitoringConfig, OptimizerConfig, OutputConfig,
-    PreprocessingStep, QuantizeConfig, SchedulerConfig, TerminalMonitor, TrackingConfig,
-    TrainingConfig, TrainingManifest, WarmupConfig,
+    PreprocessingStep, PrivacyConfig, QuantizeConfig, RagConfig, SchedulerConfig, SessionConfig,
+    SigningConfig, StressConfig, TerminalMonitor, TrackingConfig, TrainingConfig, TrainingManifest,
+    VerificationConfig, WarmupConfig,
 };
 pub use templates::{generate_manifest, generate_yaml, Template};
 pub use validation::{validate_manifest, ManifestError, ValidationResult};
@@ -54,8 +57,7 @@ pub fn load_manifest(path: &Path) -> crate::Result<TrainingManifest> {
     let manifest: TrainingManifest = serde_yaml::from_str(&content)
         .map_err(|e| crate::Error::Parse(format!("Failed to parse manifest: {e}")))?;
 
-    validate_manifest(&manifest)
-        .map_err(|e| crate::Error::Validation(e.to_string()))?;
+    validate_manifest(&manifest).map_err(|e| crate::Error::Validation(e.to_string()))?;
 
     Ok(manifest)
 }

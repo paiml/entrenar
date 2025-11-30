@@ -1,0 +1,53 @@
+# YAML-034: Model Distillation
+# QA Focus: Student matches 90% of teacher performance
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "knowledge-distillation"
+version: "1.0.0"
+description: "Teacher-student knowledge distillation"
+
+seed: 42
+
+distillation:
+  teacher:
+    source: "./models/llama-7b.gguf"
+    device: "cuda:0"
+  student:
+    source: "./models/llama-1b.gguf"
+    device: "cuda:1"
+  temperature: 4.0
+  alpha: 0.7  # Weight for distillation loss vs hard labels
+  loss: "kl_div"
+
+data:
+  source: "./data/train.parquet"
+  loader:
+    batch_size: 8
+    shuffle: true
+    num_workers: 4
+
+optimizer:
+  name: "adamw"
+  lr: 0.0001
+
+scheduler:
+  name: "cosine"
+  warmup:
+    ratio: 0.1
+
+training:
+  epochs: 5
+  validation:
+    every_epoch: true
+    metrics: ["accuracy", "distill_loss", "student_loss"]
+
+monitoring:
+  terminal:
+    enabled: true
+    metrics: ["loss", "distill_loss", "accuracy"]
+
+output:
+  dir: "./outputs/distill-${timestamp}"
+  model:
+    format: "safetensors"

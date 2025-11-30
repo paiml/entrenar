@@ -1,0 +1,61 @@
+# YAML-031: LoRA Fine-Tuning
+# QA Focus: Trainable params < 1% of total
+# Validation: 25-point checklist required
+
+entrenar: "1.0"
+name: "lora-finetune"
+version: "1.0.0"
+description: "Parameter-efficient fine-tuning with LoRA"
+
+seed: 42
+
+model:
+  source: "./models/llama-3-7b.gguf"
+  device: "cuda"
+  dtype: "float16"
+
+lora:
+  enabled: true
+  rank: 8
+  alpha: 16.0
+  dropout: 0.05
+  target_modules: ["q_proj", "v_proj"]
+  bias: "none"
+  init_weights: "gaussian"
+
+data:
+  source: "./data/instruction.parquet"
+  preprocessing:
+    - tokenize:
+        tokenizer: "./models/llama-3-7b"
+        max_length: 2048
+  loader:
+    batch_size: 4
+    shuffle: true
+    num_workers: 4
+
+optimizer:
+  name: "adamw"
+  lr: 0.0001
+  weight_decay: 0.01
+
+scheduler:
+  name: "cosine"
+  warmup:
+    ratio: 0.03
+
+training:
+  epochs: 3
+  gradient:
+    accumulation_steps: 4
+    clip_norm: 1.0
+
+monitoring:
+  terminal:
+    enabled: true
+    metrics: ["loss", "lr", "trainable_params_pct"]
+
+output:
+  dir: "./outputs/lora-${timestamp}"
+  model:
+    format: "safetensors"

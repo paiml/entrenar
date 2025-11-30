@@ -3,7 +3,7 @@
 //! Generates starter manifests for common training scenarios.
 
 use super::manifest::{
-    AlertConfig, CallbackConfig, CallbackType, CheckpointConfig, ChartConfig, DataConfig,
+    AlertConfig, CallbackConfig, CallbackType, ChartConfig, CheckpointConfig, DataConfig,
     DataLoader, DataSplit, EarlyStoppingConfig, GradientConfig, LoraConfig, MetricsOutputConfig,
     MixedPrecisionConfig, ModelConfig, ModelOutputConfig, MonitoringConfig, OptimizerConfig,
     OutputConfig, QuantizeConfig, RegistryConfig, ReportConfig, SchedulerConfig,
@@ -25,7 +25,12 @@ pub enum Template {
 }
 
 /// Generate a training manifest from a template
-pub fn generate_manifest(template: Template, name: &str, model: Option<&str>, data: Option<&str>) -> TrainingManifest {
+pub fn generate_manifest(
+    template: Template,
+    name: &str,
+    model: Option<&str>,
+    data: Option<&str>,
+) -> TrainingManifest {
     match template {
         Template::Minimal => generate_minimal(name, model, data),
         Template::Lora => generate_lora(name, model, data),
@@ -35,7 +40,12 @@ pub fn generate_manifest(template: Template, name: &str, model: Option<&str>, da
 }
 
 /// Generate YAML string from a template
-pub fn generate_yaml(template: Template, name: &str, model: Option<&str>, data: Option<&str>) -> String {
+pub fn generate_yaml(
+    template: Template,
+    name: &str,
+    model: Option<&str>,
+    data: Option<&str>,
+) -> String {
     let manifest = generate_manifest(template, name, model, data);
     serde_yaml::to_string(&manifest).unwrap_or_else(|_| "# Error generating YAML".to_string())
 }
@@ -155,6 +165,7 @@ fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> Trai
             tracking: None,
             system: None,
             alerts: None,
+            drift_detection: None,
         }),
         callbacks: None,
         output: Some(OutputConfig {
@@ -172,6 +183,24 @@ fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> Trai
             }),
             registry: None,
         }),
+        // Extended configurations (YAML Mode QA Epic)
+        citl: None,
+        rag: None,
+        graph: None,
+        distillation: None,
+        inspect: None,
+        privacy: None,
+        audit: None,
+        session: None,
+        stress: None,
+        benchmark: None,
+        debug: None,
+        signing: None,
+        verification: None,
+        lockfile: None,
+        strict: None,
+        strict_validation: None,
+        require_peer_review: None,
     }
 }
 
@@ -317,6 +346,7 @@ fn generate_full(name: &str, model: Option<&str>, data: Option<&str>) -> Trainin
                 message: "GPU OOM imminent".to_string(),
             },
         ]),
+        drift_detection: None,
     });
 
     // Add callbacks
@@ -417,7 +447,12 @@ mod tests {
         let lora = manifest.lora.unwrap();
         assert!(lora.quantize_base.unwrap());
         assert_eq!(lora.quantize_bits, Some(4));
-        assert!(manifest.training.as_ref().unwrap().mixed_precision.is_some());
+        assert!(manifest
+            .training
+            .as_ref()
+            .unwrap()
+            .mixed_precision
+            .is_some());
     }
 
     #[test]
@@ -447,10 +482,20 @@ mod tests {
         use super::super::validation::validate_manifest;
 
         // All templates should produce valid manifests
-        for template in [Template::Minimal, Template::Lora, Template::Qlora, Template::Full] {
+        for template in [
+            Template::Minimal,
+            Template::Lora,
+            Template::Qlora,
+            Template::Full,
+        ] {
             let manifest = generate_manifest(template, "test", None, None);
             let result = validate_manifest(&manifest);
-            assert!(result.is_ok(), "Template {:?} produced invalid manifest: {:?}", template, result);
+            assert!(
+                result.is_ok(),
+                "Template {:?} produced invalid manifest: {:?}",
+                template,
+                result
+            );
         }
     }
 }
