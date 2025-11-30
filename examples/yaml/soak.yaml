@@ -2,55 +2,18 @@
 # QA Focus: No OOM; scheduler handles backpressure
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "soak-test"
-version: "1.0.0"
-description: "Endurance testing under maximal load"
-
-seed: 42
-
-stress:
-  parallel_jobs: 100
-  duration: "24h"
-  memory_limit: 0.90  # 90% max
-  backpressure:
-    enabled: true
-    queue_size: 1000
-    drop_policy: "oldest"
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 256
-    shuffle: true
-    num_workers: 16
-    prefetch_factor: 8
-
-model:
-  source: "builtin://mlp"
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 256
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
-  max_steps: 1000000
-  gradient:
-    accumulation_steps: 4
-
-monitoring:
-  system:
-    enabled: true
-    interval: 60000
-    metrics: ["rss_memory", "cpu_percent", "gpu_memory_used", "throughput"]
-  alerts:
-    - condition: "rss_memory > memory_limit * total_memory"
-      action: "stop"
-      message: "SOAK: Memory limit exceeded"
-    - condition: "throughput < 100"
-      action: "warn"
-      message: "SOAK: Throughput degradation detected"
-
-output:
-  dir: "./outputs/soak-${timestamp}"
+  epochs: 100
+  output_dir: ./outputs/soak

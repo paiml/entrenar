@@ -2,58 +2,19 @@
 # QA Focus: Check CSV parsing robustness (header handling)
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "csv-custom-dataset"
-version: "1.0.0"
-description: "Training on local CSV tabular data"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "./data/train.csv"
-  format: "csv"
-  split:
-    train: 0.8
-    val: 0.1
-    test: 0.1
-    stratify: "label"
-  preprocessing:
-    - normalize:
-        columns: ["feature_1", "feature_2", "feature_3"]
-        method: "standard"
-    - encode:
-        columns: ["category"]
-        method: "onehot"
-    - fillna:
-        strategy: "mean"
-  loader:
-    batch_size: 64
-    shuffle: true
-    num_workers: 4
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 10, out_features: 32}
-      - {type: "relu"}
-      - {type: "dropout", p: 0.2}
-      - {type: "linear", in_features: 32, out_features: 2}
-  device: "auto"
+  train: ./data/train.csv
+  batch_size: 64
 
 optimizer:
-  name: "adamw"
+  name: adamw
   lr: 0.001
   weight_decay: 0.01
 
 training:
   epochs: 20
-  early_stopping:
-    enabled: true
-    metric: "val_loss"
-    patience: 5
-    mode: "min"
-
-output:
-  dir: "./outputs/csv-${name}-${timestamp}"
+  output_dir: ./outputs/csv

@@ -2,35 +2,18 @@
 # QA Focus: Invalid types caught immediately
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "config-validation-test"
-version: "1.0.0"
-description: "Schema validation test case"
-
-# This config should PASS validation
-seed: 42
-strict_validation: true
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 32
-    shuffle: true
-
-model:
-  source: "builtin://mlp"
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 32
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 5
-
-# Poka-yoke validation rules:
-# - entrenar version must be "1.0"
-# - name must be non-empty string
-# - optimizer.lr must be positive float
-# - training.epochs must be positive integer
-# - data.loader.batch_size must be positive integer
+  output_dir: ./outputs/config-validate

@@ -2,54 +2,20 @@
 # QA Focus: Verify alimentar downloads and caches correctly
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "mnist-baseline-cpu"
-version: "1.0.0"
-description: "MNIST baseline training on CPU for QA validation"
-
-seed: 42
+# Binary schema: TrainSpec from src/config/schema.rs
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 32
-    shuffle: true
-    num_workers: 0
-    pin_memory: false
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 784, out_features: 128}
-      - {type: "relu"}
-      - {type: "linear", in_features: 128, out_features: 64}
-      - {type: "relu"}
-      - {type: "linear", in_features: 64, out_features: 10}
-  device: "cpu"
-  dtype: "float32"
+  train: ./data/train.parquet
+  batch_size: 32
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 5
-  deterministic: true
-  validation:
-    every_epoch: true
-    metrics: ["accuracy", "loss"]
-
-monitoring:
-  terminal:
-    enabled: true
-    refresh_rate: 1000
-    metrics: ["loss", "accuracy", "lr"]
-
-output:
-  dir: "./outputs/mnist-cpu-${timestamp}"
-  model:
-    format: "safetensors"
-  metrics:
-    format: "json"
+  grad_clip: 1.0
+  output_dir: ./outputs/mnist-cpu

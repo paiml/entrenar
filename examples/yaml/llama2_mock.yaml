@@ -2,59 +2,23 @@
 # QA Focus: Graph construction valid; parameter count exact
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "llama2-7b-mock"
-version: "1.0.0"
-description: "Large architecture loading and graph validation"
-
-seed: 42
-
 model:
-  source: "hf://meta-llama/Llama-2-7b"
-  architecture:
-    type: "transformer"
-    hidden_size: 4096
-    num_layers: 32
-    num_heads: 32
-    vocab_size: 32000
-    max_seq_length: 4096
-  freeze: ["embed_tokens", "lm_head"]
-  device: "cuda"
-  dtype: "bfloat16"
+  path: ./models/mock.gguf
+  layers: [q_proj, k_proj, v_proj, o_proj]
 
 data:
-  source: "./data/instruction.parquet"
-  preprocessing:
-    - tokenize:
-        tokenizer: "hf://meta-llama/Llama-2-7b"
-        max_length: 2048
-        padding: "max_length"
-        truncation: true
-  loader:
-    batch_size: 1
-    shuffle: true
-    num_workers: 4
+  train: ./data/train.parquet
+  batch_size: 1
+  seq_len: 2048
 
 optimizer:
-  name: "adamw"
+  name: adamw
   lr: 0.00002
-  betas: [0.9, 0.95]
+  beta1: 0.9
+  beta2: 0.95
   weight_decay: 0.1
-
-scheduler:
-  name: "cosine"
-  warmup:
-    steps: 100
-    start_lr: 0.0
 
 training:
   epochs: 1
-  gradient:
-    accumulation_steps: 8
-    clip_norm: 1.0
-  mixed_precision:
-    enabled: true
-    dtype: "bfloat16"
-
-output:
-  dir: "./outputs/llama2-mock-${timestamp}"
+  grad_clip: 1.0
+  output_dir: ./outputs/llama2-mock

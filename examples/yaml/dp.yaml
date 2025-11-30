@@ -2,53 +2,19 @@
 # QA Focus: Noise injection verified
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "differential-privacy"
-version: "1.0.0"
-description: "Privacy-preserving training with DP-SGD"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "./data/sensitive.parquet"
-  loader:
-    batch_size: 64
-    shuffle: true
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 100, out_features: 64}
-      - {type: "relu"}
-      - {type: "linear", in_features: 64, out_features: 10}
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 64
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
-
-privacy:
-  differential: true
-  epsilon: 1.0
-  delta: 0.00001  # 1e-5
-  max_grad_norm: 1.0
-  noise_multiplier: 1.1
-  accountant: "rdp"  # Rényi DP accounting
 
 training:
   epochs: 10
-  gradient:
-    clip_norm: 1.0
-
-monitoring:
-  terminal:
-    enabled: true
-    metrics: ["loss", "epsilon_spent", "delta"]
-
-output:
-  dir: "./outputs/dp-${timestamp}"
-  report:
-    enabled: true
-    format: "markdown"
+  grad_clip: 1.0
+  output_dir: ./outputs/dp

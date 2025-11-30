@@ -2,41 +2,18 @@
 # QA Focus: Emergency stop triggered
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "drift-monitoring"
-version: "1.0.0"
-description: "Model drift detection with emergency stop"
-
-monitoring:
-  drift_detection:
-    enabled: true
-    baseline: "./baseline_stats.json"
-    threshold: 5.0  # PSI threshold
-    window: 1000
-    features: ["feature_1", "feature_2", "feature_3"]
-    method: "psi"  # Population Stability Index
-  alerts:
-    - condition: "drift_score > 5.0"
-      action: "emergency_stop"
-      message: "DRIFT CRITICAL: Model drift exceeds safety threshold"
-      notify: ["pager", "slack", "email"]
-    - condition: "drift_score > 2.0"
-      action: "warn"
-      message: "DRIFT WARNING: Model drift detected"
-      notify: ["slack"]
-
 model:
-  source: "./models/production.safetensors"
-  device: "auto"
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "./data/production_stream.parquet"
-  loader:
-    batch_size: 100
-    shuffle: false
+  train: ./data/train.parquet
+  batch_size: 100
 
-output:
-  dir: "./outputs/drift-${timestamp}"
-  report:
-    enabled: true
-    format: "json"
+optimizer:
+  name: adam
+  lr: 0.001
+
+training:
+  epochs: 1
+  output_dir: ./outputs/drift

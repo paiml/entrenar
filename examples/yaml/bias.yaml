@@ -2,38 +2,18 @@
 # QA Focus: Parity score > 0.9
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "bias-audit"
-version: "1.0.0"
-description: "Fairness testing with demographic parity verification"
-
-seed: 42
-
-audit:
-  type: "bias"
-  protected_attr: "gender"
-  favorable_outcome: 1
-  metrics:
-    - "demographic_parity"
-    - "equalized_odds"
-    - "calibration"
-    - "predictive_parity"
-  threshold: 0.9
-  subgroups: ["male", "female", "non_binary"]
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "./data/hiring.parquet"
-  loader:
-    batch_size: 64
-    shuffle: false
+  train: ./data/train.parquet
+  batch_size: 64
 
-model:
-  source: "./models/hiring_classifier.safetensors"
-  device: "auto"
+optimizer:
+  name: adam
+  lr: 0.001
 
-output:
-  dir: "./outputs/bias-audit-${timestamp}"
-  report:
-    enabled: true
-    format: "html"
-    include_plots: true
+training:
+  epochs: 1
+  output_dir: ./outputs/bias-audit

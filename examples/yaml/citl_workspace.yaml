@@ -1,21 +1,20 @@
 # YAML-017: Cross-Crate Decision Tracking
 # QA Focus: Graph connectivity verified
 # Validation: 25-point checklist required
+# Note: CITL features require separate integration
 
-entrenar: "1.0"
-name: "citl-workspace-trace"
-version: "1.0.0"
-description: "Cross-crate decision tracing for workspace analysis"
+model:
+  path: ./models/mock.gguf
+  layers: []
 
-citl:
-  mode: "trace"
-  workspace: true
-  include_deps: false
+data:
+  train: ./data/train.parquet
+  batch_size: 32
 
-graph:
-  output: "./decisions.dot"
-  format: "dot"
-  include_edges: true
+optimizer:
+  name: adam
+  lr: 0.001
 
-output:
-  dir: "./outputs/citl-workspace"
+training:
+  epochs: 1
+  output_dir: ./outputs/citl-workspace

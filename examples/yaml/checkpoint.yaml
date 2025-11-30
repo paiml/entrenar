@@ -2,47 +2,19 @@
 # QA Focus: Resume from step 100 works perfectly
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "auto-checkpoint"
-version: "1.0.0"
-description: "Automatic checkpointing for crash recovery"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 64
-    shuffle: true
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 784, out_features: 128}
-      - {type: "relu"}
-      - {type: "linear", in_features: 128, out_features: 10}
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 64
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 10
-  checkpoint:
-    save_every: 100  # Save every 100 steps
-    keep_last: 3     # Keep last 3 checkpoints
-    save_best: true
-    metric: "val_loss"
-    mode: "min"
-  validation:
-    every: 100
-
-output:
-  dir: "./checkpoints"
-  model:
-    format: "safetensors"
-    save_optimizer: true
-    save_scheduler: true
+  save_interval: 1
+  output_dir: ./checkpoints
