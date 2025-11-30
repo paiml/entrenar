@@ -154,6 +154,8 @@
 
 - [Overview](./declarative/overview.md)
 - [YAML Mode Training (v1.0)](./declarative/yaml-mode.md)
+- [YAML Examples Catalog](./declarative/yaml-examples.md)
+- [Toyota Way QA Process](./declarative/qa-process.md)
 - [YAML Configuration](./declarative/yaml-config.md)
 - [train_from_yaml Function](./declarative/train-from-yaml.md)
 - [Configuration Schema](./declarative/schema.md)
