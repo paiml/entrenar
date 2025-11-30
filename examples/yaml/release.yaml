@@ -2,106 +2,21 @@
 # QA Focus: ALL 25 CHECKS MUST PASS. Peer review required.
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "production-release"
-version: "1.0.0"
-description: "Final verification run for production release"
-
-seed: 42
-
-# Strict validation mode
-strict_validation: true
-require_peer_review: true
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "./data/production.parquet"
-  split:
-    train: 0.8
-    val: 0.1
-    test: 0.1
-    stratify: "label"
-  loader:
-    batch_size: 64
-    shuffle: true
-    num_workers: 8
-
-model:
-  source: "./models/production-model.gguf"
-  device: "cuda"
-  dtype: "float16"
+  train: ./data/train.parquet
+  batch_size: 64
 
 optimizer:
-  name: "adamw"
+  name: adamw
   lr: 0.0001
   weight_decay: 0.01
 
-scheduler:
-  name: "cosine"
-  warmup:
-    ratio: 0.1
-
 training:
   epochs: 10
-  deterministic: true
-  gradient:
-    clip_norm: 1.0
-  checkpoint:
-    save_every: 100
-    save_best: true
-    metric: "val_loss"
-    mode: "min"
-  early_stopping:
-    enabled: true
-    metric: "val_loss"
-    patience: 5
-    mode: "min"
-  validation:
-    every_epoch: true
-    metrics: ["accuracy", "f1", "precision", "recall", "auc"]
-
-monitoring:
-  terminal:
-    enabled: true
-    metrics: ["loss", "val_loss", "accuracy", "lr"]
-  tracking:
-    enabled: true
-    backend: "trueno-db"
-    project: "production"
-    experiment: "release-${version}"
-  alerts:
-    - condition: "loss == nan"
-      action: "stop"
-      message: "GOLDEN RUN FAILED: NaN loss"
-    - condition: "val_accuracy < 0.95"
-      action: "warn"
-      message: "GOLDEN RUN WARNING: Accuracy below threshold"
-
-output:
-  dir: "./outputs/release-${version}-${timestamp}"
-  model:
-    format: "safetensors"
-    save_optimizer: false
-  metrics:
-    format: "parquet"
-  report:
-    enabled: true
-    format: "html"
-    include_plots: true
-  registry:
-    enabled: true
-    target: "pacha://models/production"
-    include_config: true
-    include_metrics: true
-
-# Sign the model for chain of custody
-signing:
-  enabled: true
-  algorithm: "ed25519"
-  key: "${SIGNING_KEY}"
-
-# Verification requirements
-verification:
-  all_25_checks: true
-  qa_lead_sign_off: required
-  eng_lead_sign_off: required
-  safety_officer_sign_off: required
+  grad_clip: 1.0
+  save_interval: 1
+  output_dir: ./outputs/release

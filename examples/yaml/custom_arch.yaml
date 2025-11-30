@@ -2,44 +2,18 @@
 # QA Focus: Layer dimensions match spec
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "custom-architecture"
-version: "1.0.0"
-description: "Declarative custom architecture definition"
-
-seed: 42
-
 model:
-  source: "builtin://custom"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 784, out_features: 256}
-      - {type: "batch_norm", num_features: 256}
-      - {type: "relu"}
-      - {type: "dropout", p: 0.3}
-      - {type: "linear", in_features: 256, out_features: 128}
-      - {type: "batch_norm", num_features: 128}
-      - {type: "relu"}
-      - {type: "dropout", p: 0.2}
-      - {type: "linear", in_features: 128, out_features: 10}
-  device: "auto"
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 64
-    shuffle: true
+  train: ./data/train.parquet
+  batch_size: 64
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 10
-  validation:
-    every_epoch: true
-    metrics: ["accuracy", "f1"]
-
-output:
-  dir: "./outputs/custom-arch-${timestamp}"
+  output_dir: ./outputs/custom-arch

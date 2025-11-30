@@ -2,62 +2,19 @@
 # QA Focus: "ANDON" alert triggered in < 5 steps
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "andon-alerts"
-version: "1.0.0"
-description: "Toyota Way Andon system for training anomalies"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 32
-    shuffle: true
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 784, out_features: 64}
-      - {type: "relu"}
-      - {type: "linear", in_features: 64, out_features: 10}
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 32
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 10
-  early_stopping:
-    enabled: true
-    metric: "loss"
-    patience: 5
-    mode: "min"
-
-monitoring:
-  terminal:
-    enabled: true
-    refresh_rate: 500
-    metrics: ["loss", "accuracy", "grad_norm"]
-  alerts:
-    - condition: "loss > 10.0"
-      action: "stop"
-      message: "ANDON: Loss explosion detected - halting training"
-    - condition: "grad_norm > 100.0"
-      action: "stop"
-      message: "ANDON: Gradient explosion - halting training"
-    - condition: "loss == nan"
-      action: "stop"
-      message: "ANDON: NaN loss detected - halting training"
-    - condition: "accuracy < 0.1 and epoch > 3"
-      action: "warn"
-      message: "ANDON: Model not learning - check configuration"
-    - condition: "gpu_memory_used > 0.95 * gpu_memory_total"
-      action: "warn"
-      message: "ANDON: GPU memory critical"
-
-output:
-  dir: "./outputs/andon-${timestamp}"
+  grad_clip: 1.0
+  output_dir: ./outputs/andon

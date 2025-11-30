@@ -2,55 +2,18 @@
 # QA Focus: Throughput > 10k samples/sec
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "parquet-high-throughput"
-version: "1.0.0"
-description: "High-throughput columnar data training"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "./data/train.parquet"
-  format: "parquet"
-  split:
-    train: 0.8
-    val: 0.2
-  loader:
-    batch_size: 256
-    shuffle: true
-    num_workers: 8
-    pin_memory: true
-    prefetch_factor: 4
-    drop_last: true
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 100, out_features: 256}
-      - {type: "relu"}
-      - {type: "linear", in_features: 256, out_features: 128}
-      - {type: "relu"}
-      - {type: "linear", in_features: 128, out_features: 10}
-  device: "auto"
-  dtype: "float32"
+  train: ./data/train.parquet
+  batch_size: 256
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.0005
 
 training:
   epochs: 10
-  benchmark: true
-
-monitoring:
-  system:
-    enabled: true
-    interval: 1000
-    metrics: ["throughput", "cpu_percent", "memory_percent"]
-
-output:
-  dir: "./outputs/parquet-${timestamp}"
-  metrics:
-    format: "parquet"
+  output_dir: ./outputs/parquet

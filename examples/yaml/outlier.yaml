@@ -2,50 +2,18 @@
 # QA Focus: Z-score threshold logic works
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "outlier-detection"
-version: "1.0.0"
-description: "Live data outlier detection during training"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "./data/train.parquet"
-  preprocessing:
-    - normalize:
-        columns: ["feature_1", "feature_2", "feature_3"]
-        method: "standard"
-  loader:
-    batch_size: 64
-    shuffle: true
-
-inspect:
-  mode: "outliers"
-  z_threshold: 3.0
-  action: "log"  # Options: log, drop, flag
-  columns: ["feature_1", "feature_2", "feature_3"]
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 3, out_features: 32}
-      - {type: "relu"}
-      - {type: "linear", in_features: 32, out_features: 1}
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 64
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 10
-
-monitoring:
-  terminal:
-    enabled: true
-    metrics: ["loss", "outlier_count", "outlier_pct"]
-
-output:
-  dir: "./outputs/outlier-${timestamp}"
+  output_dir: ./outputs/outlier

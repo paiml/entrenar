@@ -2,53 +2,18 @@
 # QA Focus: RSS memory stable over 24h (simulated)
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "memory-leak-test"
-version: "1.0.0"
-description: "Long-running stability test for memory leaks"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 32
-    shuffle: true
-    num_workers: 2
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 784, out_features: 64}
-      - {type: "relu"}
-      - {type: "linear", in_features: 64, out_features: 10}
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 32
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 1000
-  validation:
-    every: 100
-
-debug:
-  memory_profile: true
-  log_interval: 100
-  gc_interval: 1000
-
-monitoring:
-  system:
-    enabled: true
-    interval: 10000
-    metrics: ["rss_memory", "heap_size", "gc_count"]
-  alerts:
-    - condition: "rss_memory_growth > 0.1"  # 10% growth threshold
-      action: "warn"
-      message: "Potential memory leak detected"
-
-output:
-  dir: "./outputs/long-run-${timestamp}"
+  output_dir: ./outputs/long-run

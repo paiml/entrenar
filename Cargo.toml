@@ -112,8 +112,9 @@ toml = "0.8"
 thiserror = "2.0"
 rand = "0.9"
 clap = { version = "4.5", features = ["derive"] }
+clap_complete = "4.5"  # Shell completion generation
 dirs = "5.0"  # Cache directory resolution for HF pipeline
-trueno-rag = { version = "0.1.0", optional = true }  # RAG pipeline for CITL
+trueno-rag = { path = "../trueno-rag", optional = true }  # RAG pipeline for CITL (local until arrow 54 published)
 tokio = { version = "1.41", features = ["rt", "macros"], optional = true }  # Async runtime for RAG and GPU
 uuid = { version = "1.11", features = ["v4", "serde"], optional = true }  # UUIDs for CITL patterns
 safetensors = "0.7"  # SafeTensors format parsing
@@ -131,7 +132,7 @@ proptest = "1.4"
 approx = "0.5"
 tempfile = "3.8"
 criterion = "0.5"
-arrow = { version = "53", default-features = false }  # For MNIST example array access
+arrow = { version = "54", default-features = false }  # For MNIST example array access
 
 [[bench]]
 name = "monitor_bench"

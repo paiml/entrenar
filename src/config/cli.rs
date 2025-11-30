@@ -60,6 +60,21 @@ pub enum Command {
 
     /// Academic research artifacts and workflows
     Research(ResearchArgs),
+
+    /// Generate shell completions
+    Completion(CompletionArgs),
+
+    /// Run inference benchmarks
+    Bench(BenchArgs),
+
+    /// Inspect data or model statistics
+    Inspect(InspectArgs),
+
+    /// Audit model for bias and fairness
+    Audit(AuditArgs),
+
+    /// Monitor model for drift
+    Monitor(MonitorArgs),
 }
 
 /// Arguments for the train command
@@ -803,6 +818,217 @@ pub fn apply_overrides(spec: &mut super::TrainSpec, args: &TrainArgs) {
         spec.training.save_interval = save_every;
     }
     // Note: log_every and seed are CLI-only options not persisted in config
+}
+
+/// Arguments for completion command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct CompletionArgs {
+    /// Shell to generate completions for
+    #[arg(value_name = "SHELL")]
+    pub shell: ShellType,
+}
+
+/// Shell type for completions
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ShellType {
+    #[default]
+    Bash,
+    Zsh,
+    Fish,
+    PowerShell,
+}
+
+impl std::str::FromStr for ShellType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "bash" => Ok(ShellType::Bash),
+            "zsh" => Ok(ShellType::Zsh),
+            "fish" => Ok(ShellType::Fish),
+            "powershell" | "ps" => Ok(ShellType::PowerShell),
+            _ => Err(format!(
+                "Unknown shell: {s}. Valid shells: bash, zsh, fish, powershell"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for ShellType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ShellType::Bash => write!(f, "bash"),
+            ShellType::Zsh => write!(f, "zsh"),
+            ShellType::Fish => write!(f, "fish"),
+            ShellType::PowerShell => write!(f, "powershell"),
+        }
+    }
+}
+
+/// Arguments for bench command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct BenchArgs {
+    /// Path to model or config file
+    #[arg(value_name = "INPUT")]
+    pub input: PathBuf,
+
+    /// Number of warmup iterations
+    #[arg(long, default_value = "10")]
+    pub warmup: usize,
+
+    /// Number of benchmark iterations
+    #[arg(long, default_value = "100")]
+    pub iterations: usize,
+
+    /// Batch sizes to test (comma-separated)
+    #[arg(long, default_value = "1,8,32")]
+    pub batch_sizes: String,
+
+    /// Output format (text, json)
+    #[arg(short, long, default_value = "text")]
+    pub format: OutputFormat,
+}
+
+/// Arguments for inspect command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct InspectArgs {
+    /// Path to data file or model
+    #[arg(value_name = "INPUT")]
+    pub input: PathBuf,
+
+    /// Inspection mode
+    #[arg(short, long, default_value = "summary")]
+    pub mode: InspectMode,
+
+    /// Columns to inspect (comma-separated)
+    #[arg(long)]
+    pub columns: Option<String>,
+
+    /// Z-score threshold for outlier detection
+    #[arg(long, default_value = "3.0")]
+    pub z_threshold: f32,
+}
+
+/// Inspection mode
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum InspectMode {
+    #[default]
+    Summary,
+    Outliers,
+    Distribution,
+    Schema,
+}
+
+impl std::str::FromStr for InspectMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "summary" => Ok(InspectMode::Summary),
+            "outliers" => Ok(InspectMode::Outliers),
+            "distribution" | "dist" => Ok(InspectMode::Distribution),
+            "schema" => Ok(InspectMode::Schema),
+            _ => Err(format!(
+                "Unknown inspect mode: {s}. Valid modes: summary, outliers, distribution, schema"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for InspectMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InspectMode::Summary => write!(f, "summary"),
+            InspectMode::Outliers => write!(f, "outliers"),
+            InspectMode::Distribution => write!(f, "distribution"),
+            InspectMode::Schema => write!(f, "schema"),
+        }
+    }
+}
+
+/// Arguments for audit command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct AuditArgs {
+    /// Path to model or config file
+    #[arg(value_name = "INPUT")]
+    pub input: PathBuf,
+
+    /// Audit type
+    #[arg(short, long, default_value = "bias")]
+    pub audit_type: AuditType,
+
+    /// Protected attribute column
+    #[arg(long)]
+    pub protected_attr: Option<String>,
+
+    /// Fairness threshold (0.0-1.0)
+    #[arg(long, default_value = "0.8")]
+    pub threshold: f32,
+
+    /// Output format (text, json, html)
+    #[arg(short, long, default_value = "text")]
+    pub format: OutputFormat,
+}
+
+/// Audit type
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum AuditType {
+    #[default]
+    Bias,
+    Fairness,
+    Privacy,
+    Security,
+}
+
+impl std::str::FromStr for AuditType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "bias" => Ok(AuditType::Bias),
+            "fairness" => Ok(AuditType::Fairness),
+            "privacy" => Ok(AuditType::Privacy),
+            "security" => Ok(AuditType::Security),
+            _ => Err(format!(
+                "Unknown audit type: {s}. Valid types: bias, fairness, privacy, security"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for AuditType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuditType::Bias => write!(f, "bias"),
+            AuditType::Fairness => write!(f, "fairness"),
+            AuditType::Privacy => write!(f, "privacy"),
+            AuditType::Security => write!(f, "security"),
+        }
+    }
+}
+
+/// Arguments for monitor command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct MonitorArgs {
+    /// Path to model or config file
+    #[arg(value_name = "INPUT")]
+    pub input: PathBuf,
+
+    /// Baseline statistics file
+    #[arg(long)]
+    pub baseline: Option<PathBuf>,
+
+    /// Drift detection threshold (PSI)
+    #[arg(long, default_value = "0.2")]
+    pub threshold: f32,
+
+    /// Monitoring interval in seconds
+    #[arg(long, default_value = "60")]
+    pub interval: u64,
+
+    /// Output format (text, json)
+    #[arg(short, long, default_value = "text")]
+    pub format: OutputFormat,
 }
 
 #[cfg(test)]

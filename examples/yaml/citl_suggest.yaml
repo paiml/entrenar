@@ -1,22 +1,20 @@
 # YAML-014: Automated Fix Suggestion
 # QA Focus: Top 3 suggestions contain correct fix
 # Validation: 25-point checklist required
+# Note: CITL features require separate integration
 
-entrenar: "1.0"
-name: "citl-fix-suggest"
-version: "1.0.0"
-description: "RAG-based compiler fix suggestions"
+model:
+  path: ./models/mock.gguf
+  layers: []
 
-citl:
-  mode: "suggest"
-  error_code: "E0308"
-  top_k: 3
+data:
+  train: ./data/train.parquet
+  batch_size: 32
 
-rag:
-  store: "./patterns.apr"
-  similarity_threshold: 0.7
-  max_results: 10
+optimizer:
+  name: adam
+  lr: 0.001
 
-output:
-  dir: "./outputs/citl-suggest"
-  format: "json"
+training:
+  epochs: 1
+  output_dir: ./outputs/citl-suggest

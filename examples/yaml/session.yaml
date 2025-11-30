@@ -2,38 +2,19 @@
 # QA Focus: Session state restored exactly
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "session-resume"
-version: "1.0.0"
-description: "Stateful session management for continuity"
-
-seed: 42
-
-session:
-  id: "train-001"
-  auto_save: true
-  resume_on_crash: true
-  state_dir: "./sessions"
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 64
-    shuffle: true
-
-model:
-  source: "builtin://mlp"
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 64
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 20
-  checkpoint:
-    save_every: 100
-    keep_last: 5
-
-output:
-  dir: "./outputs/session-${session.id}"
+  save_interval: 1
+  output_dir: ./outputs/session

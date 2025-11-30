@@ -2,41 +2,19 @@
 # QA Focus: Run matches locked parameters exactly
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "locked-config"
-version: "1.0.0"
-description: "Reproducible training with lockfile enforcement"
-
-# Lockfile reference - all params frozen to these values
-lockfile: "config.lock"
-strict: true
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 32
-    shuffle: true
-
-model:
-  source: "builtin://mlp"
-  architecture:
-    type: "sequential"
-    layers:
-      - {type: "linear", in_features: 784, out_features: 64}
-      - {type: "relu"}
-      - {type: "linear", in_features: 64, out_features: 10}
-  device: "cpu"
+  train: ./data/train.parquet
+  batch_size: 32
 
 optimizer:
-  name: "sgd"
+  name: sgd
   lr: 0.01
   momentum: 0.9
 
 training:
   epochs: 5
-  deterministic: true
-
-output:
-  dir: "./outputs/locked-${seed}"
+  output_dir: ./outputs/locked

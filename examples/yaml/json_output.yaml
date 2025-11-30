@@ -2,40 +2,18 @@
 # QA Focus: Output parsable by jq
 # Validation: 25-point checklist required
 
-entrenar: "1.0"
-name: "json-output"
-version: "1.0.0"
-description: "JSON output for pipeline integration"
-
-seed: 42
+model:
+  path: ./models/mock.gguf
+  layers: []
 
 data:
-  source: "mnist"
-  loader:
-    batch_size: 64
-    shuffle: true
-
-model:
-  source: "builtin://mlp"
-  device: "auto"
+  train: ./data/train.parquet
+  batch_size: 64
 
 optimizer:
-  name: "adam"
+  name: adam
   lr: 0.001
 
 training:
   epochs: 5
-
-output:
-  dir: "./outputs/json-${timestamp}"
-  metrics:
-    format: "json"
-    include: ["loss", "accuracy", "lr", "epoch", "step"]
-  model:
-    format: "safetensors"
-  report:
-    enabled: true
-    format: "json"
-
-# Output will be machine-parseable:
-# {"epoch": 1, "step": 100, "loss": 0.5, "accuracy": 0.85, "lr": 0.001}
+  output_dir: ./outputs/json
