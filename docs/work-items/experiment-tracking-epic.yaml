@@ -567,8 +567,10 @@ phases:
   - id: "phase-7"
     name: "Academic Research Artifacts"
     description: "FAIR compliance, citations, pre-registration, archival"
-    status: "in_progress"
+    status: "completed"
     started: "2025-11-30"
+    completed: "2025-11-30"
+    commit: "9b98ed9"
     target_sections: ["§31"]
 
     work_items:
@@ -579,7 +581,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/49"
         spec_sections: ["§31.1", "§31.2"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-001"]
         acceptance_criteria:
           - "ResearchArtifact struct"
@@ -587,6 +592,11 @@ phases:
           - "ContributorRole (CRediT taxonomy)"
           - "Affiliation with ROR ID"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/research/artifact.rs: ResearchArtifact, Author, ContributorRole
+          - ORCID regex validation: ^(\d{4}-){3}\d{3}[\dX]$
+          - ROR ID validation: ^https://ror\.org/[a-z0-9]{9}$
+          - 21 tests
 
       - id: "ENT-020"
         title: "Implement CitationMetadata with BibTeX/CFF export"
@@ -595,7 +605,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/50"
         spec_sections: ["§31.3", "§31.8"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-019"]
         acceptance_criteria:
           - "CitationMetadata struct"
@@ -603,6 +616,11 @@ phases:
           - "to_cff() generation"
           - "CITATION.cff auto-generation"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/research/citation.rs: CitationMetadata, to_bibtex(), to_cff()
+          - BibTeX special character escaping
+          - Citation key generation (author_year_firstword)
+          - 11 tests
 
       - id: "ENT-021"
         title: "Implement LiterateDocument with Typst support"
@@ -611,7 +629,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/51"
         spec_sections: ["§31.4"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-019"]
         acceptance_criteria:
           - "LiterateDocument enum"
@@ -619,6 +640,10 @@ phases:
           - "mdBook integration"
           - "ruchy session as document"
         estimated_complexity: "large"
+        implementation_notes: |
+          - src/research/literate.rs: LiterateDocument enum (Typst, Markdown, RawText)
+          - extract_code_blocks() for code extraction
+          - 12 tests
 
       - id: "ENT-022"
         title: "Implement PreRegistration with hash commitment"
@@ -627,7 +652,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/52"
         spec_sections: ["§31.5", "§31.12"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-019"]
         acceptance_criteria:
           - "PreRegistration struct"
@@ -636,6 +664,12 @@ phases:
           - "PreregisteredProtocol with Ed25519 signing"
           - "TimestampProof (Git/RFC3161/OpenTimestamps)"
         estimated_complexity: "large"
+        implementation_notes: |
+          - src/research/preregistration.rs: PreRegistration, commit(), reveal()
+          - SHA-256 commitment hashing
+          - Ed25519 signing with ed25519-dalek
+          - TimestampProof enum variants
+          - 14 tests
 
       - id: "ENT-023"
         title: "Implement AnonymizationConfig for double-blind"
@@ -644,7 +678,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/53"
         spec_sections: ["§31.11"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-019"]
         acceptance_criteria:
           - "AnonymizationConfig struct"
@@ -652,6 +689,11 @@ phases:
           - "Deterministic anonymous IDs"
           - "CLI: entrenar research export --anonymize"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/research/anonymization.rs: AnonymizationConfig, anonymize()
+          - Deterministic hash-based anonymous IDs with salt
+          - AnonymizedArtifact with stripped PII
+          - 12 tests
 
       - id: "ENT-024"
         title: "Implement NotebookExporter for Jupyter bridge"
@@ -660,7 +702,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/54"
         spec_sections: ["§31.13"]
         priority: "P3"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-021"]
         acceptance_criteria:
           - "NotebookExporter struct"
@@ -668,6 +713,11 @@ phases:
           - "evcxr kernel support"
           - "CLI: entrenar research export --format notebook"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/research/notebook.rs: NotebookExporter, Cell, CellType
+          - to_ipynb() JSON export
+          - evcxr Rust kernel metadata
+          - 14 tests
 
       - id: "ENT-025"
         title: "Implement CitationGraph with upstream aggregation"
@@ -676,7 +726,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/55"
         spec_sections: ["§31.14"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-020"]
         acceptance_criteria:
           - "CitationGraph struct"
@@ -684,6 +737,11 @@ phases:
           - "Dataset/model citation fetching"
           - "CLI: entrenar research cite --include-upstream"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/research/citation_graph.rs: CitationGraph, CitationNode, CitationEdge
+          - Transitive upstream citation aggregation
+          - No duplicate citations
+          - 11 tests
 
       - id: "ENT-026"
         title: "Implement RoCrate bundling"
@@ -692,7 +750,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/56"
         spec_sections: ["§31.15"]
         priority: "P2"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-019"]
         acceptance_criteria:
           - "RoCrate struct (JSON-LD)"
@@ -700,6 +761,11 @@ phases:
           - "to_ro_crate_zip() archive"
           - "CLI: entrenar research bundle --format ro-crate"
         estimated_complexity: "medium"
+        implementation_notes: |
+          - src/research/ro_crate.rs: RoCrate, RoCrateEntity
+          - RO-Crate 1.1 spec compliant JSON-LD
+          - ZIP archive export
+          - 10 tests
 
       - id: "ENT-027"
         title: "Implement ArchiveDeposit for Zenodo/figshare"
@@ -708,7 +774,10 @@ phases:
         gh_issue: "https://github.com/paiml/entrenar/issues/57"
         spec_sections: ["§31.7"]
         priority: "P3"
-        status: "planned"
+        status: "completed"
+        started: "2025-11-30"
+        completed: "2025-11-30"
+        commit: "9b98ed9"
         dependencies: ["ENT-026"]
         acceptance_criteria:
           - "ArchiveDeposit struct"
@@ -716,6 +785,11 @@ phases:
           - "DOI minting"
           - "CLI: entrenar research deposit --archive zenodo"
         estimated_complexity: "large"
+        implementation_notes: |
+          - src/research/archive.rs: ArchiveDeposit, ArchiveProvider, DepositResult
+          - Zenodo, Figshare, Dryad, Dataverse providers
+          - DOI format validation
+          - 15 tests
 
   # =============================================================================
   # PHASE 8: CLI & Integration
@@ -723,7 +797,8 @@ phases:
   - id: "phase-8"
     name: "CLI & Integration"
     description: "entrenar CLI subcommands and cross-project integration"
-    status: "planned"
+    status: "in_progress"
+    started: "2025-11-30"
     target_sections: ["§31.9", "§31.16"]
 
     work_items:

@@ -206,6 +206,10 @@
 
 - [Overview](./sovereign/overview.md)
 
+# Academic Research
+
+- [Overview](./research/overview.md)
+
 # Specifications
 
 - [Autograd Specification](./specifications/autograd-spec.md)
