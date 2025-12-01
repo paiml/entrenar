@@ -63,6 +63,7 @@ name = "alimentar"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb38b589457ad7cba76776f650966320806d97ad7cd63643bf4041c6ea514cac"
+version = "0.2.2"
 dependencies = [
  "arrow",
  "arrow-csv",
@@ -3526,6 +3527,7 @@ dependencies = [
  "tracing-subscriber",
  "trueno",
  "trueno-db",
+ "trueno-db 0.3.4",
  "trueno-graph",
 ]
 
@@ -4556,9 +4558,38 @@ dependencies = [
  "anyhow",
  "arrow",
  "chrono",
+ "arrow 53.4.0",
  "console_error_panic_hook",
  "js-sys",
  "parquet",
+ "parquet 53.4.0",
+ "rayon",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "sqlparser",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "trueno",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "trueno-db"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "072f77c3c03d7c75728ee4931fa15f0e3d2eac7944d569fdbdc5d914dd2bb8f7"
+dependencies = [
+ "anyhow",
+ "arrow 54.3.1",
+ "chrono",
+ "console_error_panic_hook",
+ "js-sys",
+ "parquet 54.3.1",
  "rayon",
  "serde",
  "serde-wasm-bindgen",
@@ -4588,6 +4619,7 @@ dependencies = [
  "tokio",
  "trueno",
  "trueno-db",
+ "trueno-db 0.3.4",
 ]
 
 [[package]]
@@ -4595,6 +4627,7 @@ name = "trueno-rag"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3512c6f2637f4c04a81933fb24c17647dd2d13b6dbdd761af3e8ffc4c0d38b2c"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "serde",
@@ -4603,6 +4636,7 @@ dependencies = [
  "tokio",
  "trueno",
  "trueno-db",
+ "trueno-db 0.3.4",
  "uuid",
 ]
 
