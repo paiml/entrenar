@@ -97,10 +97,7 @@ fn inspect_data(path: &Path) {
         }
     };
 
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
     println!("Data Summary:");
     println!("  File size: {:.2} MB", metadata.len() as f64 / 1_000_000.0);

@@ -67,7 +67,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["PAIML <hello@paiml.com>"]
 description = "Training & Optimization library with autograd, LoRA, quantization, and model merging"
@@ -97,9 +97,9 @@ gpu = ["trueno/gpu", "tokio"]  # GPU-accelerated training via wgpu
 ndarray = "0.16"
 trueno = "0.7.3"  # SIMD-accelerated compute
 aprender = "0.12.0"  # ML interpret module for explainability + .apr model format
-alimentar = { path = "../alimentar" }  # Dataset loading with MNIST (local until 0.2.2 published)
+alimentar = "0.2.2"  # Dataset loading with MNIST
 trueno-viz = { version = "0.1.1", features = ["terminal"] }  # Terminal visualization
-trueno-db = { path = "../trueno-db", optional = true }  # Time-series storage (local until 0.4 published)
+trueno-db = { version = "0.3.4", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
 renacer = { version = "0.6", optional = true }  # Distributed tracing
 wasm-bindgen = { version = "0.2", optional = true }  # WASM bindings
@@ -114,7 +114,7 @@ rand = "0.9"
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"  # Shell completion generation
 dirs = "5.0"  # Cache directory resolution for HF pipeline
-trueno-rag = { path = "../trueno-rag", optional = true }  # RAG pipeline for CITL (local until arrow 54 published)
+trueno-rag = { version = "0.1.2", optional = true }  # RAG pipeline for CITL
 tokio = { version = "1.41", features = ["rt", "macros"], optional = true }  # Async runtime for RAG and GPU
 uuid = { version = "1.11", features = ["v4", "serde"], optional = true }  # UUIDs for CITL patterns
 safetensors = "0.7"  # SafeTensors format parsing

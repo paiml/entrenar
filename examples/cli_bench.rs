@@ -60,5 +60,7 @@ fn main() {
 /// Simulate inference with batch-size-dependent latency
 fn simulate_inference(batch_size: usize) {
     // Simulate work proportional to batch size
-    std::thread::sleep(std::time::Duration::from_micros(50 + batch_size as u64 * 10));
+    std::thread::sleep(std::time::Duration::from_micros(
+        50 + batch_size as u64 * 10,
+    ));
 }
