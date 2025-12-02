@@ -310,7 +310,7 @@ pub fn collect_stats_from_samples(name: &str, values: &[Option<&str>]) -> Column
                 }
 
                 if stats.sample_values.len() < 10 {
-                    stats.sample_values.push(s.to_string());
+                    stats.sample_values.push((*s).to_string());
                 }
             }
             None => {

@@ -12,11 +12,9 @@ fn validate_yaml_file(filename: &str) {
         .join("examples/yaml")
         .join(filename);
 
-    let spec = load_config(&path)
-        .unwrap_or_else(|e| panic!("Failed to load {}: {}", filename, e));
+    let spec = load_config(&path).unwrap_or_else(|e| panic!("Failed to load {}: {}", filename, e));
 
-    validate_config(&spec)
-        .unwrap_or_else(|e| panic!("Failed to validate {}: {}", filename, e));
+    validate_config(&spec).unwrap_or_else(|e| panic!("Failed to validate {}: {}", filename, e));
 
     // Basic QA checks
     assert!(
@@ -29,7 +27,11 @@ fn validate_yaml_file(filename: &str) {
         "{}: data train path must be specified",
         filename
     );
-    assert!(spec.data.batch_size > 0, "{}: batch_size must be > 0", filename);
+    assert!(
+        spec.data.batch_size > 0,
+        "{}: batch_size must be > 0",
+        filename
+    );
     assert!(spec.training.epochs > 0, "{}: epochs must be > 0", filename);
 }
 
@@ -276,8 +278,7 @@ mod validation {
     fn all_yaml_files_load() {
         let yaml_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/yaml");
 
-        let entries = fs::read_dir(&yaml_dir)
-            .expect("Failed to read examples/yaml directory");
+        let entries = fs::read_dir(&yaml_dir).expect("Failed to read examples/yaml directory");
 
         let mut count = 0;
         for entry in entries {
@@ -291,6 +292,10 @@ mod validation {
             }
         }
 
-        assert!(count >= 25, "Expected at least 25 YAML files, found {}", count);
+        assert!(
+            count >= 25,
+            "Expected at least 25 YAML files, found {}",
+            count
+        );
     }
 }

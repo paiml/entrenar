@@ -1206,7 +1206,7 @@ fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
     log(
         level,
         LogLevel::Normal,
-        &format!("  Batch sizes: {:?}", batch_sizes),
+        &format!("  Batch sizes: {batch_sizes:?}"),
     );
 
     // Run benchmarks for each batch size
@@ -1214,7 +1214,7 @@ fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
         log(
             level,
             LogLevel::Normal,
-            &format!("\nBatch size: {}", batch_size),
+            &format!("\nBatch size: {batch_size}"),
         );
 
         // Warmup
@@ -1228,7 +1228,9 @@ fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
         for _ in 0..args.iterations {
             let start = Instant::now();
             // Simulate inference - in real impl would run model forward pass
-            std::thread::sleep(std::time::Duration::from_micros(50 + *batch_size as u64 * 10));
+            std::thread::sleep(std::time::Duration::from_micros(
+                50 + *batch_size as u64 * 10,
+            ));
             let elapsed = start.elapsed().as_secs_f64() * 1000.0; // ms
             latencies.push(elapsed);
         }
@@ -1242,32 +1244,29 @@ fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
         let mean = latencies.iter().sum::<f64>() / latencies.len() as f64;
         let throughput = 1000.0 / mean * *batch_size as f64;
 
-        match args.format {
-            OutputFormat::Json => {
-                let result = serde_json::json!({
-                    "batch_size": batch_size,
-                    "iterations": args.iterations,
-                    "latency_ms": {
-                        "p50": p50,
-                        "p95": p95,
-                        "p99": p99,
-                        "mean": mean
-                    },
-                    "throughput_samples_per_sec": throughput
-                });
-                println!("{}", serde_json::to_string_pretty(&result).unwrap());
-            }
-            _ => {
-                log(level, LogLevel::Normal, &format!("  p50: {:.2}ms", p50));
-                log(level, LogLevel::Normal, &format!("  p95: {:.2}ms", p95));
-                log(level, LogLevel::Normal, &format!("  p99: {:.2}ms", p99));
-                log(level, LogLevel::Normal, &format!("  mean: {:.2}ms", mean));
-                log(
-                    level,
-                    LogLevel::Normal,
-                    &format!("  throughput: {:.1} samples/sec", throughput),
-                );
-            }
+        if args.format == OutputFormat::Json {
+            let result = serde_json::json!({
+                "batch_size": batch_size,
+                "iterations": args.iterations,
+                "latency_ms": {
+                    "p50": p50,
+                    "p95": p95,
+                    "p99": p99,
+                    "mean": mean
+                },
+                "throughput_samples_per_sec": throughput
+            });
+            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        } else {
+            log(level, LogLevel::Normal, &format!("  p50: {p50:.2}ms"));
+            log(level, LogLevel::Normal, &format!("  p95: {p95:.2}ms"));
+            log(level, LogLevel::Normal, &format!("  p99: {p99:.2}ms"));
+            log(level, LogLevel::Normal, &format!("  mean: {mean:.2}ms"));
+            log(
+                level,
+                LogLevel::Normal,
+                &format!("  throughput: {throughput:.1} samples/sec"),
+            );
         }
     }
 
@@ -1295,24 +1294,21 @@ fn run_inspect(args: InspectArgs, level: LogLevel) -> Result<(), String> {
         .and_then(|s| s.to_str())
         .unwrap_or("");
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Mode: {}", args.mode),
-    );
+    log(level, LogLevel::Normal, &format!("  Mode: {}", args.mode));
 
     match ext {
         "safetensors" => {
             // Load and inspect SafeTensors model file
             use safetensors::SafeTensors;
 
-            let data = std::fs::read(&args.input)
-                .map_err(|e| format!("Failed to read file: {e}"))?;
+            let data =
+                std::fs::read(&args.input).map_err(|e| format!("Failed to read file: {e}"))?;
 
             let tensors = SafeTensors::deserialize(&data)
                 .map_err(|e| format!("Failed to parse SafeTensors: {e}"))?;
 
-            let tensor_names: Vec<String> = tensors.names().iter().map(|s| s.to_string()).collect();
+            let tensor_names: Vec<String> =
+                tensors.names().iter().map(|s| (*s).to_string()).collect();
             let mut total_params: u64 = 0;
 
             for name in &tensor_names {
@@ -1372,7 +1368,11 @@ fn run_inspect(args: InspectArgs, level: LogLevel) -> Result<(), String> {
                 LogLevel::Normal,
                 &format!("  File size: {:.2} MB", metadata.len() as f64 / 1_000_000.0),
             );
-            log(level, LogLevel::Normal, "  Format: GGUF (llama.cpp compatible)");
+            log(
+                level,
+                LogLevel::Normal,
+                "  Format: GGUF (llama.cpp compatible)",
+            );
             log(
                 level,
                 LogLevel::Normal,
@@ -1422,8 +1422,7 @@ fn run_inspect(args: InspectArgs, level: LogLevel) -> Result<(), String> {
         }
         _ => {
             return Err(format!(
-                "Unsupported file format: {}. Use .safetensors, .gguf, .parquet, or .csv",
-                ext
+                "Unsupported file format: {ext}. Use .safetensors, .gguf, .parquet, or .csv"
             ));
         }
     }
@@ -1474,27 +1473,26 @@ fn run_audit(args: AuditArgs, level: LogLevel) -> Result<(), String> {
             let group_a_positive_rate = 0.72f64;
             let group_b_positive_rate = 0.78f64;
 
-            let demographic_parity = (group_a_positive_rate / group_b_positive_rate).min(
-                group_b_positive_rate / group_a_positive_rate,
-            );
+            let demographic_parity = (group_a_positive_rate / group_b_positive_rate)
+                .min(group_b_positive_rate / group_a_positive_rate);
 
             // Equalized odds: TPR and FPR should be similar across groups
             let group_a_tpr = 0.85f64;
             let group_b_tpr = 0.82f64;
             let equalized_odds = 1.0 - (group_a_tpr - group_b_tpr).abs();
 
-            let pass = demographic_parity >= args.threshold as f64;
+            let pass = demographic_parity >= f64::from(args.threshold);
 
             log(level, LogLevel::Normal, "Bias Audit Results:");
             log(
                 level,
                 LogLevel::Normal,
-                &format!("  Demographic parity ratio: {:.3}", demographic_parity),
+                &format!("  Demographic parity ratio: {demographic_parity:.3}"),
             );
             log(
                 level,
                 LogLevel::Normal,
-                &format!("  Equalized odds: {:.3}", equalized_odds),
+                &format!("  Equalized odds: {equalized_odds:.3}"),
             );
             log(
                 level,
@@ -1525,13 +1523,13 @@ fn run_audit(args: AuditArgs, level: LogLevel) -> Result<(), String> {
         AuditType::Fairness => {
             // Calculate calibration error
             let calibration_error = 0.05f64; // Mean absolute error between predicted and actual
-            let pass = calibration_error <= (1.0 - args.threshold as f64);
+            let pass = calibration_error <= (1.0 - f64::from(args.threshold));
 
             log(level, LogLevel::Normal, "Fairness Audit Results:");
             log(
                 level,
                 LogLevel::Normal,
-                &format!("  Calibration error: {:.3}", calibration_error),
+                &format!("  Calibration error: {calibration_error:.3}"),
             );
             log(
                 level,
@@ -1551,7 +1549,11 @@ fn run_audit(args: AuditArgs, level: LogLevel) -> Result<(), String> {
         AuditType::Security => {
             // Check for security issues
             log(level, LogLevel::Normal, "Security Audit Results:");
-            log(level, LogLevel::Normal, "  Pickle deserialization: Safe (SafeTensors)");
+            log(
+                level,
+                LogLevel::Normal,
+                "  Pickle deserialization: Safe (SafeTensors)",
+            );
             log(level, LogLevel::Normal, "  Code execution vectors: None");
             log(level, LogLevel::Normal, "  Status: PASS");
         }
@@ -1605,7 +1607,7 @@ fn run_monitor(args: MonitorArgs, level: LogLevel) -> Result<(), String> {
     }
     psi = psi.abs();
 
-    let threshold = args.threshold as f64;
+    let threshold = f64::from(args.threshold);
 
     // Determine drift status
     let (status, severity) = if psi < 0.1 {
@@ -1619,14 +1621,14 @@ fn run_monitor(args: MonitorArgs, level: LogLevel) -> Result<(), String> {
     let pass = psi < threshold;
 
     log(level, LogLevel::Normal, "Drift Monitoring Results:");
-    log(level, LogLevel::Normal, &format!("  PSI score: {:.4}", psi));
+    log(level, LogLevel::Normal, &format!("  PSI score: {psi:.4}"));
     log(
         level,
         LogLevel::Normal,
         &format!("  Threshold: {:.4}", args.threshold),
     );
-    log(level, LogLevel::Normal, &format!("  Severity: {}", severity));
-    log(level, LogLevel::Normal, &format!("  Status: {}", status));
+    log(level, LogLevel::Normal, &format!("  Severity: {severity}"));
+    log(level, LogLevel::Normal, &format!("  Status: {status}"));
 
     if args.format == OutputFormat::Json {
         let result = serde_json::json!({
