@@ -24,8 +24,8 @@ Add Entrenar to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-entrenar = "0.1"
-ndarray = "0.15"  # Required for tensor operations
+entrenar = "0.2"
+ndarray = "0.16"  # Required for tensor operations
 ```
 
 Then run:
@@ -93,7 +93,7 @@ Entrenar supports optional features via Cargo feature flags:
 
 ```toml
 [dependencies]
-entrenar = { version = "0.1", features = ["simd", "quantization"] }
+entrenar = { version = "0.2", features = ["simd", "quantization"] }
 ```
 
 Available features:

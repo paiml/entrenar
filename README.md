@@ -279,8 +279,8 @@ entrenar/
 | Library | Purpose | Version |
 |---------|---------|---------|
 | [trueno](https://crates.io/crates/trueno) | SIMD tensor operations | 0.7.3 |
-| **entrenar** | Training & optimization | 0.2.0 |
-| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.12.0 |
+| **entrenar** | Training & optimization | 0.2.3 |
+| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.14.0 |
 | [realizar](https://crates.io/crates/realizar) | GGUF inference | 0.2.1 |
 
 ## Documentation

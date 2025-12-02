@@ -5,6 +5,19 @@ All notable changes to Entrenar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2025-12-02
+
+### Fixed
+
+#### Dependency Resolution
+- **Arrow conflict resolved** - Updated renacer and aprender to fix arrow version conflicts
+- **Switched to crates.io** - All PAIML stack dependencies now use published versions (no path/git deps)
+
+### Changed
+- Updated `aprender` from 0.12.0 to 0.14.0
+- Updated `renacer` from 0.6.x to 0.7.0
+- Test count: 2155 passing
+
 ## [0.2.2] - 2025-11-29
 
 ### Added
