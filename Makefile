@@ -5,8 +5,11 @@
 .SUFFIXES:
 
 .PHONY: help test test-fast test-quick test-full coverage coverage-fast coverage-full coverage-open coverage-clean \
-	mutants mutants-quick clean build release lint format check fmt fmt-check \
-	tier1 tier2 tier3 pmat-init pmat-update roadmap-status \
+	mutants mutants-quick mutants-fast mutants-file clean build release lint format check fmt fmt-check \
+	tier1 tier2 tier3 pmat-init pmat-update roadmap-status pmat-complexity pmat-tdg \
+	property-test property-test-fast \
+	examples examples-fast examples-list \
+	server server-dev \
 	llama-tests llama-properties llama-mutations llama-chaos llama-gradients llama-fuzz llama-examples llama-ci \
 	profile-llama profile-llama-otlp profile-llama-anomaly \
 	wasm-build wasm-install wasm-serve wasm-e2e wasm-e2e-ui wasm-e2e-headed wasm-e2e-update wasm-clean
@@ -219,6 +222,63 @@ mutants-quick: ## Run mutation testing (quick check on changed files only)
 	@echo ""
 	@echo "📊 Quick Mutation Testing Results:"
 	@cat target/mutants-quick.out/mutants.out 2>/dev/null || echo "Check target/mutants-quick.out/ for detailed results"
+
+mutants-fast: ## Run mutation testing on 1/4 shard (quick)
+	@echo "🧬 Running fast mutation testing (shard 1/4)..."
+	@which cargo-mutants > /dev/null 2>&1 || (echo "📦 Installing cargo-mutants..." && cargo install cargo-mutants --locked)
+	@cargo mutants --shard 1/4 --timeout 120 --output target/mutants-fast.out || echo "⚠️  Some mutants survived"
+
+mutants-file: ## Run mutation testing on specific file (FILE=src/foo.rs)
+	@test -n "$(FILE)" || (echo "Usage: make mutants-file FILE=src/foo.rs" && exit 1)
+	@echo "🧬 Running mutation testing on $(FILE)..."
+	@which cargo-mutants > /dev/null 2>&1 || (echo "📦 Installing cargo-mutants..." && cargo install cargo-mutants --locked)
+	@cargo mutants --file $(FILE) --timeout 120 --output target/mutants-file.out || echo "⚠️  Some mutants survived"
+
+# =============================================================================
+# Property Testing (proptest)
+# =============================================================================
+
+property-test: ## Run property-based tests (1000 cases)
+	@echo "📊 Running property-based tests (1000 cases)..."
+	PROPTEST_CASES=1000 cargo test --features proptest -- proptest
+
+property-test-fast: ## Run property-based tests (default cases)
+	@echo "📊 Running property-based tests..."
+	cargo test -- proptest
+
+# =============================================================================
+# Examples (MLOPS #22)
+# =============================================================================
+
+examples: ## Build and run all examples
+	@echo "🚀 Building all examples..."
+	@cargo build --examples --release
+	@echo ""
+	@echo "✅ Examples built. Available at target/release/examples/"
+	@ls -1 target/release/examples/ 2>/dev/null | grep -v '.d$$' || echo "No examples found"
+
+examples-fast: ## Build examples in debug mode (faster compile)
+	@echo "🚀 Building examples (debug)..."
+	@cargo build --examples
+	@echo ""
+	@echo "✅ Examples built. Available at target/debug/examples/"
+
+examples-list: ## List all available examples
+	@echo "📋 Available examples:"
+	@echo ""
+	@grep -h 'name = ' Cargo.toml | grep -A1 'example' | grep 'name' | sed 's/name = //g' | tr -d '"' | sed 's/^/  - /'
+
+# =============================================================================
+# Server (MLOPS #67)
+# =============================================================================
+
+server: ## Start the tracking server on port 5000
+	@echo "🚀 Starting tracking server..."
+	@cargo run --features server -- server --port 5000
+
+server-dev: ## Start the tracking server in development mode
+	@echo "🚀 Starting development server..."
+	@RUST_LOG=debug cargo run --features server -- server --port 5000
 
 # =============================================================================
 # PMAT Integration (Toyota Way Quality)

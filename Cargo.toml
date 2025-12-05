@@ -88,6 +88,7 @@ gguf = []  # Placeholder for future GGUF support via Realizar
 monitor = ["trueno-db"]  # Training monitoring with persistence
 wasm = ["wasm-bindgen", "getrandom", "js-sys"]  # WASM bindings for browser dashboard
 citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG-based fix suggestions
+server = ["axum", "tower", "tower-http", "tokio"]  # REST/HTTP API server
 tracing = ["renacer"]  # Renacer distributed tracing integration
 ruchy-sessions = []  # Ruchy session bridge for preserving training history
 gpu = ["trueno/gpu", "tokio"]  # GPU-accelerated training via wgpu
@@ -115,8 +116,11 @@ clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"  # Shell completion generation
 dirs = "5.0"  # Cache directory resolution for HF pipeline
 trueno-rag = { version = "0.1.2", optional = true }  # RAG pipeline for CITL
-tokio = { version = "1.41", features = ["rt", "macros"], optional = true }  # Async runtime for RAG and GPU
+tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros", "net"], optional = true }  # Async runtime
 uuid = { version = "1.11", features = ["v4", "serde"], optional = true }  # UUIDs for CITL patterns
+axum = { version = "0.8", optional = true }  # HTTP server for REST API
+tower = { version = "0.5", optional = true }  # Tower service utilities
+tower-http = { version = "0.6", features = ["trace", "cors"], optional = true }  # HTTP middleware
 safetensors = "0.7"  # SafeTensors format parsing
 sha2 = "0.10"  # SHA256 hashing for artifact CAS
 hex = "0.4"  # Hex encoding for hashes

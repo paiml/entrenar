@@ -21,11 +21,30 @@
 //! storage.complete_run(&run_id, RunStatus::Success).unwrap();
 //! ```
 
+pub mod cloud;
 pub mod memory;
+pub mod preflight;
+pub mod registry;
+pub mod sqlite;
 #[cfg(feature = "monitor")]
 pub mod trueno;
 
+pub use cloud::{
+    ArtifactBackend, ArtifactMetadata, AzureConfig, BackendConfig, CloudError, GCSConfig,
+    InMemoryBackend, LocalBackend, MockS3Backend, S3Config,
+};
 pub use memory::InMemoryStorage;
+pub use preflight::{
+    CheckMetadata, CheckResult, CheckType, Preflight, PreflightCheck, PreflightContext,
+    PreflightError, PreflightResults,
+};
+pub use registry::{
+    Comparison, InMemoryRegistry, MetricRequirement, ModelRegistry, ModelStage, ModelVersion,
+    PolicyCheckResult, PromotionPolicy, RegistryError, StageTransition, VersionComparison,
+};
+pub use sqlite::{
+    ArtifactRef, Experiment, FilterOp, ParamFilter, ParameterValue, Run, SqliteBackend,
+};
 #[cfg(feature = "monitor")]
 pub use trueno::TruenoBackend;
 

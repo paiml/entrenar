@@ -34,7 +34,10 @@ pub mod andon;
 pub mod dashboard;
 pub mod drift;
 pub mod export;
+pub mod gpu;
 pub mod lineage;
+pub mod llm;
+pub mod prometheus;
 pub mod report;
 pub mod storage;
 pub mod wasm;
@@ -45,6 +48,9 @@ pub use dashboard::{Dashboard, DashboardConfig};
 pub use drift::{Anomaly, AnomalySeverity, DriftDetector, DriftStatus, SlidingWindowBaseline};
 pub use export::{ExportFormat, MetricsExporter};
 pub use lineage::{ChangeType, Derivation, ModelLineage, ModelMetadata};
+pub use llm::{
+    EvalResult, InMemoryLLMEvaluator, LLMError, LLMEvaluator, LLMMetrics, PromptId, PromptVersion,
+};
 pub use report::{
     HanseiAnalyzer, IssueSeverity, MetricSummary, PostTrainingReport, TrainingIssue, Trend,
 };
