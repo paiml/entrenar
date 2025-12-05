@@ -42,8 +42,10 @@ pub mod quality;
 pub mod quant;
 pub mod research;
 pub mod run;
+pub mod server;
 pub mod sovereign;
 pub mod storage;
+pub mod tokenizer;
 pub mod train;
 pub mod yaml_mode;
 

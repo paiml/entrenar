@@ -132,6 +132,19 @@
 - [Realizar GGUF Export](./ecosystem/realizar.md)
 - [Ruchy Session Bridge](./ecosystem/ruchy.md)
 
+# MLOps (Toyota Way)
+
+- [Overview](./mlops/overview.md)
+- [Experiment Tracking](./mlops/experiment-tracking.md)
+- [Preflight Validation (Jidoka)](./mlops/preflight.md)
+- [Model Registry (Kanban)](./mlops/model-registry.md)
+- [Hyperparameter Optimization (Kaizen)](./mlops/hpo.md)
+- [Differential Privacy](./mlops/differential-privacy.md)
+- [GPU Monitoring (Andon)](./mlops/gpu-monitoring.md)
+- [REST API Server](./mlops/rest-api.md)
+- [Cloud Storage](./mlops/cloud-storage.md)
+- [LLM Evaluation](./mlops/llm-evaluation.md)
+
 # Model I/O
 
 - [Overview](./io/overview.md)
