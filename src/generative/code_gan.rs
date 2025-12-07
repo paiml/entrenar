@@ -83,14 +83,20 @@ impl LatentCode {
     pub fn slerp(&self, other: &Self, t: f32) -> Self {
         assert_eq!(self.dim(), other.dim(), "Latent dimensions must match");
 
+        let norm_self: f32 = self.vector.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_other: f32 = other.vector.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+        // Fall back to lerp if either vector has near-zero norm
+        if norm_self < 1e-10 || norm_other < 1e-10 {
+            return self.lerp(other, t);
+        }
+
         let dot: f32 = self
             .vector
             .iter()
             .zip(&other.vector)
             .map(|(a, b)| a * b)
             .sum();
-        let norm_self: f32 = self.vector.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_other: f32 = other.vector.iter().map(|x| x * x).sum::<f32>().sqrt();
 
         let cos_omega = (dot / (norm_self * norm_other)).clamp(-1.0, 1.0);
         let omega = cos_omega.acos();
