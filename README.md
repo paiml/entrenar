@@ -12,7 +12,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.83+-orange.svg)](https://www.rust-lang.org)
 
-[Getting Started](#getting-started) | [Features](#features) | [Examples](#examples) | [Documentation](https://docs.rs/entrenar)
+## Table of Contents
+
+- [What is Entrenar?](#what-is-entrenar)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [Features](#features)
+- [Usages](#usages)
+- [Architecture](#architecture)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
 
 </div>
 
