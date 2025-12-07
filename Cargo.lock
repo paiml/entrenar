@@ -199,7 +199,25 @@ dependencies = [
  "rmp-serde",
  "serde",
  "serde_json",
- "trueno",
+ "trueno 0.7.3",
+]
+
+[[package]]
+name = "aprender"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "918c5660d9274eafc97ebd08befa3506964e8641985a90fe4c217a692bca27d4"
+dependencies = [
+ "bincode",
+ "getrandom 0.2.16",
+ "memmap2",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rayon",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "trueno 0.8.0",
 ]
 
 [[package]]
@@ -1164,6 +1182,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "deflate64"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1331,11 +1363,11 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "alimentar",
  "approx",
- "aprender",
+ "aprender 0.15.0",
  "arrow",
  "axum",
  "bytemuck",
@@ -1366,7 +1398,7 @@ dependencies = [
  "toml",
  "tower",
  "tower-http",
- "trueno",
+ "trueno 0.8.0",
  "trueno-db",
  "trueno-rag",
  "trueno-viz",
@@ -1894,6 +1926,12 @@ dependencies = [
  "num-traits",
  "zerocopy",
 ]
+
+[[package]]
+name = "hashbrown"
+version = "0.14.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 
 [[package]]
 name = "hashbrown"
@@ -2646,7 +2684,7 @@ dependencies = [
  "log",
  "num-traits",
  "once_cell",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "spirv",
  "thiserror 2.0.17",
  "unicode-ident",
@@ -3567,7 +3605,7 @@ checksum = "5a5e1d030bd7105468f4b9c221dcb76e7ad4e0146f84f70ebc25d3b2e275f0bc"
 dependencies = [
  "addr2line",
  "anyhow",
- "aprender",
+ "aprender 0.14.0",
  "backtrace",
  "clap",
  "crossbeam",
@@ -3592,7 +3630,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "trueno",
+ "trueno 0.7.3",
  "trueno-db",
  "trueno-graph",
 ]
@@ -3694,6 +3732,12 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustc_version"
@@ -4621,6 +4665,15 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d3f0cf1833fe66955de385abe9a4ba017081f3dbce131476b65093b263e5062"
 dependencies = [
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "trueno"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f127ae5346273b160eb01480022bd70a46207ed9ff54b534b78c27977390dc52"
+dependencies = [
  "bytemuck",
  "futures-intrusive",
  "pollster",
@@ -4630,17 +4683,19 @@ dependencies = [
 
 [[package]]
 name = "trueno-db"
-version = "0.3.4"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "072f77c3c03d7c75728ee4931fa15f0e3d2eac7944d569fdbdc5d914dd2bb8f7"
+checksum = "04046d789d36d77551361001cd409ac64785f50539290f0a4c42e6104a3368d8"
 dependencies = [
  "anyhow",
  "arrow",
  "chrono",
  "console_error_panic_hook",
+ "dashmap",
  "js-sys",
  "parquet",
  "rayon",
+ "rustc-hash 2.1.1",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -4649,7 +4704,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "trueno",
+ "trueno 0.8.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4662,12 +4717,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f94d040235744a91e756fc23f16dcc0ead90cbd6effe0f3d2144cc95e0c27d32"
 dependencies = [
  "anyhow",
- "aprender",
+ "aprender 0.14.0",
  "arrow",
  "parquet",
  "thiserror 1.0.69",
  "tokio",
- "trueno",
+ "trueno 0.7.3",
  "trueno-db",
 ]
 
@@ -4682,7 +4737,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
- "trueno",
+ "trueno 0.7.3",
  "trueno-db",
  "uuid",
 ]
@@ -4696,7 +4751,7 @@ dependencies = [
  "base64",
  "png",
  "thiserror 1.0.69",
- "trueno",
+ "trueno 0.7.3",
 ]
 
 [[package]]
@@ -5052,7 +5107,7 @@ dependencies = [
  "portable-atomic",
  "profiling",
  "raw-window-handle",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "smallvec",
  "thiserror 2.0.17",
  "wgpu-core-deps-apple",
