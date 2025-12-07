@@ -1,0 +1,61 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.32s
+     Running `target/debug/examples/explainability --method integrated-gradients`
+=== Explainability Callback Example ===
+
+Model: y = 3.0*x0 + 1.0*x1 + 0.5*x2
+Expected: feature_0 should be most important
+
+Configuration:
+  Method: PermutationImportance
+  Top-K: 3
+  Eval samples: 50
+
+Validation data:
+  Sample 0: x=[1.0, 2.0, 3.0], y=6.5
+  Sample 1: x=[2.0, 1.0, 4.0], y=9.0
+  Sample 2: x=[3.0, 3.0, 1.0], y=12.5
+  Sample 3: x=[4.0, 2.0, 2.0], y=15.0
+  Sample 4: x=[1.5, 4.0, 3.0], y=10.0
+
+Simulating 3 training epochs...
+
+Epoch 0:
+  feature_0: 17.100000
+  feature_1: 2.800000
+  feature_2: 0.600000
+
+Epoch 1:
+  feature_0: 17.100000
+  feature_1: 2.800000
+  feature_2: 0.600000
+
+Epoch 2:
+  feature_0: 17.100000
+  feature_1: 2.800000
+  feature_2: 0.600000
+
+Consistently important features:
+  feature_0: avg_score=17.100000
+  feature_1: avg_score=2.800000
+  feature_2: avg_score=0.600000
+
+--- Integrated Gradients Demo ---
+
+Sample: [2.0, 1.0, 3.0]
+Baseline: [0.0, 0.0, 0.0]
+Prediction: 8.50
+
+Integrated Gradients attributions:
+  feature_0: 6.0003 (expected: 6.0000)
+  feature_1: 1.0001 (expected: 1.0000)
+  feature_2: 1.4998 (expected: 1.5000)
+
+--- Saliency Map Demo ---
+
+Saliency (gradients) for sample [2.0, 1.0, 3.0]:
+  feature_0: 2.9945 (expected: 3.0000)
+  feature_1: 1.0014 (expected: 1.0000)
+  feature_2: 0.4959 (expected: 0.5000)
+
+=== Example Complete ===

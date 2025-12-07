@@ -1,0 +1,22 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running tests/integrity_test.rs (target/debug/deps/integrity_test-a7bb9c9e52e71704)
+
+running 15 tests
+test test_behavioral_integrity_composite_score_calculation ... ok
+test test_behavioral_integrity_fails_with_high_timing_variance ... ok
+test test_behavioral_integrity_violation_analysis ... ok
+test test_behavioral_integrity_promotion_workflow ... ok
+test test_causal_lineage_full_experiment_lifecycle ... ok
+test test_behavioral_integrity_fails_with_critical_violation ... ok
+test test_integrity_with_lineage_tracking ... ok
+test test_lamport_timestamp_distributed_scenario ... ok
+test test_lineage_event_context_propagation ... ok
+test test_serialization_roundtrip_all_types ... ok
+test test_trace_storage_compression_estimates ... ok
+test test_trace_storage_limit_checking ... ok
+test test_trace_storage_policy_presets_comparison ... ok
+test test_storage_policy_with_lineage_events ... ok
+test test_trace_storage_sampling_consistency ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

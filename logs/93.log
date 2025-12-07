@@ -1,0 +1,5 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.56s
+     Running tests/integrity_test.rs (target/debug/deps/integrity_test-a7bb9c9e52e71704)
+error: Unrecognized option: 'bitflip'
+error: test failed, to rerun pass `--test integrity_test`

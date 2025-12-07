@@ -1,0 +1,215 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.47s
+     Running `target/debug/examples/hf_distillation --offline`
+=== HuggingFace Distillation Pipeline ===
+
+1. MEMORY ESTIMATION
+
+Estimate memory requirements before loading models
+
+Llama-2-7B (batch=1, seq=2048):
+  FP32: 28.0 GB total
+  FP16: 14.0 GB total
+  INT4: 3.5 GB total
+  Fits in 16GB VRAM (FP16): true
+
+CodeBERT-base (125M params):
+  FP32: 0.51 GB
+  FP16: 0.26 GB
+
+2. MODEL FETCHING
+
+Fetch models from HuggingFace Hub (mock example)
+
+Fetcher created:
+  Authenticated: true
+
+Fetch options:
+  Format: SafeTensors (secure, no pickle)
+  Revision: main
+
+Weight format detection:
+  'model.safetensors' -> Some(SafeTensors)
+  'model.bin' -> Some(PyTorchBin)
+  'model.gguf' -> Some(GGUF { quant_type: "unknown" })
+
+Format safety:
+  SafeTensors: safe = true
+  PyTorchBin: safe = false
+
+Architecture examples:
+  BERT: BERT { num_layers: 12, hidden_size: 768, num_attention_heads: 12 }
+  Llama: Llama { num_layers: 32, hidden_size: 4096, num_attention_heads: 32, intermediate_size: 11008 }
+
+3. DISTILLATION LOSS
+
+Temperature-scaled knowledge distillation (Hinton et al. 2015)
+
+Configuration:
+  Temperature: 4.0 (softens probability distributions)
+  Alpha: 0.7 (70% soft targets, 30% hard targets)
+
+Distillation loss: 1.2911
+
+Temperature effect on loss:
+  T=1 -> loss=0.0187
+  T=2 -> loss=0.3158
+  T=4 -> loss=1.2911
+  T=8 -> loss=1.8734
+
+Alpha (soft target weight) effect:
+  alpha=0.0 -> loss=0.0196
+  alpha=0.3 -> loss=0.5645
+  alpha=0.5 -> loss=0.9278
+  alpha=0.7 -> loss=1.2911
+  alpha=1.0 -> loss=1.8360
+
+4. PROGRESSIVE DISTILLATION
+
+Progressive layer-wise distillation (Sun et al. 2019)
+
+Layer mapping:
+  Student 0 -> Teacher 3
+  Student 1 -> Teacher 7
+  Student 2 -> Teacher 11
+
+Hidden state matching loss: 0.1000
+
+Attention Transfer (Zagoruyko & Komodakis 2017):
+  Weight: 0.1
+  Transfers attention patterns from teacher to student
+  Attention loss: 0.0037
+
+5. TRAINER CONFIGURATION
+
+Configure the distillation trainer
+
+TrainerConfig:
+  Teacher: meta-llama/Llama-2-7b
+  Student: TinyLlama/TinyLlama-1.1B
+  Temperature: 4
+  Alpha: 0.7
+  Epochs: 10
+  Progressive: true
+  Attention transfer: true
+
+Note: DistillationTrainer requires a TeacherModel implementation.
+Use SafeTensorsTeacher::load(path) to load a real model.
+
+6. FINE-TUNING METHODS
+
+Compare fine-tuning methods: Full vs LoRA vs QLoRA
+
+Full Fine-tuning:
+  Trainable params: 100%
+  Memory: 112.1 GB
+
+LoRA (rank=64):
+  Trainable params: ~0.1%
+  Memory: 14.9 GB
+  Savings: 87%
+
+QLoRA (4-bit + LoRA):
+  Base model: 4-bit quantized (frozen)
+  Adapters: FP16/BF16 (trainable)
+  Memory: 4.5 GB
+  Savings: 96%
+
+Memory Comparison (7B model):
+  Full:  112.1 GB (baseline)
+  LoRA:  14.9 GB (7.5x reduction)
+  QLoRA: 4.5 GB (24.9x reduction)
+
+7. DATASET & COLLATION
+
+Load and process datasets for distillation
+
+Dataset:
+  Examples: 100
+
+Collator:
+  Pad token ID: 0
+  Max length: 128
+  Padding: right (pad_left=false)
+
+Batch:
+  Size: 8
+  Max sequence length: 64
+
+Teacher Cache:
+  Cached: 50 examples
+  Get cached: true
+
+8. YAML CONFIGURATION
+
+Configure distillation via YAML
+
+Example YAML configuration:
+
+teacher:
+  model_id: "meta-llama/Llama-2-7b"
+  format: safetensors
+
+student:
+  model_id: "TinyLlama/TinyLlama-1.1B"
+  lora:
+    rank: 64
+    alpha: 16
+    target_modules: [q_proj, k_proj, v_proj, o_proj]
+
+distillation:
+  temperature: 4.0
+  alpha: 0.7
+  progressive:
+    enabled: true
+    layer_mapping: [[0, 3], [1, 7], [2, 11]]
+    weight: 0.3
+
+training:
+  epochs: 10
+  batch_size: 32
+  learning_rate: 0.0001
+
+dataset:
+  name: wikitext
+  path: ./data/wikitext
+  split: train
+  max_length: 512
+
+output:
+  dir: ./distilled-model
+
+Configuration valid!
+
+Parsed configuration:
+  Teacher: meta-llama/Llama-2-7b
+  Student: TinyLlama/TinyLlama-1.1B
+  Temperature: 4
+
+9. MODEL EXPORT
+
+Export trained models in safe formats
+
+Model weights:
+  Tensors: ["model.lm_head", "model.embed_tokens"]
+  Total params: 2000
+
+Export formats:
+  SafeTensors:
+    Extension: safetensors
+    Safe: true
+  APR:
+    Extension: apr.json
+    Safe: true
+  GGUF:
+    Extension: gguf
+    Safe: true
+
+Exporter configured:
+  Output dir: ./output
+  Format: SafeTensors
+  Include metadata: true
+
+(Export would create: ./output/model.safetensors)
+
+=== Examples Complete ===

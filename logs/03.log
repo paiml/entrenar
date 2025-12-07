@@ -1,0 +1,34 @@
+Entrenar: Training from examples/yaml_fixed/csv_data.yaml
+✓ Config loaded and validated
+  Model: model.gguf
+  Optimizer: adam (lr=0.001)
+  Batch size: 32
+  Epochs: 10
+
+Building model and optimizer...
+✓ Trainer initialized
+
+Creating training batches...
+✓ 2 batches created
+
+Starting training...
+
+Epoch 1/10: loss=1.000000
+Epoch 2/10: loss=1.000000
+Epoch 3/10: loss=1.000000
+Epoch 4/10: loss=1.000000
+Epoch 5/10: loss=1.000000
+Epoch 6/10: loss=1.000000
+Epoch 7/10: loss=1.000000
+Epoch 8/10: loss=1.000000
+Epoch 9/10: loss=1.000000
+Epoch 10/10: loss=1.000000
+
+✓ Training complete
+  Final loss: 1.000000
+  Best loss: 1.000000
+
+Saving model to ./checkpoints/final_model.json...
+✓ Model saved successfully
+
+Training complete!

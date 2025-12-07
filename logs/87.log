@@ -1,0 +1,97 @@
+   Compiling half v2.7.1
+   Compiling parking_lot_core v0.9.12
+   Compiling chrono v0.4.42
+   Compiling bytemuck v1.24.0
+   Compiling bit-vec v0.8.0
+   Compiling codespan-reporting v0.12.0
+   Compiling khronos-egl v6.0.0
+   Compiling ordered-float v5.1.0
+   Compiling parking_lot v0.12.5
+   Compiling bit-set v0.8.0
+   Compiling wgpu-types v27.0.1
+   Compiling icu_normalizer v2.1.1
+   Compiling arrow-buffer v54.3.1
+   Compiling arrow-buffer v53.4.1
+   Compiling safe_arch v0.7.4
+   Compiling naga v27.0.3
+   Compiling tokio v1.48.0
+   Compiling futures-intrusive v0.5.0
+   Compiling arrow-data v54.3.1
+   Compiling arrow-data v53.4.1
+   Compiling idna_adapter v1.2.1
+   Compiling wide v0.7.33
+   Compiling tracing-subscriber v0.3.22
+   Compiling idna v1.1.0
+   Compiling arrow-array v54.3.1
+   Compiling rmp-serde v1.3.0
+   Compiling url v2.5.7
+   Compiling arrow-array v53.4.0
+   Compiling gimli v0.32.3
+   Compiling clap v4.5.53
+   Compiling simba v0.9.1
+   Compiling object v0.37.3
+   Compiling rustls-webpki v0.103.8
+   Compiling cpp_demangle v0.4.5
+   Compiling arrow-select v53.4.0
+   Compiling arrow-select v54.3.1
+   Compiling tokio-util v0.7.17
+   Compiling tokio-native-tls v0.3.1
+   Compiling tokio-stream v0.1.17
+   Compiling arrow-ipc v54.3.1
+   Compiling h2 v0.4.12
+   Compiling tower v0.5.2
+   Compiling arrow-arith v54.3.1
+   Compiling arrow-cast v53.4.0
+   Compiling arrow-cast v54.3.1
+   Compiling arrow-ord v54.3.1
+   Compiling nalgebra v0.33.2
+   Compiling tower-http v0.6.7
+   Compiling arrow-string v54.3.1
+   Compiling arrow-ord v53.4.0
+   Compiling hyper v1.8.1
+   Compiling arrow-string v53.4.0
+   Compiling arrow-ipc v53.4.0
+   Compiling arrow-csv v54.3.1
+   Compiling arrow-json v54.3.1
+   Compiling hyper-util v0.1.18
+   Compiling wgpu-hal v27.0.4
+   Compiling arrow-json v53.4.0
+   Compiling arrow-csv v53.4.0
+   Compiling arrow-row v54.3.1
+   Compiling arrow-row v53.4.0
+   Compiling arrow-arith v53.4.0
+   Compiling arrow v54.3.1
+   Compiling parquet v53.4.0
+   Compiling parquet v54.3.1
+   Compiling hyper-timeout v0.5.2
+   Compiling hyper-tls v0.6.0
+error[E0034]: multiple applicable items in scope
+   --> /home/noah/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arrow-arith-53.4.0/src/temporal.rs:91:36
+    |
+ 91 |         DatePart::Quarter => |d| d.quarter() as i32,
+    |                                    ^^^^^^^ multiple `quarter` found
+    |
+note: candidate #1 is defined in the trait `ChronoDateExt`
+   --> /home/noah/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arrow-arith-53.4.0/src/temporal.rs:637:5
+    |
+637 |     fn quarter(&self) -> u32;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+note: candidate #2 is defined in the trait `Datelike`
+   --> /home/noah/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.42/src/traits.rs:47:5
+    |
+ 47 |     fn quarter(&self) -> u32 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+help: disambiguate the method for candidate #1
+    |
+ 91 -         DatePart::Quarter => |d| d.quarter() as i32,
+ 91 +         DatePart::Quarter => |d| ChronoDateExt::quarter(&d) as i32,
+    |
+help: disambiguate the method for candidate #2
+    |
+ 91 -         DatePart::Quarter => |d| d.quarter() as i32,
+ 91 +         DatePart::Quarter => |d| Datelike::quarter(&d) as i32,
+    |
+
+For more information about this error, try `rustc --explain E0034`.
+error: could not compile `arrow-arith` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

@@ -1,0 +1,46 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.47s
+     Running `target/debug/examples/model_io --mock-disk-full`
+=== Model I/O Example ===
+
+Creating model...
+  Model name: example-model
+  Architecture: simple-mlp
+  Parameters: 4
+
+Saving model to JSON...
+  ✓ Saved to example_model.json
+
+Saving model to YAML...
+  ✓ Saved to example_model.yaml
+
+Loading model from JSON...
+  ✓ Loaded model: example-model
+  ✓ Parameters: 4
+  ✓ Data integrity check: true
+
+Loading model from YAML...
+  ✓ Loaded model: example-model
+  ✓ Parameters: 4
+
+Model Metadata:
+  Name: example-model
+  Architecture: simple-mlp
+  Version: 0.1.0
+
+Custom Metadata:
+  input_dim: 4
+  hidden_dim: 2
+  activation: "relu"
+  output_dim: 1
+
+Parameters:
+  layer1.weight (size=4, requires_grad=true)
+  layer1.bias (size=2, requires_grad=true)
+  layer2.weight (size=2, requires_grad=true)
+  layer2.bias (size=1, requires_grad=false)
+
+Cleaning up...
+  ✓ Removed temporary files
+
+=== Example Complete ===

@@ -1,0 +1,97 @@
+   Compiling ahash v0.8.12
+   Compiling parking_lot_core v0.9.12
+   Compiling signal-hook-registry v1.4.7
+   Compiling stable_deref_trait v1.2.1
+   Compiling zstd-sys v2.0.13+zstd.1.5.6
+   Compiling twox-hash v2.1.2
+   Compiling openssl v0.10.75
+   Compiling rand_chacha v0.3.1
+   Compiling yoke v0.8.1
+   Compiling rand_chacha v0.9.0
+   Compiling parking_lot v0.12.5
+   Compiling arrow-array v53.4.0
+   Compiling arrow-array v54.3.1
+   Compiling either v1.15.0
+   Compiling zerovec v0.11.5
+   Compiling zerotrie v0.2.3
+   Compiling tokio v1.48.0
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling alloc-stdlib v0.2.2
+   Compiling itertools v0.10.5
+   Compiling tinystr v0.8.2
+   Compiling potential_utf v0.1.4
+   Compiling icu_locale_core v2.1.1
+   Compiling icu_collections v2.1.1
+   Compiling rand v0.9.2
+   Compiling rand v0.8.5
+   Compiling icu_provider v2.1.1
+   Compiling anyhow v1.0.100
+   Compiling icu_normalizer v2.1.1
+   Compiling arrow-select v53.4.0
+   Compiling icu_properties v2.1.1
+   Compiling arrow-select v54.3.1
+   Compiling futures-executor v0.3.31
+   Compiling native-tls v0.2.14
+   Compiling pin-project-internal v1.1.10
+   Compiling prost-derive v0.14.1
+   Compiling brotli-decompressor v4.0.3
+   Compiling pin-project v1.1.10
+   Compiling ruzstd v0.8.2
+   Compiling lz4_flex v0.11.5
+   Compiling idna_adapter v1.2.1
+   Compiling idna v1.1.0
+   Compiling opentelemetry v0.31.0
+   Compiling object v0.37.3
+   Compiling arrow-cast v53.4.0
+   Compiling cpp_demangle v0.4.5
+   Compiling url v2.5.7
+   Compiling arrow-cast v54.3.1
+   Compiling clap_builder v4.5.53
+   Compiling arrow-ord v53.4.0
+   Compiling tokio-util v0.7.17
+   Compiling tokio-native-tls v0.3.1
+   Compiling tokio-stream v0.1.17
+   Compiling arrow-string v53.4.0
+   Compiling h2 v0.4.12
+   Compiling tower v0.5.2
+   Compiling zstd-safe v7.2.1
+   Compiling brotli v7.0.0
+   Compiling zstd v0.13.3
+   Compiling tower-http v0.6.7
+   Compiling prost v0.14.1
+   Compiling arrow-arith v53.4.0
+   Compiling arrow-ipc v53.4.0
+   Compiling arrow-csv v53.4.0
+   Compiling arrow-json v53.4.0
+   Compiling arrow-row v53.4.0
+   Compiling fallible-iterator v0.3.0
+error[E0034]: multiple applicable items in scope
+   --> /home/noah/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arrow-arith-53.4.0/src/temporal.rs:91:36
+    |
+ 91 |         DatePart::Quarter => |d| d.quarter() as i32,
+    |                                    ^^^^^^^ multiple `quarter` found
+    |
+note: candidate #1 is defined in the trait `ChronoDateExt`
+   --> /home/noah/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/arrow-arith-53.4.0/src/temporal.rs:637:5
+    |
+637 |     fn quarter(&self) -> u32;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+note: candidate #2 is defined in the trait `Datelike`
+   --> /home/noah/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.42/src/traits.rs:47:5
+    |
+ 47 |     fn quarter(&self) -> u32 {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+help: disambiguate the method for candidate #1
+    |
+ 91 -         DatePart::Quarter => |d| d.quarter() as i32,
+ 91 +         DatePart::Quarter => |d| ChronoDateExt::quarter(&d) as i32,
+    |
+help: disambiguate the method for candidate #2
+    |
+ 91 -         DatePart::Quarter => |d| d.quarter() as i32,
+ 91 +         DatePart::Quarter => |d| Datelike::quarter(&d) as i32,
+    |
+
+For more information about this error, try `rustc --explain E0034`.
+error: could not compile `arrow-arith` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

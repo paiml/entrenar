@@ -1,0 +1,8 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.42s
+     Running `target/debug/entrenar completion bash`
+error: unrecognized subcommand 'completion'
+
+Usage: entrenar [OPTIONS] <COMMAND>
+
+For more information, try '--help'.

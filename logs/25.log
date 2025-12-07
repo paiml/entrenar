@@ -1,0 +1,2 @@
+Entrenar: Training from examples/yaml_fixed/dropout.yaml
+Error: Config error: Configuration error: Invalid config: LoRA target modules cannot be empty

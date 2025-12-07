@@ -1,0 +1,138 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running `target/debug/examples/citl --trace-file execution.log`
+=== Compiler-in-the-Loop (CITL) Training Examples ===
+
+1. FIX PATTERN STORE
+
+DecisionPatternStore with hybrid BM25 + dense retrieval
+
+Configuration:
+  Chunk size: 256
+  Embedding dim: 384
+  RRF k: 60
+
+Indexing pattern for E0308: 2 decisions, success rate 67%
+
+Indexing pattern for E0308: 2 decisions, success rate 67%
+
+Indexing pattern for E0382: 2 decisions, success rate 67%
+
+Total patterns indexed: 3
+
+--- Querying for E0308 fixes ---
+Found 2 suggestions:
+  1. Score: 0.033, Weighted: 0.027
+     Error: E0308, Success rate: 67%
+     Decisions: ["type_inference", "type_mismatch_detected"]
+  2. Score: 0.033, Weighted: 0.027
+     Error: E0308, Success rate: 67%
+     Decisions: ["type_inference", "type_mismatch_detected"]
+
+--- JSON Export ---
+Exported 926 bytes of JSON
+Imported 3 patterns into new store
+
+2. DECISION TRACING & CORRELATION
+
+Tracking compiler decisions through compilation
+
+Decision chain:
+  parse_001 [parsing]: Parsed function signature
+    at main.rs:5:1-5:4294967295
+  type_001 [type_inference]: Inferred return type i32
+    at main.rs:5:1-5:4294967295
+    depends on: ["parse_001"]
+  type_002 [type_inference]: Checked argument types
+    at main.rs:6:1-8:20
+    depends on: ["type_001"]
+  borrow_001 [borrow_check]: Verified borrow rules
+    at main.rs:7:1-7:4294967295
+    depends on: ["type_002"]
+
+--- Span Analysis ---
+Error at: main.rs:7:1-7:4294967295
+  Overlapping decision: type_002 - type_inference
+  Overlapping decision: borrow_001 - borrow_check
+
+3. TARANTULA FAULT LOCALIZATION
+
+Statistical fault localization using Tarantula scoring
+
+Ingesting 8 failed sessions with type_inference...
+Ingesting 2 successful sessions with type_inference...
+Ingesting 10 successful sessions with borrow_check...
+
+Total sessions: 20 (12 success, 8 failure)
+
+--- Tarantula Suspiciousness Scores ---
+Formula: suspiciousness = fail_freq / (fail_freq + success_freq)
+
+  type_inference: 0.857 - HIGHLY SUSPICIOUS
+  borrow_check: 0.000 - Low suspicion
+
+Expected: type_inference should have high suspiciousness
+         (appears in 8/10 failures, only 2/12 successes)
+         borrow_check should have low suspiciousness
+         (appears in 0 failures, 10/12 successes)
+
+4. COMPLETE CITL WORKFLOW
+
+End-to-end CITL workflow for CI/CD integration
+
+Phase 1: Building history from CI/CD logs...
+  Ingested 5 builds (2 success, 3 failure)
+  Patterns indexed: 2
+
+Phase 2: New compilation error detected...
+  Error: E0308 at src/new_module.rs:25:1-25:4294967295
+
+Phase 3: Analysis results...
+
+  Suspicious decisions:
+    (none in overlapping span)
+
+  Fix suggestions:
+    1. [score=0.02] - let x: i32 = s;
+
+Phase 4: Global statistics...
+
+  Top suspicious decision types:
+    type_inference: 0.57
+    borrow_check: 0.50
+
+  Decisions by file:
+    src/utils.rs: 2 decisions
+    src/lib.rs: 2 decisions
+    src/main.rs: 1 decisions
+
+Phase 5: Exporting learned patterns...
+  Exported 2 patterns (507 bytes)
+  Ready for: artifact storage, cross-team sharing, etc.
+
+5. APR PERSISTENCE
+
+Binary persistence with .apr format (zstd compressed)
+
+Created store with 3 patterns
+
+--- Saving to APR ---
+  Path: /tmp/citl_example.apr
+  Size: 508 bytes
+
+--- Size Comparison ---
+  JSON: 821 bytes
+  APR:  508 bytes (62% of JSON)
+
+--- Loading from APR ---
+  Loaded 3 patterns
+  RAG index rebuilt: 1 suggestions for E0308
+
+--- Config Preserved ---
+  Chunk size: 256
+  Embedding dim: 384
+  RRF k: 60
+
+  Cleaned up temp file
+
+=== Examples Complete ===
+

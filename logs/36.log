@@ -1,0 +1,65 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.51s
+     Running `target/debug/examples/merge_models --method ties`
+=== Model Merging Examples ===
+
+
+Base Model
+  w: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+Fine-tuned Model 1
+  w: [1.0, 2.0, 3.0, -1.0, -2.0, 0.5]
+
+Fine-tuned Model 2
+  w: [2.0, -1.0, 3.0, 1.0, -1.0, 0.3]
+
+Fine-tuned Model 3
+  w: [1.5, 1.0, -2.0, 2.0, 1.0, -0.2]
+
+
+1. TIES MERGE
+   Algorithm: Trim top-k%, elect sign by majority vote, merge same-sign values
+
+TIES Merged Model (density=0.6)
+  w: [1.5, 1.5, 3.0, 1.5, -2.0, 0.0]
+   - Trimmed low-magnitude parameters
+   - Resolved conflicts via sign voting
+
+
+2. DARE MERGE
+   Algorithm: Randomly drop parameters, rescale remaining values
+
+DARE Merged Model (drop_prob=0.4, seed=42)
+  w: [1.111111, 1.111111, 1.6666666, 0.5555555, -1.1111112, 0.44444442]
+   - Stochastic parameter dropping
+   - Rescaled to maintain expected magnitude
+   - Deterministic (seeded for reproducibility)
+
+
+3. SLERP MERGE (Two models only)
+   Algorithm: Spherical interpolation along the shortest arc
+
+SLERP Merged Model (t=0.5)
+  w: [1.6893808, 0.5631269, 3.3787615, 0.0, -1.6893808, 0.45050156]
+   - Smooth spherical interpolation
+   - Constant angular velocity
+   - Better than linear blending for normalized weights
+
+
+4. SLERP AT DIFFERENT INTERPOLATION POINTS
+   t=0.00: [1.0, 2.0, 3.0, -1.0, -2.0, 0.5]
+   t=0.25: [1.3840377, 1.3190637, 3.2827063, -0.5146306, -1.8986683, 0.4891572]
+   t=0.50: [1.6893808, 0.5631269, 3.3787615, 0.0, -1.6893808, 0.45050156]
+   t=0.75: [1.8986683, -0.22482824, 3.2827063, 0.5146306, -1.3840377, 0.3862311]
+   t=1.00: [2.0, -1.0, 3.0, 1.0, -1.0, 0.3]
+
+
+5. ERROR HANDLING
+   Testing invalid density parameter...
+   ✓ Caught error: Invalid merge configuration: Density must be in [0.0, 1.0], got 1.5
+   Testing incompatible model shapes...
+   ✓ Caught error: Parameter w (model 0: 6, model 1: 2) has mismatched shapes
+
+
+=== Example Complete ===
+

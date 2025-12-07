@@ -1,0 +1,384 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+warning: fields `num_heads`, `max_seq_len`, and `rope_theta` are never read
+  --> examples/llama2/architecture.rs:20:9
+   |
+12 | pub struct LLaMAConfig {
+   |            ----------- fields in this struct
+...
+20 |     pub num_heads: usize,
+   |         ^^^^^^^^^
+...
+24 |     pub max_seq_len: usize,
+   |         ^^^^^^^^^^^
+25 |     /// RoPE theta parameter (default: 10000.0)
+26 |     pub rope_theta: f32,
+   |         ^^^^^^^^^^
+   |
+   = note: `LLaMAConfig` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `head_dim` is never used
+  --> examples/llama2/architecture.rs:57:12
+   |
+29 | impl LLaMAConfig {
+   | ---------------- method in this implementation
+...
+57 |     pub fn head_dim(&self) -> usize {
+   |            ^^^^^^^^
+
+warning: struct `LLaMALayer` is never constructed
+  --> examples/llama2/architecture.rs:63:12
+   |
+63 | pub struct LLaMALayer {
+   |            ^^^^^^^^^^
+
+warning: associated items `new`, `init_weight`, `forward`, `parameters`, and `zero_grad` are never used
+   --> examples/llama2/architecture.rs:81:12
+    |
+ 79 | impl LLaMALayer {
+    | --------------- associated items in this implementation
+ 80 |     /// Create a new LLaMA layer with random initialization
+ 81 |     pub fn new(config: &LLaMAConfig) -> Self {
+    |            ^^^
+...
+107 |     fn init_weight(size: usize, scale: f32) -> Tensor {
+    |        ^^^^^^^^^^^
+...
+129 |     pub fn forward(&self, x: &Tensor, _seq_len: usize, _batch_size: usize) -> Tensor {
+    |            ^^^^^^^
+...
+145 |     pub fn parameters(&mut self) -> Vec<&mut Tensor> {
+    |            ^^^^^^^^^^
+...
+158 |     pub fn zero_grad(&mut self) {
+    |            ^^^^^^^^^
+
+warning: struct `LLaMAModel` is never constructed
+   --> examples/llama2/architecture.rs:166:12
+    |
+166 | pub struct LLaMAModel {
+    |            ^^^^^^^^^^
+
+warning: associated items `new`, `forward`, `parameters`, `zero_grad`, and `count_parameters` are never used
+   --> examples/llama2/architecture.rs:179:12
+    |
+177 | impl LLaMAModel {
+    | --------------- associated items in this implementation
+178 |     /// Create a new LLaMA model
+179 |     pub fn new(config: LLaMAConfig) -> Self {
+    |            ^^^
+...
+203 |     pub fn forward(&self, _input_ids: &[u32], batch_size: usize) -> Tensor {
+    |            ^^^^^^^
+...
+221 |     pub fn parameters(&mut self) -> Vec<&mut Tensor> {
+    |            ^^^^^^^^^^
+...
+233 |     pub fn zero_grad(&mut self) {
+    |            ^^^^^^^^^
+...
+244 |     pub fn count_parameters(&self) -> usize {
+    |            ^^^^^^^^^^^^^^^^
+
+warning: unreachable `pub` item
+  --> examples/llama2/architecture.rs:12:1
+   |
+12 | pub struct LLaMAConfig {
+   | ---^^^^^^^^^^^^^^^^^^^
+   | |
+   | help: consider restricting its visibility: `pub(crate)`
+   |
+   = help: or consider exporting it for use by other crates
+   = note: requested on the command line with `-W unreachable-pub`
+
+warning: unreachable `pub` item
+  --> examples/llama2/architecture.rs:31:5
+   |
+31 |     pub fn toy_124m() -> Self {
+   |     ---^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+  --> examples/llama2/architecture.rs:44:5
+   |
+44 |     pub fn llama2_7b() -> Self {
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+  --> examples/llama2/architecture.rs:57:5
+   |
+57 |     pub fn head_dim(&self) -> usize {
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+  --> examples/llama2/architecture.rs:63:1
+   |
+63 | pub struct LLaMALayer {
+   | ---^^^^^^^^^^^^^^^^^^
+   | |
+   | help: consider restricting its visibility: `pub(crate)`
+   |
+   = help: or consider exporting it for use by other crates
+
+warning: unreachable `pub` item
+  --> examples/llama2/architecture.rs:81:5
+   |
+81 |     pub fn new(config: &LLaMAConfig) -> Self {
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:129:5
+    |
+129 |     pub fn forward(&self, x: &Tensor, _seq_len: usize, _batch_size: usize) -> Tensor {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:145:5
+    |
+145 |     pub fn parameters(&mut self) -> Vec<&mut Tensor> {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:158:5
+    |
+158 |     pub fn zero_grad(&mut self) {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:166:1
+    |
+166 | pub struct LLaMAModel {
+    | ---^^^^^^^^^^^^^^^^^^
+    | |
+    | help: consider restricting its visibility: `pub(crate)`
+    |
+    = help: or consider exporting it for use by other crates
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:179:5
+    |
+179 |     pub fn new(config: LLaMAConfig) -> Self {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:203:5
+    |
+203 |     pub fn forward(&self, _input_ids: &[u32], batch_size: usize) -> Tensor {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:221:5
+    |
+221 |     pub fn parameters(&mut self) -> Vec<&mut Tensor> {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:233:5
+    |
+233 |     pub fn zero_grad(&mut self) {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: unreachable `pub` item
+   --> examples/llama2/architecture.rs:244:5
+    |
+244 |     pub fn count_parameters(&self) -> usize {
+    |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     |
+    |     help: consider restricting its visibility: `pub(crate)`
+
+warning: `entrenar` (example "llama2-memory-benchmarks") generated 21 warnings (run `cargo fix --example "llama2-memory-benchmarks"` to apply 15 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.45s
+     Running `target/debug/examples/llama2-memory-benchmarks`
+🦙 LLaMA 2 Memory Benchmarks
+Comprehensive memory profiling across training approaches
+
+⚙️  Generating benchmarks for toy_124m model...
+⚙️  Generating benchmarks for llama2_7b model...
+
+════════════════════════════════════════════════════════════════════════════════
+LLaMA 2 Memory Benchmark Report
+════════════════════════════════════════════════════════════════════════════════
+
+┌─ toy_124m Model
+│
+├─ Full Fine-Tuning
+│  Total Parameters:           162.4M
+│  Trainable Parameters:       162.4M (100.00% trainable)
+│  Parameter Reduction:          0.00%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):     649.6 MB
+│    FP16 (2 bytes/param):     324.8 MB
+│    4-bit (0.5 bytes/param):     81.2 MB
+│
+├─ LoRA (rank=16, alpha=32)
+│  Total Parameters:           163.6M
+│  Trainable Parameters:         1.2M (0.72% trainable)
+│  Parameter Reduction:         99.28%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):     654.3 MB
+│    FP16 (2 bytes/param):     327.2 MB
+│    4-bit (0.5 bytes/param):     81.8 MB
+│
+├─ LoRA (rank=64, alpha=128)
+│  Total Parameters:           167.1M
+│  Trainable Parameters:         4.7M (2.82% trainable)
+│  Parameter Reduction:         97.18%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):     668.5 MB
+│    FP16 (2 bytes/param):     334.2 MB
+│    4-bit (0.5 bytes/param):     83.6 MB
+│
+├─ QLoRA (rank=16, alpha=32)
+│  Total Parameters:           163.6M
+│  Trainable Parameters:         1.2M (0.72% trainable)
+│  Parameter Reduction:         99.28%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):      85.9 MB
+│    FP16 (2 bytes/param):     329.5 MB
+│    4-bit (0.5 bytes/param):     85.9 MB
+│
+├─ QLoRA (rank=64, alpha=128)
+│  Total Parameters:           167.1M
+│  Trainable Parameters:         4.7M (2.82% trainable)
+│  Parameter Reduction:         97.18%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):     100.1 MB
+│    FP16 (2 bytes/param):     343.7 MB
+│    4-bit (0.5 bytes/param):    100.1 MB
+│
+
+┌─ llama2_7b Model
+│
+├─ Full Fine-Tuning
+│  Total Parameters:            6.74B
+│  Trainable Parameters:        6.74B (100.00% trainable)
+│  Parameter Reduction:          0.00%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):   26952.6 MB
+│    FP16 (2 bytes/param):   13476.3 MB
+│    4-bit (0.5 bytes/param):   3369.1 MB
+│
+├─ LoRA (rank=16, alpha=32)
+│  Total Parameters:            6.75B
+│  Trainable Parameters:        16.8M (0.25% trainable)
+│  Parameter Reduction:         99.75%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):   27019.7 MB
+│    FP16 (2 bytes/param):   13509.9 MB
+│    4-bit (0.5 bytes/param):   3377.5 MB
+│
+├─ LoRA (rank=64, alpha=128)
+│  Total Parameters:            6.81B
+│  Trainable Parameters:        67.1M (0.99% trainable)
+│  Parameter Reduction:         99.01%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):   27221.0 MB
+│    FP16 (2 bytes/param):   13610.5 MB
+│    4-bit (0.5 bytes/param):   3402.6 MB
+│
+├─ QLoRA (rank=16, alpha=32)
+│  Total Parameters:            6.75B
+│  Trainable Parameters:        16.8M (0.25% trainable)
+│  Parameter Reduction:         99.75%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):    3436.2 MB
+│    FP16 (2 bytes/param):   13543.4 MB
+│    4-bit (0.5 bytes/param):   3436.2 MB
+│
+├─ QLoRA (rank=64, alpha=128)
+│  Total Parameters:            6.81B
+│  Trainable Parameters:        67.1M (0.99% trainable)
+│  Parameter Reduction:         99.01%
+│
+│  Memory Usage:
+│    FP32 (4 bytes/param):    3637.5 MB
+│    FP16 (2 bytes/param):   13744.7 MB
+│    4-bit (0.5 bytes/param):   3637.5 MB
+│
+
+════════════════════════════════════════════════════════════════════════════════
+
+📊 Summary & Validation
+────────────────────────────────────────────────────────────────────────────────
+
+✓ LoRA Parameter Reduction:
+  toy_124m (rank=16): 99.28% reduction (target: >99%)
+  Status: ✅ PASS
+  toy_124m (rank=64): 97.18% reduction (target: >99%)
+  Status: ❌ FAIL
+  llama2_7b (rank=16): 99.75% reduction (target: >99%)
+  Status: ✅ PASS
+  llama2_7b (rank=64): 99.01% reduction (target: >99%)
+  Status: ✅ PASS
+
+✓ QLoRA Memory Reduction:
+  toy_124m (rank=16): 86.9% memory savings (target: >70%)
+    LoRA (FP32):  654.3 MB → QLoRA (4-bit): 85.9 MB
+  Status: ✅ PASS
+  toy_124m (rank=64): 85.0% memory savings (target: >70%)
+    LoRA (FP32):  668.5 MB → QLoRA (4-bit): 100.1 MB
+  Status: ✅ PASS
+  llama2_7b (rank=16): 87.3% memory savings (target: >70%)
+    LoRA (FP32):  27019.7 MB → QLoRA (4-bit): 3436.2 MB
+  Status: ✅ PASS
+  llama2_7b (rank=64): 86.6% memory savings (target: >70%)
+    LoRA (FP32):  27221.0 MB → QLoRA (4-bit): 3637.5 MB
+  Status: ✅ PASS
+
+✓ Peak Memory Comparison:
+
+  llama2_7b Model:
+    Full Fine-Tuning            3369.1 MB ████
+    LoRA (rank=16, alpha=32)    3377.5 MB ████
+    LoRA (rank=64, alpha=128)   3402.6 MB █████
+    QLoRA (rank=16, alpha=32)   3436.2 MB █████
+    QLoRA (rank=64, alpha=128)   3637.5 MB █████
+    ────────────────────────────────────────
+    Range: 3369.1 MB (min) to 27221.0 MB (max)
+
+  toy_124m Model:
+    Full Fine-Tuning              81.2 MB ████
+    LoRA (rank=16, alpha=32)      81.8 MB ████
+    LoRA (rank=64, alpha=128)     83.6 MB █████
+    QLoRA (rank=16, alpha=32)     85.9 MB █████
+    QLoRA (rank=64, alpha=128)    100.1 MB █████
+    ────────────────────────────────────────
+    Range: 81.2 MB (min) to 668.5 MB (max)
+
+
+💡 Key Takeaways:
+  • LoRA reduces trainable parameters by >99%
+  • QLoRA reduces memory by >70% compared to LoRA
+  • 7B model can fit on consumer GPUs (8-12GB) with QLoRA
+  • Minimal accuracy loss (<1%) with proper hyperparameters
+

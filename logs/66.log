@@ -1,0 +1,38 @@
+   Compiling arrow-buffer v54.3.1
+   Compiling chrono v0.4.42
+   Compiling arrow-data v54.3.1
+   Compiling arrow-array v54.3.1
+   Compiling arrow-select v54.3.1
+   Compiling arrow-ipc v54.3.1
+   Compiling arrow-row v54.3.1
+   Compiling arrow-arith v54.3.1
+   Compiling arrow-cast v54.3.1
+   Compiling arrow-string v54.3.1
+   Compiling arrow-ord v54.3.1
+   Compiling parquet v54.3.1
+   Compiling arrow-json v54.3.1
+   Compiling arrow-csv v54.3.1
+   Compiling arrow v54.3.1
+   Compiling alimentar v0.2.1 (/home/noah/src/alimentar)
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 19.21s
+     Running `target/debug/entrenar --help`
+Training & Optimization Library with autograd, LoRA, quantization, and model merging
+
+Usage: entrenar [OPTIONS] <COMMAND>
+
+Commands:
+  train     Train a model from YAML configuration
+  validate  Validate a configuration file without training
+  info      Display information about a configuration
+  init      Initialize a new YAML Mode training manifest
+  quantize  Quantize a model
+  merge     Merge multiple models
+  research  Academic research artifacts and workflows
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --verbose  Enable verbose output
+  -q, --quiet    Suppress all output except errors
+  -h, --help     Print help
+  -V, --version  Print version

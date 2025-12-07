@@ -1,0 +1,25 @@
+Entrenar: Training from examples/yaml_fixed/lr_schedule.yaml
+✓ Config loaded and validated
+  Model: model.gguf
+  Optimizer: adam (lr=0.0001)
+  Batch size: 32
+  Epochs: 1
+
+Building model and optimizer...
+✓ Trainer initialized
+
+Creating training batches...
+✓ 2 batches created
+
+Starting training...
+
+Epoch 1/1: loss=1.000000
+
+✓ Training complete
+  Final loss: 1.000000
+  Best loss: 1.000000
+
+Saving model to ./checkpoints/final_model.json...
+✓ Model saved successfully
+
+Training complete!

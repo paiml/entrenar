@@ -1,0 +1,20 @@
+error: no example target named `quantization` in default-run packages
+help: available example targets:
+    citl
+    distillation
+    explainability
+    hf_distillation
+    llama2-finetune-lora
+    llama2-finetune-qlora
+    llama2-memory-benchmarks
+    llama2-train
+    merge_models
+    mnist_train
+    mnist_train_gpu
+    model_io
+    monitoring
+    research
+    sovereign
+    train_from_yaml
+    train_from_yaml_example
+    training_loop

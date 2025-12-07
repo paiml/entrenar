@@ -1,0 +1,2 @@
+error: target `citl` in package `entrenar` requires the features: `citl`
+Consider enabling them by passing, e.g., `--features="citl"`

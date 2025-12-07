@@ -1,0 +1,123 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.48s
+     Running `target/debug/examples/research --unlearn user_id_123`
+=== Entrenar Academic Research Demo ===
+
+--- Research Artifact (ENT-019) ---
+Artifact: Deep Learning Dataset for Computer Vision
+Type: Dataset
+License: CC-BY-4.0
+Authors: 2 total
+  - Alice Smith (ORCID: Some("0000-0002-1825-0097"))
+    Role: Conceptualization
+    Role: Software
+    Role: Writing – original draft
+  - Bob Jones (ORCID: None)
+    Role: Data curation
+    Role: Validation
+
+--- Citation Generation (ENT-020) ---
+Citation key: smith_2024_deep
+
+BibTeX output:
+@misc{smith_2024_deep,
+  author = {Smith, Alice and Jones, Bob},
+  title = {{Deep Learning Dataset for Computer Vision}},
+  year = {2024},
+  journal = {Nature Machine Intelligence},
+  volume = {6},
+  pages = {123-145},
+  doi = {10.5281/zenodo.1234567},
+  url = {https://example.com/dataset},
+  keywords = {benchmark, evaluation},
+}
+
+CITATION.cff output (first 20 lines):
+cff-version: 1.2.0
+message: "If you use this dataset, please cite it as below."
+type: dataset
+title: "Deep Learning Dataset for Computer Vision"
+version: "2.0.0"
+license: CC-BY-4.0
+doi: 10.5281/zenodo.1234567
+url: "https://example.com/dataset"
+date-released: "2024-01-01"
+authors:
+  - family-names: "Smith"
+    given-names: "Alice"
+    orcid: "https://orcid.org/0000-0002-1825-0097"
+    affiliation: "MIT"
+  - family-names: "Jones"
+    given-names: "Bob"
+    affiliation: "Stanford University"
+keywords:
+  - "machine learning"
+  - "computer vision"
+...
+
+--- Literate Document (ENT-021) ---
+Extracted 2 code blocks:
+  - Some("python") at line 6 (96 chars)
+  - Some("rust") at line 18 (47 chars)
+
+--- Pre-Registration (ENT-022) ---
+Pre-registration commitment:
+  Hash: 6a1e9e890e6678cc19b0ce5e70fa8192...
+  Created: 2025-11-30 15:15:12.139035357 UTC
+  Signed: Yes (Ed25519)
+  Signature valid: true
+
+--- Anonymization (ENT-023) ---
+Original artifact:
+  ID: dataset-2024-ml
+  Authors: ["Alice Smith", "Bob Jones"]
+Anonymized artifact:
+  Anonymous ID: anon-104c10965548d55a
+  Authors: ["Anonymous Author 1", "Anonymous Author 2"]
+  Can verify original: true
+
+--- Notebook Export (ENT-024) ---
+Generated notebook:
+  Kernel: Python 3 (python)
+  Cells: 4 total
+    Code cells: 2
+    Markdown cells: 2
+  Manual Rust notebook: 2 cells
+
+--- Citation Graph (ENT-025) ---
+Citation graph:
+  Nodes: 3
+  Edges: 3
+  Upstream from 'our-paper': 2
+  All citations (transitive): 2
+
+--- RO-Crate Packaging (ENT-026) ---
+RO-Crate package:
+  Root: /tmp/entrenar-research-demo
+  Entities: 9
+  Data files: 3
+  ZIP size: 1092 bytes
+
+--- Archive Deposit (ENT-027) ---
+Deposit prepared for: Zenodo
+  Files: 1
+  Metadata title: Deep Learning Dataset for Computer Vision
+  Resource type: Dataset
+
+Supported archive providers:
+  - Zenodo: https://zenodo.org
+  - Figshare: https://figshare.com
+  - Dryad: https://datadryad.org
+  - Dataverse: https://dataverse.harvard.edu
+
+=== Demo Complete ===
+
+The research module provides:
+  - CRediT taxonomy for contributor roles
+  - ORCID/ROR validation for identifiers
+  - BibTeX and CFF citation export
+  - Cryptographic pre-registration
+  - Double-blind anonymization
+  - Jupyter notebook generation
+  - RO-Crate 1.1 compliant packaging
+  - Archive deposit preparation

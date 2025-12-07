@@ -1,0 +1,37 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running `target/debug/examples/training_loop`
+=== Training Loop Example ===
+
+Initial learning rate: 0.010000
+Gradient clipping: enabled (max_norm=1.0)
+
+Training data:
+  Batches: 3
+  Batch size: 3
+
+Starting training...
+
+Epoch 1: loss=1.0000, lr=0.010000
+Epoch 2: loss=1.0000, lr=0.010000
+Epoch 3: loss=1.0000, lr=0.010000
+Epoch 4: loss=1.0000, lr=0.010000
+Epoch 5: loss=1.0000, lr=0.010000
+Epoch 6: loss=1.0000, lr=0.010000
+  → Reducing learning rate
+Epoch 7: loss=1.0000, lr=0.001000
+Epoch 8: loss=1.0000, lr=0.001000
+Epoch 9: loss=1.0000, lr=0.001000
+Epoch 10: loss=1.0000, lr=0.001000
+
+=== Training Complete ===
+
+Training Metrics:
+  Total epochs: 10
+  Total steps: 30
+  Best loss: 1.0000
+  Avg loss (last 3 epochs): 1.0000
+
+⚠ Training may have plateaued
+
+Final parameters:
+  param[0]: [0.1, 0.2, 0.3], shape=[3], strides=[1], layout=CFcf (0xf), const ndim=1

@@ -1,0 +1,55 @@
+   Compiling entrenar v0.2.2 (/home/noah/src/entrenar)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.10s
+   Doc-tests entrenar
+
+running 47 tests
+test src/hf_pipeline/export.rs - hf_pipeline::export (line 10) ... ignored
+test src/hf_pipeline/mod.rs - hf_pipeline (line 17) ... ignored
+test src/hf_pipeline/trainer.rs - hf_pipeline::trainer (line 7) ... ignored
+test src/lora/config.rs - lora::config::LoRAConfig::target_layers (line 86) ... ignored
+test src/lora/config.rs - lora::config::LoRAConfig::target_modules (line 42) ... ignored
+test src/quality/pmat.rs - quality::pmat::CodeQualityMetrics::from_cargo_output (line 147) ... ignored
+test src/train/callback.rs - train::callback::ExplainabilityCallback (line 699) ... ignored
+test src/train/callback.rs - train::callback::LRSchedulerCallback (line 504) ... ignored
+test src/train/tui.rs - train::tui::LossCurveDisplay (line 1423) - compile ... ok
+test src/config/train.rs - config::train::train_from_yaml (line 20) - compile ... ok
+test src/io/load.rs - io::load::load_model (line 20) - compile ... ok
+test src/io/save.rs - io::save::save_model (line 22) - compile ... ok
+test src/train/mod.rs - train (line 14) - compile ... ok
+test src/train/trainer.rs - train::trainer::Trainer (line 28) - compile ... ok
+test src/train/trainer.rs - train::trainer::Trainer::train_with_val (line 521) - compile ... ok
+test src/train/trainer.rs - train::trainer::Trainer::validate (line 290) - compile ... ok
+test src/train/trainer.rs - train::trainer::Trainer::train (line 359) - compile ... ok
+test src/train/trainer.rs - train::trainer::Trainer::train_step (line 143) - compile ... ok
+test src/train/callback.rs - train::callback (line 10) ... ok
+test src/train/metrics.rs - train::metrics::MAE (line 348) ... ok
+test src/train/metrics.rs - train::metrics::Recall (line 167) ... ok
+test src/monitor/mod.rs - monitor (line 13) ... ok
+test src/train/loss.rs - train::loss::WeightedLoss (line 392) ... ok
+test src/distill/mod.rs - distill (line 14) ... ok
+test src/train/metrics.rs - train::metrics::Precision (line 104) ... ok
+test src/train/loss.rs - train::loss::L1Loss (line 318) ... ok
+test src/quality/pmat.rs - quality::pmat::CodeQualityMetrics::meets_threshold (line 213) ... ok
+test src/train/callback.rs - train::callback::EarlyStopping (line 134) ... ok
+test src/train/loss.rs - train::loss::CrossEntropyLoss (line 99) ... ok
+test src/train/metrics.rs - train::metrics::R2Score (line 297) ... ok
+test src/storage/mod.rs - storage (line 13) ... ok
+test src/train/metrics.rs - train::metrics::Accuracy (line 34) ... ok
+test src/train/loss.rs - train::loss::SampleWeightedLoss (line 493) ... ok
+test src/train/curriculum.rs - train::curriculum::LinearCurriculum (line 61) ... ok
+test src/dashboard/mod.rs - dashboard (line 15) ... ok
+test src/distill/progressive.rs - distill::progressive::ProgressiveDistiller (line 19) ... ok
+test src/train/loss.rs - train::loss::MSELoss (line 23) ... ok
+test src/train/loss.rs - train::loss::HuberLoss (line 192) ... ok
+test src/run.rs - run (line 8) ... ok
+test src/train/metrics.rs - train::metrics::F1Score (line 232) ... ok
+test src/train/metrics.rs - train::metrics::RMSE (line 394) ... ok
+test src/sovereign/mod.rs - sovereign (line 13) ... ok
+test src/distill/loss.rs - distill::loss::DistillationLoss (line 21) ... ok
+test src/train/curriculum.rs - train::curriculum::TieredCurriculum (line 150) ... ok
+test src/distill/ensemble.rs - distill::ensemble::EnsembleDistiller (line 17) ... ok
+test src/monitor/mod.rs - monitor::MetricsCollector (line 197) ... ok
+test src/integrity/lineage.rs - integrity::lineage (line 8) ... ok
+
+test result: ok. 39 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 7.61s
+
