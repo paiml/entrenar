@@ -227,6 +227,26 @@
 - [Debugging Training Issues](./best-practices/debugging-training.md)
 - [Performance Profiling](./best-practices/profiling.md)
 
+# Search Algorithms
+
+- [Overview](./search/overview.md)
+- [Monte Carlo Tree Search (MCTS)](./search/mcts.md)
+  - [State and Action Spaces](./search/state-action.md)
+  - [UCB1/PUCT Selection](./search/selection.md)
+  - [Expansion and Simulation](./search/expansion.md)
+  - [Backpropagation](./search/backpropagation.md)
+- [Policy Network Integration](./search/policy-network.md)
+
+# Generative Models
+
+- [Overview](./generative/overview.md)
+- [Code Generation GANs](./generative/code-gan.md)
+  - [Generator Architecture](./generative/generator.md)
+  - [Discriminator Architecture](./generative/discriminator.md)
+  - [Latent Space Interpolation](./generative/latent-space.md)
+  - [Training Loop](./generative/training.md)
+- [Mode Collapse Detection](./generative/mode-collapse.md)
+
 # Advanced Topics
 
 - [Custom Backward Passes](./advanced/custom-backward.md)
