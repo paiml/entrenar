@@ -1,16 +1,26 @@
-# Entrenar
-
 <div align="center">
-  <img src="docs/images/entrenar-logo.svg" alt="Entrenar" width="400">
 
-  <p><strong>Production-grade neural network training in pure Rust</strong></p>
+<p align="center">
+  <img src=".github/entrenar-hero.svg" alt="entrenar" width="800">
+</p>
 
-[![Crates.io](https://img.shields.io/crates/v/entrenar.svg)](https://crates.io/crates/entrenar)
-[![Documentation](https://docs.rs/entrenar/badge.svg)](https://docs.rs/entrenar)
-[![Tests](https://img.shields.io/badge/tests-2155%20passing-brightgreen)](https://github.com/paiml/entrenar)
-[![Coverage](https://img.shields.io/badge/coverage-%3E90%25-brightgreen)](https://github.com/paiml/entrenar)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.83+-orange.svg)](https://www.rust-lang.org)
+<h1 align="center">entrenar</h1>
+
+<p align="center">
+  <b>Production-grade neural network training in pure Rust</b>
+</p>
+
+<p align="center">
+  <a href="https://crates.io/crates/entrenar"><img src="https://img.shields.io/crates/v/entrenar.svg" alt="Crates.io"></a>
+  <a href="https://docs.rs/entrenar"><img src="https://docs.rs/entrenar/badge.svg" alt="Documentation"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-2155%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/coverage-%3E90%25-brightgreen" alt="Coverage"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
+</p>
+
+</div>
+
+---
 
 ## Table of Contents
 
@@ -22,8 +32,6 @@
 - [Architecture](#architecture)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
-
-</div>
 
 ---
 
