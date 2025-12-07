@@ -744,6 +744,29 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    /// Create a small test config to avoid slow network initialization
+    fn small_test_config() -> CodeGanConfig {
+        CodeGanConfig {
+            generator: GeneratorConfig {
+                latent_dim: 16,
+                hidden_dims: vec![32],
+                vocab_size: 50,
+                max_seq_len: 8,
+                dropout: 0.0,
+                batch_norm: false,
+            },
+            discriminator: DiscriminatorConfig {
+                vocab_size: 50,
+                max_seq_len: 8,
+                embed_dim: 8,
+                hidden_dims: vec![16],
+                dropout: 0.0,
+                spectral_norm: false,
+            },
+            ..Default::default()
+        }
+    }
+
     // ========================================
     // ENT-096: GAN core types tests
     // ========================================
@@ -992,7 +1015,7 @@ mod tests {
 
     #[test]
     fn test_code_gan_creation() {
-        let config = CodeGanConfig::default();
+        let config = small_test_config();
         let gan = CodeGan::new(config);
         assert!(gan.num_parameters() > 0);
         assert_eq!(gan.stats.steps, 0);
@@ -1000,12 +1023,14 @@ mod tests {
 
     #[test]
     fn test_code_gan_sample_latent() {
-        let config = CodeGanConfig::default();
-        let mut gan = CodeGan::with_seed(config, 42);
+        let config = small_test_config();
+        let mut gan = CodeGan::with_seed(config.clone(), 42);
 
         let latents = gan.sample_latent(10);
         assert_eq!(latents.len(), 10);
-        assert!(latents.iter().all(|z| z.dim() == 128));
+        assert!(latents
+            .iter()
+            .all(|z| z.dim() == config.generator.latent_dim));
     }
 
     #[test]
@@ -1093,7 +1118,7 @@ mod tests {
 
     #[test]
     fn test_record_step() {
-        let config = CodeGanConfig::default();
+        let config = small_test_config();
         let mut gan = CodeGan::new(config);
 
         let result = TrainingResult {
@@ -1211,16 +1236,7 @@ mod tests {
 
         #[test]
         fn test_mode_collapse_detection(num_samples in 10usize..50) {
-            let config = CodeGanConfig {
-                generator: GeneratorConfig {
-                    latent_dim: 16,
-                    hidden_dims: vec![32],
-                    vocab_size: 50,
-                    max_seq_len: 8,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
+            let config = small_test_config();
             let mut gan = CodeGan::with_seed(config, 42);
 
             let score = gan.detect_mode_collapse(num_samples);
@@ -1229,16 +1245,7 @@ mod tests {
 
         #[test]
         fn test_interpolation_length(steps in 1usize..20) {
-            let config = CodeGanConfig {
-                generator: GeneratorConfig {
-                    latent_dim: 16,
-                    hidden_dims: vec![32],
-                    vocab_size: 50,
-                    max_seq_len: 8,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
+            let config = small_test_config();
             let gan = CodeGan::with_seed(config, 42);
 
             let z1 = LatentCode::new(vec![0.0; 16]);
@@ -1271,7 +1278,7 @@ mod tests {
 
     #[test]
     fn test_avg_loss_empty() {
-        let config = CodeGanConfig::default();
+        let config = small_test_config();
         let gan = CodeGan::new(config);
         assert_eq!(gan.avg_gen_loss(), 0.0);
         assert_eq!(gan.avg_disc_loss(), 0.0);
@@ -1279,7 +1286,7 @@ mod tests {
 
     #[test]
     fn test_avg_loss_with_history() {
-        let config = CodeGanConfig::default();
+        let config = small_test_config();
         let mut gan = CodeGan::new(config);
 
         for i in 0..10 {
@@ -1318,7 +1325,7 @@ mod tests {
 
     #[test]
     fn test_history_size_limit() {
-        let config = CodeGanConfig::default();
+        let config = small_test_config();
         let mut gan = CodeGan::new(config);
 
         // Add more than 100 steps

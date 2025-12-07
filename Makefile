@@ -50,16 +50,16 @@ tier3: tier2 ## Tier 3: Full validation (<5m) - includes tier1+2, property tests
 # =============================================================================
 
 # Fast tests (<30s): Uses nextest for parallelism if available
-# Pattern from bashrs: cargo-nextest + RUST_TEST_THREADS
+# Pattern from bashrs: cargo-nextest + RUST_TEST_THREADS + PROPTEST_CASES
 test-fast: ## Fast unit tests (<30s target)
 	@echo "⚡ Running fast tests (target: <30s)..."
 	@if command -v cargo-nextest >/dev/null 2>&1; then \
-		time cargo nextest run --workspace --lib \
+		PROPTEST_CASES=50 RUST_TEST_THREADS=$$(nproc) time cargo nextest run --workspace --lib \
 			--status-level skip \
 			--failure-output immediate; \
 	else \
 		echo "💡 Install cargo-nextest for faster tests: cargo install cargo-nextest"; \
-		time cargo test --workspace --lib; \
+		PROPTEST_CASES=50 time cargo test --workspace --lib; \
 	fi
 	@echo "✅ Fast tests passed"
 
