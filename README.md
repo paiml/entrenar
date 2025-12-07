@@ -34,6 +34,18 @@
 
 Part of the [PAIML Stack](https://github.com/paiml), built on [trueno](https://crates.io/crates/trueno) for SIMD-accelerated operations.
 
+## Installation
+
+```bash
+# From crates.io
+cargo install entrenar
+
+# From source
+git clone https://github.com/paiml/entrenar
+cd entrenar
+cargo install --path .
+```
+
 ## Getting Started
 
 Add to your `Cargo.toml`:
@@ -213,7 +225,7 @@ if let DriftStatus::Drift(z) = drift.check(loss) {
 }
 ```
 
-## Examples
+## Usages
 
 ### Programmatic
 
@@ -288,6 +300,16 @@ entrenar/
 - [API Reference](https://docs.rs/entrenar)
 - [Book](book/) - Comprehensive guide
 - [Roadmap](roadmap.yaml) - 53/53 tickets complete
+
+## Contributing
+
+Contributions welcome! Please follow the PAIML quality standards:
+
+1. Fork the repository
+2. Create a feature branch
+3. Ensure all tests pass: `cargo test`
+4. Run quality checks: `cargo clippy -- -D warnings && cargo fmt --check`
+5. Submit a pull request
 
 ## License
 
