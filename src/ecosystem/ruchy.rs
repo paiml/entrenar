@@ -224,6 +224,100 @@ impl EntrenarSession {
     pub fn has_training_data(&self) -> bool {
         !self.metrics.is_empty()
     }
+
+    /// Export session to JSON for external tools (CLI, notebooks).
+    /// (Issue #75: Session Export API for ruchy integration)
+    ///
+    /// # Errors
+    /// Returns error if serialization fails.
+    pub fn export_json(&self) -> Result<serde_json::Value, serde_json::Error> {
+        let export = SessionExport {
+            session_id: self.id.clone(),
+            name: self.name.clone(),
+            user: self.user.clone(),
+            created_at: self.created_at.to_rfc3339(),
+            ended_at: self.ended_at.map(|t| t.to_rfc3339()),
+            duration_seconds: self.duration().map(|d| d.num_seconds()),
+            model_architecture: self.model_architecture.clone(),
+            dataset_id: self.dataset_id.clone(),
+            config: self.config.clone(),
+            metrics: MetricsExportSummary {
+                total_steps: self.metrics.total_steps(),
+                final_loss: self.metrics.final_loss(),
+                best_loss: self.metrics.best_loss(),
+                final_accuracy: self.metrics.final_accuracy(),
+                best_accuracy: self.metrics.best_accuracy(),
+                loss_history: self.metrics.loss_history.clone(),
+                accuracy_history: self.metrics.accuracy_history.clone(),
+                custom_metrics: self.metrics.custom.clone(),
+            },
+            code_cells_count: self.code_history.len(),
+            tags: self.tags.clone(),
+            notes: self.notes.clone(),
+        };
+        serde_json::to_value(export)
+    }
+
+    /// Export session to pretty-printed JSON string.
+    ///
+    /// # Errors
+    /// Returns error if serialization fails.
+    pub fn export_json_string(&self) -> Result<String, serde_json::Error> {
+        let value = self.export_json()?;
+        serde_json::to_string_pretty(&value)
+    }
+}
+
+/// Session export structure for JSON serialization (Issue #75).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionExport {
+    /// Session identifier
+    pub session_id: String,
+    /// Session name
+    pub name: String,
+    /// User who created the session
+    pub user: Option<String>,
+    /// Creation timestamp (RFC 3339)
+    pub created_at: String,
+    /// End timestamp (RFC 3339)
+    pub ended_at: Option<String>,
+    /// Duration in seconds
+    pub duration_seconds: Option<i64>,
+    /// Model architecture
+    pub model_architecture: Option<String>,
+    /// Dataset identifier
+    pub dataset_id: Option<String>,
+    /// Configuration parameters
+    pub config: HashMap<String, String>,
+    /// Training metrics summary
+    pub metrics: MetricsExportSummary,
+    /// Number of code cells
+    pub code_cells_count: usize,
+    /// Session tags
+    pub tags: Vec<String>,
+    /// Notes
+    pub notes: Option<String>,
+}
+
+/// Metrics export summary for JSON serialization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsExportSummary {
+    /// Total training steps
+    pub total_steps: usize,
+    /// Final loss value
+    pub final_loss: Option<f64>,
+    /// Best (minimum) loss value
+    pub best_loss: Option<f64>,
+    /// Final accuracy value
+    pub final_accuracy: Option<f64>,
+    /// Best (maximum) accuracy value
+    pub best_accuracy: Option<f64>,
+    /// Full loss history
+    pub loss_history: Vec<f64>,
+    /// Full accuracy history
+    pub accuracy_history: Vec<f64>,
+    /// Custom metrics
+    pub custom_metrics: HashMap<String, Vec<f64>>,
 }
 
 /// Simulated Ruchy session type for conversion.
@@ -613,5 +707,106 @@ mod tests {
         assert!(desc.contains("wiki"));
         assert!(desc.contains("2")); // steps
         assert!(desc.contains("0.2")); // loss
+    }
+
+    // Issue #75: Session Export API tests
+    #[test]
+    fn test_export_json_basic() {
+        let session = EntrenarSession::new("export-001", "Export Test")
+            .with_user("tester")
+            .with_tag("export-test");
+
+        let json = session.export_json().unwrap();
+
+        assert_eq!(json["session_id"], "export-001");
+        assert_eq!(json["name"], "Export Test");
+        assert_eq!(json["user"], "tester");
+        assert_eq!(json["metrics"]["total_steps"], 0);
+        assert_eq!(json["code_cells_count"], 0);
+        assert!(json["tags"]
+            .as_array()
+            .unwrap()
+            .contains(&"export-test".into()));
+    }
+
+    #[test]
+    fn test_export_json_with_metrics() {
+        let mut session = EntrenarSession::new("export-002", "Metrics Export")
+            .with_architecture("llama-7b")
+            .with_dataset("alpaca");
+
+        session.metrics.add_loss(0.5);
+        session.metrics.add_loss(0.3);
+        session.metrics.add_loss(0.2);
+        session.metrics.add_accuracy(0.7);
+        session.metrics.add_accuracy(0.85);
+        session.metrics.add_custom("f1", 0.78);
+
+        let json = session.export_json().unwrap();
+
+        assert_eq!(json["metrics"]["total_steps"], 3);
+        assert_eq!(json["metrics"]["final_loss"], 0.2);
+        assert_eq!(json["metrics"]["best_loss"], 0.2);
+        assert_eq!(json["metrics"]["final_accuracy"], 0.85);
+        assert_eq!(json["metrics"]["best_accuracy"], 0.85);
+        assert_eq!(json["metrics"]["loss_history"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            json["metrics"]["accuracy_history"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(json["metrics"]["custom_metrics"]["f1"].as_array().is_some());
+    }
+
+    #[test]
+    fn test_export_json_string() {
+        let session =
+            EntrenarSession::new("export-003", "String Export").with_config("batch_size", "32");
+
+        let json_str = session.export_json_string().unwrap();
+
+        assert!(json_str.contains("\"session_id\": \"export-003\""));
+        assert!(json_str.contains("\"batch_size\": \"32\""));
+        // Pretty print should have newlines
+        assert!(json_str.contains('\n'));
+    }
+
+    #[test]
+    fn test_export_json_with_duration() {
+        let mut session = EntrenarSession::new("export-004", "Duration Export");
+        let start = session.created_at;
+        session.ended_at = Some(start + chrono::Duration::hours(1) + chrono::Duration::minutes(30));
+
+        let json = session.export_json().unwrap();
+
+        assert_eq!(json["duration_seconds"], 5400); // 1.5 hours = 5400 seconds
+        assert!(json["ended_at"].as_str().is_some());
+    }
+
+    #[test]
+    fn test_export_json_roundtrip() {
+        let mut session = EntrenarSession::new("export-005", "Roundtrip Test")
+            .with_user("alice")
+            .with_architecture("transformer")
+            .with_dataset("custom-data")
+            .with_config("epochs", "10")
+            .with_tag("test");
+
+        session.metrics.add_loss(0.4);
+        session.metrics.add_accuracy(0.9);
+
+        let json = session.export_json().unwrap();
+        let export: SessionExport = serde_json::from_value(json).unwrap();
+
+        assert_eq!(export.session_id, "export-005");
+        assert_eq!(export.name, "Roundtrip Test");
+        assert_eq!(export.user, Some("alice".to_string()));
+        assert_eq!(export.model_architecture, Some("transformer".to_string()));
+        assert_eq!(export.dataset_id, Some("custom-data".to_string()));
+        assert_eq!(export.metrics.total_steps, 1);
+        assert_eq!(export.metrics.final_loss, Some(0.4));
+        assert_eq!(export.metrics.final_accuracy, Some(0.9));
     }
 }
