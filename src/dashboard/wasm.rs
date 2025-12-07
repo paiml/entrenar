@@ -152,8 +152,7 @@ impl ExperimentStorage for IndexedDbStorage {
 
         if run.status != RunStatus::Pending {
             return Err(StorageError::InvalidState(format!(
-                "Run {} is not in Pending state",
-                run_id
+                "Run {run_id} is not in Pending state"
             )));
         }
 
@@ -170,8 +169,7 @@ impl ExperimentStorage for IndexedDbStorage {
 
         if run.status != RunStatus::Running {
             return Err(StorageError::InvalidState(format!(
-                "Run {} is not in Running state",
-                run_id
+                "Run {run_id} is not in Running state"
             )));
         }
 

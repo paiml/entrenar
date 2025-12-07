@@ -548,7 +548,12 @@ impl TPEOptimizer {
                     }
                 }
 
-                ParameterValue::Categorical(choices.last().unwrap().clone())
+                ParameterValue::Categorical(
+                    choices
+                        .last()
+                        .expect("choices is non-empty per validate()")
+                        .clone(),
+                )
             }
         }
     }

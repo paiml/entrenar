@@ -60,7 +60,7 @@ impl std::str::FromStr for RunStatus {
             "completed" => Ok(RunStatus::Completed),
             "failed" => Ok(RunStatus::Failed),
             "killed" => Ok(RunStatus::Killed),
-            _ => Err(ServerError::Validation(format!("Invalid status: {}", s))),
+            _ => Err(ServerError::Validation(format!("Invalid status: {s}"))),
         }
     }
 }
@@ -134,7 +134,7 @@ impl InMemoryStorage {
         let mut experiments = self
             .experiments
             .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
         experiments.insert(id, experiment.clone());
 
         Ok(experiment)
@@ -145,12 +145,12 @@ impl InMemoryStorage {
         let experiments = self
             .experiments
             .read()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         experiments
             .get(id)
             .cloned()
-            .ok_or_else(|| ServerError::NotFound(format!("Experiment not found: {}", id)))
+            .ok_or_else(|| ServerError::NotFound(format!("Experiment not found: {id}")))
     }
 
     /// List all experiments
@@ -158,7 +158,7 @@ impl InMemoryStorage {
         let experiments = self
             .experiments
             .read()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         Ok(experiments.values().cloned().collect())
     }
@@ -189,7 +189,7 @@ impl InMemoryStorage {
         let mut runs = self
             .runs
             .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
         runs.insert(id, run.clone());
 
         Ok(run)
@@ -200,11 +200,11 @@ impl InMemoryStorage {
         let runs = self
             .runs
             .read()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         runs.get(id)
             .cloned()
-            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {}", id)))
+            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {id}")))
     }
 
     /// Update run status
@@ -217,11 +217,11 @@ impl InMemoryStorage {
         let mut runs = self
             .runs
             .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         let run = runs
             .get_mut(id)
-            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {}", id)))?;
+            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {id}")))?;
 
         if let Some(s) = status {
             run.status = s;
@@ -242,11 +242,11 @@ impl InMemoryStorage {
         let mut runs = self
             .runs
             .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         let run = runs
             .get_mut(run_id)
-            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {}", run_id)))?;
+            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {run_id}")))?;
 
         run.params.extend(params);
         Ok(())
@@ -257,11 +257,11 @@ impl InMemoryStorage {
         let mut runs = self
             .runs
             .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {}", e)))?;
+            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         let run = runs
             .get_mut(run_id)
-            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {}", run_id)))?;
+            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {run_id}")))?;
 
         run.metrics.extend(metrics);
         Ok(())

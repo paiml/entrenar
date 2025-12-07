@@ -239,7 +239,9 @@ impl CausalLineage {
         }
 
         // A precedes B if all of A's events happen before B's first event
-        let b_first = b_events.first().unwrap();
+        let b_first = b_events
+            .first()
+            .expect("b_events is non-empty (checked above)");
         a_events
             .iter()
             .all(|a| a.timestamp.happens_before(&b_first.timestamp))

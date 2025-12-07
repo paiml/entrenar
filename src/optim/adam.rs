@@ -63,14 +63,21 @@ impl Optimizer for Adam {
                         self.v[i] = Some(Array1::zeros(grad.len()));
                     }
 
-                    let m = self.m[i].as_mut().unwrap();
-                    let v = self.v[i].as_mut().unwrap();
+                    let m = self.m[i]
+                        .as_mut()
+                        .expect("momentum buffer initialized above");
+                    let v = self.v[i]
+                        .as_mut()
+                        .expect("velocity buffer initialized above");
 
-                    // Get mutable slices
-                    let grad_slice = grad.as_slice().unwrap();
-                    let m_slice = m.as_slice_mut().unwrap();
-                    let v_slice = v.as_slice_mut().unwrap();
-                    let param_slice = param.data_mut().as_slice_mut().unwrap();
+                    // Get mutable slices (arrays are always contiguous)
+                    let grad_slice = grad.as_slice().expect("grad array is contiguous");
+                    let m_slice = m.as_slice_mut().expect("momentum array is contiguous");
+                    let v_slice = v.as_slice_mut().expect("velocity array is contiguous");
+                    let param_slice = param
+                        .data_mut()
+                        .as_slice_mut()
+                        .expect("param array is contiguous");
 
                     // Use SIMD-accelerated update
                     super::simd::simd_adam_update(

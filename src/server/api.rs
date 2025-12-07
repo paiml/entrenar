@@ -70,11 +70,11 @@ impl TrackingServer {
             .await
             .map_err(|e| ServerError::Bind(e.to_string()))?;
 
-        println!("🚀 Entrenar tracking server running on http://{}", addr);
+        println!("🚀 Entrenar tracking server running on http://{addr}");
 
         axum::serve(listener, self.router())
             .await
-            .map_err(|e| ServerError::Io(e))?;
+            .map_err(ServerError::Io)?;
 
         Ok(())
     }
