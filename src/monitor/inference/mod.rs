@@ -43,7 +43,9 @@ pub mod trace;
 mod tests;
 
 // Re-exports
-pub use collector::{HashChainCollector, RingCollector, StreamCollector, TraceCollector};
+pub use collector::{
+    HashChainCollector, RingCollector, StreamCollector, StreamFormat, TraceCollector,
+};
 pub use counterfactual::{Counterfactual, FeatureChange};
 pub use path::{
     DecisionPath, ForestPath, KNNPath, LeafInfo, LinearPath, NeuralPath, TreePath, TreeSplit,
