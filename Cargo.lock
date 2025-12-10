@@ -1363,7 +1363,7 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "alimentar",
  "approx",

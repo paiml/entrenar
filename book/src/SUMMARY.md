@@ -115,6 +115,7 @@
 - [Terminal Dashboard](./monitor/dashboard.md)
 - [Drift Detection](./monitor/drift-detection.md)
 - [Andon Alerting (Jidoka)](./monitor/andon.md)
+- [Inference Monitoring](./monitor/inference-monitoring.md)
 - [Model Lineage](./monitor/lineage.md)
 - [Export Formats](./monitor/export.md)
 - [Hansei Reports](./monitor/hansei.md)
