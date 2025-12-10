@@ -35,6 +35,7 @@ pub mod dashboard;
 pub mod drift;
 pub mod export;
 pub mod gpu;
+pub mod inference;
 pub mod lineage;
 pub mod llm;
 pub mod prometheus;
