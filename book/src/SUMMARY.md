@@ -200,6 +200,7 @@
 - [Learning Rate Scheduling](./examples/lr-scheduling.md)
 - [Gradient Clipping](./examples/gradient-clipping-example.md)
 - [Adapter Sharing](./examples/adapter-sharing.md)
+- [CUDA Backend Configuration](./examples/cuda-backend.md)
 
 # Development Guide
 
