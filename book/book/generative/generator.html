@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Generator Architecture - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/generative/generator.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,84 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="generator-architecture"><a class="header" href="#generator-architecture">Generator Architecture</a></h1>
+<p>The generator maps latent vectors to code token sequences.</p>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<pre><code>Input: z ∈ R^latent_dim
+    ↓
+Linear(latent_dim → hidden[0])
+    ↓
+ReLU + BatchNorm (optional)
+    ↓
+Linear(hidden[0] → hidden[1])
+    ↓
+ReLU + BatchNorm (optional)
+    ↓
+...
+    ↓
+Linear(hidden[-1] → vocab_size * max_seq_len)
+    ↓
+Reshape to (max_seq_len, vocab_size)
+    ↓
+Softmax per position
+    ↓
+Argmax → Token IDs
+</code></pre>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = GeneratorConfig {
+    latent_dim: 128,        // Size of noise vector
+    hidden_dims: vec![256, 512, 256],  // MLP layers
+    vocab_size: 100,        // Number of token types
+    max_seq_len: 64,        // Maximum output length
+    dropout: 0.1,           // Regularization
+    batch_norm: true,       // Stabilize training
+};
+<span class="boring">}</span></code></pre></pre>
+<h2 id="initialization"><a class="header" href="#initialization">Initialization</a></h2>
+<p>Xavier initialization for stable gradients:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn xavier_init(fan_in: usize, fan_out: usize) -&gt; f32 {
+    let limit = (6.0 / (fan_in + fan_out) as f32).sqrt();
+    rand::random::&lt;f32&gt;() * 2.0 * limit - limit
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="generation"><a class="header" href="#generation">Generation</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let generator = Generator::new(config);
+let z = LatentCode::sample(&amp;mut rng, 128);
+let tokens: Vec&lt;u32&gt; = generator.generate(&amp;z);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="temperature-sampling"><a class="header" href="#temperature-sampling">Temperature Sampling</a></h2>
+<p>Control diversity vs quality:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn generate_with_temperature(&amp;self, z: &amp;LatentCode, temp: f32) -&gt; Vec&lt;u32&gt; {
+    let logits = self.forward(z);
+
+    logits.chunks(self.vocab_size)
+        .map(|chunk| {
+            let scaled: Vec&lt;f32&gt; = chunk.iter()
+                .map(|x| x / temp)
+                .collect();
+            softmax_sample(&amp;scaled)
+        })
+        .collect()
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../generative/code-gan.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../generative/discriminator.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +245,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../generative/code-gan.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../generative/discriminator.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

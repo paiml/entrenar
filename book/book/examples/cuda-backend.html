@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>CUDA Backend Configuration - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/examples/cuda-backend.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,157 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="cuda-backend-configuration"><a class="header" href="#cuda-backend-configuration">CUDA Backend Configuration</a></h1>
+<p>This chapter demonstrates how to configure entrenar for NVIDIA CUDA acceleration using the trueno/cuda-monitor feature.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>entrenar v0.2.8 supports multiple compute backends via trueno:</p>
+<div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Feature</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>CPU SIMD</td><td>(default)</td><td>Portable, works everywhere</td></tr>
+<tr><td>GPU</td><td><code>--features gpu</code></td><td>Cross-platform GPU via wgpu</td></tr>
+<tr><td>CUDA</td><td><code>--features cuda</code></td><td>Maximum performance on NVIDIA</td></tr>
+</tbody></table>
+</div>
+<h2 id="cargotoml-configuration"><a class="header" href="#cargotoml-configuration">Cargo.toml Configuration</a></h2>
+<p>Enable CUDA support in your <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+# Default CPU SIMD backend
+entrenar = "0.2.8"
+
+# With NVIDIA CUDA support
+entrenar = { version = "0.2.8", features = ["cuda"] }
+
+# With cross-platform GPU (wgpu)
+entrenar = { version = "0.2.8", features = ["gpu"] }
+
+# Both GPU and CUDA
+entrenar = { version = "0.2.8", features = ["gpu", "cuda"] }
+</code></pre>
+<h2 id="running-the-example"><a class="header" href="#running-the-example">Running the Example</a></h2>
+<pre><code class="language-bash"># Without CUDA (shows feature availability)
+cargo run --example cuda_backend
+
+# With CUDA (detects NVIDIA GPU)
+cargo run --example cuda_backend --features cuda
+
+# With GPU (wgpu backend)
+cargo run --example cuda_backend --features gpu
+</code></pre>
+<h2 id="example-output-with-rtx-4090"><a class="header" href="#example-output-with-rtx-4090">Example Output (with RTX 4090)</a></h2>
+<pre><code>╔══════════════════════════════════════════════════════════════╗
+║      CUDA Backend Detection &amp; Monitoring (trueno-gpu)        ║
+╚══════════════════════════════════════════════════════════════╝
+
+┌─ Feature Availability ──────────────────────────────────────┐
+│ ✅ CUDA feature: ENABLED
+│    trueno/cuda-monitor is available
+│
+│ Default backend: CPU SIMD (trueno)
+└──────────────────────────────────────────────────────────────┘
+
+┌─ CUDA Device Detection ─────────────────────────────────────┐
+│ Querying NVIDIA driver via trueno-gpu...
+│
+│ ✅ NVIDIA driver detected
+│
+│ Device Information (via nvidia-smi):
+│   GPU 0: NVIDIA GeForce RTX 4090
+│   - Memory: 24564 MiB
+│   - Compute: SM 8.9
+│
+│ With cuda feature, trueno-gpu provides:
+│   - Pure Rust PTX generation (no nvcc needed)
+│   - Runtime CUDA driver loading
+│   - Device memory management
+│   - Kernel execution
+└──────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2 id="trueno-integration"><a class="header" href="#trueno-integration">Trueno Integration</a></h2>
+<p>entrenar uses trueno for compute acceleration:</p>
+<pre><code>trueno v0.8.3
+├── CPU SIMD (AVX2, AVX-512, NEON)
+├── trueno/gpu (wgpu compute shaders)
+└── trueno/cuda-monitor (via trueno-gpu v0.2.0)
+</code></pre>
+<h3 id="trueno-gpu-features"><a class="header" href="#trueno-gpu-features">trueno-gpu Features</a></h3>
+<p>The <code>cuda</code> feature enables trueno-gpu, which provides:</p>
+<ul>
+<li><strong>Pure Rust PTX Generation</strong>: No LLVM or nvcc compiler required</li>
+<li><strong>Runtime Driver Loading</strong>: Dynamically loads libcuda.so</li>
+<li><strong>Device Memory Management</strong>: Safe GPU memory allocation</li>
+<li><strong>Kernel Execution</strong>: Launch CUDA kernels from Rust</li>
+</ul>
+<h2 id="performance-expectations"><a class="header" href="#performance-expectations">Performance Expectations</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Relative Speed</th><th>Best For</th></tr></thead><tbody>
+<tr><td>CPU SIMD</td><td>1x (baseline)</td><td>General workloads, portability</td></tr>
+<tr><td>GPU (wgpu)</td><td>5-50x</td><td>Cross-platform GPU acceleration</td></tr>
+<tr><td>CUDA</td><td>10-100x</td><td>Maximum NVIDIA performance</td></tr>
+</tbody></table>
+</div>
+<h2 id="gpu-training-example"><a class="header" href="#gpu-training-example">GPU Training Example</a></h2>
+<p>For GPU-accelerated training with real-time monitoring:</p>
+<pre><code class="language-bash"># MNIST training with GPU acceleration
+cargo run --example mnist_train_gpu --features gpu
+
+# With CUDA for NVIDIA GPUs
+cargo run --example mnist_train_gpu --features cuda
+</code></pre>
+<h2 id="andon-monitoring-integration"><a class="header" href="#andon-monitoring-integration">Andon Monitoring Integration</a></h2>
+<p>With CUDA enabled, entrenar provides GPU monitoring via the Andon system:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::gpu::{GpuMonitor, AndonSystem};
+
+// Create monitor
+let monitor = GpuMonitor::new()?;
+
+// Collect metrics
+let metrics = monitor.collect_metrics()?;
+
+for gpu in &amp;metrics {
+    println!("GPU {}: {}°C, {}% util, {:.1} GB / {:.1} GB",
+        gpu.device_id,
+        gpu.temperature_celsius,
+        gpu.utilization_percent,
+        gpu.memory_used_bytes as f64 / 1e9,
+        gpu.memory_total_bytes as f64 / 1e9
+    );
+}
+
+// Check for alerts (thermal throttling, memory pressure)
+let andon = AndonSystem::default();
+let alerts = andon.check(&amp;metrics);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<h3 id="for-cuda-feature"><a class="header" href="#for-cuda-feature">For CUDA Feature</a></h3>
+<ol>
+<li><strong>NVIDIA GPU</strong>: Any CUDA-capable GPU</li>
+<li><strong>NVIDIA Driver</strong>: 450.x or newer recommended</li>
+<li><strong>No CUDA Toolkit Required</strong>: trueno-gpu uses pure Rust PTX</li>
+</ol>
+<p>Verify driver installation:</p>
+<pre><code class="language-bash">nvidia-smi
+</code></pre>
+<h3 id="for-gpu-feature-wgpu"><a class="header" href="#for-gpu-feature-wgpu">For GPU Feature (wgpu)</a></h3>
+<ol>
+<li><strong>Vulkan</strong> (Linux/Windows) or <strong>Metal</strong> (macOS)</li>
+<li><strong>No special drivers</strong> beyond standard GPU drivers</li>
+</ol>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="../mlops/gpu-monitoring.html">GPU Monitoring (Andon)</a></li>
+<li><a href="./mnist-train-gpu.html">MNIST Training with GPU</a></li>
+<li><a href="../architecture/overview.html">Backend Comparison</a></li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../examples/adapter-sharing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../development/contributing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +318,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../examples/adapter-sharing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../development/contributing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

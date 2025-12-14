@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Audit Command - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/cli/audit.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,178 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="audit-command"><a class="header" href="#audit-command">Audit Command</a></h1>
+<p>The <code>entrenar audit</code> command performs bias detection, fairness analysis, privacy checks, and security audits on models and datasets.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><code class="language-bash">entrenar audit &lt;INPUT&gt; [OPTIONS]
+</code></pre>
+<h2 id="arguments"><a class="header" href="#arguments">Arguments</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Argument</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>&lt;INPUT&gt;</code></td><td>Path to model or data file to audit</td></tr>
+</tbody></table>
+</div>
+<h2 id="options"><a class="header" href="#options">Options</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--type &lt;TYPE&gt;</code></td><td>Audit type: bias, fairness, privacy, security (default: bias)</td></tr>
+<tr><td><code>--protected-attr &lt;ATTR&gt;</code></td><td>Protected attribute column for bias analysis</td></tr>
+<tr><td><code>--threshold &lt;T&gt;</code></td><td>Pass/fail threshold (default: 0.8)</td></tr>
+<tr><td><code>--format &lt;FORMAT&gt;</code></td><td>Output format: text, json, yaml (default: text)</td></tr>
+</tbody></table>
+</div>
+<h2 id="audit-types"><a class="header" href="#audit-types">Audit Types</a></h2>
+<h3 id="bias-audit-default"><a class="header" href="#bias-audit-default">Bias Audit (default)</a></h3>
+<p>Detect demographic bias using statistical parity metrics:</p>
+<pre><code class="language-bash">entrenar audit predictions.parquet --type bias --threshold 0.8
+</code></pre>
+<p>Output:</p>
+<pre><code>Auditing: predictions.parquet
+  Audit type: bias
+  Threshold: 0.8
+Bias Audit Results:
+  Demographic parity ratio: 0.923
+  Equalized odds: 0.970
+  Threshold: 0.800
+  Status: PASS
+</code></pre>
+<h4 id="metrics-calculated"><a class="header" href="#metrics-calculated">Metrics Calculated</a></h4>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Formula</th><th>Interpretation</th></tr></thead><tbody>
+<tr><td>Demographic Parity Ratio</td><td>min(P(Y=1|A=0), P(Y=1|A=1)) / max(...)</td><td>1.0 = perfect parity</td></tr>
+<tr><td>Equalized Odds</td><td>1 - |TPR_A - TPR_B|</td><td>1.0 = equal true positive rates</td></tr>
+</tbody></table>
+</div>
+<h3 id="fairness-audit"><a class="header" href="#fairness-audit">Fairness Audit</a></h3>
+<p>Check model calibration and fairness across groups:</p>
+<pre><code class="language-bash">entrenar audit model.safetensors --type fairness
+</code></pre>
+<p>Output:</p>
+<pre><code>Fairness Audit Results:
+  Calibration error: 0.050
+  Status: PASS
+</code></pre>
+<h3 id="privacy-audit"><a class="header" href="#privacy-audit">Privacy Audit</a></h3>
+<p>Scan for PII patterns in data:</p>
+<pre><code class="language-bash">entrenar audit data.parquet --type privacy
+</code></pre>
+<p>Output:</p>
+<pre><code>Privacy Audit Results:
+  PII scan: Complete
+  Email patterns: 0 found
+  Phone patterns: 0 found
+  SSN patterns: 0 found
+  Status: PASS
+</code></pre>
+<h3 id="security-audit"><a class="header" href="#security-audit">Security Audit</a></h3>
+<p>Check for security vulnerabilities in model files:</p>
+<pre><code class="language-bash">entrenar audit model.safetensors --type security
+</code></pre>
+<p>Output:</p>
+<pre><code>Security Audit Results:
+  Pickle deserialization: Safe (SafeTensors)
+  Code execution vectors: None
+  Status: PASS
+</code></pre>
+<h2 id="json-output"><a class="header" href="#json-output">JSON Output</a></h2>
+<p>Get machine-readable results for CI/CD integration:</p>
+<pre><code class="language-bash">entrenar audit predictions.parquet --type bias --format json
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-json">{
+  "audit_type": "bias",
+  "demographic_parity_ratio": 0.923,
+  "equalized_odds": 0.970,
+  "threshold": 0.8,
+  "pass": true
+}
+</code></pre>
+<h2 id="threshold-configuration"><a class="header" href="#threshold-configuration">Threshold Configuration</a></h2>
+<p>The <code>--threshold</code> option sets the minimum acceptable value:</p>
+<div class="table-wrapper"><table><thead><tr><th>Audit Type</th><th>Threshold Meaning</th></tr></thead><tbody>
+<tr><td>bias</td><td>Minimum demographic parity ratio</td></tr>
+<tr><td>fairness</td><td>Maximum acceptable calibration error = 1 - threshold</td></tr>
+<tr><td>privacy</td><td>N/A (binary pass/fail)</td></tr>
+<tr><td>security</td><td>N/A (binary pass/fail)</td></tr>
+</tbody></table>
+</div>
+<pre><code class="language-bash"># Strict bias threshold (&gt;90% parity required)
+entrenar audit data.parquet --type bias --threshold 0.9
+
+# Relaxed threshold for development
+entrenar audit data.parquet --type bias --threshold 0.7
+</code></pre>
+<h2 id="cicd-integration"><a class="header" href="#cicd-integration">CI/CD Integration</a></h2>
+<p>Use audit commands in CI pipelines with exit codes:</p>
+<pre><code class="language-yaml"># GitHub Actions example
+- name: Bias Audit
+  run: |
+    entrenar audit predictions.parquet --type bias --threshold 0.8
+    if [ $? -ne 0 ]; then
+      echo "Bias audit failed!"
+      exit 1
+    fi
+</code></pre>
+<pre><code class="language-bash"># Shell script
+entrenar audit model.safetensors --type security || {
+    echo "Security audit failed!"
+    exit 1
+}
+</code></pre>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<h3 id="complete-audit-pipeline"><a class="header" href="#complete-audit-pipeline">Complete Audit Pipeline</a></h3>
+<pre><code class="language-bash"># 1. Security audit on model
+entrenar audit model.safetensors --type security
+
+# 2. Privacy audit on training data
+entrenar audit data/train.parquet --type privacy
+
+# 3. Bias audit on predictions
+entrenar audit predictions.parquet \
+  --type bias \
+  --protected-attr gender \
+  --threshold 0.8
+
+# 4. Fairness audit
+entrenar audit predictions.parquet --type fairness
+</code></pre>
+<h3 id="audit-with-protected-attribute"><a class="header" href="#audit-with-protected-attribute">Audit with Protected Attribute</a></h3>
+<pre><code class="language-bash">entrenar audit predictions.parquet \
+  --type bias \
+  --protected-attr race \
+  --threshold 0.85 \
+  --format json &gt; audit_results.json
+</code></pre>
+<h2 id="programmatic-usage"><a class="header" href="#programmatic-usage">Programmatic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Demographic parity calculation
+let group_a_positive_rate = 0.72;
+let group_b_positive_rate = 0.78;
+
+let demographic_parity = (group_a_positive_rate / group_b_positive_rate)
+    .min(group_b_positive_rate / group_a_positive_rate);
+
+// Equalized odds calculation
+let group_a_tpr = 0.85;
+let group_b_tpr = 0.82;
+let equalized_odds = 1.0 - (group_a_tpr - group_b_tpr).abs();
+
+let pass = demographic_parity &gt;= threshold;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./overview.html">CLI Overview</a> - General CLI reference</li>
+<li><a href="./monitor.html">Monitor Command</a> - Drift detection</li>
+<li><a href="../monitor/quality-gates.html">Quality Gates</a> - Jidoka quality gates</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../cli/inspect.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../cli/monitor.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +339,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../cli/inspect.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../cli/monitor.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

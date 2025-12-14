@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>UCB1/PUCT Selection - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/search/selection.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,66 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="ucb1puct-selection"><a class="header" href="#ucb1puct-selection">UCB1/PUCT Selection</a></h1>
+<p>Selection policies balance exploration of new paths with exploitation of known good paths.</p>
+<h2 id="ucb1-upper-confidence-bound-1"><a class="header" href="#ucb1-upper-confidence-bound-1">UCB1 (Upper Confidence Bound 1)</a></h2>
+<p>The classic selection policy for MCTS:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn ucb1(node: &amp;Node, parent_visits: u32, c: f32) -&gt; f32 {
+    if node.visits == 0 {
+        return f32::INFINITY;  // Always explore unvisited
+    }
+
+    let exploitation = node.total_reward / node.visits as f32;
+    let exploration = c * (parent_visits as f32).ln().sqrt()
+                        / (node.visits as f32).sqrt();
+
+    exploitation + exploration
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="exploration-constant"><a class="header" href="#exploration-constant">Exploration Constant</a></h3>
+<ul>
+<li><code>c = 1.414</code> (sqrt(2)): Theoretically optimal for [0,1] rewards</li>
+<li><code>c &gt; 1.414</code>: More exploration, good for sparse rewards</li>
+<li><code>c &lt; 1.414</code>: More exploitation, good for dense rewards</li>
+</ul>
+<h2 id="puct-predictor--uct"><a class="header" href="#puct-predictor--uct">PUCT (Predictor + UCT)</a></h2>
+<p>Used in AlphaGo/AlphaZero, incorporates policy network priors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn puct(node: &amp;Node, parent_visits: u32, c: f32) -&gt; f32 {
+    let exploitation = node.total_reward / (1 + node.visits) as f32;
+    let exploration = c * node.prior
+                        * (parent_visits as f32).sqrt()
+                        / (1 + node.visits) as f32;
+
+    exploitation + exploration
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="prior-probabilities"><a class="header" href="#prior-probabilities">Prior Probabilities</a></h3>
+<p>The <code>prior</code> comes from a policy network that predicts action probabilities:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>impl PolicyNetwork for MyNetwork {
+    fn predict(&amp;self, state: &amp;State) -&gt; Vec&lt;(Action, f32)&gt; {
+        // Return (action, probability) pairs
+        self.forward(state.features())
+            .softmax()
+            .into_actions()
+    }
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../search/state-action.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../search/expansion.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +227,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../search/state-action.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../search/expansion.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

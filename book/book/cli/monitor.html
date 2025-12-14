@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Monitor Command - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/cli/monitor.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,143 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="monitor-command"><a class="header" href="#monitor-command">Monitor Command</a></h1>
+<p>The <code>entrenar monitor</code> command detects data drift using Population Stability Index (PSI) and other statistical measures.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><code class="language-bash">entrenar monitor &lt;INPUT&gt; [OPTIONS]
+</code></pre>
+<h2 id="arguments"><a class="header" href="#arguments">Arguments</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Argument</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>&lt;INPUT&gt;</code></td><td>Path to current data file to monitor</td></tr>
+</tbody></table>
+</div>
+<h2 id="options"><a class="header" href="#options">Options</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--baseline &lt;PATH&gt;</code></td><td>Path to baseline statistics file</td></tr>
+<tr><td><code>--threshold &lt;T&gt;</code></td><td>PSI threshold for drift alert (default: 0.2)</td></tr>
+<tr><td><code>--interval &lt;SECS&gt;</code></td><td>Monitoring interval in seconds (default: 60)</td></tr>
+<tr><td><code>--format &lt;FORMAT&gt;</code></td><td>Output format: text, json, yaml (default: text)</td></tr>
+</tbody></table>
+</div>
+<h2 id="understanding-psi"><a class="header" href="#understanding-psi">Understanding PSI</a></h2>
+<p>Population Stability Index (PSI) measures how much a distribution has shifted:</p>
+<pre><code>PSI = Σ (actual_% - expected_%) × ln(actual_% / expected_%)
+</code></pre>
+<div class="table-wrapper"><table><thead><tr><th>PSI Value</th><th>Interpretation</th></tr></thead><tbody>
+<tr><td>&lt; 0.1</td><td>No significant shift</td></tr>
+<tr><td>0.1 - 0.2</td><td>Moderate shift</td></tr>
+<tr><td>&gt; 0.2</td><td>Significant shift (action required)</td></tr>
+</tbody></table>
+</div>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<h3 id="basic-drift-detection"><a class="header" href="#basic-drift-detection">Basic Drift Detection</a></h3>
+<pre><code class="language-bash">entrenar monitor data/current.parquet
+</code></pre>
+<p>Output:</p>
+<pre><code>Monitoring: data/current.parquet
+  Drift threshold (PSI): 0.2
+Drift Monitoring Results:
+  PSI score: 0.0042
+  Threshold: 0.2000
+  Severity: low
+  Status: NO DRIFT
+</code></pre>
+<h3 id="monitor-with-baseline"><a class="header" href="#monitor-with-baseline">Monitor with Baseline</a></h3>
+<pre><code class="language-bash">entrenar monitor data/current.parquet --baseline data/baseline.parquet
+</code></pre>
+<h3 id="custom-threshold"><a class="header" href="#custom-threshold">Custom Threshold</a></h3>
+<pre><code class="language-bash"># Stricter threshold for production
+entrenar monitor data/current.parquet --threshold 0.1
+</code></pre>
+<h3 id="json-output-for-alerting"><a class="header" href="#json-output-for-alerting">JSON Output for Alerting</a></h3>
+<pre><code class="language-bash">entrenar monitor data/current.parquet --format json
+</code></pre>
+<p>Output:</p>
+<pre><code class="language-json">{
+  "psi_score": 0.0042,
+  "threshold": 0.2,
+  "status": "NO DRIFT",
+  "severity": "low",
+  "drift_detected": false,
+  "buckets": {
+    "baseline": [0.10, 0.15, 0.20, 0.25, 0.15, 0.10, 0.05],
+    "current": [0.11, 0.14, 0.19, 0.26, 0.16, 0.09, 0.05]
+  }
+}
+</code></pre>
+<h2 id="severity-levels"><a class="header" href="#severity-levels">Severity Levels</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Severity</th><th>PSI Range</th><th>Action</th></tr></thead><tbody>
+<tr><td>low</td><td>&lt; 0.1</td><td>No action needed</td></tr>
+<tr><td>moderate</td><td>0.1 - threshold</td><td>Consider investigation</td></tr>
+<tr><td>high</td><td>&gt; threshold</td><td>Immediate investigation required</td></tr>
+</tbody></table>
+</div>
+<h2 id="cicd-integration"><a class="header" href="#cicd-integration">CI/CD Integration</a></h2>
+<p>Use monitor in CI pipelines to detect drift:</p>
+<pre><code class="language-yaml"># GitHub Actions example
+- name: Drift Detection
+  run: |
+    entrenar monitor data/production.parquet \
+      --baseline data/training.parquet \
+      --threshold 0.2
+</code></pre>
+<pre><code class="language-bash"># Shell script with alerting
+result=$(entrenar monitor data/current.parquet --format json)
+drift_detected=$(echo $result | jq '.drift_detected')
+
+if [ "$drift_detected" = "true" ]; then
+    echo "ALERT: Data drift detected!"
+    # Send alert to monitoring system
+    exit 1
+fi
+</code></pre>
+<h2 id="continuous-monitoring"><a class="header" href="#continuous-monitoring">Continuous Monitoring</a></h2>
+<p>For continuous monitoring, use the <code>--interval</code> option:</p>
+<pre><code class="language-bash"># Monitor every 5 minutes
+entrenar monitor data/stream.parquet --interval 300
+</code></pre>
+<h2 id="psi-calculation-details"><a class="header" href="#psi-calculation-details">PSI Calculation Details</a></h2>
+<p>The PSI is calculated by:</p>
+<ol>
+<li>Binning both distributions into buckets</li>
+<li>Computing the percentage in each bucket</li>
+<li>Applying the PSI formula</li>
+</ol>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut psi = 0.0;
+for (expected, actual) in baseline_buckets.iter().zip(current_buckets.iter()) {
+    if *expected &gt; 0.0 &amp;&amp; *actual &gt; 0.0 {
+        psi += (*actual - *expected) * (*actual / *expected).ln();
+    }
+}
+psi = psi.abs();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Establish baselines</strong> - Use training data distribution as baseline</li>
+<li><strong>Set appropriate thresholds</strong> - Start with 0.2, adjust based on domain</li>
+<li><strong>Monitor regularly</strong> - Daily or per-batch in production</li>
+<li><strong>Alert on drift</strong> - Integrate with monitoring systems</li>
+<li><strong>Investigate promptly</strong> - Drift may indicate data quality issues</li>
+</ol>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./overview.html">CLI Overview</a> - General CLI reference</li>
+<li><a href="./audit.html">Audit Command</a> - Bias and fairness auditing</li>
+<li><a href="../monitor/drift-detection.html">Drift Detection</a> - Drift detection theory</li>
+<li><a href="../monitor/quality-gates.html">Quality Gates</a> - Jidoka quality gates</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../cli/audit.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../cli/completion.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +304,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../cli/audit.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../cli/completion.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

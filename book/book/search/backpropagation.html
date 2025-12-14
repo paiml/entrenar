@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Backpropagation - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/search/backpropagation.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,88 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="backpropagation"><a class="header" href="#backpropagation">Backpropagation</a></h1>
+<p>After simulation, propagate the result back up the tree.</p>
+<h2 id="standard-backpropagation"><a class="header" href="#standard-backpropagation">Standard Backpropagation</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn backpropagate(&amp;mut self, leaf_id: NodeId, reward: f32) {
+    let mut current = Some(leaf_id);
+
+    while let Some(node_id) = current {
+        let node = self.tree.get_mut(node_id);
+        node.visits += 1;
+        node.total_reward += reward;
+        current = node.parent;
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="reward-normalization"><a class="header" href="#reward-normalization">Reward Normalization</a></h2>
+<p>Normalize rewards to [0, 1] for consistent UCB calculations:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn backpropagate_normalized(&amp;mut self, leaf_id: NodeId, reward: f32) {
+    // Track min/max for normalization
+    self.stats.update_bounds(reward);
+    let normalized = (reward - self.stats.min) / (self.stats.max - self.stats.min);
+
+    self.backpropagate(leaf_id, normalized);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="rave-rapid-action-value-estimation"><a class="header" href="#rave-rapid-action-value-estimation">RAVE (Rapid Action Value Estimation)</a></h2>
+<p>Share statistics across sibling nodes:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn backpropagate_rave(&amp;mut self, path: &amp;[NodeId], reward: f32) {
+    let actions_taken: HashSet&lt;_&gt; = path.iter()
+        .filter_map(|&amp;id| self.tree.get(id).action.clone())
+        .collect();
+
+    for &amp;node_id in path {
+        let node = self.tree.get_mut(node_id);
+        node.visits += 1;
+        node.total_reward += reward;
+
+        // Update AMAF statistics for siblings
+        for sibling in self.tree.siblings(node_id) {
+            if actions_taken.contains(&amp;sibling.action) {
+                sibling.amaf_visits += 1;
+                sibling.amaf_reward += reward;
+            }
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="virtual-loss"><a class="header" href="#virtual-loss">Virtual Loss</a></h2>
+<p>For parallel MCTS, prevent thread collision:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn apply_virtual_loss(&amp;mut self, path: &amp;[NodeId]) {
+    for &amp;node_id in path {
+        let node = self.tree.get_mut(node_id);
+        node.virtual_loss += 1;
+    }
+}
+
+fn remove_virtual_loss(&amp;mut self, path: &amp;[NodeId], reward: f32) {
+    for &amp;node_id in path {
+        let node = self.tree.get_mut(node_id);
+        node.virtual_loss -= 1;
+        node.visits += 1;
+        node.total_reward += reward;
+    }
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../search/expansion.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../search/policy-network.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +249,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../search/expansion.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../search/policy-network.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

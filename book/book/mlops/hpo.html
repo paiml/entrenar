@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>SafeTensors Format - Entrenar - Training &amp; Optimization Library</title>
+        <title>Hyperparameter Optimization (Kaizen) - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/io/safetensors-format.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/mlops/hpo.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,187 +158,246 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="safetensors-format"><a class="header" href="#safetensors-format">SafeTensors Format</a></h1>
-<p>SafeTensors is the recommended format for production models in entrenar. It provides
-security, efficiency, and full HuggingFace Hub compatibility.</p>
-<h2 id="why-safetensors"><a class="header" href="#why-safetensors">Why SafeTensors?</a></h2>
-<p>SafeTensors was developed by HuggingFace to address security concerns with Python's
-pickle format. Key benefits:</p>
-<ul>
-<li><strong>Security</strong>: No arbitrary code execution (pickle files can run malicious code)</li>
-<li><strong>Zero-copy loading</strong>: Memory-mapped tensor access without full deserialization</li>
-<li><strong>Cross-platform</strong>: Works consistently across Python, Rust, JavaScript</li>
-<li><strong>HuggingFace compatible</strong>: Direct upload/download from HuggingFace Hub</li>
-</ul>
-<h2 id="file-structure"><a class="header" href="#file-structure">File Structure</a></h2>
-<p>SafeTensors files have a simple binary structure:</p>
-<pre><code>┌─────────────────────────────────────────┐
-│ Header Length (8 bytes, little-endian)  │
-├─────────────────────────────────────────┤
-│ JSON Header (variable length)           │
-│ - Tensor metadata (names, shapes, types)│
-│ - Custom metadata (__metadata__ key)    │
-├─────────────────────────────────────────┤
-│ Tensor Data (contiguous binary)         │
-│ - Aligned to 8-byte boundaries          │
-│ - Ordered by dtype then name            │
-└─────────────────────────────────────────┘
-</code></pre>
-<h2 id="saving-to-safetensors"><a class="header" href="#saving-to-safetensors">Saving to SafeTensors</a></h2>
+                        <h1 id="hyperparameter-optimization"><a class="header" href="#hyperparameter-optimization">Hyperparameter Optimization</a></h1>
+<p>Bayesian hyperparameter optimization with Tree-structured Parzen Estimator (TPE) for efficient search.</p>
+<h2 id="toyota-principle-kaizen"><a class="header" href="#toyota-principle-kaizen">Toyota Principle: Kaizen</a></h2>
+<p>Continuous improvement through systematic optimization. HPO automates the search for better hyperparameters.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::io::{Model, ModelMetadata, save_model, SaveConfig, ModelFormat};
-use entrenar::Tensor;
+</span>use entrenar::optim::hpo::{
+    BayesianOptimizer, SearchSpace, ParameterDef, Trial, TrialState
+};
 
-// Create model with parameters
-let params = vec![
-    ("model.embed_tokens.weight".to_string(),
-     Tensor::from_vec(vec![0.1; 4096 * 768], false)),
-    ("model.layers.0.self_attn.q_proj.weight".to_string(),
-     Tensor::from_vec(vec![0.01; 768 * 768], false)),
-];
+// Define search space
+let space = SearchSpace::new()
+    .add("learning_rate", ParameterDef::LogUniform(1e-5, 1e-1))
+    .add("batch_size", ParameterDef::Discrete(vec![16, 32, 64, 128]))
+    .add("hidden_dim", ParameterDef::Uniform(64.0, 512.0))
+    .add("dropout", ParameterDef::Uniform(0.0, 0.5));
 
-let metadata = ModelMetadata::new("my-llm", "llama");
-let model = Model::new(metadata, params);
+// Create optimizer
+let mut optimizer = BayesianOptimizer::new(space, 100); // 100 trials
 
-// Save as SafeTensors
-let config = SaveConfig::new(ModelFormat::SafeTensors);
-save_model(&amp;model, "model.safetensors", &amp;config)?;
+// Optimization loop
+while let Some(trial) = optimizer.ask()? {
+    let params = &amp;trial.params;
+
+    // Train with these parameters
+    let accuracy = train_model(
+        params.get("learning_rate").unwrap().as_f64(),
+        params.get("batch_size").unwrap().as_i64() as usize,
+        params.get("hidden_dim").unwrap().as_f64() as usize,
+        params.get("dropout").unwrap().as_f64(),
+    )?;
+
+    // Report result
+    optimizer.tell(trial.id, accuracy, TrialState::Complete)?;
+}
+
+// Get best parameters
+let best = optimizer.best_trial()?;
+println!("Best accuracy: {}", best.value.unwrap());
+println!("Best params: {:?}", best.params);
 <span class="boring">}</span></code></pre></pre>
-<h2 id="loading-from-safetensors"><a class="header" href="#loading-from-safetensors">Loading from SafeTensors</a></h2>
-<p>Format is auto-detected from file extension:</p>
+<h2 id="parameter-types"><a class="header" href="#parameter-types">Parameter Types</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::io::load_model;
+</span>use entrenar::optim::hpo::ParameterDef;
 
-let model = load_model("model.safetensors")?;
+// Continuous uniform [low, high]
+ParameterDef::Uniform(0.0, 1.0)
 
-// Access metadata
-println!("Model: {}", model.metadata.name);
-println!("Architecture: {}", model.metadata.architecture);
+// Log-uniform (good for learning rates)
+ParameterDef::LogUniform(1e-5, 1e-1)
 
-// Access tensors
-for (name, tensor) in &amp;model.parameters {
-    println!("{}: {} elements", name, tensor.len());
+// Discrete choices
+ParameterDef::Discrete(vec![32, 64, 128, 256])
+
+// Categorical (strings)
+ParameterDef::Categorical(vec![
+    "relu".to_string(),
+    "gelu".to_string(),
+    "swish".to_string(),
+])
+
+// Integer range
+ParameterDef::IntUniform(1, 10)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="grid-search"><a class="header" href="#grid-search">Grid Search</a></h2>
+<p>For exhaustive search over discrete spaces:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::hpo::GridSearch;
+
+let grid = GridSearch::new()
+    .add("lr", vec![0.001, 0.01, 0.1])
+    .add("batch_size", vec![32, 64])
+    .add("optimizer", vec!["adam", "sgd"]);
+
+for config in grid.iter() {
+    let result = train_with_config(&amp;config)?;
+    println!("{:?} -&gt; {}", config, result);
 }
 <span class="boring">}</span></code></pre></pre>
-<h2 id="custom-metadata"><a class="header" href="#custom-metadata">Custom Metadata</a></h2>
-<p>SafeTensors supports custom metadata stored in the <code>__metadata__</code> header field:</p>
+<h2 id="random-search"><a class="header" href="#random-search">Random Search</a></h2>
+<p>For baseline comparison:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// When saving, metadata is automatically included:
-// - name: model name
-// - architecture: model architecture
-// - version: model version
+</span>use entrenar::optim::hpo::RandomSearch;
 
-// For merge operations, additional metadata is added:
-// - merge_method: TIES, DARE, SLERP, or Average
-// - tensor_count: number of tensors
-<span class="boring">}</span></code></pre></pre>
-<h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
-<h3 id="merge-to-safetensors"><a class="header" href="#merge-to-safetensors">Merge to SafeTensors</a></h3>
-<pre><code class="language-bash"># Output format is detected from extension
-entrenar merge model1.safetensors model2.safetensors \
-    --method ties \
-    --output merged.safetensors
-</code></pre>
-<h3 id="inspect-safetensors"><a class="header" href="#inspect-safetensors">Inspect SafeTensors</a></h3>
-<pre><code class="language-bash"># Use entrenar-inspect crate
-entrenar-inspect model.safetensors
-</code></pre>
-<h2 id="memory-mapped-loading"><a class="header" href="#memory-mapped-loading">Memory-Mapped Loading</a></h2>
-<p>For large models, use memory mapping to avoid loading entire file into RAM:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use memmap2::MmapOptions;
-use safetensors::SafeTensors;
+let search = RandomSearch::new(space, 50); // 50 random trials
 
-let file = std::fs::File::open("large_model.safetensors")?;
-let mmap = unsafe { MmapOptions::new().map(&amp;file)? };
-let tensors = SafeTensors::deserialize(&amp;mmap)?;
-
-// Tensors are loaded on-demand from mmap
-for name in tensors.names() {
-    let tensor = tensors.tensor(name)?;
-    // Process tensor...
+for trial in search.iter() {
+    let result = train_with_params(&amp;trial.params)?;
+    println!("Trial {}: {}", trial.id, result);
 }
 <span class="boring">}</span></code></pre></pre>
-<h2 id="huggingface-hub-integration"><a class="header" href="#huggingface-hub-integration">HuggingFace Hub Integration</a></h2>
-<p>Models saved in SafeTensors format can be directly uploaded:</p>
-<pre><code class="language-bash"># Using HuggingFace CLI
-huggingface-cli upload my-org/my-model ./model.safetensors
-
-# Or programmatically
-huggingface-cli repo create my-org/my-model
-huggingface-cli upload my-org/my-model ./model.safetensors model.safetensors
-</code></pre>
-<p>And downloaded models load directly:</p>
+<h2 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h2>
+<p>Prune unpromising trials:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::hf_pipeline::HfModelFetcher;
-use entrenar::io::load_model;
+</span>use entrenar::optim::hpo::{BayesianOptimizer, MedianPruner};
 
-let fetcher = HfModelFetcher::new()?;
-let artifact = fetcher.download_model(
-    "microsoft/codebert-base",
-    Default::default()
-)?;
+let pruner = MedianPruner::new()
+    .with_n_startup_trials(5)
+    .with_n_warmup_steps(10);
 
-let model = load_model(&amp;artifact.path)?;
-<span class="boring">}</span></code></pre></pre>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>Save Time</th><th>Load Time</th><th>File Size</th></tr></thead><tbody>
-<tr><td>100MB</td><td>~100ms</td><td>~50ms</td><td>100MB</td></tr>
-<tr><td>1GB</td><td>~1s</td><td>~500ms</td><td>1GB</td></tr>
-<tr><td>7GB</td><td>~7s</td><td>~3s</td><td>7GB</td></tr>
-</tbody></table>
-</div>
-<p>Compare to JSON format:</p>
-<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>JSON Save</th><th>JSON Load</th><th>JSON Size</th></tr></thead><tbody>
-<tr><td>100MB</td><td>~3s</td><td>~2.5s</td><td>~300MB</td></tr>
-<tr><td>1GB</td><td>~30s</td><td>~25s</td><td>~3GB</td></tr>
-</tbody></table>
-</div>
-<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::io::load_model;
-use entrenar::Error;
+let mut optimizer = BayesianOptimizer::new(space, 100)
+    .with_pruner(pruner);
 
-match load_model("model.safetensors") {
-    Ok(model) =&gt; {
-        println!("Loaded {} tensors", model.parameters.len());
-    }
-    Err(Error::Serialization(msg)) =&gt; {
-        // Invalid SafeTensors format
-        eprintln!("Parse error: {}", msg);
-    }
-    Err(Error::Io(e)) =&gt; {
-        // File not found, permission denied, etc.
-        eprintln!("IO error: {}", e);
-    }
-    Err(e) =&gt; {
-        eprintln!("Other error: {}", e);
+// During training
+for epoch in 0..100 {
+    let loss = train_epoch(&amp;model);
+
+    // Check if should prune
+    if optimizer.should_prune(trial_id, epoch, loss)? {
+        optimizer.tell(trial_id, loss, TrialState::Pruned)?;
+        break;
     }
 }
 <span class="boring">}</span></code></pre></pre>
+<h2 id="multi-objective-optimization"><a class="header" href="#multi-objective-optimization">Multi-Objective Optimization</a></h2>
+<p>Optimize multiple objectives simultaneously:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::hpo::MultiObjectiveOptimizer;
+
+let mut optimizer = MultiObjectiveOptimizer::new(space)
+    .add_objective("accuracy", true)   // maximize
+    .add_objective("latency", false);  // minimize
+
+while let Some(trial) = optimizer.ask()? {
+    let (accuracy, latency) = evaluate(&amp;trial.params)?;
+    optimizer.tell(trial.id, vec![accuracy, latency])?;
+}
+
+// Get Pareto front
+let pareto_front = optimizer.pareto_front()?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="parallel-trials"><a class="header" href="#parallel-trials">Parallel Trials</a></h2>
+<p>Run multiple trials concurrently:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::hpo::BayesianOptimizer;
+use std::thread;
+
+let optimizer = Arc::new(Mutex::new(BayesianOptimizer::new(space, 100)));
+
+let handles: Vec&lt;_&gt; = (0..4).map(|_| {
+    let opt = Arc::clone(&amp;optimizer);
+    thread::spawn(move || {
+        loop {
+            let trial = {
+                let mut opt = opt.lock().unwrap();
+                opt.ask()
+            };
+
+            if let Some(trial) = trial {
+                let result = train_with_params(&amp;trial.params);
+                let mut opt = opt.lock().unwrap();
+                opt.tell(trial.id, result, TrialState::Complete);
+            } else {
+                break;
+            }
+        }
+    })
+}).collect();
+
+for handle in handles {
+    handle.join().unwrap();
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="cargo-run-example"><a class="header" href="#cargo-run-example">Cargo Run Example</a></h2>
+<pre><code class="language-bash"># Run HPO sweep
+cargo run --example hpo_sweep
+
+# With specific search space
+cargo run --example hpo_sweep -- --trials 50 --space config/search_space.yaml
+
+# Resume from checkpoint
+cargo run --example hpo_sweep -- --resume hpo_checkpoint.json
+</code></pre>
+<h2 id="visualization"><a class="header" href="#visualization">Visualization</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Export trials for visualization
+let history = optimizer.history()?;
+
+// Save as JSON for plotting
+let json = serde_json::to_string_pretty(&amp;history)?;
+std::fs::write("hpo_history.json", json)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-with-experiment-tracking"><a class="header" href="#integration-with-experiment-tracking">Integration with Experiment Tracking</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::SqliteBackend;
+use entrenar::optim::hpo::BayesianOptimizer;
+
+let mut storage = SqliteBackend::open("experiments.db")?;
+let exp_id = storage.create_experiment("hpo-sweep", None)?;
+
+while let Some(trial) = optimizer.ask()? {
+    let run_id = storage.create_run(&amp;exp_id)?;
+    storage.start_run(&amp;run_id)?;
+
+    // Log hyperparameters
+    for (name, value) in &amp;trial.params {
+        storage.log_param(&amp;run_id, name, value.clone().into())?;
+    }
+
+    // Train and evaluate
+    let result = train_with_params(&amp;trial.params)?;
+    storage.log_metric(&amp;run_id, "final_accuracy", 0, result)?;
+
+    storage.complete_run(&amp;run_id, RunStatus::Success)?;
+    optimizer.tell(trial.id, result, TrialState::Complete)?;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Start with random search</strong> - Establish baseline</li>
+<li><strong>Use log-uniform for learning rates</strong> - Spans orders of magnitude</li>
+<li><strong>Enable early stopping</strong> - Save compute on bad trials</li>
+<li><strong>Run enough trials</strong> - TPE needs ~20 trials to model well</li>
+<li><strong>Log everything</strong> - Integrate with experiment tracking</li>
+</ol>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
-<li><a href="json-format.html">JSON Format</a> - Human-readable alternative</li>
-<li><a href="yaml-format.html">YAML Format</a> - Configuration-friendly format</li>
-<li><a href="gguf-format.html">GGUF Format</a> - Quantized model format</li>
-<li><a href="../distillation/what-is-distillation.html">Knowledge Distillation</a> - Using with distillation</li>
+<li><a href="./overview.html">MLOps Overview</a></li>
+<li><a href="./experiment-tracking.html">Experiment Tracking</a></li>
+<li><a href="../best-practices/lr-tuning.html">Learning Rate Tuning</a></li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../io/formats.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../mlops/model-registry.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../io/json-format.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../mlops/differential-privacy.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -348,11 +407,11 @@ match load_model("model.safetensors") {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../io/formats.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../mlops/model-registry.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../io/json-format.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../mlops/differential-privacy.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

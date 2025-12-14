@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Experiment Tracking - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/mlops/experiment-tracking.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,172 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="experiment-tracking"><a class="header" href="#experiment-tracking">Experiment Tracking</a></h1>
+<p>Track experiments, runs, metrics, parameters, and artifacts with a local-first SQLite backend.</p>
+<h2 id="toyota-principle-genchi-genbutsu"><a class="header" href="#toyota-principle-genchi-genbutsu">Toyota Principle: Genchi Genbutsu</a></h2>
+<p>"Go and see" - understand the situation through direct observation. Experiment tracking enables data-driven decisions by capturing everything that happens during training.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::{SqliteBackend, ExperimentStorage, RunStatus, ParameterValue};
+
+// Open or create database
+let mut backend = SqliteBackend::open("experiments.db")?;
+
+// Create experiment
+let exp_id = backend.create_experiment("gpt2-finetune", Some(serde_json::json!({
+    "model": "gpt2",
+    "dataset": "wikitext"
+})))?;
+
+// Create and start a run
+let run_id = backend.create_run(&amp;exp_id)?;
+backend.start_run(&amp;run_id)?;
+
+// Log parameters
+backend.log_param(&amp;run_id, "learning_rate", ParameterValue::Float(1e-4))?;
+backend.log_param(&amp;run_id, "batch_size", ParameterValue::Int(32))?;
+backend.log_param(&amp;run_id, "optimizer", ParameterValue::String("adamw".into()))?;
+
+// Log metrics over time
+for epoch in 0..10 {
+    let loss = train_epoch(&amp;model);
+    backend.log_metric(&amp;run_id, "loss", epoch, loss)?;
+    backend.log_metric(&amp;run_id, "accuracy", epoch, evaluate(&amp;model))?;
+}
+
+// Save artifact
+let model_bytes = save_model(&amp;model);
+let artifact_hash = backend.log_artifact(&amp;run_id, "model.safetensors", &amp;model_bytes)?;
+
+// Complete the run
+backend.complete_run(&amp;run_id, RunStatus::Success)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="storage-backends"><a class="header" href="#storage-backends">Storage Backends</a></h2>
+<h3 id="sqlite-default"><a class="header" href="#sqlite-default">SQLite (Default)</a></h3>
+<p>Local-first, zero-dependency storage:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::SqliteBackend;
+
+// File-based storage
+let backend = SqliteBackend::open("./experiments.db")?;
+
+// In-memory for testing
+let backend = SqliteBackend::open_in_memory()?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="in-memory"><a class="header" href="#in-memory">In-Memory</a></h3>
+<p>For testing and ephemeral experiments:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::InMemoryStorage;
+
+let mut storage = InMemoryStorage::new();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="parameter-types"><a class="header" href="#parameter-types">Parameter Types</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::ParameterValue;
+
+// Supported types
+ParameterValue::String("adam".to_string())
+ParameterValue::Int(32)
+ParameterValue::Float(0.001)
+ParameterValue::Bool(true)
+ParameterValue::List(vec![
+    ParameterValue::Int(128),
+    ParameterValue::Int(256),
+])
+<span class="boring">}</span></code></pre></pre>
+<h2 id="querying-experiments"><a class="header" href="#querying-experiments">Querying Experiments</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get experiment by ID
+let experiment = backend.get_experiment(&amp;exp_id)?;
+
+// List runs for experiment
+let runs = backend.list_runs(&amp;exp_id)?;
+
+// Get metrics for a run
+let loss_history = backend.get_metrics(&amp;run_id, "loss")?;
+for point in loss_history {
+    println!("Step {}: {}", point.step, point.value);
+}
+
+// Get run status
+let status = backend.get_run_status(&amp;run_id)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="filtering-runs"><a class="header" href="#filtering-runs">Filtering Runs</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::{ParamFilter, FilterOp};
+
+// Filter by parameter value
+let filters = vec![
+    ParamFilter {
+        key: "learning_rate".to_string(),
+        op: FilterOp::Lt,
+        value: ParameterValue::Float(1e-3),
+    },
+    ParamFilter {
+        key: "optimizer".to_string(),
+        op: FilterOp::Eq,
+        value: ParameterValue::String("adamw".into()),
+    },
+];
+
+let runs = backend.filter_runs(&amp;exp_id, &amp;filters)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="distributed-tracing"><a class="header" href="#distributed-tracing">Distributed Tracing</a></h2>
+<p>Link experiments to distributed traces:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Set span ID for distributed tracing
+backend.set_span_id(&amp;run_id, "trace-abc-123")?;
+
+// Retrieve span ID
+let span_id = backend.get_span_id(&amp;run_id)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="cargo-run-example"><a class="header" href="#cargo-run-example">Cargo Run Example</a></h2>
+<pre><code class="language-bash"># Run experiment tracking example
+cargo run --example experiment_tracking
+
+# With verbose output
+cargo run --example experiment_tracking -- --verbose
+</code></pre>
+<h2 id="database-schema"><a class="header" href="#database-schema">Database Schema</a></h2>
+<p>The SQLite backend uses the following tables:</p>
+<ul>
+<li><code>experiments</code> - Experiment metadata</li>
+<li><code>runs</code> - Individual training runs</li>
+<li><code>metrics</code> - Time-series metrics</li>
+<li><code>params</code> - Run parameters</li>
+<li><code>artifacts</code> - Content-addressable artifact storage</li>
+</ul>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Use descriptive experiment names</strong> - Makes querying easier</li>
+<li><strong>Log all hyperparameters</strong> - Enables reproducibility</li>
+<li><strong>Save artifacts with hashes</strong> - Content-addressable storage prevents duplicates</li>
+<li><strong>Set span IDs</strong> - Enables distributed tracing across services</li>
+<li><strong>Use parameter filtering</strong> - Find best runs quickly</li>
+</ol>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./overview.html">MLOps Overview</a></li>
+<li><a href="./model-registry.html">Model Registry</a></li>
+<li><a href="./preflight.html">Preflight Validation</a></li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../mlops/overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../mlops/preflight.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +333,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../mlops/overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../mlops/preflight.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

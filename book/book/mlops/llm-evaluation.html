@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>SafeTensors Format - Entrenar - Training &amp; Optimization Library</title>
+        <title>LLM Evaluation - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/io/safetensors-format.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/mlops/llm-evaluation.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,187 +158,264 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="safetensors-format"><a class="header" href="#safetensors-format">SafeTensors Format</a></h1>
-<p>SafeTensors is the recommended format for production models in entrenar. It provides
-security, efficiency, and full HuggingFace Hub compatibility.</p>
-<h2 id="why-safetensors"><a class="header" href="#why-safetensors">Why SafeTensors?</a></h2>
-<p>SafeTensors was developed by HuggingFace to address security concerns with Python's
-pickle format. Key benefits:</p>
-<ul>
-<li><strong>Security</strong>: No arbitrary code execution (pickle files can run malicious code)</li>
-<li><strong>Zero-copy loading</strong>: Memory-mapped tensor access without full deserialization</li>
-<li><strong>Cross-platform</strong>: Works consistently across Python, Rust, JavaScript</li>
-<li><strong>HuggingFace compatible</strong>: Direct upload/download from HuggingFace Hub</li>
-</ul>
-<h2 id="file-structure"><a class="header" href="#file-structure">File Structure</a></h2>
-<p>SafeTensors files have a simple binary structure:</p>
-<pre><code>┌─────────────────────────────────────────┐
-│ Header Length (8 bytes, little-endian)  │
-├─────────────────────────────────────────┤
-│ JSON Header (variable length)           │
-│ - Tensor metadata (names, shapes, types)│
-│ - Custom metadata (__metadata__ key)    │
-├─────────────────────────────────────────┤
-│ Tensor Data (contiguous binary)         │
-│ - Aligned to 8-byte boundaries          │
-│ - Ordered by dtype then name            │
-└─────────────────────────────────────────┘
-</code></pre>
-<h2 id="saving-to-safetensors"><a class="header" href="#saving-to-safetensors">Saving to SafeTensors</a></h2>
+                        <h1 id="llm-evaluation"><a class="header" href="#llm-evaluation">LLM Evaluation</a></h1>
+<p>Evaluate LLM outputs for relevance, coherence, groundedness, and harmfulness.</p>
+<h2 id="toyota-principle-genchi-genbutsu"><a class="header" href="#toyota-principle-genchi-genbutsu">Toyota Principle: Genchi Genbutsu</a></h2>
+<p>"Go and see" - directly observe model outputs to understand quality. Systematic evaluation enables data-driven improvement.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::io::{Model, ModelMetadata, save_model, SaveConfig, ModelFormat};
-use entrenar::Tensor;
+</span>use entrenar::monitor::llm::{InMemoryLLMEvaluator, LLMEvaluator, EvalResult};
 
-// Create model with parameters
-let params = vec![
-    ("model.embed_tokens.weight".to_string(),
-     Tensor::from_vec(vec![0.1; 4096 * 768], false)),
-    ("model.layers.0.self_attn.q_proj.weight".to_string(),
-     Tensor::from_vec(vec![0.01; 768 * 768], false)),
-];
+let mut evaluator = InMemoryLLMEvaluator::new();
 
-let metadata = ModelMetadata::new("my-llm", "llama");
-let model = Model::new(metadata, params);
-
-// Save as SafeTensors
-let config = SaveConfig::new(ModelFormat::SafeTensors);
-save_model(&amp;model, "model.safetensors", &amp;config)?;
-<span class="boring">}</span></code></pre></pre>
-<h2 id="loading-from-safetensors"><a class="header" href="#loading-from-safetensors">Loading from SafeTensors</a></h2>
-<p>Format is auto-detected from file extension:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::io::load_model;
-
-let model = load_model("model.safetensors")?;
-
-// Access metadata
-println!("Model: {}", model.metadata.name);
-println!("Architecture: {}", model.metadata.architecture);
-
-// Access tensors
-for (name, tensor) in &amp;model.parameters {
-    println!("{}: {} elements", name, tensor.len());
-}
-<span class="boring">}</span></code></pre></pre>
-<h2 id="custom-metadata"><a class="header" href="#custom-metadata">Custom Metadata</a></h2>
-<p>SafeTensors supports custom metadata stored in the <code>__metadata__</code> header field:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// When saving, metadata is automatically included:
-// - name: model name
-// - architecture: model architecture
-// - version: model version
-
-// For merge operations, additional metadata is added:
-// - merge_method: TIES, DARE, SLERP, or Average
-// - tensor_count: number of tensors
-<span class="boring">}</span></code></pre></pre>
-<h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
-<h3 id="merge-to-safetensors"><a class="header" href="#merge-to-safetensors">Merge to SafeTensors</a></h3>
-<pre><code class="language-bash"># Output format is detected from extension
-entrenar merge model1.safetensors model2.safetensors \
-    --method ties \
-    --output merged.safetensors
-</code></pre>
-<h3 id="inspect-safetensors"><a class="header" href="#inspect-safetensors">Inspect SafeTensors</a></h3>
-<pre><code class="language-bash"># Use entrenar-inspect crate
-entrenar-inspect model.safetensors
-</code></pre>
-<h2 id="memory-mapped-loading"><a class="header" href="#memory-mapped-loading">Memory-Mapped Loading</a></h2>
-<p>For large models, use memory mapping to avoid loading entire file into RAM:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use memmap2::MmapOptions;
-use safetensors::SafeTensors;
-
-let file = std::fs::File::open("large_model.safetensors")?;
-let mmap = unsafe { MmapOptions::new().map(&amp;file)? };
-let tensors = SafeTensors::deserialize(&amp;mmap)?;
-
-// Tensors are loaded on-demand from mmap
-for name in tensors.names() {
-    let tensor = tensors.tensor(name)?;
-    // Process tensor...
-}
-<span class="boring">}</span></code></pre></pre>
-<h2 id="huggingface-hub-integration"><a class="header" href="#huggingface-hub-integration">HuggingFace Hub Integration</a></h2>
-<p>Models saved in SafeTensors format can be directly uploaded:</p>
-<pre><code class="language-bash"># Using HuggingFace CLI
-huggingface-cli upload my-org/my-model ./model.safetensors
-
-# Or programmatically
-huggingface-cli repo create my-org/my-model
-huggingface-cli upload my-org/my-model ./model.safetensors model.safetensors
-</code></pre>
-<p>And downloaded models load directly:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::hf_pipeline::HfModelFetcher;
-use entrenar::io::load_model;
-
-let fetcher = HfModelFetcher::new()?;
-let artifact = fetcher.download_model(
-    "microsoft/codebert-base",
-    Default::default()
+// Evaluate a response
+let result = evaluator.evaluate_response(
+    "run-123",
+    "What is machine learning?",           // prompt
+    "Machine learning is a subset of AI...", // response
+    Some("ML is artificial intelligence..."), // ground truth (optional)
 )?;
 
-let model = load_model(&amp;artifact.path)?;
+println!("Relevance: {:.2}", result.relevance);
+println!("Coherence: {:.2}", result.coherence);
+println!("Groundedness: {:.2}", result.groundedness);
+println!("Harmfulness: {:.2}", result.harmfulness);
 <span class="boring">}</span></code></pre></pre>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>Save Time</th><th>Load Time</th><th>File Size</th></tr></thead><tbody>
-<tr><td>100MB</td><td>~100ms</td><td>~50ms</td><td>100MB</td></tr>
-<tr><td>1GB</td><td>~1s</td><td>~500ms</td><td>1GB</td></tr>
-<tr><td>7GB</td><td>~7s</td><td>~3s</td><td>7GB</td></tr>
-</tbody></table>
-</div>
-<p>Compare to JSON format:</p>
-<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>JSON Save</th><th>JSON Load</th><th>JSON Size</th></tr></thead><tbody>
-<tr><td>100MB</td><td>~3s</td><td>~2.5s</td><td>~300MB</td></tr>
-<tr><td>1GB</td><td>~30s</td><td>~25s</td><td>~3GB</td></tr>
-</tbody></table>
-</div>
-<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<h2 id="evaluation-metrics"><a class="header" href="#evaluation-metrics">Evaluation Metrics</a></h2>
+<h3 id="relevance-00---10"><a class="header" href="#relevance-00---10">Relevance (0.0 - 1.0)</a></h3>
+<p>Measures how well the response addresses the prompt:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::io::load_model;
-use entrenar::Error;
+</span>// High relevance: response directly answers the question
+// Low relevance: response is off-topic or tangential
 
-match load_model("model.safetensors") {
-    Ok(model) =&gt; {
-        println!("Loaded {} tensors", model.parameters.len());
-    }
-    Err(Error::Serialization(msg)) =&gt; {
-        // Invalid SafeTensors format
-        eprintln!("Parse error: {}", msg);
-    }
-    Err(Error::Io(e)) =&gt; {
-        // File not found, permission denied, etc.
-        eprintln!("IO error: {}", e);
-    }
-    Err(e) =&gt; {
-        eprintln!("Other error: {}", e);
-    }
+// Computed by word overlap between prompt and response
+let relevance = result.relevance;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="coherence-00---10"><a class="header" href="#coherence-00---10">Coherence (0.0 - 1.0)</a></h3>
+<p>Measures logical flow and readability:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// High coherence: well-structured, logical flow
+// Low coherence: disjointed, contradictory
+
+// Computed by sentence structure analysis
+let coherence = result.coherence;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="groundedness-00---10"><a class="header" href="#groundedness-00---10">Groundedness (0.0 - 1.0)</a></h3>
+<p>Measures faithfulness to source material:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// High groundedness: claims supported by context
+// Low groundedness: hallucinated or unsupported claims
+
+// Requires ground truth for comparison
+let groundedness = result.groundedness;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="harmfulness-00---10"><a class="header" href="#harmfulness-00---10">Harmfulness (0.0 - 1.0)</a></h3>
+<p>Measures presence of harmful content:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Low harmfulness: safe, appropriate content
+// High harmfulness: toxic, dangerous, or inappropriate
+
+// Keyword-based detection
+let harmfulness = result.harmfulness;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="prompt-tracking"><a class="header" href="#prompt-tracking">Prompt Tracking</a></h2>
+<p>Track prompt versions for A/B testing:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::llm::{PromptVersion, PromptId};
+
+let prompt = PromptVersion {
+    id: PromptId::new("prompt-v1"),
+    template: "Answer the following question: {question}".to_string(),
+    version: 1,
+    metadata: Some(serde_json::json!({
+        "author": "alice",
+        "description": "Basic QA prompt"
+    })),
+};
+
+evaluator.track_prompt("run-123", &amp;prompt)?;
+
+// List prompts for a run
+let prompts = evaluator.get_prompts("run-123")?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="batch-evaluation"><a class="header" href="#batch-evaluation">Batch Evaluation</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let responses = vec![
+    ("What is AI?", "AI is...", Some("Artificial intelligence...")),
+    ("Explain ML", "ML uses...", Some("Machine learning...")),
+    ("Define DL", "DL is...", Some("Deep learning...")),
+];
+
+let mut total_relevance = 0.0;
+
+for (prompt, response, ground_truth) in responses {
+    let result = evaluator.evaluate_response(
+        "run-123",
+        prompt,
+        response,
+        ground_truth,
+    )?;
+
+    total_relevance += result.relevance;
+}
+
+let avg_relevance = total_relevance / responses.len() as f64;
+println!("Average relevance: {:.2}", avg_relevance);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="llm-metrics-logging"><a class="header" href="#llm-metrics-logging">LLM Metrics Logging</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::llm::LLMMetrics;
+
+let metrics = LLMMetrics {
+    prompt_tokens: 50,
+    completion_tokens: 150,
+    total_tokens: 200,
+    latency_ms: 500,
+    model: "gpt-4".to_string(),
+    temperature: Some(0.7),
+    top_p: Some(0.9),
+};
+
+evaluator.log_llm_call("run-123", metrics)?;
+
+// Retrieve metrics
+let all_metrics = evaluator.get_metrics("run-123")?;
+for m in all_metrics {
+    println!("Tokens: {}, Latency: {}ms", m.total_tokens, m.latency_ms);
 }
 <span class="boring">}</span></code></pre></pre>
+<h2 id="aggregate-metrics"><a class="header" href="#aggregate-metrics">Aggregate Metrics</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::llm::AggregateMetrics;
+
+let aggregate = evaluator.aggregate_metrics("run-123")?;
+
+println!("Total calls: {}", aggregate.total_calls);
+println!("Total tokens: {}", aggregate.total_tokens);
+println!("Avg latency: {:.0}ms", aggregate.avg_latency_ms);
+println!("Avg relevance: {:.2}", aggregate.avg_relevance);
+println!("Avg coherence: {:.2}", aggregate.avg_coherence);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-with-training"><a class="header" href="#integration-with-training">Integration with Training</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::callback::LLMEvalCallback;
+
+let callback = LLMEvalCallback::new()
+    .with_eval_samples(100)
+    .with_ground_truth_path("data/test.jsonl");
+
+trainer.add_callback(callback);
+
+// Evaluation runs automatically at end of each epoch
+trainer.fit(&amp;model, &amp;dataset)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="cargo-run-example"><a class="header" href="#cargo-run-example">Cargo Run Example</a></h2>
+<pre><code class="language-bash"># Evaluate single response
+cargo run --example llm_eval -- \
+    --prompt "What is ML?" \
+    --response "Machine learning is..."
+
+# Evaluate from file
+cargo run --example llm_eval -- \
+    --input responses.jsonl \
+    --output eval_results.json
+
+# With ground truth
+cargo run --example llm_eval -- \
+    --input responses.jsonl \
+    --ground-truth ground_truth.jsonl
+</code></pre>
+<h2 id="custom-evaluators"><a class="header" href="#custom-evaluators">Custom Evaluators</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::llm::{LLMEvaluator, EvalResult};
+
+struct CustomEvaluator {
+    // Custom state
+}
+
+impl LLMEvaluator for CustomEvaluator {
+    fn evaluate_response(
+        &amp;mut self,
+        run_id: &amp;str,
+        prompt: &amp;str,
+        response: &amp;str,
+        ground_truth: Option&lt;&amp;str&gt;,
+    ) -&gt; Result&lt;EvalResult&gt; {
+        // Custom evaluation logic
+        let relevance = custom_relevance(prompt, response);
+        let coherence = custom_coherence(response);
+        let groundedness = custom_groundedness(response, ground_truth);
+        let harmfulness = custom_harmfulness(response);
+
+        Ok(EvalResult::new(relevance, coherence, groundedness, harmfulness))
+    }
+
+    // ... implement other methods
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="evaluation-report"><a class="header" href="#evaluation-report">Evaluation Report</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Generate evaluation report
+let report = evaluator.generate_report("run-123")?;
+
+println!("{}", report);
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code>=== LLM Evaluation Report ===
+Run: run-123
+Total evaluations: 100
+
+Metrics Summary:
+  Relevance:    0.85 ± 0.12
+  Coherence:    0.92 ± 0.08
+  Groundedness: 0.78 ± 0.15
+  Harmfulness:  0.02 ± 0.05
+
+Token Usage:
+  Total tokens: 25,000
+  Avg per call: 250
+
+Latency:
+  Avg: 450ms
+  P95: 850ms
+  P99: 1200ms
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Always include ground truth</strong> - Enables groundedness measurement</li>
+<li><strong>Evaluate on diverse prompts</strong> - Avoid overfitting to specific patterns</li>
+<li><strong>Track prompt versions</strong> - Enable A/B testing</li>
+<li><strong>Log token usage</strong> - Monitor costs</li>
+<li><strong>Set quality thresholds</strong> - Fail builds on low scores</li>
+</ol>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
-<li><a href="json-format.html">JSON Format</a> - Human-readable alternative</li>
-<li><a href="yaml-format.html">YAML Format</a> - Configuration-friendly format</li>
-<li><a href="gguf-format.html">GGUF Format</a> - Quantized model format</li>
-<li><a href="../distillation/what-is-distillation.html">Knowledge Distillation</a> - Using with distillation</li>
+<li><a href="./overview.html">MLOps Overview</a></li>
+<li><a href="./experiment-tracking.html">Experiment Tracking</a></li>
+<li><a href="../monitor/quality-gates.html">Quality Gates (Jidoka)</a></li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../io/formats.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../mlops/cloud-storage.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../io/json-format.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../io/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -348,11 +425,11 @@ match load_model("model.safetensors") {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../io/formats.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../mlops/cloud-storage.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../io/json-format.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../io/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

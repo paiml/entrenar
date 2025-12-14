@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Overview - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/generative/overview.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,66 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="generative-models"><a class="header" href="#generative-models">Generative Models</a></h1>
+<p>Entrenar provides Generative Adversarial Networks (GANs) for code synthesis.</p>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<pre><code>Latent Vector z ─┬─► Generator ─► AST Tokens ─┬─► Discriminator ─► Valid/Invalid
+                 │                            │
+                 │   Real AST Samples ────────┘
+                 │
+                 └── (sampled from N(0, I))
+</code></pre>
+<h2 id="key-components"><a class="header" href="#key-components">Key Components</a></h2>
+<h3 id="generator"><a class="header" href="#generator">Generator</a></h3>
+<ul>
+<li>Maps latent vectors to Rust AST token sequences</li>
+<li>MLP architecture with configurable hidden layers</li>
+<li>Xavier/He initialization for stable training</li>
+</ul>
+<h3 id="discriminator"><a class="header" href="#discriminator">Discriminator</a></h3>
+<ul>
+<li>Classifies code as real (valid) or fake (invalid)</li>
+<li>Token embedding + MLP architecture</li>
+<li>Binary cross-entropy loss</li>
+</ul>
+<h3 id="latent-space"><a class="header" href="#latent-space">Latent Space</a></h3>
+<ul>
+<li>Standard normal distribution sampling</li>
+<li>SLERP interpolation for smooth transitions</li>
+<li>Supports latent space exploration</li>
+</ul>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::generative::{CodeGan, CodeGanConfig};
+
+let config = CodeGanConfig::default();
+let mut gan = CodeGan::new(config);
+
+// Generate code samples
+let latent = gan.sample_latent(10);
+for z in &amp;latent {
+    let code = gan.generator.generate(z);
+    println!("{:?}", code);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<ol>
+<li><strong>Code Completion</strong>: Generate likely next tokens</li>
+<li><strong>Data Augmentation</strong>: Create synthetic training data</li>
+<li><strong>Novelty Search</strong>: Explore code generation space</li>
+<li><strong>Transfer Learning</strong>: Pre-train on code distributions</li>
+</ol>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../search/policy-network.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../generative/code-gan.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +227,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../search/policy-network.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../generative/code-gan.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

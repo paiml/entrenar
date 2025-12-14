@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Expansion and Simulation - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/search/expansion.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,78 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="expansion-and-simulation"><a class="header" href="#expansion-and-simulation">Expansion and Simulation</a></h1>
+<p>After selection, MCTS expands the tree and simulates to estimate value.</p>
+<h2 id="expansion"><a class="header" href="#expansion">Expansion</a></h2>
+<p>When a leaf node is reached, expand by adding child nodes:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn expand(&amp;mut self, node_id: NodeId) {
+    let state = self.tree.get_state(node_id);
+    let actions = self.state_space.actions(&amp;state);
+
+    for action in actions {
+        let child_state = action.apply(&amp;state);
+        let prior = self.policy.predict(&amp;state, &amp;action);
+        self.tree.add_child(node_id, action, child_state, prior);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="lazy-expansion"><a class="header" href="#lazy-expansion">Lazy Expansion</a></h3>
+<p>For large action spaces, expand lazily:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn expand_one(&amp;mut self, node_id: NodeId) -&gt; Option&lt;NodeId&gt; {
+    let unexpanded = self.tree.unexpanded_actions(node_id);
+    if let Some(action) = unexpanded.first() {
+        return Some(self.tree.add_child(node_id, action));
+    }
+    None
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="simulation-rollout"><a class="header" href="#simulation-rollout">Simulation (Rollout)</a></h2>
+<p>Simulate from current state to terminal:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn simulate(&amp;self, state: &amp;State) -&gt; f32 {
+    let mut current = state.clone();
+
+    while !current.is_terminal() {
+        // Random policy for simulation
+        let actions = self.state_space.actions(&amp;current);
+        let action = actions.choose(&amp;mut self.rng).unwrap();
+        current = action.apply(&amp;current);
+    }
+
+    current.reward().unwrap_or(0.0)
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="guided-simulation"><a class="header" href="#guided-simulation">Guided Simulation</a></h3>
+<p>Use policy network for better rollouts:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn guided_simulate(&amp;self, state: &amp;State) -&gt; f32 {
+    let mut current = state.clone();
+
+    while !current.is_terminal() {
+        let probs = self.policy.predict(&amp;current);
+        let action = sample_from_distribution(&amp;probs);
+        current = action.apply(&amp;current);
+    }
+
+    current.reward().unwrap_or(0.0)
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../search/selection.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../search/backpropagation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +239,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../search/selection.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../search/backpropagation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

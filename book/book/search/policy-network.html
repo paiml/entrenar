@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Policy Network Integration - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/search/policy-network.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,90 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="policy-network-integration"><a class="header" href="#policy-network-integration">Policy Network Integration</a></h1>
+<p>Guide MCTS with learned prior probabilities.</p>
+<h2 id="policynetwork-trait"><a class="header" href="#policynetwork-trait">PolicyNetwork Trait</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait PolicyNetwork&lt;S: State, A: Action&gt; {
+    /// Predict action probabilities for a state
+    fn predict(&amp;self, state: &amp;S) -&gt; Vec&lt;(A, f32)&gt;;
+
+    /// Optional: Predict state value
+    fn value(&amp;self, state: &amp;S) -&gt; f32 { 0.5 }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-with-mcts"><a class="header" href="#integration-with-mcts">Integration with MCTS</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut mcts = MctsSearch::new(config, state_space, action_space)
+    .with_policy(policy_network);
+
+// Policy priors guide node selection
+let result = mcts.search(&amp;initial_state);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="training-the-policy-network"><a class="header" href="#training-the-policy-network">Training the Policy Network</a></h2>
+<p>Use MCTS visit counts as training targets:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn generate_training_data(mcts: &amp;MctsSearch) -&gt; TrainingData {
+    let root = mcts.tree.root();
+
+    // Visit counts become policy targets
+    let policy_target: Vec&lt;f32&gt; = root.children.iter()
+        .map(|c| c.visits as f32 / root.visits as f32)
+        .collect();
+
+    // Final outcome becomes value target
+    let value_target = mcts.result.reward;
+
+    TrainingData {
+        state: root.state.features(),
+        policy: policy_target,
+        value: value_target,
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="alphazero-style-training-loop"><a class="header" href="#alphazero-style-training-loop">AlphaZero-Style Training Loop</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn self_play_training(mut policy: PolicyNetwork, iterations: usize) {
+    for _ in 0..iterations {
+        // Self-play with current policy
+        let mut mcts = MctsSearch::new(config).with_policy(&amp;policy);
+        let game_data = play_game(&amp;mut mcts);
+
+        // Train on game outcomes
+        let training_data = generate_training_data(&amp;game_data);
+        policy.train(&amp;training_data);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="temperature-based-action-selection"><a class="header" href="#temperature-based-action-selection">Temperature-Based Action Selection</a></h2>
+<p>During self-play, use temperature to control exploration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn select_action(mcts: &amp;MctsSearch, temperature: f32) -&gt; Action {
+    let visits: Vec&lt;f32&gt; = mcts.root_children()
+        .map(|c| (c.visits as f32).powf(1.0 / temperature))
+        .collect();
+
+    let sum: f32 = visits.iter().sum();
+    let probs: Vec&lt;f32&gt; = visits.iter().map(|v| v / sum).collect();
+
+    sample_from_distribution(&amp;probs)
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../search/backpropagation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../generative/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +251,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../search/backpropagation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../generative/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

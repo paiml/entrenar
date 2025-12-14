@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Mode Collapse Detection - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/generative/mode-collapse.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,129 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="mode-collapse-detection"><a class="header" href="#mode-collapse-detection">Mode Collapse Detection</a></h1>
+<p>Mode collapse occurs when the generator produces limited variety.</p>
+<h2 id="what-is-mode-collapse"><a class="header" href="#what-is-mode-collapse">What is Mode Collapse?</a></h2>
+<ul>
+<li>Generator ignores latent input</li>
+<li>All outputs look similar</li>
+<li>Discriminator can't distinguish (always ~0.5)</li>
+<li>Training becomes unstable</li>
+</ul>
+<h2 id="detection-methods"><a class="header" href="#detection-methods">Detection Methods</a></h2>
+<h3 id="diversity-score"><a class="header" href="#diversity-score">Diversity Score</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let collapse_score = gan.detect_mode_collapse(num_samples);
+
+// collapse_score ∈ [0, 1]
+// 0 = perfect diversity
+// 1 = complete collapse (all identical)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="implementation"><a class="header" href="#implementation">Implementation</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub fn detect_mode_collapse(&amp;mut self, num_samples: usize) -&gt; f32 {
+    let latents = self.sample_latent(num_samples);
+    let samples: Vec&lt;Vec&lt;u32&gt;&gt; = latents.iter()
+        .map(|z| self.generator.generate(z))
+        .collect();
+
+    // Count unique sequences
+    let unique: HashSet&lt;_&gt; = samples.iter().collect();
+    let diversity = unique.len() as f32 / num_samples as f32;
+
+    // Mode collapse score = 1 - diversity
+    1.0 - diversity
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="prevention-strategies"><a class="header" href="#prevention-strategies">Prevention Strategies</a></h2>
+<h3 id="1-minibatch-discrimination"><a class="header" href="#1-minibatch-discrimination">1. Minibatch Discrimination</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn minibatch_features(batch: &amp;[Vec&lt;u32&gt;]) -&gt; Vec&lt;f32&gt; {
+    let features: Vec&lt;Vec&lt;f32&gt;&gt; = batch.iter()
+        .map(|x| embed(x))
+        .collect();
+
+    // Compute pairwise distances
+    let mut diversity_features = Vec::new();
+    for i in 0..features.len() {
+        let distances: Vec&lt;f32&gt; = features.iter()
+            .map(|f| l2_distance(&amp;features[i], f))
+            .collect();
+        diversity_features.extend(distances);
+    }
+    diversity_features
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="2-historical-averaging"><a class="header" href="#2-historical-averaging">2. Historical Averaging</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn historical_averaging_loss(
+    current_params: &amp;[f32],
+    history: &amp;VecDeque&lt;Vec&lt;f32&gt;&gt;,
+) -&gt; f32 {
+    let avg: Vec&lt;f32&gt; = average_params(history);
+    mse(current_params, &amp;avg)
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="3-unrolled-gan"><a class="header" href="#3-unrolled-gan">3. Unrolled GAN</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn unrolled_generator_loss(
+    gan: &amp;mut CodeGan,
+    unroll_steps: usize,
+) -&gt; f32 {
+    // Save discriminator state
+    let d_state = gan.discriminator.clone();
+
+    // Unroll discriminator updates
+    for _ in 0..unroll_steps {
+        gan.train_discriminator_step(&amp;real_batch);
+    }
+
+    // Compute generator loss against unrolled discriminator
+    let g_loss = gan.generator_loss();
+
+    // Restore discriminator
+    gan.discriminator = d_state;
+
+    g_loss
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="monitoring-dashboard"><a class="header" href="#monitoring-dashboard">Monitoring Dashboard</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// During training
+for step in 0..total_steps {
+    let g_loss = gan.train_generator_step();
+    let d_loss = gan.train_discriminator_step(&amp;batch);
+
+    if step % 100 == 0 {
+        let collapse = gan.detect_mode_collapse(100);
+        println!(
+            "Step {}: G={:.4} D={:.4} Collapse={:.2}%",
+            step, g_loss, d_loss, collapse * 100.0
+        );
+
+        if collapse &gt; 0.8 {
+            eprintln!("WARNING: Mode collapse detected!");
+            // Consider: reduce LR, add noise, restart
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../generative/training.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../advanced/custom-backward.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +290,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../generative/training.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../advanced/custom-backward.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

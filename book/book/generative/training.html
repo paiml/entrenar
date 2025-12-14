@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Training Loop - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/generative/training.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,104 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="gan-training-loop"><a class="header" href="#gan-training-loop">GAN Training Loop</a></h1>
+<p>Training GANs requires careful balancing of generator and discriminator.</p>
+<h2 id="basic-training-loop"><a class="header" href="#basic-training-loop">Basic Training Loop</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::generative::{CodeGan, CodeGanConfig};
+
+let config = CodeGanConfig::default();
+let mut gan = CodeGan::new(config);
+
+for epoch in 0..num_epochs {
+    for real_batch in data_loader {
+        // 1. Train discriminator on real data
+        let d_loss_real = gan.train_discriminator_real(&amp;real_batch);
+
+        // 2. Train discriminator on fake data
+        let fake_batch = gan.generate_batch(batch_size);
+        let d_loss_fake = gan.train_discriminator_fake(&amp;fake_batch);
+
+        // 3. Train generator
+        let g_loss = gan.train_generator_step();
+
+        gan.record_step(g_loss, d_loss_real + d_loss_fake);
+    }
+
+    // Log progress
+    println!(
+        "Epoch {}: G_loss={:.4}, D_loss={:.4}",
+        epoch,
+        gan.stats.avg_generator_loss(),
+        gan.stats.avg_discriminator_loss()
+    );
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="training-tricks"><a class="header" href="#training-tricks">Training Tricks</a></h2>
+<h3 id="n-step-discriminator-updates"><a class="header" href="#n-step-discriminator-updates">n-step Discriminator Updates</a></h3>
+<p>Train discriminator more frequently than generator:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let d_steps_per_g_step = 5;
+
+for _ in 0..d_steps_per_g_step {
+    let d_loss = gan.train_discriminator_step(&amp;real_batch);
+}
+let g_loss = gan.train_generator_step();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="gradient-penalty-wgan-gp"><a class="header" href="#gradient-penalty-wgan-gp">Gradient Penalty (WGAN-GP)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn gradient_penalty(
+    discriminator: &amp;Discriminator,
+    real: &amp;[u32],
+    fake: &amp;[u32],
+) -&gt; f32 {
+    let alpha = rand::random::&lt;f32&gt;();
+    let interpolated = interpolate_tokens(real, fake, alpha);
+
+    let d_interp = discriminator.forward(&amp;interpolated);
+    let gradients = compute_gradients(discriminator, &amp;interpolated);
+
+    let penalty = (gradients.norm() - 1.0).powi(2);
+    10.0 * penalty  // Lambda = 10
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="spectral-normalization"><a class="header" href="#spectral-normalization">Spectral Normalization</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn spectral_norm(weight: &amp;mut Vec&lt;Vec&lt;f32&gt;&gt;) {
+    let (u, sigma, _v) = power_iteration(weight, 10);
+    for row in weight.iter_mut() {
+        for w in row.iter_mut() {
+            *w /= sigma;
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tracking-training-progress"><a class="header" href="#tracking-training-progress">Tracking Training Progress</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Statistics tracking
+let stats = &amp;gan.stats;
+
+println!("Steps: {}", stats.steps);
+println!("Avg G loss: {:.4}", stats.avg_generator_loss());
+println!("Avg D loss: {:.4}", stats.avg_discriminator_loss());
+println!("Mode collapse score: {:.4}", stats.mode_collapse_score);
+println!("Unique tokens: {}", stats.unique_tokens);
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../generative/latent-space.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../generative/mode-collapse.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +265,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../generative/latent-space.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../generative/mode-collapse.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

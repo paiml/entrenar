@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>SafeTensors Format - Entrenar - Training &amp; Optimization Library</title>
+        <title>Cloud Storage - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/io/safetensors-format.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/mlops/cloud-storage.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,187 +158,254 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="safetensors-format"><a class="header" href="#safetensors-format">SafeTensors Format</a></h1>
-<p>SafeTensors is the recommended format for production models in entrenar. It provides
-security, efficiency, and full HuggingFace Hub compatibility.</p>
-<h2 id="why-safetensors"><a class="header" href="#why-safetensors">Why SafeTensors?</a></h2>
-<p>SafeTensors was developed by HuggingFace to address security concerns with Python's
-pickle format. Key benefits:</p>
-<ul>
-<li><strong>Security</strong>: No arbitrary code execution (pickle files can run malicious code)</li>
-<li><strong>Zero-copy loading</strong>: Memory-mapped tensor access without full deserialization</li>
-<li><strong>Cross-platform</strong>: Works consistently across Python, Rust, JavaScript</li>
-<li><strong>HuggingFace compatible</strong>: Direct upload/download from HuggingFace Hub</li>
-</ul>
-<h2 id="file-structure"><a class="header" href="#file-structure">File Structure</a></h2>
-<p>SafeTensors files have a simple binary structure:</p>
-<pre><code>┌─────────────────────────────────────────┐
-│ Header Length (8 bytes, little-endian)  │
-├─────────────────────────────────────────┤
-│ JSON Header (variable length)           │
-│ - Tensor metadata (names, shapes, types)│
-│ - Custom metadata (__metadata__ key)    │
-├─────────────────────────────────────────┤
-│ Tensor Data (contiguous binary)         │
-│ - Aligned to 8-byte boundaries          │
-│ - Ordered by dtype then name            │
-└─────────────────────────────────────────┘
-</code></pre>
-<h2 id="saving-to-safetensors"><a class="header" href="#saving-to-safetensors">Saving to SafeTensors</a></h2>
+                        <h1 id="cloud-storage"><a class="header" href="#cloud-storage">Cloud Storage</a></h1>
+<p>Store artifacts in local filesystem, S3, Azure Blob Storage, or Google Cloud Storage with content-addressable hashing.</p>
+<h2 id="toyota-principle-heijunka"><a class="header" href="#toyota-principle-heijunka">Toyota Principle: Heijunka</a></h2>
+<p>Level the storage load across backends with consistent abstraction layer.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::io::{Model, ModelMetadata, save_model, SaveConfig, ModelFormat};
-use entrenar::Tensor;
+</span>use entrenar::storage::{LocalBackend, ArtifactBackend};
 
-// Create model with parameters
-let params = vec![
-    ("model.embed_tokens.weight".to_string(),
-     Tensor::from_vec(vec![0.1; 4096 * 768], false)),
-    ("model.layers.0.self_attn.q_proj.weight".to_string(),
-     Tensor::from_vec(vec![0.01; 768 * 768], false)),
+// Local filesystem backend
+let backend = LocalBackend::new("./artifacts");
+
+// Store artifact
+let hash = backend.put("model.safetensors", &amp;model_bytes)?;
+println!("Stored with hash: {}", hash);
+
+// Retrieve artifact
+let data = backend.get(&amp;hash)?;
+
+// Check existence
+if backend.exists(&amp;hash)? {
+    println!("Artifact exists");
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="supported-backends"><a class="header" href="#supported-backends">Supported Backends</a></h2>
+<h3 id="local-filesystem"><a class="header" href="#local-filesystem">Local Filesystem</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::LocalBackend;
+
+let backend = LocalBackend::new("./artifacts");
+
+// With subdirectory organization
+let backend = LocalBackend::new("./artifacts")
+    .with_subdirs(true);  // Organizes by hash prefix
+<span class="boring">}</span></code></pre></pre>
+<h3 id="amazon-s3"><a class="header" href="#amazon-s3">Amazon S3</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::{S3Config, BackendConfig};
+
+let config = S3Config {
+    bucket: "my-ml-artifacts".to_string(),
+    region: Some("us-east-1".to_string()),
+    endpoint: None,  // Use default AWS endpoint
+    access_key: Some("AKIA...".to_string()),
+    secret_key: Some("secret...".to_string()),
+};
+
+// Use environment variables instead (recommended)
+let config = S3Config {
+    bucket: "my-ml-artifacts".to_string(),
+    region: Some("us-east-1".to_string()),
+    endpoint: None,
+    access_key: None,  // Uses AWS_ACCESS_KEY_ID
+    secret_key: None,  // Uses AWS_SECRET_ACCESS_KEY
+};
+<span class="boring">}</span></code></pre></pre>
+<h3 id="azure-blob-storage"><a class="header" href="#azure-blob-storage">Azure Blob Storage</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::AzureConfig;
+
+let config = AzureConfig {
+    container: "ml-artifacts".to_string(),
+    account: "myaccount".to_string(),
+    access_key: Some("key...".to_string()),
+};
+
+// Uses AZURE_STORAGE_KEY if access_key is None
+<span class="boring">}</span></code></pre></pre>
+<h3 id="google-cloud-storage"><a class="header" href="#google-cloud-storage">Google Cloud Storage</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::GCSConfig;
+
+let config = GCSConfig {
+    bucket: "ml-artifacts".to_string(),
+    project: Some("my-project".to_string()),
+    credentials_path: Some("/path/to/credentials.json".to_string()),
+};
+
+// Uses GOOGLE_APPLICATION_CREDENTIALS if credentials_path is None
+<span class="boring">}</span></code></pre></pre>
+<h2 id="unified-backend-config"><a class="header" href="#unified-backend-config">Unified Backend Config</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::BackendConfig;
+
+// From environment or config file
+let config = BackendConfig::from_env()?;
+
+// Explicit backend selection
+let config = BackendConfig::S3(S3Config {
+    bucket: "my-bucket".to_string(),
+    region: Some("us-east-1".to_string()),
+    endpoint: None,
+    access_key: None,
+    secret_key: None,
+});
+<span class="boring">}</span></code></pre></pre>
+<h2 id="content-addressable-storage"><a class="header" href="#content-addressable-storage">Content-Addressable Storage</a></h2>
+<p>All backends use SHA-256 content hashing:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::ArtifactBackend;
+
+// Same content always gets same hash
+let hash1 = backend.put("model1.safetensors", &amp;data)?;
+let hash2 = backend.put("model2.safetensors", &amp;data)?;
+assert_eq!(hash1, hash2);  // Deduplication!
+
+// Retrieve by hash
+let retrieved = backend.get(&amp;hash1)?;
+assert_eq!(data, retrieved);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="artifact-metadata"><a class="header" href="#artifact-metadata">Artifact Metadata</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::ArtifactMetadata;
+
+let metadata = backend.metadata(&amp;hash)?;
+
+println!("Size: {} bytes", metadata.size_bytes);
+println!("Created: {}", metadata.created_at);
+println!("Content-Type: {}", metadata.content_type);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="batch-operations"><a class="header" href="#batch-operations">Batch Operations</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Upload multiple artifacts
+let artifacts = vec![
+    ("model.safetensors", model_bytes),
+    ("config.json", config_bytes),
+    ("tokenizer.json", tokenizer_bytes),
 ];
 
-let metadata = ModelMetadata::new("my-llm", "llama");
-let model = Model::new(metadata, params);
+for (name, data) in artifacts {
+    let hash = backend.put(name, &amp;data)?;
+    println!("{}: {}", name, hash);
+}
 
-// Save as SafeTensors
-let config = SaveConfig::new(ModelFormat::SafeTensors);
-save_model(&amp;model, "model.safetensors", &amp;config)?;
-<span class="boring">}</span></code></pre></pre>
-<h2 id="loading-from-safetensors"><a class="header" href="#loading-from-safetensors">Loading from SafeTensors</a></h2>
-<p>Format is auto-detected from file extension:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::io::load_model;
-
-let model = load_model("model.safetensors")?;
-
-// Access metadata
-println!("Model: {}", model.metadata.name);
-println!("Architecture: {}", model.metadata.architecture);
-
-// Access tensors
-for (name, tensor) in &amp;model.parameters {
-    println!("{}: {} elements", name, tensor.len());
+// List all artifacts
+let hashes = backend.list()?;
+for hash in hashes {
+    println!("  {}", hash);
 }
 <span class="boring">}</span></code></pre></pre>
-<h2 id="custom-metadata"><a class="header" href="#custom-metadata">Custom Metadata</a></h2>
-<p>SafeTensors supports custom metadata stored in the <code>__metadata__</code> header field:</p>
+<h2 id="integration-with-experiment-tracking"><a class="header" href="#integration-with-experiment-tracking">Integration with Experiment Tracking</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// When saving, metadata is automatically included:
-// - name: model name
-// - architecture: model architecture
-// - version: model version
+</span>use entrenar::storage::{SqliteBackend, LocalBackend, ExperimentStorage};
 
-// For merge operations, additional metadata is added:
-// - merge_method: TIES, DARE, SLERP, or Average
-// - tensor_count: number of tensors
+let mut storage = SqliteBackend::open("experiments.db")?;
+let artifact_backend = LocalBackend::new("./artifacts");
+
+// Log artifact with content-addressable hash
+let model_bytes = save_model(&amp;model);
+let hash = artifact_backend.put("model.safetensors", &amp;model_bytes)?;
+storage.log_artifact(&amp;run_id, "model.safetensors", &amp;model_bytes)?;
+
+// Reference artifact in experiment metadata
 <span class="boring">}</span></code></pre></pre>
-<h2 id="cli-usage"><a class="header" href="#cli-usage">CLI Usage</a></h2>
-<h3 id="merge-to-safetensors"><a class="header" href="#merge-to-safetensors">Merge to SafeTensors</a></h3>
-<pre><code class="language-bash"># Output format is detected from extension
-entrenar merge model1.safetensors model2.safetensors \
-    --method ties \
-    --output merged.safetensors
-</code></pre>
-<h3 id="inspect-safetensors"><a class="header" href="#inspect-safetensors">Inspect SafeTensors</a></h3>
-<pre><code class="language-bash"># Use entrenar-inspect crate
-entrenar-inspect model.safetensors
-</code></pre>
-<h2 id="memory-mapped-loading"><a class="header" href="#memory-mapped-loading">Memory-Mapped Loading</a></h2>
-<p>For large models, use memory mapping to avoid loading entire file into RAM:</p>
+<h2 id="in-memory-backend-testing"><a class="header" href="#in-memory-backend-testing">In-Memory Backend (Testing)</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use memmap2::MmapOptions;
-use safetensors::SafeTensors;
+</span>use entrenar::storage::InMemoryBackend;
 
-let file = std::fs::File::open("large_model.safetensors")?;
-let mmap = unsafe { MmapOptions::new().map(&amp;file)? };
-let tensors = SafeTensors::deserialize(&amp;mmap)?;
+let backend = InMemoryBackend::new();
 
-// Tensors are loaded on-demand from mmap
-for name in tensors.names() {
-    let tensor = tensors.tensor(name)?;
-    // Process tensor...
-}
+// Use for unit tests
+backend.put("test.bin", &amp;[1, 2, 3, 4])?;
+let data = backend.get(&amp;hash)?;
 <span class="boring">}</span></code></pre></pre>
-<h2 id="huggingface-hub-integration"><a class="header" href="#huggingface-hub-integration">HuggingFace Hub Integration</a></h2>
-<p>Models saved in SafeTensors format can be directly uploaded:</p>
-<pre><code class="language-bash"># Using HuggingFace CLI
-huggingface-cli upload my-org/my-model ./model.safetensors
-
-# Or programmatically
-huggingface-cli repo create my-org/my-model
-huggingface-cli upload my-org/my-model ./model.safetensors model.safetensors
-</code></pre>
-<p>And downloaded models load directly:</p>
+<h2 id="mock-s3-backend-testing"><a class="header" href="#mock-s3-backend-testing">Mock S3 Backend (Testing)</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::hf_pipeline::HfModelFetcher;
-use entrenar::io::load_model;
+</span>use entrenar::storage::MockS3Backend;
 
-let fetcher = HfModelFetcher::new()?;
-let artifact = fetcher.download_model(
-    "microsoft/codebert-base",
-    Default::default()
-)?;
+let mock = MockS3Backend::new();
 
-let model = load_model(&amp;artifact.path)?;
+// Simulates S3 behavior without network calls
+mock.put("model.safetensors", &amp;model_bytes)?;
 <span class="boring">}</span></code></pre></pre>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>Save Time</th><th>Load Time</th><th>File Size</th></tr></thead><tbody>
-<tr><td>100MB</td><td>~100ms</td><td>~50ms</td><td>100MB</td></tr>
-<tr><td>1GB</td><td>~1s</td><td>~500ms</td><td>1GB</td></tr>
-<tr><td>7GB</td><td>~7s</td><td>~3s</td><td>7GB</td></tr>
-</tbody></table>
-</div>
-<p>Compare to JSON format:</p>
-<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>JSON Save</th><th>JSON Load</th><th>JSON Size</th></tr></thead><tbody>
-<tr><td>100MB</td><td>~3s</td><td>~2.5s</td><td>~300MB</td></tr>
-<tr><td>1GB</td><td>~30s</td><td>~25s</td><td>~3GB</td></tr>
-</tbody></table>
-</div>
+<h2 id="cargo-run-example"><a class="header" href="#cargo-run-example">Cargo Run Example</a></h2>
+<pre><code class="language-bash"># Store artifact locally
+cargo run --example store_artifact -- --path ./model.safetensors
+
+# Store to S3
+cargo run --example store_artifact -- \
+    --backend s3 \
+    --bucket my-bucket \
+    --path ./model.safetensors
+
+# List artifacts
+cargo run --example list_artifacts -- --backend local --path ./artifacts
+</code></pre>
+<h2 id="configuration-file"><a class="header" href="#configuration-file">Configuration File</a></h2>
+<pre><code class="language-yaml"># entrenar.yaml
+storage:
+  artifacts:
+    backend: s3
+    bucket: my-ml-artifacts
+    region: us-east-1
+    prefix: experiments/
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Use content-addressable storage</strong> - Automatic deduplication</li>
+<li><strong>Store credentials in environment</strong> - Never in code</li>
+<li><strong>Use local backend for development</strong> - Fast iteration</li>
+<li><strong>Enable versioning on S3</strong> - Protect against accidental deletion</li>
+<li><strong>Set lifecycle policies</strong> - Archive old artifacts to Glacier</li>
+</ol>
 <h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::io::load_model;
-use entrenar::Error;
+</span>use entrenar::storage::CloudError;
 
-match load_model("model.safetensors") {
-    Ok(model) =&gt; {
-        println!("Loaded {} tensors", model.parameters.len());
+match backend.get(&amp;hash) {
+    Ok(data) =&gt; process(data),
+    Err(CloudError::NotFound(h)) =&gt; {
+        eprintln!("Artifact not found: {}", h);
     }
-    Err(Error::Serialization(msg)) =&gt; {
-        // Invalid SafeTensors format
-        eprintln!("Parse error: {}", msg);
-    }
-    Err(Error::Io(e)) =&gt; {
-        // File not found, permission denied, etc.
-        eprintln!("IO error: {}", e);
+    Err(CloudError::AccessDenied) =&gt; {
+        eprintln!("Permission denied");
     }
     Err(e) =&gt; {
-        eprintln!("Other error: {}", e);
+        eprintln!("Storage error: {}", e);
     }
 }
 <span class="boring">}</span></code></pre></pre>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
-<li><a href="json-format.html">JSON Format</a> - Human-readable alternative</li>
-<li><a href="yaml-format.html">YAML Format</a> - Configuration-friendly format</li>
-<li><a href="gguf-format.html">GGUF Format</a> - Quantized model format</li>
-<li><a href="../distillation/what-is-distillation.html">Knowledge Distillation</a> - Using with distillation</li>
+<li><a href="./overview.html">MLOps Overview</a></li>
+<li><a href="./experiment-tracking.html">Experiment Tracking</a></li>
+<li><a href="./model-registry.html">Model Registry</a></li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../io/formats.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../mlops/rest-api.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../io/json-format.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../mlops/llm-evaluation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -348,11 +415,11 @@ match load_model("model.safetensors") {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../io/formats.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../mlops/rest-api.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../io/json-format.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../mlops/llm-evaluation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

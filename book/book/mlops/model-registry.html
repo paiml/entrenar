@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Model Registry (Kanban) - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/mlops/model-registry.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,212 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="model-registry"><a class="header" href="#model-registry">Model Registry</a></h1>
+<p>Manage model lifecycle with staging workflows, promotion policies, and version comparisons.</p>
+<h2 id="toyota-principle-kanban"><a class="header" href="#toyota-principle-kanban">Toyota Principle: Kanban</a></h2>
+<p>Visual workflow management for model stages. Models flow through stages (Development → Staging → Production → Archived) like parts through a factory.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::{InMemoryRegistry, ModelRegistry, ModelStage};
+use std::collections::HashMap;
+
+let mut registry = InMemoryRegistry::new();
+
+// Register a new model version
+let metrics = HashMap::from([
+    ("accuracy".to_string(), 0.95),
+    ("f1_score".to_string(), 0.93),
+]);
+
+registry.register_model(
+    "sentiment-classifier",
+    1,
+    metrics,
+    "/artifacts/model-v1.safetensors"
+)?;
+
+// Transition through stages
+registry.transition_stage("sentiment-classifier", 1, ModelStage::Staging)?;
+registry.transition_stage("sentiment-classifier", 1, ModelStage::Production)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="model-stages"><a class="header" href="#model-stages">Model Stages</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::ModelStage;
+
+// Available stages
+ModelStage::Development  // Initial development
+ModelStage::Staging      // Testing and validation
+ModelStage::Production   // Serving traffic
+ModelStage::Archived     // Retired from use
+<span class="boring">}</span></code></pre></pre>
+<h2 id="stage-transitions"><a class="header" href="#stage-transitions">Stage Transitions</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Valid transitions
+// Development → Staging
+registry.transition_stage("model", 1, ModelStage::Staging)?;
+
+// Staging → Production
+registry.transition_stage("model", 1, ModelStage::Production)?;
+
+// Any stage → Archived
+registry.transition_stage("model", 1, ModelStage::Archived)?;
+
+// Invalid transitions return error
+// Cannot go backwards: Production → Staging (error)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="version-comparison"><a class="header" href="#version-comparison">Version Comparison</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::VersionComparison;
+
+// Compare two versions
+let comparison = registry.compare_versions("model", 1, 2)?;
+
+println!("Version {} vs {}", comparison.version_a, comparison.version_b);
+
+for (metric, diff) in &amp;comparison.metric_diffs {
+    println!("  {}: {:.2}% change", metric, diff.percent_change);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="promotion-policies"><a class="header" href="#promotion-policies">Promotion Policies</a></h2>
+<p>Automatically validate models before promotion:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::{PromotionPolicy, MetricRequirement, Comparison};
+
+let policy = PromotionPolicy::new()
+    .require_metric(MetricRequirement {
+        name: "accuracy".to_string(),
+        comparison: Comparison::Gte,
+        threshold: 0.90,
+    })
+    .require_metric(MetricRequirement {
+        name: "latency_p99_ms".to_string(),
+        comparison: Comparison::Lte,
+        threshold: 100.0,
+    });
+
+// Check if model meets policy
+let result = registry.check_promotion_policy("model", 1, &amp;policy)?;
+
+if result.passed {
+    registry.transition_stage("model", 1, ModelStage::Production)?;
+} else {
+    for failure in result.failures {
+        eprintln!("Policy violation: {}", failure);
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="querying-the-registry"><a class="header" href="#querying-the-registry">Querying the Registry</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Get specific version
+let version = registry.get_version("model", 1)?;
+
+// List all versions
+let versions = registry.list_versions("model")?;
+
+// Get models by stage
+let production_models = registry.get_by_stage(ModelStage::Production)?;
+
+// Get latest version in stage
+let latest = registry.get_latest_in_stage("model", ModelStage::Production)?;
+<span class="boring">}</span></code></pre></pre>
+<h2 id="model-version-details"><a class="header" href="#model-version-details">Model Version Details</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::ModelVersion;
+
+let version: ModelVersion = registry.get_version("model", 1)?;
+
+println!("Version: {}", version.version);
+println!("Stage: {:?}", version.stage);
+println!("Created: {}", version.created_at);
+println!("Artifact: {}", version.artifact_path);
+
+for (name, value) in &amp;version.metrics {
+    println!("  {}: {}", name, value);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="audit-trail"><a class="header" href="#audit-trail">Audit Trail</a></h2>
+<p>Track all stage transitions:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::storage::StageTransition;
+
+let transitions = registry.get_transitions("model", 1)?;
+
+for t in transitions {
+    println!(
+        "{}: {:?} → {:?}",
+        t.timestamp, t.from_stage, t.to_stage
+    );
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="cargo-run-example"><a class="header" href="#cargo-run-example">Cargo Run Example</a></h2>
+<pre><code class="language-bash"># Register and promote a model
+cargo run --example model_registry
+
+# List all production models
+cargo run --example model_registry -- --list-production
+</code></pre>
+<h2 id="integration-with-cicd"><a class="header" href="#integration-with-cicd">Integration with CI/CD</a></h2>
+<pre><code class="language-yaml"># .github/workflows/model-promotion.yml
+name: Model Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        required: true
+      version:
+        required: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check promotion policy
+        run: |
+          cargo run --example check_promotion -- \
+            --model ${{ inputs.model_name }} \
+            --version ${{ inputs.version }}
+      - name: Promote to production
+        if: success()
+        run: |
+          cargo run --example promote_model -- \
+            --model ${{ inputs.model_name }} \
+            --version ${{ inputs.version }} \
+            --stage production
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Define clear promotion policies</strong> - Objective criteria for each stage</li>
+<li><strong>Keep audit trails</strong> - Track who promoted what and when</li>
+<li><strong>Use semantic versioning</strong> - Clear version numbering</li>
+<li><strong>Archive old versions</strong> - Don't delete, archive for rollback</li>
+<li><strong>Automate promotion checks</strong> - CI/CD integration</li>
+</ol>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./overview.html">MLOps Overview</a></li>
+<li><a href="./experiment-tracking.html">Experiment Tracking</a></li>
+<li><a href="./cloud-storage.html">Cloud Storage</a></li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../mlops/preflight.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../mlops/hpo.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +373,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../mlops/preflight.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../mlops/hpo.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

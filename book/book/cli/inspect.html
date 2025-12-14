@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Inspect Command - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/cli/inspect.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,134 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="inspect-command"><a class="header" href="#inspect-command">Inspect Command</a></h1>
+<p>The <code>entrenar inspect</code> command provides data and model inspection capabilities for SafeTensors, GGUF, Parquet, and CSV files.</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><code class="language-bash">entrenar inspect &lt;INPUT&gt; [OPTIONS]
+</code></pre>
+<h2 id="arguments"><a class="header" href="#arguments">Arguments</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Argument</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>&lt;INPUT&gt;</code></td><td>Path to file to inspect (.safetensors, .gguf, .parquet, .csv)</td></tr>
+</tbody></table>
+</div>
+<h2 id="options"><a class="header" href="#options">Options</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Option</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>--mode &lt;MODE&gt;</code></td><td>Inspection mode: summary, outliers, distribution, schema (default: summary)</td></tr>
+<tr><td><code>--columns &lt;COLS&gt;</code></td><td>Specific columns to inspect (comma-separated)</td></tr>
+<tr><td><code>--z-threshold &lt;Z&gt;</code></td><td>Z-score threshold for outlier detection (default: 3.0)</td></tr>
+<tr><td><code>-v, --verbose</code></td><td>Show detailed tensor/column information</td></tr>
+</tbody></table>
+</div>
+<h2 id="inspection-modes"><a class="header" href="#inspection-modes">Inspection Modes</a></h2>
+<h3 id="summary-mode-default"><a class="header" href="#summary-mode-default">Summary Mode (default)</a></h3>
+<p>Display basic file statistics and metadata:</p>
+<pre><code class="language-bash">entrenar inspect model.safetensors
+</code></pre>
+<p>Output:</p>
+<pre><code>Inspecting: model.safetensors
+  Mode: summary
+Model Information:
+  File size: 125.42 MB
+  Parameters: 0.03B
+  Tensors: 48
+</code></pre>
+<h3 id="outliers-mode"><a class="header" href="#outliers-mode">Outliers Mode</a></h3>
+<p>Detect statistical outliers using z-score:</p>
+<pre><code class="language-bash">entrenar inspect data.parquet --mode outliers --z-threshold 2.5
+</code></pre>
+<p>Output:</p>
+<pre><code>Inspecting: data.parquet
+  Mode: outliers
+Outlier Detection (z-threshold: 2.5):
+  Column 'loss': 12 outliers found
+  Column 'accuracy': 3 outliers found
+</code></pre>
+<h3 id="distribution-mode"><a class="header" href="#distribution-mode">Distribution Mode</a></h3>
+<p>Show distribution statistics for numeric columns:</p>
+<pre><code class="language-bash">entrenar inspect data.parquet --mode distribution
+</code></pre>
+<h3 id="schema-mode"><a class="header" href="#schema-mode">Schema Mode</a></h3>
+<p>Display schema information:</p>
+<pre><code class="language-bash">entrenar inspect data.parquet --mode schema
+</code></pre>
+<h2 id="supported-formats"><a class="header" href="#supported-formats">Supported Formats</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Format</th><th>Extension</th><th>Information Shown</th></tr></thead><tbody>
+<tr><td>SafeTensors</td><td><code>.safetensors</code></td><td>Tensor count, shapes, dtypes, total parameters</td></tr>
+<tr><td>GGUF</td><td><code>.gguf</code></td><td>File size, format version</td></tr>
+<tr><td>Parquet</td><td><code>.parquet</code></td><td>File size, column schema, row count</td></tr>
+<tr><td>CSV</td><td><code>.csv</code></td><td>File size, column names</td></tr>
+</tbody></table>
+</div>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<h3 id="inspect-safetensors-model"><a class="header" href="#inspect-safetensors-model">Inspect SafeTensors Model</a></h3>
+<pre><code class="language-bash"># Basic inspection
+entrenar inspect model.safetensors
+
+# Verbose output with tensor details
+entrenar inspect model.safetensors -v
+</code></pre>
+<p>Output with <code>-v</code>:</p>
+<pre><code>Model Information:
+  File size: 125.42 MB
+  Parameters: 0.03B
+  Tensors: 48
+
+Tensor Details:
+  model.embed_tokens.weight: [32000, 4096] (F32)
+  model.layers.0.self_attn.q_proj.weight: [4096, 4096] (F32)
+  model.layers.0.self_attn.k_proj.weight: [4096, 4096] (F32)
+  ... and 45 more tensors
+</code></pre>
+<h3 id="inspect-training-data"><a class="header" href="#inspect-training-data">Inspect Training Data</a></h3>
+<pre><code class="language-bash"># Summary of parquet file
+entrenar inspect data/train.parquet
+
+# Detect outliers in specific columns
+entrenar inspect data/train.parquet --mode outliers --columns loss,accuracy
+
+# Show distribution statistics
+entrenar inspect data/train.parquet --mode distribution
+</code></pre>
+<h3 id="inspect-gguf-model"><a class="header" href="#inspect-gguf-model">Inspect GGUF Model</a></h3>
+<pre><code class="language-bash">entrenar inspect model.gguf
+</code></pre>
+<p>Output:</p>
+<pre><code>GGUF Model Information:
+  File size: 4.12 GB
+  Format: GGUF (llama.cpp compatible)
+  (Use llama.cpp for detailed GGUF inspection)
+</code></pre>
+<h2 id="programmatic-usage"><a class="header" href="#programmatic-usage">Programmatic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::config::{load_config, InspectMode};
+use safetensors::SafeTensors;
+
+// Load and inspect SafeTensors
+let data = std::fs::read("model.safetensors")?;
+let tensors = SafeTensors::deserialize(&amp;data)?;
+
+for name in tensors.names() {
+    let tensor = tensors.tensor(name)?;
+    println!("{}: {:?} ({:?})", name, tensor.shape(), tensor.dtype());
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./overview.html">CLI Overview</a> - General CLI reference</li>
+<li><a href="../io/overview.html">Model I/O</a> - Model formats and loading</li>
+<li><a href="../io/safetensors-format.html">SafeTensors Format</a> - SafeTensors specification</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../cli/benchmark.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../cli/audit.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +295,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../cli/benchmark.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../cli/audit.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

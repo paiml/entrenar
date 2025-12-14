@@ -175,8 +175,8 @@ cargo --version
 <h3 id="method-1-add-as-cargo-dependency-recommended"><a class="header" href="#method-1-add-as-cargo-dependency-recommended">Method 1: Add as Cargo Dependency (Recommended)</a></h3>
 <p>Add Entrenar to your <code>Cargo.toml</code>:</p>
 <pre><code class="language-toml">[dependencies]
-entrenar = "0.1"
-ndarray = "0.15"  # Required for tensor operations
+entrenar = "0.2"
+ndarray = "0.16"  # Required for tensor operations
 </code></pre>
 <p>Then run:</p>
 <pre><code class="language-bash">cargo build
@@ -223,7 +223,7 @@ Forward pass successful!
 <h2 id="feature-flags"><a class="header" href="#feature-flags">Feature Flags</a></h2>
 <p>Entrenar supports optional features via Cargo feature flags:</p>
 <pre><code class="language-toml">[dependencies]
-entrenar = { version = "0.1", features = ["simd", "quantization"] }
+entrenar = { version = "0.2", features = ["simd", "quantization"] }
 </code></pre>
 <p>Available features:</p>
 <div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th><th>Default</th></tr></thead><tbody>

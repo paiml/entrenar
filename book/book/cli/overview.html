@@ -175,9 +175,15 @@ Commands:
   train      Train a model from YAML configuration
   validate   Validate a configuration file without training
   info       Display information about a configuration
+  init       Generate a YAML configuration template
   quantize   Quantize a model
   merge      Merge multiple models
   research   Academic research artifacts and workflows
+  bench      Run latency benchmarks
+  inspect    Inspect model/data files
+  audit      Run bias, fairness, privacy, or security audits
+  monitor    Monitor for data drift
+  completion Generate shell completions
 </code></pre>
 <h3 id="global-options"><a class="header" href="#global-options">Global Options</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Option</th><th>Description</th></tr></thead><tbody>
@@ -217,6 +223,56 @@ entrenar research cite artifact.yaml --year 2024 --format bibtex
 
 # Create RO-Crate package
 entrenar research bundle artifact.yaml --output ./package --zip
+</code></pre>
+<h3 id="benchmarking"><a class="header" href="#benchmarking">Benchmarking</a></h3>
+<pre><code class="language-bash"># Run latency benchmark
+entrenar bench config.yaml --warmup 5 --iterations 100
+
+# Benchmark with multiple batch sizes
+entrenar bench config.yaml --batch-sizes 1,8,32,64
+
+# JSON output for CI
+entrenar bench config.yaml --format json
+</code></pre>
+<h3 id="data--model-inspection"><a class="header" href="#data--model-inspection">Data &amp; Model Inspection</a></h3>
+<pre><code class="language-bash"># Inspect SafeTensors model
+entrenar inspect model.safetensors
+
+# Inspect with verbose tensor details
+entrenar inspect model.safetensors -v
+
+# Inspect data file
+entrenar inspect data/train.parquet --mode summary
+</code></pre>
+<h3 id="auditing"><a class="header" href="#auditing">Auditing</a></h3>
+<pre><code class="language-bash"># Bias audit
+entrenar audit predictions.parquet --type bias --threshold 0.8
+
+# Security audit
+entrenar audit model.safetensors --type security
+
+# Privacy audit
+entrenar audit data.parquet --type privacy
+</code></pre>
+<h3 id="drift-monitoring"><a class="header" href="#drift-monitoring">Drift Monitoring</a></h3>
+<pre><code class="language-bash"># Monitor for data drift
+entrenar monitor data/current.parquet --threshold 0.2
+
+# Monitor with baseline
+entrenar monitor data/current.parquet --baseline data/training.parquet
+
+# JSON output for alerting
+entrenar monitor data/current.parquet --format json
+</code></pre>
+<h3 id="shell-completions"><a class="header" href="#shell-completions">Shell Completions</a></h3>
+<pre><code class="language-bash"># Generate bash completions
+entrenar completion bash &gt; ~/.local/share/bash-completion/completions/entrenar
+
+# Generate zsh completions
+entrenar completion zsh &gt; ~/.zsh/completions/_entrenar
+
+# Generate fish completions
+entrenar completion fish &gt; ~/.config/fish/completions/entrenar.fish
 </code></pre>
 <h2 id="benchmark-cli-commands"><a class="header" href="#benchmark-cli-commands">Benchmark CLI Commands</a></h2>
 <pre><code class="language-bash">entrenar-bench &lt;COMMAND&gt; [OPTIONS]
@@ -265,7 +321,11 @@ entrenar-bench recommend --max-cost 50 --min-accuracy 0.85
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="./research.html">Research Commands</a> - Academic research CLI reference</li>
-<li><a href="./benchmark.html">Benchmark Commands</a> - Benchmarking CLI reference</li>
+<li><a href="./benchmark.html">Benchmark Commands</a> - Distillation benchmarking CLI reference</li>
+<li><a href="./inspect.html">Inspect Command</a> - Model and data inspection</li>
+<li><a href="./audit.html">Audit Command</a> - Bias, fairness, privacy, security audits</li>
+<li><a href="./monitor.html">Monitor Command</a> - Drift detection and monitoring</li>
+<li><a href="./completion.html">Completion Command</a> - Shell completion generation</li>
 <li><a href="../declarative/overview.html">Declarative Training</a> - YAML configuration</li>
 </ul>
 

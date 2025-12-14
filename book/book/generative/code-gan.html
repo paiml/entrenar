@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Code Generation GANs - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/generative/code-gan.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,80 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="code-generation-gans"><a class="header" href="#code-generation-gans">Code Generation GANs</a></h1>
+<p>GANs for generating valid Rust AST candidates.</p>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::generative::{CodeGanConfig, GeneratorConfig, DiscriminatorConfig};
+
+let config = CodeGanConfig {
+    generator: GeneratorConfig {
+        latent_dim: 128,
+        hidden_dims: vec![256, 512, 256],
+        vocab_size: 100,
+        max_seq_len: 64,
+        dropout: 0.1,
+        batch_norm: true,
+    },
+    discriminator: DiscriminatorConfig {
+        vocab_size: 100,
+        embed_dim: 64,
+        hidden_dims: vec![128, 64],
+        dropout: 0.1,
+    },
+    learning_rate_g: 0.0002,
+    learning_rate_d: 0.0002,
+    beta1: 0.5,
+    beta2: 0.999,
+};
+<span class="boring">}</span></code></pre></pre>
+<h2 id="training-loop"><a class="header" href="#training-loop">Training Loop</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut gan = CodeGan::new(config);
+
+for epoch in 0..num_epochs {
+    for batch in data_loader {
+        // Train discriminator
+        let d_loss = gan.train_discriminator_step(&amp;batch);
+
+        // Train generator
+        let g_loss = gan.train_generator_step();
+
+        // Monitor for mode collapse
+        let collapse_score = gan.detect_mode_collapse(100);
+        if collapse_score &gt; 0.8 {
+            eprintln!("Warning: Mode collapse detected!");
+        }
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="evaluation"><a class="header" href="#evaluation">Evaluation</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Generate samples
+let samples = gan.generate_batch(100);
+
+// Check diversity
+let diversity = gan.compute_diversity(&amp;samples);
+println!("Sample diversity: {:.2}", diversity);
+
+// Interpolate between codes
+let z1 = gan.sample_latent(1)[0].clone();
+let z2 = gan.sample_latent(1)[0].clone();
+let interpolated = gan.interpolate(&amp;z1, &amp;z2, 10);
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../generative/overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../generative/generator.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +241,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../generative/overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../generative/generator.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

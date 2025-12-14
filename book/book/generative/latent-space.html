@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Latent Space Interpolation - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/generative/latent-space.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,90 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="latent-space-interpolation"><a class="header" href="#latent-space-interpolation">Latent Space Interpolation</a></h1>
+<p>Explore the code generation space through latent vector manipulation.</p>
+<h2 id="latentcode-type"><a class="header" href="#latentcode-type">LatentCode Type</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::generative::LatentCode;
+
+// Sample from standard normal
+let z = LatentCode::sample(&amp;mut rng, 128);
+
+// Create from vector
+let z = LatentCode::new(vec![0.0; 128]);
+
+// Properties
+println!("Dimension: {}", z.dim());
+println!("Norm: {}", z.norm());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="linear-interpolation-lerp"><a class="header" href="#linear-interpolation-lerp">Linear Interpolation (LERP)</a></h2>
+<p>Simple straight-line interpolation:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let z1 = LatentCode::new(vec![0.0; 128]);
+let z2 = LatentCode::new(vec![1.0; 128]);
+
+// t=0 gives z1, t=1 gives z2
+let z_mid = z1.lerp(&amp;z2, 0.5);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="spherical-linear-interpolation-slerp"><a class="header" href="#spherical-linear-interpolation-slerp">Spherical Linear Interpolation (SLERP)</a></h2>
+<p>Interpolate along the surface of a hypersphere:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let z1 = LatentCode::sample(&amp;mut rng, 128).normalize();
+let z2 = LatentCode::sample(&amp;mut rng, 128).normalize();
+
+// SLERP maintains constant norm
+let z_mid = z1.slerp(&amp;z2, 0.5);
+assert!((z_mid.norm() - 1.0).abs() &lt; 0.1);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="when-to-use-slerp"><a class="header" href="#when-to-use-slerp">When to Use SLERP</a></h3>
+<ul>
+<li>Latent vectors are typically sampled from unit sphere</li>
+<li>SLERP avoids "dead zones" in latent space</li>
+<li>Smoother visual transitions for image GANs</li>
+<li>Better semantic interpolation for code GANs</li>
+</ul>
+<h2 id="interpolation-for-code-generation"><a class="header" href="#interpolation-for-code-generation">Interpolation for Code Generation</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut gan = CodeGan::new(config);
+
+// Generate two random codes
+let z1 = gan.sample_latent(1)[0].clone();
+let z2 = gan.sample_latent(1)[0].clone();
+
+// Generate 11 intermediate samples
+let samples = gan.interpolate(&amp;z1, &amp;z2, 10);
+
+for (i, code) in samples.iter().enumerate() {
+    println!("Step {}: {:?}", i, code);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="latent-space-arithmetic"><a class="header" href="#latent-space-arithmetic">Latent Space Arithmetic</a></h2>
+<p>Discover semantic directions:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Vector arithmetic in latent space
+// e.g., "loop" - "if" + "match" might give switch-like patterns
+let z_loop = encode_code("for i in 0..n { }");
+let z_if = encode_code("if cond { }");
+let z_match = encode_code("match x { }");
+
+let z_result = z_loop.subtract(&amp;z_if).add(&amp;z_match);
+let code = generator.generate(&amp;z_result);
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../generative/discriminator.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../generative/training.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +251,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../generative/discriminator.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../generative/training.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>State and Action Spaces - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/search/state-action.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,81 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="state-and-action-spaces"><a class="header" href="#state-and-action-spaces">State and Action Spaces</a></h1>
+<p>Define the search space through state and action traits.</p>
+<h2 id="state-trait"><a class="header" href="#state-trait">State Trait</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait State: Clone + Hash + Eq {
+    /// Check if this is a terminal state
+    fn is_terminal(&amp;self) -&gt; bool;
+
+    /// Optional: Get reward for terminal states
+    fn reward(&amp;self) -&gt; Option&lt;f32&gt; { None }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="action-trait"><a class="header" href="#action-trait">Action Trait</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait Action: Clone {
+    /// Apply this action to a state
+    fn apply(&amp;self, state: &amp;impl State) -&gt; impl State;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="statespace-trait"><a class="header" href="#statespace-trait">StateSpace Trait</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait StateSpace&lt;S: State, A: Action&gt; {
+    /// Get valid actions from a state
+    fn actions(&amp;self, state: &amp;S) -&gt; Vec&lt;A&gt;;
+
+    /// Simulate from state to terminal
+    fn simulate(&amp;self, state: &amp;S) -&gt; f32;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="example-code-generation"><a class="header" href="#example-code-generation">Example: Code Generation</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Clone, Hash, Eq, PartialEq)]
+struct PartialAst {
+    tokens: Vec&lt;Token&gt;,
+    open_scopes: usize,
+}
+
+impl State for PartialAst {
+    fn is_terminal(&amp;self) -&gt; bool {
+        self.open_scopes == 0 &amp;&amp; self.is_syntactically_complete()
+    }
+}
+
+enum AstAction {
+    AddToken(Token),
+    OpenScope,
+    CloseScope,
+}
+
+impl Action for AstAction {
+    fn apply(&amp;self, state: &amp;PartialAst) -&gt; PartialAst {
+        let mut new_state = state.clone();
+        match self {
+            AstAction::AddToken(t) =&gt; new_state.tokens.push(t.clone()),
+            AstAction::OpenScope =&gt; new_state.open_scopes += 1,
+            AstAction::CloseScope =&gt; new_state.open_scopes -= 1,
+        }
+        new_state
+    }
+}
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../search/mcts.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../search/selection.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +242,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../search/mcts.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../search/selection.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

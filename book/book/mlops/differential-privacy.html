@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Differential Privacy - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/mlops/differential-privacy.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,201 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="differential-privacy"><a class="header" href="#differential-privacy">Differential Privacy</a></h1>
+<p>Privacy-preserving training with Differentially Private SGD (DP-SGD) and Rényi Differential Privacy accounting.</p>
+<h2 id="toyota-principle-jidoka"><a class="header" href="#toyota-principle-jidoka">Toyota Principle: Jidoka</a></h2>
+<p>Protect the quality of privacy guarantees. Just as Jidoka stops production when defects are detected, DP-SGD ensures privacy bounds are never exceeded.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::dp::{DPOptimizer, PrivacyEngine, PrivacyAccountant};
+use entrenar::optim::AdamW;
+
+// Configure privacy engine
+let engine = PrivacyEngine::new()
+    .with_noise_multiplier(1.0)
+    .with_max_grad_norm(1.0)
+    .with_target_epsilon(1.0)
+    .with_target_delta(1e-5);
+
+// Wrap base optimizer
+let base_optimizer = AdamW::new(0.001);
+let dp_optimizer = DPOptimizer::new(base_optimizer, engine);
+
+// Training loop
+for batch in dataloader {
+    let loss = model.forward(&amp;batch);
+    let grads = loss.backward();
+
+    // DP-SGD: clip gradients and add noise
+    dp_optimizer.step(&amp;mut model, grads)?;
+
+    // Check privacy budget
+    let (epsilon, delta) = dp_optimizer.get_privacy_spent()?;
+    println!("Privacy: ε={:.2}, δ={:.2e}", epsilon, delta);
+
+    if epsilon &gt; target_epsilon {
+        println!("Privacy budget exhausted!");
+        break;
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="privacy-engine-configuration"><a class="header" href="#privacy-engine-configuration">Privacy Engine Configuration</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::dp::PrivacyEngine;
+
+let engine = PrivacyEngine::new()
+    // Noise multiplier (higher = more privacy, less utility)
+    .with_noise_multiplier(1.0)
+
+    // Per-sample gradient clipping threshold
+    .with_max_grad_norm(1.0)
+
+    // Target privacy budget
+    .with_target_epsilon(1.0)
+    .with_target_delta(1e-5)
+
+    // Sample rate (batch_size / dataset_size)
+    .with_sample_rate(0.01);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="privacy-accounting"><a class="header" href="#privacy-accounting">Privacy Accounting</a></h2>
+<p>Track privacy expenditure with Rényi Differential Privacy (RDP):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::dp::PrivacyAccountant;
+
+let accountant = PrivacyAccountant::new()
+    .with_noise_multiplier(1.0)
+    .with_sample_rate(0.01);
+
+// After each step
+accountant.step();
+
+// Get privacy spent
+let (epsilon, delta) = accountant.get_privacy_spent(1e-5)?;
+println!("After {} steps: ε={:.2}", accountant.steps(), epsilon);
+
+// Estimate steps until budget exhausted
+let remaining = accountant.steps_remaining(target_epsilon, 1e-5)?;
+println!("Steps remaining: {}", remaining);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="noise-multiplier-selection"><a class="header" href="#noise-multiplier-selection">Noise Multiplier Selection</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::dp::estimate_noise_multiplier;
+
+// Find noise multiplier for target privacy
+let noise_multiplier = estimate_noise_multiplier(
+    target_epsilon,  // e.g., 1.0
+    target_delta,    // e.g., 1e-5
+    sample_rate,     // batch_size / dataset_size
+    num_steps,       // total training steps
+)?;
+
+println!("Use noise_multiplier={:.2}", noise_multiplier);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="per-sample-gradient-clipping"><a class="header" href="#per-sample-gradient-clipping">Per-Sample Gradient Clipping</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::dp::clip_gradients;
+
+// Clip per-sample gradients to max_norm
+let clipped_grads = clip_gradients(&amp;per_sample_grads, max_norm);
+
+// Add calibrated Gaussian noise
+let noisy_grads = add_noise(&amp;clipped_grads, noise_multiplier * max_norm);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="privacy-utility-trade-off"><a class="header" href="#privacy-utility-trade-off">Privacy-Utility Trade-off</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Noise Multiplier</th><th>Privacy (ε)</th><th>Utility Impact</th></tr></thead><tbody>
+<tr><td>0.5</td><td>High ε (~10)</td><td>Minimal</td></tr>
+<tr><td>1.0</td><td>Medium ε (~1)</td><td>Moderate</td></tr>
+<tr><td>2.0</td><td>Low ε (~0.5)</td><td>Significant</td></tr>
+<tr><td>4.0</td><td>Very Low ε (~0.1)</td><td>Severe</td></tr>
+</tbody></table>
+</div>
+<h2 id="integration-with-training-loop"><a class="header" href="#integration-with-training-loop">Integration with Training Loop</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::train::{Trainer, TrainerConfig};
+use entrenar::optim::dp::{DPOptimizer, PrivacyEngine};
+
+let config = TrainerConfig::default()
+    .with_epochs(10)
+    .with_batch_size(64);
+
+let engine = PrivacyEngine::new()
+    .with_noise_multiplier(1.0)
+    .with_max_grad_norm(1.0)
+    .with_target_epsilon(1.0)
+    .with_target_delta(1e-5);
+
+let mut trainer = Trainer::new(config)
+    .with_dp_engine(engine);
+
+// Train with privacy guarantees
+trainer.fit(&amp;model, &amp;dataset)?;
+
+// Get final privacy guarantee
+let (epsilon, delta) = trainer.privacy_spent()?;
+println!("Final privacy: ({:.2}, {:.2e})-DP", epsilon, delta);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="cargo-run-example"><a class="header" href="#cargo-run-example">Cargo Run Example</a></h2>
+<pre><code class="language-bash"># Train with differential privacy
+cargo run --example dp_training
+
+# With custom privacy parameters
+cargo run --example dp_training -- \
+    --epsilon 1.0 \
+    --delta 1e-5 \
+    --max-grad-norm 1.0
+</code></pre>
+<h2 id="privacy-composition"><a class="header" href="#privacy-composition">Privacy Composition</a></h2>
+<p>For multiple queries/models:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::optim::dp::compose_privacy;
+
+let guarantees = vec![
+    (0.5, 1e-5),  // Model 1
+    (0.3, 1e-5),  // Model 2
+    (0.2, 1e-5),  // Model 3
+];
+
+let (total_epsilon, total_delta) = compose_privacy(&amp;guarantees)?;
+println!("Total: ({:.2}, {:.2e})-DP", total_epsilon, total_delta);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Choose δ &lt; 1/n</strong> - Where n is dataset size</li>
+<li><strong>Start with higher noise</strong> - Tune down for utility</li>
+<li><strong>Use larger batch sizes</strong> - Better privacy-utility trade-off</li>
+<li><strong>Monitor privacy budget</strong> - Stop before exhaustion</li>
+<li><strong>Validate with auditing</strong> - Empirical privacy testing</li>
+</ol>
+<h2 id="privacy-guarantees"><a class="header" href="#privacy-guarantees">Privacy Guarantees</a></h2>
+<p>DP-SGD provides (ε, δ)-differential privacy, meaning:</p>
+<blockquote>
+<p>For any two neighboring datasets D and D' (differing by one record), and any output S:</p>
+<p>P[M(D) ∈ S] ≤ e^ε · P[M(D') ∈ S] + δ</p>
+</blockquote>
+<p>Where M is the training mechanism.</p>
+<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<ul>
+<li><a href="./overview.html">MLOps Overview</a></li>
+<li><a href="./experiment-tracking.html">Experiment Tracking</a></li>
+<li><a href="../best-practices/optimizer-selection.html">Optimizer Selection</a></li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../mlops/hpo.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../mlops/gpu-monitoring.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +362,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../mlops/hpo.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../mlops/gpu-monitoring.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

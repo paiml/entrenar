@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Contributing - Entrenar - Training &amp; Optimization Library</title>
+        <title>Overview - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/development/contributing.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/search/overview.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,17 +158,54 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+                        <h1 id="search-algorithms"><a class="header" href="#search-algorithms">Search Algorithms</a></h1>
+<p>Entrenar provides search algorithms for exploring code generation spaces, particularly useful for program synthesis tasks.</p>
+<h2 id="available-algorithms"><a class="header" href="#available-algorithms">Available Algorithms</a></h2>
+<h3 id="monte-carlo-tree-search-mcts"><a class="header" href="#monte-carlo-tree-search-mcts">Monte Carlo Tree Search (MCTS)</a></h3>
+<p>MCTS is a heuristic search algorithm that combines tree search with random sampling. In the context of code generation:</p>
+<ul>
+<li><strong>State</strong>: Partial AST being constructed</li>
+<li><strong>Action</strong>: AST transformation rules</li>
+<li><strong>Reward</strong>: Compilation success, test passage, or semantic correctness</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::search::{MctsSearch, MctsConfig};
+
+let config = MctsConfig {
+    exploration_constant: 1.414,
+    max_iterations: 1000,
+    max_depth: 50,
+    ..Default::default()
+};
+
+let mut mcts = MctsSearch::new(config, state_space, action_space);
+let result = mcts.search(&amp;initial_state);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
+<ul>
+<li><strong>UCB1/PUCT Selection</strong>: Balance exploration vs exploitation</li>
+<li><strong>Policy Network Integration</strong>: Guide search with learned priors</li>
+<li><strong>Transposition Tables</strong>: Avoid redundant state exploration</li>
+<li><strong>Configurable Depth Limits</strong>: Control search complexity</li>
+</ul>
+<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<ol>
+<li><strong>Python-to-Rust Translation</strong>: Search for valid Rust AST constructions</li>
+<li><strong>Code Completion</strong>: Find likely next tokens</li>
+<li><strong>Bug Fixing</strong>: Search for patches that fix failing tests</li>
+<li><strong>Optimization</strong>: Find performance-improving transformations</li>
+</ol>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../examples/cuda-backend.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../best-practices/profiling.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/extreme-tdd.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../search/mcts.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -178,11 +215,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../examples/cuda-backend.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../best-practices/profiling.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/extreme-tdd.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../search/mcts.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

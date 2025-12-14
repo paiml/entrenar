@@ -1,0 +1,517 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Inference Monitoring - Entrenar - Training &amp; Optimization Library</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A comprehensive guide to building neural network training systems with autograd, optimizers, LoRA/QLoRA, and quantization using EXTREME TDD methodology">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "rust";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Entrenar - Training &amp; Optimization Library</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/monitor/inference-monitoring.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="inference-monitoring"><a class="header" href="#inference-monitoring">Inference Monitoring</a></h1>
+<p>Real-time audit logging and explainability for APR format models.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The inference monitoring module provides comprehensive tracing for model predictions, enabling:</p>
+<ul>
+<li><strong>Decision Path Tracing</strong>: Capture exactly how a model reached its decision</li>
+<li><strong>Audit Logging</strong>: Tamper-evident logs for safety-critical applications</li>
+<li><strong>Explainability</strong>: Human-readable explanations for predictions</li>
+<li><strong>Provenance Graphs</strong>: Reconstruct incident causality chains</li>
+</ul>
+<p>This follows the Toyota Way principle of <strong>現地現物 (Genchi Genbutsu)</strong> - every decision is traceable to ground truth.</p>
+<h2 id="decision-paths"><a class="header" href="#decision-paths">Decision Paths</a></h2>
+<p>Each model type has a specific path representation:</p>
+<div class="table-wrapper"><table><thead><tr><th>Model Type</th><th>Path Type</th><th>Key Information</th></tr></thead><tbody>
+<tr><td>Linear/Logistic</td><td><code>LinearPath</code></td><td>Feature contributions, intercept, logit</td></tr>
+<tr><td>Decision Tree</td><td><code>TreePath</code></td><td>Splits, thresholds, leaf info</td></tr>
+<tr><td>Random Forest</td><td><code>ForestPath</code></td><td>Per-tree predictions, aggregation</td></tr>
+<tr><td>KNN</td><td><code>KNNPath</code></td><td>Neighbor indices, distances, votes</td></tr>
+<tr><td>Neural Network</td><td><code>NeuralPath</code></td><td>Gradients, activations, attention</td></tr>
+</tbody></table>
+</div>
+<h3 id="example-linear-path"><a class="header" href="#example-linear-path">Example: Linear Path</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{LinearPath, DecisionPath};
+
+// Create a linear path with feature contributions
+let path = LinearPath::new(
+    vec![0.8, -0.3, 0.5],  // contributions: weight * feature
+    0.1,                    // intercept
+    1.1,                    // logit (sum of contributions + intercept)
+    0.75,                   // output (e.g., sigmoid(logit))
+).with_probability(0.75);
+
+// Get human-readable explanation
+println!("{}", path.explain());
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code>Prediction: 0.7500 (probability: 75.0%)
+Top contributing features:
+  - feature[0]: +0.8000
+  - feature[2]: +0.5000
+  - feature[1]: -0.3000
+Intercept: 0.1000
+</code></pre>
+<h2 id="collector-strategies"><a class="header" href="#collector-strategies">Collector Strategies</a></h2>
+<p>Three collector strategies for different use cases:</p>
+<h3 id="ringcollector-real-time"><a class="header" href="#ringcollector-real-time">RingCollector (Real-Time)</a></h3>
+<p>Fixed-size ring buffer with O(1) operations. Ideal for games and drones.</p>
+<ul>
+<li><strong>Target</strong>: &lt;100ns per trace</li>
+<li><strong>Memory</strong>: Bounded, configurable size</li>
+<li><strong>Use Case</strong>: Real-time systems where only recent traces matter</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{RingCollector, LinearPath};
+
+// Create ring collector with capacity 64
+let collector: RingCollector&lt;LinearPath, 64&gt; = RingCollector::new();
+
+// After recording traces, get recent ones
+let recent = collector.recent(10);  // Last 10 traces
+let all = collector.all();          // All traces (oldest first)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="streamcollector-persistent"><a class="header" href="#streamcollector-persistent">StreamCollector (Persistent)</a></h3>
+<p>Write-through to file or network. Supports binary, JSON, and JSON Lines formats.</p>
+<ul>
+<li><strong>Target</strong>: &lt;1µs per trace</li>
+<li><strong>Memory</strong>: Configurable buffer before flush</li>
+<li><strong>Use Case</strong>: Persistent logging, audit trails</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{StreamCollector, StreamFormat, TreePath};
+use std::fs::File;
+
+let file = File::create("traces.jsonl")?;
+let collector = StreamCollector::&lt;TreePath, _&gt;::new(file, StreamFormat::JsonLines)
+    .with_flush_threshold(100);  // Flush every 100 traces
+<span class="boring">}</span></code></pre></pre>
+<h3 id="hashchaincollector-safety-critical"><a class="header" href="#hashchaincollector-safety-critical">HashChainCollector (Safety-Critical)</a></h3>
+<p>SHA-256 hash chain for tamper-evident audit trails. Each entry's hash includes the previous hash.</p>
+<ul>
+<li><strong>Target</strong>: &lt;10µs per entry</li>
+<li><strong>Security</strong>: Cryptographic integrity verification</li>
+<li><strong>Use Case</strong>: Autonomous vehicles, medical devices, regulatory compliance</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{HashChainCollector, LinearPath};
+
+let mut collector: HashChainCollector&lt;LinearPath&gt; = HashChainCollector::new();
+
+// Record traces...
+
+// Verify chain integrity
+let verification = collector.verify_chain();
+assert!(verification.valid);
+println!("Verified {} entries", verification.entries_verified);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="inferencemonitor"><a class="header" href="#inferencemonitor">InferenceMonitor</a></h2>
+<p>High-level wrapper that combines model, collector, and optional safety checks:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{
+    InferenceMonitor, RingCollector, LinearPath, Explainable,
+};
+
+// Model must implement Explainable trait
+let model = MyLinearModel::new(weights, intercept);
+let collector: RingCollector&lt;LinearPath, 64&gt; = RingCollector::new();
+
+let mut monitor = InferenceMonitor::new(model, collector)
+    .with_latency_budget_ns(10_000_000);  // 10ms budget
+
+// Predict with automatic tracing
+let outputs = monitor.predict(&amp;input_features, 1);
+
+// Access traces
+let traces = monitor.collector().recent(1);
+println!("{}", traces[0].explain());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="implementing-explainable"><a class="header" href="#implementing-explainable">Implementing Explainable</a></h2>
+<p>To use inference monitoring, your model must implement <code>Explainable</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{Explainable, LinearPath};
+
+struct MyModel {
+    weights: Vec&lt;f32&gt;,
+    intercept: f32,
+}
+
+impl Explainable for MyModel {
+    type Path = LinearPath;
+
+    fn predict_explained(&amp;self, x: &amp;[f32], n_samples: usize) -&gt; (Vec&lt;f32&gt;, Vec&lt;Self::Path&gt;) {
+        let features_per_sample = x.len() / n_samples;
+        let mut outputs = Vec::with_capacity(n_samples);
+        let mut paths = Vec::with_capacity(n_samples);
+
+        for i in 0..n_samples {
+            let sample = &amp;x[i * features_per_sample..(i + 1) * features_per_sample];
+
+            // Compute contributions
+            let contributions: Vec&lt;f32&gt; = self.weights
+                .iter()
+                .zip(sample)
+                .map(|(w, x)| w * x)
+                .collect();
+
+            let logit: f32 = contributions.iter().sum::&lt;f32&gt;() + self.intercept;
+            let output = sigmoid(logit);
+
+            let path = LinearPath::new(contributions, self.intercept, logit, output)
+                .with_probability(output);
+
+            outputs.push(output);
+            paths.push(path);
+        }
+
+        (outputs, paths)
+    }
+
+    fn explain_one(&amp;self, sample: &amp;[f32]) -&gt; Self::Path {
+        self.predict_explained(sample, 1).1.into_iter().next().unwrap()
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="safety-andon"><a class="header" href="#safety-andon">Safety Andon</a></h2>
+<p>Automatic quality monitoring based on Safety Integrity Levels (SIL):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{SafetyAndon, SafetyIntegrityLevel};
+
+let mut andon = SafetyAndon::new(SafetyIntegrityLevel::SIL2)
+    .with_min_confidence(0.7)           // Alert if confidence &lt; 70%
+    .with_low_confidence_threshold(3);  // Alert after 3 consecutive low-confidence
+
+// Check each trace
+andon.check_trace(&amp;trace, latency_budget_ns);
+
+// Review alerts
+for alert in andon.history() {
+    println!("[{:?}] {}", alert.level, alert.message);
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="safety-integrity-levels"><a class="header" href="#safety-integrity-levels">Safety Integrity Levels</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Level</th><th>Min Confidence</th><th>Max Latency</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>QM</td><td>50%</td><td>100ms</td><td>Quality management</td></tr>
+<tr><td>SIL1</td><td>60%</td><td>50ms</td><td>Low risk</td></tr>
+<tr><td>SIL2</td><td>70%</td><td>20ms</td><td>Medium risk</td></tr>
+<tr><td>SIL3</td><td>80%</td><td>10ms</td><td>High risk</td></tr>
+<tr><td>SIL4</td><td>90%</td><td>5ms</td><td>Critical systems</td></tr>
+</tbody></table>
+</div>
+<h2 id="counterfactual-explanations"><a class="header" href="#counterfactual-explanations">Counterfactual Explanations</a></h2>
+<p>Answer "What would need to change to flip the decision?"</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::Counterfactual;
+
+let feature_names = vec!["income".into(), "debt_ratio".into(), "score".into()];
+
+let counterfactual = Counterfactual::new(
+    vec![0.3, 0.8, 0.2],   // Original input (denied)
+    0,                      // Original decision
+    0.3,                    // Original confidence
+    vec![0.6, 0.5, 0.4],   // Counterfactual input (approved)
+    1,                      // Alternative decision
+    0.8,                    // Alternative confidence
+).with_feature_names(&amp;feature_names);
+
+println!("{}", counterfactual.explain());
+// Output:
+// The decision would have been 1 if:
+//   - income: 0.3000 → 0.6000 (+0.3000)
+//   - debt_ratio: 0.8000 → 0.5000 (-0.3000)
+//   - score: 0.2000 → 0.4000 (+0.2000)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="provenance-graphs"><a class="header" href="#provenance-graphs">Provenance Graphs</a></h2>
+<p>Reconstruct causal chains for incident analysis:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{
+    ProvenanceGraph, ProvenanceNode, ProvenanceEdge, CausalRelation,
+    IncidentReconstructor,
+};
+
+let mut graph = ProvenanceGraph::new();
+
+// Build provenance chain: Input -&gt; Transform -&gt; Inference -&gt; Action
+let camera = graph.add_node(ProvenanceNode::Input {
+    source: "front_camera".into(),
+    timestamp_ns: 1000,
+    hash: 0xdeadbeef,
+});
+
+let preprocess = graph.add_node(ProvenanceNode::Transform {
+    operation: "normalize".into(),
+    input_refs: vec![camera],
+});
+
+let detection = graph.add_node(ProvenanceNode::Inference {
+    model_id: "detector".into(),
+    model_version: "v2.1".into(),
+    confidence: 0.3,  // Low confidence!
+    output: 0.0,
+});
+
+// Connect nodes
+graph.add_edge(ProvenanceEdge {
+    from: camera,
+    to: preprocess,
+    relation: CausalRelation::DataFlow,
+    timestamp_ns: 1100,
+});
+
+// Reconstruct incident path and identify anomalies
+let reconstructor = IncidentReconstructor::new(&amp;graph);
+let path = reconstructor.reconstruct_path(detection, 10);
+let anomalies = reconstructor.identify_anomalies(&amp;path, 0.7);
+
+for anomaly in &amp;anomalies {
+    println!("Node {}: {}", anomaly.node_id, anomaly.description);
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="serialization"><a class="header" href="#serialization">Serialization</a></h2>
+<h3 id="binary-format-aprt"><a class="header" href="#binary-format-aprt">Binary Format (APRT)</a></h3>
+<p>Compact binary format with magic number <code>0x41505254</code> ("APRT"):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::monitor::inference::{TraceSerializer, TraceFormat, PathType};
+
+let serializer = TraceSerializer::new(TraceFormat::Binary);
+let bytes = serializer.serialize(&amp;trace, PathType::Linear)?;
+
+// Deserialize
+let restored: DecisionTrace&lt;LinearPath&gt; = serializer.deserialize(&amp;bytes)?;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="json-format"><a class="header" href="#json-format">JSON Format</a></h3>
+<p>Human-readable JSON for debugging and integration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let serializer = TraceSerializer::new(TraceFormat::Json);
+let json = serializer.serialize(&amp;trace, PathType::Linear)?;
+println!("{}", String::from_utf8_lossy(&amp;json));
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-targets"><a class="header" href="#performance-targets">Performance Targets</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Collector</th><th>Target Latency</th><th>Measured</th></tr></thead><tbody>
+<tr><td>RingCollector</td><td>&lt;100ns</td><td>~50ns</td></tr>
+<tr><td>StreamCollector</td><td>&lt;1µs</td><td>~500ns</td></tr>
+<tr><td>HashChainCollector</td><td>&lt;10µs</td><td>~5µs</td></tr>
+</tbody></table>
+</div>
+<h2 id="running-the-example"><a class="header" href="#running-the-example">Running the Example</a></h2>
+<pre><code class="language-bash">cargo run --example inference_monitor
+</code></pre>
+<p>This demonstrates all components working together: collectors, safety monitoring, counterfactuals, provenance graphs, and serialization.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../monitor/andon.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../monitor/lineage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../monitor/andon.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../monitor/lineage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+        <script src="../ace.js"></script>
+        <script src="../editor.js"></script>
+        <script src="../mode-rust.js"></script>
+        <script src="../theme-dawn.js"></script>
+        <script src="../theme-tomorrow_night.js"></script>
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>
