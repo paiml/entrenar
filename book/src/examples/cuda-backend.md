@@ -87,14 +87,47 @@ trueno v0.8.3
 └── trueno/cuda-monitor (via trueno-gpu v0.2.0)
 ```
 
-### trueno-gpu Features
+### trueno-gpu v0.2.0 Features
 
-The `cuda` feature enables trueno-gpu, which provides:
+The `cuda` feature enables trueno-gpu v0.2.0, which provides:
 
 - **Pure Rust PTX Generation**: No LLVM or nvcc compiler required
 - **Runtime Driver Loading**: Dynamically loads libcuda.so
 - **Device Memory Management**: Safe GPU memory allocation
 - **Kernel Execution**: Launch CUDA kernels from Rust
+
+#### SATD Bug Fixes (TRUENO-SATD-001)
+
+v0.2.0 includes critical fixes for GPU kernels:
+
+- **quantize.rs**: K-loop now properly iterates (was single-iteration stub)
+- **quantize.rs**: `shfl_idx_f32` for broadcast (was no-op `shfl_down` with 0)
+- **softmax.rs**: Tree reduction loops fixed with stride halving
+
+#### New PTX Builder Methods
+
+```rust
+// Proper loop counters
+add_u32_inplace, add_f32_inplace, shr_u32_inplace
+
+// GGML Q4_K quantization support
+ld_global_u16, or_u32, shl_u32
+```
+
+#### GPU Pixel Testing (gpu-pixels feature)
+
+PTX validation via jugar-probar v0.4.0 detects:
+- `SharedMemU64Addressing` bugs
+- `LoopBranchToEnd` bugs
+- `MissingBarrierSync` bugs
+
+```bash
+# Run GPU pixel tests
+cargo test --features gpu-pixels
+
+# SATD kernel validation example
+cargo run --example satd_kernels
+```
 
 ## Performance Expectations
 
