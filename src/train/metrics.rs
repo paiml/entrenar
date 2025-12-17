@@ -78,7 +78,7 @@ impl Metric for Accuracy {
             return 0.0;
         }
 
-        let correct: usize = predictions
+        let correct = predictions
             .data()
             .iter()
             .zip(targets.data().iter())
@@ -87,9 +87,9 @@ impl Metric for Accuracy {
                 let pred_class = if p >= self.threshold { 1.0 } else { 0.0 };
                 (pred_class - t).abs() < 0.5
             })
-            .count();
+            .count() as f32;
 
-        correct as f32 / predictions.len() as f32
+        correct / predictions.len() as f32
     }
 
     fn name(&self) -> &'static str {
