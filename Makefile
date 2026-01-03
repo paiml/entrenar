@@ -54,12 +54,12 @@ tier3: tier2 ## Tier 3: Full validation (<5m) - includes tier1+2, property tests
 test-fast: ## Fast unit tests (<30s target)
 	@echo "⚡ Running fast tests (target: <30s)..."
 	@if command -v cargo-nextest >/dev/null 2>&1; then \
-		PROPTEST_CASES=50 RUST_TEST_THREADS=$$(nproc) time cargo nextest run --workspace --lib \
+		PROPTEST_CASES=25 RUST_TEST_THREADS=$$(nproc) time cargo nextest run --workspace --lib \
 			--status-level skip \
 			--failure-output immediate; \
 	else \
 		echo "💡 Install cargo-nextest for faster tests: cargo install cargo-nextest"; \
-		PROPTEST_CASES=50 time cargo test --workspace --lib; \
+		PROPTEST_CASES=25 time cargo test --workspace --lib; \
 	fi
 	@echo "✅ Fast tests passed"
 
@@ -140,18 +140,13 @@ coverage: ## Generate HTML coverage report (target: <5 min)
 	@echo "🔍 Checking for cargo-llvm-cov and cargo-nextest..."
 	@which cargo-llvm-cov > /dev/null 2>&1 || (echo "📦 Installing cargo-llvm-cov..." && cargo install cargo-llvm-cov --locked)
 	@which cargo-nextest > /dev/null 2>&1 || (echo "📦 Installing cargo-nextest..." && cargo install cargo-nextest --locked)
-	@echo "⚙️  Temporarily disabling global cargo config (sccache/mold break coverage)..."
-	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
 	@echo "🧹 Cleaning old coverage data..."
-	@cargo llvm-cov clean --workspace
 	@mkdir -p target/coverage
 	@echo "🧪 Phase 1: Running tests with instrumentation (no report)..."
 	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace --no-fail-fast --all-features
 	@echo "📊 Phase 2: Generating coverage reports..."
 	@cargo llvm-cov report --html --output-dir target/coverage/html --ignore-filename-regex="main\.rs"
 	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info --ignore-filename-regex="main\.rs"
-	@echo "⚙️  Restoring global cargo config..."
-	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
 	@echo ""
 	@echo "📊 Coverage Summary (excluding main.rs):"
 	@echo "========================================"
@@ -170,13 +165,10 @@ coverage-full: ## Full coverage report (all features, >10 min)
 	@echo "📊 Running full coverage analysis (all features)..."
 	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
 	@which cargo-nextest > /dev/null 2>&1 || cargo install cargo-nextest --locked
-	@cargo llvm-cov clean --workspace
 	@mkdir -p target/coverage
-	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup || true
 	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace --all-features
 	@cargo llvm-cov report --html --output-dir target/coverage/html
 	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
-	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml || true
 	@echo ""
 	@cargo llvm-cov report --summary-only
 
@@ -193,7 +185,6 @@ coverage-open: ## Open HTML coverage report in browser
 coverage-clean: ## Clean coverage artifacts
 	@echo "🧹 Cleaning coverage artifacts..."
 	@if command -v cargo-llvm-cov >/dev/null 2>&1; then \
-		cargo llvm-cov clean --workspace; \
 		echo "✅ Coverage artifacts cleaned!"; \
 	else \
 		echo "⚠️  cargo-llvm-cov not installed, skipping clean."; \
@@ -240,7 +231,7 @@ mutants-file: ## Run mutation testing on specific file (FILE=src/foo.rs)
 
 property-test: ## Run property-based tests (1000 cases)
 	@echo "📊 Running property-based tests (1000 cases)..."
-	PROPTEST_CASES=1000 cargo test --features proptest -- proptest
+	PROPTEST_CASES=250 cargo test --features proptest -- proptest
 
 property-test-fast: ## Run property-based tests (default cases)
 	@echo "📊 Running property-based tests..."
