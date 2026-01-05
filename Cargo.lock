@@ -60,9 +60,9 @@ dependencies = [
 
 [[package]]
 name = "alimentar"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb38b589457ad7cba76776f650966320806d97ad7cd63643bf4041c6ea514cac"
+checksum = "e42e7ab820dc2dbc06c7490c1eb329931f681d0006d8b2d15b7c7c4284bb8597"
 dependencies = [
  "arrow",
  "arrow-csv",
@@ -1381,7 +1381,7 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "alimentar",
  "approx",
@@ -4820,9 +4820,9 @@ dependencies = [
 
 [[package]]
 name = "trueno-viz"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "572cf6d159130f95f2117051ea6b32e517c00496ff4df8aa9914dd7b09b29e9e"
+checksum = "c7e46e0d7027e514a7253d981461e313c70599c3e76cb53375a22ff61395e8b8"
 dependencies = [
  "base64",
  "libc",
