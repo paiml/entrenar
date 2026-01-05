@@ -3,7 +3,7 @@
 use crate::Tensor;
 
 /// A training batch containing inputs and targets
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Batch {
     /// Input features
     pub inputs: Tensor,

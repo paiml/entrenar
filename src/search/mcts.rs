@@ -16,6 +16,7 @@
 //! use entrenar::search::{MctsSearch, MctsConfig, State, Action};
 //!
 //! // Define your state and action spaces
+//! #[derive(Clone, PartialEq, Eq, Hash)]
 //! struct CodeState {
 //!     ast_tokens: Vec<String>,
 //! }

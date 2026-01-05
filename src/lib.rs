@@ -39,6 +39,7 @@ pub mod lora;
 pub mod merge;
 pub mod monitor;
 pub mod optim;
+pub mod prune;
 pub mod quality;
 pub mod quant;
 pub mod research;
