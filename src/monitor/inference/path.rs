@@ -58,7 +58,7 @@ impl std::error::Error for PathError {}
 /// Decision path for linear regression/logistic regression
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LinearPath {
-    /// Per-feature contributions: coefficient[i] * input[i]
+    /// Per-feature contributions: coefficient\[i\] * input\[i\]
     pub contributions: Vec<f32>,
     /// Bias term contribution
     pub intercept: f32,

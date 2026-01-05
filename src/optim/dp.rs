@@ -23,8 +23,8 @@
 //!
 //! # References
 //!
-//! [3] Abadi et al. (2016) - Deep Learning with Differential Privacy
-//! [4] Mironov (2017) - Renyi Differential Privacy
+//! \[3\] Abadi et al. (2016) - Deep Learning with Differential Privacy
+//! \[4\] Mironov (2017) - Renyi Differential Privacy
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};

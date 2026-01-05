@@ -83,6 +83,13 @@
 - [Multi-Model Ensembles](./merging/multi-model.md)
 - [Merge Best Practices](./merging/best-practices.md)
 
+# Pruning
+
+- [Overview](./pruning/overview.md)
+- [Pruning Schedules](./pruning/schedules.md)
+- [Calibration](./pruning/calibration.md)
+- [Pipeline Stages](./pruning/pipeline.md)
+
 # Knowledge Distillation
 
 - [What is Distillation?](./distillation/what-is-distillation.md)
@@ -201,6 +208,7 @@
 - [Gradient Clipping](./examples/gradient-clipping-example.md)
 - [Adapter Sharing](./examples/adapter-sharing.md)
 - [CUDA Backend Configuration](./examples/cuda-backend.md)
+- [Pruning Pipeline](./examples/pruning-pipeline.md)
 
 # Development Guide
 

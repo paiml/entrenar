@@ -24,8 +24,8 @@
 //!
 //! # References
 //!
-//! [1] Bergstra et al. (2011) - Algorithms for Hyper-Parameter Optimization (TPE)
-//! [2] Li et al. (2018) - Hyperband: A Novel Bandit-Based Approach
+//! \[1\] Bergstra et al. (2011) - Algorithms for Hyper-Parameter Optimization (TPE)
+//! \[2\] Li et al. (2018) - Hyperband: A Novel Bandit-Based Approach
 
 use rand::Rng;
 use serde::{Deserialize, Serialize};
