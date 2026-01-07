@@ -186,24 +186,6 @@ dependencies = [
 
 [[package]]
 name = "aprender"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8e0b13c241caeb17671b3856f245245cefed465b4737d38782addd67c065faf"
-dependencies = [
- "bincode",
- "getrandom 0.2.16",
- "memmap2",
- "nalgebra",
- "rand 0.8.5",
- "rayon",
- "rmp-serde",
- "serde",
- "serde_json",
- "trueno 0.7.4",
-]
-
-[[package]]
-name = "aprender"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "918c5660d9274eafc97ebd08befa3506964e8641985a90fe4c217a692bca27d4"
@@ -222,13 +204,32 @@ dependencies = [
 
 [[package]]
 name = "aprender"
-version = "0.21.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e2ce7eda2fdbba4cf761daed7f0e22df24c54d3b192d0d0328d572f9e15eed2"
+checksum = "c996d5e1fba70e6cfe1909831e3ffb10e24434c647a86b1b085a784db3302c1c"
 dependencies = [
  "bincode",
  "getrandom 0.2.16",
  "memmap2",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rayon",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "trueno 0.8.9",
+]
+
+[[package]]
+name = "aprender"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f0da5259c3f5e51f9eb70168d53d344f100bcd7f8632ce47409870bb693bb0d"
+dependencies = [
+ "bincode",
+ "getrandom 0.2.16",
+ "memmap2",
+ "minijinja",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rayon",
@@ -1381,11 +1382,11 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "alimentar",
  "approx",
- "aprender 0.21.0",
+ "aprender 0.23.0",
  "arrow",
  "axum",
  "bytemuck",
@@ -2664,6 +2665,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "memo-map"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38d1115007560874e373613744c6fba374c17688327a71c1476d1a5954cc857b"
+
+[[package]]
 name = "metal"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2683,6 +2690,17 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "minijinja"
+version = "2.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12ea9ac0a51fb5112607099560fdf0f90366ab088a2a9e6e8ae176794e9806aa"
+dependencies = [
+ "memo-map",
+ "self_cell",
+ "serde",
+]
 
 [[package]]
 name = "miniz_oxide"
@@ -2729,33 +2747,6 @@ dependencies = [
  "spirv",
  "thiserror 2.0.17",
  "unicode-ident",
-]
-
-[[package]]
-name = "nalgebra"
-version = "0.33.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26aecdf64b707efd1310e3544d709c5c0ac61c13756046aaaba41be5c4f66a3b"
-dependencies = [
- "approx",
- "matrixmultiply",
- "nalgebra-macros",
- "num-complex",
- "num-rational",
- "num-traits",
- "simba",
- "typenum",
-]
-
-[[package]]
-name = "nalgebra-macros"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "254a5372af8fc138e36684761d3c0cdb758a4410e938babcff1c860ce14ddbfc"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -3640,13 +3631,13 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "renacer"
-version = "0.7.0"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a5e1d030bd7105468f4b9c221dcb76e7ad4e0146f84f70ebc25d3b2e275f0bc"
+checksum = "9612bd4101de39ae6c06dc66729e523cb411f307130c4204ffde30029852c957"
 dependencies = [
  "addr2line",
  "anyhow",
- "aprender 0.14.1",
+ "aprender 0.19.0",
  "backtrace",
  "clap",
  "crossbeam",
@@ -3666,12 +3657,12 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
- "trueno 0.7.4",
+ "trueno 0.8.9",
  "trueno-db",
  "trueno-graph",
 ]
@@ -3890,15 +3881,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
-name = "safe_arch"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96b02de82ddbe1b636e6170c21be622223aea188ef2e139be0a5b219ec215323"
-dependencies = [
- "bytemuck",
-]
-
-[[package]]
 name = "safetensors"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3955,6 +3937,12 @@ dependencies = [
  "core-foundation-sys",
  "libc",
 ]
+
+[[package]]
+name = "self_cell"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b12e76d157a900eb52e81bc6e9f3069344290341720e9178cde2407113ac8d89"
 
 [[package]]
 name = "semver"
@@ -4121,19 +4109,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "rand_core 0.6.4",
-]
-
-[[package]]
-name = "simba"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c99284beb21666094ba2b75bbceda012e610f5479dfcc2d6e2426f53197ffd95"
-dependencies = [
- "approx",
- "num-complex",
- "num-traits",
- "paste",
- "wide",
 ]
 
 [[package]]
@@ -4706,15 +4681,6 @@ dependencies = [
 
 [[package]]
 name = "trueno"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7aebc0cbf927eb1b4fe90ae21770681c1421f3d72e90d91ab1c4dfedfc125e1"
-dependencies = [
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "trueno"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7a78cdf00ae8659264f48cf96f9e925357b6258db70ba83d2b60a80fad7e56a"
@@ -5282,16 +5248,6 @@ dependencies = [
  "log",
  "thiserror 2.0.17",
  "web-sys",
-]
-
-[[package]]
-name = "wide"
-version = "0.7.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce5da8ecb62bcd8ec8b7ea19f69a51275e91299be594ea5cc6ef7819e16cd03"
-dependencies = [
- "bytemuck",
- "safe_arch",
 ]
 
 [[package]]
