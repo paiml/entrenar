@@ -222,9 +222,9 @@ dependencies = [
 
 [[package]]
 name = "aprender"
-version = "0.23.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f0da5259c3f5e51f9eb70168d53d344f100bcd7f8632ce47409870bb693bb0d"
+checksum = "d1140494fee114ac8ae686c8d4e0d859b421c8e082e7a8c4a3f67d0e3f9e2754"
 dependencies = [
  "bincode",
  "getrandom 0.2.16",
@@ -1382,11 +1382,11 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "alimentar",
  "approx",
- "aprender 0.23.0",
+ "aprender 0.24.0",
  "arrow",
  "axum",
  "bytemuck",

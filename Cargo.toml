@@ -67,7 +67,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 authors = ["PAIML <hello@paiml.com>"]
 description = "Training & Optimization library with autograd, LoRA, quantization, and model merging"
@@ -98,7 +98,7 @@ cuda = ["trueno/cuda-monitor", "tokio"]  # NVIDIA CUDA monitoring via trueno-gpu
 # Core PAIML stack
 ndarray = "0.16"
 trueno = "0.11.0"  # SIMD-accelerated compute
-aprender = "0.23"  # ML interpret module for explainability + .apr model format + pruning
+aprender = "0.24"  # ML interpret module for explainability + .apr model format + pruning
 alimentar = "0.2.2"  # Dataset loading with MNIST
 trueno-viz = { version = "0.1.5", features = ["terminal"] }  # Terminal visualization
 trueno-db = { version = "0.3.9", optional = true }  # Time-series storage
