@@ -1,349 +1,14 @@
-//! Trainer abstraction for training loops
+//! Multi-epoch training loops
 
-#![allow(clippy::field_reassign_with_default)]
-
-use super::callback::{CallbackAction, CallbackContext, CallbackManager, TrainerCallback};
-use super::{Batch, LossFn, MetricsTracker, TrainConfig};
-use crate::optim::{clip_grad_norm, Optimizer};
+use super::core::Trainer;
+use super::result::TrainResult;
+use crate::optim::clip_grad_norm;
+use crate::train::callback::CallbackAction;
+use crate::train::Batch;
 use crate::Tensor;
 use std::time::Instant;
 
-/// Result of a training run
-#[derive(Debug, Clone)]
-pub struct TrainResult {
-    /// Final epoch reached
-    pub final_epoch: usize,
-    /// Final training loss
-    pub final_loss: f32,
-    /// Best loss achieved
-    pub best_loss: f32,
-    /// Whether training was stopped early
-    pub stopped_early: bool,
-    /// Total training time in seconds
-    pub elapsed_secs: f64,
-}
-
-/// High-level trainer that orchestrates the training loop
-///
-/// # Example
-///
-/// ```no_run
-/// use entrenar::train::{Trainer, TrainConfig, Batch, MSELoss, EarlyStopping};
-/// use entrenar::optim::Adam;
-/// use entrenar::Tensor;
-///
-/// // Setup
-/// let params = vec![Tensor::zeros(10, true)];
-/// let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-/// let config = TrainConfig::default();
-///
-/// let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-/// trainer.set_loss(Box::new(MSELoss));
-/// trainer.add_callback(EarlyStopping::new(5, 0.001));
-///
-/// // Training with callbacks
-/// // let result = trainer.train(10, || batches.clone(), |x| x.clone());
-/// ```
-pub struct Trainer {
-    /// Model parameters
-    params: Vec<Tensor>,
-
-    /// Optimizer
-    optimizer: Box<dyn Optimizer>,
-
-    /// Loss function
-    loss_fn: Option<Box<dyn LossFn>>,
-
-    /// Training configuration
-    config: TrainConfig,
-
-    /// Metrics tracker
-    pub metrics: MetricsTracker,
-
-    /// Callback manager
-    callbacks: CallbackManager,
-
-    /// Best loss achieved during training
-    best_loss: Option<f32>,
-
-    /// Training start time
-    start_time: Option<Instant>,
-}
-
 impl Trainer {
-    /// Create a new trainer
-    pub fn new(params: Vec<Tensor>, optimizer: Box<dyn Optimizer>, config: TrainConfig) -> Self {
-        Self {
-            params,
-            optimizer,
-            loss_fn: None,
-            config,
-            metrics: MetricsTracker::new(),
-            callbacks: CallbackManager::new(),
-            best_loss: None,
-            start_time: None,
-        }
-    }
-
-    /// Set the loss function
-    pub fn set_loss(&mut self, loss_fn: Box<dyn LossFn>) {
-        self.loss_fn = Some(loss_fn);
-    }
-
-    /// Add a callback to the trainer
-    pub fn add_callback<C: TrainerCallback + 'static>(&mut self, callback: C) {
-        self.callbacks.add(callback);
-    }
-
-    /// Get current learning rate
-    pub fn lr(&self) -> f32 {
-        self.optimizer.lr()
-    }
-
-    /// Set learning rate
-    pub fn set_lr(&mut self, lr: f32) {
-        self.optimizer.set_lr(lr);
-    }
-
-    /// Build callback context from current state
-    fn build_context(
-        &self,
-        epoch: usize,
-        max_epochs: usize,
-        step: usize,
-        steps_per_epoch: usize,
-        loss: f32,
-        val_loss: Option<f32>,
-    ) -> CallbackContext {
-        CallbackContext {
-            epoch,
-            max_epochs,
-            step,
-            steps_per_epoch,
-            global_step: self.metrics.steps,
-            loss,
-            lr: self.lr(),
-            best_loss: self.best_loss,
-            val_loss,
-            elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
-        }
-    }
-
-    /// Perform a single training step
-    ///
-    /// # Arguments
-    ///
-    /// * `batch` - Training batch with inputs and targets
-    /// * `forward_fn` - Closure that computes predictions from inputs
-    ///
-    /// # Returns
-    ///
-    /// Scalar loss value for this batch
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use entrenar::train::{Trainer, Batch};
-    /// # use entrenar::Tensor;
-    /// # let mut trainer: Trainer = todo!();
-    /// # let batch: Batch = todo!();
-    /// let loss = trainer.train_step(&batch, |inputs| {
-    ///     // Forward pass: compute predictions
-    ///     inputs.clone() // Simplified example
-    /// });
-    /// ```
-    pub fn train_step<F>(&mut self, batch: &Batch, forward_fn: F) -> f32
-    where
-        F: FnOnce(&Tensor) -> Tensor,
-    {
-        assert!(
-            self.loss_fn.is_some(),
-            "Loss function must be set before training"
-        );
-
-        // Zero gradients
-        self.optimizer.zero_grad(&mut self.params);
-
-        // Forward pass
-        let predictions = forward_fn(&batch.inputs);
-
-        // Compute loss
-        let loss = self
-            .loss_fn
-            .as_ref()
-            .unwrap()
-            .forward(&predictions, &batch.targets);
-
-        let loss_val = loss.data()[0];
-
-        // Backward pass
-        if let Some(backward_op) = loss.backward_op() {
-            backward_op.backward();
-        }
-
-        // Gradient clipping
-        if let Some(max_norm) = self.config.max_grad_norm {
-            clip_grad_norm(&mut self.params, max_norm);
-        }
-
-        // Optimizer step
-        self.optimizer.step(&mut self.params);
-
-        // Update metrics
-        self.metrics.increment_step();
-
-        loss_val
-    }
-
-    /// Perform forward and backward pass without optimizer step (for gradient accumulation)
-    ///
-    /// This is used internally for gradient accumulation. Gradients accumulate
-    /// across calls until zero_grad is called.
-    fn accumulate_gradients<F>(&mut self, batch: &Batch, forward_fn: F) -> f32
-    where
-        F: FnOnce(&Tensor) -> Tensor,
-    {
-        assert!(
-            self.loss_fn.is_some(),
-            "Loss function must be set before training"
-        );
-
-        // Forward pass
-        let predictions = forward_fn(&batch.inputs);
-
-        // Compute loss
-        let loss = self
-            .loss_fn
-            .as_ref()
-            .unwrap()
-            .forward(&predictions, &batch.targets);
-
-        let loss_val = loss.data()[0];
-
-        // Backward pass (gradients accumulate)
-        if let Some(backward_op) = loss.backward_op() {
-            backward_op.backward();
-        }
-
-        loss_val
-    }
-
-    /// Train for one epoch
-    ///
-    /// # Arguments
-    ///
-    /// * `batches` - Iterator over training batches
-    /// * `forward_fn` - Closure that computes predictions from inputs
-    ///
-    /// # Returns
-    ///
-    /// Average loss over the epoch
-    pub fn train_epoch<F, I>(&mut self, batches: I, forward_fn: F) -> f32
-    where
-        F: Fn(&Tensor) -> Tensor,
-        I: IntoIterator<Item = Batch>,
-    {
-        let mut total_loss = 0.0;
-        let mut num_batches = 0;
-
-        for (i, batch) in batches.into_iter().enumerate() {
-            let loss = self.train_step(&batch, &forward_fn);
-            total_loss += loss;
-            num_batches += 1;
-
-            // Log progress
-            if (i + 1) % self.config.log_interval == 0 {
-                let avg_loss = total_loss / num_batches as f32;
-                println!(
-                    "Epoch {}, Step {}: loss={:.4}, lr={:.6}",
-                    self.metrics.epoch,
-                    i + 1,
-                    avg_loss,
-                    self.lr()
-                );
-            }
-        }
-
-        let avg_loss = if num_batches > 0 {
-            total_loss / num_batches as f32
-        } else {
-            0.0
-        };
-
-        // Record epoch metrics
-        self.metrics.record_epoch(avg_loss, self.lr());
-
-        avg_loss
-    }
-
-    /// Validate on a dataset without updating parameters
-    ///
-    /// # Arguments
-    ///
-    /// * `batches` - Iterator over validation batches
-    /// * `forward_fn` - Closure that computes predictions from inputs
-    ///
-    /// # Returns
-    ///
-    /// Average validation loss
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use entrenar::train::{Trainer, Batch};
-    /// # use entrenar::Tensor;
-    /// # let mut trainer: Trainer = todo!();
-    /// # let val_batches: Vec<Batch> = vec![];
-    /// let val_loss = trainer.validate(val_batches, |x| x.clone());
-    /// println!("Validation loss: {:.4}", val_loss);
-    /// ```
-    pub fn validate<F, I>(&mut self, batches: I, forward_fn: F) -> f32
-    where
-        F: Fn(&Tensor) -> Tensor,
-        I: IntoIterator<Item = Batch>,
-    {
-        assert!(
-            self.loss_fn.is_some(),
-            "Loss function must be set before validation"
-        );
-
-        let mut total_loss = 0.0;
-        let mut num_batches = 0;
-
-        for batch in batches {
-            // Forward pass only (no gradients, no optimizer step)
-            let predictions = forward_fn(&batch.inputs);
-            let loss = self
-                .loss_fn
-                .as_ref()
-                .unwrap()
-                .forward(&predictions, &batch.targets);
-            total_loss += loss.data()[0];
-            num_batches += 1;
-        }
-
-        let avg_loss = if num_batches > 0 {
-            total_loss / num_batches as f32
-        } else {
-            0.0
-        };
-
-        // Record validation loss
-        self.metrics.record_val_loss(avg_loss);
-
-        avg_loss
-    }
-
-    /// Get reference to model parameters
-    pub fn params(&self) -> &[Tensor] {
-        &self.params
-    }
-
-    /// Get mutable reference to model parameters
-    pub fn params_mut(&mut self) -> &mut [Tensor] {
-        &mut self.params
-    }
-
     /// Train for multiple epochs with full callback support
     ///
     /// # Arguments
@@ -698,105 +363,17 @@ impl Trainer {
             elapsed_secs: self.start_time.unwrap().elapsed().as_secs_f64(),
         }
     }
-
-    /// Get reference to callback manager
-    pub fn callbacks(&self) -> &CallbackManager {
-        &self.callbacks
-    }
-
-    /// Get mutable reference to callback manager
-    pub fn callbacks_mut(&mut self) -> &mut CallbackManager {
-        &mut self.callbacks
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::optim::Adam;
-    use crate::train::MSELoss;
-
-    #[test]
-    fn test_trainer_creation() {
-        let params = vec![Tensor::zeros(10, true)];
-        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let trainer = Trainer::new(params, Box::new(optimizer), config);
-
-        assert_eq!(trainer.params().len(), 1);
-        assert_eq!(trainer.lr(), 0.001);
-    }
-
-    #[test]
-    fn test_train_step() {
-        let params = vec![Tensor::from_vec(vec![1.0, 2.0, 3.0], true)];
-        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        trainer.set_loss(Box::new(MSELoss));
-
-        // Create a simple batch
-        let inputs = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
-        let targets = Tensor::from_vec(vec![2.0, 3.0, 4.0], false);
-        let batch = Batch::new(inputs, targets);
-
-        // Train step (identity function)
-        let loss = trainer.train_step(&batch, std::clone::Clone::clone);
-
-        // Loss should be positive (predictions != targets)
-        assert!(loss > 0.0);
-        assert!(loss.is_finite());
-        assert_eq!(trainer.metrics.steps, 1);
-    }
-
-    #[test]
-    fn test_train_epoch() {
-        let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
-        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::new().with_log_interval(100); // Disable logging
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        trainer.set_loss(Box::new(MSELoss));
-
-        // Create multiple batches
-        let batches = vec![
-            Batch::new(
-                Tensor::from_vec(vec![1.0, 2.0], false),
-                Tensor::from_vec(vec![2.0, 3.0], false),
-            ),
-            Batch::new(
-                Tensor::from_vec(vec![2.0, 3.0], false),
-                Tensor::from_vec(vec![3.0, 4.0], false),
-            ),
-        ];
-
-        let avg_loss = trainer.train_epoch(batches, std::clone::Clone::clone);
-
-        assert!(avg_loss > 0.0);
-        assert_eq!(trainer.metrics.epoch, 1);
-        assert_eq!(trainer.metrics.steps, 2);
-    }
-
-    #[test]
-    #[should_panic(expected = "Loss function must be set")]
-    fn test_train_step_without_loss() {
-        let params = vec![Tensor::zeros(10, true)];
-        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-
-        let batch = Batch::new(Tensor::zeros(10, false), Tensor::zeros(10, false));
-
-        trainer.train_step(&batch, std::clone::Clone::clone);
-    }
+    use crate::train::callback::{CallbackAction, CallbackContext, TrainerCallback};
+    use crate::train::{Batch, EarlyStopping, MSELoss, TrainConfig, Trainer};
+    use crate::Tensor;
 
     #[test]
     fn test_train_with_callbacks() {
-        use crate::train::EarlyStopping;
-
         let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
         let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
         let config = TrainConfig::new().with_log_interval(100);
@@ -871,21 +448,6 @@ mod tests {
                 || (result.best_loss - result.final_loss).abs() < 0.001
         );
         assert!(result.elapsed_secs >= 0.0);
-    }
-
-    #[test]
-    fn test_add_callback() {
-        use crate::train::ProgressCallback;
-
-        let params = vec![Tensor::zeros(10, true)];
-        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        trainer.add_callback(ProgressCallback::new(5));
-
-        // Verify callback was added
-        assert!(!trainer.callbacks().is_empty());
     }
 
     #[test]
@@ -973,61 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate() {
-        let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
-        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        trainer.set_loss(Box::new(MSELoss));
-
-        // Validation batches
-        let val_batches = vec![
-            Batch::new(
-                Tensor::from_vec(vec![1.0, 2.0], false),
-                Tensor::from_vec(vec![2.0, 3.0], false),
-            ),
-            Batch::new(
-                Tensor::from_vec(vec![2.0, 3.0], false),
-                Tensor::from_vec(vec![3.0, 4.0], false),
-            ),
-        ];
-
-        let val_loss = trainer.validate(val_batches, std::clone::Clone::clone);
-
-        assert!(val_loss > 0.0);
-        assert!(val_loss.is_finite());
-        assert_eq!(trainer.metrics.val_losses.len(), 1);
-        // Steps should not increase during validation
-        assert_eq!(trainer.metrics.steps, 0);
-    }
-
-    #[test]
-    fn test_validate_does_not_update_params() {
-        let initial_params = vec![1.0, 2.0];
-        let params = vec![Tensor::from_vec(initial_params.clone(), true)];
-        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        trainer.set_loss(Box::new(MSELoss));
-
-        let val_batches = vec![Batch::new(
-            Tensor::from_vec(vec![1.0, 2.0], false),
-            Tensor::from_vec(vec![5.0, 6.0], false), // Different targets to create loss
-        )];
-
-        trainer.validate(val_batches, std::clone::Clone::clone);
-
-        // Parameters should remain unchanged after validation
-        let params_after: Vec<f32> = trainer.params()[0].data().to_vec();
-        assert_eq!(params_after, initial_params);
-    }
-
-    #[test]
     fn test_early_stopping_monitor_validation() {
-        use crate::train::EarlyStopping;
-
         let params = vec![Tensor::from_vec(vec![1.0], true)];
         let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
         let config = TrainConfig::new().with_log_interval(100);
@@ -1083,8 +591,6 @@ mod tests {
 
     #[test]
     fn test_train_with_val_early_stopping() {
-        use crate::train::EarlyStopping;
-
         let params = vec![Tensor::from_vec(vec![1.0], true)];
         let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
         let config = TrainConfig::new().with_log_interval(100);
@@ -1144,50 +650,6 @@ mod tests {
         assert_eq!(result.final_epoch, 2);
         // No val losses recorded
         assert_eq!(trainer.metrics.val_losses.len(), 0);
-    }
-
-    #[test]
-    fn test_set_lr() {
-        let params = vec![Tensor::zeros(10, true)];
-        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        assert_eq!(trainer.lr(), 0.001);
-
-        trainer.set_lr(0.01);
-        assert_eq!(trainer.lr(), 0.01);
-    }
-
-    #[test]
-    fn test_params_mut() {
-        let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
-        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        let params = trainer.params_mut();
-        assert_eq!(params.len(), 1);
-        // Params should be mutable
-        params[0] = Tensor::from_vec(vec![3.0, 4.0], true);
-        assert_eq!(trainer.params()[0].data()[0], 3.0);
-    }
-
-    #[test]
-    fn test_callbacks_mut() {
-        use crate::train::ProgressCallback;
-
-        let params = vec![Tensor::zeros(10, true)];
-        let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        assert!(trainer.callbacks().is_empty());
-
-        // Add callback via mutable ref
-        trainer.callbacks_mut();
-        trainer.add_callback(ProgressCallback::new(10));
-        assert!(!trainer.callbacks().is_empty());
     }
 
     #[test]
@@ -1334,38 +796,6 @@ mod tests {
     }
 
     #[test]
-    fn test_train_epoch_with_empty_batches() {
-        let params = vec![Tensor::from_vec(vec![1.0], true)];
-        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::new().with_log_interval(100);
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        trainer.set_loss(Box::new(MSELoss));
-
-        let batches: Vec<Batch> = vec![];
-        let avg_loss = trainer.train_epoch(batches, std::clone::Clone::clone);
-
-        // With empty batches, loss is 0.0
-        assert_eq!(avg_loss, 0.0);
-    }
-
-    #[test]
-    fn test_validate_with_empty_batches() {
-        let params = vec![Tensor::from_vec(vec![1.0], true)];
-        let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::default();
-
-        let mut trainer = Trainer::new(params, Box::new(optimizer), config);
-        trainer.set_loss(Box::new(MSELoss));
-
-        let batches: Vec<Batch> = vec![];
-        let val_loss = trainer.validate(batches, std::clone::Clone::clone);
-
-        // With empty batches, loss is 0.0
-        assert_eq!(val_loss, 0.0);
-    }
-
-    #[test]
     fn test_train_with_grad_clipping() {
         let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
         let optimizer = Adam::new(0.1, 0.9, 0.999, 1e-8);
@@ -1384,19 +814,5 @@ mod tests {
         let result = trainer.train(2, || batches.clone(), std::clone::Clone::clone);
         assert!(!result.stopped_early);
         assert!(result.final_loss.is_finite());
-    }
-
-    #[test]
-    fn test_train_result_clone() {
-        let result = TrainResult {
-            final_epoch: 5,
-            final_loss: 0.1,
-            best_loss: 0.05,
-            stopped_early: false,
-            elapsed_secs: 10.0,
-        };
-        let cloned = result.clone();
-        assert_eq!(result.final_epoch, cloned.final_epoch);
-        assert_eq!(result.stopped_early, cloned.stopped_early);
     }
 }
