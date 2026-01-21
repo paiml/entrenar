@@ -1111,6 +1111,293 @@ frequency: 10
             "SCHED-064 FALSIFIED: Debug should contain step value"
         );
     }
+
+    // =========================================================================
+    // Additional Coverage Tests
+    // =========================================================================
+
+    #[test]
+    fn test_validate_gradual_error_message_end_step() {
+        // TEST_ID: SCHED-065
+        // Test specific error message content
+        let schedule = PruningSchedule::Gradual {
+            start_step: 100,
+            end_step: 100, // Equal, not greater
+            initial_sparsity: 0.0,
+            final_sparsity: 0.5,
+            frequency: 10,
+        };
+        let err = schedule.validate().unwrap_err();
+        assert!(err.contains("end_step"));
+        assert!(err.contains("start_step"));
+    }
+
+    #[test]
+    fn test_validate_gradual_error_message_initial_over_one() {
+        // TEST_ID: SCHED-066
+        let schedule = PruningSchedule::Gradual {
+            start_step: 0,
+            end_step: 100,
+            initial_sparsity: 1.5, // > 1.0
+            final_sparsity: 0.5,
+            frequency: 10,
+        };
+        let err = schedule.validate().unwrap_err();
+        assert!(err.contains("initial_sparsity"));
+        assert!(err.contains("1.5"));
+    }
+
+    #[test]
+    fn test_validate_gradual_valid() {
+        // TEST_ID: SCHED-067
+        let schedule = PruningSchedule::Gradual {
+            start_step: 0,
+            end_step: 100,
+            initial_sparsity: 0.0,
+            final_sparsity: 1.0, // Valid boundary
+            frequency: 10,
+        };
+        assert!(schedule.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_cubic_error_message_sparsity() {
+        // TEST_ID: SCHED-068
+        let schedule = PruningSchedule::Cubic {
+            start_step: 0,
+            end_step: 100,
+            final_sparsity: 1.5, // > 1.0
+        };
+        let err = schedule.validate().unwrap_err();
+        assert!(err.contains("final_sparsity"));
+        assert!(err.contains("1.5"));
+    }
+
+    #[test]
+    fn test_validate_cubic_error_message_end_step() {
+        // TEST_ID: SCHED-069
+        let schedule = PruningSchedule::Cubic {
+            start_step: 100,
+            end_step: 100, // Equal
+            final_sparsity: 0.5,
+        };
+        let err = schedule.validate().unwrap_err();
+        assert!(err.contains("end_step"));
+    }
+
+    #[test]
+    fn test_gradual_at_start_step() {
+        // TEST_ID: SCHED-070
+        let schedule = PruningSchedule::Gradual {
+            start_step: 100,
+            end_step: 200,
+            initial_sparsity: 0.2,
+            final_sparsity: 0.8,
+            frequency: 10,
+        };
+        let sparsity = schedule.sparsity_at_step(100);
+        assert!(
+            (sparsity - 0.2).abs() < 1e-6,
+            "Should be initial_sparsity at start_step"
+        );
+    }
+
+    #[test]
+    fn test_cubic_at_start_step() {
+        // TEST_ID: SCHED-071
+        let schedule = PruningSchedule::Cubic {
+            start_step: 100,
+            end_step: 200,
+            final_sparsity: 0.5,
+        };
+        let sparsity = schedule.sparsity_at_step(100);
+        assert!(sparsity.abs() < 1e-6, "Should be 0.0 at start_step");
+    }
+
+    #[test]
+    fn test_oneshot_num_pruning_steps() {
+        // TEST_ID: SCHED-072
+        let schedule = PruningSchedule::OneShot { step: 0 };
+        assert_eq!(schedule.num_pruning_steps(), 1);
+    }
+
+    #[test]
+    fn test_cubic_num_pruning_steps_short() {
+        // TEST_ID: SCHED-073
+        let schedule = PruningSchedule::Cubic {
+            start_step: 0,
+            end_step: 10,
+            final_sparsity: 0.5,
+        };
+        assert_eq!(schedule.num_pruning_steps(), 11);
+    }
+
+    #[test]
+    fn test_is_complete_oneshot_at_zero() {
+        // TEST_ID: SCHED-074
+        let schedule = PruningSchedule::OneShot { step: 0 };
+        assert!(!schedule.is_complete(0));
+        assert!(schedule.is_complete(1));
+    }
+
+    #[test]
+    fn test_gradual_should_prune_at_end() {
+        // TEST_ID: SCHED-075
+        let schedule = PruningSchedule::Gradual {
+            start_step: 0,
+            end_step: 100,
+            initial_sparsity: 0.0,
+            final_sparsity: 0.5,
+            frequency: 10,
+        };
+        assert!(schedule.should_prune_at_step(100));
+    }
+
+    #[test]
+    fn test_debug_format_gradual() {
+        // TEST_ID: SCHED-076
+        let schedule = PruningSchedule::Gradual {
+            start_step: 100,
+            end_step: 200,
+            initial_sparsity: 0.1,
+            final_sparsity: 0.9,
+            frequency: 10,
+        };
+        let debug = format!("{schedule:?}");
+        assert!(debug.contains("Gradual"));
+        assert!(debug.contains("100"));
+        assert!(debug.contains("200"));
+    }
+
+    #[test]
+    fn test_debug_format_cubic() {
+        // TEST_ID: SCHED-077
+        let schedule = PruningSchedule::Cubic {
+            start_step: 0,
+            end_step: 100,
+            final_sparsity: 0.5,
+        };
+        let debug = format!("{schedule:?}");
+        assert!(debug.contains("Cubic"));
+        assert!(debug.contains("final_sparsity"));
+    }
+
+    #[test]
+    fn test_gradual_progress_at_75_percent() {
+        // TEST_ID: SCHED-078
+        let schedule = PruningSchedule::Gradual {
+            start_step: 0,
+            end_step: 100,
+            initial_sparsity: 0.0,
+            final_sparsity: 1.0,
+            frequency: 1,
+        };
+        let sparsity = schedule.sparsity_at_step(75);
+        assert!(
+            (sparsity - 0.75).abs() < 1e-6,
+            "Gradual at 75% should be 0.75"
+        );
+    }
+
+    #[test]
+    fn test_cubic_formula_at_quarter() {
+        // TEST_ID: SCHED-079
+        // At 25%: ratio = 0.75, s = 1.0 * (1 - 0.75^3) = 1 - 0.421875 = 0.578125
+        let schedule = PruningSchedule::Cubic {
+            start_step: 0,
+            end_step: 100,
+            final_sparsity: 1.0,
+        };
+        let sparsity = schedule.sparsity_at_step(25);
+        let expected = 1.0 * (1.0 - 0.75_f32.powi(3));
+        assert!(
+            (sparsity - expected).abs() < 1e-6,
+            "Cubic at 25% should be {expected}, got {sparsity}"
+        );
+    }
+
+    #[test]
+    fn test_validate_gradual_final_negative() {
+        // TEST_ID: SCHED-080
+        let schedule = PruningSchedule::Gradual {
+            start_step: 0,
+            end_step: 100,
+            initial_sparsity: 0.0,
+            final_sparsity: -0.1,
+            frequency: 10,
+        };
+        assert!(schedule.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_gradual_initial_exactly_one() {
+        // TEST_ID: SCHED-081
+        let schedule = PruningSchedule::Gradual {
+            start_step: 0,
+            end_step: 100,
+            initial_sparsity: 1.0, // Valid boundary
+            final_sparsity: 1.0,
+            frequency: 10,
+        };
+        assert!(schedule.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_cubic_exactly_zero() {
+        // TEST_ID: SCHED-082
+        let schedule = PruningSchedule::Cubic {
+            start_step: 0,
+            end_step: 100,
+            final_sparsity: 0.0, // Valid boundary
+        };
+        assert!(schedule.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_cubic_exactly_one() {
+        // TEST_ID: SCHED-083
+        let schedule = PruningSchedule::Cubic {
+            start_step: 0,
+            end_step: 100,
+            final_sparsity: 1.0, // Valid boundary
+        };
+        assert!(schedule.validate().is_ok());
+    }
+
+    #[test]
+    fn test_deserialize_oneshot_from_yaml() {
+        // TEST_ID: SCHED-084
+        let yaml = "type: one_shot\nstep: 500\n";
+        let schedule: PruningSchedule = serde_yaml::from_str(yaml).unwrap();
+        match schedule {
+            PruningSchedule::OneShot { step } => assert_eq!(step, 500),
+            _ => panic!("Should deserialize to OneShot"),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_cubic_from_yaml() {
+        // TEST_ID: SCHED-085
+        let yaml = r"
+type: cubic
+start_step: 0
+end_step: 100
+final_sparsity: 0.5
+";
+        let schedule: PruningSchedule = serde_yaml::from_str(yaml).unwrap();
+        match schedule {
+            PruningSchedule::Cubic {
+                start_step,
+                end_step,
+                final_sparsity,
+            } => {
+                assert_eq!(start_step, 0);
+                assert_eq!(end_step, 100);
+                assert!((final_sparsity - 0.5).abs() < 1e-6);
+            }
+            _ => panic!("Should deserialize to Cubic"),
+        }
+    }
 }
 
 // =============================================================================
