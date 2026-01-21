@@ -234,6 +234,7 @@ impl From<std::io::Error> for SerializationError {
 mod tests {
     use super::*;
     use crate::monitor::inference::path::LinearPath;
+    use std::error::Error;
 
     fn make_test_trace() -> DecisionTrace<LinearPath> {
         let path = LinearPath::new(vec![0.5, -0.3, 0.2], 0.1, 0.5, 0.87).with_probability(0.87);
@@ -379,5 +380,145 @@ mod tests {
             actual: 2,
         };
         assert!(err.to_string().contains("Version mismatch"));
+    }
+
+    // Additional coverage tests
+
+    #[test]
+    fn test_path_type_all_variants() {
+        assert_eq!(PathType::from(2), PathType::Forest);
+        assert_eq!(PathType::from(3), PathType::KNN);
+        assert_eq!(PathType::from(255), PathType::Custom);
+    }
+
+    #[test]
+    fn test_trace_format_serde() {
+        let format = TraceFormat::Json;
+        let json = serde_json::to_string(&format).unwrap();
+        let restored: TraceFormat = serde_json::from_str(&json).unwrap();
+        assert_eq!(format, restored);
+
+        let format = TraceFormat::JsonLines;
+        let json = serde_json::to_string(&format).unwrap();
+        let restored: TraceFormat = serde_json::from_str(&json).unwrap();
+        assert_eq!(format, restored);
+
+        let format = TraceFormat::Binary;
+        let json = serde_json::to_string(&format).unwrap();
+        let restored: TraceFormat = serde_json::from_str(&json).unwrap();
+        assert_eq!(format, restored);
+    }
+
+    #[test]
+    fn test_serialization_error_json_display() {
+        let invalid_json = "not valid json";
+        let err: Result<serde_json::Value, _> = serde_json::from_str(invalid_json);
+        if let Err(json_err) = err {
+            let serialization_err = SerializationError::Json(json_err);
+            let display = serialization_err.to_string();
+            assert!(display.contains("JSON error"));
+        }
+    }
+
+    #[test]
+    fn test_serialization_error_io_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let serialization_err = SerializationError::Io(io_err);
+        let display = serialization_err.to_string();
+        assert!(display.contains("IO error"));
+    }
+
+    #[test]
+    fn test_serialization_error_source_json() {
+        let invalid_json = "not valid json";
+        let err: Result<serde_json::Value, _> = serde_json::from_str(invalid_json);
+        if let Err(json_err) = err {
+            let serialization_err = SerializationError::Json(json_err);
+            assert!(serialization_err.source().is_some());
+        }
+    }
+
+    #[test]
+    fn test_serialization_error_source_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let serialization_err = SerializationError::Io(io_err);
+        assert!(serialization_err.source().is_some());
+    }
+
+    #[test]
+    fn test_serialization_error_source_none() {
+        let err = SerializationError::InvalidFormat("test".to_string());
+        assert!(err.source().is_none());
+
+        let err = SerializationError::VersionMismatch {
+            expected: 1,
+            actual: 2,
+        };
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn test_serialization_error_from_json() {
+        let invalid_json = "not valid json";
+        let json_err = serde_json::from_str::<serde_json::Value>(invalid_json).unwrap_err();
+        let serialization_err: SerializationError = json_err.into();
+        assert!(matches!(serialization_err, SerializationError::Json(_)));
+    }
+
+    #[test]
+    fn test_serialization_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let serialization_err: SerializationError = io_err.into();
+        assert!(matches!(serialization_err, SerializationError::Io(_)));
+    }
+
+    #[test]
+    fn test_deserialize_binary_invalid_trace_data() {
+        let serializer = TraceSerializer::new(TraceFormat::Binary);
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&APRT_MAGIC);
+        bytes.push(APRT_VERSION);
+        bytes.extend_from_slice(&[0, 0, 0]); // path type + reserved
+        bytes.extend_from_slice(&[0xFF, 0xFF, 0xFF]); // Invalid trace data
+
+        let result: Result<DecisionTrace<LinearPath>, _> = serializer.deserialize(&bytes);
+        assert!(matches!(result, Err(SerializationError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn test_json_lines_deserialize() {
+        let serializer = TraceSerializer::new(TraceFormat::JsonLines);
+        let trace = make_test_trace();
+
+        let bytes = serializer
+            .serialize(&trace, PathType::Linear)
+            .expect("Serialization failed");
+
+        let restored: DecisionTrace<LinearPath> = serializer
+            .deserialize(&bytes)
+            .expect("Deserialization failed");
+
+        assert_eq!(trace.sequence, restored.sequence);
+    }
+
+    #[test]
+    fn test_trace_format_debug() {
+        let format = TraceFormat::Binary;
+        let debug = format!("{format:?}");
+        assert!(debug.contains("Binary"));
+    }
+
+    #[test]
+    fn test_path_type_debug() {
+        let pt = PathType::Neural;
+        let debug = format!("{pt:?}");
+        assert!(debug.contains("Neural"));
+    }
+
+    #[test]
+    fn test_serialization_error_debug() {
+        let err = SerializationError::InvalidFormat("test".to_string());
+        let debug = format!("{err:?}");
+        assert!(debug.contains("InvalidFormat"));
     }
 }
