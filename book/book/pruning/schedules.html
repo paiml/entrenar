@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>What is Distillation? - Entrenar - Training &amp; Optimization Library</title>
+        <title>Pruning Schedules - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/distillation/what-is-distillation.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/pruning/schedules.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,126 +158,224 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="what-is-knowledge-distillation"><a class="header" href="#what-is-knowledge-distillation">What is Knowledge Distillation?</a></h1>
-<p><strong>Knowledge distillation</strong> trains a smaller "student" model to mimic a larger "teacher" model's behavior.</p>
-<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
-<p>Large models (7B-70B parameters) perform well but are:</p>
-<ul>
-<li><strong>Expensive to deploy</strong>: High memory and compute costs</li>
-<li><strong>Slow inference</strong>: Too slow for latency-sensitive applications</li>
-<li><strong>Resource-intensive</strong>: Require powerful hardware</li>
-</ul>
-<p><strong>Goal</strong>: Transfer knowledge from large teacher →  smaller student while preserving performance</p>
-<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
-<pre><code>Teacher Model (7B params)  →  Knowledge Transfer  →  Student Model (1B params)
-   Accuracy: 92%                                         Accuracy: 89% (vs 82% from scratch)
-</code></pre>
-<p><strong>Key Insight</strong>: Train student on <strong>soft targets</strong> (teacher's probability distributions) rather than hard labels</p>
-<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
-<p>From <code>src/distill/loss.rs</code>:</p>
+                        <h1 id="pruning-schedules"><a class="header" href="#pruning-schedules">Pruning Schedules</a></h1>
+<p>Pruning schedules control when and how sparsity is introduced during training. The right schedule can significantly impact final model quality.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>Entrenar supports three pruning schedules:</p>
+<div class="table-wrapper"><table><thead><tr><th>Schedule</th><th>Sparsity Curve</th><th>Best For</th></tr></thead><tbody>
+<tr><td>OneShot</td><td>Step function</td><td>Post-training pruning</td></tr>
+<tr><td>Gradual</td><td>Linear</td><td>Fine-tuning during training</td></tr>
+<tr><td>Cubic</td><td>S-curve</td><td>High sparsity targets</td></tr>
+</tbody></table>
+</div>
+<h2 id="oneshot-schedule"><a class="header" href="#oneshot-schedule">OneShot Schedule</a></h2>
+<p>Applies target sparsity in a single step. Simple and effective for post-training compression.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::distill::DistillationLoss;
+</span>use entrenar::prune::PruningSchedule;
 
-// Temperature=3.0, alpha=0.7
-let loss_fn = DistillationLoss::new(3.0, 0.7);
+let schedule = PruningSchedule::OneShot { step: 1000 };
 
-// Combine soft targets from teacher + hard labels
-let loss = loss_fn.forward(&amp;student_logits, &amp;teacher_logits, &amp;labels);
+// Sparsity transitions instantly at step 1000
+assert_eq!(schedule.sparsity_at_step(999), 0.0);
+assert_eq!(schedule.sparsity_at_step(1000), 1.0);  // Returns multiplier
+assert_eq!(schedule.sparsity_at_step(2000), 1.0);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="distillation-loss-formula"><a class="header" href="#distillation-loss-formula">Distillation Loss Formula</a></h3>
-<pre><code>L = α * T² * KL(softmax(teacher/T) || softmax(student/T))
-  + (1-α) * CrossEntropy(student, labels)
+<h3 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h3>
+<ul>
+<li>LLM pruning (SparseGPT, Wanda)</li>
+<li>Post-training compression</li>
+<li>When fine-tuning budget is limited</li>
+</ul>
+<h3 id="pros-and-cons"><a class="header" href="#pros-and-cons">Pros and Cons</a></h3>
+<p><strong>Pros:</strong></p>
+<ul>
+<li>Simplest to implement</li>
+<li>Works well with calibration-based methods</li>
+<li>No hyperparameter tuning for schedule</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+<li>Can cause accuracy drop without fine-tuning</li>
+<li>Not ideal for very high sparsity (&gt;70%)</li>
+</ul>
+<h2 id="gradual-schedule"><a class="header" href="#gradual-schedule">Gradual Schedule</a></h2>
+<p>Linearly interpolates from initial to final sparsity over a range of steps.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Gradual {
+    start_step: 1000,
+    end_step: 5000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 500,
+};
+
+// Before start: no pruning
+assert_eq!(schedule.sparsity_at_step(500), 0.0);
+
+// During pruning: linear interpolation
+assert_eq!(schedule.sparsity_at_step(1000), 0.0);
+assert_eq!(schedule.sparsity_at_step(3000), 0.25);
+assert_eq!(schedule.sparsity_at_step(5000), 0.5);
+
+// After end: stay at final sparsity
+assert_eq!(schedule.sparsity_at_step(6000), 0.5);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="parameters"><a class="header" href="#parameters">Parameters</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Description</th><th>Typical Value</th></tr></thead><tbody>
+<tr><td><code>start_step</code></td><td>When to begin pruning</td><td>10% of total steps</td></tr>
+<tr><td><code>end_step</code></td><td>When to reach final sparsity</td><td>50-80% of total steps</td></tr>
+<tr><td><code>initial_sparsity</code></td><td>Starting sparsity</td><td>0.0</td></tr>
+<tr><td><code>final_sparsity</code></td><td>Target sparsity</td><td>0.3-0.9</td></tr>
+<tr><td><code>frequency</code></td><td>Steps between pruning updates</td><td>100-1000</td></tr>
+</tbody></table>
+</div>
+<h3 id="frequency-effect"><a class="header" href="#frequency-effect">Frequency Effect</a></h3>
+<p>The <code>frequency</code> parameter controls how often the mask is updated:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Update mask every 500 steps
+let frequent = PruningSchedule::Gradual {
+    start_step: 0,
+    end_step: 10000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 500,  // 20 updates total
+};
+
+// Update mask every 2000 steps
+let sparse_updates = PruningSchedule::Gradual {
+    start_step: 0,
+    end_step: 10000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 2000,  // 5 updates total
+};
+<span class="boring">}</span></code></pre></pre>
+<p>More frequent updates allow finer control but add overhead.</p>
+<h2 id="cubic-schedule-zhu--gupta-2017"><a class="header" href="#cubic-schedule-zhu--gupta-2017">Cubic Schedule (Zhu &amp; Gupta 2017)</a></h2>
+<p>Uses a cubic polynomial that prunes aggressively early and slows toward the end.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 10000,
+    final_sparsity: 0.7,
+};
+
+// Formula: s_t = s_f * (1 - (1 - t/T)^3)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="mathematical-formula"><a class="header" href="#mathematical-formula">Mathematical Formula</a></h3>
+<p>The cubic schedule follows:</p>
+<pre><code>s_t = s_f * (1 - (1 - t/T)^3)
 </code></pre>
 <p>Where:</p>
 <ul>
-<li><strong>T</strong> = Temperature (typically 2.0-5.0)</li>
-<li><strong>α</strong> = Distillation weight (typically 0.5-0.9)</li>
-<li><strong>KL</strong> = Kullback-Leibler divergence (measures distribution similarity)</li>
+<li><code>s_t</code> = sparsity at step t</li>
+<li><code>s_f</code> = final target sparsity (e.g., 0.7)</li>
+<li><code>t</code> = current step within pruning window</li>
+<li><code>T</code> = total pruning steps (<code>end_step - start_step</code>)</li>
 </ul>
-<h3 id="temperature-smoothing"><a class="header" href="#temperature-smoothing">Temperature Smoothing</a></h3>
-<p><strong>Temperature</strong> softens probability distributions:</p>
-<pre><code>Logits:     [2.0, 1.0, 0.1]
-
-T=1 (hard): [0.659, 0.242, 0.099]  ← Sharp peaks
-T=3 (soft): [0.422, 0.307, 0.271]  ← Smoother distribution
-</code></pre>
-<p><strong>Why soft targets help</strong>: Reveal model's "uncertainty" and inter-class relationships</p>
-<h2 id="distillation-methods-in-entrenar"><a class="header" href="#distillation-methods-in-entrenar">Distillation Methods in Entrenar</a></h2>
-<h3 id="1-temperature-scaled-kl-divergence"><a class="header" href="#1-temperature-scaled-kl-divergence">1. Temperature-Scaled KL Divergence</a></h3>
-<p>Standard distillation with soft targets:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let loss_fn = DistillationLoss::new(3.0, 0.7);
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/loss.rs</code></strong></p>
-<h3 id="2-multi-teacher-ensemble"><a class="header" href="#2-multi-teacher-ensemble">2. Multi-Teacher Ensemble</a></h3>
-<p>Distill from multiple teachers simultaneously:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::EnsembleDistiller;
-
-let distiller = EnsembleDistiller::new(vec![teacher1, teacher2, teacher3]);
-let loss = distiller.forward(&amp;student_logits, &amp;teacher_logits_list, &amp;labels);
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/ensemble.rs</code></strong></p>
-<h3 id="3-progressive-layer-wise"><a class="header" href="#3-progressive-layer-wise">3. Progressive Layer-Wise</a></h3>
-<p>Layer-by-layer knowledge transfer:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::ProgressiveDistiller;
-
-let distiller = ProgressiveDistiller::new();
-distiller.distill_layer(student_layer, teacher_layer)?;
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/progressive.rs</code></strong></p>
-<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
-<p><strong>44 distillation tests</strong> including:</p>
-<ul>
-<li>13 property-based tests for temperature smoothing</li>
-<li>KL divergence correctness validation</li>
-<li>Multi-teacher ensemble tests</li>
-<li>Progressive distillation tests</li>
-</ul>
-<h2 id="when-to-use-distillation"><a class="header" href="#when-to-use-distillation">When to Use Distillation</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Method</th></tr></thead><tbody>
-<tr><td><strong>Deployment optimization</strong></td><td>Standard KL divergence</td></tr>
-<tr><td><strong>Multiple expert models</strong></td><td>Multi-teacher ensemble</td></tr>
-<tr><td><strong>Very deep networks</strong></td><td>Progressive layer-wise</td></tr>
-<tr><td><strong>Limited training data</strong></td><td>Higher alpha (more distillation weight)</td></tr>
+<h3 id="sparsity-progression"><a class="header" href="#sparsity-progression">Sparsity Progression</a></h3>
+<p>For <code>final_sparsity = 0.7</code> over 10000 steps:</p>
+<div class="table-wrapper"><table><thead><tr><th>Step</th><th>Progress</th><th>Sparsity</th></tr></thead><tbody>
+<tr><td>0</td><td>0%</td><td>0.0%</td></tr>
+<tr><td>2500</td><td>25%</td><td>48.8%</td></tr>
+<tr><td>5000</td><td>50%</td><td>61.3%</td></tr>
+<tr><td>7500</td><td>75%</td><td>68.9%</td></tr>
+<tr><td>10000</td><td>100%</td><td>70.0%</td></tr>
 </tbody></table>
 </div>
-<h2 id="example-results"><a class="header" href="#example-results">Example Results</a></h2>
-<pre><code>Task: Text classification (SST-2 dataset)
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 10000,
+    final_sparsity: 0.7,
+};
 
-Teacher (BERT-large, 340M params):  Accuracy: 93.2%
-Student (BERT-tiny, 14M params):
-  - From scratch:                   Accuracy: 84.1%
-  - With distillation (T=3, α=0.8): Accuracy: 89.7%  (+5.6% improvement)
+// Verify progression
+assert!((schedule.sparsity_at_step(0) - 0.0).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(2500) - 0.488).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(5000) - 0.613).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(7500) - 0.689).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(10000) - 0.7).abs() &lt; 0.01);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="why-cubic"><a class="header" href="#why-cubic">Why Cubic?</a></h3>
+<p>The cubic curve has desirable properties:</p>
+<ol>
+<li><strong>Aggressive early pruning</strong> - Model is most plastic early in training</li>
+<li><strong>Gradual convergence</strong> - Allows fine-tuning of remaining weights</li>
+<li><strong>Smooth transitions</strong> - No sudden sparsity jumps</li>
+</ol>
+<h3 id="reference"><a class="header" href="#reference">Reference</a></h3>
+<blockquote>
+<p>Zhu, M., &amp; Gupta, S. (2017). "To Prune, or Not to Prune: Exploring the Efficacy of Pruning for Model Compression." arXiv:1710.01878</p>
+</blockquote>
+<h2 id="choosing-a-schedule"><a class="header" href="#choosing-a-schedule">Choosing a Schedule</a></h2>
+<h3 id="decision-tree"><a class="header" href="#decision-tree">Decision Tree</a></h3>
+<pre><code>Is this post-training compression?
+├── Yes → OneShot
+└── No → Target sparsity &gt; 50%?
+    ├── Yes → Cubic
+    └── No → Gradual
 </code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<ul>
-<li><a href="./temperature-kl.html">Temperature-Scaled KL Divergence</a></li>
-<li><a href="./multi-teacher.html">Multi-Teacher Ensemble</a></li>
-<li><a href="./progressive.html">Progressive Layer-Wise</a></li>
-<li><a href="../examples/distillation.html">Examples</a></li>
-</ul>
-<h2 id="references"><a class="header" href="#references">References</a></h2>
-<ul>
-<li><strong>Hinton et al. (2015)</strong>: "Distilling the Knowledge in a Neural Network"</li>
-<li><strong>Sanh et al. (2019)</strong>: DistilBERT paper</li>
-<li>Implementation in <code>src/distill/</code></li>
-</ul>
+<h3 id="recommendations-by-scenario"><a class="header" href="#recommendations-by-scenario">Recommendations by Scenario</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Schedule</th></tr></thead><tbody>
+<tr><td>LLM compression (Wanda/SparseGPT)</td><td>OneShot</td></tr>
+<tr><td>Training from scratch with pruning</td><td>Gradual</td></tr>
+<tr><td>High sparsity (&gt;70%)</td><td>Cubic</td></tr>
+<tr><td>Quick experiments</td><td>OneShot</td></tr>
+<tr><td>Production deployment</td><td>Gradual or Cubic</td></tr>
+</tbody></table>
+</div>
+<h2 id="configuration-validation"><a class="header" href="#configuration-validation">Configuration Validation</a></h2>
+<p>All schedules validate their parameters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningConfig;
+
+// Invalid: end_step before start_step
+let bad_config = PruningConfig::new()
+    .with_schedule(PruningSchedule::Gradual {
+        start_step: 5000,
+        end_step: 1000,  // Invalid!
+        initial_sparsity: 0.0,
+        final_sparsity: 0.5,
+        frequency: 100,
+    });
+
+match bad_config.validate() {
+    Ok(()) =&gt; unreachable!(),
+    Err(e) =&gt; println!("Validation error: {}", e),
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="combining-with-fine-tuning"><a class="header" href="#combining-with-fine-tuning">Combining with Fine-Tuning</a></h2>
+<p>For best results, allocate training steps for recovery:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let total_steps = 100000;
+
+// Prune during first 60% of training
+let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 60000,  // 60% of total
+    final_sparsity: 0.7,
+};
+
+// Remaining 40% for fine-tuning at final sparsity
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../pruning/pipeline.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../pruning/overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../distillation/temperature-kl.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../pruning/calibration.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -287,11 +385,11 @@ Student (BERT-tiny, 14M params):
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../pruning/pipeline.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../pruning/overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../distillation/temperature-kl.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../pruning/calibration.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

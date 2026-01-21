@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>What is Distillation? - Entrenar - Training &amp; Optimization Library</title>
+        <title>Drift Detection Simulation - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/distillation/what-is-distillation.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/examples/drift-simulation.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,126 +158,223 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="what-is-knowledge-distillation"><a class="header" href="#what-is-knowledge-distillation">What is Knowledge Distillation?</a></h1>
-<p><strong>Knowledge distillation</strong> trains a smaller "student" model to mimic a larger "teacher" model's behavior.</p>
-<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
-<p>Large models (7B-70B parameters) perform well but are:</p>
-<ul>
-<li><strong>Expensive to deploy</strong>: High memory and compute costs</li>
-<li><strong>Slow inference</strong>: Too slow for latency-sensitive applications</li>
-<li><strong>Resource-intensive</strong>: Require powerful hardware</li>
-</ul>
-<p><strong>Goal</strong>: Transfer knowledge from large teacher →  smaller student while preserving performance</p>
-<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
-<pre><code>Teacher Model (7B params)  →  Knowledge Transfer  →  Student Model (1B params)
-   Accuracy: 92%                                         Accuracy: 89% (vs 82% from scratch)
+                        <h1 id="drift-detection-simulation"><a class="header" href="#drift-detection-simulation">Drift Detection Simulation</a></h1>
+<p>This example demonstrates drift detection with KS test and PSI, showing how to set up baseline distributions, detect drift, and use Andon callbacks.</p>
+<h2 id="running-the-example"><a class="header" href="#running-the-example">Running the Example</a></h2>
+<pre><code class="language-bash">cargo run --example drift_simulation
 </code></pre>
-<p><strong>Key Insight</strong>: Train student on <strong>soft targets</strong> (teacher's probability distributions) rather than hard labels</p>
-<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
-<p>From <code>src/distill/loss.rs</code>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::DistillationLoss;
+<h2 id="code"><a class="header" href="#code">Code</a></h2>
+<pre><pre class="playground"><code class="language-rust">//! Drift Detection Simulation Example (APR-073)
+//!
+//! Demonstrates drift detection with KS test and PSI.
+//! Shows how to set up baseline, detect drift, and use callbacks.
+//!
+//! Run with: cargo run --example drift_simulation
 
-// Temperature=3.0, alpha=0.7
-let loss_fn = DistillationLoss::new(3.0, 0.7);
+use entrenar::eval::{DriftDetector, DriftTest, Severity};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-// Combine soft targets from teacher + hard labels
-let loss = loss_fn.forward(&amp;student_logits, &amp;teacher_logits, &amp;labels);
-<span class="boring">}</span></code></pre></pre>
-<h3 id="distillation-loss-formula"><a class="header" href="#distillation-loss-formula">Distillation Loss Formula</a></h3>
-<pre><code>L = α * T² * KL(softmax(teacher/T) || softmax(student/T))
-  + (1-α) * CrossEntropy(student, labels)
+fn main() {
+    println!("=== Drift Detection Simulation ===\n");
+
+    // 1. Create detector with KS and PSI tests
+    let mut detector = DriftDetector::new(vec![
+        DriftTest::KS { threshold: 0.05 },
+        DriftTest::PSI { threshold: 0.1 },
+    ]);
+
+    // 2. Register Andon callback (triggered when drift detected)
+    let drift_count = Arc::new(AtomicUsize::new(0));
+    let count_clone = Arc::clone(&amp;drift_count);
+
+    detector.on_drift(move |results| {
+        count_clone.fetch_add(1, Ordering::SeqCst);
+        println!("ANDON ALERT: Drift detected!");
+        for r in results.iter().filter(|r| r.drifted) {
+            println!(
+                "  - {} ({}): statistic={:.4}, severity={:?}",
+                r.feature,
+                r.test.name(),
+                r.statistic,
+                r.severity
+            );
+        }
+    });
+
+    // 3. Generate baseline data (training distribution)
+    // Feature 1: Normal distribution centered at 50
+    // Feature 2: Normal distribution centered at 100
+    println!("Generating baseline data (1000 samples, 2 features)...");
+    let baseline = generate_data(1000, 50.0, 100.0, 10.0, 42);
+    detector.set_baseline(&amp;baseline);
+    println!("Baseline set.\n");
+
+    // 4. Test with same distribution (no drift expected)
+    println!("--- Test 1: Same Distribution (No Drift Expected) ---");
+    let same_dist = generate_data(500, 50.0, 100.0, 10.0, 123);
+    let results = detector.check_and_trigger(&amp;same_dist);
+
+    let drifted: Vec&lt;_&gt; = results.iter().filter(|r| r.drifted).collect();
+    if drifted.is_empty() {
+        println!("Result: No drift detected (as expected)");
+    } else {
+        println!(
+            "Result: Unexpected drift detected in {} features",
+            drifted.len()
+        );
+    }
+    println!();
+
+    // 5. Test with shifted distribution (drift expected)
+    println!("--- Test 2: Shifted Distribution (Drift Expected) ---");
+    println!("Shifting feature 1 mean from 50 to 80 (+3 std devs)");
+    let shifted_dist = generate_data(500, 80.0, 100.0, 10.0, 456);
+    let results = detector.check_and_trigger(&amp;shifted_dist);
+
+    let drifted: Vec&lt;_&gt; = results.iter().filter(|r| r.drifted).collect();
+    if drifted.is_empty() {
+        println!("Result: No drift detected (unexpected!)");
+    } else {
+        println!("Result: Drift detected in {} tests", drifted.len());
+        for r in &amp;drifted {
+            let severity_str = match r.severity {
+                Severity::None =&gt; "none",
+                Severity::Warning =&gt; "WARNING",
+                Severity::Critical =&gt; "CRITICAL",
+            };
+            println!(
+                "  {} - {}: statistic={:.4}, severity={}",
+                r.feature,
+                r.test.name(),
+                r.statistic,
+                severity_str
+            );
+        }
+    }
+    println!();
+
+    // 6. Test with completely different distribution
+    println!("--- Test 3: Completely Different Distribution ---");
+    println!("Both features shifted significantly");
+    let different_dist = generate_data(500, 150.0, 200.0, 10.0, 789);
+    let results = detector.check_and_trigger(&amp;different_dist);
+
+    let summary = DriftDetector::summary(&amp;results);
+    println!("Summary:");
+    println!("  Total features checked: {}", summary.total_features);
+    println!("  Features with drift: {}", summary.drifted_features);
+    println!("  Critical alerts: {}", summary.critical);
+    println!("  Warnings: {}", summary.warnings);
+    println!("  Drift percentage: {:.1}%", summary.drift_percentage());
+    println!();
+
+    // 7. Report callback invocations
+    println!("=== Summary ===");
+    println!(
+        "Andon callback was triggered {} time(s)",
+        drift_count.load(Ordering::SeqCst)
+    );
+}
+
+/// Generate synthetic data with 2 features
+fn generate_data(n: usize, mean1: f64, mean2: f64, std: f64, seed: u64) -&gt; Vec&lt;Vec&lt;f64&gt;&gt; {
+    let mut data = Vec::with_capacity(n);
+    let mut state = seed;
+
+    for _ in 0..n {
+        // Simple LCG random number generator
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let u1 = (state &gt;&gt; 33) as f64 / f64::from(u32::MAX);
+
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let u2 = (state &gt;&gt; 33) as f64 / f64::from(u32::MAX);
+
+        // Box-Muller transform for normal distribution
+        let z1 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+        let z2 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).sin();
+
+        data.push(vec![mean1 + z1 * std, mean2 + z2 * std]);
+    }
+
+    data
+}</code></pre></pre>
+<h2 id="expected-output"><a class="header" href="#expected-output">Expected Output</a></h2>
+<pre><code>=== Drift Detection Simulation ===
+
+Generating baseline data (1000 samples, 2 features)...
+Baseline set.
+
+--- Test 1: Same Distribution (No Drift Expected) ---
+Result: No drift detected (as expected)
+
+--- Test 2: Shifted Distribution (Drift Expected) ---
+Shifting feature 1 mean from 50 to 80 (+3 std devs)
+ANDON ALERT: Drift detected!
+  - feature_0 (Kolmogorov-Smirnov): statistic=0.7290, severity=Critical
+  - feature_0 (PSI): statistic=7.3945, severity=Critical
+Result: Drift detected in 2 tests
+
+--- Test 3: Completely Different Distribution ---
+Both features shifted significantly
+ANDON ALERT: Drift detected!
+Summary:
+  Total features checked: 4
+  Features with drift: 4
+  Critical alerts: 4
+  Drift percentage: 100.0%
+
+=== Summary ===
+Andon callback was triggered 2 time(s)
 </code></pre>
-<p>Where:</p>
-<ul>
-<li><strong>T</strong> = Temperature (typically 2.0-5.0)</li>
-<li><strong>α</strong> = Distillation weight (typically 0.5-0.9)</li>
-<li><strong>KL</strong> = Kullback-Leibler divergence (measures distribution similarity)</li>
-</ul>
-<h3 id="temperature-smoothing"><a class="header" href="#temperature-smoothing">Temperature Smoothing</a></h3>
-<p><strong>Temperature</strong> softens probability distributions:</p>
-<pre><code>Logits:     [2.0, 1.0, 0.1]
-
-T=1 (hard): [0.659, 0.242, 0.099]  ← Sharp peaks
-T=3 (soft): [0.422, 0.307, 0.271]  ← Smoother distribution
-</code></pre>
-<p><strong>Why soft targets help</strong>: Reveal model's "uncertainty" and inter-class relationships</p>
-<h2 id="distillation-methods-in-entrenar"><a class="header" href="#distillation-methods-in-entrenar">Distillation Methods in Entrenar</a></h2>
-<h3 id="1-temperature-scaled-kl-divergence"><a class="header" href="#1-temperature-scaled-kl-divergence">1. Temperature-Scaled KL Divergence</a></h3>
-<p>Standard distillation with soft targets:</p>
+<h2 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h2>
+<h3 id="setting-up-drift-detection"><a class="header" href="#setting-up-drift-detection">Setting Up Drift Detection</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let loss_fn = DistillationLoss::new(3.0, 0.7);
+</span>// Create detector with multiple tests
+let mut detector = DriftDetector::new(vec![
+    DriftTest::KS { threshold: 0.05 },   // Kolmogorov-Smirnov
+    DriftTest::PSI { threshold: 0.1 },   // Population Stability Index
+]);
+
+// Set baseline from training data
+detector.set_baseline(&amp;training_data);
 <span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/loss.rs</code></strong></p>
-<h3 id="2-multi-teacher-ensemble"><a class="header" href="#2-multi-teacher-ensemble">2. Multi-Teacher Ensemble</a></h3>
-<p>Distill from multiple teachers simultaneously:</p>
+<h3 id="andon-callbacks-jidoka"><a class="header" href="#andon-callbacks-jidoka">Andon Callbacks (Jidoka)</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::distill::EnsembleDistiller;
+</span>// Register callback for drift events
+detector.on_drift(|results| {
+    println!("ANDON ALERT: Drift detected!");
+    for r in results.iter().filter(|r| r.drifted) {
+        println!("  - {} ({}): severity={:?}",
+            r.feature, r.test.name(), r.severity);
+    }
+});
 
-let distiller = EnsembleDistiller::new(vec![teacher1, teacher2, teacher3]);
-let loss = distiller.forward(&amp;student_logits, &amp;teacher_logits_list, &amp;labels);
+// Check and trigger callbacks
+let results = detector.check_and_trigger(&amp;new_data);
 <span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/ensemble.rs</code></strong></p>
-<h3 id="3-progressive-layer-wise"><a class="header" href="#3-progressive-layer-wise">3. Progressive Layer-Wise</a></h3>
-<p>Layer-by-layer knowledge transfer:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::ProgressiveDistiller;
-
-let distiller = ProgressiveDistiller::new();
-distiller.distill_layer(student_layer, teacher_layer)?;
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/progressive.rs</code></strong></p>
-<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
-<p><strong>44 distillation tests</strong> including:</p>
-<ul>
-<li>13 property-based tests for temperature smoothing</li>
-<li>KL divergence correctness validation</li>
-<li>Multi-teacher ensemble tests</li>
-<li>Progressive distillation tests</li>
-</ul>
-<h2 id="when-to-use-distillation"><a class="header" href="#when-to-use-distillation">When to Use Distillation</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Method</th></tr></thead><tbody>
-<tr><td><strong>Deployment optimization</strong></td><td>Standard KL divergence</td></tr>
-<tr><td><strong>Multiple expert models</strong></td><td>Multi-teacher ensemble</td></tr>
-<tr><td><strong>Very deep networks</strong></td><td>Progressive layer-wise</td></tr>
-<tr><td><strong>Limited training data</strong></td><td>Higher alpha (more distillation weight)</td></tr>
+<h3 id="interpreting-results"><a class="header" href="#interpreting-results">Interpreting Results</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>PSI Value</th><th>Interpretation</th></tr></thead><tbody>
+<tr><td>&lt; 0.1</td><td>No significant drift</td></tr>
+<tr><td>0.1 - 0.2</td><td>Moderate drift (warning)</td></tr>
+<tr><td>&gt; 0.2</td><td>Significant drift (critical)</td></tr>
+</tbody></table>
+</div><div class="table-wrapper"><table><thead><tr><th>KS p-value</th><th>Interpretation</th></tr></thead><tbody>
+<tr><td>&gt; 0.05</td><td>Same distribution (no drift)</td></tr>
+<tr><td>&lt; 0.05</td><td>Different distribution (drift)</td></tr>
 </tbody></table>
 </div>
-<h2 id="example-results"><a class="header" href="#example-results">Example Results</a></h2>
-<pre><code>Task: Text classification (SST-2 dataset)
-
-Teacher (BERT-large, 340M params):  Accuracy: 93.2%
-Student (BERT-tiny, 14M params):
-  - From scratch:                   Accuracy: 84.1%
-  - With distillation (T=3, α=0.8): Accuracy: 89.7%  (+5.6% improvement)
-</code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<ul>
-<li><a href="./temperature-kl.html">Temperature-Scaled KL Divergence</a></li>
-<li><a href="./multi-teacher.html">Multi-Teacher Ensemble</a></li>
-<li><a href="./progressive.html">Progressive Layer-Wise</a></li>
-<li><a href="../examples/distillation.html">Examples</a></li>
-</ul>
-<h2 id="references"><a class="header" href="#references">References</a></h2>
-<ul>
-<li><strong>Hinton et al. (2015)</strong>: "Distilling the Knowledge in a Neural Network"</li>
-<li><strong>Sanh et al. (2019)</strong>: DistilBERT paper</li>
-<li>Implementation in <code>src/distill/</code></li>
-</ul>
-
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../pruning/pipeline.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../examples/pruning-pipeline.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../distillation/temperature-kl.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../examples/calibration-check.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -287,11 +384,11 @@ Student (BERT-tiny, 14M params):
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../pruning/pipeline.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../examples/pruning-pipeline.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../distillation/temperature-kl.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../examples/calibration-check.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

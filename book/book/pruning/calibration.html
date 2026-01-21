@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>What is Distillation? - Entrenar - Training &amp; Optimization Library</title>
+        <title>Calibration - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/distillation/what-is-distillation.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/pruning/calibration.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,126 +158,201 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="what-is-knowledge-distillation"><a class="header" href="#what-is-knowledge-distillation">What is Knowledge Distillation?</a></h1>
-<p><strong>Knowledge distillation</strong> trains a smaller "student" model to mimic a larger "teacher" model's behavior.</p>
-<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
-<p>Large models (7B-70B parameters) perform well but are:</p>
-<ul>
-<li><strong>Expensive to deploy</strong>: High memory and compute costs</li>
-<li><strong>Slow inference</strong>: Too slow for latency-sensitive applications</li>
-<li><strong>Resource-intensive</strong>: Require powerful hardware</li>
-</ul>
-<p><strong>Goal</strong>: Transfer knowledge from large teacher →  smaller student while preserving performance</p>
-<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
-<pre><code>Teacher Model (7B params)  →  Knowledge Transfer  →  Student Model (1B params)
-   Accuracy: 92%                                         Accuracy: 89% (vs 82% from scratch)
+                        <h1 id="calibration-for-pruning"><a class="header" href="#calibration-for-pruning">Calibration for Pruning</a></h1>
+<p>Activation-weighted pruning methods like Wanda and SparseGPT require calibration data to estimate input statistics. This chapter covers setting up and using calibration.</p>
+<h2 id="why-calibration"><a class="header" href="#why-calibration">Why Calibration?</a></h2>
+<p>Magnitude-based pruning only considers weight values:</p>
+<pre><code>importance(w) = |w|
 </code></pre>
-<p><strong>Key Insight</strong>: Train student on <strong>soft targets</strong> (teacher's probability distributions) rather than hard labels</p>
-<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
-<p>From <code>src/distill/loss.rs</code>:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::DistillationLoss;
-
-// Temperature=3.0, alpha=0.7
-let loss_fn = DistillationLoss::new(3.0, 0.7);
-
-// Combine soft targets from teacher + hard labels
-let loss = loss_fn.forward(&amp;student_logits, &amp;teacher_logits, &amp;labels);
-<span class="boring">}</span></code></pre></pre>
-<h3 id="distillation-loss-formula"><a class="header" href="#distillation-loss-formula">Distillation Loss Formula</a></h3>
-<pre><code>L = α * T² * KL(softmax(teacher/T) || softmax(student/T))
-  + (1-α) * CrossEntropy(student, labels)
+<p>Activation-weighted methods also consider how inputs interact with weights:</p>
+<pre><code>importance(w_ij) = |w_ij| * sqrt(sum(x_j^2) / n)
 </code></pre>
-<p>Where:</p>
-<ul>
-<li><strong>T</strong> = Temperature (typically 2.0-5.0)</li>
-<li><strong>α</strong> = Distillation weight (typically 0.5-0.9)</li>
-<li><strong>KL</strong> = Kullback-Leibler divergence (measures distribution similarity)</li>
-</ul>
-<h3 id="temperature-smoothing"><a class="header" href="#temperature-smoothing">Temperature Smoothing</a></h3>
-<p><strong>Temperature</strong> softens probability distributions:</p>
-<pre><code>Logits:     [2.0, 1.0, 0.1]
-
-T=1 (hard): [0.659, 0.242, 0.099]  ← Sharp peaks
-T=3 (soft): [0.422, 0.307, 0.271]  ← Smoother distribution
-</code></pre>
-<p><strong>Why soft targets help</strong>: Reveal model's "uncertainty" and inter-class relationships</p>
-<h2 id="distillation-methods-in-entrenar"><a class="header" href="#distillation-methods-in-entrenar">Distillation Methods in Entrenar</a></h2>
-<h3 id="1-temperature-scaled-kl-divergence"><a class="header" href="#1-temperature-scaled-kl-divergence">1. Temperature-Scaled KL Divergence</a></h3>
-<p>Standard distillation with soft targets:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let loss_fn = DistillationLoss::new(3.0, 0.7);
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/loss.rs</code></strong></p>
-<h3 id="2-multi-teacher-ensemble"><a class="header" href="#2-multi-teacher-ensemble">2. Multi-Teacher Ensemble</a></h3>
-<p>Distill from multiple teachers simultaneously:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::EnsembleDistiller;
-
-let distiller = EnsembleDistiller::new(vec![teacher1, teacher2, teacher3]);
-let loss = distiller.forward(&amp;student_logits, &amp;teacher_logits_list, &amp;labels);
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/ensemble.rs</code></strong></p>
-<h3 id="3-progressive-layer-wise"><a class="header" href="#3-progressive-layer-wise">3. Progressive Layer-Wise</a></h3>
-<p>Layer-by-layer knowledge transfer:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::ProgressiveDistiller;
-
-let distiller = ProgressiveDistiller::new();
-distiller.distill_layer(student_layer, teacher_layer)?;
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/progressive.rs</code></strong></p>
-<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
-<p><strong>44 distillation tests</strong> including:</p>
-<ul>
-<li>13 property-based tests for temperature smoothing</li>
-<li>KL divergence correctness validation</li>
-<li>Multi-teacher ensemble tests</li>
-<li>Progressive distillation tests</li>
-</ul>
-<h2 id="when-to-use-distillation"><a class="header" href="#when-to-use-distillation">When to Use Distillation</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Method</th></tr></thead><tbody>
-<tr><td><strong>Deployment optimization</strong></td><td>Standard KL divergence</td></tr>
-<tr><td><strong>Multiple expert models</strong></td><td>Multi-teacher ensemble</td></tr>
-<tr><td><strong>Very deep networks</strong></td><td>Progressive layer-wise</td></tr>
-<tr><td><strong>Limited training data</strong></td><td>Higher alpha (more distillation weight)</td></tr>
+<p>This captures the actual contribution of each weight given typical inputs.</p>
+<h2 id="which-methods-need-calibration"><a class="header" href="#which-methods-need-calibration">Which Methods Need Calibration?</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Requires Calibration</th><th>Why</th></tr></thead><tbody>
+<tr><td>Magnitude</td><td>No</td><td>Uses only weight values</td></tr>
+<tr><td>Wanda</td><td>Yes</td><td>Weights AND Activations</td></tr>
+<tr><td>SparseGPT</td><td>Yes</td><td>Hessian approximation</td></tr>
 </tbody></table>
 </div>
-<h2 id="example-results"><a class="header" href="#example-results">Example Results</a></h2>
-<pre><code>Task: Text classification (SST-2 dataset)
+<h2 id="calibrationconfig"><a class="header" href="#calibrationconfig">CalibrationConfig</a></h2>
+<p>Configure calibration data collection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::CalibrationConfig;
 
-Teacher (BERT-large, 340M params):  Accuracy: 93.2%
-Student (BERT-tiny, 14M params):
-  - From scratch:                   Accuracy: 84.1%
-  - With distillation (T=3, α=0.8): Accuracy: 89.7%  (+5.6% improvement)
+let config = CalibrationConfig::new()
+    .with_num_samples(128)        // Number of calibration sequences
+    .with_sequence_length(2048)   // Tokens per sequence
+    .with_batch_size(1)           // Sequences per batch
+    .with_dataset("c4");          // Dataset name
+
+println!("Samples: {}", config.num_samples());
+println!("Sequence length: {}", config.sequence_length());
+println!("Batch size: {}", config.batch_size());
+println!("Dataset: {}", config.dataset());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="parameter-guidelines"><a class="header" href="#parameter-guidelines">Parameter Guidelines</a></h2>
+<h3 id="number-of-samples"><a class="header" href="#number-of-samples">Number of Samples</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>Recommended Samples</th></tr></thead><tbody>
+<tr><td>&lt;1B params</td><td>64-128</td></tr>
+<tr><td>1-7B params</td><td>128-256</td></tr>
+<tr><td>&gt;7B params</td><td>256-512</td></tr>
+</tbody></table>
+</div>
+<p>More samples improve accuracy estimation but increase memory and time.</p>
+<h3 id="sequence-length"><a class="header" href="#sequence-length">Sequence Length</a></h3>
+<p>Match your target use case:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// For chat/instruction models
+let chat_config = CalibrationConfig::new()
+    .with_sequence_length(2048);
+
+// For code models
+let code_config = CalibrationConfig::new()
+    .with_sequence_length(4096);
+
+// For document processing
+let doc_config = CalibrationConfig::new()
+    .with_sequence_length(8192);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="batch-size"><a class="header" href="#batch-size">Batch Size</a></h3>
+<p>Trade-off between memory and efficiency:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Memory-constrained (large models)
+let low_mem = CalibrationConfig::new()
+    .with_batch_size(1);
+
+// Balanced
+let balanced = CalibrationConfig::new()
+    .with_batch_size(4);
+
+// Fast calibration (small models, lots of VRAM)
+let fast = CalibrationConfig::new()
+    .with_batch_size(16);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="dataset-selection"><a class="header" href="#dataset-selection">Dataset Selection</a></h3>
+<p>Choose data representative of your target domain:</p>
+<div class="table-wrapper"><table><thead><tr><th>Dataset</th><th>Best For</th></tr></thead><tbody>
+<tr><td>c4</td><td>General language modeling</td></tr>
+<tr><td>wikitext</td><td>Wikipedia-style content</td></tr>
+<tr><td>pile</td><td>Diverse text sources</td></tr>
+<tr><td>code</td><td>Programming tasks</td></tr>
+<tr><td>custom</td><td>Domain-specific applications</td></tr>
+</tbody></table>
+</div>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// General purpose
+let general = CalibrationConfig::new()
+    .with_dataset("c4");
+
+// Code-focused
+let code = CalibrationConfig::new()
+    .with_dataset("code");
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-with-pruningconfig"><a class="header" href="#integration-with-pruningconfig">Integration with PruningConfig</a></h2>
+<p>Combine calibration with pruning configuration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::{PruningConfig, PruneMethod, CalibrationConfig};
+
+let pruning_config = PruningConfig::new()
+    .with_method(PruneMethod::Wanda);
+
+// Check if calibration is needed
+if pruning_config.requires_calibration() {
+    let calibration = CalibrationConfig::new()
+        .with_num_samples(128)
+        .with_sequence_length(2048)
+        .with_batch_size(1)
+        .with_dataset("c4");
+
+    // Use calibration with pruning...
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
+<p>The calibration config validates parameters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Invalid: zero samples
+let bad_config = CalibrationConfig::new()
+    .with_num_samples(0);
+
+// Will fail validation...
+<span class="boring">}</span></code></pre></pre>
+<h2 id="memory-estimation"><a class="header" href="#memory-estimation">Memory Estimation</a></h2>
+<p>Estimate memory requirements for calibration:</p>
+<pre><code>Memory ≈ batch_size * seq_length * hidden_dim * 4 bytes * num_layers
 </code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>For a 7B parameter model:</p>
 <ul>
-<li><a href="./temperature-kl.html">Temperature-Scaled KL Divergence</a></li>
-<li><a href="./multi-teacher.html">Multi-Teacher Ensemble</a></li>
-<li><a href="./progressive.html">Progressive Layer-Wise</a></li>
-<li><a href="../examples/distillation.html">Examples</a></li>
+<li>hidden_dim ≈ 4096</li>
+<li>num_layers ≈ 32</li>
 </ul>
-<h2 id="references"><a class="header" href="#references">References</a></h2>
+<p>With batch_size=1, seq_length=2048:</p>
+<pre><code>Memory ≈ 1 * 2048 * 4096 * 4 * 32 ≈ 1 GB per forward pass
+</code></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Use representative data</strong> - Calibration data should match deployment distribution</li>
+<li><strong>Start small</strong> - Begin with 64-128 samples and increase if needed</li>
+<li><strong>Monitor activation statistics</strong> - Check for numerical issues (NaN, Inf)</li>
+<li><strong>Cache calibration results</strong> - Avoid re-running for same model/data</li>
+<li><strong>Batch appropriately</strong> - Balance memory usage and throughput</li>
+</ol>
+<h2 id="wanda-calibration-details"><a class="header" href="#wanda-calibration-details">Wanda Calibration Details</a></h2>
+<p>Wanda computes per-channel activation norms using Welford's online algorithm:</p>
+<pre><code>For each layer j:
+    norm_j = sqrt(sum(x_j^2) / n_samples)
+    importance_ij = |w_ij| * norm_j
+</code></pre>
+<p>This requires a single forward pass through calibration data, making it efficient compared to Hessian-based methods.</p>
+<h2 id="sparsegpt-calibration-details"><a class="header" href="#sparsegpt-calibration-details">SparseGPT Calibration Details</a></h2>
+<p>SparseGPT requires more compute:</p>
+<ol>
+<li>Collect input activations for each layer</li>
+<li>Compute Hessian approximation: H ≈ X^T X</li>
+<li>Use inverse Hessian for optimal weight updates</li>
+</ol>
+<p>This takes longer but produces higher-quality pruned models.</p>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<h3 id="out-of-memory"><a class="header" href="#out-of-memory">Out of Memory</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Reduce batch size
+let config = CalibrationConfig::new()
+    .with_batch_size(1);
+
+// Or reduce sequence length
+let config = CalibrationConfig::new()
+    .with_sequence_length(1024);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="slow-calibration"><a class="header" href="#slow-calibration">Slow Calibration</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Reduce number of samples
+let config = CalibrationConfig::new()
+    .with_num_samples(64);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="poor-pruning-quality"><a class="header" href="#poor-pruning-quality">Poor Pruning Quality</a></h3>
 <ul>
-<li><strong>Hinton et al. (2015)</strong>: "Distilling the Knowledge in a Neural Network"</li>
-<li><strong>Sanh et al. (2019)</strong>: DistilBERT paper</li>
-<li>Implementation in <code>src/distill/</code></li>
+<li>Increase number of samples</li>
+<li>Use more representative dataset</li>
+<li>Check for distribution shift between calibration and deployment</li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../pruning/pipeline.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../pruning/schedules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../distillation/temperature-kl.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../pruning/pipeline.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -287,11 +362,11 @@ Student (BERT-tiny, 14M params):
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../pruning/pipeline.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../pruning/schedules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../distillation/temperature-kl.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../pruning/pipeline.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

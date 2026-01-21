@@ -1,0 +1,505 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Pipeline Stages - Entrenar - Training &amp; Optimization Library</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="A comprehensive guide to building neural network training systems with autograd, optimizers, LoRA/QLoRA, and quantization using EXTREME TDD methodology">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "rust";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Entrenar - Training &amp; Optimization Library</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/pruning/pipeline.md" title="Suggest an edit" aria-label="Suggest an edit">
+                            <i id="git-edit-button" class="fa fa-edit"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="pruning-pipeline"><a class="header" href="#pruning-pipeline">Pruning Pipeline</a></h1>
+<p>The pruning pipeline manages the end-to-end workflow from model loading to compressed export. This chapter covers the pipeline stages and state machine.</p>
+<h2 id="pipeline-stages"><a class="header" href="#pipeline-stages">Pipeline Stages</a></h2>
+<p>The pruning process follows a defined sequence of stages:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningStage;
+
+let stages = [
+    PruningStage::Idle,               // Initial state
+    PruningStage::Calibrating,        // Collecting activation statistics
+    PruningStage::ComputingImportance,// Scoring weight importance
+    PruningStage::Pruning,            // Applying sparsity masks
+    PruningStage::FineTuning,         // Recovering accuracy
+    PruningStage::Evaluating,         // Validating quality
+    PruningStage::Exporting,          // Saving compressed model
+    PruningStage::Complete,           // Pipeline finished
+];
+<span class="boring">}</span></code></pre></pre>
+<h2 id="stage-details"><a class="header" href="#stage-details">Stage Details</a></h2>
+<h3 id="idle"><a class="header" href="#idle">Idle</a></h3>
+<p>Initial state before pruning begins.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Idle;
+assert!(!stage.is_active());
+assert!(!stage.is_terminal());
+<span class="boring">}</span></code></pre></pre>
+<h3 id="calibrating"><a class="header" href="#calibrating">Calibrating</a></h3>
+<p>Collects activation statistics for Wanda/SparseGPT methods.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Calibrating;
+assert!(stage.is_active());
+println!("{}", stage.display_name());  // "Calibrating"
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Forward pass through calibration data</li>
+<li>Compute per-layer activation norms</li>
+<li>Build Hessian approximations (SparseGPT)</li>
+</ul>
+<p><strong>Skipped when:</strong> Using magnitude pruning (no calibration needed)</p>
+<h3 id="computingimportance"><a class="header" href="#computingimportance">ComputingImportance</a></h3>
+<p>Scores each weight's importance using the configured method.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::ComputingImportance;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Apply importance formula (|w|, |w|*activation, Hessian-based)</li>
+<li>Compute statistics (min, max, mean, std)</li>
+<li>Validate for numerical stability (NaN, Inf)</li>
+</ul>
+<h3 id="pruning"><a class="header" href="#pruning">Pruning</a></h3>
+<p>Generates and applies sparsity masks to zero out weights.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Pruning;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Sort weights by importance</li>
+<li>Generate masks based on target sparsity and pattern</li>
+<li>Apply masks to model weights</li>
+<li>Verify achieved sparsity matches target</li>
+</ul>
+<h3 id="finetuning"><a class="header" href="#finetuning">FineTuning</a></h3>
+<p>Recovers accuracy lost during pruning through continued training.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::FineTuning;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Continue training with frozen sparsity pattern</li>
+<li>Adjust learning rate (typically lower)</li>
+<li>Monitor loss convergence</li>
+<li>Apply gradient updates only to non-zero weights</li>
+</ul>
+<p><strong>Duration:</strong> Typically 10-20% of original training steps</p>
+<h3 id="evaluating"><a class="header" href="#evaluating">Evaluating</a></h3>
+<p>Validates pruned model quality against benchmarks.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Evaluating;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Run evaluation benchmarks</li>
+<li>Compare to baseline (unpruned) model</li>
+<li>Check quality gates (max accuracy drop)</li>
+<li>Generate evaluation report</li>
+</ul>
+<h3 id="exporting"><a class="header" href="#exporting">Exporting</a></h3>
+<p>Saves the compressed model in deployment format.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Exporting;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Convert to sparse storage format</li>
+<li>Apply additional compression (quantization)</li>
+<li>Save model weights and configuration</li>
+<li>Verify exported model loads correctly</li>
+</ul>
+<h3 id="complete"><a class="header" href="#complete">Complete</a></h3>
+<p>Terminal state indicating successful pipeline completion.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Complete;
+assert!(!stage.is_active());
+assert!(stage.is_terminal());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="stage-properties"><a class="header" href="#stage-properties">Stage Properties</a></h2>
+<p>Each stage exposes useful properties:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::FineTuning;
+
+// Display name for UI
+println!("Stage: {}", stage.display_name());  // "Fine-tuning"
+
+// Check if actively processing
+if stage.is_active() {
+    println!("Pipeline is working...");
+}
+
+// Check if pipeline is done
+if stage.is_terminal() {
+    println!("Pipeline complete!");
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="pipeline-flow-visualization"><a class="header" href="#pipeline-flow-visualization">Pipeline Flow Visualization</a></h2>
+<pre><code>┌─────────┐
+│  Idle   │
+└────┬────┘
+     │
+     ▼
+┌─────────────┐
+│ Calibrating │ (skip if Magnitude)
+└──────┬──────┘
+       │
+       ▼
+┌───────────────────┐
+│ComputingImportance│
+└─────────┬─────────┘
+          │
+          ▼
+    ┌─────────┐
+    │ Pruning │
+    └────┬────┘
+         │
+         ▼
+   ┌───────────┐
+   │FineTuning │
+   └─────┬─────┘
+         │
+         ▼
+   ┌───────────┐
+   │Evaluating │
+   └─────┬─────┘
+         │
+         ▼
+   ┌───────────┐
+   │ Exporting │
+   └─────┬─────┘
+         │
+         ▼
+   ┌──────────┐
+   │ Complete │
+   └──────────┘
+</code></pre>
+<h2 id="monitoring-pipeline-progress"><a class="header" href="#monitoring-pipeline-progress">Monitoring Pipeline Progress</a></h2>
+<p>Display pipeline status with stage indicators:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn print_pipeline_status(current: PruningStage) {
+    let stages = [
+        PruningStage::Idle,
+        PruningStage::Calibrating,
+        PruningStage::ComputingImportance,
+        PruningStage::Pruning,
+        PruningStage::FineTuning,
+        PruningStage::Evaluating,
+        PruningStage::Exporting,
+        PruningStage::Complete,
+    ];
+
+    for stage in &amp;stages {
+        let indicator = if *stage == current {
+            if stage.is_active() { "🟢" } else { "✅" }
+        } else {
+            "⚪"
+        };
+        println!("{} {}", indicator, stage.display_name());
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code>✅ Idle
+✅ Calibrating
+🟢 Computing Importance  ← Currently here
+⚪ Pruning
+⚪ Fine-tuning
+⚪ Evaluating
+⚪ Exporting
+⚪ Complete
+</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<p>Pipeline stages can fail. Handle errors gracefully:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn run_stage(stage: PruningStage) -&gt; Result&lt;(), PruneError&gt; {
+    match stage {
+        PruningStage::Calibrating =&gt; {
+            // Could fail if out of memory
+        }
+        PruningStage::ComputingImportance =&gt; {
+            // Could fail with NaN/Inf weights
+        }
+        PruningStage::Pruning =&gt; {
+            // Could fail with invalid pattern
+        }
+        // ...
+    }
+    Ok(())
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Log stage transitions</strong> - Track timing and progress</li>
+<li><strong>Checkpoint between stages</strong> - Enable restart on failure</li>
+<li><strong>Validate at each stage</strong> - Catch issues early</li>
+<li><strong>Monitor memory</strong> - Calibration and importance computation can spike</li>
+<li><strong>Set quality gates</strong> - Define acceptable accuracy drop thresholds</li>
+</ol>
+<h2 id="integration-example"><a class="header" href="#integration-example">Integration Example</a></h2>
+<p>Complete pipeline integration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::{
+    PruningConfig, PruneMethod, PruningSchedule,
+    SparsityPatternConfig, CalibrationConfig, PruningStage
+};
+
+fn run_pruning_pipeline() {
+    // Configure pruning
+    let config = PruningConfig::new()
+        .with_method(PruneMethod::Wanda)
+        .with_target_sparsity(0.5)
+        .with_pattern(SparsityPatternConfig::nm_2_4())
+        .with_schedule(PruningSchedule::OneShot { step: 0 });
+
+    // Configure calibration
+    let calibration = CalibrationConfig::new()
+        .with_num_samples(128)
+        .with_sequence_length(2048)
+        .with_dataset("c4");
+
+    // Validate before starting
+    config.validate().expect("Invalid config");
+
+    // Run pipeline stages
+    let stages = [
+        PruningStage::Calibrating,
+        PruningStage::ComputingImportance,
+        PruningStage::Pruning,
+        PruningStage::FineTuning,
+        PruningStage::Evaluating,
+        PruningStage::Exporting,
+        PruningStage::Complete,
+    ];
+
+    for stage in &amp;stages {
+        println!("Starting: {}", stage.display_name());
+        // Execute stage...
+        println!("Completed: {}", stage.display_name());
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../pruning/calibration.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../distillation/what-is-distillation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../pruning/calibration.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../distillation/what-is-distillation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+        <script src="../ace.js"></script>
+        <script src="../editor.js"></script>
+        <script src="../mode-rust.js"></script>
+        <script src="../theme-dawn.js"></script>
+        <script src="../theme-tomorrow_night.js"></script>
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+    </div>
+    </body>
+</html>

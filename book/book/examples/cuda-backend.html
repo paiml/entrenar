@@ -229,14 +229,43 @@ cargo run --example cuda_backend --features gpu
 ├── trueno/gpu (wgpu compute shaders)
 └── trueno/cuda-monitor (via trueno-gpu v0.2.0)
 </code></pre>
-<h3 id="trueno-gpu-features"><a class="header" href="#trueno-gpu-features">trueno-gpu Features</a></h3>
-<p>The <code>cuda</code> feature enables trueno-gpu, which provides:</p>
+<h3 id="trueno-gpu-v020-features"><a class="header" href="#trueno-gpu-v020-features">trueno-gpu v0.2.0 Features</a></h3>
+<p>The <code>cuda</code> feature enables trueno-gpu v0.2.0, which provides:</p>
 <ul>
 <li><strong>Pure Rust PTX Generation</strong>: No LLVM or nvcc compiler required</li>
 <li><strong>Runtime Driver Loading</strong>: Dynamically loads libcuda.so</li>
 <li><strong>Device Memory Management</strong>: Safe GPU memory allocation</li>
 <li><strong>Kernel Execution</strong>: Launch CUDA kernels from Rust</li>
 </ul>
+<h4 id="satd-bug-fixes-trueno-satd-001"><a class="header" href="#satd-bug-fixes-trueno-satd-001">SATD Bug Fixes (TRUENO-SATD-001)</a></h4>
+<p>v0.2.0 includes critical fixes for GPU kernels:</p>
+<ul>
+<li><strong>quantize.rs</strong>: K-loop now properly iterates (was single-iteration stub)</li>
+<li><strong>quantize.rs</strong>: <code>shfl_idx_f32</code> for broadcast (was no-op <code>shfl_down</code> with 0)</li>
+<li><strong>softmax.rs</strong>: Tree reduction loops fixed with stride halving</li>
+</ul>
+<h4 id="new-ptx-builder-methods"><a class="header" href="#new-ptx-builder-methods">New PTX Builder Methods</a></h4>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Proper loop counters
+add_u32_inplace, add_f32_inplace, shr_u32_inplace
+
+// GGML Q4_K quantization support
+ld_global_u16, or_u32, shl_u32
+<span class="boring">}</span></code></pre></pre>
+<h4 id="gpu-pixel-testing-gpu-pixels-feature"><a class="header" href="#gpu-pixel-testing-gpu-pixels-feature">GPU Pixel Testing (gpu-pixels feature)</a></h4>
+<p>PTX validation via jugar-probar v0.4.0 detects:</p>
+<ul>
+<li><code>SharedMemU64Addressing</code> bugs</li>
+<li><code>LoopBranchToEnd</code> bugs</li>
+<li><code>MissingBarrierSync</code> bugs</li>
+</ul>
+<pre><code class="language-bash"># Run GPU pixel tests
+cargo test --features gpu-pixels
+
+# SATD kernel validation example
+cargo run --example satd_kernels
+</code></pre>
 <h2 id="performance-expectations"><a class="header" href="#performance-expectations">Performance Expectations</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Relative Speed</th><th>Best For</th></tr></thead><tbody>
 <tr><td>CPU SIMD</td><td>1x (baseline)</td><td>General workloads, portability</td></tr>
@@ -308,7 +337,7 @@ let alerts = andon.check(&amp;metrics);
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../development/contributing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../examples/pruning-pipeline.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -322,7 +351,7 @@ let alerts = andon.check(&amp;metrics);
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../development/contributing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../examples/pruning-pipeline.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

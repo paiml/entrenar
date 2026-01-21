@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>What is Distillation? - Entrenar - Training &amp; Optimization Library</title>
+        <title>Overview - Entrenar - Training &amp; Optimization Library</title>
 
 
         <!-- Custom HTML head -->
@@ -129,7 +129,7 @@
                         <a href="https://github.com/paiml/entrenar" title="Git repository" aria-label="Git repository">
                             <i id="git-repository-button" class="fa fa-github"></i>
                         </a>
-                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/distillation/what-is-distillation.md" title="Suggest an edit" aria-label="Suggest an edit">
+                        <a href="https://github.com/paiml/entrenar/edit/main/book/src/pruning/overview.md" title="Suggest an edit" aria-label="Suggest an edit">
                             <i id="git-edit-button" class="fa fa-edit"></i>
                         </a>
 
@@ -158,126 +158,199 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="what-is-knowledge-distillation"><a class="header" href="#what-is-knowledge-distillation">What is Knowledge Distillation?</a></h1>
-<p><strong>Knowledge distillation</strong> trains a smaller "student" model to mimic a larger "teacher" model's behavior.</p>
-<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
-<p>Large models (7B-70B parameters) perform well but are:</p>
+                        <h1 id="pruning-overview"><a class="header" href="#pruning-overview">Pruning Overview</a></h1>
+<p>Entrenar provides a comprehensive pruning module for neural network compression, enabling efficient model deployment through structured weight removal.</p>
+<h2 id="what-is-pruning"><a class="header" href="#what-is-pruning">What is Pruning?</a></h2>
+<p>Pruning removes redundant parameters from neural networks to:</p>
 <ul>
-<li><strong>Expensive to deploy</strong>: High memory and compute costs</li>
-<li><strong>Slow inference</strong>: Too slow for latency-sensitive applications</li>
-<li><strong>Resource-intensive</strong>: Require powerful hardware</li>
+<li><strong>Reduce model size</strong> - Fewer parameters to store and load</li>
+<li><strong>Accelerate inference</strong> - Less computation per forward pass</li>
+<li><strong>Lower energy consumption</strong> - Reduced memory bandwidth and compute</li>
+<li><strong>Enable edge deployment</strong> - Fit large models on resource-constrained devices</li>
 </ul>
-<p><strong>Goal</strong>: Transfer knowledge from large teacher →  smaller student while preserving performance</p>
-<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
-<pre><code>Teacher Model (7B params)  →  Knowledge Transfer  →  Student Model (1B params)
-   Accuracy: 92%                                         Accuracy: 89% (vs 82% from scratch)
+<h2 id="module-architecture"><a class="header" href="#module-architecture">Module Architecture</a></h2>
+<pre><code>entrenar::prune
+├── PruningConfig          # Configuration for pruning operations
+├── PruningSchedule        # When and how to apply pruning
+│   ├── OneShot            # Single pruning event
+│   ├── Gradual            # Linear interpolation
+│   └── Cubic              # Zhu &amp; Gupta (2017) formula
+├── PruneMethod            # Importance scoring algorithm
+│   ├── Magnitude          # |w| or w^2
+│   ├── Wanda              # Activation-weighted
+│   └── SparseGPT          # Hessian-based
+├── SparsityPatternConfig  # Sparsity structure
+│   ├── Unstructured       # Any weight can be pruned
+│   ├── NM                 # N non-zeros per M elements
+│   └── Block              # Coarse-grained blocks
+├── CalibrationConfig      # For activation-weighted methods
+└── PruningStage           # Pipeline state machine
 </code></pre>
-<p><strong>Key Insight</strong>: Train student on <strong>soft targets</strong> (teacher's probability distributions) rather than hard labels</p>
-<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
-<p>From <code>src/distill/loss.rs</code>:</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use entrenar::distill::DistillationLoss;
+</span>use entrenar::prune::{PruningConfig, PruneMethod, PruningSchedule, SparsityPatternConfig};
 
-// Temperature=3.0, alpha=0.7
-let loss_fn = DistillationLoss::new(3.0, 0.7);
+// Simple magnitude pruning configuration
+let config = PruningConfig::new()
+    .with_method(PruneMethod::Magnitude)
+    .with_target_sparsity(0.5)
+    .with_pattern(SparsityPatternConfig::Unstructured)
+    .with_schedule(PruningSchedule::OneShot { step: 0 });
 
-// Combine soft targets from teacher + hard labels
-let loss = loss_fn.forward(&amp;student_logits, &amp;teacher_logits, &amp;labels);
+// Validate configuration
+config.validate()?;
+
+// Check if calibration is needed
+if config.requires_calibration() {
+    // Set up calibration for Wanda/SparseGPT
+}
 <span class="boring">}</span></code></pre></pre>
-<h3 id="distillation-loss-formula"><a class="header" href="#distillation-loss-formula">Distillation Loss Formula</a></h3>
-<pre><code>L = α * T² * KL(softmax(teacher/T) || softmax(student/T))
-  + (1-α) * CrossEntropy(student, labels)
-</code></pre>
-<p>Where:</p>
-<ul>
-<li><strong>T</strong> = Temperature (typically 2.0-5.0)</li>
-<li><strong>α</strong> = Distillation weight (typically 0.5-0.9)</li>
-<li><strong>KL</strong> = Kullback-Leibler divergence (measures distribution similarity)</li>
-</ul>
-<h3 id="temperature-smoothing"><a class="header" href="#temperature-smoothing">Temperature Smoothing</a></h3>
-<p><strong>Temperature</strong> softens probability distributions:</p>
-<pre><code>Logits:     [2.0, 1.0, 0.1]
-
-T=1 (hard): [0.659, 0.242, 0.099]  ← Sharp peaks
-T=3 (soft): [0.422, 0.307, 0.271]  ← Smoother distribution
-</code></pre>
-<p><strong>Why soft targets help</strong>: Reveal model's "uncertainty" and inter-class relationships</p>
-<h2 id="distillation-methods-in-entrenar"><a class="header" href="#distillation-methods-in-entrenar">Distillation Methods in Entrenar</a></h2>
-<h3 id="1-temperature-scaled-kl-divergence"><a class="header" href="#1-temperature-scaled-kl-divergence">1. Temperature-Scaled KL Divergence</a></h3>
-<p>Standard distillation with soft targets:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let loss_fn = DistillationLoss::new(3.0, 0.7);
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/loss.rs</code></strong></p>
-<h3 id="2-multi-teacher-ensemble"><a class="header" href="#2-multi-teacher-ensemble">2. Multi-Teacher Ensemble</a></h3>
-<p>Distill from multiple teachers simultaneously:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::EnsembleDistiller;
-
-let distiller = EnsembleDistiller::new(vec![teacher1, teacher2, teacher3]);
-let loss = distiller.forward(&amp;student_logits, &amp;teacher_logits_list, &amp;labels);
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/ensemble.rs</code></strong></p>
-<h3 id="3-progressive-layer-wise"><a class="header" href="#3-progressive-layer-wise">3. Progressive Layer-Wise</a></h3>
-<p>Layer-by-layer knowledge transfer:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use entrenar::distill::ProgressiveDistiller;
-
-let distiller = ProgressiveDistiller::new();
-distiller.distill_layer(student_layer, teacher_layer)?;
-<span class="boring">}</span></code></pre></pre>
-<p><strong>From <code>src/distill/progressive.rs</code></strong></p>
-<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
-<p><strong>44 distillation tests</strong> including:</p>
-<ul>
-<li>13 property-based tests for temperature smoothing</li>
-<li>KL divergence correctness validation</li>
-<li>Multi-teacher ensemble tests</li>
-<li>Progressive distillation tests</li>
-</ul>
-<h2 id="when-to-use-distillation"><a class="header" href="#when-to-use-distillation">When to Use Distillation</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Method</th></tr></thead><tbody>
-<tr><td><strong>Deployment optimization</strong></td><td>Standard KL divergence</td></tr>
-<tr><td><strong>Multiple expert models</strong></td><td>Multi-teacher ensemble</td></tr>
-<tr><td><strong>Very deep networks</strong></td><td>Progressive layer-wise</td></tr>
-<tr><td><strong>Limited training data</strong></td><td>Higher alpha (more distillation weight)</td></tr>
+<h2 id="pruning-methods"><a class="header" href="#pruning-methods">Pruning Methods</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Calibration</th><th>Speed</th><th>Quality</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>Magnitude</td><td>No</td><td>Fast</td><td>Good</td><td>General purpose</td></tr>
+<tr><td>Wanda</td><td>Yes</td><td>Medium</td><td>Better</td><td>LLM compression</td></tr>
+<tr><td>SparseGPT</td><td>Yes</td><td>Slow</td><td>Best</td><td>Critical accuracy</td></tr>
 </tbody></table>
 </div>
-<h2 id="example-results"><a class="header" href="#example-results">Example Results</a></h2>
-<pre><code>Task: Text classification (SST-2 dataset)
+<h3 id="magnitude-pruning"><a class="header" href="#magnitude-pruning">Magnitude Pruning</a></h3>
+<p>Removes weights with smallest absolute values. No calibration needed.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = PruningConfig::new()
+    .with_method(PruneMethod::Magnitude);
 
-Teacher (BERT-large, 340M params):  Accuracy: 93.2%
-Student (BERT-tiny, 14M params):
-  - From scratch:                   Accuracy: 84.1%
-  - With distillation (T=3, α=0.8): Accuracy: 89.7%  (+5.6% improvement)
-</code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+assert!(!config.requires_calibration());
+<span class="boring">}</span></code></pre></pre>
+<h3 id="wanda-pruning"><a class="header" href="#wanda-pruning">Wanda Pruning</a></h3>
+<p>Weights AND Activations - considers both weight magnitude and input activation statistics.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::CalibrationConfig;
+
+let config = PruningConfig::new()
+    .with_method(PruneMethod::Wanda);
+
+assert!(config.requires_calibration());
+
+let calibration = CalibrationConfig::new()
+    .with_num_samples(128)
+    .with_sequence_length(2048)
+    .with_dataset("c4");
+<span class="boring">}</span></code></pre></pre>
+<h2 id="sparsity-patterns"><a class="header" href="#sparsity-patterns">Sparsity Patterns</a></h2>
+<h3 id="unstructured"><a class="header" href="#unstructured">Unstructured</a></h3>
+<p>Maximum flexibility - any weight can be pruned independently.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let pattern = SparsityPatternConfig::Unstructured;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="nm-structured"><a class="header" href="#nm-structured">N:M Structured</a></h3>
+<p>Hardware-accelerated on NVIDIA Ampere+ GPUs. Common patterns:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// 2:4 pattern - 50% sparsity
+let nm_2_4 = SparsityPatternConfig::nm_2_4();
+
+// 4:8 pattern - 50% sparsity
+let nm_4_8 = SparsityPatternConfig::nm_4_8();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="block-sparsity"><a class="header" href="#block-sparsity">Block Sparsity</a></h3>
+<p>Prune entire blocks for efficient memory access:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let block = SparsityPatternConfig::Block {
+    block_size: 32
+};
+<span class="boring">}</span></code></pre></pre>
+<h2 id="pruning-schedules"><a class="header" href="#pruning-schedules">Pruning Schedules</a></h2>
+<h3 id="oneshot"><a class="header" href="#oneshot">OneShot</a></h3>
+<p>Prune to target sparsity in a single step:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::OneShot { step: 1000 };
+
+// Before step 1000: 0% sparsity
+assert_eq!(schedule.sparsity_at_step(999), 0.0);
+
+// At and after step 1000: target sparsity
+assert_eq!(schedule.sparsity_at_step(1000), 1.0);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="gradual"><a class="header" href="#gradual">Gradual</a></h3>
+<p>Linear interpolation from initial to final sparsity:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Gradual {
+    start_step: 1000,
+    end_step: 5000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 500,  // Update every 500 steps
+};
+
+// Sparsity increases linearly
+assert_eq!(schedule.sparsity_at_step(3000), 0.25);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="cubic-zhu--gupta"><a class="header" href="#cubic-zhu--gupta">Cubic (Zhu &amp; Gupta)</a></h3>
+<p>Smooth cubic schedule that prunes aggressively early:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 10000,
+    final_sparsity: 0.7,
+};
+
+// Formula: s_t = s_f * (1 - (1 - t/T)^3)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="pipeline-stages"><a class="header" href="#pipeline-stages">Pipeline Stages</a></h2>
+<p>The pruning pipeline progresses through stages:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningStage;
+
+let stages = [
+    PruningStage::Idle,              // Not started
+    PruningStage::Calibrating,       // Collecting activation stats
+    PruningStage::ComputingImportance, // Scoring weights
+    PruningStage::Pruning,           // Applying masks
+    PruningStage::FineTuning,        // Recovering accuracy
+    PruningStage::Evaluating,        // Validating quality
+    PruningStage::Exporting,         // Saving compressed model
+    PruningStage::Complete,          // Done
+];
+
+for stage in &amp;stages {
+    if stage.is_active() {
+        println!("Processing: {}", stage.display_name());
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices"><a class="header" href="#best-practices">Best Practices</a></h2>
+<ol>
+<li><strong>Start simple</strong> - Use magnitude pruning first to establish baselines</li>
+<li><strong>Gradual for high sparsity</strong> - When targeting &gt;50% sparsity</li>
+<li><strong>Fine-tune after pruning</strong> - Critical for accuracy recovery</li>
+<li><strong>Match hardware</strong> - Use N:M patterns for GPU acceleration</li>
+<li><strong>Validate thoroughly</strong> - Test on representative data</li>
+</ol>
+<h2 id="related-topics"><a class="header" href="#related-topics">Related Topics</a></h2>
 <ul>
-<li><a href="./temperature-kl.html">Temperature-Scaled KL Divergence</a></li>
-<li><a href="./multi-teacher.html">Multi-Teacher Ensemble</a></li>
-<li><a href="./progressive.html">Progressive Layer-Wise</a></li>
-<li><a href="../examples/distillation.html">Examples</a></li>
-</ul>
-<h2 id="references"><a class="header" href="#references">References</a></h2>
-<ul>
-<li><strong>Hinton et al. (2015)</strong>: "Distilling the Knowledge in a Neural Network"</li>
-<li><strong>Sanh et al. (2019)</strong>: DistilBERT paper</li>
-<li>Implementation in <code>src/distill/</code></li>
+<li><a href="./schedules.html">Pruning Schedules</a> - Detailed schedule configuration</li>
+<li><a href="./calibration.html">Calibration</a> - Setting up activation-weighted methods</li>
+<li><a href="./pipeline.html">Pipeline Stages</a> - Managing the pruning workflow</li>
+<li><a href="../examples/pruning-pipeline.html">Pruning Pipeline Example</a> - Complete working example</li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../pruning/pipeline.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../merging/best-practices.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../distillation/temperature-kl.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../pruning/schedules.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -287,11 +360,11 @@ Student (BERT-tiny, 14M params):
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../pruning/pipeline.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../merging/best-practices.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../distillation/temperature-kl.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../pruning/schedules.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

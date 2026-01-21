@@ -3083,6 +3083,870 @@ let merged = merger.merge(&amp;[model_a, model_b])?;
 <li>Best practices and usage guidelines</li>
 </ul>
 <p>Please check back later for complete content.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="pruning-overview"><a class="header" href="#pruning-overview">Pruning Overview</a></h1>
+<p>Entrenar provides a comprehensive pruning module for neural network compression, enabling efficient model deployment through structured weight removal.</p>
+<h2 id="what-is-pruning"><a class="header" href="#what-is-pruning">What is Pruning?</a></h2>
+<p>Pruning removes redundant parameters from neural networks to:</p>
+<ul>
+<li><strong>Reduce model size</strong> - Fewer parameters to store and load</li>
+<li><strong>Accelerate inference</strong> - Less computation per forward pass</li>
+<li><strong>Lower energy consumption</strong> - Reduced memory bandwidth and compute</li>
+<li><strong>Enable edge deployment</strong> - Fit large models on resource-constrained devices</li>
+</ul>
+<h2 id="module-architecture"><a class="header" href="#module-architecture">Module Architecture</a></h2>
+<pre><code>entrenar::prune
+├── PruningConfig          # Configuration for pruning operations
+├── PruningSchedule        # When and how to apply pruning
+│   ├── OneShot            # Single pruning event
+│   ├── Gradual            # Linear interpolation
+│   └── Cubic              # Zhu &amp; Gupta (2017) formula
+├── PruneMethod            # Importance scoring algorithm
+│   ├── Magnitude          # |w| or w^2
+│   ├── Wanda              # Activation-weighted
+│   └── SparseGPT          # Hessian-based
+├── SparsityPatternConfig  # Sparsity structure
+│   ├── Unstructured       # Any weight can be pruned
+│   ├── NM                 # N non-zeros per M elements
+│   └── Block              # Coarse-grained blocks
+├── CalibrationConfig      # For activation-weighted methods
+└── PruningStage           # Pipeline state machine
+</code></pre>
+<h2 id="quick-start-1"><a class="header" href="#quick-start-1">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::{PruningConfig, PruneMethod, PruningSchedule, SparsityPatternConfig};
+
+// Simple magnitude pruning configuration
+let config = PruningConfig::new()
+    .with_method(PruneMethod::Magnitude)
+    .with_target_sparsity(0.5)
+    .with_pattern(SparsityPatternConfig::Unstructured)
+    .with_schedule(PruningSchedule::OneShot { step: 0 });
+
+// Validate configuration
+config.validate()?;
+
+// Check if calibration is needed
+if config.requires_calibration() {
+    // Set up calibration for Wanda/SparseGPT
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="pruning-methods"><a class="header" href="#pruning-methods">Pruning Methods</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Calibration</th><th>Speed</th><th>Quality</th><th>Use Case</th></tr></thead><tbody>
+<tr><td>Magnitude</td><td>No</td><td>Fast</td><td>Good</td><td>General purpose</td></tr>
+<tr><td>Wanda</td><td>Yes</td><td>Medium</td><td>Better</td><td>LLM compression</td></tr>
+<tr><td>SparseGPT</td><td>Yes</td><td>Slow</td><td>Best</td><td>Critical accuracy</td></tr>
+</tbody></table>
+</div>
+<h3 id="magnitude-pruning"><a class="header" href="#magnitude-pruning">Magnitude Pruning</a></h3>
+<p>Removes weights with smallest absolute values. No calibration needed.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let config = PruningConfig::new()
+    .with_method(PruneMethod::Magnitude);
+
+assert!(!config.requires_calibration());
+<span class="boring">}</span></code></pre></pre>
+<h3 id="wanda-pruning"><a class="header" href="#wanda-pruning">Wanda Pruning</a></h3>
+<p>Weights AND Activations - considers both weight magnitude and input activation statistics.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::CalibrationConfig;
+
+let config = PruningConfig::new()
+    .with_method(PruneMethod::Wanda);
+
+assert!(config.requires_calibration());
+
+let calibration = CalibrationConfig::new()
+    .with_num_samples(128)
+    .with_sequence_length(2048)
+    .with_dataset("c4");
+<span class="boring">}</span></code></pre></pre>
+<h2 id="sparsity-patterns"><a class="header" href="#sparsity-patterns">Sparsity Patterns</a></h2>
+<h3 id="unstructured"><a class="header" href="#unstructured">Unstructured</a></h3>
+<p>Maximum flexibility - any weight can be pruned independently.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let pattern = SparsityPatternConfig::Unstructured;
+<span class="boring">}</span></code></pre></pre>
+<h3 id="nm-structured"><a class="header" href="#nm-structured">N:M Structured</a></h3>
+<p>Hardware-accelerated on NVIDIA Ampere+ GPUs. Common patterns:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// 2:4 pattern - 50% sparsity
+let nm_2_4 = SparsityPatternConfig::nm_2_4();
+
+// 4:8 pattern - 50% sparsity
+let nm_4_8 = SparsityPatternConfig::nm_4_8();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="block-sparsity"><a class="header" href="#block-sparsity">Block Sparsity</a></h3>
+<p>Prune entire blocks for efficient memory access:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let block = SparsityPatternConfig::Block {
+    block_size: 32
+};
+<span class="boring">}</span></code></pre></pre>
+<h2 id="pruning-schedules"><a class="header" href="#pruning-schedules">Pruning Schedules</a></h2>
+<h3 id="oneshot"><a class="header" href="#oneshot">OneShot</a></h3>
+<p>Prune to target sparsity in a single step:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::OneShot { step: 1000 };
+
+// Before step 1000: 0% sparsity
+assert_eq!(schedule.sparsity_at_step(999), 0.0);
+
+// At and after step 1000: target sparsity
+assert_eq!(schedule.sparsity_at_step(1000), 1.0);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="gradual"><a class="header" href="#gradual">Gradual</a></h3>
+<p>Linear interpolation from initial to final sparsity:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Gradual {
+    start_step: 1000,
+    end_step: 5000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 500,  // Update every 500 steps
+};
+
+// Sparsity increases linearly
+assert_eq!(schedule.sparsity_at_step(3000), 0.25);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="cubic-zhu--gupta"><a class="header" href="#cubic-zhu--gupta">Cubic (Zhu &amp; Gupta)</a></h3>
+<p>Smooth cubic schedule that prunes aggressively early:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 10000,
+    final_sparsity: 0.7,
+};
+
+// Formula: s_t = s_f * (1 - (1 - t/T)^3)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="pipeline-stages"><a class="header" href="#pipeline-stages">Pipeline Stages</a></h2>
+<p>The pruning pipeline progresses through stages:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningStage;
+
+let stages = [
+    PruningStage::Idle,              // Not started
+    PruningStage::Calibrating,       // Collecting activation stats
+    PruningStage::ComputingImportance, // Scoring weights
+    PruningStage::Pruning,           // Applying masks
+    PruningStage::FineTuning,        // Recovering accuracy
+    PruningStage::Evaluating,        // Validating quality
+    PruningStage::Exporting,         // Saving compressed model
+    PruningStage::Complete,          // Done
+];
+
+for stage in &amp;stages {
+    if stage.is_active() {
+        println!("Processing: {}", stage.display_name());
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices-2"><a class="header" href="#best-practices-2">Best Practices</a></h2>
+<ol>
+<li><strong>Start simple</strong> - Use magnitude pruning first to establish baselines</li>
+<li><strong>Gradual for high sparsity</strong> - When targeting &gt;50% sparsity</li>
+<li><strong>Fine-tune after pruning</strong> - Critical for accuracy recovery</li>
+<li><strong>Match hardware</strong> - Use N:M patterns for GPU acceleration</li>
+<li><strong>Validate thoroughly</strong> - Test on representative data</li>
+</ol>
+<h2 id="related-topics"><a class="header" href="#related-topics">Related Topics</a></h2>
+<ul>
+<li><a href="pruning/./schedules.html">Pruning Schedules</a> - Detailed schedule configuration</li>
+<li><a href="pruning/./calibration.html">Calibration</a> - Setting up activation-weighted methods</li>
+<li><a href="pruning/./pipeline.html">Pipeline Stages</a> - Managing the pruning workflow</li>
+<li><a href="pruning/../examples/pruning-pipeline.html">Pruning Pipeline Example</a> - Complete working example</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="pruning-schedules-1"><a class="header" href="#pruning-schedules-1">Pruning Schedules</a></h1>
+<p>Pruning schedules control when and how sparsity is introduced during training. The right schedule can significantly impact final model quality.</p>
+<h2 id="overview-2"><a class="header" href="#overview-2">Overview</a></h2>
+<p>Entrenar supports three pruning schedules:</p>
+<div class="table-wrapper"><table><thead><tr><th>Schedule</th><th>Sparsity Curve</th><th>Best For</th></tr></thead><tbody>
+<tr><td>OneShot</td><td>Step function</td><td>Post-training pruning</td></tr>
+<tr><td>Gradual</td><td>Linear</td><td>Fine-tuning during training</td></tr>
+<tr><td>Cubic</td><td>S-curve</td><td>High sparsity targets</td></tr>
+</tbody></table>
+</div>
+<h2 id="oneshot-schedule"><a class="header" href="#oneshot-schedule">OneShot Schedule</a></h2>
+<p>Applies target sparsity in a single step. Simple and effective for post-training compression.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningSchedule;
+
+let schedule = PruningSchedule::OneShot { step: 1000 };
+
+// Sparsity transitions instantly at step 1000
+assert_eq!(schedule.sparsity_at_step(999), 0.0);
+assert_eq!(schedule.sparsity_at_step(1000), 1.0);  // Returns multiplier
+assert_eq!(schedule.sparsity_at_step(2000), 1.0);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h3>
+<ul>
+<li>LLM pruning (SparseGPT, Wanda)</li>
+<li>Post-training compression</li>
+<li>When fine-tuning budget is limited</li>
+</ul>
+<h3 id="pros-and-cons"><a class="header" href="#pros-and-cons">Pros and Cons</a></h3>
+<p><strong>Pros:</strong></p>
+<ul>
+<li>Simplest to implement</li>
+<li>Works well with calibration-based methods</li>
+<li>No hyperparameter tuning for schedule</li>
+</ul>
+<p><strong>Cons:</strong></p>
+<ul>
+<li>Can cause accuracy drop without fine-tuning</li>
+<li>Not ideal for very high sparsity (&gt;70%)</li>
+</ul>
+<h2 id="gradual-schedule"><a class="header" href="#gradual-schedule">Gradual Schedule</a></h2>
+<p>Linearly interpolates from initial to final sparsity over a range of steps.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Gradual {
+    start_step: 1000,
+    end_step: 5000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 500,
+};
+
+// Before start: no pruning
+assert_eq!(schedule.sparsity_at_step(500), 0.0);
+
+// During pruning: linear interpolation
+assert_eq!(schedule.sparsity_at_step(1000), 0.0);
+assert_eq!(schedule.sparsity_at_step(3000), 0.25);
+assert_eq!(schedule.sparsity_at_step(5000), 0.5);
+
+// After end: stay at final sparsity
+assert_eq!(schedule.sparsity_at_step(6000), 0.5);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="parameters"><a class="header" href="#parameters">Parameters</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Description</th><th>Typical Value</th></tr></thead><tbody>
+<tr><td><code>start_step</code></td><td>When to begin pruning</td><td>10% of total steps</td></tr>
+<tr><td><code>end_step</code></td><td>When to reach final sparsity</td><td>50-80% of total steps</td></tr>
+<tr><td><code>initial_sparsity</code></td><td>Starting sparsity</td><td>0.0</td></tr>
+<tr><td><code>final_sparsity</code></td><td>Target sparsity</td><td>0.3-0.9</td></tr>
+<tr><td><code>frequency</code></td><td>Steps between pruning updates</td><td>100-1000</td></tr>
+</tbody></table>
+</div>
+<h3 id="frequency-effect"><a class="header" href="#frequency-effect">Frequency Effect</a></h3>
+<p>The <code>frequency</code> parameter controls how often the mask is updated:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Update mask every 500 steps
+let frequent = PruningSchedule::Gradual {
+    start_step: 0,
+    end_step: 10000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 500,  // 20 updates total
+};
+
+// Update mask every 2000 steps
+let sparse_updates = PruningSchedule::Gradual {
+    start_step: 0,
+    end_step: 10000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 2000,  // 5 updates total
+};
+<span class="boring">}</span></code></pre></pre>
+<p>More frequent updates allow finer control but add overhead.</p>
+<h2 id="cubic-schedule-zhu--gupta-2017"><a class="header" href="#cubic-schedule-zhu--gupta-2017">Cubic Schedule (Zhu &amp; Gupta 2017)</a></h2>
+<p>Uses a cubic polynomial that prunes aggressively early and slows toward the end.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 10000,
+    final_sparsity: 0.7,
+};
+
+// Formula: s_t = s_f * (1 - (1 - t/T)^3)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="mathematical-formula"><a class="header" href="#mathematical-formula">Mathematical Formula</a></h3>
+<p>The cubic schedule follows:</p>
+<pre><code>s_t = s_f * (1 - (1 - t/T)^3)
+</code></pre>
+<p>Where:</p>
+<ul>
+<li><code>s_t</code> = sparsity at step t</li>
+<li><code>s_f</code> = final target sparsity (e.g., 0.7)</li>
+<li><code>t</code> = current step within pruning window</li>
+<li><code>T</code> = total pruning steps (<code>end_step - start_step</code>)</li>
+</ul>
+<h3 id="sparsity-progression"><a class="header" href="#sparsity-progression">Sparsity Progression</a></h3>
+<p>For <code>final_sparsity = 0.7</code> over 10000 steps:</p>
+<div class="table-wrapper"><table><thead><tr><th>Step</th><th>Progress</th><th>Sparsity</th></tr></thead><tbody>
+<tr><td>0</td><td>0%</td><td>0.0%</td></tr>
+<tr><td>2500</td><td>25%</td><td>48.8%</td></tr>
+<tr><td>5000</td><td>50%</td><td>61.3%</td></tr>
+<tr><td>7500</td><td>75%</td><td>68.9%</td></tr>
+<tr><td>10000</td><td>100%</td><td>70.0%</td></tr>
+</tbody></table>
+</div>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 10000,
+    final_sparsity: 0.7,
+};
+
+// Verify progression
+assert!((schedule.sparsity_at_step(0) - 0.0).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(2500) - 0.488).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(5000) - 0.613).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(7500) - 0.689).abs() &lt; 0.01);
+assert!((schedule.sparsity_at_step(10000) - 0.7).abs() &lt; 0.01);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="why-cubic"><a class="header" href="#why-cubic">Why Cubic?</a></h3>
+<p>The cubic curve has desirable properties:</p>
+<ol>
+<li><strong>Aggressive early pruning</strong> - Model is most plastic early in training</li>
+<li><strong>Gradual convergence</strong> - Allows fine-tuning of remaining weights</li>
+<li><strong>Smooth transitions</strong> - No sudden sparsity jumps</li>
+</ol>
+<h3 id="reference"><a class="header" href="#reference">Reference</a></h3>
+<blockquote>
+<p>Zhu, M., &amp; Gupta, S. (2017). "To Prune, or Not to Prune: Exploring the Efficacy of Pruning for Model Compression." arXiv:1710.01878</p>
+</blockquote>
+<h2 id="choosing-a-schedule"><a class="header" href="#choosing-a-schedule">Choosing a Schedule</a></h2>
+<h3 id="decision-tree"><a class="header" href="#decision-tree">Decision Tree</a></h3>
+<pre><code>Is this post-training compression?
+├── Yes → OneShot
+└── No → Target sparsity &gt; 50%?
+    ├── Yes → Cubic
+    └── No → Gradual
+</code></pre>
+<h3 id="recommendations-by-scenario"><a class="header" href="#recommendations-by-scenario">Recommendations by Scenario</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Recommended Schedule</th></tr></thead><tbody>
+<tr><td>LLM compression (Wanda/SparseGPT)</td><td>OneShot</td></tr>
+<tr><td>Training from scratch with pruning</td><td>Gradual</td></tr>
+<tr><td>High sparsity (&gt;70%)</td><td>Cubic</td></tr>
+<tr><td>Quick experiments</td><td>OneShot</td></tr>
+<tr><td>Production deployment</td><td>Gradual or Cubic</td></tr>
+</tbody></table>
+</div>
+<h2 id="configuration-validation"><a class="header" href="#configuration-validation">Configuration Validation</a></h2>
+<p>All schedules validate their parameters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningConfig;
+
+// Invalid: end_step before start_step
+let bad_config = PruningConfig::new()
+    .with_schedule(PruningSchedule::Gradual {
+        start_step: 5000,
+        end_step: 1000,  // Invalid!
+        initial_sparsity: 0.0,
+        final_sparsity: 0.5,
+        frequency: 100,
+    });
+
+match bad_config.validate() {
+    Ok(()) =&gt; unreachable!(),
+    Err(e) =&gt; println!("Validation error: {}", e),
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="combining-with-fine-tuning"><a class="header" href="#combining-with-fine-tuning">Combining with Fine-Tuning</a></h2>
+<p>For best results, allocate training steps for recovery:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let total_steps = 100000;
+
+// Prune during first 60% of training
+let schedule = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 60000,  // 60% of total
+    final_sparsity: 0.7,
+};
+
+// Remaining 40% for fine-tuning at final sparsity
+<span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="calibration-for-pruning"><a class="header" href="#calibration-for-pruning">Calibration for Pruning</a></h1>
+<p>Activation-weighted pruning methods like Wanda and SparseGPT require calibration data to estimate input statistics. This chapter covers setting up and using calibration.</p>
+<h2 id="why-calibration"><a class="header" href="#why-calibration">Why Calibration?</a></h2>
+<p>Magnitude-based pruning only considers weight values:</p>
+<pre><code>importance(w) = |w|
+</code></pre>
+<p>Activation-weighted methods also consider how inputs interact with weights:</p>
+<pre><code>importance(w_ij) = |w_ij| * sqrt(sum(x_j^2) / n)
+</code></pre>
+<p>This captures the actual contribution of each weight given typical inputs.</p>
+<h2 id="which-methods-need-calibration"><a class="header" href="#which-methods-need-calibration">Which Methods Need Calibration?</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Requires Calibration</th><th>Why</th></tr></thead><tbody>
+<tr><td>Magnitude</td><td>No</td><td>Uses only weight values</td></tr>
+<tr><td>Wanda</td><td>Yes</td><td>Weights AND Activations</td></tr>
+<tr><td>SparseGPT</td><td>Yes</td><td>Hessian approximation</td></tr>
+</tbody></table>
+</div>
+<h2 id="calibrationconfig"><a class="header" href="#calibrationconfig">CalibrationConfig</a></h2>
+<p>Configure calibration data collection:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::CalibrationConfig;
+
+let config = CalibrationConfig::new()
+    .with_num_samples(128)        // Number of calibration sequences
+    .with_sequence_length(2048)   // Tokens per sequence
+    .with_batch_size(1)           // Sequences per batch
+    .with_dataset("c4");          // Dataset name
+
+println!("Samples: {}", config.num_samples());
+println!("Sequence length: {}", config.sequence_length());
+println!("Batch size: {}", config.batch_size());
+println!("Dataset: {}", config.dataset());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="parameter-guidelines"><a class="header" href="#parameter-guidelines">Parameter Guidelines</a></h2>
+<h3 id="number-of-samples"><a class="header" href="#number-of-samples">Number of Samples</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Model Size</th><th>Recommended Samples</th></tr></thead><tbody>
+<tr><td>&lt;1B params</td><td>64-128</td></tr>
+<tr><td>1-7B params</td><td>128-256</td></tr>
+<tr><td>&gt;7B params</td><td>256-512</td></tr>
+</tbody></table>
+</div>
+<p>More samples improve accuracy estimation but increase memory and time.</p>
+<h3 id="sequence-length"><a class="header" href="#sequence-length">Sequence Length</a></h3>
+<p>Match your target use case:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// For chat/instruction models
+let chat_config = CalibrationConfig::new()
+    .with_sequence_length(2048);
+
+// For code models
+let code_config = CalibrationConfig::new()
+    .with_sequence_length(4096);
+
+// For document processing
+let doc_config = CalibrationConfig::new()
+    .with_sequence_length(8192);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="batch-size"><a class="header" href="#batch-size">Batch Size</a></h3>
+<p>Trade-off between memory and efficiency:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Memory-constrained (large models)
+let low_mem = CalibrationConfig::new()
+    .with_batch_size(1);
+
+// Balanced
+let balanced = CalibrationConfig::new()
+    .with_batch_size(4);
+
+// Fast calibration (small models, lots of VRAM)
+let fast = CalibrationConfig::new()
+    .with_batch_size(16);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="dataset-selection"><a class="header" href="#dataset-selection">Dataset Selection</a></h3>
+<p>Choose data representative of your target domain:</p>
+<div class="table-wrapper"><table><thead><tr><th>Dataset</th><th>Best For</th></tr></thead><tbody>
+<tr><td>c4</td><td>General language modeling</td></tr>
+<tr><td>wikitext</td><td>Wikipedia-style content</td></tr>
+<tr><td>pile</td><td>Diverse text sources</td></tr>
+<tr><td>code</td><td>Programming tasks</td></tr>
+<tr><td>custom</td><td>Domain-specific applications</td></tr>
+</tbody></table>
+</div>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// General purpose
+let general = CalibrationConfig::new()
+    .with_dataset("c4");
+
+// Code-focused
+let code = CalibrationConfig::new()
+    .with_dataset("code");
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-with-pruningconfig"><a class="header" href="#integration-with-pruningconfig">Integration with PruningConfig</a></h2>
+<p>Combine calibration with pruning configuration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::{PruningConfig, PruneMethod, CalibrationConfig};
+
+let pruning_config = PruningConfig::new()
+    .with_method(PruneMethod::Wanda);
+
+// Check if calibration is needed
+if pruning_config.requires_calibration() {
+    let calibration = CalibrationConfig::new()
+        .with_num_samples(128)
+        .with_sequence_length(2048)
+        .with_batch_size(1)
+        .with_dataset("c4");
+
+    // Use calibration with pruning...
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
+<p>The calibration config validates parameters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Invalid: zero samples
+let bad_config = CalibrationConfig::new()
+    .with_num_samples(0);
+
+// Will fail validation...
+<span class="boring">}</span></code></pre></pre>
+<h2 id="memory-estimation"><a class="header" href="#memory-estimation">Memory Estimation</a></h2>
+<p>Estimate memory requirements for calibration:</p>
+<pre><code>Memory ≈ batch_size * seq_length * hidden_dim * 4 bytes * num_layers
+</code></pre>
+<p>For a 7B parameter model:</p>
+<ul>
+<li>hidden_dim ≈ 4096</li>
+<li>num_layers ≈ 32</li>
+</ul>
+<p>With batch_size=1, seq_length=2048:</p>
+<pre><code>Memory ≈ 1 * 2048 * 4096 * 4 * 32 ≈ 1 GB per forward pass
+</code></pre>
+<h2 id="best-practices-3"><a class="header" href="#best-practices-3">Best Practices</a></h2>
+<ol>
+<li><strong>Use representative data</strong> - Calibration data should match deployment distribution</li>
+<li><strong>Start small</strong> - Begin with 64-128 samples and increase if needed</li>
+<li><strong>Monitor activation statistics</strong> - Check for numerical issues (NaN, Inf)</li>
+<li><strong>Cache calibration results</strong> - Avoid re-running for same model/data</li>
+<li><strong>Batch appropriately</strong> - Balance memory usage and throughput</li>
+</ol>
+<h2 id="wanda-calibration-details"><a class="header" href="#wanda-calibration-details">Wanda Calibration Details</a></h2>
+<p>Wanda computes per-channel activation norms using Welford's online algorithm:</p>
+<pre><code>For each layer j:
+    norm_j = sqrt(sum(x_j^2) / n_samples)
+    importance_ij = |w_ij| * norm_j
+</code></pre>
+<p>This requires a single forward pass through calibration data, making it efficient compared to Hessian-based methods.</p>
+<h2 id="sparsegpt-calibration-details"><a class="header" href="#sparsegpt-calibration-details">SparseGPT Calibration Details</a></h2>
+<p>SparseGPT requires more compute:</p>
+<ol>
+<li>Collect input activations for each layer</li>
+<li>Compute Hessian approximation: H ≈ X^T X</li>
+<li>Use inverse Hessian for optimal weight updates</li>
+</ol>
+<p>This takes longer but produces higher-quality pruned models.</p>
+<h2 id="troubleshooting-3"><a class="header" href="#troubleshooting-3">Troubleshooting</a></h2>
+<h3 id="out-of-memory"><a class="header" href="#out-of-memory">Out of Memory</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Reduce batch size
+let config = CalibrationConfig::new()
+    .with_batch_size(1);
+
+// Or reduce sequence length
+let config = CalibrationConfig::new()
+    .with_sequence_length(1024);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="slow-calibration"><a class="header" href="#slow-calibration">Slow Calibration</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Reduce number of samples
+let config = CalibrationConfig::new()
+    .with_num_samples(64);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="poor-pruning-quality"><a class="header" href="#poor-pruning-quality">Poor Pruning Quality</a></h3>
+<ul>
+<li>Increase number of samples</li>
+<li>Use more representative dataset</li>
+<li>Check for distribution shift between calibration and deployment</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="pruning-pipeline"><a class="header" href="#pruning-pipeline">Pruning Pipeline</a></h1>
+<p>The pruning pipeline manages the end-to-end workflow from model loading to compressed export. This chapter covers the pipeline stages and state machine.</p>
+<h2 id="pipeline-stages-1"><a class="header" href="#pipeline-stages-1">Pipeline Stages</a></h2>
+<p>The pruning process follows a defined sequence of stages:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningStage;
+
+let stages = [
+    PruningStage::Idle,               // Initial state
+    PruningStage::Calibrating,        // Collecting activation statistics
+    PruningStage::ComputingImportance,// Scoring weight importance
+    PruningStage::Pruning,            // Applying sparsity masks
+    PruningStage::FineTuning,         // Recovering accuracy
+    PruningStage::Evaluating,         // Validating quality
+    PruningStage::Exporting,          // Saving compressed model
+    PruningStage::Complete,           // Pipeline finished
+];
+<span class="boring">}</span></code></pre></pre>
+<h2 id="stage-details"><a class="header" href="#stage-details">Stage Details</a></h2>
+<h3 id="idle"><a class="header" href="#idle">Idle</a></h3>
+<p>Initial state before pruning begins.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Idle;
+assert!(!stage.is_active());
+assert!(!stage.is_terminal());
+<span class="boring">}</span></code></pre></pre>
+<h3 id="calibrating"><a class="header" href="#calibrating">Calibrating</a></h3>
+<p>Collects activation statistics for Wanda/SparseGPT methods.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Calibrating;
+assert!(stage.is_active());
+println!("{}", stage.display_name());  // "Calibrating"
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Forward pass through calibration data</li>
+<li>Compute per-layer activation norms</li>
+<li>Build Hessian approximations (SparseGPT)</li>
+</ul>
+<p><strong>Skipped when:</strong> Using magnitude pruning (no calibration needed)</p>
+<h3 id="computingimportance"><a class="header" href="#computingimportance">ComputingImportance</a></h3>
+<p>Scores each weight's importance using the configured method.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::ComputingImportance;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Apply importance formula (|w|, |w|*activation, Hessian-based)</li>
+<li>Compute statistics (min, max, mean, std)</li>
+<li>Validate for numerical stability (NaN, Inf)</li>
+</ul>
+<h3 id="pruning"><a class="header" href="#pruning">Pruning</a></h3>
+<p>Generates and applies sparsity masks to zero out weights.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Pruning;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Sort weights by importance</li>
+<li>Generate masks based on target sparsity and pattern</li>
+<li>Apply masks to model weights</li>
+<li>Verify achieved sparsity matches target</li>
+</ul>
+<h3 id="finetuning"><a class="header" href="#finetuning">FineTuning</a></h3>
+<p>Recovers accuracy lost during pruning through continued training.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::FineTuning;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Continue training with frozen sparsity pattern</li>
+<li>Adjust learning rate (typically lower)</li>
+<li>Monitor loss convergence</li>
+<li>Apply gradient updates only to non-zero weights</li>
+</ul>
+<p><strong>Duration:</strong> Typically 10-20% of original training steps</p>
+<h3 id="evaluating"><a class="header" href="#evaluating">Evaluating</a></h3>
+<p>Validates pruned model quality against benchmarks.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Evaluating;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Run evaluation benchmarks</li>
+<li>Compare to baseline (unpruned) model</li>
+<li>Check quality gates (max accuracy drop)</li>
+<li>Generate evaluation report</li>
+</ul>
+<h3 id="exporting"><a class="header" href="#exporting">Exporting</a></h3>
+<p>Saves the compressed model in deployment format.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Exporting;
+assert!(stage.is_active());
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Convert to sparse storage format</li>
+<li>Apply additional compression (quantization)</li>
+<li>Save model weights and configuration</li>
+<li>Verify exported model loads correctly</li>
+</ul>
+<h3 id="complete"><a class="header" href="#complete">Complete</a></h3>
+<p>Terminal state indicating successful pipeline completion.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::Complete;
+assert!(!stage.is_active());
+assert!(stage.is_terminal());
+<span class="boring">}</span></code></pre></pre>
+<h2 id="stage-properties"><a class="header" href="#stage-properties">Stage Properties</a></h2>
+<p>Each stage exposes useful properties:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let stage = PruningStage::FineTuning;
+
+// Display name for UI
+println!("Stage: {}", stage.display_name());  // "Fine-tuning"
+
+// Check if actively processing
+if stage.is_active() {
+    println!("Pipeline is working...");
+}
+
+// Check if pipeline is done
+if stage.is_terminal() {
+    println!("Pipeline complete!");
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="pipeline-flow-visualization"><a class="header" href="#pipeline-flow-visualization">Pipeline Flow Visualization</a></h2>
+<pre><code>┌─────────┐
+│  Idle   │
+└────┬────┘
+     │
+     ▼
+┌─────────────┐
+│ Calibrating │ (skip if Magnitude)
+└──────┬──────┘
+       │
+       ▼
+┌───────────────────┐
+│ComputingImportance│
+└─────────┬─────────┘
+          │
+          ▼
+    ┌─────────┐
+    │ Pruning │
+    └────┬────┘
+         │
+         ▼
+   ┌───────────┐
+   │FineTuning │
+   └─────┬─────┘
+         │
+         ▼
+   ┌───────────┐
+   │Evaluating │
+   └─────┬─────┘
+         │
+         ▼
+   ┌───────────┐
+   │ Exporting │
+   └─────┬─────┘
+         │
+         ▼
+   ┌──────────┐
+   │ Complete │
+   └──────────┘
+</code></pre>
+<h2 id="monitoring-pipeline-progress"><a class="header" href="#monitoring-pipeline-progress">Monitoring Pipeline Progress</a></h2>
+<p>Display pipeline status with stage indicators:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn print_pipeline_status(current: PruningStage) {
+    let stages = [
+        PruningStage::Idle,
+        PruningStage::Calibrating,
+        PruningStage::ComputingImportance,
+        PruningStage::Pruning,
+        PruningStage::FineTuning,
+        PruningStage::Evaluating,
+        PruningStage::Exporting,
+        PruningStage::Complete,
+    ];
+
+    for stage in &amp;stages {
+        let indicator = if *stage == current {
+            if stage.is_active() { "🟢" } else { "✅" }
+        } else {
+            "⚪"
+        };
+        println!("{} {}", indicator, stage.display_name());
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code>✅ Idle
+✅ Calibrating
+🟢 Computing Importance  ← Currently here
+⚪ Pruning
+⚪ Fine-tuning
+⚪ Evaluating
+⚪ Exporting
+⚪ Complete
+</code></pre>
+<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<p>Pipeline stages can fail. Handle errors gracefully:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn run_stage(stage: PruningStage) -&gt; Result&lt;(), PruneError&gt; {
+    match stage {
+        PruningStage::Calibrating =&gt; {
+            // Could fail if out of memory
+        }
+        PruningStage::ComputingImportance =&gt; {
+            // Could fail with NaN/Inf weights
+        }
+        PruningStage::Pruning =&gt; {
+            // Could fail with invalid pattern
+        }
+        // ...
+    }
+    Ok(())
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="best-practices-4"><a class="header" href="#best-practices-4">Best Practices</a></h2>
+<ol>
+<li><strong>Log stage transitions</strong> - Track timing and progress</li>
+<li><strong>Checkpoint between stages</strong> - Enable restart on failure</li>
+<li><strong>Validate at each stage</strong> - Catch issues early</li>
+<li><strong>Monitor memory</strong> - Calibration and importance computation can spike</li>
+<li><strong>Set quality gates</strong> - Define acceptable accuracy drop thresholds</li>
+</ol>
+<h2 id="integration-example"><a class="header" href="#integration-example">Integration Example</a></h2>
+<p>Complete pipeline integration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::{
+    PruningConfig, PruneMethod, PruningSchedule,
+    SparsityPatternConfig, CalibrationConfig, PruningStage
+};
+
+fn run_pruning_pipeline() {
+    // Configure pruning
+    let config = PruningConfig::new()
+        .with_method(PruneMethod::Wanda)
+        .with_target_sparsity(0.5)
+        .with_pattern(SparsityPatternConfig::nm_2_4())
+        .with_schedule(PruningSchedule::OneShot { step: 0 });
+
+    // Configure calibration
+    let calibration = CalibrationConfig::new()
+        .with_num_samples(128)
+        .with_sequence_length(2048)
+        .with_dataset("c4");
+
+    // Validate before starting
+    config.validate().expect("Invalid config");
+
+    // Run pipeline stages
+    let stages = [
+        PruningStage::Calibrating,
+        PruningStage::ComputingImportance,
+        PruningStage::Pruning,
+        PruningStage::FineTuning,
+        PruningStage::Evaluating,
+        PruningStage::Exporting,
+        PruningStage::Complete,
+    ];
+
+    for stage in &amp;stages {
+        println!("Starting: {}", stage.display_name());
+        // Execute stage...
+        println!("Completed: {}", stage.display_name());
+    }
+}
+<span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="what-is-knowledge-distillation"><a class="header" href="#what-is-knowledge-distillation">What is Knowledge Distillation?</a></h1>
 <p><strong>Knowledge distillation</strong> trains a smaller "student" model to mimic a larger "teacher" model's behavior.</p>
 <h2 id="the-problem-1"><a class="header" href="#the-problem-1">The Problem</a></h2>
@@ -3156,7 +4020,7 @@ let distiller = ProgressiveDistiller::new();
 distiller.distill_layer(student_layer, teacher_layer)?;
 <span class="boring">}</span></code></pre></pre>
 <p><strong>From <code>src/distill/progressive.rs</code></strong></p>
-<h2 id="validation"><a class="header" href="#validation">Validation</a></h2>
+<h2 id="validation-1"><a class="header" href="#validation-1">Validation</a></h2>
 <p><strong>44 distillation tests</strong> including:</p>
 <ul>
 <li>13 property-based tests for temperature smoothing</li>
@@ -3240,7 +4104,7 @@ Student (BERT-tiny, 14M params):
 <p>Please check back later for complete content.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="trainer-api"><a class="header" href="#trainer-api">Trainer API</a></h1>
 <p>The <code>Trainer</code> struct provides a high-level abstraction for training neural networks with full callback support, automatic metrics tracking, and gradient management.</p>
-<h2 id="overview-2"><a class="header" href="#overview-2">Overview</a></h2>
+<h2 id="overview-3"><a class="header" href="#overview-3">Overview</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::train::{Trainer, TrainConfig, Batch, MSELoss, EarlyStopping};
@@ -3557,7 +4421,7 @@ fn main() {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="callback-system-1"><a class="header" href="#callback-system-1">Callback System</a></h1>
 <p>The callback system provides extensible hooks into the training loop, enabling behaviors like early stopping, checkpointing, progress logging, and real-time monitoring without modifying the core trainer.</p>
-<h2 id="overview-3"><a class="header" href="#overview-3">Overview</a></h2>
+<h2 id="overview-4"><a class="header" href="#overview-4">Overview</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::train::{
@@ -3856,7 +4720,7 @@ impl CallbackManager {
 <li>If any callback returns <code>Stop</code>, remaining callbacks don't fire</li>
 <li><code>on_train_end</code> always fires (even after early stop)</li>
 </ul>
-<h2 id="best-practices-2"><a class="header" href="#best-practices-2">Best Practices</a></h2>
+<h2 id="best-practices-5"><a class="header" href="#best-practices-5">Best Practices</a></h2>
 <h3 id="callback-order"><a class="header" href="#callback-order">Callback Order</a></h3>
 <p>Add callbacks in order of priority:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -3940,7 +4804,7 @@ struct NotSendCallback {
 <div style="break-before: page; page-break-before: always;"></div><h1 id="early-stopping"><a class="header" href="#early-stopping">Early Stopping</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="curriculum-learning"><a class="header" href="#curriculum-learning">Curriculum Learning</a></h1>
 <p>Curriculum learning progressively increases training difficulty, starting with easy examples and advancing to harder ones as the model improves. This is particularly effective for CITL (Compiler-in-the-Loop) training where error complexity varies.</p>
-<h2 id="overview-4"><a class="header" href="#overview-4">Overview</a></h2>
+<h2 id="overview-5"><a class="header" href="#overview-5">Overview</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::train::{TieredCurriculum, AdaptiveCurriculum, CurriculumCallback};
@@ -4191,7 +5055,7 @@ Early stopping: patience exhausted
 Final: acc=89.3%, efficiency=0.097
 Top features: error_code (0.342), message_length (0.187), has_suggestion (0.156)
 </code></pre>
-<h2 id="best-practices-3"><a class="header" href="#best-practices-3">Best Practices</a></h2>
+<h2 id="best-practices-6"><a class="header" href="#best-practices-6">Best Practices</a></h2>
 <h3 id="threshold-selection"><a class="header" href="#threshold-selection">Threshold Selection</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -4251,7 +5115,7 @@ trainer.add_callback(CheckpointCallback::new("./ckpt"));
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="explainability-callback"><a class="header" href="#explainability-callback">Explainability Callback</a></h1>
 <p>The <code>ExplainabilityCallback</code> integrates aprender's interpret module into the training loop, providing feature attribution and importance analysis during model evaluation.</p>
-<h2 id="overview-5"><a class="header" href="#overview-5">Overview</a></h2>
+<h2 id="overview-6"><a class="header" href="#overview-6">Overview</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::train::{
@@ -4435,7 +5299,7 @@ trainer.add_callback(EarlyStopping::new(5, 0.001));
 <li>Feature importance trends (ExplainabilityCallback)</li>
 <li>Automatic early stopping (EarlyStopping)</li>
 </ul>
-<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<h2 id="use-cases-1"><a class="header" href="#use-cases-1">Use Cases</a></h2>
 <h3 id="model-debugging"><a class="header" href="#model-debugging">Model Debugging</a></h3>
 <p>Identify which features drive predictions:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -4487,7 +5351,7 @@ if results.len() &gt;= 2 {
 <tr><td>HanseiAnalyzer</td><td>Post-training reports</td><td>Hansei (反省)</td></tr>
 </tbody></table>
 </div>
-<h2 id="quick-start-1"><a class="header" href="#quick-start-1">Quick Start</a></h2>
+<h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::{MetricsCollector, Metric, Dashboard, HanseiAnalyzer};
@@ -4553,7 +5417,7 @@ println!("{}", analyzer.format_report(&amp;report));
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="experiment-tracking"><a class="header" href="#experiment-tracking">Experiment Tracking</a></h1>
 <p>Entrenar provides a comprehensive experiment tracking system that integrates with distributed tracing for observability across training runs.</p>
-<h2 id="overview-6"><a class="header" href="#overview-6">Overview</a></h2>
+<h2 id="overview-7"><a class="header" href="#overview-7">Overview</a></h2>
 <p>The experiment tracking system consists of three main components:</p>
 <ol>
 <li><strong>ExperimentStorage</strong> - A trait for persisting experiment data</li>
@@ -4770,7 +5634,7 @@ entrenar = { version = "0.2", features = ["monitor", "tracing"] }
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="quality-gates-jidoka"><a class="header" href="#quality-gates-jidoka">Quality Gates (Jidoka)</a></h1>
 <p>Entrenar implements quality gates following Jidoka (自働化) principles - automation with a human touch. The quality module provides structured metrics, supply chain auditing, and failure diagnostics to ensure training runs meet quality standards before deployment.</p>
-<h2 id="overview-7"><a class="header" href="#overview-7">Overview</a></h2>
+<h2 id="overview-8"><a class="header" href="#overview-8">Overview</a></h2>
 <p>The quality gates system consists of three components:</p>
 <ol>
 <li><strong>CodeQualityMetrics</strong> - PMAT-style code quality tracking</li>
@@ -5342,7 +6206,7 @@ for epoch in 0..max_epochs {
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="inference-monitoring"><a class="header" href="#inference-monitoring">Inference Monitoring</a></h1>
 <p>Real-time audit logging and explainability for APR format models.</p>
-<h2 id="overview-8"><a class="header" href="#overview-8">Overview</a></h2>
+<h2 id="overview-9"><a class="header" href="#overview-9">Overview</a></h2>
 <p>The inference monitoring module provides comprehensive tracing for model predictions, enabling:</p>
 <ul>
 <li><strong>Decision Path Tracing</strong>: Capture exactly how a model reached its decision</li>
@@ -5642,7 +6506,7 @@ println!("{}", String::from_utf8_lossy(&amp;json));
 <p>This demonstrates all components working together: collectors, safety monitoring, counterfactuals, provenance graphs, and serialization.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="model-lineage"><a class="header" href="#model-lineage">Model Lineage</a></h1>
 <p>Entrenar provides comprehensive lineage tracking for experiment reproducibility using Lamport timestamps and causal event ordering. The integrity module enables behavioral verification, trace storage policies, and promotion gates for ML model deployment.</p>
-<h2 id="overview-9"><a class="header" href="#overview-9">Overview</a></h2>
+<h2 id="overview-10"><a class="header" href="#overview-10">Overview</a></h2>
 <p>The lineage system consists of three components:</p>
 <ol>
 <li><strong>LamportTimestamp</strong> - Logical clocks for causal ordering across distributed systems</li>
@@ -6117,7 +6981,7 @@ analyzer.min_accuracy_improvement = 0.02;      // Default: 0.01
 <li><strong>Resource monitoring</strong> - GPU, CPU, and memory utilization tracking</li>
 <li><strong>WASM support</strong> - Browser-compatible dashboard bindings</li>
 </ul>
-<h2 id="quick-start-2"><a class="header" href="#quick-start-2">Quick Start</a></h2>
+<h2 id="quick-start-3"><a class="header" href="#quick-start-3">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use std::sync::{Arc, Mutex};
@@ -6185,7 +7049,7 @@ if let Some(loss) = metrics.get("loss") {
 <tr><td><code>WasmRun</code></td><td>JavaScript-friendly run wrapper (WASM)</td></tr>
 </tbody></table>
 </div>
-<h2 id="use-cases-1"><a class="header" href="#use-cases-1">Use Cases</a></h2>
+<h2 id="use-cases-2"><a class="header" href="#use-cases-2">Use Cases</a></h2>
 <h3 id="terminal-dashboard-1"><a class="header" href="#terminal-dashboard-1">Terminal Dashboard</a></h3>
 <p>Monitor training progress in the terminal with real-time updates:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -6625,7 +7489,7 @@ function TrainingDashboard() {
     );
 }
 </code></pre>
-<h2 id="error-handling"><a class="header" href="#error-handling">Error Handling</a></h2>
+<h2 id="error-handling-1"><a class="header" href="#error-handling-1">Error Handling</a></h2>
 <p>WASM methods return <code>Result&lt;T, JsValue&gt;</code> which throws on error:</p>
 <pre><code class="language-javascript">try {
     const run = WasmRun.new('my-experiment');
@@ -6673,7 +7537,7 @@ function TrainingDashboard() {
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 </code></pre>
-<h2 id="quick-start-3"><a class="header" href="#quick-start-3">Quick Start</a></h2>
+<h2 id="quick-start-4"><a class="header" href="#quick-start-4">Quick Start</a></h2>
 <h3 id="gpu-pricing-batuta"><a class="header" href="#gpu-pricing-batuta">GPU Pricing (Batuta)</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -6882,7 +7746,7 @@ fallback.set_rate(GpuPricing::new("rtx-4090", 0.80, 24));
 println!("GPU: {} @ ${}/hr", pricing.gpu_type, pricing.hourly_rate);
 println!("Available: {}", queue.is_available());
 <span class="boring">}</span></code></pre></pre>
-<h2 id="error-handling-1"><a class="header" href="#error-handling-1">Error Handling</a></h2>
+<h2 id="error-handling-2"><a class="header" href="#error-handling-2">Error Handling</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::ecosystem::BatutaError;
@@ -7049,7 +7913,7 @@ for (key, value) in &amp;pairs {
     println!("{} = {}", key, value);
 }
 <span class="boring">}</span></code></pre></pre>
-<h2 id="error-handling-2"><a class="header" href="#error-handling-2">Error Handling</a></h2>
+<h2 id="error-handling-3"><a class="header" href="#error-handling-3">Error Handling</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::ecosystem::GgufExportError;
@@ -7240,7 +8104,7 @@ println!("Version: {}", artifact.version);  // "1.0.0+steps2"
 <li>Copies tags as keywords (or defaults to ["training", "experiment", "entrenar"])</li>
 <li>Sets version with step count suffix</li>
 </ul>
-<h2 id="error-handling-3"><a class="header" href="#error-handling-3">Error Handling</a></h2>
+<h2 id="error-handling-4"><a class="header" href="#error-handling-4">Error Handling</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::ecosystem::RuchyBridgeError;
@@ -7487,7 +8351,7 @@ cargo run --example hpo_sweep
 <p>Track experiments, runs, metrics, parameters, and artifacts with a local-first SQLite backend.</p>
 <h2 id="toyota-principle-genchi-genbutsu"><a class="header" href="#toyota-principle-genchi-genbutsu">Toyota Principle: Genchi Genbutsu</a></h2>
 <p>"Go and see" - understand the situation through direct observation. Experiment tracking enables data-driven decisions by capturing everything that happens during training.</p>
-<h2 id="quick-start-4"><a class="header" href="#quick-start-4">Quick Start</a></h2>
+<h2 id="quick-start-5"><a class="header" href="#quick-start-5">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::storage::{SqliteBackend, ExperimentStorage, RunStatus, ParameterValue};
@@ -7625,7 +8489,7 @@ cargo run --example experiment_tracking -- --verbose
 <li><code>params</code> - Run parameters</li>
 <li><code>artifacts</code> - Content-addressable artifact storage</li>
 </ul>
-<h2 id="best-practices-4"><a class="header" href="#best-practices-4">Best Practices</a></h2>
+<h2 id="best-practices-7"><a class="header" href="#best-practices-7">Best Practices</a></h2>
 <ol>
 <li><strong>Use descriptive experiment names</strong> - Makes querying easier</li>
 <li><strong>Log all hyperparameters</strong> - Enables reproducibility</li>
@@ -7643,7 +8507,7 @@ cargo run --example experiment_tracking -- --verbose
 <p>Catch data and environment issues before training starts. Research shows preflight validation prevents 30-50% of ML pipeline failures.</p>
 <h2 id="toyota-principle-jidoka-自働化"><a class="header" href="#toyota-principle-jidoka-自働化">Toyota Principle: Jidoka (自働化)</a></h2>
 <p>Built-in quality through automatic defect detection at source. Stop the line immediately when problems are detected.</p>
-<h2 id="quick-start-5"><a class="header" href="#quick-start-5">Quick Start</a></h2>
+<h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::storage::{Preflight, PreflightCheck, PreflightContext};
@@ -7830,7 +8694,7 @@ Passed: 4, Failed: 1, Warnings: 1, Skipped: 0
 ⚠ no_constant_features: Found 2 constant feature(s): [45, 89]
 ✓ disk_space: 52480 MB available (minimum: 10240 MB)
 </code></pre>
-<h2 id="best-practices-5"><a class="header" href="#best-practices-5">Best Practices</a></h2>
+<h2 id="best-practices-8"><a class="header" href="#best-practices-8">Best Practices</a></h2>
 <ol>
 <li><strong>Run preflight before every training job</strong> - Catches issues early</li>
 <li><strong>Use comprehensive preset for production</strong> - Includes environment checks</li>
@@ -7848,7 +8712,7 @@ Passed: 4, Failed: 1, Warnings: 1, Skipped: 0
 <p>Manage model lifecycle with staging workflows, promotion policies, and version comparisons.</p>
 <h2 id="toyota-principle-kanban"><a class="header" href="#toyota-principle-kanban">Toyota Principle: Kanban</a></h2>
 <p>Visual workflow management for model stages. Models flow through stages (Development → Staging → Production → Archived) like parts through a factory.</p>
-<h2 id="quick-start-6"><a class="header" href="#quick-start-6">Quick Start</a></h2>
+<h2 id="quick-start-7"><a class="header" href="#quick-start-7">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::storage::{InMemoryRegistry, ModelRegistry, ModelStage};
@@ -8026,7 +8890,7 @@ jobs:
             --version ${{ inputs.version }} \
             --stage production
 </code></pre>
-<h2 id="best-practices-6"><a class="header" href="#best-practices-6">Best Practices</a></h2>
+<h2 id="best-practices-9"><a class="header" href="#best-practices-9">Best Practices</a></h2>
 <ol>
 <li><strong>Define clear promotion policies</strong> - Objective criteria for each stage</li>
 <li><strong>Keep audit trails</strong> - Track who promoted what and when</li>
@@ -8044,7 +8908,7 @@ jobs:
 <p>Bayesian hyperparameter optimization with Tree-structured Parzen Estimator (TPE) for efficient search.</p>
 <h2 id="toyota-principle-kaizen"><a class="header" href="#toyota-principle-kaizen">Toyota Principle: Kaizen</a></h2>
 <p>Continuous improvement through systematic optimization. HPO automates the search for better hyperparameters.</p>
-<h2 id="quick-start-7"><a class="header" href="#quick-start-7">Quick Start</a></h2>
+<h2 id="quick-start-8"><a class="header" href="#quick-start-8">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::optim::hpo::{
@@ -8256,7 +9120,7 @@ while let Some(trial) = optimizer.ask()? {
     optimizer.tell(trial.id, result, TrialState::Complete)?;
 }
 <span class="boring">}</span></code></pre></pre>
-<h2 id="best-practices-7"><a class="header" href="#best-practices-7">Best Practices</a></h2>
+<h2 id="best-practices-10"><a class="header" href="#best-practices-10">Best Practices</a></h2>
 <ol>
 <li><strong>Start with random search</strong> - Establish baseline</li>
 <li><strong>Use log-uniform for learning rates</strong> - Spans orders of magnitude</li>
@@ -8274,7 +9138,7 @@ while let Some(trial) = optimizer.ask()? {
 <p>Privacy-preserving training with Differentially Private SGD (DP-SGD) and Rényi Differential Privacy accounting.</p>
 <h2 id="toyota-principle-jidoka"><a class="header" href="#toyota-principle-jidoka">Toyota Principle: Jidoka</a></h2>
 <p>Protect the quality of privacy guarantees. Just as Jidoka stops production when defects are detected, DP-SGD ensures privacy bounds are never exceeded.</p>
-<h2 id="quick-start-8"><a class="header" href="#quick-start-8">Quick Start</a></h2>
+<h2 id="quick-start-9"><a class="header" href="#quick-start-9">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::optim::dp::{DPOptimizer, PrivacyEngine, PrivacyAccountant};
@@ -8434,7 +9298,7 @@ let guarantees = vec![
 let (total_epsilon, total_delta) = compose_privacy(&amp;guarantees)?;
 println!("Total: ({:.2}, {:.2e})-DP", total_epsilon, total_delta);
 <span class="boring">}</span></code></pre></pre>
-<h2 id="best-practices-8"><a class="header" href="#best-practices-8">Best Practices</a></h2>
+<h2 id="best-practices-11"><a class="header" href="#best-practices-11">Best Practices</a></h2>
 <ol>
 <li><strong>Choose δ &lt; 1/n</strong> - Where n is dataset size</li>
 <li><strong>Start with higher noise</strong> - Tune down for utility</li>
@@ -8459,7 +9323,7 @@ println!("Total: ({:.2}, {:.2e})-DP", total_epsilon, total_delta);
 <p>Real-time GPU metrics collection with Andon alerting system for proactive issue detection.</p>
 <h2 id="toyota-principle-andon-行灯"><a class="header" href="#toyota-principle-andon-行灯">Toyota Principle: Andon (行灯)</a></h2>
 <p>Visual signaling system that alerts operators to problems. GPU monitoring provides real-time visibility into hardware health with automatic alerts.</p>
-<h2 id="quick-start-9"><a class="header" href="#quick-start-9">Quick Start</a></h2>
+<h2 id="quick-start-10"><a class="header" href="#quick-start-10">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::gpu::{GpuMonitor, GpuMetrics, AndonSystem};
@@ -8664,7 +9528,7 @@ let mock = MockGpuBackend::new()
 
 let metrics = mock.collect_metrics()?;
 <span class="boring">}</span></code></pre></pre>
-<h2 id="best-practices-9"><a class="header" href="#best-practices-9">Best Practices</a></h2>
+<h2 id="best-practices-12"><a class="header" href="#best-practices-12">Best Practices</a></h2>
 <ol>
 <li><strong>Set appropriate thresholds</strong> - Balance sensitivity vs noise</li>
 <li><strong>Monitor continuously</strong> - 5-10 second intervals recommended</li>
@@ -8690,7 +9554,7 @@ export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 <p>HTTP API for remote experiment tracking, enabling distributed training workflows and web dashboards.</p>
 <h2 id="toyota-principle-jidoka-1"><a class="header" href="#toyota-principle-jidoka-1">Toyota Principle: Jidoka</a></h2>
 <p>Built-in quality through structured API responses and validation at every endpoint.</p>
-<h2 id="quick-start-10"><a class="header" href="#quick-start-10">Quick Start</a></h2>
+<h2 id="quick-start-11"><a class="header" href="#quick-start-11">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::server::{TrackingServer, ServerConfig};
@@ -8800,7 +9664,7 @@ Content-Type: application/json
 # Get metrics
 GET /api/v1/runs/{id}/metrics?key=loss
 </code></pre>
-<h3 id="parameters"><a class="header" href="#parameters">Parameters</a></h3>
+<h3 id="parameters-1"><a class="header" href="#parameters-1">Parameters</a></h3>
 <pre><code class="language-bash"># Log parameter
 POST /api/v1/runs/{id}/params
 Content-Type: application/json
@@ -8927,7 +9791,7 @@ trainer.fit(&amp;model, &amp;dataset)?;
 <tr><td><code>INTERNAL_ERROR</code></td><td>500</td><td>Server error</td></tr>
 </tbody></table>
 </div>
-<h2 id="best-practices-10"><a class="header" href="#best-practices-10">Best Practices</a></h2>
+<h2 id="best-practices-13"><a class="header" href="#best-practices-13">Best Practices</a></h2>
 <ol>
 <li><strong>Use batch endpoints</strong> - Reduce HTTP overhead</li>
 <li><strong>Enable CORS for web dashboards</strong> - Required for browser access</li>
@@ -8945,7 +9809,7 @@ trainer.fit(&amp;model, &amp;dataset)?;
 <p>Store artifacts in local filesystem, S3, Azure Blob Storage, or Google Cloud Storage with content-addressable hashing.</p>
 <h2 id="toyota-principle-heijunka"><a class="header" href="#toyota-principle-heijunka">Toyota Principle: Heijunka</a></h2>
 <p>Level the storage load across backends with consistent abstraction layer.</p>
-<h2 id="quick-start-11"><a class="header" href="#quick-start-11">Quick Start</a></h2>
+<h2 id="quick-start-12"><a class="header" href="#quick-start-12">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::storage::{LocalBackend, ArtifactBackend};
@@ -9147,7 +10011,7 @@ storage:
     region: us-east-1
     prefix: experiments/
 </code></pre>
-<h2 id="best-practices-11"><a class="header" href="#best-practices-11">Best Practices</a></h2>
+<h2 id="best-practices-14"><a class="header" href="#best-practices-14">Best Practices</a></h2>
 <ol>
 <li><strong>Use content-addressable storage</strong> - Automatic deduplication</li>
 <li><strong>Store credentials in environment</strong> - Never in code</li>
@@ -9155,7 +10019,7 @@ storage:
 <li><strong>Enable versioning on S3</strong> - Protect against accidental deletion</li>
 <li><strong>Set lifecycle policies</strong> - Archive old artifacts to Glacier</li>
 </ol>
-<h2 id="error-handling-4"><a class="header" href="#error-handling-4">Error Handling</a></h2>
+<h2 id="error-handling-5"><a class="header" href="#error-handling-5">Error Handling</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::storage::CloudError;
@@ -9183,7 +10047,7 @@ match backend.get(&amp;hash) {
 <p>Evaluate LLM outputs for relevance, coherence, groundedness, and harmfulness.</p>
 <h2 id="toyota-principle-genchi-genbutsu-1"><a class="header" href="#toyota-principle-genchi-genbutsu-1">Toyota Principle: Genchi Genbutsu</a></h2>
 <p>"Go and see" - directly observe model outputs to understand quality. Systematic evaluation enables data-driven improvement.</p>
-<h2 id="quick-start-12"><a class="header" href="#quick-start-12">Quick Start</a></h2>
+<h2 id="quick-start-13"><a class="header" href="#quick-start-13">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::monitor::llm::{InMemoryLLMEvaluator, LLMEvaluator, EvalResult};
@@ -9413,7 +10277,7 @@ Latency:
   P95: 850ms
   P99: 1200ms
 </code></pre>
-<h2 id="best-practices-12"><a class="header" href="#best-practices-12">Best Practices</a></h2>
+<h2 id="best-practices-15"><a class="header" href="#best-practices-15">Best Practices</a></h2>
 <ol>
 <li><strong>Always include ground truth</strong> - Enables groundedness measurement</li>
 <li><strong>Evaluate on diverse prompts</strong> - Avoid overfitting to specific patterns</li>
@@ -9871,7 +10735,7 @@ let model = load_model(&amp;artifact.path)?;
 <tr><td>1GB</td><td>~30s</td><td>~25s</td><td>~3GB</td></tr>
 </tbody></table>
 </div>
-<h2 id="error-handling-5"><a class="header" href="#error-handling-5">Error Handling</a></h2>
+<h2 id="error-handling-6"><a class="header" href="#error-handling-6">Error Handling</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::io::load_model;
@@ -11064,7 +11928,7 @@ for (expected, actual) in baseline_buckets.iter().zip(current_buckets.iter()) {
 }
 psi = psi.abs();
 <span class="boring">}</span></code></pre></pre>
-<h2 id="best-practices-13"><a class="header" href="#best-practices-13">Best Practices</a></h2>
+<h2 id="best-practices-16"><a class="header" href="#best-practices-16">Best Practices</a></h2>
 <ol>
 <li><strong>Establish baselines</strong> - Use training data distribution as baseline</li>
 <li><strong>Set appropriate thresholds</strong> - Start with 0.2, adjust based on domain</li>
@@ -11155,7 +12019,7 @@ which _entrenar
 # Fish
 complete -c entrenar
 </code></pre>
-<h2 id="troubleshooting-3"><a class="header" href="#troubleshooting-3">Troubleshooting</a></h2>
+<h2 id="troubleshooting-4"><a class="header" href="#troubleshooting-4">Troubleshooting</a></h2>
 <h3 id="completions-not-working"><a class="header" href="#completions-not-working">Completions Not Working</a></h3>
 <ol>
 <li>
@@ -11371,7 +12235,7 @@ fn main() {
 <p><strong>Run with:</strong></p>
 <pre><code class="language-bash">cargo run --example train_from_yaml_example
 </code></pre>
-<h2 id="validation-1"><a class="header" href="#validation-1">Validation</a></h2>
+<h2 id="validation-2"><a class="header" href="#validation-2">Validation</a></h2>
 <p>The <code>validate_config()</code> function checks:</p>
 <ul>
 <li>✅ Model path exists</li>
@@ -11430,7 +12294,7 @@ fn main() {
 <li><strong>Heijunka</strong>: Reproducible training through deterministic seeding</li>
 <li><strong>Kaizen</strong>: Experiment tracking enables iterative refinement</li>
 </ul>
-<h2 id="quick-start-13"><a class="header" href="#quick-start-13">Quick Start</a></h2>
+<h2 id="quick-start-14"><a class="header" href="#quick-start-14">Quick Start</a></h2>
 <h3 id="initialize-a-new-configuration"><a class="header" href="#initialize-a-new-configuration">Initialize a New Configuration</a></h3>
 <pre><code class="language-bash"># Generate a minimal config
 entrenar init --template minimal -o config.yaml
@@ -11854,7 +12718,7 @@ validate_manifest(&amp;manifest)?;
 <p>See <a href="declarative/../../../docs/specifications/yaml-mode-train.html">docs/specifications/yaml-mode-train.md</a> for the complete specification with all 20 peer-reviewed citations.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="yaml-examples-catalog"><a class="header" href="#yaml-examples-catalog">YAML Examples Catalog</a></h1>
 <p>This page catalogs all 30 YAML configuration examples, organized by category. Each example demonstrates a specific training scenario.</p>
-<h2 id="overview-10"><a class="header" href="#overview-10">Overview</a></h2>
+<h2 id="overview-11"><a class="header" href="#overview-11">Overview</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Section</th><th>Examples</th><th>Focus Area</th></tr></thead><tbody>
 <tr><td>A</td><td>6</td><td>Basic Training &amp; Data</td></tr>
 <tr><td>B</td><td>2</td><td>Compiler-in-the-Loop</td></tr>
@@ -12296,7 +13160,94 @@ jobs:
 <div style="break-before: page; page-break-before: always;"></div><h1 id="lora-api"><a class="header" href="#lora-api">LoRA API</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="qlora-api"><a class="header" href="#qlora-api">QLoRA API</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="configuration-system"><a class="header" href="#configuration-system">Configuration System</a></h1>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="error-handling-6"><a class="header" href="#error-handling-6">Error Handling</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="error-handling-7"><a class="header" href="#error-handling-7">Error Handling</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="model-evaluation-framework-apr-073"><a class="header" href="#model-evaluation-framework-apr-073">Model Evaluation Framework (APR-073)</a></h1>
+<p>The Model Evaluation Framework provides standardized metrics, model comparison, and drift detection following <strong>Toyota Way</strong> principles:</p>
+<ul>
+<li><strong>Jidoka</strong> (Automation with Human Touch): Automated drift detection that signals when intervention is needed</li>
+<li><strong>Mieruka</strong> (Visual Control): Clear, structured reports for metrics and comparisons</li>
+<li><strong>Andon</strong> (Alert System): Callbacks that trigger retraining when drift is detected</li>
+</ul>
+<h2 id="architecture-4"><a class="header" href="#architecture-4">Architecture</a></h2>
+<pre><code>┌─────────────────────────────────────────────────────────────────────────┐
+│                          entrenar::eval Module                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────────┐  ┌──────────────────┐  ┌───────────────────────┐   │
+│  │  classification │  │    evaluator     │  │        drift          │   │
+│  │                 │  │                  │  │                       │   │
+│  │ - accuracy      │  │ - ModelEvaluator │  │ - DriftDetector       │   │
+│  │ - f1_score      │  │ - CrossValidate  │  │ - KSTest / PSI        │   │
+│  │ - confusion_mat │  │ - Leaderboard    │  │ - AndonCallback       │   │
+│  └────────┬────────┘  └────────┬─────────┘  └──────────┬────────────┘   │
+│           │                    │                       │                │
+│           └────────────────────┼───────────────────────┘                │
+│                                │                                        │
+│                                ▼                                        │
+│                    ┌───────────────────────┐                            │
+│                    │    retrain Module     │  (Andon Loop)              │
+│                    │  - AutoRetrainer      │                            │
+│                    │  - RetrainPolicy      │                            │
+│                    └───────────────────────┘                            │
+└─────────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h2 id="quick-start-15"><a class="header" href="#quick-start-15">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::eval::{
+    ModelEvaluator, EvalConfig, Metric, Average,
+    DriftDetector, DriftTest, AutoRetrainer, RetrainConfig,
+};
+
+// 1. Evaluate a classifier
+let evaluator = ModelEvaluator::new(EvalConfig {
+    metrics: vec![
+        Metric::Accuracy,
+        Metric::F1(Average::Weighted),
+    ],
+    ..Default::default()
+});
+
+let result = evaluator.evaluate_classification("my_model", &amp;predictions, &amp;labels)?;
+println!("Accuracy: {:.2}%", result.get_score(Metric::Accuracy).unwrap() * 100.0);
+
+// 2. Set up drift detection
+let mut detector = DriftDetector::new(vec![
+    DriftTest::KS { threshold: 0.05 },
+    DriftTest::PSI { threshold: 0.1 },
+]);
+detector.set_baseline(&amp;training_data);
+
+// 3. Configure auto-retraining (Andon Loop)
+let mut retrainer = AutoRetrainer::new(detector, RetrainConfig::default());
+retrainer.on_retrain(|results| {
+    println!("Drift detected! Triggering retraining...");
+    Ok("job-123".to_string())
+});
+<span class="boring">}</span></code></pre></pre>
+<h2 id="features-2"><a class="header" href="#features-2">Features</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
+<tr><td>Classification Metrics</td><td>Accuracy, Precision, Recall, F1 with Macro/Micro/Weighted averaging</td></tr>
+<tr><td>Confusion Matrix</td><td>Full NxN matrix with per-class TP/FP/FN/TN</td></tr>
+<tr><td>Leaderboard</td><td>Compare multiple models, sort by any metric</td></tr>
+<tr><td>Cross-Validation</td><td>K-Fold with shuffle support</td></tr>
+<tr><td>Drift Detection</td><td>KS test, Chi-square test, PSI</td></tr>
+<tr><td>Auto-Retraining</td><td>Policy-based triggers with cooldown and limits</td></tr>
+</tbody></table>
+</div>
+<h2 id="examples-3"><a class="header" href="#examples-3">Examples</a></h2>
+<ul>
+<li><a href="eval/../examples/drift-simulation.html">Drift Detection Simulation</a></li>
+<li><a href="eval/../examples/calibration-check.html">P-Value Calibration Check</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="classification-metrics"><a class="header" href="#classification-metrics">Classification Metrics</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="modelevaluator--leaderboard"><a class="header" href="#modelevaluator--leaderboard">ModelEvaluator &amp; Leaderboard</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="cross-validation"><a class="header" href="#cross-validation">Cross-Validation</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="drift-detection-1"><a class="header" href="#drift-detection-1">Drift Detection</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="ks-test"><a class="header" href="#ks-test">KS Test</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="chi-square-test"><a class="header" href="#chi-square-test">Chi-Square Test</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="psi-population-stability-index"><a class="header" href="#psi-population-stability-index">PSI (Population Stability Index)</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="auto-retraining-andon-loop"><a class="header" href="#auto-retraining-andon-loop">Auto-Retraining (Andon Loop)</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="linear-regression-with-autograd"><a class="header" href="#linear-regression-with-autograd">Linear Regression with Autograd</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="training-a-simple-mlp"><a class="header" href="#training-a-simple-mlp">Training a Simple MLP</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="fine-tuning-with-lora"><a class="header" href="#fine-tuning-with-lora">Fine-Tuning with LoRA</a></h1>
@@ -12307,7 +13258,7 @@ jobs:
 <div style="break-before: page; page-break-before: always;"></div><h1 id="adapter-sharing"><a class="header" href="#adapter-sharing">Adapter Sharing</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="cuda-backend-configuration"><a class="header" href="#cuda-backend-configuration">CUDA Backend Configuration</a></h1>
 <p>This chapter demonstrates how to configure entrenar for NVIDIA CUDA acceleration using the trueno/cuda-monitor feature.</p>
-<h2 id="overview-11"><a class="header" href="#overview-11">Overview</a></h2>
+<h2 id="overview-12"><a class="header" href="#overview-12">Overview</a></h2>
 <p>entrenar v0.2.8 supports multiple compute backends via trueno:</p>
 <div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Feature</th><th>Use Case</th></tr></thead><tbody>
 <tr><td>CPU SIMD</td><td>(default)</td><td>Portable, works everywhere</td></tr>
@@ -12376,14 +13327,43 @@ cargo run --example cuda_backend --features gpu
 ├── trueno/gpu (wgpu compute shaders)
 └── trueno/cuda-monitor (via trueno-gpu v0.2.0)
 </code></pre>
-<h3 id="trueno-gpu-features"><a class="header" href="#trueno-gpu-features">trueno-gpu Features</a></h3>
-<p>The <code>cuda</code> feature enables trueno-gpu, which provides:</p>
+<h3 id="trueno-gpu-v020-features"><a class="header" href="#trueno-gpu-v020-features">trueno-gpu v0.2.0 Features</a></h3>
+<p>The <code>cuda</code> feature enables trueno-gpu v0.2.0, which provides:</p>
 <ul>
 <li><strong>Pure Rust PTX Generation</strong>: No LLVM or nvcc compiler required</li>
 <li><strong>Runtime Driver Loading</strong>: Dynamically loads libcuda.so</li>
 <li><strong>Device Memory Management</strong>: Safe GPU memory allocation</li>
 <li><strong>Kernel Execution</strong>: Launch CUDA kernels from Rust</li>
 </ul>
+<h4 id="satd-bug-fixes-trueno-satd-001"><a class="header" href="#satd-bug-fixes-trueno-satd-001">SATD Bug Fixes (TRUENO-SATD-001)</a></h4>
+<p>v0.2.0 includes critical fixes for GPU kernels:</p>
+<ul>
+<li><strong>quantize.rs</strong>: K-loop now properly iterates (was single-iteration stub)</li>
+<li><strong>quantize.rs</strong>: <code>shfl_idx_f32</code> for broadcast (was no-op <code>shfl_down</code> with 0)</li>
+<li><strong>softmax.rs</strong>: Tree reduction loops fixed with stride halving</li>
+</ul>
+<h4 id="new-ptx-builder-methods"><a class="header" href="#new-ptx-builder-methods">New PTX Builder Methods</a></h4>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Proper loop counters
+add_u32_inplace, add_f32_inplace, shr_u32_inplace
+
+// GGML Q4_K quantization support
+ld_global_u16, or_u32, shl_u32
+<span class="boring">}</span></code></pre></pre>
+<h4 id="gpu-pixel-testing-gpu-pixels-feature"><a class="header" href="#gpu-pixel-testing-gpu-pixels-feature">GPU Pixel Testing (gpu-pixels feature)</a></h4>
+<p>PTX validation via jugar-probar v0.4.0 detects:</p>
+<ul>
+<li><code>SharedMemU64Addressing</code> bugs</li>
+<li><code>LoopBranchToEnd</code> bugs</li>
+<li><code>MissingBarrierSync</code> bugs</li>
+</ul>
+<pre><code class="language-bash"># Run GPU pixel tests
+cargo test --features gpu-pixels
+
+# SATD kernel validation example
+cargo run --example satd_kernels
+</code></pre>
 <h2 id="performance-expectations"><a class="header" href="#performance-expectations">Performance Expectations</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Backend</th><th>Relative Speed</th><th>Best For</th></tr></thead><tbody>
 <tr><td>CPU SIMD</td><td>1x (baseline)</td><td>General workloads, portability</td></tr>
@@ -12446,7 +13426,726 @@ let alerts = andon.check(&amp;metrics);
 <li><a href="examples/./mnist-train-gpu.html">MNIST Training with GPU</a></li>
 <li><a href="examples/../architecture/overview.html">Backend Comparison</a></li>
 </ul>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="case-study-pruning-pipeline"><a class="header" href="#case-study-pruning-pipeline">Case Study: Pruning Pipeline</a></h1>
+<p>This example demonstrates the end-to-end pruning workflow using Entrenar, including schedule configuration, calibration setup, and pipeline management.</p>
+<h2 id="running-the-example-2"><a class="header" href="#running-the-example-2">Running the Example</a></h2>
+<pre><code class="language-bash">cargo run --example pruning_pipeline
+</code></pre>
+<h2 id="overview-13"><a class="header" href="#overview-13">Overview</a></h2>
+<p>The example showcases:</p>
+<ul>
+<li>Configuring three pruning schedules (OneShot, Gradual, Cubic)</li>
+<li>Setting up magnitude and Wanda pruning methods</li>
+<li>Configuring calibration for activation-weighted methods</li>
+<li>Understanding pipeline stages</li>
+</ul>
+<h2 id="code-walkthrough"><a class="header" href="#code-walkthrough">Code Walkthrough</a></h2>
+<h3 id="1-oneshot-pruning-schedule"><a class="header" href="#1-oneshot-pruning-schedule">1. OneShot Pruning Schedule</a></h3>
+<p>Single-step pruning at a specified training step:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningSchedule;
+
+let oneshot = PruningSchedule::OneShot { step: 1000 };
+
+// Sparsity before pruning step
+println!("Before: {:.0}%", oneshot.sparsity_at_step(999) * 100.0);  // 0%
+
+// Sparsity at and after pruning step
+println!("After: {:.0}%", oneshot.sparsity_at_step(1000) * 100.0);  // 100%
+<span class="boring">}</span></code></pre></pre>
+<h3 id="2-gradual-pruning-schedule"><a class="header" href="#2-gradual-pruning-schedule">2. Gradual Pruning Schedule</a></h3>
+<p>Linear interpolation from initial to final sparsity:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let gradual = PruningSchedule::Gradual {
+    start_step: 1000,
+    end_step: 5000,
+    initial_sparsity: 0.0,
+    final_sparsity: 0.5,
+    frequency: 500,
+};
+
+// Sparsity at various steps
+for step in [1000, 2000, 3000, 4000, 5000] {
+    println!("Step {}: {:.1}%", step, gradual.sparsity_at_step(step) * 100.0);
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code>Step 1000: 0.0%
+Step 2000: 12.5%
+Step 3000: 25.0%
+Step 4000: 37.5%
+Step 5000: 50.0%
+</code></pre>
+<h3 id="3-cubic-pruning-schedule-zhu--gupta"><a class="header" href="#3-cubic-pruning-schedule-zhu--gupta">3. Cubic Pruning Schedule (Zhu &amp; Gupta)</a></h3>
+<p>Smooth S-curve that prunes aggressively early:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let cubic = PruningSchedule::Cubic {
+    start_step: 0,
+    end_step: 10000,
+    final_sparsity: 0.7,
+};
+
+// Formula: s_t = s_f * (1 - (1 - t/T)^3)
+for step in [0, 2500, 5000, 7500, 10000] {
+    println!("Step {}: {:.1}%", step, cubic.sparsity_at_step(step) * 100.0);
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Output:</p>
+<pre><code>Step     0: 0.0%
+Step  2500: 48.8%
+Step  5000: 61.3%
+Step  7500: 68.9%
+Step 10000: 70.0%
+</code></pre>
+<h3 id="4-magnitude-pruning-configuration"><a class="header" href="#4-magnitude-pruning-configuration">4. Magnitude Pruning Configuration</a></h3>
+<p>Simple pruning using weight magnitude (no calibration needed):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::{PruningConfig, PruneMethod, SparsityPatternConfig};
+
+let magnitude_config = PruningConfig::new()
+    .with_method(PruneMethod::Magnitude)
+    .with_target_sparsity(0.5)
+    .with_pattern(SparsityPatternConfig::Unstructured)
+    .with_schedule(gradual.clone());
+
+println!("Method: {}", magnitude_config.method().display_name());
+println!("Requires calibration: {}", magnitude_config.requires_calibration());  // false
+<span class="boring">}</span></code></pre></pre>
+<h3 id="5-wanda-pruning-configuration"><a class="header" href="#5-wanda-pruning-configuration">5. Wanda Pruning Configuration</a></h3>
+<p>Activation-weighted pruning with N:M structured sparsity:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let wanda_config = PruningConfig::new()
+    .with_method(PruneMethod::Wanda)
+    .with_target_sparsity(0.5)
+    .with_pattern(SparsityPatternConfig::nm_2_4())
+    .with_schedule(PruningSchedule::OneShot { step: 0 });
+
+println!("Method: {}", wanda_config.method().display_name());
+println!("Requires calibration: {}", wanda_config.requires_calibration());  // true
+<span class="boring">}</span></code></pre></pre>
+<h3 id="6-calibration-configuration"><a class="header" href="#6-calibration-configuration">6. Calibration Configuration</a></h3>
+<p>Set up calibration data for Wanda/SparseGPT:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::CalibrationConfig;
+
+let calibration_config = CalibrationConfig::new()
+    .with_num_samples(128)
+    .with_sequence_length(2048)
+    .with_batch_size(1)
+    .with_dataset("c4");
+
+println!("Samples: {}", calibration_config.num_samples());
+println!("Sequence length: {}", calibration_config.sequence_length());
+println!("Batch size: {}", calibration_config.batch_size());
+println!("Dataset: {}", calibration_config.dataset());
+<span class="boring">}</span></code></pre></pre>
+<h3 id="7-pipeline-stages"><a class="header" href="#7-pipeline-stages">7. Pipeline Stages</a></h3>
+<p>The pruning workflow progresses through defined stages:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use entrenar::prune::PruningStage;
+
+let stages = [
+    PruningStage::Idle,
+    PruningStage::Calibrating,
+    PruningStage::ComputingImportance,
+    PruningStage::Pruning,
+    PruningStage::FineTuning,
+    PruningStage::Evaluating,
+    PruningStage::Exporting,
+    PruningStage::Complete,
+];
+
+for (i, stage) in stages.iter().enumerate() {
+    let status = if stage.is_active() {
+        "Active"
+    } else if stage.is_terminal() {
+        "Terminal"
+    } else {
+        "Waiting"
+    };
+    println!("{}. {:20} {}", i + 1, stage.display_name(), status);
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="8-configuration-validation"><a class="header" href="#8-configuration-validation">8. Configuration Validation</a></h3>
+<p>Validate configurations before running:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>match magnitude_config.validate() {
+    Ok(()) =&gt; println!("Magnitude config: Valid"),
+    Err(e) =&gt; println!("Magnitude config: Invalid - {}", e),
+}
+
+match wanda_config.validate() {
+    Ok(()) =&gt; println!("Wanda config: Valid"),
+    Err(e) =&gt; println!("Wanda config: Invalid - {}", e),
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="expected-output"><a class="header" href="#expected-output">Expected Output</a></h2>
+<pre><code>╔══════════════════════════════════════════════════════════════╗
+║         Pruning Pipeline with Entrenar                       ║
+║         End-to-end model compression workflow                ║
+╚══════════════════════════════════════════════════════════════╝
+
+📋 Schedule 1: OneShot Pruning
+   Prune at step: 1000
+   Sparsity before step 1000: 0%
+   Sparsity at step 1000: 100%
+   Sparsity after step 1000: 100%
+
+📋 Schedule 2: Gradual Pruning
+   Start: step 1000, End: step 5000
+   Initial sparsity: 0%, Final sparsity: 50%
+   Pruning frequency: every 500 steps
+   Sparsity progression:
+     Step  1000: 0.0%
+     Step  2000: 12.5%
+     Step  3000: 25.0%
+     Step  4000: 37.5%
+     Step  5000: 50.0%
+
+📋 Schedule 3: Cubic Pruning (Zhu &amp; Gupta)
+   Formula: s_t = s_f * (1 - (1 - t/T)^3)
+   Final sparsity: 70%
+   Sparsity progression:
+     Step     0: 0.0%
+     Step  2500: 48.8%
+     Step  5000: 61.3%
+     Step  7500: 68.9%
+     Step 10000: 70.0%
+
+⚙️  Config 1: Magnitude Pruning (No Calibration)
+   Method: Magnitude
+   Requires calibration: false
+   Target sparsity: 50%
+   Pattern: Unstructured
+
+⚙️  Config 2: Wanda Pruning (Requires Calibration)
+   Method: Wanda
+   Requires calibration: true
+   Pattern: 2:4 N:M Sparsity
+   Theoretical sparsity: 50%
+
+📊 Calibration Configuration
+   Samples: 128
+   Sequence length: 2048
+   Batch size: 1
+   Dataset: c4
+
+🔄 Pipeline Stages
+   1. Idle                 Waiting
+   2. Calibrating          Active
+   3. Computing Importance Active
+   4. Pruning              Active
+   5. Fine-tuning          Active
+   6. Evaluating           Active
+   7. Exporting            Active
+   8. Complete             Terminal
+
+✓ Validating Configurations
+   Magnitude config: Valid
+   Wanda config: Valid
+
+╔══════════════════════════════════════════════════════════════╗
+║                    Pipeline Summary                          ║
+╠══════════════════════════════════════════════════════════════╣
+║  Pruning Methods:                                            ║
+║    - Magnitude (L1/L2) - No calibration needed               ║
+║    - Wanda - Activation-weighted, needs calibration          ║
+║    - SparseGPT - Hessian-based, needs calibration            ║
+║                                                              ║
+║  Sparsity Patterns:                                          ║
+║    - Unstructured - Maximum flexibility                      ║
+║    - N:M (2:4, 4:8) - Hardware-accelerated on Ampere         ║
+║    - Block - Coarse-grained structured                       ║
+║                                                              ║
+║  Schedules:                                                  ║
+║    - OneShot - Single pruning event                          ║
+║    - Gradual - Linear interpolation                          ║
+║    - Cubic - Zhu &amp; Gupta (2017) formula                      ║
+╚══════════════════════════════════════════════════════════════╝
+</code></pre>
+<h2 id="key-takeaways-4"><a class="header" href="#key-takeaways-4">Key Takeaways</a></h2>
+<ol>
+<li><strong>Choose the right schedule</strong> - OneShot for post-training, Gradual/Cubic for training-time</li>
+<li><strong>Match method to needs</strong> - Magnitude is simple, Wanda/SparseGPT for higher quality</li>
+<li><strong>Consider hardware</strong> - Use N:M patterns for GPU acceleration</li>
+<li><strong>Validate early</strong> - Catch configuration errors before expensive computation</li>
+<li><strong>Monitor stages</strong> - Track pipeline progress for debugging and logging</li>
+</ol>
+<h2 id="related-documentation"><a class="header" href="#related-documentation">Related Documentation</a></h2>
+<ul>
+<li><a href="examples/../pruning/overview.html">Pruning Overview</a></li>
+<li><a href="examples/../pruning/schedules.html">Pruning Schedules</a></li>
+<li><a href="examples/../pruning/calibration.html">Calibration</a></li>
+<li><a href="examples/../pruning/pipeline.html">Pipeline Stages</a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="drift-detection-simulation"><a class="header" href="#drift-detection-simulation">Drift Detection Simulation</a></h1>
+<p>This example demonstrates drift detection with KS test and PSI, showing how to set up baseline distributions, detect drift, and use Andon callbacks.</p>
+<h2 id="running-the-example-3"><a class="header" href="#running-the-example-3">Running the Example</a></h2>
+<pre><code class="language-bash">cargo run --example drift_simulation
+</code></pre>
+<h2 id="code"><a class="header" href="#code">Code</a></h2>
+<pre><pre class="playground"><code class="language-rust">//! Drift Detection Simulation Example (APR-073)
+//!
+//! Demonstrates drift detection with KS test and PSI.
+//! Shows how to set up baseline, detect drift, and use callbacks.
+//!
+//! Run with: cargo run --example drift_simulation
+
+use entrenar::eval::{DriftDetector, DriftTest, Severity};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
+fn main() {
+    println!("=== Drift Detection Simulation ===\n");
+
+    // 1. Create detector with KS and PSI tests
+    let mut detector = DriftDetector::new(vec![
+        DriftTest::KS { threshold: 0.05 },
+        DriftTest::PSI { threshold: 0.1 },
+    ]);
+
+    // 2. Register Andon callback (triggered when drift detected)
+    let drift_count = Arc::new(AtomicUsize::new(0));
+    let count_clone = Arc::clone(&amp;drift_count);
+
+    detector.on_drift(move |results| {
+        count_clone.fetch_add(1, Ordering::SeqCst);
+        println!("ANDON ALERT: Drift detected!");
+        for r in results.iter().filter(|r| r.drifted) {
+            println!(
+                "  - {} ({}): statistic={:.4}, severity={:?}",
+                r.feature,
+                r.test.name(),
+                r.statistic,
+                r.severity
+            );
+        }
+    });
+
+    // 3. Generate baseline data (training distribution)
+    // Feature 1: Normal distribution centered at 50
+    // Feature 2: Normal distribution centered at 100
+    println!("Generating baseline data (1000 samples, 2 features)...");
+    let baseline = generate_data(1000, 50.0, 100.0, 10.0, 42);
+    detector.set_baseline(&amp;baseline);
+    println!("Baseline set.\n");
+
+    // 4. Test with same distribution (no drift expected)
+    println!("--- Test 1: Same Distribution (No Drift Expected) ---");
+    let same_dist = generate_data(500, 50.0, 100.0, 10.0, 123);
+    let results = detector.check_and_trigger(&amp;same_dist);
+
+    let drifted: Vec&lt;_&gt; = results.iter().filter(|r| r.drifted).collect();
+    if drifted.is_empty() {
+        println!("Result: No drift detected (as expected)");
+    } else {
+        println!(
+            "Result: Unexpected drift detected in {} features",
+            drifted.len()
+        );
+    }
+    println!();
+
+    // 5. Test with shifted distribution (drift expected)
+    println!("--- Test 2: Shifted Distribution (Drift Expected) ---");
+    println!("Shifting feature 1 mean from 50 to 80 (+3 std devs)");
+    let shifted_dist = generate_data(500, 80.0, 100.0, 10.0, 456);
+    let results = detector.check_and_trigger(&amp;shifted_dist);
+
+    let drifted: Vec&lt;_&gt; = results.iter().filter(|r| r.drifted).collect();
+    if drifted.is_empty() {
+        println!("Result: No drift detected (unexpected!)");
+    } else {
+        println!("Result: Drift detected in {} tests", drifted.len());
+        for r in &amp;drifted {
+            let severity_str = match r.severity {
+                Severity::None =&gt; "none",
+                Severity::Warning =&gt; "WARNING",
+                Severity::Critical =&gt; "CRITICAL",
+            };
+            println!(
+                "  {} - {}: statistic={:.4}, severity={}",
+                r.feature,
+                r.test.name(),
+                r.statistic,
+                severity_str
+            );
+        }
+    }
+    println!();
+
+    // 6. Test with completely different distribution
+    println!("--- Test 3: Completely Different Distribution ---");
+    println!("Both features shifted significantly");
+    let different_dist = generate_data(500, 150.0, 200.0, 10.0, 789);
+    let results = detector.check_and_trigger(&amp;different_dist);
+
+    let summary = DriftDetector::summary(&amp;results);
+    println!("Summary:");
+    println!("  Total features checked: {}", summary.total_features);
+    println!("  Features with drift: {}", summary.drifted_features);
+    println!("  Critical alerts: {}", summary.critical);
+    println!("  Warnings: {}", summary.warnings);
+    println!("  Drift percentage: {:.1}%", summary.drift_percentage());
+    println!();
+
+    // 7. Report callback invocations
+    println!("=== Summary ===");
+    println!(
+        "Andon callback was triggered {} time(s)",
+        drift_count.load(Ordering::SeqCst)
+    );
+}
+
+/// Generate synthetic data with 2 features
+fn generate_data(n: usize, mean1: f64, mean2: f64, std: f64, seed: u64) -&gt; Vec&lt;Vec&lt;f64&gt;&gt; {
+    let mut data = Vec::with_capacity(n);
+    let mut state = seed;
+
+    for _ in 0..n {
+        // Simple LCG random number generator
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let u1 = (state &gt;&gt; 33) as f64 / f64::from(u32::MAX);
+
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let u2 = (state &gt;&gt; 33) as f64 / f64::from(u32::MAX);
+
+        // Box-Muller transform for normal distribution
+        let z1 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+        let z2 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).sin();
+
+        data.push(vec![mean1 + z1 * std, mean2 + z2 * std]);
+    }
+
+    data
+}</code></pre></pre>
+<h2 id="expected-output-1"><a class="header" href="#expected-output-1">Expected Output</a></h2>
+<pre><code>=== Drift Detection Simulation ===
+
+Generating baseline data (1000 samples, 2 features)...
+Baseline set.
+
+--- Test 1: Same Distribution (No Drift Expected) ---
+Result: No drift detected (as expected)
+
+--- Test 2: Shifted Distribution (Drift Expected) ---
+Shifting feature 1 mean from 50 to 80 (+3 std devs)
+ANDON ALERT: Drift detected!
+  - feature_0 (Kolmogorov-Smirnov): statistic=0.7290, severity=Critical
+  - feature_0 (PSI): statistic=7.3945, severity=Critical
+Result: Drift detected in 2 tests
+
+--- Test 3: Completely Different Distribution ---
+Both features shifted significantly
+ANDON ALERT: Drift detected!
+Summary:
+  Total features checked: 4
+  Features with drift: 4
+  Critical alerts: 4
+  Drift percentage: 100.0%
+
+=== Summary ===
+Andon callback was triggered 2 time(s)
+</code></pre>
+<h2 id="key-concepts"><a class="header" href="#key-concepts">Key Concepts</a></h2>
+<h3 id="setting-up-drift-detection"><a class="header" href="#setting-up-drift-detection">Setting Up Drift Detection</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Create detector with multiple tests
+let mut detector = DriftDetector::new(vec![
+    DriftTest::KS { threshold: 0.05 },   // Kolmogorov-Smirnov
+    DriftTest::PSI { threshold: 0.1 },   // Population Stability Index
+]);
+
+// Set baseline from training data
+detector.set_baseline(&amp;training_data);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="andon-callbacks-jidoka"><a class="header" href="#andon-callbacks-jidoka">Andon Callbacks (Jidoka)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Register callback for drift events
+detector.on_drift(|results| {
+    println!("ANDON ALERT: Drift detected!");
+    for r in results.iter().filter(|r| r.drifted) {
+        println!("  - {} ({}): severity={:?}",
+            r.feature, r.test.name(), r.severity);
+    }
+});
+
+// Check and trigger callbacks
+let results = detector.check_and_trigger(&amp;new_data);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="interpreting-results"><a class="header" href="#interpreting-results">Interpreting Results</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>PSI Value</th><th>Interpretation</th></tr></thead><tbody>
+<tr><td>&lt; 0.1</td><td>No significant drift</td></tr>
+<tr><td>0.1 - 0.2</td><td>Moderate drift (warning)</td></tr>
+<tr><td>&gt; 0.2</td><td>Significant drift (critical)</td></tr>
+</tbody></table>
+</div><div class="table-wrapper"><table><thead><tr><th>KS p-value</th><th>Interpretation</th></tr></thead><tbody>
+<tr><td>&gt; 0.05</td><td>Same distribution (no drift)</td></tr>
+<tr><td>&lt; 0.05</td><td>Different distribution (drift)</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="p-value-calibration-check"><a class="header" href="#p-value-calibration-check">P-Value Calibration Check</a></h1>
+<p>This example verifies the statistical validity of drift detection tests by checking that p-values are uniformly distributed under the null hypothesis (no drift).</p>
+<h2 id="running-the-example-4"><a class="header" href="#running-the-example-4">Running the Example</a></h2>
+<pre><code class="language-bash">cargo run --example calibration_check
+</code></pre>
+<h2 id="code-1"><a class="header" href="#code-1">Code</a></h2>
+<pre><pre class="playground"><code class="language-rust">//! P-Value Calibration Check Example (APR-073, Section 10.5)
+//!
+//! Verifies that KS and PSI tests have proper p-value calibration:
+//! Under the null hypothesis (no drift), p-values should be uniformly distributed.
+//!
+//! This demonstrates statistical power and correctness of drift detection.
+//!
+//! Run with: cargo run --example calibration_check
+
+use entrenar::eval::{DriftDetector, DriftTest};
+
+const NUM_TRIALS: usize = 1000;
+const SAMPLE_SIZE: usize = 500;
+const SIGNIFICANCE_LEVEL: f64 = 0.05;
+
+fn main() {
+    println!("=== P-Value Calibration Check ===\n");
+    println!("Testing drift detection statistical calibration under null hypothesis.\n");
+    println!("Under H0 (no drift), p-values should be uniformly distributed on [0, 1].");
+    println!("This means ~5% of tests should reject at alpha=0.05.\n");
+
+    // Run calibration checks for KS test
+    println!("--- Kolmogorov-Smirnov Test Calibration ---");
+    let ks_rejection_rate = run_calibration_check(DriftTest::KS {
+        threshold: SIGNIFICANCE_LEVEL,
+    });
+    println!(
+        "KS Test: {:.1}% rejection rate (expected: ~{:.1}%)",
+        ks_rejection_rate * 100.0,
+        SIGNIFICANCE_LEVEL * 100.0
+    );
+    let ks_calibrated = is_calibrated(ks_rejection_rate, SIGNIFICANCE_LEVEL);
+    println!(
+        "Calibration: {}\n",
+        if ks_calibrated { "PASS" } else { "FAIL" }
+    );
+
+    // Run calibration checks for PSI test
+    println!("--- Population Stability Index Calibration ---");
+    let psi_rejection_rate = run_calibration_check(DriftTest::PSI { threshold: 0.1 });
+    println!(
+        "PSI Test: {:.1}% rejection rate at threshold=0.1",
+        psi_rejection_rate * 100.0
+    );
+    // PSI should have low rejection rate under null (same distribution)
+    let psi_calibrated = psi_rejection_rate &lt; 0.15; // Allow up to 15% for PSI
+    println!(
+        "Calibration: {} (rejection rate under 15%)\n",
+        if psi_calibrated { "PASS" } else { "FAIL" }
+    );
+
+    // Test statistical power (ability to detect actual drift)
+    println!("--- Statistical Power Test (Ability to Detect Drift) ---");
+    let power = test_statistical_power();
+    println!("Power at effect size d=1.0: {:.1}%", power * 100.0);
+    let power_adequate = power &gt; 0.80;
+    println!(
+        "Power: {} (&gt;80%% required)\n",
+        if power_adequate {
+            "ADEQUATE"
+        } else {
+            "INSUFFICIENT"
+        }
+    );
+
+    // Summary
+    println!("=== Summary ===");
+    let all_pass = ks_calibrated &amp;&amp; psi_calibrated &amp;&amp; power_adequate;
+    if all_pass {
+        println!("All calibration checks PASSED");
+    } else {
+        println!("Some calibration checks FAILED:");
+        if !ks_calibrated {
+            println!("  - KS test: p-value distribution not uniform");
+        }
+        if !psi_calibrated {
+            println!("  - PSI test: excessive false positive rate");
+        }
+        if !power_adequate {
+            println!("  - Statistical power: insufficient to detect drift");
+        }
+    }
+}
+
+/// Run calibration check for a given drift test
+///
+/// Generates pairs of samples from the SAME distribution and measures
+/// the rejection rate. Under null hypothesis, this should equal alpha.
+fn run_calibration_check(test: DriftTest) -&gt; f64 {
+    let mut rejections = 0;
+
+    for trial in 0..NUM_TRIALS {
+        // Generate two independent samples from same distribution
+        let seed1 = (trial * 2) as u64;
+        let seed2 = (trial * 2 + 1) as u64;
+
+        let baseline = generate_normal_data(SAMPLE_SIZE, 50.0, 10.0, seed1);
+        let current = generate_normal_data(SAMPLE_SIZE, 50.0, 10.0, seed2);
+
+        // Run drift detection
+        let mut detector = DriftDetector::new(vec![test]);
+        detector.set_baseline(&amp;baseline);
+        let results = detector.check(&amp;current);
+
+        // Count rejections (false positives under null)
+        if results.iter().any(|r| r.drifted) {
+            rejections += 1;
+        }
+    }
+
+    f64::from(rejections) / NUM_TRIALS as f64
+}
+
+/// Test statistical power - ability to detect actual drift
+///
+/// Generates samples with known drift and measures detection rate.
+fn test_statistical_power() -&gt; f64 {
+    let mut detections = 0;
+
+    for trial in 0..NUM_TRIALS {
+        let seed1 = (trial * 2) as u64;
+        let seed2 = (trial * 2 + 1) as u64;
+
+        // Baseline: mean=50, std=10
+        let baseline = generate_normal_data(SAMPLE_SIZE, 50.0, 10.0, seed1);
+        // Current: mean=60 (shifted by 1 standard deviation)
+        let current = generate_normal_data(SAMPLE_SIZE, 60.0, 10.0, seed2);
+
+        let mut detector = DriftDetector::new(vec![DriftTest::KS { threshold: 0.05 }]);
+        detector.set_baseline(&amp;baseline);
+        let results = detector.check(&amp;current);
+
+        if results.iter().any(|r| r.drifted) {
+            detections += 1;
+        }
+    }
+
+    f64::from(detections) / NUM_TRIALS as f64
+}
+
+/// Check if rejection rate is within acceptable bounds for calibration
+fn is_calibrated(rejection_rate: f64, alpha: f64) -&gt; bool {
+    // Use a tolerance based on binomial standard error
+    // SE = sqrt(alpha * (1 - alpha) / n)
+    let se = (alpha * (1.0 - alpha) / NUM_TRIALS as f64).sqrt();
+    let tolerance = 3.0 * se; // 3 sigma tolerance
+
+    (rejection_rate - alpha).abs() &lt; tolerance
+}
+
+/// Generate synthetic normal data
+fn generate_normal_data(n: usize, mean: f64, std: f64, seed: u64) -&gt; Vec&lt;Vec&lt;f64&gt;&gt; {
+    let mut data = Vec::with_capacity(n);
+    let mut state = seed;
+
+    for _ in 0..n {
+        // LCG random number generator
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let u1 = (state &gt;&gt; 33) as f64 / f64::from(u32::MAX);
+
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let u2 = (state &gt;&gt; 33) as f64 / f64::from(u32::MAX);
+
+        // Box-Muller transform
+        let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+
+        data.push(vec![mean + z * std]);
+    }
+
+    data
+}</code></pre></pre>
+<h2 id="expected-output-2"><a class="header" href="#expected-output-2">Expected Output</a></h2>
+<pre><code>=== P-Value Calibration Check ===
+
+Testing drift detection statistical calibration under null hypothesis.
+
+Under H0 (no drift), p-values should be uniformly distributed on [0, 1].
+This means ~5% of tests should reject at alpha=0.05.
+
+--- Kolmogorov-Smirnov Test Calibration ---
+KS Test: 5.5% rejection rate (expected: ~5.0%)
+Calibration: PASS
+
+--- Population Stability Index Calibration ---
+PSI Test: 2.1% rejection rate at threshold=0.1
+Calibration: PASS (rejection rate under 15%)
+
+--- Statistical Power Test (Ability to Detect Drift) ---
+Power at effect size d=1.0: 100.0%
+Power: ADEQUATE (&gt;80%% required)
+
+=== Summary ===
+All calibration checks PASSED
+</code></pre>
+<h2 id="why-calibration-matters"><a class="header" href="#why-calibration-matters">Why Calibration Matters</a></h2>
+<p>Statistical tests must be properly calibrated to be useful:</p>
+<ol>
+<li><strong>Type I Error Rate</strong>: Under H0 (no drift), the test should reject at exactly the specified alpha level (e.g., 5%)</li>
+<li><strong>Statistical Power</strong>: Under H1 (real drift), the test should detect drift with high probability</li>
+</ol>
+<h3 id="null-hypothesis-testing"><a class="header" href="#null-hypothesis-testing">Null Hypothesis Testing</a></h3>
+<p>When there's no actual drift (samples from same distribution):</p>
+<ul>
+<li>P-values should be uniformly distributed on [0, 1]</li>
+<li>Rejection rate should equal alpha (e.g., 5% at alpha=0.05)</li>
+<li>Higher rejection rates indicate false positives</li>
+</ul>
+<h3 id="power-analysis"><a class="header" href="#power-analysis">Power Analysis</a></h3>
+<p>When there's real drift (shifted distribution):</p>
+<ul>
+<li>The test should detect it most of the time</li>
+<li>Power &gt; 80% is considered adequate</li>
+<li>Higher power means fewer false negatives</li>
+</ul>
+<h2 id="key-concepts-1"><a class="header" href="#key-concepts-1">Key Concepts</a></h2>
+<h3 id="calibration-check-implementation"><a class="header" href="#calibration-check-implementation">Calibration Check Implementation</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn run_calibration_check(test: DriftTest) -&gt; f64 {
+    let mut rejections = 0;
+
+    for trial in 0..NUM_TRIALS {
+        // Generate two independent samples from SAME distribution
+        let baseline = generate_normal_data(SAMPLE_SIZE, 50.0, 10.0, seed1);
+        let current = generate_normal_data(SAMPLE_SIZE, 50.0, 10.0, seed2);
+
+        // Run drift detection
+        let mut detector = DriftDetector::new(vec![test.clone()]);
+        detector.set_baseline(&amp;baseline);
+        let results = detector.check(&amp;current);
+
+        // Count false positives
+        if results.iter().any(|r| r.drifted) {
+            rejections += 1;
+        }
+    }
+
+    rejections as f64 / NUM_TRIALS as f64
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="interpreting-calibration-results"><a class="header" href="#interpreting-calibration-results">Interpreting Calibration Results</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Metric</th><th>Expected</th><th>Acceptable Range</th></tr></thead><tbody>
+<tr><td>KS rejection @ alpha=0.05</td><td>5%</td><td>3-7%</td></tr>
+<tr><td>PSI false positive rate</td><td>&lt;10%</td><td>&lt;15%</td></tr>
+<tr><td>Power @ d=1.0</td><td>&gt;80%</td><td>&gt;80%</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="extreme-tdd-methodology"><a class="header" href="#extreme-tdd-methodology">EXTREME TDD Methodology</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="testing-strategy"><a class="header" href="#testing-strategy">Testing Strategy</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="unit-tests-1"><a class="header" href="#unit-tests-1">Unit Tests</a></h1>
@@ -12498,7 +14197,7 @@ let result = mcts.search(&amp;initial_state);
 <li><strong>Transposition Tables</strong>: Avoid redundant state exploration</li>
 <li><strong>Configurable Depth Limits</strong>: Control search complexity</li>
 </ul>
-<h2 id="use-cases-2"><a class="header" href="#use-cases-2">Use Cases</a></h2>
+<h2 id="use-cases-3"><a class="header" href="#use-cases-3">Use Cases</a></h2>
 <ol>
 <li><strong>Python-to-Rust Translation</strong>: Search for valid Rust AST constructions</li>
 <li><strong>Code Completion</strong>: Find likely next tokens</li>
@@ -12887,7 +14586,7 @@ let result = mcts.search(&amp;initial_state);
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="generative-models"><a class="header" href="#generative-models">Generative Models</a></h1>
 <p>Entrenar provides Generative Adversarial Networks (GANs) for code synthesis.</p>
-<h2 id="architecture-4"><a class="header" href="#architecture-4">Architecture</a></h2>
+<h2 id="architecture-5"><a class="header" href="#architecture-5">Architecture</a></h2>
 <pre><code>Latent Vector z ─┬─► Generator ─► AST Tokens ─┬─► Discriminator ─► Valid/Invalid
                  │                            │
                  │   Real AST Samples ────────┘
@@ -12913,7 +14612,7 @@ let result = mcts.search(&amp;initial_state);
 <li>SLERP interpolation for smooth transitions</li>
 <li>Supports latent space exploration</li>
 </ul>
-<h2 id="quick-start-14"><a class="header" href="#quick-start-14">Quick Start</a></h2>
+<h2 id="quick-start-16"><a class="header" href="#quick-start-16">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::generative::{CodeGan, CodeGanConfig};
@@ -12928,7 +14627,7 @@ for z in &amp;latent {
     println!("{:?}", code);
 }
 <span class="boring">}</span></code></pre></pre>
-<h2 id="use-cases-3"><a class="header" href="#use-cases-3">Use Cases</a></h2>
+<h2 id="use-cases-4"><a class="header" href="#use-cases-4">Use Cases</a></h2>
 <ol>
 <li><strong>Code Completion</strong>: Generate likely next tokens</li>
 <li><strong>Data Augmentation</strong>: Create synthetic training data</li>
@@ -13001,7 +14700,7 @@ let interpolated = gan.interpolate(&amp;z1, &amp;z2, 10);
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="generator-architecture"><a class="header" href="#generator-architecture">Generator Architecture</a></h1>
 <p>The generator maps latent vectors to code token sequences.</p>
-<h2 id="architecture-5"><a class="header" href="#architecture-5">Architecture</a></h2>
+<h2 id="architecture-6"><a class="header" href="#architecture-6">Architecture</a></h2>
 <pre><code>Input: z ∈ R^latent_dim
     ↓
 Linear(latent_dim → hidden[0])
@@ -13069,7 +14768,7 @@ let tokens: Vec&lt;u32&gt; = generator.generate(&amp;z);
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="discriminator-architecture"><a class="header" href="#discriminator-architecture">Discriminator Architecture</a></h1>
 <p>The discriminator classifies code as real or generated.</p>
-<h2 id="architecture-6"><a class="header" href="#architecture-6">Architecture</a></h2>
+<h2 id="architecture-7"><a class="header" href="#architecture-7">Architecture</a></h2>
 <pre><code>Input: tokens ∈ N^seq_len
     ↓
 Embedding(vocab_size → embed_dim)
@@ -13425,7 +15124,7 @@ for step in 0..total_steps {
 <div style="break-before: page; page-break-before: always;"></div><h1 id="compiler-in-the-loop-citl-training"><a class="header" href="#compiler-in-the-loop-citl-training">Compiler-in-the-Loop (CITL) Training</a></h1>
 <p>This chapter covers entrenar's CITL module, which provides RAG-based fix pattern storage
 and statistical fault localization for compiler-assisted training.</p>
-<h2 id="overview-12"><a class="header" href="#overview-12">Overview</a></h2>
+<h2 id="overview-14"><a class="header" href="#overview-14">Overview</a></h2>
 <p>The CITL system provides:</p>
 <ul>
 <li><strong>DecisionPatternStore</strong>: Stores and retrieves fix patterns using hybrid retrieval (BM25 + dense embeddings)</li>
@@ -13552,7 +15251,7 @@ Pattern Accumulation:
 └─ Other                      - 1,512 occurrences (33%)
 </code></pre>
 <p>Fix the top 5 error types → resolve 67% of all errors.</p>
-<h2 id="quick-start-15"><a class="header" href="#quick-start-15">Quick Start</a></h2>
+<h2 id="quick-start-17"><a class="header" href="#quick-start-17">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::citl::{
@@ -14236,7 +15935,7 @@ let cachix_config = config.generate_cachix_config();
 <tr><td>Flatpak</td><td>Desktop Linux applications</td></tr>
 </tbody></table>
 </div>
-<h2 id="quick-start-16"><a class="header" href="#quick-start-16">Quick Start</a></h2>
+<h2 id="quick-start-18"><a class="header" href="#quick-start-18">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use entrenar::sovereign::*;
@@ -14650,7 +16349,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>0 TODOs</strong> remaining in codebase</li>
 <li><strong>55 Rust source files</strong> with full documentation</li>
 </ul>
-<h3 id="examples-3"><a class="header" href="#examples-3">Examples</a></h3>
+<h3 id="examples-4"><a class="header" href="#examples-4">Examples</a></h3>
 <ul>
 <li><strong>training_loop.rs</strong> - Demonstrates Trainer API</li>
 <li><strong>model_io.rs</strong> - Save/load workflow</li>
