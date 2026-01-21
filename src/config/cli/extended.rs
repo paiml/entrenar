@@ -278,4 +278,134 @@ mod tests {
             _ => panic!("Expected Monitor command"),
         }
     }
+
+    // Additional coverage tests for derive traits
+
+    #[test]
+    fn test_completion_args_debug_clone() {
+        let args = CompletionArgs {
+            shell: ShellType::Bash,
+        };
+        let debug = format!("{args:?}");
+        assert!(debug.contains("CompletionArgs"));
+
+        let cloned = args.clone();
+        assert_eq!(args, cloned);
+    }
+
+    #[test]
+    fn test_bench_args_debug_clone() {
+        let args = BenchArgs {
+            input: PathBuf::from("model.bin"),
+            warmup: 5,
+            iterations: 50,
+            batch_sizes: "1,2,4".to_string(),
+            format: OutputFormat::Text,
+        };
+        let debug = format!("{args:?}");
+        assert!(debug.contains("BenchArgs"));
+
+        let cloned = args.clone();
+        assert_eq!(args, cloned);
+    }
+
+    #[test]
+    fn test_inspect_args_debug_clone() {
+        let args = InspectArgs {
+            input: PathBuf::from("data.csv"),
+            mode: InspectMode::Outliers,
+            columns: Some("col1".to_string()),
+            z_threshold: 2.5,
+        };
+        let debug = format!("{args:?}");
+        assert!(debug.contains("InspectArgs"));
+
+        let cloned = args.clone();
+        assert_eq!(args, cloned);
+    }
+
+    #[test]
+    fn test_audit_args_debug_clone() {
+        let args = AuditArgs {
+            input: PathBuf::from("model.bin"),
+            audit_type: AuditType::Bias,
+            protected_attr: Some("age".to_string()),
+            threshold: 0.75,
+            format: OutputFormat::Json,
+        };
+        let debug = format!("{args:?}");
+        assert!(debug.contains("AuditArgs"));
+
+        let cloned = args.clone();
+        assert_eq!(args, cloned);
+    }
+
+    #[test]
+    fn test_monitor_args_debug_clone() {
+        let args = MonitorArgs {
+            input: PathBuf::from("model.bin"),
+            baseline: Some(PathBuf::from("base.json")),
+            threshold: 0.25,
+            interval: 30,
+            format: OutputFormat::Text,
+        };
+        let debug = format!("{args:?}");
+        assert!(debug.contains("MonitorArgs"));
+
+        let cloned = args.clone();
+        assert_eq!(args, cloned);
+    }
+
+    #[test]
+    fn test_completion_other_shells() {
+        // Test other shell types for coverage
+        let cli = parse_args(["entrenar", "completion", "zsh"]).unwrap();
+        match cli.command {
+            crate::config::cli::Command::Completion(args) => {
+                assert_eq!(args.shell, ShellType::Zsh);
+            }
+            _ => panic!("Expected Completion command"),
+        }
+
+        let cli = parse_args(["entrenar", "completion", "fish"]).unwrap();
+        match cli.command {
+            crate::config::cli::Command::Completion(args) => {
+                assert_eq!(args.shell, ShellType::Fish);
+            }
+            _ => panic!("Expected Completion command"),
+        }
+    }
+
+    #[test]
+    fn test_inspect_distribution_mode() {
+        let cli =
+            parse_args(["entrenar", "inspect", "data.csv", "--mode", "distribution"]).unwrap();
+        match cli.command {
+            crate::config::cli::Command::Inspect(args) => {
+                assert_eq!(args.mode, InspectMode::Distribution);
+            }
+            _ => panic!("Expected Inspect command"),
+        }
+    }
+
+    #[test]
+    fn test_audit_privacy_security_types() {
+        let cli =
+            parse_args(["entrenar", "audit", "model.bin", "--audit-type", "privacy"]).unwrap();
+        match cli.command {
+            crate::config::cli::Command::Audit(args) => {
+                assert_eq!(args.audit_type, AuditType::Privacy);
+            }
+            _ => panic!("Expected Audit command"),
+        }
+
+        let cli =
+            parse_args(["entrenar", "audit", "model.bin", "--audit-type", "security"]).unwrap();
+        match cli.command {
+            crate::config::cli::Command::Audit(args) => {
+                assert_eq!(args.audit_type, AuditType::Security);
+            }
+            _ => panic!("Expected Audit command"),
+        }
+    }
 }
