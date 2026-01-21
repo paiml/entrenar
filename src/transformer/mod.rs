@@ -1182,4 +1182,272 @@ mod tests {
         assert_eq!(embed.vocab_size(), 100);
         assert_eq!(embed.hidden_size(), 8);
     }
+
+    // =====================================================
+    // Backward (gradient) tests for transformer components
+    // =====================================================
+    //
+    // Note: The current transformer implementation uses intermediate tensor
+    // extraction for attention heads (with requires_grad=false), which breaks
+    // the gradient chain. Full end-to-end backward through attention/transformer
+    // would require refactoring to maintain gradient tracking through all
+    // intermediate operations. The FFN layer works correctly because it uses
+    // autograd ops directly without intermediate tensor extraction.
+
+    #[test]
+    fn test_ffn_backward_gradient_exists() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        let x = Tensor::from_vec(vec![0.1; 2 * config.hidden_size], true);
+        let mut output = ffn.forward(&x, 2);
+
+        // Backward pass
+        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        // All FFN weights should have gradients
+        assert!(ffn.w_gate.grad().is_some());
+        assert!(ffn.w_up.grad().is_some());
+        assert!(ffn.w_down.grad().is_some());
+    }
+
+    #[test]
+    fn test_ffn_backward_gradients_finite() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
+        let mut output = ffn.forward(&x, 2);
+
+        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        // All gradients should be finite
+        let grad_gate = ffn.w_gate.grad().unwrap();
+        let grad_up = ffn.w_up.grad().unwrap();
+        let grad_down = ffn.w_down.grad().unwrap();
+
+        assert!(grad_gate.iter().all(|&v| v.is_finite()));
+        assert!(grad_up.iter().all(|&v| v.is_finite()));
+        assert!(grad_down.iter().all(|&v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_ffn_backward_swiglu_activation() {
+        // Test that SwiGLU activation in FFN has proper gradients
+        let config = TransformerConfig::tiny();
+
+        // Test with various input magnitudes
+        for scale in [0.1, 1.0, 2.0] {
+            let ffn = FeedForward::new(&config);
+            let x = Tensor::from_vec(
+                (0..2 * config.hidden_size)
+                    .map(|i| (i as f32 * 0.01).sin() * scale)
+                    .collect(),
+                true,
+            );
+            let mut output = ffn.forward(&x, 2);
+
+            let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
+            crate::autograd::backward(&mut output, Some(grad_out));
+
+            let grad_gate = ffn.w_gate.grad().unwrap();
+            assert!(
+                grad_gate.iter().all(|&v| v.is_finite()),
+                "Gradients not finite for scale {scale}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ffn_backward_gradient_nonzero() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
+        let mut output = ffn.forward(&x, 2);
+
+        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        // Gradients should not be all zero
+        let grad_gate = ffn.w_gate.grad().unwrap();
+        let sum: f32 = grad_gate.iter().map(|v| v.abs()).sum();
+        assert!(sum > 0.0, "FFN gate gradients should not be all zero");
+    }
+
+    #[test]
+    fn test_ffn_backward_different_seq_lengths() {
+        let config = TransformerConfig::tiny();
+
+        for seq_len in [1, 2, 4, 8] {
+            let ffn = FeedForward::new(&config);
+            let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
+            let mut output = ffn.forward(&x, seq_len);
+
+            let grad_out = ndarray::Array1::ones(seq_len * config.hidden_size);
+            crate::autograd::backward(&mut output, Some(grad_out));
+
+            let grad_gate = ffn.w_gate.grad().unwrap();
+            assert!(
+                grad_gate.iter().all(|&v| v.is_finite()),
+                "Non-finite gradient for seq_len {seq_len}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ffn_backward_gradient_accumulation() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+
+        // First forward-backward
+        let x1 = Tensor::from_vec(vec![0.1; 2 * config.hidden_size], true);
+        let mut output1 = ffn.forward(&x1, 2);
+        let grad_out1 = ndarray::Array1::ones(2 * config.hidden_size);
+        crate::autograd::backward(&mut output1, Some(grad_out1));
+        let grad1 = ffn.w_gate.grad().unwrap().to_vec();
+
+        // Second forward-backward should accumulate
+        let x2 = Tensor::from_vec(vec![0.2; 2 * config.hidden_size], true);
+        let mut output2 = ffn.forward(&x2, 2);
+        let grad_out2 = ndarray::Array1::ones(2 * config.hidden_size);
+        crate::autograd::backward(&mut output2, Some(grad_out2));
+        let grad2 = ffn.w_gate.grad().unwrap().to_vec();
+
+        // Gradients should have accumulated (different from first)
+        assert!(
+            grad2
+                .iter()
+                .zip(grad1.iter())
+                .any(|(g2, g1)| g2.abs() != g1.abs()),
+            "Gradients should accumulate across backward passes"
+        );
+    }
+
+    #[test]
+    fn test_rms_norm_backward_gradient_exists() {
+        let norm = RMSNorm::new(8, 1e-6);
+        let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
+        let mut output = norm.forward(&x);
+
+        let grad_out = ndarray::Array1::ones(8);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        assert!(norm.weight.grad().is_some());
+        let grad = norm.weight.grad().unwrap();
+        assert!(grad.iter().all(|&v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_attention_projections_backward() {
+        // Test that Q, K, V projection matmuls have gradients
+        // (isolated from the full attention which has intermediate tensor issues)
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let hidden_size = config.hidden_size;
+        let seq_len = 2;
+
+        let x = Tensor::from_vec(vec![0.1; seq_len * hidden_size], true);
+
+        // Test Q projection
+        let mut q = crate::autograd::matmul(&x, &attn.w_q, seq_len, hidden_size, hidden_size);
+        let grad_out = ndarray::Array1::ones(seq_len * hidden_size);
+        crate::autograd::backward(&mut q, Some(grad_out));
+
+        assert!(attn.w_q.grad().is_some());
+        let grad_q = attn.w_q.grad().unwrap();
+        assert!(grad_q.iter().all(|&v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_output_projection_backward() {
+        // Test output projection in isolation
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let hidden_size = config.hidden_size;
+        let seq_len = 2;
+
+        // Simulate concatenated attention output
+        let concat_out = Tensor::from_vec(vec![0.1; seq_len * hidden_size], true);
+
+        // Output projection
+        let mut output =
+            crate::autograd::matmul(&concat_out, &attn.w_o, seq_len, hidden_size, hidden_size);
+
+        let grad_out = ndarray::Array1::ones(seq_len * hidden_size);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        assert!(attn.w_o.grad().is_some());
+        let grad_o = attn.w_o.grad().unwrap();
+        assert!(grad_o.iter().all(|&v| v.is_finite()));
+        let sum: f32 = grad_o.iter().map(|v| v.abs()).sum();
+        assert!(
+            sum > 0.0,
+            "Output projection gradient should not be all zero"
+        );
+    }
+
+    #[test]
+    fn test_causal_lm_loss_backward() {
+        use crate::train::CausalLMLoss;
+        use crate::train::LossFn;
+
+        let vocab_size = 100;
+        let seq_len = 3;
+        let loss_fn = CausalLMLoss::new(vocab_size);
+
+        // Create some logits
+        let logits = Tensor::from_vec(
+            (0..seq_len * vocab_size)
+                .map(|i| (i as f32 * 0.01).sin())
+                .collect(),
+            true,
+        );
+
+        // Target token IDs
+        let targets = Tensor::from_vec(vec![5.0, 10.0, 15.0], false);
+
+        let mut loss = loss_fn.forward(&logits, &targets);
+
+        // Backward
+        crate::autograd::backward(&mut loss, None);
+
+        // Loss should be positive
+        assert!(loss.data()[0] > 0.0);
+        assert!(loss.data()[0].is_finite());
+
+        // Logits should have gradient
+        assert!(logits.grad().is_some());
+        let grad = logits.grad().unwrap();
+        assert!(grad.iter().all(|&v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_ffn_backward_with_zero_input() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        let x = Tensor::from_vec(vec![0.0; 2 * config.hidden_size], true);
+        let mut output = ffn.forward(&x, 2);
+
+        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        // Should still produce finite gradients
+        let grad_gate = ffn.w_gate.grad().unwrap();
+        assert!(grad_gate.iter().all(|&v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_ffn_backward_large_input() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        let x = Tensor::from_vec(vec![10.0; 2 * config.hidden_size], true);
+        let mut output = ffn.forward(&x, 2);
+
+        let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        // Should still produce finite gradients
+        let grad_gate = ffn.w_gate.grad().unwrap();
+        assert!(grad_gate.iter().all(|&v| v.is_finite()));
+    }
 }
