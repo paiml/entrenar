@@ -91,7 +91,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2021"
 rust-version = "1.87"
 authors = ["PAIML <hello@paiml.com>"]
