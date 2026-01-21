@@ -817,4 +817,258 @@ mod tests {
         let deserialized: Architecture = serde_json::from_str(&serialized).unwrap();
         assert_eq!(arch.param_count(), deserialized.param_count());
     }
+
+    #[test]
+    fn test_custom_architecture_serde() {
+        let arch = Architecture::Custom {
+            config: serde_json::json!({"model_type": "custom", "layers": 10}),
+        };
+        let serialized = serde_json::to_string(&arch).unwrap();
+        let deserialized: Architecture = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(arch.param_count(), deserialized.param_count());
+        assert_eq!(arch.param_count(), 0); // Custom always returns 0
+    }
+
+    #[test]
+    fn test_hf_model_fetcher_default() {
+        // Default impl should create a valid fetcher
+        let fetcher = HfModelFetcher::default();
+        // Should not panic and have reasonable defaults
+        assert!(!fetcher.cache_dir.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn test_weight_format_equality() {
+        assert_eq!(WeightFormat::SafeTensors, WeightFormat::SafeTensors);
+        assert_eq!(WeightFormat::PyTorchBin, WeightFormat::PyTorchBin);
+        assert_eq!(WeightFormat::ONNX, WeightFormat::ONNX);
+        assert_ne!(WeightFormat::SafeTensors, WeightFormat::ONNX);
+
+        let gguf1 = WeightFormat::GGUF {
+            quant_type: "Q4_K_M".into(),
+        };
+        let gguf2 = WeightFormat::GGUF {
+            quant_type: "Q4_K_M".into(),
+        };
+        assert_eq!(gguf1, gguf2);
+    }
+
+    #[test]
+    fn test_weight_format_debug() {
+        let safetensors = WeightFormat::SafeTensors;
+        let debug = format!("{:?}", safetensors);
+        assert!(debug.contains("SafeTensors"));
+
+        let gguf = WeightFormat::GGUF {
+            quant_type: "Q4_K_S".into(),
+        };
+        let debug_gguf = format!("{:?}", gguf);
+        assert!(debug_gguf.contains("Q4_K_S"));
+    }
+
+    #[test]
+    fn test_weight_format_clone() {
+        let original = WeightFormat::GGUF {
+            quant_type: "Q8_0".into(),
+        };
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_fetch_options_cache_dir_pathbuf() {
+        let path = PathBuf::from("/custom/cache/dir");
+        let opts = FetchOptions::new().cache_dir(path.clone());
+        assert_eq!(opts.cache_dir, Some(path));
+    }
+
+    #[test]
+    fn test_fetch_options_multiple_files() {
+        let opts = FetchOptions::new().files(&[
+            "model.safetensors",
+            "config.json",
+            "tokenizer.json",
+            "vocab.txt",
+        ]);
+        assert_eq!(opts.files.len(), 4);
+        assert!(opts.files.contains(&"vocab.txt".to_string()));
+    }
+
+    #[test]
+    fn test_architecture_debug() {
+        let bert = Architecture::BERT {
+            num_layers: 6,
+            hidden_size: 384,
+            num_attention_heads: 6,
+        };
+        let debug = format!("{:?}", bert);
+        assert!(debug.contains("BERT"));
+        assert!(debug.contains("384"));
+    }
+
+    #[test]
+    fn test_architecture_clone() {
+        let original = Architecture::Llama {
+            num_layers: 16,
+            hidden_size: 2048,
+            num_attention_heads: 16,
+            intermediate_size: 5504,
+        };
+        let cloned = original.clone();
+        assert_eq!(original.param_count(), cloned.param_count());
+    }
+
+    #[test]
+    fn test_model_artifact_debug() {
+        let artifact = ModelArtifact {
+            path: PathBuf::from("/tmp/model"),
+            format: WeightFormat::SafeTensors,
+            architecture: Some(Architecture::BERT {
+                num_layers: 12,
+                hidden_size: 768,
+                num_attention_heads: 12,
+            }),
+            sha256: Some("abc123".into()),
+        };
+        let debug = format!("{:?}", artifact);
+        assert!(debug.contains("SafeTensors"));
+        assert!(debug.contains("abc123"));
+    }
+
+    #[test]
+    fn test_fetch_options_debug_and_clone() {
+        let opts = FetchOptions::new()
+            .revision("v2.0")
+            .files(&["model.gguf"])
+            .verify_sha256("deadbeef");
+        let debug = format!("{:?}", opts);
+        assert!(debug.contains("v2.0"));
+
+        let cloned = opts.clone();
+        assert_eq!(cloned.revision, "v2.0");
+    }
+
+    #[test]
+    fn test_download_with_non_main_revision() {
+        let temp_dir = std::env::temp_dir().join("hf_test_revision");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+        let result = fetcher.download_model(
+            "nonexistent-org/nonexistent-model",
+            FetchOptions::new()
+                .revision("v1.0.0") // Non-main revision
+                .files(&["model.safetensors"])
+                .cache_dir(&temp_dir),
+        );
+
+        // Should fail (repo doesn't exist), but should exercise the revision branch
+        assert!(result.is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_download_with_empty_files_uses_defaults() {
+        let temp_dir = std::env::temp_dir().join("hf_test_empty_files");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+        // Empty files should default to model.safetensors and config.json
+        let result = fetcher.download_model(
+            "nonexistent-org-abc123/nonexistent-model-xyz789",
+            FetchOptions::new().cache_dir(&temp_dir),
+        );
+
+        // Should fail (repo doesn't exist)
+        assert!(result.is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_download_pytorch_allowed_when_flag_set() {
+        let temp_dir = std::env::temp_dir().join("hf_test_pytorch_allowed");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+        let result = fetcher.download_model(
+            "nonexistent-org/nonexistent-model",
+            FetchOptions::new()
+                .files(&["pytorch_model.bin"])
+                .allow_pytorch_pickle(true)
+                .cache_dir(&temp_dir),
+        );
+
+        // Should NOT be blocked by security check (will fail for other reasons)
+        assert!(!matches!(result, Err(FetchError::PickleSecurityRisk)));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_download_uses_custom_cache_dir_from_options() {
+        let temp_dir = std::env::temp_dir().join("hf_test_custom_cache");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let fetcher = HfModelFetcher::new().unwrap();
+        let result = fetcher.download_model(
+            "nonexistent-org/nonexistent-model",
+            FetchOptions::new()
+                .files(&["model.safetensors"])
+                .cache_dir(&temp_dir), // Custom cache from options
+        );
+
+        // Should fail (repo doesn't exist)
+        assert!(result.is_err());
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_bert_small_config() {
+        let bert = Architecture::BERT {
+            num_layers: 6,
+            hidden_size: 256,
+            num_attention_heads: 4,
+        };
+        let params = bert.param_count();
+        // Should be smaller than standard BERT
+        assert!(params > 0);
+        assert!(params < 50_000_000);
+    }
+
+    #[test]
+    fn test_llama_small_config() {
+        let llama = Architecture::Llama {
+            num_layers: 8,
+            hidden_size: 512,
+            num_attention_heads: 8,
+            intermediate_size: 1024,
+        };
+        let params = llama.param_count();
+        assert!(params > 0);
+    }
+
+    #[test]
+    fn test_gpt2_small_config() {
+        let gpt2 = Architecture::GPT2 {
+            num_layers: 6,
+            hidden_size: 384,
+            num_attention_heads: 6,
+        };
+        let params = gpt2.param_count();
+        assert!(params > 0);
+    }
+
+    #[test]
+    fn test_t5_small_config() {
+        let t5 = Architecture::T5 {
+            encoder_layers: 4,
+            decoder_layers: 4,
+            hidden_size: 256,
+        };
+        let params = t5.param_count();
+        assert!(params > 0);
+    }
 }
