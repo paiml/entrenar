@@ -834,4 +834,247 @@ mod tests {
         let result = evaluator.evaluate_cv("Test", &y_true, |_, _| vec![0, 1, 0, 1]);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_metric_name_all_variants() {
+        assert_eq!(Metric::Accuracy.name(), "Accuracy");
+        assert_eq!(Metric::Precision(Average::Macro).name(), "Precision");
+        assert_eq!(Metric::Recall(Average::Micro).name(), "Recall");
+        assert_eq!(Metric::F1(Average::Weighted).name(), "F1");
+        assert_eq!(Metric::R2.name(), "R²");
+        assert_eq!(Metric::MSE.name(), "MSE");
+        assert_eq!(Metric::MAE.name(), "MAE");
+        assert_eq!(Metric::RMSE.name(), "RMSE");
+        assert_eq!(Metric::Silhouette.name(), "Silhouette");
+        assert_eq!(Metric::Inertia.name(), "Inertia");
+    }
+
+    #[test]
+    fn test_metric_higher_is_better_all_variants() {
+        assert!(Metric::Accuracy.higher_is_better());
+        assert!(Metric::Precision(Average::Macro).higher_is_better());
+        assert!(Metric::Recall(Average::Micro).higher_is_better());
+        assert!(Metric::F1(Average::Weighted).higher_is_better());
+        assert!(Metric::R2.higher_is_better());
+        assert!(Metric::Silhouette.higher_is_better());
+        assert!(!Metric::MSE.higher_is_better());
+        assert!(!Metric::MAE.higher_is_better());
+        assert!(!Metric::RMSE.higher_is_better());
+        assert!(!Metric::Inertia.higher_is_better());
+    }
+
+    #[test]
+    fn test_metric_display_all_variants() {
+        assert_eq!(
+            format!("{}", Metric::Precision(Average::Macro)),
+            "Precision(Macro)"
+        );
+        assert_eq!(
+            format!("{}", Metric::Recall(Average::Micro)),
+            "Recall(Micro)"
+        );
+        assert_eq!(format!("{}", Metric::MSE), "MSE");
+        assert_eq!(format!("{}", Metric::R2), "R²");
+        assert_eq!(format!("{}", Metric::Silhouette), "Silhouette");
+    }
+
+    #[test]
+    fn test_eval_result_display() {
+        let mut result = EvalResult::new("TestModel");
+        result.add_score(Metric::Accuracy, 0.95);
+        result.inference_time_ms = 1.5;
+
+        let display = format!("{result}");
+        assert!(display.contains("TestModel"));
+        assert!(display.contains("0.95"));
+        assert!(display.contains("1.50ms"));
+    }
+
+    #[test]
+    fn test_leaderboard_empty_display() {
+        let leaderboard = Leaderboard::new(Metric::Accuracy);
+        let display = format!("{leaderboard}");
+        assert!(display.contains("empty"));
+    }
+
+    #[test]
+    fn test_leaderboard_empty_markdown() {
+        let leaderboard = Leaderboard::new(Metric::Accuracy);
+        let md = leaderboard.to_markdown();
+        assert!(md.is_empty());
+    }
+
+    #[test]
+    fn test_leaderboard_sort_by() {
+        let mut leaderboard = Leaderboard::new(Metric::Accuracy);
+
+        let mut result1 = EvalResult::new("Model A");
+        result1.add_score(Metric::Accuracy, 0.85);
+        result1.add_score(Metric::F1(Average::Macro), 0.90);
+        leaderboard.add(result1);
+
+        let mut result2 = EvalResult::new("Model B");
+        result2.add_score(Metric::Accuracy, 0.92);
+        result2.add_score(Metric::F1(Average::Macro), 0.80);
+        leaderboard.add(result2);
+
+        // Initially sorted by Accuracy: B, A
+        assert_eq!(leaderboard.results[0].model_name, "Model B");
+
+        // Sort by F1 instead
+        leaderboard.sort_by(Metric::F1(Average::Macro));
+
+        // Now sorted by F1: A, B
+        assert_eq!(leaderboard.results[0].model_name, "Model A");
+    }
+
+    #[test]
+    fn test_eval_config_custom() {
+        let config = EvalConfig {
+            metrics: vec![Metric::MSE, Metric::MAE],
+            cv_folds: 10,
+            seed: 123,
+            parallel: true,
+            trace_enabled: true,
+        };
+
+        assert_eq!(config.cv_folds, 10);
+        assert_eq!(config.seed, 123);
+        assert!(config.parallel);
+        assert!(config.trace_enabled);
+    }
+
+    #[test]
+    fn test_model_evaluator_config() {
+        let config = EvalConfig::default();
+        let evaluator = ModelEvaluator::new(config.clone());
+        assert_eq!(evaluator.config().seed, config.seed);
+    }
+
+    #[test]
+    fn test_evaluate_classification_length_mismatch() {
+        let config = EvalConfig::default();
+        let evaluator = ModelEvaluator::new(config);
+
+        let y_pred = vec![0, 1, 2];
+        let y_true = vec![0, 1];
+
+        let result = evaluator.evaluate_classification("Test", &y_pred, &y_true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_eval_result_cv_fields() {
+        let mut result = EvalResult::new("TestModel");
+        result.cv_scores = Some(vec![0.9, 0.92, 0.88, 0.91, 0.89]);
+        result.cv_mean = Some(0.9);
+        result.cv_std = Some(0.014);
+        result.trace_id = Some("trace-123".to_string());
+
+        assert_eq!(result.cv_scores.as_ref().unwrap().len(), 5);
+        assert_eq!(result.cv_mean, Some(0.9));
+        assert_eq!(result.cv_std, Some(0.014));
+        assert_eq!(result.trace_id, Some("trace-123".to_string()));
+    }
+
+    #[test]
+    fn test_evaluate_cv_with_precision_metric() {
+        let config = EvalConfig {
+            metrics: vec![Metric::Precision(Average::Macro)],
+            cv_folds: 3,
+            seed: 42,
+            ..Default::default()
+        };
+
+        let evaluator = ModelEvaluator::new(config);
+        let y_true: Vec<usize> = (0..30).map(|i| i % 3).collect();
+
+        let result = evaluator
+            .evaluate_cv("TestModel", &y_true, |_train_idx, test_idx| {
+                test_idx.iter().map(|&i| y_true[i]).collect()
+            })
+            .unwrap();
+
+        assert!(result.cv_mean.is_some());
+    }
+
+    #[test]
+    fn test_evaluate_cv_with_recall_metric() {
+        let config = EvalConfig {
+            metrics: vec![Metric::Recall(Average::Weighted)],
+            cv_folds: 3,
+            seed: 42,
+            ..Default::default()
+        };
+
+        let evaluator = ModelEvaluator::new(config);
+        let y_true: Vec<usize> = (0..30).map(|i| i % 3).collect();
+
+        let result = evaluator
+            .evaluate_cv("TestModel", &y_true, |_train_idx, test_idx| {
+                test_idx.iter().map(|&i| y_true[i]).collect()
+            })
+            .unwrap();
+
+        assert!(result.cv_mean.is_some());
+    }
+
+    #[test]
+    fn test_evaluate_cv_single_fold_zero_std() {
+        let config = EvalConfig {
+            metrics: vec![Metric::Accuracy],
+            cv_folds: 1,
+            seed: 42,
+            ..Default::default()
+        };
+
+        let evaluator = ModelEvaluator::new(config);
+        let y_true: Vec<usize> = vec![0, 1, 0, 1];
+
+        let result = evaluator
+            .evaluate_cv("TestModel", &y_true, |_train_idx, test_idx| {
+                test_idx.iter().map(|&i| y_true[i]).collect()
+            })
+            .unwrap();
+
+        // With single fold, std should be 0
+        assert_eq!(result.cv_std, Some(0.0));
+    }
+
+    #[test]
+    fn test_leaderboard_print() {
+        let mut leaderboard = Leaderboard::new(Metric::Accuracy);
+        let mut result = EvalResult::new("TestModel");
+        result.add_score(Metric::Accuracy, 0.95);
+        leaderboard.add(result);
+
+        // Just test that print() doesn't panic
+        // (output goes to stdout, can't easily capture in tests)
+        leaderboard.print();
+    }
+
+    #[test]
+    fn test_evaluate_classification_skips_non_classification_metrics() {
+        let config = EvalConfig {
+            metrics: vec![
+                Metric::Accuracy,
+                Metric::R2,  // Regression metric, should be skipped
+                Metric::MSE, // Regression metric, should be skipped
+            ],
+            ..Default::default()
+        };
+
+        let evaluator = ModelEvaluator::new(config);
+        let y_pred = vec![0, 1, 1, 0];
+        let y_true = vec![0, 1, 0, 0];
+
+        let result = evaluator
+            .evaluate_classification("Test", &y_pred, &y_true)
+            .unwrap();
+
+        // Should only have Accuracy, R2 and MSE should be skipped
+        assert!(result.get_score(Metric::Accuracy).is_some());
+        assert!(result.get_score(Metric::R2).is_none());
+        assert!(result.get_score(Metric::MSE).is_none());
+    }
 }
