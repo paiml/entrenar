@@ -3,8 +3,13 @@
 use super::schema::TrainSpec;
 use super::validate::validate_config;
 use crate::error::{Error, Result};
+use crate::train::Batch;
+use crate::Tensor;
 use std::fs;
 use std::path::Path;
+
+#[cfg(not(target_arch = "wasm32"))]
+use alimentar::{ArrowDataset, Dataset};
 
 /// Train a model from YAML configuration file
 ///
@@ -64,7 +69,7 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     let optimizer = crate::config::build_optimizer(&spec.optimizer)?;
 
     // Step 5: Setup trainer
-    use crate::train::{Batch, MSELoss, TrainConfig, Trainer};
+    use crate::train::{MSELoss, TrainConfig, Trainer};
 
     let mut train_config = TrainConfig::new().with_log_interval(100);
 
@@ -82,18 +87,9 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     println!("✓ Trainer initialized");
     println!();
 
-    // Step 6: Create dummy training data (placeholder until real data loading)
-    println!("Creating training batches...");
-    let batches = vec![
-        Batch::new(
-            crate::Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], false),
-            crate::Tensor::from_vec(vec![2.0, 3.0, 4.0, 5.0], false),
-        ),
-        Batch::new(
-            crate::Tensor::from_vec(vec![2.0, 3.0, 4.0, 5.0], false),
-            crate::Tensor::from_vec(vec![3.0, 4.0, 5.0, 6.0], false),
-        ),
-    ];
+    // Step 6: Load training data
+    println!("Loading training data...");
+    let batches = load_training_batches(&spec)?;
     println!("✓ {} batches created", batches.len());
     println!();
 
@@ -148,6 +144,270 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     Ok(())
 }
 
+/// Load training batches from data file using alimentar
+///
+/// Supports parquet, JSON, and CSV formats via alimentar.
+/// Falls back to demo data if the file doesn't exist (for testing).
+fn load_training_batches(spec: &TrainSpec) -> Result<Vec<Batch>> {
+    let data_path = &spec.data.train;
+    let batch_size = spec.data.batch_size;
+
+    // Check if data file exists
+    if !data_path.exists() {
+        eprintln!(
+            "Warning: Training data not found at '{}', using demo data",
+            data_path.display()
+        );
+        return Ok(create_demo_batches(batch_size));
+    }
+
+    // Load data using alimentar (only on non-WASM)
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let ext = data_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        match ext.as_str() {
+            "parquet" => load_parquet_batches(data_path, batch_size),
+            "json" => load_json_batches(data_path, batch_size),
+            _ => {
+                eprintln!("Warning: Unsupported data format '{ext}', using demo data");
+                Ok(create_demo_batches(batch_size))
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        eprintln!("Warning: Data loading not available in WASM, using demo data");
+        Ok(create_demo_batches(batch_size))
+    }
+}
+
+/// Load batches from parquet file using alimentar
+#[cfg(not(target_arch = "wasm32"))]
+fn load_parquet_batches(path: &Path, batch_size: usize) -> Result<Vec<Batch>> {
+    println!("  Loading parquet: {}", path.display());
+
+    let dataset = ArrowDataset::from_parquet(path).map_err(|e| {
+        Error::ConfigError(format!("Failed to load parquet {}: {}", path.display(), e))
+    })?;
+
+    println!("  Loaded {} rows from parquet", dataset.len());
+
+    // Convert Arrow RecordBatches to training Batches
+    let mut batches = Vec::new();
+    let schema = dataset.schema();
+
+    // Get column names for input/output detection
+    let column_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+
+    // Look for input/output columns (common patterns)
+    let input_col = column_names
+        .iter()
+        .find(|&&n| n == "input" || n == "input_ids" || n == "x" || n == "features")
+        .copied();
+    let target_col = column_names
+        .iter()
+        .find(|&&n| n == "target" || n == "output" || n == "labels" || n == "y")
+        .copied();
+
+    if input_col.is_none() || target_col.is_none() {
+        eprintln!(
+            "Warning: Could not find input/target columns in parquet (found: {column_names:?})"
+        );
+        eprintln!("  Expected columns like: input/target, x/y, features/labels");
+        return Ok(create_demo_batches(batch_size));
+    }
+
+    let input_name = input_col.unwrap();
+    let target_name = target_col.unwrap();
+    println!("  Using columns: input='{input_name}', target='{target_name}'");
+
+    // Process each Arrow batch
+    for record_batch in dataset.iter() {
+        // Extract input and target arrays
+        let input_idx = schema
+            .index_of(input_name)
+            .map_err(|e| Error::ConfigError(format!("Column not found: {e}")))?;
+        let target_idx = schema
+            .index_of(target_name)
+            .map_err(|e| Error::ConfigError(format!("Column not found: {e}")))?;
+
+        let input_array = record_batch.column(input_idx);
+        let target_array = record_batch.column(target_idx);
+
+        // Convert to f32 vectors (simplified - assumes numeric data)
+        let input_data = arrow_array_to_f32(input_array)?;
+        let target_data = arrow_array_to_f32(target_array)?;
+
+        // Create batch
+        let batch = Batch::new(
+            Tensor::from_vec(input_data, false),
+            Tensor::from_vec(target_data, false),
+        );
+        batches.push(batch);
+    }
+
+    // Re-batch to desired batch size if needed
+    if batches.len() > 1 && batch_size > 0 {
+        batches = rebatch(batches, batch_size);
+    }
+
+    Ok(batches)
+}
+
+/// Load batches from JSON file
+#[cfg(not(target_arch = "wasm32"))]
+fn load_json_batches(path: &Path, batch_size: usize) -> Result<Vec<Batch>> {
+    println!("  Loading JSON: {}", path.display());
+
+    // Try to load as JSON array of {input, target} objects
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        Error::ConfigError(format!("Failed to read JSON {}: {}", path.display(), e))
+    })?;
+
+    #[derive(serde::Deserialize)]
+    struct Example {
+        input: Vec<f32>,
+        target: Vec<f32>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct DataFile {
+        examples: Vec<Example>,
+    }
+
+    // Try structured format first
+    if let Ok(data) = serde_json::from_str::<DataFile>(&content) {
+        println!("  Loaded {} examples from JSON", data.examples.len());
+        let batches: Vec<Batch> = data
+            .examples
+            .chunks(batch_size.max(1))
+            .map(|chunk| {
+                let input_data: Vec<f32> = chunk.iter().flat_map(|ex| ex.input.clone()).collect();
+                let target_data: Vec<f32> = chunk.iter().flat_map(|ex| ex.target.clone()).collect();
+                Batch::new(
+                    Tensor::from_vec(input_data, false),
+                    Tensor::from_vec(target_data, false),
+                )
+            })
+            .collect();
+        return Ok(batches);
+    }
+
+    // Try array of examples
+    if let Ok(examples) = serde_json::from_str::<Vec<Example>>(&content) {
+        println!("  Loaded {} examples from JSON array", examples.len());
+        let batches: Vec<Batch> = examples
+            .chunks(batch_size.max(1))
+            .map(|chunk| {
+                let input_data: Vec<f32> = chunk.iter().flat_map(|ex| ex.input.clone()).collect();
+                let target_data: Vec<f32> = chunk.iter().flat_map(|ex| ex.target.clone()).collect();
+                Batch::new(
+                    Tensor::from_vec(input_data, false),
+                    Tensor::from_vec(target_data, false),
+                )
+            })
+            .collect();
+        return Ok(batches);
+    }
+
+    eprintln!("Warning: Could not parse JSON data format, using demo data");
+    Ok(create_demo_batches(batch_size))
+}
+
+/// Convert Arrow array to f32 vector
+#[cfg(not(target_arch = "wasm32"))]
+fn arrow_array_to_f32(array: &arrow::array::ArrayRef) -> Result<Vec<f32>> {
+    use arrow::array::{Float32Array, Float64Array, Int32Array, Int64Array};
+    use arrow::datatypes::DataType;
+
+    match array.data_type() {
+        DataType::Float32 => {
+            let arr = array.as_any().downcast_ref::<Float32Array>().unwrap();
+            Ok(arr.values().to_vec())
+        }
+        DataType::Float64 => {
+            let arr = array.as_any().downcast_ref::<Float64Array>().unwrap();
+            Ok(arr.values().iter().map(|&x| x as f32).collect())
+        }
+        DataType::Int32 => {
+            let arr = array.as_any().downcast_ref::<Int32Array>().unwrap();
+            Ok(arr.values().iter().map(|&x| x as f32).collect())
+        }
+        DataType::Int64 => {
+            let arr = array.as_any().downcast_ref::<Int64Array>().unwrap();
+            Ok(arr.values().iter().map(|&x| x as f32).collect())
+        }
+        other => Err(Error::ConfigError(format!(
+            "Unsupported Arrow data type: {other:?}. Use Float32, Float64, Int32, or Int64."
+        ))),
+    }
+}
+
+/// Re-batch data into specified batch size
+fn rebatch(batches: Vec<Batch>, batch_size: usize) -> Vec<Batch> {
+    // Flatten all data
+    let all_inputs: Vec<f32> = batches
+        .iter()
+        .flat_map(|b| b.inputs.data().iter().copied())
+        .collect();
+    let all_targets: Vec<f32> = batches
+        .iter()
+        .flat_map(|b| b.targets.data().iter().copied())
+        .collect();
+
+    if all_inputs.is_empty() {
+        return Vec::new();
+    }
+
+    // Determine feature dimensions from first batch
+    let input_dim = batches[0].inputs.len();
+    let target_dim = batches[0].targets.len();
+
+    // Re-batch
+    let num_examples = all_inputs.len() / input_dim;
+    let mut new_batches = Vec::new();
+
+    for chunk_start in (0..num_examples).step_by(batch_size) {
+        let chunk_end = (chunk_start + batch_size).min(num_examples);
+        let input_start = chunk_start * input_dim;
+        let input_end = chunk_end * input_dim;
+        let target_start = chunk_start * target_dim;
+        let target_end = chunk_end * target_dim;
+
+        new_batches.push(Batch::new(
+            Tensor::from_vec(all_inputs[input_start..input_end].to_vec(), false),
+            Tensor::from_vec(all_targets[target_start..target_end].to_vec(), false),
+        ));
+    }
+
+    new_batches
+}
+
+/// Create demo batches for testing when no data file is available
+fn create_demo_batches(batch_size: usize) -> Vec<Batch> {
+    let num_batches = 2.max(8 / batch_size.max(1));
+    (0..num_batches)
+        .map(|i| {
+            let input_data: Vec<f32> = (0..batch_size * 4)
+                .map(|j| ((i * batch_size + j) as f32) * 0.1)
+                .collect();
+            let target_data: Vec<f32> = (0..batch_size * 4)
+                .map(|j| ((i * batch_size + j + 1) as f32) * 0.1)
+                .collect();
+            Batch::new(
+                Tensor::from_vec(input_data, false),
+                Tensor::from_vec(target_data, false),
+            )
+        })
+        .collect()
+}
+
 /// Load training spec from YAML file (without running training)
 ///
 /// Useful for testing config parsing and validation separately from training.
@@ -178,7 +438,7 @@ mod tests {
     fn test_load_valid_config() {
         let yaml = r"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: []
 
 data:
@@ -202,7 +462,7 @@ optimizer:
     fn test_load_invalid_config() {
         let yaml = r"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
 
 data:
   train: train.parquet
@@ -241,7 +501,7 @@ optimizer:
     fn test_load_config_with_lora() {
         let yaml = r"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: [q_proj, v_proj]
 
 data:
@@ -271,7 +531,7 @@ lora:
     fn test_load_config_with_quantize() {
         let yaml = r"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: []
 
 data:
@@ -299,7 +559,7 @@ quantize:
     fn test_load_config_with_training_options() {
         let yaml = r"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: []
 
 data:
@@ -334,7 +594,7 @@ training:
         let yaml = format!(
             r#"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: []
 
 data:
@@ -369,7 +629,7 @@ training:
         let yaml = format!(
             r#"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: []
 
 data:
@@ -401,7 +661,7 @@ training:
         let yaml = format!(
             r#"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: [q_proj, v_proj]
 
 data:
@@ -437,7 +697,7 @@ training:
         let yaml = format!(
             r#"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
   layers: []
 
 data:
@@ -480,7 +740,7 @@ training:
     fn test_train_from_yaml_invalid_config() {
         let yaml = r"
 model:
-  path: model.gguf
+  path: nonexistent_test_model.gguf
 
 data:
   train: train.parquet

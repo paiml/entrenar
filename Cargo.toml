@@ -123,7 +123,7 @@ cuda = ["trueno/cuda-monitor", "tokio"]  # NVIDIA CUDA monitoring via trueno-gpu
 # Core PAIML stack
 ndarray = "0.16"
 trueno = "0.13.0"  # SIMD-accelerated compute
-aprender = "0.24"  # ML interpret module for explainability + .apr model format + pruning
+aprender = "0.24.1"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
 trueno-db = { version = "0.3.11", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
@@ -152,12 +152,13 @@ hex = "0.4"  # Hex encoding for hashes
 regex = "1.10"  # ORCID/ROR validation
 ed25519-dalek = "2.1"  # Ed25519 signing for pre-registration
 bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for tensor data
+arrow = { version = "57", default-features = false }  # Arrow array types for alimentar integration
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 hf-hub = "0.4"  # HuggingFace Hub API for model downloads (not available on WASM)
 memmap2 = "0.9"  # Memory-mapped file access for large models (not available on WASM)
 zip = "2.2"  # RO-Crate ZIP export (requires native compression, not available on WASM)
-alimentar = "0.2.2"  # Dataset loading with MNIST (requires tokio, not available on WASM)
+alimentar = "0.2.4"  # Dataset loading with parquet/arrow support (requires tokio, not available on WASM)
 
 [dev-dependencies]
 proptest = "1.4"

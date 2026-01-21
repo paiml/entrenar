@@ -2,7 +2,7 @@
 
 use super::schema::{OptimSpec, TrainSpec};
 use crate::error::{Error, Result};
-use crate::io::{Model, ModelMetadata};
+use crate::io::{load_model, Model, ModelMetadata};
 use crate::optim::{Adam, AdamW, Optimizer, SGD};
 use crate::Tensor;
 
@@ -78,12 +78,51 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
     }
 }
 
-/// Build a simple model from configuration
+/// Build a model from configuration by loading from file
 ///
-/// NOTE: This is a placeholder implementation until we have GGUF loading via Realizar.
-/// For now, it creates a simple model with random parameters for demonstration.
+/// Loads the model from the path specified in the TrainSpec. Supports:
+/// - SafeTensors (.safetensors) - HuggingFace compatible binary format
+/// - JSON (.json) - Entrenar serialization format
+/// - YAML (.yaml, .yml) - Entrenar serialization format
+///
+/// Falls back to demo mode (simple MLP) if the model file doesn't exist,
+/// to support testing and demonstration workflows.
 pub fn build_model(spec: &TrainSpec) -> Result<Model> {
-    // For demonstration, create a simple 2-layer model
+    let model_path = &spec.model.path;
+
+    // Try to load the actual model if it exists
+    if model_path.exists() {
+        println!("Loading model from: {}", model_path.display());
+        let mut model = load_model(model_path)?;
+
+        // Add training metadata
+        model.metadata = model
+            .metadata
+            .with_custom("config_path", serde_json::json!(model_path))
+            .with_custom("optimizer", serde_json::json!(spec.optimizer.name))
+            .with_custom("learning_rate", serde_json::json!(spec.optimizer.lr))
+            .with_custom("batch_size", serde_json::json!(spec.data.batch_size));
+
+        // Enable gradients on all parameters for training
+        for (_, tensor) in &mut model.parameters {
+            tensor.set_requires_grad(true);
+        }
+
+        println!(
+            "Loaded model '{}' with {} parameters",
+            model.metadata.name,
+            model.parameters.len()
+        );
+
+        return Ok(model);
+    }
+
+    // Demo mode fallback: create a simple model for testing
+    eprintln!(
+        "Warning: Model file not found at '{}', using demo mode (simple MLP)",
+        model_path.display()
+    );
+
     let params = vec![
         (
             "layer1.weight".to_string(),
@@ -101,10 +140,11 @@ pub fn build_model(spec: &TrainSpec) -> Result<Model> {
     ];
 
     let metadata = ModelMetadata::new(
-        format!("model-from-{}", spec.model.path.display()),
+        format!("demo-model-from-{}", model_path.display()),
         "simple-mlp",
     )
-    .with_custom("config_path", serde_json::json!(spec.model.path))
+    .with_custom("demo_mode", serde_json::json!(true))
+    .with_custom("config_path", serde_json::json!(model_path))
     .with_custom("optimizer", serde_json::json!(spec.optimizer.name))
     .with_custom("learning_rate", serde_json::json!(spec.optimizer.lr))
     .with_custom("batch_size", serde_json::json!(spec.data.batch_size));
@@ -176,12 +216,13 @@ mod tests {
     }
 
     #[test]
-    fn test_build_model() {
+    fn test_build_model_demo_mode() {
         use super::super::schema::{DataConfig, ModelRef, TrainSpec, TrainingParams};
 
+        // When model file doesn't exist, should fall back to demo mode
         let spec = TrainSpec {
             model: ModelRef {
-                path: PathBuf::from("test.gguf"),
+                path: PathBuf::from("nonexistent.gguf"),
                 layers: vec![],
             },
             data: DataConfig {
@@ -205,5 +246,138 @@ mod tests {
         let model = build_model(&spec).unwrap();
         assert_eq!(model.parameters.len(), 4);
         assert!(model.get_parameter("layer1.weight").is_some());
+        // Verify demo mode indicator
+        assert_eq!(model.metadata.architecture, "simple-mlp");
+        assert!(model.metadata.name.starts_with("demo-model"));
+    }
+
+    #[test]
+    fn test_build_model_loads_real_file() {
+        use super::super::schema::{DataConfig, ModelRef, TrainSpec, TrainingParams};
+        use crate::io::{save_model, ModelFormat, SaveConfig};
+        use tempfile::NamedTempFile;
+
+        // Create a real model file
+        let params = vec![
+            (
+                "embed.weight".to_string(),
+                Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], false),
+            ),
+            (
+                "attn.q".to_string(),
+                Tensor::from_vec(vec![0.1, 0.2], false),
+            ),
+            (
+                "attn.k".to_string(),
+                Tensor::from_vec(vec![0.3, 0.4], false),
+            ),
+        ];
+        let original = Model::new(
+            ModelMetadata::new("test-transformer", "transformer"),
+            params,
+        );
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().with_extension("safetensors");
+
+        let config = SaveConfig::new(ModelFormat::SafeTensors);
+        save_model(&original, &temp_path, &config).unwrap();
+
+        // Build model from the real file
+        let spec = TrainSpec {
+            model: ModelRef {
+                path: temp_path.clone(),
+                layers: vec![],
+            },
+            data: DataConfig {
+                train: PathBuf::from("train.parquet"),
+                val: None,
+                batch_size: 8,
+                auto_infer_types: true,
+                seq_len: None,
+            },
+            optimizer: OptimSpec {
+                name: "adam".to_string(),
+                lr: 0.001,
+                params: std::collections::HashMap::new(),
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+            training: TrainingParams::default(),
+        };
+
+        let loaded = build_model(&spec).unwrap();
+
+        // Verify it loaded the real model, not demo mode
+        assert_eq!(loaded.parameters.len(), 3);
+        assert!(loaded.get_parameter("embed.weight").is_some());
+        assert!(loaded.get_parameter("attn.q").is_some());
+        assert!(loaded.get_parameter("attn.k").is_some());
+
+        // Verify metadata was preserved
+        assert_eq!(loaded.metadata.name, "test-transformer");
+        assert_eq!(loaded.metadata.architecture, "transformer");
+
+        // Verify gradients are enabled for training
+        for (_, tensor) in &loaded.parameters {
+            assert!(
+                tensor.requires_grad(),
+                "All parameters should have requires_grad=true for training"
+            );
+        }
+
+        // Clean up
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn test_build_model_adds_training_metadata() {
+        use super::super::schema::{DataConfig, ModelRef, TrainSpec, TrainingParams};
+        use crate::io::{save_model, ModelFormat, SaveConfig};
+        use tempfile::NamedTempFile;
+
+        // Create a real model file
+        let params = vec![("w".to_string(), Tensor::from_vec(vec![1.0], false))];
+        let original = Model::new(ModelMetadata::new("meta-test", "linear"), params);
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().with_extension("json");
+
+        let config = SaveConfig::new(ModelFormat::Json);
+        save_model(&original, &temp_path, &config).unwrap();
+
+        let spec = TrainSpec {
+            model: ModelRef {
+                path: temp_path.clone(),
+                layers: vec![],
+            },
+            data: DataConfig {
+                train: PathBuf::from("train.parquet"),
+                val: None,
+                batch_size: 32,
+                auto_infer_types: true,
+                seq_len: None,
+            },
+            optimizer: OptimSpec {
+                name: "adamw".to_string(),
+                lr: 0.0001,
+                params: std::collections::HashMap::new(),
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+            training: TrainingParams::default(),
+        };
+
+        let loaded = build_model(&spec).unwrap();
+
+        // Verify training metadata was added
+        assert!(loaded.metadata.custom.get("optimizer").is_some());
+        assert!(loaded.metadata.custom.get("learning_rate").is_some());
+        assert!(loaded.metadata.custom.get("batch_size").is_some());
+
+        // Clean up
+        std::fs::remove_file(temp_path).ok();
     }
 }
