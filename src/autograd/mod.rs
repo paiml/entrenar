@@ -1,18 +1,37 @@
 //! Tape-based autograd engine
 //!
 //! Provides automatic differentiation using a computational graph with gradient tape.
+//!
+//! ## Gradient Checkpointing
+//!
+//! For memory-efficient training of large models, use the `checkpoint` module:
+//!
+//! ```ignore
+//! use entrenar::autograd::checkpoint::{checkpoint, CheckpointConfig};
+//!
+//! let output = checkpoint(|x| layer.forward(x), &input);
+//! ```
 
 mod backward;
+pub mod checkpoint;
 mod context;
 mod ops;
+pub mod precision;
 mod tensor;
 
 #[cfg(test)]
 mod tests;
 
 pub use backward::BackwardOp;
+pub use checkpoint::{
+    checkpoint, checkpoint_if, estimate_memory_savings, optimal_checkpoints, CheckpointConfig,
+    CheckpointManager, CheckpointedSegment,
+};
 pub use context::Context;
 pub use ops::*;
+pub use precision::{
+    bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32, GradScaler, MixedPrecisionConfig, Precision,
+};
 pub use tensor::Tensor;
 
 /// Perform backward pass on a tensor
