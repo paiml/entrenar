@@ -53,8 +53,8 @@ pub use curriculum::{
     LinearCurriculum, TieredCurriculum,
 };
 pub use loss::{
-    CrossEntropyLoss, HuberLoss, L1Loss, LossFn, MSELoss, SampleWeightedLoss, SmoothL1Loss,
-    WeightedLoss,
+    CausalLMLoss, CrossEntropyLoss, HuberLoss, L1Loss, LossFn, MSELoss, SampleWeightedLoss,
+    SmoothL1Loss, WeightedLoss,
 };
 pub use metrics::{Accuracy, F1Score, Metric, Precision, R2Score, Recall, MAE, RMSE};
 pub use trainer::{TrainResult, Trainer};
