@@ -1382,7 +1382,7 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.5.2"
+version = "0.5.4"
 dependencies = [
  "alimentar",
  "approx",
@@ -1418,7 +1418,7 @@ dependencies = [
  "toml",
  "tower",
  "tower-http",
- "trueno 0.11.0",
+ "trueno 0.13.0",
  "trueno-db",
  "trueno-rag",
  "trueno-viz",
@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "entrenar-bench"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1446,7 +1446,7 @@ dependencies = [
 
 [[package]]
 name = "entrenar-common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "proptest",
@@ -1458,7 +1458,7 @@ dependencies = [
 
 [[package]]
 name = "entrenar-distill"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1475,7 +1475,7 @@ dependencies = [
 
 [[package]]
 name = "entrenar-inspect"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1491,7 +1491,7 @@ dependencies = [
 
 [[package]]
 name = "entrenar-lora"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1507,7 +1507,7 @@ dependencies = [
 
 [[package]]
 name = "entrenar-shell"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "dirs 5.0.1",
@@ -2039,6 +2039,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "hostname"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617aaa3557aef3810a6369d0a99fac8a080891b68bd9f9812a1eeda0c0730cbd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
 ]
 
 [[package]]
@@ -4704,20 +4715,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a0756605a19a0b79f5dca9b61fba7e428c497abe9ebeac2ef91b39d90b6da91"
 dependencies = [
  "anyhow",
+ "num_cpus",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "trueno"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ba5457f1f184520c46e6b315d540baa4cf2a2ae3d047e13001a4a23a12c6ab8"
+dependencies = [
+ "anyhow",
  "bytemuck",
+ "chrono",
  "futures-intrusive",
+ "hostname",
  "num_cpus",
  "pollster",
+ "serde",
+ "serde_json",
  "thiserror 2.0.17",
+ "toml",
  "trueno-gpu",
  "wgpu",
 ]
 
 [[package]]
 name = "trueno-db"
-version = "0.3.9"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6160f9aa9547bdc34afc0345fbbe99c585c7fe544d810301fde6fa9256e48724"
+checksum = "eac277fdd3ea8f1069100c8520cd00a67e45f96206091e406163cc84ba1daf11"
 dependencies = [
  "anyhow",
  "arrow",
@@ -4736,7 +4763,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "trueno 0.10.1",
+ "trueno 0.13.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4770,31 +4797,31 @@ dependencies = [
 
 [[package]]
 name = "trueno-rag"
-version = "0.1.5"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12ad9d53aae63d60d427c458000d3a45e41f58f9d49fc40ffc0150c99f755323"
+checksum = "bdbd4b8b5202a6902d7181d5017094f886876e6ddf4f4e6caee6febf59871ba2"
 dependencies = [
  "async-trait",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
- "trueno 0.10.1",
+ "trueno 0.13.0",
  "trueno-db",
  "uuid",
 ]
 
 [[package]]
 name = "trueno-viz"
-version = "0.1.9"
+version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7e46e0d7027e514a7253d981461e313c70599c3e76cb53375a22ff61395e8b8"
+checksum = "d2cd289f7b15c454eba71083d18e4193f9e3488e384030751d091fec56acc5a7"
 dependencies = [
  "base64",
  "libc",
  "png",
  "thiserror 2.0.17",
- "trueno 0.10.1",
+ "trueno 0.13.0",
 ]
 
 [[package]]

@@ -7,6 +7,7 @@ use crate::research::artifact::ResearchArtifact;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -325,6 +326,7 @@ impl RoCrate {
     }
 
     /// Create a ZIP archive
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn to_zip(&self) -> std::io::Result<Vec<u8>> {
         let mut buffer = std::io::Cursor::new(Vec::new());
 
@@ -438,6 +440,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn test_ro_crate_zip_creation() {
         let temp_dir = TempDir::new().unwrap();
         let crate_path = temp_dir.path().join("test-crate");

@@ -844,11 +844,48 @@ phases:
         status: complete
         notes: "Benchmark infrastructure ready, performance targets met."
 
+  - name: "Phase 16: Model Evaluation & Drift Detection"
+    hours: 76
+    status: complete
+    description: "Standardized metrics, drift detection, and retraining hooks (APR-073)"
+    spec: "docs/specifications/model-eval-framework-spec.md"
+    tickets:
+      - id: APR-073-1
+        name: "Classification metrics (Accuracy, F1, Matrix)"
+        estimated_hours: 8
+        actual_hours: 8
+        status: complete
+      - id: APR-073-2
+        name: "ModelEvaluator + Leaderboard + Renacer Trace"
+        estimated_hours: 16
+        actual_hours: 16
+        status: complete
+      - id: APR-073-3
+        name: "Cross-validation integration"
+        estimated_hours: 8
+        actual_hours: 8
+        status: complete
+      - id: APR-073-4
+        name: "Drift detection (KS, Chi-sq, PSI)"
+        estimated_hours: 16
+        actual_hours: 16
+        status: complete
+      - id: APR-073-5
+        name: "Entrenar integration (Andon loop)"
+        estimated_hours: 16
+        actual_hours: 16
+        status: complete
+      - id: APR-073-6
+        name: "Property tests (100k iters) + Documentation"
+        estimated_hours: 12
+        actual_hours: 12
+        status: complete
+
 # Summary Statistics
 summary:
-  total_estimated_hours: 1300  # +92h for Phase 15 (Real-Time Audit Log & Explainability)
-  total_actual_hours: 196      # +69h for Phase 15
-  completion_percentage: 100   # 113/113 tickets
-  tickets_complete: 113
+  total_estimated_hours: 1376  # +76h for Phase 16
+  total_actual_hours: 272      # +76h for Phase 16
+  completion_percentage: 100   # 119/119 tickets
+  tickets_complete: 119
   tickets_in_progress: 0
   tickets_pending: 0           # All complete!
