@@ -149,4 +149,44 @@ mod tests {
         // 2.0 clamped to 1.0 -> SPARK_CHARS[7]
         assert_eq!(chars[4], SPARK_CHARS[7]);
     }
+
+    #[test]
+    fn test_sparkline_range_zero_width() {
+        assert_eq!(sparkline_range(&[1.0, 2.0], 0, 0.0, 1.0), "");
+    }
+
+    #[test]
+    fn test_sparkline_range_constant_range() {
+        let values = vec![5.0, 5.0, 5.0];
+        let result = sparkline_range(&values, 5, 5.0, 5.0);
+        // Constant range should produce middle sparkline char
+        assert!(result.chars().all(|c| c == SPARK_CHARS[4]));
+    }
+
+    #[test]
+    fn test_sparkline_range_subsampling() {
+        let values: Vec<f32> = (0..100).map(|i| i as f32).collect();
+        let result = sparkline_range(&values, 10, 0.0, 99.0);
+        assert_eq!(result.chars().count(), 10);
+    }
+
+    #[test]
+    fn test_spark_chars_length() {
+        assert_eq!(SPARK_CHARS.len(), 8);
+    }
+
+    #[test]
+    fn test_sparkline_single_value() {
+        let result = sparkline(&[5.0], 10);
+        // Single value with constant range
+        assert_eq!(result.chars().count(), 1);
+    }
+
+    #[test]
+    fn test_sparkline_range_middle_value() {
+        let result = sparkline_range(&[0.5], 1, 0.0, 1.0);
+        let chars: Vec<char> = result.chars().collect();
+        // 0.5 normalized = 0.5 * 7 = 3.5, rounds to 4
+        assert_eq!(chars[0], SPARK_CHARS[4]);
+    }
 }
