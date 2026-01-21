@@ -9,8 +9,8 @@
 #[cfg(test)]
 mod tests {
     use crate::prune::{
-        CalibrationConfig, PruneFinetunePipeline, PruneMethod, PruningConfig, PruningMetrics,
-        PruningSchedule, PruningStage, SparsityPatternConfig,
+        CalibrationConfig, PruneMethod, PruningConfig, PruningMetrics, PruningSchedule,
+        PruningStage, SparsityPatternConfig,
     };
 
     // =========================================================================
@@ -266,7 +266,7 @@ mod tests {
     fn snapshot_schedule_validation_errors() {
         // TEST_ID: SNAP-040
         // Snapshot validation error messages for invalid schedules
-        let invalid_schedules = vec![
+        let invalid_schedules = [
             (
                 "gradual_end_before_start",
                 PruningSchedule::Gradual {

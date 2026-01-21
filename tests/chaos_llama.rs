@@ -64,9 +64,7 @@ fn chaos_zero_hidden_size() {
     let num_heads = 4;
 
     // This should panic or return an error
-    if hidden_size == 0 {
-        panic!("hidden_size must be > 0");
-    }
+    assert!(hidden_size != 0, "hidden_size must be > 0");
 
     let _head_dim = hidden_size / num_heads;
 }
@@ -89,9 +87,7 @@ fn chaos_non_divisible_hidden_size() {
         // Should have remainder
         assert!(
             remainder > 0,
-            "Expected non-zero remainder for {}/{}",
-            hidden_size,
-            num_heads
+            "Expected non-zero remainder for {hidden_size}/{num_heads}"
         );
 
         // Reconstruction loses information
@@ -151,9 +147,9 @@ fn chaos_memory_allocation_stress() {
         let would_overflow = params.checked_mul(bytes_per_param).is_none();
 
         if should_overflow {
-            assert!(would_overflow, "Expected overflow for {} params", params);
+            assert!(would_overflow, "Expected overflow for {params} params");
         } else {
-            assert!(!would_overflow, "Unexpected overflow for {} params", params);
+            assert!(!would_overflow, "Unexpected overflow for {params} params");
 
             if let Some(total_bytes) = params.checked_mul(bytes_per_param) {
                 let megabytes = (total_bytes as f64) / 1_000_000.0;
@@ -228,13 +224,12 @@ fn chaos_quantization_extremes() {
 
         assert_eq!(
             actual_bytes, expected_bytes,
-            "Mismatch for {}-bit quantization",
-            bits
+            "Mismatch for {bits}-bit quantization"
         );
 
         // Bytes should increase with bit width
-        let bytes_per_param = actual_bytes as f64 / params as f64;
-        let expected_ratio = bits as f64 / 8.0;
+        let bytes_per_param = f64::from(actual_bytes) / f64::from(params);
+        let expected_ratio = f64::from(bits) / 8.0;
         assert!((bytes_per_param - expected_ratio).abs() < 1e-6);
     }
 }
@@ -314,7 +309,7 @@ fn chaos_configuration_explosion() {
                 if let Some(total_layers) = layer_params.checked_mul(num_layers) {
                     if let Some(total) = e.checked_add(total_layers) {
                         // Should be calculable without overflow
-                        assert!(total > 0, "Total params for {}", desc);
+                        assert!(total > 0, "Total params for {desc}");
 
                         // Sanity checks
                         assert!(e > 0);
@@ -324,8 +319,7 @@ fn chaos_configuration_explosion() {
                         if hidden_size >= 4096 {
                             assert!(
                                 a > 16_000_000,
-                                "Attention params should be large for {}",
-                                desc
+                                "Attention params should be large for {desc}"
                             );
                         }
                     }
@@ -474,8 +468,7 @@ fn chaos_head_count_constraints() {
         if expected_valid {
             assert!(
                 is_divisible,
-                "{} must be divisible by {}",
-                hidden_size, num_heads
+                "{hidden_size} must be divisible by {num_heads}"
             );
 
             let head_dim = hidden_size / num_heads;

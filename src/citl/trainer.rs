@@ -8,6 +8,8 @@
 //! - Jones & Harrold (2005): Tarantula Fault Localization
 //! - Chilimbi et al. (2009): HOLMES Statistical Debugging
 
+#![allow(clippy::field_reassign_with_default)]
+
 use super::{DecisionPatternStore, FixPattern, FixSuggestion};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -784,7 +786,7 @@ mod tests {
         let span = SourceSpan::new("main.rs", 5, 10, 5, 20);
         let display = format!("{span}");
         assert!(display.contains("main.rs"));
-        assert!(display.contains("5"));
+        assert!(display.contains('5'));
     }
 
     #[test]

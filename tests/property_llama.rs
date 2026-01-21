@@ -25,8 +25,7 @@ fn llama_config_strategy() -> impl Strategy<Value = (usize, usize, usize, usize,
                 prop::num::usize::ANY.prop_map(|x| ((x % 8) + 1) * 64), // hidden_size: 64-512 (multiples of 64)
                 prop::num::usize::ANY.prop_map(|x| (x % 4) + 1),        // num_layers: 1-4
                 prop::num::usize::ANY.prop_map(|x| {
-                    let heads = (x % 8) + 1;
-                    heads // num_heads: 1-8
+                    (x % 8) + 1 // num_heads: 1-8
                 }),
                 100_usize..1000, // vocab_size: 100-1000
                 prop::num::usize::ANY.prop_map(|x| ((x % 4) + 1) * 64), // intermediate_size: 64-256
@@ -143,7 +142,7 @@ proptest! {
     /// not the transformer layer parameters.
     #[test]
     fn prop_vocab_size_independent_of_layers(
-        (hidden_size, num_layers, num_heads, _vocab_size, intermediate_size)
+        (hidden_size, num_layers, _num_heads, _vocab_size, intermediate_size)
         in llama_config_strategy(),
         vocab_size_1 in 100_usize..1000,
         vocab_size_2 in 1000_usize..10000,
@@ -155,11 +154,7 @@ proptest! {
         let total_1 = (vocab_size_1 * hidden_size * 2) + (num_layers * layer_params);
         let total_2 = (vocab_size_2 * hidden_size * 2) + (num_layers * layer_params);
 
-        let diff = if total_2 > total_1 {
-            total_2 - total_1
-        } else {
-            total_1 - total_2
-        };
+        let diff = total_2.abs_diff(total_1);
 
         let expected_diff = if vocab_size_2 > vocab_size_1 {
             (vocab_size_2 - vocab_size_1) * hidden_size * 2
@@ -200,7 +195,7 @@ proptest! {
         prop_assert_eq!(head_dim * num_heads, hidden_size);
 
         // Head dimension should be reasonable (typically 64, 128, or 256)
-        prop_assert!(head_dim >= 8 && head_dim <= 512);
+        prop_assert!((8..=512).contains(&head_dim));
     }
 
     /// Property 9: Total parameters increase monotonically with config size

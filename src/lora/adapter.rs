@@ -240,7 +240,7 @@ mod tests {
 
             // Create adapter and save
             let adapter = LoRAAdapter::from_layer(&layer, rank, alpha);
-            let path = format!("/tmp/prop_test_adapter_{}_{}_{}.json", d_out, d_in, rank);
+            let path = format!("/tmp/prop_test_adapter_{d_out}_{d_in}_{rank}.json");
             adapter.save(&path).unwrap();
 
             // Load and reconstruct
@@ -295,7 +295,7 @@ mod tests {
             let original_output = layer.forward(&x);
 
             // Save and load
-            let path = format!("/tmp/prop_forward_test_{}_{}.json", d, rank);
+            let path = format!("/tmp/prop_forward_test_{d}_{rank}.json");
             save_adapter(&layer, rank, 4.0, &path).unwrap();
             let loaded_layer = load_adapter(base_weight, &path).unwrap();
             let loaded_output = loaded_layer.forward(&x);

@@ -533,7 +533,7 @@ mod tests {
         // Create safetensors with 12 layers
         let mut tensors: Vec<(&str, &[usize])> = Vec::new();
         let layer_names: Vec<String> = (0..12)
-            .map(|i| format!("encoder.layer.{}.attention.weight", i))
+            .map(|i| format!("encoder.layer.{i}.attention.weight"))
             .collect();
 
         for name in &layer_names {

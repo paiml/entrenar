@@ -208,8 +208,8 @@ fn test_full_training_lifecycle() {
 
     // Simulate training loop
     for epoch in 0..3 {
-        let loss = 1.0 / (epoch as f64 + 1.0);
-        let accuracy = 0.5 + (epoch as f64 * 0.15);
+        let loss = 1.0 / (f64::from(epoch) + 1.0);
+        let accuracy = 0.5 + (f64::from(epoch) * 0.15);
 
         run.log_metric("train_loss", loss).unwrap();
         run.log_metric("train_accuracy", accuracy).unwrap();

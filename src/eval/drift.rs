@@ -586,7 +586,7 @@ mod tests {
         let mut detector = DriftDetector::new(vec![DriftTest::KS { threshold: 0.05 }]);
 
         // Same distribution should not drift
-        let data: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let data: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&data);
 
         let results = detector.check(&data);
@@ -599,11 +599,11 @@ mod tests {
         let mut detector = DriftDetector::new(vec![DriftTest::KS { threshold: 0.05 }]);
 
         // Baseline: uniform 0-100
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&baseline);
 
         // Current: shifted by 50
-        let current: Vec<Vec<f64>> = (50..150).map(|i| vec![i as f64]).collect();
+        let current: Vec<Vec<f64>> = (50..150).map(|i| vec![f64::from(i)]).collect();
         let results = detector.check(&current);
 
         assert_eq!(results.len(), 1);
@@ -615,7 +615,7 @@ mod tests {
     fn test_psi_no_drift() {
         let mut detector = DriftDetector::new(vec![DriftTest::PSI { threshold: 0.2 }]);
 
-        let data: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let data: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&data);
 
         let results = detector.check(&data);
@@ -629,11 +629,11 @@ mod tests {
         let mut detector = DriftDetector::new(vec![DriftTest::PSI { threshold: 0.1 }]);
 
         // Baseline: all values in [0, 10)
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![(i % 10) as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i % 10)]).collect();
         detector.set_baseline(&baseline);
 
         // Current: all values in [90, 100) - completely different distribution
-        let current: Vec<Vec<f64>> = (0..100).map(|i| vec![90.0 + (i % 10) as f64]).collect();
+        let current: Vec<Vec<f64>> = (0..100).map(|i| vec![90.0 + f64::from(i % 10)]).collect();
         let results = detector.check(&current);
 
         assert_eq!(results.len(), 1);
@@ -743,7 +743,9 @@ mod tests {
         let mut detector = DriftDetector::new(vec![DriftTest::KS { threshold: 0.05 }]);
 
         // 2 features
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64, (i * 2) as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100)
+            .map(|i| vec![f64::from(i), f64::from(i * 2)])
+            .collect();
         detector.set_baseline(&baseline);
 
         let results = detector.check(&baseline);
@@ -766,7 +768,7 @@ mod tests {
         });
 
         // Baseline: uniform 0-100
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&baseline);
 
         // Same distribution - should not trigger callback
@@ -774,7 +776,7 @@ mod tests {
         assert_eq!(callback_count.load(Ordering::SeqCst), 0);
 
         // Shifted distribution - should trigger callback
-        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![i as f64]).collect();
+        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
         let _ = detector.check_and_trigger(&shifted);
         assert_eq!(callback_count.load(Ordering::SeqCst), 1);
     }
@@ -783,7 +785,7 @@ mod tests {
     fn test_check_and_trigger_no_drift() {
         let mut detector = DriftDetector::new(vec![DriftTest::PSI { threshold: 0.2 }]);
 
-        let data: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let data: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&data);
 
         // Same data should not trigger

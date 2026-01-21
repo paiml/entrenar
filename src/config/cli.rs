@@ -2003,7 +2003,7 @@ mod property_tests {
             config in config_path_strategy(),
             lr in 1e-10f32..1.0
         ) {
-            let lr_str = format!("{:.10}", lr);
+            let lr_str = format!("{lr:.10}");
             let result = parse_args([
                 "entrenar", "train", &config,
                 "--lr", &lr_str,
@@ -2065,7 +2065,7 @@ mod property_tests {
         fn prop_merge_weight_valid(
             weight in 0.0f32..=1.0
         ) {
-            let weight_str = format!("{:.4}", weight);
+            let weight_str = format!("{weight:.4}");
             let result = parse_args([
                 "entrenar", "merge",
                 "model1.gguf", "model2.gguf",
@@ -2123,7 +2123,7 @@ mod property_tests {
             model_count in 2usize..=5
         ) {
             let mut args: Vec<String> = vec!["entrenar".to_string(), "merge".to_string()];
-            let models: Vec<String> = (0..model_count).map(|i| format!("model{}.gguf", i)).collect();
+            let models: Vec<String> = (0..model_count).map(|i| format!("model{i}.gguf")).collect();
             for m in &models {
                 args.push(m.clone());
             }

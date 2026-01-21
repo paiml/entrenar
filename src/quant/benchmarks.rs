@@ -407,7 +407,7 @@ mod tests {
 
         // Mean should be approximately 0
         let mean: f32 = weights.iter().sum::<f32>() / weights.len() as f32;
-        assert!(mean.abs() < 0.2, "Mean {} should be close to 0", mean);
+        assert!(mean.abs() < 0.2, "Mean {mean} should be close to 0");
 
         // Std dev should be approximately 1
         let variance: f32 =
@@ -415,8 +415,7 @@ mod tests {
         let std_dev = variance.sqrt();
         assert!(
             (std_dev - 1.0).abs() < 0.3,
-            "Std dev {} should be close to 1",
-            std_dev
+            "Std dev {std_dev} should be close to 1"
         );
     }
 
@@ -427,7 +426,7 @@ mod tests {
         assert_eq!(weights.len(), 1000);
 
         for &w in &weights {
-            assert!(w >= -1.0 && w <= 1.0, "Weight {} out of range", w);
+            assert!((-1.0..=1.0).contains(&w), "Weight {w} out of range");
         }
     }
 
@@ -476,9 +475,7 @@ mod tests {
 
         assert!(
             mse_8bit <= mse_4bit,
-            "8-bit MSE ({}) should be <= 4-bit MSE ({})",
-            mse_8bit,
-            mse_4bit
+            "8-bit MSE ({mse_8bit}) should be <= 4-bit MSE ({mse_4bit})"
         );
     }
 

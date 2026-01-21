@@ -221,7 +221,7 @@ mod tests {
         let config = RetrainConfig::default();
         let mut retrainer = AutoRetrainer::new(detector, config);
 
-        let batch: Vec<Vec<f64>> = (0..10).map(|i| vec![i as f64]).collect();
+        let batch: Vec<Vec<f64>> = (0..10).map(|i| vec![f64::from(i)]).collect();
         let action = retrainer.process_batch(&batch).unwrap();
 
         assert_eq!(action, Action::None);
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn test_auto_retrainer_no_drift() {
         let mut detector = create_detector();
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&baseline);
 
         let config = RetrainConfig {
@@ -250,7 +250,7 @@ mod tests {
         use std::sync::Arc;
 
         let mut detector = create_detector();
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&baseline);
 
         let config = RetrainConfig {
@@ -268,7 +268,7 @@ mod tests {
         });
 
         // Shifted distribution should trigger
-        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![i as f64]).collect();
+        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
         let action = retrainer.process_batch(&shifted).unwrap();
 
         assert!(matches!(action, Action::RetrainTriggered(_)));
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn test_cooldown_prevents_retrain() {
         let mut detector = create_detector();
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&baseline);
 
         let config = RetrainConfig {
@@ -293,7 +293,7 @@ mod tests {
         retrainer.reset_cooldown();
 
         // First batch with drift should trigger
-        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![i as f64]).collect();
+        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
         let action1 = retrainer.process_batch(&shifted).unwrap();
         assert!(matches!(action1, Action::RetrainTriggered(_)));
 
@@ -305,7 +305,7 @@ mod tests {
     #[test]
     fn test_max_retrains_limit() {
         let mut detector = create_detector();
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&baseline);
 
         let config = RetrainConfig {
@@ -317,7 +317,7 @@ mod tests {
 
         retrainer.on_retrain(|_| Ok("job".to_string()));
 
-        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![i as f64]).collect();
+        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
 
         // First two should trigger
         assert!(matches!(
@@ -339,7 +339,9 @@ mod tests {
     #[test]
     fn test_feature_count_policy() {
         let mut detector = DriftDetector::new(vec![DriftTest::KS { threshold: 0.05 }]);
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64, i as f64 * 2.0]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100)
+            .map(|i| vec![f64::from(i), f64::from(i) * 2.0])
+            .collect();
         detector.set_baseline(&baseline);
 
         let config = RetrainConfig {
@@ -352,7 +354,9 @@ mod tests {
         retrainer.on_retrain(|_| Ok("job".to_string()));
 
         // Both features shifted - should trigger
-        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![i as f64, i as f64 * 2.0]).collect();
+        let shifted: Vec<Vec<f64>> = (100..200)
+            .map(|i| vec![f64::from(i), f64::from(i) * 2.0])
+            .collect();
         let action = retrainer.process_batch(&shifted).unwrap();
         assert!(matches!(action, Action::RetrainTriggered(_)));
     }
@@ -387,7 +391,7 @@ mod tests {
         use std::time::Instant;
 
         let mut detector = create_detector();
-        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![i as f64]).collect();
+        let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
         detector.set_baseline(&baseline);
 
         let config = RetrainConfig {
@@ -404,7 +408,7 @@ mod tests {
         let start_clone = Arc::clone(&callback_start);
 
         retrainer.on_retrain(move |_results| {
-            if let Ok(mut guard) = start_clone.lock() {
+            if let Ok(guard) = start_clone.lock() {
                 if let Some(start) = *guard {
                     let elapsed = start.elapsed().as_nanos() as u64;
                     latency_clone.store(elapsed, Ordering::SeqCst);
@@ -415,7 +419,7 @@ mod tests {
 
         // Record start time and process drifted batch
         *callback_start.lock().unwrap() = Some(Instant::now());
-        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![i as f64]).collect();
+        let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
         let action = retrainer.process_batch(&shifted).unwrap();
 
         assert!(matches!(action, Action::RetrainTriggered(_)));
@@ -424,8 +428,7 @@ mod tests {
         let latency = latency_ns.load(Ordering::SeqCst);
         assert!(
             latency < 10_000_000,
-            "Callback latency {}ns exceeds 10ms requirement",
-            latency
+            "Callback latency {latency}ns exceeds 10ms requirement"
         );
     }
 }

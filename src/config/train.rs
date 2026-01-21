@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_load_valid_config() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: model.gguf
   layers: []
@@ -188,7 +188,7 @@ data:
 optimizer:
   name: adam
   lr: 0.001
-"#;
+";
 
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(yaml.as_bytes()).unwrap();
@@ -200,7 +200,7 @@ optimizer:
 
     #[test]
     fn test_load_invalid_config() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: model.gguf
 
@@ -211,7 +211,7 @@ data:
 optimizer:
   name: adam
   lr: 0.001
-"#;
+";
 
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(yaml.as_bytes()).unwrap();
@@ -239,7 +239,7 @@ optimizer:
 
     #[test]
     fn test_load_config_with_lora() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: model.gguf
   layers: [q_proj, v_proj]
@@ -256,7 +256,7 @@ lora:
   rank: 16
   alpha: 32
   target_modules: [q_proj, v_proj]
-"#;
+";
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(yaml.as_bytes()).unwrap();
 
@@ -269,7 +269,7 @@ lora:
 
     #[test]
     fn test_load_config_with_quantize() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: model.gguf
   layers: []
@@ -285,7 +285,7 @@ optimizer:
 quantize:
   bits: 4
   symmetric: true
-"#;
+";
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(yaml.as_bytes()).unwrap();
 
@@ -297,7 +297,7 @@ quantize:
 
     #[test]
     fn test_load_config_with_training_options() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: model.gguf
   layers: []
@@ -313,7 +313,7 @@ optimizer:
 training:
   epochs: 5
   grad_clip: 1.0
-"#;
+";
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(yaml.as_bytes()).unwrap();
 
@@ -478,7 +478,7 @@ training:
 
     #[test]
     fn test_train_from_yaml_invalid_config() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: model.gguf
 
@@ -489,7 +489,7 @@ data:
 optimizer:
   name: adam
   lr: 0.001
-"#;
+";
         let mut temp_file = NamedTempFile::new().unwrap();
         temp_file.write_all(yaml.as_bytes()).unwrap();
 

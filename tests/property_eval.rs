@@ -52,7 +52,7 @@ proptest! {
         let acc = cm.accuracy();
 
         prop_assert!(
-            acc >= 0.0 && acc <= 1.0,
+            (0.0..=1.0).contains(&acc),
             "Accuracy {} not in [0, 1]",
             acc
         );
@@ -91,7 +91,7 @@ proptest! {
         for avg in [Average::Macro, Average::Micro, Average::Weighted] {
             let p = metrics.precision_avg(avg);
             prop_assert!(
-                p >= 0.0 && p <= 1.0,
+                (0.0..=1.0).contains(&p),
                 "Precision({:?}) {} not in [0, 1]",
                 avg, p
             );
@@ -113,7 +113,7 @@ proptest! {
         for avg in [Average::Macro, Average::Micro, Average::Weighted] {
             let r = metrics.recall_avg(avg);
             prop_assert!(
-                r >= 0.0 && r <= 1.0,
+                (0.0..=1.0).contains(&r),
                 "Recall({:?}) {} not in [0, 1]",
                 avg, r
             );
@@ -135,7 +135,7 @@ proptest! {
         for avg in [Average::Macro, Average::Micro, Average::Weighted] {
             let f1 = metrics.f1_avg(avg);
             prop_assert!(
-                f1 >= 0.0 && f1 <= 1.0,
+                (0.0..=1.0).contains(&f1),
                 "F1({:?}) {} not in [0, 1]",
                 avg, f1
             );
@@ -162,7 +162,7 @@ proptest! {
         // All should be in [0, 1] and not NaN
         for (name, f1) in [("Macro", f1_macro), ("Micro", f1_micro), ("Weighted", f1_weighted)] {
             prop_assert!(
-                f1 >= 0.0 && f1 <= 1.0,
+                (0.0..=1.0).contains(&f1),
                 "F1({}) {} not in [0, 1]",
                 name, f1
             );
@@ -253,9 +253,9 @@ proptest! {
         let evaluator = ModelEvaluator::new(config);
         let result = evaluator.evaluate_classification("test", &y_pred, &y_true).unwrap();
 
-        for (metric, &score) in result.scores.iter() {
+        for (metric, &score) in &result.scores {
             prop_assert!(
-                score >= 0.0 && score <= 1.0,
+                (0.0..=1.0).contains(&score),
                 "Metric {:?} = {} not in [0, 1]",
                 metric, score
             );

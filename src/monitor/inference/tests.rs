@@ -9,7 +9,7 @@ use proptest::prelude::*;
 // Test Helpers
 // =============================================================================
 
-fn arb_linear_path() -> impl Strategy<Value = path::LinearPath> {
+fn arb_linear_path() -> impl Strategy<Value = LinearPath> {
     (
         prop::collection::vec(-10.0f32..10.0, 1..20), // contributions
         -10.0f32..10.0,                               // intercept
@@ -19,7 +19,7 @@ fn arb_linear_path() -> impl Strategy<Value = path::LinearPath> {
     )
         .prop_map(
             |(contributions, intercept, logit, prediction, probability)| {
-                let mut path = path::LinearPath::new(contributions, intercept, logit, prediction);
+                let mut path = LinearPath::new(contributions, intercept, logit, prediction);
                 if let Some(prob) = probability {
                     path = path.with_probability(prob.abs().min(1.0));
                 }
@@ -28,24 +28,22 @@ fn arb_linear_path() -> impl Strategy<Value = path::LinearPath> {
         )
 }
 
-fn arb_tree_split() -> impl Strategy<Value = path::TreeSplit> {
+fn arb_tree_split() -> impl Strategy<Value = TreeSplit> {
     (
         0..100usize,      // feature_idx
         -100.0f32..100.0, // threshold
         any::<bool>(),    // went_left
         1..10000usize,    // n_samples
     )
-        .prop_map(
-            |(feature_idx, threshold, went_left, n_samples)| path::TreeSplit {
-                feature_idx,
-                threshold,
-                went_left,
-                n_samples,
-            },
-        )
+        .prop_map(|(feature_idx, threshold, went_left, n_samples)| TreeSplit {
+            feature_idx,
+            threshold,
+            went_left,
+            n_samples,
+        })
 }
 
-fn arb_tree_path() -> impl Strategy<Value = path::TreePath> {
+fn arb_tree_path() -> impl Strategy<Value = TreePath> {
     (
         prop::collection::vec(arb_tree_split(), 0..10), // splits
         -10.0f32..10.0,                                 // prediction
@@ -53,16 +51,16 @@ fn arb_tree_path() -> impl Strategy<Value = path::TreePath> {
         prop::option::of(prop::collection::vec(0.0f32..1.0, 2..10)), // class_dist
     )
         .prop_map(|(splits, prediction, n_samples, class_distribution)| {
-            let leaf = path::LeafInfo {
+            let leaf = LeafInfo {
                 prediction,
                 n_samples,
                 class_distribution,
             };
-            path::TreePath::new(splits, leaf)
+            TreePath::new(splits, leaf)
         })
 }
 
-fn arb_decision_trace() -> impl Strategy<Value = trace::DecisionTrace<path::LinearPath>> {
+fn arb_decision_trace() -> impl Strategy<Value = DecisionTrace<LinearPath>> {
     (
         arb_linear_path(),
         0..u64::MAX,     // timestamp_ns
@@ -73,14 +71,7 @@ fn arb_decision_trace() -> impl Strategy<Value = trace::DecisionTrace<path::Line
     )
         .prop_map(
             |(path, timestamp_ns, sequence, input_hash, output, latency_ns)| {
-                trace::DecisionTrace::new(
-                    timestamp_ns,
-                    sequence,
-                    input_hash,
-                    path,
-                    output,
-                    latency_ns,
-                )
+                DecisionTrace::new(timestamp_ns, sequence, input_hash, path, output, latency_ns)
             },
         )
 }
@@ -95,7 +86,7 @@ proptest! {
     #[test]
     fn prop_linear_path_serialization_roundtrip(path in arb_linear_path()) {
         let bytes = path.to_bytes();
-        let restored = path::LinearPath::from_bytes(&bytes).expect("Deserialization failed");
+        let restored = LinearPath::from_bytes(&bytes).expect("Deserialization failed");
 
         prop_assert_eq!(path.contributions.len(), restored.contributions.len());
         for (a, b) in path.contributions.iter().zip(restored.contributions.iter()) {
@@ -147,7 +138,7 @@ proptest! {
     #[test]
     fn prop_tree_path_serialization_roundtrip(path in arb_tree_path()) {
         let bytes = path.to_bytes();
-        let restored = path::TreePath::from_bytes(&bytes).expect("Deserialization failed");
+        let restored = TreePath::from_bytes(&bytes).expect("Deserialization failed");
 
         prop_assert_eq!(path.splits.len(), restored.splits.len());
         prop_assert_eq!(path.depth(), restored.depth());
@@ -178,8 +169,8 @@ proptest! {
     #[test]
     fn prop_decision_trace_serialization_roundtrip(trace in arb_decision_trace()) {
         let bytes = trace.to_bytes();
-        let restored: trace::DecisionTrace<path::LinearPath> =
-            trace::DecisionTrace::from_bytes(&bytes).expect("Deserialization failed");
+        let restored: DecisionTrace<LinearPath> =
+            DecisionTrace::from_bytes(&bytes).expect("Deserialization failed");
 
         prop_assert_eq!(trace.timestamp_ns, restored.timestamp_ns);
         prop_assert_eq!(trace.sequence, restored.sequence);
@@ -211,7 +202,7 @@ proptest! {
 
     #[test]
     fn prop_ring_collector_bounded(traces in prop::collection::vec(arb_decision_trace(), 0..100)) {
-        let mut collector = collector::RingCollector::<path::LinearPath, 32>::new();
+        let mut collector = RingCollector::<LinearPath, 32>::new();
 
         for trace in traces {
             collector.record(trace);
@@ -222,7 +213,7 @@ proptest! {
 
     #[test]
     fn prop_ring_collector_recent_order(traces in prop::collection::vec(arb_decision_trace(), 1..50)) {
-        let mut collector = collector::RingCollector::<path::LinearPath, 64>::new();
+        let mut collector = RingCollector::<LinearPath, 64>::new();
 
         for trace in &traces {
             collector.record(trace.clone());
@@ -242,11 +233,11 @@ proptest! {
 
     #[test]
     fn prop_ring_collector_all_preserves_order(n_traces in 1..20usize) {
-        let mut collector = collector::RingCollector::<path::LinearPath, 64>::new();
+        let mut collector = RingCollector::<LinearPath, 64>::new();
 
         for i in 0..n_traces {
-            let path = path::LinearPath::new(vec![i as f32], 0.0, 0.0, 0.0);
-            let trace = trace::DecisionTrace::new(0, i as u64, 0, path, 0.0, 0);
+            let path = LinearPath::new(vec![i as f32], 0.0, 0.0, 0.0);
+            let trace = DecisionTrace::new(0, i as u64, 0, path, 0.0, 0);
             collector.record(trace);
         }
 
@@ -268,7 +259,7 @@ proptest! {
 
     #[test]
     fn prop_hash_chain_integrity(traces in prop::collection::vec(arb_decision_trace(), 1..20)) {
-        let mut collector = collector::HashChainCollector::<path::LinearPath>::new();
+        let mut collector = HashChainCollector::<LinearPath>::new();
 
         for trace in traces {
             collector.record(trace);
@@ -280,7 +271,7 @@ proptest! {
 
     #[test]
     fn prop_hash_chain_sequence_monotonic(traces in prop::collection::vec(arb_decision_trace(), 1..20)) {
-        let mut collector = collector::HashChainCollector::<path::LinearPath>::new();
+        let mut collector = HashChainCollector::<LinearPath>::new();
 
         for trace in traces {
             collector.record(trace);
@@ -294,7 +285,7 @@ proptest! {
 
     #[test]
     fn prop_hash_chain_linking(traces in prop::collection::vec(arb_decision_trace(), 2..10)) {
-        let mut collector = collector::HashChainCollector::<path::LinearPath>::new();
+        let mut collector = HashChainCollector::<LinearPath>::new();
 
         for trace in traces {
             collector.record(trace);
@@ -334,7 +325,7 @@ proptest! {
             .map(|(o, d)| o + d)
             .collect();
 
-        let cf = counterfactual::Counterfactual::new(
+        let cf = Counterfactual::new(
             original.clone(),
             0,
             0.9,
@@ -363,7 +354,7 @@ proptest! {
             .map(|(o, d)| o + d)
             .collect();
 
-        let cf = counterfactual::Counterfactual::new(
+        let cf = Counterfactual::new(
             original,
             0,
             0.9,
@@ -373,7 +364,7 @@ proptest! {
         );
 
         let bytes = cf.to_bytes();
-        let restored = counterfactual::Counterfactual::from_bytes(&bytes)
+        let restored = Counterfactual::from_bytes(&bytes)
             .expect("Deserialization failed");
 
         prop_assert_eq!(cf.original_decision, restored.original_decision);
@@ -391,12 +382,12 @@ proptest! {
 
     #[test]
     fn prop_binary_serialization_roundtrip(trace in arb_decision_trace()) {
-        let serializer = serialization::TraceSerializer::new(serialization::TraceFormat::Binary);
+        let serializer = TraceSerializer::new(TraceFormat::Binary);
 
-        let bytes = serializer.serialize(&trace, serialization::PathType::Linear)
+        let bytes = serializer.serialize(&trace, PathType::Linear)
             .expect("Serialization failed");
 
-        let restored: trace::DecisionTrace<path::LinearPath> = serializer.deserialize(&bytes)
+        let restored: DecisionTrace<LinearPath> = serializer.deserialize(&bytes)
             .expect("Deserialization failed");
 
         prop_assert_eq!(trace.sequence, restored.sequence);
@@ -405,12 +396,12 @@ proptest! {
 
     #[test]
     fn prop_json_serialization_roundtrip(trace in arb_decision_trace()) {
-        let serializer = serialization::TraceSerializer::new(serialization::TraceFormat::Json);
+        let serializer = TraceSerializer::new(TraceFormat::Json);
 
-        let bytes = serializer.serialize(&trace, serialization::PathType::Linear)
+        let bytes = serializer.serialize(&trace, PathType::Linear)
             .expect("Serialization failed");
 
-        let restored: trace::DecisionTrace<path::LinearPath> = serializer.deserialize(&bytes)
+        let restored: DecisionTrace<LinearPath> = serializer.deserialize(&bytes)
             .expect("Deserialization failed");
 
         prop_assert_eq!(trace.sequence, restored.sequence);
@@ -464,11 +455,11 @@ proptest! {
     #[test]
     fn prop_safety_andon_confidence_thresholds(
         sil in prop_oneof![
-            Just(safety_andon::SafetyIntegrityLevel::QM),
-            Just(safety_andon::SafetyIntegrityLevel::SIL1),
-            Just(safety_andon::SafetyIntegrityLevel::SIL2),
-            Just(safety_andon::SafetyIntegrityLevel::SIL3),
-            Just(safety_andon::SafetyIntegrityLevel::SIL4),
+            Just(SafetyIntegrityLevel::QM),
+            Just(SafetyIntegrityLevel::SIL1),
+            Just(SafetyIntegrityLevel::SIL2),
+            Just(SafetyIntegrityLevel::SIL3),
+            Just(SafetyIntegrityLevel::SIL4),
         ]
     ) {
         let confidence = sil.min_confidence();
@@ -479,11 +470,11 @@ proptest! {
     #[test]
     fn prop_safety_andon_latency_thresholds(
         sil in prop_oneof![
-            Just(safety_andon::SafetyIntegrityLevel::QM),
-            Just(safety_andon::SafetyIntegrityLevel::SIL1),
-            Just(safety_andon::SafetyIntegrityLevel::SIL2),
-            Just(safety_andon::SafetyIntegrityLevel::SIL3),
-            Just(safety_andon::SafetyIntegrityLevel::SIL4),
+            Just(SafetyIntegrityLevel::QM),
+            Just(SafetyIntegrityLevel::SIL1),
+            Just(SafetyIntegrityLevel::SIL2),
+            Just(SafetyIntegrityLevel::SIL3),
+            Just(SafetyIntegrityLevel::SIL4),
         ]
     ) {
         let latency = sil.max_latency_ns();
@@ -500,12 +491,12 @@ proptest! {
 
     #[test]
     fn prop_provenance_graph_node_ids_unique(n_nodes in 1..50usize) {
-        let mut graph = provenance::ProvenanceGraph::new();
+        let mut graph = ProvenanceGraph::new();
         let mut ids = Vec::with_capacity(n_nodes);
 
         for i in 0..n_nodes {
-            let id = graph.add_node(provenance::ProvenanceNode::Input {
-                source: format!("source_{}", i),
+            let id = graph.add_node(ProvenanceNode::Input {
+                source: format!("source_{i}"),
                 timestamp_ns: i as u64 * 1000,
                 hash: i as u64,
             });
@@ -519,12 +510,12 @@ proptest! {
 
     #[test]
     fn prop_provenance_graph_edge_consistency(n_nodes in 2..20usize) {
-        let mut graph = provenance::ProvenanceGraph::new();
+        let mut graph = ProvenanceGraph::new();
         let mut ids = Vec::with_capacity(n_nodes);
 
         for i in 0..n_nodes {
-            let id = graph.add_node(provenance::ProvenanceNode::Input {
-                source: format!("source_{}", i),
+            let id = graph.add_node(ProvenanceNode::Input {
+                source: format!("source_{i}"),
                 timestamp_ns: i as u64 * 1000,
                 hash: i as u64,
             });
@@ -533,10 +524,10 @@ proptest! {
 
         // Add edges in a chain
         for i in 1..n_nodes {
-            graph.add_edge(provenance::ProvenanceEdge {
+            graph.add_edge(ProvenanceEdge {
                 from: ids[i-1],
                 to: ids[i],
-                relation: provenance::CausalRelation::DataFlow,
+                relation: CausalRelation::DataFlow,
                 timestamp_ns: i as u64 * 1000,
             });
         }
@@ -550,4 +541,227 @@ proptest! {
             prop_assert!(succs.contains(&ids[i]), "Missing successor at {}", i-1);
         }
     }
+}
+
+// =============================================================================
+// Utility Function Tests
+// =============================================================================
+
+#[test]
+fn test_monotonic_ns_increasing() {
+    let ts1 = monotonic_ns();
+    std::thread::sleep(std::time::Duration::from_micros(100));
+    let ts2 = monotonic_ns();
+    assert!(
+        ts2 > ts1,
+        "monotonic_ns should be strictly increasing over time"
+    );
+}
+
+#[test]
+fn test_monotonic_ns_non_zero() {
+    // The first call might be 0 if called at exactly initialization time
+    // but subsequent calls should not be 0
+    std::thread::sleep(std::time::Duration::from_micros(1));
+    let ts = monotonic_ns();
+    assert!(
+        ts > 0,
+        "monotonic_ns should return a positive value after initialization"
+    );
+}
+
+#[test]
+fn test_fnv1a_hash_empty() {
+    let hash = fnv1a_hash(&[]);
+    assert_eq!(
+        hash, 0xcbf29ce484222325,
+        "Empty input should return FNV offset basis"
+    );
+}
+
+#[test]
+fn test_fnv1a_hash_deterministic() {
+    let data = b"hello world";
+    let hash1 = fnv1a_hash(data);
+    let hash2 = fnv1a_hash(data);
+    assert_eq!(hash1, hash2, "Same input should produce same hash");
+}
+
+#[test]
+fn test_fnv1a_hash_different_inputs() {
+    let hash1 = fnv1a_hash(b"hello");
+    let hash2 = fnv1a_hash(b"world");
+    assert_ne!(
+        hash1, hash2,
+        "Different inputs should produce different hashes"
+    );
+}
+
+#[test]
+fn test_fnv1a_hash_single_byte() {
+    let hash = fnv1a_hash(&[0x61]); // 'a'
+    assert_ne!(hash, 0xcbf29ce484222325, "Single byte should change hash");
+}
+
+#[test]
+fn test_hash_features_deterministic() {
+    let features = [1.0f32, 2.0, 3.0, 4.0, 5.0];
+    let hash1 = hash_features(&features);
+    let hash2 = hash_features(&features);
+    assert_eq!(hash1, hash2, "Same features should produce same hash");
+}
+
+#[test]
+fn test_hash_features_different_inputs() {
+    let features1 = [1.0f32, 2.0, 3.0];
+    let features2 = [1.0f32, 2.0, 4.0];
+    let hash1 = hash_features(&features1);
+    let hash2 = hash_features(&features2);
+    assert_ne!(
+        hash1, hash2,
+        "Different features should produce different hashes"
+    );
+}
+
+#[test]
+fn test_hash_features_empty() {
+    let features: [f32; 0] = [];
+    let hash = hash_features(&features);
+    assert_eq!(
+        hash, 0xcbf29ce484222325,
+        "Empty features should return FNV offset basis"
+    );
+}
+
+// =============================================================================
+// InferenceMonitor Tests
+// =============================================================================
+
+// Mock model for testing InferenceMonitor
+struct MockModel;
+
+impl Explainable for MockModel {
+    type Path = LinearPath;
+
+    fn predict_explained(&self, x: &[f32], n_samples: usize) -> (Vec<f32>, Vec<Self::Path>) {
+        let features_per_sample = x.len() / n_samples;
+        let mut outputs = Vec::with_capacity(n_samples);
+        let mut paths = Vec::with_capacity(n_samples);
+
+        for i in 0..n_samples {
+            let start = i * features_per_sample;
+            let sample = &x[start..start + features_per_sample];
+            let output: f32 = sample.iter().sum();
+            outputs.push(output);
+            paths.push(LinearPath::new(sample.to_vec(), 0.0, output, output));
+        }
+
+        (outputs, paths)
+    }
+
+    fn explain_one(&self, sample: &[f32]) -> Self::Path {
+        let output: f32 = sample.iter().sum();
+        LinearPath::new(sample.to_vec(), 0.0, output, output)
+    }
+}
+
+#[test]
+fn test_inference_monitor_creation() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let monitor = InferenceMonitor::new(model, collector);
+    assert_eq!(monitor.sequence(), 0);
+}
+
+#[test]
+fn test_inference_monitor_with_latency_budget() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let monitor = InferenceMonitor::new(model, collector).with_latency_budget_ns(5_000_000);
+    assert_eq!(monitor.sequence(), 0);
+}
+
+#[test]
+fn test_inference_monitor_with_andon() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let andon = SafetyAndon::new(SafetyIntegrityLevel::SIL2);
+    let monitor = InferenceMonitor::new(model, collector).with_andon(andon);
+    assert_eq!(monitor.sequence(), 0);
+}
+
+#[test]
+fn test_inference_monitor_predict() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let mut monitor = InferenceMonitor::new(model, collector);
+
+    let features = [1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
+    let n_samples = 2;
+
+    let outputs = monitor.predict(&features, n_samples);
+
+    assert_eq!(outputs.len(), 2);
+    assert_eq!(outputs[0], 6.0); // 1 + 2 + 3
+    assert_eq!(outputs[1], 15.0); // 4 + 5 + 6
+    assert_eq!(monitor.sequence(), 2);
+}
+
+#[test]
+fn test_inference_monitor_model_accessor() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let monitor = InferenceMonitor::new(model, collector);
+
+    let _model_ref = monitor.model();
+}
+
+#[test]
+fn test_inference_monitor_collector_accessor() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let monitor = InferenceMonitor::new(model, collector);
+
+    let _collector_ref = monitor.collector();
+}
+
+#[test]
+fn test_inference_monitor_collector_mut_accessor() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let mut monitor = InferenceMonitor::new(model, collector);
+
+    let _collector_ref = monitor.collector_mut();
+}
+
+#[test]
+fn test_inference_monitor_traces_are_recorded() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let mut monitor = InferenceMonitor::new(model, collector);
+
+    let features = [1.0f32, 2.0, 3.0];
+    monitor.predict(&features, 1);
+
+    let traces = monitor.collector().all();
+    assert_eq!(traces.len(), 1);
+    assert_eq!(traces[0].output, 6.0);
+}
+
+#[test]
+fn test_inference_monitor_multiple_predictions() {
+    let model = MockModel;
+    let collector = RingCollector::<LinearPath, 64>::new();
+    let mut monitor = InferenceMonitor::new(model, collector);
+
+    // First batch
+    monitor.predict(&[1.0, 2.0, 3.0], 1);
+    assert_eq!(monitor.sequence(), 1);
+
+    // Second batch
+    monitor.predict(&[4.0, 5.0, 6.0], 1);
+    assert_eq!(monitor.sequence(), 2);
+
+    let traces = monitor.collector().all();
+    assert_eq!(traces.len(), 2);
 }

@@ -133,17 +133,18 @@ impl GpuMnistModel {
     }
 
     /// GPU-accelerated forward pass
+    #[allow(dead_code)]
     async fn forward_gpu(
         &self,
         batch: &mut GpuCommandBatch,
         input: &[f32],
     ) -> Result<Vec<f32>, String> {
         // Upload data to GPU
-        let input_buf = batch.upload(input);
-        let w1_buf = batch.upload(&self.w1);
-        let b1_buf = batch.upload(&self.b1);
-        let w2_buf = batch.upload(&self.w2);
-        let b2_buf = batch.upload(&self.b2);
+        let _input_buf = batch.upload(input);
+        let _w1_buf = batch.upload(&self.w1);
+        let _b1_buf = batch.upload(&self.b1);
+        let _w2_buf = batch.upload(&self.w2);
+        let _b2_buf = batch.upload(&self.b2);
 
         // Layer 1: hidden = ReLU(input @ W1 + b1)
         // For simplicity, we do element-wise ops (full matmul would need custom shader)
@@ -170,7 +171,7 @@ impl GpuMnistModel {
         }
 
         // Output layer with softmax
-        let mut output = vec![0.0; 10];
+        let mut output = [0.0; 10];
         for o in 0..10 {
             let mut sum = self.b2[o];
             for h in 0..64 {
@@ -179,7 +180,7 @@ impl GpuMnistModel {
             output[o] = sum;
         }
 
-        let max_val = output.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = output.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = output.iter().map(|x| (x - max_val).exp()).sum();
         output
             .iter()
@@ -201,7 +202,7 @@ impl GpuMnistModel {
             hidden[h] = sum.max(0.0);
         }
 
-        let mut output = vec![0.0; 10];
+        let mut output = [0.0; 10];
         for o in 0..10 {
             let mut sum = self.b2[o];
             for h in 0..64 {
@@ -211,7 +212,7 @@ impl GpuMnistModel {
         }
 
         // Softmax
-        let max_val = output.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = output.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_vals: Vec<f32> = output.iter().map(|x| (x - max_val).exp()).collect();
         let exp_sum: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|x| x / exp_sum).collect();
@@ -269,7 +270,7 @@ async fn main() -> Result<(), String> {
 
     if gpu_available {
         println!("✅ GPU detected - wgpu backend available (Vulkan/Metal/DX12)");
-        let device = GpuDevice::new()?;
+        let _device = GpuDevice::new()?;
         println!("   Device initialized successfully\n");
     } else {
         println!("⚠️  GPU not available - falling back to CPU with SIMD");
@@ -415,18 +416,12 @@ async fn main() -> Result<(), String> {
             training_duration.as_secs(),
             remaining
         );
-        println!(
-            "│ Throughput: {:.0} samples/sec  │  GPU ops: {}",
-            throughput, gpu_ops_count
-        );
+        println!("│ Throughput: {throughput:.0} samples/sec  │  GPU ops: {gpu_ops_count}");
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
         println!("┌─ Loss Metrics ──────────────────────────────────────────────┐");
-        let losses: Vec<f32> = metrics_buffer.last_n(25).iter().copied().collect();
-        println!(
-            "│ Train Loss: {:.4}  │  Best Accuracy: {:.1}%",
-            avg_loss, best_accuracy
-        );
+        let losses: Vec<f32> = metrics_buffer.last_n(25).to_vec();
+        println!("│ Train Loss: {avg_loss:.4}  │  Best Accuracy: {best_accuracy:.1}%");
         println!("│ Trend: {}", sparkline(&losses, 25));
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
@@ -450,12 +445,9 @@ async fn main() -> Result<(), String> {
             sys_metrics.memory_total_mb
         );
         if gpu_available {
-            println!("│ GPU:  Active (wgpu) - {} ops executed", gpu_ops_count);
+            println!("│ GPU:  Active (wgpu) - {gpu_ops_count} ops executed");
         } else {
-            println!(
-                "│ GPU:  Not available (CPU fallback with {} SIMD)",
-                simd_level
-            );
+            println!("│ GPU:  Not available (CPU fallback with {simd_level} SIMD)");
         }
         println!("└──────────────────────────────────────────────────────────────┘");
 
@@ -478,11 +470,8 @@ async fn main() -> Result<(), String> {
     }
     let final_accuracy = correct as f32 / test_images.len() as f32 * 100.0;
 
-    println!(
-        "│ Epochs: {}  │  Samples: {}  │  GPU ops: {}",
-        epoch, total_samples, gpu_ops_count
-    );
-    println!("│ Final Accuracy: {:.1}%", final_accuracy);
+    println!("│ Epochs: {epoch}  │  Samples: {total_samples}  │  GPU ops: {gpu_ops_count}");
+    println!("│ Final Accuracy: {final_accuracy:.1}%");
     println!(
         "│ Backend: {}",
         if gpu_available {
@@ -495,7 +484,7 @@ async fn main() -> Result<(), String> {
 
     // Save model
     let model_path = "/tmp/mnist_model_gpu.apr";
-    println!("Saving to {}...", model_path);
+    println!("Saving to {model_path}...");
     let save_opts = SaveOptions::default()
         .with_name("MNIST Classifier (GPU)")
         .with_description(format!(
@@ -506,7 +495,7 @@ async fn main() -> Result<(), String> {
 
     match save(&model, ModelType::NeuralSequential, model_path, save_opts) {
         Ok(()) => println!("✅ Model saved successfully!"),
-        Err(e) => println!("❌ Failed: {}", e),
+        Err(e) => println!("❌ Failed: {e}"),
     }
 
     Ok(())

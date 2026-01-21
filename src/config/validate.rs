@@ -788,7 +788,7 @@ mod property_tests {
         ) {
             let mut spec = spec;
             spec.merge = Some(MergeSpec {
-                method: method.to_string(),
+                method: method.clone(),
                 params: HashMap::new(),
             });
             prop_assert!(validate_config(&spec).is_ok());
@@ -843,7 +843,7 @@ mod property_tests {
             scheduler in prop_oneof!["cosine", "linear", "constant"]
         ) {
             let mut spec = spec;
-            spec.training.lr_scheduler = Some(scheduler.to_string());
+            spec.training.lr_scheduler = Some(scheduler.clone());
             prop_assert!(validate_config(&spec).is_ok());
         }
     }

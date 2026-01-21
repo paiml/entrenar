@@ -544,7 +544,7 @@ mod tests {
         let mut run = Run::new(&exp_id, storage, TracingConfig::disabled()).unwrap();
 
         for i in 0..20 {
-            run.log_metric("loss", 1.0 / (i as f64 + 1.0)).unwrap();
+            run.log_metric("loss", 1.0 / (f64::from(i) + 1.0)).unwrap();
         }
 
         let metrics = run.recent_metrics(5);

@@ -48,9 +48,7 @@ mod ties_properties {
         for (a, b) in r1_data.iter().zip(r2_data.iter()) {
             assert!(
                 (a - b).abs() < 1e-5,
-                "TIES should be permutation-invariant: {} != {}",
-                a,
-                b
+                "TIES should be permutation-invariant: {a} != {b}"
             );
         }
     }
@@ -76,7 +74,7 @@ mod ties_properties {
         for (a, e) in actual.iter().zip(expected.iter()) {
             if a.abs() > 1e-6 {
                 // Non-zero result should match expected sign
-                assert!(a * e > 0.0, "Sign mismatch: {} vs {}", a, e);
+                assert!(a * e > 0.0, "Sign mismatch: {a} vs {e}");
             }
         }
     }
@@ -247,13 +245,13 @@ mod integration_tests {
         let slerp_result = slerp_merge(&models[0], &models[1], &slerp_config).unwrap();
 
         // All should produce reasonable results (no NaN/Inf)
-        for val in ties_result["w"].data().iter() {
+        for val in ties_result["w"].data() {
             assert!(val.is_finite());
         }
-        for val in dare_result["w"].data().iter() {
+        for val in dare_result["w"].data() {
             assert!(val.is_finite());
         }
-        for val in slerp_result["w"].data().iter() {
+        for val in slerp_result["w"].data() {
             assert!(val.is_finite());
         }
     }

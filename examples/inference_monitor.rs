@@ -177,7 +177,7 @@ fn main() {
         } else {
             "RETREAT"
         };
-        println!("  Frame {}: input={:?}", i, input);
+        println!("  Frame {i}: input={input:?}");
         println!("           output={:.3} -> {}", outputs[0], decision);
         println!("           confidence={:.1}%", trace.confidence() * 100.0);
         println!("           latency={}ns", trace.latency_ns);
@@ -212,7 +212,7 @@ fn main() {
     println!("Decision tree predictions:");
     for input in &test_inputs {
         let outputs = tree_monitor.predict(input, 1);
-        println!("  Input: {:?}", input);
+        println!("  Input: {input:?}");
         println!("  Prediction: {:.3}", outputs[0]);
         println!();
     }

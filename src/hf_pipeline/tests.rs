@@ -182,8 +182,7 @@ fn test_error_retryability() {
         assert_eq!(
             err.is_retryable(),
             expected_retryable,
-            "Retryability mismatch for {:?}",
-            err
+            "Retryability mismatch for {err:?}"
         );
     }
 }
@@ -498,7 +497,7 @@ mod proptests {
             let mut weights = ModelWeights::new();
             for i in 0..num_tensors {
                 let data = vec![0.0f32; tensor_size];
-                weights.add_tensor(format!("tensor_{}", i), data, vec![tensor_size]);
+                weights.add_tensor(format!("tensor_{i}"), data, vec![tensor_size]);
             }
 
             prop_assert_eq!(weights.param_count(), (num_tensors * tensor_size) as u64);

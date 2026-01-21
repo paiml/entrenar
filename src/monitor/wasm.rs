@@ -829,7 +829,7 @@ mod tests {
     fn test_wasm_dashboard_max_history() {
         let mut dashboard = WasmDashboard::new().max_history(5);
         for i in 0..10 {
-            dashboard.add_loss(i as f64);
+            dashboard.add_loss(f64::from(i));
         }
         assert_eq!(dashboard.loss_history_len(), 5);
     }
@@ -861,7 +861,7 @@ mod tests {
     fn test_wasm_dashboard_sparkline() {
         let mut dashboard = WasmDashboard::new();
         for i in 0..10 {
-            dashboard.add_loss(i as f64 / 10.0);
+            dashboard.add_loss(f64::from(i) / 10.0);
         }
 
         let sparkline = dashboard.loss_sparkline();
@@ -927,7 +927,7 @@ mod tests {
 
     #[test]
     fn test_generate_sparkline_subsample() {
-        let values: Vec<f64> = (0..100).map(|i| i as f64).collect();
+        let values: Vec<f64> = (0..100).map(|i| f64::from(i)).collect();
         let result = generate_sparkline(&values, 20);
         assert_eq!(result.chars().count(), 20);
     }
@@ -1006,8 +1006,8 @@ mod proptests {
             }
 
             let mean = collector.loss_mean();
-            let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+            let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
             prop_assert!(mean >= min - 1e-6);
             prop_assert!(mean <= max + 1e-6);

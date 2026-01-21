@@ -63,7 +63,7 @@ fn main() -> entrenar::Result<()> {
     for author in &artifact.authors {
         println!("  - {} (ORCID: {:?})", author.name, author.orcid);
         for role in &author.roles {
-            println!("    Role: {}", role);
+            println!("    Role: {role}");
         }
     }
     println!();

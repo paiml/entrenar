@@ -63,7 +63,7 @@ fn demo_metrics_buffer() {
         1.0, 0.8, 0.6, 0.5, 0.45, 0.4, 0.38, 0.35, 0.33, 0.31, 0.30, 0.29,
     ];
 
-    for loss in losses.iter() {
+    for loss in &losses {
         buffer.push(*loss);
     }
 
@@ -92,10 +92,10 @@ fn demo_sparklines() {
 
     // Fixed range sparkline
     let normalized = sparkline_range(&losses, 20, 0.0, 1.0);
-    println!("  Normalized: {}", normalized);
+    println!("  Normalized: {normalized}");
 
     // Show sparkline characters
-    println!("\n  Sparkline chars: {:?}", SPARK_CHARS);
+    println!("\n  Sparkline chars: {SPARK_CHARS:?}");
     println!();
 }
 
@@ -105,7 +105,7 @@ fn demo_progress_bar() {
     let total_steps = 20;
     let mut progress = ProgressBar::new(total_steps, 40);
 
-    println!("  Simulating {} steps...\n", total_steps);
+    println!("  Simulating {total_steps} steps...\n");
 
     for step in 0..=total_steps {
         progress.update(step);
@@ -161,7 +161,7 @@ fn demo_andon_system() {
 
     // Normal losses
     let normal_losses = [1.0, 0.8, 0.6, 0.5, 0.4, 0.35, 0.3];
-    for loss in normal_losses.iter() {
+    for loss in &normal_losses {
         andon.check_loss(*loss);
     }
     println!(
@@ -211,13 +211,13 @@ fn demo_reference_curve() {
                 dev * 100.0
             );
         } else {
-            println!("    Epoch {}: within tolerance", epoch);
+            println!("    Epoch {epoch}: within tolerance");
         }
     }
 
     // Visual comparison using sparklines
     let comparison = reference.comparison_sparkline(&current, 20);
     println!("\n  Deviation sparkline:");
-    println!("  {} (neg=better, pos=worse)", comparison);
+    println!("  {comparison} (neg=better, pos=worse)");
     println!();
 }

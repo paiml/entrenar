@@ -135,7 +135,7 @@ fn mutation_resistant_memory_calculations() {
     assert_eq!(fp16_bytes, 2_000_000);
 
     // INT8: 1 byte per parameter
-    let int8_bytes = params * 1;
+    let int8_bytes = params;
     assert_eq!(int8_bytes, 1_000_000);
 
     // INT4: 0.5 bytes per parameter (division by 2)

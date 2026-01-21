@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_from_literate_python() {
-        let content = r#"
+        let content = r"
 # My Analysis
 
 Here's some code:
@@ -466,7 +466,7 @@ x = np.array([1, 2, 3])
 ```
 
 More explanation here.
-"#;
+";
 
         let doc = LiterateDocument::parse_markdown(content);
         let exporter = NotebookExporter::from_literate(&doc);

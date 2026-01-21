@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_minimal_config() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: model.gguf
   layers: []
@@ -198,7 +198,7 @@ data:
 optimizer:
   name: adam
   lr: 0.001
-"#;
+";
 
         let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(spec.model.path, PathBuf::from("model.gguf"));
@@ -209,7 +209,7 @@ optimizer:
 
     #[test]
     fn test_deserialize_full_config() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: llama-7b.gguf
   layers: [q_proj, k_proj, v_proj, o_proj]
@@ -246,7 +246,7 @@ training:
   warmup_steps: 100
   save_interval: 1
   output_dir: ./outputs
-"#;
+";
 
         let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(spec.model.layers.len(), 4);

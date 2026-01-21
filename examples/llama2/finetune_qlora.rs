@@ -20,7 +20,7 @@ mod architecture;
 use architecture::{LLaMAConfig, LLaMAModel};
 use entrenar::{
     lora::QLoRALayer,
-    optim::{clip_grad_norm, AdamW, CosineAnnealingLR, Optimizer},
+    optim::{AdamW, CosineAnnealingLR, Optimizer},
     Tensor,
 };
 use std::fs;
@@ -33,6 +33,7 @@ pub struct LLaMAWithQLoRA {
     qlora_adapters: Vec<LayerQLoRAAdapters>,
     /// QLoRA configuration
     rank: usize,
+    #[allow(dead_code)]
     alpha: f32,
 }
 
@@ -157,7 +158,7 @@ impl LLaMAWithQLoRA {
     /// Saves only the trainable adapter weights in full precision.
     /// Base weights remain quantized and frozen.
     pub fn save_adapters(&self, path: &str) {
-        println!("  💾 Saving QLoRA adapters to {}", path);
+        println!("  💾 Saving QLoRA adapters to {path}");
 
         // In production: serialize adapter weights
         // For now: placeholder
@@ -166,7 +167,7 @@ impl LLaMAWithQLoRA {
 
     /// Load QLoRA adapter weights from file
     pub fn load_adapters(&mut self, path: &str) {
-        println!("  📥 Loading QLoRA adapters from {}", path);
+        println!("  📥 Loading QLoRA adapters from {path}");
 
         // In production: deserialize adapter weights
         // For now: placeholder
@@ -213,12 +214,12 @@ fn qlora_train_step(
     let _logits = model.base_model.forward(inputs, batch_size);
 
     // Compute loss (placeholder - cross-entropy)
-    let loss_val = 2.3; // Placeholder
+    // Placeholder
 
     // Note: Gradient clipping and optimizer step would happen here
     // This is a reference implementation demonstrating the API structure
 
-    loss_val
+    2.3
 }
 
 fn main() {
@@ -246,7 +247,7 @@ fn main() {
     println!("   - Batch size: {}\n", qlora_config.batch_size);
 
     // Load base model
-    println!("🔧 Loading base model from {}", model_path);
+    println!("🔧 Loading base model from {model_path}");
     // In production: load from checkpoint
     // For now: create fresh model (use toy model for demo)
     let llama_config = LLaMAConfig::toy_124m();
@@ -266,9 +267,9 @@ fn main() {
     let (base_mem, adapter_mem, total_mem) = model.estimate_memory();
 
     println!("📊 Memory Analysis:");
-    println!("   - Base model (4-bit): {:.1} MB", base_mem);
-    println!("   - Adapters (FP32): {:.1} MB", adapter_mem);
-    println!("   - Total memory: {:.1} MB", total_mem);
+    println!("   - Base model (4-bit): {base_mem:.1} MB");
+    println!("   - Adapters (FP32): {adapter_mem:.1} MB");
+    println!("   - Total memory: {total_mem:.1} MB");
     println!("   - Memory savings vs LoRA: ~75%\n");
 
     println!("📈 Parameters:");
@@ -346,7 +347,7 @@ fn main() {
 
         let avg_loss = epoch_loss / num_batches as f32;
         println!("\n📊 Epoch {} Summary:", epoch + 1);
-        println!("   - Train loss: {:.4}\n", avg_loss);
+        println!("   - Train loss: {avg_loss:.4}\n");
     }
 
     println!("✅ QLoRA fine-tuning complete!");

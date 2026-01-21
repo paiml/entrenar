@@ -148,8 +148,8 @@ proptest! {
     #[test]
     fn prop_mean_within_bounds(values in proptest::collection::vec(-1000.0f64..1000.0, 1..100)) {
         let mut collector = MetricsCollector::new();
-        let min_val = values.iter().cloned().fold(f64::INFINITY, f64::min);
-        let max_val = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min_val = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_val = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
         for v in &values {
             collector.record(Metric::Loss, *v);
@@ -191,8 +191,8 @@ proptest! {
     #[test]
     fn prop_min_max_correct(values in proptest::collection::vec(-1000.0f64..1000.0, 1..100)) {
         let mut collector = MetricsCollector::new();
-        let expected_min = values.iter().cloned().fold(f64::INFINITY, f64::min);
-        let expected_max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let expected_min = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let expected_max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
         for v in &values {
             collector.record(Metric::Loss, *v);
@@ -264,16 +264,15 @@ fn test_performance_metrics_collector_overhead() {
 
     let start = Instant::now();
     for i in 0..10_000 {
-        collector.record(Metric::Loss, 1.0 / (i as f64 + 1.0));
-        collector.record(Metric::Accuracy, 0.5 + (i as f64 * 0.00005));
+        collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
+        collector.record(Metric::Accuracy, 0.5 + (f64::from(i) * 0.00005));
     }
     let elapsed = start.elapsed();
 
     // 10ms budget for 20,000 records
     assert!(
         elapsed.as_millis() < 100,
-        "Metrics recording too slow: {:?} for 20,000 records",
-        elapsed
+        "Metrics recording too slow: {elapsed:?} for 20,000 records"
     );
 }
 
@@ -284,7 +283,7 @@ fn test_performance_summary_calculation() {
     // Pre-fill collector with data
     let mut collector = MetricsCollector::new();
     for i in 0..10_000 {
-        collector.record(Metric::Loss, 1.0 / (i as f64 + 1.0));
+        collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
     }
 
     // Spec requirement: Summary calculation should be O(1) due to running stats
@@ -295,8 +294,7 @@ fn test_performance_summary_calculation() {
     // Summary should be nearly instant (< 1ms)
     assert!(
         elapsed.as_micros() < 1000,
-        "Summary calculation too slow: {:?}",
-        elapsed
+        "Summary calculation too slow: {elapsed:?}"
     );
 }
 
@@ -308,8 +306,8 @@ fn test_performance_dashboard_render() {
     // Spec requirement: Dashboard refresh latency < 100ms
     let mut collector = MetricsCollector::new();
     for i in 0..1000 {
-        collector.record(Metric::Loss, 1.0 - (i as f64 * 0.001));
-        collector.record(Metric::Accuracy, 0.5 + (i as f64 * 0.0005));
+        collector.record(Metric::Loss, 1.0 - (f64::from(i) * 0.001));
+        collector.record(Metric::Accuracy, 0.5 + (f64::from(i) * 0.0005));
     }
 
     let mut dashboard = Dashboard::new();
@@ -322,8 +320,7 @@ fn test_performance_dashboard_render() {
     // Dashboard render should be < 100ms
     assert!(
         elapsed.as_millis() < 100,
-        "Dashboard render too slow: {:?}",
-        elapsed
+        "Dashboard render too slow: {elapsed:?}"
     );
 }
 
@@ -349,8 +346,7 @@ fn test_performance_drift_detection() {
     // 1000 updates should complete in < 10ms
     assert!(
         elapsed.as_millis() < 50,
-        "Drift detection too slow: {:?} for 1000 updates",
-        elapsed
+        "Drift detection too slow: {elapsed:?} for 1000 updates"
     );
 }
 
@@ -361,8 +357,8 @@ fn test_performance_hansei_analysis() {
 
     let mut collector = MetricsCollector::new();
     for i in 0..10_000 {
-        collector.record(Metric::Loss, 1.0 - (i as f64 * 0.0001));
-        collector.record(Metric::Accuracy, 0.5 + (i as f64 * 0.00005));
+        collector.record(Metric::Loss, 1.0 - (f64::from(i) * 0.0001));
+        collector.record(Metric::Accuracy, 0.5 + (f64::from(i) * 0.00005));
         collector.record(Metric::GradientNorm, 1.0 + rand_float() * 0.1);
     }
 
@@ -375,8 +371,7 @@ fn test_performance_hansei_analysis() {
     // Analysis should complete in < 100ms
     assert!(
         elapsed.as_millis() < 100,
-        "Hansei analysis too slow: {:?}",
-        elapsed
+        "Hansei analysis too slow: {elapsed:?}"
     );
 }
 

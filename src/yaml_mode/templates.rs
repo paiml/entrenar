@@ -492,9 +492,7 @@ mod tests {
             let result = validate_manifest(&manifest);
             assert!(
                 result.is_ok(),
-                "Template {:?} produced invalid manifest: {:?}",
-                template,
-                result
+                "Template {template:?} produced invalid manifest: {result:?}"
             );
         }
     }

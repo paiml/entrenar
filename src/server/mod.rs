@@ -404,7 +404,7 @@ mod property_tests {
 
         #[test]
         fn prop_server_config_port_preserved(port in 1024u16..65535) {
-            let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+            let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
             let config = ServerConfig::default().with_address(addr);
             prop_assert_eq!(config.address.port(), port);
         }

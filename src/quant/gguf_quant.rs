@@ -379,7 +379,7 @@ mod tests {
         // Check approximate reconstruction
         for (orig, deq) in values.iter().zip(dequantized.iter()) {
             let error = (orig - deq).abs();
-            assert!(error < 1.0, "Error {} too large", error);
+            assert!(error < 1.0, "Error {error} too large");
         }
     }
 
@@ -394,7 +394,7 @@ mod tests {
         // Q8_0 should have better precision than Q4_0
         for (orig, deq) in values.iter().zip(dequantized.iter()) {
             let error = (orig - deq).abs();
-            assert!(error < 0.1, "Error {} too large for Q8_0", error);
+            assert!(error < 0.1, "Error {error} too large for Q8_0");
         }
     }
 
@@ -479,7 +479,7 @@ mod tests {
         assert_eq!(quantized.gguf_bytes(), 32 * 18);
 
         let ratio = quantized.compression_ratio();
-        assert!(ratio > 7.0, "Compression ratio {} should be > 7x", ratio);
+        assert!(ratio > 7.0, "Compression ratio {ratio} should be > 7x");
     }
 
     #[test]
@@ -493,7 +493,7 @@ mod tests {
         assert_eq!(quantized.gguf_bytes(), 32 * 34);
 
         let ratio = quantized.compression_ratio();
-        assert!(ratio > 3.5, "Compression ratio {} should be > 3.5x", ratio);
+        assert!(ratio > 3.5, "Compression ratio {ratio} should be > 3.5x");
     }
 
     #[test]
@@ -520,9 +520,7 @@ mod tests {
 
         assert!(
             error8 < error4,
-            "Q8_0 error {} should be < Q4_0 error {}",
-            error8,
-            error4
+            "Q8_0 error {error8} should be < Q4_0 error {error4}"
         );
     }
 
@@ -534,10 +532,10 @@ mod tests {
 
         for (&orig, &deq) in values.iter().zip(dequantized.iter()) {
             // Both should be negative
-            assert!(deq < 0.0, "Expected negative, got {}", deq);
+            assert!(deq < 0.0, "Expected negative, got {deq}");
             // Error should be reasonable
             let error = (orig - deq).abs();
-            assert!(error < 2.0, "Error {} too large", error);
+            assert!(error < 2.0, "Error {error} too large");
         }
     }
 
@@ -586,16 +584,16 @@ mod tests {
         let dequantized = quantized.dequantize();
 
         for (&orig, &deq) in values.iter().zip(dequantized.iter()) {
-            assert!(deq < 0.0, "Expected negative, got {}", deq);
+            assert!(deq < 0.0, "Expected negative, got {deq}");
             let error = (orig - deq).abs();
-            assert!(error < 0.5, "Error {} too large for Q8_0", error);
+            assert!(error < 0.5, "Error {error} too large for Q8_0");
         }
     }
 
     #[test]
     fn test_gguf_quant_type_clone() {
         let qt = GGUFQuantType::Q4_0;
-        let cloned = qt.clone();
+        let cloned = qt;
         assert_eq!(qt.bits(), cloned.bits());
     }
 }

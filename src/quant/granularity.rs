@@ -477,7 +477,7 @@ mod tests {
 
         for (orig, deq) in values.iter().zip(dequantized.iter()) {
             let rel_error = (orig - deq).abs() / orig.abs().max(0.01);
-            assert!(rel_error < 0.1, "Error too large: {} vs {}", orig, deq);
+            assert!(rel_error < 0.1, "Error too large: {orig} vs {deq}");
         }
     }
 
@@ -494,9 +494,7 @@ mod tests {
         // Per-channel should have lower error
         assert!(
             pc_mse <= pt_mse,
-            "Per-channel MSE ({}) should be <= per-tensor MSE ({})",
-            pc_mse,
-            pt_mse
+            "Per-channel MSE ({pc_mse}) should be <= per-tensor MSE ({pt_mse})"
         );
     }
 
@@ -511,7 +509,7 @@ mod tests {
         let dequantized = dequantize_with_params(&quantized, &params);
 
         let mse = quantization_mse(&values, &dequantized);
-        assert!(mse < 0.01, "MSE {} too large", mse);
+        assert!(mse < 0.01, "MSE {mse} too large");
     }
 
     #[test]
@@ -831,7 +829,7 @@ mod tests {
         assert_eq!(dequantized.len(), 6);
 
         let mse = quantization_mse(&values, &dequantized);
-        assert!(mse < 0.1, "MSE {} too large", mse);
+        assert!(mse < 0.1, "MSE {mse} too large");
     }
 
     #[test]
@@ -888,6 +886,6 @@ mod tests {
         let dequantized = dequantize_with_params(&quantized, &params);
 
         let mse = quantization_mse(&values, &dequantized);
-        assert!(mse < 0.1, "MSE {} too large for negative values", mse);
+        assert!(mse < 0.1, "MSE {mse} too large for negative values");
     }
 }

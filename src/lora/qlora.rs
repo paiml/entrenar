@@ -462,8 +462,7 @@ mod tests {
 
         assert!(
             savings_percent > 70.0,
-            "Should save > 70% memory, got {}%",
-            savings_percent
+            "Should save > 70% memory, got {savings_percent}%"
         );
     }
 }

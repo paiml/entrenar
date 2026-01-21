@@ -20,6 +20,8 @@
 //! }
 //! ```
 
+#![allow(clippy::field_reassign_with_default)]
+
 use std::path::PathBuf;
 
 /// Context passed to callbacks with current training state
@@ -1799,7 +1801,7 @@ mod proptests {
 
             // Should generate predictable paths
             let path = cb.checkpoint_path(epoch);
-            let expected = format!("/tmp/test/checkpoint_epoch_{}.json", epoch);
+            let expected = format!("/tmp/test/checkpoint_epoch_{epoch}.json");
             prop_assert_eq!(path, PathBuf::from(&expected));
 
             // Best path should be constant

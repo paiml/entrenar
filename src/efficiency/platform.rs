@@ -479,7 +479,7 @@ mod tests {
         };
         let msg = format!("{violation}");
         assert!(msg.contains("10"));
-        assert!(msg.contains("5"));
+        assert!(msg.contains('5'));
         assert!(msg.contains("MB"));
     }
 

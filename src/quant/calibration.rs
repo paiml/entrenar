@@ -346,8 +346,8 @@ mod tests {
         ) {
             let result = calibrate_min_max(&data, 8, true);
 
-            let actual_min = data.iter().cloned().fold(f32::INFINITY, f32::min);
-            let actual_max = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let actual_min = data.iter().copied().fold(f32::INFINITY, f32::min);
+            let actual_max = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
             prop_assert!((result.observed_min - actual_min).abs() < 1e-5);
             prop_assert!((result.observed_max - actual_max).abs() < 1e-5);
@@ -382,8 +382,8 @@ mod tests {
         ) {
             let result = calibrate_percentile(&data, 8, true, 1.0, 99.0);
 
-            let actual_min = data.iter().cloned().fold(f32::INFINITY, f32::min);
-            let actual_max = data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let actual_min = data.iter().copied().fold(f32::INFINITY, f32::min);
+            let actual_max = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
             // Percentile bounds should be within actual range
             prop_assert!(result.observed_min >= actual_min - 1e-5);
@@ -402,9 +402,9 @@ mod tests {
 
             let result = calibrator.compute();
 
-            let all_data: Vec<f32> = batch1.iter().chain(batch2.iter()).cloned().collect();
-            let expected_min = all_data.iter().cloned().fold(f32::INFINITY, f32::min);
-            let expected_max = all_data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let all_data: Vec<f32> = batch1.iter().chain(batch2.iter()).copied().collect();
+            let expected_min = all_data.iter().copied().fold(f32::INFINITY, f32::min);
+            let expected_max = all_data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
             prop_assert!((result.observed_min - expected_min).abs() < 1e-5);
             prop_assert!((result.observed_max - expected_max).abs() < 1e-5);

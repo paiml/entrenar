@@ -147,8 +147,8 @@ mod tests {
         }
 
         // Should converge close to 0
-        for &val in params[0].data().iter() {
-            assert!(val.abs() < 0.5, "Value {} did not converge", val);
+        for &val in params[0].data() {
+            assert!(val.abs() < 0.5, "Value {val} did not converge");
         }
     }
 }

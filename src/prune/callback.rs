@@ -6,6 +6,8 @@
 //! # Toyota Way: Kaizen (Continuous Improvement)
 //! Gradual pruning allows the model to adapt incrementally to sparsity.
 
+#![allow(clippy::field_reassign_with_default)]
+
 use crate::prune::calibrate::{CalibrationCollector, CalibrationConfig};
 use crate::prune::config::PruningConfig;
 use crate::prune::schedule::PruningSchedule;

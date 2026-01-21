@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn test_converter_missing_input() {
         let result = convert_model(
-            "/nonexistent",
+            "/tmp/definitely_not_a_real_file_abc123xyz",
             "/tmp/out.safetensors",
             OutputFormat::SafeTensors,
         );

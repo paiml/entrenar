@@ -12,27 +12,24 @@ fn validate_yaml_file(filename: &str) {
         .join("examples/yaml")
         .join(filename);
 
-    let spec = load_config(&path).unwrap_or_else(|e| panic!("Failed to load {}: {}", filename, e));
+    let spec = load_config(&path).unwrap_or_else(|e| panic!("Failed to load {filename}: {e}"));
 
-    validate_config(&spec).unwrap_or_else(|e| panic!("Failed to validate {}: {}", filename, e));
+    validate_config(&spec).unwrap_or_else(|e| panic!("Failed to validate {filename}: {e}"));
 
     // Basic QA checks
     assert!(
         !spec.model.path.as_os_str().is_empty(),
-        "{}: model path must be specified",
-        filename
+        "{filename}: model path must be specified"
     );
     assert!(
         !spec.data.train.as_os_str().is_empty(),
-        "{}: data train path must be specified",
-        filename
+        "{filename}: data train path must be specified"
     );
     assert!(
         spec.data.batch_size > 0,
-        "{}: batch_size must be > 0",
-        filename
+        "{filename}: batch_size must be > 0"
     );
-    assert!(spec.training.epochs > 0, "{}: epochs must be > 0", filename);
+    assert!(spec.training.epochs > 0, "{filename}: epochs must be > 0");
 }
 
 // ============================================================================
@@ -285,7 +282,7 @@ mod validation {
             let entry = entry.expect("Failed to read directory entry");
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "yaml") {
+            if path.extension().is_some_and(|ext| ext == "yaml") {
                 let filename = path.file_name().unwrap().to_str().unwrap();
                 validate_yaml_file(filename);
                 count += 1;
@@ -294,8 +291,7 @@ mod validation {
 
         assert!(
             count >= 25,
-            "Expected at least 25 YAML files, found {}",
-            count
+            "Expected at least 25 YAML files, found {count}"
         );
     }
 }

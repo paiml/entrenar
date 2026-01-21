@@ -847,7 +847,7 @@ mod tests {
                     break;
                 }
                 Ok(_) => {}
-                Err(e) => panic!("Unexpected error: {:?}", e),
+                Err(e) => panic!("Unexpected error: {e:?}"),
             }
         }
 

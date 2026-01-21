@@ -229,9 +229,7 @@ fn test_failure_context_generate_suggested_fix() {
         let fix = ctx.generate_suggested_fix();
         assert!(
             fix.to_lowercase().contains(expected_keyword),
-            "Category {:?} fix should contain '{}'",
-            category,
-            expected_keyword
+            "Category {category:?} fix should contain '{expected_keyword}'"
         );
     }
 }

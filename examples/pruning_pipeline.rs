@@ -175,11 +175,11 @@ fn main() {
     println!("\n✓ Validating Configurations");
     match magnitude_config.validate() {
         Ok(()) => println!("   Magnitude config: Valid"),
-        Err(e) => println!("   Magnitude config: Invalid - {}", e),
+        Err(e) => println!("   Magnitude config: Invalid - {e}"),
     }
     match wanda_config.validate() {
         Ok(()) => println!("   Wanda config: Valid"),
-        Err(e) => println!("   Wanda config: Invalid - {}", e),
+        Err(e) => println!("   Wanda config: Invalid - {e}"),
     }
 
     // =========================================================================

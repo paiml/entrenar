@@ -408,7 +408,7 @@ mod tests {
         let result = ensemble_merge(&[m1, m2, m3], &config).unwrap();
 
         // Result should be finite and have reasonable values
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }
@@ -457,7 +457,7 @@ mod tests {
         let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
 
         // Result should be finite
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }
@@ -476,7 +476,7 @@ mod tests {
         let result = ensemble_merge(&[m1, m2], &config).unwrap();
 
         // Should produce valid output
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }
@@ -648,7 +648,7 @@ mod tests {
             let config = EnsembleConfig::iterative_slerp(t);
             let result = ensemble_merge(&[m1, m2, m3], &config).unwrap();
 
-            for val in result["w"].data().iter() {
+            for val in result["w"].data() {
                 prop_assert!(val.is_finite(), "SLERP produced non-finite value");
             }
         }
@@ -660,7 +660,7 @@ mod tests {
                 4..=4
             )
         ) {
-            let len = values.iter().map(|v| v.len()).min().unwrap_or(3);
+            let len = values.iter().map(std::vec::Vec::len).min().unwrap_or(3);
             let models: Vec<Model> = values
                 .into_iter()
                 .map(|v| make_model(v.into_iter().take(len).collect()))
@@ -671,7 +671,7 @@ mod tests {
             );
             let result = ensemble_merge(&models, &config).unwrap();
 
-            for val in result["w"].data().iter() {
+            for val in result["w"].data() {
                 prop_assert!(val.is_finite());
             }
         }
@@ -779,7 +779,7 @@ mod tests {
             EnsembleConfig::hierarchical(EnsembleStrategy::Ties { density: 0.5 }).with_base(base);
 
         let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }
@@ -799,7 +799,7 @@ mod tests {
         .with_base(base);
 
         let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }
@@ -814,7 +814,7 @@ mod tests {
             EnsembleConfig::hierarchical(EnsembleStrategy::WeightedAverage { weights: vec![] });
 
         let result = ensemble_merge(&[m1, m2, m3], &config).unwrap();
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }
@@ -832,7 +832,7 @@ mod tests {
         });
 
         let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }
@@ -892,7 +892,7 @@ mod tests {
         let config = EnsembleConfig::dare(base, 0.3, None);
         let result = ensemble_merge(&[m1, m2], &config).unwrap();
 
-        for val in result["w"].data().iter() {
+        for val in result["w"].data() {
             assert!(val.is_finite());
         }
     }

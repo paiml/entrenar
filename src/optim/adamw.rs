@@ -163,8 +163,8 @@ mod tests {
         }
 
         // Should converge close to 0
-        for &val in params[0].data().iter() {
-            assert!(val.abs() < 0.5, "Value {} did not converge", val);
+        for &val in params[0].data() {
+            assert!(val.abs() < 0.5, "Value {val} did not converge");
         }
     }
 
@@ -253,9 +253,7 @@ mod tests {
         let final_mean: f32 = params[0].data().iter().map(|x| x.abs()).sum::<f32>() / 32.0;
         assert!(
             final_mean < initial_mean,
-            "Mean {} did not improve from {}",
-            final_mean,
-            initial_mean
+            "Mean {final_mean} did not improve from {initial_mean}"
         );
     }
 
@@ -330,8 +328,7 @@ mod tests {
             // Verify progress
             assert!(
                 params[0].data()[0] < 1.0 - (step as f32 * 0.05),
-                "Step {} did not make progress",
-                step
+                "Step {step} did not make progress"
             );
         }
     }

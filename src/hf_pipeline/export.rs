@@ -813,7 +813,7 @@ mod tests {
             num_tensors: 1,
         };
         let size_str = result.size_human();
-        assert!(size_str.contains("KB"), "Expected KB, got: {}", size_str);
+        assert!(size_str.contains("KB"), "Expected KB, got: {size_str}");
     }
 
     #[test]

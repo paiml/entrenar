@@ -16,8 +16,8 @@ fn create_model(name: &str, values: Vec<f32>) -> Model {
 }
 
 fn print_model(name: &str, model: &Model) {
-    println!("\n{}", name);
-    println!("  {}: {:?}", "w", model["w"].data().as_slice().unwrap());
+    println!("\n{name}");
+    println!("  w: {:?}", model["w"].data().as_slice().unwrap());
 }
 
 fn main() {
@@ -48,7 +48,7 @@ fn main() {
             println!("   - Trimmed low-magnitude parameters");
             println!("   - Resolved conflicts via sign voting");
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 
     // 2. DARE Merge (Drop And REscale)
@@ -65,7 +65,7 @@ fn main() {
             println!("   - Rescaled to maintain expected magnitude");
             println!("   - Deterministic (seeded for reproducibility)");
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 
     // 3. SLERP Merge (Spherical Linear intERPolation)
@@ -81,7 +81,7 @@ fn main() {
             println!("   - Constant angular velocity");
             println!("   - Better than linear blending for normalized weights");
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 
     // Demonstrate SLERP at different interpolation points
@@ -96,7 +96,7 @@ fn main() {
                     merged["w"].data().as_slice().unwrap()
                 );
             }
-            Err(e) => println!("   t={:.2}: Error - {}", t, e),
+            Err(e) => println!("   t={t:.2}: Error - {e}"),
         }
     }
 
@@ -107,7 +107,7 @@ fn main() {
     println!("   Testing invalid density parameter...");
     match TiesConfig::new(1.5) {
         Ok(_) => println!("   Unexpected success!"),
-        Err(e) => println!("   ✓ Caught error: {}", e),
+        Err(e) => println!("   ✓ Caught error: {e}"),
     }
 
     // Incompatible shapes
@@ -116,7 +116,7 @@ fn main() {
     let models = vec![model1.clone(), bad_model];
     match ties_merge(&models, &base, &TiesConfig::default()) {
         Ok(_) => println!("   Unexpected success!"),
-        Err(e) => println!("   ✓ Caught error: {}", e),
+        Err(e) => println!("   ✓ Caught error: {e}"),
     }
 
     println!("\n\n=== Example Complete ===\n");

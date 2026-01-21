@@ -4,9 +4,7 @@
 //! Instead of writing imperative training code, you define your training
 //! pipeline in a YAML file.
 
-use entrenar::config::{
-    train_from_yaml, DataConfig, LoRASpec, ModelRef, OptimSpec, TrainSpec, TrainingParams,
-};
+use entrenar::config::{DataConfig, LoRASpec, ModelRef, OptimSpec, TrainSpec, TrainingParams};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -60,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Serialize to YAML
     let yaml = serde_yaml::to_string(&spec)?;
     println!("Generated YAML configuration:\n");
-    println!("{}", yaml);
+    println!("{yaml}");
 
     // Example 2: Load from YAML file (commented out - requires actual files)
     println!("\n2. LOAD FROM YAML FILE\n");
@@ -69,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 3: Show minimal config
     println!("3. MINIMAL CONFIG EXAMPLE\n");
-    let minimal_yaml = r#"
+    let minimal_yaml = r"
 model:
   path: model.gguf
 
@@ -83,8 +81,8 @@ optimizer:
 
 training:
   epochs: 10
-"#;
-    println!("{}", minimal_yaml);
+";
+    println!("{minimal_yaml}");
 
     let minimal_spec: TrainSpec = serde_yaml::from_str(minimal_yaml)?;
     println!("✓ Minimal config parsed successfully");

@@ -186,7 +186,7 @@ mod tests {
         // - Dropped values -> 0.0
         // - Kept values -> original * 2.0
         let data = masked.data();
-        for &val in data.iter() {
+        for &val in data {
             assert!(val == 0.0 || val % 2.0 == 0.0);
         }
     }
@@ -264,7 +264,7 @@ mod tests {
         let masked = drop_and_rescale_tensor(&tensor, 1.0, 1.0, &mut rng);
 
         let data = masked.data();
-        for &val in data.iter() {
+        for &val in data {
             assert_eq!(val, 0.0);
         }
     }
@@ -387,7 +387,7 @@ mod tests {
             // drop_prob=1.0 should zero all values
             let masked = drop_and_rescale_tensor(&tensor, 1.0, 1.0, &mut rng);
 
-            for &val in masked.data().iter() {
+            for &val in masked.data() {
                 prop_assert_eq!(val, 0.0);
             }
         }
@@ -412,7 +412,7 @@ mod tests {
             let avg_data = averaged["w"].data();
 
             for i in 0..len {
-                let expected = (v1[i] + v2[i]) / 2.0;
+                let expected = f32::midpoint(v1[i], v2[i]);
                 prop_assert!(
                     (avg_data[i] - expected).abs() < 1e-5,
                     "Average mismatch at {}: expected {}, got {}",

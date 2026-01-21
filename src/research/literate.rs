@@ -269,11 +269,11 @@ fn main() {}
 
     #[test]
     fn test_code_block_no_language() {
-        let content = r#"
+        let content = r"
 ```
 plain code here
 ```
-"#;
+";
 
         let doc = LiterateDocument::parse_markdown(content);
         let blocks = doc.extract_code_blocks();
@@ -307,14 +307,14 @@ plain code here
 
     #[test]
     fn test_to_html_basic() {
-        let content = r#"# Title
+        let content = r"# Title
 
 This is a paragraph.
 
 ```rust
 fn main() {}
 ```
-"#;
+";
 
         let doc = LiterateDocument::parse_markdown(content);
         let html = doc.to_html();
@@ -374,7 +374,7 @@ fn main() {}
 
     #[test]
     fn test_typst_code_extraction() {
-        let content = r#"
+        let content = r"
 = Typst Document
 
 #set text(size: 12pt)
@@ -385,7 +385,7 @@ x = np.array([1, 2, 3])
 ```
 
 More content here.
-"#;
+";
 
         let doc = LiterateDocument::parse_typst(content);
         let blocks = doc.extract_code_blocks();
