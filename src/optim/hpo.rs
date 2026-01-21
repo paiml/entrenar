@@ -1320,6 +1320,307 @@ mod tests {
         assert!(values[0] < 1e-3);
         assert!(values[3] > 1e-2);
     }
+
+    // -------------------------------------------------------------------------
+    // HPOError Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_hpo_error_display() {
+        let err = HPOError::EmptySpace;
+        assert!(format!("{}", err).contains("Empty search space"));
+
+        let err = HPOError::ParameterNotFound("lr".to_string());
+        assert!(format!("{}", err).contains("Parameter not found"));
+        assert!(format!("{}", err).contains("lr"));
+
+        let err = HPOError::InvalidValue("lr".to_string(), "invalid".to_string());
+        assert!(format!("{}", err).contains("Invalid parameter value"));
+
+        let err = HPOError::NoTrials;
+        assert!(format!("{}", err).contains("No trials completed"));
+
+        let err = HPOError::Internal("test error".to_string());
+        assert!(format!("{}", err).contains("HPO error"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Serde Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_parameter_value_serde() {
+        let v = ParameterValue::Float(0.5);
+        let json = serde_json::to_string(&v).unwrap();
+        let parsed: ParameterValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, parsed);
+
+        let v = ParameterValue::Int(42);
+        let json = serde_json::to_string(&v).unwrap();
+        let parsed: ParameterValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, parsed);
+
+        let v = ParameterValue::Categorical("relu".to_string());
+        let json = serde_json::to_string(&v).unwrap();
+        let parsed: ParameterValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, parsed);
+    }
+
+    #[test]
+    fn test_parameter_domain_serde() {
+        let domain = ParameterDomain::Continuous {
+            low: 0.0,
+            high: 1.0,
+            log_scale: true,
+        };
+        let json = serde_json::to_string(&domain).unwrap();
+        let parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
+        match parsed {
+            ParameterDomain::Continuous { log_scale, .. } => assert!(log_scale),
+            _ => panic!("Wrong domain type"),
+        }
+
+        let domain = ParameterDomain::Discrete { low: 8, high: 128 };
+        let json = serde_json::to_string(&domain).unwrap();
+        let _parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
+
+        let domain = ParameterDomain::Categorical {
+            choices: vec!["a".to_string(), "b".to_string()],
+        };
+        let json = serde_json::to_string(&domain).unwrap();
+        let _parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn test_hyperparameter_space_serde() {
+        let mut space = HyperparameterSpace::new();
+        space.add(
+            "lr",
+            ParameterDomain::Continuous {
+                low: 0.0,
+                high: 1.0,
+                log_scale: false,
+            },
+        );
+
+        let json = serde_json::to_string(&space).unwrap();
+        let parsed: HyperparameterSpace = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.len(), 1);
+    }
+
+    #[test]
+    fn test_trial_serde() {
+        let mut config = HashMap::new();
+        config.insert("lr".to_string(), ParameterValue::Float(0.01));
+        let mut trial = Trial::new(0, config);
+        trial.complete(0.5, 100);
+
+        let json = serde_json::to_string(&trial).unwrap();
+        let parsed: Trial = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, 0);
+        assert_eq!(parsed.score, 0.5);
+        assert_eq!(parsed.status, TrialStatus::Completed);
+    }
+
+    #[test]
+    fn test_trial_status_serde() {
+        for status in [
+            TrialStatus::Pending,
+            TrialStatus::Running,
+            TrialStatus::Completed,
+            TrialStatus::Failed,
+            TrialStatus::Pruned,
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            let parsed: TrialStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(status, parsed);
+        }
+    }
+
+    #[test]
+    fn test_search_strategy_serde() {
+        let strategy = SearchStrategy::Grid;
+        let json = serde_json::to_string(&strategy).unwrap();
+        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+
+        let strategy = SearchStrategy::Random { n_samples: 100 };
+        let json = serde_json::to_string(&strategy).unwrap();
+        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+
+        let strategy = SearchStrategy::Bayesian {
+            n_initial: 10,
+            acquisition: AcquisitionFunction::ExpectedImprovement,
+            surrogate: SurrogateModel::TPE,
+        };
+        let json = serde_json::to_string(&strategy).unwrap();
+        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+
+        let strategy = SearchStrategy::Hyperband {
+            max_iter: 81,
+            eta: 3.0,
+        };
+        let json = serde_json::to_string(&strategy).unwrap();
+        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn test_acquisition_function_serde() {
+        for acq in [
+            AcquisitionFunction::ExpectedImprovement,
+            AcquisitionFunction::UpperConfidenceBound { kappa: 2.576 },
+            AcquisitionFunction::ProbabilityOfImprovement,
+        ] {
+            let json = serde_json::to_string(&acq).unwrap();
+            let _parsed: AcquisitionFunction = serde_json::from_str(&json).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_surrogate_model_serde() {
+        for surrogate in [
+            SurrogateModel::TPE,
+            SurrogateModel::GaussianProcess,
+            SurrogateModel::RandomForest { n_trees: 100 },
+        ] {
+            let json = serde_json::to_string(&surrogate).unwrap();
+            let _parsed: SurrogateModel = serde_json::from_str(&json).unwrap();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional TPE Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_tpe_record_failed() {
+        let mut space = HyperparameterSpace::new();
+        space.add(
+            "lr",
+            ParameterDomain::Continuous {
+                low: 0.0,
+                high: 1.0,
+                log_scale: false,
+            },
+        );
+
+        let mut tpe = TPEOptimizer::new(space);
+        let trial = tpe.suggest().unwrap();
+        tpe.record_failed(trial);
+
+        // Failed trials shouldn't count as completed
+        assert_eq!(tpe.n_trials(), 0);
+    }
+
+    #[test]
+    fn test_tpe_tpe_sampling_with_trials() {
+        let mut space = HyperparameterSpace::new();
+        space.add(
+            "lr",
+            ParameterDomain::Continuous {
+                low: 0.0,
+                high: 1.0,
+                log_scale: false,
+            },
+        );
+        space.add("batch_size", ParameterDomain::Discrete { low: 8, high: 32 });
+        space.add(
+            "activation",
+            ParameterDomain::Categorical {
+                choices: vec!["relu".to_string(), "gelu".to_string()],
+            },
+        );
+
+        let mut tpe = TPEOptimizer::new(space).with_startup(3);
+
+        // Run startup phase
+        for _ in 0..3 {
+            let trial = tpe.suggest().unwrap();
+            let lr = trial.config.get("lr").unwrap().as_float().unwrap();
+            tpe.record(trial, lr, 10); // Score equals lr
+        }
+
+        // Now TPE sampling kicks in
+        for _ in 0..5 {
+            let trial = tpe.suggest().unwrap();
+            assert!(trial.config.contains_key("lr"));
+            assert!(trial.config.contains_key("batch_size"));
+            assert!(trial.config.contains_key("activation"));
+            let lr = trial.config.get("lr").unwrap().as_float().unwrap();
+            tpe.record(trial, lr, 10);
+        }
+
+        assert_eq!(tpe.n_trials(), 8);
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional Hyperband Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_hyperband_with_eta() {
+        let space = HyperparameterSpace::new();
+        let hb = HyperbandScheduler::new(space, 81).with_eta(4.0);
+        assert!((hb.eta - 4.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_hyperband_bracket_invalid_s() {
+        let space = HyperparameterSpace::new();
+        let hb = HyperbandScheduler::new(space, 81);
+        let bracket = hb.bracket(100); // s > s_max
+        assert!(bracket.is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional GridSearch Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_grid_search_min_n_points() {
+        let space = HyperparameterSpace::new();
+        let grid = GridSearch::new(space, 1); // Should be clamped to 2
+        assert_eq!(grid.n_points, 2);
+    }
+
+    // -------------------------------------------------------------------------
+    // Additional Space Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_space_iter() {
+        let mut space = HyperparameterSpace::new();
+        space.add(
+            "lr",
+            ParameterDomain::Continuous {
+                low: 0.0,
+                high: 1.0,
+                log_scale: false,
+            },
+        );
+        space.add("batch_size", ParameterDomain::Discrete { low: 8, high: 32 });
+
+        let param_names: Vec<_> = space.iter().map(|(name, _)| name.clone()).collect();
+        assert_eq!(param_names.len(), 2);
+        assert!(param_names.contains(&"lr".to_string()));
+        assert!(param_names.contains(&"batch_size".to_string()));
+    }
+
+    // -------------------------------------------------------------------------
+    // Domain Validation Edge Cases
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_domain_is_valid_type_mismatch() {
+        let domain = ParameterDomain::Discrete { low: 0, high: 10 };
+        // Float value for discrete domain
+        assert!(!domain.is_valid(&ParameterValue::Float(5.0)));
+
+        let domain = ParameterDomain::Categorical {
+            choices: vec!["a".to_string()],
+        };
+        // Int value for categorical domain
+        assert!(!domain.is_valid(&ParameterValue::Int(0)));
+    }
 }
 
 // =============================================================================
