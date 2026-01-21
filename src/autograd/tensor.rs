@@ -80,6 +80,13 @@ impl Tensor {
         self.requires_grad
     }
 
+    /// Set requires gradient flag
+    ///
+    /// Use this to enable gradient tracking on loaded tensors before training.
+    pub fn set_requires_grad(&mut self, requires_grad: bool) {
+        self.requires_grad = requires_grad;
+    }
+
     /// Get reference to gradient cell (for backward operations)
     pub fn grad_cell(&self) -> Rc<RefCell<Option<Array1<f32>>>> {
         self.grad.clone()
@@ -205,6 +212,18 @@ mod tests {
 
         let t2 = Tensor::from_vec(vec![1.0], false);
         assert!(!t2.is_empty());
+    }
+
+    #[test]
+    fn test_tensor_set_requires_grad() {
+        let mut t = Tensor::from_vec(vec![1.0, 2.0], false);
+        assert!(!t.requires_grad());
+
+        t.set_requires_grad(true);
+        assert!(t.requires_grad());
+
+        t.set_requires_grad(false);
+        assert!(!t.requires_grad());
     }
 
     #[test]
