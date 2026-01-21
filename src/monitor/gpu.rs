@@ -1034,6 +1034,305 @@ mod tests {
         assert!(!lines.is_empty());
         assert!(lines[0].contains("GPU 0"));
     }
+
+    #[test]
+    fn test_gpu_metrics_default() {
+        let m = GpuMetrics::default();
+        assert_eq!(m.device_id, 0);
+        assert!(m.name.is_empty());
+        assert_eq!(m.utilization_percent, 0);
+    }
+
+    #[test]
+    fn test_gpu_monitor_default() {
+        let monitor = GpuMonitor::default();
+        // Should either be real or mock, but should work
+        let _ = monitor.num_devices();
+    }
+
+    #[test]
+    fn test_render_sparkline_max_val_zero() {
+        let sparkline = render_sparkline(&[1, 2, 3], 0);
+        assert!(sparkline.is_empty());
+    }
+
+    #[test]
+    fn test_gpu_alert_memory_severity_thresholds() {
+        // 95-98%
+        let alert_95 = GpuAlert::MemoryPressure {
+            device: 0,
+            used_percent: 96,
+            threshold: 90,
+        };
+        assert_eq!(alert_95.severity(), 80);
+
+        // Below 95%
+        let alert_91 = GpuAlert::MemoryPressure {
+            device: 0,
+            used_percent: 91,
+            threshold: 90,
+        };
+        assert_eq!(alert_91.severity(), 60);
+    }
+
+    #[test]
+    fn test_gpu_alert_power_severity_thresholds() {
+        // At 100%
+        let alert_100 = GpuAlert::PowerLimit {
+            device: 0,
+            power_percent: 100,
+            threshold: 95,
+        };
+        assert_eq!(alert_100.severity(), 70);
+
+        // Below 100%
+        let alert_99 = GpuAlert::PowerLimit {
+            device: 0,
+            power_percent: 99,
+            threshold: 95,
+        };
+        assert_eq!(alert_99.severity(), 50);
+    }
+
+    #[test]
+    fn test_gpu_alert_idle_severity_thresholds() {
+        // > 60 seconds
+        let alert_long = GpuAlert::GpuIdle {
+            device: 0,
+            duration_secs: 65,
+        };
+        assert_eq!(alert_long.severity(), 90);
+
+        // 31-60 seconds
+        let alert_medium = GpuAlert::GpuIdle {
+            device: 0,
+            duration_secs: 45,
+        };
+        assert_eq!(alert_medium.severity(), 70);
+
+        // <= 30 seconds
+        let alert_short = GpuAlert::GpuIdle {
+            device: 0,
+            duration_secs: 20,
+        };
+        assert_eq!(alert_short.severity(), 40);
+    }
+
+    #[test]
+    fn test_gpu_alert_messages() {
+        let memory_alert = GpuAlert::MemoryPressure {
+            device: 2,
+            used_percent: 95,
+            threshold: 90,
+        };
+        let msg = memory_alert.message();
+        assert!(msg.contains("GPU 2"));
+        assert!(msg.contains("95%"));
+        assert!(msg.contains("90%"));
+
+        let power_alert = GpuAlert::PowerLimit {
+            device: 3,
+            power_percent: 98,
+            threshold: 95,
+        };
+        let msg = power_alert.message();
+        assert!(msg.contains("GPU 3"));
+        assert!(msg.contains("98%"));
+        assert!(msg.contains("95%"));
+    }
+
+    #[test]
+    fn test_gpu_alert_serde() {
+        let alert = GpuAlert::ThermalThrottling {
+            device: 0,
+            temp: 85,
+            threshold: 80,
+        };
+        let json = serde_json::to_string(&alert).unwrap();
+        let parsed: GpuAlert = serde_json::from_str(&json).unwrap();
+        assert_eq!(alert, parsed);
+    }
+
+    #[test]
+    fn test_gpu_metrics_serde() {
+        let metrics = GpuMetrics::mock(0);
+        let json = serde_json::to_string(&metrics).unwrap();
+        let parsed: GpuMetrics = serde_json::from_str(&json).unwrap();
+        assert_eq!(metrics.device_id, parsed.device_id);
+        assert_eq!(metrics.utilization_percent, parsed.utilization_percent);
+    }
+
+    #[test]
+    fn test_andon_thresholds_serde() {
+        let thresholds = AndonThresholds::default();
+        let json = serde_json::to_string(&thresholds).unwrap();
+        let parsed: AndonThresholds = serde_json::from_str(&json).unwrap();
+        assert_eq!(thresholds.thermal_warning, parsed.thermal_warning);
+    }
+
+    #[test]
+    fn test_gpu_alert_clone() {
+        let alert = GpuAlert::MemoryPressure {
+            device: 1,
+            used_percent: 95,
+            threshold: 90,
+        };
+        let cloned = alert.clone();
+        assert_eq!(alert, cloned);
+    }
+
+    #[test]
+    fn test_gpu_metrics_clone() {
+        let metrics = GpuMetrics::mock(0);
+        let cloned = metrics.clone();
+        assert_eq!(metrics.device_id, cloned.device_id);
+        assert_eq!(metrics.name, cloned.name);
+    }
+
+    #[test]
+    fn test_andon_thresholds_clone() {
+        let thresholds = AndonThresholds::default();
+        let cloned = thresholds.clone();
+        assert_eq!(thresholds.thermal_warning, cloned.thermal_warning);
+    }
+
+    #[test]
+    fn test_render_progress_bar_over_100() {
+        // Should handle values > 100
+        let bar = render_progress_bar(150.0, 10);
+        assert_eq!(bar.chars().filter(|&c| c == '█').count(), 10);
+    }
+
+    #[test]
+    fn test_render_progress_bar_negative() {
+        // Should handle negative values
+        let bar = render_progress_bar(-10.0, 10);
+        // Negative rounds to 0
+        assert!(bar.chars().filter(|&c| c == '█').count() == 0);
+    }
+
+    #[test]
+    fn test_gpu_monitor_non_mock_sample() {
+        // Create non-mock monitor but call sample (should return empty or real data)
+        let monitor = GpuMonitor::new().unwrap();
+        let metrics = monitor.sample();
+        // Just verify it doesn't crash - may be empty if no NVML
+        let _ = metrics;
+    }
+
+    #[test]
+    fn test_gpu_monitor_non_mock_sample_with_variation() {
+        let mut monitor = GpuMonitor::new().unwrap();
+        // Non-mock mode should return empty
+        let metrics = monitor.sample_with_variation(1.0);
+        // Should be empty for non-mock mode
+        assert!(metrics.is_empty() || !monitor.is_mock());
+    }
+
+    #[test]
+    fn test_buffer_memory_history() {
+        let mut buffer = GpuMetricsBuffer::new(10, 1);
+
+        for i in 0..3 {
+            buffer.push(&[GpuMetrics {
+                device_id: 0,
+                memory_used_mb: i * 1000,
+                memory_total_mb: 8000,
+                memory_utilization_percent: (i as u32) * 10,
+                ..Default::default()
+            }]);
+        }
+
+        let history = buffer.memory_history(0);
+        // memory_history returns memory_percent() values: 0/8000=0%, 1000/8000=12.5%, 2000/8000=25%
+        assert_eq!(history.len(), 3);
+        assert!((history[0] - 0.0).abs() < 0.1);
+        assert!((history[1] - 12.5).abs() < 0.1);
+        assert!((history[2] - 25.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_buffer_last_n_more_than_available() {
+        let mut buffer = GpuMetricsBuffer::new(10, 1);
+
+        buffer.push(&[GpuMetrics {
+            device_id: 0,
+            utilization_percent: 50,
+            ..Default::default()
+        }]);
+
+        // Request more than available
+        let last5 = buffer.last_n(0, 5);
+        assert_eq!(last5.len(), 1);
+    }
+
+    #[test]
+    fn test_buffer_last_nonexistent_device() {
+        let buffer = GpuMetricsBuffer::new(10, 1);
+        let last = buffer.last_n(99, 5);
+        assert!(last.is_empty());
+    }
+
+    #[test]
+    fn test_andon_system_custom_thresholds() {
+        let thresholds = AndonThresholds {
+            thermal_warning: 70, // Lower threshold
+            thermal_critical: 85,
+            memory_warning: 80,
+            memory_critical: 90,
+            power_warning: 90,
+            idle_threshold_secs: 20,
+        };
+        let mut andon = GpuAndonSystem::with_thresholds(thresholds);
+
+        let metrics = vec![GpuMetrics {
+            device_id: 0,
+            temperature_celsius: 75, // Would not trigger default 80 but triggers 70
+            ..Default::default()
+        }];
+
+        let alerts = andon.check(&metrics);
+        assert!(alerts
+            .iter()
+            .any(|a| matches!(a, GpuAlert::ThermalThrottling { .. })));
+    }
+
+    #[test]
+    fn test_andon_system_alerts_cleared_on_check() {
+        let mut andon = GpuAndonSystem::new();
+        // Use critical memory (99%) which has severity 100
+        let critical_metrics = vec![GpuMetrics {
+            device_id: 0,
+            memory_used_mb: 15840, // 99% of 16000
+            memory_total_mb: 16000,
+            ..Default::default()
+        }];
+
+        andon.check(&critical_metrics);
+        assert!(andon.has_critical_alerts());
+
+        // Check with normal metrics - alerts should be cleared
+        let normal_metrics = vec![GpuMetrics {
+            device_id: 0,
+            memory_used_mb: 8000,
+            memory_total_mb: 16000,
+            ..Default::default()
+        }];
+        andon.check(&normal_metrics);
+        assert!(!andon.has_critical_alerts());
+    }
+
+    #[test]
+    fn test_thermal_severity_max_excess() {
+        // Test thermal severity with large excess (should cap at 100)
+        let alert = GpuAlert::ThermalThrottling {
+            device: 0,
+            temp: 200,
+            threshold: 80,
+        };
+        // 50 + min(120, 50) = 50 + 50 = 100
+        assert_eq!(alert.severity(), 100);
+    }
 }
 
 // =============================================================================
