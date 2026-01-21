@@ -36,6 +36,7 @@ mod curriculum;
 mod loss;
 mod metrics;
 mod trainer;
+mod transformer_trainer;
 pub mod tui;
 
 #[cfg(test)]
@@ -58,6 +59,9 @@ pub use loss::{
 };
 pub use metrics::{Accuracy, F1Score, Metric, Precision, R2Score, Recall, MAE, RMSE};
 pub use trainer::{TrainResult, Trainer};
+pub use transformer_trainer::{
+    perplexity, tokens_per_second, LMBatch, TransformerTrainConfig, TransformerTrainer,
+};
 pub use tui::{
     format_duration, sparkline, sparkline_range, Alert, AlertLevel, AndonSystem, DashboardLayout,
     FeatureImportanceChart, GradientFlowHeatmap, KalmanEta, LossCurveDisplay, MetricsBuffer,
