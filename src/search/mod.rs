@@ -11,6 +11,6 @@
 pub mod mcts;
 
 pub use mcts::{
-    Action, ActionSpace, MctsConfig, MctsResult, MctsSearch, MctsStats, Node, NodeId,
+    Action, ActionSpace, MctsConfig, MctsResult, MctsSearch, MctsStats, Node, NodeId, NodeStats,
     PolicyNetwork, Reward, SearchTree, State, StateSpace,
 };

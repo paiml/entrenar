@@ -1,0 +1,177 @@
+//! GPU metric types for monitoring.
+
+use serde::{Deserialize, Serialize};
+
+/// GPU metrics snapshot (inspired by btop's GPU visualization)
+///
+/// Reference: btop `src/btop_shared.hpp` lines 130-171
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GpuMetrics {
+    /// Device index
+    pub device_id: u32,
+    /// GPU name (e.g., "RTX 4090")
+    pub name: String,
+    /// GPU compute utilization (0-100%)
+    pub utilization_percent: u32,
+    /// Used VRAM in MB
+    pub memory_used_mb: u64,
+    /// Total VRAM in MB
+    pub memory_total_mb: u64,
+    /// Memory utilization (0-100%)
+    pub memory_utilization_percent: u32,
+    /// GPU temperature in Celsius
+    pub temperature_celsius: u32,
+    /// Current power draw in watts
+    pub power_watts: f32,
+    /// Power limit in watts
+    pub power_limit_watts: f32,
+    /// Graphics clock in MHz
+    pub clock_mhz: u32,
+    /// Memory clock in MHz
+    pub memory_clock_mhz: u32,
+    /// PCIe transmit throughput in KB/s
+    pub pcie_tx_kbps: u64,
+    /// PCIe receive throughput in KB/s
+    pub pcie_rx_kbps: u64,
+    /// Fan speed percentage (0-100%)
+    pub fan_speed_percent: u32,
+}
+
+impl GpuMetrics {
+    /// Create mock metrics for testing
+    pub fn mock(device_id: u32) -> Self {
+        Self {
+            device_id,
+            name: format!("Mock GPU {device_id}"),
+            utilization_percent: 75,
+            memory_used_mb: 8192,
+            memory_total_mb: 24576,
+            memory_utilization_percent: 33,
+            temperature_celsius: 65,
+            power_watts: 250.0,
+            power_limit_watts: 450.0,
+            clock_mhz: 2100,
+            memory_clock_mhz: 10000,
+            pcie_tx_kbps: 1000,
+            pcie_rx_kbps: 2000,
+            fan_speed_percent: 50,
+        }
+    }
+
+    /// Calculate memory utilization percentage
+    pub fn memory_percent(&self) -> f64 {
+        if self.memory_total_mb == 0 {
+            return 0.0;
+        }
+        self.memory_used_mb as f64 / self.memory_total_mb as f64 * 100.0
+    }
+
+    /// Calculate power utilization percentage
+    pub fn power_percent(&self) -> f64 {
+        if self.power_limit_watts <= 0.0 {
+            return 0.0;
+        }
+        f64::from(self.power_watts) / f64::from(self.power_limit_watts) * 100.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gpu_metrics_mock() {
+        let m = GpuMetrics::mock(0);
+        assert_eq!(m.device_id, 0);
+        assert!(!m.name.is_empty());
+        assert!(m.utilization_percent <= 100);
+    }
+
+    #[test]
+    fn test_gpu_metrics_memory_percent() {
+        let mut m = GpuMetrics::mock(0);
+        m.memory_used_mb = 8000;
+        m.memory_total_mb = 16000;
+        assert!((m.memory_percent() - 50.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_gpu_metrics_memory_percent_zero_total() {
+        let mut m = GpuMetrics::mock(0);
+        m.memory_total_mb = 0;
+        assert!((m.memory_percent() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_gpu_metrics_power_percent() {
+        let mut m = GpuMetrics::mock(0);
+        m.power_watts = 225.0;
+        m.power_limit_watts = 450.0;
+        assert!((m.power_percent() - 50.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_gpu_metrics_power_percent_zero_limit() {
+        let mut m = GpuMetrics::mock(0);
+        m.power_limit_watts = 0.0;
+        assert!((m.power_percent() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_gpu_metrics_default() {
+        let m = GpuMetrics::default();
+        assert_eq!(m.device_id, 0);
+        assert!(m.name.is_empty());
+        assert_eq!(m.utilization_percent, 0);
+    }
+
+    #[test]
+    fn test_gpu_metrics_clone() {
+        let metrics = GpuMetrics::mock(0);
+        let cloned = metrics.clone();
+        assert_eq!(metrics.device_id, cloned.device_id);
+        assert_eq!(metrics.name, cloned.name);
+    }
+
+    #[test]
+    fn test_gpu_metrics_serde() {
+        let metrics = GpuMetrics::mock(0);
+        let json = serde_json::to_string(&metrics).unwrap();
+        let parsed: GpuMetrics = serde_json::from_str(&json).unwrap();
+        assert_eq!(metrics.device_id, parsed.device_id);
+        assert_eq!(metrics.utilization_percent, parsed.utilization_percent);
+    }
+}
+
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(200))]
+
+        #[test]
+        fn prop_memory_percent_bounds(used in 0u64..100000, total in 1u64..100000) {
+            let m = GpuMetrics {
+                memory_used_mb: used,
+                memory_total_mb: total,
+                ..Default::default()
+            };
+            let percent = m.memory_percent();
+            prop_assert!(percent >= 0.0);
+            // Can be > 100 if used > total (which is invalid but shouldn't crash)
+        }
+
+        #[test]
+        fn prop_power_percent_bounds(power in 0.0f32..1000.0, limit in 0.1f32..1000.0) {
+            let m = GpuMetrics {
+                power_watts: power,
+                power_limit_watts: limit,
+                ..Default::default()
+            };
+            let percent = m.power_percent();
+            prop_assert!(percent >= 0.0);
+        }
+    }
+}
