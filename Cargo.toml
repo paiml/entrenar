@@ -67,7 +67,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.5.2"
+version = "0.5.4"
 edition = "2021"
 authors = ["PAIML <hello@paiml.com>"]
 description = "Training & Optimization library with autograd, LoRA, quantization, and model merging"
@@ -97,11 +97,10 @@ cuda = ["trueno/cuda-monitor", "tokio"]  # NVIDIA CUDA monitoring via trueno-gpu
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
-trueno = "0.11.0"  # SIMD-accelerated compute
+trueno = "0.13.0"  # SIMD-accelerated compute
 aprender = "0.24"  # ML interpret module for explainability + .apr model format + pruning
-alimentar = "0.2.2"  # Dataset loading with MNIST
-trueno-viz = { version = "0.1.5", features = ["terminal"] }  # Terminal visualization
-trueno-db = { version = "0.3.9", optional = true }  # Time-series storage
+trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
+trueno-db = { version = "0.3.11", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
 renacer = { version = "0.9", optional = true }  # Distributed tracing
 wasm-bindgen = { version = "0.2", optional = true }  # WASM bindings
@@ -116,7 +115,7 @@ rand = "0.9"
 clap = { version = "4.5", features = ["derive"] }
 clap_complete = "4.5"  # Shell completion generation
 dirs = "5.0"  # Cache directory resolution for HF pipeline
-trueno-rag = { version = "0.1.5", optional = true }  # RAG pipeline for CITL
+trueno-rag = { version = "0.1.10", optional = true }  # RAG pipeline for CITL
 tokio = { version = "1.41", features = ["rt", "rt-multi-thread", "macros", "net"], optional = true }  # Async runtime
 uuid = { version = "1.11", features = ["v4", "serde"], optional = true }  # UUIDs for CITL patterns
 axum = { version = "0.8", optional = true }  # HTTP server for REST API
@@ -127,10 +126,13 @@ sha2 = "0.10"  # SHA256 hashing for artifact CAS
 hex = "0.4"  # Hex encoding for hashes
 regex = "1.10"  # ORCID/ROR validation
 ed25519-dalek = "2.1"  # Ed25519 signing for pre-registration
-zip = "2.2"  # RO-Crate ZIP export
-memmap2 = "0.9"  # Memory-mapped file access for large models
 bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for tensor data
-hf-hub = "0.4"  # HuggingFace Hub API for model downloads
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+hf-hub = "0.4"  # HuggingFace Hub API for model downloads (not available on WASM)
+memmap2 = "0.9"  # Memory-mapped file access for large models (not available on WASM)
+zip = "2.2"  # RO-Crate ZIP export (requires native compression, not available on WASM)
+alimentar = "0.2.2"  # Dataset loading with MNIST (requires tokio, not available on WASM)
 
 [dev-dependencies]
 proptest = "1.4"
@@ -261,4 +263,14 @@ required-features = []
 [[example]]
 name = "cuda_backend"
 path = "examples/cuda_backend.rs"
+required-features = []
+
+[[example]]
+name = "drift_simulation"
+path = "examples/drift_simulation.rs"
+required-features = []
+
+[[example]]
+name = "calibration_check"
+path = "examples/calibration_check.rs"
 required-features = []

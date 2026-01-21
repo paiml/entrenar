@@ -197,6 +197,18 @@
 - [Configuration System](./api-reference/configuration.md)
 - [Error Handling](./api-reference/error-handling.md)
 
+# Model Evaluation (APR-073)
+
+- [Overview](./eval/overview.md)
+- [Classification Metrics](./eval/classification-metrics.md)
+- [ModelEvaluator & Leaderboard](./eval/model-evaluator.md)
+- [Cross-Validation](./eval/cross-validation.md)
+- [Drift Detection](./eval/drift-detection.md)
+  - [KS Test](./eval/ks-test.md)
+  - [Chi-Square Test](./eval/chi-square-test.md)
+  - [PSI (Population Stability Index)](./eval/psi.md)
+- [Auto-Retraining (Andon Loop)](./eval/auto-retraining.md)
+
 # Examples
 
 - [Linear Regression with Autograd](./examples/linear-regression.md)
@@ -209,6 +221,8 @@
 - [Adapter Sharing](./examples/adapter-sharing.md)
 - [CUDA Backend Configuration](./examples/cuda-backend.md)
 - [Pruning Pipeline](./examples/pruning-pipeline.md)
+- [Drift Detection Simulation](./examples/drift-simulation.md)
+- [P-Value Calibration Check](./examples/calibration-check.md)
 
 # Development Guide
 

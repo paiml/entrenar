@@ -17,6 +17,7 @@
 //! - **hf_pipeline**: HuggingFace model fetching and distillation
 //! - **citl**: Compiler-in-the-Loop training with RAG-based fix suggestions (feature-gated)
 //! - **efficiency**: Cost tracking, device detection, and performance benchmarking
+//! - **eval**: Model evaluation framework with metrics, comparison, and drift detection
 //! - **sovereign**: Air-gapped deployment and distribution packaging
 //! - **research**: Academic research artifacts, citations, and archive deposits
 //! - **ecosystem**: PAIML stack integrations (Batuta, Realizar, Ruchy)
@@ -31,7 +32,9 @@ pub mod dashboard;
 pub mod distill;
 pub mod ecosystem;
 pub mod efficiency;
+pub mod eval;
 pub mod generative;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod hf_pipeline;
 pub mod integrity;
 pub mod io;

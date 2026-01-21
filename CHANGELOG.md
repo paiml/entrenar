@@ -5,6 +5,25 @@ All notable changes to Entrenar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-01-21
+
+### Added
+#### Model Evaluation Framework (APR-073)
+- **Standardized Metrics** - Classification (Accuracy, F1, Precision, Recall, Confusion Matrix) with sklearn parity (1e-6 precision).
+- **Drift Detection** - KS, Chi-Square, and PSI (Population Stability Index) statistical tests for data/concept drift detection.
+- **ModelEvaluator** - Multi-model comparison and leaderboard generation.
+- **Entrenar Integration** - `AutoRetrainer` with Andon loop; <10ms callback latency verified.
+- **Renacer Tracing** - Feature-gated tracing for evaluation overhead monitoring.
+- **WASM Compatibility** - Core evaluation logic compiles to `wasm32-unknown-unknown`.
+- **Performance** - O(N) complexity for all metrics; verified zero-allocation hot loops in WASM.
+
+### Changed
+- Total test count increased to 3,000+ passing library tests.
+- 17 new property tests with 100,000 iterations each for metric stability.
+
+### Fixed
+- WASM build for `hf-hub` and `memmap2` via platform-specific dependency gating.
+
 ## [0.2.3] - 2025-12-02
 
 ### Fixed
