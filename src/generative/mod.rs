@@ -12,6 +12,6 @@
 pub mod code_gan;
 
 pub use code_gan::{
-    CodeGan, CodeGanConfig, CodeGanStats, Discriminator, DiscriminatorConfig, Generator,
+    sigmoid, CodeGan, CodeGanConfig, CodeGanStats, Discriminator, DiscriminatorConfig, Generator,
     GeneratorConfig, LatentCode, TrainingResult,
 };
