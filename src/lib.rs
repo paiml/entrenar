@@ -23,6 +23,7 @@
 //! - **ecosystem**: PAIML stack integrations (Batuta, Realizar, Ruchy)
 //! - **dashboard**: Real-time training monitoring and WASM bindings
 //! - **yaml_mode**: Declarative YAML Mode Training (v1.0 spec)
+//! - **transformer**: Transformer layers with autograd support
 
 pub mod autograd;
 #[cfg(feature = "citl")]
@@ -53,6 +54,7 @@ pub mod sovereign;
 pub mod storage;
 pub mod tokenizer;
 pub mod train;
+pub mod transformer;
 pub mod yaml_mode;
 
 pub mod error;
