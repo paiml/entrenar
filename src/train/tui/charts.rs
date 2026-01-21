@@ -439,4 +439,132 @@ mod tests {
         // Just verify it doesn't panic
         assert_eq!(display.epochs(), 0);
     }
+
+    #[test]
+    fn test_loss_curve_display_render_with_data() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        // Need at least 2 epochs for rendering
+        display.push_train_loss(2.0);
+        display.push_val_loss(2.5);
+        display.push_train_loss(1.5);
+        display.push_val_loss(1.8);
+        display.push_train_loss(1.2);
+        display.push_val_loss(1.4);
+
+        let rendered = display.render_terminal();
+        // Should not be waiting message
+        assert!(!rendered.contains("waiting"));
+    }
+
+    #[test]
+    fn test_loss_curve_display_summary() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        display.push_train_loss(2.0);
+        display.push_val_loss(2.5);
+        display.push_train_loss(1.5);
+        display.push_val_loss(1.8);
+
+        let summary = display.summary();
+        assert_eq!(summary.len(), 2);
+        assert_eq!(summary[0].0, "Train");
+        assert_eq!(summary[1].0, "Val");
+    }
+
+    #[test]
+    fn test_loss_curve_display_ascii_mode() {
+        let mut display = LossCurveDisplay::new(80, 20).terminal_mode(TerminalMode::Ascii);
+        display.push_train_loss(2.0);
+        display.push_val_loss(2.5);
+        display.push_train_loss(1.5);
+        display.push_val_loss(1.8);
+        display.push_train_loss(1.2);
+        display.push_val_loss(1.4);
+
+        let rendered = display.render_terminal();
+        assert!(!rendered.contains("waiting"));
+    }
+
+    #[test]
+    fn test_loss_curve_display_ansi_mode() {
+        let mut display = LossCurveDisplay::new(80, 20).terminal_mode(TerminalMode::Ansi);
+        display.push_train_loss(2.0);
+        display.push_val_loss(2.5);
+        display.push_train_loss(1.5);
+        display.push_val_loss(1.8);
+        display.push_train_loss(1.2);
+        display.push_val_loss(1.4);
+
+        let rendered = display.render_terminal();
+        assert!(!rendered.contains("waiting"));
+    }
+
+    #[test]
+    fn test_feature_importance_chart_zero_max_score() {
+        let mut chart = FeatureImportanceChart::new(3, 20);
+        let importances = vec![(0, 0.0), (1, 0.0), (2, 0.0)];
+        chart.update(&importances, None);
+
+        let rendered = chart.render();
+        // Should render without panic even with zero scores
+        assert!(rendered.contains("Feature Importance"));
+    }
+
+    #[test]
+    fn test_gradient_flow_heatmap_uniform_values() {
+        let layers = vec!["layer_0".to_string(), "layer_1".to_string()];
+        let cols = vec!["Q".to_string(), "K".to_string()];
+        let mut heatmap = GradientFlowHeatmap::new(layers, cols);
+
+        // All same values
+        heatmap.update(0, 0, 1.0);
+        heatmap.update(0, 1, 1.0);
+        heatmap.update(1, 0, 1.0);
+        heatmap.update(1, 1, 1.0);
+
+        let rendered = heatmap.render();
+        assert!(rendered.contains("Gradient Flow"));
+    }
+
+    #[test]
+    fn test_feature_importance_chart_clone() {
+        let chart = FeatureImportanceChart::new(5, 20);
+        let cloned = chart.clone();
+        assert_eq!(chart.top_k, cloned.top_k);
+        assert_eq!(chart.bar_width, cloned.bar_width);
+    }
+
+    #[test]
+    fn test_gradient_flow_heatmap_clone() {
+        let layers = vec!["layer_0".to_string()];
+        let cols = vec!["Q".to_string()];
+        let heatmap = GradientFlowHeatmap::new(layers, cols);
+        let cloned = heatmap.clone();
+        assert_eq!(heatmap.layer_names, cloned.layer_names);
+    }
+
+    #[test]
+    fn test_feature_importance_chart_debug() {
+        let chart = FeatureImportanceChart::new(5, 20);
+        let debug_str = format!("{chart:?}");
+        assert!(debug_str.contains("FeatureImportanceChart"));
+    }
+
+    #[test]
+    fn test_gradient_flow_heatmap_debug() {
+        let layers = vec!["layer_0".to_string()];
+        let cols = vec!["Q".to_string()];
+        let heatmap = GradientFlowHeatmap::new(layers, cols);
+        let debug_str = format!("{heatmap:?}");
+        assert!(debug_str.contains("GradientFlowHeatmap"));
+    }
+
+    #[test]
+    fn test_loss_curve_display_multiple_pushes() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        for i in 0..10 {
+            display.push_train_loss(2.0 - i as f32 * 0.1);
+            display.push_val_loss(2.5 - i as f32 * 0.1);
+        }
+        assert_eq!(display.epochs(), 10);
+    }
 }
