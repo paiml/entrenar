@@ -860,6 +860,306 @@ mod tests {
         let backend = config.build().unwrap();
         assert_eq!(backend.backend_type(), "s3");
     }
+
+    #[test]
+    fn test_artifact_metadata_with_metadata() {
+        let meta = ArtifactMetadata::new("model.bin", "abc123", 1024)
+            .with_metadata("model_type", "bert")
+            .with_metadata("version", "1.0");
+        assert_eq!(meta.metadata.get("model_type"), Some(&"bert".to_string()));
+        assert_eq!(meta.metadata.get("version"), Some(&"1.0".to_string()));
+    }
+
+    #[test]
+    fn test_cloud_error_display() {
+        let io_err = CloudError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "file not found",
+        ));
+        assert!(io_err.to_string().contains("IO error"));
+
+        let not_found = CloudError::NotFound("abc123".to_string());
+        assert!(not_found.to_string().contains("abc123"));
+
+        let backend = CloudError::Backend("connection failed".to_string());
+        assert!(backend.to_string().contains("connection failed"));
+
+        let config = CloudError::Config("invalid config".to_string());
+        assert!(config.to_string().contains("invalid config"));
+
+        let permission = CloudError::PermissionDenied("access denied".to_string());
+        assert!(permission.to_string().contains("access denied"));
+
+        let network = CloudError::Network("timeout".to_string());
+        assert!(network.to_string().contains("timeout"));
+    }
+
+    #[test]
+    fn test_local_backend_get_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+
+        let result = backend.get("nonexistent_hash");
+        assert!(result.is_err());
+        match result {
+            Err(CloudError::NotFound(hash)) => assert_eq!(hash, "nonexistent_hash"),
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    #[test]
+    fn test_local_backend_delete_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+
+        let result = backend.delete("nonexistent_hash");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_local_backend_get_metadata() {
+        let tmp = TempDir::new().unwrap();
+        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+
+        let data = b"test data for metadata";
+        let hash = backend.put("test_file.bin", data).unwrap();
+
+        let meta = backend.get_metadata(&hash).unwrap();
+        assert_eq!(meta.name, "test_file.bin");
+        assert_eq!(meta.size, data.len() as u64);
+    }
+
+    #[test]
+    fn test_local_backend_get_metadata_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+
+        let result = backend.get_metadata("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_local_backend_list() {
+        let tmp = TempDir::new().unwrap();
+        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+
+        backend.put("file1.bin", b"data1").unwrap();
+        backend.put("file2.bin", b"data2").unwrap();
+        backend.put("file3.bin", b"data3").unwrap();
+
+        let list = backend.list().unwrap();
+        assert_eq!(list.len(), 3);
+    }
+
+    #[test]
+    fn test_s3_config_with_credentials() {
+        let config = S3Config::new("bucket", "prefix").with_credentials("access_key", "secret_key");
+        assert_eq!(config.access_key_id, Some("access_key".to_string()));
+        assert_eq!(config.secret_access_key, Some("secret_key".to_string()));
+    }
+
+    #[test]
+    fn test_s3_config_key_for_hash_with_trailing_slash() {
+        let config = S3Config::new("bucket", "artifacts/");
+        assert_eq!(config.key_for_hash("abc123"), "artifacts/abc123");
+    }
+
+    #[test]
+    fn test_azure_config_with_connection_string() {
+        let config = AzureConfig::new("account", "container")
+            .with_connection_string("DefaultEndpointsProtocol=https;...");
+        assert!(config.connection_string.is_some());
+    }
+
+    #[test]
+    fn test_gcs_config_with_prefix() {
+        let config = GCSConfig::new("bucket").with_prefix("models/v1/");
+        assert_eq!(config.prefix, "models/v1/");
+    }
+
+    #[test]
+    fn test_backend_config_build_local() {
+        let tmp = TempDir::new().unwrap();
+        let config = BackendConfig::local(tmp.path().to_path_buf());
+        let backend = config.build().unwrap();
+        assert_eq!(backend.backend_type(), "local");
+    }
+
+    #[test]
+    fn test_backend_config_build_azure() {
+        let config = BackendConfig::Azure(AzureConfig::new("account", "container"));
+        let backend = config.build().unwrap();
+        // Currently returns InMemoryBackend as placeholder
+        assert_eq!(backend.backend_type(), "memory");
+    }
+
+    #[test]
+    fn test_backend_config_build_gcs() {
+        let config = BackendConfig::GCS(GCSConfig::new("bucket"));
+        let backend = config.build().unwrap();
+        // Currently returns InMemoryBackend as placeholder
+        assert_eq!(backend.backend_type(), "memory");
+    }
+
+    #[test]
+    fn test_mock_s3_backend_exists() {
+        let config = S3Config::new("bucket", "prefix");
+        let backend = MockS3Backend::new(config);
+
+        let hash = backend.put("file.bin", b"data").unwrap();
+        assert!(backend.exists(&hash).unwrap());
+        assert!(!backend.exists("nonexistent").unwrap());
+    }
+
+    #[test]
+    fn test_mock_s3_backend_delete() {
+        let config = S3Config::new("bucket", "prefix");
+        let backend = MockS3Backend::new(config);
+
+        let hash = backend.put("file.bin", b"data").unwrap();
+        backend.delete(&hash).unwrap();
+        assert!(!backend.exists(&hash).unwrap());
+    }
+
+    #[test]
+    fn test_mock_s3_backend_get_metadata() {
+        let config = S3Config::new("bucket", "prefix");
+        let backend = MockS3Backend::new(config);
+
+        let hash = backend.put("model.bin", b"model data").unwrap();
+        let meta = backend.get_metadata(&hash).unwrap();
+        assert_eq!(meta.name, "model.bin");
+    }
+
+    #[test]
+    fn test_mock_s3_backend_list() {
+        let config = S3Config::new("bucket", "prefix");
+        let backend = MockS3Backend::new(config);
+
+        backend.put("file1.bin", b"data1").unwrap();
+        backend.put("file2.bin", b"data2").unwrap();
+
+        let list = backend.list().unwrap();
+        assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn test_mock_s3_backend_config() {
+        let config = S3Config::new("test-bucket", "models/").with_region("us-east-1");
+        let backend = MockS3Backend::new(config);
+
+        assert_eq!(backend.config().bucket, "test-bucket");
+        assert_eq!(backend.config().prefix, "models/");
+        assert_eq!(backend.config().region, Some("us-east-1".to_string()));
+    }
+
+    #[test]
+    fn test_in_memory_backend_get_not_found() {
+        let backend = InMemoryBackend::new();
+        let result = backend.get("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_in_memory_backend_get_metadata_not_found() {
+        let backend = InMemoryBackend::new();
+        let result = backend.get_metadata("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_artifact_metadata_serde() {
+        let meta = ArtifactMetadata::new("test.bin", "abc123", 1024)
+            .with_content_type("application/octet-stream")
+            .with_metadata("key", "value");
+
+        let json = serde_json::to_string(&meta).unwrap();
+        let parsed: ArtifactMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(meta.name, parsed.name);
+        assert_eq!(meta.hash, parsed.hash);
+        assert_eq!(meta.size, parsed.size);
+        assert_eq!(meta.content_type, parsed.content_type);
+    }
+
+    #[test]
+    fn test_s3_config_serde() {
+        let config = S3Config::new("bucket", "prefix")
+            .with_region("us-west-2")
+            .with_endpoint("http://localhost:9000")
+            .with_credentials("key", "secret");
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: S3Config = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.bucket, parsed.bucket);
+        assert_eq!(config.region, parsed.region);
+        assert_eq!(config.endpoint, parsed.endpoint);
+    }
+
+    #[test]
+    fn test_azure_config_serde() {
+        let config = AzureConfig::new("account", "container")
+            .with_prefix("models/")
+            .with_connection_string("conn");
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: AzureConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.account, parsed.account);
+        assert_eq!(config.container, parsed.container);
+        assert_eq!(config.prefix, parsed.prefix);
+    }
+
+    #[test]
+    fn test_gcs_config_serde() {
+        let config = GCSConfig::new("bucket")
+            .with_prefix("artifacts/")
+            .with_project("my-project");
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: GCSConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.bucket, parsed.bucket);
+        assert_eq!(config.prefix, parsed.prefix);
+        assert_eq!(config.project_id, parsed.project_id);
+    }
+
+    #[test]
+    fn test_backend_config_serde() {
+        let configs = vec![
+            BackendConfig::local(PathBuf::from("/tmp/test")),
+            BackendConfig::memory(),
+            BackendConfig::s3("bucket", "prefix"),
+            BackendConfig::Azure(AzureConfig::new("account", "container")),
+            BackendConfig::GCS(GCSConfig::new("bucket")),
+        ];
+
+        for config in configs {
+            let json = serde_json::to_string(&config).unwrap();
+            let parsed: BackendConfig = serde_json::from_str(&json).unwrap();
+            // Just verify it parses without panic
+            let _ = parsed;
+        }
+    }
+
+    #[test]
+    fn test_local_backend_new() {
+        let backend = LocalBackend::new(PathBuf::from("/tmp/test"));
+        assert_eq!(backend.backend_type(), "local");
+    }
+
+    #[test]
+    fn test_in_memory_backend_default() {
+        let backend = InMemoryBackend::default();
+        assert_eq!(backend.backend_type(), "memory");
+    }
+
+    #[test]
+    fn test_artifact_metadata_created_at_is_set() {
+        let meta = ArtifactMetadata::new("test.bin", "hash", 100);
+        assert!(meta.created_at > 0);
+    }
 }
 
 // =============================================================================
