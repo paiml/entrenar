@@ -16,8 +16,19 @@
 //! let run_id = backend.create_run(&exp_id)?;
 //! backend.log_metric(&run_id, "loss", 0, 0.5)?;
 //! ```
+//!
+//! # Module Organization
+//!
+//! - `backend` - Core SqliteBackend struct and basic CRUD operations
+//! - `queries` - Search, list, and parameter filtering methods
+//! - `metrics` - Metric logging and retrieval (implements ExperimentStorage trait)
+//! - `artifacts` - Artifact storage and retrieval
+//! - `types` - Type definitions (ParameterValue, Experiment, Run, ArtifactRef)
 
+mod artifacts;
 mod backend;
+mod metrics;
+mod queries;
 mod types;
 
 pub use backend::SqliteBackend;
