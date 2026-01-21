@@ -220,4 +220,95 @@ mod tests {
         };
         assert_eq!(caps.recommended_mode(), TerminalMode::Ascii);
     }
+
+    #[test]
+    fn test_terminal_mode_variants() {
+        assert_eq!(TerminalMode::Ascii, TerminalMode::Ascii);
+        assert_eq!(TerminalMode::Unicode, TerminalMode::Unicode);
+        assert_eq!(TerminalMode::Ansi, TerminalMode::Ansi);
+        assert_ne!(TerminalMode::Ascii, TerminalMode::Unicode);
+    }
+
+    #[test]
+    fn test_dashboard_layout_variants() {
+        assert_eq!(DashboardLayout::Minimal, DashboardLayout::Minimal);
+        assert_eq!(DashboardLayout::Compact, DashboardLayout::Compact);
+        assert_eq!(DashboardLayout::Full, DashboardLayout::Full);
+        assert_ne!(DashboardLayout::Minimal, DashboardLayout::Full);
+    }
+
+    #[test]
+    fn test_terminal_mode_clone() {
+        let mode = TerminalMode::Unicode;
+        let cloned = mode;
+        assert_eq!(mode, cloned);
+    }
+
+    #[test]
+    fn test_dashboard_layout_clone() {
+        let layout = DashboardLayout::Full;
+        let cloned = layout;
+        assert_eq!(layout, cloned);
+    }
+
+    #[test]
+    fn test_terminal_capabilities_clone() {
+        let caps = TerminalCapabilities::default();
+        let cloned = caps;
+        assert_eq!(caps.width, cloned.width);
+        assert_eq!(caps.height, cloned.height);
+    }
+
+    #[test]
+    fn test_terminal_mode_debug() {
+        let mode = TerminalMode::Ansi;
+        let debug_str = format!("{mode:?}");
+        assert!(debug_str.contains("Ansi"));
+    }
+
+    #[test]
+    fn test_dashboard_layout_debug() {
+        let layout = DashboardLayout::Full;
+        let debug_str = format!("{layout:?}");
+        assert!(debug_str.contains("Full"));
+    }
+
+    #[test]
+    fn test_terminal_capabilities_debug() {
+        let caps = TerminalCapabilities::default();
+        let debug_str = format!("{caps:?}");
+        assert!(debug_str.contains("width"));
+        assert!(debug_str.contains("height"));
+    }
+
+    #[test]
+    fn test_get_size_fallback() {
+        // Clear env vars to test fallback path
+        std::env::remove_var("COLUMNS");
+        std::env::remove_var("LINES");
+        let (width, height) = TerminalCapabilities::get_size();
+        // Should get either actual terminal size or fallback 80x24
+        assert!(width > 0);
+        assert!(height > 0);
+    }
+
+    #[test]
+    fn test_recommended_mode_all_false() {
+        let caps = TerminalCapabilities {
+            width: 80,
+            height: 24,
+            unicode: false,
+            ansi_color: false,
+            true_color: false,
+            is_tty: true,
+        };
+        assert_eq!(caps.recommended_mode(), TerminalMode::Ascii);
+    }
+
+    #[test]
+    fn test_terminal_capabilities_eq() {
+        let caps1 = TerminalCapabilities::default();
+        let caps2 = TerminalCapabilities::default();
+        assert_eq!(caps1, caps2);
+    }
 }
