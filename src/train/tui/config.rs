@@ -161,4 +161,42 @@ mod tests {
         assert_eq!(parsed.show_eta, config.show_eta);
         assert_eq!(parsed.reference_curve, config.reference_curve);
     }
+
+    #[test]
+    fn test_monitor_config_to_callback_unicode() {
+        let config = MonitorConfig {
+            terminal_mode: "unicode".to_string(),
+            ..Default::default()
+        };
+        let _callback = config.to_callback();
+    }
+
+    #[test]
+    fn test_monitor_config_from_yaml_defaults() {
+        // YAML with only enabled field - tests serde defaults
+        let yaml = "enabled: true\n";
+        let parsed: MonitorConfig = serde_yaml::from_str(yaml).unwrap();
+
+        // default_true is called for show_eta
+        assert!(parsed.show_eta);
+        // default_refresh is called for refresh_ms
+        assert_eq!(parsed.refresh_ms, 100);
+        // default_sparkline_width is called
+        assert_eq!(parsed.sparkline_width, 20);
+    }
+
+    #[test]
+    fn test_monitor_config_clone() {
+        let config = MonitorConfig::default();
+        let cloned = config.clone();
+        assert_eq!(config.enabled, cloned.enabled);
+        assert_eq!(config.layout, cloned.layout);
+    }
+
+    #[test]
+    fn test_monitor_config_debug() {
+        let config = MonitorConfig::default();
+        let debug_str = format!("{config:?}");
+        assert!(debug_str.contains("MonitorConfig"));
+    }
 }
