@@ -522,4 +522,172 @@ mod tests {
 
         assert_eq!(parsed.binary_size_bytes, eff.binary_size_bytes);
     }
+
+    #[test]
+    fn test_server_efficiency_default() {
+        let eff = ServerEfficiency::default();
+        assert!((eff.throughput_samples_per_sec - 0.0).abs() < f64::EPSILON);
+        assert!((eff.gpu_utilization_percent - 0.0).abs() < f64::EPSILON);
+        assert!((eff.memory_bandwidth_gbps - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_server_efficiency_zero_utilization_throughput_efficiency() {
+        let eff = ServerEfficiency::new(1000.0, 0.0, 500.0);
+        assert!((eff.throughput_efficiency() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_server_efficiency_zero_utilization_estimated_max() {
+        let eff = ServerEfficiency::new(1000.0, 0.0, 500.0);
+        assert!((eff.estimated_max_throughput() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_edge_efficiency_default() {
+        let eff = EdgeEfficiency::default();
+        assert_eq!(eff.binary_size_bytes, 0);
+        assert_eq!(eff.startup_latency_ms, 0);
+        assert!((eff.inference_latency_p99_ms - 0.0).abs() < f64::EPSILON);
+        assert_eq!(eff.memory_footprint_bytes, 0);
+    }
+
+    #[test]
+    fn test_edge_efficiency_zero_latency_max_throughput() {
+        let eff = EdgeEfficiency::new(0, 0, 0.0, 0);
+        assert!((eff.max_throughput_per_sec() - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_budget_violation_display_startup_latency() {
+        let violation = BudgetViolation::StartupLatency {
+            actual: 1000,
+            limit: 500,
+        };
+        let msg = format!("{violation}");
+        assert!(msg.contains("1000"));
+        assert!(msg.contains("500"));
+        assert!(msg.contains("ms"));
+    }
+
+    #[test]
+    fn test_budget_violation_display_memory_footprint() {
+        let violation = BudgetViolation::MemoryFootprint {
+            actual: 512 * 1024 * 1024,
+            limit: 256 * 1024 * 1024,
+        };
+        let msg = format!("{violation}");
+        assert!(msg.contains("512"));
+        assert!(msg.contains("256"));
+        assert!(msg.contains("MB"));
+    }
+
+    #[test]
+    fn test_wasm_budget_new() {
+        let budget = WasmBudget::new(1024, 100, 4096);
+        assert_eq!(budget.max_binary_size, 1024);
+        assert_eq!(budget.max_startup_ms, 100);
+        assert_eq!(budget.max_memory_bytes, 4096);
+    }
+
+    #[test]
+    fn test_platform_efficiency_server_memory_bytes() {
+        let server = PlatformEfficiency::Server(ServerEfficiency::new(1000.0, 80.0, 500.0));
+        assert_eq!(server.memory_bytes(), 0);
+    }
+
+    #[test]
+    fn test_platform_efficiency_serde() {
+        let server = PlatformEfficiency::Server(ServerEfficiency::new(1000.0, 80.0, 500.0));
+        let json = serde_json::to_string(&server).unwrap();
+        let parsed: PlatformEfficiency = serde_json::from_str(&json).unwrap();
+        assert!(parsed.is_server());
+
+        let edge = PlatformEfficiency::Edge(EdgeEfficiency::new(1024, 100, 10.0, 4096));
+        let json = serde_json::to_string(&edge).unwrap();
+        let parsed: PlatformEfficiency = serde_json::from_str(&json).unwrap();
+        assert!(parsed.is_edge());
+    }
+
+    #[test]
+    fn test_wasm_budget_serde() {
+        let budget = WasmBudget::mobile();
+        let json = serde_json::to_string(&budget).unwrap();
+        let parsed: WasmBudget = serde_json::from_str(&json).unwrap();
+        assert_eq!(budget.max_binary_size, parsed.max_binary_size);
+    }
+
+    #[test]
+    fn test_budget_violation_equality() {
+        let v1 = BudgetViolation::BinarySize {
+            actual: 10,
+            limit: 5,
+        };
+        let v2 = BudgetViolation::BinarySize {
+            actual: 10,
+            limit: 5,
+        };
+        assert_eq!(v1, v2);
+
+        let v3 = BudgetViolation::StartupLatency {
+            actual: 10,
+            limit: 5,
+        };
+        assert_ne!(v1, v3);
+    }
+
+    #[test]
+    fn test_server_efficiency_boundary_utilization() {
+        // Test exactly at the 70% efficiency boundary
+        let eff_70 = ServerEfficiency::new(1000.0, 70.0, 500.0);
+        assert!(eff_70.is_gpu_efficient());
+        assert!(!eff_70.is_gpu_underutilized());
+
+        // Test exactly at the 50% underutilization boundary
+        let eff_50 = ServerEfficiency::new(1000.0, 50.0, 500.0);
+        assert!(!eff_50.is_gpu_efficient());
+        assert!(!eff_50.is_gpu_underutilized());
+
+        // Test just below 50%
+        let eff_49 = ServerEfficiency::new(1000.0, 49.9, 500.0);
+        assert!(eff_49.is_gpu_underutilized());
+    }
+
+    #[test]
+    fn test_server_efficiency_clone() {
+        let eff = ServerEfficiency::new(1000.0, 80.0, 500.0);
+        let cloned = eff.clone();
+        assert_eq!(eff, cloned);
+    }
+
+    #[test]
+    fn test_edge_efficiency_clone() {
+        let eff = EdgeEfficiency::new(1024, 100, 10.0, 4096);
+        let cloned = eff.clone();
+        assert_eq!(eff, cloned);
+    }
+
+    #[test]
+    fn test_wasm_budget_clone() {
+        let budget = WasmBudget::desktop();
+        let cloned = budget.clone();
+        assert_eq!(budget, cloned);
+    }
+
+    #[test]
+    fn test_platform_efficiency_clone() {
+        let server = PlatformEfficiency::Server(ServerEfficiency::new(1000.0, 80.0, 500.0));
+        let cloned = server.clone();
+        assert_eq!(server, cloned);
+    }
+
+    #[test]
+    fn test_budget_violation_clone() {
+        let violation = BudgetViolation::BinarySize {
+            actual: 10,
+            limit: 5,
+        };
+        let cloned = violation.clone();
+        assert_eq!(violation, cloned);
+    }
 }
