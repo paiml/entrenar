@@ -2026,4 +2026,234 @@ mod tests {
         let result = LinearPath::from_bytes(&[1u8, 0, 0, 0]);
         assert!(matches!(result, Err(PathError::InsufficientData { .. })));
     }
+
+    // ==========================================================================
+    // Additional coverage tests for error paths
+    // ==========================================================================
+
+    #[test]
+    fn test_tree_path_insufficient_data_at_start() {
+        let result = TreePath::from_bytes(&[1u8, 0, 0]);
+        assert!(matches!(result, Err(PathError::InsufficientData { .. })));
+    }
+
+    #[test]
+    fn test_tree_path_invalid_version() {
+        let result = TreePath::from_bytes(&[2u8, 0, 0, 0, 0]);
+        assert!(matches!(result, Err(PathError::VersionMismatch { .. })));
+    }
+
+    #[test]
+    fn test_tree_path_insufficient_data_in_splits() {
+        // Version 1, 1 split, but not enough data for the split
+        let mut bytes = vec![1u8];
+        bytes.extend_from_slice(&1u32.to_le_bytes()); // n_splits = 1
+                                                      // Not enough data for split
+        let result = TreePath::from_bytes(&bytes);
+        assert!(matches!(result, Err(PathError::InsufficientData { .. })));
+    }
+
+    #[test]
+    fn test_tree_path_confidence_without_distribution() {
+        let leaf = LeafInfo {
+            prediction: 0.5,
+            n_samples: 100,
+            class_distribution: None,
+        };
+        let path = TreePath::new(vec![], leaf);
+        let confidence = path.confidence();
+        // 1.0 - 1.0 / (100 + 1) = approximately 0.99
+        assert!(confidence > 0.98);
+        assert!(confidence < 1.0);
+    }
+
+    #[test]
+    fn test_forest_path_empty_predictions() {
+        let path = ForestPath::new(vec![], vec![]);
+        assert_eq!(path.ensemble_prediction, 0.0);
+        assert_eq!(path.tree_agreement, 1.0); // Single element treated as full agreement
+    }
+
+    #[test]
+    fn test_forest_path_single_tree_agreement() {
+        let path = ForestPath::new(vec![], vec![0.5]);
+        assert_eq!(path.tree_agreement, 1.0);
+    }
+
+    #[test]
+    fn test_forest_path_invalid_version() {
+        let result = ForestPath::from_bytes(&[2u8, 0, 0, 0, 0]);
+        assert!(matches!(result, Err(PathError::VersionMismatch { .. })));
+    }
+
+    #[test]
+    fn test_forest_path_insufficient_data() {
+        let result = ForestPath::from_bytes(&[1u8, 0, 0]);
+        assert!(matches!(result, Err(PathError::InsufficientData { .. })));
+    }
+
+    #[test]
+    fn test_knn_path_invalid_version() {
+        let result = KNNPath::from_bytes(&[2u8, 0, 0, 0, 0]);
+        assert!(matches!(result, Err(PathError::VersionMismatch { .. })));
+    }
+
+    #[test]
+    fn test_knn_path_insufficient_data() {
+        let result = KNNPath::from_bytes(&[1u8, 0]);
+        assert!(matches!(result, Err(PathError::InsufficientData { .. })));
+    }
+
+    #[test]
+    fn test_knn_path_empty_votes_confidence() {
+        // Create a path manually with empty votes
+        let path = KNNPath {
+            neighbor_indices: vec![],
+            distances: vec![],
+            neighbor_labels: vec![],
+            votes: vec![], // Empty
+            weighted_votes: None,
+            prediction: 0.0,
+        };
+        assert_eq!(path.confidence(), 0.0);
+    }
+
+    #[test]
+    fn test_neural_path_invalid_version() {
+        let result = NeuralPath::from_bytes(&[2u8, 0, 0, 0, 0]);
+        assert!(matches!(result, Err(PathError::VersionMismatch { .. })));
+    }
+
+    #[test]
+    fn test_neural_path_insufficient_data() {
+        let result = NeuralPath::from_bytes(&[1u8, 0, 0]);
+        assert!(matches!(result, Err(PathError::InsufficientData { .. })));
+    }
+
+    #[test]
+    fn test_linear_path_explain_with_probability() {
+        let path = LinearPath::new(vec![0.5, -0.3], 0.1, 0.5, 0.87).with_probability(0.87);
+        let explanation = path.explain();
+        assert!(explanation.contains("probability: 87.0%"));
+    }
+
+    #[test]
+    fn test_linear_path_explain_negative_contribution() {
+        let path = LinearPath::new(vec![-0.5], 0.0, -0.5, 0.0);
+        let explanation = path.explain();
+        assert!(explanation.contains("-0.5"));
+    }
+
+    #[test]
+    fn test_tree_path_explain_went_right() {
+        let splits = vec![TreeSplit {
+            feature_idx: 0,
+            threshold: 35.0,
+            went_left: false, // went right
+            n_samples: 100,
+        }];
+        let leaf = LeafInfo {
+            prediction: 0.5,
+            n_samples: 50,
+            class_distribution: None,
+        };
+        let path = TreePath::new(splits, leaf);
+        let explanation = path.explain();
+        assert!(explanation.contains("NO")); // went_left=false shows "NO"
+        assert!(explanation.contains(">"));
+    }
+
+    #[test]
+    fn test_forest_path_explain_with_feature_importance() {
+        let path =
+            ForestPath::new(vec![], vec![0.5, 0.6]).with_feature_importance(vec![0.3, 0.7, 0.5]);
+        let explanation = path.explain();
+        assert!(explanation.contains("Top features by importance"));
+    }
+
+    #[test]
+    fn test_knn_path_explain() {
+        let path = KNNPath::new(vec![0, 1], vec![0.1, 0.2], vec![0, 1], 0.5);
+        let explanation = path.explain();
+        assert!(explanation.contains("KNN Prediction"));
+        assert!(explanation.contains("Nearest neighbors"));
+        assert!(explanation.contains("Vote distribution"));
+    }
+
+    #[test]
+    fn test_neural_path_explain_with_ig() {
+        let path =
+            NeuralPath::new(vec![0.1], 0.5, 0.9).with_integrated_gradients(vec![0.2, 0.3, 0.5]);
+        let explanation = path.explain();
+        assert!(explanation.contains("Integrated gradients"));
+        assert!(explanation.contains("3 features"));
+    }
+
+    #[test]
+    fn test_neural_path_explain_with_attention() {
+        let path = NeuralPath::new(vec![0.1], 0.5, 0.9).with_attention(vec![vec![0.5, 0.5]]);
+        let explanation = path.explain();
+        assert!(explanation.contains("Attention weights"));
+    }
+
+    #[test]
+    fn test_linear_path_serialization_without_probability() {
+        let path = LinearPath::new(vec![0.5, -0.3], 0.1, 0.5, 0.87);
+        let bytes = path.to_bytes();
+        let restored = LinearPath::from_bytes(&bytes).expect("Failed to deserialize");
+        assert!(restored.probability.is_none());
+    }
+
+    #[test]
+    fn test_tree_path_serialization_without_class_distribution() {
+        let leaf = LeafInfo {
+            prediction: 0.5,
+            n_samples: 100,
+            class_distribution: None,
+        };
+        let path = TreePath::new(vec![], leaf);
+        let bytes = path.to_bytes();
+        let restored = TreePath::from_bytes(&bytes).expect("Failed to deserialize");
+        assert!(restored.leaf.class_distribution.is_none());
+    }
+
+    #[test]
+    fn test_knn_path_serialization_without_weighted_votes() {
+        let path = KNNPath::new(vec![0], vec![0.1], vec![0], 0.5);
+        let bytes = path.to_bytes();
+        let restored = KNNPath::from_bytes(&bytes).expect("Failed to deserialize");
+        assert!(restored.weighted_votes.is_none());
+    }
+
+    #[test]
+    fn test_neural_path_serialization_minimal() {
+        let path = NeuralPath::new(vec![0.1, 0.2], 0.5, 0.9);
+        let bytes = path.to_bytes();
+        let restored = NeuralPath::from_bytes(&bytes).expect("Failed to deserialize");
+        assert!(restored.activations.is_none());
+        assert!(restored.attention_weights.is_none());
+        assert!(restored.integrated_gradients.is_none());
+    }
+
+    #[test]
+    fn test_path_error_is_error() {
+        let err = PathError::InvalidFormat("test".to_string());
+        // Test that it implements std::error::Error
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_linear_path_insufficient_contributions_data() {
+        // Version 1, 10 features, but not enough data for contributions
+        let mut bytes = vec![1u8];
+        bytes.extend_from_slice(&10u32.to_le_bytes()); // 10 features
+        bytes.extend_from_slice(&0.0f32.to_le_bytes()); // intercept
+        bytes.extend_from_slice(&0.0f32.to_le_bytes()); // logit
+        bytes.extend_from_slice(&0.0f32.to_le_bytes()); // prediction
+        bytes.push(0); // no probability
+        bytes.extend_from_slice(&0.0f32.to_le_bytes()); // prob placeholder
+                                                        // Missing contributions!
+        let result = LinearPath::from_bytes(&bytes);
+        assert!(matches!(result, Err(PathError::InsufficientData { .. })));
+    }
 }
