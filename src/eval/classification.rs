@@ -714,4 +714,157 @@ mod tests {
             "Macro F1 {f1_macro} does not match reference 0.6190"
         );
     }
+
+    #[test]
+    fn test_average_enum_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Average::Macro);
+        set.insert(Average::Micro);
+        set.insert(Average::Weighted);
+        set.insert(Average::None);
+        set.insert(Average::Macro); // Duplicate
+        assert_eq!(set.len(), 4);
+    }
+
+    #[test]
+    fn test_average_enum_clone_copy() {
+        let avg = Average::Weighted;
+        let copied = avg;
+        let cloned = avg.clone();
+        assert_eq!(avg, copied);
+        assert_eq!(avg, cloned);
+    }
+
+    #[test]
+    fn test_confusion_matrix_labels() {
+        let cm = ConfusionMatrix::new(3);
+        let labels = cm.labels();
+        assert_eq!(labels, &[0, 1, 2]);
+    }
+
+    #[test]
+    fn test_confusion_matrix_matrix_accessor() {
+        let y_pred = vec![0, 1, 0];
+        let y_true = vec![0, 1, 1];
+        let cm = confusion_matrix(&y_pred, &y_true);
+        let matrix = cm.matrix();
+        assert_eq!(matrix.len(), 2);
+        assert_eq!(matrix[0][0], 1); // True 0, pred 0
+        assert_eq!(matrix[1][0], 1); // True 1, pred 0
+    }
+
+    #[test]
+    fn test_confusion_matrix_total() {
+        let y_pred = vec![0, 1, 1, 2, 0];
+        let y_true = vec![0, 1, 0, 2, 1];
+        let cm = confusion_matrix(&y_pred, &y_true);
+        assert_eq!(cm.total(), 5);
+    }
+
+    #[test]
+    fn test_confusion_matrix_true_negatives() {
+        // Simple binary case for clarity
+        let y_pred = vec![1, 1, 0, 0];
+        let y_true = vec![1, 0, 0, 1];
+        let cm = confusion_matrix(&y_pred, &y_true);
+
+        // For class 0: TN = samples that are not 0 and not predicted as 0
+        // True 1, pred 1: 1 case = TN for class 0
+        let tn_0 = cm.true_negatives(0);
+        assert_eq!(tn_0, 1);
+
+        // For class 1: TN = samples that are not 1 and not predicted as 1
+        // True 0, pred 0: 1 case = TN for class 1
+        let tn_1 = cm.true_negatives(1);
+        assert_eq!(tn_1, 1);
+    }
+
+    #[test]
+    fn test_multiclass_metrics_average_none() {
+        let y_pred = vec![0, 1, 1, 2, 0];
+        let y_true = vec![0, 1, 0, 2, 1];
+        let metrics = MultiClassMetrics::from_predictions(&y_pred, &y_true);
+
+        // Average::None should behave like Macro (returns single value)
+        let f1_none = metrics.f1_avg(Average::None);
+        let f1_macro = metrics.f1_avg(Average::Macro);
+        assert!((f1_none - f1_macro).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_multiclass_metrics_empty_support() {
+        // Test with all predictions correct - verify weighted average doesn't panic with 0 support
+        let y_pred = vec![0, 0, 0];
+        let y_true = vec![0, 0, 0];
+        let metrics = MultiClassMetrics::from_predictions(&y_pred, &y_true);
+
+        let weighted = metrics.f1_avg(Average::Weighted);
+        assert!((weighted - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_confusion_matrix_clone() {
+        let y_pred = vec![0, 1, 0];
+        let y_true = vec![0, 1, 1];
+        let cm = confusion_matrix(&y_pred, &y_true);
+        let cloned = cm.clone();
+
+        assert_eq!(cm.n_classes(), cloned.n_classes());
+        assert_eq!(cm.get(0, 0), cloned.get(0, 0));
+    }
+
+    #[test]
+    fn test_multiclass_metrics_clone() {
+        let y_pred = vec![0, 1, 1, 2, 0];
+        let y_true = vec![0, 1, 0, 2, 1];
+        let metrics = MultiClassMetrics::from_predictions(&y_pred, &y_true);
+        let cloned = metrics.clone();
+
+        assert_eq!(metrics.n_classes, cloned.n_classes);
+        assert_eq!(metrics.precision.len(), cloned.precision.len());
+    }
+
+    #[test]
+    fn test_confusion_matrix_from_confusion_matrix() {
+        let cm = ConfusionMatrix::new(3);
+        let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
+
+        // Empty matrix - all metrics should be 0
+        assert_eq!(metrics.n_classes, 3);
+        for i in 0..3 {
+            assert!((metrics.precision[i] - 0.0).abs() < 1e-6);
+            assert!((metrics.recall[i] - 0.0).abs() < 1e-6);
+            assert!((metrics.f1[i] - 0.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_macro_average_empty_values() {
+        let metrics = MultiClassMetrics {
+            precision: vec![],
+            recall: vec![],
+            f1: vec![],
+            support: vec![],
+            n_classes: 0,
+        };
+
+        assert!((metrics.precision_avg(Average::Macro) - 0.0).abs() < 1e-6);
+        assert!((metrics.recall_avg(Average::Macro) - 0.0).abs() < 1e-6);
+        assert!((metrics.f1_avg(Average::Macro) - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_weighted_average_zero_support() {
+        let metrics = MultiClassMetrics {
+            precision: vec![0.5, 0.5],
+            recall: vec![0.5, 0.5],
+            f1: vec![0.5, 0.5],
+            support: vec![0, 0], // Zero support
+            n_classes: 2,
+        };
+
+        // Zero total support should return 0
+        assert!((metrics.precision_avg(Average::Weighted) - 0.0).abs() < 1e-6);
+    }
 }
