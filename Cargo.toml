@@ -93,6 +93,7 @@ unnecessary_wraps = "allow"
 name = "entrenar"
 version = "0.5.4"
 edition = "2021"
+rust-version = "1.87"
 authors = ["PAIML <hello@paiml.com>"]
 description = "Training & Optimization library with autograd, LoRA, quantization, and model merging"
 repository = "https://github.com/paiml/entrenar"

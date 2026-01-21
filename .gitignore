@@ -30,3 +30,7 @@ wasm-pkg/node_modules/
 wasm-pkg/playwright-report/
 wasm-pkg/test-results/
 wasm-pkg/package-lock.json
+
+# PMAT
+.pmat/backup/
+.pmat-qa/
