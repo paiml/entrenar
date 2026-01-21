@@ -406,4 +406,107 @@ mod tests {
         let output = callback.render(&ctx);
         assert!(output.contains("val="));
     }
+
+    #[test]
+    fn test_terminal_monitor_callback_default() {
+        let callback = TerminalMonitorCallback::default();
+        assert_eq!(callback.sparkline_width, 20);
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_on_train_begin() {
+        let mut callback = TerminalMonitorCallback::new();
+        let ctx = make_test_context();
+        let action = callback.on_train_begin(&ctx);
+        assert_eq!(action, CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_on_epoch_end() {
+        let mut callback = TerminalMonitorCallback::new();
+        let ctx = make_test_context();
+        callback.on_train_begin(&ctx);
+        let action = callback.on_epoch_end(&ctx);
+        assert_eq!(action, CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_on_train_end() {
+        let mut callback = TerminalMonitorCallback::new();
+        let ctx = make_test_context();
+        callback.on_train_begin(&ctx);
+        callback.loss_buffer.push(0.5);
+        callback.on_train_end(&ctx);
+        // No assertion - just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_render_full_with_val() {
+        let mut callback = TerminalMonitorCallback::new().layout(DashboardLayout::Full);
+        // Push some validation losses
+        callback.val_loss_buffer.push(0.9);
+        callback.val_loss_buffer.push(0.8);
+        let ctx = make_test_context();
+        let output = callback.render(&ctx);
+        assert!(output.contains("ENTRENAR"));
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_render_alerts_empty() {
+        let callback = TerminalMonitorCallback::new();
+        let alerts = callback.render_alerts();
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_render_alerts_with_alerts() {
+        let mut callback = TerminalMonitorCallback::new();
+        callback.andon.warning("Test warning");
+        callback.andon.critical("Test critical");
+        callback.andon.info("Test info");
+        let alerts = callback.render_alerts();
+        assert!(!alerts.is_empty());
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_step_with_val_loss() {
+        let mut callback = TerminalMonitorCallback::new();
+        callback.on_train_begin(&make_test_context());
+
+        let mut ctx = make_test_context();
+        ctx.val_loss = Some(0.75);
+
+        let action = callback.on_step_end(&ctx);
+        assert_eq!(action, CallbackAction::Continue);
+        assert_eq!(callback.val_loss_buffer.len(), 1);
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_render_compact_with_best() {
+        let mut callback = TerminalMonitorCallback::new().layout(DashboardLayout::Compact);
+        // Push losses to establish a minimum
+        callback.loss_buffer.push(1.0);
+        callback.loss_buffer.push(0.5);
+        callback.loss_buffer.push(0.8);
+        let ctx = make_test_context();
+        let output = callback.render(&ctx);
+        assert!(output.contains("best="));
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_render_full_empty_val() {
+        let callback = TerminalMonitorCallback::new().layout(DashboardLayout::Full);
+        let ctx = make_test_context();
+        let output = callback.render(&ctx);
+        // Should render without validation spark since buffer is empty
+        assert!(output.contains("ENTRENAR"));
+    }
+
+    #[test]
+    fn test_terminal_monitor_callback_print_display() {
+        let callback = TerminalMonitorCallback::new().layout(DashboardLayout::Minimal);
+        let ctx = make_test_context();
+        // This will print to stdout, but shouldn't panic
+        callback.print_display(&ctx);
+    }
 }
