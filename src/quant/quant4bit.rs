@@ -177,11 +177,7 @@ mod tests {
             let relative_error = error / original.abs().max(1e-6);
             assert!(
                 relative_error < 0.3,
-                "Relative error too large: {} vs {} (error: {}, rel_error: {})",
-                original,
-                deq,
-                error,
-                relative_error
+                "Relative error too large: {original} vs {deq} (error: {error}, rel_error: {relative_error})"
             );
         }
     }
@@ -230,7 +226,7 @@ mod tests {
         assert_eq!(dequantized.len(), values.len());
 
         // Verify multiple blocks were created
-        let expected_blocks = (200 + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        let expected_blocks = 200_usize.div_ceil(BLOCK_SIZE);
         assert_eq!(quantized.scales.len(), expected_blocks);
     }
 
@@ -246,8 +242,7 @@ mod tests {
         let compression = original_bytes as f32 / compressed_bytes as f32;
         assert!(
             compression > 6.0,
-            "Compression ratio {} should be > 6.0",
-            compression
+            "Compression ratio {compression} should be > 6.0"
         );
     }
 
@@ -257,7 +252,7 @@ mod tests {
         let quantized = quantize_4bit(&values);
 
         let ratio = quantized.compression_ratio();
-        assert!(ratio > 6.0, "Compression ratio {} should be > 6.0", ratio);
+        assert!(ratio > 6.0, "Compression ratio {ratio} should be > 6.0");
     }
 
     #[test]
@@ -269,7 +264,7 @@ mod tests {
         // Small values should be preserved relatively well
         for (original, deq) in values.iter().zip(dequantized.iter()) {
             let error = (original - deq).abs();
-            assert!(error < 0.001, "Error {} too large for small value", error);
+            assert!(error < 0.001, "Error {error} too large for small value");
         }
     }
 
@@ -292,21 +287,14 @@ mod tests {
                 // Small values: use absolute error tolerance
                 assert!(
                     error < 1.5,
-                    "Absolute error {} too large for small value {} vs {}",
-                    error,
-                    original,
-                    deq
+                    "Absolute error {error} too large for small value {original} vs {deq}"
                 );
             } else {
                 // Larger values: use relative error
                 let relative_error = error / original.abs();
                 assert!(
                     relative_error < 0.5,
-                    "Relative error {} too large for {} vs {} (error: {})",
-                    relative_error,
-                    original,
-                    deq,
-                    error
+                    "Relative error {relative_error} too large for {original} vs {deq} (error: {error})"
                 );
             }
         }

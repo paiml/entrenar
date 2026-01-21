@@ -48,10 +48,10 @@ impl fmt::Display for TrainingApproach {
         match self {
             TrainingApproach::FullFineTuning => write!(f, "Full Fine-Tuning"),
             TrainingApproach::LoRA { rank, alpha } => {
-                write!(f, "LoRA (rank={}, alpha={})", rank, alpha)
+                write!(f, "LoRA (rank={rank}, alpha={alpha})")
             }
             TrainingApproach::QLoRA { rank, alpha } => {
-                write!(f, "QLoRA (rank={}, alpha={})", rank, alpha)
+                write!(f, "QLoRA (rank={rank}, alpha={alpha})")
             }
         }
     }
@@ -183,7 +183,7 @@ impl BenchmarkSuite {
                     println!();
                 }
                 current_config = profile.config_name.clone();
-                println!("┌─ {} Model", current_config);
+                println!("┌─ {current_config} Model");
                 println!("│");
             }
 
@@ -258,7 +258,7 @@ impl BenchmarkSuite {
                     "  {} (rank={}): {:.2}% reduction (target: >{:.0}%)",
                     profile.config_name, rank, reduction, target
                 );
-                println!("  Status: {}", status);
+                println!("  Status: {status}");
             }
         }
         println!();
@@ -296,10 +296,9 @@ impl BenchmarkSuite {
                         qlora_profile.config_name, qlora_rank, savings, target
                     );
                     println!(
-                        "    LoRA (FP32):  {:.1} MB → QLoRA (4-bit): {:.1} MB",
-                        lora_mem, qlora_mem
+                        "    LoRA (FP32):  {lora_mem:.1} MB → QLoRA (4-bit): {qlora_mem:.1} MB"
                     );
-                    println!("  Status: {}", status);
+                    println!("  Status: {status}");
                 }
             }
         }
@@ -329,7 +328,7 @@ impl BenchmarkSuite {
                 continue;
             }
 
-            println!("\n  {} Model:", config_name);
+            println!("\n  {config_name} Model:");
 
             // Find min/max memory
             let min_mem = config_profiles
@@ -356,10 +355,7 @@ impl BenchmarkSuite {
             }
 
             println!("    {}", "─".repeat(40));
-            println!(
-                "    Range: {:.1} MB (min) to {:.1} MB (max)",
-                min_mem, max_mem
-            );
+            println!("    Range: {min_mem:.1} MB (min) to {max_mem:.1} MB (max)");
         }
 
         println!();
@@ -373,7 +369,7 @@ impl BenchmarkSuite {
         } else if params >= 1_000 {
             format!("{:.1}K", params as f32 / 1_000.0)
         } else {
-            format!("{}", params)
+            format!("{params}")
         }
     }
 }

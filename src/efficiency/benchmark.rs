@@ -500,10 +500,12 @@ mod tests {
         let mut benchmark = CostPerformanceBenchmark::new();
         benchmark.add(test_entry("cpu-run", 0.90, 10.0, 1000.0));
 
-        let cpu_entries = benchmark.filter_by_device_type(|d| d.is_cpu());
+        let cpu_entries =
+            benchmark.filter_by_device_type(super::super::device::ComputeDevice::is_cpu);
         assert_eq!(cpu_entries.len(), 1);
 
-        let gpu_entries = benchmark.filter_by_device_type(|d| d.is_gpu());
+        let gpu_entries =
+            benchmark.filter_by_device_type(super::super::device::ComputeDevice::is_gpu);
         assert_eq!(gpu_entries.len(), 0);
     }
 

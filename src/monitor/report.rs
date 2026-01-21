@@ -484,8 +484,8 @@ mod tests {
 
         // Simulate healthy training: decreasing loss, increasing accuracy
         for i in 0..100 {
-            let loss = 1.0 - (i as f64 * 0.008); // 1.0 -> 0.2
-            let accuracy = 0.5 + (i as f64 * 0.004); // 0.5 -> 0.9
+            let loss = 1.0 - (f64::from(i) * 0.008); // 1.0 -> 0.2
+            let accuracy = 0.5 + (f64::from(i) * 0.004); // 0.5 -> 0.9
             collector.record(Metric::Loss, loss);
             collector.record(Metric::Accuracy, accuracy);
         }
@@ -638,7 +638,7 @@ mod tests {
             "Expected Improving, got {:?} (mean={:.2}, mid={:.2})",
             loss_summary.trend,
             loss_summary.mean,
-            (loss_summary.min + loss_summary.max) / 2.0
+            f64::midpoint(loss_summary.min, loss_summary.max)
         );
     }
 
@@ -761,7 +761,10 @@ mod tests {
         // GradientNorm with low coefficient of variation (cv < 0.2) is stable
         // cv = std / mean, so mean=1.0 with values 0.95-1.05 gives cv ≈ 0.03
         for i in 0..50 {
-            collector.record(Metric::GradientNorm, 1.0 + (i as f64 % 10.0 - 5.0) * 0.01);
+            collector.record(
+                Metric::GradientNorm,
+                1.0 + (f64::from(i) % 10.0 - 5.0) * 0.01,
+            );
         }
 
         let report = analyzer.analyze("stable", &collector, 10.0);

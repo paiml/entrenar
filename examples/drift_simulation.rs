@@ -67,7 +67,9 @@ fn main() {
     let results = detector.check_and_trigger(&shifted_dist);
 
     let drifted: Vec<_> = results.iter().filter(|r| r.drifted).collect();
-    if !drifted.is_empty() {
+    if drifted.is_empty() {
+        println!("Result: No drift detected (unexpected!)");
+    } else {
         println!("Result: Drift detected in {} tests", drifted.len());
         for r in &drifted {
             let severity_str = match r.severity {
@@ -83,8 +85,6 @@ fn main() {
                 severity_str
             );
         }
-    } else {
-        println!("Result: No drift detected (unexpected!)");
     }
     println!();
 
@@ -119,10 +119,10 @@ fn generate_data(n: usize, mean1: f64, mean2: f64, std: f64, seed: u64) -> Vec<V
     for _ in 0..n {
         // Simple LCG random number generator
         state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let u1 = (state >> 33) as f64 / (u32::MAX as f64);
+        let u1 = (state >> 33) as f64 / f64::from(u32::MAX);
 
         state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let u2 = (state >> 33) as f64 / (u32::MAX as f64);
+        let u2 = (state >> 33) as f64 / f64::from(u32::MAX);
 
         // Box-Muller transform for normal distribution
         let z1 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();

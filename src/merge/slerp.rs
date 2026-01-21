@@ -404,7 +404,7 @@ mod tests {
             let result = linear_interp_tensor(&t1, &t2, 0.5);
 
             for i in 0..len {
-                let expected = (v1[i] + v2[i]) / 2.0;
+                let expected = f32::midpoint(v1[i], v2[i]);
                 prop_assert!(
                     (result.data()[i] - expected).abs() < 1e-5,
                     "Midpoint not average: {} vs {}",

@@ -307,9 +307,7 @@ mod tests {
             let current_lr = scheduler.get_lr();
             assert!(
                 current_lr <= prev_lr,
-                "Learning rate should decrease monotonically: prev={}, current={}",
-                prev_lr,
-                current_lr
+                "Learning rate should decrease monotonically: prev={prev_lr}, current={current_lr}"
             );
             prev_lr = current_lr;
         }
@@ -401,9 +399,7 @@ mod tests {
             let current_lr = scheduler.get_lr();
             assert!(
                 current_lr >= prev_lr,
-                "LR should increase during warmup: prev={}, current={}",
-                prev_lr,
-                current_lr
+                "LR should increase during warmup: prev={prev_lr}, current={current_lr}"
             );
             prev_lr = current_lr;
         }
@@ -501,9 +497,7 @@ mod tests {
             let current_lr = scheduler.get_lr();
             assert!(
                 current_lr >= prev_lr,
-                "LR should increase during warmup: prev={}, current={}",
-                prev_lr,
-                current_lr
+                "LR should increase during warmup: prev={prev_lr}, current={current_lr}"
             );
             prev_lr = current_lr;
         }
@@ -514,9 +508,7 @@ mod tests {
             let current_lr = scheduler.get_lr();
             assert!(
                 current_lr <= prev_lr,
-                "LR should decrease during decay: prev={}, current={}",
-                prev_lr,
-                current_lr
+                "LR should decrease during decay: prev={prev_lr}, current={current_lr}"
             );
             prev_lr = current_lr;
         }

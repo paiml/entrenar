@@ -4,6 +4,8 @@
 //! This is a simplified version to illustrate concepts - production code would
 //! require additional ops (softmax, layer_norm, etc.) in entrenar core.
 
+#![allow(dead_code, unreachable_pub)]
+
 use entrenar::Tensor;
 use std::f32::consts::PI;
 
@@ -109,7 +111,7 @@ impl LLaMALayer {
         let mut rng = rand::rng();
 
         // Box-Muller transform for normal distribution
-        let data: Vec<f32> = (0..(size / 2 + 1))
+        let data: Vec<f32> = (0..=(size / 2))
             .flat_map(|_| {
                 let u1: f32 = rng.random();
                 let u2: f32 = rng.random();

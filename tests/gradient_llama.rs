@@ -61,8 +61,7 @@ fn check_gradient(analytical: &[f32], numerical: &[f32], threshold: f32, context
     assert_eq!(
         analytical.len(),
         numerical.len(),
-        "{}: Gradient size mismatch",
-        context
+        "{context}: Gradient size mismatch"
     );
 
     let mut max_error = 0.0;
@@ -91,8 +90,7 @@ fn check_gradient(analytical: &[f32], numerical: &[f32], threshold: f32, context
     }
 
     println!(
-        "  ✓ {} gradient check PASSED (max error: {:.6} at index {})",
-        context, max_error, max_error_idx
+        "  ✓ {context} gradient check PASSED (max error: {max_error:.6} at index {max_error_idx})"
     );
 }
 

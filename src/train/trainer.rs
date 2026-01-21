@@ -1,5 +1,7 @@
 //! Trainer abstraction for training loops
 
+#![allow(clippy::field_reassign_with_default)]
+
 use super::callback::{CallbackAction, CallbackContext, CallbackManager, TrainerCallback};
 use super::{Batch, LossFn, MetricsTracker, TrainConfig};
 use crate::optim::{clip_grad_norm, Optimizer};
@@ -741,7 +743,7 @@ mod tests {
         let batch = Batch::new(inputs, targets);
 
         // Train step (identity function)
-        let loss = trainer.train_step(&batch, |x| x.clone());
+        let loss = trainer.train_step(&batch, std::clone::Clone::clone);
 
         // Loss should be positive (predictions != targets)
         assert!(loss > 0.0);
@@ -770,7 +772,7 @@ mod tests {
             ),
         ];
 
-        let avg_loss = trainer.train_epoch(batches, |x| x.clone());
+        let avg_loss = trainer.train_epoch(batches, std::clone::Clone::clone);
 
         assert!(avg_loss > 0.0);
         assert_eq!(trainer.metrics.epoch, 1);
@@ -788,7 +790,7 @@ mod tests {
 
         let batch = Batch::new(Tensor::zeros(10, false), Tensor::zeros(10, false));
 
-        trainer.train_step(&batch, |x| x.clone());
+        trainer.train_step(&batch, std::clone::Clone::clone);
     }
 
     #[test]
@@ -815,7 +817,7 @@ mod tests {
             ),
         ];
 
-        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        let result = trainer.train(10, || batches.clone(), std::clone::Clone::clone);
 
         // Should stop early due to no improvement
         assert!(result.stopped_early);
@@ -839,7 +841,7 @@ mod tests {
             Tensor::from_vec(vec![2.0, 3.0], false),
         )];
 
-        let result = trainer.train(3, || batches.clone(), |x| x.clone());
+        let result = trainer.train(3, || batches.clone(), std::clone::Clone::clone);
 
         assert!(!result.stopped_early);
         assert_eq!(result.final_epoch, 3);
@@ -859,7 +861,7 @@ mod tests {
             Tensor::from_vec(vec![2.0], false),
         )];
 
-        let result = trainer.train(2, || batches.clone(), |x| x.clone());
+        let result = trainer.train(2, || batches.clone(), std::clone::Clone::clone);
 
         // Verify all fields are populated
         assert!(result.final_loss.is_finite());
@@ -917,7 +919,7 @@ mod tests {
             ),
         ];
 
-        let result = trainer.train(1, || batches.clone(), |x| x.clone());
+        let result = trainer.train(1, || batches.clone(), std::clone::Clone::clone);
 
         // Should complete successfully
         assert!(!result.stopped_early);
@@ -963,7 +965,7 @@ mod tests {
             ),
         ];
 
-        let result = trainer.train(1, || batches.clone(), |x| x.clone());
+        let result = trainer.train(1, || batches.clone(), std::clone::Clone::clone);
 
         assert!(!result.stopped_early);
         assert_eq!(trainer.metrics.steps, 5);
@@ -991,7 +993,7 @@ mod tests {
             ),
         ];
 
-        let val_loss = trainer.validate(val_batches, |x| x.clone());
+        let val_loss = trainer.validate(val_batches, std::clone::Clone::clone);
 
         assert!(val_loss > 0.0);
         assert!(val_loss.is_finite());
@@ -1015,7 +1017,7 @@ mod tests {
             Tensor::from_vec(vec![5.0, 6.0], false), // Different targets to create loss
         )];
 
-        trainer.validate(val_batches, |x| x.clone());
+        trainer.validate(val_batches, std::clone::Clone::clone);
 
         // Parameters should remain unchanged after validation
         let params_after: Vec<f32> = trainer.params()[0].data().to_vec();
@@ -1039,7 +1041,7 @@ mod tests {
             Tensor::from_vec(vec![2.0], false),
         )];
 
-        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        let result = trainer.train(10, || batches.clone(), std::clone::Clone::clone);
 
         // Should run and eventually stop (training loss is used as fallback)
         assert!(result.final_loss.is_finite());
@@ -1068,7 +1070,7 @@ mod tests {
             3,
             || train_batches.clone(),
             || val_batches.clone(),
-            |x| x.clone(),
+            std::clone::Clone::clone,
         );
 
         assert!(!result.stopped_early);
@@ -1106,7 +1108,7 @@ mod tests {
             100,
             || train_batches.clone(),
             || val_batches.clone(),
-            |x| x.clone(),
+            std::clone::Clone::clone,
         );
 
         // Should stop early due to no val improvement
@@ -1135,7 +1137,7 @@ mod tests {
             2,
             || train_batches.clone(),
             || val_batches.clone(),
-            |x| x.clone(),
+            std::clone::Clone::clone,
         );
 
         assert!(!result.stopped_early);
@@ -1213,7 +1215,7 @@ mod tests {
             Tensor::from_vec(vec![2.0], false),
         )];
 
-        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        let result = trainer.train(10, || batches.clone(), std::clone::Clone::clone);
         assert!(result.stopped_early);
         assert_eq!(result.final_epoch, 0);
     }
@@ -1256,7 +1258,7 @@ mod tests {
             Tensor::from_vec(vec![2.0], false),
         )];
 
-        let result = trainer.train(3, || batches.clone(), |x| x.clone());
+        let result = trainer.train(3, || batches.clone(), std::clone::Clone::clone);
         assert!(!result.stopped_early);
         assert_eq!(skipped.load(Ordering::SeqCst), 1);
     }
@@ -1296,7 +1298,7 @@ mod tests {
             ),
         ];
 
-        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        let result = trainer.train(10, || batches.clone(), std::clone::Clone::clone);
         assert!(result.stopped_early);
     }
 
@@ -1325,7 +1327,7 @@ mod tests {
             Tensor::from_vec(vec![2.0], false),
         )];
 
-        let result = trainer.train(10, || batches.clone(), |x| x.clone());
+        let result = trainer.train(10, || batches.clone(), std::clone::Clone::clone);
         assert!(result.stopped_early);
         // Only one step executed
         assert_eq!(trainer.metrics.steps, 1);
@@ -1341,7 +1343,7 @@ mod tests {
         trainer.set_loss(Box::new(MSELoss));
 
         let batches: Vec<Batch> = vec![];
-        let avg_loss = trainer.train_epoch(batches, |x| x.clone());
+        let avg_loss = trainer.train_epoch(batches, std::clone::Clone::clone);
 
         // With empty batches, loss is 0.0
         assert_eq!(avg_loss, 0.0);
@@ -1357,7 +1359,7 @@ mod tests {
         trainer.set_loss(Box::new(MSELoss));
 
         let batches: Vec<Batch> = vec![];
-        let val_loss = trainer.validate(batches, |x| x.clone());
+        let val_loss = trainer.validate(batches, std::clone::Clone::clone);
 
         // With empty batches, loss is 0.0
         assert_eq!(val_loss, 0.0);
@@ -1379,7 +1381,7 @@ mod tests {
             Tensor::from_vec(vec![100.0, 200.0], false), // Large targets for big gradients
         )];
 
-        let result = trainer.train(2, || batches.clone(), |x| x.clone());
+        let result = trainer.train(2, || batches.clone(), std::clone::Clone::clone);
         assert!(!result.stopped_early);
         assert!(result.final_loss.is_finite());
     }

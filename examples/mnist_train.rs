@@ -155,7 +155,7 @@ impl MnistModel {
         }
 
         // Output layer: hidden @ W2 + b2
-        let mut output = vec![0.0; 10];
+        let mut output = [0.0; 10];
         for o in 0..10 {
             let mut sum = self.b2[o];
             for h in 0..64 {
@@ -165,7 +165,7 @@ impl MnistModel {
         }
 
         // Softmax
-        let max_val = output.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = output.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = output.iter().map(|x| (x - max_val).exp()).sum();
         output
             .iter()
@@ -187,7 +187,7 @@ impl MnistModel {
             hidden[h] = sum.max(0.0);
         }
 
-        let mut output = vec![0.0; 10];
+        let mut output = [0.0; 10];
         for o in 0..10 {
             let mut sum = self.b2[o];
             for h in 0..64 {
@@ -197,7 +197,7 @@ impl MnistModel {
         }
 
         // Softmax
-        let max_val = output.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let max_val = output.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_vals: Vec<f32> = output.iter().map(|x| (x - max_val).exp()).collect();
         let exp_sum: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|x| x / exp_sum).collect();
@@ -294,12 +294,10 @@ fn main() {
     // Detect compute devices
     let devices = ComputeDevice::detect();
     let cpu_info = devices.iter().find(|d| d.is_cpu());
-    let simd_level = cpu_info
-        .map(|d| match d {
-            ComputeDevice::Cpu(info) => info.simd,
-            _ => SimdCapability::None,
-        })
-        .unwrap_or(SimdCapability::None);
+    let simd_level = cpu_info.map_or(SimdCapability::None, |d| match d {
+        ComputeDevice::Cpu(info) => info.simd,
+        _ => SimdCapability::None,
+    });
     let gpu_available = devices.iter().any(|d| d.is_gpu() || d.is_apple_silicon());
 
     println!("Training for {} seconds...\n", training_duration.as_secs());
@@ -397,16 +395,13 @@ fn main() {
             training_duration.as_secs(),
             remaining
         );
-        println!("│ Throughput: {:.0} samples/sec", samples_per_sec);
+        println!("│ Throughput: {samples_per_sec:.0} samples/sec");
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
         // Loss metrics
         println!("┌─ Loss Metrics ──────────────────────────────────────────────┐");
-        let losses: Vec<f32> = metrics_buffer.last_n(30).iter().copied().collect();
-        println!(
-            "│ Train Loss: {:.4}  │  Best Accuracy: {:.1}%",
-            avg_loss, best_accuracy
-        );
+        let losses: Vec<f32> = metrics_buffer.last_n(30).to_vec();
+        println!("│ Train Loss: {avg_loss:.4}  │  Best Accuracy: {best_accuracy:.1}%");
         println!("│ Loss Trend (last 30 epochs): {}", sparkline(&losses, 30));
         println!("└──────────────────────────────────────────────────────────────┘\n");
 
@@ -434,7 +429,7 @@ fn main() {
         if gpu_available {
             println!("│ GPU:  Available (use trueno gpu feature for acceleration)");
         } else {
-            println!("│ GPU:  Not detected (CPU mode with {} SIMD)", simd_level);
+            println!("│ GPU:  Not detected (CPU mode with {simd_level} SIMD)");
         }
         println!("└──────────────────────────────────────────────────────────────┘");
 
@@ -463,25 +458,24 @@ fn main() {
     let final_accuracy = correct as f32 / test_images.len() as f32 * 100.0;
 
     println!("Final Results:");
-    println!("  Epochs completed: {}", epoch);
-    println!("  Samples processed: {}", total_samples);
-    println!("  Test accuracy: {:.1}%\n", final_accuracy);
+    println!("  Epochs completed: {epoch}");
+    println!("  Samples processed: {total_samples}");
+    println!("  Test accuracy: {final_accuracy:.1}%\n");
 
     // Save model to .apr format
     let model_path = "/tmp/mnist_model.apr";
-    println!("Saving model to {}...", model_path);
+    println!("Saving model to {model_path}...");
 
     let save_opts = SaveOptions::default()
         .with_name("MNIST Classifier")
         .with_description(format!(
             "2-layer neural network (784->64->10) trained on MNIST digits. \
-             Learning rate: {}, Epochs: {}, Final accuracy: {:.1}%",
-            lr, epoch, final_accuracy
+             Learning rate: {lr}, Epochs: {epoch}, Final accuracy: {final_accuracy:.1}%"
         ));
 
     match save(&model, ModelType::NeuralSequential, model_path, save_opts) {
         Ok(()) => println!("  Model saved successfully!"),
-        Err(e) => println!("  Failed to save model: {}", e),
+        Err(e) => println!("  Failed to save model: {e}"),
     }
 
     println!("\n=== Demo Complete ===");

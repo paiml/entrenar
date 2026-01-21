@@ -17,10 +17,10 @@
 
 mod architecture;
 
-use architecture::{LLaMAConfig, LLaMALayer, LLaMAModel};
+use architecture::{LLaMAConfig, LLaMAModel};
 use entrenar::{
     lora::LoRALayer,
-    optim::{clip_grad_norm, AdamW, CosineAnnealingLR, Optimizer},
+    optim::{AdamW, CosineAnnealingLR, Optimizer},
     Tensor,
 };
 use std::fs;
@@ -33,6 +33,7 @@ pub struct LLaMAWithLoRA {
     lora_adapters: Vec<LayerLoRAAdapters>,
     /// LoRA configuration
     rank: usize,
+    #[allow(dead_code)]
     alpha: f32,
 }
 
@@ -122,7 +123,7 @@ impl LLaMAWithLoRA {
     /// Saves only the trainable adapter weights, not the full model.
     /// Typically ~32MB for 7B model with rank=64.
     pub fn save_adapters(&self, path: &str) {
-        println!("  💾 Saving LoRA adapters to {}", path);
+        println!("  💾 Saving LoRA adapters to {path}");
 
         // In production: serialize adapter weights
         // For now: placeholder
@@ -131,7 +132,7 @@ impl LLaMAWithLoRA {
 
     /// Load LoRA adapter weights from file
     pub fn load_adapters(&mut self, path: &str) {
-        println!("  📥 Loading LoRA adapters from {}", path);
+        println!("  📥 Loading LoRA adapters from {path}");
 
         // In production: deserialize adapter weights
         // For now: placeholder
@@ -178,12 +179,12 @@ fn lora_train_step(
     let _logits = model.base_model.forward(inputs, batch_size);
 
     // Compute loss (placeholder - cross-entropy)
-    let loss_val = 2.5; // Placeholder
+    // Placeholder
 
     // Note: Gradient clipping and optimizer step would happen here
     // This is a reference implementation demonstrating the API structure
 
-    loss_val
+    2.5
 }
 
 fn main() {
@@ -210,7 +211,7 @@ fn main() {
     println!("   - Batch size: {}\n", lora_config.batch_size);
 
     // Load base model
-    println!("🔧 Loading base model from {}", model_path);
+    println!("🔧 Loading base model from {model_path}");
     // In production: load from checkpoint
     // For now: create fresh model
     let llama_config = LLaMAConfig::toy_124m();
@@ -237,7 +238,7 @@ fn main() {
         "   - Total parameters: {:.1}M",
         total_params as f32 / 1_000_000.0
     );
-    println!("   - Parameter reduction: {:.1}%\n", reduction);
+    println!("   - Parameter reduction: {reduction:.1}%\n");
 
     // Create optimizer (only for LoRA parameters)
     let mut optimizer = AdamW::new(
@@ -303,7 +304,7 @@ fn main() {
 
         let avg_loss = epoch_loss / num_batches as f32;
         println!("\n📊 Epoch {} Summary:", epoch + 1);
-        println!("   - Train loss: {:.4}\n", avg_loss);
+        println!("   - Train loss: {avg_loss:.4}\n");
     }
 
     println!("✅ Fine-tuning complete!");

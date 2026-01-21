@@ -666,8 +666,8 @@ mod tests {
         assert_relative_eq!(sum, 1.0, epsilon = 1e-5);
 
         // All probabilities should be in [0, 1]
-        for &p in probs.iter() {
-            assert!(p >= 0.0 && p <= 1.0);
+        for &p in &probs {
+            assert!((0.0..=1.0).contains(&p));
         }
     }
 
@@ -981,7 +981,7 @@ mod tests {
 
         let grad = logits.grad().unwrap();
         // Gradient should exist and be finite
-        for g in grad.iter() {
+        for g in &grad {
             assert!(g.is_finite());
         }
         // For CE with target at index 0, grad[0] should be negative
@@ -1127,7 +1127,7 @@ mod tests {
         assert_relative_eq!(sum, 1.0, epsilon = 1e-5);
 
         // All values should be valid
-        for &p in probs.iter() {
+        for &p in &probs {
             assert!(p.is_finite());
             assert!(p >= 0.0);
         }

@@ -489,8 +489,7 @@ mod tests {
         let ppl_increase = metrics.ppl_increase_pct.unwrap();
         assert!(
             (ppl_increase - 20.0).abs() < 1e-4,
-            "PL-014 FALSIFIED: PPL increase should be 20%, got {}",
-            ppl_increase
+            "PL-014 FALSIFIED: PPL increase should be 20%, got {ppl_increase}"
         );
     }
 

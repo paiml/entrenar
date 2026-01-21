@@ -16,13 +16,11 @@ mod architecture;
 
 use architecture::{LLaMAConfig, LLaMAModel};
 use entrenar::{
-    autograd::matmul,
-    optim::{clip_grad_norm, AdamW, CosineAnnealingLR, Optimizer},
+    optim::{AdamW, CosineAnnealingLR, Optimizer},
     Tensor,
 };
 use serde::Deserialize;
 use std::fs;
-use std::path::PathBuf;
 
 /// Training configuration from TOML
 #[derive(Debug, Deserialize)]
@@ -58,6 +56,7 @@ struct TrainingConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct LRScheduleConfig {
     #[serde(rename = "type")]
     schedule_type: String,
@@ -73,6 +72,7 @@ struct DataConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct CheckpointConfig {
     save_every: usize,
     checkpoint_dir: String,
@@ -116,7 +116,7 @@ impl TextDataset {
         // In production: read JSONL, tokenize, cache
         let num_samples = 1000;
         let tokens: Vec<u32> = (0..(num_samples * seq_len))
-            .map(|_| (rand::random::<u32>() % vocab_size as u32))
+            .map(|_| rand::random::<u32>() % vocab_size as u32)
             .collect();
 
         Self {
@@ -138,7 +138,7 @@ impl TextDataset {
 
         // Input: tokens[:-1], Target: tokens[1:]
         let inputs = &self.tokens[start..end];
-        let targets = &self.tokens[(start + 1)..(end + 1)];
+        let targets = &self.tokens[((start + 1)..=end)];
 
         (inputs, targets)
     }
@@ -163,11 +163,11 @@ fn cross_entropy_loss(logits: &Tensor, _targets: &[u32], _vocab_size: usize) -> 
 /// Training step: forward, backward, optimizer update
 fn train_step(
     model: &mut LLaMAModel,
-    optimizer: &mut AdamW,
+    _optimizer: &mut AdamW,
     inputs: &[u32],
     targets: &[u32],
     batch_size: usize,
-    grad_clip: f32,
+    _grad_clip: f32,
     vocab_size: usize,
 ) -> f32 {
     // Zero gradients
@@ -207,7 +207,7 @@ fn validate(model: &LLaMAModel, val_dataset: &TextDataset, vocab_size: usize) ->
 
 /// Save checkpoint
 fn save_checkpoint(
-    model: &LLaMAModel,
+    _model: &LLaMAModel,
     _optimizer: &AdamW,
     epoch: usize,
     step: usize,
@@ -216,12 +216,9 @@ fn save_checkpoint(
     // Create checkpoint directory
     fs::create_dir_all(checkpoint_dir).ok();
 
-    let checkpoint_path = format!(
-        "{}/checkpoint-epoch{}-step{}.bin",
-        checkpoint_dir, epoch, step
-    );
+    let checkpoint_path = format!("{checkpoint_dir}/checkpoint-epoch{epoch}-step{step}.bin");
 
-    println!("  💾 Saving checkpoint to {}", checkpoint_path);
+    println!("  💾 Saving checkpoint to {checkpoint_path}");
 
     // In production: serialize model state, optimizer state
     // For now: placeholder (entrenar will provide serialization)
@@ -240,14 +237,14 @@ fn main() {
         "examples/llama2/configs/124m.toml"
     };
 
-    println!("📋 Loading config from {}", config_path);
+    println!("📋 Loading config from {config_path}");
 
     // Load configuration
     let config_str = fs::read_to_string(config_path)
-        .unwrap_or_else(|_| panic!("Failed to read config file: {}", config_path));
+        .unwrap_or_else(|_| panic!("Failed to read config file: {config_path}"));
 
-    let config: TrainConfig = toml::from_str(&config_str)
-        .unwrap_or_else(|e| panic!("Failed to parse TOML config: {}", e));
+    let config: TrainConfig =
+        toml::from_str(&config_str).unwrap_or_else(|e| panic!("Failed to parse TOML config: {e}"));
 
     // Create model
     println!("🔧 Building LLaMA model:");
@@ -360,11 +357,11 @@ fn main() {
         // Epoch summary
         let avg_train_loss = epoch_loss / num_batches as f32;
         println!("\n📊 Epoch {} Summary:", epoch + 1);
-        println!("   - Train loss: {:.4}", avg_train_loss);
+        println!("   - Train loss: {avg_train_loss:.4}");
 
         // Validation
         let val_loss = validate(&model, &val_dataset, llama_config.vocab_size);
-        println!("   - Val loss: {:.4}\n", val_loss);
+        println!("   - Val loss: {val_loss:.4}\n");
     }
 
     println!("✅ Training complete!");

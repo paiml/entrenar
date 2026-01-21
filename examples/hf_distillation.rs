@@ -98,7 +98,7 @@ fn memory_estimation_example() {
 
     // Check if it fits in 16GB
     let fits_16gb = fp16.fits_in(16 * 1024 * 1024 * 1024);
-    println!("  Fits in 16GB VRAM (FP16): {}", fits_16gb);
+    println!("  Fits in 16GB VRAM (FP16): {fits_16gb}");
 
     // CodeBERT (smaller model - 125M params)
     println!("\nCodeBERT-base (125M params):");
@@ -160,8 +160,8 @@ fn model_fetching_example() {
         num_attention_heads: 32,
         intermediate_size: 11008,
     };
-    println!("  BERT: {:?}", bert);
-    println!("  Llama: {:?}", llama);
+    println!("  BERT: {bert:?}");
+    println!("  Llama: {llama:?}");
 }
 
 fn distillation_loss_example() {
@@ -187,14 +187,14 @@ fn distillation_loss_example() {
     println!("Configuration:");
     println!("  Temperature: 4.0 (softens probability distributions)");
     println!("  Alpha: 0.7 (70% soft targets, 30% hard targets)");
-    println!("\nDistillation loss: {:.4}", loss);
+    println!("\nDistillation loss: {loss:.4}");
 
     // Effect of temperature
     println!("\nTemperature effect on loss:");
     for temp in [1.0, 2.0, 4.0, 8.0] {
         let loss_fn_temp = DistillationLoss::new(temp, 0.7);
         let loss_temp = loss_fn_temp.forward(&student_logits, &teacher_logits, &labels);
-        println!("  T={:.0} -> loss={:.4}", temp, loss_temp);
+        println!("  T={temp:.0} -> loss={loss_temp:.4}");
     }
 
     // Effect of alpha
@@ -202,7 +202,7 @@ fn distillation_loss_example() {
     for alpha in [0.0, 0.3, 0.5, 0.7, 1.0] {
         let loss_fn_alpha = DistillationLoss::new(4.0, alpha);
         let loss_alpha = loss_fn_alpha.forward(&student_logits, &teacher_logits, &labels);
-        println!("  alpha={:.1} -> loss={:.4}", alpha, loss_alpha);
+        println!("  alpha={alpha:.1} -> loss={loss_alpha:.4}");
     }
 }
 
@@ -220,7 +220,7 @@ fn progressive_distillation_example() {
 
     println!("Layer mapping:");
     for (s, t) in &mapping {
-        println!("  Student {} -> Teacher {}", s, t);
+        println!("  Student {s} -> Teacher {t}");
     }
 
     // Simulate hidden states (as slices of arrays)
@@ -245,7 +245,7 @@ fn progressive_distillation_example() {
     ];
 
     let loss = progressive.hidden_state_loss(&student_hidden, &teacher_hidden);
-    println!("\nHidden state matching loss: {:.4}", loss);
+    println!("\nHidden state matching loss: {loss:.4}");
 
     // Attention transfer
     println!("\nAttention Transfer (Zagoruyko & Komodakis 2017):");
@@ -256,7 +256,7 @@ fn progressive_distillation_example() {
     let student_attn = vec![array![[0.5, 0.3, 0.2], [0.2, 0.6, 0.2]]];
     let teacher_attn = vec![array![[0.6, 0.2, 0.2], [0.1, 0.7, 0.2]]];
     let attn_loss = attention.loss(&student_attn, &teacher_attn);
-    println!("  Attention loss: {:.4}", attn_loss);
+    println!("  Attention loss: {attn_loss:.4}");
 }
 
 fn trainer_config_example() {
@@ -423,13 +423,13 @@ output:
 "#;
 
     println!("Example YAML configuration:");
-    println!("{}", yaml);
+    println!("{yaml}");
 
     // Parse and validate
     let config: DistillationYamlConfig = serde_yaml::from_str(yaml).expect("Failed to parse YAML");
 
     if let Err(e) = config.validate() {
-        println!("Validation error: {}", e);
+        println!("Validation error: {e}");
     } else {
         println!("Configuration valid!");
     }
@@ -445,7 +445,7 @@ output:
                 trainer_config.distillation_loss.temperature
             );
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 }
 
@@ -478,7 +478,7 @@ fn export_example() {
         ExportFormat::APR,
         ExportFormat::GGUF,
     ] {
-        println!("  {:?}:", format);
+        println!("  {format:?}:");
         println!("    Extension: {}", format.extension());
         println!("    Safe: {}", format.is_safe());
     }

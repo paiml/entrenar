@@ -63,14 +63,13 @@ fn main() {
         // Record for this epoch
         explainer.record_importances(epoch, importances);
 
-        println!("Epoch {}:", epoch);
+        println!("Epoch {epoch}:");
         let result = explainer.results().last().unwrap();
         for (idx, score) in &result.importances {
             let name = explainer
                 .feature_names()
-                .map(|n| n[*idx].as_str())
-                .unwrap_or("unknown");
-            println!("  {}: {:.6}", name, score);
+                .map_or("unknown", |n| n[*idx].as_str());
+            println!("  {name}: {score:.6}");
         }
         println!();
     }
@@ -81,9 +80,8 @@ fn main() {
     for (idx, avg_score) in &consistent {
         let name = explainer
             .feature_names()
-            .map(|n| n[*idx].as_str())
-            .unwrap_or("unknown");
-        println!("  {}: avg_score={:.6}", name, avg_score);
+            .map_or("unknown", |n| n[*idx].as_str());
+        println!("  {name}: avg_score={avg_score:.6}");
     }
 
     println!("\n--- Integrated Gradients Demo ---\n");

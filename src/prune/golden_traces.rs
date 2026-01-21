@@ -7,6 +7,8 @@
 //! # Toyota Way: Hansei (Reflection)
 //! Golden traces capture expected behavior for continuous improvement.
 
+#![allow(unreachable_pub)]
+
 use serde::{Deserialize, Serialize};
 
 /// Performance assertion for a pruning operation.
@@ -208,10 +210,7 @@ mod tests {
             let actual = schedule.sparsity_at_step(*step);
             assert!(
                 (actual - expected).abs() < 1e-6,
-                "GOLD-001 FALSIFIED: OneShot at step {} expected {}, got {}",
-                step,
-                expected,
-                actual
+                "GOLD-001 FALSIFIED: OneShot at step {step} expected {expected}, got {actual}"
             );
         }
 
@@ -219,8 +218,7 @@ mod tests {
         for step in &golden.expected_prune_steps {
             assert!(
                 schedule.should_prune_at_step(*step),
-                "GOLD-001 FALSIFIED: OneShot should prune at step {}",
-                step
+                "GOLD-001 FALSIFIED: OneShot should prune at step {step}"
             );
         }
     }
@@ -245,10 +243,7 @@ mod tests {
             let actual = schedule.sparsity_at_step(*step);
             assert!(
                 (actual - expected).abs() < 1e-6,
-                "GOLD-002 FALSIFIED: Gradual at step {} expected {}, got {}",
-                step,
-                expected,
-                actual
+                "GOLD-002 FALSIFIED: Gradual at step {step} expected {expected}, got {actual}"
             );
         }
 
@@ -278,10 +273,7 @@ mod tests {
             let actual = schedule.sparsity_at_step(*step);
             assert!(
                 (actual - expected).abs() < 1e-6,
-                "GOLD-003 FALSIFIED: Cubic at step {} expected {}, got {}",
-                step,
-                expected,
-                actual
+                "GOLD-003 FALSIFIED: Cubic at step {step} expected {expected}, got {actual}"
             );
         }
     }
@@ -315,8 +307,7 @@ mod tests {
             assert_eq!(
                 config.requires_calibration(),
                 golden.requires_calibration,
-                "GOLD-004 FALSIFIED: Config {} calibration requirement mismatch",
-                id
+                "GOLD-004 FALSIFIED: Config {id} calibration requirement mismatch"
             );
         }
     }
@@ -357,8 +348,7 @@ mod tests {
         for name in &expected_names {
             assert!(
                 assertions.iter().any(|a| a.name == *name),
-                "GOLD-010 FALSIFIED: Missing assertion: {}",
-                name
+                "GOLD-010 FALSIFIED: Missing assertion: {name}"
             );
         }
     }

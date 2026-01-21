@@ -306,7 +306,7 @@ mod tests {
 
             // Each output value should be a valid quantized level
             let scale = fq.scale();
-            for &val in output.data().iter() {
+            for &val in output.data() {
                 // Value should be approximately q * scale for some integer q
                 let q = (val / scale).round();
                 let reconstructed = q * scale;
@@ -334,7 +334,7 @@ mod tests {
             let qmin_float = fq.config.qmin as f32 * fq.scale();
             let qmax_float = fq.config.qmax as f32 * fq.scale();
 
-            for &val in output.data().iter() {
+            for &val in output.data() {
                 prop_assert!(
                     val >= qmin_float - 1e-5 && val <= qmax_float + 1e-5,
                     "Output {} should be in [{}, {}]",
@@ -529,11 +529,7 @@ mod tests {
             let error = (orig - out).abs();
             assert!(
                 error < 0.1,
-                "Error {} at index {} too large: {} vs {}",
-                error,
-                i,
-                orig,
-                out
+                "Error {error} at index {i} too large: {orig} vs {out}"
             );
         }
     }
@@ -600,7 +596,7 @@ mod tests {
 
         assert_eq!(output.len(), 5);
         // Output should be quantized values
-        for &val in output.data().iter() {
+        for &val in output.data() {
             assert!(val.is_finite());
         }
     }

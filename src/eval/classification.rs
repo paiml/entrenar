@@ -520,7 +520,7 @@ mod tests {
         let y_true = vec![0, 1, 1];
         let cm = confusion_matrix(&y_pred, &y_true);
 
-        let display = format!("{}", cm);
+        let display = format!("{cm}");
         assert!(display.contains("Confusion Matrix"));
         assert!(display.contains("Pred"));
         assert!(display.contains("True"));
@@ -551,8 +551,7 @@ mod tests {
 
         assert!(
             (acc - 0.6666666666666666).abs() < 1e-6,
-            "Accuracy {} does not match sklearn reference 0.6666666666666666",
-            acc
+            "Accuracy {acc} does not match sklearn reference 0.6666666666666666"
         );
     }
 
@@ -567,8 +566,7 @@ mod tests {
 
         assert!(
             (p_macro - 0.6666666666666666).abs() < 1e-6,
-            "Macro precision {} does not match sklearn reference",
-            p_macro
+            "Macro precision {p_macro} does not match sklearn reference"
         );
     }
 
@@ -583,8 +581,7 @@ mod tests {
 
         assert!(
             (r_macro - 0.6666666666666666).abs() < 1e-6,
-            "Macro recall {} does not match sklearn reference",
-            r_macro
+            "Macro recall {r_macro} does not match sklearn reference"
         );
     }
 
@@ -599,8 +596,7 @@ mod tests {
 
         assert!(
             (f1_macro - 0.6666666666666666).abs() < 1e-6,
-            "Macro F1 {} does not match sklearn reference",
-            f1_macro
+            "Macro F1 {f1_macro} does not match sklearn reference"
         );
     }
 
@@ -618,18 +614,15 @@ mod tests {
 
         assert!(
             (p_micro - 0.6666666666666666).abs() < 1e-6,
-            "Micro precision {} does not match sklearn reference",
-            p_micro
+            "Micro precision {p_micro} does not match sklearn reference"
         );
         assert!(
             (r_micro - 0.6666666666666666).abs() < 1e-6,
-            "Micro recall {} does not match sklearn reference",
-            r_micro
+            "Micro recall {r_micro} does not match sklearn reference"
         );
         assert!(
             (f1_micro - 0.6666666666666666).abs() < 1e-6,
-            "Micro F1 {} does not match sklearn reference",
-            f1_micro
+            "Micro F1 {f1_micro} does not match sklearn reference"
         );
     }
 
@@ -647,18 +640,15 @@ mod tests {
 
         assert!(
             (p_weighted - 0.6666666666666666).abs() < 1e-6,
-            "Weighted precision {} does not match sklearn reference",
-            p_weighted
+            "Weighted precision {p_weighted} does not match sklearn reference"
         );
         assert!(
             (r_weighted - 0.6666666666666666).abs() < 1e-6,
-            "Weighted recall {} does not match sklearn reference",
-            r_weighted
+            "Weighted recall {r_weighted} does not match sklearn reference"
         );
         assert!(
             (f1_weighted - 0.6666666666666666).abs() < 1e-6,
-            "Weighted F1 {} does not match sklearn reference",
-            f1_weighted
+            "Weighted F1 {f1_weighted} does not match sklearn reference"
         );
     }
 
@@ -690,8 +680,7 @@ mod tests {
         let f1_macro = metrics.f1_avg(Average::Macro);
         assert!(
             (f1_macro - 0.6888888888888888).abs() < 1e-6,
-            "Macro F1 {} does not match reference 0.6889",
-            f1_macro
+            "Macro F1 {f1_macro} does not match reference 0.6889"
         );
     }
 
@@ -722,8 +711,7 @@ mod tests {
         let f1_macro = metrics.f1_avg(Average::Macro);
         assert!(
             (f1_macro - 0.6190476190476191).abs() < 1e-6,
-            "Macro F1 {} does not match reference 0.6190",
-            f1_macro
+            "Macro F1 {f1_macro} does not match reference 0.6190"
         );
     }
 }

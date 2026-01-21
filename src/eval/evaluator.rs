@@ -712,7 +712,7 @@ mod tests {
         result.inference_time_ms = 1.5;
         leaderboard.add(result);
 
-        let display = format!("{}", leaderboard);
+        let display = format!("{leaderboard}");
         assert!(display.contains("TestModel"));
         assert!(display.contains("Accuracy"));
     }
@@ -758,7 +758,7 @@ mod tests {
 
         // All indices should be covered exactly once across test sets
         let mut all_test: Vec<usize> = folds.iter().flat_map(|(_, t)| t.iter().copied()).collect();
-        all_test.sort();
+        all_test.sort_unstable();
         assert_eq!(all_test, (0..100).collect::<Vec<_>>());
     }
 

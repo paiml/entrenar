@@ -205,9 +205,9 @@ mod tests {
             let config = LoRAConfig::new(8, 8.0).all_linear_layers();
 
             // Should match *_proj and *_linear
-            let proj_name = format!("{}_proj", prefix);
-            let linear_name = format!("{}_linear", prefix);
-            let other_name = format!("{}_norm", prefix);
+            let proj_name = format!("{prefix}_proj");
+            let linear_name = format!("{prefix}_linear");
+            let other_name = format!("{prefix}_norm");
 
             prop_assert!(config.should_apply(&proj_name, None));
             prop_assert!(config.should_apply(&linear_name, None));
@@ -366,7 +366,7 @@ mod tests {
         let config = LoRAConfig::new(8, 8.0).target_modules(&["q_proj", "v_proj"]);
 
         let mut modules = config.get_target_modules();
-        modules.sort(); // HashSet order is not guaranteed
+        modules.sort_unstable(); // HashSet order is not guaranteed
 
         assert_eq!(modules.len(), 2);
         assert!(modules.contains(&"q_proj"));

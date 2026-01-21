@@ -941,7 +941,7 @@ mod tests {
         let prob = disc.discriminate(&tokens);
 
         // Output should be in [0, 1] due to sigmoid
-        assert!(prob >= 0.0 && prob <= 1.0);
+        assert!((0.0..=1.0).contains(&prob));
     }
 
     #[test]
@@ -1180,7 +1180,7 @@ mod tests {
             let disc = Discriminator::with_seed(config, 42);
 
             let prob = disc.discriminate(&tokens);
-            prop_assert!(prob >= 0.0 && prob <= 1.0);
+            prop_assert!((0.0..=1.0).contains(&prob));
         }
 
         #[test]
@@ -1240,7 +1240,7 @@ mod tests {
             let mut gan = CodeGan::with_seed(config, 42);
 
             let score = gan.detect_mode_collapse(num_samples);
-            prop_assert!(score >= 0.0 && score <= 1.0);
+            prop_assert!((0.0..=1.0).contains(&score));
         }
 
         #[test]

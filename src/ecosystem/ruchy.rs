@@ -705,7 +705,7 @@ mod tests {
 
         assert!(desc.contains("gpt2"));
         assert!(desc.contains("wiki"));
-        assert!(desc.contains("2")); // steps
+        assert!(desc.contains('2')); // steps
         assert!(desc.contains("0.2")); // loss
     }
 

@@ -233,8 +233,7 @@ mod tests {
             let msg = err.to_string();
             assert!(
                 !msg.is_empty(),
-                "Error display should not be empty: {:?}",
-                err
+                "Error display should not be empty: {err:?}"
             );
         }
     }

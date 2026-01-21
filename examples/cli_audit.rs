@@ -38,7 +38,7 @@ fn main() {
 }
 
 fn bias_audit(threshold: f64) {
-    println!("Bias Audit (threshold: {:.2})", threshold);
+    println!("Bias Audit (threshold: {threshold:.2})");
     println!("----------------------------");
 
     // Simulate group statistics
@@ -58,11 +58,11 @@ fn bias_audit(threshold: f64) {
 
     let pass = demographic_parity >= threshold;
 
-    println!("  Group A positive rate: {:.3}", group_a_positive_rate);
-    println!("  Group B positive rate: {:.3}", group_b_positive_rate);
-    println!("  Demographic parity ratio: {:.3}", demographic_parity);
-    println!("  Equalized odds: {:.3}", equalized_odds);
-    println!("  Threshold: {:.3}", threshold);
+    println!("  Group A positive rate: {group_a_positive_rate:.3}");
+    println!("  Group B positive rate: {group_b_positive_rate:.3}");
+    println!("  Demographic parity ratio: {demographic_parity:.3}");
+    println!("  Equalized odds: {equalized_odds:.3}");
+    println!("  Threshold: {threshold:.3}");
     println!("  Status: {}", if pass { "PASS ✓" } else { "FAIL ✗" });
 }
 

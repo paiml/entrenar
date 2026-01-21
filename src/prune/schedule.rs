@@ -424,8 +424,7 @@ mod tests {
         let sparsity = schedule.sparsity_at_step(50);
         assert!(
             (sparsity - 0.5).abs() < 1e-6,
-            "SCHED-012 FALSIFIED: Gradual at midpoint should be 0.5, got {}",
-            sparsity
+            "SCHED-012 FALSIFIED: Gradual at midpoint should be 0.5, got {sparsity}"
         );
     }
 
@@ -443,8 +442,7 @@ mod tests {
         let sparsity = schedule.sparsity_at_step(25);
         assert!(
             (sparsity - 0.2).abs() < 1e-6,
-            "SCHED-013 FALSIFIED: Gradual at 25% should be 0.2, got {}",
-            sparsity
+            "SCHED-013 FALSIFIED: Gradual at 25% should be 0.2, got {sparsity}"
         );
     }
 
@@ -463,8 +461,7 @@ mod tests {
         let sparsity = schedule.sparsity_at_step(50);
         assert!(
             (sparsity - 0.5).abs() < 1e-6,
-            "SCHED-014 FALSIFIED: Gradual with initial 0.2 at midpoint should be 0.5, got {}",
-            sparsity
+            "SCHED-014 FALSIFIED: Gradual with initial 0.2 at midpoint should be 0.5, got {sparsity}"
         );
     }
 
@@ -578,8 +575,7 @@ mod tests {
         let sparsity = schedule.sparsity_at_step(0);
         assert!(
             sparsity.abs() < 1e-6,
-            "SCHED-022 FALSIFIED: Cubic at start should be 0.0, got {}",
-            sparsity
+            "SCHED-022 FALSIFIED: Cubic at start should be 0.0, got {sparsity}"
         );
     }
 
@@ -596,9 +592,7 @@ mod tests {
         let expected = 0.5 * (1.0 - 0.5_f32.powi(3));
         assert!(
             (sparsity - expected).abs() < 1e-6,
-            "SCHED-023 FALSIFIED: Cubic at midpoint should be {}, got {}",
-            expected,
-            sparsity
+            "SCHED-023 FALSIFIED: Cubic at midpoint should be {expected}, got {sparsity}"
         );
     }
 
@@ -616,9 +610,7 @@ mod tests {
         let linear_25 = 0.25; // 25% of final_sparsity
         assert!(
             sparsity_25 > linear_25,
-            "SCHED-024 FALSIFIED: Cubic should be faster than linear at 25%, got {} vs {}",
-            sparsity_25,
-            linear_25
+            "SCHED-024 FALSIFIED: Cubic should be faster than linear at 25%, got {sparsity_25} vs {linear_25}"
         );
     }
 
@@ -638,8 +630,7 @@ mod tests {
         // But the RATE of change is slower (derivative is lower)
         assert!(
             sparsity_75 > linear_75,
-            "SCHED-025 FALSIFIED: Cubic at 75% should be higher than linear ({})",
-            sparsity_75
+            "SCHED-025 FALSIFIED: Cubic at 75% should be higher than linear ({sparsity_75})"
         );
     }
 
@@ -996,14 +987,14 @@ mod tests {
     #[test]
     fn test_deserialize_from_yaml() {
         // TEST_ID: SCHED-053
-        let yaml = r#"
+        let yaml = r"
 type: gradual
 start_step: 100
 end_step: 1000
 initial_sparsity: 0.0
 final_sparsity: 0.5
 frequency: 10
-"#;
+";
         let schedule: PruningSchedule = serde_yaml::from_str(yaml).unwrap();
         match schedule {
             PruningSchedule::Gradual {
@@ -1043,10 +1034,7 @@ frequency: 10
             let sparsity = schedule.sparsity_at_step(step);
             assert!(
                 sparsity >= prev,
-                "SCHED-060 FALSIFIED: Sparsity decreased from {} to {} at step {}",
-                prev,
-                sparsity,
-                step
+                "SCHED-060 FALSIFIED: Sparsity decreased from {prev} to {sparsity} at step {step}"
             );
             prev = sparsity;
         }
@@ -1066,10 +1054,7 @@ frequency: 10
             let sparsity = schedule.sparsity_at_step(step);
             assert!(
                 sparsity >= prev - 1e-6, // Allow floating point tolerance
-                "SCHED-061 FALSIFIED: Sparsity decreased from {} to {} at step {}",
-                prev,
-                sparsity,
-                step
+                "SCHED-061 FALSIFIED: Sparsity decreased from {prev} to {sparsity} at step {step}"
             );
             prev = sparsity;
         }
@@ -1089,10 +1074,8 @@ frequency: 10
         for step in 0..=200 {
             let sparsity = schedule.sparsity_at_step(step);
             assert!(
-                sparsity >= 0.0 && sparsity <= 0.5,
-                "SCHED-062 FALSIFIED: Sparsity {} out of bounds [0.0, 0.5] at step {}",
-                sparsity,
-                step
+                (0.0..=0.5).contains(&sparsity),
+                "SCHED-062 FALSIFIED: Sparsity {sparsity} out of bounds [0.0, 0.5] at step {step}"
             );
         }
     }
@@ -1118,7 +1101,7 @@ frequency: 10
     fn test_debug_format() {
         // TEST_ID: SCHED-064
         let schedule = PruningSchedule::OneShot { step: 100 };
-        let debug = format!("{:?}", schedule);
+        let debug = format!("{schedule:?}");
         assert!(
             debug.contains("OneShot"),
             "SCHED-064 FALSIFIED: Debug should contain variant name"

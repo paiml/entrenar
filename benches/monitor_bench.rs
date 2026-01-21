@@ -12,13 +12,13 @@ use entrenar::monitor::{
 fn bench_metrics_record(c: &mut Criterion) {
     let mut group = c.benchmark_group("MetricsCollector");
 
-    for size in [100, 1_000, 10_000, 100_000].iter() {
+    for size in &[100, 1_000, 10_000, 100_000] {
         group.throughput(Throughput::Elements(*size as u64));
         group.bench_with_input(BenchmarkId::new("record", size), size, |b, &size| {
             b.iter(|| {
                 let mut collector = MetricsCollector::new();
                 for i in 0..size {
-                    collector.record(Metric::Loss, 1.0 / (i as f64 + 1.0));
+                    collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
                 }
                 black_box(collector)
             });
@@ -31,12 +31,12 @@ fn bench_metrics_record(c: &mut Criterion) {
 fn bench_metrics_summary(c: &mut Criterion) {
     let mut group = c.benchmark_group("MetricsSummary");
 
-    for size in [1_000, 10_000, 100_000].iter() {
+    for size in &[1_000, 10_000, 100_000] {
         // Pre-populate collector
         let mut collector = MetricsCollector::new();
         for i in 0..*size {
-            collector.record(Metric::Loss, 1.0 / (i as f64 + 1.0));
-            collector.record(Metric::Accuracy, 0.5 + 0.0001 * i as f64);
+            collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
+            collector.record(Metric::Accuracy, 0.5 + 0.0001 * f64::from(i));
         }
 
         group.bench_with_input(BenchmarkId::new("summary", size), size, |b, _| {
@@ -55,7 +55,7 @@ fn bench_in_memory_store(c: &mut Criterion) {
             let mut store = InMemoryStore::new();
             let mut collector = MetricsCollector::new();
             for i in 0..1000 {
-                collector.record(Metric::Loss, 1.0 / (i as f64 + 1.0));
+                collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
             }
             store.write_batch(&collector.to_records()).unwrap();
             black_box(store)
@@ -66,8 +66,8 @@ fn bench_in_memory_store(c: &mut Criterion) {
     let mut store = InMemoryStore::new();
     let mut collector = MetricsCollector::new();
     for i in 0..10_000 {
-        collector.record(Metric::Loss, 1.0 / (i as f64 + 1.0));
-        collector.record(Metric::Accuracy, 0.5 + 0.0001 * i as f64);
+        collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
+        collector.record(Metric::Accuracy, 0.5 + 0.0001 * f64::from(i));
     }
     store.write_batch(&collector.to_records()).unwrap();
 
@@ -85,7 +85,7 @@ fn bench_drift_detection(c: &mut Criterion) {
         b.iter(|| {
             let mut baseline = SlidingWindowBaseline::new(1000);
             for i in 0..1000 {
-                baseline.update(0.5 + 0.001 * (i % 10) as f64);
+                baseline.update(0.5 + 0.001 * f64::from(i % 10));
             }
             // Check for anomaly
             black_box(baseline.detect_anomaly(10.0, 3.0))
@@ -95,7 +95,7 @@ fn bench_drift_detection(c: &mut Criterion) {
     // Pre-trained baseline for anomaly check
     let mut baseline = SlidingWindowBaseline::new(1000);
     for i in 0..1000 {
-        baseline.update(0.5 + 0.001 * (i % 10) as f64);
+        baseline.update(0.5 + 0.001 * f64::from(i % 10));
     }
 
     group.bench_function("anomaly_check", |b| {
@@ -106,7 +106,7 @@ fn bench_drift_detection(c: &mut Criterion) {
         b.iter(|| {
             let mut detector = DriftDetector::new(100);
             for i in 0..100 {
-                detector.check(0.5 + 0.001 * (i % 10) as f64);
+                detector.check(0.5 + 0.001 * f64::from(i % 10));
             }
             black_box(detector)
         });
@@ -118,12 +118,15 @@ fn bench_drift_detection(c: &mut Criterion) {
 fn bench_hansei_report(c: &mut Criterion) {
     let mut group = c.benchmark_group("HanseiReport");
 
-    for size in [100, 1_000, 10_000].iter() {
+    for size in &[100, 1_000, 10_000] {
         let mut collector = MetricsCollector::new();
         for i in 0..*size {
-            collector.record(Metric::Loss, 1.0 - (i as f64 / *size as f64));
-            collector.record(Metric::Accuracy, 0.5 + 0.5 * (i as f64 / *size as f64));
-            collector.record(Metric::GradientNorm, 1.0 + 0.01 * (i % 100) as f64);
+            collector.record(Metric::Loss, 1.0 - (f64::from(i) / f64::from(*size)));
+            collector.record(
+                Metric::Accuracy,
+                0.5 + 0.5 * (f64::from(i) / f64::from(*size)),
+            );
+            collector.record(Metric::GradientNorm, 1.0 + 0.01 * f64::from(i % 100));
         }
 
         group.bench_with_input(BenchmarkId::new("analyze", size), size, |b, _| {

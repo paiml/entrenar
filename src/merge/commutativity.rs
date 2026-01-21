@@ -88,8 +88,7 @@ mod tests {
             let result = slerp_merge(&m, &m, &config).unwrap();
             assert!(
                 models_approx_equal(&result, &m, 1e-5),
-                "slerp(A, A, {}) should equal A",
-                t
+                "slerp(A, A, {t}) should equal A"
             );
         }
     }
@@ -227,9 +226,7 @@ mod tests {
             if r.abs() > 1e-6 {
                 assert!(
                     o.signum() == r.signum(),
-                    "TIES of identical models should preserve sign: {} vs {}",
-                    o,
-                    r
+                    "TIES of identical models should preserve sign: {o} vs {r}"
                 );
             }
         }

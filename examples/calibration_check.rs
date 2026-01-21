@@ -98,7 +98,7 @@ fn run_calibration_check(test: DriftTest) -> f64 {
         let current = generate_normal_data(SAMPLE_SIZE, 50.0, 10.0, seed2);
 
         // Run drift detection
-        let mut detector = DriftDetector::new(vec![test.clone()]);
+        let mut detector = DriftDetector::new(vec![test]);
         detector.set_baseline(&baseline);
         let results = detector.check(&current);
 
@@ -108,7 +108,7 @@ fn run_calibration_check(test: DriftTest) -> f64 {
         }
     }
 
-    rejections as f64 / NUM_TRIALS as f64
+    f64::from(rejections) / NUM_TRIALS as f64
 }
 
 /// Test statistical power - ability to detect actual drift
@@ -135,7 +135,7 @@ fn test_statistical_power() -> f64 {
         }
     }
 
-    detections as f64 / NUM_TRIALS as f64
+    f64::from(detections) / NUM_TRIALS as f64
 }
 
 /// Check if rejection rate is within acceptable bounds for calibration
@@ -156,10 +156,10 @@ fn generate_normal_data(n: usize, mean: f64, std: f64, seed: u64) -> Vec<Vec<f64
     for _ in 0..n {
         // LCG random number generator
         state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let u1 = (state >> 33) as f64 / (u32::MAX as f64);
+        let u1 = (state >> 33) as f64 / f64::from(u32::MAX);
 
         state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let u2 = (state >> 33) as f64 / (u32::MAX as f64);
+        let u2 = (state >> 33) as f64 / f64::from(u32::MAX);
 
         // Box-Muller transform
         let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();

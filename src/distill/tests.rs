@@ -1,5 +1,7 @@
 //! Property-based tests for distillation
 
+#![allow(clippy::field_reassign_with_default)]
+
 use super::*;
 use ndarray::{array, Array2};
 use proptest::prelude::*;
@@ -116,7 +118,7 @@ proptest! {
         // Check that ensemble is average of teachers
         for i in 0..t1.nrows() {
             for j in 0..t1.ncols() {
-                let expected = (t1[[i, j]] + t2[[i, j]]) / 2.0;
+                let expected = f32::midpoint(t1[[i, j]], t2[[i, j]]);
                 prop_assert!((ensemble[[i, j]] - expected).abs() < 1e-4);
             }
         }
@@ -164,8 +166,8 @@ proptest! {
 
         let distiller = ProgressiveDistiller::uniform(1, 2.0);
 
-        let loss1 = distiller.layer_wise_mse_loss(&vec![h1.clone()], &vec![h2.clone()]);
-        let loss2 = distiller.layer_wise_mse_loss(&vec![h2.clone()], &vec![h1.clone()]);
+        let loss1 = distiller.layer_wise_mse_loss(&[h1.clone()], &[h2.clone()]);
+        let loss2 = distiller.layer_wise_mse_loss(&[h2.clone()], &[h1.clone()]);
 
         prop_assert!((loss1 - loss2).abs() < 1e-5);
     }
@@ -180,8 +182,8 @@ proptest! {
 
         let distiller = ProgressiveDistiller::uniform(1, 2.0);
 
-        let loss1 = distiller.layer_wise_cosine_loss(&vec![h1.clone()], &vec![h2.clone()]);
-        let loss2 = distiller.layer_wise_cosine_loss(&vec![h2.clone()], &vec![h1.clone()]);
+        let loss1 = distiller.layer_wise_cosine_loss(&[h1.clone()], &[h2.clone()]);
+        let loss2 = distiller.layer_wise_cosine_loss(&[h2.clone()], &[h1.clone()]);
 
         prop_assert!((loss1 - loss2).abs() < 1e-5);
     }

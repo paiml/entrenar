@@ -570,7 +570,7 @@ mod tests {
                 ..Default::default()
             };
             let ratio = stats.cardinality_ratio();
-            prop_assert!(ratio >= 0.0 && ratio <= 1.0);
+            prop_assert!((0.0..=1.0).contains(&ratio));
         }
 
         #[test]
@@ -585,7 +585,7 @@ mod tests {
                 ..Default::default()
             };
             let ratio = stats.null_ratio();
-            prop_assert!(ratio >= 0.0 && ratio <= 1.0);
+            prop_assert!((0.0..=1.0).contains(&ratio));
         }
 
         #[test]
@@ -678,7 +678,7 @@ mod tests {
             num_cols in 1usize..20
         ) {
             let stats: Vec<ColumnStats> = (0..num_cols)
-                .map(|i| make_stats(&format!("col_{}", i), 100, 50, true, false))
+                .map(|i| make_stats(&format!("col_{i}"), 100, 50, true, false))
                 .collect();
             let config = InferenceConfig::default();
             let schema = infer_schema(stats, &config);
@@ -691,16 +691,16 @@ mod tests {
             num_targets in 0usize..3
         ) {
             let mut stats: Vec<ColumnStats> = (0..num_features)
-                .map(|i| make_stats(&format!("x{}", i), 100, 50, true, false))
+                .map(|i| make_stats(&format!("x{i}"), 100, 50, true, false))
                 .collect();
 
             // Add targets
             for i in 0..num_targets {
-                stats.push(make_stats(&format!("y{}", i), 100, 80, true, false));
+                stats.push(make_stats(&format!("y{i}"), 100, 80, true, false));
             }
 
             let mut config = InferenceConfig::default();
-            config.target_columns = (0..num_targets).map(|i| format!("y{}", i)).collect();
+            config.target_columns = (0..num_targets).map(|i| format!("y{i}")).collect();
 
             let schema = infer_schema(stats, &config);
 

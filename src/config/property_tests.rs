@@ -91,7 +91,7 @@ mod tests {
 
     fn arb_merge_spec() -> impl Strategy<Value = MergeSpec> {
         prop_oneof!["ties", "dare", "slerp"].prop_map(|method| MergeSpec {
-            method: method.to_string(),
+            method: method.clone(),
             params: HashMap::new(),
         })
     }
@@ -108,7 +108,7 @@ mod tests {
                 TrainingParams {
                     epochs,
                     grad_clip,
-                    lr_scheduler: lr_scheduler.map(String::from),
+                    lr_scheduler: lr_scheduler,
                     warmup_steps: warmup,
                     save_interval,
                     output_dir: PathBuf::from("./checkpoints"),
@@ -465,13 +465,13 @@ mod tests {
 
     #[test]
     fn test_optim_params_flattened() {
-        let yaml = r#"
+        let yaml = r"
 name: adamw
 lr: 0.001
 beta1: 0.9
 beta2: 0.999
 weight_decay: 0.01
-"#;
+";
         let optim: OptimSpec = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(optim.name, "adamw");
         assert!(optim.params.contains_key("beta1"));
@@ -480,10 +480,10 @@ weight_decay: 0.01
 
     #[test]
     fn test_merge_params_flattened() {
-        let yaml = r#"
+        let yaml = r"
 method: ties
 density: 0.2
-"#;
+";
         let merge: MergeSpec = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(merge.method, "ties");
         assert!(merge.params.contains_key("density"));

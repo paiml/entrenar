@@ -219,7 +219,7 @@ mod tests {
     fn test_sliding_window_update() {
         let mut baseline = SlidingWindowBaseline::new(100);
         for i in 0..10 {
-            baseline.update(i as f64);
+            baseline.update(f64::from(i));
         }
         assert_eq!(baseline.count(), 10);
         assert!((baseline.mean() - 4.5).abs() < 1e-6);
@@ -229,7 +229,7 @@ mod tests {
     fn test_sliding_window_rolls() {
         let mut baseline = SlidingWindowBaseline::new(5);
         for i in 0..10 {
-            baseline.update(i as f64);
+            baseline.update(f64::from(i));
         }
         // Window should contain [5, 6, 7, 8, 9]
         assert_eq!(baseline.count(), 5);
@@ -241,7 +241,7 @@ mod tests {
         let mut baseline = SlidingWindowBaseline::new(100);
         // Add 100 values with mean=50, std≈29
         for i in 0..100 {
-            baseline.update(i as f64);
+            baseline.update(f64::from(i));
         }
 
         // Value at mean should have z≈0
@@ -253,7 +253,7 @@ mod tests {
     fn test_detect_anomaly_none() {
         let mut baseline = SlidingWindowBaseline::new(100);
         for i in 0..100 {
-            baseline.update(50.0 + (i % 5) as f64);
+            baseline.update(50.0 + f64::from(i % 5));
         }
 
         // Normal value
@@ -266,7 +266,7 @@ mod tests {
         let mut baseline = SlidingWindowBaseline::new(100);
         // Add values with some variance so std > 0
         for i in 0..100 {
-            baseline.update(50.0 + (i % 10) as f64);
+            baseline.update(50.0 + f64::from(i % 10));
         }
 
         // Extreme outlier (far from mean ~54.5, std ~2.87)
@@ -293,7 +293,7 @@ mod tests {
 
         // Establish baseline with some variance
         for i in 0..100 {
-            detector.check(50.0 + (i % 10) as f64);
+            detector.check(50.0 + f64::from(i % 10));
         }
 
         // Sudden large change (mean ~54.5, value 200 is ~50 std devs away)
@@ -301,8 +301,7 @@ mod tests {
         // With variance, this should trigger drift or warning
         assert!(
             matches!(status, DriftStatus::Drift(_) | DriftStatus::Warning(_)),
-            "Expected drift or warning, got {:?}",
-            status
+            "Expected drift or warning, got {status:?}"
         );
     }
 
@@ -363,7 +362,7 @@ mod tests {
     fn test_detect_anomaly_not_enough_data() {
         let mut baseline = SlidingWindowBaseline::new(100);
         for i in 0..5 {
-            baseline.update(i as f64);
+            baseline.update(f64::from(i));
         }
         // Less than 10 values, should return None
         let anomaly = baseline.detect_anomaly(100.0, 3.0);
@@ -376,7 +375,7 @@ mod tests {
         // Add values with controlled variance
         for i in 0..100 {
             // Values between 48-52, mean=50, std≈1.41
-            baseline.update(50.0 + (i % 5 - 2) as f64);
+            baseline.update(50.0 + f64::from(i % 5 - 2));
         }
         // Value 4 std devs away: 50 + 4*1.41 ≈ 55.64
         // But actually need ~4 std devs to get Medium
@@ -402,7 +401,7 @@ mod tests {
 
         // Establish baseline
         for i in 0..50 {
-            detector.check(50.0 + (i % 10) as f64);
+            detector.check(50.0 + f64::from(i % 10));
         }
 
         // Moderate deviation might trigger warning
@@ -416,7 +415,7 @@ mod tests {
         // Test the z_to_p function indirectly through DriftDetector
         let mut detector = DriftDetector::new(100);
         for i in 0..100 {
-            detector.check(50.0 + (i % 5) as f64);
+            detector.check(50.0 + f64::from(i % 5));
         }
         // Any check will exercise the z_to_p function
         let _status = detector.check(60.0);

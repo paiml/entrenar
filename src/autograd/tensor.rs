@@ -210,7 +210,7 @@ mod tests {
     #[test]
     fn test_tensor_debug() {
         let t = Tensor::from_vec(vec![1.0, 2.0], true);
-        let debug_str = format!("{:?}", t);
+        let debug_str = format!("{t:?}");
         assert!(debug_str.contains("Tensor"));
         assert!(debug_str.contains("data"));
     }

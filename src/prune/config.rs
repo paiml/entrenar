@@ -638,7 +638,7 @@ mod tests {
     #[test]
     fn test_config_deserialize_from_yaml() {
         // TEST_ID: CFG-042
-        let yaml = r#"
+        let yaml = r"
 method: wanda
 target_sparsity: 0.5
 pattern:
@@ -652,7 +652,7 @@ fine_tune_after_pruning: true
 fine_tune_steps: 500
 fine_tune_lr: 0.00001
 skip_embed_layers: true
-"#;
+";
         let config: PruningConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.method(), PruneMethod::Wanda);
         assert!((config.target_sparsity() - 0.5).abs() < 1e-6);
@@ -696,7 +696,7 @@ skip_embed_layers: true
     fn test_config_debug() {
         // TEST_ID: CFG-060
         let config = PruningConfig::new().with_method(PruneMethod::Wanda);
-        let debug = format!("{:?}", config);
+        let debug = format!("{config:?}");
         assert!(
             debug.contains("Wanda"),
             "CFG-060 FALSIFIED: Debug should contain method name"
@@ -707,7 +707,7 @@ skip_embed_layers: true
     fn test_pattern_debug() {
         // TEST_ID: CFG-061
         let pattern = SparsityPatternConfig::nm_2_4();
-        let debug = format!("{:?}", pattern);
+        let debug = format!("{pattern:?}");
         assert!(
             debug.contains("NM"),
             "CFG-061 FALSIFIED: Debug should contain pattern type"

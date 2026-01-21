@@ -44,7 +44,7 @@ fn inspect_safetensors(path: &Path) {
     let data = match std::fs::read(path) {
         Ok(d) => d,
         Err(e) => {
-            println!("Failed to read file: {}", e);
+            println!("Failed to read file: {e}");
             return;
         }
     };
@@ -52,12 +52,16 @@ fn inspect_safetensors(path: &Path) {
     let tensors = match SafeTensors::deserialize(&data) {
         Ok(t) => t,
         Err(e) => {
-            println!("Failed to parse SafeTensors: {}", e);
+            println!("Failed to parse SafeTensors: {e}");
             return;
         }
     };
 
-    let tensor_names: Vec<String> = tensors.names().iter().map(|s| s.to_string()).collect();
+    let tensor_names: Vec<String> = tensors
+        .names()
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     let mut total_params: u64 = 0;
 
     for name in &tensor_names {
@@ -92,7 +96,7 @@ fn inspect_data(path: &Path) {
     let metadata = match std::fs::metadata(path) {
         Ok(m) => m,
         Err(e) => {
-            println!("Failed to read metadata: {}", e);
+            println!("Failed to read metadata: {e}");
             return;
         }
     };
@@ -101,7 +105,7 @@ fn inspect_data(path: &Path) {
 
     println!("Data Summary:");
     println!("  File size: {:.2} MB", metadata.len() as f64 / 1_000_000.0);
-    println!("  Format: {}", ext);
+    println!("  Format: {ext}");
 }
 
 fn demo_inspection() {

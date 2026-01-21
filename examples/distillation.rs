@@ -35,8 +35,8 @@ fn standard_distillation_example() {
     let loss_fn = DistillationLoss::new(temperature, alpha);
 
     println!("Configuration:");
-    println!("  Temperature: {}", temperature);
-    println!("  Alpha (soft weight): {}", alpha);
+    println!("  Temperature: {temperature}");
+    println!("  Alpha (soft weight): {alpha}");
     println!("  Hard weight: {}", 1.0 - alpha);
 
     // Teacher model outputs (confident predictions)
@@ -57,14 +57,14 @@ fn standard_distillation_example() {
     println!("  Teacher logits: [[10, 2, 1], [1, 12, 2], [2, 1, 11]]");
     println!("  Student logits: [[7, 3, 2], [2, 8, 3], [3, 2, 7]]");
     println!("  Ground truth labels: [0, 1, 2]");
-    println!("  Distillation loss: {:.4}", loss);
+    println!("  Distillation loss: {loss:.4}");
 
     // Show effect of temperature
     println!("\nTemperature effect:");
     for t in [1.0, 2.0, 5.0, 10.0] {
         let loss_fn_temp = DistillationLoss::new(t, alpha);
         let loss_temp = loss_fn_temp.forward(&student_logits, &teacher_logits, &labels);
-        println!("  T={:4.1} → loss={:.4}", t, loss_temp);
+        println!("  T={t:4.1} → loss={loss_temp:.4}");
     }
 
     // Show effect of alpha
@@ -72,7 +72,7 @@ fn standard_distillation_example() {
     for a in [0.0, 0.3, 0.5, 0.7, 1.0] {
         let loss_fn_alpha = DistillationLoss::new(temperature, a);
         let loss_alpha = loss_fn_alpha.forward(&student_logits, &teacher_logits, &labels);
-        println!("  α={:.1} → loss={:.4}", a, loss_alpha);
+        println!("  α={a:.1} → loss={loss_alpha:.4}");
     }
 }
 
@@ -138,7 +138,7 @@ fn ensemble_distillation_example() {
     let labels = vec![0, 1, 2];
 
     let loss = weighted_distiller.distillation_loss(&student, &teachers, &labels, 0.7);
-    println!("\nStudent distillation loss: {:.4}", loss);
+    println!("\nStudent distillation loss: {loss:.4}");
 }
 
 fn progressive_distillation_example() {
@@ -170,8 +170,8 @@ fn progressive_distillation_example() {
     let mse_loss = uniform_distiller.layer_wise_mse_loss(&student_hiddens, &teacher_hiddens);
     let cosine_loss = uniform_distiller.layer_wise_cosine_loss(&student_hiddens, &teacher_hiddens);
 
-    println!("  MSE loss: {:.4}", mse_loss);
-    println!("  Cosine loss: {:.4}", cosine_loss);
+    println!("  MSE loss: {mse_loss:.4}");
+    println!("  Cosine loss: {cosine_loss:.4}");
 
     // Progressive weighting (higher weight on later layers)
     println!("\n--- Progressive Layer Weights ---");
@@ -183,8 +183,8 @@ fn progressive_distillation_example() {
     let cosine_loss_prog =
         progressive_distiller.layer_wise_cosine_loss(&student_hiddens, &teacher_hiddens);
 
-    println!("  MSE loss: {:.4}", mse_loss_prog);
-    println!("  Cosine loss: {:.4}", cosine_loss_prog);
+    println!("  MSE loss: {mse_loss_prog:.4}");
+    println!("  Cosine loss: {cosine_loss_prog:.4}");
     println!("  → Higher loss due to emphasis on layer 3 (which has larger error)");
 
     // Combined distillation (logits + hidden states)
@@ -207,9 +207,9 @@ fn progressive_distillation_example() {
         beta,
     );
 
-    println!("Alpha (soft target weight): {}", alpha);
-    println!("Beta (hidden state weight): {}", beta);
-    println!("Combined loss: {:.4}", combined_loss);
+    println!("Alpha (soft target weight): {alpha}");
+    println!("Beta (hidden state weight): {beta}");
+    println!("Combined loss: {combined_loss:.4}");
     println!(
         "  = {:.0}% logit distillation + {:.0}% hidden state matching",
         (1.0 - beta) * 100.0,

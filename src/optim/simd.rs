@@ -591,9 +591,7 @@ mod tests {
         // Weight decay should have reduced magnitude
         assert!(
             final_norm < initial_norm,
-            "Weight decay should reduce norm: {} -> {}",
-            initial_norm,
-            final_norm
+            "Weight decay should reduce norm: {initial_norm} -> {final_norm}"
         );
     }
 

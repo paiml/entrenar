@@ -1020,7 +1020,7 @@ mod property_tests {
                 .collect();
 
             let stats = LLMStats::from_metrics(&metrics);
-            let expected_total: u64 = calls.iter().map(|(p, c)| (*p + *c) as u64).sum();
+            let expected_total: u64 = calls.iter().map(|(p, c)| u64::from(*p + *c)).sum();
             prop_assert_eq!(stats.total_tokens, expected_total);
         }
 

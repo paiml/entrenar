@@ -64,9 +64,9 @@ fn check_drift(baseline: &[f64], current: &[f64], threshold: f64) {
 
     let pass = psi < threshold;
 
-    println!("  PSI score: {:.4}", psi);
-    println!("  Threshold: {:.4}", threshold);
-    println!("  Severity: {}", severity);
+    println!("  PSI score: {psi:.4}");
+    println!("  Threshold: {threshold:.4}");
+    println!("  Severity: {severity}");
     println!("  Status: {} {}", status, if pass { "✓" } else { "✗" });
 
     if !pass {

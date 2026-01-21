@@ -1,5 +1,7 @@
 //! Integration tests for CITL module
 
+#![allow(clippy::field_reassign_with_default)]
+
 use super::*;
 
 // ============ Integration Tests ============

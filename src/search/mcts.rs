@@ -32,6 +32,8 @@
 //! // let mcts = MctsSearch::new(initial_state, action_space, config);
 //! ```
 
+#![allow(clippy::field_reassign_with_default)]
+
 use std::collections::HashMap;
 use std::hash::Hash;
 
@@ -739,7 +741,7 @@ mod tests {
     }
 
     impl Action for TestAction {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "test_action"
         }
     }
@@ -1026,11 +1028,7 @@ mod tests {
         assert!(result.best_action.is_some());
         if let Some(action) = &result.best_action {
             // First action should be positive to move toward target
-            assert!(
-                action.delta > 0,
-                "Expected positive action, got {:?}",
-                action
-            );
+            assert!(action.delta > 0, "Expected positive action, got {action:?}");
         }
     }
 

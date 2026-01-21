@@ -377,7 +377,7 @@ mod tests {
     fn test_softmax_all_positive() {
         let logits = array![-100.0, 0.0, 100.0];
         let probs = softmax(&logits);
-        for p in probs.iter() {
+        for p in &probs {
             assert!(*p >= 0.0);
         }
     }
@@ -395,7 +395,7 @@ mod tests {
     fn test_log_softmax_identity() {
         let logits = array![1.0, 2.0, 3.0];
         let log_probs = log_softmax(&logits);
-        let probs_from_log: Array1<f32> = log_probs.mapv(|x| x.exp());
+        let probs_from_log: Array1<f32> = log_probs.mapv(f32::exp);
         let probs = softmax(&logits);
 
         for (a, b) in probs.iter().zip(probs_from_log.iter()) {

@@ -1144,7 +1144,7 @@ mod tests {
                     let mut s = state.write().unwrap();
                     let point = MetricPoint::new(i, i as f64 * 0.1);
                     s.metrics
-                        .entry(run_id.to_string())
+                        .entry(run_id.clone())
                         .or_default()
                         .entry("loss".to_string())
                         .or_default()

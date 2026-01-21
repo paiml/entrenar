@@ -85,7 +85,7 @@ fn main() {
     println!("  Version: {}", loaded_json.metadata.version);
     println!("\nCustom Metadata:");
     for (key, value) in &loaded_json.metadata.custom {
-        println!("  {}: {}", key, value);
+        println!("  {key}: {value}");
     }
     println!();
 

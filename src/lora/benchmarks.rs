@@ -129,7 +129,7 @@ impl BenchmarkResults {
             ));
 
             if let Some(ratio) = qlora.compression_ratio {
-                report.push_str(&format!("  Base weight compression: {:.1}x\n", ratio));
+                report.push_str(&format!("  Base weight compression: {ratio:.1}x\n"));
             }
         }
 
@@ -365,7 +365,7 @@ mod tests {
         let savings = stats.savings_percent();
 
         // Should save significant memory (>60%)
-        assert!(savings > 60.0, "Expected >60% savings, got {:.1}%", savings);
+        assert!(savings > 60.0, "Expected >60% savings, got {savings:.1}%");
     }
 
     #[test]

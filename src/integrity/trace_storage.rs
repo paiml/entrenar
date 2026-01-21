@@ -387,14 +387,13 @@ mod tests {
 
         // With enough samples, should be roughly 50%
         let sampled: usize = (0..1000)
-            .filter(|i| policy.should_sample(&format!("trace-{}", i)))
+            .filter(|i| policy.should_sample(&format!("trace-{i}")))
             .count();
 
         // Allow 10% tolerance
         assert!(
             sampled > 400 && sampled < 600,
-            "Expected ~500 samples, got {}",
-            sampled
+            "Expected ~500 samples, got {sampled}"
         );
     }
 
@@ -476,7 +475,7 @@ mod tests {
     #[test]
     fn test_policy_validation_error_display() {
         let err = PolicyValidationError::InvalidSampleRate(1.5);
-        let msg = format!("{}", err);
+        let msg = format!("{err}");
         assert!(msg.contains("1.5"));
         assert!(msg.contains("0.0"));
         assert!(msg.contains("1.0"));

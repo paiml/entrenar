@@ -85,7 +85,7 @@ fn main() -> entrenar::Result<()> {
     // Generate Cachix config
     let cachix_config = nix_config.generate_cachix_config();
     println!("Generated Cachix config:");
-    println!("{}", cachix_config);
+    println!("{cachix_config}");
     println!();
 
     // 4. Air-Gapped Workflow Summary

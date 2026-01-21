@@ -779,7 +779,7 @@ mod property_tests {
             exporter.record_gpu(device_id, 80.0, 8e9, 65.0, 200.0);
 
             let output = exporter.export();
-            let device_str = format!("device=\"{}\"", device_id);
+            let device_str = format!("device=\"{device_id}\"");
             prop_assert!(output.contains(&device_str));
         }
     }

@@ -390,8 +390,7 @@ mod tests {
             };
             assert!(
                 validate_optimizer(&optim).is_ok(),
-                "Optimizer {} should be valid",
-                opt
+                "Optimizer {opt} should be valid"
             );
         }
     }
@@ -411,8 +410,7 @@ mod tests {
             };
             assert!(
                 validate_quantize(&quant).is_ok(),
-                "Quant bits {} should be valid",
-                bits
+                "Quant bits {bits} should be valid"
             );
         }
     }

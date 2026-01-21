@@ -29,7 +29,7 @@ proptest! {
 
         let weight = curriculum.sample_weight(sample_difficulty);
         prop_assert!(
-          weight >= 0.0 && weight <= 1.0,
+          (0.0..=1.0).contains(&weight),
           "Weight {} out of range for sample_difficulty={}, curriculum_difficulty={}",
           weight, sample_difficulty, curriculum.difficulty()
         );
@@ -52,11 +52,11 @@ proptest! {
 
         for _ in 0..steps {
           let d = curriculum.difficulty();
-          prop_assert!(d >= 0.0 && d <= 1.0, "Difficulty {} out of bounds [0.0, 1.0]", d);
+          prop_assert!((0.0..=1.0).contains(&d), "Difficulty {} out of bounds [0.0, 1.0]", d);
           curriculum.step(epochs, 1.0);
         }
         let d = curriculum.difficulty();
-        prop_assert!(d >= 0.0 && d <= 1.0, "Difficulty {} out of bounds [0.0, 1.0]", d);
+        prop_assert!((0.0..=1.0).contains(&d), "Difficulty {} out of bounds [0.0, 1.0]", d);
     }
 
     #[test]
@@ -69,7 +69,7 @@ proptest! {
 
         curriculum.step(0, 1.0); // zero epochs
         let d = curriculum.difficulty();
-        prop_assert!(d >= 0.0 && d <= 1.0, "Difficulty {} out of bounds for input start={}, end={}, epochs={}", d, start, end, epochs);
+        prop_assert!((0.0..=1.0).contains(&d), "Difficulty {} out of bounds for input start={}, end={}, epochs={}", d, start, end, epochs);
 
     }
 
@@ -84,11 +84,11 @@ proptest! {
 
         for _ in 0..steps {
           let t = curriculum.tier();
-          prop_assert!(t >= 1 && t <= 4, "Tier {} out of bounds [1, 4]", t);
+          prop_assert!((1..=4).contains(&t), "Tier {} out of bounds [1, 4]", t);
           curriculum.step(epochs, 1.0);
         }
         let t = curriculum.tier();
-        prop_assert!(t >= 1 && t <= 4, "Tier {} out of bounds [1, 4]", t);
+        prop_assert!((1..=4).contains(&t), "Tier {} out of bounds [1, 4]", t);
     }
 
     #[test]
@@ -159,8 +159,8 @@ proptest! {
           let d = curriculum.difficulty();
           let t = curriculum.tier();
 
-          prop_assert!(t >= 1 && t <= 4, "Tier {} out of bounds [1, 4]", t);
-          prop_assert!(d >= 0.0 && d <= 1.0, "Difficulty {} out of bounds [0.0, 1.0]", d);
+          prop_assert!((1..=4).contains(&t), "Tier {} out of bounds [1, 4]", t);
+          prop_assert!((0.0..=1.0).contains(&d), "Difficulty {} out of bounds [0.0, 1.0]", d);
 
 
         }
@@ -224,7 +224,7 @@ proptest! {
       }
 
       let weight = curriculum.weight_for_class("E0001");
-      prop_assert!(weight >= 1.0 && weight <= 3.0, "Weight {} out of bounds [1.0, 3.0]", weight);
+      prop_assert!((1.0..=3.0).contains(&weight), "Weight {} out of bounds [1.0, 3.0]", weight);
     }
 
 }

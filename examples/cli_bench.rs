@@ -24,7 +24,7 @@ fn main() {
     let iterations = 100;
 
     for batch_size in &batch_sizes {
-        println!("Batch size: {}", batch_size);
+        println!("Batch size: {batch_size}");
 
         // Warmup iterations
         for _ in 0..warmup {
@@ -49,11 +49,11 @@ fn main() {
         let mean = latencies.iter().sum::<f64>() / latencies.len() as f64;
         let throughput = 1000.0 / mean * *batch_size as f64;
 
-        println!("  p50: {:.2}ms", p50);
-        println!("  p95: {:.2}ms", p95);
-        println!("  p99: {:.2}ms", p99);
-        println!("  mean: {:.2}ms", mean);
-        println!("  throughput: {:.1} samples/sec\n", throughput);
+        println!("  p50: {p50:.2}ms");
+        println!("  p95: {p95:.2}ms");
+        println!("  p99: {p99:.2}ms");
+        println!("  mean: {mean:.2}ms");
+        println!("  throughput: {throughput:.1} samples/sec\n");
     }
 }
 

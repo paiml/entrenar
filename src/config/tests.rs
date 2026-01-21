@@ -6,7 +6,7 @@ use tempfile::NamedTempFile;
 
 #[test]
 fn test_end_to_end_config_loading() {
-    let yaml = r#"
+    let yaml = r"
 model:
   path: llama-7b.gguf
   layers: [q_proj, v_proj]
@@ -35,7 +35,7 @@ training:
   grad_clip: 1.0
   lr_scheduler: cosine
   warmup_steps: 100
-"#;
+";
 
     let mut temp_file = NamedTempFile::new().unwrap();
     temp_file.write_all(yaml.as_bytes()).unwrap();
@@ -53,7 +53,7 @@ training:
 
 #[test]
 fn test_minimal_config() {
-    let yaml = r#"
+    let yaml = r"
 model:
   path: model.gguf
 
@@ -64,7 +64,7 @@ data:
 optimizer:
   name: adam
   lr: 0.001
-"#;
+";
 
     let mut temp_file = NamedTempFile::new().unwrap();
     temp_file.write_all(yaml.as_bytes()).unwrap();

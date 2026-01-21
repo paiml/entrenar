@@ -6,6 +6,8 @@
 //! # References
 //! - spec: docs/specifications/advanced-pruning.md, Section 10
 
+#![allow(unreachable_pub, dead_code)]
+
 /// Falsification checklist item status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChecklistStatus {

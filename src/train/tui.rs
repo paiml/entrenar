@@ -2468,7 +2468,7 @@ mod tests {
     fn test_kalman_eta_multiple_updates() {
         let mut kalman = KalmanEta::new();
         for i in 1..=10 {
-            kalman.update(i as f64 * 0.1);
+            kalman.update(f64::from(i) * 0.1);
         }
         let eta = kalman.eta_seconds(5);
         assert!(eta > 0.0);
@@ -2531,7 +2531,7 @@ mod tests {
     #[test]
     fn test_alert_level_clone() {
         let level = AlertLevel::Critical;
-        let cloned = level.clone();
+        let cloned = level;
         assert_eq!(level, cloned);
     }
 

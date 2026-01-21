@@ -610,6 +610,328 @@ lora:
             "Disabled LoRA should not require target_modules"
         );
     }
+
+    #[test]
+    fn test_validate_rejects_zero_lora_rank() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+lora:
+  enabled: true
+  rank: 0
+  alpha: 32
+  target_modules:
+    - q_proj
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_negative_lora_alpha() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+lora:
+  enabled: true
+  rank: 16
+  alpha: -1.0
+  target_modules:
+    - q_proj
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_lora_dropout() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+lora:
+  enabled: true
+  rank: 16
+  alpha: 32
+  dropout: 1.5
+  target_modules:
+    - q_proj
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_qlora_bits() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+lora:
+  enabled: true
+  rank: 16
+  alpha: 32
+  target_modules:
+    - q_proj
+  quantize_bits: 3
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidQuantBits { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_zero_epochs() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+training:
+  epochs: 0
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_zero_gradient_accumulation() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+training:
+  epochs: 10
+  gradient:
+    accumulation_steps: 0
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_epochs_with_duration() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+training:
+  epochs: 10
+  duration: "2h"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::MutuallyExclusive { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_max_steps_with_duration() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+training:
+  max_steps: 1000
+  duration: "2h"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::MutuallyExclusive { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_negative_split_train() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+data:
+  source: "./data.parquet"
+  split:
+    train: -0.5
+    val: 1.5
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        // Sum is 1.0 but train is negative, so InvalidRange should fire
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_negative_weight_decay() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+optimizer:
+  name: "adam"
+  lr: 0.001
+  weight_decay: -0.01
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_betas() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+optimizer:
+  name: "adam"
+  lr: 0.001
+  betas: [1.5, 0.999]
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_scheduler() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+scheduler:
+  name: "invalid_scheduler"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidScheduler(_)));
+    }
+
+    #[test]
+    fn test_validate_rejects_invalid_optimizer() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+optimizer:
+  name: "invalid_optimizer"
+  lr: 0.001
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidOptimizer(_)));
+    }
+
+    #[test]
+    fn test_validate_rejects_zero_learning_rate() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+optimizer:
+  name: "adam"
+  lr: 0.0
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidRange { .. }));
+    }
+
+    #[test]
+    fn test_validate_rejects_empty_version() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: ""
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, ManifestError::EmptyRequiredField(_)));
+    }
+
+    #[test]
+    fn test_validate_accepts_lora_with_pattern() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+lora:
+  enabled: true
+  rank: 16
+  alpha: 32
+  target_modules: []
+  target_modules_pattern: ".*proj$"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_accepts_disabled_quantize() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "test"
+version: "1.0.0"
+
+quantize:
+  enabled: false
+  bits: 99
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let result = validate_manifest(&manifest);
+        assert!(
+            result.is_ok(),
+            "Disabled quantize should skip bit validation"
+        );
+    }
 }
 
 // ============================================================================
@@ -989,6 +1311,112 @@ lockfile: "./train.lock"
 // ============================================================================
 // SERIALIZATION ROUNDTRIP TESTS
 // ============================================================================
+
+// ============================================================================
+// FILE I/O TESTS (COVERAGE FOR mod.rs)
+// ============================================================================
+
+mod file_io {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_load_manifest_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("train.yaml");
+
+        let yaml_content = r#"
+entrenar: "1.0"
+name: "test-experiment"
+version: "1.0.0"
+"#;
+        std::fs::write(&manifest_path, yaml_content).unwrap();
+
+        let manifest = load_manifest(&manifest_path).unwrap();
+        assert_eq!(manifest.entrenar, "1.0");
+        assert_eq!(manifest.name, "test-experiment");
+        assert_eq!(manifest.version, "1.0.0");
+    }
+
+    #[test]
+    fn test_load_manifest_file_not_found() {
+        let result = load_manifest(std::path::Path::new("/nonexistent/path/train.yaml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_manifest_invalid_yaml() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("invalid.yaml");
+
+        std::fs::write(&manifest_path, "this is not valid yaml: [[[").unwrap();
+
+        let result = load_manifest(&manifest_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_manifest_validation_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("invalid_manifest.yaml");
+
+        // Invalid version
+        let yaml_content = r#"
+entrenar: "99.0"
+name: "test"
+version: "1.0.0"
+"#;
+        std::fs::write(&manifest_path, yaml_content).unwrap();
+
+        let result = load_manifest(&manifest_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_save_manifest_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("output.yaml");
+
+        let yaml = r#"
+entrenar: "1.0"
+name: "save-test"
+version: "1.0.0"
+description: "Test saving manifest"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+
+        save_manifest(&manifest, &manifest_path).unwrap();
+
+        // Verify file was written
+        assert!(manifest_path.exists());
+
+        // Verify content can be read back
+        let loaded = load_manifest(&manifest_path).unwrap();
+        assert_eq!(loaded.name, "save-test");
+        assert_eq!(loaded.description, Some("Test saving manifest".to_string()));
+    }
+
+    #[test]
+    fn test_save_manifest_creates_parent_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let nested_path = temp_dir
+            .path()
+            .join("nested")
+            .join("dir")
+            .join("train.yaml");
+
+        let yaml = r#"
+entrenar: "1.0"
+name: "nested-test"
+version: "1.0.0"
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+
+        // This should fail since we don't create parent dirs in save_manifest
+        let result = save_manifest(&manifest, &nested_path);
+        assert!(result.is_err());
+    }
+}
 
 mod serialization {
     use super::*;

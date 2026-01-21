@@ -656,7 +656,7 @@ mod tests {
 
         // Should always detect at least one CPU
         assert!(!devices.is_empty());
-        assert!(devices.iter().any(|d| d.is_cpu()));
+        assert!(devices.iter().any(super::ComputeDevice::is_cpu));
     }
 
     #[test]

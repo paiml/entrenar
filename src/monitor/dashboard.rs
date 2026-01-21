@@ -199,7 +199,7 @@ mod tests {
                 Metric::Loss,
                 MetricStats {
                     count: 1,
-                    mean: 1.0 - (i as f64 * 0.1),
+                    mean: 1.0 - (f64::from(i) * 0.1),
                     std: 0.0,
                     min: 0.0,
                     max: 1.0,

@@ -365,7 +365,7 @@ mod tests {
                 .collect();
 
             if !kept_magnitudes.is_empty() {
-                let min_kept = kept_magnitudes.iter().cloned().fold(f32::INFINITY, f32::min);
+                let min_kept = kept_magnitudes.iter().copied().fold(f32::INFINITY, f32::min);
 
                 // All trimmed values should have magnitude <= min_kept
                 for (orig, trim) in values.iter().zip(trimmed.data().iter()) {

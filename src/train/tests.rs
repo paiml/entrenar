@@ -1,5 +1,7 @@
 //! Integration tests for training module
 
+#![allow(clippy::field_reassign_with_default)]
+
 use super::*;
 use crate::optim::Adam;
 use crate::Tensor;
@@ -27,11 +29,11 @@ fn test_end_to_end_training() {
     ];
 
     // Train for multiple epochs (simple identity function)
-    let initial_loss = trainer.train_epoch(batches.clone(), |x| x.clone());
+    let initial_loss = trainer.train_epoch(batches.clone(), std::clone::Clone::clone);
 
     // Train a few more epochs
     for _ in 0..3 {
-        trainer.train_epoch(batches.clone(), |x| x.clone());
+        trainer.train_epoch(batches.clone(), std::clone::Clone::clone);
     }
 
     let final_loss = trainer.metrics.losses.last().copied().unwrap();
@@ -58,7 +60,7 @@ fn test_metrics_tracking() {
 
     // Train for 3 epochs
     for _ in 0..3 {
-        trainer.train_epoch(vec![batch.clone()], |x| x.clone());
+        trainer.train_epoch(vec![batch.clone()], std::clone::Clone::clone);
     }
 
     assert_eq!(trainer.metrics.epoch, 3);
@@ -87,8 +89,8 @@ fn test_gradient_clipping() {
         Tensor::from_vec(vec![0.0, 0.0], false),
     );
 
-    let loss_clip = trainer_clip.train_step(&batch, |x| x.clone());
-    let loss_no_clip = trainer_no_clip.train_step(&batch, |x| x.clone());
+    let loss_clip = trainer_clip.train_step(&batch, std::clone::Clone::clone);
+    let loss_no_clip = trainer_no_clip.train_step(&batch, std::clone::Clone::clone);
 
     // Both should produce valid losses
     assert!(loss_clip.is_finite());

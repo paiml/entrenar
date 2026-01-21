@@ -122,7 +122,7 @@ fn pattern_store_example() {
     // Create new store and import
     let mut new_store = DecisionPatternStore::new().unwrap();
     let count = new_store.import_json(&json).unwrap();
-    println!("Imported {} patterns into new store", count);
+    println!("Imported {count} patterns into new store");
 }
 
 #[cfg(feature = "citl")]
@@ -155,7 +155,7 @@ fn decision_tracing_example() {
             trace.id, trace.decision_type, trace.description
         );
         if let Some(ref span) = trace.span {
-            println!("    at {}", span);
+            println!("    at {span}");
         }
         if !trace.depends_on.is_empty() {
             println!("    depends on: {:?}", trace.depends_on);
@@ -165,7 +165,7 @@ fn decision_tracing_example() {
     // Check span overlap
     println!("\n--- Span Analysis ---");
     let error_span = SourceSpan::line("main.rs", 7);
-    println!("Error at: {}", error_span);
+    println!("Error at: {error_span}");
 
     for trace in &traces {
         if let Some(ref span) = trace.span {
@@ -191,7 +191,7 @@ fn tarantula_example() {
         trainer
             .ingest_session(
                 vec![DecisionTrace::new(
-                    format!("fail_{}", i),
+                    format!("fail_{i}"),
                     "type_inference",
                     "Bad inference",
                 )],
@@ -207,7 +207,7 @@ fn tarantula_example() {
         trainer
             .ingest_session(
                 vec![DecisionTrace::new(
-                    format!("success_ti_{}", i),
+                    format!("success_ti_{i}"),
                     "type_inference",
                     "Good inference",
                 )],
@@ -223,7 +223,7 @@ fn tarantula_example() {
         trainer
             .ingest_session(
                 vec![DecisionTrace::new(
-                    format!("success_bc_{}", i),
+                    format!("success_bc_{i}"),
                     "borrow_check",
                     "Successful check",
                 )],
@@ -254,7 +254,7 @@ fn tarantula_example() {
         } else {
             "Low suspicion"
         };
-        println!("  {}: {:.3} - {}", decision_type, score, interpretation);
+        println!("  {decision_type}: {score:.3} - {interpretation}");
     }
 
     println!("\nExpected: type_inference should have high suspiciousness");
@@ -347,7 +347,7 @@ fn complete_workflow_example() {
     let new_error_span = SourceSpan::line("src/new_module.rs", 25);
     let new_error_code = "E0308";
 
-    println!("  Error: {} at {}", new_error_code, new_error_span);
+    println!("  Error: {new_error_code} at {new_error_span}");
 
     let correlation = trainer
         .correlate_error(new_error_code, &new_error_span)
@@ -386,7 +386,7 @@ fn complete_workflow_example() {
 
     println!("\n  Top suspicious decision types:");
     for (dtype, score) in trainer.top_suspicious_types(3) {
-        println!("    {}: {:.2}", dtype, score);
+        println!("    {dtype}: {score:.2}");
     }
 
     println!("\n  Decisions by file:");
@@ -439,15 +439,15 @@ fn apr_persistence_example() {
 
     let apr_size = std::fs::metadata(&temp_path).unwrap().len();
     println!("  Path: {}", temp_path.display());
-    println!("  Size: {} bytes", apr_size);
+    println!("  Size: {apr_size} bytes");
 
     // Compare with JSON size
     let json = store.export_json().unwrap();
     let json_size = json.len();
     let ratio = (apr_size as f64 / json_size as f64) * 100.0;
     println!("\n--- Size Comparison ---");
-    println!("  JSON: {} bytes", json_size);
-    println!("  APR:  {} bytes ({:.0}% of JSON)", apr_size, ratio);
+    println!("  JSON: {json_size} bytes");
+    println!("  APR:  {apr_size} bytes ({ratio:.0}% of JSON)");
 
     // Load from APR
     println!("\n--- Loading from APR ---");

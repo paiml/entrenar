@@ -20,7 +20,7 @@ fn main() {
             println!("\nTrained model saved to: ./output/final_model.json");
         }
         Err(e) => {
-            eprintln!("Training failed: {}", e);
+            eprintln!("Training failed: {e}");
             std::process::exit(1);
         }
     }
