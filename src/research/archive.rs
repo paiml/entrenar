@@ -611,4 +611,236 @@ mod tests {
         assert_eq!(format!("{}", ArchiveProvider::Figshare), "Figshare");
         assert_eq!(format!("{}", ArchiveProvider::Dryad), "Dryad");
     }
+
+    #[test]
+    fn test_provider_display_dataverse() {
+        assert_eq!(format!("{}", ArchiveProvider::Dataverse), "Dataverse");
+    }
+
+    #[test]
+    fn test_zenodo_config_production_url() {
+        let config = ZenodoConfig::new("token");
+        assert_eq!(config.base_url(), "https://zenodo.org");
+    }
+
+    #[test]
+    fn test_provider_sandbox_url_all() {
+        assert_eq!(
+            ArchiveProvider::Zenodo.sandbox_url(),
+            Some("https://sandbox.zenodo.org")
+        );
+        assert!(ArchiveProvider::Dryad.sandbox_url().is_none());
+        assert!(ArchiveProvider::Dataverse.sandbox_url().is_none());
+    }
+
+    #[test]
+    fn test_provider_api_endpoints() {
+        assert!(ArchiveProvider::Zenodo.api_endpoint().contains("zenodo"));
+        assert!(ArchiveProvider::Figshare
+            .api_endpoint()
+            .contains("figshare"));
+        assert!(ArchiveProvider::Dryad.api_endpoint().contains("dryad"));
+        assert!(ArchiveProvider::Dataverse
+            .api_endpoint()
+            .contains("dataverse"));
+    }
+
+    #[test]
+    fn test_provider_base_urls() {
+        assert_eq!(ArchiveProvider::Dryad.base_url(), "https://datadryad.org");
+        assert_eq!(
+            ArchiveProvider::Dataverse.base_url(),
+            "https://dataverse.harvard.edu"
+        );
+    }
+
+    #[test]
+    fn test_related_identifier_cites() {
+        let rel = RelatedIdentifier::cites("10.1234/paper");
+        assert_eq!(rel.relation, RelationType::Cites);
+        assert_eq!(rel.scheme, IdentifierScheme::Doi);
+        assert_eq!(rel.identifier, "10.1234/paper");
+    }
+
+    #[test]
+    fn test_related_identifier_other_scheme() {
+        // Identifier that doesn't start with "10." or "http"
+        let rel = RelatedIdentifier::is_identical_to("arxiv:2301.12345");
+        assert_eq!(rel.scheme, IdentifierScheme::Other);
+    }
+
+    #[test]
+    fn test_resource_type_from_model_artifact() {
+        assert_eq!(
+            ResourceType::from_artifact_type(ArtifactType::Model),
+            ResourceType::Software
+        );
+    }
+
+    #[test]
+    fn test_resource_type_from_notebook_artifact() {
+        use crate::research::artifact::ArtifactType;
+        assert_eq!(
+            ResourceType::from_artifact_type(ArtifactType::Notebook),
+            ResourceType::Other
+        );
+        assert_eq!(
+            ResourceType::from_artifact_type(ArtifactType::Workflow),
+            ResourceType::Other
+        );
+    }
+
+    #[test]
+    fn test_resource_type_zenodo_all_variants() {
+        assert_eq!(ResourceType::Presentation.zenodo_type(), "presentation");
+        assert_eq!(ResourceType::Poster.zenodo_type(), "poster");
+        assert_eq!(ResourceType::Image.zenodo_type(), "image");
+        assert_eq!(ResourceType::Video.zenodo_type(), "video");
+        assert_eq!(ResourceType::Other.zenodo_type(), "other");
+    }
+
+    #[test]
+    fn test_deposit_with_binary_file() {
+        let artifact = create_test_artifact();
+        let binary_data = vec![0u8, 1, 2, 3, 255, 254, 253];
+        let deposit = ArchiveDeposit::new(ArchiveProvider::Zenodo, artifact)
+            .with_file("data.bin", binary_data.clone());
+
+        assert_eq!(deposit.files.len(), 1);
+        assert_eq!(deposit.files[0].1, binary_data);
+    }
+
+    #[test]
+    fn test_deposit_metadata_from_citation() {
+        use crate::research::citation::CitationMetadata;
+
+        let artifact = create_test_artifact();
+        let citation =
+            CitationMetadata::new(artifact, 2024).with_url("https://example.com/supplement");
+
+        let metadata = DepositMetadata::from_citation(&citation);
+        assert_eq!(metadata.title, "Test Dataset for Machine Learning");
+        // Should have both the original DOI and the supplement URL
+        assert!(metadata.related_identifiers.len() >= 1);
+    }
+
+    #[test]
+    fn test_deposit_error_display() {
+        let err = DepositError::NoFiles;
+        assert!(format!("{}", err).contains("No files"));
+
+        let err = DepositError::AuthenticationFailed;
+        assert!(format!("{}", err).contains("Authentication"));
+
+        let err = DepositError::InvalidMetadata("missing title".to_string());
+        assert!(format!("{}", err).contains("missing title"));
+
+        let err = DepositError::UploadFailed("timeout".to_string());
+        assert!(format!("{}", err).contains("timeout"));
+
+        let err = DepositError::ApiError("rate limit".to_string());
+        assert!(format!("{}", err).contains("rate limit"));
+    }
+
+    #[test]
+    fn test_deposit_result_serde_roundtrip() {
+        let result = DepositResult {
+            doi: "10.5281/zenodo.123".to_string(),
+            record_id: "123".to_string(),
+            url: "https://zenodo.org/record/123".to_string(),
+            provider: ArchiveProvider::Figshare,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: DepositResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.doi, result.doi);
+        assert_eq!(parsed.provider, ArchiveProvider::Figshare);
+    }
+
+    #[test]
+    fn test_zenodo_config_serde_roundtrip() {
+        let config = ZenodoConfig::new("secret-token")
+            .with_sandbox(true)
+            .with_community("ml-research");
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: ZenodoConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.token, "secret-token");
+        assert!(parsed.sandbox);
+        assert_eq!(parsed.community, Some("ml-research".to_string()));
+    }
+
+    #[test]
+    fn test_figshare_config_serde_roundtrip() {
+        let config = FigshareConfig::new("api-key").with_project(99999);
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: FigshareConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.token, "api-key");
+        assert_eq!(parsed.project_id, Some(99999));
+    }
+
+    #[test]
+    fn test_deposit_metadata_serde_roundtrip() {
+        let artifact = create_test_artifact();
+        let metadata = DepositMetadata::from_artifact(&artifact);
+        let json = serde_json::to_string(&metadata).unwrap();
+        let parsed: DepositMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.title, metadata.title);
+        assert_eq!(parsed.authors, metadata.authors);
+    }
+
+    #[test]
+    fn test_related_identifier_serde_roundtrip() {
+        let rel = RelatedIdentifier::is_supplement_to("https://github.com/example/repo");
+        let json = serde_json::to_string(&rel).unwrap();
+        let parsed: RelatedIdentifier = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.identifier, rel.identifier);
+        assert_eq!(parsed.relation, RelationType::IsSupplementTo);
+    }
+
+    #[test]
+    fn test_archive_provider_serde_roundtrip() {
+        for provider in [
+            ArchiveProvider::Zenodo,
+            ArchiveProvider::Figshare,
+            ArchiveProvider::Dryad,
+            ArchiveProvider::Dataverse,
+        ] {
+            let json = serde_json::to_string(&provider).unwrap();
+            let parsed: ArchiveProvider = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, provider);
+        }
+    }
+
+    #[test]
+    fn test_deposit_metadata_without_description() {
+        let artifact = ResearchArtifact::new(
+            "no-desc-001",
+            "Artifact Without Description",
+            ArtifactType::Code,
+            License::Mit,
+        );
+        // No description set
+        let metadata = DepositMetadata::from_artifact(&artifact);
+        // Should generate a default description
+        assert!(metadata
+            .description
+            .contains("Artifact Without Description"));
+    }
+
+    #[test]
+    fn test_is_supplement_to_with_doi() {
+        let rel = RelatedIdentifier::is_supplement_to("10.5555/supplement");
+        assert_eq!(rel.scheme, IdentifierScheme::Doi);
+        assert_eq!(rel.relation, RelationType::IsSupplementTo);
+    }
+
+    #[test]
+    fn test_multiple_files_deposit() {
+        let artifact = create_test_artifact();
+        let deposit = ArchiveDeposit::new(ArchiveProvider::Zenodo, artifact)
+            .with_text_file("README.md", "# Documentation")
+            .with_text_file("data.csv", "a,b,c")
+            .with_file("model.bin", vec![1, 2, 3, 4]);
+
+        assert_eq!(deposit.files.len(), 3);
+    }
 }
