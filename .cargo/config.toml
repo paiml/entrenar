@@ -1,4 +1,3 @@
-# Temporary coverage config - DO NOT COMMIT
-# Replaces project config during coverage runs
+# ZRAM build acceleration
 [build]
-target-dir = "/mnt/nvme-raid0/coverage/entrenar"
+target-dir = "/mnt/zram/targets/entrenar"
