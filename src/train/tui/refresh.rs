@@ -134,4 +134,46 @@ mod tests {
         policy.force_refresh(100);
         assert_eq!(policy.last_step, 100);
     }
+
+    #[test]
+    fn test_refresh_policy_max_interval_triggers() {
+        // Very short max_interval to trigger the max_interval branch
+        let mut policy = RefreshPolicy::new(10, 20, 1000);
+        policy.force_refresh(0);
+
+        // Wait longer than max_interval
+        thread::sleep(Duration::from_millis(30));
+
+        // Should trigger due to max_interval
+        assert!(policy.should_refresh(1));
+    }
+
+    #[test]
+    fn test_refresh_policy_clone() {
+        let policy = RefreshPolicy::new(100, 500, 5);
+        let cloned = policy.clone();
+        assert_eq!(policy.min_interval, cloned.min_interval);
+        assert_eq!(policy.max_interval, cloned.max_interval);
+        assert_eq!(policy.step_interval, cloned.step_interval);
+    }
+
+    #[test]
+    fn test_refresh_policy_debug() {
+        let policy = RefreshPolicy::default();
+        let debug_str = format!("{policy:?}");
+        assert!(debug_str.contains("RefreshPolicy"));
+    }
+
+    #[test]
+    fn test_refresh_policy_no_refresh_below_step_interval() {
+        let mut policy = RefreshPolicy::new(0, 10000, 100);
+        policy.force_refresh(0);
+        thread::sleep(Duration::from_millis(1));
+
+        // Steps below interval should not trigger
+        assert!(!policy.should_refresh(50));
+        assert!(!policy.should_refresh(99));
+        // But at 100 it should trigger
+        assert!(policy.should_refresh(100));
+    }
 }
