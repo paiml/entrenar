@@ -1450,4 +1450,359 @@ mod tests {
         let grad_gate = ffn.w_gate.grad().unwrap();
         assert!(grad_gate.iter().all(|&v| v.is_finite()));
     }
+
+    // =====================================================
+    // Additional from_params tests for coverage
+    // =====================================================
+
+    #[test]
+    fn test_multi_head_attention_from_params_success() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+
+        let mut params = HashMap::new();
+        params.insert(
+            "attn.q_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params.insert(
+            "attn.k_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.o_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+
+        let attn = MultiHeadAttention::from_params(&config, &params, "attn");
+        assert!(attn.is_some());
+        let attn = attn.unwrap();
+        assert_eq!(attn.w_q.len(), hidden_size * hidden_size);
+    }
+
+    #[test]
+    fn test_multi_head_attention_from_params_missing_key() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+
+        let mut params = HashMap::new();
+        params.insert(
+            "attn.q_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        // Missing k_proj, v_proj, o_proj
+
+        let attn = MultiHeadAttention::from_params(&config, &params, "attn");
+        assert!(attn.is_none());
+    }
+
+    #[test]
+    fn test_feed_forward_from_params_success() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let intermediate_size = config.intermediate_size;
+
+        let mut params = HashMap::new();
+        params.insert(
+            "ffn.gate_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+        );
+        params.insert(
+            "ffn.up_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+        );
+        params.insert(
+            "ffn.down_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true),
+        );
+
+        let ffn = FeedForward::from_params(&config, &params, "ffn");
+        assert!(ffn.is_some());
+        let ffn = ffn.unwrap();
+        assert_eq!(ffn.w_gate.len(), hidden_size * intermediate_size);
+    }
+
+    #[test]
+    fn test_feed_forward_from_params_missing_key() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let intermediate_size = config.intermediate_size;
+
+        let mut params = HashMap::new();
+        params.insert(
+            "ffn.gate_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+        );
+        // Missing up_proj, down_proj
+
+        let ffn = FeedForward::from_params(&config, &params, "ffn");
+        assert!(ffn.is_none());
+    }
+
+    #[test]
+    fn test_transformer_block_from_params_success() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+        let intermediate_size = config.intermediate_size;
+
+        let mut params = HashMap::new();
+
+        // Input norm
+        params.insert(
+            "model.layers.0.input_layernorm.weight".to_string(),
+            Tensor::from_vec(vec![1.0; hidden_size], true),
+        );
+
+        // Self-attention weights
+        params.insert(
+            "model.layers.0.self_attn.q_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+        params.insert(
+            "model.layers.0.self_attn.k_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "model.layers.0.self_attn.v_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "model.layers.0.self_attn.o_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
+
+        // Post-attention norm
+        params.insert(
+            "model.layers.0.post_attention_layernorm.weight".to_string(),
+            Tensor::from_vec(vec![1.0; hidden_size], true),
+        );
+
+        // MLP weights
+        params.insert(
+            "model.layers.0.mlp.gate_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+        );
+        params.insert(
+            "model.layers.0.mlp.up_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+        );
+        params.insert(
+            "model.layers.0.mlp.down_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true),
+        );
+
+        let block = TransformerBlock::from_params(&config, &params, 0);
+        assert!(block.is_some());
+        let block = block.unwrap();
+        assert_eq!(block.layer_idx(), 0);
+    }
+
+    #[test]
+    fn test_transformer_block_from_params_missing_norm() {
+        let config = TransformerConfig::tiny();
+        let params = HashMap::new();
+        // Empty params - should fail
+
+        let block = TransformerBlock::from_params(&config, &params, 0);
+        assert!(block.is_none());
+    }
+
+    #[test]
+    fn test_transformer_from_params_with_lm_head() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let vocab_size = config.vocab_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+        let intermediate_size = config.intermediate_size;
+
+        let mut params = HashMap::new();
+
+        // Embedding
+        params.insert(
+            "model.embed_tokens.weight".to_string(),
+            Tensor::from_vec(vec![0.1; vocab_size * hidden_size], true),
+        );
+
+        // All layers
+        for layer_idx in 0..config.num_hidden_layers {
+            let prefix = format!("model.layers.{layer_idx}");
+            params.insert(
+                format!("{prefix}.input_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.q_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.k_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.v_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.o_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.post_attention_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.gate_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.up_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.down_proj.weight"),
+                Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true),
+            );
+        }
+
+        // Final norm
+        params.insert(
+            "model.norm.weight".to_string(),
+            Tensor::from_vec(vec![1.0; hidden_size], true),
+        );
+
+        // LM head (separate, not tied)
+        params.insert(
+            "lm_head.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * vocab_size], true),
+        );
+
+        let transformer = Transformer::from_params(&config, &params);
+        assert!(transformer.is_some());
+        let transformer = transformer.unwrap();
+        assert!(transformer.lm_head.is_some());
+        assert_eq!(transformer.layers.len(), config.num_hidden_layers);
+    }
+
+    #[test]
+    fn test_transformer_from_params_without_lm_head() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let vocab_size = config.vocab_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+        let intermediate_size = config.intermediate_size;
+
+        let mut params = HashMap::new();
+
+        // Embedding
+        params.insert(
+            "model.embed_tokens.weight".to_string(),
+            Tensor::from_vec(vec![0.1; vocab_size * hidden_size], true),
+        );
+
+        // All layers
+        for layer_idx in 0..config.num_hidden_layers {
+            let prefix = format!("model.layers.{layer_idx}");
+            params.insert(
+                format!("{prefix}.input_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.q_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.k_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.v_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.o_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.post_attention_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.gate_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.up_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.down_proj.weight"),
+                Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true),
+            );
+        }
+
+        // Final norm - no lm_head
+        params.insert(
+            "model.norm.weight".to_string(),
+            Tensor::from_vec(vec![1.0; hidden_size], true),
+        );
+
+        let transformer = Transformer::from_params(&config, &params);
+        assert!(transformer.is_some());
+        let transformer = transformer.unwrap();
+        assert!(transformer.lm_head.is_none()); // Should use tied embeddings
+    }
+
+    #[test]
+    fn test_rms_norm_from_params_missing() {
+        let params: HashMap<String, Tensor> = HashMap::new();
+        let norm = RMSNorm::from_params(&params, "missing", 1e-6);
+        assert!(norm.is_none());
+    }
+
+    #[test]
+    fn test_embedding_from_params_missing() {
+        let params: HashMap<String, Tensor> = HashMap::new();
+        let embed = Embedding::from_params(&params, "missing.weight", 100, 8);
+        assert!(embed.is_none());
+    }
+
+    #[test]
+    fn test_transformer_parameters_with_lm_head() {
+        let config = TransformerConfig::tiny();
+        let mut transformer = Transformer::new(&config);
+
+        // Add a separate lm_head
+        transformer.lm_head = Some(Tensor::from_vec(
+            vec![0.1; config.hidden_size * config.vocab_size],
+            true,
+        ));
+
+        let params = transformer.parameters();
+        // embed_tokens + norm + (layers * 9) + lm_head
+        // = 1 + 1 + (2 * 9) + 1 = 21
+        assert_eq!(params.len(), 21);
+    }
+
+    #[test]
+    fn test_transformer_forward_with_lm_head() {
+        let config = TransformerConfig::tiny();
+        let mut transformer = Transformer::new(&config);
+
+        // Add a separate lm_head
+        transformer.lm_head = Some(Tensor::from_vec(
+            vec![0.1; config.hidden_size * config.vocab_size],
+            true,
+        ));
+
+        let tokens = vec![1, 2, 3];
+        let logits = transformer.forward(&tokens);
+        assert_eq!(logits.len(), 3 * config.vocab_size);
+        assert!(logits.data().iter().all(|&v| v.is_finite()));
+    }
 }
