@@ -6,10 +6,8 @@
 //!
 //! SQLite provides consistent, predictable performance without external dependencies.
 
-use super::types::{ArtifactRef, Experiment, FilterOp, ParamFilter, ParameterValue, Run};
-use crate::storage::{ExperimentStorage, MetricPoint, Result, RunStatus, StorageError};
-use chrono::Utc;
-use sha2::{Digest, Sha256};
+use super::types::{ArtifactRef, Experiment, ParameterValue, Run};
+use crate::storage::{MetricPoint, Result};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -17,13 +15,13 @@ use std::sync::{Arc, RwLock};
 /// Internal storage for experiments, runs, metrics, and artifacts
 #[derive(Debug, Default)]
 pub(crate) struct SqliteState {
-    experiments: HashMap<String, Experiment>,
-    runs: HashMap<String, Run>,
-    metrics: HashMap<String, HashMap<String, Vec<MetricPoint>>>, // run_id -> key -> points
-    params: HashMap<String, HashMap<String, ParameterValue>>,    // run_id -> key -> value
-    artifacts: HashMap<String, Vec<ArtifactRef>>,                // run_id -> artifacts
-    artifact_data: HashMap<String, Vec<u8>>,                     // sha256 -> data (CAS)
-    span_ids: HashMap<String, String>,                           // run_id -> span_id
+    pub(crate) experiments: HashMap<String, Experiment>,
+    pub(crate) runs: HashMap<String, Run>,
+    pub(crate) metrics: HashMap<String, HashMap<String, Vec<MetricPoint>>>, // run_id -> key -> points
+    pub(crate) params: HashMap<String, HashMap<String, ParameterValue>>, // run_id -> key -> value
+    pub(crate) artifacts: HashMap<String, Vec<ArtifactRef>>,             // run_id -> artifacts
+    pub(crate) artifact_data: HashMap<String, Vec<u8>>,                  // sha256 -> data (CAS)
+    pub(crate) span_ids: HashMap<String, String>,                        // run_id -> span_id
 }
 
 /// SQLite backend for experiment storage
@@ -36,7 +34,7 @@ pub struct SqliteBackend {
     #[cfg(test)]
     pub(crate) state: Arc<RwLock<SqliteState>>,
     #[cfg(not(test))]
-    state: Arc<RwLock<SqliteState>>,
+    pub(crate) state: Arc<RwLock<SqliteState>>,
 }
 
 impl SqliteBackend {
@@ -65,444 +63,13 @@ impl SqliteBackend {
     }
 
     /// Generate a unique ID
-    fn generate_id() -> String {
+    pub(crate) fn generate_id() -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
         format!("{ts:x}")
-    }
-
-    /// Log a parameter for a run
-    pub fn log_param(&self, run_id: &str, key: &str, value: ParameterValue) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        state
-            .params
-            .entry(run_id.to_string())
-            .or_default()
-            .insert(key.to_string(), value);
-
-        Ok(())
-    }
-
-    /// Log multiple parameters for a run
-    pub fn log_params(&self, run_id: &str, params: HashMap<String, ParameterValue>) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        let run_params = state.params.entry(run_id.to_string()).or_default();
-        for (key, value) in params {
-            run_params.insert(key, value);
-        }
-
-        Ok(())
-    }
-
-    /// Get parameters for a run
-    pub fn get_params(&self, run_id: &str) -> Result<HashMap<String, ParameterValue>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        Ok(state.params.get(run_id).cloned().unwrap_or_default())
-    }
-
-    /// Search runs by parameter filters
-    pub fn search_runs_by_params(&self, filters: &[ParamFilter]) -> Result<Vec<Run>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        let mut results = Vec::new();
-
-        for run in state.runs.values() {
-            let run_params = state.params.get(&run.id);
-
-            let matches = filters.iter().all(|filter| {
-                if let Some(params) = run_params {
-                    if let Some(value) = params.get(&filter.key) {
-                        Self::param_matches(value, &filter.op, &filter.value)
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            });
-
-            if matches || filters.is_empty() {
-                results.push(run.clone());
-            }
-        }
-
-        Ok(results)
-    }
-
-    /// Check if a parameter value matches a filter
-    fn param_matches(value: &ParameterValue, op: &FilterOp, filter_value: &ParameterValue) -> bool {
-        match (value, filter_value, op) {
-            (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Eq) => {
-                (v - fv).abs() < f64::EPSILON
-            }
-            (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Ne) => {
-                (v - fv).abs() >= f64::EPSILON
-            }
-            (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Gt) => v > fv,
-            (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Lt) => v < fv,
-            (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Gte) => v >= fv,
-            (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Lte) => v <= fv,
-
-            (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Eq) => v == fv,
-            (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Ne) => v != fv,
-            (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Gt) => v > fv,
-            (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Lt) => v < fv,
-            (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Gte) => v >= fv,
-            (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Lte) => v <= fv,
-
-            (ParameterValue::String(v), ParameterValue::String(fv), FilterOp::Eq) => v == fv,
-            (ParameterValue::String(v), ParameterValue::String(fv), FilterOp::Ne) => v != fv,
-            (ParameterValue::String(v), ParameterValue::String(fv), FilterOp::Contains) => {
-                v.contains(fv.as_str())
-            }
-            (ParameterValue::String(v), ParameterValue::String(fv), FilterOp::StartsWith) => {
-                v.starts_with(fv.as_str())
-            }
-
-            (ParameterValue::Bool(v), ParameterValue::Bool(fv), FilterOp::Eq) => v == fv,
-            (ParameterValue::Bool(v), ParameterValue::Bool(fv), FilterOp::Ne) => v != fv,
-
-            _ => false,
-        }
-    }
-
-    /// Get an experiment by ID
-    pub fn get_experiment(&self, experiment_id: &str) -> Result<Experiment> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        state
-            .experiments
-            .get(experiment_id)
-            .cloned()
-            .ok_or_else(|| StorageError::ExperimentNotFound(experiment_id.to_string()))
-    }
-
-    /// Get a run by ID
-    pub fn get_run(&self, run_id: &str) -> Result<Run> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        state
-            .runs
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))
-    }
-
-    /// List all experiments
-    pub fn list_experiments(&self) -> Result<Vec<Experiment>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        Ok(state.experiments.values().cloned().collect())
-    }
-
-    /// List runs for an experiment
-    pub fn list_runs(&self, experiment_id: &str) -> Result<Vec<Run>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        if !state.experiments.contains_key(experiment_id) {
-            return Err(StorageError::ExperimentNotFound(experiment_id.to_string()));
-        }
-
-        Ok(state
-            .runs
-            .values()
-            .filter(|r| r.experiment_id == experiment_id)
-            .cloned()
-            .collect())
-    }
-
-    /// Get artifact data by SHA-256 hash
-    pub fn get_artifact_data(&self, sha256: &str) -> Result<Vec<u8>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        state
-            .artifact_data
-            .get(sha256)
-            .cloned()
-            .ok_or_else(|| StorageError::Backend(format!("Artifact not found: {sha256}")))
-    }
-
-    /// List artifacts for a run
-    pub fn list_artifacts(&self, run_id: &str) -> Result<Vec<ArtifactRef>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        Ok(state.artifacts.get(run_id).cloned().unwrap_or_default())
-    }
-}
-
-impl ExperimentStorage for SqliteBackend {
-    fn create_experiment(
-        &mut self,
-        name: &str,
-        config: Option<serde_json::Value>,
-    ) -> Result<String> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        let id = Self::generate_id();
-        let now = Utc::now();
-
-        let experiment = Experiment {
-            id: id.clone(),
-            name: name.to_string(),
-            description: None,
-            config,
-            tags: HashMap::new(),
-            created_at: now,
-            updated_at: now,
-        };
-
-        state.experiments.insert(id.clone(), experiment);
-        Ok(id)
-    }
-
-    fn create_run(&mut self, experiment_id: &str) -> Result<String> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        if !state.experiments.contains_key(experiment_id) {
-            return Err(StorageError::ExperimentNotFound(experiment_id.to_string()));
-        }
-
-        let id = Self::generate_id();
-
-        let run = Run {
-            id: id.clone(),
-            experiment_id: experiment_id.to_string(),
-            status: RunStatus::Pending,
-            start_time: Utc::now(),
-            end_time: None,
-            params: HashMap::new(),
-            tags: HashMap::new(),
-        };
-
-        state.runs.insert(id.clone(), run);
-        Ok(id)
-    }
-
-    fn start_run(&mut self, run_id: &str) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        let run = state
-            .runs
-            .get_mut(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
-
-        if run.status != RunStatus::Pending {
-            return Err(StorageError::InvalidState(format!(
-                "Cannot start run in {:?} status",
-                run.status
-            )));
-        }
-
-        run.status = RunStatus::Running;
-        run.start_time = Utc::now();
-        Ok(())
-    }
-
-    fn complete_run(&mut self, run_id: &str, status: RunStatus) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        let run = state
-            .runs
-            .get_mut(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
-
-        if run.status != RunStatus::Running {
-            return Err(StorageError::InvalidState(format!(
-                "Cannot complete run in {:?} status",
-                run.status
-            )));
-        }
-
-        run.status = status;
-        run.end_time = Some(Utc::now());
-        Ok(())
-    }
-
-    fn log_metric(&mut self, run_id: &str, key: &str, step: u64, value: f64) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        let point = MetricPoint::new(step, value);
-
-        state
-            .metrics
-            .entry(run_id.to_string())
-            .or_default()
-            .entry(key.to_string())
-            .or_default()
-            .push(point);
-
-        Ok(())
-    }
-
-    fn log_artifact(&mut self, run_id: &str, key: &str, data: &[u8]) -> Result<String> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        // Compute SHA-256 for content-addressable storage
-        let mut hasher = Sha256::new();
-        hasher.update(data);
-        let sha256 = format!("{:x}", hasher.finalize());
-
-        // Store artifact data (deduplicated by hash)
-        state
-            .artifact_data
-            .entry(sha256.clone())
-            .or_insert_with(|| data.to_vec());
-
-        // Create artifact reference
-        let artifact = ArtifactRef {
-            id: Self::generate_id(),
-            run_id: run_id.to_string(),
-            path: key.to_string(),
-            size_bytes: data.len() as u64,
-            sha256: sha256.clone(),
-            created_at: Utc::now(),
-        };
-
-        state
-            .artifacts
-            .entry(run_id.to_string())
-            .or_default()
-            .push(artifact);
-
-        Ok(sha256)
-    }
-
-    fn get_metrics(&self, run_id: &str, key: &str) -> Result<Vec<MetricPoint>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        Ok(state
-            .metrics
-            .get(run_id)
-            .and_then(|m| m.get(key))
-            .cloned()
-            .unwrap_or_default())
-    }
-
-    fn get_run_status(&self, run_id: &str) -> Result<RunStatus> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        state
-            .runs
-            .get(run_id)
-            .map(|r| r.status)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))
-    }
-
-    fn set_span_id(&mut self, run_id: &str, span_id: &str) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        state
-            .span_ids
-            .insert(run_id.to_string(), span_id.to_string());
-        Ok(())
-    }
-
-    fn get_span_id(&self, run_id: &str) -> Result<Option<String>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
-
-        if !state.runs.contains_key(run_id) {
-            return Err(StorageError::RunNotFound(run_id.to_string()));
-        }
-
-        Ok(state.span_ids.get(run_id).cloned())
     }
 }
 
@@ -512,7 +79,9 @@ impl ExperimentStorage for SqliteBackend {
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::{FilterOp, ParamFilter};
     use super::*;
+    use crate::storage::{ExperimentStorage, RunStatus, StorageError};
 
     // -------------------------------------------------------------------------
     // SqliteBackend Basic Tests
@@ -1035,6 +604,7 @@ mod tests {
 #[cfg(test)]
 mod property_tests {
     use super::*;
+    use crate::storage::{ExperimentStorage, RunStatus};
     use proptest::prelude::*;
 
     proptest! {
@@ -1139,7 +709,9 @@ mod property_tests {
 
 #[cfg(test)]
 mod coverage_tests {
+    use super::super::types::{FilterOp, ParamFilter};
     use super::*;
+    use crate::storage::{ExperimentStorage, RunStatus, StorageError};
 
     #[test]
     fn test_filter_op_float_ne() {
