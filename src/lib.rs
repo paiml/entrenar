@@ -24,10 +24,12 @@
 //! - **dashboard**: Real-time training monitoring and WASM bindings
 //! - **yaml_mode**: Declarative YAML Mode Training (v1.0 spec)
 //! - **transformer**: Transformer layers with autograd support
+//! - **cli**: Command-line interface handlers
 
 pub mod autograd;
 #[cfg(feature = "citl")]
 pub mod citl;
+pub mod cli;
 pub mod config;
 pub mod dashboard;
 pub mod distill;
