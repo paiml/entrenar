@@ -49,8 +49,8 @@ pub fn sample_ei_ratio_continuous<R: Rng>(
     best_value
 }
 
-/// Simple KDE score
-pub fn kde_score(x: f64, values: &[f64], bandwidth: f64) -> f64 {
+/// Simple KDE score (internal helper)
+fn kde_score(x: f64, values: &[f64], bandwidth: f64) -> f64 {
     if values.is_empty() {
         return 1.0;
     }

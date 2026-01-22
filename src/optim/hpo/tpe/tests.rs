@@ -165,6 +165,85 @@ mod tests {
 }
 
 #[cfg(test)]
+mod sampling_tests {
+    use super::super::sampling::{
+        count_categorical, sample_ei_ratio_continuous, sample_ei_ratio_discrete,
+    };
+    use crate::optim::hpo::types::{ParameterValue, Trial};
+
+    #[test]
+    fn test_sample_ei_ratio_continuous_empty() {
+        let mut rng = rand::rng();
+        let value = sample_ei_ratio_continuous(&[], &[], 0.0, 1.0, 1.0, &mut rng);
+        assert!((0.0..=1.0).contains(&value));
+    }
+
+    #[test]
+    fn test_sample_ei_ratio_continuous_with_data() {
+        let mut rng = rand::rng();
+        let good = vec![0.1, 0.2, 0.15];
+        let bad = vec![0.8, 0.9, 0.85];
+        let value = sample_ei_ratio_continuous(&good, &bad, 0.0, 1.0, 0.1, &mut rng);
+        assert!((0.0..=1.0).contains(&value));
+    }
+
+    #[test]
+    fn test_sample_ei_ratio_discrete_empty() {
+        let mut rng = rand::rng();
+        let value = sample_ei_ratio_discrete(&[], &[], 1, 10, &mut rng);
+        assert!((1..=10).contains(&value));
+    }
+
+    #[test]
+    fn test_sample_ei_ratio_discrete_with_data() {
+        let mut rng = rand::rng();
+        let good = vec![2, 3, 2];
+        let bad = vec![8, 9, 10];
+        let value = sample_ei_ratio_discrete(&good, &bad, 1, 10, &mut rng);
+        assert!((1..=10).contains(&value));
+    }
+
+    #[test]
+    fn test_count_categorical_empty() {
+        let trials: Vec<&Trial> = vec![];
+        let choices = vec!["a".to_string(), "b".to_string()];
+        let counts = count_categorical("opt", &trials, &choices);
+        assert_eq!(counts, vec![0, 0]);
+    }
+
+    #[test]
+    fn test_count_categorical_with_trials() {
+        use std::collections::HashMap;
+
+        let mut config1 = HashMap::new();
+        config1.insert(
+            "opt".to_string(),
+            ParameterValue::Categorical("a".to_string()),
+        );
+        let trial1 = Trial::new(0, config1);
+
+        let mut config2 = HashMap::new();
+        config2.insert(
+            "opt".to_string(),
+            ParameterValue::Categorical("b".to_string()),
+        );
+        let trial2 = Trial::new(1, config2);
+
+        let mut config3 = HashMap::new();
+        config3.insert(
+            "opt".to_string(),
+            ParameterValue::Categorical("a".to_string()),
+        );
+        let trial3 = Trial::new(2, config3);
+
+        let trials: Vec<&Trial> = vec![&trial1, &trial2, &trial3];
+        let choices = vec!["a".to_string(), "b".to_string()];
+        let counts = count_categorical("opt", &trials, &choices);
+        assert_eq!(counts, vec![2, 1]);
+    }
+}
+
+#[cfg(test)]
 mod property_tests {
     use crate::optim::hpo::tpe::TPEOptimizer;
     use crate::optim::hpo::types::{HyperparameterSpace, ParameterDomain};
