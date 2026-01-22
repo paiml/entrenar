@@ -4,25 +4,16 @@ use serde::{Deserialize, Serialize};
 
 /// Distillation loss configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DistillationConfig {
     /// Temperature for softening distributions
-    #[serde(default = "default_temperature")]
     pub temperature: f32,
     /// Alpha weight for soft vs hard loss
-    #[serde(default = "default_alpha")]
     pub alpha: f32,
     /// Progressive distillation config
     pub progressive: Option<ProgressiveConfig>,
     /// Attention transfer config
     pub attention_transfer: Option<AttentionTransferConfig>,
-}
-
-pub(crate) fn default_temperature() -> f32 {
-    4.0
-}
-
-pub(crate) fn default_alpha() -> f32 {
-    0.7
 }
 
 impl Default for DistillationConfig {
