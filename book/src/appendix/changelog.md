@@ -26,10 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Plus 4 from previous release: preflight, cloud, code_gan, manifest
 
 ### Quality
-- **3710 tests passing** (100% success rate)
+- **3727 tests passing** (100% success rate)
 - **96.66% code coverage** (exceeds 95% target)
 - **PMAT compliance: COMPLIANT**
-- **File health**: Only 3 files >1000 lines (main.rs + 2 test files)
+- **File health**: Only 1 file >1000 lines (main.rs CLI entry point)
 - All API compatibility maintained via re-exports
 
 ### Dependencies
