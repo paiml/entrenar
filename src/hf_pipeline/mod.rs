@@ -36,8 +36,8 @@ mod tests;
 
 pub use config::DistillationYamlConfig;
 pub use dataset::{
-    Batch, Dataset, DatasetOptions, DistillationCollator, Example, HfDatasetFetcher, Split,
-    TeacherCache,
+    Batch, CacheStats, Dataset, DatasetOptions, DistillationCollator, Example, HfDatasetFetcher,
+    Split, TeacherCache,
 };
 pub use distillation::{AttentionTransfer, DistillationLoss, ProgressiveDistillation};
 pub use error::{FetchError, Result};

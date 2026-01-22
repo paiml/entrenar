@@ -18,7 +18,8 @@ pub mod ruchy;
 
 pub use batuta::{adjust_eta, BatutaClient, BatutaError, FallbackPricing, GpuPricing, QueueState};
 pub use realizar::{
-    ExperimentProvenance, GgufExportError, GgufExporter, GgufMetadata, QuantizationType,
+    ExperimentProvenance, GeneralMetadata, GgufExportError, GgufExportResult, GgufExporter,
+    GgufMetadata, QuantizationType,
 };
 #[cfg(feature = "ruchy-sessions")]
 pub use ruchy::{session_to_artifact, EntrenarSession, RuchyBridgeError, SessionMetrics};
