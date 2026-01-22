@@ -12,7 +12,9 @@ mod metrics;
 mod report;
 
 #[cfg(test)]
-mod tests;
+mod basic_tests;
+#[cfg(test)]
+mod sklearn_parity_tests;
 
 // Re-export all public types and functions
 pub use average::Average;
