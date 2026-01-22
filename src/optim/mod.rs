@@ -3,7 +3,7 @@
 mod adam;
 mod adamw;
 mod clip;
-mod convergence_tests;
+mod convergence_tests; // Tests split into convergence_tests/ directory
 pub mod dp;
 pub mod hpo;
 mod optimizer;
