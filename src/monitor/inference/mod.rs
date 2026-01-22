@@ -44,7 +44,8 @@ mod tests;
 
 // Re-exports
 pub use collector::{
-    HashChainCollector, RingCollector, StreamCollector, StreamFormat, TraceCollector,
+    ChainEntry, ChainVerification, HashChainCollector, RingCollector, StreamCollector,
+    StreamFormat, TraceCollector,
 };
 pub use counterfactual::{Counterfactual, FeatureChange};
 pub use path::{
