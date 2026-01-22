@@ -16248,6 +16248,40 @@ println!("URL: {}", result.url);
 <p>All notable changes to Entrenar will be documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.0.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
+<h2 id="056---2026-01-22"><a class="header" href="#056---2026-01-22"><a href="https://github.com/paiml/entrenar/releases/tag/v0.5.6">0.5.6</a> - 2026-01-22</a></h2>
+<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<h4 id="code-organization-technical-debt-reduction"><a class="header" href="#code-organization-technical-debt-reduction">Code Organization (Technical Debt Reduction)</a></h4>
+<ul>
+<li><strong>Exploded 16 large modules</strong> (&gt;1000 lines) into directory module structures
+<ul>
+<li><code>storage/sqlite/backend.rs</code> → <code>backend/</code> (sqlite_backend, state, tests)</li>
+<li><code>config/train.rs</code> → <code>train/</code> (loader, batches, arrow, demo, tests)</li>
+<li><code>eval/evaluator.rs</code> → <code>evaluator/</code> (metric, config, result, leaderboard, kfold, model_evaluator, tests)</li>
+<li><code>hf_pipeline/fetcher.rs</code> → <code>fetcher/</code> (types, options, hf_fetcher, tests)</li>
+<li><code>efficiency/device.rs</code> → <code>device/</code> (simd, cpu, gpu, tpu, apple, compute, tests)</li>
+<li><code>monitor/llm.rs</code> → <code>llm/</code> (error, metrics, prompt, eval_result, traits, stats, memory_evaluator, heuristics, tests)</li>
+<li><code>monitor/inference/provenance.rs</code> → <code>provenance/</code> (node, edge, graph, attack, reconstructor, tests)</li>
+<li><code>citl/pattern_store.rs</code> → <code>pattern_store/</code> (chunk_id, fix_pattern, suggestion, config, store, data, tests)</li>
+<li><code>storage/registry.rs</code> → <code>registry/</code> (stage, version, comparison, transition, policy, error, traits, memory)</li>
+<li><code>citl/trainer.rs</code> → <code>trainer/</code> (span, trace, outcome, correlation, config, stats, citl)</li>
+<li><code>tokenizer/mod.rs</code> → separate files (error, config, traits, bpe, char, hf)</li>
+<li><code>monitor/wasm.rs</code> → <code>wasm/</code> (collector, options, dashboard, utils)</li>
+<li>Plus 4 from previous release: preflight, cloud, code_gan, manifest</li>
+</ul>
+</li>
+</ul>
+<h3 id="quality"><a class="header" href="#quality">Quality</a></h3>
+<ul>
+<li><strong>3710 tests passing</strong> (100% success rate)</li>
+<li><strong>96.66% code coverage</strong> (exceeds 95% target)</li>
+<li><strong>PMAT compliance: COMPLIANT</strong></li>
+<li><strong>File health</strong>: Only 3 files &gt;1000 lines (main.rs + 2 test files)</li>
+<li>All API compatibility maintained via re-exports</li>
+</ul>
+<h3 id="dependencies"><a class="header" href="#dependencies">Dependencies</a></h3>
+<ul>
+<li>Updated PAIML stack dependencies</li>
+</ul>
 <h2 id="010---2025-11-21"><a class="header" href="#010---2025-11-21"><a href="https://github.com/paiml/entrenar/releases/tag/v0.1.0">0.1.0</a> - 2025-11-21</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <h4 id="core-framework"><a class="header" href="#core-framework">Core Framework</a></h4>
@@ -16366,7 +16400,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Specification documents for all major components</li>
 <li>Example configurations (config.yaml)</li>
 </ul>
-<h3 id="dependencies"><a class="header" href="#dependencies">Dependencies</a></h3>
+<h3 id="dependencies-1"><a class="header" href="#dependencies-1">Dependencies</a></h3>
 <ul>
 <li><strong>trueno 0.4.1</strong> - SIMD-accelerated compute engine</li>
 <li><strong>ndarray 0.16</strong> - N-dimensional arrays</li>

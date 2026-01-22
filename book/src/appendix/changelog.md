@@ -5,6 +5,38 @@ All notable changes to Entrenar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-01-22
+
+### Changed
+
+#### Code Organization (Technical Debt Reduction)
+- **Exploded 16 large modules** (>1000 lines) into directory module structures
+  - `storage/sqlite/backend.rs` → `backend/` (sqlite_backend, state, tests)
+  - `config/train.rs` → `train/` (loader, batches, arrow, demo, tests)
+  - `eval/evaluator.rs` → `evaluator/` (metric, config, result, leaderboard, kfold, model_evaluator, tests)
+  - `hf_pipeline/fetcher.rs` → `fetcher/` (types, options, hf_fetcher, tests)
+  - `efficiency/device.rs` → `device/` (simd, cpu, gpu, tpu, apple, compute, tests)
+  - `monitor/llm.rs` → `llm/` (error, metrics, prompt, eval_result, traits, stats, memory_evaluator, heuristics, tests)
+  - `monitor/inference/provenance.rs` → `provenance/` (node, edge, graph, attack, reconstructor, tests)
+  - `citl/pattern_store.rs` → `pattern_store/` (chunk_id, fix_pattern, suggestion, config, store, data, tests)
+  - `storage/registry.rs` → `registry/` (stage, version, comparison, transition, policy, error, traits, memory)
+  - `citl/trainer.rs` → `trainer/` (span, trace, outcome, correlation, config, stats, citl)
+  - `tokenizer/mod.rs` → separate files (error, config, traits, bpe, char, hf)
+  - `monitor/wasm.rs` → `wasm/` (collector, options, dashboard, utils)
+  - Plus 4 from previous release: preflight, cloud, code_gan, manifest
+
+### Quality
+- **3710 tests passing** (100% success rate)
+- **96.66% code coverage** (exceeds 95% target)
+- **PMAT compliance: COMPLIANT**
+- **File health**: Only 3 files >1000 lines (main.rs + 2 test files)
+- All API compatibility maintained via re-exports
+
+### Dependencies
+- Updated PAIML stack dependencies
+
+[0.5.6]: https://github.com/paiml/entrenar/releases/tag/v0.5.6
+
 ## [0.1.0] - 2025-11-21
 
 ### Added
