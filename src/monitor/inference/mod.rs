@@ -56,7 +56,9 @@ pub use provenance::{
     ProvenanceGraph, ProvenanceNode,
 };
 pub use safety_andon::{EmergencyCondition, SafetyAndon, SafetyIntegrityLevel};
-pub use serialization::{PathType, TraceFormat, TraceSerializer};
+pub use serialization::{
+    PathType, SerializationError, TraceFormat, TraceSerializer, APRT_MAGIC, APRT_VERSION,
+};
 pub use trace::DecisionTrace;
 
 use std::time::Instant;
