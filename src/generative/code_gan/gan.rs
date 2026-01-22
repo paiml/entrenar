@@ -5,6 +5,9 @@ use std::collections::VecDeque;
 use super::config::CodeGanConfig;
 use super::discriminator::Discriminator;
 use super::generator::Generator;
+
+#[cfg(test)]
+use super::config::{DiscriminatorConfig, GeneratorConfig};
 use super::latent::LatentCode;
 
 /// Training result from a GAN update step

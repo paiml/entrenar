@@ -51,8 +51,8 @@ pub use path::{
     DecisionPath, ForestPath, KNNPath, LeafInfo, LinearPath, NeuralPath, TreePath, TreeSplit,
 };
 pub use provenance::{
-    AttackPath, CausalRelation, IncidentReconstructor, NodeId, ProvenanceEdge, ProvenanceGraph,
-    ProvenanceNode,
+    Anomaly, AttackPath, CausalRelation, IncidentReconstructor, NodeId, ProvenanceEdge,
+    ProvenanceGraph, ProvenanceNode,
 };
 pub use safety_andon::{EmergencyCondition, SafetyAndon, SafetyIntegrityLevel};
 pub use serialization::{PathType, TraceFormat, TraceSerializer};
