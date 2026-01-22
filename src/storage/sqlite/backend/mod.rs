@@ -12,4 +12,5 @@ mod state;
 pub use sqlite_backend::SqliteBackend;
 
 #[cfg(test)]
+#[path = "tests/mod.rs"]
 mod tests;
