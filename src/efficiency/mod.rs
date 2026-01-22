@@ -21,4 +21,6 @@ pub use benchmark::{BenchmarkEntry, CostPerformanceBenchmark};
 pub use device::{AppleSiliconInfo, ComputeDevice, CpuInfo, GpuInfo, SimdCapability, TpuInfo};
 pub use metrics::{pricing, CostMetrics, EfficiencyMetrics, EnergyMetrics};
 pub use paradigm::{FineTuneMethod, ModelParadigm};
-pub use platform::{EdgeEfficiency, PlatformEfficiency, ServerEfficiency, WasmBudget};
+pub use platform::{
+    BudgetViolation, EdgeEfficiency, PlatformEfficiency, ServerEfficiency, WasmBudget,
+};
