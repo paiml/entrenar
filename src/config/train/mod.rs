@@ -1,0 +1,26 @@
+//! Single-command training from YAML configuration
+//!
+//! This module provides the main entry points for declarative training via YAML configs.
+
+mod arrow;
+mod batches;
+mod demo;
+mod loader;
+
+// Re-export public API (allow unused for external consumers)
+#[allow(unused_imports)]
+pub use batches::{load_training_batches, rebatch};
+#[allow(unused_imports)]
+pub use demo::create_demo_batches;
+pub use loader::{load_config, train_from_yaml};
+
+// Conditionally export parquet/json loaders for non-WASM
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(unused_imports)]
+pub use arrow::arrow_array_to_f32;
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(unused_imports)]
+pub use batches::{load_json_batches, load_parquet_batches};
+
+#[cfg(test)]
+mod tests;
