@@ -59,6 +59,7 @@ pub use storage::{InMemoryStore, JsonFileStore, MetricsStore, StorageError, Stor
 pub use wasm::{WasmDashboard, WasmDashboardOptions, WasmMetricsCollector};
 
 #[cfg(test)]
+#[path = "tests/mod.rs"]
 mod tests;
 
 // =============================================================================

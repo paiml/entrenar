@@ -9,6 +9,7 @@ mod node;
 mod reconstructor;
 
 #[cfg(test)]
+#[path = "tests/mod.rs"]
 mod tests;
 
 // Re-export all public types for API compatibility
