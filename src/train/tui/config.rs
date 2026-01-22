@@ -7,38 +7,22 @@ use super::capability::{DashboardLayout, TerminalCapabilities, TerminalMode};
 
 /// Monitor configuration for YAML.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct MonitorConfig {
     /// Enable terminal monitoring
-    #[serde(default = "default_true")]
     pub enabled: bool,
     /// Dashboard layout
-    #[serde(default)]
     pub layout: String,
     /// Terminal mode (ascii, unicode, ansi)
-    #[serde(default)]
     pub terminal_mode: String,
     /// Refresh interval in milliseconds
-    #[serde(default = "default_refresh")]
     pub refresh_ms: u64,
     /// Sparkline width
-    #[serde(default = "default_sparkline_width")]
     pub sparkline_width: usize,
     /// Show ETA
-    #[serde(default = "default_true")]
     pub show_eta: bool,
     /// Reference curve path (optional)
-    #[serde(default)]
     pub reference_curve: Option<String>,
-}
-
-fn default_true() -> bool {
-    true
-}
-fn default_refresh() -> u64 {
-    100
-}
-fn default_sparkline_width() -> usize {
-    20
 }
 
 impl Default for MonitorConfig {

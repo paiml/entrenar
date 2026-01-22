@@ -125,59 +125,44 @@ pub struct MergeSpec {
 
 /// Training hyperparameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TrainingParams {
     /// Number of epochs
-    #[serde(default = "default_epochs")]
     pub epochs: usize,
 
     /// Gradient clipping threshold
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub grad_clip: Option<f32>,
 
     /// Learning rate scheduler
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lr_scheduler: Option<String>,
 
     /// Warmup steps
-    #[serde(default)]
     pub warmup_steps: usize,
 
     /// Save checkpoint every N epochs
-    #[serde(default = "default_save_interval")]
     pub save_interval: usize,
 
     /// Output directory for checkpoints
-    #[serde(default = "default_output_dir")]
     pub output_dir: PathBuf,
 }
 
 impl Default for TrainingParams {
     fn default() -> Self {
         Self {
-            epochs: default_epochs(),
+            epochs: 10,
             grad_clip: None,
             lr_scheduler: None,
             warmup_steps: 0,
-            save_interval: default_save_interval(),
-            output_dir: default_output_dir(),
+            save_interval: 1,
+            output_dir: PathBuf::from("./checkpoints"),
         }
     }
 }
 
 fn default_true() -> bool {
     true
-}
-
-fn default_epochs() -> usize {
-    10
-}
-
-fn default_save_interval() -> usize {
-    1
-}
-
-fn default_output_dir() -> PathBuf {
-    PathBuf::from("./checkpoints")
 }
 
 #[cfg(test)]
