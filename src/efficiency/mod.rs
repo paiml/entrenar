@@ -17,7 +17,7 @@ pub mod metrics;
 pub mod paradigm;
 pub mod platform;
 
-pub use benchmark::{BenchmarkEntry, CostPerformanceBenchmark};
+pub use benchmark::{BenchmarkEntry, BenchmarkStatistics, CostPerformanceBenchmark};
 pub use device::{AppleSiliconInfo, ComputeDevice, CpuInfo, GpuInfo, SimdCapability, TpuInfo};
 pub use metrics::{pricing, CostMetrics, EfficiencyMetrics, EnergyMetrics};
 pub use paradigm::{FineTuneMethod, ModelParadigm};
