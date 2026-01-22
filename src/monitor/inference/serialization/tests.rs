@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::monitor::inference::path::LinearPath;
+use crate::monitor::inference::DecisionTrace;
 use std::error::Error;
 
 fn make_test_trace() -> DecisionTrace<LinearPath> {
