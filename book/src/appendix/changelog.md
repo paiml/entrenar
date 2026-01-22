@@ -25,11 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `monitor/wasm.rs` → `wasm/` (collector, options, dashboard, utils)
   - Plus 4 from previous release: preflight, cloud, code_gan, manifest
 
+- **Extracted main.rs CLI logic** into `src/cli/` library module
+  - `main.rs` reduced from 1656 lines to 41-line shim
+  - Created `cli/commands/` with modular command handlers
+  - Split `research.rs` (534 lines) into research/ subdirectory
+
 ### Quality
 - **3727 tests passing** (100% success rate)
 - **96.66% code coverage** (exceeds 95% target)
 - **PMAT compliance: COMPLIANT**
-- **File health**: Only 1 file >1000 lines (main.rs CLI entry point)
+- **File health**: No files >500 lines in src/ (100% compliance)
 - All API compatibility maintained via re-exports
 
 ### Dependencies
