@@ -856,24 +856,27 @@ Current CPU throughput (~1 tok/s) makes quality evaluation impractical.
 
 **Priority:** P0 (Blocking all downstream work)
 **Rationale:** Entrenar's value proposition is world-class Rust training. Without CUDA, we cannot deliver.
+**Status:** IN PROGRESS (Week 3 started 2026-01-24)
 
-#### Week 1: CUDA Tensor Type
-- [ ] Create `CudaTensor` wrapper in `src/autograd/cuda_tensor.rs`
-- [ ] Implement `From<Vec<f32>>` and `To<Vec<f32>>` for CPU ↔ GPU transfer
-- [ ] Add device management (`CudaDevice::default()`, `CudaDevice::cpu()`)
-- [ ] Update `Cargo.toml` to make `cuda` the default feature
+#### Week 1: CUDA Tensor Type ✅ COMPLETE
+- [x] Create `CudaTensor` wrapper in `src/autograd/cuda_tensor.rs`
+- [x] Implement `from_vec()` and `to_vec()` for CPU ↔ GPU transfer
+- [x] Add device management (`CudaDevice::default_device()`, `CudaDevice::new(id)`)
+- [x] Update `Cargo.toml` to make `cuda` the default feature
+- [x] Add patch.crates-io for local trueno/trueno-gpu/realizar
 
-#### Week 2: Forward Kernels
-- [ ] Replace `matmul` with `gemm_cuda` from trueno-gpu
+#### Week 2: Forward Kernels (via realizar CudaExecutor)
+- [x] GEMM via `realizar::CudaExecutor::gemm()` in matmul.rs
 - [ ] Replace `softmax` with `softmax_cuda`
 - [ ] Replace `layer_norm` with `layer_norm_cuda`
 - [ ] Replace `attention` with `flash_attention_cuda`
 
-#### Week 3: Backward Kernels
-- [ ] Implement `gemm_backward_cuda` in trueno-gpu (if not present)
-- [ ] Implement `softmax_backward_cuda` in trueno-gpu
-- [ ] Implement `flash_attention_backward_cuda` in trueno-gpu
-- [ ] Wire backward kernels into autograd tape
+#### Week 3: Backward Kernels ✅ COMPLETE (trueno-gpu Issue #85)
+- [x] `gemm_backward_a` and `gemm_backward_b` implemented in trueno-gpu
+- [x] `softmax_backward` implemented in trueno-gpu
+- [x] `relu_backward`, `gelu_backward`, `silu_backward` implemented
+- [x] `rms_norm_backward`, `layer_norm_backward` implemented
+- [x] Wire backward kernels into autograd via `cuda_backward.rs`
 
 #### Week 4: Optimizer Kernels
 - [ ] Implement `adam_step_cuda` (fused update kernel)
