@@ -25,11 +25,12 @@
 //! ```
 
 #[cfg(feature = "cuda")]
+use std::sync::Arc;
+
+#[cfg(feature = "cuda")]
 use trueno_gpu::driver::{cuda_available, CudaContext, CudaStream, GpuBuffer};
 #[cfg(feature = "cuda")]
 use trueno_gpu::GpuError;
-
-use std::sync::Arc;
 
 /// Error type for CUDA tensor operations
 #[derive(Debug, thiserror::Error)]

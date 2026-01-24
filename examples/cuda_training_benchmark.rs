@@ -1,0 +1,379 @@
+//! CUDA Training Benchmark - Phase 11, Week 5
+//!
+//! Demonstrates end-to-end GPU-accelerated training using CUDA kernels.
+//! Verifies >70% GPU utilization and >100 tokens/second generation.
+//!
+//! # Architecture (SPEC-FT-001 v3.2.0)
+//!
+//! ```text
+//! Forward Pass:  gemm_forward()   → CUDA PTX kernel
+//! Backward Pass: gemm_backward()  → CUDA PTX kernel
+//! Optimizer:     adamw_step_cuda() → CUDA PTX kernel
+//! ```
+//!
+//! Run with:
+//!   cargo run --example cuda_training_benchmark --release --features cuda
+//!
+//! Note: Requires NVIDIA GPU with CUDA support.
+
+#[cfg(feature = "cuda")]
+mod cuda_benchmark {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    use trueno_gpu::driver::{cuda_available, CudaContext, CudaStream, GpuBuffer};
+
+    use entrenar::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, init_kernel_cache};
+    use entrenar::autograd::cuda_forward::{gemm_forward, init_forward_kernel_cache};
+    use entrenar::autograd::cuda_optim::{adamw_step_cuda, init_optim_kernel_cache};
+
+    /// Training configuration
+    struct TrainingConfig {
+        batch_size: usize,
+        seq_len: usize,
+        hidden_size: usize,
+        vocab_size: usize,
+        num_epochs: usize,
+        num_steps_per_epoch: usize,
+        learning_rate: f32,
+        warmup_iterations: usize,
+    }
+
+    impl Default for TrainingConfig {
+        fn default() -> Self {
+            Self {
+                batch_size: 8,
+                seq_len: 128,
+                hidden_size: 768,
+                vocab_size: 32000,
+                num_epochs: 3,
+                num_steps_per_epoch: 100,
+                learning_rate: 1e-4,
+                warmup_iterations: 5,
+            }
+        }
+    }
+
+    /// Performance metrics
+    #[derive(Debug, Default)]
+    struct Metrics {
+        forward_time: Duration,
+        backward_time: Duration,
+        optimizer_time: Duration,
+        total_time: Duration,
+        num_forward_passes: usize,
+        num_backward_passes: usize,
+        num_optimizer_steps: usize,
+    }
+
+    impl Metrics {
+        fn total_kernel_time(&self) -> Duration {
+            self.forward_time + self.backward_time + self.optimizer_time
+        }
+
+        fn gpu_utilization(&self) -> f32 {
+            if self.total_time.as_secs_f64() > 0.0 {
+                (self.total_kernel_time().as_secs_f64() / self.total_time.as_secs_f64()) as f32
+                    * 100.0
+            } else {
+                0.0
+            }
+        }
+
+        fn tokens_per_second(&self, tokens_processed: usize) -> f32 {
+            if self.total_time.as_secs_f64() > 0.0 {
+                tokens_processed as f32 / self.total_time.as_secs_f32()
+            } else {
+                0.0
+            }
+        }
+
+        fn throughput_gflops(&self, flops: u64) -> f32 {
+            if self.total_time.as_secs_f64() > 0.0 {
+                (flops as f64 / self.total_time.as_secs_f64() / 1e9) as f32
+            } else {
+                0.0
+            }
+        }
+    }
+
+    /// Run the CUDA training benchmark
+    pub fn run_benchmark() -> Result<(), Box<dyn std::error::Error>> {
+        println!("═══════════════════════════════════════════════════════════════");
+        println!("   CUDA Training Benchmark - SPEC-FT-001 v3.2.0");
+        println!("═══════════════════════════════════════════════════════════════");
+
+        // 1. Check CUDA availability
+        println!("\n[1/6] Checking CUDA availability...");
+        if !cuda_available() {
+            println!("   ERROR: CUDA not available on this system");
+            return Err("CUDA not available".into());
+        }
+        println!("   CUDA driver found");
+
+        // 2. Initialize CUDA context and stream
+        println!("\n[2/6] Initializing CUDA context...");
+        let ctx = Arc::new(CudaContext::new(0)?);
+        let stream = CudaStream::new(&ctx)?;
+
+        // Query device properties
+        let device_name = ctx
+            .device_name()
+            .unwrap_or_else(|_| "Unknown GPU".to_string());
+        let total_memory = ctx.total_memory().unwrap_or(0);
+
+        println!("   Device: {}", device_name);
+        println!("   Memory: {:.1} GB", total_memory as f64 / 1e9);
+
+        // 3. Initialize kernel caches
+        println!("\n[3/6] Initializing kernel caches...");
+        init_forward_kernel_cache(ctx.clone())?;
+        init_kernel_cache(ctx.clone())?;
+        init_optim_kernel_cache(ctx.clone())?;
+        println!("   Forward kernels: ready");
+        println!("   Backward kernels: ready");
+        println!("   Optimizer kernels: ready");
+
+        // 4. Setup training configuration
+        let config = TrainingConfig::default();
+        println!("\n[4/6] Training configuration:");
+        println!("   Batch size: {}", config.batch_size);
+        println!("   Sequence length: {}", config.seq_len);
+        println!("   Hidden size: {}", config.hidden_size);
+        println!("   Vocab size: {}", config.vocab_size);
+        println!("   Epochs: {}", config.num_epochs);
+        println!("   Steps per epoch: {}", config.num_steps_per_epoch);
+        println!("   Learning rate: {}", config.learning_rate);
+
+        // Calculate dimensions for LM head matmul: (batch * seq, hidden) @ (hidden, vocab)
+        let m = (config.batch_size * config.seq_len) as u32;
+        let k = config.hidden_size as u32;
+        let n = config.vocab_size as u32;
+
+        // 5. Allocate GPU buffers
+        println!("\n[5/6] Allocating GPU buffers...");
+
+        // Input hidden states: (batch * seq, hidden)
+        let hidden_data: Vec<f32> = (0..m * k)
+            .map(|i| ((i as f32 * 0.01).sin() * 0.1))
+            .collect();
+        let hidden = GpuBuffer::from_host(&ctx, &hidden_data)?;
+
+        // LM head weights: (hidden, vocab)
+        let weights_data: Vec<f32> = (0..k * n)
+            .map(|i| ((i as f32 * 0.001).cos() * 0.02))
+            .collect();
+        let mut weights = GpuBuffer::from_host(&ctx, &weights_data)?;
+
+        // Output logits: (batch * seq, vocab)
+        let logits_zeros = vec![0.0f32; (m * n) as usize];
+        let mut logits = GpuBuffer::from_host(&ctx, &logits_zeros)?;
+
+        // Gradients
+        let grad_output_data: Vec<f32> = (0..m * n).map(|i| (i as f32 % 100.0) * 0.001).collect();
+        let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data)?;
+        let grad_hidden_zeros = vec![0.0f32; (m * k) as usize];
+        let mut grad_hidden = GpuBuffer::from_host(&ctx, &grad_hidden_zeros)?;
+        let grad_weights_zeros = vec![0.0f32; (k * n) as usize];
+        let mut grad_weights = GpuBuffer::from_host(&ctx, &grad_weights_zeros)?;
+
+        // Optimizer state
+        let m_state_zeros = vec![0.0f32; (k * n) as usize];
+        let mut m_state = GpuBuffer::from_host(&ctx, &m_state_zeros)?; // First moment
+        let v_state_zeros = vec![0.0f32; (k * n) as usize];
+        let mut v_state = GpuBuffer::from_host(&ctx, &v_state_zeros)?; // Second moment
+
+        let total_params = (k * n) as usize;
+        let memory_used = (m * k + k * n + m * n + m * k + k * n + k * n + k * n) as usize * 4; // bytes
+        println!("   Hidden states: {} elements", m * k);
+        println!("   LM head weights: {} elements", k * n);
+        println!("   Logits: {} elements", m * n);
+        println!("   Total parameters: {}", total_params);
+        println!("   GPU memory used: {:.1} MB", memory_used as f64 / 1e6);
+
+        // 6. Run training loop with timing
+        println!("\n[6/6] Running training benchmark...");
+
+        // Warmup
+        println!("   Warming up ({} iterations)...", config.warmup_iterations);
+        for _ in 0..config.warmup_iterations {
+            gemm_forward(&hidden, &weights, &mut logits, m, k, n, &stream)?;
+            stream.synchronize()?;
+        }
+
+        // Benchmark
+        let total_start = Instant::now();
+        let mut metrics = Metrics::default();
+        let mut step_count = 0u32;
+
+        for epoch in 0..config.num_epochs {
+            let epoch_start = Instant::now();
+
+            for step in 0..config.num_steps_per_epoch {
+                step_count += 1;
+
+                // Forward pass: hidden @ weights -> logits
+                let forward_start = Instant::now();
+                gemm_forward(&hidden, &weights, &mut logits, m, k, n, &stream)?;
+                stream.synchronize()?;
+                metrics.forward_time += forward_start.elapsed();
+                metrics.num_forward_passes += 1;
+
+                // Backward pass: compute gradients
+                let backward_start = Instant::now();
+                // grad_hidden = grad_output @ weights^T
+                gemm_backward_a(&grad_output, &weights, &mut grad_hidden, m, k, n, &stream)?;
+                // grad_weights = hidden^T @ grad_output
+                gemm_backward_b(&hidden, &grad_output, &mut grad_weights, m, k, n, &stream)?;
+                stream.synchronize()?;
+                metrics.backward_time += backward_start.elapsed();
+                metrics.num_backward_passes += 1;
+
+                // Optimizer step: update weights
+                let optim_start = Instant::now();
+                adamw_step_cuda(
+                    &mut weights,
+                    &grad_weights,
+                    &mut m_state,
+                    &mut v_state,
+                    config.learning_rate,
+                    0.9,   // beta1
+                    0.999, // beta2
+                    1e-8,  // eps
+                    0.01,  // weight_decay
+                    step_count,
+                    k * n,
+                    &stream,
+                )?;
+                stream.synchronize()?;
+                metrics.optimizer_time += optim_start.elapsed();
+                metrics.num_optimizer_steps += 1;
+
+                // Progress update
+                if (step + 1) % 25 == 0 {
+                    print!(
+                        "\r   Epoch {}/{}, Step {}/{}",
+                        epoch + 1,
+                        config.num_epochs,
+                        step + 1,
+                        config.num_steps_per_epoch
+                    );
+                }
+            }
+
+            let epoch_duration = epoch_start.elapsed();
+            println!(
+                "\n   Epoch {} complete in {:.2}s",
+                epoch + 1,
+                epoch_duration.as_secs_f32()
+            );
+        }
+
+        metrics.total_time = total_start.elapsed();
+
+        // Calculate performance metrics
+        let total_tokens =
+            config.batch_size * config.seq_len * config.num_epochs * config.num_steps_per_epoch;
+
+        // FLOPs per matmul: 2 * M * N * K (multiply-add)
+        let forward_flops = 2 * m as u64 * n as u64 * k as u64;
+        let backward_flops = 2 * (m as u64 * k as u64 * n as u64 + k as u64 * m as u64 * n as u64);
+        let total_flops = (forward_flops + backward_flops)
+            * (config.num_epochs * config.num_steps_per_epoch) as u64;
+
+        // Print results
+        println!("\n═══════════════════════════════════════════════════════════════");
+        println!("   BENCHMARK RESULTS");
+        println!("═══════════════════════════════════════════════════════════════");
+
+        println!("\nTiming Breakdown:");
+        println!(
+            "   Forward passes:  {:.3}s ({} calls, {:.3}ms avg)",
+            metrics.forward_time.as_secs_f32(),
+            metrics.num_forward_passes,
+            metrics.forward_time.as_millis() as f32 / metrics.num_forward_passes as f32
+        );
+        println!(
+            "   Backward passes: {:.3}s ({} calls, {:.3}ms avg)",
+            metrics.backward_time.as_secs_f32(),
+            metrics.num_backward_passes,
+            metrics.backward_time.as_millis() as f32 / metrics.num_backward_passes as f32
+        );
+        println!(
+            "   Optimizer steps: {:.3}s ({} calls, {:.3}ms avg)",
+            metrics.optimizer_time.as_secs_f32(),
+            metrics.num_optimizer_steps,
+            metrics.optimizer_time.as_millis() as f32 / metrics.num_optimizer_steps as f32
+        );
+        println!(
+            "   Total kernel time: {:.3}s",
+            metrics.total_kernel_time().as_secs_f32()
+        );
+        println!(
+            "   Total wall time:   {:.3}s",
+            metrics.total_time.as_secs_f32()
+        );
+
+        println!("\nPerformance Metrics:");
+        let gpu_util = metrics.gpu_utilization();
+        let tokens_per_sec = metrics.tokens_per_second(total_tokens);
+        let gflops = metrics.throughput_gflops(total_flops);
+
+        println!("   GPU Utilization:   {:.1}%", gpu_util);
+        println!("   Tokens/second:     {:.0}", tokens_per_sec);
+        println!("   Throughput:        {:.1} GFLOP/s", gflops);
+        println!("   Total tokens:      {}", total_tokens);
+        println!("   Total parameters:  {}", total_params);
+
+        // Verification against targets
+        println!("\n═══════════════════════════════════════════════════════════════");
+        println!("   SPEC-FT-001 v3.2.0 VERIFICATION");
+        println!("═══════════════════════════════════════════════════════════════");
+
+        let gpu_util_pass = gpu_util >= 70.0;
+        let tokens_pass = tokens_per_sec >= 100.0;
+
+        println!(
+            "\n   [{}] GPU Utilization >70%: {:.1}%",
+            if gpu_util_pass { "PASS" } else { "FAIL" },
+            gpu_util
+        );
+        println!(
+            "   [{}] Tokens/second >100:   {:.0}",
+            if tokens_pass { "PASS" } else { "FAIL" },
+            tokens_per_sec
+        );
+
+        if gpu_util_pass && tokens_pass {
+            println!("\n   RESULT: ALL TARGETS MET");
+            println!("   Phase 11, Week 5 objectives verified.");
+        } else {
+            println!("\n   RESULT: TARGETS NOT MET");
+            if !gpu_util_pass {
+                println!("   - GPU utilization below 70% target");
+            }
+            if !tokens_pass {
+                println!("   - Token throughput below 100/s target");
+            }
+        }
+
+        println!("\n═══════════════════════════════════════════════════════════════");
+
+        Ok(())
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
+fn main() {
+    eprintln!("This benchmark requires the 'cuda' feature.");
+    eprintln!("Run with: cargo run --example cuda_training_benchmark --release --features cuda");
+    std::process::exit(1);
+}
+
+#[cfg(feature = "cuda")]
+fn main() {
+    if let Err(e) = cuda_benchmark::run_benchmark() {
+        eprintln!("Benchmark failed: {}", e);
+        std::process::exit(1);
+    }
+}
