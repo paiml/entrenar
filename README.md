@@ -13,9 +13,9 @@
 <p align="center">
   <a href="https://crates.io/crates/entrenar"><img src="https://img.shields.io/crates/v/entrenar.svg" alt="Crates.io"></a>
   <a href="https://docs.rs/entrenar"><img src="https://docs.rs/entrenar/badge.svg" alt="Documentation"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-4200%20passing-brightgreen" alt="Tests"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/coverage-93%25-brightgreen" alt="Coverage"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/TDG-A%2B%20(96.2)-brightgreen" alt="TDG Score"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-4326%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/coverage-96%25-brightgreen" alt="Coverage"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/TDG-A%2B%20(96.8)-brightgreen" alt="TDG Score"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
 </p>
 
@@ -321,14 +321,13 @@ entrenar/
 
 | Metric | Value |
 |--------|-------|
-| Tests | 4200 passing |
-| Coverage | 93% (entrenar files) |
-| TDG Score | A+ (96.2/100) |
+| Tests | 4326 passing |
+| Coverage | 96% (entrenar files) |
+| TDG Score | A+ (96.8/100) |
+| Critical Defects | 0 |
 | Property Tests | 200K+ iterations |
 | Gradient Checking | Finite difference validated |
 | Mutation Testing | >80% kill rate |
-| Max Cyclomatic | 19 (target: ≤10) |
-| Max Cognitive | 65 (target: ≤15) |
 
 ## PAIML Stack
 
