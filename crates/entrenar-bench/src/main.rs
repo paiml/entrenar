@@ -189,7 +189,9 @@ fn temperature_command(
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        if let Ok(json_str) = serde_json::to_string_pretty(&json) {
+            println!("{json_str}");
+        }
     } else {
         println!("{}", result.to_table());
     }
@@ -227,7 +229,9 @@ fn alpha_command(
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        if let Ok(json_str) = serde_json::to_string_pretty(&json) {
+            println!("{json_str}");
+        }
     } else {
         println!("{}", result.to_table());
     }
@@ -290,7 +294,9 @@ fn compare_command(
             "best_by_loss": comparison.best_by_loss,
             "best_by_accuracy": comparison.best_by_accuracy,
         });
-        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        if let Ok(json_str) = serde_json::to_string_pretty(&json) {
+            println!("{json_str}");
+        }
     } else {
         println!("{}", comparison.to_table());
 
@@ -411,7 +417,9 @@ fn cost_performance_command(
             "best_efficiency": analysis.best_efficiency,
             "lowest_cost": analysis.lowest_cost,
         });
-        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        if let Ok(json_str) = serde_json::to_string_pretty(&json) {
+            println!("{json_str}");
+        }
     } else {
         println!("{}", analysis.to_table());
 
@@ -523,7 +531,9 @@ fn recommend_command(
             },
             "recommendations": recommendations,
         });
-        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        if let Ok(json_str) = serde_json::to_string_pretty(&json) {
+            println!("{json_str}");
+        }
     } else if recommendations.is_empty() {
         println!(
             "{}",

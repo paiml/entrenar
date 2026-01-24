@@ -63,7 +63,7 @@ pub fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
         }
 
         // Sort for percentile calculation
-        latencies.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let p50 = latencies[latencies.len() * 50 / 100];
         let p95 = latencies[latencies.len() * 95 / 100];
@@ -83,7 +83,9 @@ pub fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
                 },
                 "throughput_samples_per_sec": throughput
             });
-            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+            if let Ok(json_str) = serde_json::to_string_pretty(&result) {
+                println!("{json_str}");
+            }
         } else {
             log(level, LogLevel::Normal, &format!("  p50: {p50:.2}ms"));
             log(level, LogLevel::Normal, &format!("  p95: {p95:.2}ms"));

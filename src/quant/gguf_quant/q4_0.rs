@@ -35,7 +35,7 @@ impl Q4_0 {
             let max_abs = block
                 .iter()
                 .map(|v| v.abs())
-                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or(0.0);
 
             let scale = if max_abs < 1e-10 {

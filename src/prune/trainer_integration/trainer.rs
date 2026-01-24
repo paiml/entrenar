@@ -15,12 +15,15 @@ use super::config::PruneTrainerConfig;
 /// ```ignore
 /// use entrenar::prune::{PruneTrainer, PruneTrainerConfig, PruningConfig};
 ///
-/// let config = PruneTrainerConfig::new()
-///     .with_pruning(PruningConfig::default().with_target_sparsity(0.5))
-///     .with_finetune_epochs(3);
+/// fn example() -> Result<(), Box<dyn std::error::Error>> {
+///     let config = PruneTrainerConfig::new()
+///         .with_pruning(PruningConfig::default().with_target_sparsity(0.5))
+///         .with_finetune_epochs(3);
 ///
-/// let mut trainer = PruneTrainer::new(config);
-/// trainer.run().unwrap();
+///     let mut trainer = PruneTrainer::new(config);
+///     trainer.run()?;
+///     Ok(())
+/// }
 /// ```
 #[derive(Debug)]
 pub struct PruneTrainer {

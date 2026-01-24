@@ -13,9 +13,12 @@
 //! use entrenar::storage::cloud::{ArtifactBackend, LocalBackend};
 //! use std::path::PathBuf;
 //!
-//! let backend = LocalBackend::new(PathBuf::from("/tmp/artifacts"));
-//! let hash = backend.put("model.safetensors", b"test data").unwrap();
-//! let data = backend.get(&hash).unwrap();
+//! fn example() -> Result<(), Box<dyn std::error::Error>> {
+//!     let backend = LocalBackend::new(PathBuf::from("/tmp/artifacts"));
+//!     let hash = backend.put("model.safetensors", b"test data")?;
+//!     let data = backend.get(&hash)?;
+//!     Ok(())
+//! }
 //! ```
 
 mod azure;

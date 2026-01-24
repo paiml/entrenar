@@ -10,19 +10,31 @@ pub fn arrow_array_to_f32(array: &arrow::array::ArrayRef) -> Result<Vec<f32>> {
 
     match array.data_type() {
         DataType::Float32 => {
-            let arr = array.as_any().downcast_ref::<Float32Array>().unwrap();
+            let arr = array
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .ok_or_else(|| Error::ConfigError("Failed to downcast Float32Array".to_string()))?;
             Ok(arr.values().to_vec())
         }
         DataType::Float64 => {
-            let arr = array.as_any().downcast_ref::<Float64Array>().unwrap();
+            let arr = array
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .ok_or_else(|| Error::ConfigError("Failed to downcast Float64Array".to_string()))?;
             Ok(arr.values().iter().map(|&x| x as f32).collect())
         }
         DataType::Int32 => {
-            let arr = array.as_any().downcast_ref::<Int32Array>().unwrap();
+            let arr = array
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .ok_or_else(|| Error::ConfigError("Failed to downcast Int32Array".to_string()))?;
             Ok(arr.values().iter().map(|&x| x as f32).collect())
         }
         DataType::Int64 => {
-            let arr = array.as_any().downcast_ref::<Int64Array>().unwrap();
+            let arr = array
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .ok_or_else(|| Error::ConfigError("Failed to downcast Int64Array".to_string()))?;
             Ok(arr.values().iter().map(|&x| x as f32).collect())
         }
         other => Err(Error::ConfigError(format!(

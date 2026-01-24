@@ -49,7 +49,7 @@ impl LLMStats {
 
         // Compute percentiles
         let mut latencies: Vec<f64> = metrics.iter().map(|m| m.latency_ms).collect();
-        latencies.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let p50 = percentile(&latencies, 50.0);
         let p95 = percentile(&latencies, 95.0);

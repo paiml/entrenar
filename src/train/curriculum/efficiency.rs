@@ -22,5 +22,5 @@ pub fn select_optimal_tier(tier_results: &[(usize, f32, usize)]) -> Option<(usiz
             let eff = efficiency_score(accuracy, corpus_size);
             (tier, eff)
         })
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
 }

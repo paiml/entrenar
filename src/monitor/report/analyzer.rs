@@ -314,82 +314,74 @@ impl HanseiAnalyzer {
     pub fn format_report(&self, report: &PostTrainingReport) -> String {
         let mut output = String::new();
 
-        writeln!(
+        // Writing to String never fails, so we ignore the Result
+        let _ = writeln!(
             output,
             "═══════════════════════════════════════════════════════════════"
-        )
-        .unwrap();
-        writeln!(
+        );
+        let _ = writeln!(
             output,
             "                    HANSEI POST-TRAINING REPORT                 "
-        )
-        .unwrap();
-        writeln!(
+        );
+        let _ = writeln!(
             output,
             "═══════════════════════════════════════════════════════════════"
-        )
-        .unwrap();
-        writeln!(output).unwrap();
-        writeln!(output, "Training ID: {}", report.training_id).unwrap();
-        writeln!(output, "Duration: {:.2}s", report.duration_secs).unwrap();
-        writeln!(output, "Total Steps: {}", report.total_steps).unwrap();
-        writeln!(output).unwrap();
+        );
+        let _ = writeln!(output);
+        let _ = writeln!(output, "Training ID: {}", report.training_id);
+        let _ = writeln!(output, "Duration: {:.2}s", report.duration_secs);
+        let _ = writeln!(output, "Total Steps: {}", report.total_steps);
+        let _ = writeln!(output);
 
         // Metric summaries
-        writeln!(
+        let _ = writeln!(
             output,
             "─── Metric Summaries ───────────────────────────────────────────"
-        )
-        .unwrap();
+        );
         for (metric_type, summary) in &report.metric_summaries {
-            writeln!(output, "\n{metric_type:?}:").unwrap();
-            writeln!(
+            let _ = writeln!(output, "\n{metric_type:?}:");
+            let _ = writeln!(
                 output,
                 "  Mean: {:.6}  Std: {:.6}",
                 summary.mean, summary.std_dev
-            )
-            .unwrap();
-            writeln!(
+            );
+            let _ = writeln!(
                 output,
                 "  Min: {:.6}   Max: {:.6}",
                 summary.min, summary.max
-            )
-            .unwrap();
-            writeln!(output, "  Trend: {}", summary.trend).unwrap();
+            );
+            let _ = writeln!(output, "  Trend: {}", summary.trend);
         }
-        writeln!(output).unwrap();
+        let _ = writeln!(output);
 
         // Issues
         if !report.issues.is_empty() {
-            writeln!(
+            let _ = writeln!(
                 output,
                 "─── Issues Detected ────────────────────────────────────────────"
-            )
-            .unwrap();
+            );
             for issue in &report.issues {
-                writeln!(output, "\n[{}] {}", issue.severity, issue.category).unwrap();
-                writeln!(output, "  {}", issue.description).unwrap();
-                writeln!(output, "  → {}", issue.recommendation).unwrap();
+                let _ = writeln!(output, "\n[{}] {}", issue.severity, issue.category);
+                let _ = writeln!(output, "  {}", issue.description);
+                let _ = writeln!(output, "  → {}", issue.recommendation);
             }
-            writeln!(output).unwrap();
+            let _ = writeln!(output);
         }
 
         // Recommendations
-        writeln!(
+        let _ = writeln!(
             output,
             "─── Recommendations ────────────────────────────────────────────"
-        )
-        .unwrap();
+        );
         for (i, rec) in report.recommendations.iter().enumerate() {
-            writeln!(output, "{}. {}", i + 1, rec).unwrap();
+            let _ = writeln!(output, "{}. {}", i + 1, rec);
         }
-        writeln!(output).unwrap();
+        let _ = writeln!(output);
 
-        writeln!(
+        let _ = writeln!(
             output,
             "═══════════════════════════════════════════════════════════════"
-        )
-        .unwrap();
+        );
 
         output
     }

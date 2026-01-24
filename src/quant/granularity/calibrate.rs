@@ -14,7 +14,7 @@ pub fn calibrate_per_tensor(values: &[f32], bits: u8, mode: QuantMode) -> QuantP
             let max_abs = values
                 .iter()
                 .map(|v| v.abs())
-                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or(1e-8)
                 .max(1e-8);
 
@@ -92,7 +92,7 @@ pub fn calibrate_per_channel(
                 let max_abs = channel_values
                     .iter()
                     .map(|v| v.abs())
-                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .unwrap_or(1e-8)
                     .max(1e-8);
 
@@ -155,7 +155,7 @@ pub fn calibrate_per_group(
                 let max_abs = group_values
                     .iter()
                     .map(|v| v.abs())
-                    .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .unwrap_or(1e-8)
                     .max(1e-8);
 

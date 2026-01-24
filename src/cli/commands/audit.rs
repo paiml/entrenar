@@ -85,7 +85,9 @@ pub fn run_audit(args: AuditArgs, level: LogLevel) -> Result<(), String> {
                     "threshold": args.threshold,
                     "pass": pass
                 });
-                println!("{}", serde_json::to_string_pretty(&result).unwrap());
+                if let Ok(json_str) = serde_json::to_string_pretty(&result) {
+                    println!("{json_str}");
+                }
             }
 
             if !pass {

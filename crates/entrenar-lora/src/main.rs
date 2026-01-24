@@ -212,7 +212,9 @@ fn compare_command(
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        if let Ok(json_str) = serde_json::to_string_pretty(&json) {
+            println!("{json_str}");
+        }
     } else {
         if !cli.is_quiet() {
             println!("{}", styles::header("Method Comparison"));
@@ -237,11 +239,11 @@ fn compare_command(
         println!("{}", builder.build().render());
 
         // Recommendation
-        if let Some(best) = comparisons
-            .iter()
-            .filter(|c| c.fits)
-            .max_by(|a, b| a.speedup.partial_cmp(&b.speedup).unwrap())
-        {
+        if let Some(best) = comparisons.iter().filter(|c| c.fits).max_by(|a, b| {
+            a.speedup
+                .partial_cmp(&b.speedup)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) {
             println!(
                 "\n{}",
                 styles::success(&format!(

@@ -52,7 +52,7 @@ impl Trainer {
                 final_loss: 0.0,
                 best_loss: 0.0,
                 stopped_early: true,
-                elapsed_secs: self.start_time.unwrap().elapsed().as_secs_f64(),
+                elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
             };
         }
 
@@ -132,7 +132,7 @@ impl Trainer {
             final_loss = avg_loss;
 
             // Update best loss
-            if self.best_loss.is_none() || avg_loss < self.best_loss.unwrap() {
+            if self.best_loss.is_none_or(|bl| avg_loss < bl) {
                 self.best_loss = Some(avg_loss);
             }
 
@@ -163,7 +163,7 @@ impl Trainer {
             final_loss,
             best_loss: self.best_loss.unwrap_or(final_loss),
             stopped_early,
-            elapsed_secs: self.start_time.unwrap().elapsed().as_secs_f64(),
+            elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
         }
     }
 }

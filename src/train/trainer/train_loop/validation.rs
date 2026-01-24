@@ -71,7 +71,7 @@ impl Trainer {
                 final_loss: 0.0,
                 best_loss: 0.0,
                 stopped_early: true,
-                elapsed_secs: self.start_time.unwrap().elapsed().as_secs_f64(),
+                elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
             };
         }
 
@@ -149,13 +149,11 @@ impl Trainer {
                 let mut val_count = 0;
                 for batch in val_batches {
                     let predictions = forward_fn(&batch.inputs);
-                    let loss = self
-                        .loss_fn
-                        .as_ref()
-                        .unwrap()
-                        .forward(&predictions, &batch.targets);
-                    val_total += loss.data()[0];
-                    val_count += 1;
+                    if let Some(loss_fn) = self.loss_fn.as_ref() {
+                        let loss = loss_fn.forward(&predictions, &batch.targets);
+                        val_total += loss.data()[0];
+                        val_count += 1;
+                    }
                 }
                 let val_avg = if val_count > 0 {
                     val_total / val_count as f32
@@ -168,10 +166,10 @@ impl Trainer {
 
             // Update best loss (prefer val_loss if available)
             let monitored_loss = val_loss.unwrap_or(avg_train_loss);
-            if best_val_loss.is_none() || monitored_loss < best_val_loss.unwrap() {
+            if best_val_loss.is_none_or(|bl| monitored_loss < bl) {
                 best_val_loss = Some(monitored_loss);
             }
-            if self.best_loss.is_none() || avg_train_loss < self.best_loss.unwrap() {
+            if self.best_loss.is_none_or(|bl| avg_train_loss < bl) {
                 self.best_loss = Some(avg_train_loss);
             }
 
@@ -202,7 +200,7 @@ impl Trainer {
             final_loss,
             best_loss: best_val_loss.unwrap_or(self.best_loss.unwrap_or(final_loss)),
             stopped_early,
-            elapsed_secs: self.start_time.unwrap().elapsed().as_secs_f64(),
+            elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
         }
     }
 }

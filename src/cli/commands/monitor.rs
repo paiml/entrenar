@@ -84,7 +84,9 @@ pub fn run_monitor(args: MonitorArgs, level: LogLevel) -> Result<(), String> {
                 "current": current_buckets
             }
         });
-        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+        if let Ok(json_str) = serde_json::to_string_pretty(&result) {
+            println!("{json_str}");
+        }
     }
 
     if !pass {

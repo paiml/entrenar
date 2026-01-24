@@ -92,7 +92,7 @@ impl FakeQuantize {
     /// If not initialized, calibrates from input data first.
     pub fn forward_with_calibration(&mut self, input: &Tensor) -> Tensor {
         if !self.initialized {
-            self.calibrate(input.data().as_slice().unwrap());
+            self.calibrate(input.data().as_slice().unwrap_or(&[]));
         }
         self.forward(input)
     }

@@ -13,17 +13,20 @@
 //! ```
 //! use entrenar::tokenizer::{BPETokenizer, Tokenizer, TokenizerConfig};
 //!
-//! // Create a BPE tokenizer
-//! let config = TokenizerConfig::bpe().with_vocab_size(1000);
-//! let mut tokenizer = BPETokenizer::new(config);
+//! fn example() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Create a BPE tokenizer
+//!     let config = TokenizerConfig::bpe().with_vocab_size(1000);
+//!     let mut tokenizer = BPETokenizer::new(config);
 //!
-//! // Train on corpus
-//! let corpus = vec!["hello world", "hello there"];
-//! tokenizer.train(&corpus).unwrap();
+//!     // Train on corpus
+//!     let corpus = vec!["hello world", "hello there"];
+//!     tokenizer.train(&corpus)?;
 //!
-//! // Tokenize text
-//! let tokens = tokenizer.encode("hello world").unwrap();
-//! let decoded = tokenizer.decode(&tokens).unwrap();
+//!     // Tokenize text
+//!     let tokens = tokenizer.encode("hello world")?;
+//!     let decoded = tokenizer.decode(&tokens)?;
+//!     Ok(())
+//! }
 //! ```
 //!
 //! # HuggingFace Integration
@@ -33,9 +36,12 @@
 //! ```rust,ignore
 //! use entrenar::tokenizer::HfTokenizer;
 //!
-//! // Load from HuggingFace tokenizer.json
-//! let tokenizer = HfTokenizer::from_file("path/to/tokenizer.json").unwrap();
-//! let tokens = tokenizer.encode("Hello, world!");
+//! fn example() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Load from HuggingFace tokenizer.json
+//!     let tokenizer = HfTokenizer::from_file("path/to/tokenizer.json")?;
+//!     let tokens = tokenizer.encode("Hello, world!");
+//!     Ok(())
+//! }
 //! ```
 
 mod bpe;

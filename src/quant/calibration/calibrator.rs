@@ -220,7 +220,7 @@ impl Calibrator {
         }
 
         let mut sorted = self.samples.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let n = sorted.len();
         let lower_idx = ((lower / 100.0) * n as f32) as usize;

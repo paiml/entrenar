@@ -194,7 +194,7 @@ fn export_safetensors(merged: &Model, args: &MergeArgs) -> Result<(), String> {
         .iter()
         .map(|(name, tensor)| {
             let data = tensor.data();
-            let bytes: Vec<u8> = bytemuck::cast_slice(data.as_slice().unwrap()).to_vec();
+            let bytes: Vec<u8> = bytemuck::cast_slice(data.as_slice().unwrap_or(&[])).to_vec();
             let shape = vec![tensor.len()];
             (name.clone(), bytes, shape)
         })
@@ -202,9 +202,10 @@ fn export_safetensors(merged: &Model, args: &MergeArgs) -> Result<(), String> {
 
     let views: Vec<(&str, TensorView<'_>)> = tensor_data
         .iter()
-        .map(|(name, bytes, shape)| {
-            let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
-            (name.as_str(), view)
+        .filter_map(|(name, bytes, shape)| {
+            TensorView::new(Dtype::F32, shape.clone(), bytes)
+                .ok()
+                .map(|view| (name.as_str(), view))
         })
         .collect();
 

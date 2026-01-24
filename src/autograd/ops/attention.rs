@@ -37,8 +37,8 @@ pub fn attention(
     // Step 1: Compute Q @ K^T (seq_len x seq_len) using GPU GEMM
     // Q is (seq_len, d_k), K is (seq_len, d_k), K^T is (d_k, seq_len)
     // Result: (seq_len, d_k) @ (d_k, seq_len) = (seq_len, seq_len)
-    let q_slice = q.data().as_slice().unwrap();
-    let k_slice = k.data().as_slice().unwrap();
+    let q_slice = q.data().as_slice().unwrap_or(&[]);
+    let k_slice = k.data().as_slice().unwrap_or(&[]);
     let k_t = transpose(k_slice, seq_len, d_k); // K^T: (d_k, seq_len)
     let mut scores = matmul_compute(q_slice, &k_t, seq_len, d_k, seq_len);
 
@@ -67,7 +67,7 @@ pub fn attention(
     // Step 3: Compute attention_weights @ V (seq_len x d_v) using GPU GEMM
     // attention_weights is (seq_len, seq_len), V is (seq_len, d_v)
     // Result: (seq_len, seq_len) @ (seq_len, d_v) = (seq_len, d_v)
-    let v_slice = v.data().as_slice().unwrap();
+    let v_slice = v.data().as_slice().unwrap_or(&[]);
     let output_data = matmul_compute(&attention_weights, v_slice, seq_len, seq_len, d_v);
 
     let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
@@ -112,8 +112,8 @@ impl BackwardOp for AttentionBackward {
             let seq_len = self.seq_len;
             let d_k = self.d_k;
             let d_v = self.d_v;
-            let grad_out_slice = grad_output.as_slice().unwrap();
-            let attn_slice = self.attention_weights.as_slice().unwrap();
+            let grad_out_slice = grad_output.as_slice().unwrap_or(&[]);
+            let attn_slice = self.attention_weights.as_slice().unwrap_or(&[]);
 
             // Gradient w.r.t. V: attention_weights^T @ grad_output
             // attention_weights is (seq_len, seq_len), grad_output is (seq_len, d_v)
@@ -128,7 +128,7 @@ impl BackwardOp for AttentionBackward {
             // Gradient w.r.t. attention_weights: grad_output @ V^T
             // grad_output is (seq_len, d_v), V is (seq_len, d_v), V^T is (d_v, seq_len)
             // Result: (seq_len, d_v) @ (d_v, seq_len) = (seq_len, seq_len)
-            let v_slice = self.v.data().as_slice().unwrap();
+            let v_slice = self.v.data().as_slice().unwrap_or(&[]);
             let v_t = transpose(v_slice, seq_len, d_v);
             let grad_attention_weights =
                 matmul_compute(grad_out_slice, &v_t, seq_len, d_v, seq_len);
@@ -161,7 +161,7 @@ impl BackwardOp for AttentionBackward {
             // grad_scaled is (seq_len, seq_len), K is (seq_len, d_k)
             // Result: (seq_len, seq_len) @ (seq_len, d_k) = (seq_len, d_k)
             if self.q.requires_grad() {
-                let k_slice = self.k.data().as_slice().unwrap();
+                let k_slice = self.k.data().as_slice().unwrap_or(&[]);
                 let grad_q = matmul_compute(&grad_scores, k_slice, seq_len, seq_len, d_k);
                 self.q.accumulate_grad(Array1::from(grad_q));
             }
@@ -172,7 +172,7 @@ impl BackwardOp for AttentionBackward {
             // Result: (seq_len, seq_len) @ (seq_len, d_k) = (seq_len, d_k)
             if self.k.requires_grad() {
                 let grad_t = transpose(&grad_scores, seq_len, seq_len);
-                let q_slice = self.q.data().as_slice().unwrap();
+                let q_slice = self.q.data().as_slice().unwrap_or(&[]);
                 let grad_k = matmul_compute(&grad_t, q_slice, seq_len, seq_len, d_k);
                 self.k.accumulate_grad(Array1::from(grad_k));
             }

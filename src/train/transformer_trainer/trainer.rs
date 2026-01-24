@@ -110,8 +110,12 @@ impl TransformerTrainer {
         let mut total_loss = 0.0;
 
         for i in 0..batch.batch_size {
-            let input_ids = batch.get_input(i).unwrap();
-            let target_ids = batch.get_target(i).unwrap();
+            let Some(input_ids) = batch.get_input(i) else {
+                continue;
+            };
+            let Some(target_ids) = batch.get_target(i) else {
+                continue;
+            };
 
             let (loss_val, loss, _logits) = self.forward_single(input_ids, target_ids);
 
