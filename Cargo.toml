@@ -170,6 +170,7 @@ tempfile = "3.8"
 criterion = "0.5"
 arrow = { version = "57", default-features = false }  # For MNIST example array access
 insta = { version = "1.42", features = ["json", "yaml"] }  # Snapshot testing for PMAT QA
+dirs = "5.0"  # Cache directory detection for examples
 
 [[bench]]
 name = "monitor_bench"

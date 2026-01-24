@@ -224,14 +224,34 @@ fn test_flatten_empty() {
     corpus
 }
 
-/// Download model from HuggingFace (or use cache)
-fn download_model(model_id: &str) -> Result<std::path::PathBuf, String> {
-    println!("📥 Downloading model: {}", model_id);
+/// Get model from pacha cache (downloaded via `apr pull`)
+fn get_model_path(model_id: &str) -> Result<std::path::PathBuf, String> {
+    println!("📥 Loading model: {}", model_id);
 
+    // Check pacha cache directory (models downloaded via `apr pull`)
+    let cache_dir = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
+        .join("pacha")
+        .join("models");
+
+    // Look for safetensors file in cache
+    if cache_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&cache_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "safetensors") {
+                    println!("   ✓ Found model at: {:?}", path);
+                    return Ok(path);
+                }
+            }
+        }
+    }
+
+    // Try HuggingFace direct download
     let fetcher = HfModelFetcher::new().map_err(|e| format!("Failed to create fetcher: {e:?}"))?;
 
     let options = FetchOptions {
-        files: vec!["config.json".into()],
+        files: vec!["model.safetensors".into()],
         revision: "main".into(),
         ..Default::default()
     };
@@ -243,11 +263,8 @@ fn download_model(model_id: &str) -> Result<std::path::PathBuf, String> {
         }
         Err(e) => {
             println!("   ⚠ Download failed: {:?}", e);
-            println!("   → Using mock weights for demonstration");
-            // Create mock cache directory
-            let mock_path = std::env::temp_dir().join("entrenar-mock-model");
-            fs::create_dir_all(&mock_path).ok();
-            Ok(mock_path)
+            println!("   → Run: apr pull {}", model_id);
+            Err(format!("Model not found. Run: apr pull {model_id}"))
         }
     }
 }
@@ -317,10 +334,10 @@ fn main() {
     println!();
     let corpus = create_real_corpus();
 
-    // 4. Download model (or use mock)
+    // 4. Load model from pacha cache (use `apr pull` to download)
     println!();
     let model_id = "Qwen/Qwen2.5-Coder-0.5B-Instruct";
-    let model_path = download_model(model_id).expect("Failed to get model path");
+    let model_path = get_model_path(model_id).expect("Failed to get model path");
 
     // 5. Create QLoRA adapter
     println!("\n🔗 Initializing QLoRA adapters...");
@@ -330,7 +347,7 @@ fn main() {
 
     // Mock base weights
     let base_weights = Tensor::from_vec(vec![0.01; hidden_size * hidden_size], false);
-    let qlora = QLoRALayer::new(base_weights, hidden_size, hidden_size, rank, alpha);
+    let _qlora = QLoRALayer::new(base_weights, hidden_size, hidden_size, rank, alpha);
     println!("   Rank: {}", rank);
     println!("   Alpha: {}", alpha);
     println!(
