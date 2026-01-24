@@ -28,6 +28,8 @@ pub mod checkpoint;
 mod context;
 #[cfg(feature = "cuda")]
 pub mod cuda_backward;
+#[cfg(feature = "cuda")]
+pub mod cuda_forward;
 pub mod cuda_tensor;
 mod ops;
 pub mod precision;
