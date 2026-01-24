@@ -259,6 +259,9 @@
 - [CLI Monitor (Drift)](./examples/cli-monitor.md)
 - [CLI Inspect (Model Analysis)](./examples/cli-inspect.md)
 
+## Fine-tuning
+- [Test Generation (Qwen2-0.5B)](./examples/finetune-test-gen.md)
+
 ## Advanced
 - [Compiler-in-the-Loop (CITL)](./examples/citl.md)
 - [Research Artifact Management](./examples/research.md)
