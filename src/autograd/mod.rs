@@ -30,6 +30,8 @@ mod context;
 pub mod cuda_backward;
 #[cfg(feature = "cuda")]
 pub mod cuda_forward;
+#[cfg(feature = "cuda")]
+pub mod cuda_optim;
 pub mod cuda_tensor;
 mod ops;
 pub mod precision;
