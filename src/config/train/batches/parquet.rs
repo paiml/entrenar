@@ -130,6 +130,23 @@ pub fn load_parquet_batches(path: &Path, batch_size: usize) -> Result<Vec<Batch>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::array::{Float32Array, Float64Array, Int32Array};
+    use arrow::datatypes::{DataType, Field};
+    use std::sync::Arc;
+
+    fn make_test_schema() -> Schema {
+        Schema::new(vec![
+            Field::new("input", DataType::Float32, false),
+            Field::new("target", DataType::Float32, false),
+        ])
+    }
+
+    fn make_test_record_batch() -> RecordBatch {
+        let schema = Arc::new(make_test_schema());
+        let input = Float32Array::from(vec![1.0, 2.0, 3.0, 4.0]);
+        let target = Float32Array::from(vec![0.0, 1.0, 0.0, 1.0]);
+        RecordBatch::try_new(schema, vec![Arc::new(input), Arc::new(target)]).unwrap()
+    }
 
     #[test]
     fn test_detect_input_column_input() {
@@ -218,5 +235,73 @@ mod tests {
         let cols = vec!["foo", "bar"];
         let batches = handle_missing_columns(&cols, 32);
         assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_record_batch_to_training_batch_success() {
+        let record_batch = make_test_record_batch();
+        let schema = make_test_schema();
+        let result = record_batch_to_training_batch(&record_batch, &schema, "input", "target");
+        assert!(result.is_ok());
+        let batch = result.unwrap();
+        assert_eq!(batch.inputs.data().len(), 4);
+        assert_eq!(batch.targets.data().len(), 4);
+    }
+
+    #[test]
+    fn test_record_batch_to_training_batch_invalid_input_column() {
+        let record_batch = make_test_record_batch();
+        let schema = make_test_schema();
+        let result =
+            record_batch_to_training_batch(&record_batch, &schema, "nonexistent", "target");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_record_batch_to_training_batch_invalid_target_column() {
+        let record_batch = make_test_record_batch();
+        let schema = make_test_schema();
+        let result = record_batch_to_training_batch(&record_batch, &schema, "input", "nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_record_batch_with_float64() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("x", DataType::Float64, false),
+            Field::new("y", DataType::Float64, false),
+        ]));
+        let input = Float64Array::from(vec![1.0, 2.0, 3.0]);
+        let target = Float64Array::from(vec![0.0, 1.0, 2.0]);
+        let record_batch =
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(input), Arc::new(target)]).unwrap();
+
+        let result = record_batch_to_training_batch(&record_batch, &schema, "x", "y");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_record_batch_with_int32() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("features", DataType::Int32, false),
+            Field::new("labels", DataType::Int32, false),
+        ]));
+        let input = Int32Array::from(vec![1, 2, 3]);
+        let target = Int32Array::from(vec![0, 1, 0]);
+        let record_batch =
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(input), Arc::new(target)]).unwrap();
+
+        let result = record_batch_to_training_batch(&record_batch, &schema, "features", "labels");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_column_pair_fields() {
+        let pair = ColumnPair {
+            input_name: "input",
+            target_name: "target",
+        };
+        assert_eq!(pair.input_name, "input");
+        assert_eq!(pair.target_name, "target");
     }
 }

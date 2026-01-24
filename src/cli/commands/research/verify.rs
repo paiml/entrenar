@@ -149,4 +149,186 @@ mod tests {
         let cloned = orig.clone();
         assert_eq!(orig, cloned);
     }
+
+    #[test]
+    fn test_log_git_proof_with_git_commit() {
+        let proof = TimestampProof::GitCommit("abc123def456".to_string());
+        // Should not panic
+        log_git_proof(LogLevel::Quiet, &proof);
+        log_git_proof(LogLevel::Verbose, &proof);
+    }
+
+    #[test]
+    fn test_log_git_proof_with_non_git() {
+        let proof = TimestampProof::Rfc3161(vec![1, 2, 3]);
+        // Should not panic
+        log_git_proof(LogLevel::Quiet, &proof);
+    }
+
+    #[test]
+    fn test_log_git_proof_opentimestamps() {
+        let proof = TimestampProof::OpenTimestamps(vec![4, 5, 6]);
+        // Should not panic, logs "not a git commit"
+        log_git_proof(LogLevel::Normal, &proof);
+    }
+
+    #[test]
+    fn test_compute_commitment() {
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        // Should not panic
+        compute_commitment(&prereg, LogLevel::Quiet);
+    }
+
+    #[test]
+    fn test_verify_signature_with_valid_signed() {
+        use ed25519_dalek::SigningKey;
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+        let signed = SignedPreRegistration::sign(&prereg, &signing_key);
+        assert_eq!(verify_signature(&signed), SignatureStatus::Valid);
+    }
+
+    #[test]
+    fn test_verify_signature_with_invalid_signature() {
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let commitment = prereg.commit();
+        // Create signed with invalid signature
+        let signed = SignedPreRegistration {
+            registration: prereg,
+            commitment,
+            signature: "0".repeat(128), // Invalid but properly formatted signature
+            public_key: "0".repeat(64), // Invalid but properly formatted public key
+            timestamp_proof: None,
+        };
+        // This should be Invalid or Error
+        let status = verify_signature(&signed);
+        assert!(matches!(
+            status,
+            SignatureStatus::Invalid | SignatureStatus::Error(_)
+        ));
+    }
+
+    #[test]
+    fn test_verify_signature_with_malformed_key() {
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let commitment = prereg.commit();
+        // Create signed with malformed key (not valid hex)
+        let signed = SignedPreRegistration {
+            registration: prereg,
+            commitment,
+            signature: "not-hex".to_string(),
+            public_key: "also-not-hex".to_string(),
+            timestamp_proof: None,
+        };
+        let status = verify_signature(&signed);
+        assert!(matches!(status, SignatureStatus::Error(_)));
+    }
+
+    #[test]
+    fn test_verify_signed_content_valid() {
+        use ed25519_dalek::SigningKey;
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let signing_key = SigningKey::from_bytes(&[2u8; 32]);
+        let signed = SignedPreRegistration::sign(&prereg, &signing_key);
+        let result = verify_signed_content(&signed, false, LogLevel::Quiet);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_signed_content_invalid() {
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let commitment = prereg.commit();
+        let signed = SignedPreRegistration {
+            registration: prereg,
+            commitment,
+            signature: "0".repeat(128),
+            public_key: "0".repeat(64),
+            timestamp_proof: None,
+        };
+        let result = verify_signed_content(&signed, false, LogLevel::Quiet);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verify_signed_content_with_git_proof() {
+        use ed25519_dalek::SigningKey;
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let signing_key = SigningKey::from_bytes(&[3u8; 32]);
+        let mut signed = SignedPreRegistration::sign(&prereg, &signing_key);
+        signed.timestamp_proof = Some(TimestampProof::GitCommit("abc123".to_string()));
+        let result = verify_signed_content(&signed, true, LogLevel::Quiet);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_signed_content_no_git_proof() {
+        use ed25519_dalek::SigningKey;
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let signing_key = SigningKey::from_bytes(&[4u8; 32]);
+        let signed = SignedPreRegistration::sign(&prereg, &signing_key);
+        // signed has no timestamp_proof by default
+        let result = verify_signed_content(&signed, true, LogLevel::Quiet);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_signed_content_error_propagation() {
+        let prereg = PreRegistration::new(
+            "Test Title",
+            "Test Hypothesis",
+            "Test Methods",
+            "Test Analysis",
+        );
+        let commitment = prereg.commit();
+        let signed = SignedPreRegistration {
+            registration: prereg,
+            commitment,
+            signature: "invalid".to_string(),
+            public_key: "invalid".to_string(),
+            timestamp_proof: None,
+        };
+        let result = verify_signed_content(&signed, false, LogLevel::Quiet);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("error"));
+    }
 }
