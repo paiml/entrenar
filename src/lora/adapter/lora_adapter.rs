@@ -149,3 +149,156 @@ impl LoRAAdapter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    fn make_test_adapter() -> LoRAAdapter {
+        LoRAAdapter {
+            version: "1.0".to_string(),
+            rank: 4,
+            alpha: 8.0,
+            d_out: 8,
+            d_in: 16,
+            scale: 2.0,
+            lora_a: vec![0.1; 4 * 16], // rank * d_in
+            lora_b: vec![0.2; 8 * 4],  // d_out * rank
+        }
+    }
+
+    #[test]
+    fn test_adapter_from_layer() {
+        let base_weight = Tensor::zeros(8 * 16, false);
+        let layer = LoRALayer::new(base_weight, 8, 16, 4, 8.0);
+        let adapter = LoRAAdapter::from_layer(&layer, 4, 8.0);
+        assert_eq!(adapter.rank, 4);
+        assert_eq!(adapter.alpha, 8.0);
+        assert_eq!(adapter.d_out, 8);
+        assert_eq!(adapter.d_in, 16);
+    }
+
+    #[test]
+    fn test_adapter_to_layer_valid() {
+        let adapter = make_test_adapter();
+        let base_weight = Tensor::zeros(8 * 16, false);
+        let layer = adapter.to_layer(base_weight).unwrap();
+        assert_eq!(layer.d_out(), 8);
+        assert_eq!(layer.d_in(), 16);
+    }
+
+    #[test]
+    fn test_adapter_to_layer_dimension_mismatch() {
+        let adapter = make_test_adapter();
+        let base_weight = Tensor::zeros(100, false); // Wrong size
+        let result = adapter.to_layer(base_weight);
+        assert!(result.is_err());
+        match result {
+            Err(AdapterError::DimensionMismatch { .. }) => {}
+            _ => panic!("Expected DimensionMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_adapter_to_layer_lora_a_mismatch() {
+        let mut adapter = make_test_adapter();
+        adapter.lora_a = vec![0.1; 10]; // Wrong size
+        let base_weight = Tensor::zeros(8 * 16, false);
+        let result = adapter.to_layer(base_weight);
+        assert!(result.is_err());
+        match result {
+            Err(AdapterError::Validation(msg)) => {
+                assert!(msg.contains("LoRA A size mismatch"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_adapter_to_layer_lora_b_mismatch() {
+        let mut adapter = make_test_adapter();
+        adapter.lora_b = vec![0.2; 10]; // Wrong size
+        let base_weight = Tensor::zeros(8 * 16, false);
+        let result = adapter.to_layer(base_weight);
+        assert!(result.is_err());
+        match result {
+            Err(AdapterError::Validation(msg)) => {
+                assert!(msg.contains("LoRA B size mismatch"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_adapter_save_load_roundtrip() {
+        let adapter = make_test_adapter();
+        let file = NamedTempFile::new().unwrap();
+
+        adapter.save(file.path()).unwrap();
+        let loaded = LoRAAdapter::load(file.path()).unwrap();
+
+        assert_eq!(adapter.rank, loaded.rank);
+        assert_eq!(adapter.alpha, loaded.alpha);
+        assert_eq!(adapter.d_out, loaded.d_out);
+        assert_eq!(adapter.d_in, loaded.d_in);
+        assert_eq!(adapter.lora_a.len(), loaded.lora_a.len());
+        assert_eq!(adapter.lora_b.len(), loaded.lora_b.len());
+    }
+
+    #[test]
+    fn test_adapter_load_invalid_version() {
+        let mut adapter = make_test_adapter();
+        adapter.version = "0.0".to_string();
+        let file = NamedTempFile::new().unwrap();
+        adapter.save(file.path()).unwrap();
+
+        let result = LoRAAdapter::load(file.path());
+        assert!(result.is_err());
+        match result {
+            Err(AdapterError::Validation(msg)) => {
+                assert!(msg.contains("Unsupported adapter version"));
+            }
+            _ => panic!("Expected Validation error"),
+        }
+    }
+
+    #[test]
+    fn test_adapter_load_nonexistent_file() {
+        let result = LoRAAdapter::load("/nonexistent/path/adapter.json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_adapter_save_invalid_path() {
+        let adapter = make_test_adapter();
+        let result = adapter.save("/nonexistent/dir/adapter.json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_adapter_metadata() {
+        let adapter = make_test_adapter();
+        let meta = adapter.metadata();
+        assert_eq!(meta.rank, 4);
+        assert_eq!(meta.alpha, 8.0);
+        assert_eq!(meta.d_out, 8);
+        assert_eq!(meta.d_in, 16);
+        assert_eq!(meta.num_params, 4 * 16 + 8 * 4);
+    }
+
+    #[test]
+    fn test_adapter_clone() {
+        let adapter = make_test_adapter();
+        let cloned = adapter.clone();
+        assert_eq!(adapter.rank, cloned.rank);
+        assert_eq!(adapter.lora_a.len(), cloned.lora_a.len());
+    }
+
+    #[test]
+    fn test_adapter_debug() {
+        let adapter = make_test_adapter();
+        let debug = format!("{:?}", adapter);
+        assert!(debug.contains("LoRAAdapter"));
+    }
+}
