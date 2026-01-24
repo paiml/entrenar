@@ -74,7 +74,7 @@ pub fn load_safetensors_weights(
         // Auto-detect architecture from first file
         if detected_arch == Architecture::Auto {
             detected_arch = detect_architecture(&tensors);
-            println!("  Detected architecture: {:?}", detected_arch);
+            println!("  Detected architecture: {detected_arch:?}");
         }
 
         // Load and map tensors
@@ -101,11 +101,7 @@ fn find_safetensors_files(path: &Path) -> Result<Vec<std::path::PathBuf>> {
 
     if path.is_file() {
         // Single file path
-        if path
-            .extension()
-            .map(|e| e == "safetensors")
-            .unwrap_or(false)
-        {
+        if path.extension().is_some_and(|e| e == "safetensors") {
             files.push(path.to_path_buf());
         }
     } else if path.is_dir() {
@@ -119,7 +115,7 @@ fn find_safetensors_files(path: &Path) -> Result<Vec<std::path::PathBuf>> {
             if let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {
                     let p = entry.path();
-                    if p.extension().map(|e| e == "safetensors").unwrap_or(false) {
+                    if p.extension().is_some_and(|e| e == "safetensors") {
                         files.push(p);
                     }
                 }
@@ -134,7 +130,11 @@ fn find_safetensors_files(path: &Path) -> Result<Vec<std::path::PathBuf>> {
 
 /// Auto-detect model architecture from tensor names
 fn detect_architecture(tensors: &safetensors::SafeTensors<'_>) -> Architecture {
-    let names: Vec<String> = tensors.names().iter().map(|s| s.to_string()).collect();
+    let names: Vec<String> = tensors
+        .names()
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
 
     // Qwen2 uses "model.layers.X.self_attn.q_proj" with biases
     // LLaMA uses same pattern but no biases
@@ -283,6 +283,7 @@ pub fn expected_weight_count(num_layers: usize, has_lm_head: bool) -> usize {
 }
 
 /// Validate that loaded weights match expected architecture
+#[allow(clippy::implicit_hasher)]
 pub fn validate_weights(weights: &HashMap<String, Tensor>, num_layers: usize) -> Result<()> {
     // Check embedding
     if !weights.contains_key("model.embed_tokens.weight") {
@@ -328,8 +329,7 @@ pub fn validate_weights(weights: &HashMap<String, Tensor>, num_layers: usize) ->
     if actual < expected {
         // This is a warning, not an error - some models may have extra or fewer weights
         eprintln!(
-            "Warning: Expected at least {} weights, found {} (may have extra bias tensors)",
-            expected, actual
+            "Warning: Expected at least {expected} weights, found {actual} (may have extra bias tensors)"
         );
     }
 

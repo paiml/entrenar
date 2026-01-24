@@ -181,7 +181,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         "steps": trainer.step(),
     });
     let metadata_json = serde_json::to_string_pretty(&metadata)
-        .map_err(|e| Error::ConfigError(format!("Failed to serialize metadata: {}", e)))?;
+        .map_err(|e| Error::ConfigError(format!("Failed to serialize metadata: {e}")))?;
     std::fs::write(&metadata_path, metadata_json)?;
 
     println!("✓ Model saved successfully");
@@ -324,10 +324,9 @@ fn load_transformer_model(
             if let Some(transformer) = Transformer::from_params(config, &weights) {
                 println!("✓ Loaded pre-trained weights successfully");
                 return Ok(Some(transformer));
-            } else {
-                eprintln!("Warning: Weight shapes don't match config, using random initialization");
-                Ok(None)
             }
+            eprintln!("Warning: Weight shapes don't match config, using random initialization");
+            Ok(None)
         }
         Err(e) => {
             eprintln!(
@@ -350,7 +349,7 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
         let config_file = std::path::Path::new(config_path);
         if config_file.exists() {
             let config_content = std::fs::read_to_string(config_file)
-                .map_err(|e| Error::ConfigError(format!("Failed to read model config: {}", e)))?;
+                .map_err(|e| Error::ConfigError(format!("Failed to read model config: {e}")))?;
 
             // Try parsing as HuggingFace config.json format
             if let Ok(hf_config) = serde_json::from_str::<serde_json::Value>(&config_content) {
@@ -448,15 +447,14 @@ fn load_tokenizer(spec: &TrainSpec) -> Result<Option<HfTokenizer>> {
         if tokenizer_path.exists() {
             println!("  Loading tokenizer from: {}", tokenizer_path.display());
             let tokenizer = HfTokenizer::from_file(tokenizer_path)
-                .map_err(|e| Error::ConfigError(format!("Failed to load tokenizer: {}", e)))?;
+                .map_err(|e| Error::ConfigError(format!("Failed to load tokenizer: {e}")))?;
             println!("  Tokenizer vocab size: {}", tokenizer.vocab_size());
             return Ok(Some(tokenizer));
-        } else {
-            eprintln!(
-                "Warning: Tokenizer not found at '{}', using default Qwen2 tokenizer",
-                tokenizer_path.display()
-            );
         }
+        eprintln!(
+            "Warning: Tokenizer not found at '{}', using default Qwen2 tokenizer",
+            tokenizer_path.display()
+        );
     }
 
     // No tokenizer specified - use default for transformer mode

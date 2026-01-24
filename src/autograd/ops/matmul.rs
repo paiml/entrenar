@@ -46,7 +46,7 @@ pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
 
     // Use trueno's optimized transpose
     if let Err(e) = trueno::blis::transpose(rows, cols, data, &mut transposed) {
-        eprintln!("trueno transpose failed: {:?}, using naive", e);
+        eprintln!("trueno transpose failed: {e:?}, using naive");
         // Fallback to naive transpose
         for r in 0..rows {
             for c in 0..cols {
@@ -55,7 +55,7 @@ pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
         }
     }
 
-    TRACER.end(TraceStep::Transpose, format!("{}x{}", rows, cols));
+    TRACER.end(TraceStep::Transpose, format!("{rows}x{cols}"));
     transposed
 }
 
@@ -105,7 +105,7 @@ fn cpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     let mut c = vec![0.0f32; m * n];
 
     if let Err(e) = trueno::blis::gemm(m, n, k, a, b, &mut c) {
-        eprintln!("trueno gemm failed: {:?}, using naive", e);
+        eprintln!("trueno gemm failed: {e:?}, using naive");
         for i in 0..m {
             for j in 0..n {
                 let mut sum = 0.0;

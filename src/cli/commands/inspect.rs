@@ -55,7 +55,7 @@ fn log_model_info(level: LogLevel, file_size: usize, total_params: u64, tensor_c
     log(
         level,
         LogLevel::Normal,
-        &format!("  Tensors: {}", tensor_count),
+        &format!("  Tensors: {tensor_count}"),
     );
 }
 

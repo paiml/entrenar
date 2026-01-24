@@ -160,6 +160,23 @@ coverage: ## Generate HTML coverage report (target: <5 min)
 # Fast coverage alias (same as coverage, optimized by default)
 coverage-fast: coverage
 
+# Exclude trueno, crates, examples from coverage
+COVERAGE_EXCLUDE := --ignore-filename-regex='trueno/|crates/|examples/|tests/|main\.rs'
+
+# Fast entrenar-only coverage (excludes trueno, crates, examples)
+coverage-src: ## Fast coverage for entrenar src/ only (<1 min)
+	@echo "📊 Running FAST coverage (--lib only, cargo test, not nextest)..."
+	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
+	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup 2>/dev/null || true
+	@env PROPTEST_CASES=2 QUICKCHECK_TESTS=2 cargo llvm-cov test --lib --all-features --no-report $(COVERAGE_EXCLUDE) -- --test-threads=$$(nproc) --skip property --skip stress --skip fuzz --skip benchmark 2>&1 | tail -5
+	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml 2>/dev/null || true
+	@echo ""
+	@echo "📊 Entrenar src/ Coverage:"
+	@cargo llvm-cov report --summary-only $(COVERAGE_EXCLUDE)
+	@echo ""
+	@echo "📋 Files below 95%:"
+	@cargo llvm-cov report $(COVERAGE_EXCLUDE) 2>/dev/null | grep 'entrenar/src/' | awk '{ if ($$7+0 < 95 && $$7 != "-") print $$0 }' | head -20
+
 # Full coverage: All features (for CI, slower)
 coverage-full: ## Full coverage report (all features, >10 min)
 	@echo "📊 Running full coverage analysis (all features)..."

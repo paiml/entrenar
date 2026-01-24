@@ -29,7 +29,7 @@ pub enum TraceStep {
 
 impl fmt::Display for TraceStep {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -141,7 +141,7 @@ impl Tracer {
             String::from("\n╔══════════════════════════════════════════════════════════════╗\n");
         output.push_str("║       ENTRENAR TRACE REPORT (ITP-SPEC-001)                   ║\n");
         output.push_str("╚══════════════════════════════════════════════════════════════╝\n");
-        output.push_str(&format!("Total Measured Time: {:.2?}\n", total_time));
+        output.push_str(&format!("Total Measured Time: {total_time:.2?}\n"));
         output.push_str("────────────────────────────────────────────────────────────────\n");
         output.push_str(&format!(
             "{:<15} | {:<8} | {:<15} | {:<8}\n",
@@ -187,10 +187,9 @@ impl Tracer {
                 * 100.0;
 
             output.push_str("\n[Dr. Popper Analysis]\n");
-            output.push_str(&format!("CUDA Compute:   {:.2?}\n", compute_time));
+            output.push_str(&format!("CUDA Compute:   {compute_time:.2?}\n"));
             output.push_str(&format!(
-                "CPU Overhead:   {:.2?} ({:.2}%)\n",
-                overhead_time, overhead_pct
+                "CPU Overhead:   {overhead_time:.2?} ({overhead_pct:.2}%)\n"
             ));
 
             if overhead_pct > 50.0 {
