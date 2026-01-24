@@ -714,3 +714,197 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<TrainSpec> {
 
     Ok(spec)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_demo_lm_batches() {
+        let batches = create_demo_lm_batches(4, 32).unwrap();
+        assert_eq!(batches.len(), 4);
+        // Each batch should have valid data
+        for batch in &batches {
+            assert!(!batch.input_ids.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_create_demo_lm_batches_small() {
+        let batches = create_demo_lm_batches(1, 16).unwrap();
+        assert_eq!(batches.len(), 4);
+    }
+
+    #[test]
+    fn test_create_demo_lm_batches_large_seq_len() {
+        let batches = create_demo_lm_batches(2, 512).unwrap();
+        assert_eq!(batches.len(), 4);
+    }
+
+    #[test]
+    fn test_create_lm_batches_from_sequences() {
+        let sequences = vec![
+            vec![1u32, 2, 3, 4, 5],
+            vec![6u32, 7, 8, 9, 10],
+            vec![11u32, 12, 13, 14, 15],
+        ];
+        let batches = create_lm_batches_from_sequences(&sequences, 2, 32).unwrap();
+        assert_eq!(batches.len(), 2); // 3 sequences with batch_size 2 = 2 batches
+    }
+
+    #[test]
+    fn test_create_lm_batches_from_sequences_single_batch() {
+        let sequences = vec![vec![1u32, 2, 3], vec![4u32, 5, 6]];
+        let batches = create_lm_batches_from_sequences(&sequences, 4, 32).unwrap();
+        assert_eq!(batches.len(), 1);
+    }
+
+    #[test]
+    fn test_create_lm_batches_from_sequences_empty() {
+        let sequences: Vec<Vec<u32>> = vec![];
+        let batches = create_lm_batches_from_sequences(&sequences, 4, 32).unwrap();
+        assert!(batches.is_empty());
+    }
+
+    #[test]
+    fn test_load_pretokenized_json_valid() {
+        let examples: Vec<serde_json::Value> = vec![
+            serde_json::json!({"input_ids": [1, 2, 3, 4, 5]}),
+            serde_json::json!({"input_ids": [6, 7, 8, 9, 10]}),
+        ];
+        let batches = load_pretokenized_json(&examples, 2, 32).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_load_pretokenized_json_empty() {
+        let examples: Vec<serde_json::Value> = vec![];
+        // Falls back to demo batches
+        let batches = load_pretokenized_json(&examples, 2, 32).unwrap();
+        assert!(!batches.is_empty()); // Demo batches
+    }
+
+    #[test]
+    fn test_load_pretokenized_json_no_input_ids() {
+        let examples: Vec<serde_json::Value> = vec![
+            serde_json::json!({"text": "hello"}),
+            serde_json::json!({"text": "world"}),
+        ];
+        // Falls back to demo batches
+        let batches = load_pretokenized_json(&examples, 2, 32).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_load_lm_batches_from_json_pretokenized() {
+        let json = r#"{"examples": [{"input_ids": [1, 2, 3]}, {"input_ids": [4, 5, 6]}]}"#;
+        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_load_lm_batches_from_json_array_pretokenized() {
+        let json = r#"[{"input_ids": [1, 2, 3]}, {"input_ids": [4, 5, 6]}]"#;
+        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_load_lm_batches_from_json_invalid() {
+        let json = "not valid json";
+        // Falls back to demo batches
+        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_load_lm_batches_from_json_empty_examples() {
+        let json = r#"{"examples": []}"#;
+        // Falls back to demo batches
+        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_build_transformer_config_defaults() {
+        use crate::config::schema::{DataConfig, ModelRef, OptimSpec, TrainingParams};
+        use std::collections::HashMap;
+        use std::path::PathBuf;
+
+        let spec = TrainSpec {
+            model: ModelRef {
+                path: PathBuf::from("/nonexistent/model"),
+                config: None,
+                ..Default::default()
+            },
+            data: DataConfig {
+                train: PathBuf::from("/nonexistent/data.json"),
+                batch_size: 4,
+                ..Default::default()
+            },
+            optimizer: OptimSpec {
+                name: "adam".to_string(),
+                lr: 1e-4,
+                params: HashMap::new(),
+            },
+            training: TrainingParams {
+                epochs: 1,
+                output_dir: PathBuf::from("/tmp"),
+                ..Default::default()
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+        };
+
+        let config = build_transformer_config_from_spec(&spec).unwrap();
+        // Default Qwen2.5-like dimensions
+        assert_eq!(config.hidden_size, 896);
+        assert_eq!(config.num_attention_heads, 14);
+        assert_eq!(config.num_kv_heads, 2);
+        assert_eq!(config.intermediate_size, 4864);
+    }
+
+    #[test]
+    fn test_load_lm_batches_from_parquet_fallback() {
+        use std::path::Path;
+        let tokenizer = HfTokenizer::qwen2();
+        // Non-existent path triggers fallback
+        let batches = load_lm_batches_from_parquet(
+            Path::new("/nonexistent.parquet"),
+            &tokenizer,
+            4,
+            32,
+            "text",
+        )
+        .unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_tokenize_texts_to_batches_empty() {
+        let tokenizer = HfTokenizer::qwen2();
+        let texts: Vec<String> = vec![];
+        // Falls back to demo batches
+        let batches = tokenize_texts_to_batches(&texts, &tokenizer, 4, 32).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_tokenize_texts_to_batches_valid() {
+        let tokenizer = HfTokenizer::qwen2();
+        let texts = vec!["Hello world".to_string(), "This is a test".to_string()];
+        let batches = tokenize_texts_to_batches(&texts, &tokenizer, 2, 64).unwrap();
+        assert!(!batches.is_empty());
+    }
+
+    #[test]
+    fn test_tokenize_texts_to_batches_single_token() {
+        let tokenizer = HfTokenizer::qwen2();
+        // Very short text that results in single token gets filtered
+        let texts = vec!["a".to_string()];
+        let batches = tokenize_texts_to_batches(&texts, &tokenizer, 2, 64).unwrap();
+        // May fall back to demo batches if single token is filtered
+        assert!(!batches.is_empty());
+    }
+}

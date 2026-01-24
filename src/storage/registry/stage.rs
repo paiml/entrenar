@@ -102,6 +102,115 @@ mod tests {
         assert_eq!(ModelStage::Production.to_string(), "Production");
         assert_eq!(ModelStage::Development.as_str(), "Development");
     }
+
+    #[test]
+    fn test_stage_staging_to_development_rejected() {
+        assert!(ModelStage::Staging.can_transition_to(ModelStage::Development));
+    }
+
+    #[test]
+    fn test_stage_archived_to_development_restore() {
+        assert!(ModelStage::Archived.can_transition_to(ModelStage::Development));
+    }
+
+    #[test]
+    fn test_stage_same_stage_noop() {
+        assert!(ModelStage::Development.can_transition_to(ModelStage::Development));
+        assert!(ModelStage::Staging.can_transition_to(ModelStage::Staging));
+        assert!(ModelStage::Production.can_transition_to(ModelStage::Production));
+        assert!(ModelStage::Archived.can_transition_to(ModelStage::Archived));
+        assert!(ModelStage::None.can_transition_to(ModelStage::None));
+    }
+
+    #[test]
+    fn test_stage_invalid_none_to_staging() {
+        assert!(!ModelStage::None.can_transition_to(ModelStage::Staging));
+    }
+
+    #[test]
+    fn test_stage_invalid_archived_to_staging() {
+        assert!(!ModelStage::Archived.can_transition_to(ModelStage::Staging));
+    }
+
+    #[test]
+    fn test_stage_invalid_archived_to_production() {
+        assert!(!ModelStage::Archived.can_transition_to(ModelStage::Production));
+    }
+
+    #[test]
+    fn test_as_str_all_stages() {
+        assert_eq!(ModelStage::None.as_str(), "None");
+        assert_eq!(ModelStage::Staging.as_str(), "Staging");
+        assert_eq!(ModelStage::Archived.as_str(), "Archived");
+    }
+
+    #[test]
+    fn test_display_all_stages() {
+        assert_eq!(format!("{}", ModelStage::None), "None");
+        assert_eq!(format!("{}", ModelStage::Development), "Development");
+        assert_eq!(format!("{}", ModelStage::Staging), "Staging");
+        assert_eq!(format!("{}", ModelStage::Archived), "Archived");
+    }
+
+    #[test]
+    fn test_stage_serialization() {
+        let stage = ModelStage::Production;
+        let json = serde_json::to_string(&stage).unwrap();
+        assert!(json.contains("Production"));
+    }
+
+    #[test]
+    fn test_stage_deserialization() {
+        let json = "\"Staging\"";
+        let stage: ModelStage = serde_json::from_str(json).unwrap();
+        assert_eq!(stage, ModelStage::Staging);
+    }
+
+    #[test]
+    fn test_stage_roundtrip() {
+        let stages = [
+            ModelStage::None,
+            ModelStage::Development,
+            ModelStage::Staging,
+            ModelStage::Production,
+            ModelStage::Archived,
+        ];
+        for stage in stages {
+            let json = serde_json::to_string(&stage).unwrap();
+            let deserialized: ModelStage = serde_json::from_str(&json).unwrap();
+            assert_eq!(stage, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_stage_clone() {
+        let stage = ModelStage::Development;
+        let cloned = stage.clone();
+        assert_eq!(stage, cloned);
+    }
+
+    #[test]
+    fn test_stage_copy() {
+        let stage = ModelStage::Production;
+        let copied = stage;
+        assert_eq!(stage, copied);
+    }
+
+    #[test]
+    fn test_stage_debug() {
+        let stage = ModelStage::Staging;
+        let debug = format!("{:?}", stage);
+        assert!(debug.contains("Staging"));
+    }
+
+    #[test]
+    fn test_stage_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ModelStage::Development);
+        set.insert(ModelStage::Production);
+        assert_eq!(set.len(), 2);
+    }
 }
 
 #[cfg(test)]

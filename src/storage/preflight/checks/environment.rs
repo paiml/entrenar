@@ -125,3 +125,90 @@ impl PreflightCheck {
         .optional()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::preflight::PreflightContext;
+
+    #[test]
+    fn test_disk_space_check_creation() {
+        let check = PreflightCheck::disk_space_mb(1000);
+        assert_eq!(check.name, "disk_space");
+        assert_eq!(check.check_type, CheckType::Environment);
+        assert!(check.description.contains("1000"));
+    }
+
+    #[test]
+    fn test_memory_check_creation() {
+        let check = PreflightCheck::memory_mb(512);
+        assert_eq!(check.name, "memory");
+        assert_eq!(check.check_type, CheckType::Environment);
+        assert!(check.description.contains("512"));
+    }
+
+    #[test]
+    fn test_gpu_available_check_creation() {
+        let check = PreflightCheck::gpu_available();
+        assert_eq!(check.name, "gpu_available");
+        assert_eq!(check.check_type, CheckType::Environment);
+        // Optional checks have required=false
+        assert!(!check.required);
+    }
+
+    #[test]
+    fn test_disk_space_check_runs() {
+        let check = PreflightCheck::disk_space_mb(1);
+        let ctx = PreflightContext::default();
+        let data: &[Vec<f64>] = &[];
+        let result = check.run(data, &ctx);
+        // Should either pass or use fallback
+        assert!(result.is_passed() || result.is_warning());
+    }
+
+    #[test]
+    fn test_memory_check_runs() {
+        let check = PreflightCheck::memory_mb(1);
+        let ctx = PreflightContext::default();
+        let data: &[Vec<f64>] = &[];
+        let result = check.run(data, &ctx);
+        // Should either pass or use fallback
+        assert!(result.is_passed() || result.is_warning());
+    }
+
+    #[test]
+    fn test_gpu_check_runs() {
+        let check = PreflightCheck::gpu_available();
+        let ctx = PreflightContext::default();
+        let data: &[Vec<f64>] = &[];
+        let result = check.run(data, &ctx);
+        // Should pass, warning, or fail (but not panic)
+        assert!(result.is_passed() || result.is_warning() || result.is_failed());
+    }
+
+    #[test]
+    fn test_disk_space_with_context_override() {
+        let check = PreflightCheck::disk_space_mb(1000);
+        let ctx = PreflightContext {
+            min_disk_space_mb: Some(1),
+            ..Default::default()
+        };
+        let data: &[Vec<f64>] = &[];
+        let result = check.run(data, &ctx);
+        // With low threshold, should likely pass
+        assert!(result.is_passed() || result.is_warning());
+    }
+
+    #[test]
+    fn test_memory_with_context_override() {
+        let check = PreflightCheck::memory_mb(1000);
+        let ctx = PreflightContext {
+            min_memory_mb: Some(1),
+            ..Default::default()
+        };
+        let data: &[Vec<f64>] = &[];
+        let result = check.run(data, &ctx);
+        // With low threshold, should likely pass
+        assert!(result.is_passed() || result.is_warning());
+    }
+}
