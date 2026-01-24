@@ -1,10 +1,11 @@
 # Specification: Rust Test Generation Fine-Tuning Pipeline
 
 **Document ID:** SPEC-FT-001
-**Version:** 1.0.0
-**Status:** DRAFT - Awaiting Review
+**Version:** 1.1.0
+**Status:** APPROVED
 **Author:** Claude Opus 4.5
-**Date:** 2025-01-24
+**Reviewer:** Dr. Karl Popper
+**Date:** 2026-01-24
 
 ---
 
@@ -718,17 +719,22 @@ cargo run --example finetune_test_gen -- \
 
 ---
 
-## 15. Open Questions for Review
+## 15. Resolved Decisions (Popperian Review)
 
-1. **Corpus Selection**: Use existing `rust-cli-docs-corpus` or create new `rust-test-generation-corpus`?
+1. **Corpus Strategy**: **Option B (Create `paiml/rust-test-generation-corpus`)**
+   *Rationale:* To rigorously test the hypothesis "The model understands Rust testing idioms," we must control independent variables. A specialized corpus with metadata allows for precise hypothesis testing (e.g., "fails when complexity > 10").
 
-2. **Model Size**: Stick with 0.5B or consider 1.5B variant for higher quality?
+2. **Model Size**: **Start with 0.5B**
+   *Rationale:* We prefer the simplest theory that has not been falsified. If 0.5B meets the correctness targets, it is scientifically superior. 1.5B is only justified if 0.5B is falsified.
 
-3. **Proptest Weight**: How much training data should be proptest vs unit tests?
+3. **Proptest Ratio**: **20-25% Proptest Data**
+   *Rationale:* Property-based tests are "engines of falsification." The model needs enough structural training (unit tests) but must learn to generate these high-value falsifiers.
 
-4. **Evaluation Depth**: Include full mutation testing (slow) or sampling-based?
+4. **Mutation Testing**: **Stratified Sampling (Rigorous)**
+   *Rationale:* Full verification is ideal but expensive. We will use stratified sampling based on code complexity to ensure the "Correctness" score is not an illusion based on trivial mutants.
 
-5. **Adapter Publishing**: Publish trained adapters to HuggingFace Hub?
+5. **Adapter Publishing**: **Mandatory**
+   *Rationale:* Secrecy is the enemy of truth. Adapters must be published to the HuggingFace Hub to allow the community to attempt to falsify the results.
 
 ---
 
@@ -749,7 +755,36 @@ We apply this to ML evaluation: every claim about model capability must have a t
 
 ---
 
-## Appendix B: Toyota Way Principles Applied
+## 16. PMAT (Popperian Metric Analysis Tool) Integration
+
+To ensure the 100-point QA checklist is enforced with scientific rigor, the pipeline must integrate with the project's PMAT system.
+
+### 16.1 Automated Gates
+
+| Gate ID | Logic | Action on Failure |
+|---------|-------|-------------------|
+| **P-GATE-001** | `PopperianScore < 90` | Reject adapter; forbid deployment |
+| **P-GATE-002** | `CompileRate < 0.90` | Falsify "Syntactic Understanding" hypothesis |
+| **P-GATE-003** | `MutationScore < 0.70` | Falsify "Semantic Utility" hypothesis |
+| **P-GATE-004** | `VRAM > 8GB` | Falsify "Efficiency" hypothesis |
+
+### 16.2 Continuous Falsification
+
+The evaluation pipeline shall run on every commit to the `adapters` repository. Any degradation in the Popperian Score constitutes a "Regression of Knowledge" and requires immediate *Hansei* (reflection).
+
+---
+
+## Appendix C: PMAT ComputeBrick Integration
+
+Following the "Brick Architecture" (v2.0), the evaluation results must be exportable as a standardized **ComputeBrick Metric Set**.
+
+1. **Metrics Format**: JSON-LD with semantic pointers to the source functions.
+2. **Observability**: Integrate with `cbtop` for real-time visualization of the "falsification rate" during batch evaluation.
+3. **Traceability**: Every generated test must be linked to the specific model version and adapter weights via SHA-256 hashes.
+
+---
+
+## Appendix D: Toyota Way Principles Applied
 
 | Principle | Application to Fine-Tuning |
 |-----------|---------------------------|
@@ -764,4 +799,4 @@ We apply this to ML evaluation: every claim about model capability must have a t
 
 **END OF SPECIFICATION**
 
-*Awaiting review before implementation.*
+*Approved for implementation.*

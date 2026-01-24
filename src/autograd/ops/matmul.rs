@@ -38,16 +38,28 @@ fn get_cuda_executor() -> Option<&'static Mutex<CudaExecutor>> {
 }
 
 /// Transpose a row-major matrix (rows x cols) to (cols x rows)
-/// Uses trueno's cache-efficient blocked transpose for large matrices
+/// Uses cache-efficient blocked transpose for large matrices
 #[inline]
 pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     TRACER.start(TraceStep::Transpose);
     let mut transposed = vec![0.0f32; rows * cols];
 
-    // Use trueno's optimized transpose
-    if let Err(e) = trueno::blis::transpose(rows, cols, data, &mut transposed) {
-        eprintln!("trueno transpose failed: {e:?}, using naive");
-        // Fallback to naive transpose
+    // Blocked transpose for cache efficiency on large matrices
+    const BLOCK_SIZE: usize = 32;
+    if rows >= BLOCK_SIZE && cols >= BLOCK_SIZE {
+        for r_block in (0..rows).step_by(BLOCK_SIZE) {
+            for c_block in (0..cols).step_by(BLOCK_SIZE) {
+                let r_end = (r_block + BLOCK_SIZE).min(rows);
+                let c_end = (c_block + BLOCK_SIZE).min(cols);
+                for r in r_block..r_end {
+                    for c in c_block..c_end {
+                        transposed[c * rows + r] = data[r * cols + c];
+                    }
+                }
+            }
+        }
+    } else {
+        // Simple transpose for small matrices
         for r in 0..rows {
             for c in 0..cols {
                 transposed[c * rows + r] = data[r * cols + c];

@@ -1,0 +1,34 @@
+//! Fine-tuning pipeline for code generation models
+//!
+//! This module implements SPEC-FT-001: Rust Test Generation Fine-Tuning Pipeline.
+//!
+//! # Features
+//!
+//! - CUDA auto-detection with fallback to CPU
+//! - QLoRA fine-tuning with 4-bit quantization
+//! - Popperian 100-point falsification QA
+//! - Scientific reproducibility protocol
+//!
+//! # References
+//!
+//! - Hu et al. (2021) "LoRA: Low-Rank Adaptation of Large Language Models"
+//! - Dettmers et al. (2023) "QLoRA: Efficient Finetuning of Quantized LLMs"
+//! - Popper (1959) "The Logic of Scientific Discovery"
+
+mod corpus;
+mod device;
+mod eval;
+mod popperian;
+mod reproducibility;
+
+#[cfg(test)]
+mod tests;
+
+pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
+pub use device::{ComputeDevice, DeviceInfo};
+pub use eval::{
+    contains_tautology, count_test_functions, has_edge_case_tests, has_meaningful_assertions,
+    EvalMetrics, EvalResult, TestEvaluator,
+};
+pub use popperian::{PopperianQA, QAGrade};
+pub use reproducibility::{ExperimentLock, ReproducibilityConfig};

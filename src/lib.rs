@@ -25,6 +25,7 @@
 //! - **yaml_mode**: Declarative YAML Mode Training (v1.0 spec)
 //! - **transformer**: Transformer layers with autograd support
 //! - **cli**: Command-line interface handlers
+//! - **finetune**: Fine-tuning pipeline with Popperian QA (SPEC-FT-001)
 
 pub mod autograd;
 #[cfg(feature = "citl")]
@@ -36,6 +37,8 @@ pub mod distill;
 pub mod ecosystem;
 pub mod efficiency;
 pub mod eval;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod finetune;
 pub mod generative;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod hf_pipeline;

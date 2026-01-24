@@ -1887,7 +1887,7 @@ dependencies = [
  "tower-http",
  "trueno 0.14.0",
  "trueno-db",
- "trueno-gpu 0.4.10",
+ "trueno-gpu",
  "trueno-rag",
  "trueno-viz",
  "uuid",
@@ -4622,7 +4622,7 @@ dependencies = [
  "tower 0.4.13",
  "tracing",
  "trueno 0.13.0",
- "trueno-gpu 0.4.9",
+ "trueno-gpu",
  "uuid",
 ]
 
@@ -5876,6 +5876,8 @@ dependencies = [
 [[package]]
 name = "trueno"
 version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3c9d1ede5124b7f57a8fe25cec3e92cf518f1ab5156c05d6aa321eb7df0f0b4"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -5922,17 +5924,9 @@ dependencies = [
 
 [[package]]
 name = "trueno-gpu"
-version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec5e23d6c487d0ca2e3d036ab1cd89d9c9eb1bfbcf68e0d8a2973c513e23d6ed"
-dependencies = [
- "libloading",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "trueno-gpu"
 version = "0.4.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "156e3f2024147b216b157285e065528dcd7f36c0de3f3681541dce7ca31d8c00"
 dependencies = [
  "libloading",
  "thiserror 2.0.18",

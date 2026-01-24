@@ -122,8 +122,8 @@ cuda = ["realizar/cuda", "trueno-gpu/cuda", "tokio"]  # NVIDIA CUDA compute via 
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
-trueno = { path = "../trueno" }  # SIMD-accelerated compute (local with transpose)
-trueno-gpu = { path = "../trueno/trueno-gpu", optional = true }  # CUDA compute for GPU training
+trueno = "0.14.0"  # SIMD-accelerated compute from crates.io
+trueno-gpu = { version = "0.4.10", optional = true }  # CUDA compute for GPU training
 realizar = { version = "0.6", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.24.1"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
