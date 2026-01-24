@@ -14,6 +14,7 @@
 //!
 //! # Available Kernels
 //!
+//! - `relu_forward` - ReLU activation
 //! - `softmax_forward` - Numerically stable softmax with warp shuffle
 //! - `layer_norm_forward` - Fused layer normalization
 //! - `rms_norm_forward` - RMS normalization (LLaMA-style)
@@ -35,7 +36,8 @@ use std::sync::{Mutex, OnceLock};
 use trueno_gpu::driver::{CudaContext, CudaModule, CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    GeluKernel, GemmKernel, Kernel, LayerNormKernel, RmsNormKernel, SiluKernel, SoftmaxKernel,
+    GeluKernel, GemmKernel, Kernel, LayerNormKernel, ReluKernel, RmsNormKernel, SiluKernel,
+    SoftmaxKernel,
 };
 
 use super::cuda_tensor::{CudaTensorError, Result};
@@ -75,6 +77,55 @@ impl ForwardKernelCache {
 #[cfg(feature = "cuda")]
 pub fn init_forward_kernel_cache(ctx: std::sync::Arc<CudaContext>) -> Result<()> {
     FORWARD_KERNEL_CACHE.get_or_init(|| Mutex::new(ForwardKernelCache::new(ctx)));
+    Ok(())
+}
+
+/// ReLU activation forward pass on GPU
+///
+/// Computes: output[i] = max(0, input[i])
+#[cfg(feature = "cuda")]
+pub fn relu_forward(
+    input: &GpuBuffer<f32>,
+    output: &mut GpuBuffer<f32>,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let kernel = ReluKernel::new(n);
+    let ptx = kernel.emit_ptx();
+
+    let cache = FORWARD_KERNEL_CACHE
+        .get()
+        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("relu_forward_{n}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    let config = LaunchConfig {
+        grid: (n.div_ceil(256), 1, 1),
+        block: (256, 1, 1),
+        shared_mem: 0,
+    };
+
+    let input_ptr = input.as_ptr();
+    let output_ptr = output.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &n as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream
+            .launch_kernel(module, "relu", &config, &mut args)
+            .map_err(|e| {
+                CudaTensorError::KernelError(format!("ReLU forward launch failed: {e:?}"))
+            })?;
+    }
+
     Ok(())
 }
 
