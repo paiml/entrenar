@@ -114,6 +114,29 @@ impl Transformer {
         )
     }
 
+    /// Forward pass returning hidden states (before lm_head)
+    ///
+    /// # Arguments
+    /// * `token_ids` - Input token IDs
+    ///
+    /// # Returns
+    /// Hidden states tensor (seq_len * hidden_size, flattened)
+    pub fn forward_hidden(&self, token_ids: &[u32]) -> Tensor {
+        let seq_len = token_ids.len();
+        let hidden_size = self.config.hidden_size;
+
+        // Embed tokens
+        let mut hidden = self.embed_tokens.forward(token_ids);
+
+        // Pass through transformer layers
+        for layer in &self.layers {
+            hidden = layer.forward(&hidden, seq_len);
+        }
+
+        // Final normalization
+        self.norm.forward_batched(&hidden, seq_len, hidden_size)
+    }
+
     /// Get the last token's logits (for generation)
     pub fn forward_last(&self, token_ids: &[u32]) -> Tensor {
         let logits = self.forward(token_ids);

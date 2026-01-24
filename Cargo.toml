@@ -108,7 +108,8 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [features]
-default = []
+default = ["cuda"]  # CUDA-first: GPU compute is mandatory (SPEC-FT-001 v3.0.0)
+cpu-fallback = []  # Explicit opt-in for CPU-only builds (CI without GPU)
 gguf = []  # Placeholder for future GGUF support via Realizar
 monitor = ["trueno-db"]  # Training monitoring with persistence
 wasm = ["wasm-bindgen", "getrandom", "js-sys"]  # WASM bindings for browser dashboard
@@ -309,3 +310,10 @@ required-features = []
 name = "finetune_test_gen"
 path = "examples/finetune_test_gen.rs"
 required-features = []
+
+# Phase 11: CUDA-First Architecture (SPEC-FT-001 v3.0.0)
+# Use local trueno-gpu with backward kernels (Issue #85)
+[patch.crates-io]
+trueno = { path = "../trueno" }
+trueno-gpu = { path = "../trueno/trueno-gpu" }
+realizar = { path = "../realizar" }

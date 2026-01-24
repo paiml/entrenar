@@ -30,7 +30,7 @@ fn get_cuda_executor() -> Option<&'static Mutex<CudaExecutor>> {
                 Some(Mutex::new(executor))
             }
             Err(e) => {
-                eprintln!("CUDA init failed: {:?}, using CPU", e);
+                eprintln!("CUDA init failed: {e:?}, using CPU");
                 None
             }
         })
@@ -80,7 +80,7 @@ pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec
             match cuda_matmul(&mut executor, a, b, m, k, n) {
                 Ok(result) => return result,
                 Err(e) => {
-                    eprintln!("CUDA matmul failed: {:?}, falling back to CPU", e);
+                    eprintln!("CUDA matmul failed: {e:?}, falling back to CPU");
                 }
             }
         }
@@ -102,13 +102,13 @@ fn cuda_matmul(
 ) -> Result<Vec<f32>, String> {
     TRACER.start(TraceStep::Alloc);
     let mut c = vec![0.0f32; m * n];
-    TRACER.end(TraceStep::Alloc, format!("{}x{}", m, n));
+    TRACER.end(TraceStep::Alloc, format!("{m}x{n}"));
 
     TRACER.start(TraceStep::Matmul);
     executor
         .gemm(a, b, &mut c, m as u32, n as u32, k as u32)
-        .map_err(|e| format!("{:?}", e))?;
-    TRACER.end(TraceStep::Matmul, format!("{}x{}x{}", m, k, n));
+        .map_err(|e| format!("{e:?}"))?;
+    TRACER.end(TraceStep::Matmul, format!("{m}x{k}x{n}"));
     Ok(c)
 }
 

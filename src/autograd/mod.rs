@@ -2,6 +2,17 @@
 //!
 //! Provides automatic differentiation using a computational graph with gradient tape.
 //!
+//! ## CUDA Acceleration (SPEC-FT-001 v3.0.0)
+//!
+//! When the `cuda` feature is enabled, use `CudaTensor` for GPU-accelerated training:
+//!
+//! ```ignore
+//! use entrenar::autograd::{CudaDevice, CudaTensor};
+//!
+//! let device = CudaDevice::default_device()?;
+//! let tensor = CudaTensor::from_vec(&device, vec![1.0, 2.0, 3.0], true)?;
+//! ```
+//!
 //! ## Gradient Checkpointing
 //!
 //! For memory-efficient training of large models, use the `checkpoint` module:
@@ -15,6 +26,7 @@
 mod backward;
 pub mod checkpoint;
 mod context;
+pub mod cuda_tensor;
 mod ops;
 pub mod precision;
 mod tensor;

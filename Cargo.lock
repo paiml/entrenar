@@ -4594,8 +4594,6 @@ dependencies = [
 [[package]]
 name = "realizar"
 version = "0.6.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89e6d6866d26aa376b0019e7a73138834109557bfde0fac8e43bc562445cc7f2"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -4621,7 +4619,7 @@ dependencies = [
  "tokio-stream",
  "tower 0.4.13",
  "tracing",
- "trueno 0.13.0",
+ "trueno 0.14.0",
  "trueno-gpu",
  "uuid",
 ]
@@ -5860,24 +5858,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ba5457f1f184520c46e6b315d540baa4cf2a2ae3d047e13001a4a23a12c6ab8"
 dependencies = [
  "anyhow",
- "bytemuck",
  "chrono",
- "futures-intrusive",
  "hostname",
  "num_cpus",
- "pollster",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "toml",
- "wgpu",
 ]
 
 [[package]]
 name = "trueno"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c9d1ede5124b7f57a8fe25cec3e92cf518f1ab5156c05d6aa321eb7df0f0b4"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -5925,8 +5917,6 @@ dependencies = [
 [[package]]
 name = "trueno-gpu"
 version = "0.4.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "156e3f2024147b216b157285e065528dcd7f36c0de3f3681541dce7ca31d8c00"
 dependencies = [
  "libloading",
  "thiserror 2.0.18",

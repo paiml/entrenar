@@ -147,6 +147,71 @@ impl BackwardOp for ScaleBackward {
     }
 }
 
+/// Add tensor b scaled by a factor to tensor a: result = a + scale * b
+///
+/// This is useful for LoRA: y = Wx + scale * (BA)x
+pub fn add_scaled(a: &Tensor, b: &Tensor, scale_factor: f32) -> Tensor {
+    assert_eq!(a.len(), b.len(), "Tensors must have same length");
+
+    // Compute a + scale * b
+    let a_data = a.data();
+    let b_data = b.data();
+    let result_data: Vec<f32> = a_data
+        .iter()
+        .zip(b_data.iter())
+        .map(|(&a_val, &b_val)| a_val + scale_factor * b_val)
+        .collect();
+
+    let requires_grad = a.requires_grad() || b.requires_grad();
+    let mut result = Tensor::new(Array1::from(result_data), requires_grad);
+
+    if requires_grad {
+        let a_clone = a.clone();
+        let b_clone = b.clone();
+        let backward_op = Rc::new(AddScaledBackward {
+            a: a_clone,
+            b: b_clone,
+            scale: scale_factor,
+            result_grad: result.grad_cell(),
+        });
+        result.set_backward_op(backward_op);
+    }
+
+    result
+}
+
+struct AddScaledBackward {
+    a: Tensor,
+    b: Tensor,
+    scale: f32,
+    result_grad: Rc<RefCell<Option<Array1<f32>>>>,
+}
+
+impl BackwardOp for AddScaledBackward {
+    fn backward(&self) {
+        if let Some(grad) = self.result_grad.borrow().as_ref() {
+            // ∂L/∂a = ∂L/∂result * 1 = grad
+            if self.a.requires_grad() {
+                self.a.accumulate_grad(grad.clone());
+            }
+
+            // ∂L/∂b = ∂L/∂result * scale = grad * scale
+            if self.b.requires_grad() {
+                let grad_b = grad * self.scale;
+                self.b.accumulate_grad(grad_b);
+            }
+
+            // Recursively call backward on inputs
+            if let Some(op) = self.a.backward_op() {
+                op.backward();
+            }
+            if let Some(op) = self.b.backward_op() {
+                op.backward();
+            }
+        }
+    }
+}
+
 /// Sum all elements
 pub fn sum(a: &Tensor) -> Tensor {
     let data = Array1::from(vec![a.data().sum()]);

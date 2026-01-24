@@ -188,6 +188,260 @@ impl MultiHeadAttention {
     }
 }
 
+/// LoRA-enabled linear projection
+///
+/// Computes: y = x @ W + scale * (x @ A) @ B
+/// Where W is frozen base weight, A and B are trainable LoRA adapters
+pub struct LoRAProjection {
+    /// Base weight (frozen), shape (d_in × d_out)
+    pub base_weight: Tensor,
+    /// LoRA A matrix (down-projection), shape (d_in × rank)
+    pub lora_a: Tensor,
+    /// LoRA B matrix (up-projection), shape (rank × d_out)
+    pub lora_b: Tensor,
+    /// Input dimension
+    pub d_in: usize,
+    /// Output dimension
+    pub d_out: usize,
+    /// LoRA rank
+    pub rank: usize,
+    /// Scaling factor (alpha / rank)
+    pub scale: f32,
+}
+
+impl LoRAProjection {
+    /// Create a new LoRA projection
+    ///
+    /// # Arguments
+    /// * `base_weight` - Frozen base weight [d_in × d_out]
+    /// * `d_in` - Input dimension
+    /// * `d_out` - Output dimension
+    /// * `rank` - LoRA rank (typically 4, 8, 16, 32, or 64)
+    /// * `alpha` - LoRA scaling parameter
+    pub fn new(base_weight: Tensor, d_in: usize, d_out: usize, rank: usize, alpha: f32) -> Self {
+        assert_eq!(base_weight.len(), d_in * d_out, "Base weight size mismatch");
+
+        // Initialize A with small Gaussian-like noise
+        let lora_a = Tensor::from_vec(
+            (0..d_in * rank)
+                .map(|i| ((i as f32 * 0.123).sin() * 0.01))
+                .collect(),
+            true, // requires_grad
+        );
+
+        // Initialize B with zeros (standard LoRA init ensures ΔW = 0 at start)
+        // But for immediate effect in experiments, use small values
+        let lora_b = Tensor::from_vec(
+            (0..rank * d_out)
+                .map(|i| ((i as f32 * 0.234).sin() * 0.005))
+                .collect(),
+            true, // requires_grad
+        );
+
+        Self {
+            base_weight,
+            lora_a,
+            lora_b,
+            d_in,
+            d_out,
+            rank,
+            scale: alpha / rank as f32,
+        }
+    }
+
+    /// Forward pass with LoRA
+    ///
+    /// Computes: y = x @ W + scale * (x @ A) @ B
+    ///
+    /// # Arguments
+    /// * `x` - Input tensor [seq_len × d_in]
+    /// * `seq_len` - Sequence length
+    ///
+    /// # Returns
+    /// Output tensor [seq_len × d_out]
+    pub fn forward(&self, x: &Tensor, seq_len: usize) -> Tensor {
+        // Base projection: x @ W, (seq × d_in) @ (d_in × d_out) = (seq × d_out)
+        let base_out = matmul(x, &self.base_weight, seq_len, self.d_in, self.d_out);
+
+        // LoRA path: scale * (x @ A) @ B
+        // Step 1: x @ A, (seq × d_in) @ (d_in × rank) = (seq × rank)
+        let lora_intermediate = matmul(x, &self.lora_a, seq_len, self.d_in, self.rank);
+
+        // Step 2: (x @ A) @ B, (seq × rank) @ (rank × d_out) = (seq × d_out)
+        let lora_out = matmul(
+            &lora_intermediate,
+            &self.lora_b,
+            seq_len,
+            self.rank,
+            self.d_out,
+        );
+
+        // Combine: base + scale * lora
+        // Use autograd-compatible addition
+        crate::autograd::add_scaled(&base_out, &lora_out, self.scale)
+    }
+
+    /// Get trainable LoRA parameters
+    pub fn lora_params(&self) -> Vec<&Tensor> {
+        vec![&self.lora_a, &self.lora_b]
+    }
+
+    /// Get mutable trainable LoRA parameters
+    pub fn lora_params_mut(&mut self) -> Vec<&mut Tensor> {
+        vec![&mut self.lora_a, &mut self.lora_b]
+    }
+}
+
+/// Multi-head attention with deep LoRA injection
+///
+/// LoRA adapters are applied to Q, K, V, O projections during forward pass
+pub struct MultiHeadAttentionWithLoRA {
+    /// Configuration
+    pub config: TransformerConfig,
+    /// Query projection with LoRA
+    pub q_proj: LoRAProjection,
+    /// Key projection with LoRA
+    pub k_proj: LoRAProjection,
+    /// Value projection with LoRA
+    pub v_proj: LoRAProjection,
+    /// Output projection with LoRA
+    pub o_proj: LoRAProjection,
+}
+
+impl MultiHeadAttentionWithLoRA {
+    /// Create LoRA-enabled attention from existing attention weights
+    ///
+    /// # Arguments
+    /// * `attn` - Base MultiHeadAttention with pretrained weights
+    /// * `rank` - LoRA rank
+    /// * `alpha` - LoRA alpha scaling factor
+    pub fn from_attention(attn: &MultiHeadAttention, rank: usize, alpha: f32) -> Self {
+        let hidden_size = attn.config.hidden_size;
+        let kv_hidden_size = attn.config.num_kv_heads * attn.config.head_dim();
+
+        Self {
+            config: attn.config.clone(),
+            q_proj: LoRAProjection::new(attn.w_q.clone(), hidden_size, hidden_size, rank, alpha),
+            k_proj: LoRAProjection::new(attn.w_k.clone(), hidden_size, kv_hidden_size, rank, alpha),
+            v_proj: LoRAProjection::new(attn.w_v.clone(), hidden_size, kv_hidden_size, rank, alpha),
+            o_proj: LoRAProjection::new(attn.w_o.clone(), hidden_size, hidden_size, rank, alpha),
+        }
+    }
+
+    /// Forward pass with deep LoRA injection
+    ///
+    /// LoRA is applied to all Q, K, V, O projections
+    pub fn forward(&self, x: &Tensor, seq_len: usize) -> Tensor {
+        let hidden_size = self.config.hidden_size;
+        let num_heads = self.config.num_attention_heads;
+        let num_kv_heads = self.config.num_kv_heads;
+        let head_dim = self.config.head_dim();
+        let kv_hidden_size = num_kv_heads * head_dim;
+
+        // Project Q, K, V with LoRA
+        let q = self.q_proj.forward(x, seq_len);
+        let k = self.k_proj.forward(x, seq_len);
+        let v = self.v_proj.forward(x, seq_len);
+
+        // Multi-head attention with grouped-query attention support
+        let mut attn_outputs = Vec::with_capacity(num_heads * seq_len * head_dim);
+        let heads_per_kv = num_heads / num_kv_heads;
+
+        for h in 0..num_heads {
+            let kv_h = h / heads_per_kv;
+
+            // Extract Q for this head
+            let q_head: Vec<f32> = (0..seq_len)
+                .flat_map(|s| {
+                    let start = s * hidden_size + h * head_dim;
+                    q.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                })
+                .collect();
+
+            // Extract K for this KV head
+            let k_head: Vec<f32> = (0..seq_len)
+                .flat_map(|s| {
+                    let start = s * kv_hidden_size + kv_h * head_dim;
+                    k.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                })
+                .collect();
+
+            // Extract V for this KV head
+            let v_head: Vec<f32> = (0..seq_len)
+                .flat_map(|s| {
+                    let start = s * kv_hidden_size + kv_h * head_dim;
+                    v.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                })
+                .collect();
+
+            // Scaled dot-product attention
+            let q_tensor = Tensor::from_vec(q_head, false);
+            let k_tensor = Tensor::from_vec(k_head, false);
+            let v_tensor = Tensor::from_vec(v_head, false);
+
+            let attn_out = crate::autograd::attention(
+                &q_tensor, &k_tensor, &v_tensor, seq_len, head_dim, seq_len, head_dim,
+            );
+
+            attn_outputs.extend_from_slice(attn_out.data().as_slice().unwrap());
+        }
+
+        // Concatenate heads and reorder
+        let mut concat_output = vec![0.0; seq_len * hidden_size];
+        for h in 0..num_heads {
+            for s in 0..seq_len {
+                for d in 0..head_dim {
+                    let src_idx = h * seq_len * head_dim + s * head_dim + d;
+                    let dst_idx = s * hidden_size + h * head_dim + d;
+                    concat_output[dst_idx] = attn_outputs[src_idx];
+                }
+            }
+        }
+
+        let concat_tensor = Tensor::from_vec(concat_output, true);
+
+        // Output projection with LoRA
+        self.o_proj.forward(&concat_tensor, seq_len)
+    }
+
+    /// Get all trainable LoRA parameters
+    pub fn lora_params(&self) -> Vec<&Tensor> {
+        let mut params = Vec::new();
+        params.extend(self.q_proj.lora_params());
+        params.extend(self.k_proj.lora_params());
+        params.extend(self.v_proj.lora_params());
+        params.extend(self.o_proj.lora_params());
+        params
+    }
+
+    /// Get all trainable LoRA parameters as mutable references
+    pub fn lora_params_mut(&mut self) -> Vec<&mut Tensor> {
+        let mut params = Vec::new();
+        params.extend(self.q_proj.lora_params_mut());
+        params.extend(self.k_proj.lora_params_mut());
+        params.extend(self.v_proj.lora_params_mut());
+        params.extend(self.o_proj.lora_params_mut());
+        params
+    }
+
+    /// Count total LoRA parameters
+    pub fn lora_param_count(&self) -> usize {
+        // Each projection has A (d_in × rank) + B (rank × d_out)
+        let hidden = self.config.hidden_size;
+        let kv_hidden = self.config.num_kv_heads * self.config.head_dim();
+        let rank = self.q_proj.rank;
+
+        // Q: (hidden × rank) + (rank × hidden)
+        // K: (hidden × rank) + (rank × kv_hidden)
+        // V: (hidden × rank) + (rank × kv_hidden)
+        // O: (hidden × rank) + (rank × hidden)
+        (hidden * rank + rank * hidden)      // Q
+            + (hidden * rank + rank * kv_hidden) // K
+            + (hidden * rank + rank * kv_hidden) // V
+            + (hidden * rank + rank * hidden) // O
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
