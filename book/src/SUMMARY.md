@@ -211,19 +211,58 @@
 
 # Examples
 
+## Getting Started
+- [Basic Training Loop](./examples/training-loop.md)
 - [Linear Regression with Autograd](./examples/linear-regression.md)
 - [Training a Simple MLP](./examples/simple-mlp.md)
+- [Model I/O (Save/Load)](./examples/model-io.md)
+- [Declarative YAML Training](./examples/train-from-yaml.md)
+
+## Neural Network Training
+- [MNIST Training (CPU)](./examples/mnist-train.md)
+- [MNIST Training (GPU)](./examples/mnist-train-gpu.md)
 - [Transformer Fine-Tuning](./examples/transformer-finetuning.md)
-- [Fine-Tuning with LoRA](./examples/lora-finetuning.md)
-- [Memory-Efficient QLoRA](./examples/qlora-example.md)
 - [Custom Loss Functions](./examples/custom-loss.md)
 - [Learning Rate Scheduling](./examples/lr-scheduling.md)
 - [Gradient Clipping](./examples/gradient-clipping-example.md)
+
+## LLaMA 2 Examples
+- [LLaMA 2 Training from Scratch](./examples/llama2-train.md)
+- [LLaMA 2 LoRA Fine-Tuning](./examples/llama2-lora.md)
+- [LLaMA 2 QLoRA Fine-Tuning](./examples/llama2-qlora.md)
+- [LLaMA 2 Memory Benchmarks](./examples/llama2-memory.md)
+
+## LoRA & Quantization
+- [Fine-Tuning with LoRA](./examples/lora-finetuning.md)
+- [Memory-Efficient QLoRA](./examples/qlora-example.md)
 - [Adapter Sharing](./examples/adapter-sharing.md)
 - [CUDA Backend Configuration](./examples/cuda-backend.md)
+
+## Knowledge Distillation
+- [Basic Distillation](./examples/distillation.md)
+- [HuggingFace Model Distillation](./examples/hf-distillation.md)
+
+## Model Operations
+- [Model Merging (TIES/DARE/SLERP)](./examples/merge-models.md)
 - [Pruning Pipeline](./examples/pruning-pipeline.md)
+
+## Monitoring & Analysis
+- [Training Monitoring](./examples/monitoring.md)
+- [Inference Monitoring](./examples/inference-monitor.md)
+- [Explainability (Feature Attribution)](./examples/explainability.md)
 - [Drift Detection Simulation](./examples/drift-simulation.md)
 - [P-Value Calibration Check](./examples/calibration-check.md)
+
+## CLI Examples
+- [CLI Benchmark](./examples/cli-bench.md)
+- [CLI Audit (Bias Detection)](./examples/cli-audit.md)
+- [CLI Monitor (Drift)](./examples/cli-monitor.md)
+- [CLI Inspect (Model Analysis)](./examples/cli-inspect.md)
+
+## Advanced
+- [Compiler-in-the-Loop (CITL)](./examples/citl.md)
+- [Research Artifact Management](./examples/research.md)
+- [Sovereign Deployment](./examples/sovereign.md)
 
 # Development Guide
 
