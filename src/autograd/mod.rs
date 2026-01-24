@@ -33,6 +33,7 @@ pub mod cuda_forward;
 #[cfg(feature = "cuda")]
 pub mod cuda_optim;
 pub mod cuda_tensor;
+pub mod cuda_training;
 mod ops;
 pub mod precision;
 mod tensor;
@@ -46,6 +47,7 @@ pub use checkpoint::{
     CheckpointManager, CheckpointedSegment,
 };
 pub use context::Context;
+pub use cuda_training::{cuda_training_available, CudaTrainer};
 pub use ops::*;
 pub use precision::{
     bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32, GradScaler, MixedPrecisionConfig, Precision,
