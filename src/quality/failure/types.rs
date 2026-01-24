@@ -234,3 +234,294 @@ impl<E: std::error::Error> From<&E> for FailureContext {
         context
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_failure_category_description() {
+        assert_eq!(
+            FailureCategory::DataQuality.description(),
+            "Data quality issue"
+        );
+        assert_eq!(
+            FailureCategory::ModelConvergence.description(),
+            "Model convergence failure"
+        );
+        assert_eq!(
+            FailureCategory::ResourceExhaustion.description(),
+            "Resource exhaustion"
+        );
+        assert_eq!(
+            FailureCategory::DependencyFailure.description(),
+            "Dependency failure"
+        );
+        assert_eq!(
+            FailureCategory::ConfigurationError.description(),
+            "Configuration error"
+        );
+        assert_eq!(FailureCategory::Unknown.description(), "Unknown failure");
+    }
+
+    #[test]
+    fn test_failure_category_display() {
+        assert_eq!(
+            format!("{}", FailureCategory::DataQuality),
+            "Data quality issue"
+        );
+    }
+
+    #[test]
+    fn test_from_error_message_model_convergence() {
+        assert_eq!(
+            FailureCategory::from_error_message("NaN loss detected"),
+            FailureCategory::ModelConvergence
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("inf value in tensor"),
+            FailureCategory::ModelConvergence
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("exploding gradients"),
+            FailureCategory::ModelConvergence
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("model diverged"),
+            FailureCategory::ModelConvergence
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("gradient overflow"),
+            FailureCategory::ModelConvergence
+        );
+    }
+
+    #[test]
+    fn test_from_error_message_resource_exhaustion() {
+        assert_eq!(
+            FailureCategory::from_error_message("out of memory"),
+            FailureCategory::ResourceExhaustion
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("OOM killed"),
+            FailureCategory::ResourceExhaustion
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("memory allocation failed"),
+            FailureCategory::ResourceExhaustion
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("timeout exceeded"),
+            FailureCategory::ResourceExhaustion
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("disk full"),
+            FailureCategory::ResourceExhaustion
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("no space left"),
+            FailureCategory::ResourceExhaustion
+        );
+    }
+
+    #[test]
+    fn test_from_error_message_data_quality() {
+        assert_eq!(
+            FailureCategory::from_error_message("corrupt file"),
+            FailureCategory::DataQuality
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("invalid data format"),
+            FailureCategory::DataQuality
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("missing feature: X"),
+            FailureCategory::DataQuality
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("data format error"),
+            FailureCategory::DataQuality
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("parse error"),
+            FailureCategory::DataQuality
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("invalid shape"),
+            FailureCategory::DataQuality
+        );
+    }
+
+    #[test]
+    fn test_from_error_message_dependency() {
+        assert_eq!(
+            FailureCategory::from_error_message("dependency not found"),
+            FailureCategory::DependencyFailure
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("crate version conflict"),
+            FailureCategory::DependencyFailure
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("version mismatch"),
+            FailureCategory::DependencyFailure
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("build error"),
+            FailureCategory::DependencyFailure
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("compile failed"),
+            FailureCategory::DependencyFailure
+        );
+    }
+
+    #[test]
+    fn test_from_error_message_configuration() {
+        assert_eq!(
+            FailureCategory::from_error_message("config error"),
+            FailureCategory::ConfigurationError
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("invalid parameter"),
+            FailureCategory::ConfigurationError
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("invalid value for field"),
+            FailureCategory::ConfigurationError
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("missing field: name"),
+            FailureCategory::ConfigurationError
+        );
+        assert_eq!(
+            FailureCategory::from_error_message("required field missing"),
+            FailureCategory::ConfigurationError
+        );
+    }
+
+    #[test]
+    fn test_from_error_message_unknown() {
+        assert_eq!(
+            FailureCategory::from_error_message("something weird happened"),
+            FailureCategory::Unknown
+        );
+        assert_eq!(
+            FailureCategory::from_error_message(""),
+            FailureCategory::Unknown
+        );
+    }
+
+    #[test]
+    fn test_failure_context_new() {
+        let ctx = FailureContext::new("E001", "NaN loss detected");
+        assert_eq!(ctx.error_code, "E001");
+        assert_eq!(ctx.message, "NaN loss detected");
+        assert_eq!(ctx.category, FailureCategory::ModelConvergence);
+        assert!(ctx.stack_trace.is_none());
+        assert!(ctx.suggested_fix.is_none());
+        assert!(ctx.related_runs.is_empty());
+    }
+
+    #[test]
+    fn test_failure_context_with_category() {
+        let ctx =
+            FailureContext::with_category("E002", "Custom error", FailureCategory::DataQuality);
+        assert_eq!(ctx.error_code, "E002");
+        assert_eq!(ctx.category, FailureCategory::DataQuality);
+    }
+
+    #[test]
+    fn test_failure_context_with_stack_trace() {
+        let ctx = FailureContext::new("E001", "error").with_stack_trace("at line 42");
+        assert_eq!(ctx.stack_trace, Some("at line 42".to_string()));
+    }
+
+    #[test]
+    fn test_failure_context_with_suggested_fix() {
+        let ctx = FailureContext::new("E001", "error").with_suggested_fix("Try rebooting");
+        assert_eq!(ctx.suggested_fix, Some("Try rebooting".to_string()));
+    }
+
+    #[test]
+    fn test_failure_context_with_related_runs() {
+        let ctx = FailureContext::new("E001", "error")
+            .with_related_runs(vec!["run1".to_string(), "run2".to_string()]);
+        assert_eq!(ctx.related_runs.len(), 2);
+    }
+
+    #[test]
+    fn test_generate_suggested_fix_all_categories() {
+        let categories = [
+            FailureCategory::ModelConvergence,
+            FailureCategory::ResourceExhaustion,
+            FailureCategory::DataQuality,
+            FailureCategory::DependencyFailure,
+            FailureCategory::ConfigurationError,
+            FailureCategory::Unknown,
+        ];
+        for category in categories {
+            let ctx = FailureContext::with_category("E001", "error", category);
+            let fix = ctx.generate_suggested_fix();
+            assert!(!fix.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_failure_context_from_error() {
+        use std::io;
+        let err = io::Error::new(io::ErrorKind::OutOfMemory, "out of memory");
+        let ctx = FailureContext::from(&err);
+        assert_eq!(ctx.error_code, "ERR_GENERIC");
+        assert!(ctx.message.contains("memory"));
+        assert_eq!(ctx.category, FailureCategory::ResourceExhaustion);
+    }
+
+    #[test]
+    fn test_failure_category_serialization() {
+        let cat = FailureCategory::DataQuality;
+        let json = serde_json::to_string(&cat).unwrap();
+        let deserialized: FailureCategory = serde_json::from_str(&json).unwrap();
+        assert_eq!(cat, deserialized);
+    }
+
+    #[test]
+    fn test_failure_context_serialization() {
+        let ctx = FailureContext::new("E001", "test error")
+            .with_stack_trace("trace")
+            .with_suggested_fix("fix it");
+        let json = serde_json::to_string(&ctx).unwrap();
+        let deserialized: FailureContext = serde_json::from_str(&json).unwrap();
+        assert_eq!(ctx.error_code, deserialized.error_code);
+        assert_eq!(ctx.stack_trace, deserialized.stack_trace);
+    }
+
+    #[test]
+    fn test_failure_category_clone_copy() {
+        let cat = FailureCategory::ModelConvergence;
+        let cloned = cat.clone();
+        let copied = cat;
+        assert_eq!(cat, cloned);
+        assert_eq!(cat, copied);
+    }
+
+    #[test]
+    fn test_failure_category_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(FailureCategory::DataQuality);
+        set.insert(FailureCategory::ModelConvergence);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_failure_context_builder_chain() {
+        let ctx = FailureContext::new("E001", "error")
+            .with_stack_trace("trace")
+            .with_suggested_fix("fix")
+            .with_related_runs(vec!["run1".to_string()]);
+        assert!(ctx.stack_trace.is_some());
+        assert!(ctx.suggested_fix.is_some());
+        assert_eq!(ctx.related_runs.len(), 1);
+    }
+}
