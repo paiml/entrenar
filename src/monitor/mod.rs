@@ -41,6 +41,7 @@ pub mod llm;
 pub mod prometheus;
 pub mod report;
 pub mod storage;
+pub mod tui;
 pub mod wasm;
 
 // Re-exports for convenience
@@ -56,6 +57,10 @@ pub use report::{
     HanseiAnalyzer, IssueSeverity, MetricSummary, PostTrainingReport, TrainingIssue, Trend,
 };
 pub use storage::{InMemoryStore, JsonFileStore, MetricsStore, StorageError, StorageResult};
+pub use tui::{
+    BrailleChart, GpuTelemetry, SamplePeek, TrainingSnapshot, TrainingState, TrainingStateWriter,
+    TrainingStatus, TuiMonitor, TuiMonitorConfig,
+};
 pub use wasm::{WasmDashboard, WasmDashboardOptions, WasmMetricsCollector};
 
 #[cfg(test)]

@@ -304,3 +304,8 @@ required-features = []
 name = "calibration_check"
 path = "examples/calibration_check.rs"
 required-features = []
+
+[[example]]
+name = "finetune_test_gen"
+path = "examples/finetune_test_gen.rs"
+required-features = []

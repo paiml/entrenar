@@ -3,12 +3,27 @@
 //! Implements the SPEC-FT-001 specification for a production-ready
 //! fine-tuning pipeline with 100-point Popperian QA verification.
 //!
-//! Run with:
-//! cargo run --example finetune_test_gen -- --model Qwen/Qwen2.5-Coder-0.5B-Instruct
+//! # Usage
+//!
+//! ```bash
+//! # Shell 1: Start training (Producer - writes to metric store)
+//! cargo run --example finetune_test_gen -- \
+//!     --model Qwen/Qwen2.5-Coder-0.5B-Instruct \
+//!     --output ./experiments/ft-testgen-001
+//!
+//! # Shell 2: Attach TUI Monitor (Consumer - reads from metric store)
+//! cargo run --example finetune_test_gen -- \
+//!     --monitor \
+//!     --experiment ./experiments/ft-testgen-001
+//! ```
 
 use clap::Parser;
 use entrenar::{
     lora::QLoRALayer,
+    monitor::tui::{
+        app::{TrainingStateWriter, TuiMonitor, TuiMonitorConfig},
+        state::{GpuTelemetry, SamplePeek},
+    },
     optim::{AdamW, CosineAnnealingLR, LRScheduler, Optimizer},
     Tensor,
 };
@@ -399,11 +414,54 @@ struct Args {
     /// Publish adapters to HuggingFace Hub after training
     #[arg(long, default_value_t = true)]
     publish: bool,
+
+    /// Run in TUI monitor mode (Consumer - attaches to running training)
+    #[arg(long)]
+    monitor: bool,
+
+    /// Experiment directory to monitor (for --monitor mode)
+    #[arg(long)]
+    experiment: Option<String>,
+
+    /// TUI refresh rate in milliseconds
+    #[arg(long, default_value_t = 500)]
+    refresh_ms: u64,
 }
 
 fn main() {
     let args = Args::parse();
 
+    // =========================================================================
+    // TUI Monitor Mode (Consumer - Detached Observer per SPEC-FT-001 Section 10)
+    // =========================================================================
+    if args.monitor {
+        let experiment_dir = args.experiment.as_deref().unwrap_or(&args.output);
+
+        println!("📺 TUI Monitor Mode (SPEC-FT-001 Section 10)");
+        println!("============================================");
+        println!("Experiment: {experiment_dir}");
+        println!("Refresh:    {}ms", args.refresh_ms);
+        println!();
+
+        let config = TuiMonitorConfig {
+            refresh_ms: args.refresh_ms,
+            width: 80,
+            height: 24,
+            exit_on_complete: true,
+            ..Default::default()
+        };
+
+        let mut monitor = TuiMonitor::new(experiment_dir, config);
+        if let Err(e) = monitor.run() {
+            eprintln!("Monitor error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // =========================================================================
+    // Training Mode (Producer - writes to metric store)
+    // =========================================================================
     println!("🧪 Qwen2.5-Coder Rust Test Gen Fine-Tuner");
     println!("========================================");
     println!("Configuration:");
@@ -431,6 +489,10 @@ fn main() {
         return;
     }
 
+    // Initialize Training State Writer (Producer for TUI Monitor)
+    let experiment_id = format!("ft-testgen-{}", args.seed);
+    let mut state_writer = TrainingStateWriter::new(&args.output, &experiment_id, &args.model);
+
     // 1. Initialize Model
     let config = QwenConfig::coder_0_5b();
     let base_model = QwenModel::new(config);
@@ -448,22 +510,30 @@ fn main() {
     let mut optimizer = AdamW::new(2e-4, 0.9, 0.999, 1e-8, 0.01);
     let mut scheduler = CosineAnnealingLR::new(2e-4, args.epochs * 100, 2e-5);
 
-    // 4. Training Loop (Mock)
-    println!("\n🚀 Starting training...");
+    // Set epochs and steps for TUI
+    let steps_per_epoch = 5;
+    state_writer.set_epochs(args.epochs, steps_per_epoch);
+
+    // Start training (write initial state)
+    if let Err(e) = state_writer.start() {
+        eprintln!("Warning: Could not write training state: {e}");
+    }
+
+    println!("\n📺 TUI Monitor available: cargo run --example finetune_test_gen -- --monitor --experiment {}", args.output);
+    println!();
+
+    // 4. Training Loop
+    println!("🚀 Starting training...");
     println!("   Data mix: 75% Unit Tests, 25% Property Tests (Proptest)");
-    let mut loss_history = Vec::new();
 
     for epoch in 0..args.epochs {
         println!("Epoch {}/{}", epoch + 1, args.epochs);
-        // Mock steps
-        let steps = 5;
-        for s in 0..steps {
+
+        for step in 0..steps_per_epoch {
             // Simulated loss curve
-            let loss = 2.5 - (epoch as f32 * 0.5) - (s as f32 * 0.05);
-            loss_history.push(loss);
+            let loss = 2.5 - (epoch as f32 * 0.5) - (step as f32 * 0.05);
 
             // Optimizer step (mock - parameters updated in-place)
-            // In real training, this would apply gradients to parameters
             let _ = &mut model;
 
             let new_lr = {
@@ -472,8 +542,59 @@ fn main() {
             };
             optimizer.set_lr(new_lr);
 
-            println!("  Step {}: loss={:.4}, lr={:.2e}", s, loss, new_lr);
+            // Simulate gradient norm
+            let grad_norm = 1.5 + (step as f32 * 0.1);
+
+            // Simulate throughput
+            let tokens_per_second = 1200.0 + (step as f32 * 50.0);
+
+            // Write state update for TUI monitor
+            if let Err(e) = state_writer.update_step(
+                epoch + 1,
+                step + 1,
+                loss,
+                new_lr,
+                grad_norm,
+                tokens_per_second,
+            ) {
+                eprintln!("Warning: Could not write training state: {e}");
+            }
+
+            // Simulate GPU telemetry update (every step)
+            let gpu = GpuTelemetry {
+                device_name: "RTX 4090".to_string(),
+                utilization_percent: 85.0 + (step as f32 * 2.0),
+                vram_used_gb: 3.2 + (step as f32 * 0.1),
+                vram_total_gb: 24.0,
+                temperature_celsius: 62.0 + (step as f32 * 1.5),
+                power_watts: 320.0 + (step as f32 * 5.0),
+                power_limit_watts: 450.0,
+            };
+            let _ = state_writer.update_gpu(gpu);
+
+            // Simulate sample peek update (every 2 steps)
+            if step % 2 == 0 {
+                let sample = SamplePeek {
+                    input_preview: "fn is_even(n: u32) -> bool { n % 2 == 0 }".to_string(),
+                    target_preview: "#[test] fn test_is_even() { assert!(is_even(2)); }"
+                        .to_string(),
+                    generated_preview: "#[test] fn test_is_even() { assert!(is_even(2)); }"
+                        .to_string(),
+                    token_match_percent: 95.0 + (epoch as f32 * 1.5),
+                };
+                let _ = state_writer.update_sample(sample);
+            }
+
+            println!("  Step {}: loss={:.4}, lr={:.2e}", step + 1, loss, new_lr);
+
+            // Simulate training time
+            std::thread::sleep(std::time::Duration::from_millis(200));
         }
+    }
+
+    // Mark training as completed
+    if let Err(e) = state_writer.complete() {
+        eprintln!("Warning: Could not write completion state: {e}");
     }
 
     // 5. Verification & Publish
@@ -506,6 +627,11 @@ fn main() {
     }
 
     qa.print_report();
+
+    println!(
+        "\n📺 Training state saved to: {}",
+        state_writer.state_path().display()
+    );
 }
 
 #[cfg(test)]
