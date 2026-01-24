@@ -889,6 +889,7 @@ Current CPU throughput (~1 tok/s) makes quality evaluation impractical.
 
 #### Week 5: Integration & Verification (IN PROGRESS)
 - [x] Create `cuda_training_benchmark.rs` example for GPU verification
+- [x] Create `CudaTrainer` high-level API for training integration
 - [ ] Update `finetune_real` example to use CUDA by default
 - [ ] Verify >70% GPU utilization during training
 - [ ] Verify >100 tokens/second generation
