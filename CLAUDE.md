@@ -293,6 +293,34 @@ pmat analyze tdg src/ --min-score 90
 | Q4_0 quantize | 1GB | <1s | Scalar |
 | LoRA merge | 7B, r=64 | <5s | SIMD |
 
+## Sovereign AI Stack Toolchain
+
+**CRITICAL: Python is PROHIBITED.** This project uses only pure Rust tools from the Sovereign AI Stack.
+
+### Required Tools (use instead of Python equivalents)
+
+| Task | Use This | NOT This |
+|------|----------|----------|
+| HuggingFace downloads | `batuta hf pull` | `huggingface_hub` (Python) |
+| Model inference | `realizar` | `transformers` (Python) |
+| Tensor operations | `trueno` | `numpy`, `torch` (Python) |
+| Data processing | `aprender` | `pandas` (Python) |
+| Visualization | `trueno-viz` | `matplotlib` (Python) |
+
+### Batuta Oracle Commands
+
+Query the Sovereign AI Stack for tool recommendations:
+```bash
+# HuggingFace model download
+batuta hf pull model Qwen/Qwen2.5-Coder-0.5B-Instruct -o ./models/
+
+# Search HuggingFace Hub
+batuta hf search --type model "qwen coder"
+
+# Oracle recommendations
+batuta oracle stack  # Show PAIML stack components
+```
+
 ## Dependencies
 
 ```toml
