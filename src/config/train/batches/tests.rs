@@ -73,6 +73,7 @@ fn test_load_training_batches_nonexistent_file() {
         model: crate::config::ModelRef {
             path: PathBuf::from("model.bin"),
             layers: vec![],
+            ..Default::default()
         },
         data: crate::config::DataConfig {
             train: PathBuf::from("/nonexistent/path/data.parquet"),
@@ -80,6 +81,7 @@ fn test_load_training_batches_nonexistent_file() {
             batch_size: 8,
             auto_infer_types: false,
             seq_len: None,
+            ..Default::default()
         },
         optimizer: crate::config::OptimSpec {
             name: "adam".to_string(),
@@ -112,6 +114,7 @@ fn test_load_training_batches_unsupported_format() {
         model: crate::config::ModelRef {
             path: PathBuf::from("model.bin"),
             layers: vec![],
+            ..Default::default()
         },
         data: crate::config::DataConfig {
             train: temp_file.path().to_path_buf(),
@@ -119,6 +122,7 @@ fn test_load_training_batches_unsupported_format() {
             batch_size: 8,
             auto_infer_types: false,
             seq_len: None,
+            ..Default::default()
         },
         optimizer: crate::config::OptimSpec {
             name: "adam".to_string(),
@@ -242,6 +246,7 @@ fn test_load_training_batches_json_file() {
         model: crate::config::ModelRef {
             path: PathBuf::from("model.bin"),
             layers: vec![],
+            ..Default::default()
         },
         data: crate::config::DataConfig {
             train: temp_file.path().to_path_buf(),
@@ -249,6 +254,7 @@ fn test_load_training_batches_json_file() {
             batch_size: 4,
             auto_infer_types: false,
             seq_len: None,
+            ..Default::default()
         },
         optimizer: crate::config::OptimSpec {
             name: "adam".to_string(),

@@ -133,6 +133,84 @@ impl Optimizer for AdamW {
         }
     }
 
+    fn step_refs(&mut self, params: &mut [&mut Tensor]) {
+        // Ensure moments are sized correctly
+        if self.m.len() < params.len() {
+            self.m.resize(params.len(), None);
+            self.v.resize(params.len(), None);
+        }
+        self.t += 1;
+
+        // Bias correction factors
+        let lr_t = self.lr
+            * ((1.0 - self.beta2.powi(self.t as i32)).sqrt()
+                / (1.0 - self.beta1.powi(self.t as i32)));
+
+        for (i, param) in params.iter_mut().enumerate() {
+            if let Some(grad) = param.grad() {
+                // Use SIMD for large tensors (>= 16 elements for meaningful speedup)
+                if grad.len() >= 16 {
+                    // Initialize moments if needed
+                    if self.m[i].is_none() {
+                        self.m[i] = Some(Array1::zeros(grad.len()));
+                        self.v[i] = Some(Array1::zeros(grad.len()));
+                    }
+
+                    let m = self.m[i]
+                        .as_mut()
+                        .expect("momentum buffer initialized above");
+                    let v = self.v[i]
+                        .as_mut()
+                        .expect("velocity buffer initialized above");
+
+                    // Get mutable slices (arrays are always contiguous)
+                    let grad_slice = grad.as_slice().expect("grad array is contiguous");
+                    let m_slice = m.as_slice_mut().expect("momentum array is contiguous");
+                    let v_slice = v.as_slice_mut().expect("velocity array is contiguous");
+                    let param_slice = param
+                        .data_mut()
+                        .as_slice_mut()
+                        .expect("param array is contiguous");
+
+                    // Use SIMD-accelerated update
+                    super::simd::simd_adamw_update(
+                        grad_slice,
+                        m_slice,
+                        v_slice,
+                        param_slice,
+                        self.beta1,
+                        self.beta2,
+                        self.lr,
+                        lr_t,
+                        self.weight_decay,
+                        self.epsilon,
+                    );
+                } else {
+                    // Fallback to scalar implementation for small tensors
+                    let m_t = if let Some(m) = &self.m[i] {
+                        m * self.beta1 + &grad * (1.0 - self.beta1)
+                    } else {
+                        &grad * (1.0 - self.beta1)
+                    };
+
+                    let grad_sq = &grad * &grad;
+                    let v_t = if let Some(v) = &self.v[i] {
+                        v * self.beta2 + &grad_sq * (1.0 - self.beta2)
+                    } else {
+                        &grad_sq * (1.0 - self.beta2)
+                    };
+
+                    let adaptive_update = &m_t / &(v_t.mapv(f32::sqrt) + self.epsilon) * lr_t;
+                    let weight_decay_factor = 1.0 - self.lr * self.weight_decay;
+                    *param.data_mut() = param.data() * weight_decay_factor - &adaptive_update;
+
+                    self.m[i] = Some(m_t);
+                    self.v[i] = Some(v_t);
+                }
+            }
+        }
+    }
+
     fn lr(&self) -> f32 {
         self.lr
     }

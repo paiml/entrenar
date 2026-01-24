@@ -1,8 +1,36 @@
 //! YAML schema definitions for declarative training configuration
+//!
+//! ENT-114: Added `ModelMode` and `TrainingMode` for LLM training support.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// Model execution mode
+///
+/// Determines whether to use generic tabular ML training or transformer-based LLM training.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelMode {
+    /// Generic tabular ML (uses Trainer + MSELoss)
+    #[default]
+    Tabular,
+    /// Transformer-based LLM (uses TransformerTrainer + CausalLMLoss)
+    Transformer,
+}
+
+/// Training loss mode
+///
+/// Determines which loss function to use during training.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingMode {
+    /// Mean squared error loss (regression)
+    #[default]
+    Regression,
+    /// Cross-entropy loss for next-token prediction (language modeling)
+    CausalLm,
+}
 
 /// Complete training specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,20 +62,32 @@ pub struct TrainSpec {
 }
 
 /// Model reference and target layers
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelRef {
     /// Path to base model (GGUF, safetensors, etc.)
+    #[serde(default)]
     pub path: PathBuf,
 
     /// Target layers for LoRA (if applicable)
     #[serde(default)]
     pub layers: Vec<String>,
+
+    /// Model execution mode (tabular or transformer)
+    /// ENT-114: Routes to TransformerTrainer when mode=transformer
+    #[serde(default)]
+    pub mode: ModelMode,
+
+    /// Transformer architecture config preset (e.g., "qwen2_1_5b", "llama2_7b")
+    /// Only used when mode=transformer
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<String>,
 }
 
 /// Data configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataConfig {
     /// Training data path
+    #[serde(default)]
     pub train: PathBuf,
 
     /// Optional validation data path
@@ -55,6 +95,7 @@ pub struct DataConfig {
     pub val: Option<PathBuf>,
 
     /// Batch size
+    #[serde(default = "default_batch_size")]
     pub batch_size: usize,
 
     /// Auto-infer feature types from data
@@ -64,6 +105,43 @@ pub struct DataConfig {
     /// Sequence length (for transformers)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seq_len: Option<usize>,
+
+    // === ENT-114: LLM training fields ===
+    /// Path to HuggingFace tokenizer.json (for transformer mode)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokenizer: Option<PathBuf>,
+
+    /// Input text column name (for transformer mode)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_column: Option<String>,
+
+    /// Output/target text column name (for transformer mode)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_column: Option<String>,
+
+    /// Maximum sequence length for tokenization
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+}
+
+impl Default for DataConfig {
+    fn default() -> Self {
+        Self {
+            train: PathBuf::new(),
+            val: None,
+            batch_size: 8,
+            auto_infer_types: true,
+            seq_len: None,
+            tokenizer: None,
+            input_column: None,
+            output_column: None,
+            max_length: None,
+        }
+    }
+}
+
+fn default_batch_size() -> usize {
+    8
 }
 
 /// Optimizer specification
@@ -146,6 +224,23 @@ pub struct TrainingParams {
 
     /// Output directory for checkpoints
     pub output_dir: PathBuf,
+
+    // === ENT-114: LLM training fields ===
+    /// Training mode (regression or causal_lm)
+    /// ENT-114: Uses CausalLMLoss when mode=causal_lm
+    pub mode: TrainingMode,
+
+    /// Gradient accumulation steps (for large batch simulation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gradient_accumulation: Option<usize>,
+
+    /// Number of gradient checkpoints (for memory optimization)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoints: Option<usize>,
+
+    /// Use mixed precision training (bf16 or fp16)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mixed_precision: Option<String>,
 }
 
 impl Default for TrainingParams {
@@ -157,6 +252,10 @@ impl Default for TrainingParams {
             warmup_steps: 0,
             save_interval: 1,
             output_dir: PathBuf::from("./checkpoints"),
+            mode: TrainingMode::default(),
+            gradient_accumulation: None,
+            checkpoints: None,
+            mixed_precision: None,
         }
     }
 }
@@ -248,5 +347,124 @@ training:
         assert_eq!(params.epochs, 10);
         assert_eq!(params.save_interval, 1);
         assert!(params.grad_clip.is_none());
+    }
+
+    // === ENT-114 Tests: LLM Training Schema ===
+
+    #[test]
+    fn test_model_mode_default_is_tabular() {
+        let mode = ModelMode::default();
+        assert_eq!(mode, ModelMode::Tabular);
+    }
+
+    #[test]
+    fn test_training_mode_default_is_regression() {
+        let mode = TrainingMode::default();
+        assert_eq!(mode, TrainingMode::Regression);
+    }
+
+    #[test]
+    fn test_model_mode_serde_roundtrip() {
+        // Tabular mode
+        let yaml = "tabular";
+        let mode: ModelMode = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(mode, ModelMode::Tabular);
+
+        // Transformer mode
+        let yaml = "transformer";
+        let mode: ModelMode = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(mode, ModelMode::Transformer);
+    }
+
+    #[test]
+    fn test_training_mode_serde_roundtrip() {
+        // Regression mode
+        let yaml = "regression";
+        let mode: TrainingMode = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(mode, TrainingMode::Regression);
+
+        // CausalLM mode
+        let yaml = "causal_lm";
+        let mode: TrainingMode = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(mode, TrainingMode::CausalLm);
+    }
+
+    #[test]
+    fn test_deserialize_transformer_config() {
+        let yaml = r"
+model:
+  path: qwen2.5-coder-1.5b.safetensors
+  mode: transformer
+  config: qwen2_1_5b
+  layers: [q_proj, v_proj]
+
+data:
+  train: corpus/train.parquet
+  batch_size: 4
+  tokenizer: tokenizer.json
+  input_column: input
+  output_column: output
+  max_length: 512
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+
+training:
+  epochs: 3
+  mode: causal_lm
+  gradient_accumulation: 4
+  checkpoints: 6
+  mixed_precision: bf16
+";
+
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+
+        // Model assertions
+        assert_eq!(spec.model.mode, ModelMode::Transformer);
+        assert_eq!(spec.model.config, Some("qwen2_1_5b".to_string()));
+
+        // Data assertions
+        assert_eq!(spec.data.tokenizer, Some(PathBuf::from("tokenizer.json")));
+        assert_eq!(spec.data.input_column, Some("input".to_string()));
+        assert_eq!(spec.data.output_column, Some("output".to_string()));
+        assert_eq!(spec.data.max_length, Some(512));
+
+        // Training assertions
+        assert_eq!(spec.training.mode, TrainingMode::CausalLm);
+        assert_eq!(spec.training.gradient_accumulation, Some(4));
+        assert_eq!(spec.training.checkpoints, Some(6));
+        assert_eq!(spec.training.mixed_precision, Some("bf16".to_string()));
+    }
+
+    #[test]
+    fn test_backward_compatible_minimal_config() {
+        // Ensure old configs still work (defaults to tabular/regression)
+        let yaml = r"
+model:
+  path: model.gguf
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adam
+  lr: 0.001
+";
+
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(spec.model.mode, ModelMode::Tabular);
+        assert_eq!(spec.training.mode, TrainingMode::Regression);
+        assert!(spec.data.tokenizer.is_none());
+    }
+
+    #[test]
+    fn test_training_params_new_fields_default() {
+        let params = TrainingParams::default();
+        assert_eq!(params.mode, TrainingMode::Regression);
+        assert!(params.gradient_accumulation.is_none());
+        assert!(params.checkpoints.is_none());
+        assert!(params.mixed_precision.is_none());
     }
 }

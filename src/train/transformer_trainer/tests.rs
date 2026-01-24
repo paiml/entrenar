@@ -112,7 +112,7 @@ fn test_transformer_trainer_forward_single() {
     let input_ids = vec![1, 2, 3];
     let target_ids = vec![2, 3, 4];
 
-    let (loss, logits) = trainer.forward_single(&input_ids, &target_ids);
+    let (loss, _loss_tensor, logits) = trainer.forward_single(&input_ids, &target_ids);
 
     assert!(loss > 0.0);
     assert!(loss.is_finite());

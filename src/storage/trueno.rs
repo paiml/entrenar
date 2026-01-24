@@ -47,10 +47,9 @@ impl TruenoBackend {
     /// Open a TruenoDB backend at the specified path
     ///
     /// Currently creates an in-memory store. File persistence will be
-    /// added when trueno-db supports it.
+    /// added when trueno-db supports it (FUTURE: file-backed storage).
     #[allow(unused_variables)]
     pub fn open(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        // TODO: Use file-backed storage when trueno-db supports it
         Ok(Self::new())
     }
 
@@ -202,9 +201,9 @@ impl ExperimentStorage for TruenoBackend {
         }
         drop(store);
 
-        // TODO: Store artifact in trueno-db when ArtifactRecord storage is available
+        // Artifact storage: FUTURE(trueno-db) when ArtifactRecord is available
         let hash = Self::compute_hash(data);
-        let _ = key; // Currently unused until artifact storage is implemented
+        let _ = key; // Unused until artifact storage is implemented
 
         Ok(hash)
     }

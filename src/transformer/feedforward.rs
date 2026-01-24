@@ -114,6 +114,11 @@ impl FeedForward {
     pub fn parameters(&self) -> Vec<&Tensor> {
         vec![&self.w_gate, &self.w_up, &self.w_down]
     }
+
+    /// Get all parameters as mutable references for optimizer
+    pub fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
+        vec![&mut self.w_gate, &mut self.w_up, &mut self.w_down]
+    }
 }
 
 #[cfg(test)]

@@ -55,6 +55,7 @@ pub mod server;
 pub mod sovereign;
 pub mod storage;
 pub mod tokenizer;
+pub mod trace;
 pub mod train;
 pub mod transformer;
 pub mod yaml_mode;

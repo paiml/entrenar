@@ -117,6 +117,16 @@ impl TransformerBlock {
         params.extend(self.ffn.parameters());
         params
     }
+
+    /// Get all parameters as mutable references for optimizer
+    pub fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        params.push(&mut self.input_norm.weight);
+        params.push(&mut self.post_attn_norm.weight);
+        params.extend(self.self_attn.parameters_mut());
+        params.extend(self.ffn.parameters_mut());
+        params
+    }
 }
 
 #[cfg(test)]

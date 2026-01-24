@@ -103,3 +103,178 @@ impl std::fmt::Display for MetamorphicRelationType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metamorphic_violation_new() {
+        let violation = MetamorphicViolation::new(
+            "v1",
+            MetamorphicRelationType::Additive,
+            "Test violation",
+            "input x=5",
+            "f(x+1) = f(x) + 1",
+            "f(x+1) = f(x) + 2",
+            0.7,
+        );
+
+        assert_eq!(violation.id, "v1");
+        assert_eq!(violation.relation_type, MetamorphicRelationType::Additive);
+        assert_eq!(violation.description, "Test violation");
+        assert!((violation.severity - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_metamorphic_violation_severity_clamped() {
+        let high = MetamorphicViolation::new(
+            "v1",
+            MetamorphicRelationType::Identity,
+            "desc",
+            "input",
+            "exp",
+            "act",
+            1.5, // should be clamped to 1.0
+        );
+        assert!((high.severity - 1.0).abs() < 1e-6);
+
+        let low = MetamorphicViolation::new(
+            "v2",
+            MetamorphicRelationType::Identity,
+            "desc",
+            "input",
+            "exp",
+            "act",
+            -0.5, // should be clamped to 0.0
+        );
+        assert!((low.severity - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_is_critical() {
+        let critical = MetamorphicViolation::new(
+            "v1",
+            MetamorphicRelationType::Identity,
+            "desc",
+            "input",
+            "exp",
+            "act",
+            0.8,
+        );
+        assert!(critical.is_critical());
+
+        let non_critical = MetamorphicViolation::new(
+            "v2",
+            MetamorphicRelationType::Identity,
+            "desc",
+            "input",
+            "exp",
+            "act",
+            0.79,
+        );
+        assert!(!non_critical.is_critical());
+    }
+
+    #[test]
+    fn test_is_warning() {
+        let warning = MetamorphicViolation::new(
+            "v1",
+            MetamorphicRelationType::Identity,
+            "desc",
+            "input",
+            "exp",
+            "act",
+            0.5,
+        );
+        assert!(warning.is_warning());
+
+        let non_warning = MetamorphicViolation::new(
+            "v2",
+            MetamorphicRelationType::Identity,
+            "desc",
+            "input",
+            "exp",
+            "act",
+            0.49,
+        );
+        assert!(!non_warning.is_warning());
+    }
+
+    #[test]
+    fn test_relation_type_display() {
+        assert_eq!(MetamorphicRelationType::Additive.to_string(), "additive");
+        assert_eq!(
+            MetamorphicRelationType::Multiplicative.to_string(),
+            "multiplicative"
+        );
+        assert_eq!(
+            MetamorphicRelationType::Permutation.to_string(),
+            "permutation"
+        );
+        assert_eq!(
+            MetamorphicRelationType::Composition.to_string(),
+            "composition"
+        );
+        assert_eq!(MetamorphicRelationType::Negation.to_string(), "negation");
+        assert_eq!(MetamorphicRelationType::Inclusion.to_string(), "inclusion");
+        assert_eq!(MetamorphicRelationType::Identity.to_string(), "identity");
+        assert_eq!(MetamorphicRelationType::Custom.to_string(), "custom");
+    }
+
+    #[test]
+    fn test_relation_type_eq() {
+        assert_eq!(
+            MetamorphicRelationType::Additive,
+            MetamorphicRelationType::Additive
+        );
+        assert_ne!(
+            MetamorphicRelationType::Additive,
+            MetamorphicRelationType::Multiplicative
+        );
+    }
+
+    #[test]
+    fn test_relation_type_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(MetamorphicRelationType::Additive);
+        set.insert(MetamorphicRelationType::Additive);
+        assert_eq!(set.len(), 1);
+        set.insert(MetamorphicRelationType::Identity);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_violation_serde() {
+        let violation = MetamorphicViolation::new(
+            "v1",
+            MetamorphicRelationType::Additive,
+            "Test violation",
+            "input",
+            "expected",
+            "actual",
+            0.7,
+        );
+
+        let json = serde_json::to_string(&violation).unwrap();
+        let deserialized: MetamorphicViolation = serde_json::from_str(&json).unwrap();
+        assert_eq!(violation.id, deserialized.id);
+        assert_eq!(violation.relation_type, deserialized.relation_type);
+    }
+
+    #[test]
+    fn test_violation_clone() {
+        let violation = MetamorphicViolation::new(
+            "v1",
+            MetamorphicRelationType::Additive,
+            "Test",
+            "input",
+            "expected",
+            "actual",
+            0.5,
+        );
+        let cloned = violation.clone();
+        assert_eq!(violation, cloned);
+    }
+}

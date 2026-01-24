@@ -223,14 +223,12 @@ mod tests {
         let spec = TrainSpec {
             model: ModelRef {
                 path: PathBuf::from("nonexistent.gguf"),
-                layers: vec![],
+                ..Default::default()
             },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
-                val: None,
                 batch_size: 8,
-                auto_infer_types: true,
-                seq_len: None,
+                ..Default::default()
             },
             optimizer: OptimSpec {
                 name: "adam".to_string(),
@@ -287,14 +285,12 @@ mod tests {
         let spec = TrainSpec {
             model: ModelRef {
                 path: temp_path.clone(),
-                layers: vec![],
+                ..Default::default()
             },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
-                val: None,
                 batch_size: 8,
-                auto_infer_types: true,
-                seq_len: None,
+                ..Default::default()
             },
             optimizer: OptimSpec {
                 name: "adam".to_string(),
@@ -350,14 +346,12 @@ mod tests {
         let spec = TrainSpec {
             model: ModelRef {
                 path: temp_path.clone(),
-                layers: vec![],
+                ..Default::default()
             },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
-                val: None,
                 batch_size: 32,
-                auto_infer_types: true,
-                seq_len: None,
+                ..Default::default()
             },
             optimizer: OptimSpec {
                 name: "adamw".to_string(),

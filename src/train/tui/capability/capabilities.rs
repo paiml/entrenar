@@ -124,3 +124,106 @@ impl TerminalCapabilities {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_terminal_capabilities_default() {
+        let caps = TerminalCapabilities::default();
+        assert_eq!(caps.width, 80);
+        assert_eq!(caps.height, 24);
+        assert!(caps.unicode);
+        assert!(caps.ansi_color);
+        assert!(!caps.true_color);
+        assert!(caps.is_tty);
+    }
+
+    #[test]
+    fn test_terminal_capabilities_clone() {
+        let caps = TerminalCapabilities::default();
+        let cloned = caps;
+        assert_eq!(caps.width, cloned.width);
+        assert_eq!(caps.unicode, cloned.unicode);
+    }
+
+    #[test]
+    fn test_terminal_capabilities_eq() {
+        let caps1 = TerminalCapabilities::default();
+        let caps2 = TerminalCapabilities::default();
+        assert_eq!(caps1, caps2);
+
+        let caps3 = TerminalCapabilities {
+            width: 120,
+            ..Default::default()
+        };
+        assert_ne!(caps1, caps3);
+    }
+
+    #[test]
+    fn test_terminal_capabilities_debug() {
+        let caps = TerminalCapabilities::default();
+        let debug = format!("{:?}", caps);
+        assert!(debug.contains("TerminalCapabilities"));
+        assert!(debug.contains("width: 80"));
+    }
+
+    #[test]
+    fn test_recommended_mode_not_tty() {
+        let caps = TerminalCapabilities {
+            is_tty: false,
+            ..Default::default()
+        };
+        assert_eq!(caps.recommended_mode(), TerminalMode::Ascii);
+    }
+
+    #[test]
+    fn test_recommended_mode_true_color() {
+        let caps = TerminalCapabilities {
+            is_tty: true,
+            true_color: true,
+            unicode: true,
+            ..Default::default()
+        };
+        assert_eq!(caps.recommended_mode(), TerminalMode::Ansi);
+    }
+
+    #[test]
+    fn test_recommended_mode_unicode() {
+        let caps = TerminalCapabilities {
+            is_tty: true,
+            true_color: false,
+            unicode: true,
+            ..Default::default()
+        };
+        assert_eq!(caps.recommended_mode(), TerminalMode::Unicode);
+    }
+
+    #[test]
+    fn test_recommended_mode_ascii_fallback() {
+        let caps = TerminalCapabilities {
+            is_tty: true,
+            true_color: false,
+            unicode: false,
+            ansi_color: false,
+            ..Default::default()
+        };
+        assert_eq!(caps.recommended_mode(), TerminalMode::Ascii);
+    }
+
+    #[test]
+    fn test_detect_returns_valid_capabilities() {
+        // Note: actual values depend on environment
+        let caps = TerminalCapabilities::detect();
+        assert!(caps.width > 0);
+        assert!(caps.height > 0);
+    }
+
+    #[test]
+    fn test_get_size_returns_valid_size() {
+        let (width, height) = TerminalCapabilities::get_size();
+        assert!(width > 0);
+        assert!(height > 0);
+    }
+}

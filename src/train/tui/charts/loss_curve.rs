@@ -134,3 +134,109 @@ impl LossCurveDisplay {
         println!("{}", self.render_terminal());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_loss_curve_display_new() {
+        let display = LossCurveDisplay::new(80, 20);
+        assert_eq!(display.width, 80);
+        assert_eq!(display.height, 20);
+        assert_eq!(display.terminal_mode, TerminalMode::Unicode);
+    }
+
+    #[test]
+    fn test_loss_curve_display_terminal_mode() {
+        let display = LossCurveDisplay::new(80, 20).terminal_mode(TerminalMode::Ansi);
+        assert_eq!(display.terminal_mode, TerminalMode::Ansi);
+    }
+
+    #[test]
+    fn test_loss_curve_display_smoothing() {
+        let display = LossCurveDisplay::new(80, 20).smoothing(0.9);
+        // Just verify it doesn't panic
+        assert_eq!(display.epochs(), 0);
+    }
+
+    #[test]
+    fn test_loss_curve_display_push_train_loss() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        display.push_train_loss(1.0);
+        display.push_train_loss(0.9);
+        display.push_train_loss(0.8);
+        assert_eq!(display.epochs(), 3);
+    }
+
+    #[test]
+    fn test_loss_curve_display_push_val_loss() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        display.push_val_loss(1.2);
+        display.push_val_loss(1.1);
+        // epochs count max across series
+        assert!(display.epochs() >= 2);
+    }
+
+    #[test]
+    fn test_loss_curve_display_push_losses() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        display.push_losses(1.0, 1.2);
+        display.push_losses(0.9, 1.1);
+        assert!(display.epochs() >= 2);
+    }
+
+    #[test]
+    fn test_loss_curve_display_summary() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        display.push_train_loss(1.0);
+        display.push_train_loss(0.5);
+        display.push_val_loss(1.2);
+        display.push_val_loss(0.6);
+
+        let summary = display.summary();
+        assert_eq!(summary.len(), 2);
+        assert_eq!(summary[0].0, "Train");
+        assert_eq!(summary[1].0, "Val");
+    }
+
+    #[test]
+    fn test_loss_curve_display_render_insufficient_data() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        display.push_train_loss(1.0);
+        // Only 1 data point
+        let rendered = display.render_terminal();
+        assert!(rendered.contains("waiting for data"));
+    }
+
+    #[test]
+    fn test_loss_curve_display_render_with_data() {
+        let mut display = LossCurveDisplay::new(80, 20);
+        for i in 0..10 {
+            display.push_train_loss(1.0 - i as f32 * 0.1);
+        }
+        let rendered = display.render_terminal();
+        // Should contain actual rendered content
+        assert!(!rendered.contains("waiting for data"));
+    }
+
+    #[test]
+    fn test_loss_curve_display_render_ascii_mode() {
+        let mut display = LossCurveDisplay::new(80, 20).terminal_mode(TerminalMode::Ascii);
+        for i in 0..10 {
+            display.push_train_loss(1.0 - i as f32 * 0.1);
+        }
+        let rendered = display.render_terminal();
+        assert!(!rendered.is_empty());
+    }
+
+    #[test]
+    fn test_loss_curve_display_render_ansi_mode() {
+        let mut display = LossCurveDisplay::new(80, 20).terminal_mode(TerminalMode::Ansi);
+        for i in 0..10 {
+            display.push_train_loss(1.0 - i as f32 * 0.1);
+        }
+        let rendered = display.render_terminal();
+        assert!(!rendered.is_empty());
+    }
+}

@@ -69,3 +69,111 @@ impl std::fmt::Display for SimdCapability {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simd_capability_default() {
+        assert_eq!(SimdCapability::default(), SimdCapability::None);
+    }
+
+    #[test]
+    fn test_vector_width_bits_none() {
+        assert_eq!(SimdCapability::None.vector_width_bits(), 0);
+    }
+
+    #[test]
+    fn test_vector_width_bits_sse4() {
+        assert_eq!(SimdCapability::Sse4.vector_width_bits(), 128);
+    }
+
+    #[test]
+    fn test_vector_width_bits_avx2() {
+        assert_eq!(SimdCapability::Avx2.vector_width_bits(), 256);
+    }
+
+    #[test]
+    fn test_vector_width_bits_avx512() {
+        assert_eq!(SimdCapability::Avx512.vector_width_bits(), 512);
+    }
+
+    #[test]
+    fn test_vector_width_bits_neon() {
+        assert_eq!(SimdCapability::Neon.vector_width_bits(), 128);
+    }
+
+    #[test]
+    fn test_simd_capability_display_none() {
+        assert_eq!(SimdCapability::None.to_string(), "none");
+    }
+
+    #[test]
+    fn test_simd_capability_display_sse4() {
+        assert_eq!(SimdCapability::Sse4.to_string(), "SSE4");
+    }
+
+    #[test]
+    fn test_simd_capability_display_avx2() {
+        assert_eq!(SimdCapability::Avx2.to_string(), "AVX2");
+    }
+
+    #[test]
+    fn test_simd_capability_display_avx512() {
+        assert_eq!(SimdCapability::Avx512.to_string(), "AVX-512");
+    }
+
+    #[test]
+    fn test_simd_capability_display_neon() {
+        assert_eq!(SimdCapability::Neon.to_string(), "NEON");
+    }
+
+    #[test]
+    fn test_simd_capability_detect() {
+        let detected = SimdCapability::detect();
+        // Just verify it returns one of the valid variants
+        let _ = detected.vector_width_bits(); // Should not panic
+    }
+
+    #[test]
+    fn test_simd_capability_clone() {
+        let cap = SimdCapability::Avx2;
+        let cloned = cap;
+        assert_eq!(cap, cloned);
+    }
+
+    #[test]
+    fn test_simd_capability_eq() {
+        assert_eq!(SimdCapability::Avx2, SimdCapability::Avx2);
+        assert_ne!(SimdCapability::Avx2, SimdCapability::Avx512);
+    }
+
+    #[test]
+    fn test_simd_capability_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(SimdCapability::Avx2);
+        set.insert(SimdCapability::Avx2);
+        assert_eq!(set.len(), 1);
+        set.insert(SimdCapability::Avx512);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_simd_capability_serde() {
+        let cap = SimdCapability::Avx512;
+        let json = serde_json::to_string(&cap).unwrap();
+        let deserialized: SimdCapability = serde_json::from_str(&json).unwrap();
+        assert_eq!(cap, deserialized);
+    }
+
+    #[test]
+    fn test_simd_capability_debug() {
+        assert_eq!(format!("{:?}", SimdCapability::None), "None");
+        assert_eq!(format!("{:?}", SimdCapability::Sse4), "Sse4");
+        assert_eq!(format!("{:?}", SimdCapability::Avx2), "Avx2");
+        assert_eq!(format!("{:?}", SimdCapability::Avx512), "Avx512");
+        assert_eq!(format!("{:?}", SimdCapability::Neon), "Neon");
+    }
+}

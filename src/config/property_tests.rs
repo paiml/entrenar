@@ -33,7 +33,11 @@ mod tests {
             arb_path(),
             proptest::collection::vec(arb_layer_name(), 0..5),
         )
-            .prop_map(|(path, layers)| ModelRef { path, layers })
+            .prop_map(|(path, layers)| ModelRef {
+                path,
+                layers,
+                ..Default::default()
+            })
     }
 
     fn arb_data_config() -> impl Strategy<Value = DataConfig> {
@@ -50,6 +54,7 @@ mod tests {
                 batch_size,
                 auto_infer_types: auto_infer,
                 seq_len,
+                ..Default::default()
             })
     }
 
@@ -108,10 +113,11 @@ mod tests {
                 TrainingParams {
                     epochs,
                     grad_clip,
-                    lr_scheduler: lr_scheduler,
+                    lr_scheduler,
                     warmup_steps: warmup,
                     save_interval,
                     output_dir: PathBuf::from("./checkpoints"),
+                    ..Default::default()
                 }
             })
     }
@@ -387,7 +393,7 @@ mod tests {
     fn test_empty_layers_serializes() {
         let model = ModelRef {
             path: PathBuf::from("model.gguf"),
-            layers: vec![],
+            ..Default::default()
         };
         let yaml = serde_yaml::to_string(&model).unwrap();
         let parsed: ModelRef = serde_yaml::from_str(&yaml).unwrap();
@@ -398,10 +404,8 @@ mod tests {
     fn test_large_batch_size() {
         let data = DataConfig {
             train: PathBuf::from("data.parquet"),
-            val: None,
             batch_size: 1_000_000,
-            auto_infer_types: true,
-            seq_len: None,
+            ..Default::default()
         };
         let yaml = serde_yaml::to_string(&data).unwrap();
         let parsed: DataConfig = serde_yaml::from_str(&yaml).unwrap();
@@ -425,6 +429,7 @@ mod tests {
         let model = ModelRef {
             path: PathBuf::from("模型/model.gguf"),
             layers: vec!["層".to_string()],
+            ..Default::default()
         };
         let yaml = serde_yaml::to_string(&model).unwrap();
         let parsed: ModelRef = serde_yaml::from_str(&yaml).unwrap();
@@ -436,14 +441,12 @@ mod tests {
         let spec = TrainSpec {
             model: ModelRef {
                 path: PathBuf::from("m.gguf"),
-                layers: vec![],
+                ..Default::default()
             },
             data: DataConfig {
                 train: PathBuf::from("d.parquet"),
-                val: None,
                 batch_size: 1,
-                auto_infer_types: true,
-                seq_len: None,
+                ..Default::default()
             },
             optimizer: OptimSpec {
                 name: "sgd".to_string(),

@@ -10,14 +10,12 @@ fn test_load_training_batches_missing_file() {
     let spec = TrainSpec {
         model: ModelRef {
             path: std::path::PathBuf::from("model.gguf"),
-            layers: vec![],
+            ..Default::default()
         },
         data: DataConfig {
             train: std::path::PathBuf::from("/nonexistent/data.parquet"),
-            val: None,
             batch_size: 4,
-            auto_infer_types: true,
-            seq_len: None,
+            ..Default::default()
         },
         optimizer: OptimSpec {
             name: "adam".to_string(),
@@ -45,14 +43,12 @@ fn test_load_training_batches_unsupported_extension() {
     let spec = TrainSpec {
         model: ModelRef {
             path: std::path::PathBuf::from("model.gguf"),
-            layers: vec![],
+            ..Default::default()
         },
         data: DataConfig {
             train: temp_file.path().to_path_buf(),
-            val: None,
             batch_size: 4,
-            auto_infer_types: true,
-            seq_len: None,
+            ..Default::default()
         },
         optimizer: OptimSpec {
             name: "adam".to_string(),
@@ -82,14 +78,12 @@ fn test_load_training_batches_json() {
     let spec = TrainSpec {
         model: ModelRef {
             path: std::path::PathBuf::from("model.gguf"),
-            layers: vec![],
+            ..Default::default()
         },
         data: DataConfig {
             train: temp_file.path().to_path_buf(),
-            val: None,
             batch_size: 1,
-            auto_infer_types: true,
-            seq_len: None,
+            ..Default::default()
         },
         optimizer: OptimSpec {
             name: "adam".to_string(),

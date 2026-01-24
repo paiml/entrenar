@@ -41,3 +41,95 @@ impl std::fmt::Display for Severity {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_severity_parse_critical() {
+        assert_eq!(Severity::parse("critical"), Severity::Critical);
+        assert_eq!(Severity::parse("CRITICAL"), Severity::Critical);
+        assert_eq!(Severity::parse("Critical"), Severity::Critical);
+    }
+
+    #[test]
+    fn test_severity_parse_high() {
+        assert_eq!(Severity::parse("high"), Severity::High);
+        assert_eq!(Severity::parse("HIGH"), Severity::High);
+    }
+
+    #[test]
+    fn test_severity_parse_medium() {
+        assert_eq!(Severity::parse("medium"), Severity::Medium);
+        assert_eq!(Severity::parse("MEDIUM"), Severity::Medium);
+    }
+
+    #[test]
+    fn test_severity_parse_low() {
+        assert_eq!(Severity::parse("low"), Severity::Low);
+        assert_eq!(Severity::parse("LOW"), Severity::Low);
+    }
+
+    #[test]
+    fn test_severity_parse_unknown() {
+        assert_eq!(Severity::parse("unknown"), Severity::None);
+        assert_eq!(Severity::parse(""), Severity::None);
+        assert_eq!(Severity::parse("info"), Severity::None);
+    }
+
+    #[test]
+    fn test_severity_display() {
+        assert_eq!(Severity::None.to_string(), "none");
+        assert_eq!(Severity::Low.to_string(), "low");
+        assert_eq!(Severity::Medium.to_string(), "medium");
+        assert_eq!(Severity::High.to_string(), "high");
+        assert_eq!(Severity::Critical.to_string(), "critical");
+    }
+
+    #[test]
+    fn test_severity_ord() {
+        assert!(Severity::None < Severity::Low);
+        assert!(Severity::Low < Severity::Medium);
+        assert!(Severity::Medium < Severity::High);
+        assert!(Severity::High < Severity::Critical);
+    }
+
+    #[test]
+    fn test_severity_eq() {
+        assert_eq!(Severity::Critical, Severity::Critical);
+        assert_ne!(Severity::Critical, Severity::High);
+    }
+
+    #[test]
+    fn test_severity_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Severity::Critical);
+        set.insert(Severity::Critical);
+        assert_eq!(set.len(), 1);
+        set.insert(Severity::High);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_severity_serde() {
+        let sev = Severity::High;
+        let json = serde_json::to_string(&sev).unwrap();
+        let deserialized: Severity = serde_json::from_str(&json).unwrap();
+        assert_eq!(sev, deserialized);
+    }
+
+    #[test]
+    fn test_severity_clone() {
+        let sev = Severity::Critical;
+        let cloned = sev;
+        assert_eq!(sev, cloned);
+    }
+
+    #[test]
+    fn test_severity_debug() {
+        assert_eq!(format!("{:?}", Severity::Critical), "Critical");
+        assert_eq!(format!("{:?}", Severity::None), "None");
+    }
+}

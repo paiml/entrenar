@@ -386,14 +386,12 @@ fn create_test_spec() -> crate::config::TrainSpec {
     crate::config::TrainSpec {
         model: crate::config::ModelRef {
             path: PathBuf::from("model.gguf"),
-            layers: vec![],
+            ..Default::default()
         },
         data: crate::config::DataConfig {
             train: PathBuf::from("train.parquet"),
-            val: None,
             batch_size: 8,
-            auto_infer_types: true,
-            seq_len: None,
+            ..Default::default()
         },
         optimizer: crate::config::OptimSpec {
             name: "adam".to_string(),

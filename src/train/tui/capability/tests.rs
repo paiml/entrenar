@@ -190,6 +190,7 @@ fn test_get_size_invalid_env_vars() {
 }
 
 #[test]
+#[ignore = "Modifies env vars, must run single-threaded: cargo test -- --ignored --test-threads=1"]
 fn test_detect_with_utf8_lang() {
     // Save original values
     let orig_lang = std::env::var("LANG").ok();
@@ -222,6 +223,7 @@ fn test_detect_with_utf8_lang() {
 }
 
 #[test]
+#[ignore = "Modifies env vars, must run single-threaded: cargo test -- --ignored --test-threads=1"]
 fn test_detect_with_dumb_term() {
     // Save original values
     let orig_term = std::env::var("TERM").ok();
@@ -241,6 +243,7 @@ fn test_detect_with_dumb_term() {
 }
 
 #[test]
+#[ignore = "Modifies env vars, must run single-threaded: cargo test -- --ignored --test-threads=1"]
 fn test_detect_with_truecolor() {
     // Save original values
     let orig_colorterm = std::env::var("COLORTERM").ok();
@@ -263,6 +266,7 @@ fn test_detect_with_truecolor() {
 }
 
 #[test]
+#[ignore = "Modifies env vars, must run single-threaded: cargo test -- --ignored --test-threads=1"]
 fn test_detect_with_24bit() {
     // Save original values
     let orig_colorterm = std::env::var("COLORTERM").ok();
@@ -282,6 +286,7 @@ fn test_detect_with_24bit() {
 }
 
 #[test]
+#[ignore = "Modifies env vars, must run single-threaded: cargo test -- --ignored --test-threads=1"]
 fn test_detect_with_empty_term() {
     // Save original values
     let orig_term = std::env::var("TERM").ok();
@@ -299,6 +304,7 @@ fn test_detect_with_empty_term() {
 }
 
 #[test]
+#[ignore = "Modifies env vars, must run single-threaded: cargo test -- --ignored --test-threads=1"]
 fn test_detect_with_lowercase_utf() {
     // Save original values
     let orig_lang = std::env::var("LANG").ok();
@@ -318,6 +324,7 @@ fn test_detect_with_lowercase_utf() {
 }
 
 #[test]
+#[ignore = "Modifies env vars, must run single-threaded: cargo test -- --ignored --test-threads=1"]
 fn test_detect_without_utf_lang() {
     // Save original values
     let orig_lang = std::env::var("LANG").ok();

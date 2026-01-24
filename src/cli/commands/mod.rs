@@ -13,6 +13,9 @@ mod research;
 mod train;
 mod validate;
 
+#[cfg(test)]
+mod tests;
+
 use crate::cli::LogLevel;
 use crate::config::{Cli, Command};
 

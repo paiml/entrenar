@@ -881,11 +881,52 @@ phases:
         actual_hours: 12
         status: complete
 
+  - name: "Phase 17: LLM Training Pipeline (YAML → TransformerTrainer)"
+    hours: 22
+    status: in-progress
+    description: "Wire YAML training flow to TransformerTrainer for actual LLM fine-tuning"
+    spec: "docs/specifications/rust-cli-docs-corpus.md"
+    tickets:
+      - id: ENT-114
+        name: "Add mode:transformer to YAML schema"
+        estimated_hours: 2
+        actual_hours: 2
+        status: complete
+        notes: "Added ModelMode (tabular/transformer) and TrainingMode (regression/causal_lm) enums. New fields in ModelRef, DataConfig, TrainingParams. 8 new tests. Backward compatible with defaults."
+
+      - id: ENT-115
+        name: "Wire YAML loader to TransformerTrainer"
+        estimated_hours: 4
+        actual_hours: 4
+        status: complete
+        notes: "train_from_yaml now dispatches to train_transformer_from_spec when mode=transformer. Uses TransformerTrainer, CausalLMLoss, LMBatch. Supports config.json loading, gradient accumulation, mixed precision. 5 new tests."
+
+      - id: ENT-116
+        name: "Add text tokenization preprocessing"
+        estimated_hours: 4
+        actual_hours: 3
+        status: complete
+        notes: "load_tokenizer(), load_lm_batches_from_json(), tokenize_texts_to_batches(). Supports JSON/JSONL text and pre-tokenized input_ids. Default Qwen2 tokenizer. 3 new tests."
+
+      - id: ENT-117
+        name: "Load Qwen2.5 weights into Transformer"
+        estimated_hours: 8
+        actual_hours: 4
+        status: complete
+        notes: "weights.rs: Architecture enum, load_safetensors_weights(), bf16/f16 conversion via half crate. Auto-detect Qwen2 vs LLaMA. 9 tests."
+
+      - id: ENT-118
+        name: "End-to-end LLM training integration test"
+        estimated_hours: 4
+        actual_hours: 2
+        status: complete
+        notes: "tests/llm_training_integration.rs: 6 E2E tests for transformer training, gradient accumulation, mixed precision, text tokenization, JSONL, loss tracking."
+
 # Summary Statistics
 summary:
-  total_estimated_hours: 1376  # +76h for Phase 16
-  total_actual_hours: 272      # +76h for Phase 16
-  completion_percentage: 100   # 119/119 tickets
-  tickets_complete: 119
+  total_estimated_hours: 1398  # +22h for Phase 17
+  total_actual_hours: 287      # +2h for ENT-118
+  completion_percentage: 100   # 124/124 tickets - PHASE 17 COMPLETE!
+  tickets_complete: 124
   tickets_in_progress: 0
-  tickets_pending: 0           # All complete!
+  tickets_pending: 0

@@ -13,8 +13,9 @@
 <p align="center">
   <a href="https://crates.io/crates/entrenar"><img src="https://img.shields.io/crates/v/entrenar.svg" alt="Crates.io"></a>
   <a href="https://docs.rs/entrenar"><img src="https://docs.rs/entrenar/badge.svg" alt="Documentation"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-2155%20passing-brightgreen" alt="Tests"></a>
-  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/coverage-%3E90%25-brightgreen" alt="Coverage"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/tests-4200%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/coverage-93%25-brightgreen" alt="Coverage"></a>
+  <a href="https://github.com/paiml/entrenar"><img src="https://img.shields.io/badge/TDG-A%2B%20(96.2)-brightgreen" alt="TDG Score"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
 </p>
 
@@ -244,17 +245,40 @@ if let DriftStatus::Drift(z) = drift.check(loss) {
 
 ## Usages
 
-### Programmatic
+### Running Examples
 
 ```bash
-cargo run --example training_loop      # Basic training
-cargo run --example explainability     # Feature attribution
+# Training Examples
+cargo run --example training_loop      # Basic training loop
+cargo run --example train_from_yaml    # YAML-based declarative training
+cargo run --example mnist_train        # MNIST classification (CPU)
+cargo run --example mnist_train_gpu    # MNIST classification (GPU/CUDA)
+
+# Model Operations
 cargo run --example distillation       # Knowledge distillation
-cargo run --example merge_models       # Model merging
-cargo run --example model_io           # Save/load models
+cargo run --example hf_distillation    # HuggingFace model distillation
+cargo run --example merge_models       # Model merging (TIES/DARE/SLERP)
+cargo run --example model_io           # Save/load SafeTensors models
+cargo run --example pruning_pipeline   # Model pruning workflow
+
+# Monitoring & Analysis
+cargo run --example explainability     # Feature attribution (SHAP)
+cargo run --example monitoring         # Real-time training metrics
+cargo run --example inference_monitor  # Inference latency tracking
+cargo run --example drift_simulation   # Drift detection simulation
+cargo run --example calibration_check  # P-value calibration
+
+# CLI Tools
 cargo run --example cli_bench          # Latency benchmarking
 cargo run --example cli_audit          # Bias detection
 cargo run --example cli_monitor        # Drift detection (PSI)
+cargo run --example cli_inspect        # Model inspection
+
+# Advanced
+cargo run --example citl               # Compiler-in-the-loop training
+cargo run --example research           # Research artifact management
+cargo run --example sovereign          # Sovereign deployment
+cargo run --example cuda_backend       # CUDA backend configuration
 ```
 
 ### CLI Commands
@@ -297,11 +321,14 @@ entrenar/
 
 | Metric | Value |
 |--------|-------|
-| Tests | 2155 passing |
-| Coverage | >90% |
+| Tests | 4200 passing |
+| Coverage | 93% (entrenar files) |
+| TDG Score | A+ (96.2/100) |
 | Property Tests | 200K+ iterations |
 | Gradient Checking | Finite difference validated |
 | Mutation Testing | >80% kill rate |
+| Max Cyclomatic | 19 (target: ≤10) |
+| Max Cognitive | 65 (target: ≤15) |
 
 ## PAIML Stack
 

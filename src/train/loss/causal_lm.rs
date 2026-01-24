@@ -102,16 +102,24 @@ impl LossFn for CausalLMLoss {
 
         struct CausalLMBackward {
             pred_grad_cell: Rc<std::cell::RefCell<Option<Array1<f32>>>>,
+            pred_backward_op: Option<Rc<dyn BackwardOp>>,
             grad: Array1<f32>,
         }
 
         impl BackwardOp for CausalLMBackward {
             fn backward(&self) {
+                // Set gradient on predictions
                 let mut pred_grad = self.pred_grad_cell.borrow_mut();
                 if let Some(existing) = pred_grad.as_mut() {
                     *existing = &*existing + &self.grad;
                 } else {
                     *pred_grad = Some(self.grad.clone());
+                }
+                drop(pred_grad); // Release borrow before recursive call
+
+                // Continue backward propagation through the computational graph
+                if let Some(ref op) = self.pred_backward_op {
+                    op.backward();
                 }
             }
         }
@@ -119,6 +127,7 @@ impl LossFn for CausalLMLoss {
         if predictions.requires_grad() {
             loss.set_backward_op(Rc::new(CausalLMBackward {
                 pred_grad_cell: predictions.grad_cell(),
+                pred_backward_op: predictions.backward_op(),
                 grad: Array1::from(grads),
             }));
         }

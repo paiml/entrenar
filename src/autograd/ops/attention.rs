@@ -1,11 +1,16 @@
 //! Attention autograd operations: scaled dot-product attention
+//!
+//! Uses CUDA GEMM for Q@K^T and Attn@V operations when available.
 
 use crate::autograd::{BackwardOp, Tensor};
 use ndarray::Array1;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Scaled Dot-Product Attention
+// Import matmul_compute from sibling module for GPU-accelerated matrix operations
+use super::matmul::{matmul_compute, transpose};
+
+/// Scaled Dot-Product Attention (GPU-accelerated)
 ///
 /// Attention(Q, K, V) = softmax(Q @ K^T / sqrt(d_k)) @ V
 ///
@@ -29,19 +34,20 @@ pub fn attention(
 ) -> Tensor {
     let scale = (d_k as f32).sqrt();
 
-    // Step 1: Compute Q @ K^T (seq_len x seq_len)
-    let mut scores = vec![0.0; seq_len * seq_len];
-    for i in 0..seq_len {
-        for j in 0..seq_len {
-            let mut dot = 0.0;
-            for p in 0..d_k {
-                dot += q.data()[i * d_k + p] * k.data()[j * d_k + p];
-            }
-            scores[i * seq_len + j] = dot / scale;
-        }
+    // Step 1: Compute Q @ K^T (seq_len x seq_len) using GPU GEMM
+    // Q is (seq_len, d_k), K is (seq_len, d_k), K^T is (d_k, seq_len)
+    // Result: (seq_len, d_k) @ (d_k, seq_len) = (seq_len, seq_len)
+    let q_slice = q.data().as_slice().unwrap();
+    let k_slice = k.data().as_slice().unwrap();
+    let k_t = transpose(k_slice, seq_len, d_k); // K^T: (d_k, seq_len)
+    let mut scores = matmul_compute(q_slice, &k_t, seq_len, d_k, seq_len);
+
+    // Apply scaling
+    for score in &mut scores {
+        *score /= scale;
     }
 
-    // Step 2: Apply softmax row-wise
+    // Step 2: Apply softmax row-wise (CPU for numerical stability)
     let mut attention_weights = vec![0.0; seq_len * seq_len];
     for i in 0..seq_len {
         let row_start = i * seq_len;
@@ -58,17 +64,11 @@ pub fn attention(
         }
     }
 
-    // Step 3: Compute attention_weights @ V (seq_len x d_v)
-    let mut output_data = vec![0.0; seq_len * d_v];
-    for i in 0..seq_len {
-        for j in 0..d_v {
-            let mut sum = 0.0;
-            for p in 0..seq_len {
-                sum += attention_weights[i * seq_len + p] * v.data()[p * d_v + j];
-            }
-            output_data[i * d_v + j] = sum;
-        }
-    }
+    // Step 3: Compute attention_weights @ V (seq_len x d_v) using GPU GEMM
+    // attention_weights is (seq_len, seq_len), V is (seq_len, d_v)
+    // Result: (seq_len, seq_len) @ (seq_len, d_v) = (seq_len, d_v)
+    let v_slice = v.data().as_slice().unwrap();
+    let output_data = matmul_compute(&attention_weights, v_slice, seq_len, seq_len, d_v);
 
     let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
     let mut result = Tensor::new(Array1::from(output_data), requires_grad);
@@ -112,51 +112,40 @@ impl BackwardOp for AttentionBackward {
             let seq_len = self.seq_len;
             let d_k = self.d_k;
             let d_v = self.d_v;
+            let grad_out_slice = grad_output.as_slice().unwrap();
+            let attn_slice = self.attention_weights.as_slice().unwrap();
 
             // Gradient w.r.t. V: attention_weights^T @ grad_output
+            // attention_weights is (seq_len, seq_len), grad_output is (seq_len, d_v)
+            // attention_weights^T is (seq_len, seq_len)
+            // Result: (seq_len, seq_len) @ (seq_len, d_v) = (seq_len, d_v)
             if self.v.requires_grad() {
-                let mut grad_v = vec![0.0; seq_len * d_v];
-                for i in 0..seq_len {
-                    for j in 0..d_v {
-                        let mut sum = 0.0;
-                        for p in 0..seq_len {
-                            // attention_weights^T[i,p] = attention_weights[p,i]
-                            sum +=
-                                self.attention_weights[p * seq_len + i] * grad_output[p * d_v + j];
-                        }
-                        grad_v[i * d_v + j] = sum;
-                    }
-                }
+                let attn_t = transpose(attn_slice, seq_len, seq_len);
+                let grad_v = matmul_compute(&attn_t, grad_out_slice, seq_len, seq_len, d_v);
                 self.v.accumulate_grad(Array1::from(grad_v));
             }
 
             // Gradient w.r.t. attention_weights: grad_output @ V^T
-            let mut grad_attention_weights = vec![0.0; seq_len * seq_len];
-            for i in 0..seq_len {
-                for j in 0..seq_len {
-                    let mut sum = 0.0;
-                    for p in 0..d_v {
-                        // V^T[p,j] = V[j,p]
-                        sum += grad_output[i * d_v + p] * self.v.data()[j * d_v + p];
-                    }
-                    grad_attention_weights[i * seq_len + j] = sum;
-                }
-            }
+            // grad_output is (seq_len, d_v), V is (seq_len, d_v), V^T is (d_v, seq_len)
+            // Result: (seq_len, d_v) @ (d_v, seq_len) = (seq_len, seq_len)
+            let v_slice = self.v.data().as_slice().unwrap();
+            let v_t = transpose(v_slice, seq_len, d_v);
+            let grad_attention_weights =
+                matmul_compute(grad_out_slice, &v_t, seq_len, d_v, seq_len);
 
-            // Gradient through softmax (row-wise)
+            // Gradient through softmax (row-wise) - must be CPU for numerical stability
             let mut grad_scores = vec![0.0; seq_len * seq_len];
             for i in 0..seq_len {
                 let row_start = i * seq_len;
                 for j in 0..seq_len {
                     let idx = row_start + j;
-                    let p_j = self.attention_weights[idx];
+                    let p_j = attn_slice[idx];
 
                     // Softmax gradient: p_j * (grad_j - sum_k(p_k * grad_k))
                     let mut sum_pk_gradk = 0.0;
                     for k in 0..seq_len {
                         let k_idx = row_start + k;
-                        sum_pk_gradk +=
-                            self.attention_weights[k_idx] * grad_attention_weights[k_idx];
+                        sum_pk_gradk += attn_slice[k_idx] * grad_attention_weights[k_idx];
                     }
 
                     grad_scores[idx] = p_j * (grad_attention_weights[idx] - sum_pk_gradk);
@@ -164,36 +153,27 @@ impl BackwardOp for AttentionBackward {
             }
 
             // Gradient through scaling
-            let grad_scaled: Vec<f32> = grad_scores.iter().map(|&g| g / self.scale).collect();
+            for g in &mut grad_scores {
+                *g /= self.scale;
+            }
 
-            // Gradient w.r.t. Q: grad_qk @ K
+            // Gradient w.r.t. Q: grad_scaled @ K
+            // grad_scaled is (seq_len, seq_len), K is (seq_len, d_k)
+            // Result: (seq_len, seq_len) @ (seq_len, d_k) = (seq_len, d_k)
             if self.q.requires_grad() {
-                let mut grad_q = vec![0.0; seq_len * d_k];
-                for i in 0..seq_len {
-                    for j in 0..d_k {
-                        let mut sum = 0.0;
-                        for p in 0..seq_len {
-                            sum += grad_scaled[i * seq_len + p] * self.k.data()[p * d_k + j];
-                        }
-                        grad_q[i * d_k + j] = sum;
-                    }
-                }
+                let k_slice = self.k.data().as_slice().unwrap();
+                let grad_q = matmul_compute(&grad_scores, k_slice, seq_len, seq_len, d_k);
                 self.q.accumulate_grad(Array1::from(grad_q));
             }
 
-            // Gradient w.r.t. K: grad_qk^T @ Q
+            // Gradient w.r.t. K: grad_scaled^T @ Q
+            // grad_scaled is (seq_len, seq_len), grad_scaled^T is (seq_len, seq_len)
+            // Q is (seq_len, d_k)
+            // Result: (seq_len, seq_len) @ (seq_len, d_k) = (seq_len, d_k)
             if self.k.requires_grad() {
-                let mut grad_k = vec![0.0; seq_len * d_k];
-                for i in 0..seq_len {
-                    for j in 0..d_k {
-                        let mut sum = 0.0;
-                        for p in 0..seq_len {
-                            // grad_qk^T[i,p] = grad_qk[p,i]
-                            sum += grad_scaled[p * seq_len + i] * self.q.data()[p * d_k + j];
-                        }
-                        grad_k[i * d_k + j] = sum;
-                    }
-                }
+                let grad_t = transpose(&grad_scores, seq_len, seq_len);
+                let q_slice = self.q.data().as_slice().unwrap();
+                let grad_k = matmul_compute(&grad_t, q_slice, seq_len, seq_len, d_k);
                 self.k.accumulate_grad(Array1::from(grad_k));
             }
 

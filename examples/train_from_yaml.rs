@@ -18,6 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         model: ModelRef {
             path: PathBuf::from("model.gguf"),
             layers: vec!["q_proj".to_string(), "v_proj".to_string()],
+            ..Default::default()
         },
         data: DataConfig {
             train: PathBuf::from("train.parquet"),
@@ -25,6 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             batch_size: 16,
             auto_infer_types: true,
             seq_len: Some(2048),
+            ..Default::default()
         },
         optimizer: OptimSpec {
             name: "adamw".to_string(),
@@ -52,6 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             warmup_steps: 100,
             save_interval: 1,
             output_dir: PathBuf::from("./checkpoints"),
+            ..Default::default()
         },
     };
 

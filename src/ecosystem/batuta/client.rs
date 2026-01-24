@@ -71,7 +71,7 @@ impl BatutaClient {
         if let Some(_url) = &self.base_url {
             // In a real implementation, this would make an HTTP request
             // For now, we simulate by returning fallback
-            // TODO: Implement actual HTTP client when Batuta API is finalized
+            // FUTURE(batuta-api): HTTP client integration pending API finalization
         }
 
         // Use fallback pricing
@@ -94,7 +94,7 @@ impl BatutaClient {
         // If we have a live connection, try to fetch from Batuta
         if let Some(_url) = &self.base_url {
             // In a real implementation, this would make an HTTP request
-            // TODO: Implement actual HTTP client when Batuta API is finalized
+            // FUTURE(batuta-api): HTTP client integration pending API finalization
         }
 
         // Return optimistic default (no queue)

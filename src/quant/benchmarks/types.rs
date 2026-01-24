@@ -72,3 +72,133 @@ impl BenchmarkSuite {
         sorted
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_result(name: &str, sqnr: f32, mse: f32, compression: f32) -> QuantBenchmarkResult {
+        QuantBenchmarkResult {
+            name: name.to_string(),
+            num_elements: 1000,
+            bits: 8,
+            granularity: QuantGranularity::PerTensor,
+            mode: QuantMode::Symmetric,
+            mse,
+            max_error: mse * 2.0,
+            sqnr_db: sqnr,
+            compression_ratio: compression,
+        }
+    }
+
+    #[test]
+    fn test_quality_score_normal() {
+        let result = make_result("test", 40.0, 0.01, 4.0);
+        assert!((result.quality_score() - 10.0).abs() < 1e-6); // 40 / 4 = 10
+    }
+
+    #[test]
+    fn test_quality_score_zero_compression() {
+        let result = make_result("test", 40.0, 0.01, 0.0);
+        assert_eq!(result.quality_score(), 0.0);
+    }
+
+    #[test]
+    fn test_quality_score_low_compression() {
+        let result = make_result("test", 40.0, 0.01, 0.5);
+        // compression_ratio.max(1.0) = 1.0, so 40 / 1 = 40
+        assert!((result.quality_score() - 40.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_benchmark_suite_default() {
+        let suite = BenchmarkSuite::default();
+        assert!(suite.results.is_empty());
+    }
+
+    #[test]
+    fn test_benchmark_suite_add() {
+        let mut suite = BenchmarkSuite::default();
+        suite.add(make_result("test1", 40.0, 0.01, 4.0));
+        assert_eq!(suite.results.len(), 1);
+        suite.add(make_result("test2", 50.0, 0.005, 4.0));
+        assert_eq!(suite.results.len(), 2);
+    }
+
+    #[test]
+    fn test_best_by_sqnr() {
+        let mut suite = BenchmarkSuite::default();
+        suite.add(make_result("low", 30.0, 0.02, 4.0));
+        suite.add(make_result("high", 50.0, 0.01, 4.0));
+        suite.add(make_result("mid", 40.0, 0.015, 4.0));
+
+        let best = suite.best_by_sqnr().unwrap();
+        assert_eq!(best.name, "high");
+        assert!((best.sqnr_db - 50.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_best_by_sqnr_empty() {
+        let suite = BenchmarkSuite::default();
+        assert!(suite.best_by_sqnr().is_none());
+    }
+
+    #[test]
+    fn test_best_by_mse() {
+        let mut suite = BenchmarkSuite::default();
+        suite.add(make_result("high_error", 30.0, 0.02, 4.0));
+        suite.add(make_result("low_error", 50.0, 0.005, 4.0));
+        suite.add(make_result("mid_error", 40.0, 0.01, 4.0));
+
+        let best = suite.best_by_mse().unwrap();
+        assert_eq!(best.name, "low_error");
+        assert!((best.mse - 0.005).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_best_by_mse_empty() {
+        let suite = BenchmarkSuite::default();
+        assert!(suite.best_by_mse().is_none());
+    }
+
+    #[test]
+    fn test_sorted_by_quality() {
+        let mut suite = BenchmarkSuite::default();
+        suite.add(make_result("low_quality", 20.0, 0.02, 4.0)); // 20/4 = 5
+        suite.add(make_result("high_quality", 60.0, 0.01, 4.0)); // 60/4 = 15
+        suite.add(make_result("mid_quality", 40.0, 0.015, 4.0)); // 40/4 = 10
+
+        let sorted = suite.sorted_by_quality();
+        assert_eq!(sorted.len(), 3);
+        assert_eq!(sorted[0].name, "high_quality");
+        assert_eq!(sorted[1].name, "mid_quality");
+        assert_eq!(sorted[2].name, "low_quality");
+    }
+
+    #[test]
+    fn test_sorted_by_quality_empty() {
+        let suite = BenchmarkSuite::default();
+        let sorted = suite.sorted_by_quality();
+        assert!(sorted.is_empty());
+    }
+
+    #[test]
+    fn test_quant_benchmark_result_serde() {
+        let result = make_result("test", 40.0, 0.01, 4.0);
+        let json = serde_json::to_string(&result).unwrap();
+        let deserialized: QuantBenchmarkResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(result.name, deserialized.name);
+        assert!((result.sqnr_db - deserialized.sqnr_db).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_benchmark_suite_serde() {
+        let mut suite = BenchmarkSuite::default();
+        suite.add(make_result("test1", 40.0, 0.01, 4.0));
+        suite.add(make_result("test2", 50.0, 0.005, 4.0));
+
+        let json = serde_json::to_string(&suite).unwrap();
+        let deserialized: BenchmarkSuite = serde_json::from_str(&json).unwrap();
+        assert_eq!(suite.results.len(), deserialized.results.len());
+    }
+}

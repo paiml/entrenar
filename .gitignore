@@ -34,3 +34,11 @@ wasm-pkg/package-lock.json
 # PMAT
 .pmat/backup/
 .pmat-qa/
+
+# Model checkpoints and training logs (keep locally, exclude from git)
+checkpoints/
+logs/
+*.log
+
+# Large generated artifacts
+book/book/

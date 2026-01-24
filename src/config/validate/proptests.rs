@@ -17,14 +17,12 @@ fn arb_valid_spec() -> impl Strategy<Value = TrainSpec> {
         .prop_map(|(batch_size, lr, epochs, grad_clip)| TrainSpec {
             model: ModelRef {
                 path: PathBuf::from("model.gguf"),
-                layers: vec![],
+                ..Default::default()
             },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
-                val: None,
                 batch_size,
-                auto_infer_types: true,
-                seq_len: None,
+                ..Default::default()
             },
             optimizer: OptimSpec {
                 name: "adam".to_string(),
@@ -37,10 +35,7 @@ fn arb_valid_spec() -> impl Strategy<Value = TrainSpec> {
             training: TrainingParams {
                 epochs,
                 grad_clip,
-                lr_scheduler: None,
-                warmup_steps: 0,
-                save_interval: 1,
-                output_dir: PathBuf::from("./checkpoints"),
+                ..Default::default()
             },
         })
 }

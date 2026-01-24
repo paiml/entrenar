@@ -55,3 +55,82 @@ impl std::fmt::Display for ContributorRole {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_contributor_role_display() {
+        assert_eq!(
+            ContributorRole::Conceptualization.to_string(),
+            "Conceptualization"
+        );
+        assert_eq!(ContributorRole::DataCuration.to_string(), "Data curation");
+        assert_eq!(
+            ContributorRole::FormalAnalysis.to_string(),
+            "Formal analysis"
+        );
+        assert_eq!(
+            ContributorRole::FundingAcquisition.to_string(),
+            "Funding acquisition"
+        );
+        assert_eq!(ContributorRole::Investigation.to_string(), "Investigation");
+        assert_eq!(ContributorRole::Methodology.to_string(), "Methodology");
+        assert_eq!(
+            ContributorRole::ProjectAdministration.to_string(),
+            "Project administration"
+        );
+        assert_eq!(ContributorRole::Resources.to_string(), "Resources");
+        assert_eq!(ContributorRole::Software.to_string(), "Software");
+        assert_eq!(ContributorRole::Supervision.to_string(), "Supervision");
+        assert_eq!(ContributorRole::Validation.to_string(), "Validation");
+        assert_eq!(ContributorRole::Visualization.to_string(), "Visualization");
+        assert_eq!(
+            ContributorRole::WritingOriginal.to_string(),
+            "Writing – original draft"
+        );
+        assert_eq!(
+            ContributorRole::WritingReview.to_string(),
+            "Writing – review & editing"
+        );
+    }
+
+    #[test]
+    fn test_contributor_role_clone() {
+        let role = ContributorRole::Software;
+        let cloned = role;
+        assert_eq!(role, cloned);
+    }
+
+    #[test]
+    fn test_contributor_role_debug() {
+        let role = ContributorRole::Software;
+        assert_eq!(format!("{:?}", role), "Software");
+    }
+
+    #[test]
+    fn test_contributor_role_eq() {
+        assert_eq!(ContributorRole::Software, ContributorRole::Software);
+        assert_ne!(ContributorRole::Software, ContributorRole::Validation);
+    }
+
+    #[test]
+    fn test_contributor_role_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ContributorRole::Software);
+        set.insert(ContributorRole::Software);
+        assert_eq!(set.len(), 1);
+        set.insert(ContributorRole::Validation);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_contributor_role_serde() {
+        let role = ContributorRole::Software;
+        let json = serde_json::to_string(&role).unwrap();
+        let deserialized: ContributorRole = serde_json::from_str(&json).unwrap();
+        assert_eq!(role, deserialized);
+    }
+}

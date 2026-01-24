@@ -10,14 +10,12 @@ fn create_valid_spec() -> TrainSpec {
     TrainSpec {
         model: ModelRef {
             path: PathBuf::from("model.gguf"),
-            layers: vec![],
+            ..Default::default()
         },
         data: DataConfig {
             train: PathBuf::from("train.parquet"),
-            val: None,
             batch_size: 8,
-            auto_infer_types: true,
-            seq_len: None,
+            ..Default::default()
         },
         optimizer: OptimSpec {
             name: "adam".to_string(),

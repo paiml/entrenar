@@ -213,6 +213,7 @@
 
 - [Linear Regression with Autograd](./examples/linear-regression.md)
 - [Training a Simple MLP](./examples/simple-mlp.md)
+- [Transformer Fine-Tuning](./examples/transformer-finetuning.md)
 - [Fine-Tuning with LoRA](./examples/lora-finetuning.md)
 - [Memory-Efficient QLoRA](./examples/qlora-example.md)
 - [Custom Loss Functions](./examples/custom-loss.md)

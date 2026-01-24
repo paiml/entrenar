@@ -53,3 +53,138 @@ impl std::fmt::Display for DistributionFormat {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_distribution_format_default() {
+        assert_eq!(DistributionFormat::default(), DistributionFormat::Tarball);
+    }
+
+    #[test]
+    fn test_distribution_format_extension_iso() {
+        assert_eq!(DistributionFormat::Iso.extension(), "iso");
+    }
+
+    #[test]
+    fn test_distribution_format_extension_oci() {
+        assert_eq!(DistributionFormat::Oci.extension(), "tar");
+    }
+
+    #[test]
+    fn test_distribution_format_extension_nix() {
+        assert_eq!(DistributionFormat::Nix.extension(), "nix");
+    }
+
+    #[test]
+    fn test_distribution_format_extension_flatpak() {
+        assert_eq!(DistributionFormat::Flatpak.extension(), "flatpak");
+    }
+
+    #[test]
+    fn test_distribution_format_extension_tarball() {
+        assert_eq!(DistributionFormat::Tarball.extension(), "tar.gz");
+    }
+
+    #[test]
+    fn test_distribution_format_mime_type_iso() {
+        assert_eq!(
+            DistributionFormat::Iso.mime_type(),
+            "application/x-iso9660-image"
+        );
+    }
+
+    #[test]
+    fn test_distribution_format_mime_type_oci() {
+        assert_eq!(
+            DistributionFormat::Oci.mime_type(),
+            "application/vnd.oci.image.layer.v1.tar"
+        );
+    }
+
+    #[test]
+    fn test_distribution_format_mime_type_nix() {
+        assert_eq!(DistributionFormat::Nix.mime_type(), "text/plain");
+    }
+
+    #[test]
+    fn test_distribution_format_mime_type_flatpak() {
+        assert_eq!(
+            DistributionFormat::Flatpak.mime_type(),
+            "application/vnd.flatpak"
+        );
+    }
+
+    #[test]
+    fn test_distribution_format_mime_type_tarball() {
+        assert_eq!(DistributionFormat::Tarball.mime_type(), "application/gzip");
+    }
+
+    #[test]
+    fn test_distribution_format_display_iso() {
+        assert_eq!(DistributionFormat::Iso.to_string(), "ISO");
+    }
+
+    #[test]
+    fn test_distribution_format_display_oci() {
+        assert_eq!(DistributionFormat::Oci.to_string(), "OCI");
+    }
+
+    #[test]
+    fn test_distribution_format_display_nix() {
+        assert_eq!(DistributionFormat::Nix.to_string(), "Nix");
+    }
+
+    #[test]
+    fn test_distribution_format_display_flatpak() {
+        assert_eq!(DistributionFormat::Flatpak.to_string(), "Flatpak");
+    }
+
+    #[test]
+    fn test_distribution_format_display_tarball() {
+        assert_eq!(DistributionFormat::Tarball.to_string(), "Tarball");
+    }
+
+    #[test]
+    fn test_distribution_format_clone() {
+        let fmt = DistributionFormat::Oci;
+        let cloned = fmt;
+        assert_eq!(fmt, cloned);
+    }
+
+    #[test]
+    fn test_distribution_format_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(DistributionFormat::Iso);
+        set.insert(DistributionFormat::Iso);
+        assert_eq!(set.len(), 1);
+        set.insert(DistributionFormat::Oci);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_distribution_format_serde() {
+        let fmt = DistributionFormat::Flatpak;
+        let json = serde_json::to_string(&fmt).unwrap();
+        let deserialized: DistributionFormat = serde_json::from_str(&json).unwrap();
+        assert_eq!(fmt, deserialized);
+    }
+
+    #[test]
+    fn test_distribution_format_debug() {
+        assert_eq!(format!("{:?}", DistributionFormat::Iso), "Iso");
+        assert_eq!(format!("{:?}", DistributionFormat::Oci), "Oci");
+        assert_eq!(format!("{:?}", DistributionFormat::Nix), "Nix");
+        assert_eq!(format!("{:?}", DistributionFormat::Flatpak), "Flatpak");
+        assert_eq!(format!("{:?}", DistributionFormat::Tarball), "Tarball");
+    }
+
+    #[test]
+    fn test_distribution_format_eq() {
+        assert_eq!(DistributionFormat::Iso, DistributionFormat::Iso);
+        assert_ne!(DistributionFormat::Iso, DistributionFormat::Oci);
+    }
+}

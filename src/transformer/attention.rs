@@ -181,6 +181,11 @@ impl MultiHeadAttention {
     pub fn parameters(&self) -> Vec<&Tensor> {
         vec![&self.w_q, &self.w_k, &self.w_v, &self.w_o]
     }
+
+    /// Get all parameters as mutable references for optimizer
+    pub fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
+        vec![&mut self.w_q, &mut self.w_k, &mut self.w_v, &mut self.w_o]
+    }
 }
 
 #[cfg(test)]

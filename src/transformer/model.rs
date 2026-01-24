@@ -140,6 +140,20 @@ impl Transformer {
         params
     }
 
+    /// Get all parameters as mutable references for optimizer
+    pub fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        params.push(&mut self.embed_tokens.weight);
+        params.push(&mut self.norm.weight);
+        for layer in &mut self.layers {
+            params.extend(layer.parameters_mut());
+        }
+        if let Some(lm_head) = &mut self.lm_head {
+            params.push(lm_head);
+        }
+        params
+    }
+
     /// Get configuration
     pub fn config(&self) -> &TransformerConfig {
         &self.config

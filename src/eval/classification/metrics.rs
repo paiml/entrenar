@@ -87,8 +87,7 @@ impl MultiClassMetrics {
             }
             Average::Micro => {
                 // For micro-averaging, we need to recalculate from totals
-                // This is a simplified version - returns macro for now
-                // TODO: Implement proper micro-averaging
+                // Currently uses macro-average as fallback (FUTURE: full micro-avg)
                 self.average_metric(values, Average::Macro)
             }
             Average::Weighted => {

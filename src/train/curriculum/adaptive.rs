@@ -140,3 +140,180 @@ impl CurriculumScheduler for AdaptiveCurriculum {
         "AdaptiveCurriculum"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_adaptive_curriculum_new() {
+        let curriculum = AdaptiveCurriculum::new();
+        assert!(curriculum.class_accuracy.is_empty());
+        assert!(curriculum.class_attempts.is_empty());
+        assert_eq!(curriculum.overall_difficulty, 0.0);
+    }
+
+    #[test]
+    fn test_adaptive_curriculum_default() {
+        let curriculum = AdaptiveCurriculum::default();
+        assert_eq!(curriculum.difficulty(), 0.0);
+    }
+
+    #[test]
+    fn test_tier_for_error_ice() {
+        let curriculum = AdaptiveCurriculum::new();
+        assert_eq!(curriculum.tier_for_error("ICE001", 0), 4);
+        assert_eq!(curriculum.tier_for_error("ICE-crash", 5), 4);
+    }
+
+    #[test]
+    fn test_tier_for_error_type_errors() {
+        let curriculum = AdaptiveCurriculum::new();
+        // E0308 on attempt 0 uses default
+        assert_eq!(curriculum.tier_for_error("E0308", 0), 1);
+        // E0308 on attempt 1+ gets tier 3
+        assert_eq!(curriculum.tier_for_error("E0308", 1), 3);
+        assert_eq!(curriculum.tier_for_error("E0277", 2), 3);
+        assert_eq!(curriculum.tier_for_error("E0382", 1), 3);
+    }
+
+    #[test]
+    fn test_tier_for_error_name_resolution() {
+        let curriculum = AdaptiveCurriculum::new();
+        // E0425 needs attempt >= 2 for tier 3
+        assert_eq!(curriculum.tier_for_error("E0425", 0), 1);
+        assert_eq!(curriculum.tier_for_error("E0425", 1), 2);
+        assert_eq!(curriculum.tier_for_error("E0425", 2), 3);
+        assert_eq!(curriculum.tier_for_error("E0433", 3), 3);
+    }
+
+    #[test]
+    fn test_tier_for_error_default_escalation() {
+        let curriculum = AdaptiveCurriculum::new();
+        // Generic error escalation
+        assert_eq!(curriculum.tier_for_error("E0001", 0), 1);
+        assert_eq!(curriculum.tier_for_error("E0001", 1), 2);
+        assert_eq!(curriculum.tier_for_error("E0001", 2), 3);
+        assert_eq!(curriculum.tier_for_error("E0001", 5), 3);
+    }
+
+    #[test]
+    fn test_update_class() {
+        let mut curriculum = AdaptiveCurriculum::new();
+
+        curriculum.update_class("E0308", true);
+        assert_eq!(curriculum.class_attempts.get("E0308"), Some(&1));
+        // First correct: 0.0 * 0.9 + 0.1 = 0.1
+        assert!((curriculum.class_accuracy.get("E0308").unwrap() - 0.1).abs() < 0.001);
+
+        curriculum.update_class("E0308", false);
+        assert_eq!(curriculum.class_attempts.get("E0308"), Some(&2));
+        // 0.1 * 0.9 + 0 = 0.09
+        assert!((curriculum.class_accuracy.get("E0308").unwrap() - 0.09).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_weight_for_class_unknown() {
+        let curriculum = AdaptiveCurriculum::new();
+        let weight = curriculum.weight_for_class("unknown");
+        // rarity = 1/sqrt(1) = 1.0, difficulty = 1.0 - 0 = 1.0
+        // weight = 1.0 + 1.0 + 1.0 = 3.0
+        assert!((weight - 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_weight_for_class_known() {
+        let mut curriculum = AdaptiveCurriculum::new();
+
+        // Add some attempts
+        for _ in 0..10 {
+            curriculum.update_class("E0308", true);
+        }
+
+        let weight = curriculum.weight_for_class("E0308");
+        // rarity = 1/sqrt(11) ≈ 0.3, difficulty = 1 - accuracy
+        // Should be lower than unknown
+        assert!(weight < 3.0);
+        assert!(weight >= 1.0);
+    }
+
+    #[test]
+    fn test_curriculum_scheduler_difficulty() {
+        let mut curriculum = AdaptiveCurriculum::new();
+        assert_eq!(curriculum.difficulty(), 0.0);
+
+        curriculum.step(0, 0.5);
+        assert!(curriculum.difficulty() > 0.0);
+    }
+
+    #[test]
+    fn test_curriculum_scheduler_tier() {
+        let mut curriculum = AdaptiveCurriculum::new();
+
+        // Tier 1 for low difficulty
+        assert_eq!(curriculum.tier(), 1);
+
+        // Tier 2 for 0.25-0.5
+        curriculum.overall_difficulty = 0.3;
+        assert_eq!(curriculum.tier(), 2);
+
+        // Tier 3 for 0.5-0.75
+        curriculum.overall_difficulty = 0.6;
+        assert_eq!(curriculum.tier(), 3);
+
+        // Tier 4 for >= 0.75
+        curriculum.overall_difficulty = 0.8;
+        assert_eq!(curriculum.tier(), 4);
+    }
+
+    #[test]
+    fn test_curriculum_scheduler_step() {
+        let mut curriculum = AdaptiveCurriculum::new();
+
+        curriculum.step(0, 1.0);
+        assert!((curriculum.difficulty() - 0.1).abs() < 0.001);
+
+        curriculum.step(1, 1.0);
+        // 0.1 * 0.9 + 1.0 * 0.1 = 0.19
+        assert!((curriculum.difficulty() - 0.19).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_curriculum_scheduler_reset() {
+        let mut curriculum = AdaptiveCurriculum::new();
+        curriculum.update_class("E0308", true);
+        curriculum.step(0, 0.5);
+
+        assert!(!curriculum.class_accuracy.is_empty());
+        assert!(curriculum.difficulty() > 0.0);
+
+        curriculum.reset();
+
+        assert!(curriculum.class_accuracy.is_empty());
+        assert!(curriculum.class_attempts.is_empty());
+        assert_eq!(curriculum.difficulty(), 0.0);
+    }
+
+    #[test]
+    fn test_curriculum_scheduler_name() {
+        let curriculum = AdaptiveCurriculum::new();
+        assert_eq!(curriculum.name(), "AdaptiveCurriculum");
+    }
+
+    #[test]
+    fn test_adaptive_curriculum_clone() {
+        let mut curriculum = AdaptiveCurriculum::new();
+        curriculum.update_class("E0308", true);
+
+        let cloned = curriculum.clone();
+        assert_eq!(curriculum.class_attempts, cloned.class_attempts);
+        assert_eq!(curriculum.class_accuracy, cloned.class_accuracy);
+    }
+
+    #[test]
+    fn test_adaptive_curriculum_debug() {
+        let curriculum = AdaptiveCurriculum::new();
+        let debug = format!("{:?}", curriculum);
+        assert!(debug.contains("AdaptiveCurriculum"));
+    }
+}
