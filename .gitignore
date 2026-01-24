@@ -40,5 +40,47 @@ checkpoints/
 logs/
 *.log
 
+# Fine-tuning artifacts
+adapters/
+*.safetensors
+*.gguf
+*.bin
+*.ckpt
+models/
+
+# HuggingFace cache
+.cache/huggingface/
+
+# Training outputs
+runs/
+tensorboard/
+experiments/
+
+# Evaluation artifacts
+eval_results/
+generated_tests/
+
 # Large generated artifacts
-book/book/
+# Model artifacts
+*.safetensors
+*.gguf
+*.ckpt
+*.bin
+adapters/
+models/
+experiments/
+
+# HuggingFace
+.cache/huggingface/
+
+# Training outputs
+runs/
+logs/
+tensorboard/
+eval_results/
+generated_tests/
+
+# Existing patterns
+target/
+.gemini/
+.env
