@@ -45,6 +45,7 @@ const BOX_T: &str = "┬";
 const BOX_B: &str = "┴";
 const BOX_L: &str = "├";
 const BOX_R: &str = "┤";
+#[allow(dead_code)]
 const BOX_X: &str = "┼";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -247,6 +248,170 @@ pub fn format_lr(lr: f32) -> String {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// EPOCH HISTORY TABLE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Epoch-level training summary for history table
+#[derive(Debug, Clone)]
+pub struct EpochSummary {
+    pub epoch: usize,
+    pub avg_loss: f32,
+    pub min_loss: f32,
+    pub max_loss: f32,
+    pub end_loss: f32,
+    pub avg_grad: f32,
+    pub lr: f32,
+    pub tokens_per_sec: f32,
+}
+
+/// Extract epoch summaries from loss history
+pub fn compute_epoch_summaries(snapshot: &TrainingSnapshot) -> Vec<EpochSummary> {
+    if snapshot.steps_per_epoch == 0 || snapshot.loss_history.is_empty() {
+        return Vec::new();
+    }
+
+    let steps = snapshot.steps_per_epoch;
+    let mut summaries = Vec::new();
+
+    // Group losses by epoch
+    for (epoch_idx, chunk) in snapshot.loss_history.chunks(steps).enumerate() {
+        let valid: Vec<f32> = chunk.iter().copied().filter(|v| v.is_finite()).collect();
+
+        if valid.is_empty() {
+            continue;
+        }
+
+        let avg_loss = valid.iter().sum::<f32>() / valid.len() as f32;
+        let min_loss = valid.iter().copied().fold(f32::INFINITY, f32::min);
+        let max_loss = valid.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let end_loss = *valid.last().unwrap_or(&0.0);
+
+        summaries.push(EpochSummary {
+            epoch: epoch_idx + 1,
+            avg_loss,
+            min_loss,
+            max_loss,
+            end_loss,
+            avg_grad: snapshot.gradient_norm, // Current value (could track history)
+            lr: snapshot.learning_rate,
+            tokens_per_sec: snapshot.tokens_per_second,
+        });
+    }
+
+    summaries
+}
+
+/// Render epoch history table
+pub fn render_history_table(
+    snapshot: &TrainingSnapshot,
+    width: usize,
+    max_rows: usize,
+    color_mode: ColorMode,
+) -> String {
+    let mut lines = Vec::new();
+
+    // Header
+    let title = "📊 EPOCH HISTORY";
+    lines.push(
+        Styled::new(title, color_mode)
+            .fg(TrainingPalette::PRIMARY)
+            .to_string(),
+    );
+
+    // Column headers
+    let header = format!(
+        "{:>5} {:>8} {:>8} {:>8} {:>10} {:>8}",
+        "Epoch", "Loss", "Min", "Max", "Tok/s", "Trend"
+    );
+    lines.push(
+        Styled::new(&header, color_mode)
+            .fg((180, 180, 180))
+            .to_string(),
+    );
+
+    // Separator
+    lines.push(
+        Styled::new(&"─".repeat(width.min(60)), color_mode)
+            .fg((100, 100, 100))
+            .to_string(),
+    );
+
+    let summaries = compute_epoch_summaries(snapshot);
+
+    if summaries.is_empty() {
+        lines.push(
+            Styled::new("(waiting for epoch data...)", color_mode)
+                .fg((100, 100, 100))
+                .to_string(),
+        );
+        return lines.join("\n");
+    }
+
+    // Show most recent epochs (scroll to end)
+    let start_idx = summaries.len().saturating_sub(max_rows);
+    let visible = &summaries[start_idx..];
+
+    for (i, summary) in visible.iter().enumerate() {
+        // Compute trend arrow based on loss change from previous epoch
+        let trend = if i > 0 || start_idx > 0 {
+            let prev_idx = if i > 0 {
+                start_idx + i - 1
+            } else {
+                start_idx.saturating_sub(1)
+            };
+            if let Some(prev) = summaries.get(prev_idx) {
+                let change = (summary.avg_loss - prev.avg_loss) / prev.avg_loss.abs().max(0.001);
+                if change < -0.02 {
+                    ("↓", (100, 255, 100)) // Green - improving
+                } else if change > 0.02 {
+                    ("↑", (255, 100, 100)) // Red - worsening
+                } else {
+                    ("→", (180, 180, 180)) // Gray - stable
+                }
+            } else {
+                ("", (180, 180, 180))
+            }
+        } else {
+            ("", (180, 180, 180))
+        };
+
+        // Loss color based on magnitude
+        let loss_color = percent_to_color((summary.avg_loss * 10.0).min(100.0));
+
+        // Build row
+        let epoch_str = format!("{:>5}", summary.epoch);
+        let loss_str = format!("{:>8.3}", summary.avg_loss);
+        let min_str = format!("{:>8.3}", summary.min_loss);
+        let max_str = format!("{:>8.3}", summary.max_loss);
+        let tps_str = format!("{:>10.1}", summary.tokens_per_sec);
+
+        let row = format!(
+            "{} {} {} {} {} {}",
+            Styled::new(&epoch_str, color_mode).fg((200, 200, 255)),
+            Styled::new(&loss_str, color_mode).fg(loss_color),
+            Styled::new(&min_str, color_mode).fg((150, 200, 150)),
+            Styled::new(&max_str, color_mode).fg((200, 150, 150)),
+            Styled::new(&tps_str, color_mode).fg((150, 150, 200)),
+            Styled::new(trend.0, color_mode).fg(trend.1),
+        );
+
+        lines.push(row);
+    }
+
+    // Show scroll indicator if there are more rows
+    if start_idx > 0 {
+        let more = format!("  ↑ {start_idx} more epochs above");
+        lines.push(
+            Styled::new(&more, color_mode)
+                .fg((100, 100, 100))
+                .to_string(),
+        );
+    }
+
+    lines.join("\n")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN LAYOUT RENDERING
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -324,10 +489,22 @@ pub fn render_layout_colored(
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // MIDDLE ROW: Epoch History Table (full width)
+    // ─────────────────────────────────────────────────────────────────────────
+    output.push_str(&format!("{BOX_L}{}{BOX_R}\n", BOX_H.repeat(width - 2)));
+
+    let history_panel = render_history_table(snapshot, width - 4, 8, color_mode);
+    for line in history_panel.lines() {
+        let visual_width = strip_ansi_width(line);
+        let pad = (width - 4).saturating_sub(visual_width);
+        output.push_str(&format!("{BOX_V} {}{} {BOX_V}\n", line, " ".repeat(pad)));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // BOTTOM ROW: Sample Preview | Training Metrics
     // ─────────────────────────────────────────────────────────────────────────
     output.push_str(&format!(
-        "{BOX_L}{}{BOX_X}{}{BOX_R}\n",
+        "{BOX_L}{}{BOX_T}{}{BOX_R}\n",
         BOX_H.repeat(half_width - 1),
         BOX_H.repeat(width - half_width - 2)
     ));
@@ -984,5 +1161,63 @@ mod tests {
     fn test_strip_ansi_width() {
         assert_eq!(strip_ansi_width("hello"), 5);
         assert_eq!(strip_ansi_width("\x1b[31mred\x1b[0m"), 3);
+    }
+
+    #[test]
+    fn test_epoch_summaries() {
+        let snapshot = TrainingSnapshot {
+            steps_per_epoch: 4,
+            loss_history: vec![
+                10.0, 9.5, 9.0, 8.5, // Epoch 1
+                8.0, 7.5, 7.0, 6.5, // Epoch 2
+                6.0, 5.5, 5.0, 4.5, // Epoch 3
+            ],
+            ..Default::default()
+        };
+
+        let summaries = compute_epoch_summaries(&snapshot);
+        assert_eq!(summaries.len(), 3);
+
+        // Epoch 1: avg = 9.25, min = 8.5, max = 10.0
+        assert!((summaries[0].avg_loss - 9.25).abs() < 0.01);
+        assert!((summaries[0].min_loss - 8.5).abs() < 0.01);
+        assert!((summaries[0].max_loss - 10.0).abs() < 0.01);
+
+        // Epoch 2: avg = 7.25
+        assert!((summaries[1].avg_loss - 7.25).abs() < 0.01);
+
+        // Epoch 3: avg = 5.25
+        assert!((summaries[2].avg_loss - 5.25).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_history_table_render() {
+        let snapshot = TrainingSnapshot {
+            steps_per_epoch: 4,
+            loss_history: vec![10.0, 9.5, 9.0, 8.5, 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5],
+            tokens_per_second: 100.0,
+            learning_rate: 0.0001,
+            gradient_norm: 2.5,
+            ..Default::default()
+        };
+
+        let table = render_history_table(&snapshot, 80, 10, ColorMode::Mono);
+
+        // Should contain header
+        assert!(table.contains("EPOCH HISTORY"));
+        assert!(table.contains("Epoch"));
+        assert!(table.contains("Loss"));
+
+        // Should contain epoch numbers
+        assert!(table.contains("1"));
+        assert!(table.contains("2"));
+        assert!(table.contains("3"));
+    }
+
+    #[test]
+    fn test_history_table_empty() {
+        let snapshot = TrainingSnapshot::default();
+        let table = render_history_table(&snapshot, 80, 10, ColorMode::Mono);
+        assert!(table.contains("waiting for epoch data"));
     }
 }

@@ -226,7 +226,7 @@ impl CudaTrainingState {
 
 /// LoRA adapters for attention projections
 /// Each layer has adapters for Q, K, V, O projections
-#[allow(dead_code)]
+#[allow(dead_code)] // Scaffold for future LoRA implementation
 struct AttentionLoRAAdapters {
     /// LoRA A matrices for each layer's Q projection [num_layers][rank * hidden_size]
     q_lora_a: Vec<Tensor>,
@@ -247,6 +247,7 @@ struct AttentionLoRAAdapters {
     scale: f32,
 }
 
+#[allow(dead_code)]
 impl AttentionLoRAAdapters {
     /// Create LoRA adapters for all attention projections across all layers
     fn new(num_layers: usize, hidden_size: usize, rank: usize, alpha: f32) -> Self {
@@ -405,6 +406,7 @@ impl AttentionLoRAAdapters {
 }
 
 /// Transpose a row-major matrix (rows × cols) to (cols × rows)
+#[allow(dead_code)]
 fn transpose_matrix(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     let mut transposed = vec![0.0f32; rows * cols];
     for r in 0..rows {
