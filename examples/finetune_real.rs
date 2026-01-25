@@ -1415,8 +1415,8 @@ fn main() {
                 tokens_per_second,
             );
 
-            // Update sample preview (every 5 steps) (ENT-142 fix)
-            if step % 5 == 0 {
+            // Update sample preview (step 0 + every 5 steps for immediate TUI display)
+            if step == 0 || step % 5 == 0 {
                 if let Some(sample) = corpus.train.get(step % corpus.train.len()) {
                     let sample_peek = SamplePeek {
                         input_preview: truncate_str(&sample.function, 50),
@@ -1428,8 +1428,8 @@ fn main() {
                 }
             }
 
-            // Update GPU telemetry (every 10 steps)
-            if step % 10 == 0 {
+            // Update GPU telemetry (step 0 + every 10 steps for immediate TUI display)
+            if step == 0 || step % 10 == 0 {
                 if let Some(ref monitor) = gpu_monitor {
                     let metrics = monitor.sample();
                     if let Some(m) = metrics.first() {
@@ -1618,8 +1618,8 @@ fn main() {
                 tokens_per_second,
             );
 
-            // Update sample preview (every 5 steps) (ENT-142 fix)
-            if step % 5 == 0 {
+            // Update sample preview (step 0 + every 5 steps for immediate TUI display)
+            if step == 0 || step % 5 == 0 {
                 if let Some(sample) = corpus.train.get(step % corpus.train.len()) {
                     let sample_peek = SamplePeek {
                         input_preview: truncate_str(&sample.function, 50),
@@ -1631,8 +1631,8 @@ fn main() {
                 }
             }
 
-            // Update GPU telemetry (every 10 steps)
-            if step % 10 == 0 {
+            // Update GPU telemetry (step 0 + every 10 steps for immediate TUI display)
+            if step == 0 || step % 10 == 0 {
                 if let Some(ref monitor) = gpu_monitor {
                     let metrics = monitor.sample();
                     if let Some(m) = metrics.first() {

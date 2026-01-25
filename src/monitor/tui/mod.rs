@@ -41,5 +41,6 @@ pub use render::{
     render_braille_chart, render_gauge, render_layout, render_layout_colored, BrailleChart,
 };
 pub use state::{
-    GpuTelemetry, LossTrend, SamplePeek, TrainingSnapshot, TrainingState, TrainingStatus,
+    GpuProcessInfo, GpuTelemetry, LossTrend, SamplePeek, TrainingSnapshot, TrainingState,
+    TrainingStatus,
 };

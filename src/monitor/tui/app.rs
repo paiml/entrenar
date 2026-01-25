@@ -244,10 +244,16 @@ impl TrainingStateWriter {
         }
     }
 
-    /// Set total epochs and steps
+    /// Set total epochs and steps for a training phase
+    ///
+    /// Call this at the start of each training phase to ensure the TUI
+    /// displays correct progress. This resets epoch/step counters.
     pub fn set_epochs(&mut self, total_epochs: usize, steps_per_epoch: usize) {
         self.snapshot.total_epochs = total_epochs;
         self.snapshot.steps_per_epoch = steps_per_epoch;
+        // Reset counters for new phase
+        self.snapshot.epoch = 0;
+        self.snapshot.step = 0;
     }
 
     /// Mark training as started
@@ -263,6 +269,10 @@ impl TrainingStateWriter {
     }
 
     /// Update training step
+    ///
+    /// # Warnings
+    /// Logs a warning to stderr if step > steps_per_epoch, which indicates
+    /// a configuration mismatch (likely set_epochs() not called at phase start).
     pub fn update_step(
         &mut self,
         epoch: usize,
@@ -272,6 +282,22 @@ impl TrainingStateWriter {
         gradient_norm: f32,
         tokens_per_second: f32,
     ) -> io::Result<()> {
+        // Validate step doesn't exceed configured steps_per_epoch
+        if self.snapshot.steps_per_epoch > 0 && step > self.snapshot.steps_per_epoch {
+            eprintln!(
+                "Warning: step {} exceeds steps_per_epoch {} - call set_epochs() at phase start",
+                step, self.snapshot.steps_per_epoch
+            );
+        }
+
+        // Validate epoch doesn't exceed total_epochs
+        if self.snapshot.total_epochs > 0 && epoch > self.snapshot.total_epochs {
+            eprintln!(
+                "Warning: epoch {} exceeds total_epochs {} - call set_epochs() at phase start",
+                epoch, self.snapshot.total_epochs
+            );
+        }
+
         self.snapshot.epoch = epoch;
         self.snapshot.step = step;
         self.snapshot.loss = loss;
