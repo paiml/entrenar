@@ -134,6 +134,8 @@ pub fn relu_backward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "relu_backward", &config, &mut args)
@@ -185,6 +187,8 @@ pub fn gelu_backward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "gelu_backward", &config, &mut args)
@@ -236,6 +240,8 @@ pub fn silu_backward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "silu_backward", &config, &mut args)
@@ -291,6 +297,8 @@ pub fn softmax_backward(
         &seq_len as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "softmax_backward", &config, &mut args)
@@ -353,6 +361,8 @@ pub fn rms_norm_backward(
         &eps as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "rms_norm_backward", &config, &mut args)
@@ -416,6 +426,8 @@ pub fn layer_norm_backward(
         &hidden_size as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "layer_norm_backward", &config, &mut args)
@@ -473,6 +485,8 @@ pub fn gemm_backward_a(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "gemm_backward_a", &config, &mut args)
@@ -530,6 +544,8 @@ pub fn gemm_backward_b(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "gemm_backward_b", &config, &mut args)

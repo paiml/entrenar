@@ -148,6 +148,8 @@ pub fn adamw_step_cuda(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "adamw_step", &config, &mut args)
@@ -218,6 +220,8 @@ pub fn adam_step_cuda(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "adam_step", &config, &mut args)
@@ -285,6 +289,8 @@ pub fn gradient_clip_cuda(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "gradient_clip", &config, &mut args)

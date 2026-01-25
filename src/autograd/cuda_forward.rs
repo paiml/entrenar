@@ -118,6 +118,8 @@ pub fn relu_forward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "relu", &config, &mut args)
@@ -169,6 +171,8 @@ pub fn softmax_forward(
         &length as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "softmax", &config, &mut args)
@@ -226,6 +230,8 @@ pub fn layer_norm_forward(
         &hidden_size as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "layer_norm", &config, &mut args)
@@ -280,6 +286,8 @@ pub fn rms_norm_forward(
         &hidden_size as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "rms_norm", &config, &mut args)
@@ -329,6 +337,8 @@ pub fn gelu_forward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "gelu", &config, &mut args)
@@ -378,6 +388,8 @@ pub fn silu_forward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "silu", &config, &mut args)
@@ -431,6 +443,8 @@ pub fn fused_swiglu_forward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "fused_swiglu", &config, &mut args)
@@ -488,6 +502,8 @@ pub fn gemm_forward(
         &n as *const _ as *mut _,
     ];
 
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
             .launch_kernel(module, "gemm_naive", &config, &mut args)
