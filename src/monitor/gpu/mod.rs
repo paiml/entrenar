@@ -29,4 +29,4 @@ pub use alert::{AndonThresholds, GpuAlert, GpuAndonSystem};
 pub use buffer::GpuMetricsBuffer;
 pub use monitor::GpuMonitor;
 pub use render::{format_gpu_panel, render_progress_bar, render_sparkline};
-pub use types::GpuMetrics;
+pub use types::{GpuMetrics, GpuProcess};

@@ -64,7 +64,7 @@ use entrenar::lora::{LoRALayer, QLoRALayer};
 use entrenar::monitor::gpu::GpuMonitor;
 use entrenar::monitor::tui::app::{TrainingStateWriter, TuiMonitor, TuiMonitorConfig};
 use entrenar::monitor::tui::headless::{HeadlessMonitor, OutputFormat};
-use entrenar::monitor::tui::state::{GpuTelemetry, SamplePeek};
+use entrenar::monitor::tui::state::{GpuProcessInfo, GpuTelemetry, SamplePeek};
 use entrenar::optim::{AdamW, CosineAnnealingLR, LRScheduler, Optimizer};
 use entrenar::tokenizer::HfTokenizer;
 use entrenar::train::{CausalLMLoss, LossFn};
@@ -1433,6 +1433,17 @@ fn main() {
                 if let Some(ref monitor) = gpu_monitor {
                     let metrics = monitor.sample();
                     if let Some(m) = metrics.first() {
+                        let processes = m
+                            .processes
+                            .iter()
+                            .map(|p| GpuProcessInfo {
+                                pid: p.pid,
+                                exe_path: p.exe_path.clone(),
+                                gpu_memory_mb: p.gpu_memory_mb,
+                                cpu_percent: p.cpu_percent,
+                                rss_mb: p.rss_mb,
+                            })
+                            .collect();
                         let _ = state_writer.update_gpu(GpuTelemetry {
                             device_name: m.name.clone(),
                             utilization_percent: m.utilization_percent as f32,
@@ -1441,6 +1452,7 @@ fn main() {
                             temperature_celsius: m.temperature_celsius as f32,
                             power_watts: m.power_watts,
                             power_limit_watts: m.power_limit_watts,
+                            processes,
                         });
                     }
                 }
@@ -1624,6 +1636,17 @@ fn main() {
                 if let Some(ref monitor) = gpu_monitor {
                     let metrics = monitor.sample();
                     if let Some(m) = metrics.first() {
+                        let processes = m
+                            .processes
+                            .iter()
+                            .map(|p| GpuProcessInfo {
+                                pid: p.pid,
+                                exe_path: p.exe_path.clone(),
+                                gpu_memory_mb: p.gpu_memory_mb,
+                                cpu_percent: p.cpu_percent,
+                                rss_mb: p.rss_mb,
+                            })
+                            .collect();
                         let _ = state_writer.update_gpu(GpuTelemetry {
                             device_name: m.name.clone(),
                             utilization_percent: m.utilization_percent as f32,
@@ -1632,6 +1655,7 @@ fn main() {
                             temperature_celsius: m.temperature_celsius as f32,
                             power_watts: m.power_watts,
                             power_limit_watts: m.power_limit_watts,
+                            processes,
                         });
                     }
                 }

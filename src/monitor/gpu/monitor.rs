@@ -2,10 +2,13 @@
 //!
 //! Uses NVML when available (feature `nvml`), otherwise falls back to mock.
 
-use super::GpuMetrics;
+use super::{GpuMetrics, GpuProcess};
 
 #[cfg(feature = "nvml")]
 use nvml_wrapper::{enum_wrappers::device::TemperatureSensor, Nvml};
+
+#[cfg(feature = "nvml")]
+use std::fs;
 
 /// GPU monitor that collects metrics
 ///
@@ -143,6 +146,9 @@ impl GpuMonitor {
             // Fan speed (may not be available on all GPUs)
             let fan_speed_percent = device.fan_speed(0).unwrap_or(0);
 
+            // Collect running compute processes
+            let processes = Self::collect_gpu_processes(&device);
+
             metrics.push(GpuMetrics {
                 device_id: i,
                 name,
@@ -158,6 +164,7 @@ impl GpuMonitor {
                 pcie_tx_kbps,
                 pcie_rx_kbps,
                 fan_speed_percent,
+                processes,
             });
         }
 
@@ -200,6 +207,104 @@ impl GpuMonitor {
         self.mock_metrics = metrics;
         self.num_devices = self.mock_metrics.len() as u32;
         self.mock_mode = true;
+    }
+
+    /// Collect GPU processes from NVML and enrich with /proc data
+    #[cfg(feature = "nvml")]
+    fn collect_gpu_processes(device: &nvml_wrapper::Device) -> Vec<GpuProcess> {
+        let mut processes = Vec::new();
+
+        // Get compute processes (CUDA apps)
+        if let Ok(compute_procs) = device.running_compute_processes() {
+            for proc in compute_procs {
+                let pid = proc.pid;
+                let gpu_memory_mb = proc.used_gpu_memory / (1024 * 1024);
+
+                // Read /proc/PID/exe for full path
+                let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| format!("[pid {pid}]"));
+
+                // Read /proc/PID/stat for CPU and memory
+                let (cpu_percent, rss_mb) = Self::read_proc_stats(pid);
+
+                processes.push(GpuProcess {
+                    pid,
+                    exe_path,
+                    gpu_memory_mb,
+                    cpu_percent,
+                    rss_mb,
+                });
+            }
+        }
+
+        // Also check graphics processes
+        if let Ok(graphics_procs) = device.running_graphics_processes() {
+            for proc in graphics_procs {
+                // Skip if already in compute list
+                if processes.iter().any(|p| p.pid == proc.pid) {
+                    continue;
+                }
+
+                let pid = proc.pid;
+                let gpu_memory_mb = proc.used_gpu_memory / (1024 * 1024);
+
+                let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| format!("[pid {pid}]"));
+
+                let (cpu_percent, rss_mb) = Self::read_proc_stats(pid);
+
+                processes.push(GpuProcess {
+                    pid,
+                    exe_path,
+                    gpu_memory_mb,
+                    cpu_percent,
+                    rss_mb,
+                });
+            }
+        }
+
+        processes
+    }
+
+    /// Read CPU% and RSS from /proc/PID/stat and /proc/PID/statm
+    #[cfg(feature = "nvml")]
+    fn read_proc_stats(pid: u32) -> (f32, u64) {
+        // Read RSS from /proc/PID/statm (second field, in pages)
+        let rss_mb = fs::read_to_string(format!("/proc/{pid}/statm"))
+            .ok()
+            .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
+            .map(|pages| pages * 4096 / (1024 * 1024)) // Convert pages to MB
+            .unwrap_or(0);
+
+        // CPU% would require sampling over time - approximate from /proc/PID/stat
+        // For now, read utime+stime and estimate based on uptime
+        let cpu_percent = fs::read_to_string(format!("/proc/{pid}/stat"))
+            .ok()
+            .and_then(|s| {
+                let fields: Vec<&str> = s.split_whitespace().collect();
+                if fields.len() > 14 {
+                    let utime: u64 = fields[13].parse().ok()?;
+                    let stime: u64 = fields[14].parse().ok()?;
+                    let total_ticks = utime + stime;
+                    // Rough approximation: assume 100 ticks/sec, sample over 1 sec
+                    // This is imprecise but gives an order of magnitude
+                    Some((total_ticks as f32 / 100.0).min(100.0))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0.0);
+
+        (cpu_percent, rss_mb)
+    }
+
+    /// Collect GPU processes (non-NVML fallback)
+    #[cfg(not(feature = "nvml"))]
+    #[allow(dead_code)]
+    fn collect_gpu_processes(_device: &()) -> Vec<GpuProcess> {
+        Vec::new()
     }
 }
 

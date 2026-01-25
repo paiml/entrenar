@@ -2,6 +2,21 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Process using GPU resources
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GpuProcess {
+    /// Process ID
+    pub pid: u32,
+    /// Full path to executable
+    pub exe_path: String,
+    /// GPU memory used by this process in MB
+    pub gpu_memory_mb: u64,
+    /// CPU usage percentage (0-100)
+    pub cpu_percent: f32,
+    /// Resident set size (RSS) in MB
+    pub rss_mb: u64,
+}
+
 /// GPU metrics snapshot (inspired by btop's GPU visualization)
 ///
 /// Reference: btop `src/btop_shared.hpp` lines 130-171
@@ -35,6 +50,8 @@ pub struct GpuMetrics {
     pub pcie_rx_kbps: u64,
     /// Fan speed percentage (0-100%)
     pub fan_speed_percent: u32,
+    /// Processes using this GPU
+    pub processes: Vec<GpuProcess>,
 }
 
 impl GpuMetrics {
@@ -55,6 +72,13 @@ impl GpuMetrics {
             pcie_tx_kbps: 1000,
             pcie_rx_kbps: 2000,
             fan_speed_percent: 50,
+            processes: vec![GpuProcess {
+                pid: 12345,
+                exe_path: "/usr/bin/mock_training".to_string(),
+                gpu_memory_mb: 4096,
+                cpu_percent: 95.0,
+                rss_mb: 2048,
+            }],
         }
     }
 

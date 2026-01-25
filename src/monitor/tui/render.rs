@@ -501,9 +501,27 @@ fn render_gpu_telemetry_colored(
             .to_string();
         lines.push(format!("Power: {colored_power}"));
 
-        // Add empty lines to reach 6 lines total
-        lines.push(String::new());
-        lines.push(String::new());
+        // Show first process if available (most relevant GPU consumer)
+        if let Some(proc) = gpu.processes.first() {
+            // Truncate exe path to fit
+            let max_path_len = width.saturating_sub(8);
+            let exe_short: String = if proc.exe_path.len() > max_path_len {
+                format!(
+                    "...{}",
+                    &proc.exe_path[proc.exe_path.len() - max_path_len + 3..]
+                )
+            } else {
+                proc.exe_path.clone()
+            };
+            lines.push(format!("Proc: {exe_short}"));
+            lines.push(format!(
+                "  CPU:{:>3.0}% RSS:{:>4}MB GPU:{:>4}MB",
+                proc.cpu_percent, proc.rss_mb, proc.gpu_memory_mb
+            ));
+        } else {
+            lines.push(String::new());
+            lines.push(String::new());
+        }
     } else {
         lines.push("GPU: N/A".to_string());
         lines.push("VRAM: N/A".to_string());
@@ -593,8 +611,15 @@ fn render_training_state_colored(
     let step_str = format!("{}/{}", snapshot.step, snapshot.steps_per_epoch);
     lines.push(format!("Step:  {step_str}"));
 
-    // Learning rate
-    let lr_str = format!("{:.2e}", snapshot.learning_rate);
+    // Learning rate - use decimal format, not scientific notation
+    let lr = snapshot.learning_rate;
+    let lr_str = if lr >= 0.001 {
+        format!("{lr:.4}")
+    } else if lr >= 0.0001 {
+        format!("{lr:.5}")
+    } else {
+        format!("{lr:.6}")
+    };
     lines.push(format!("LR:    {lr_str}"));
 
     // Gradient norm with warning colors

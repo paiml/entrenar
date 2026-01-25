@@ -9,6 +9,21 @@ use std::io::{BufReader, BufWriter};
 use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+/// Process using GPU resources
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GpuProcessInfo {
+    /// Process ID
+    pub pid: u32,
+    /// Full path to executable
+    pub exe_path: String,
+    /// GPU memory used by this process in MB
+    pub gpu_memory_mb: u64,
+    /// CPU usage percentage (0-100)
+    pub cpu_percent: f32,
+    /// Resident set size (RSS) in MB
+    pub rss_mb: u64,
+}
+
 /// GPU telemetry snapshot (NVML-inspired)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GpuTelemetry {
@@ -26,6 +41,9 @@ pub struct GpuTelemetry {
     pub power_watts: f32,
     /// Power limit in watts
     pub power_limit_watts: f32,
+    /// Processes using GPU
+    #[serde(default)]
+    pub processes: Vec<GpuProcessInfo>,
 }
 
 impl GpuTelemetry {

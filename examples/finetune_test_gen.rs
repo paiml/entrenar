@@ -569,6 +569,7 @@ fn main() {
                 temperature_celsius: 62.0 + (step as f32 * 1.5),
                 power_watts: 320.0 + (step as f32 * 5.0),
                 power_limit_watts: 450.0,
+                processes: vec![],
             };
             let _ = state_writer.update_gpu(gpu);
 

@@ -38,6 +38,7 @@ fn mock_snapshot(epoch: usize, step: usize, loss: f32) -> TrainingSnapshot {
             temperature_celsius: 45.0,
             power_watts: 110.0,
             power_limit_watts: 480.0,
+            processes: vec![],
         }),
         sample: Some(SamplePeek {
             input_preview: "fn is_prime(n: u64) -> bool { ... }".to_string(),
