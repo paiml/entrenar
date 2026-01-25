@@ -24,10 +24,12 @@ use trueno_gpu::driver::{CudaContext, CudaStream, GpuBuffer};
 use crate::autograd::cuda_backward::{
     gemm_backward_a, gemm_backward_b, rms_norm_backward, silu_backward,
 };
+#[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{fused_swiglu_forward, gemm_forward, rms_norm_forward};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_tensor::Result;
 
+#[cfg(feature = "cuda")]
 use super::config::TransformerConfig;
 
 /// Helper to copy GPU buffer to Vec
