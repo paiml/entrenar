@@ -1,10 +1,16 @@
 //! GPU monitor that collects metrics.
+//!
+//! Uses NVML when available (feature `nvml`), otherwise falls back to mock.
 
 use super::GpuMetrics;
 
+#[cfg(feature = "nvml")]
+use nvml_wrapper::{enum_wrappers::device::TemperatureSensor, Nvml};
+
 /// GPU monitor that collects metrics
 ///
-/// Uses mock implementation for testing. Production would use NVML.
+/// When compiled with `nvml` feature, uses real NVIDIA NVML for hardware metrics.
+/// Otherwise provides mock mode for testing.
 #[derive(Debug)]
 pub struct GpuMonitor {
     /// Number of detected devices
@@ -13,15 +19,43 @@ pub struct GpuMonitor {
     mock_mode: bool,
     /// Mock metrics generator
     mock_metrics: Vec<GpuMetrics>,
+    /// NVML instance (when feature enabled)
+    #[cfg(feature = "nvml")]
+    nvml: Option<Nvml>,
 }
 
 impl GpuMonitor {
     /// Create a new GPU monitor
     ///
-    /// Attempts to initialize NVML, falls back to no devices if unavailable.
+    /// Attempts to initialize NVML if feature enabled, falls back gracefully.
+    #[cfg(feature = "nvml")]
     pub fn new() -> Result<Self, String> {
-        // In production, this would use nvml-wrapper crate
-        // For now, return empty (graceful degradation)
+        match Nvml::init() {
+            Ok(nvml) => {
+                let num_devices = nvml.device_count().unwrap_or(0);
+                Ok(Self {
+                    num_devices,
+                    mock_mode: false,
+                    mock_metrics: Vec::new(),
+                    nvml: Some(nvml),
+                })
+            }
+            Err(e) => {
+                eprintln!("[GpuMonitor] NVML init failed: {e}, using mock mode");
+                Ok(Self {
+                    num_devices: 0,
+                    mock_mode: false,
+                    mock_metrics: Vec::new(),
+                    nvml: None,
+                })
+            }
+        }
+    }
+
+    /// Create a new GPU monitor (non-NVML fallback)
+    #[cfg(not(feature = "nvml"))]
+    pub fn new() -> Result<Self, String> {
+        // Without NVML feature, return empty (graceful degradation)
         Ok(Self {
             num_devices: 0,
             mock_mode: false,
@@ -36,6 +70,8 @@ impl GpuMonitor {
             num_devices,
             mock_mode: true,
             mock_metrics,
+            #[cfg(feature = "nvml")]
+            nvml: None,
         }
     }
 
@@ -50,6 +86,86 @@ impl GpuMonitor {
     }
 
     /// Sample current GPU metrics
+    #[cfg(feature = "nvml")]
+    pub fn sample(&self) -> Vec<GpuMetrics> {
+        if self.mock_mode {
+            return self.mock_metrics.clone();
+        }
+
+        let Some(nvml) = &self.nvml else {
+            return Vec::new();
+        };
+
+        let mut metrics = Vec::with_capacity(self.num_devices as usize);
+
+        for i in 0..self.num_devices {
+            let Ok(device) = nvml.device_by_index(i) else {
+                continue;
+            };
+
+            let name = device.name().unwrap_or_else(|_| format!("GPU {i}"));
+
+            // Utilization rates
+            let (utilization_percent, memory_utilization_percent) = device
+                .utilization_rates()
+                .map_or((0, 0), |rates| (rates.gpu, rates.memory));
+
+            // Memory info
+            let (memory_used_mb, memory_total_mb) = device.memory_info().map_or((0, 0), |mem| {
+                (mem.used / (1024 * 1024), mem.total / (1024 * 1024))
+            });
+
+            // Temperature
+            let temperature_celsius = device.temperature(TemperatureSensor::Gpu).unwrap_or(0);
+
+            // Power
+            let power_watts = device.power_usage().map_or(0.0, |mw| mw as f32 / 1000.0);
+            let power_limit_watts = device
+                .enforced_power_limit()
+                .map_or(0.0, |mw| mw as f32 / 1000.0);
+
+            // Clocks
+            let clock_mhz = device
+                .clock_info(nvml_wrapper::enum_wrappers::device::Clock::Graphics)
+                .unwrap_or(0);
+            let memory_clock_mhz = device
+                .clock_info(nvml_wrapper::enum_wrappers::device::Clock::Memory)
+                .unwrap_or(0);
+
+            // PCIe throughput
+            let pcie_tx_kbps = device
+                .pcie_throughput(nvml_wrapper::enum_wrappers::device::PcieUtilCounter::Send)
+                .unwrap_or(0) as u64;
+            let pcie_rx_kbps = device
+                .pcie_throughput(nvml_wrapper::enum_wrappers::device::PcieUtilCounter::Receive)
+                .unwrap_or(0) as u64;
+
+            // Fan speed (may not be available on all GPUs)
+            let fan_speed_percent = device.fan_speed(0).unwrap_or(0);
+
+            metrics.push(GpuMetrics {
+                device_id: i,
+                name,
+                utilization_percent,
+                memory_used_mb,
+                memory_total_mb,
+                memory_utilization_percent,
+                temperature_celsius,
+                power_watts,
+                power_limit_watts,
+                clock_mhz,
+                memory_clock_mhz,
+                pcie_tx_kbps,
+                pcie_rx_kbps,
+                fan_speed_percent,
+            });
+        }
+
+        metrics
+    }
+
+    /// Sample current GPU metrics (non-NVML fallback)
+    #[cfg(not(feature = "nvml"))]
     pub fn sample(&self) -> Vec<GpuMetrics> {
         if self.mock_mode {
             return self.mock_metrics.clone();
@@ -167,5 +283,21 @@ mod tests {
         let metrics = monitor.sample_with_variation(1.0);
         // Should be empty for non-mock mode
         assert!(metrics.is_empty() || !monitor.is_mock());
+    }
+
+    #[cfg(feature = "nvml")]
+    #[test]
+    fn test_gpu_monitor_nvml_sample() {
+        // Test real NVML sampling if available
+        let monitor = GpuMonitor::new().unwrap();
+        if monitor.num_devices() > 0 {
+            let metrics = monitor.sample();
+            assert!(!metrics.is_empty());
+            // Verify basic sanity
+            for m in &metrics {
+                assert!(m.utilization_percent <= 100);
+                assert!(m.temperature_celsius < 150);
+            }
+        }
     }
 }

@@ -29,9 +29,17 @@
 //! Loss spikes, OOM warnings, and gradient explosions trigger visual alerts.
 
 pub mod app;
+pub mod color;
+pub mod headless;
 pub mod render;
 pub mod state;
 
 pub use app::{TrainingStateWriter, TuiMonitor, TuiMonitorConfig};
-pub use render::{render_braille_chart, render_gauge, render_layout, BrailleChart};
-pub use state::{GpuTelemetry, SamplePeek, TrainingSnapshot, TrainingState, TrainingStatus};
+pub use color::{colored_bar, colored_value, ColorMode, Rgb, Styled, TrainingPalette};
+pub use headless::{HeadlessMonitor, HeadlessOutput, HeadlessWriter, OutputFormat};
+pub use render::{
+    render_braille_chart, render_gauge, render_layout, render_layout_colored, BrailleChart,
+};
+pub use state::{
+    GpuTelemetry, LossTrend, SamplePeek, TrainingSnapshot, TrainingState, TrainingStatus,
+};

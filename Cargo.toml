@@ -119,6 +119,7 @@ tracing = ["renacer"]  # Renacer distributed tracing integration
 ruchy-sessions = []  # Ruchy session bridge for preserving training history
 gpu = ["trueno/gpu", "tokio"]  # GPU-accelerated training via wgpu
 cuda = ["realizar/cuda", "trueno-gpu/cuda", "tokio"]  # NVIDIA CUDA compute via realizar
+nvml = ["nvml-wrapper"]  # Real GPU monitoring via NVIDIA NVML
 
 [dependencies]
 # Core PAIML stack
@@ -157,6 +158,7 @@ regex = "1.10"  # ORCID/ROR validation
 ed25519-dalek = "2.1"  # Ed25519 signing for pre-registration
 bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for tensor data
 arrow = { version = "57", default-features = false }  # Arrow array types for alimentar integration
+nvml-wrapper = { version = "0.10", optional = true }  # NVIDIA NVML bindings for GPU monitoring
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 hf-hub = "0.4"  # HuggingFace Hub API for model downloads (not available on WASM)
@@ -172,6 +174,7 @@ criterion = "0.5"
 arrow = { version = "57", default-features = false }  # For MNIST example array access
 insta = { version = "1.42", features = ["json", "yaml"] }  # Snapshot testing for PMAT QA
 dirs = "5.0"  # Cache directory detection for examples
+jugar-probar = "1.0"  # TUI snapshot testing (ENT-140)
 
 [[bench]]
 name = "monitor_bench"
@@ -310,6 +313,11 @@ required-features = []
 name = "finetune_test_gen"
 path = "examples/finetune_test_gen.rs"
 required-features = []
+
+[[example]]
+name = "nvml_test"
+path = "examples/nvml_test.rs"
+required-features = ["nvml"]
 
 # Phase 11: CUDA-First Architecture (SPEC-FT-001 v3.0.0)
 # Use local trueno-gpu with backward kernels (Issue #85)

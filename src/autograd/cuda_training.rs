@@ -234,6 +234,7 @@ impl CudaTrainer {
 }
 
 #[cfg(feature = "cuda")]
+#[allow(clippy::missing_fields_in_debug)]
 impl std::fmt::Debug for CudaTrainer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CudaTrainer")

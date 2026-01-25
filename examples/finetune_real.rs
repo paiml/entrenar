@@ -4,32 +4,225 @@
 //! creates a real training corpus, and performs actual fine-tuning
 //! with real forward passes through the transformer.
 //!
+//! ## CUDA Acceleration (SPEC-FT-001 v3.3.0)
+//!
+//! When compiled with `--features cuda`, this example automatically uses
+//! GPU-accelerated training via `CudaTrainer`:
+//!
+//! ```bash
+//! cargo run --example finetune_real --release --features cuda
+//! ```
+//!
+//! ## TUI Monitoring (SPEC-FT-001 Section 10)
+//!
+//! Run training and monitoring in separate terminals:
+//!
+//! ```bash
+//! # Terminal 1: Start training (Producer)
+//! cargo run --example finetune_real --release --features cuda,nvml -- \
+//!     --output ./experiments/finetune-real
+//!
+//! # Terminal 2: Attach TUI Monitor (Consumer)
+//! cargo run --example finetune_real --features nvml -- \
+//!     --monitor --experiment ./experiments/finetune-real
+//! ```
+//!
+//! ## Headless Mode for CI/CD (SPEC-FT-001 Section 10.8)
+//!
+//! For CI/CD pipelines and AI agents, use headless mode:
+//!
+//! ```bash
+//! # JSON output to stdout (machine-readable, default)
+//! cargo run --example finetune_real -- \
+//!     --headless --format json --experiment ./experiments/finetune-real
+//!
+//! # Text output to stdout (human-readable logs)
+//! cargo run --example finetune_real -- \
+//!     --headless --format text --experiment ./experiments/finetune-real
+//!
+//! # Write output to file instead of stdout
+//! cargo run --example finetune_real -- \
+//!     --headless --format json --output-file ./training.jsonl --experiment ./experiments/finetune-real
+//! ```
+//!
 //! Prerequisites:
 //!   apr pull Qwen/Qwen2.5-Coder-0.5B-Instruct
 //!
 //! Run with:
 //!   cargo run --example finetune_real --release
 
-use entrenar::autograd::{backward, matmul, scale, sum};
+use clap::Parser;
+use entrenar::autograd::{backward, cuda_training_available, matmul, CudaTrainer};
 use entrenar::finetune::{
-    ComputeDevice, DeviceInfo, PopperianQA, QAGrade, ReproducibilityConfig, TestEvaluator,
-    TestGenCorpus, TestGenSample,
+    ComputeDevice, DeviceInfo, PopperianQA, ReproducibilityConfig, TestEvaluator, TestGenCorpus,
+    TestGenSample,
 };
 use entrenar::hf_pipeline::{FetchOptions, HfModelFetcher};
 // LoRA types available but not used directly in this experiment
 #[allow(unused_imports)]
 use entrenar::lora::{LoRALayer, QLoRALayer};
+use entrenar::monitor::gpu::GpuMonitor;
+use entrenar::monitor::tui::app::{TrainingStateWriter, TuiMonitor, TuiMonitorConfig};
+use entrenar::monitor::tui::headless::{HeadlessMonitor, OutputFormat};
+use entrenar::monitor::tui::state::{GpuTelemetry, SamplePeek};
 use entrenar::optim::{AdamW, CosineAnnealingLR, LRScheduler, Optimizer};
 use entrenar::tokenizer::HfTokenizer;
 use entrenar::train::{CausalLMLoss, LossFn};
 use entrenar::transformer::{
-    load_safetensors_weights, Architecture, LoRAProjection, MultiHeadAttention,
-    MultiHeadAttentionWithLoRA, Transformer, TransformerConfig,
+    load_safetensors_weights, Architecture, LoRAProjection, Transformer, TransformerConfig,
 };
 use entrenar::Tensor;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
+
+/// Real End-to-End Fine-Tuning for Rust Test Generation
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Output directory for experiment artifacts and state
+    #[arg(short, long, default_value = "./experiments/finetune-real")]
+    output: String,
+
+    /// Run in TUI monitor mode (consumer - watches training state)
+    #[arg(long, default_value_t = false)]
+    monitor: bool,
+
+    /// Run in headless mode (CI/CD - no TUI, output to stdout)
+    #[arg(long, default_value_t = false)]
+    headless: bool,
+
+    /// Output format for headless mode (json or text)
+    #[arg(long, default_value = "json")]
+    format: String,
+
+    /// Output file for headless mode (default: stdout)
+    #[arg(long)]
+    output_file: Option<String>,
+
+    /// Experiment directory to monitor (only with --monitor or --headless)
+    #[arg(long)]
+    experiment: Option<String>,
+
+    /// TUI refresh interval in milliseconds
+    #[arg(long, default_value_t = 500)]
+    refresh_ms: u64,
+}
+
+/// CUDA-accelerated training state (SPEC-FT-001 v3.3.0)
+/// Manages GPU buffers for high-performance training
+#[cfg(feature = "cuda")]
+struct CudaTrainingState {
+    trainer: CudaTrainer,
+    /// Weights on GPU: (hidden_size × vocab_size)
+    weights_gpu: trueno_gpu::driver::GpuBuffer<f32>,
+    /// Weight gradients on GPU
+    grads_gpu: trueno_gpu::driver::GpuBuffer<f32>,
+    /// Adam first moment (m)
+    m_state: trueno_gpu::driver::GpuBuffer<f32>,
+    /// Adam second moment (v)
+    v_state: trueno_gpu::driver::GpuBuffer<f32>,
+    /// Dimensions
+    hidden_size: usize,
+    vocab_size: usize,
+}
+
+#[cfg(feature = "cuda")]
+impl CudaTrainingState {
+    /// Initialize CUDA training state with weights
+    fn new(weights: &[f32], hidden_size: usize, vocab_size: usize) -> Option<Self> {
+        let trainer = CudaTrainer::new().ok()?;
+        let weights_gpu = trainer.upload(weights).ok()?;
+        let grads_gpu = trainer.zeros(weights.len()).ok()?;
+        let m_state = trainer.zeros(weights.len()).ok()?;
+        let v_state = trainer.zeros(weights.len()).ok()?;
+
+        Some(Self {
+            trainer,
+            weights_gpu,
+            grads_gpu,
+            m_state,
+            v_state,
+            hidden_size,
+            vocab_size,
+        })
+    }
+
+    /// Forward pass: logits = hidden @ weights
+    fn forward(&self, hidden: &[f32], seq_len: usize) -> Option<Vec<f32>> {
+        let hidden_gpu = self.trainer.upload(hidden).ok()?;
+        let mut logits_gpu = self.trainer.zeros(seq_len * self.vocab_size).ok()?;
+
+        self.trainer
+            .matmul_forward(
+                &hidden_gpu,
+                &self.weights_gpu,
+                &mut logits_gpu,
+                seq_len as u32,
+                self.hidden_size as u32,
+                self.vocab_size as u32,
+            )
+            .ok()?;
+
+        self.trainer.download(&logits_gpu).ok()
+    }
+
+    /// Compute gradients: grad_weights = hidden^T @ grad_logits
+    fn backward(&mut self, hidden: &[f32], grad_logits: &[f32], seq_len: usize) -> Option<()> {
+        let hidden_gpu = self.trainer.upload(hidden).ok()?;
+        let grad_logits_gpu = self.trainer.upload(grad_logits).ok()?;
+        let mut grad_hidden_gpu = self.trainer.zeros(hidden.len()).ok()?;
+
+        self.trainer
+            .matmul_backward(
+                &hidden_gpu,
+                &self.weights_gpu,
+                &grad_logits_gpu,
+                &mut grad_hidden_gpu,
+                &mut self.grads_gpu,
+                seq_len as u32,
+                self.hidden_size as u32,
+                self.vocab_size as u32,
+            )
+            .ok()?;
+
+        Some(())
+    }
+
+    /// AdamW optimizer step on GPU
+    fn adamw_step(
+        &mut self,
+        lr: f32,
+        beta1: f32,
+        beta2: f32,
+        eps: f32,
+        weight_decay: f32,
+    ) -> Option<()> {
+        self.trainer
+            .adamw_step(
+                &mut self.weights_gpu,
+                &self.grads_gpu,
+                &mut self.m_state,
+                &mut self.v_state,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+            )
+            .ok()
+    }
+
+    /// Download current weights from GPU
+    fn download_weights(&self) -> Option<Vec<f32>> {
+        self.trainer.download(&self.weights_gpu).ok()
+    }
+
+    /// Get GPU name for logging
+    fn device_name(&self) -> String {
+        self.trainer.device_name()
+    }
+}
 
 /// LoRA adapters for attention projections
 /// Each layer has adapters for Q, K, V, O projections
@@ -220,6 +413,17 @@ fn transpose_matrix(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
         }
     }
     transposed
+}
+
+/// Truncate a string to a maximum length, adding "..." if truncated (ENT-142)
+fn truncate_str(s: &str, max_len: usize) -> String {
+    // Replace newlines with spaces for single-line display
+    let single_line: String = s.chars().map(|c| if c == '\n' { ' ' } else { c }).collect();
+    if single_line.len() <= max_len {
+        single_line
+    } else {
+        format!("{}...", &single_line[..max_len.saturating_sub(3)])
+    }
 }
 
 /// Generate test code using the trained LoRA model
@@ -468,12 +672,18 @@ fn test_flatten_empty() {
         },
     ];
 
-    // Split into train/val/test (60/20/20)
-    let train_size = (samples.len() as f32 * 0.6) as usize;
-    let val_size = (samples.len() as f32 * 0.2) as usize;
+    // Generate additional samples for better GPU utilization (ENT-136)
+    // Balance: enough samples for good GPU util, but not too many for <30s LoRA target
+    let additional_samples = generate_additional_samples(15); // 20 total samples
+    let mut all_samples = samples;
+    all_samples.extend(additional_samples);
+
+    // Split into train/val/test (80/10/10 for larger corpus)
+    let train_size = (all_samples.len() as f32 * 0.8) as usize;
+    let val_size = (all_samples.len() as f32 * 0.1) as usize;
 
     let mut corpus = TestGenCorpus::new();
-    for (i, sample) in samples.into_iter().enumerate() {
+    for (i, sample) in all_samples.into_iter().enumerate() {
         if i < train_size {
             corpus.train.push(sample);
         } else if i < train_size + val_size {
@@ -494,6 +704,79 @@ fn test_flatten_empty() {
     );
 
     corpus
+}
+
+/// Generate additional training samples for GPU utilization (ENT-136)
+fn generate_additional_samples(count: usize) -> Vec<TestGenSample> {
+    let templates = vec![
+        // Math operations
+        (
+            "/// Computes the sum of numbers from 1 to n\npub fn sum_to_n(n: u64) -> u64 {\n    (1..=n).sum()\n}",
+            "#[test]\nfn test_sum_to_n() {\n    assert_eq!(sum_to_n(5), 15);\n    assert_eq!(sum_to_n(10), 55);\n    assert_eq!(sum_to_n(0), 0);\n}",
+        ),
+        (
+            "/// Computes the product of numbers from 1 to n\npub fn product_to_n(n: u64) -> u64 {\n    (1..=n).product()\n}",
+            "#[test]\nfn test_product_to_n() {\n    assert_eq!(product_to_n(5), 120);\n    assert_eq!(product_to_n(1), 1);\n}",
+        ),
+        (
+            "/// Computes the nth Fibonacci number\npub fn fibonacci(n: u64) -> u64 {\n    match n {\n        0 => 0,\n        1 => 1,\n        _ => fibonacci(n - 1) + fibonacci(n - 2),\n    }\n}",
+            "#[test]\nfn test_fibonacci() {\n    assert_eq!(fibonacci(0), 0);\n    assert_eq!(fibonacci(1), 1);\n    assert_eq!(fibonacci(10), 55);\n}",
+        ),
+        (
+            "/// Checks if a number is even\npub fn is_even(n: i64) -> bool {\n    n % 2 == 0\n}",
+            "#[test]\nfn test_is_even() {\n    assert!(is_even(2));\n    assert!(is_even(0));\n    assert!(!is_even(3));\n}",
+        ),
+        (
+            "/// Returns the absolute value\npub fn abs(n: i64) -> i64 {\n    if n < 0 { -n } else { n }\n}",
+            "#[test]\nfn test_abs() {\n    assert_eq!(abs(-5), 5);\n    assert_eq!(abs(5), 5);\n    assert_eq!(abs(0), 0);\n}",
+        ),
+        // String operations
+        (
+            "/// Counts vowels in a string\npub fn count_vowels(s: &str) -> usize {\n    s.chars().filter(|c| \"aeiouAEIOU\".contains(*c)).count()\n}",
+            "#[test]\nfn test_count_vowels() {\n    assert_eq!(count_vowels(\"hello\"), 2);\n    assert_eq!(count_vowels(\"xyz\"), 0);\n}",
+        ),
+        (
+            "/// Converts string to uppercase\npub fn to_upper(s: &str) -> String {\n    s.to_uppercase()\n}",
+            "#[test]\nfn test_to_upper() {\n    assert_eq!(to_upper(\"hello\"), \"HELLO\");\n    assert_eq!(to_upper(\"\"), \"\");\n}",
+        ),
+        (
+            "/// Checks if string is palindrome\npub fn is_palindrome(s: &str) -> bool {\n    let chars: Vec<char> = s.chars().collect();\n    chars.iter().eq(chars.iter().rev())\n}",
+            "#[test]\nfn test_is_palindrome() {\n    assert!(is_palindrome(\"racecar\"));\n    assert!(!is_palindrome(\"hello\"));\n    assert!(is_palindrome(\"\"));\n}",
+        ),
+        // Collection operations
+        (
+            "/// Returns the maximum value in a slice\npub fn max_value(arr: &[i32]) -> Option<i32> {\n    arr.iter().copied().max()\n}",
+            "#[test]\nfn test_max_value() {\n    assert_eq!(max_value(&[1, 5, 3]), Some(5));\n    assert_eq!(max_value(&[]), None);\n}",
+        ),
+        (
+            "/// Returns the minimum value in a slice\npub fn min_value(arr: &[i32]) -> Option<i32> {\n    arr.iter().copied().min()\n}",
+            "#[test]\nfn test_min_value() {\n    assert_eq!(min_value(&[1, 5, 3]), Some(1));\n    assert_eq!(min_value(&[]), None);\n}",
+        ),
+        (
+            "/// Computes the average of numbers\npub fn average(arr: &[f64]) -> Option<f64> {\n    if arr.is_empty() { None } else { Some(arr.iter().sum::<f64>() / arr.len() as f64) }\n}",
+            "#[test]\nfn test_average() {\n    assert_eq!(average(&[1.0, 2.0, 3.0]), Some(2.0));\n    assert_eq!(average(&[]), None);\n}",
+        ),
+        (
+            "/// Removes duplicates from a vector\npub fn deduplicate(arr: Vec<i32>) -> Vec<i32> {\n    let mut seen = std::collections::HashSet::new();\n    arr.into_iter().filter(|x| seen.insert(*x)).collect()\n}",
+            "#[test]\nfn test_deduplicate() {\n    assert_eq!(deduplicate(vec![1, 2, 2, 3]), vec![1, 2, 3]);\n    assert_eq!(deduplicate(vec![]), Vec::<i32>::new());\n}",
+        ),
+    ];
+
+    let mut samples = Vec::new();
+    for i in 0..count {
+        let (func, test) = &templates[i % templates.len()];
+        // Add variation by appending index to function name
+        let varied_func = func.replace("pub fn ", &format!("pub fn v{}__", i));
+        let varied_test = test.replace("fn test_", &format!("fn test_v{}_", i));
+
+        samples.push(TestGenSample {
+            function: varied_func,
+            unit_tests: varied_test,
+            property_tests: None,
+            metadata: Default::default(),
+        });
+    }
+    samples
 }
 
 /// Get model from pacha cache (downloaded via `apr pull`)
@@ -635,11 +918,83 @@ fn walkdir(dir: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
 }
 
 fn main() {
+    let args = Args::parse();
+
+    // =========================================================================
+    // TUI Monitor Mode (Consumer - reads from metric store)
+    // =========================================================================
+    if args.monitor {
+        let experiment_dir = args.experiment.as_ref().unwrap_or(&args.output);
+
+        println!("📺 TUI Monitor Mode (SPEC-FT-001 Section 10)");
+        println!("============================================");
+        println!("Experiment: {experiment_dir}");
+        println!("Refresh:    {}ms", args.refresh_ms);
+        println!();
+
+        let config = TuiMonitorConfig {
+            refresh_ms: args.refresh_ms,
+            width: 80,
+            height: 24,
+            exit_on_complete: true,
+            ..Default::default()
+        };
+
+        let mut monitor = TuiMonitor::new(experiment_dir, config);
+        if let Err(e) = monitor.run() {
+            eprintln!("Monitor error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // =========================================================================
+    // Headless Monitor Mode (Consumer - CI/CD output)
+    // =========================================================================
+    if args.headless {
+        let experiment_dir = args.experiment.as_ref().unwrap_or(&args.output);
+
+        let format = OutputFormat::from_str(&args.format).unwrap_or_else(|| {
+            eprintln!("Invalid format '{}', using json", args.format);
+            OutputFormat::Json
+        });
+
+        eprintln!("Headless Monitor Mode (SPEC-FT-001 Section 10.8)");
+        eprintln!("================================================");
+        eprintln!("Experiment: {experiment_dir}");
+        eprintln!("Format:     {:?}", format);
+        if let Some(ref output_file) = args.output_file {
+            eprintln!("Output:     {}", output_file);
+        } else {
+            eprintln!("Output:     stdout");
+        }
+        eprintln!("Refresh:    {}ms", args.refresh_ms);
+        eprintln!();
+
+        let monitor = match args.output_file {
+            Some(ref path) => {
+                HeadlessMonitor::with_output_file(format, args.refresh_ms, path.clone())
+            }
+            None => HeadlessMonitor::new(format, args.refresh_ms),
+        };
+        if let Err(e) = monitor.run(experiment_dir) {
+            eprintln!("Headless monitor error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // =========================================================================
+    // Training Mode (Producer - writes to metric store)
+    // =========================================================================
     let start_time = Instant::now();
 
     println!("═══════════════════════════════════════════════════════════════");
     println!("   🧪 Real End-to-End Fine-Tuning for Rust Test Generation");
     println!("═══════════════════════════════════════════════════════════════\n");
+
+    // Create output directory for state file
+    fs::create_dir_all(&args.output).ok();
 
     // 1. Check compute device
     println!("🖥️  Detecting compute device...");
@@ -658,6 +1013,17 @@ fn main() {
             "✓"
         } else {
             "✗"
+        }
+    );
+
+    // Check CUDA training availability (SPEC-FT-001 v3.3.0)
+    let cuda_training = cuda_training_available();
+    println!(
+        "   CUDA Training: {}",
+        if cuda_training {
+            "✓ (CudaTrainer available)"
+        } else {
+            "✗ (CPU fallback)"
         }
     );
 
@@ -715,10 +1081,71 @@ fn main() {
     let epochs_lora = 15; // Extended training for LoRA
     let lr_full_ft = 2e-4; // Baseline learning rate
     let lr_lora = 6e-4; // 3x learning rate for LoRA
-    let max_seq_len = 32;
+    let max_seq_len = 128; // Balanced for GPU util + speed (ENT-136/ENT-138)
+
+    // Pre-tokenize all samples to reduce CPU overhead (ENT-138)
+    println!("\n🔄 Pre-tokenizing corpus...");
+    let pretokenized_train: Vec<(Vec<u32>, Vec<f32>)> = corpus
+        .train
+        .iter()
+        .map(|sample| {
+            let mut token_ids = tokenizer.encode(&sample.function);
+            token_ids.truncate(max_seq_len);
+            let targets: Vec<f32> = token_ids
+                .iter()
+                .skip(1)
+                .map(|&t| (t % demo_vocab as u32) as f32)
+                .collect();
+            let inputs: Vec<u32> = token_ids.iter().take(targets.len()).copied().collect();
+            (inputs, targets)
+        })
+        .filter(|(inputs, _)| !inputs.is_empty())
+        .collect();
+    println!("   ✓ Pre-tokenized {} samples", pretokenized_train.len());
 
     // Create CausalLMLoss for proper cross-entropy with backward pass
     let causal_loss_fn = CausalLMLoss::new(demo_vocab);
+
+    // ========================================================================
+    // TUI MONITORING SETUP (Producer side)
+    // ========================================================================
+    let experiment_id = format!(
+        "finetune-real-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    );
+    let mut state_writer =
+        TrainingStateWriter::new(&args.output, &experiment_id, "Qwen2.5-Coder-0.5B");
+
+    // Total steps: epochs_full_ft * train_samples + epochs_lora * train_samples
+    let total_epochs = epochs_full_ft + epochs_lora;
+    let steps_per_epoch = pretokenized_train.len();
+    state_writer.set_epochs(total_epochs, steps_per_epoch);
+
+    // Initialize GPU monitor (uses NVML if compiled with `nvml` feature)
+    let gpu_monitor = GpuMonitor::new().ok();
+    if let Some(ref monitor) = gpu_monitor {
+        if monitor.num_devices() > 0 {
+            println!(
+                "\n📊 GPU Monitor: {} device(s) detected",
+                monitor.num_devices()
+            );
+        }
+    }
+
+    // Start training (write initial state)
+    if let Err(e) = state_writer.start() {
+        eprintln!("Warning: Could not write training state: {e}");
+    }
+
+    println!("\n📺 TUI Monitor available:");
+    println!(
+        "   cargo run --example finetune_real --features nvml -- --monitor --experiment {}",
+        args.output
+    );
+    println!();
 
     // ========================================================================
     // EXTRACT REAL PRE-TRAINED LM HEAD WEIGHTS
@@ -807,56 +1234,219 @@ fn main() {
     let mut loss_history_head_only = Vec::new();
     let start_exp1 = Instant::now();
 
+    // Try to use CUDA training (SPEC-FT-001 v3.3.0)
+    #[cfg(feature = "cuda")]
+    let mut cuda_state: Option<CudaTrainingState> = if cuda_training {
+        match CudaTrainingState::new(&pretrained_subset, hidden_size, demo_vocab) {
+            Some(state) => {
+                println!("   Backend: CUDA ({})", state.device_name());
+                Some(state)
+            }
+            None => {
+                println!("   Backend: CPU (CUDA init failed)");
+                None
+            }
+        }
+    } else {
+        println!("   Backend: CPU");
+        None
+    };
+
+    #[cfg(not(feature = "cuda"))]
+    {
+        let _ = cuda_training; // Suppress unused warning
+        println!("   Backend: CPU");
+    }
+
     for epoch in 0..epochs_full_ft {
         println!("\n  Epoch {}/{}", epoch + 1, epochs_full_ft);
         let mut epoch_loss = 0.0;
 
-        for (step, sample) in corpus.train.iter().enumerate() {
-            let mut token_ids = tokenizer.encode(&sample.function);
-            token_ids.truncate(max_seq_len);
-
-            let targets_f32: Vec<f32> = token_ids
-                .iter()
-                .skip(1)
-                .map(|&t| (t % demo_vocab as u32) as f32)
-                .collect();
-            let input_ids: Vec<u32> = token_ids.iter().take(targets_f32.len()).copied().collect();
-
-            if input_ids.is_empty() {
-                continue;
-            }
+        for (step, (input_ids, targets_f32)) in pretokenized_train.iter().enumerate() {
             let seq_len = input_ids.len();
 
             // Forward: hidden → LM head → logits
             let hidden_states = forward_hidden(&transformer, &input_ids);
-            let logits = matmul(
-                &hidden_states,
-                &trainable_params_1[0],
-                seq_len,
-                hidden_size,
-                demo_vocab,
-            );
 
-            // Loss and backward
-            let targets_tensor = Tensor::from_vec(targets_f32.clone(), false);
-            let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
-            let loss_val = loss.data()[0];
+            // Use CUDA path when available (SPEC-FT-001 v3.3.0)
+            #[cfg(feature = "cuda")]
+            let (logits, loss_val, grad_norm) = if let Some(ref mut cuda) = cuda_state {
+                // CUDA forward pass
+                let hidden_data: Vec<f32> = hidden_states.data().to_vec();
+                let logits_data = cuda
+                    .forward(&hidden_data, seq_len)
+                    .expect("CUDA forward failed");
 
-            optimizer_1.zero_grad(&mut trainable_params_1);
-            backward(&mut loss, None);
-            optimizer_1.step(&mut trainable_params_1);
+                // Compute cross-entropy loss and gradient directly
+                // Loss = -sum(one_hot * log(softmax)) / n
+                // Gradient = (softmax - one_hot) / n
+                let mut total_loss = 0.0f32;
+                let mut grad_logits = vec![0.0f32; seq_len * demo_vocab];
+
+                for pos in 0..seq_len {
+                    // Get logits for this position
+                    let offset = pos * demo_vocab;
+                    let pos_logits = &logits_data[offset..offset + demo_vocab];
+
+                    // Numerically stable softmax
+                    let max_logit = pos_logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    let exp_logits: Vec<f32> =
+                        pos_logits.iter().map(|&x| (x - max_logit).exp()).collect();
+                    let sum_exp: f32 = exp_logits.iter().sum();
+                    let softmax: Vec<f32> = exp_logits.iter().map(|&x| x / sum_exp).collect();
+
+                    // Target class (already converted to demo_vocab range)
+                    let target_class = targets_f32[pos] as usize;
+
+                    // Cross-entropy loss for this position
+                    total_loss -= softmax[target_class].max(1e-10).ln();
+
+                    // Gradient: softmax - one_hot
+                    for (i, &s) in softmax.iter().enumerate() {
+                        let one_hot = if i == target_class { 1.0 } else { 0.0 };
+                        grad_logits[offset + i] = (s - one_hot) / seq_len as f32;
+                    }
+                }
+                let loss_val = total_loss / seq_len as f32;
+
+                // Compute gradient norm for reporting
+                let grad_norm: f32 = grad_logits.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+                // GPU backward: compute weight gradients
+                cuda.backward(&hidden_data, &grad_logits, seq_len)
+                    .expect("CUDA backward failed");
+
+                // Debug: check weight sum before update
+                let weights_before = cuda.download_weights().unwrap();
+                let sum_before: f32 = weights_before.iter().sum();
+
+                // AdamW step on GPU
+                let current_lr = scheduler_1.get_lr();
+                cuda.adamw_step(current_lr, 0.9, 0.999, 1e-8, 0.01)
+                    .expect("CUDA optimizer step failed");
+
+                // Debug: check weight sum after update
+                let weights_after = cuda.download_weights().unwrap();
+                let sum_after: f32 = weights_after.iter().sum();
+                if step == 0 && epoch == 0 {
+                    println!(
+                        "    DEBUG: weight_sum before={:.6}, after={:.6}, delta={:.6}",
+                        sum_before,
+                        sum_after,
+                        sum_after - sum_before
+                    );
+                }
+
+                let logits_tensor = Tensor::from_vec(logits_data, false);
+                (logits_tensor, loss_val, grad_norm)
+            } else {
+                // CPU fallback
+                let logits = matmul(
+                    &hidden_states,
+                    &trainable_params_1[0],
+                    seq_len,
+                    hidden_size,
+                    demo_vocab,
+                );
+
+                let targets_tensor = Tensor::from_vec(targets_f32.clone(), false);
+                let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
+                let loss_val = loss.data()[0];
+
+                optimizer_1.zero_grad(&mut trainable_params_1);
+                backward(&mut loss, None);
+                optimizer_1.step(&mut trainable_params_1);
+
+                let grad_norm = trainable_params_1[0]
+                    .grad()
+                    .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
+                    .unwrap_or(0.0);
+
+                (logits, loss_val, grad_norm)
+            };
+
+            // CPU-only path (when not compiled with cuda feature)
+            #[cfg(not(feature = "cuda"))]
+            let (logits, loss_val, grad_norm) = {
+                let logits = matmul(
+                    &hidden_states,
+                    &trainable_params_1[0],
+                    seq_len,
+                    hidden_size,
+                    demo_vocab,
+                );
+
+                let targets_tensor = Tensor::from_vec(targets_f32.clone(), false);
+                let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
+                let loss_val = loss.data()[0];
+
+                optimizer_1.zero_grad(&mut trainable_params_1);
+                backward(&mut loss, None);
+                optimizer_1.step(&mut trainable_params_1);
+
+                let grad_norm = trainable_params_1[0]
+                    .grad()
+                    .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
+                    .unwrap_or(0.0);
+
+                (logits, loss_val, grad_norm)
+            };
+
+            let _ = logits; // Suppress unused warning
 
             epoch_loss += loss_val;
             loss_history_head_only.push(loss_val);
 
             scheduler_1.step();
-            optimizer_1.set_lr(scheduler_1.get_lr());
+            let current_lr = scheduler_1.get_lr();
+            optimizer_1.set_lr(current_lr);
+
+            // Update TUI state (every step)
+            // Note: step is 0-indexed, display as 1-indexed for user (ENT-141 fix)
+            let tokens_per_second = seq_len as f32
+                / (start_exp1.elapsed().as_secs_f32()
+                    / (epoch * steps_per_epoch + step + 1) as f32);
+            let _ = state_writer.update_step(
+                epoch + 1, // 1-indexed epoch for display
+                step + 1,  // 1-indexed step within epoch for display (ENT-141)
+                loss_val,
+                current_lr,
+                grad_norm,
+                tokens_per_second,
+            );
+
+            // Update sample preview (every 5 steps) (ENT-142 fix)
+            if step % 5 == 0 {
+                if let Some(sample) = corpus.train.get(step % corpus.train.len()) {
+                    let sample_peek = SamplePeek {
+                        input_preview: truncate_str(&sample.function, 50),
+                        target_preview: truncate_str(&sample.unit_tests, 50),
+                        generated_preview: "(training...)".to_string(),
+                        token_match_percent: 0.0, // Not computing generation during training
+                    };
+                    let _ = state_writer.update_sample(sample_peek);
+                }
+            }
+
+            // Update GPU telemetry (every 10 steps)
+            if step % 10 == 0 {
+                if let Some(ref monitor) = gpu_monitor {
+                    let metrics = monitor.sample();
+                    if let Some(m) = metrics.first() {
+                        let _ = state_writer.update_gpu(GpuTelemetry {
+                            device_name: m.name.clone(),
+                            utilization_percent: m.utilization_percent as f32,
+                            vram_used_gb: m.memory_used_mb as f32 / 1024.0,
+                            vram_total_gb: m.memory_total_mb as f32 / 1024.0,
+                            temperature_celsius: m.temperature_celsius as f32,
+                            power_watts: m.power_watts,
+                            power_limit_watts: m.power_limit_watts,
+                        });
+                    }
+                }
+            }
 
             if step == corpus.train.len() - 1 {
-                let grad_norm = trainable_params_1[0]
-                    .grad()
-                    .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
-                    .unwrap_or(0.0);
                 println!(
                     "    Step {}: CE={:.4}, grad_norm={:.2}",
                     step + 1,
@@ -872,12 +1462,27 @@ fn main() {
         );
     }
 
+    // Download final weights from GPU if using CUDA
+    #[cfg(feature = "cuda")]
+    if let Some(ref cuda) = cuda_state {
+        if let Some(final_weights) = cuda.download_weights() {
+            trainable_params_1[0] = Tensor::from_vec(final_weights, true);
+        }
+    }
+
     let exp1_duration = start_exp1.elapsed();
     let exp1_final_loss = loss_history_head_only.last().copied().unwrap_or(0.0);
     let exp1_initial_loss = loss_history_head_only.first().copied().unwrap_or(0.0);
     let exp1_reduction = (exp1_initial_loss - exp1_final_loss) / exp1_initial_loss * 100.0;
 
+    // Report backend used
+    #[cfg(feature = "cuda")]
+    let backend_used = if cuda_state.is_some() { "CUDA" } else { "CPU" };
+    #[cfg(not(feature = "cuda"))]
+    let backend_used = "CPU";
+
     println!("\n📊 FULL FINE-TUNING RESULTS:");
+    println!("   Backend: {}", backend_used);
     println!("   Initial CE: {:.4}", exp1_initial_loss);
     println!("   Final CE: {:.4}", exp1_final_loss);
     println!("   Reduction: {:.2}%", exp1_reduction);
@@ -942,20 +1547,7 @@ fn main() {
         println!("\n  Epoch {}/{}", epoch + 1, epochs_lora);
         let mut epoch_loss = 0.0;
 
-        for (step, sample) in corpus.train.iter().enumerate() {
-            let mut token_ids = tokenizer.encode(&sample.function);
-            token_ids.truncate(max_seq_len);
-
-            let targets_f32: Vec<f32> = token_ids
-                .iter()
-                .skip(1)
-                .map(|&t| (t % demo_vocab as u32) as f32)
-                .collect();
-            let input_ids: Vec<u32> = token_ids.iter().take(targets_f32.len()).copied().collect();
-
-            if input_ids.is_empty() {
-                continue;
-            }
+        for (step, (input_ids, targets_f32)) in pretokenized_train.iter().enumerate() {
             let seq_len = input_ids.len();
 
             // Forward: hidden → LoRA LM head → logits
@@ -995,7 +1587,55 @@ fn main() {
             loss_history_lora.push(loss_val);
 
             scheduler_2.step();
-            optimizer_2.set_lr(scheduler_2.get_lr());
+            let current_lr = scheduler_2.get_lr();
+            optimizer_2.set_lr(current_lr);
+
+            // Update TUI state (Experiment 2 - continue epoch numbering from Experiment 1)
+            // Note: step is 0-indexed, display as 1-indexed for user (ENT-141 fix)
+            let actual_epoch = epochs_full_ft + epoch;
+            let combined_grad_norm = (grad_a_norm.powi(2) + grad_b_norm.powi(2)).sqrt();
+            let tokens_per_second = seq_len as f32
+                / (start_exp2.elapsed().as_secs_f32()
+                    / (epoch * steps_per_epoch + step + 1) as f32);
+            let _ = state_writer.update_step(
+                actual_epoch + 1, // 1-indexed epoch for display
+                step + 1,         // 1-indexed step within epoch for display (ENT-141)
+                loss_val,
+                current_lr,
+                combined_grad_norm,
+                tokens_per_second,
+            );
+
+            // Update sample preview (every 5 steps) (ENT-142 fix)
+            if step % 5 == 0 {
+                if let Some(sample) = corpus.train.get(step % corpus.train.len()) {
+                    let sample_peek = SamplePeek {
+                        input_preview: truncate_str(&sample.function, 50),
+                        target_preview: truncate_str(&sample.unit_tests, 50),
+                        generated_preview: "(LoRA training...)".to_string(),
+                        token_match_percent: 0.0, // Not computing generation during training
+                    };
+                    let _ = state_writer.update_sample(sample_peek);
+                }
+            }
+
+            // Update GPU telemetry (every 10 steps)
+            if step % 10 == 0 {
+                if let Some(ref monitor) = gpu_monitor {
+                    let metrics = monitor.sample();
+                    if let Some(m) = metrics.first() {
+                        let _ = state_writer.update_gpu(GpuTelemetry {
+                            device_name: m.name.clone(),
+                            utilization_percent: m.utilization_percent as f32,
+                            vram_used_gb: m.memory_used_mb as f32 / 1024.0,
+                            vram_total_gb: m.memory_total_mb as f32 / 1024.0,
+                            temperature_celsius: m.temperature_celsius as f32,
+                            power_watts: m.power_watts,
+                            power_limit_watts: m.power_limit_watts,
+                        });
+                    }
+                }
+            }
 
             if step == corpus.train.len() - 1 {
                 println!(
@@ -1330,4 +1970,8 @@ fn main() {
     } else {
         println!("\n   ⚠️  Model needs significant improvement for code generation.");
     }
+
+    // Mark training as complete in TUI state
+    let _ = state_writer.complete();
+    println!("\n📺 Training state saved to: {}", args.output);
 }

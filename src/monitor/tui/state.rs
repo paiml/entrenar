@@ -144,13 +144,9 @@ impl Default for TrainingSnapshot {
 
 impl TrainingSnapshot {
     /// Calculate elapsed time since training start
+    /// Uses the snapshot's timestamp_ms for deterministic/reproducible output (ENT-140)
     pub fn elapsed(&self) -> Duration {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-
-        Duration::from_millis(now.saturating_sub(self.start_timestamp_ms))
+        Duration::from_millis(self.timestamp_ms.saturating_sub(self.start_timestamp_ms))
     }
 
     /// Calculate estimated remaining time
@@ -190,6 +186,78 @@ impl TrainingSnapshot {
             return 0.0;
         }
         (self.global_step() as f32 / total as f32) * 100.0
+    }
+
+    /// Compute loss trend from recent history
+    ///
+    /// Returns:
+    /// - `LossTrend::Decreasing` if loss is going down (good)
+    /// - `LossTrend::Stable` if loss is plateauing
+    /// - `LossTrend::Increasing` if loss is going up (bad)
+    /// - `LossTrend::Unknown` if not enough data
+    pub fn loss_trend(&self) -> LossTrend {
+        // Need at least 5 samples to compute trend
+        if self.loss_history.len() < 5 {
+            return LossTrend::Unknown;
+        }
+
+        // Use last 10 samples (or all if less)
+        let window = self.loss_history.len().min(10);
+        let recent = &self.loss_history[self.loss_history.len() - window..];
+
+        // Compare first half vs second half
+        let mid = window / 2;
+        let first_half: f32 = recent[..mid].iter().sum::<f32>() / mid as f32;
+        let second_half: f32 = recent[mid..].iter().sum::<f32>() / (window - mid) as f32;
+
+        // Calculate relative change
+        let change = (second_half - first_half) / first_half.abs().max(1e-6);
+
+        // Threshold: 2% change considered significant
+        const THRESHOLD: f32 = 0.02;
+
+        if change < -THRESHOLD {
+            LossTrend::Decreasing
+        } else if change > THRESHOLD {
+            LossTrend::Increasing
+        } else {
+            LossTrend::Stable
+        }
+    }
+}
+
+/// Loss trend direction
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LossTrend {
+    /// Loss is decreasing (good)
+    Decreasing,
+    /// Loss is stable/plateauing
+    Stable,
+    /// Loss is increasing (bad)
+    Increasing,
+    /// Not enough data to determine
+    Unknown,
+}
+
+impl LossTrend {
+    /// Get Unicode arrow for display
+    pub fn arrow(&self) -> &'static str {
+        match self {
+            LossTrend::Decreasing => "↓",
+            LossTrend::Stable => "→",
+            LossTrend::Increasing => "↑",
+            LossTrend::Unknown => "?",
+        }
+    }
+
+    /// Get description
+    pub fn description(&self) -> &'static str {
+        match self {
+            LossTrend::Decreasing => "decreasing",
+            LossTrend::Stable => "stable",
+            LossTrend::Increasing => "increasing",
+            LossTrend::Unknown => "unknown",
+        }
     }
 }
 
@@ -298,6 +366,7 @@ impl TrainingState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use tempfile::TempDir;
 
     #[test]
@@ -371,5 +440,157 @@ mod tests {
         // Second read should return cached
         let cached = state.read().unwrap().unwrap();
         assert_eq!(cached.epoch, 1);
+    }
+
+    // Property-based tests for monitoring integration (ENT-121)
+
+    proptest! {
+        /// TrainingSnapshot JSON serialization round-trip
+        #[test]
+        fn prop_snapshot_json_roundtrip(
+            epoch in 1usize..1000,
+            total_epochs in 1usize..100,
+            step in 0usize..10000,
+            steps_per_epoch in 1usize..10000,
+            loss in 0.0f32..100.0,
+            learning_rate in 1e-10f32..1.0,
+            gradient_norm in 0.0f32..1000.0,
+            tokens_per_second in 0.0f32..10000.0,
+        ) {
+            let snapshot = TrainingSnapshot {
+                timestamp_ms: 12345678,
+                epoch,
+                total_epochs,
+                step,
+                steps_per_epoch,
+                loss,
+                loss_history: vec![loss * 1.1, loss * 1.05, loss],
+                learning_rate,
+                gradient_norm,
+                tokens_per_second,
+                start_timestamp_ms: 12345000,
+                gpu: None,
+                sample: None,
+                status: TrainingStatus::Running,
+                experiment_id: "test".to_string(),
+                model_name: "model".to_string(),
+            };
+
+            // Serialize
+            let json = serde_json::to_string(&snapshot).unwrap();
+
+            // Deserialize
+            let restored: TrainingSnapshot = serde_json::from_str(&json).unwrap();
+
+            // Verify all fields preserved
+            prop_assert_eq!(restored.epoch, epoch);
+            prop_assert_eq!(restored.total_epochs, total_epochs);
+            prop_assert_eq!(restored.step, step);
+            prop_assert_eq!(restored.steps_per_epoch, steps_per_epoch);
+            prop_assert!((restored.loss - loss).abs() < 1e-5);
+            prop_assert!((restored.learning_rate - learning_rate).abs() < 1e-10);
+            prop_assert!((restored.gradient_norm - gradient_norm).abs() < 1e-5);
+        }
+
+        /// Loss trend detection is consistent with loss history direction
+        #[test]
+        fn prop_loss_trend_consistent(
+            base_loss in 1.0f32..10.0,
+            trend_factor in -0.1f32..0.1,
+        ) {
+            // Generate 10 loss values with consistent trend
+            // Positive factor = loss going up, Negative factor = loss going down
+            let history: Vec<f32> = (0..10)
+                .map(|i| base_loss + (i as f32 * trend_factor))
+                .collect();
+
+            let snapshot = TrainingSnapshot {
+                loss_history: history,
+                ..Default::default()
+            };
+
+            let trend = snapshot.loss_trend();
+
+            // With 10 samples and consistent trend, we should detect it
+            // Positive factor = loss increasing over time = LossTrend::Increasing
+            // Negative factor = loss decreasing over time = LossTrend::Decreasing
+            if trend_factor > 0.05 {
+                prop_assert_eq!(trend, LossTrend::Increasing);
+            } else if trend_factor < -0.05 {
+                prop_assert_eq!(trend, LossTrend::Decreasing);
+            }
+            // Stable if |trend_factor| <= 0.05 (within threshold)
+        }
+
+        /// GPU telemetry VRAM percentage is always 0-100
+        #[test]
+        fn prop_gpu_vram_percent_bounded(
+            vram_used in 0.0f32..100.0,
+            vram_total in 1.0f32..100.0,
+        ) {
+            let gpu = GpuTelemetry {
+                vram_used_gb: vram_used.min(vram_total),
+                vram_total_gb: vram_total,
+                ..Default::default()
+            };
+
+            let percent = gpu.vram_percent();
+            prop_assert!(percent >= 0.0);
+            prop_assert!(percent <= 100.0);
+        }
+
+        /// Progress percent is always 0-100
+        #[test]
+        fn prop_progress_percent_bounded(
+            epoch in 1usize..100,
+            total_epochs in 1usize..100,
+            step in 0usize..1000,
+            steps_per_epoch in 1usize..1000,
+        ) {
+            let epoch = epoch.min(total_epochs);
+            let step = step.min(steps_per_epoch);
+
+            let snapshot = TrainingSnapshot {
+                epoch,
+                total_epochs,
+                step,
+                steps_per_epoch,
+                ..Default::default()
+            };
+
+            let progress = snapshot.progress_percent();
+            prop_assert!(progress >= 0.0);
+            prop_assert!(progress <= 100.0);
+        }
+
+        /// State file write/read preserves all data
+        #[test]
+        fn prop_state_file_roundtrip(
+            epoch in 1usize..100,
+            loss in 0.0f32..100.0,
+            lr in 1e-6f32..0.1,
+        ) {
+            let temp_dir = TempDir::new().unwrap();
+            let mut state = TrainingState::new(temp_dir.path());
+
+            let snapshot = TrainingSnapshot {
+                epoch,
+                total_epochs: 10,
+                loss,
+                learning_rate: lr,
+                status: TrainingStatus::Running,
+                ..Default::default()
+            };
+
+            state.write(&snapshot).unwrap();
+
+            // Clear cache and re-read
+            state.last_modified = None;
+            let restored = state.read().unwrap().unwrap();
+
+            prop_assert_eq!(restored.epoch, epoch);
+            prop_assert!((restored.loss - loss).abs() < 1e-5);
+            prop_assert!((restored.learning_rate - lr).abs() < 1e-10);
+        }
     }
 }

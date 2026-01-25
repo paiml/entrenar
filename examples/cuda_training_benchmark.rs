@@ -194,11 +194,37 @@ mod cuda_benchmark {
         // 6. Run training loop with timing
         println!("\n[6/6] Running training benchmark...");
 
-        // Warmup
+        // Warmup with error recovery
         println!("   Warming up ({} iterations)...", config.warmup_iterations);
-        for _ in 0..config.warmup_iterations {
-            gemm_forward(&hidden, &weights, &mut logits, m, k, n, &stream)?;
-            stream.synchronize()?;
+        let mut warmup_ok = false;
+        for attempt in 0..3 {
+            let result: Result<(), Box<dyn std::error::Error>> = (|| {
+                for _ in 0..config.warmup_iterations {
+                    gemm_forward(&hidden, &weights, &mut logits, m, k, n, &stream)?;
+                    stream.synchronize()?;
+                }
+                Ok(())
+            })();
+
+            match result {
+                Ok(()) => {
+                    warmup_ok = true;
+                    break;
+                }
+                Err(e) if attempt < 2 => {
+                    eprintln!(
+                        "   Warmup attempt {} failed: {}. Retrying...",
+                        attempt + 1,
+                        e
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        if !warmup_ok {
+            return Err("Warmup failed after 3 attempts".into());
         }
 
         // Benchmark

@@ -2,7 +2,9 @@
 //!
 //! Braille-encoded charts and ptop-style layout for training visualization.
 //! Uses UTF-8 braille characters for high-resolution loss curves.
+//! Supports ANSI colors with automatic terminal capability detection.
 
+use super::color::{colored_bar, ColorMode, Styled, TrainingPalette};
 use super::state::{GpuTelemetry, SamplePeek, TrainingSnapshot, TrainingStatus};
 use std::time::Duration;
 
@@ -44,6 +46,8 @@ pub struct BrailleChart {
     max_val: Option<f32>,
     /// Use log scale
     log_scale: bool,
+    /// Color mode for rendering
+    color_mode: ColorMode,
 }
 
 impl BrailleChart {
@@ -56,7 +60,14 @@ impl BrailleChart {
             min_val: None,
             max_val: None,
             log_scale: false,
+            color_mode: ColorMode::detect(),
         }
+    }
+
+    /// Set color mode
+    pub fn color_mode(mut self, mode: ColorMode) -> Self {
+        self.color_mode = mode;
+        self
     }
 
     /// Set data points
@@ -130,9 +141,13 @@ impl BrailleChart {
             // }
         }
 
-        // Convert grid to braille characters
+        // Convert grid to braille characters with color gradient
         let mut output = String::new();
         for row in 0..self.height {
+            // Calculate row color - gradient from red (top/high loss) to green (bottom/low loss)
+            let row_normalized = row as f32 / self.height.max(1) as f32;
+            let row_color = TrainingPalette::loss_color(row_normalized, 0.0, 1.0);
+
             for col in 0..self.width {
                 let mut code: u32 = 0;
                 for dy in 0..4 {
@@ -145,7 +160,18 @@ impl BrailleChart {
                     }
                 }
                 let ch = char::from_u32(BRAILLE_BASE + code).unwrap_or(' ');
-                output.push(ch);
+
+                // Apply color if there are dots to render
+                if code > 0 && self.color_mode != ColorMode::Mono {
+                    let ch_str = ch.to_string();
+                    output.push_str(
+                        &Styled::new(&ch_str, self.color_mode)
+                            .fg(row_color)
+                            .to_string(),
+                    );
+                } else {
+                    output.push(ch);
+                }
             }
             output.push('\n');
         }
@@ -256,27 +282,47 @@ pub fn format_duration(d: Duration) -> String {
 /// └──────────────────────────────────┴─────────────────────────────────────┘
 /// ```
 pub fn render_layout(snapshot: &TrainingSnapshot, width: usize) -> String {
+    render_layout_colored(snapshot, width, ColorMode::detect())
+}
+
+/// Render the full TUI layout with specified color mode
+pub fn render_layout_colored(
+    snapshot: &TrainingSnapshot,
+    width: usize,
+    color_mode: ColorMode,
+) -> String {
     let mut output = String::new();
     let half_width = width / 2;
 
-    // Status text
-    let status_str = match &snapshot.status {
-        TrainingStatus::Initializing => "Initializing",
-        TrainingStatus::Running => "Running",
-        TrainingStatus::Paused => "Paused",
-        TrainingStatus::Completed => "Completed",
-        TrainingStatus::Failed(_) => "Failed",
+    // Status text with color
+    let (status_str, status_color) = match &snapshot.status {
+        TrainingStatus::Initializing => ("Initializing", TrainingPalette::INFO),
+        TrainingStatus::Running => ("Running", TrainingPalette::SUCCESS),
+        TrainingStatus::Paused => ("Paused", TrainingPalette::WARNING),
+        TrainingStatus::Completed => ("Completed", TrainingPalette::PRIMARY),
+        TrainingStatus::Failed(_) => ("Failed", TrainingPalette::ERROR),
     };
 
     let elapsed = format_duration(snapshot.elapsed());
+    let status_display = format!("[{status_str}: {elapsed}]");
+    let colored_status = Styled::new(&status_display, color_mode)
+        .fg(status_color)
+        .to_string();
 
     // Header
     output.push_str(&format!("┌{}┐\n", "─".repeat(width - 2)));
+
+    // Header with colored status - need to account for ANSI escape codes in width calculation
+    let base_status_len = status_display.len() + 2; // +2 for padding
+    let header_text = "Entrenar Fine-Tuner v0.5.6 ";
+    let padding_needed = width - 2 - header_text.len() - base_status_len;
     output.push_str(&format!(
-        "│  Entrenar Fine-Tuner v0.5.6 {:>width$}│\n",
-        format!("[{}: {}]  ", status_str, elapsed),
-        width = width - 32
+        "│  {}{}{}  │\n",
+        header_text,
+        " ".repeat(padding_needed),
+        colored_status
     ));
+
     output.push_str(&format!(
         "├{}┬{}┤\n",
         "─".repeat(half_width - 1),
@@ -290,29 +336,42 @@ pub fn render_layout(snapshot: &TrainingSnapshot, width: usize) -> String {
         " ".repeat(width - half_width - 23)
     ));
 
-    // Render braille chart (6 rows)
+    // Render braille chart (6 rows) with colors
     let chart_width = half_width - 6;
     let chart = BrailleChart::new(chart_width, 6)
         .data(snapshot.loss_history.clone())
         .log_scale(true)
+        .color_mode(color_mode)
         .render();
 
     let chart_lines: Vec<&str> = chart.lines().collect();
 
-    // GPU telemetry lines
-    let gpu_lines = render_gpu_telemetry(snapshot.gpu.as_ref(), width - half_width - 4);
+    // GPU telemetry lines with colors
+    let gpu_lines =
+        render_gpu_telemetry_colored(snapshot.gpu.as_ref(), width - half_width - 4, color_mode);
 
     // Combine chart and GPU telemetry
+    // Note: chart_line may contain ANSI escapes, so we need visual width calculation
     for i in 0..6 {
         let chart_line = chart_lines.get(i).unwrap_or(&"");
-        let gpu_line = gpu_lines.get(i).map_or("", std::string::String::as_str);
-        let gpu_width = width - half_width - 5;
+        let gpu_line = gpu_lines
+            .get(i)
+            .map_or(String::new(), std::clone::Clone::clone);
+
+        // Calculate visual width (excluding ANSI escapes)
+        let chart_visual_width = strip_ansi_width(chart_line);
+        let padding = half_width.saturating_sub(chart_visual_width + 4);
+
+        // GPU line visual width for right side
+        let gpu_visual_width = strip_ansi_width(&gpu_line);
+        let gpu_padding = (width - half_width - 5).saturating_sub(gpu_visual_width);
 
         output.push_str(&format!(
-            "│  {}{}│  {:gpu_width$}│\n",
+            "│  {}{}│  {}{}│\n",
             chart_line,
-            " ".repeat(half_width - chart_line.chars().count() - 4),
-            gpu_line
+            " ".repeat(padding),
+            gpu_line,
+            " ".repeat(gpu_padding)
         ));
     }
 
@@ -331,18 +390,24 @@ pub fn render_layout(snapshot: &TrainingSnapshot, width: usize) -> String {
     ));
 
     let sample_lines = render_sample_peek(snapshot.sample.as_ref(), half_width - 4);
-    let state_lines = render_training_state(snapshot, width - half_width - 4);
+    let state_lines = render_training_state_colored(snapshot, width - half_width - 4, color_mode);
 
     for i in 0..4 {
         let sample_line = sample_lines.get(i).map_or("", std::string::String::as_str);
-        let state_line = state_lines.get(i).map_or("", std::string::String::as_str);
+        let state_line = state_lines
+            .get(i)
+            .map_or(String::new(), std::clone::Clone::clone);
         let sample_width = half_width - 4;
-        let state_width = width - half_width - 5;
 
-        #[allow(clippy::uninlined_format_args)]
+        // Calculate visual width for colored state line
+        let state_visual_width = strip_ansi_width(&state_line);
+        let state_padding = (width - half_width - 5).saturating_sub(state_visual_width);
+
         output.push_str(&format!(
-            "│  {:sample_width$}│  {:state_width$}│\n",
-            sample_line, state_line
+            "│  {:sample_width$}│  {}{}│\n",
+            sample_line,
+            state_line,
+            " ".repeat(state_padding)
         ));
     }
 
@@ -356,40 +421,102 @@ pub fn render_layout(snapshot: &TrainingSnapshot, width: usize) -> String {
     output
 }
 
+/// Calculate visual width of a string (excluding ANSI escape sequences)
+fn strip_ansi_width(s: &str) -> usize {
+    let mut width = 0;
+    let mut in_escape = false;
+
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if c == 'm' {
+                in_escape = false;
+            }
+        } else {
+            width += 1;
+        }
+    }
+
+    width
+}
+
+#[allow(dead_code)]
 fn render_gpu_telemetry(gpu: Option<&GpuTelemetry>, width: usize) -> Vec<String> {
+    render_gpu_telemetry_colored(gpu, width, ColorMode::Mono)
+}
+
+/// Render GPU telemetry with colors
+fn render_gpu_telemetry_colored(
+    gpu: Option<&GpuTelemetry>,
+    width: usize,
+    color_mode: ColorMode,
+) -> Vec<String> {
     let mut lines = Vec::new();
 
     if let Some(gpu) = gpu {
-        lines.push(format!(
-            "GPU: {} {}",
-            gpu.device_name,
-            render_mini_gauge(gpu.utilization_percent, 100.0, 12)
-        ));
-        lines.push(format!(
-            "VRAM: {:.1}GB/{}GB {}",
-            gpu.vram_used_gb,
-            gpu.vram_total_gb,
-            render_mini_gauge(gpu.vram_percent(), 100.0, 10)
-        ));
-        lines.push(format!("Temp: {:.0}°C", gpu.temperature_celsius));
+        // GPU utilization with color
+        let util_pct = gpu.utilization_percent;
+        let util_color = TrainingPalette::gpu_util_color(util_pct);
+        let util_bar = colored_bar(util_pct, 100.0, 12, util_color, color_mode);
+        let util_val = format!("{util_pct:>3.0}%");
+        let colored_util = Styled::new(&util_val, color_mode)
+            .fg(util_color)
+            .to_string();
+
+        // Truncate device name to fit
+        let max_name_len = width.saturating_sub(25);
+        let device_name: String = gpu.device_name.chars().take(max_name_len).collect();
+        lines.push(format!("GPU: {device_name} {util_bar} {colored_util}"));
+
+        // VRAM usage with color
+        let vram_pct = gpu.vram_percent();
+        let vram_color = TrainingPalette::vram_color(vram_pct);
+        let vram_bar = colored_bar(vram_pct, 100.0, 10, vram_color, color_mode);
+        let vram_val = format!("{:.1}/{:.0}GB", gpu.vram_used_gb, gpu.vram_total_gb);
+        let colored_vram = Styled::new(&vram_val, color_mode)
+            .fg(vram_color)
+            .to_string();
+        lines.push(format!("VRAM: {vram_bar} {colored_vram}"));
+
+        // Temperature with color
+        let temp = gpu.temperature_celsius;
+        let temp_color = TrainingPalette::temp_color(temp);
+        let temp_val = format!("{temp:.0}°C");
+        let colored_temp = Styled::new(&temp_val, color_mode)
+            .fg(temp_color)
+            .to_string();
+        lines.push(format!("Temp: {colored_temp}"));
+
+        // Power with color
+        let power_pct = if gpu.power_limit_watts > 0.0 {
+            (gpu.power_watts / gpu.power_limit_watts) * 100.0
+        } else {
+            0.0
+        };
+        let power_color = TrainingPalette::power_color(power_pct);
+        let power_val = format!("{:.0}W/{:.0}W", gpu.power_watts, gpu.power_limit_watts);
+        let colored_power = Styled::new(&power_val, color_mode)
+            .fg(power_color)
+            .to_string();
+        lines.push(format!("Power: {colored_power}"));
+
+        // Add empty lines to reach 6 lines total
+        lines.push(String::new());
         lines.push(String::new());
     } else {
         lines.push("GPU: N/A".to_string());
         lines.push("VRAM: N/A".to_string());
         lines.push("Temp: N/A".to_string());
+        lines.push("Power: N/A".to_string());
         lines.push(String::new());
-    }
-
-    // Pad or truncate to width
-    for line in &mut lines {
-        if line.len() > width {
-            line.truncate(width);
-        }
+        lines.push(String::new());
     }
 
     lines
 }
 
+#[allow(dead_code)]
 fn render_mini_gauge(value: f32, max: f32, width: usize) -> String {
     let percent = if max > 0.0 { value / max } else { 0.0 };
     let percent = percent.clamp(0.0, 1.0);
@@ -440,23 +567,57 @@ fn render_sample_peek(sample: Option<&SamplePeek>, width: usize) -> Vec<String> 
     lines
 }
 
-fn render_training_state(snapshot: &TrainingSnapshot, _width: usize) -> Vec<String> {
+#[allow(dead_code)]
+fn render_training_state(snapshot: &TrainingSnapshot, width: usize) -> Vec<String> {
+    render_training_state_colored(snapshot, width, ColorMode::Mono)
+}
+
+/// Render training state with colors
+fn render_training_state_colored(
+    snapshot: &TrainingSnapshot,
+    _width: usize,
+    color_mode: ColorMode,
+) -> Vec<String> {
     let mut lines = Vec::new();
 
-    lines.push(format!(
-        "Epoch: {}/{}",
-        snapshot.epoch, snapshot.total_epochs
-    ));
-    lines.push(format!(
-        "Step:  {}/{}",
-        snapshot.step, snapshot.steps_per_epoch
-    ));
-    lines.push(format!("LR:    {:.2e}", snapshot.learning_rate));
-    lines.push(format!("Grad:  {:.3}", snapshot.gradient_norm));
+    // Progress info
+    let progress_pct = snapshot.progress_percent();
+    let progress_color = TrainingPalette::progress_color(progress_pct);
 
-    // Add throughput and ETA
+    let epoch_str = format!("{}/{}", snapshot.epoch, snapshot.total_epochs);
+    let colored_epoch = Styled::new(&epoch_str, color_mode)
+        .fg(progress_color)
+        .to_string();
+    lines.push(format!("Epoch: {colored_epoch}"));
+
+    let step_str = format!("{}/{}", snapshot.step, snapshot.steps_per_epoch);
+    lines.push(format!("Step:  {step_str}"));
+
+    // Learning rate
+    let lr_str = format!("{:.2e}", snapshot.learning_rate);
+    lines.push(format!("LR:    {lr_str}"));
+
+    // Gradient norm with warning colors
+    let grad_color = TrainingPalette::grad_norm_color(snapshot.gradient_norm);
+    let grad_str = format!("{:.3}", snapshot.gradient_norm);
+    let colored_grad = Styled::new(&grad_str, color_mode)
+        .fg(grad_color)
+        .to_string();
+    lines.push(format!("Grad:  {colored_grad}"));
+
+    // Add throughput with color
     if snapshot.tokens_per_second > 0.0 {
-        lines.push(format!("Tok/s: {:.0}", snapshot.tokens_per_second));
+        let tps = snapshot.tokens_per_second;
+        let tps_color = if tps > 1000.0 {
+            TrainingPalette::SUCCESS
+        } else if tps > 500.0 {
+            TrainingPalette::INFO
+        } else {
+            TrainingPalette::WARNING
+        };
+        let tps_str = format!("{tps:.0}");
+        let colored_tps = Styled::new(&tps_str, color_mode).fg(tps_color).to_string();
+        lines.push(format!("Tok/s: {colored_tps}"));
     }
 
     if let Some(remaining) = snapshot.estimated_remaining() {

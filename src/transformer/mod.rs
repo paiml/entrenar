@@ -11,6 +11,7 @@
 mod attention;
 mod block;
 mod config;
+mod cuda_block;
 mod embedding;
 mod feedforward;
 mod model;
@@ -19,5 +20,7 @@ mod weights;
 
 pub use attention::{LoRAProjection, MultiHeadAttention, MultiHeadAttentionWithLoRA};
 pub use config::TransformerConfig;
+#[cfg(feature = "cuda")]
+pub use cuda_block::CudaTransformerBlock;
 pub use model::Transformer;
 pub use weights::{load_safetensors_weights, validate_weights, Architecture};

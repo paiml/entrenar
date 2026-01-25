@@ -36,8 +36,8 @@ use std::sync::{Mutex, OnceLock};
 use trueno_gpu::driver::{CudaContext, CudaModule, CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    GeluKernel, GemmKernel, Kernel, LayerNormKernel, ReluKernel, RmsNormKernel, SiluKernel,
-    SoftmaxKernel,
+    FusedSwigluKernel, GeluKernel, GemmKernel, Kernel, LayerNormKernel, ReluKernel, RmsNormKernel,
+    SiluKernel, SoftmaxKernel,
 };
 
 use super::cuda_tensor::{CudaTensorError, Result};
@@ -383,6 +383,59 @@ pub fn silu_forward(
             .launch_kernel(module, "silu", &config, &mut args)
             .map_err(|e| {
                 CudaTensorError::KernelError(format!("SiLU forward launch failed: {e:?}"))
+            })?;
+    }
+
+    Ok(())
+}
+
+/// Fused SwiGLU forward pass on GPU (ENT-150)
+///
+/// Computes: output = SiLU(gate) * up
+/// Fuses two operations into one kernel for better memory bandwidth.
+#[cfg(feature = "cuda")]
+pub fn fused_swiglu_forward(
+    gate: &GpuBuffer<f32>,
+    up: &GpuBuffer<f32>,
+    output: &mut GpuBuffer<f32>,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let kernel = FusedSwigluKernel::new(n);
+    let ptx = kernel.emit_ptx();
+
+    let cache = FORWARD_KERNEL_CACHE
+        .get()
+        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("fused_swiglu_forward_{n}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    let config = LaunchConfig {
+        grid: (n.div_ceil(256), 1, 1),
+        block: (256, 1, 1),
+        shared_mem: 0,
+    };
+
+    let gate_ptr = gate.as_ptr();
+    let up_ptr = up.as_ptr();
+    let output_ptr = output.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 4] = [
+        &gate_ptr as *const _ as *mut _,
+        &up_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &n as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream
+            .launch_kernel(module, "fused_swiglu", &config, &mut args)
+            .map_err(|e| {
+                CudaTensorError::KernelError(format!("Fused SwiGLU forward launch failed: {e:?}"))
             })?;
     }
 
