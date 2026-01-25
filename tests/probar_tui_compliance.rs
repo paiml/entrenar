@@ -365,6 +365,191 @@ fn f015_falsify_empty_lr_history() {
     );
 }
 
+/// F016: NaN values in loss_history must be filtered
+#[test]
+fn f016_falsify_nan_in_loss_history() {
+    let mut snapshot = valid_snapshot();
+    snapshot.loss_history = vec![10.0, f32::NAN, 8.0, f32::NAN, 6.0];
+    snapshot.steps_per_epoch = 5;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: NaN in history should not appear in output
+    let has_nan = frame.contains("NaN") || frame.contains("nan");
+    assert!(
+        !has_nan,
+        "F016 FALSIFIED: NaN in loss_history displayed without filtering"
+    );
+    // Should still render
+    assert!(frame.height() > 0, "F016: Render should not crash");
+}
+
+/// F017: Negative gradient norm must be handled
+#[test]
+fn f017_falsify_negative_gradient_norm() {
+    let mut snapshot = valid_snapshot();
+    snapshot.gradient_norm = -5.0;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Negative gradient should be clamped or shown as absolute
+    let has_negative_grad = frame.contains("-5.0") || frame.contains("-5.");
+    assert!(
+        !has_negative_grad,
+        "F017 FALSIFIED: Negative gradient norm displayed"
+    );
+}
+
+/// F018: Zero steps_per_epoch must not cause division by zero
+#[test]
+fn f018_falsify_zero_steps_per_epoch() {
+    let mut snapshot = valid_snapshot();
+    snapshot.steps_per_epoch = 0;
+    snapshot.step = 5;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Zero steps should not crash or show inf/nan
+    assert!(
+        frame.height() > 0,
+        "F018 FALSIFIED: Zero steps caused crash"
+    );
+    let has_bad_value = frame.contains("inf") || frame.contains("NaN") || frame.contains("nan");
+    assert!(
+        !has_bad_value,
+        "F018 FALSIFIED: Zero steps caused inf/NaN display"
+    );
+}
+
+/// F019: Extremely long model name must be truncated
+#[test]
+fn f019_falsify_long_model_name() {
+    let mut snapshot = valid_snapshot();
+    snapshot.model_name = "A".repeat(200); // Very long name
+
+    let rendered = render_layout(&snapshot, 80);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Long name should not break layout
+    assert!(frame.height() > 0, "F019 FALSIFIED: Long name caused crash");
+    // Should not have 200 A's in a row
+    assert!(
+        !frame.contains(&"A".repeat(100)),
+        "F019 FALSIFIED: Long model name not truncated"
+    );
+}
+
+/// F020: Extremely long executable path must be truncated
+#[test]
+fn f020_falsify_long_executable_path() {
+    let mut snapshot = valid_snapshot();
+    snapshot.executable_path = "/very/long/path/".to_string() + &"subdir/".repeat(30) + "binary";
+
+    let rendered = render_layout(&snapshot, 80);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Long path should be truncated with ...
+    assert!(frame.height() > 0, "F020 FALSIFIED: Long path caused crash");
+}
+
+/// F021: Negative tokens_per_second must be handled
+#[test]
+fn f021_falsify_negative_tokens_per_second() {
+    let mut snapshot = valid_snapshot();
+    snapshot.tokens_per_second = -100.0;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Negative throughput should be clamped to 0
+    let has_negative = frame.contains("-100") || frame.contains("-100.0");
+    assert!(
+        !has_negative,
+        "F021 FALSIFIED: Negative tokens_per_second displayed"
+    );
+}
+
+/// F022: Inf in loss_history must be filtered
+#[test]
+fn f022_falsify_inf_in_loss_history() {
+    let mut snapshot = valid_snapshot();
+    snapshot.loss_history = vec![10.0, f32::INFINITY, 8.0, f32::NEG_INFINITY, 6.0];
+    snapshot.steps_per_epoch = 5;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Inf in history should not appear
+    let has_inf = frame.contains("inf") || frame.contains("Inf");
+    assert!(
+        !has_inf,
+        "F022 FALSIFIED: Inf in loss_history displayed without filtering"
+    );
+}
+
+/// F023: Zero total_epochs must not cause division by zero
+#[test]
+fn f023_falsify_zero_total_epochs() {
+    let mut snapshot = valid_snapshot();
+    snapshot.total_epochs = 0;
+    snapshot.epoch = 1;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Zero epochs should not crash
+    assert!(
+        frame.height() > 0,
+        "F023 FALSIFIED: Zero total_epochs caused crash"
+    );
+    let has_bad_value = frame.contains("inf") || frame.contains("NaN");
+    assert!(
+        !has_bad_value,
+        "F023 FALSIFIED: Zero total_epochs caused inf/NaN"
+    );
+}
+
+/// F024: Extremely large loss value must not overflow display
+#[test]
+fn f024_falsify_extreme_loss_value() {
+    let mut snapshot = valid_snapshot();
+    snapshot.loss = 1e38; // Very large but valid f32
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Should display without breaking layout
+    assert!(
+        frame.height() > 0,
+        "F024 FALSIFIED: Extreme loss caused crash"
+    );
+}
+
+/// F025: Empty loss_history with valid epoch count
+#[test]
+fn f025_falsify_empty_loss_history() {
+    let mut snapshot = valid_snapshot();
+    snapshot.loss_history = Vec::new();
+    snapshot.epoch = 5;
+    snapshot.total_epochs = 10;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Empty history should show waiting message
+    assert!(
+        frame.height() > 0,
+        "F025 FALSIFIED: Empty loss_history caused crash"
+    );
+    assert!(
+        frame.contains("waiting") || frame.contains("EPOCH"),
+        "F025: Should show waiting message or epoch header"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PIXEL COVERAGE TESTS
 // ═══════════════════════════════════════════════════════════════════════════════

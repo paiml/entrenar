@@ -124,8 +124,8 @@ nvml = ["nvml-wrapper"]  # Real GPU monitoring via NVIDIA NVML
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
-trueno = "0.14.0"  # SIMD-accelerated compute from crates.io
-trueno-gpu = { version = "0.4.10", optional = true }  # CUDA compute for GPU training
+trueno = "0.14.1"  # SIMD-accelerated compute from crates.io
+trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
 realizar = { version = "0.6", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.24.1"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
@@ -320,8 +320,6 @@ path = "examples/nvml_test.rs"
 required-features = ["nvml"]
 
 # Phase 11: CUDA-First Architecture (SPEC-FT-001 v3.0.0)
-# Use local trueno-gpu with backward kernels (Issue #85)
+# realizar needs local patch due to trueno-gpu API changes
 [patch.crates-io]
-trueno = { path = "../trueno" }
-trueno-gpu = { path = "../trueno/trueno-gpu" }
 realizar = { path = "../realizar" }

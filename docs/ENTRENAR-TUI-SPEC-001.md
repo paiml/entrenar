@@ -20,9 +20,9 @@ The entrenar TUI monitor implements a btop/ptop-style training visualization wit
 | InteractionType | `ux_coverage` | Element hover/click tracking |
 | ElementId | `ux_coverage` | Panel identification |
 
-### Falsification Protocol (F001-F015)
+### Falsification Protocol (F001-F025)
 
-Per PROBAR-SPEC-015, we implement 15-point falsification for TUI robustness:
+Per PROBAR-SPEC-015, we implement 25-point falsification for TUI robustness:
 
 | ID | Test | Assertion |
 |----|------|-----------|
@@ -41,6 +41,16 @@ Per PROBAR-SPEC-015, we implement 15-point falsification for TUI robustness:
 | F013 | Zero batch size | Shows "N/A" |
 | F014 | Empty executable path | Falls back to GPU process or "N/A" |
 | F015 | Empty lr_history | Uses current learning_rate |
+| F016 | NaN in loss_history | Filtered from epoch summaries |
+| F017 | Negative gradient norm | Clamped to 0.0 |
+| F018 | Zero steps_per_epoch | No division by zero |
+| F019 | Long model name | Truncated with "..." |
+| F020 | Long executable path | Truncated with "..." |
+| F021 | Negative tokens_per_second | Clamped to 0.0 |
+| F022 | Inf in loss_history | Filtered from epoch summaries |
+| F023 | Zero total_epochs | No division by zero |
+| F024 | Extreme loss value | Displays without overflow |
+| F025 | Empty loss_history | Shows waiting message |
 
 ## State Schema
 

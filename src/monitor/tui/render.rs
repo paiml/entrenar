@@ -280,16 +280,22 @@ pub fn render_config_panel(
             .to_string(),
     );
 
-    // Model info
+    // Model info (truncate if too long)
     let model_name = if snapshot.model_name.is_empty() {
-        "N/A"
+        "N/A".to_string()
+    } else if snapshot.model_name.len() > width.saturating_sub(10) {
+        let max_len = width.saturating_sub(13);
+        format!(
+            "{}...",
+            &snapshot.model_name[..max_len.min(snapshot.model_name.len())]
+        )
     } else {
-        &snapshot.model_name
+        snapshot.model_name.clone()
     };
     let model_line = format!(
         "{} {}",
         Styled::new("Model:", color_mode).fg((150, 150, 150)),
-        Styled::new(model_name, color_mode).fg((200, 200, 255))
+        Styled::new(&model_name, color_mode).fg((200, 200, 255))
     );
     lines.push(model_line);
 
@@ -403,9 +409,9 @@ pub fn compute_epoch_summaries(snapshot: &TrainingSnapshot) -> Vec<EpochSummary>
             min_loss,
             max_loss,
             end_loss,
-            avg_grad: snapshot.gradient_norm,
+            avg_grad: snapshot.gradient_norm.max(0.0),
             lr,
-            tokens_per_sec: snapshot.tokens_per_second,
+            tokens_per_sec: snapshot.tokens_per_second.max(0.0),
         });
     }
 
@@ -699,8 +705,9 @@ fn render_header(snapshot: &TrainingSnapshot, width: usize, color_mode: ColorMod
     };
 
     let elapsed = format_duration(snapshot.elapsed());
-    let tps = if snapshot.tokens_per_second > 0.0 {
-        format!("{:.0} tok/s", snapshot.tokens_per_second)
+    let tps_val = snapshot.tokens_per_second.max(0.0);
+    let tps = if tps_val > 0.0 {
+        format!("{tps_val:.0} tok/s")
     } else {
         String::new()
     };
@@ -807,19 +814,18 @@ fn render_loss_panel(snapshot: &TrainingSnapshot, width: usize, color_mode: Colo
     );
 
     let grad_bar_width = width.saturating_sub(12);
-    let grad_pct = (snapshot.gradient_norm / 10.0 * 100.0).clamp(0.0, 100.0);
+    // Clamp gradient norm to non-negative
+    let grad_norm = snapshot.gradient_norm.max(0.0);
+    let grad_pct = (grad_norm / 10.0 * 100.0).clamp(0.0, 100.0);
     let grad_bar = build_colored_block_bar(grad_pct, grad_bar_width, color_mode);
-    let grad_arrow = if snapshot.gradient_norm > 5.0 {
+    let grad_arrow = if grad_norm > 5.0 {
         ARROW_UP
-    } else if snapshot.gradient_norm < 1.0 {
+    } else if grad_norm < 1.0 {
         ARROW_DOWN
     } else {
         ARROW_FLAT
     };
-    lines.push(format!(
-        "{grad_bar} {:.2} {grad_arrow}",
-        snapshot.gradient_norm
-    ));
+    lines.push(format!("{grad_bar} {grad_norm:.2} {grad_arrow}"));
 
     lines.join("\n")
 }
@@ -1060,10 +1066,11 @@ fn render_metrics_panel(
         display_step, snapshot.steps_per_epoch, step_pct
     ));
 
-    // LR and Gradient
+    // LR and Gradient (clamp gradient to non-negative)
     let lr_str = format_lr(snapshot.learning_rate);
     let lr_trend = trend_arrow(&snapshot.loss_history); // approximate LR trend from loss
-    let grad_trend = if snapshot.gradient_norm > 5.0 {
+    let grad_norm = snapshot.gradient_norm.max(0.0);
+    let grad_trend = if grad_norm > 5.0 {
         ARROW_UP
     } else {
         ARROW_DOWN
@@ -1072,10 +1079,10 @@ fn render_metrics_panel(
     let lr_colored = Styled::new(&format!("LR {lr_str}"), color_mode)
         .fg(TrainingPalette::INFO)
         .to_string();
-    let grad_colored = Styled::new(&format!("Grad {:.2}", snapshot.gradient_norm), color_mode)
-        .fg(if snapshot.gradient_norm > 10.0 {
+    let grad_colored = Styled::new(&format!("Grad {grad_norm:.2}"), color_mode)
+        .fg(if grad_norm > 10.0 {
             TrainingPalette::ERROR
-        } else if snapshot.gradient_norm > 5.0 {
+        } else if grad_norm > 5.0 {
             TrainingPalette::WARNING
         } else {
             TrainingPalette::SUCCESS
