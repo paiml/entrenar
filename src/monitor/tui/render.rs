@@ -230,7 +230,13 @@ pub fn format_bytes(bytes: u64) -> String {
 }
 
 /// Format learning rate (avoid scientific notation)
+/// F005: Clamp negative values to 0, handle NaN/Inf
 pub fn format_lr(lr: f32) -> String {
+    // F005: Reject invalid learning rates
+    if !lr.is_finite() {
+        return "???".to_string();
+    }
+    let lr = lr.max(0.0); // Clamp negative to 0
     if lr >= 0.01 {
         format!("{lr:.4}")
     } else if lr >= 0.001 {
@@ -432,29 +438,45 @@ fn render_loss_panel(snapshot: &TrainingSnapshot, width: usize, color_mode: Colo
     let spark_width = width.saturating_sub(15);
     let sparkline = render_sparkline(&snapshot.loss_history, spark_width, color_mode);
     let trend = trend_arrow(&snapshot.loss_history);
-    let current_loss = snapshot.loss;
 
-    let loss_str = format!("{current_loss:.2}");
+    // F003/F004: Sanitize NaN/Inf loss
+    let (loss_str, loss_color) = if snapshot.loss.is_finite() {
+        (
+            format!("{:.2}", snapshot.loss),
+            percent_to_color((snapshot.loss * 10.0).min(100.0)),
+        )
+    } else {
+        ("???".to_string(), (255, 64, 64)) // Red for invalid
+    };
     let colored_loss = Styled::new(&loss_str, color_mode)
-        .fg(percent_to_color((current_loss * 10.0).min(100.0)))
+        .fg(loss_color)
         .to_string();
 
     lines.push(format!("{sparkline} {colored_loss} {trend}"));
 
-    // Min/max/avg stats
-    let min = snapshot
+    // Min/max/avg stats (filter out NaN/Inf values)
+    let valid_history: Vec<f32> = snapshot
         .loss_history
         .iter()
         .copied()
-        .fold(f32::INFINITY, f32::min);
-    let max = snapshot
-        .loss_history
+        .filter(|v| v.is_finite())
+        .collect();
+    let min = valid_history.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = valid_history
         .iter()
         .copied()
         .fold(f32::NEG_INFINITY, f32::max);
-    let avg: f32 = snapshot.loss_history.iter().sum::<f32>() / snapshot.loss_history.len() as f32;
+    let avg: f32 = if valid_history.is_empty() {
+        0.0
+    } else {
+        valid_history.iter().sum::<f32>() / valid_history.len() as f32
+    };
 
-    let stats = format!("min:{min:.2} max:{max:.2} avg:{avg:.2}");
+    let stats = if min.is_finite() && max.is_finite() {
+        format!("min:{min:.2} max:{max:.2} avg:{avg:.2}")
+    } else {
+        "min:--- max:--- avg:---".to_string()
+    };
     lines.push(
         Styled::new(&stats, color_mode)
             .fg((150, 150, 150))
@@ -521,12 +543,14 @@ fn render_gpu_panel(gpu: Option<&GpuTelemetry>, width: usize, color_mode: ColorM
         ));
 
         // VRAM bar
-        let vram_pct = gpu.vram_percent();
+        // F006: Clamp VRAM to prevent >100% display
+        let vram_pct = gpu.vram_percent().min(100.0);
+        let display_vram_used = gpu.vram_used_gb.min(gpu.vram_total_gb);
         let vram_bar_width = width.saturating_sub(25);
         let vram_bar = build_colored_block_bar(vram_pct, vram_bar_width, color_mode);
         lines.push(format!(
             "VRAM {vram_bar} {:.1}G/{:.0}G {:.0}%",
-            gpu.vram_used_gb, gpu.vram_total_gb, vram_pct
+            display_vram_used, gpu.vram_total_gb, vram_pct
         ));
 
         // Separator
@@ -540,7 +564,13 @@ fn render_gpu_panel(gpu: Option<&GpuTelemetry>, width: usize, color_mode: ColorM
                 .to_string(),
         );
 
-        if let Some(proc) = gpu.processes.first() {
+        // Find training process (contains "finetune" or "entrenar")
+        let training_proc = gpu
+            .processes
+            .iter()
+            .find(|p| p.exe_path.contains("finetune") || p.exe_path.contains("entrenar"));
+
+        if let Some(proc) = training_proc {
             // Executable path (truncated from left to show end)
             let max_path = width.saturating_sub(2);
             let exe_display = if proc.exe_path.len() > max_path {
@@ -568,7 +598,24 @@ fn render_gpu_panel(gpu: Option<&GpuTelemetry>, width: usize, color_mode: ColorM
                 proc.cpu_percent, rss_str, gpu_mem_str
             ));
         } else {
-            lines.push("(no process detected)".to_string());
+            // Show why process not found (probar-compliant verification)
+            let proc_count = gpu.processes.len();
+            if proc_count == 0 {
+                lines.push(
+                    Styled::new("(no GPU processes)", color_mode)
+                        .fg((150, 150, 150))
+                        .to_string(),
+                );
+            } else {
+                lines.push(
+                    Styled::new(
+                        &format!("(training process not in {proc_count} procs)"),
+                        color_mode,
+                    )
+                    .fg((150, 150, 150))
+                    .to_string(),
+                );
+            }
             lines.push(String::new());
         }
     } else {
@@ -670,8 +717,10 @@ fn render_metrics_panel(
     );
 
     // Epoch progress (clamp to 100% to handle edge cases)
+    // F001: Also clamp display epoch to total_epochs
+    let display_epoch = snapshot.epoch.min(snapshot.total_epochs);
     let epoch_pct = if snapshot.total_epochs > 0 {
-        ((snapshot.epoch as f32 / snapshot.total_epochs as f32) * 100.0).min(100.0)
+        ((display_epoch as f32 / snapshot.total_epochs as f32) * 100.0).min(100.0)
     } else {
         0.0
     };
@@ -679,7 +728,7 @@ fn render_metrics_panel(
     let epoch_bar = build_colored_block_bar(epoch_pct, epoch_bar_width, color_mode);
     lines.push(format!(
         "Epoch {epoch_bar} {}/{} {:.0}%",
-        snapshot.epoch, snapshot.total_epochs, epoch_pct
+        display_epoch, snapshot.total_epochs, epoch_pct
     ));
 
     // Step progress (clamp to 100% to handle edge cases)
@@ -724,21 +773,43 @@ fn render_metrics_panel(
     ));
 
     // Loss and ETA
-    let loss_colored = Styled::new(&format!("Loss {:.3}", snapshot.loss), color_mode)
-        .fg(percent_to_color((snapshot.loss * 10.0).min(100.0)))
+    // F003/F004: Sanitize NaN/Inf loss values
+    let sanitized_loss = if snapshot.loss.is_finite() {
+        snapshot.loss
+    } else {
+        0.0 // Display 0.0 for NaN/Inf with warning color
+    };
+    let loss_str = if snapshot.loss.is_finite() {
+        format!("Loss {sanitized_loss:.3}")
+    } else {
+        "Loss ???".to_string() // Visual indicator of invalid loss
+    };
+    let loss_colored = Styled::new(&loss_str, color_mode)
+        .fg(if snapshot.loss.is_finite() {
+            percent_to_color((sanitized_loss * 10.0).min(100.0))
+        } else {
+            (255, 64, 64) // Red for invalid loss (F003/F004)
+        })
         .to_string();
 
     let best_loss = snapshot
         .loss_history
         .iter()
         .copied()
+        .filter(|v| v.is_finite())
         .fold(f32::INFINITY, f32::min);
     let eta = snapshot
         .estimated_remaining()
         .map_or_else(|| "--:--:--".to_string(), format_duration);
 
+    // Handle case where best_loss is Inf (no valid history)
+    let best_loss_str = if best_loss.is_finite() {
+        format!("{best_loss:.2}")
+    } else {
+        "---".to_string()
+    };
     lines.push(format!(
-        "{loss_colored} {ARROW_DOWN} best:{best_loss:.2} ETA {eta}"
+        "{loss_colored} {ARROW_DOWN} best:{best_loss_str} ETA {eta}"
     ));
 
     lines.join("\n")

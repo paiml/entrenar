@@ -31,12 +31,17 @@
 pub mod app;
 pub mod color;
 pub mod headless;
+pub mod panel;
 pub mod render;
 pub mod state;
 
 pub use app::{TrainingStateWriter, TuiMonitor, TuiMonitorConfig};
 pub use color::{colored_bar, colored_value, ColorMode, Rgb, Styled, TrainingPalette};
 pub use headless::{HeadlessMonitor, HeadlessOutput, HeadlessWriter, OutputFormat};
+pub use panel::{
+    layout_can_render, verify_layout, GpuPanel, LossCurvePanel, MetricsPanel, Panel,
+    PanelVerification, ProcessPanel, SamplePanel,
+};
 pub use render::{
     render_braille_chart, render_gauge, render_layout, render_layout_colored, BrailleChart,
 };
