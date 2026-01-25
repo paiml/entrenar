@@ -669,9 +669,9 @@ fn render_metrics_panel(
             .to_string(),
     );
 
-    // Epoch progress
+    // Epoch progress (clamp to 100% to handle edge cases)
     let epoch_pct = if snapshot.total_epochs > 0 {
-        (snapshot.epoch as f32 / snapshot.total_epochs as f32) * 100.0
+        ((snapshot.epoch as f32 / snapshot.total_epochs as f32) * 100.0).min(100.0)
     } else {
         0.0
     };
@@ -682,17 +682,19 @@ fn render_metrics_panel(
         snapshot.epoch, snapshot.total_epochs, epoch_pct
     ));
 
-    // Step progress
+    // Step progress (clamp to 100% to handle edge cases)
     let step_pct = if snapshot.steps_per_epoch > 0 {
-        (snapshot.step as f32 / snapshot.steps_per_epoch as f32) * 100.0
+        ((snapshot.step as f32 / snapshot.steps_per_epoch as f32) * 100.0).min(100.0)
     } else {
         0.0
     };
     let step_bar_width = width.saturating_sub(25);
     let step_bar = build_colored_block_bar(step_pct, step_bar_width, color_mode);
+    // Display step clamped to steps_per_epoch for sanity
+    let display_step = snapshot.step.min(snapshot.steps_per_epoch);
     lines.push(format!(
         "Step  {step_bar} {}/{} {:.0}%",
-        snapshot.step, snapshot.steps_per_epoch, step_pct
+        display_step, snapshot.steps_per_epoch, step_pct
     ));
 
     // LR and Gradient
