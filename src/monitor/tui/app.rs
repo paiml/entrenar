@@ -256,6 +256,24 @@ impl TrainingStateWriter {
         self.snapshot.step = 0;
     }
 
+    /// Set run configuration (optimizer, batch size, paths)
+    pub fn set_config(
+        &mut self,
+        optimizer_name: &str,
+        batch_size: usize,
+        model_path: &str,
+        checkpoint_path: &str,
+    ) {
+        self.snapshot.optimizer_name = optimizer_name.to_string();
+        self.snapshot.batch_size = batch_size;
+        self.snapshot.model_path = model_path.to_string();
+        self.snapshot.checkpoint_path = checkpoint_path.to_string();
+        // Try to get executable path from current process
+        if let Ok(exe) = std::env::current_exe() {
+            self.snapshot.executable_path = exe.display().to_string();
+        }
+    }
+
     /// Mark training as started
     pub fn start(&mut self) -> io::Result<()> {
         self.snapshot.status = TrainingStatus::Running;
@@ -315,6 +333,12 @@ impl TrainingStateWriter {
         self.snapshot.loss_history.push(loss);
         if self.snapshot.loss_history.len() > self.history_max {
             self.snapshot.loss_history.remove(0);
+        }
+
+        // Append to LR history for scheduler tracking
+        self.snapshot.lr_history.push(learning_rate);
+        if self.snapshot.lr_history.len() > self.history_max {
+            self.snapshot.lr_history.remove(0);
         }
 
         self.state.write(&self.snapshot)

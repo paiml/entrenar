@@ -1126,6 +1126,14 @@ fn main() {
     let steps_per_epoch = pretokenized_train.len();
     state_writer.set_epochs(total_epochs, steps_per_epoch);
 
+    // Set run configuration for TUI display (ENT-142)
+    state_writer.set_config(
+        "AdamW",
+        1, // Batch size (single sample per step)
+        &model_path.display().to_string(),
+        &args.output,
+    );
+
     // Initialize GPU monitor (uses NVML if compiled with `nvml` feature)
     let gpu_monitor = GpuMonitor::new().ok();
     if let Some(ref monitor) = gpu_monitor {
