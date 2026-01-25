@@ -211,14 +211,24 @@ impl GpuMonitor {
 
     /// Collect GPU processes from NVML and enrich with /proc data
     #[cfg(feature = "nvml")]
-    fn collect_gpu_processes(device: &nvml_wrapper::Device) -> Vec<GpuProcess> {
+    fn collect_gpu_processes(device: &nvml_wrapper::Device<'_>) -> Vec<GpuProcess> {
+        use nvml_wrapper::enums::device::UsedGpuMemory;
+
         let mut processes = Vec::new();
+
+        // Helper to extract memory from UsedGpuMemory enum
+        let extract_memory = |mem: UsedGpuMemory| -> u64 {
+            match mem {
+                UsedGpuMemory::Used(bytes) => bytes / (1024 * 1024),
+                UsedGpuMemory::Unavailable => 0,
+            }
+        };
 
         // Get compute processes (CUDA apps)
         if let Ok(compute_procs) = device.running_compute_processes() {
             for proc in compute_procs {
                 let pid = proc.pid;
-                let gpu_memory_mb = proc.used_gpu_memory / (1024 * 1024);
+                let gpu_memory_mb = extract_memory(proc.used_gpu_memory);
 
                 // Read /proc/PID/exe for full path
                 let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
@@ -247,7 +257,7 @@ impl GpuMonitor {
                 }
 
                 let pid = proc.pid;
-                let gpu_memory_mb = proc.used_gpu_memory / (1024 * 1024);
+                let gpu_memory_mb = extract_memory(proc.used_gpu_memory);
 
                 let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
                     .map(|p| p.to_string_lossy().to_string())
