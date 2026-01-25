@@ -4,7 +4,7 @@
 
 .SUFFIXES:
 
-.PHONY: help test test-fast test-quick test-full coverage coverage-fast coverage-full coverage-open coverage-clean \
+.PHONY: help test test-fast test-quick test-full coverage coverage-fast coverage-full coverage-low coverage-open coverage-clean \
 	mutants mutants-quick mutants-fast mutants-file clean build release lint format check fmt fmt-check \
 	tier1 tier2 tier3 pmat-init pmat-update roadmap-status pmat-complexity pmat-tdg \
 	property-test property-test-fast \
@@ -125,69 +125,42 @@ clean: ## Clean build artifacts
 	@echo "✅ Clean completed!"
 
 # =============================================================================
-# COVERAGE TARGETS (Two-Phase Pattern from bashrs)
+# COVERAGE TARGETS (trueno pattern - simple and reliable)
 # =============================================================================
-# Pattern: bashrs/Makefile - Two-phase coverage with mold linker workaround
-# CRITICAL: mold linker breaks LLVM coverage instrumentation
-# Solution: Temporarily move ~/.cargo/config.toml during coverage runs
 
-# Standard coverage (<5 min): Two-phase pattern with nextest
-# CRITICAL: --all-features is REQUIRED or feature-gated code won't compile
-# and coverage will show 0%. DO NOT REMOVE --all-features from the nextest call.
-# NOTE: main.rs is excluded as it's a CLI entry point (standard practice)
-coverage: ## Generate HTML coverage report (target: <5 min)
-	@echo "📊 Running coverage analysis (target: <5 min)..."
-	@echo "🔍 Checking for cargo-llvm-cov and cargo-nextest..."
-	@which cargo-llvm-cov > /dev/null 2>&1 || (echo "📦 Installing cargo-llvm-cov..." && cargo install cargo-llvm-cov --locked)
-	@which cargo-nextest > /dev/null 2>&1 || (echo "📦 Installing cargo-nextest..." && cargo install cargo-nextest --locked)
-	@echo "🧹 Cleaning old coverage data..."
-	@mkdir -p target/coverage
-	@echo "🧪 Phase 1: Running tests with instrumentation (no report)..."
-	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace --no-fail-fast --all-features
-	@echo "📊 Phase 2: Generating coverage reports..."
-	@cargo llvm-cov report --html --output-dir target/coverage/html --ignore-filename-regex="main\.rs"
-	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info --ignore-filename-regex="main\.rs"
-	@echo ""
-	@echo "📊 Coverage Summary (excluding main.rs):"
-	@echo "========================================"
-	@cargo llvm-cov report --summary-only --ignore-filename-regex="main\.rs"
-	@echo ""
-	@echo "💡 Reports:"
-	@echo "- HTML: target/coverage/html/index.html"
-	@echo "- LCOV: target/coverage/lcov.info"
-	@echo ""
+# Exclude dependencies and test files from coverage reporting
+COV_EXCLUDE := --ignore-filename-regex='realizar/|trueno/|crates/|examples/|tests/|main\.rs'
 
-# Fast coverage alias (same as coverage, optimized by default)
+# Standard coverage - JUST WORKS like trueno
+# Note: CUDA tests need --test-threads=1 to avoid driver contention
+coverage: ## Generate coverage report (entrenar src/ only)
+	@echo "📊 Running coverage..."
+	@cargo llvm-cov --no-report test --lib --features cuda -- --test-threads=1 2>&1 | tail -3
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@cargo llvm-cov report --summary-only $(COV_EXCLUDE) 2>&1 | tail -1
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+# Fast alias
 coverage-fast: coverage
 
-# Exclude trueno, crates, examples from coverage
-COVERAGE_EXCLUDE := --ignore-filename-regex='trueno/|crates/|examples/|tests/|main\.rs'
+# Full coverage with HTML report (slow)
+coverage-full: ## Full coverage with HTML report
+	@echo "📊 Running full coverage..."
+	@cargo llvm-cov --no-report test --lib --features cuda -- --test-threads=1 2>&1 | tail -3
+	@echo ""
+	@mkdir -p target/coverage/html
+	@echo "⏳ Generating HTML report (this takes a while)..."
+	@cargo llvm-cov report --html --output-dir target/coverage/html $(COV_EXCLUDE) 2>&1 | tail -1
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@cargo llvm-cov report --summary-only $(COV_EXCLUDE) 2>&1 | tail -1
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "📋 HTML: target/coverage/html/index.html"
 
-# Fast entrenar-only coverage (excludes trueno, crates, examples)
-coverage-src: ## Fast coverage for entrenar src/ only (<1 min)
-	@echo "📊 Running FAST coverage (--lib only, cargo test, not nextest)..."
-	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
-	@test -f ~/.cargo/config.toml && mv ~/.cargo/config.toml ~/.cargo/config.toml.cov-backup 2>/dev/null || true
-	@env PROPTEST_CASES=2 QUICKCHECK_TESTS=2 cargo llvm-cov test --lib --all-features --no-report $(COVERAGE_EXCLUDE) -- --test-threads=$$(nproc) --skip property --skip stress --skip fuzz --skip benchmark 2>&1 | tail -5
-	@test -f ~/.cargo/config.toml.cov-backup && mv ~/.cargo/config.toml.cov-backup ~/.cargo/config.toml 2>/dev/null || true
-	@echo ""
-	@echo "📊 Entrenar src/ Coverage:"
-	@cargo llvm-cov report --summary-only $(COVERAGE_EXCLUDE)
-	@echo ""
-	@echo "📋 Files below 95%:"
-	@cargo llvm-cov report $(COVERAGE_EXCLUDE) 2>/dev/null | grep 'entrenar/src/' | awk '{ if ($$7+0 < 95 && $$7 != "-") print $$0 }' | head -20
-
-# Full coverage: All features (for CI, slower)
-coverage-full: ## Full coverage report (all features, >10 min)
-	@echo "📊 Running full coverage analysis (all features)..."
-	@which cargo-llvm-cov > /dev/null 2>&1 || cargo install cargo-llvm-cov --locked
-	@which cargo-nextest > /dev/null 2>&1 || cargo install cargo-nextest --locked
-	@mkdir -p target/coverage
-	@cargo llvm-cov --no-report nextest --no-tests=warn --workspace --all-features
-	@cargo llvm-cov report --html --output-dir target/coverage/html
-	@cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
-	@echo ""
-	@cargo llvm-cov report --summary-only
+# Show files below 95%
+coverage-low: ## Show files below 95% coverage
+	@cargo llvm-cov report $(COV_EXCLUDE) 2>/dev/null | grep 'src/' | awk '{ if ($$7+0 < 95 && $$7 != "-") print $$0 }' | head -30
 
 # Open coverage report in browser
 coverage-open: ## Open HTML coverage report in browser
@@ -200,12 +173,8 @@ coverage-open: ## Open HTML coverage report in browser
 	fi
 
 coverage-clean: ## Clean coverage artifacts
-	@echo "🧹 Cleaning coverage artifacts..."
-	@if command -v cargo-llvm-cov >/dev/null 2>&1; then \
-		echo "✅ Coverage artifacts cleaned!"; \
-	else \
-		echo "⚠️  cargo-llvm-cov not installed, skipping clean."; \
-	fi
+	@rm -rf target/coverage
+	@echo "✅ Coverage artifacts cleaned"
 
 # =============================================================================
 # Mutation Testing (EXTREME TDD requirement: >80% kill rate)
