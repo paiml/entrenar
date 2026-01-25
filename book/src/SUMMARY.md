@@ -261,6 +261,7 @@
 
 ## Fine-tuning
 - [Test Generation (Qwen2-0.5B)](./examples/finetune-test-gen.md)
+- [Real Fine-Tuning (Qwen2.5-Coder-0.5B)](./examples/finetune-real.md)
 
 ## Advanced
 - [Compiler-in-the-Loop (CITL)](./examples/citl.md)
