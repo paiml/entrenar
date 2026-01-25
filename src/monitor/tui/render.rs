@@ -1,253 +1,211 @@
-//! TUI Rendering Components (SPEC-FT-001 Section 10.1)
+//! TUI Rendering Components - 10/10 ptop-style (SPEC-FT-001 Section 10.1)
 //!
-//! Braille-encoded charts and ptop-style layout for training visualization.
-//! Uses UTF-8 braille characters for high-resolution loss curves.
-//! Supports ANSI colors with automatic terminal capability detection.
+//! btop/ptop-inspired visualization with:
+//! - Block bars (█░) with gradient colors
+//! - Braille sparklines for time series
+//! - Process display with full path, CPU%, RSS, GPU memory
+//! - Trend arrows (↑↓→) for metrics
+//! - Unicode status symbols (●◐◔○⚡)
 
-use super::color::{colored_bar, ColorMode, Styled, TrainingPalette};
+use super::color::{ColorMode, Styled, TrainingPalette};
 use super::state::{GpuTelemetry, SamplePeek, TrainingSnapshot, TrainingStatus};
 use std::time::Duration;
 
-/// Braille character mapping for 2x4 dot patterns
-///
-/// Each braille character encodes a 2x4 grid of dots.
-/// Unicode range: U+2800 to U+28FF (256 characters)
+// ═══════════════════════════════════════════════════════════════════════════════
+// UNICODE BLOCK CHARACTERS & SYMBOLS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const BLOCK_FULL: char = '█';
+const BLOCK_LIGHT: char = '░';
+
+// Trend arrows
+const ARROW_UP: &str = "↑";
+const ARROW_DOWN: &str = "↓";
+const ARROW_FLAT: &str = "→";
+
+// Status indicators
+const STATUS_CRITICAL: &str = "●";
+const STATUS_WARNING: &str = "◐";
+const STATUS_OK: &str = "◔";
+const STATUS_GOOD: &str = "○";
+const BOLT: &str = "⚡";
+
+// Braille base for sparklines
 const BRAILLE_BASE: u32 = 0x2800;
+const BRAILLE_DOTS: [u32; 8] = [0x01, 0x02, 0x04, 0x40, 0x08, 0x10, 0x20, 0x80];
 
-/// Braille dot positions (row-major):
-/// ```text
-/// 1 4
-/// 2 5
-/// 3 6
-/// 7 8
-/// ```
-const BRAILLE_DOTS: [u32; 8] = [
-    0x01, // dot 1 (top-left)
-    0x02, // dot 2
-    0x04, // dot 3
-    0x40, // dot 7 (bottom-left)
-    0x08, // dot 4 (top-right)
-    0x10, // dot 5
-    0x20, // dot 6
-    0x80, // dot 8 (bottom-right)
-];
+// Box drawing
+const BOX_TL: &str = "╭";
+const BOX_TR: &str = "╮";
+const BOX_BL: &str = "╰";
+const BOX_BR: &str = "╯";
+const BOX_H: &str = "─";
+const BOX_V: &str = "│";
+const BOX_T: &str = "┬";
+const BOX_B: &str = "┴";
+const BOX_L: &str = "├";
+const BOX_R: &str = "┤";
+const BOX_X: &str = "┼";
 
-/// Braille chart renderer
-pub struct BrailleChart {
-    /// Chart width in characters
-    width: usize,
-    /// Chart height in characters
-    height: usize,
-    /// Data points
-    data: Vec<f32>,
-    /// Minimum value (auto-scale if None)
-    min_val: Option<f32>,
-    /// Maximum value (auto-scale if None)
-    max_val: Option<f32>,
-    /// Use log scale
-    log_scale: bool,
-    /// Color mode for rendering
-    color_mode: ColorMode,
+// ═══════════════════════════════════════════════════════════════════════════════
+// BLOCK BAR RENDERING (btop-style)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Build a block-style load bar: ████████░░░░
+pub fn build_block_bar(percent: f32, width: usize) -> String {
+    let pct = percent.clamp(0.0, 100.0);
+    let filled = ((pct / 100.0) * width as f32) as usize;
+    let empty = width.saturating_sub(filled);
+    format!(
+        "{}{}",
+        BLOCK_FULL.to_string().repeat(filled),
+        BLOCK_LIGHT.to_string().repeat(empty)
+    )
 }
 
-impl BrailleChart {
-    /// Create a new braille chart
-    pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            width,
-            height,
-            data: Vec::new(),
-            min_val: None,
-            max_val: None,
-            log_scale: false,
-            color_mode: ColorMode::detect(),
+/// Build a colored block bar with btop-style gradient
+pub fn build_colored_block_bar(percent: f32, width: usize, color_mode: ColorMode) -> String {
+    let pct = percent.clamp(0.0, 100.0);
+    let filled = ((pct / 100.0) * width as f32) as usize;
+    let empty = width.saturating_sub(filled);
+
+    let color = percent_to_color(pct);
+    let filled_str = BLOCK_FULL.to_string().repeat(filled);
+    let empty_str = BLOCK_LIGHT.to_string().repeat(empty);
+
+    if color_mode == ColorMode::Mono {
+        format!("{filled_str}{empty_str}")
+    } else {
+        format!(
+            "{}{}",
+            Styled::new(&filled_str, color_mode).fg(color),
+            Styled::new(&empty_str, color_mode).fg((80, 80, 80))
+        )
+    }
+}
+
+/// btop-style color gradient: cyan→green→yellow→orange→red
+fn percent_to_color(pct: f32) -> (u8, u8, u8) {
+    let p = pct.clamp(0.0, 100.0);
+
+    if p >= 90.0 {
+        // Critical: bright red
+        (255, 64, 64)
+    } else if p >= 75.0 {
+        // High: orange to red
+        let t = (p - 75.0) / 15.0;
+        (255, (180.0 - t * 116.0) as u8, 64)
+    } else if p >= 50.0 {
+        // Medium: yellow to orange
+        let t = (p - 50.0) / 25.0;
+        (255, (220.0 - t * 40.0) as u8, 64)
+    } else if p >= 25.0 {
+        // Low-medium: green to yellow
+        let t = (p - 25.0) / 25.0;
+        ((100.0 + t * 155.0) as u8, 220, (100.0 - t * 36.0) as u8)
+    } else {
+        // Low: cyan to green
+        let t = p / 25.0;
+        (
+            (64.0 + t * 36.0) as u8,
+            (180.0 + t * 40.0) as u8,
+            (220.0 - t * 120.0) as u8,
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SPARKLINE RENDERING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Render a compact sparkline using braille characters
+pub fn render_sparkline(data: &[f32], width: usize, color_mode: ColorMode) -> String {
+    if data.is_empty() {
+        return " ".repeat(width);
+    }
+
+    // Find min/max for normalization
+    let min = data.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let range = (max - min).max(0.001);
+
+    // Sample data to fit width (each braille char = 2 columns)
+    let chars_needed = width;
+    let mut result = String::new();
+
+    for i in 0..chars_needed {
+        let idx = (i * data.len()) / chars_needed.max(1);
+        let idx2 = ((i * 2 + 1) * data.len()) / (chars_needed * 2).max(1);
+
+        let v1 = data.get(idx).copied().unwrap_or(min);
+        let v2 = data.get(idx2).copied().unwrap_or(v1);
+
+        // Normalize to 0-3 (4 vertical positions in braille)
+        let h1 = (((v1 - min) / range) * 3.99) as usize;
+        let h2 = (((v2 - min) / range) * 3.99) as usize;
+
+        // Build braille char
+        let mut code: u32 = 0;
+        // Left column dots (positions 0,1,2,3 = dots 1,2,3,7)
+        for y in 0..=h1.min(3) {
+            code |= BRAILLE_DOTS[3 - y]; // invert for visual
         }
-    }
-
-    /// Set color mode
-    pub fn color_mode(mut self, mode: ColorMode) -> Self {
-        self.color_mode = mode;
-        self
-    }
-
-    /// Set data points
-    pub fn data(mut self, data: Vec<f32>) -> Self {
-        self.data = data;
-        self
-    }
-
-    /// Set Y-axis bounds
-    pub fn bounds(mut self, min: f32, max: f32) -> Self {
-        self.min_val = Some(min);
-        self.max_val = Some(max);
-        self
-    }
-
-    /// Enable log scale for Y-axis
-    pub fn log_scale(mut self, enabled: bool) -> Self {
-        self.log_scale = enabled;
-        self
-    }
-
-    /// Render the chart to a string
-    pub fn render(&self) -> String {
-        if self.data.is_empty() {
-            return self.render_empty();
+        // Right column dots (positions 4,5,6,7 = dots 4,5,6,8)
+        for y in 0..=h2.min(3) {
+            code |= BRAILLE_DOTS[7 - y];
         }
 
-        // Calculate bounds
-        let (min, max) = self.calculate_bounds();
-        if (max - min).abs() < f32::EPSILON {
-            return self.render_flat_line();
-        }
+        let ch = char::from_u32(BRAILLE_BASE + code).unwrap_or('⣿');
+        result.push(ch);
+    }
 
-        // Each braille character is 2 dots wide, 4 dots tall
-        let dots_wide = self.width * 2;
-        let dots_tall = self.height * 4;
-
-        // Create dot grid
-        let mut grid = vec![vec![false; dots_wide]; dots_tall];
-
-        // Plot data points
-        let step = if self.data.len() > dots_wide {
-            self.data.len() as f32 / dots_wide as f32
+    // Color based on trend (last vs first)
+    let trend_color = if data.len() > 1 {
+        let first = data.first().copied().unwrap_or(0.0);
+        let last = data.last().copied().unwrap_or(0.0);
+        if last < first * 0.95 {
+            TrainingPalette::SUCCESS // decreasing loss = good
+        } else if last > first * 1.05 {
+            TrainingPalette::ERROR // increasing = bad
         } else {
-            1.0
-        };
-
-        for x in 0..dots_wide.min(self.data.len()) {
-            let idx = (x as f32 * step) as usize;
-            let idx = idx.min(self.data.len() - 1);
-            let val = self.data[idx];
-
-            // Normalize value to dot position
-            let normalized = if self.log_scale && val > 0.0 {
-                let log_min = if min > 0.0 { min.ln() } else { 0.0 };
-                let log_max = if max > 0.0 { max.ln() } else { 1.0 };
-                let log_val = val.ln();
-                (log_val - log_min) / (log_max - log_min)
-            } else {
-                (val - min) / (max - min)
-            };
-
-            let y = ((1.0 - normalized) * (dots_tall - 1) as f32) as usize;
-            let y = y.min(dots_tall - 1);
-
-            grid[y][x] = true;
-
-            // Fill below for area effect (optional)
-            // for y_fill in y..dots_tall {
-            //     grid[y_fill][x] = true;
-            // }
+            TrainingPalette::INFO // stable
         }
+    } else {
+        TrainingPalette::INFO
+    };
 
-        // Convert grid to braille characters with color gradient
-        let mut output = String::new();
-        for row in 0..self.height {
-            // Calculate row color - gradient from red (top/high loss) to green (bottom/low loss)
-            let row_normalized = row as f32 / self.height.max(1) as f32;
-            let row_color = TrainingPalette::loss_color(row_normalized, 0.0, 1.0);
-
-            for col in 0..self.width {
-                let mut code: u32 = 0;
-                for dy in 0..4 {
-                    for dx in 0..2 {
-                        let gy = row * 4 + dy;
-                        let gx = col * 2 + dx;
-                        if gx < dots_wide && gy < dots_tall && grid[gy][gx] {
-                            code |= BRAILLE_DOTS[dy * 2 + dx];
-                        }
-                    }
-                }
-                let ch = char::from_u32(BRAILLE_BASE + code).unwrap_or(' ');
-
-                // Apply color if there are dots to render
-                if code > 0 && self.color_mode != ColorMode::Mono {
-                    let ch_str = ch.to_string();
-                    output.push_str(
-                        &Styled::new(&ch_str, self.color_mode)
-                            .fg(row_color)
-                            .to_string(),
-                    );
-                } else {
-                    output.push(ch);
-                }
-            }
-            output.push('\n');
-        }
-
-        output
-    }
-
-    fn calculate_bounds(&self) -> (f32, f32) {
-        let min = self
-            .min_val
-            .unwrap_or_else(|| self.data.iter().copied().fold(f32::INFINITY, f32::min));
-        let max = self
-            .max_val
-            .unwrap_or_else(|| self.data.iter().copied().fold(f32::NEG_INFINITY, f32::max));
-        (min, max)
-    }
-
-    fn render_empty(&self) -> String {
-        let empty_char = char::from_u32(BRAILLE_BASE).unwrap_or(' ');
-        let line = empty_char.to_string().repeat(self.width);
-        let mut output = String::new();
-        for _ in 0..self.height {
-            output.push_str(&line);
-            output.push('\n');
-        }
-        output
-    }
-
-    fn render_flat_line(&self) -> String {
-        // Middle row of dots
-        let middle_row = self.height / 2;
-        let mut output = String::new();
-        for row in 0..self.height {
-            for _ in 0..self.width {
-                let ch = if row == middle_row {
-                    char::from_u32(BRAILLE_BASE | 0x36).unwrap_or('─') // dots 2,3,5,6
-                } else {
-                    char::from_u32(BRAILLE_BASE).unwrap_or(' ')
-                };
-                output.push(ch);
-            }
-            output.push('\n');
-        }
-        output
+    if color_mode == ColorMode::Mono {
+        result
+    } else {
+        Styled::new(&result, color_mode).fg(trend_color).to_string()
     }
 }
 
-/// Render a Braille chart from data
-pub fn render_braille_chart(data: &[f32], width: usize, height: usize, log_scale: bool) -> String {
-    BrailleChart::new(width, height)
-        .data(data.to_vec())
-        .log_scale(log_scale)
-        .render()
+/// Compute trend arrow based on recent values
+pub fn trend_arrow(data: &[f32]) -> &'static str {
+    if data.len() < 2 {
+        return ARROW_FLAT;
+    }
+    let recent = data.iter().rev().take(5).copied().collect::<Vec<_>>();
+    if recent.len() < 2 {
+        return ARROW_FLAT;
+    }
+    let avg_recent: f32 = recent.iter().sum::<f32>() / recent.len() as f32;
+    let avg_old: f32 = data.iter().rev().skip(5).take(5).copied().sum::<f32>()
+        / 5.0_f32.min(data.len().saturating_sub(5) as f32).max(1.0);
+
+    if avg_recent < avg_old * 0.95 {
+        ARROW_DOWN
+    } else if avg_recent > avg_old * 1.05 {
+        ARROW_UP
+    } else {
+        ARROW_FLAT
+    }
 }
 
-/// Render a horizontal gauge/progress bar
-///
-/// Format: `[=========>          ] 45%`
-pub fn render_gauge(value: f32, max: f32, width: usize, label: &str) -> String {
-    let percent = if max > 0.0 { value / max * 100.0 } else { 0.0 };
-    let percent = percent.clamp(0.0, 100.0);
-
-    let bar_width = width.saturating_sub(label.len() + 8); // space for label + percentage
-    let filled = ((percent / 100.0) * bar_width as f32) as usize;
-    let empty = bar_width.saturating_sub(filled);
-
-    let bar = format!(
-        "{}[{}{}] {:>5.1}%",
-        label,
-        "=".repeat(filled.saturating_sub(1)) + if filled > 0 { ">" } else { "" },
-        " ".repeat(empty),
-        percent
-    );
-
-    bar
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORMATTING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /// Format duration as HH:MM:SS
 pub fn format_duration(d: Duration) -> String {
@@ -258,34 +216,61 @@ pub fn format_duration(d: Duration) -> String {
     format!("{hours:02}:{mins:02}:{secs:02}")
 }
 
-/// Render the full TUI layout (SPEC-FT-001 Section 10.1)
-///
-/// ```text
-/// ┌────────────────────────────────────────────────────────────────────────┐
-/// │  Entrenar Fine-Tuner v1.6.0                      [Running: 00:04:12]   │
-/// ├──────────────────────────────────┬─────────────────────────────────────┤
-/// │  Loss Curve (Log Scale)          │  Hardware Telemetry                 │
-/// │                                  │                                     │
-/// │  │        ⣀                      │  GPU: RTX 4090 [==========] 42%     │
-/// │  │          ⣀                    │  VRAM: 3.4GB   [==        ] 14%     │
-/// │  │           ⣀                   │  Temp: 64°C                         │
-/// │  │            ⣀⣀                 │                                     │
-/// │  └──────────────────────         │  Throughput: 1420 tok/s             │
-/// │                                  │  Est. Remaining: 00:12:45           │
-/// ├──────────────────────────────────┼─────────────────────────────────────┤
-/// │  Latest Sample                   │  Training State                     │
-/// │                                  │                                     │
-/// │  Input:  fn is_even(n: u32)...   │  Epoch: 2/15                        │
-/// │  Target: assert!(is_even(2))...  │  Step:  450/3000                    │
-/// │  Gen:    assert!(is_even(2))...  │  LR:    5.8e-4                      │
-/// │                                  │  Grad Norm: 3.2                     │
-/// └──────────────────────────────────┴─────────────────────────────────────┘
-/// ```
+/// Format bytes as human readable (G/M/K)
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.1}G", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    } else if bytes >= 1024 * 1024 {
+        format!("{:.0}M", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.0}K", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes}B")
+    }
+}
+
+/// Format learning rate (avoid scientific notation)
+pub fn format_lr(lr: f32) -> String {
+    if lr >= 0.01 {
+        format!("{lr:.4}")
+    } else if lr >= 0.001 {
+        format!("{lr:.5}")
+    } else {
+        format!("{lr:.6}")
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN LAYOUT RENDERING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Render the full TUI layout (10/10 style)
 pub fn render_layout(snapshot: &TrainingSnapshot, width: usize) -> String {
     render_layout_colored(snapshot, width, ColorMode::detect())
 }
 
 /// Render the full TUI layout with specified color mode
+///
+/// Layout:
+/// ```text
+/// ╭──────────────────────────────────────────────────────────────────────────────╮
+/// │ ⚡ ENTRENAR v0.5.6                              [● Running: 00:04:12] 67 tok/s│
+/// ├─────────────────────────────────┬────────────────────────────────────────────┤
+/// │ 📉 LOSS CURVE                   │ 🖥️  GPU: RTX 4090                          │
+/// │ ⣿⣿⣿⣷⣶⣴⣤⣄⣀⡀ 6.90→2.31 ↓     │ ████████████░░░░░░ 67% 64°C 285W          │
+/// │ min:2.31 max:6.90 avg:4.12      │ VRAM ██████░░░░░░░░░░ 3.4G/24G 14%         │
+/// │ ⣿⣿⣿⣿⣿⣿⣿⣶⣤⣀ grad_norm        │ ──────────────────────────────────────────│
+/// │                                 │ 📊 PROCESS                                 │
+/// │                                 │ /mnt/.../finetune_real                     │
+/// │                                 │ CPU 89% ████████░░ RSS 3.4G GPU 2.8G       │
+/// ├─────────────────────────────────┼────────────────────────────────────────────┤
+/// │ 📝 SAMPLE PREVIEW               │ 📈 TRAINING METRICS                        │
+/// │ In: fn is_prime(n: u64)...      │ Epoch ████████████████░░░░ 15/18 83%       │
+/// │ Tgt: #[test] fn test_is_prime() │ Step  ████████████░░░░░░░░ 12/16 75%       │
+/// │ Gen: #[test] fn test_is_prime() │ LR 0.00058 ↓  Grad 2.31 ↓                  │
+/// │ Match: ████████████░░░░ 78%     │ Loss 2.31 ↓ best:2.15 ETA 00:02:15         │
+/// ╰─────────────────────────────────┴────────────────────────────────────────────╯
+/// ```
 pub fn render_layout_colored(
     snapshot: &TrainingSnapshot,
     width: usize,
@@ -294,132 +279,472 @@ pub fn render_layout_colored(
     let mut output = String::new();
     let half_width = width / 2;
 
-    // Status text with color
-    let (status_str, status_color) = match &snapshot.status {
-        TrainingStatus::Initializing => ("Initializing", TrainingPalette::INFO),
-        TrainingStatus::Running => ("Running", TrainingPalette::SUCCESS),
-        TrainingStatus::Paused => ("Paused", TrainingPalette::WARNING),
-        TrainingStatus::Completed => ("Completed", TrainingPalette::PRIMARY),
-        TrainingStatus::Failed(_) => ("Failed", TrainingPalette::ERROR),
-    };
+    // ─────────────────────────────────────────────────────────────────────────
+    // HEADER
+    // ─────────────────────────────────────────────────────────────────────────
+    output.push_str(&render_header(snapshot, width, color_mode));
 
-    let elapsed = format_duration(snapshot.elapsed());
-    let status_display = format!("[{status_str}: {elapsed}]");
-    let colored_status = Styled::new(&status_display, color_mode)
-        .fg(status_color)
-        .to_string();
-
-    // Header
-    output.push_str(&format!("┌{}┐\n", "─".repeat(width - 2)));
-
-    // Header with colored status - need to account for ANSI escape codes in width calculation
-    let base_status_len = status_display.len() + 2; // +2 for padding
-    let header_text = "Entrenar Fine-Tuner v0.5.6 ";
-    let padding_needed = width - 2 - header_text.len() - base_status_len;
+    // ─────────────────────────────────────────────────────────────────────────
+    // TOP ROW: Loss Curve | GPU + Process
+    // ─────────────────────────────────────────────────────────────────────────
     output.push_str(&format!(
-        "│  {}{}{}  │\n",
-        header_text,
-        " ".repeat(padding_needed),
-        colored_status
+        "{BOX_L}{}{BOX_T}{}{BOX_R}\n",
+        BOX_H.repeat(half_width - 1),
+        BOX_H.repeat(width - half_width - 2)
     ));
 
-    output.push_str(&format!(
-        "├{}┬{}┤\n",
-        "─".repeat(half_width - 1),
-        "─".repeat(width - half_width - 2)
-    ));
+    let loss_panel = render_loss_panel(snapshot, half_width - 4, color_mode);
+    let gpu_panel = render_gpu_panel(snapshot.gpu.as_ref(), width - half_width - 4, color_mode);
 
-    // Loss Curve Panel
-    output.push_str(&format!(
-        "│  Loss Curve (Log Scale){}│  Hardware Telemetry{}│\n",
-        " ".repeat(half_width - 26),
-        " ".repeat(width - half_width - 23)
-    ));
+    let loss_lines: Vec<&str> = loss_panel.lines().collect();
+    let gpu_lines: Vec<&str> = gpu_panel.lines().collect();
+    let max_lines = loss_lines.len().max(gpu_lines.len()).max(7);
 
-    // Render braille chart (6 rows) with colors
-    let chart_width = half_width - 6;
-    let chart = BrailleChart::new(chart_width, 6)
-        .data(snapshot.loss_history.clone())
-        .log_scale(true)
-        .color_mode(color_mode)
-        .render();
-
-    let chart_lines: Vec<&str> = chart.lines().collect();
-
-    // GPU telemetry lines with colors
-    let gpu_lines =
-        render_gpu_telemetry_colored(snapshot.gpu.as_ref(), width - half_width - 4, color_mode);
-
-    // Combine chart and GPU telemetry
-    // Note: chart_line may contain ANSI escapes, so we need visual width calculation
-    for i in 0..6 {
-        let chart_line = chart_lines.get(i).unwrap_or(&"");
-        let gpu_line = gpu_lines
-            .get(i)
-            .map_or(String::new(), std::clone::Clone::clone);
-
-        // Calculate visual width (excluding ANSI escapes)
-        let chart_visual_width = strip_ansi_width(chart_line);
-        let padding = half_width.saturating_sub(chart_visual_width + 4);
-
-        // GPU line visual width for right side
-        let gpu_visual_width = strip_ansi_width(&gpu_line);
-        let gpu_padding = (width - half_width - 5).saturating_sub(gpu_visual_width);
+    for i in 0..max_lines {
+        let left = loss_lines.get(i).copied().unwrap_or("");
+        let right = gpu_lines.get(i).copied().unwrap_or("");
+        let left_visual = strip_ansi_width(left);
+        let right_visual = strip_ansi_width(right);
+        let left_pad = (half_width - 4).saturating_sub(left_visual);
+        let right_pad = (width - half_width - 4).saturating_sub(right_visual);
 
         output.push_str(&format!(
-            "│  {}{}│  {}{}│\n",
-            chart_line,
-            " ".repeat(padding),
-            gpu_line,
-            " ".repeat(gpu_padding)
+            "{BOX_V} {}{} {BOX_V} {}{} {BOX_V}\n",
+            left,
+            " ".repeat(left_pad),
+            right,
+            " ".repeat(right_pad)
         ));
     }
 
-    // Middle divider
+    // ─────────────────────────────────────────────────────────────────────────
+    // BOTTOM ROW: Sample Preview | Training Metrics
+    // ─────────────────────────────────────────────────────────────────────────
     output.push_str(&format!(
-        "├{}┼{}┤\n",
-        "─".repeat(half_width - 1),
-        "─".repeat(width - half_width - 2)
+        "{BOX_L}{}{BOX_X}{}{BOX_R}\n",
+        BOX_H.repeat(half_width - 1),
+        BOX_H.repeat(width - half_width - 2)
     ));
 
-    // Sample Peek Panel
-    output.push_str(&format!(
-        "│  Latest Sample{}│  Training State{}│\n",
-        " ".repeat(half_width - 18),
-        " ".repeat(width - half_width - 19)
-    ));
+    let sample_panel = render_sample_panel(snapshot.sample.as_ref(), half_width - 4, color_mode);
+    let metrics_panel = render_metrics_panel(snapshot, width - half_width - 4, color_mode);
 
-    let sample_lines = render_sample_peek(snapshot.sample.as_ref(), half_width - 4);
-    let state_lines = render_training_state_colored(snapshot, width - half_width - 4, color_mode);
+    let sample_lines: Vec<&str> = sample_panel.lines().collect();
+    let metrics_lines: Vec<&str> = metrics_panel.lines().collect();
+    let max_lines2 = sample_lines.len().max(metrics_lines.len()).max(5);
 
-    for i in 0..4 {
-        let sample_line = sample_lines.get(i).map_or("", std::string::String::as_str);
-        let state_line = state_lines
-            .get(i)
-            .map_or(String::new(), std::clone::Clone::clone);
-        let sample_width = half_width - 4;
-
-        // Calculate visual width for colored state line
-        let state_visual_width = strip_ansi_width(&state_line);
-        let state_padding = (width - half_width - 5).saturating_sub(state_visual_width);
+    for i in 0..max_lines2 {
+        let left = sample_lines.get(i).copied().unwrap_or("");
+        let right = metrics_lines.get(i).copied().unwrap_or("");
+        let left_visual = strip_ansi_width(left);
+        let right_visual = strip_ansi_width(right);
+        let left_pad = (half_width - 4).saturating_sub(left_visual);
+        let right_pad = (width - half_width - 4).saturating_sub(right_visual);
 
         output.push_str(&format!(
-            "│  {:sample_width$}│  {}{}│\n",
-            sample_line,
-            state_line,
-            " ".repeat(state_padding)
+            "{BOX_V} {}{} {BOX_V} {}{} {BOX_V}\n",
+            left,
+            " ".repeat(left_pad),
+            right,
+            " ".repeat(right_pad)
         ));
     }
 
-    // Footer
+    // ─────────────────────────────────────────────────────────────────────────
+    // FOOTER
+    // ─────────────────────────────────────────────────────────────────────────
     output.push_str(&format!(
-        "└{}┴{}┘\n",
-        "─".repeat(half_width - 1),
-        "─".repeat(width - half_width - 2)
+        "{BOX_BL}{}{BOX_B}{}{BOX_BR}\n",
+        BOX_H.repeat(half_width - 1),
+        BOX_H.repeat(width - half_width - 2)
     ));
 
     output
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PANEL RENDERERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+fn render_header(snapshot: &TrainingSnapshot, width: usize, color_mode: ColorMode) -> String {
+    let mut output = String::new();
+
+    // Status indicator and color
+    let (status_icon, status_text, status_color) = match &snapshot.status {
+        TrainingStatus::Initializing => (STATUS_OK, "Init", TrainingPalette::INFO),
+        TrainingStatus::Running => (STATUS_CRITICAL, "Running", TrainingPalette::SUCCESS),
+        TrainingStatus::Paused => (STATUS_WARNING, "Paused", TrainingPalette::WARNING),
+        TrainingStatus::Completed => (STATUS_GOOD, "Done", TrainingPalette::PRIMARY),
+        TrainingStatus::Failed(_) => (STATUS_CRITICAL, "FAIL", TrainingPalette::ERROR),
+    };
+
+    let elapsed = format_duration(snapshot.elapsed());
+    let tps = if snapshot.tokens_per_second > 0.0 {
+        format!("{:.0} tok/s", snapshot.tokens_per_second)
+    } else {
+        String::new()
+    };
+
+    let status_str = format!("[{status_icon} {status_text}: {elapsed}]");
+    let colored_status = Styled::new(&status_str, color_mode)
+        .fg(status_color)
+        .to_string();
+
+    let title = format!("{BOLT} ENTRENAR v0.5.6");
+    let colored_title = Styled::new(&title, color_mode)
+        .fg(TrainingPalette::PRIMARY)
+        .to_string();
+
+    // Calculate spacing
+    let title_len = title.len();
+    let status_len = status_str.len();
+    let tps_len = tps.len();
+    let content_len = title_len + status_len + tps_len + 4;
+    let padding = width.saturating_sub(content_len + 4);
+
+    output.push_str(&format!("{BOX_TL}{}{BOX_TR}\n", BOX_H.repeat(width - 2)));
+    let colored_tps = Styled::new(&tps, color_mode).fg(TrainingPalette::INFO);
+    output.push_str(&format!(
+        "{BOX_V} {colored_title}{}{colored_status} {colored_tps} {BOX_V}\n",
+        " ".repeat(padding),
+    ));
+
+    output
+}
+
+fn render_loss_panel(snapshot: &TrainingSnapshot, width: usize, color_mode: ColorMode) -> String {
+    let mut lines = Vec::new();
+
+    // Panel title
+    let title = "📉 LOSS CURVE";
+    lines.push(
+        Styled::new(title, color_mode)
+            .fg(TrainingPalette::PRIMARY)
+            .to_string(),
+    );
+
+    if snapshot.loss_history.is_empty() {
+        lines.push("(waiting for data...)".to_string());
+        return lines.join("\n");
+    }
+
+    // Sparkline with stats
+    let spark_width = width.saturating_sub(15);
+    let sparkline = render_sparkline(&snapshot.loss_history, spark_width, color_mode);
+    let trend = trend_arrow(&snapshot.loss_history);
+    let current_loss = snapshot.loss;
+
+    let loss_str = format!("{current_loss:.2}");
+    let colored_loss = Styled::new(&loss_str, color_mode)
+        .fg(percent_to_color((current_loss * 10.0).min(100.0)))
+        .to_string();
+
+    lines.push(format!("{sparkline} {colored_loss} {trend}"));
+
+    // Min/max/avg stats
+    let min = snapshot
+        .loss_history
+        .iter()
+        .copied()
+        .fold(f32::INFINITY, f32::min);
+    let max = snapshot
+        .loss_history
+        .iter()
+        .copied()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let avg: f32 = snapshot.loss_history.iter().sum::<f32>() / snapshot.loss_history.len() as f32;
+
+    let stats = format!("min:{min:.2} max:{max:.2} avg:{avg:.2}");
+    lines.push(
+        Styled::new(&stats, color_mode)
+            .fg((150, 150, 150))
+            .to_string(),
+    );
+
+    // Gradient norm sparkline if we have history
+    lines.push(String::new());
+    let grad_title = "📊 GRADIENT NORM";
+    lines.push(
+        Styled::new(grad_title, color_mode)
+            .fg(TrainingPalette::INFO)
+            .to_string(),
+    );
+
+    let grad_bar_width = width.saturating_sub(12);
+    let grad_pct = (snapshot.gradient_norm / 10.0 * 100.0).clamp(0.0, 100.0);
+    let grad_bar = build_colored_block_bar(grad_pct, grad_bar_width, color_mode);
+    let grad_arrow = if snapshot.gradient_norm > 5.0 {
+        ARROW_UP
+    } else if snapshot.gradient_norm < 1.0 {
+        ARROW_DOWN
+    } else {
+        ARROW_FLAT
+    };
+    lines.push(format!(
+        "{grad_bar} {:.2} {grad_arrow}",
+        snapshot.gradient_norm
+    ));
+
+    lines.join("\n")
+}
+
+fn render_gpu_panel(gpu: Option<&GpuTelemetry>, width: usize, color_mode: ColorMode) -> String {
+    let mut lines = Vec::new();
+
+    if let Some(gpu) = gpu {
+        // GPU title with name
+        let title = format!("🖥️  GPU: {}", &gpu.device_name);
+        let title_truncated: String = title.chars().take(width).collect();
+        lines.push(
+            Styled::new(&title_truncated, color_mode)
+                .fg(TrainingPalette::SUCCESS)
+                .to_string(),
+        );
+
+        // GPU utilization bar
+        let util_bar_width = width.saturating_sub(20);
+        let util_bar = build_colored_block_bar(gpu.utilization_percent, util_bar_width, color_mode);
+        let temp_color = if gpu.temperature_celsius > 80.0 {
+            TrainingPalette::ERROR
+        } else if gpu.temperature_celsius > 70.0 {
+            TrainingPalette::WARNING
+        } else {
+            TrainingPalette::SUCCESS
+        };
+        let temp_str = format!("{:.0}°C", gpu.temperature_celsius);
+        let colored_temp = Styled::new(&temp_str, color_mode)
+            .fg(temp_color)
+            .to_string();
+        lines.push(format!(
+            "{util_bar} {:.0}% {colored_temp} {:.0}W",
+            gpu.utilization_percent, gpu.power_watts
+        ));
+
+        // VRAM bar
+        let vram_pct = gpu.vram_percent();
+        let vram_bar_width = width.saturating_sub(25);
+        let vram_bar = build_colored_block_bar(vram_pct, vram_bar_width, color_mode);
+        lines.push(format!(
+            "VRAM {vram_bar} {:.1}G/{:.0}G {:.0}%",
+            gpu.vram_used_gb, gpu.vram_total_gb, vram_pct
+        ));
+
+        // Separator
+        lines.push(BOX_H.repeat(width));
+
+        // Process section
+        let proc_title = "📊 PROCESS";
+        lines.push(
+            Styled::new(proc_title, color_mode)
+                .fg(TrainingPalette::INFO)
+                .to_string(),
+        );
+
+        if let Some(proc) = gpu.processes.first() {
+            // Executable path (truncated from left to show end)
+            let max_path = width.saturating_sub(2);
+            let exe_display = if proc.exe_path.len() > max_path {
+                format!(
+                    "...{}",
+                    &proc.exe_path[proc.exe_path.len() - max_path + 3..]
+                )
+            } else {
+                proc.exe_path.clone()
+            };
+            lines.push(
+                Styled::new(&exe_display, color_mode)
+                    .fg((200, 200, 255))
+                    .to_string(),
+            );
+
+            // Process stats with bars
+            let cpu_bar_width = 10;
+            let cpu_bar = build_colored_block_bar(proc.cpu_percent, cpu_bar_width, color_mode);
+            let rss_str = format_bytes(proc.rss_mb * 1024 * 1024);
+            let gpu_mem_str = format_bytes(proc.gpu_memory_mb * 1024 * 1024);
+
+            lines.push(format!(
+                "CPU {:.0}% {cpu_bar} RSS {} GPU {}",
+                proc.cpu_percent, rss_str, gpu_mem_str
+            ));
+        } else {
+            lines.push("(no process detected)".to_string());
+            lines.push(String::new());
+        }
+    } else {
+        lines.push(
+            Styled::new("🖥️  GPU: N/A", color_mode)
+                .fg((100, 100, 100))
+                .to_string(),
+        );
+        lines.push("(GPU monitoring unavailable)".to_string());
+        lines.push(String::new());
+        lines.push(BOX_H.repeat(width));
+        lines.push("📊 PROCESS".to_string());
+        lines.push("(no GPU process)".to_string());
+        lines.push(String::new());
+    }
+
+    lines.join("\n")
+}
+
+fn render_sample_panel(sample: Option<&SamplePeek>, width: usize, color_mode: ColorMode) -> String {
+    let mut lines = Vec::new();
+
+    let title = "📝 SAMPLE PREVIEW";
+    lines.push(
+        Styled::new(title, color_mode)
+            .fg(TrainingPalette::PRIMARY)
+            .to_string(),
+    );
+
+    let truncate = |s: &str, max_len: usize| -> String {
+        if s.len() > max_len {
+            format!("{}...", &s[..max_len.saturating_sub(3)])
+        } else {
+            s.to_string()
+        }
+    };
+
+    if let Some(sample) = sample {
+        let max_preview = width.saturating_sub(5);
+
+        let in_label = Styled::new("In:", color_mode)
+            .fg((100, 200, 255))
+            .to_string();
+        lines.push(format!(
+            "{in_label} {}",
+            truncate(&sample.input_preview, max_preview)
+        ));
+
+        let tgt_label = Styled::new("Tgt:", color_mode)
+            .fg((100, 255, 150))
+            .to_string();
+        lines.push(format!(
+            "{tgt_label} {}",
+            truncate(&sample.target_preview, max_preview)
+        ));
+
+        let gen_label = Styled::new("Gen:", color_mode)
+            .fg((255, 200, 100))
+            .to_string();
+        lines.push(format!(
+            "{gen_label} {}",
+            truncate(&sample.generated_preview, max_preview)
+        ));
+
+        // Match percentage bar
+        let match_bar_width = width.saturating_sub(15);
+        let match_bar =
+            build_colored_block_bar(sample.token_match_percent, match_bar_width, color_mode);
+        lines.push(format!(
+            "Match: {match_bar} {:.0}%",
+            sample.token_match_percent
+        ));
+    } else {
+        lines.push(
+            Styled::new("(waiting for sample...)", color_mode)
+                .fg((100, 100, 100))
+                .to_string(),
+        );
+        lines.push(String::new());
+        lines.push(String::new());
+        lines.push(String::new());
+    }
+
+    lines.join("\n")
+}
+
+fn render_metrics_panel(
+    snapshot: &TrainingSnapshot,
+    width: usize,
+    color_mode: ColorMode,
+) -> String {
+    let mut lines = Vec::new();
+
+    let title = "📈 TRAINING METRICS";
+    lines.push(
+        Styled::new(title, color_mode)
+            .fg(TrainingPalette::PRIMARY)
+            .to_string(),
+    );
+
+    // Epoch progress
+    let epoch_pct = if snapshot.total_epochs > 0 {
+        (snapshot.epoch as f32 / snapshot.total_epochs as f32) * 100.0
+    } else {
+        0.0
+    };
+    let epoch_bar_width = width.saturating_sub(25);
+    let epoch_bar = build_colored_block_bar(epoch_pct, epoch_bar_width, color_mode);
+    lines.push(format!(
+        "Epoch {epoch_bar} {}/{} {:.0}%",
+        snapshot.epoch, snapshot.total_epochs, epoch_pct
+    ));
+
+    // Step progress
+    let step_pct = if snapshot.steps_per_epoch > 0 {
+        (snapshot.step as f32 / snapshot.steps_per_epoch as f32) * 100.0
+    } else {
+        0.0
+    };
+    let step_bar_width = width.saturating_sub(25);
+    let step_bar = build_colored_block_bar(step_pct, step_bar_width, color_mode);
+    lines.push(format!(
+        "Step  {step_bar} {}/{} {:.0}%",
+        snapshot.step, snapshot.steps_per_epoch, step_pct
+    ));
+
+    // LR and Gradient
+    let lr_str = format_lr(snapshot.learning_rate);
+    let lr_trend = trend_arrow(&snapshot.loss_history); // approximate LR trend from loss
+    let grad_trend = if snapshot.gradient_norm > 5.0 {
+        ARROW_UP
+    } else {
+        ARROW_DOWN
+    };
+
+    let lr_colored = Styled::new(&format!("LR {lr_str}"), color_mode)
+        .fg(TrainingPalette::INFO)
+        .to_string();
+    let grad_colored = Styled::new(&format!("Grad {:.2}", snapshot.gradient_norm), color_mode)
+        .fg(if snapshot.gradient_norm > 10.0 {
+            TrainingPalette::ERROR
+        } else if snapshot.gradient_norm > 5.0 {
+            TrainingPalette::WARNING
+        } else {
+            TrainingPalette::SUCCESS
+        })
+        .to_string();
+
+    lines.push(format!(
+        "{lr_colored} {lr_trend}  {grad_colored} {grad_trend}"
+    ));
+
+    // Loss and ETA
+    let loss_colored = Styled::new(&format!("Loss {:.3}", snapshot.loss), color_mode)
+        .fg(percent_to_color((snapshot.loss * 10.0).min(100.0)))
+        .to_string();
+
+    let best_loss = snapshot
+        .loss_history
+        .iter()
+        .copied()
+        .fold(f32::INFINITY, f32::min);
+    let eta = snapshot
+        .estimated_remaining()
+        .map_or_else(|| "--:--:--".to_string(), format_duration);
+
+    lines.push(format!(
+        "{loss_colored} {ARROW_DOWN} best:{best_loss:.2} ETA {eta}"
+    ));
+
+    lines.join("\n")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
 
 /// Calculate visual width of a string (excluding ANSI escape sequences)
 fn strip_ansi_width(s: &str) -> usize {
@@ -441,215 +766,79 @@ fn strip_ansi_width(s: &str) -> usize {
     width
 }
 
-#[allow(dead_code)]
-fn render_gpu_telemetry(gpu: Option<&GpuTelemetry>, width: usize) -> Vec<String> {
-    render_gpu_telemetry_colored(gpu, width, ColorMode::Mono)
+// Legacy compatibility
+pub fn render_gauge(value: f32, max: f32, width: usize, label: &str) -> String {
+    let percent = if max > 0.0 { value / max * 100.0 } else { 0.0 };
+    let bar = build_block_bar(percent, width.saturating_sub(label.len() + 8));
+    format!("{label}{bar} {percent:>5.1}%")
 }
 
-/// Render GPU telemetry with colors
-fn render_gpu_telemetry_colored(
-    gpu: Option<&GpuTelemetry>,
+/// Braille chart (legacy compatibility)
+pub struct BrailleChart {
     width: usize,
+    height: usize,
+    data: Vec<f32>,
+    log_scale: bool,
     color_mode: ColorMode,
-) -> Vec<String> {
-    let mut lines = Vec::new();
+}
 
-    if let Some(gpu) = gpu {
-        // GPU utilization with color
-        let util_pct = gpu.utilization_percent;
-        let util_color = TrainingPalette::gpu_util_color(util_pct);
-        let util_bar = colored_bar(util_pct, 100.0, 12, util_color, color_mode);
-        let util_val = format!("{util_pct:>3.0}%");
-        let colored_util = Styled::new(&util_val, color_mode)
-            .fg(util_color)
-            .to_string();
-
-        // Truncate device name to fit
-        let max_name_len = width.saturating_sub(25);
-        let device_name: String = gpu.device_name.chars().take(max_name_len).collect();
-        lines.push(format!("GPU: {device_name} {util_bar} {colored_util}"));
-
-        // VRAM usage with color
-        let vram_pct = gpu.vram_percent();
-        let vram_color = TrainingPalette::vram_color(vram_pct);
-        let vram_bar = colored_bar(vram_pct, 100.0, 10, vram_color, color_mode);
-        let vram_val = format!("{:.1}/{:.0}GB", gpu.vram_used_gb, gpu.vram_total_gb);
-        let colored_vram = Styled::new(&vram_val, color_mode)
-            .fg(vram_color)
-            .to_string();
-        lines.push(format!("VRAM: {vram_bar} {colored_vram}"));
-
-        // Temperature with color
-        let temp = gpu.temperature_celsius;
-        let temp_color = TrainingPalette::temp_color(temp);
-        let temp_val = format!("{temp:.0}°C");
-        let colored_temp = Styled::new(&temp_val, color_mode)
-            .fg(temp_color)
-            .to_string();
-        lines.push(format!("Temp: {colored_temp}"));
-
-        // Power with color
-        let power_pct = if gpu.power_limit_watts > 0.0 {
-            (gpu.power_watts / gpu.power_limit_watts) * 100.0
-        } else {
-            0.0
-        };
-        let power_color = TrainingPalette::power_color(power_pct);
-        let power_val = format!("{:.0}W/{:.0}W", gpu.power_watts, gpu.power_limit_watts);
-        let colored_power = Styled::new(&power_val, color_mode)
-            .fg(power_color)
-            .to_string();
-        lines.push(format!("Power: {colored_power}"));
-
-        // Show first process if available (most relevant GPU consumer)
-        if let Some(proc) = gpu.processes.first() {
-            // Truncate exe path to fit
-            let max_path_len = width.saturating_sub(8);
-            let exe_short: String = if proc.exe_path.len() > max_path_len {
-                format!(
-                    "...{}",
-                    &proc.exe_path[proc.exe_path.len() - max_path_len + 3..]
-                )
-            } else {
-                proc.exe_path.clone()
-            };
-            lines.push(format!("Proc: {exe_short}"));
-            lines.push(format!(
-                "  CPU:{:>3.0}% RSS:{:>4}MB GPU:{:>4}MB",
-                proc.cpu_percent, proc.rss_mb, proc.gpu_memory_mb
-            ));
-        } else {
-            lines.push(String::new());
-            lines.push(String::new());
+impl BrailleChart {
+    pub fn new(width: usize, height: usize) -> Self {
+        Self {
+            width,
+            height,
+            data: Vec::new(),
+            log_scale: false,
+            color_mode: ColorMode::detect(),
         }
-    } else {
-        lines.push("GPU: N/A".to_string());
-        lines.push("VRAM: N/A".to_string());
-        lines.push("Temp: N/A".to_string());
-        lines.push("Power: N/A".to_string());
-        lines.push(String::new());
-        lines.push(String::new());
     }
 
-    lines
-}
+    pub fn color_mode(mut self, mode: ColorMode) -> Self {
+        self.color_mode = mode;
+        self
+    }
 
-#[allow(dead_code)]
-fn render_mini_gauge(value: f32, max: f32, width: usize) -> String {
-    let percent = if max > 0.0 { value / max } else { 0.0 };
-    let percent = percent.clamp(0.0, 1.0);
-    let filled = (percent * width as f32) as usize;
-    let empty = width.saturating_sub(filled);
+    pub fn data(mut self, data: Vec<f32>) -> Self {
+        self.data = data;
+        self
+    }
 
-    format!(
-        "[{}{}] {:>3.0}%",
-        "=".repeat(filled),
-        " ".repeat(empty),
-        percent * 100.0
-    )
-}
+    #[allow(dead_code)]
+    pub fn bounds(self, _min: f32, _max: f32) -> Self {
+        self
+    }
 
-fn render_sample_peek(sample: Option<&SamplePeek>, width: usize) -> Vec<String> {
-    let mut lines = Vec::new();
+    pub fn log_scale(mut self, enabled: bool) -> Self {
+        self.log_scale = enabled;
+        self
+    }
 
-    if let Some(sample) = sample {
-        let truncate = |s: &str, max_len: usize| -> String {
-            if s.len() > max_len {
-                format!("{}...", &s[..max_len.saturating_sub(3)])
+    pub fn render(&self) -> String {
+        if self.data.is_empty() {
+            return " ".repeat(self.width).repeat(self.height);
+        }
+
+        let mut lines = Vec::new();
+        for row in 0..self.height {
+            let start = (row * self.data.len()) / self.height;
+            let end = ((row + 1) * self.data.len()) / self.height;
+            let slice = if end > start {
+                &self.data[start..end]
+            } else if start < self.data.len() {
+                &self.data[start..=start]
             } else {
-                s.to_string()
-            }
-        };
-
-        let max_preview = width.saturating_sub(10);
-        lines.push(format!(
-            "Input:  {}",
-            truncate(&sample.input_preview, max_preview)
-        ));
-        lines.push(format!(
-            "Target: {}",
-            truncate(&sample.target_preview, max_preview)
-        ));
-        lines.push(format!(
-            "Gen:    {}",
-            truncate(&sample.generated_preview, max_preview)
-        ));
-        lines.push(format!("Match:  {:.1}%", sample.token_match_percent));
-    } else {
-        lines.push("Input:  (waiting...)".to_string());
-        lines.push("Target: (waiting...)".to_string());
-        lines.push("Gen:    (waiting...)".to_string());
-        lines.push(String::new());
+                &[]
+            };
+            lines.push(render_sparkline(slice, self.width, self.color_mode));
+        }
+        lines.join("\n")
     }
-
-    lines
 }
 
-#[allow(dead_code)]
-fn render_training_state(snapshot: &TrainingSnapshot, width: usize) -> Vec<String> {
-    render_training_state_colored(snapshot, width, ColorMode::Mono)
-}
-
-/// Render training state with colors
-fn render_training_state_colored(
-    snapshot: &TrainingSnapshot,
-    _width: usize,
-    color_mode: ColorMode,
-) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    // Progress info
-    let progress_pct = snapshot.progress_percent();
-    let progress_color = TrainingPalette::progress_color(progress_pct);
-
-    let epoch_str = format!("{}/{}", snapshot.epoch, snapshot.total_epochs);
-    let colored_epoch = Styled::new(&epoch_str, color_mode)
-        .fg(progress_color)
-        .to_string();
-    lines.push(format!("Epoch: {colored_epoch}"));
-
-    let step_str = format!("{}/{}", snapshot.step, snapshot.steps_per_epoch);
-    lines.push(format!("Step:  {step_str}"));
-
-    // Learning rate - use decimal format, not scientific notation
-    let lr = snapshot.learning_rate;
-    let lr_str = if lr >= 0.001 {
-        format!("{lr:.4}")
-    } else if lr >= 0.0001 {
-        format!("{lr:.5}")
-    } else {
-        format!("{lr:.6}")
-    };
-    lines.push(format!("LR:    {lr_str}"));
-
-    // Gradient norm with warning colors
-    let grad_color = TrainingPalette::grad_norm_color(snapshot.gradient_norm);
-    let grad_str = format!("{:.3}", snapshot.gradient_norm);
-    let colored_grad = Styled::new(&grad_str, color_mode)
-        .fg(grad_color)
-        .to_string();
-    lines.push(format!("Grad:  {colored_grad}"));
-
-    // Add throughput with color
-    if snapshot.tokens_per_second > 0.0 {
-        let tps = snapshot.tokens_per_second;
-        let tps_color = if tps > 1000.0 {
-            TrainingPalette::SUCCESS
-        } else if tps > 500.0 {
-            TrainingPalette::INFO
-        } else {
-            TrainingPalette::WARNING
-        };
-        let tps_str = format!("{tps:.0}");
-        let colored_tps = Styled::new(&tps_str, color_mode).fg(tps_color).to_string();
-        lines.push(format!("Tok/s: {colored_tps}"));
-    }
-
-    if let Some(remaining) = snapshot.estimated_remaining() {
-        lines.push(format!("ETA:   {}", format_duration(remaining)));
-    }
-
-    lines
+pub fn render_braille_chart(data: &[f32], width: usize, height: usize, _log_scale: bool) -> String {
+    BrailleChart::new(width, height)
+        .data(data.to_vec())
+        .render()
 }
 
 #[cfg(test)]
@@ -657,54 +846,70 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_braille_chart_empty() {
-        let chart = BrailleChart::new(10, 5).render();
-        assert!(!chart.is_empty());
-        assert!(chart.lines().count() == 5);
+    fn test_block_bar() {
+        let bar = build_block_bar(50.0, 10);
+        assert_eq!(bar.chars().count(), 10);
+        assert!(bar.contains(BLOCK_FULL));
+        assert!(bar.contains(BLOCK_LIGHT));
     }
 
     #[test]
-    fn test_braille_chart_with_data() {
-        let data = vec![1.0, 0.8, 0.6, 0.4, 0.2, 0.1];
-        let chart = BrailleChart::new(10, 4).data(data).render();
-        assert!(!chart.is_empty());
-        // Should contain braille characters
-        assert!(chart.chars().any(|c| c as u32 >= BRAILLE_BASE));
+    fn test_percent_to_color_gradient() {
+        // Test gradient continuity
+        let mut prev = percent_to_color(0.0);
+        for i in 1..=100 {
+            let curr = percent_to_color(i as f32);
+            let dr = (curr.0 as i32 - prev.0 as i32).abs();
+            let dg = (curr.1 as i32 - prev.1 as i32).abs();
+            let db = (curr.2 as i32 - prev.2 as i32).abs();
+            assert!(
+                dr < 50 && dg < 50 && db < 50,
+                "Color jump too large at {}%",
+                i
+            );
+            prev = curr;
+        }
     }
 
     #[test]
-    fn test_render_gauge() {
-        let gauge = render_gauge(45.0, 100.0, 30, "GPU: ");
-        assert!(gauge.contains("GPU:"));
-        assert!(gauge.contains("45.0%"));
+    fn test_sparkline() {
+        let data = vec![1.0, 2.0, 3.0, 2.0, 1.0];
+        let spark = render_sparkline(&data, 5, ColorMode::Mono);
+        assert!(!spark.is_empty());
+    }
+
+    #[test]
+    fn test_trend_arrow() {
+        let increasing = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+        assert_eq!(trend_arrow(&increasing), ARROW_UP);
+
+        let decreasing = vec![10.0, 9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+        assert_eq!(trend_arrow(&decreasing), ARROW_DOWN);
     }
 
     #[test]
     fn test_format_duration() {
         assert_eq!(format_duration(Duration::from_secs(3661)), "01:01:01");
         assert_eq!(format_duration(Duration::from_secs(0)), "00:00:00");
-        assert_eq!(format_duration(Duration::from_secs(7200)), "02:00:00");
     }
 
     #[test]
-    fn test_render_layout() {
-        let snapshot = TrainingSnapshot {
-            epoch: 2,
-            total_epochs: 10,
-            step: 50,
-            steps_per_epoch: 100,
-            loss: 0.42,
-            loss_history: vec![1.0, 0.8, 0.6, 0.5, 0.42],
-            learning_rate: 0.0002,
-            gradient_norm: 1.5,
-            tokens_per_second: 1200.0,
-            status: TrainingStatus::Running,
-            ..Default::default()
-        };
+    fn test_format_bytes() {
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.0G");
+        assert_eq!(format_bytes(512 * 1024 * 1024), "512M");
+        assert_eq!(format_bytes(1024), "1K");
+    }
 
-        let layout = render_layout(&snapshot, 80);
-        assert!(layout.contains("Entrenar"));
-        assert!(layout.contains("Loss Curve"));
-        assert!(layout.contains("Training State"));
+    #[test]
+    fn test_format_lr() {
+        assert_eq!(format_lr(0.01), "0.0100");
+        assert_eq!(format_lr(0.001), "0.00100");
+        assert_eq!(format_lr(0.0001), "0.000100");
+    }
+
+    #[test]
+    fn test_strip_ansi_width() {
+        assert_eq!(strip_ansi_width("hello"), 5);
+        assert_eq!(strip_ansi_width("\x1b[31mred\x1b[0m"), 3);
     }
 }

@@ -77,7 +77,15 @@ impl Rgb {
     pub const fn new(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b }
     }
+}
 
+impl From<(u8, u8, u8)> for Rgb {
+    fn from((r, g, b): (u8, u8, u8)) -> Self {
+        Self { r, g, b }
+    }
+}
+
+impl Rgb {
     /// Convert to ANSI 256-color index (approximate)
     pub fn to_256(self) -> u8 {
         // Use the 216 color cube (indices 16-231)
@@ -152,8 +160,8 @@ impl<'a> Styled<'a> {
         }
     }
 
-    pub fn fg(mut self, color: Rgb) -> Self {
-        self.fg = Some(color);
+    pub fn fg(mut self, color: impl Into<Rgb>) -> Self {
+        self.fg = Some(color.into());
         self
     }
 

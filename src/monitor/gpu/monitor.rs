@@ -136,12 +136,16 @@ impl GpuMonitor {
                 .unwrap_or(0);
 
             // PCIe throughput
-            let pcie_tx_kbps = device
-                .pcie_throughput(nvml_wrapper::enum_wrappers::device::PcieUtilCounter::Send)
-                .unwrap_or(0) as u64;
-            let pcie_rx_kbps = device
-                .pcie_throughput(nvml_wrapper::enum_wrappers::device::PcieUtilCounter::Receive)
-                .unwrap_or(0) as u64;
+            let pcie_tx_kbps = u64::from(
+                device
+                    .pcie_throughput(nvml_wrapper::enum_wrappers::device::PcieUtilCounter::Send)
+                    .unwrap_or(0),
+            );
+            let pcie_rx_kbps = u64::from(
+                device
+                    .pcie_throughput(nvml_wrapper::enum_wrappers::device::PcieUtilCounter::Receive)
+                    .unwrap_or(0),
+            );
 
             // Fan speed (may not be available on all GPUs)
             let fan_speed_percent = device.fan_speed(0).unwrap_or(0);
@@ -231,9 +235,10 @@ impl GpuMonitor {
                 let gpu_memory_mb = extract_memory(proc.used_gpu_memory);
 
                 // Read /proc/PID/exe for full path
-                let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| format!("[pid {pid}]"));
+                let exe_path = fs::read_link(format!("/proc/{pid}/exe")).map_or_else(
+                    |_| format!("[pid {pid}]"),
+                    |p| p.to_string_lossy().to_string(),
+                );
 
                 // Read /proc/PID/stat for CPU and memory
                 let (cpu_percent, rss_mb) = Self::read_proc_stats(pid);
@@ -259,9 +264,10 @@ impl GpuMonitor {
                 let pid = proc.pid;
                 let gpu_memory_mb = extract_memory(proc.used_gpu_memory);
 
-                let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| format!("[pid {pid}]"));
+                let exe_path = fs::read_link(format!("/proc/{pid}/exe")).map_or_else(
+                    |_| format!("[pid {pid}]"),
+                    |p| p.to_string_lossy().to_string(),
+                );
 
                 let (cpu_percent, rss_mb) = Self::read_proc_stats(pid);
 
@@ -285,8 +291,7 @@ impl GpuMonitor {
         let rss_mb = fs::read_to_string(format!("/proc/{pid}/statm"))
             .ok()
             .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
-            .map(|pages| pages * 4096 / (1024 * 1024)) // Convert pages to MB
-            .unwrap_or(0);
+            .map_or(0, |pages| pages * 4096 / (1024 * 1024));
 
         // CPU% would require sampling over time - approximate from /proc/PID/stat
         // For now, read utime+stime and estimate based on uptime
