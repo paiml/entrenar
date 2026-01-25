@@ -506,7 +506,6 @@ mod tests {
     #[test]
     fn test_cuda_forward_module_compiles() {
         // This test verifies the module compiles correctly
-        // Actual CUDA tests require GPU hardware
         assert!(true);
     }
 
@@ -523,5 +522,325 @@ mod tests {
         let ctx = std::sync::Arc::new(ctx);
         let result = init_forward_kernel_cache(ctx);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_relu_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        // Input: [-2, -1, 0, 1, 2]
+        let input_data: Vec<f32> = vec![-2.0, -1.0, 0.0, 1.0, 2.0];
+        let n = input_data.len() as u32;
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        relu_forward(&input, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+        // ReLU: max(0, x)
+        assert_eq!(result, vec![0.0, 0.0, 0.0, 1.0, 2.0]);
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_softmax_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        // Simple 4-element softmax (needs to be power of 2 for warp operations)
+        let input_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let n = input_data.len() as u32;
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        softmax_forward(&input, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+        // Softmax sums to 1
+        let sum: f32 = result.iter().sum();
+        assert!(
+            (sum - 1.0).abs() < 1e-4,
+            "Softmax should sum to 1, got {sum}"
+        );
+        // Last element should be largest (exp(4) > exp(3) > ...)
+        assert!(result[3] > result[2] && result[2] > result[1] && result[1] > result[0]);
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_gelu_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let input_data: Vec<f32> = vec![-1.0, 0.0, 1.0, 2.0];
+        let n = input_data.len() as u32;
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        gelu_forward(&input, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+        // GELU(0) = 0
+        assert!(
+            (result[1]).abs() < 1e-4,
+            "GELU(0) should be 0, got {}",
+            result[1]
+        );
+        // GELU(-1) ≈ -0.159
+        assert!(
+            result[0] < 0.0 && result[0] > -0.2,
+            "GELU(-1) should be ~-0.159, got {}",
+            result[0]
+        );
+        // GELU(1) ≈ 0.841
+        assert!(
+            result[2] > 0.8 && result[2] < 0.9,
+            "GELU(1) should be ~0.841, got {}",
+            result[2]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_silu_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let input_data: Vec<f32> = vec![-1.0, 0.0, 1.0, 2.0];
+        let n = input_data.len() as u32;
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        silu_forward(&input, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+        // SiLU(0) = 0
+        assert!(
+            (result[1]).abs() < 1e-4,
+            "SiLU(0) should be 0, got {}",
+            result[1]
+        );
+        // SiLU(x) = x * sigmoid(x)
+        // SiLU(-1) ≈ -0.269
+        assert!(
+            result[0] < 0.0 && result[0] > -0.3,
+            "SiLU(-1) should be ~-0.269, got {}",
+            result[0]
+        );
+        // SiLU(1) ≈ 0.731
+        assert!(
+            result[2] > 0.7 && result[2] < 0.8,
+            "SiLU(1) should be ~0.731, got {}",
+            result[2]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_gemm_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        // 2x2 @ 2x2 matrix multiplication
+        // A = [[1, 2], [3, 4]]
+        // B = [[5, 6], [7, 8]]
+        // C = A @ B = [[19, 22], [43, 50]]
+        let a_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let b_data: Vec<f32> = vec![5.0, 6.0, 7.0, 8.0];
+        let c_data: Vec<f32> = vec![0.0; 4];
+
+        let a = GpuBuffer::from_host(&ctx, &a_data).unwrap();
+        let b = GpuBuffer::from_host(&ctx, &b_data).unwrap();
+        let mut c = GpuBuffer::from_host(&ctx, &c_data).unwrap();
+
+        gemm_forward(&a, &b, &mut c, 2, 2, 2, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; 4];
+        c.copy_to_host(&mut result).unwrap();
+        assert!(
+            (result[0] - 19.0).abs() < 1e-3,
+            "C[0,0] should be 19, got {}",
+            result[0]
+        );
+        assert!(
+            (result[1] - 22.0).abs() < 1e-3,
+            "C[0,1] should be 22, got {}",
+            result[1]
+        );
+        assert!(
+            (result[2] - 43.0).abs() < 1e-3,
+            "C[1,0] should be 43, got {}",
+            result[2]
+        );
+        assert!(
+            (result[3] - 50.0).abs() < 1e-3,
+            "C[1,1] should be 50, got {}",
+            result[3]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_layer_norm_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        // 1 batch of 4 elements
+        let input_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let gamma: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0];
+        let beta: Vec<f32> = vec![0.0, 0.0, 0.0, 0.0];
+        let batch_size = 1u32;
+        let hidden_size = 4u32;
+        let output_data = vec![0.0f32; (batch_size * hidden_size) as usize];
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let gamma_buf = GpuBuffer::from_host(&ctx, &gamma).unwrap();
+        let beta_buf = GpuBuffer::from_host(&ctx, &beta).unwrap();
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        layer_norm_forward(
+            &input,
+            &gamma_buf,
+            &beta_buf,
+            &mut output,
+            batch_size,
+            hidden_size,
+            &stream,
+        )
+        .unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; (batch_size * hidden_size) as usize];
+        output.copy_to_host(&mut result).unwrap();
+        // Normalized mean should be ~0
+        let mean: f32 = result.iter().sum::<f32>() / hidden_size as f32;
+        assert!(mean.abs() < 1e-3, "Mean should be ~0, got {mean}");
+        // Check values are normalized (not NaN/Inf)
+        assert!(
+            !result.iter().any(|x| x.is_nan()),
+            "Output should not contain NaN"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_rms_norm_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let input_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let weight: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0];
+        let batch_size = 1u32;
+        let hidden_size = 4u32;
+        let output_data = vec![0.0f32; (batch_size * hidden_size) as usize];
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let weight_buf = GpuBuffer::from_host(&ctx, &weight).unwrap();
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        rms_norm_forward(
+            &input,
+            &weight_buf,
+            &mut output,
+            batch_size,
+            hidden_size,
+            &stream,
+        )
+        .unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; (batch_size * hidden_size) as usize];
+        output.copy_to_host(&mut result).unwrap();
+        // RMS normalized values should be reasonable
+        assert!(
+            !result.iter().any(|x| x.is_nan()),
+            "Output should not contain NaN"
+        );
+        assert!(
+            !result.iter().any(|x| x.is_infinite()),
+            "Output should not contain Inf"
+        );
     }
 }
