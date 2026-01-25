@@ -353,6 +353,12 @@ mod tests {
             status: TrainingStatus::Running,
             experiment_id: "test-001".to_string(),
             model_name: "test-model".to_string(),
+            lr_history: vec![0.001; 5],
+            model_path: String::new(),
+            optimizer_name: "AdamW".to_string(),
+            batch_size: 4,
+            checkpoint_path: String::new(),
+            executable_path: String::new(),
         };
 
         let output = HeadlessOutput::from(&snapshot);

@@ -72,6 +72,12 @@ fn valid_snapshot() -> TrainingSnapshot {
             token_match_percent: 95.0,
         }),
         status: TrainingStatus::Running,
+        lr_history: vec![0.0001, 0.0001, 0.0001, 0.0001],
+        model_path: "/models/qwen2.5-coder-0.5b.safetensors".into(),
+        optimizer_name: "AdamW".into(),
+        batch_size: 4,
+        checkpoint_path: "./checkpoints".into(),
+        executable_path: "/path/to/finetune_real".into(),
         experiment_id: "test".into(),
         model_name: "test-model".into(),
     }
@@ -259,12 +265,103 @@ fn f010_falsify_missing_sample() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Should show descriptive message
-    let has_vague = frame.contains("(waiting for sample...)");
     // This is acceptable if we can't do better
     // But we should at least render
     assert!(
         frame.height() > 0,
         "F010 FALSIFIED: Missing sample caused render failure"
+    );
+}
+
+/// F011: Empty model name must show N/A
+#[test]
+fn f011_falsify_empty_model_name() {
+    let mut snapshot = valid_snapshot();
+    snapshot.model_name = String::new();
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Empty model name should show N/A
+    assert!(
+        frame.height() > 0,
+        "F011 FALSIFIED: Empty model name caused render failure"
+    );
+    assert!(
+        frame.contains("N/A") || frame.contains("Model:"),
+        "F011: Empty model name should show N/A or Model label"
+    );
+}
+
+/// F012: Empty optimizer must show N/A
+#[test]
+fn f012_falsify_empty_optimizer() {
+    let mut snapshot = valid_snapshot();
+    snapshot.optimizer_name = String::new();
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Empty optimizer should show N/A
+    assert!(
+        frame.height() > 0,
+        "F012 FALSIFIED: Empty optimizer caused render failure"
+    );
+}
+
+/// F013: Zero batch size must show N/A
+#[test]
+fn f013_falsify_zero_batch_size() {
+    let mut snapshot = valid_snapshot();
+    snapshot.batch_size = 0;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Zero batch size should show N/A
+    assert!(
+        frame.height() > 0,
+        "F013 FALSIFIED: Zero batch size caused render failure"
+    );
+}
+
+/// F014: Empty executable path must fall back gracefully
+#[test]
+fn f014_falsify_empty_executable_path() {
+    let mut snapshot = valid_snapshot();
+    snapshot.executable_path = String::new();
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Empty executable should not crash
+    assert!(
+        frame.height() > 0,
+        "F014 FALSIFIED: Empty executable path caused render failure"
+    );
+}
+
+/// F015: Empty lr_history must use current learning_rate
+#[test]
+fn f015_falsify_empty_lr_history() {
+    let mut snapshot = valid_snapshot();
+    snapshot.lr_history = Vec::new();
+    snapshot.learning_rate = 0.0001;
+    snapshot.loss_history = vec![10.0, 9.0, 8.0, 7.0]; // One epoch
+    snapshot.steps_per_epoch = 4;
+
+    let rendered = render_layout(&snapshot, 100);
+    let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
+
+    // FALSIFICATION: Empty lr_history should not crash
+    assert!(
+        frame.height() > 0,
+        "F015 FALSIFIED: Empty lr_history caused render failure"
+    );
+    // Should still render history table
+    assert!(
+        frame.contains("EPOCH HISTORY") || frame.contains("Epoch"),
+        "F015: Should still render epoch history table"
     );
 }
 

@@ -58,6 +58,12 @@ fn mock_snapshot(epoch: usize, step: usize, loss: f32) -> TrainingSnapshot {
         status: TrainingStatus::Running,
         experiment_id: "test-experiment".to_string(),
         model_name: "Qwen2.5-Coder-0.5B".to_string(),
+        lr_history: vec![6e-4; 6],
+        model_path: "/models/qwen2.5-coder-0.5b.safetensors".to_string(),
+        optimizer_name: "AdamW".to_string(),
+        batch_size: 4,
+        checkpoint_path: "./experiments/test/checkpoints".to_string(),
+        executable_path: "/usr/bin/finetune_real".to_string(),
     }
 }
 

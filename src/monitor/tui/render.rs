@@ -264,6 +264,103 @@ pub struct EpochSummary {
     pub tokens_per_sec: f32,
 }
 
+/// Render run configuration panel (model, optimizer, paths)
+pub fn render_config_panel(
+    snapshot: &TrainingSnapshot,
+    width: usize,
+    color_mode: ColorMode,
+) -> String {
+    let mut lines = Vec::new();
+
+    // Title
+    let title = "⚙️  RUN CONFIG";
+    lines.push(
+        Styled::new(title, color_mode)
+            .fg(TrainingPalette::PRIMARY)
+            .to_string(),
+    );
+
+    // Model info
+    let model_name = if snapshot.model_name.is_empty() {
+        "N/A"
+    } else {
+        &snapshot.model_name
+    };
+    let model_line = format!(
+        "{} {}",
+        Styled::new("Model:", color_mode).fg((150, 150, 150)),
+        Styled::new(model_name, color_mode).fg((200, 200, 255))
+    );
+    lines.push(model_line);
+
+    // Optimizer and batch size
+    let optimizer = if snapshot.optimizer_name.is_empty() {
+        "N/A"
+    } else {
+        &snapshot.optimizer_name
+    };
+    let batch = if snapshot.batch_size > 0 {
+        format!("{}", snapshot.batch_size)
+    } else {
+        "N/A".to_string()
+    };
+    let opt_line = format!(
+        "{} {}  {} {}",
+        Styled::new("Optimizer:", color_mode).fg((150, 150, 150)),
+        Styled::new(optimizer, color_mode).fg((150, 255, 150)),
+        Styled::new("Batch:", color_mode).fg((150, 150, 150)),
+        Styled::new(&batch, color_mode).fg((150, 255, 150))
+    );
+    lines.push(opt_line);
+
+    // Executable path (truncated)
+    let exe_display = if snapshot.executable_path.is_empty() {
+        // Try to get from GPU process
+        snapshot
+            .gpu
+            .as_ref()
+            .and_then(|g| {
+                g.processes
+                    .iter()
+                    .find(|p| p.exe_path.contains("finetune") || p.exe_path.contains("entrenar"))
+                    .map(|p| truncate_path(&p.exe_path, width - 10))
+            })
+            .unwrap_or_else(|| "N/A".to_string())
+    } else {
+        truncate_path(&snapshot.executable_path, width - 10)
+    };
+    let exe_line = format!(
+        "{} {}",
+        Styled::new("Exe:", color_mode).fg((150, 150, 150)),
+        Styled::new(&exe_display, color_mode).fg((180, 180, 220))
+    );
+    lines.push(exe_line);
+
+    // Checkpoint path
+    let ckpt_display = if snapshot.checkpoint_path.is_empty() {
+        format!("./experiments/{}/", snapshot.experiment_id)
+    } else {
+        truncate_path(&snapshot.checkpoint_path, width - 12)
+    };
+    let ckpt_line = format!(
+        "{} {}",
+        Styled::new("Checkpoint:", color_mode).fg((150, 150, 150)),
+        Styled::new(&ckpt_display, color_mode).fg((180, 220, 180))
+    );
+    lines.push(ckpt_line);
+
+    lines.join("\n")
+}
+
+/// Truncate path from the left, keeping the end visible
+fn truncate_path(path: &str, max_len: usize) -> String {
+    if path.len() <= max_len {
+        path.to_string()
+    } else {
+        format!("...{}", &path[path.len() - max_len + 3..])
+    }
+}
+
 /// Extract epoch summaries from loss history
 pub fn compute_epoch_summaries(snapshot: &TrainingSnapshot) -> Vec<EpochSummary> {
     if snapshot.steps_per_epoch == 0 || snapshot.loss_history.is_empty() {
@@ -286,14 +383,28 @@ pub fn compute_epoch_summaries(snapshot: &TrainingSnapshot) -> Vec<EpochSummary>
         let max_loss = valid.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let end_loss = *valid.last().unwrap_or(&0.0);
 
+        // Get LR for this epoch from lr_history if available
+        let lr = if snapshot.lr_history.is_empty() {
+            snapshot.learning_rate
+        } else {
+            let lr_start = epoch_idx * steps;
+            let lr_end = (lr_start + steps).min(snapshot.lr_history.len());
+            if lr_start < snapshot.lr_history.len() {
+                let lr_slice = &snapshot.lr_history[lr_start..lr_end];
+                lr_slice.iter().sum::<f32>() / lr_slice.len().max(1) as f32
+            } else {
+                snapshot.learning_rate
+            }
+        };
+
         summaries.push(EpochSummary {
             epoch: epoch_idx + 1,
             avg_loss,
             min_loss,
             max_loss,
             end_loss,
-            avg_grad: snapshot.gradient_norm, // Current value (could track history)
-            lr: snapshot.learning_rate,
+            avg_grad: snapshot.gradient_norm,
+            lr,
             tokens_per_sec: snapshot.tokens_per_second,
         });
     }
@@ -320,8 +431,8 @@ pub fn render_history_table(
 
     // Column headers
     let header = format!(
-        "{:>5} {:>8} {:>8} {:>8} {:>10} {:>8}",
-        "Epoch", "Loss", "Min", "Max", "Tok/s", "Trend"
+        "{:>5} {:>8} {:>8} {:>8} {:>10} {:>10} {:>5}",
+        "Epoch", "Loss", "Min", "Max", "LR", "Tok/s", "Trend"
     );
     lines.push(
         Styled::new(&header, color_mode)
@@ -331,7 +442,7 @@ pub fn render_history_table(
 
     // Separator
     lines.push(
-        Styled::new(&"─".repeat(width.min(60)), color_mode)
+        Styled::new(&"─".repeat(width.min(75)), color_mode)
             .fg((100, 100, 100))
             .to_string(),
     );
@@ -383,14 +494,16 @@ pub fn render_history_table(
         let loss_str = format!("{:>8.3}", summary.avg_loss);
         let min_str = format!("{:>8.3}", summary.min_loss);
         let max_str = format!("{:>8.3}", summary.max_loss);
+        let lr_str = format!("{:>10}", format_lr(summary.lr));
         let tps_str = format!("{:>10.1}", summary.tokens_per_sec);
 
         let row = format!(
-            "{} {} {} {} {} {}",
+            "{} {} {} {} {} {} {}",
             Styled::new(&epoch_str, color_mode).fg((200, 200, 255)),
             Styled::new(&loss_str, color_mode).fg(loss_color),
             Styled::new(&min_str, color_mode).fg((150, 200, 150)),
             Styled::new(&max_str, color_mode).fg((200, 150, 150)),
+            Styled::new(&lr_str, color_mode).fg((100, 200, 255)),
             Styled::new(&tps_str, color_mode).fg((150, 150, 200)),
             Styled::new(trend.0, color_mode).fg(trend.1),
         );
@@ -489,15 +602,39 @@ pub fn render_layout_colored(
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // MIDDLE ROW: Epoch History Table (full width)
+    // MIDDLE ROW: Epoch History Table | Run Config
     // ─────────────────────────────────────────────────────────────────────────
-    output.push_str(&format!("{BOX_L}{}{BOX_R}\n", BOX_H.repeat(width - 2)));
+    let history_width = (width * 2) / 3;
+    let config_width = width - history_width;
 
-    let history_panel = render_history_table(snapshot, width - 4, 8, color_mode);
-    for line in history_panel.lines() {
-        let visual_width = strip_ansi_width(line);
-        let pad = (width - 4).saturating_sub(visual_width);
-        output.push_str(&format!("{BOX_V} {}{} {BOX_V}\n", line, " ".repeat(pad)));
+    output.push_str(&format!(
+        "{BOX_L}{}{BOX_T}{}{BOX_R}\n",
+        BOX_H.repeat(history_width - 1),
+        BOX_H.repeat(config_width - 2)
+    ));
+
+    let history_panel = render_history_table(snapshot, history_width - 4, 8, color_mode);
+    let config_panel = render_config_panel(snapshot, config_width - 4, color_mode);
+
+    let history_lines: Vec<&str> = history_panel.lines().collect();
+    let config_lines: Vec<&str> = config_panel.lines().collect();
+    let max_mid_lines = history_lines.len().max(config_lines.len()).max(6);
+
+    for i in 0..max_mid_lines {
+        let left = history_lines.get(i).copied().unwrap_or("");
+        let right = config_lines.get(i).copied().unwrap_or("");
+        let left_visual = strip_ansi_width(left);
+        let right_visual = strip_ansi_width(right);
+        let left_pad = (history_width - 4).saturating_sub(left_visual);
+        let right_pad = (config_width - 4).saturating_sub(right_visual);
+
+        output.push_str(&format!(
+            "{BOX_V} {}{} {BOX_V} {}{} {BOX_V}\n",
+            left,
+            " ".repeat(left_pad),
+            right,
+            " ".repeat(right_pad)
+        ));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

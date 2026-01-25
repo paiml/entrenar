@@ -492,6 +492,12 @@ mod tests {
             status: TrainingStatus::Running,
             experiment_id: "test".into(),
             model_name: "test-model".into(),
+            lr_history: vec![0.0001; 4],
+            model_path: "/models/test.safetensors".into(),
+            optimizer_name: "AdamW".into(),
+            batch_size: 4,
+            checkpoint_path: "./checkpoints".into(),
+            executable_path: "/path/to/finetune_real".into(),
         }
     }
 

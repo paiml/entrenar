@@ -99,6 +99,9 @@ pub struct TrainingSnapshot {
     pub loss_history: Vec<f32>,
     /// Current learning rate
     pub learning_rate: f32,
+    /// Learning rate history (per-step, for epoch summaries)
+    #[serde(default)]
+    pub lr_history: Vec<f32>,
     /// Gradient norm
     pub gradient_norm: f32,
     /// Throughput in tokens per second
@@ -115,6 +118,21 @@ pub struct TrainingSnapshot {
     pub experiment_id: String,
     /// Model name
     pub model_name: String,
+    /// Model path (e.g., path to .safetensors or .gguf)
+    #[serde(default)]
+    pub model_path: String,
+    /// Optimizer name (e.g., "AdamW", "SGD")
+    #[serde(default)]
+    pub optimizer_name: String,
+    /// Batch size
+    #[serde(default)]
+    pub batch_size: usize,
+    /// Checkpoint path (where checkpoints are saved)
+    #[serde(default)]
+    pub checkpoint_path: String,
+    /// Executable path (path to training binary)
+    #[serde(default)]
+    pub executable_path: String,
 }
 
 /// Training status enum
@@ -148,6 +166,7 @@ impl Default for TrainingSnapshot {
             loss: 0.0,
             loss_history: Vec::new(),
             learning_rate: 0.0,
+            lr_history: Vec::new(),
             gradient_norm: 0.0,
             tokens_per_second: 0.0,
             start_timestamp_ms: now,
@@ -156,6 +175,11 @@ impl Default for TrainingSnapshot {
             status: TrainingStatus::Initializing,
             experiment_id: String::new(),
             model_name: String::new(),
+            model_path: String::new(),
+            optimizer_name: String::new(),
+            batch_size: 0,
+            checkpoint_path: String::new(),
+            executable_path: String::new(),
         }
     }
 }
@@ -484,6 +508,7 @@ mod tests {
                 loss,
                 loss_history: vec![loss * 1.1, loss * 1.05, loss],
                 learning_rate,
+                lr_history: vec![learning_rate; 3],
                 gradient_norm,
                 tokens_per_second,
                 start_timestamp_ms: 12345000,
@@ -492,6 +517,11 @@ mod tests {
                 status: TrainingStatus::Running,
                 experiment_id: "test".to_string(),
                 model_name: "model".to_string(),
+                model_path: String::new(),
+                optimizer_name: "AdamW".to_string(),
+                batch_size: 4,
+                checkpoint_path: String::new(),
+                executable_path: String::new(),
             };
 
             // Serialize
