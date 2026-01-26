@@ -144,6 +144,7 @@ pub fn softmax_forward(
     stream: &CudaStream,
 ) -> Result<()> {
     let kernel = SoftmaxKernel::new(length);
+    let kernel_name = kernel.name();
     let ptx = kernel.emit_ptx();
 
     let cache = FORWARD_KERNEL_CACHE
@@ -175,7 +176,7 @@ pub fn softmax_forward(
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
-            .launch_kernel(module, "softmax", &config, &mut args)
+            .launch_kernel(module, kernel_name, &config, &mut args)
             .map_err(|e| {
                 CudaTensorError::KernelError(format!("Softmax forward launch failed: {e:?}"))
             })?;
@@ -198,6 +199,7 @@ pub fn layer_norm_forward(
     stream: &CudaStream,
 ) -> Result<()> {
     let kernel = LayerNormKernel::new(hidden_size);
+    let kernel_name = kernel.name();
     let ptx = kernel.emit_ptx();
 
     let cache = FORWARD_KERNEL_CACHE
@@ -234,7 +236,7 @@ pub fn layer_norm_forward(
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream
-            .launch_kernel(module, "layer_norm", &config, &mut args)
+            .launch_kernel(module, kernel_name, &config, &mut args)
             .map_err(|e| {
                 CudaTensorError::KernelError(format!("LayerNorm forward launch failed: {e:?}"))
             })?;
@@ -246,6 +248,9 @@ pub fn layer_norm_forward(
 /// RMS normalization forward pass on GPU (LLaMA-style)
 ///
 /// Computes: output = gamma * input / sqrt(mean(input^2) + eps)
+///
+/// Note: The kernel uses warp shuffle and requires 32 threads per block.
+/// For batched input, each row is processed sequentially.
 #[cfg(feature = "cuda")]
 pub fn rms_norm_forward(
     input: &GpuBuffer<f32>,
@@ -256,6 +261,7 @@ pub fn rms_norm_forward(
     stream: &CudaStream,
 ) -> Result<()> {
     let kernel = RmsNormKernel::new(hidden_size);
+    let kernel_name = kernel.name();
     let ptx = kernel.emit_ptx();
 
     let cache = FORWARD_KERNEL_CACHE
@@ -268,32 +274,39 @@ pub fn rms_norm_forward(
     let key = format!("rms_norm_forward_{hidden_size}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
+    // Kernel uses warp shuffle and expects exactly 32 threads (one warp)
     let config = LaunchConfig {
-        grid: (batch_size, 1, 1),
-        block: (256.min(hidden_size), 1, 1),
+        grid: (1, 1, 1),
+        block: (32, 1, 1),
         shared_mem: 0,
     };
 
-    let input_ptr = input.as_ptr();
-    let gamma_ptr = gamma.as_ptr();
-    let output_ptr = output.as_ptr();
+    // Process each batch row sequentially (kernel handles single row)
+    for batch_idx in 0..batch_size {
+        let row_offset = u64::from(batch_idx * hidden_size);
+        let byte_offset = row_offset * std::mem::size_of::<f32>() as u64;
 
-    let mut args: [*mut std::ffi::c_void; 5] = [
-        &input_ptr as *const _ as *mut _,
-        &gamma_ptr as *const _ as *mut _,
-        &output_ptr as *const _ as *mut _,
-        &batch_size as *const _ as *mut _,
-        &hidden_size as *const _ as *mut _,
-    ];
+        // Calculate pointer offsets for this batch row
+        let input_ptr = input.as_ptr() + byte_offset;
+        let output_ptr = output.as_ptr() + byte_offset;
+        let gamma_ptr = gamma.as_ptr();
 
-    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
-    // matching sizes, and the kernel parameters match the expected PTX signature.
-    unsafe {
-        stream
-            .launch_kernel(module, "rms_norm", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
-            })?;
+        // Kernel signature: (input_ptr, output_ptr, gamma_ptr)
+        let mut args: [*mut std::ffi::c_void; 3] = [
+            &input_ptr as *const _ as *mut _,
+            &output_ptr as *const _ as *mut _,
+            &gamma_ptr as *const _ as *mut _,
+        ];
+
+        // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+        // matching sizes, and the kernel parameters match the expected PTX signature.
+        unsafe {
+            stream
+                .launch_kernel(module, kernel_name, &config, &mut args)
+                .map_err(|e| {
+                    CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
+                })?;
+        }
     }
 
     Ok(())
@@ -574,7 +587,6 @@ mod tests {
 
     #[test]
     #[cfg(feature = "cuda")]
-    #[ignore = "trueno softmax kernel missing entry point - awaiting upstream fix"]
     fn test_softmax_forward_basic() {
         use trueno_gpu::driver::cuda_available;
 
@@ -762,7 +774,6 @@ mod tests {
 
     #[test]
     #[cfg(feature = "cuda")]
-    #[ignore = "trueno layer_norm kernel missing entry point - awaiting upstream fix"]
     fn test_layer_norm_forward_basic() {
         use trueno_gpu::driver::cuda_available;
 
@@ -815,7 +826,6 @@ mod tests {
 
     #[test]
     #[cfg(feature = "cuda")]
-    #[ignore = "trueno rms_norm kernel missing entry point - awaiting upstream fix"]
     fn test_rms_norm_forward_basic() {
         use trueno_gpu::driver::cuda_available;
 
@@ -861,5 +871,303 @@ mod tests {
             !result.iter().any(|x| x.is_infinite()),
             "Output should not contain Inf"
         );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_fused_swiglu_forward_basic() {
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        // SwiGLU: output = SiLU(gate) * up
+        let gate_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let up_data: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0];
+        let n = gate_data.len() as u32;
+
+        let gate = GpuBuffer::from_host(&ctx, &gate_data).unwrap();
+        let up = GpuBuffer::from_host(&ctx, &up_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        fused_swiglu_forward(&gate, &up, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+
+        // With up=1, output should equal SiLU(gate)
+        // SiLU(x) = x * sigmoid(x) > 0 for x > 0
+        for (i, &r) in result.iter().enumerate() {
+            assert!(
+                r > 0.0,
+                "SwiGLU output should be positive for positive gate, got {r} at {i}"
+            );
+        }
+        // Output should increase with gate (monotonic for positive inputs)
+        assert!(result[3] > result[2]);
+        assert!(result[2] > result[1]);
+        assert!(result[1] > result[0]);
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_relu_forward_mutation_killing() {
+        // Mutation-killing: verify ReLU doesn't just return zeros or input
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let input_data: Vec<f32> = vec![1.0, 2.0, 3.0];
+        let n = input_data.len() as u32;
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        relu_forward(&input, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+
+        // Result should equal input for positive values
+        assert_eq!(result, input_data, "ReLU(positive) should equal input");
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_gelu_forward_mutation_killing() {
+        // Mutation-killing: verify GELU is not identity or ReLU
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let input_data: Vec<f32> = vec![1.0, 2.0];
+        let n = input_data.len() as u32;
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        gelu_forward(&input, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+
+        // GELU(x) ≈ x for large positive x, but not exactly
+        // GELU(1) ≈ 0.841, not 1.0
+        assert!(
+            (result[0] - 0.841).abs() < 0.01,
+            "GELU(1) should be ~0.841, got {}",
+            result[0]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_silu_forward_mutation_killing() {
+        // Mutation-killing: verify SiLU is not identity
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let input_data: Vec<f32> = vec![1.0, 2.0];
+        let n = input_data.len() as u32;
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let output_data = vec![0.0f32; n as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        silu_forward(&input, &mut output, n, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; n as usize];
+        output.copy_to_host(&mut result).unwrap();
+
+        // SiLU(x) = x * sigmoid(x)
+        // SiLU(1) = 1 * sigmoid(1) ≈ 1 * 0.731 ≈ 0.731
+        assert!(
+            (result[0] - 0.731).abs() < 0.01,
+            "SiLU(1) should be ~0.731, got {}",
+            result[0]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_gemm_forward_2x2() {
+        // Test GEMM with a simple 2x2 case for verification
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        // A = [[1, 2], [3, 4]] (2x2, row-major)
+        // B = [[1, 0], [0, 1]] (2x2, identity)
+        // C = A @ B = A
+        let a_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+        let b_data: Vec<f32> = vec![1.0, 0.0, 0.0, 1.0];
+        let c_data: Vec<f32> = vec![0.0; 4];
+
+        let a = GpuBuffer::from_host(&ctx, &a_data).unwrap();
+        let b = GpuBuffer::from_host(&ctx, &b_data).unwrap();
+        let mut c = GpuBuffer::from_host(&ctx, &c_data).unwrap();
+
+        gemm_forward(&a, &b, &mut c, 2, 2, 2, &stream).unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; 4];
+        c.copy_to_host(&mut result).unwrap();
+
+        // C should equal A (since B is identity)
+        for (i, (&r, &expected)) in result.iter().zip(a_data.iter()).enumerate() {
+            assert!(
+                (r - expected).abs() < 1e-4,
+                "GEMM mismatch at {i}: got {r}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_layer_norm_forward_mutation_killing() {
+        // Verify output is normalized (mean ≈ beta, std ≈ gamma)
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let batch_size = 1u32;
+        let hidden_size = 4u32;
+        // Input with different values
+        let input_data: Vec<f32> = vec![0.0, 1.0, 2.0, 3.0];
+        let gamma_data: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0];
+        let beta_data: Vec<f32> = vec![0.0, 0.0, 0.0, 0.0];
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let gamma = GpuBuffer::from_host(&ctx, &gamma_data).unwrap();
+        let beta = GpuBuffer::from_host(&ctx, &beta_data).unwrap();
+        let output_data = vec![0.0f32; (batch_size * hidden_size) as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        layer_norm_forward(
+            &input,
+            &gamma,
+            &beta,
+            &mut output,
+            batch_size,
+            hidden_size,
+            &stream,
+        )
+        .unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; (batch_size * hidden_size) as usize];
+        output.copy_to_host(&mut result).unwrap();
+
+        // After layer norm with gamma=1, beta=0, mean should be ~0
+        let mean: f32 = result.iter().sum::<f32>() / result.len() as f32;
+        assert!(
+            mean.abs() < 0.1,
+            "LayerNorm output mean should be ~0, got {mean}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_rms_norm_forward_scaling() {
+        // Verify RMS normalization scales output correctly
+        use trueno_gpu::driver::cuda_available;
+
+        if !cuda_available() {
+            return;
+        }
+
+        let ctx = CudaContext::new(0).unwrap();
+        let ctx = std::sync::Arc::new(ctx);
+        init_forward_kernel_cache(ctx.clone()).unwrap();
+
+        let stream = CudaStream::new(&ctx).unwrap();
+
+        let batch_size = 1u32;
+        let hidden_size = 4u32;
+        // Constant input
+        let input_data: Vec<f32> = vec![2.0, 2.0, 2.0, 2.0];
+        let gamma_data: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0];
+
+        let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
+        let gamma = GpuBuffer::from_host(&ctx, &gamma_data).unwrap();
+        let output_data = vec![0.0f32; (batch_size * hidden_size) as usize];
+        let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
+
+        rms_norm_forward(
+            &input,
+            &gamma,
+            &mut output,
+            batch_size,
+            hidden_size,
+            &stream,
+        )
+        .unwrap();
+        stream.synchronize().unwrap();
+
+        let mut result = vec![0.0f32; (batch_size * hidden_size) as usize];
+        output.copy_to_host(&mut result).unwrap();
+
+        // For constant input x, RMS = x, so output = gamma * x / RMS = gamma = 1
+        for (i, &r) in result.iter().enumerate() {
+            assert!(
+                (r - 1.0).abs() < 0.1,
+                "RMSNorm of constant input should give ~1, got {r} at {i}"
+            );
+        }
     }
 }

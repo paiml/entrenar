@@ -325,4 +325,131 @@ mod tests {
         assert_eq!(result.len(), 100);
         assert!(result.iter().all(|&x| x == 0.0));
     }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_trainer_synchronize() {
+        if !cuda_training_available() {
+            return;
+        }
+
+        let trainer = CudaTrainer::new().unwrap();
+        // Synchronize should succeed
+        assert!(trainer.synchronize().is_ok());
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_trainer_context_and_stream() {
+        if !cuda_training_available() {
+            return;
+        }
+
+        let trainer = CudaTrainer::new().unwrap();
+        // Accessing context and stream should not panic
+        let _ctx = trainer.context();
+        let _stream = trainer.stream();
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_trainer_step_count() {
+        if !cuda_training_available() {
+            return;
+        }
+
+        let mut trainer = CudaTrainer::new().unwrap();
+        assert_eq!(trainer.step_count(), 0);
+
+        // Simulate an optimizer step by calling adamw_step
+        let mut params = trainer.upload(&[1.0, 2.0, 3.0]).unwrap();
+        let grads = trainer.upload(&[0.1, 0.1, 0.1]).unwrap();
+        let mut m_state = trainer.zeros(3).unwrap();
+        let mut v_state = trainer.zeros(3).unwrap();
+
+        trainer
+            .adamw_step(
+                &mut params,
+                &grads,
+                &mut m_state,
+                &mut v_state,
+                0.001,
+                0.9,
+                0.999,
+                1e-8,
+                0.0,
+            )
+            .unwrap();
+
+        assert_eq!(trainer.step_count(), 1);
+
+        trainer.reset_step();
+        assert_eq!(trainer.step_count(), 0);
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_trainer_matmul_forward() {
+        if !cuda_training_available() {
+            return;
+        }
+
+        let trainer = CudaTrainer::new().unwrap();
+
+        // 2x3 @ 3x2 = 2x2
+        let a_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2x3
+        let b_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 3x2
+        let c_data: Vec<f32> = vec![0.0; 4]; // 2x2
+
+        let a = trainer.upload(&a_data).unwrap();
+        let b = trainer.upload(&b_data).unwrap();
+        let mut c = trainer.upload(&c_data).unwrap();
+
+        trainer.matmul_forward(&a, &b, &mut c, 2, 3, 2).unwrap();
+        trainer.synchronize().unwrap();
+
+        let result = trainer.download(&c).unwrap();
+        // Verify result is not all zeros (matmul should produce non-zero output)
+        assert!(!result.iter().all(|&x| x == 0.0));
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_trainer_clip_gradients() {
+        if !cuda_training_available() {
+            return;
+        }
+
+        let trainer = CudaTrainer::new().unwrap();
+
+        // Create large gradients that should be clipped
+        let grad_data: Vec<f32> = vec![10.0, 10.0, 10.0, 10.0]; // norm = 20
+        let mut grads = trainer.upload(&grad_data).unwrap();
+
+        // Clip to max_norm = 1.0
+        trainer.clip_gradients(&mut grads, 1.0).unwrap();
+        trainer.synchronize().unwrap();
+
+        let result = trainer.download(&grads).unwrap();
+        // Gradients should be scaled down
+        let norm: f32 = result.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(
+            norm <= 1.1,
+            "Gradient norm should be clipped to ~1.0, got {norm}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "cuda")]
+    fn test_cuda_trainer_debug_impl() {
+        if !cuda_training_available() {
+            return;
+        }
+
+        let trainer = CudaTrainer::new().unwrap();
+        let debug_str = format!("{:?}", trainer);
+        assert!(debug_str.contains("CudaTrainer"));
+        assert!(debug_str.contains("device"));
+        assert!(debug_str.contains("step"));
+    }
 }

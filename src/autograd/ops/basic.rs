@@ -252,3 +252,280 @@ impl BackwardOp for SumBackward {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::Array1;
+
+    #[test]
+    fn test_add_forward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), false);
+        let b = Tensor::new(Array1::from(vec![4.0, 5.0, 6.0]), false);
+        let result = add(&a, &b);
+
+        assert_eq!(result.data().as_slice().unwrap(), &[5.0, 7.0, 9.0]);
+        assert!(!result.requires_grad());
+    }
+
+    #[test]
+    fn test_add_backward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), true);
+        let b = Tensor::new(Array1::from(vec![4.0, 5.0, 6.0]), true);
+        let result = add(&a, &b);
+
+        assert!(result.requires_grad());
+
+        // Simulate gradient from downstream
+        result.accumulate_grad(Array1::from(vec![1.0, 1.0, 1.0]));
+
+        // Trigger backward
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // Both inputs should receive gradient of 1.0 (since d(a+b)/da = 1 and d(a+b)/db = 1)
+        let a_grad = a.grad().unwrap();
+        let b_grad = b.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[1.0, 1.0, 1.0]);
+        assert_eq!(b_grad.as_slice().unwrap(), &[1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn test_add_partial_grad() {
+        // Only a requires grad
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0]), true);
+        let b = Tensor::new(Array1::from(vec![3.0, 4.0]), false);
+        let result = add(&a, &b);
+
+        result.accumulate_grad(Array1::from(vec![2.0, 3.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        let a_grad = a.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 3.0]);
+        assert!(b.grad().is_none());
+    }
+
+    #[test]
+    fn test_mul_forward() {
+        let a = Tensor::new(Array1::from(vec![2.0, 3.0, 4.0]), false);
+        let b = Tensor::new(Array1::from(vec![5.0, 6.0, 7.0]), false);
+        let result = mul(&a, &b);
+
+        assert_eq!(result.data().as_slice().unwrap(), &[10.0, 18.0, 28.0]);
+        assert!(!result.requires_grad());
+    }
+
+    #[test]
+    fn test_mul_backward() {
+        let a = Tensor::new(Array1::from(vec![2.0, 3.0]), true);
+        let b = Tensor::new(Array1::from(vec![4.0, 5.0]), true);
+        let result = mul(&a, &b);
+
+        assert!(result.requires_grad());
+
+        result.accumulate_grad(Array1::from(vec![1.0, 1.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // d(a*b)/da = b, d(a*b)/db = a
+        let a_grad = a.grad().unwrap();
+        let b_grad = b.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[4.0, 5.0]); // grad = b
+        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 3.0]); // grad = a
+    }
+
+    #[test]
+    fn test_mul_partial_grad() {
+        let a = Tensor::new(Array1::from(vec![2.0, 3.0]), false);
+        let b = Tensor::new(Array1::from(vec![4.0, 5.0]), true);
+        let result = mul(&a, &b);
+
+        result.accumulate_grad(Array1::from(vec![1.0, 1.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        assert!(a.grad().is_none());
+        let b_grad = b.grad().unwrap();
+        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_scale_forward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), false);
+        let result = scale(&a, 2.5);
+
+        assert_eq!(result.data().as_slice().unwrap(), &[2.5, 5.0, 7.5]);
+        assert!(!result.requires_grad());
+    }
+
+    #[test]
+    fn test_scale_backward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), true);
+        let result = scale(&a, 3.0);
+
+        assert!(result.requires_grad());
+
+        result.accumulate_grad(Array1::from(vec![1.0, 1.0, 1.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // d(scale*a)/da = scale
+        let a_grad = a.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[3.0, 3.0, 3.0]);
+    }
+
+    #[test]
+    fn test_scale_no_grad() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0]), false);
+        let result = scale(&a, 5.0);
+
+        assert!(!result.requires_grad());
+        assert!(result.backward_op().is_none());
+    }
+
+    #[test]
+    fn test_add_scaled_forward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), false);
+        let b = Tensor::new(Array1::from(vec![4.0, 5.0, 6.0]), false);
+        let result = add_scaled(&a, &b, 0.5);
+
+        // result = a + 0.5 * b = [1+2, 2+2.5, 3+3] = [3, 4.5, 6]
+        let expected = vec![3.0, 4.5, 6.0];
+        let actual = result.data().as_slice().unwrap();
+        for (e, a) in expected.iter().zip(actual.iter()) {
+            assert!((e - a).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_add_scaled_backward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0]), true);
+        let b = Tensor::new(Array1::from(vec![3.0, 4.0]), true);
+        let result = add_scaled(&a, &b, 2.0);
+
+        result.accumulate_grad(Array1::from(vec![1.0, 1.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // d(a + scale*b)/da = 1, d(a + scale*b)/db = scale
+        let a_grad = a.grad().unwrap();
+        let b_grad = b.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[1.0, 1.0]);
+        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 2.0]); // scale = 2.0
+    }
+
+    #[test]
+    fn test_add_scaled_partial_grad() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0]), true);
+        let b = Tensor::new(Array1::from(vec![3.0, 4.0]), false);
+        let result = add_scaled(&a, &b, 0.5);
+
+        result.accumulate_grad(Array1::from(vec![2.0, 3.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        let a_grad = a.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 3.0]);
+        assert!(b.grad().is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "Tensors must have same length")]
+    fn test_add_scaled_length_mismatch() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0]), false);
+        let b = Tensor::new(Array1::from(vec![3.0, 4.0, 5.0]), false);
+        let _ = add_scaled(&a, &b, 1.0);
+    }
+
+    #[test]
+    fn test_sum_forward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0, 4.0]), false);
+        let result = sum(&a);
+
+        assert_eq!(result.data().as_slice().unwrap(), &[10.0]);
+        assert!(!result.requires_grad());
+    }
+
+    #[test]
+    fn test_sum_backward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), true);
+        let result = sum(&a);
+
+        assert!(result.requires_grad());
+
+        result.accumulate_grad(Array1::from(vec![2.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // d(sum(a))/da = [1, 1, 1], scaled by incoming grad
+        let a_grad = a.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 2.0, 2.0]);
+    }
+
+    #[test]
+    fn test_sum_no_grad() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), false);
+        let result = sum(&a);
+
+        assert!(!result.requires_grad());
+        assert!(result.backward_op().is_none());
+    }
+
+    #[test]
+    fn test_chained_ops_backward() {
+        // Test: (a + b) * c, then sum
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0]), true);
+        let b = Tensor::new(Array1::from(vec![3.0, 4.0]), true);
+        let c = Tensor::new(Array1::from(vec![2.0, 3.0]), true);
+
+        let ab = add(&a, &b); // [4, 6]
+        let abc = mul(&ab, &c); // [8, 18]
+        let result = sum(&abc); // 26
+
+        assert_eq!(result.data()[0], 26.0);
+
+        // Backward
+        result.accumulate_grad(Array1::from(vec![1.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // d(sum)/d(abc) = [1, 1]
+        // d(abc)/d(ab) = c = [2, 3]
+        // d(abc)/dc = ab = [4, 6]
+        // d(ab)/da = [1, 1], d(ab)/db = [1, 1]
+        // So: d/da = [2, 3], d/db = [2, 3], d/dc = [4, 6]
+        let a_grad = a.grad().unwrap();
+        let b_grad = b.grad().unwrap();
+        let c_grad = c.grad().unwrap();
+
+        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 3.0]);
+        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 3.0]);
+        assert_eq!(c_grad.as_slice().unwrap(), &[4.0, 6.0]);
+    }
+
+    #[test]
+    fn test_scale_chained_backward() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0]), true);
+        let scaled = scale(&a, 3.0);
+        let result = sum(&scaled);
+
+        result.accumulate_grad(Array1::from(vec![1.0]));
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // d(sum(3*a))/da = 3 * [1, 1] = [3, 3]
+        let a_grad = a.grad().unwrap();
+        assert_eq!(a_grad.as_slice().unwrap(), &[3.0, 3.0]);
+    }
+}

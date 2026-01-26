@@ -653,7 +653,6 @@ mod tests {
 
     #[test]
     #[cfg(feature = "cuda")]
-    #[ignore = "trueno relu_backward kernel has invalid PTX - awaiting upstream fix"]
     fn test_relu_backward_basic() {
         let ctx = match get_test_gpu_context() {
             Some(c) => c,
@@ -690,7 +689,6 @@ mod tests {
 
     #[test]
     #[cfg(feature = "cuda")]
-    #[ignore = "trueno relu_backward kernel has invalid PTX - awaiting upstream fix"]
     fn test_relu_backward_not_hardcoded() {
         // Mutation-killing test: verify result is NOT all zeros
         let ctx = match get_test_gpu_context() {

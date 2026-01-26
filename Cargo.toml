@@ -321,5 +321,7 @@ required-features = ["nvml"]
 
 # Phase 11: CUDA-First Architecture (SPEC-FT-001 v3.0.0)
 # realizar needs local patch due to trueno-gpu API changes
+# trueno-gpu needs local patch for relu_backward selp fix
 [patch.crates-io]
 realizar = { path = "../realizar" }
+trueno-gpu = { path = "../trueno/trueno-gpu" }

@@ -577,4 +577,181 @@ mod tests {
             "Output projection gradient should not be all zero"
         );
     }
+
+    // ============================================================================
+    // LoRAProjection tests
+    // ============================================================================
+
+    #[test]
+    fn test_lora_projection_new() {
+        let d_in = 32;
+        let d_out = 16;
+        let rank = 4;
+        let alpha = 8.0;
+
+        let base_weight = Tensor::from_vec(vec![0.1; d_in * d_out], false);
+        let lora = LoRAProjection::new(base_weight, d_in, d_out, rank, alpha);
+
+        assert_eq!(lora.d_in, d_in);
+        assert_eq!(lora.d_out, d_out);
+        assert_eq!(lora.rank, rank);
+        assert!((lora.scale - 2.0).abs() < 1e-6); // alpha / rank = 8 / 4 = 2
+        assert_eq!(lora.lora_a.len(), d_in * rank);
+        assert_eq!(lora.lora_b.len(), rank * d_out);
+    }
+
+    #[test]
+    fn test_lora_projection_forward() {
+        let d_in = 32;
+        let d_out = 16;
+        let rank = 4;
+        let alpha = 8.0;
+        let seq_len = 2;
+
+        let base_weight = Tensor::from_vec(vec![0.1; d_in * d_out], false);
+        let lora = LoRAProjection::new(base_weight, d_in, d_out, rank, alpha);
+
+        let x = Tensor::from_vec(vec![0.1; seq_len * d_in], false);
+        let output = lora.forward(&x, seq_len);
+
+        assert_eq!(output.len(), seq_len * d_out);
+        // Check output is finite
+        assert!(output.data().iter().all(|&v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_lora_projection_params() {
+        let d_in = 32;
+        let d_out = 16;
+        let rank = 4;
+
+        let base_weight = Tensor::from_vec(vec![0.1; d_in * d_out], false);
+        let lora = LoRAProjection::new(base_weight, d_in, d_out, rank, 8.0);
+
+        let params = lora.lora_params();
+        assert_eq!(params.len(), 2); // lora_a and lora_b
+    }
+
+    #[test]
+    fn test_lora_projection_params_mut() {
+        let d_in = 32;
+        let d_out = 16;
+        let rank = 4;
+
+        let base_weight = Tensor::from_vec(vec![0.1; d_in * d_out], false);
+        let mut lora = LoRAProjection::new(base_weight, d_in, d_out, rank, 8.0);
+
+        let params = lora.lora_params_mut();
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "Base weight size mismatch")]
+    fn test_lora_projection_size_mismatch() {
+        let d_in = 32;
+        let d_out = 16;
+        let rank = 4;
+
+        // Wrong base weight size
+        let base_weight = Tensor::from_vec(vec![0.1; d_in * d_out + 1], false);
+        let _ = LoRAProjection::new(base_weight, d_in, d_out, rank, 8.0);
+    }
+
+    // ============================================================================
+    // MultiHeadAttentionWithLoRA tests
+    // ============================================================================
+
+    #[test]
+    fn test_mha_with_lora_creation() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let rank = 4;
+        let alpha = 8.0;
+
+        let lora_attn = MultiHeadAttentionWithLoRA::from_attention(&attn, rank, alpha);
+
+        assert_eq!(lora_attn.q_proj.rank, rank);
+        assert_eq!(lora_attn.k_proj.rank, rank);
+        assert_eq!(lora_attn.v_proj.rank, rank);
+        assert_eq!(lora_attn.o_proj.rank, rank);
+    }
+
+    #[test]
+    fn test_mha_with_lora_forward() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let lora_attn = MultiHeadAttentionWithLoRA::from_attention(&attn, 4, 8.0);
+
+        let seq_len = 2;
+        let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], false);
+        let output = lora_attn.forward(&x, seq_len);
+
+        assert_eq!(output.len(), seq_len * config.hidden_size);
+        // Check output is finite and non-zero
+        assert!(output.data().iter().all(|&v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_mha_with_lora_params() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let lora_attn = MultiHeadAttentionWithLoRA::from_attention(&attn, 4, 8.0);
+
+        let params = lora_attn.lora_params();
+        // 4 projections × 2 params each = 8
+        assert_eq!(params.len(), 8);
+    }
+
+    #[test]
+    fn test_mha_with_lora_params_mut() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let mut lora_attn = MultiHeadAttentionWithLoRA::from_attention(&attn, 4, 8.0);
+
+        let params = lora_attn.lora_params_mut();
+        assert_eq!(params.len(), 8);
+    }
+
+    #[test]
+    fn test_mha_with_lora_param_count() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let rank = 4;
+        let lora_attn = MultiHeadAttentionWithLoRA::from_attention(&attn, rank, 8.0);
+
+        let param_count = lora_attn.lora_param_count();
+
+        // Calculate expected:
+        let hidden = config.hidden_size;
+        let kv_hidden = config.num_kv_heads * config.head_dim();
+        let expected = (hidden * rank + rank * hidden)      // Q
+            + (hidden * rank + rank * kv_hidden) // K
+            + (hidden * rank + rank * kv_hidden) // V
+            + (hidden * rank + rank * hidden); // O
+
+        assert_eq!(param_count, expected);
+        assert!(param_count > 0);
+    }
+
+    #[test]
+    fn test_mha_with_lora_longer_sequence() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let lora_attn = MultiHeadAttentionWithLoRA::from_attention(&attn, 4, 8.0);
+
+        let seq_len = 8;
+        let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], false);
+        let output = lora_attn.forward(&x, seq_len);
+
+        assert_eq!(output.len(), seq_len * config.hidden_size);
+    }
+
+    #[test]
+    fn test_parameters_mut() {
+        let config = TransformerConfig::tiny();
+        let mut attn = MultiHeadAttention::new(&config);
+
+        let params = attn.parameters_mut();
+        assert_eq!(params.len(), 4);
+    }
 }

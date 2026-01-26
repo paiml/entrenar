@@ -1125,5 +1125,135 @@ fn test_run_command_monitor() {
 }
 
 // ============================================================================
+// Additional run_command dispatch tests
+// ============================================================================
+
+#[test]
+fn test_run_command_train() {
+    let dir = TempDir::new().unwrap();
+    let config_path = create_test_config(&dir);
+
+    let cli = Cli {
+        verbose: false,
+        quiet: true,
+        command: Command::Train(TrainArgs {
+            config: config_path,
+            output_dir: None,
+            resume: None,
+            epochs: None,
+            batch_size: None,
+            lr: None,
+            dry_run: true,
+            save_every: None,
+            log_every: None,
+            seed: None,
+        }),
+    };
+
+    let result = run_command(cli);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_run_command_info() {
+    let dir = TempDir::new().unwrap();
+    let config_path = create_test_config(&dir);
+
+    let cli = Cli {
+        verbose: false,
+        quiet: true,
+        command: Command::Info(InfoArgs {
+            config: config_path,
+            format: OutputFormat::Text,
+        }),
+    };
+
+    let result = run_command(cli);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_run_command_quantize() {
+    let dir = TempDir::new().unwrap();
+    let model_path = create_safetensors_file(&dir, "model.safetensors");
+    let output = dir.path().join("quantized.json");
+
+    let cli = Cli {
+        verbose: false,
+        quiet: true,
+        command: Command::Quantize(QuantizeArgs {
+            model: model_path,
+            output,
+            bits: 4,
+            method: QuantMethod::Symmetric,
+            per_channel: false,
+            calibration_data: None,
+        }),
+    };
+
+    let result = run_command(cli);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_run_command_merge() {
+    let dir = TempDir::new().unwrap();
+    let model1 = create_safetensors_file(&dir, "model1.safetensors");
+    let model2 = create_safetensors_file(&dir, "model2.safetensors");
+    let output = dir.path().join("merged.json");
+
+    let cli = Cli {
+        verbose: false,
+        quiet: true,
+        command: Command::Merge(MergeArgs {
+            models: vec![model1, model2],
+            output,
+            method: MergeMethod::Average,
+            weight: None,
+            density: None,
+            weights: None,
+        }),
+    };
+
+    let result = run_command(cli);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_run_command_completion() {
+    let cli = Cli {
+        verbose: false,
+        quiet: true,
+        command: Command::Completion(CompletionArgs {
+            shell: ShellType::Bash,
+        }),
+    };
+
+    let result = run_command(cli);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_run_command_normal_log_level() {
+    let dir = TempDir::new().unwrap();
+    let output_path = dir.path().join("normal_test.yaml");
+
+    let cli = Cli {
+        verbose: false,
+        quiet: false, // Normal log level
+        command: Command::Init(InitArgs {
+            name: "test".to_string(),
+            output: Some(output_path),
+            template: InitTemplate::Minimal,
+            model: None,
+            data: None,
+        }),
+    };
+
+    let result = run_command(cli);
+    assert!(result.is_ok());
+}
+
+// ============================================================================
 // Research command tests
 // ============================================================================

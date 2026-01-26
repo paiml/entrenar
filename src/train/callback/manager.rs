@@ -287,6 +287,129 @@ mod tests {
             CallbackAction::Stop
         );
     }
+
+    #[test]
+    fn test_callback_manager_all_continue() {
+        // Test that all callbacks continue properly
+        struct ContinueCallback;
+        impl TrainerCallback for ContinueCallback {
+            fn on_train_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Continue
+            }
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Continue
+            }
+            fn on_epoch_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Continue
+            }
+            fn on_step_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Continue
+            }
+            fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "ContinueCallback"
+            }
+        }
+
+        let mut manager = CallbackManager::new();
+        manager.add(ContinueCallback);
+        manager.add(ContinueCallback);
+
+        let ctx = CallbackContext::default();
+        assert_eq!(manager.on_train_begin(&ctx), CallbackAction::Continue);
+        assert_eq!(manager.on_epoch_begin(&ctx), CallbackAction::Continue);
+        assert_eq!(manager.on_epoch_end(&ctx), CallbackAction::Continue);
+        assert_eq!(manager.on_step_begin(&ctx), CallbackAction::Continue);
+        assert_eq!(manager.on_step_end(&ctx), CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_callback_manager_multiple_train_end() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct CountingEndCallback {
+            count: Arc<AtomicUsize>,
+        }
+
+        impl TrainerCallback for CountingEndCallback {
+            fn on_train_end(&mut self, _: &CallbackContext) {
+                self.count.fetch_add(1, Ordering::SeqCst);
+            }
+            fn name(&self) -> &'static str {
+                "CountingEndCallback"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(CountingEndCallback {
+            count: count.clone(),
+        });
+        manager.add(CountingEndCallback {
+            count: count.clone(),
+        });
+        manager.add(CountingEndCallback {
+            count: count.clone(),
+        });
+
+        manager.on_train_end(&CallbackContext::default());
+        assert_eq!(count.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_callback_manager_stop_after_first() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct CountingStopCallback {
+            count: Arc<AtomicUsize>,
+        }
+
+        impl TrainerCallback for CountingStopCallback {
+            fn on_train_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "CountingStopCallback"
+            }
+        }
+
+        struct CountingContinueCallback {
+            count: Arc<AtomicUsize>,
+        }
+
+        impl TrainerCallback for CountingContinueCallback {
+            fn on_train_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountingContinueCallback"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(CountingStopCallback {
+            count: count.clone(),
+        });
+        manager.add(CountingContinueCallback {
+            count: count.clone(),
+        });
+
+        // First callback stops, second should not be called
+        let action = manager.on_train_begin(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Stop);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
 }
 
 #[cfg(test)]
