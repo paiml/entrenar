@@ -116,7 +116,7 @@
     "phase_4_tracing_observability": false
   },
   "next_actions": [
-    "Run cargo-tarpaulin for coverage metrics",
+    "Run llvm-cov for coverage metrics",
     "Run cargo-mutants for mutation testing",
     "Implement chaos engineering tests",
     "Add fuzz testing infrastructure",

@@ -91,7 +91,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.5.6"
+version = "0.5.7"
 edition = "2021"
 rust-version = "1.87"
 authors = ["PAIML <hello@paiml.com>"]
@@ -124,7 +124,7 @@ nvml = ["nvml-wrapper"]  # Real GPU monitoring via NVIDIA NVML
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
-trueno = "0.14.1"  # SIMD-accelerated compute from crates.io
+trueno = "0.14.3"  # SIMD-accelerated compute from crates.io
 trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
 realizar = { version = "0.6", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.24.1"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
