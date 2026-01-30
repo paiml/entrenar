@@ -63,7 +63,7 @@ TDG = 0.3 * (tests_passing %) +
 ```
 
 **Next Actions:**
-- Run `cargo-tarpaulin` for coverage metrics
+- Run `llvm-cov` for coverage metrics
 - Run `cargo-mutants` for mutation score
 - Calculate final TDG score
 
