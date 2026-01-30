@@ -91,7 +91,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.5.7"
+version = "0.5.8"
 edition = "2021"
 rust-version = "1.87"
 authors = ["PAIML <hello@paiml.com>"]
@@ -127,7 +127,7 @@ ndarray = "0.16"
 trueno = "0.14.3"  # SIMD-accelerated compute from crates.io
 trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
 realizar = { version = "0.6", optional = true }  # CUDA inference engine with working GEMM
-aprender = "0.24.1"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
+aprender = "0.25"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
 trueno-db = { version = "0.3.11", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
