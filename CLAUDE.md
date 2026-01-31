@@ -338,3 +338,26 @@ cargo-mutants = "25.3"  # Mutation testing
 ```
 
 **Note:** Always use latest versions from crates.io. Never use git dependencies for PAIML stack libraries.
+
+
+## Stack Documentation Search
+
+Query this component's documentation and the entire Sovereign AI Stack using batuta's RAG Oracle:
+
+```bash
+# Index all stack documentation (run once, persists to ~/.cache/batuta/rag/)
+batuta oracle --rag-index
+
+# Search across the entire stack
+batuta oracle --rag "your question here"
+
+# Examples
+batuta oracle --rag "SIMD matrix multiplication"
+batuta oracle --rag "how to train a model"
+batuta oracle --rag "tokenization for BERT"
+
+# Check index status
+batuta oracle --rag-stats
+```
+
+The RAG index includes CLAUDE.md, README.md, and source files from all stack components plus Python ground truth corpora for cross-language pattern matching.
