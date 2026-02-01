@@ -342,7 +342,11 @@ cargo-mutants = "25.3"  # Mutation testing
 
 ## Stack Documentation Search
 
-Query this component's documentation and the entire Sovereign AI Stack using batuta's RAG Oracle:
+**IMPORTANT: Proactively use the batuta RAG oracle when:**
+- Looking up patterns from other stack components (trueno SIMD, aprender ML, realizar inference)
+- Finding cross-language equivalents (PyTorch training patterns from Python ground truth corpora)
+- Understanding how autograd/backprop is implemented in other frameworks
+- Researching LoRA/QLoRA, quantization, and model merging approaches
 
 ```bash
 # Index all stack documentation (run once, persists to ~/.cache/batuta/rag/)
@@ -351,13 +355,12 @@ batuta oracle --rag-index
 # Search across the entire stack
 batuta oracle --rag "your question here"
 
-# Examples
-batuta oracle --rag "SIMD matrix multiplication"
-batuta oracle --rag "how to train a model"
-batuta oracle --rag "tokenization for BERT"
-
-# Check index status
-batuta oracle --rag-stats
+# Entrenar-specific examples
+batuta oracle --rag "autograd tape-based differentiation"
+batuta oracle --rag "LoRA QLoRA parameter-efficient fine-tuning"
+batuta oracle --rag "GGUF Q4_0 Q8_0 quantization format"
+batuta oracle --rag "model merging TIES DARE SLERP"
+batuta oracle --rag "knowledge distillation multi-teacher"
 ```
 
-The RAG index includes CLAUDE.md, README.md, and source files from all stack components plus Python ground truth corpora for cross-language pattern matching.
+The RAG index (341+ docs) includes CLAUDE.md, README.md, and source files from all stack components plus Python ground truth corpora for cross-language pattern matching.
