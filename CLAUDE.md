@@ -156,6 +156,10 @@ pmat query "backward operation" --include-project ../trueno
 # Search across the stack
 pmat query "LoRA adapter" --include-project ../aprender
 pmat query "GGUF export" --include-project ../realizar
+
+# Git history search (find code by commit intent via RRF fusion)
+pmat query "fix gradient computation" -G
+pmat query "autograd refactor" --git-history --churn
 ```
 
 ### Ticket-Based Development (Required)
