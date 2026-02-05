@@ -160,14 +160,14 @@ fn test_stream_collector_auto_flush() {
 
         collector.record(make_test_trace(0));
         // Should not have written yet (buffered)
-        assert!(buffer.lock().unwrap().is_empty());
+        assert!(buffer.lock().unwrap_or_else(|e| e.into_inner()).is_empty());
 
         collector.record(make_test_trace(1));
         // Should have auto-flushed at threshold
     }
 
     // After drop, should have data
-    assert!(!buffer.lock().unwrap().is_empty());
+    assert!(!buffer.lock().unwrap_or_else(|e| e.into_inner()).is_empty());
 }
 
 /// Wrapper to make Arc<Mutex<Vec<u8>>> implement Write + Sync
@@ -175,11 +175,11 @@ struct SyncWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
 
 impl Write for SyncWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().write(buf)
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.0.lock().unwrap().flush()
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).flush()
     }
 }
 

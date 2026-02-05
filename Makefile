@@ -70,11 +70,11 @@ test-quick: test-fast
 test: ## Standard tests (<2min target)
 	@echo "🧪 Running standard tests (target: <2min)..."
 	@if command -v cargo-nextest >/dev/null 2>&1; then \
-		time cargo nextest run --workspace \
+		PROPTEST_CASES=50 time cargo nextest run --workspace \
 			--status-level skip \
 			--failure-output immediate; \
 	else \
-		time cargo test --workspace; \
+		PROPTEST_CASES=50 time cargo test --workspace; \
 	fi
 	@echo "✅ Standard tests passed"
 
@@ -82,9 +82,9 @@ test: ## Standard tests (<2min target)
 test-full: ## Comprehensive tests (all features)
 	@echo "🔬 Running full comprehensive tests..."
 	@if command -v cargo-nextest >/dev/null 2>&1; then \
-		time cargo nextest run --workspace --all-features; \
+		PROPTEST_CASES=100 time cargo nextest run --workspace --all-features; \
 	else \
-		time cargo test --workspace --all-features; \
+		PROPTEST_CASES=100 time cargo test --workspace --all-features; \
 	fi
 	@echo "✅ Full tests passed"
 

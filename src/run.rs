@@ -118,7 +118,7 @@ impl<S: ExperimentStorage> Run<S> {
     pub fn new(experiment_id: &str, storage: Arc<Mutex<S>>, config: TracingConfig) -> Result<Self> {
         // Create run in storage
         let run_id = {
-            let mut store = storage.lock().unwrap();
+            let mut store = storage.lock().unwrap_or_else(|e| e.into_inner());
             let run_id = store.create_run(experiment_id)?;
             store.start_run(&run_id)?;
             run_id
@@ -127,7 +127,7 @@ impl<S: ExperimentStorage> Run<S> {
         // Create span if tracing enabled
         let span = if config.tracing_enabled {
             let span_id = Self::create_span(&run_id);
-            storage.lock().unwrap().set_span_id(&run_id, &span_id)?;
+            storage.lock().unwrap_or_else(|e| e.into_inner()).set_span_id(&run_id, &span_id)?;
             Some(span_id)
         } else {
             None
@@ -403,7 +403,7 @@ mod tests {
 
         run.finish(RunStatus::Success).unwrap();
 
-        let status = storage.lock().unwrap().get_run_status(&run_id).unwrap();
+        let status = storage.lock().unwrap_or_else(|e| e.into_inner()).get_run_status(&run_id).unwrap();
         assert_eq!(status, RunStatus::Success);
     }
 
@@ -417,7 +417,7 @@ mod tests {
 
         run.finish(RunStatus::Failed).unwrap();
 
-        let status = storage.lock().unwrap().get_run_status(&run_id).unwrap();
+        let status = storage.lock().unwrap_or_else(|e| e.into_inner()).get_run_status(&run_id).unwrap();
         assert_eq!(status, RunStatus::Failed);
     }
 

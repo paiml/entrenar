@@ -55,20 +55,20 @@ impl BenchmarkSuite {
     pub fn best_by_sqnr(&self) -> Option<&QuantBenchmarkResult> {
         self.results
             .iter()
-            .max_by(|a, b| a.sqnr_db.partial_cmp(&b.sqnr_db).unwrap())
+            .max_by(|a, b| a.sqnr_db.total_cmp(&b.sqnr_db))
     }
 
     /// Get best result by MSE (lowest)
     pub fn best_by_mse(&self) -> Option<&QuantBenchmarkResult> {
         self.results
             .iter()
-            .min_by(|a, b| a.mse.partial_cmp(&b.mse).unwrap())
+            .min_by(|a, b| a.mse.total_cmp(&b.mse))
     }
 
     /// Get results sorted by quality score
     pub fn sorted_by_quality(&self) -> Vec<&QuantBenchmarkResult> {
         let mut sorted: Vec<_> = self.results.iter().collect();
-        sorted.sort_by(|a, b| b.quality_score().partial_cmp(&a.quality_score()).unwrap());
+        sorted.sort_by(|a, b| b.quality_score().total_cmp(&a.quality_score()));
         sorted
     }
 }

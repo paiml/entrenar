@@ -85,3 +85,8 @@ target/
 .gemini/
 .env
 book/book/
+
+# PMAT
+.pmat/context.idx/
+.pmat/workspace.idx/
+.pmat/deps-cache.json

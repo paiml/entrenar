@@ -66,8 +66,11 @@ proptest! {
             frequency: 10,
         };
 
-        let json = serde_json::to_string(&schedule).unwrap();
-        let deserialized: PruningSchedule = serde_json::from_str(&json).unwrap();
-        prop_assert_eq!(schedule, deserialized);
+        let json = serde_json::to_string(&schedule);
+        prop_assert!(json.is_ok(), "serialize failed: {:?}", json.err());
+        let json = json.unwrap();
+        let deserialized: Result<PruningSchedule, _> = serde_json::from_str(&json);
+        prop_assert!(deserialized.is_ok(), "deserialize failed: {:?}", deserialized.err());
+        prop_assert_eq!(schedule, deserialized.unwrap());
     }
 }

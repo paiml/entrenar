@@ -55,12 +55,12 @@ impl TruenoBackend {
 
     /// Get the number of experiments
     pub fn experiment_count(&self) -> usize {
-        self.store.lock().unwrap().experiment_count()
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).experiment_count()
     }
 
     /// Get the number of runs
     pub fn run_count(&self) -> usize {
-        self.store.lock().unwrap().run_count()
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).run_count()
     }
 
     /// Compute CAS hash for artifact data
@@ -115,13 +115,13 @@ impl ExperimentStorage for TruenoBackend {
             ExperimentRecord::new(&exp_id, name)
         };
 
-        self.store.lock().unwrap().add_experiment(record);
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_experiment(record);
 
         Ok(exp_id)
     }
 
     fn create_run(&mut self, experiment_id: &str) -> Result<String> {
-        let store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         if store.get_experiment(experiment_id).is_none() {
             return Err(StorageError::ExperimentNotFound(experiment_id.to_string()));
         }
@@ -132,13 +132,13 @@ impl ExperimentStorage for TruenoBackend {
 
         // Create run in Pending state
         let record = RunRecord::new(&run_id, experiment_id);
-        self.store.lock().unwrap().add_run(record);
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_run(record);
 
         Ok(run_id)
     }
 
     fn start_run(&mut self, run_id: &str) -> Result<()> {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let run = store
             .get_run(run_id)
             .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
@@ -160,7 +160,7 @@ impl ExperimentStorage for TruenoBackend {
     }
 
     fn complete_run(&mut self, run_id: &str, status: RunStatus) -> Result<()> {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let run = store
             .get_run(run_id)
             .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
@@ -182,20 +182,20 @@ impl ExperimentStorage for TruenoBackend {
     }
 
     fn log_metric(&mut self, run_id: &str, key: &str, step: u64, value: f64) -> Result<()> {
-        let store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         if store.get_run(run_id).is_none() {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
         drop(store);
 
         let metric = MetricRecord::new(run_id, key, step, value);
-        self.store.lock().unwrap().add_metric(metric);
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_metric(metric);
 
         Ok(())
     }
 
     fn log_artifact(&mut self, run_id: &str, key: &str, data: &[u8]) -> Result<String> {
-        let store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         if store.get_run(run_id).is_none() {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
@@ -209,7 +209,7 @@ impl ExperimentStorage for TruenoBackend {
     }
 
     fn get_metrics(&self, run_id: &str, key: &str) -> Result<Vec<MetricPoint>> {
-        let store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         if store.get_run(run_id).is_none() {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
@@ -223,7 +223,7 @@ impl ExperimentStorage for TruenoBackend {
     }
 
     fn get_run_status(&self, run_id: &str) -> Result<RunStatus> {
-        let store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let run = store
             .get_run(run_id)
             .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
@@ -232,7 +232,7 @@ impl ExperimentStorage for TruenoBackend {
     }
 
     fn set_span_id(&mut self, run_id: &str, span_id: &str) -> Result<()> {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let run = store
             .get_run(run_id)
             .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
@@ -265,7 +265,7 @@ impl ExperimentStorage for TruenoBackend {
     }
 
     fn get_span_id(&self, run_id: &str) -> Result<Option<String>> {
-        let store = self.store.lock().unwrap();
+        let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let run = store
             .get_run(run_id)
             .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;

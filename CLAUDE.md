@@ -10,10 +10,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Stack Dependencies:**
 - `trueno` - SIMD-accelerated tensor operations (compute layer)
-- `realizar` - GGUF model I/O
-- `aprender` - Loss functions
+- `realizar` - GGUF model I/O (inference only)
+- `aprender` - Loss functions, APR format (training checkpoints)
 
 **Critical Constraint:** Entrenar depends on backward propagation operations that do not yet exist in Trueno. Phase 1 cannot start until `trueno/src/ops/backward.rs` is implemented.
+
+## LAYOUT-002: Row-Major Mandate
+
+**All tensors in entrenar use ROW-MAJOR layout.** This matches the Sovereign AI Stack convention.
+
+### Training Checkpoint Format
+
+When saving model checkpoints:
+- **Use APR format** (aprender's native format) - already row-major
+- **Never save as GGUF** - GGUF is column-major, only for external consumption
+
+### Gradient Tensors
+
+Gradient tensors during backprop must maintain row-major layout:
+```rust
+// Gradient accumulation preserves layout
+let grad = tensor.grad();  // Row-major, matches forward tensor
+```
+
+### Model Export for Inference
+
+When exporting trained models for inference:
+```bash
+# Export to APR (row-major, native) - use for realizar
+entrenar export model.apr --format apr
+
+# Export to GGUF (column-major) - aprender handles transpose
+entrenar export model.gguf --format gguf  # Internally calls apr export
+```
+
+See `aprender/CLAUDE.md` LAYOUT-002 and `realizar/CLAUDE.md` LAYOUT-002 for full details.
 
 ## Architecture
 
@@ -100,6 +131,31 @@ make deny-check         # Check for vulnerabilities
 
 # Clean
 make clean              # Remove build artifacts
+```
+
+## Code Search (pmat query)
+
+**NEVER use grep or rg for code discovery.** Use `pmat query` instead -- it returns quality-annotated, ranked results with TDG scores and fault annotations.
+
+```bash
+# Find functions by intent
+pmat query "gradient computation" --limit 10
+
+# Find high-quality code
+pmat query "optimizer step" --min-grade A --exclude-tests
+
+# Find with fault annotations (unwrap, panic, unsafe, etc.)
+pmat query "training loop" --faults
+
+# Filter by complexity
+pmat query "quantization" --max-complexity 10
+
+# Cross-project search (e.g., find trueno backward ops)
+pmat query "backward operation" --include-project ../trueno
+
+# Search across the stack
+pmat query "LoRA adapter" --include-project ../aprender
+pmat query "GGUF export" --include-project ../realizar
 ```
 
 ### Ticket-Based Development (Required)

@@ -298,8 +298,12 @@ proptest! {
         let pattern = FixPattern::new(&error_code, &fix_diff)
             .with_decisions(decisions.clone());
 
-        let json = serde_json::to_string(&pattern).unwrap();
-        let restored: FixPattern = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&pattern);
+        prop_assert!(json.is_ok(), "serialize failed: {:?}", json.err());
+        let json = json.unwrap();
+        let restored: Result<FixPattern, _> = serde_json::from_str(&json);
+        prop_assert!(restored.is_ok(), "deserialize failed: {:?}", restored.err());
+        let restored = restored.unwrap();
 
         prop_assert_eq!(pattern.error_code, restored.error_code);
         prop_assert_eq!(pattern.fix_diff, restored.fix_diff);

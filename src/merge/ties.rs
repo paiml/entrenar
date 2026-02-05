@@ -106,7 +106,7 @@ fn trim_tensor(tensor: &Tensor, density: f32) -> Tensor {
         .map(|(i, &val)| (i, val.abs()))
         .collect();
 
-    indices_and_magnitudes.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    indices_and_magnitudes.sort_by(|a, b| b.1.total_cmp(&a.1));
 
     // Keep top-k magnitude values, zero out rest
     let mut trimmed_data = Array1::zeros(n);

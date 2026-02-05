@@ -60,17 +60,17 @@ impl Tracer {
 
     /// Enable tracing.
     pub fn enable(&self) {
-        *self.enabled.lock().unwrap() = true;
+        *self.enabled.lock().unwrap_or_else(|e| e.into_inner()) = true;
     }
 
     /// Disable tracing.
     pub fn disable(&self) {
-        *self.enabled.lock().unwrap() = false;
+        *self.enabled.lock().unwrap_or_else(|e| e.into_inner()) = false;
     }
 
     /// Check if tracing is enabled.
     pub fn is_enabled(&self) -> bool {
-        *self.enabled.lock().unwrap()
+        *self.enabled.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Start a timing span.
@@ -78,7 +78,7 @@ impl Tracer {
         if !self.is_enabled() {
             return;
         }
-        let mut spans = self.active_spans.lock().unwrap();
+        let mut spans = self.active_spans.lock().unwrap_or_else(|e| e.into_inner());
         spans.insert(step, Instant::now());
     }
 
@@ -87,10 +87,10 @@ impl Tracer {
         if !self.is_enabled() {
             return;
         }
-        let mut spans = self.active_spans.lock().unwrap();
+        let mut spans = self.active_spans.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(start) = spans.remove(&step) {
             let duration = start.elapsed();
-            let mut measurements = self.measurements.lock().unwrap();
+            let mut measurements = self.measurements.lock().unwrap_or_else(|e| e.into_inner());
             measurements.push(TraceMeasurement {
                 step,
                 duration,
@@ -116,13 +116,13 @@ impl Tracer {
 
     /// Clear all measurements.
     pub fn clear(&self) {
-        self.measurements.lock().unwrap().clear();
-        self.active_spans.lock().unwrap().clear();
+        self.measurements.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.active_spans.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
     /// Generate a report with Dr. Popper analysis.
     pub fn report(&self) -> String {
-        let measurements = self.measurements.lock().unwrap();
+        let measurements = self.measurements.lock().unwrap_or_else(|e| e.into_inner());
         if measurements.is_empty() {
             return "No measurements recorded. Enable tracing with TRACER.enable()".to_string();
         }

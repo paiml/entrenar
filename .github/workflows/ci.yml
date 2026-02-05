@@ -68,11 +68,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Generate coverage
         run: cargo llvm-cov --lcov --output-path lcov.info
-      - name: Check threshold (90%)
+      - name: Check threshold (95%)
         run: |
           COVERAGE=$(cargo llvm-cov --json | jq '.data[0].totals.lines.percent')
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "Coverage $COVERAGE% is below 90% threshold"
+          if (( $(echo "$COVERAGE < 95" | bc -l) )); then
+            echo "Coverage $COVERAGE% is below 95% threshold"
             exit 1
           fi
       - name: Upload coverage

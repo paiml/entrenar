@@ -188,7 +188,7 @@ pub fn analyze_outlier_impact(values: &[f32], percentile: f32) -> (f32, f32, f32
 
     // Sort values to find percentile thresholds
     let mut sorted: Vec<f32> = values.iter().map(|v| v.abs()).collect();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted.sort_by(f32::total_cmp);
 
     let upper_idx = (percentile / 100.0 * sorted.len() as f32) as usize;
     let threshold = *sorted.get(upper_idx.min(sorted.len() - 1)).unwrap_or(&0.0);

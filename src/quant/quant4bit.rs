@@ -68,7 +68,7 @@ pub fn quantize_4bit(values: &[f32]) -> Quantized4Bit {
         let max_abs = block
             .iter()
             .map(|v| v.abs())
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .max_by(f32::total_cmp)
             .unwrap_or(1e-8);
 
         let scale = max_abs / 7.0;

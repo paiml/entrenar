@@ -131,7 +131,7 @@ impl MetricsTracker {
         self.val_losses
             .iter()
             .copied()
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .min_by(f32::total_cmp)
     }
 
     /// Check if validation loss is improving
@@ -142,7 +142,7 @@ impl MetricsTracker {
 
         let recent = self.val_losses[self.val_losses.len() - patience..].to_vec();
         let mut sorted = recent.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted.sort_by(f32::total_cmp);
 
         // Check if val losses are generally decreasing
         recent != sorted
@@ -169,7 +169,7 @@ impl MetricsTracker {
         self.losses
             .iter()
             .copied()
-            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .min_by(f32::total_cmp)
     }
 
     /// Check if training is improving (loss decreasing)
@@ -180,7 +180,7 @@ impl MetricsTracker {
 
         let recent = self.losses[self.losses.len() - patience..].to_vec();
         let mut sorted = recent.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted.sort_by(f32::total_cmp);
 
         // Check if losses are generally decreasing
         recent != sorted

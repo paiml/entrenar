@@ -370,7 +370,7 @@ mod property_tests {
         #[test]
         fn prop_percentile_bounded(values in prop::collection::vec(0.0f64..1000.0, 1..100)) {
             let mut sorted = values.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(f64::total_cmp);
 
             let p50 = percentile(&sorted, 50.0);
             let min = sorted.first().unwrap();
