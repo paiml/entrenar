@@ -159,7 +159,13 @@ pmat query "GGUF export" --include-project ../realizar
 
 # Git history search (find code by commit intent via RRF fusion)
 pmat query "fix gradient computation" -G
-pmat query "autograd refactor" --git-history --churn
+pmat query "autograd refactor" --git-history
+
+# Enrichment flags (combine freely)
+pmat query "optimizer step" --churn                # git volatility (commit count, churn score)
+pmat query "quantization" --duplicates             # code clone detection (MinHash+LSH)
+pmat query "training loop" --entropy               # pattern diversity (repetitive vs unique)
+pmat query "backward pass" --churn --duplicates --entropy --faults -G  # full audit
 ```
 
 ### Ticket-Based Development (Required)
