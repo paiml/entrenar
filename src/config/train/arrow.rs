@@ -3,7 +3,7 @@
 use crate::error::{Error, Result};
 
 /// Convert Arrow array to f32 vector
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
 pub fn arrow_array_to_f32(array: &arrow::array::ArrayRef) -> Result<Vec<f32>> {
     use arrow::array::{Float32Array, Float64Array, Int32Array, Int64Array};
     use arrow::datatypes::DataType;

@@ -5,7 +5,7 @@ mod rebatch;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod json;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
 mod parquet;
 
 #[cfg(test)]
@@ -16,5 +16,5 @@ pub use rebatch::rebatch;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use json::load_json_batches;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
 pub use parquet::load_parquet_batches;

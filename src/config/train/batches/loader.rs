@@ -7,7 +7,7 @@ use crate::train::Batch;
 
 #[cfg(not(target_arch = "wasm32"))]
 use super::json::load_json_batches;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
 use super::parquet::load_parquet_batches;
 
 /// Load training batches from data file using alimentar
@@ -37,7 +37,13 @@ pub fn load_training_batches(spec: &TrainSpec) -> Result<Vec<Batch>> {
             .to_lowercase();
 
         match ext.as_str() {
+            #[cfg(feature = "parquet")]
             "parquet" => load_parquet_batches(data_path, batch_size),
+            #[cfg(not(feature = "parquet"))]
+            "parquet" => {
+                eprintln!("Warning: Parquet support requires the 'parquet' feature, using demo data");
+                Ok(create_demo_batches(batch_size))
+            }
             "json" => load_json_batches(data_path, batch_size),
             _ => {
                 eprintln!("Warning: Unsupported data format '{ext}', using demo data");

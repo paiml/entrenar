@@ -40,7 +40,7 @@ pub mod eval;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod finetune;
 pub mod generative;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "hub"))]
 pub mod hf_pipeline;
 pub mod integrity;
 pub mod io;

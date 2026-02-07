@@ -5,7 +5,7 @@ mod demo_batches;
 mod rebatch;
 mod train_yaml;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
 mod arrow_conversion;
 #[cfg(not(target_arch = "wasm32"))]
 mod json_batches;

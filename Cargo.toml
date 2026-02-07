@@ -108,7 +108,7 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [features]
-default = ["cuda"]  # CUDA-first: GPU compute is mandatory (SPEC-FT-001 v3.0.0)
+default = []  # Lean default: CB-081 compliance (≤250 prod deps)
 cpu-fallback = []  # Explicit opt-in for CPU-only builds (CI without GPU)
 gguf = []  # Placeholder for future GGUF support via Realizar
 monitor = ["trueno-db"]  # Training monitoring with persistence
@@ -120,6 +120,8 @@ ruchy-sessions = []  # Ruchy session bridge for preserving training history
 gpu = ["trueno/gpu", "tokio"]  # GPU-accelerated training via wgpu
 cuda = ["realizar/cuda", "trueno-gpu/cuda", "tokio"]  # NVIDIA CUDA compute via realizar
 nvml = ["nvml-wrapper"]  # Real GPU monitoring via NVIDIA NVML
+parquet = ["dep:alimentar", "dep:arrow"]  # Parquet batch loading via alimentar
+hub = ["dep:hf-hub", "aprender/hf-hub-integration"]  # HuggingFace Hub model fetching
 
 [dependencies]
 # Core PAIML stack
@@ -157,14 +159,13 @@ hex = "0.4"  # Hex encoding for hashes
 regex = "1.10"  # ORCID/ROR validation
 ed25519-dalek = "2.1"  # Ed25519 signing for pre-registration
 bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for tensor data
-arrow = { version = "57", default-features = false }  # Arrow array types for alimentar integration
+arrow = { version = "57", default-features = false, optional = true }  # Arrow array types for alimentar integration
 nvml-wrapper = { version = "0.10", optional = true }  # NVIDIA NVML bindings for GPU monitoring
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-hf-hub = "0.4"  # HuggingFace Hub API for model downloads (not available on WASM)
-memmap2 = "0.9"  # Memory-mapped file access for large models (not available on WASM)
+hf-hub = { version = "0.4", optional = true }  # HuggingFace Hub API (gated behind hub feature)
 zip = "2.2"  # RO-Crate ZIP export (requires native compression, not available on WASM)
-alimentar = "0.2.4"  # Dataset loading with parquet/arrow support (requires tokio, not available on WASM)
+alimentar = { version = "0.2.4", optional = true }  # Dataset loading with parquet/arrow support (gated behind parquet feature)
 
 [dev-dependencies]
 proptest = "1.4"
@@ -257,7 +258,12 @@ required-features = []
 [[example]]
 name = "hf_distillation"
 path = "examples/hf_distillation.rs"
-required-features = []
+required-features = ["hub"]
+
+[[example]]
+name = "finetune_real"
+path = "examples/finetune_real.rs"
+required-features = ["hub"]
 
 [[example]]
 name = "citl"
@@ -267,12 +273,12 @@ required-features = ["citl"]
 [[example]]
 name = "mnist_train"
 path = "examples/mnist_train.rs"
-required-features = []
+required-features = ["parquet"]
 
 [[example]]
 name = "mnist_train_gpu"
 path = "examples/mnist_train_gpu.rs"
-required-features = ["gpu"]
+required-features = ["gpu", "parquet"]
 
 [[example]]
 name = "cli_bench"
