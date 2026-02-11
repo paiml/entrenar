@@ -4,6 +4,7 @@ use crate::train::Batch;
 use crate::Tensor;
 
 /// Re-batch data into specified batch size
+#[allow(dead_code)]
 pub fn rebatch(batches: Vec<Batch>, batch_size: usize) -> Vec<Batch> {
     // Flatten all data
     let all_inputs: Vec<f32> = batches
