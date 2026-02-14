@@ -74,7 +74,10 @@ impl TruenoBackend {
         let mut hasher = Sha256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        format!("sha256-{}", hex::encode(result.get(..16).unwrap_or(&result)))
+        format!(
+            "sha256-{}",
+            hex::encode(result.get(..16).unwrap_or(&result))
+        )
     }
 
     /// Convert our RunStatus to trueno-db's RunStatus
@@ -428,9 +431,7 @@ mod tests {
         let run_id = backend.create_run(&exp_id).unwrap();
 
         backend.start_run(&run_id).unwrap();
-        backend
-            .complete_run(&run_id, RunStatus::Cancelled)
-            .unwrap();
+        backend.complete_run(&run_id, RunStatus::Cancelled).unwrap();
 
         assert_eq!(
             backend.get_run_status(&run_id).unwrap(),

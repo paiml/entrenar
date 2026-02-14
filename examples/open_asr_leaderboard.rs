@@ -115,9 +115,7 @@ fn main() {
     let mut total_audio_secs = 0.0;
     let mut total_processing_secs = 0.0;
 
-    for (i, (reference, hypothesis, audio_dur, proc_dur)) in
-        test_pairs.iter().enumerate()
-    {
+    for (i, (reference, hypothesis, audio_dur, proc_dur)) in test_pairs.iter().enumerate() {
         let wer = word_error_rate(reference, hypothesis);
         let rtfx = real_time_factor_inverse(*proc_dur, *audio_dur);
 
@@ -133,17 +131,12 @@ fn main() {
                 rtfx
             );
         } else {
-            println!(
-                "  [{:>2}] WER=0.0%   RTFx={:.0}x  ✓",
-                i + 1,
-                rtfx
-            );
+            println!("  [{:>2}] WER=0.0%   RTFx={:.0}x  ✓", i + 1, rtfx);
         }
     }
 
     let avg_wer = total_wer / test_pairs.len() as f64;
-    let overall_rtfx =
-        real_time_factor_inverse(total_processing_secs, total_audio_secs);
+    let overall_rtfx = real_time_factor_inverse(total_processing_secs, total_audio_secs);
 
     println!();
     println!("  Average WER:  {:.2}%", avg_wer * 100.0);
@@ -155,15 +148,11 @@ fn main() {
     println!("── Step 2: Build evaluation result ────────────────────────");
     println!();
 
-    let mut my_result =
-        EvalResult::new("paiml/whisper-small-medical-v1");
+    let mut my_result = EvalResult::new("paiml/whisper-small-medical-v1");
     my_result.add_score(Metric::WER, avg_wer);
     my_result.add_score(Metric::RTFx, overall_rtfx);
 
-    println!(
-        "  Model:  {}",
-        my_result.model_name
-    );
+    println!("  Model:  {}", my_result.model_name);
     println!(
         "  WER:    {:.2}%",
         my_result.get_score(Metric::WER).unwrap_or(0.0) * 100.0
@@ -186,9 +175,7 @@ fn main() {
         }
         #[cfg(not(feature = "hub-publish"))]
         {
-            eprintln!(
-                "  Error: --live requires --features hub-publish"
-            );
+            eprintln!("  Error: --live requires --features hub-publish");
             std::process::exit(1);
         }
     } else {
@@ -242,9 +229,7 @@ fn main() {
     // ── Step 5: Publish (live mode only) ──────────────────────────────
 
     if live {
-        println!(
-            "── Step 5: Publish to HuggingFace Hub ───────────────────────"
-        );
+        println!("── Step 5: Publish to HuggingFace Hub ───────────────────────");
         println!();
 
         #[cfg(feature = "hub-publish")]
@@ -253,9 +238,7 @@ fn main() {
         }
         #[cfg(not(feature = "hub-publish"))]
         {
-            eprintln!(
-                "  Error: --live requires --features hub-publish"
-            );
+            eprintln!("  Error: --live requires --features hub-publish");
         }
     } else {
         println!("── Step 5: Publish (skipped — use --live to enable) ───────");
@@ -296,8 +279,7 @@ fn mock_leaderboard_comparison(my_result: &EvalResult) {
     leaderboard.sort();
 
     // Print ranked results
-    let my_wer =
-        my_result.get_score(Metric::WER).unwrap_or(f64::MAX);
+    let my_wer = my_result.get_score(Metric::WER).unwrap_or(f64::MAX);
 
     println!("  Rank  Model                             WER      RTFx");
     println!("  ────  ────────────────────────────────  ───────  ──────");
@@ -305,12 +287,11 @@ fn mock_leaderboard_comparison(my_result: &EvalResult) {
     for (i, result) in leaderboard.results.iter().enumerate() {
         let wer = result.get_score(Metric::WER).unwrap_or(0.0);
         let rtfx = result.get_score(Metric::RTFx).unwrap_or(0.0);
-        let marker =
-            if result.model_name == "paiml/whisper-small-medical-v1" {
-                " ◄ YOU"
-            } else {
-                ""
-            };
+        let marker = if result.model_name == "paiml/whisper-small-medical-v1" {
+            " ◄ YOU"
+        } else {
+            ""
+        };
         println!(
             "  {:>4}  {:<34}  {:>5.2}%  {:>5.0}x{}",
             i + 1,
@@ -356,8 +337,7 @@ fn live_leaderboard_comparison(my_result: &EvalResult) {
                 );
                 println!();
 
-                let ranked =
-                    compare_with_leaderboard(my_result, &hf);
+                let ranked = compare_with_leaderboard(my_result, &hf);
                 println!("{}", ranked.to_markdown());
             }
             Err(e) => {
@@ -379,9 +359,7 @@ fn live_leaderboard_comparison(my_result: &EvalResult) {
 /// Live publish to HuggingFace Hub
 #[cfg(feature = "hub-publish")]
 fn live_publish(my_result: &EvalResult) {
-    use entrenar::hf_pipeline::publish::{
-        HfPublisher, ModelCard, PublishConfig, RepoType,
-    };
+    use entrenar::hf_pipeline::publish::{HfPublisher, ModelCard, PublishConfig, RepoType};
 
     let config = PublishConfig {
         repo_id: my_result.model_name.clone(),
@@ -411,9 +389,9 @@ fn live_publish(my_result: &EvalResult) {
 
             println!(
                 "  Publisher created for: {}",
-                publisher.create_repo().unwrap_or_else(
-                    |_err| "(dry run — repo not created)".into()
-                )
+                publisher
+                    .create_repo()
+                    .unwrap_or_else(|_err| "(dry run — repo not created)".into())
             );
             println!("  Model card preview:");
             let md = card.to_markdown();
@@ -424,9 +402,7 @@ fn live_publish(my_result: &EvalResult) {
         }
         Err(e) => {
             eprintln!("  Publish failed: {e}");
-            eprintln!(
-                "  Ensure HF_TOKEN is set with write access."
-            );
+            eprintln!("  Ensure HF_TOKEN is set with write access.");
         }
     }
 }
