@@ -553,11 +553,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: CB-121
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2026-02-05T15:05:30Z
-  updated: 2026-02-05T15:05:34.587723893+00:00
+  updated: 2026-02-14T21:15:17.330542134+00:00
   spec: null
   acceptance_criteria: []
   phases: []
