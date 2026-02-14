@@ -41,7 +41,9 @@ pub fn load_training_batches(spec: &TrainSpec) -> Result<Vec<Batch>> {
             "parquet" => load_parquet_batches(data_path, batch_size),
             #[cfg(not(feature = "parquet"))]
             "parquet" => {
-                eprintln!("Warning: Parquet support requires the 'parquet' feature, using demo data");
+                eprintln!(
+                    "Warning: Parquet support requires the 'parquet' feature, using demo data"
+                );
                 Ok(create_demo_batches(batch_size))
             }
             "json" => load_json_batches(data_path, batch_size),

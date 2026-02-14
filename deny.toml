@@ -6,13 +6,13 @@ all-features = true
 
 [advisories]
 version = 2
-ignore = []
-# Warn about vulnerabilities
-vulnerability = "deny"
-# Warn about unmaintained crates
-unmaintained = "warn"
-# Warn about yanked crates
-yanked = "deny"
+ignore = [
+    # Transitive deps with no safe upgrade available
+    "RUSTSEC-2025-0141", # bincode unmaintained (via aprender)
+    "RUSTSEC-2024-0384", # instant unmaintained (transitive)
+    "RUSTSEC-2025-0119", # number_prefix unmaintained (transitive)
+    "RUSTSEC-2024-0436", # paste unmaintained (transitive)
+]
 
 [licenses]
 # We use MIT license
@@ -25,6 +25,12 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "NCSA",
 ]
 confidence-threshold = 0.8
 

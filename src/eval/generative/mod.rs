@@ -15,7 +15,11 @@ pub mod text_gen;
 mod tests;
 
 #[cfg(test)]
-mod falsification_tests;
+mod falsification_asr_bleu;
+#[cfg(test)]
+mod falsification_passk_ndcg;
+#[cfg(test)]
+mod falsification_rouge_ppl;
 
 // Re-exports
 pub use asr::{real_time_factor_inverse, word_error_rate};

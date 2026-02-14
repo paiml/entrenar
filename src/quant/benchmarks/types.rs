@@ -60,9 +60,7 @@ impl BenchmarkSuite {
 
     /// Get best result by MSE (lowest)
     pub fn best_by_mse(&self) -> Option<&QuantBenchmarkResult> {
-        self.results
-            .iter()
-            .min_by(|a, b| a.mse.total_cmp(&b.mse))
+        self.results.iter().min_by(|a, b| a.mse.total_cmp(&b.mse))
     }
 
     /// Get results sorted by quality score

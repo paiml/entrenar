@@ -78,7 +78,10 @@ impl Tracer {
         if !self.is_enabled() {
             return;
         }
-        let mut spans = self.active_spans.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut spans = self
+            .active_spans
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         spans.insert(step, Instant::now());
     }
 
@@ -87,10 +90,16 @@ impl Tracer {
         if !self.is_enabled() {
             return;
         }
-        let mut spans = self.active_spans.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut spans = self
+            .active_spans
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if let Some(start) = spans.remove(&step) {
             let duration = start.elapsed();
-            let mut measurements = self.measurements.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut measurements = self
+                .measurements
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
             measurements.push(TraceMeasurement {
                 step,
                 duration,
@@ -128,7 +137,10 @@ impl Tracer {
 
     /// Generate a report with Dr. Popper analysis.
     pub fn report(&self) -> String {
-        let measurements = self.measurements.lock().unwrap_or_else(PoisonError::into_inner);
+        let measurements = self
+            .measurements
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if measurements.is_empty() {
             return "No measurements recorded. Enable tracing with TRACER.enable()".to_string();
         }

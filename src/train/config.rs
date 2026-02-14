@@ -128,10 +128,7 @@ impl MetricsTracker {
 
     /// Get best (minimum) validation loss
     pub fn best_val_loss(&self) -> Option<f32> {
-        self.val_losses
-            .iter()
-            .copied()
-            .min_by(f32::total_cmp)
+        self.val_losses.iter().copied().min_by(f32::total_cmp)
     }
 
     /// Check if validation loss is improving
@@ -166,10 +163,7 @@ impl MetricsTracker {
 
     /// Get best (minimum) loss
     pub fn best_loss(&self) -> Option<f32> {
-        self.losses
-            .iter()
-            .copied()
-            .min_by(f32::total_cmp)
+        self.losses.iter().copied().min_by(f32::total_cmp)
     }
 
     /// Check if training is improving (loss decreasing)

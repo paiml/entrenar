@@ -55,12 +55,18 @@ impl TruenoBackend {
 
     /// Get the number of experiments
     pub fn experiment_count(&self) -> usize {
-        self.store.lock().unwrap_or_else(|e| e.into_inner()).experiment_count()
+        self.store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .experiment_count()
     }
 
     /// Get the number of runs
     pub fn run_count(&self) -> usize {
-        self.store.lock().unwrap_or_else(|e| e.into_inner()).run_count()
+        self.store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .run_count()
     }
 
     /// Compute CAS hash for artifact data
@@ -115,7 +121,10 @@ impl ExperimentStorage for TruenoBackend {
             ExperimentRecord::new(&exp_id, name)
         };
 
-        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_experiment(record);
+        self.store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .add_experiment(record);
 
         Ok(exp_id)
     }
@@ -132,7 +141,10 @@ impl ExperimentStorage for TruenoBackend {
 
         // Create run in Pending state
         let record = RunRecord::new(&run_id, experiment_id);
-        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_run(record);
+        self.store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .add_run(record);
 
         Ok(run_id)
     }
@@ -189,7 +201,10 @@ impl ExperimentStorage for TruenoBackend {
         drop(store);
 
         let metric = MetricRecord::new(run_id, key, step, value);
-        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_metric(metric);
+        self.store
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .add_metric(metric);
 
         Ok(())
     }
