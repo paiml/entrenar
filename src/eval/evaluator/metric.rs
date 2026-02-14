@@ -136,3 +136,87 @@ impl fmt::Display for Metric {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metric_display_all_variants() {
+        // Variants that use self.name()
+        assert_eq!(Metric::Accuracy.to_string(), "Accuracy");
+        assert_eq!(Metric::R2.to_string(), "R²");
+        assert_eq!(Metric::MSE.to_string(), "MSE");
+        assert_eq!(Metric::MAE.to_string(), "MAE");
+        assert_eq!(Metric::RMSE.to_string(), "RMSE");
+        assert_eq!(Metric::Silhouette.to_string(), "Silhouette");
+        assert_eq!(Metric::Inertia.to_string(), "Inertia");
+        assert_eq!(Metric::WER.to_string(), "WER");
+        assert_eq!(Metric::RTFx.to_string(), "RTFx");
+        assert_eq!(Metric::BLEU.to_string(), "BLEU");
+        assert_eq!(Metric::Perplexity.to_string(), "Perplexity");
+        assert_eq!(Metric::MMLUAccuracy.to_string(), "MMLU");
+
+        // Variants with custom formatting
+        assert_eq!(
+            Metric::Precision(Average::Macro).to_string(),
+            "Precision(Macro)"
+        );
+        assert_eq!(
+            Metric::Recall(Average::Micro).to_string(),
+            "Recall(Micro)"
+        );
+        assert_eq!(
+            Metric::F1(Average::Weighted).to_string(),
+            "F1(Weighted)"
+        );
+        assert_eq!(
+            Metric::ROUGE(RougeVariant::Rouge1).to_string(),
+            "ROUGE-1"
+        );
+        assert_eq!(Metric::PassAtK(5).to_string(), "pass@5");
+        assert_eq!(Metric::NDCGAtK(10).to_string(), "NDCG@10");
+    }
+
+    #[test]
+    fn test_metric_higher_is_better() {
+        assert!(Metric::Accuracy.higher_is_better());
+        assert!(!Metric::MSE.higher_is_better());
+        assert!(!Metric::MAE.higher_is_better());
+        assert!(!Metric::RMSE.higher_is_better());
+        assert!(!Metric::Inertia.higher_is_better());
+        assert!(!Metric::WER.higher_is_better());
+        assert!(!Metric::Perplexity.higher_is_better());
+        assert!(Metric::BLEU.higher_is_better());
+        assert!(Metric::R2.higher_is_better());
+    }
+
+    #[test]
+    fn test_metric_name_all_variants() {
+        assert_eq!(Metric::Accuracy.name(), "Accuracy");
+        assert_eq!(Metric::Precision(Average::Macro).name(), "Precision");
+        assert_eq!(Metric::Recall(Average::Micro).name(), "Recall");
+        assert_eq!(Metric::F1(Average::Weighted).name(), "F1");
+        assert_eq!(Metric::R2.name(), "R²");
+        assert_eq!(Metric::MSE.name(), "MSE");
+        assert_eq!(Metric::MAE.name(), "MAE");
+        assert_eq!(Metric::RMSE.name(), "RMSE");
+        assert_eq!(Metric::Silhouette.name(), "Silhouette");
+        assert_eq!(Metric::Inertia.name(), "Inertia");
+        assert_eq!(Metric::WER.name(), "WER");
+        assert_eq!(Metric::RTFx.name(), "RTFx");
+        assert_eq!(Metric::BLEU.name(), "BLEU");
+        assert_eq!(Metric::ROUGE(RougeVariant::RougeL).name(), "ROUGE");
+        assert_eq!(Metric::Perplexity.name(), "Perplexity");
+        assert_eq!(Metric::MMLUAccuracy.name(), "MMLU");
+        assert_eq!(Metric::PassAtK(1).name(), "pass@k");
+        assert_eq!(Metric::NDCGAtK(5).name(), "NDCG@k");
+    }
+
+    #[test]
+    fn test_rouge_variant_display() {
+        assert_eq!(RougeVariant::Rouge1.to_string(), "ROUGE-1");
+        assert_eq!(RougeVariant::Rouge2.to_string(), "ROUGE-2");
+        assert_eq!(RougeVariant::RougeL.to_string(), "ROUGE-L");
+    }
+}

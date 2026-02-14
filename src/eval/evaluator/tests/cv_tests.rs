@@ -236,11 +236,30 @@ fn test_evaluate_cv_single_fold_zero_std() {
 
 #[test]
 fn test_evaluate_classification_skips_non_classification_metrics() {
+    use crate::eval::evaluator::metric::RougeVariant;
+
     let config = EvalConfig {
         metrics: vec![
+            // Classification (should compute)
             Metric::Accuracy,
-            Metric::R2,  // Regression metric, should be skipped
-            Metric::MSE, // Regression metric, should be skipped
+            Metric::Precision(Average::Macro),
+            Metric::Recall(Average::Micro),
+            Metric::F1(Average::Weighted),
+            // Non-classification (all should be skipped via continue)
+            Metric::R2,
+            Metric::MSE,
+            Metric::MAE,
+            Metric::RMSE,
+            Metric::Silhouette,
+            Metric::Inertia,
+            Metric::WER,
+            Metric::RTFx,
+            Metric::BLEU,
+            Metric::ROUGE(RougeVariant::Rouge1),
+            Metric::Perplexity,
+            Metric::MMLUAccuracy,
+            Metric::PassAtK(5),
+            Metric::NDCGAtK(10),
         ],
         ..Default::default()
     };
@@ -253,8 +272,68 @@ fn test_evaluate_classification_skips_non_classification_metrics() {
         .evaluate_classification("Test", &y_pred, &y_true)
         .unwrap();
 
-    // Should only have Accuracy, R2 and MSE should be skipped
+    // Classification metrics should be present
     assert!(result.get_score(Metric::Accuracy).is_some());
+    assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
+    assert!(result.get_score(Metric::Recall(Average::Micro)).is_some());
+    assert!(result.get_score(Metric::F1(Average::Weighted)).is_some());
+    // All non-classification metrics should be skipped
     assert!(result.get_score(Metric::R2).is_none());
     assert!(result.get_score(Metric::MSE).is_none());
+    assert!(result.get_score(Metric::MAE).is_none());
+    assert!(result.get_score(Metric::RMSE).is_none());
+    assert!(result.get_score(Metric::Silhouette).is_none());
+    assert!(result.get_score(Metric::Inertia).is_none());
+    assert!(result.get_score(Metric::WER).is_none());
+    assert!(result.get_score(Metric::RTFx).is_none());
+    assert!(result.get_score(Metric::BLEU).is_none());
+    assert!(result.get_score(Metric::ROUGE(RougeVariant::Rouge1)).is_none());
+    assert!(result.get_score(Metric::Perplexity).is_none());
+    assert!(result.get_score(Metric::MMLUAccuracy).is_none());
+    assert!(result.get_score(Metric::PassAtK(5)).is_none());
+    assert!(result.get_score(Metric::NDCGAtK(10)).is_none());
+}
+
+#[test]
+fn test_cv_non_classification_metric_falls_back_to_accuracy() {
+    use crate::eval::evaluator::metric::RougeVariant;
+
+    // Using non-classification metrics as primary in CV should fall back to accuracy
+    for metric in [
+        Metric::R2,
+        Metric::MSE,
+        Metric::MAE,
+        Metric::RMSE,
+        Metric::Silhouette,
+        Metric::Inertia,
+        Metric::WER,
+        Metric::RTFx,
+        Metric::BLEU,
+        Metric::ROUGE(RougeVariant::RougeL),
+        Metric::Perplexity,
+        Metric::MMLUAccuracy,
+        Metric::PassAtK(1),
+        Metric::NDCGAtK(5),
+    ] {
+        let config = EvalConfig {
+            metrics: vec![metric],
+            cv_folds: 2,
+            seed: 42,
+            ..Default::default()
+        };
+
+        let evaluator = ModelEvaluator::new(config);
+        let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
+
+        let result = evaluator
+            .evaluate_cv("FallbackTest", &y_true, |_train_idx, test_idx| {
+                test_idx.iter().map(|&i| y_true[i]).collect()
+            })
+            .unwrap();
+
+        assert!(
+            result.cv_mean.is_some(),
+            "CV should succeed with metric {metric:?} falling back to accuracy"
+        );
+    }
 }
