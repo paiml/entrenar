@@ -818,22 +818,6 @@ roadmap:
   - hf-pipeline
   - publish
   notes: null
-- id: ENT-GGUF-EXPORT
-  github_issue: null
-  item_type: task
-  title: 'New task: ENT-GGUF-EXPORT'
-  status: inprogress
-  priority: medium
-  assigned_to: null
-  created: 2026-02-14T16:31:41.228873161+00:00
-  updated: 2026-02-14T16:31:41.228873161+00:00
-  spec: null
-  acceptance_criteria: []
-  phases: []
-  subtasks: []
-  estimated_effort: null
-  labels: []
-  notes: null
 - id: PMAT-168
   github_issue: null
   item_type: task
@@ -999,6 +983,23 @@ roadmap:
   spec: null
   acceptance_criteria:
   - Split 5 large files (>800 lines) into directory modules for PMAT file health compliance. All decomposed and pushed.
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-178
+  github_issue: null
+  item_type: task
+  title: 'ENT-GGUF-EXPORT: GGUF export pipeline complete'
+  status: inprogress
+  priority: high
+  assigned_to: null
+  created: 2026-02-14T21:55:55Z
+  updated: 2026-02-14T21:56:01.978713065+00:00
+  spec: null
+  acceptance_criteria:
+  - All 170 export tests pass, 16 falsifiable claims verified. Quantize + export to GGUF v3 via aprender delegation.
   phases: []
   subtasks: []
   estimated_effort: null
