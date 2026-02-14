@@ -10,6 +10,7 @@
 	property-test property-test-fast \
 	examples examples-fast examples-list \
 	server server-dev \
+	validate-book \
 	llama-tests llama-properties llama-mutations llama-chaos llama-gradients llama-fuzz llama-examples llama-ci \
 	profile-llama profile-llama-otlp profile-llama-anomaly \
 	wasm-build wasm-install wasm-serve wasm-e2e wasm-e2e-ui wasm-e2e-headed wasm-e2e-update wasm-clean
@@ -437,6 +438,17 @@ deny-check: ## Check dependencies for security/license issues
 pre-commit: tier1 ## Run pre-commit checks (format, lint, fast tests, PMAT TDG)
 	@echo "🎯 Running pre-commit checks..."
 	@echo "✅ All pre-commit checks passed!"
+
+# =============================================================================
+# Documentation Validation
+# =============================================================================
+
+validate-book: ## Validate docs/book markdown files exist and are non-empty
+	@echo "📖 Validating pmat-book..."
+	@for f in docs/book/*.md; do \
+		test -s "$$f" || { echo "❌ Empty or missing: $$f"; exit 1; }; \
+	done
+	@echo "✅ Book validation passed ($(words $(wildcard docs/book/*.md)) files)"
 
 # =============================================================================
 # CI/CD Simulation (full quality gates)
