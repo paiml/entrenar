@@ -228,12 +228,17 @@ impl<'a> Pipeline<'a> {
         };
 
         // Save SafeTensors checkpoint with distillation metadata sidecar
-        let output_path =
-            save_student_checkpoint(weights, shapes, &checkpoint, &self.config.output.dir, filename)
-                .map_err(|e| EntrenarError::Io {
-                    context: "saving student checkpoint".to_string(),
-                    source: e,
-                })?;
+        let output_path = save_student_checkpoint(
+            weights,
+            shapes,
+            &checkpoint,
+            &self.config.output.dir,
+            filename,
+        )
+        .map_err(|e| EntrenarError::Io {
+            context: "saving student checkpoint".to_string(),
+            source: e,
+        })?;
 
         // For GGUF format with hub feature, also export via Exporter
         #[cfg(feature = "hub")]
@@ -243,11 +248,7 @@ impl<'a> Pipeline<'a> {
                 .output_dir(&self.config.output.dir)
                 .gguf_quantization(entrenar::hf_pipeline::GgufQuantization::Q8_0);
             exporter
-                .export(
-                    &mw,
-                    entrenar::hf_pipeline::ExportFormat::GGUF,
-                    filename,
-                )
+                .export(&mw, entrenar::hf_pipeline::ExportFormat::GGUF, filename)
                 .map_err(|e| EntrenarError::Internal {
                     message: format!("GGUF export failed: {e}"),
                 })?;
@@ -293,10 +294,7 @@ fn resolve_model_path(model_id: &str) -> Result<PathBuf> {
         })?;
 
         let artifact = fetcher
-            .download_model(
-                model_id,
-                entrenar::hf_pipeline::FetchOptions::default(),
-            )
+            .download_model(model_id, entrenar::hf_pipeline::FetchOptions::default())
             .map_err(|e| EntrenarError::HuggingFace {
                 message: format!("failed to download '{model_id}': {e}"),
             })?;
@@ -476,8 +474,7 @@ mod tests {
 
     #[test]
     fn test_apply_gradient_step_converges() {
-        let teacher: HashMap<String, Vec<f32>> =
-            [("w".to_string(), vec![1.0, 2.0, 3.0])].into();
+        let teacher: HashMap<String, Vec<f32>> = [("w".to_string(), vec![1.0, 2.0, 3.0])].into();
         let mut student: HashMap<String, Vec<f32>> =
             [("w".to_string(), vec![0.0, 0.0, 0.0])].into();
 

@@ -356,14 +356,10 @@ fn export_gguf(
             }
         };
 
-        let mw = entrenar_distill::weights::weights_to_model_weights(
-            weights.clone(),
-            shapes.clone(),
-        );
+        let mw =
+            entrenar_distill::weights::weights_to_model_weights(weights.clone(), shapes.clone());
 
-        let output_dir = output
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."));
+        let output_dir = output.parent().unwrap_or_else(|| std::path::Path::new("."));
         let filename = output
             .file_name()
             .unwrap_or_else(|| std::ffi::OsStr::new("model.gguf"));
