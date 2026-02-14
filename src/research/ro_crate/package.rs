@@ -208,7 +208,9 @@ pub fn guess_mime_type(path: &str) -> &'static str {
         "parquet" => "application/vnd.apache.parquet",
         "safetensors" => "application/octet-stream",
         other => {
-            eprintln!("Warning: unknown file extension '{other}', defaulting to application/octet-stream");
+            eprintln!(
+                "Warning: unknown file extension '{other}', defaulting to application/octet-stream"
+            );
             "application/octet-stream"
         }
     }

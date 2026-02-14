@@ -274,7 +274,9 @@ fn test_evaluate_classification_skips_non_classification_metrics() {
 
     // Classification metrics should be present
     assert!(result.get_score(Metric::Accuracy).is_some());
-    assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
+    assert!(result
+        .get_score(Metric::Precision(Average::Macro))
+        .is_some());
     assert!(result.get_score(Metric::Recall(Average::Micro)).is_some());
     assert!(result.get_score(Metric::F1(Average::Weighted)).is_some());
     // All non-classification metrics should be skipped
@@ -287,7 +289,9 @@ fn test_evaluate_classification_skips_non_classification_metrics() {
     assert!(result.get_score(Metric::WER).is_none());
     assert!(result.get_score(Metric::RTFx).is_none());
     assert!(result.get_score(Metric::BLEU).is_none());
-    assert!(result.get_score(Metric::ROUGE(RougeVariant::Rouge1)).is_none());
+    assert!(result
+        .get_score(Metric::ROUGE(RougeVariant::Rouge1))
+        .is_none());
     assert!(result.get_score(Metric::Perplexity).is_none());
     assert!(result.get_score(Metric::MMLUAccuracy).is_none());
     assert!(result.get_score(Metric::PassAtK(5)).is_none());

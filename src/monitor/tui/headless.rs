@@ -451,9 +451,9 @@ mod tests {
             let _is_terminal = match status {
                 TrainingStatus::Completed => true,
                 TrainingStatus::Failed(_) => true,
-                TrainingStatus::Initializing
-                | TrainingStatus::Running
-                | TrainingStatus::Paused => false,
+                TrainingStatus::Initializing | TrainingStatus::Running | TrainingStatus::Paused => {
+                    false
+                }
             };
 
             assert!(!label.is_empty());

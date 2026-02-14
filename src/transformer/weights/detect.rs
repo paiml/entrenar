@@ -1,7 +1,7 @@
 //! Architecture detection and SafeTensors file discovery
 
-use crate::error::Result;
 use super::Architecture;
+use crate::error::Result;
 
 /// Find SafeTensors files in a directory or return single file
 pub(crate) fn find_safetensors_files(path: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {

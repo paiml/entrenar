@@ -343,8 +343,7 @@ fn test_load_safetensors_real_file() {
     let view = TensorView::new(Dtype::F32, vec![2, 2], &embed_bytes).unwrap();
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
@@ -373,8 +372,7 @@ fn test_load_safetensors_with_f16() {
     let view = TensorView::new(Dtype::F16, vec![2, 2], &fp16_bytes).unwrap();
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
@@ -401,8 +399,7 @@ fn test_load_safetensors_with_bf16() {
     let view = TensorView::new(Dtype::BF16, vec![2, 2], &bf16_bytes).unwrap();
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
@@ -424,8 +421,7 @@ fn test_load_safetensors_with_i32() {
     let view = TensorView::new(Dtype::I32, vec![2, 2], &i32_bytes).unwrap();
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
@@ -444,8 +440,7 @@ fn test_load_safetensors_empty_tensor() {
     let view = TensorView::new(Dtype::F32, vec![0], &empty_bytes).unwrap();
     let data = vec![("empty_tensor", &view)];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
@@ -475,8 +470,7 @@ fn test_detect_architecture_qwen2() {
         ("model.layers.0.self_attn.k_proj.bias", &view2),
     ];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     let result = load_safetensors_weights(&file_path, Architecture::Auto);
@@ -500,8 +494,7 @@ fn test_detect_architecture_llama() {
     let view = TensorView::new(Dtype::F32, vec![2, 2], &weight_bytes).unwrap();
     let data = vec![("model.layers.0.self_attn.q_proj.weight", &view)];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     let result = load_safetensors_weights(&file_path, Architecture::Auto);
@@ -521,8 +514,7 @@ fn test_load_safetensors_with_unsupported_dtype() {
     let view = TensorView::new(Dtype::U8, vec![4], &u8_bytes).unwrap();
     let data = vec![("unsupported_tensor", &view)];
 
-    let serialized =
-        serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
     std::fs::write(&file_path, serialized).unwrap();
 
     // Should succeed but skip the unsupported tensor

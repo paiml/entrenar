@@ -176,9 +176,7 @@ impl TuiMonitor {
             TrainingStatus::Failed(msg) => {
                 writeln!(stdout, "║  Status:    FAILED - {msg}                    ║")?;
             }
-            TrainingStatus::Initializing
-            | TrainingStatus::Running
-            | TrainingStatus::Paused => {}
+            TrainingStatus::Initializing | TrainingStatus::Running | TrainingStatus::Paused => {}
         }
 
         writeln!(
@@ -247,9 +245,9 @@ mod tests {
             let description = match status {
                 TrainingStatus::Completed => "Completed Successfully".to_string(),
                 TrainingStatus::Failed(msg) => format!("FAILED - {msg}"),
-                TrainingStatus::Initializing
-                | TrainingStatus::Running
-                | TrainingStatus::Paused => "In progress".to_string(),
+                TrainingStatus::Initializing | TrainingStatus::Running | TrainingStatus::Paused => {
+                    "In progress".to_string()
+                }
             };
             assert!(!description.is_empty());
         }

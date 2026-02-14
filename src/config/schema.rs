@@ -124,7 +124,10 @@ pub struct DataConfig {
     pub batch_size: usize,
 
     /// Auto-infer feature types from data
-    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
+    #[serde(
+        default = "default_true",
+        deserialize_with = "deserialize_bool_lenient"
+    )]
     pub auto_infer_types: bool,
 
     /// Sequence length (for transformers)
@@ -207,11 +210,17 @@ pub struct QuantSpec {
     pub bits: u8,
 
     /// Symmetric quantization
-    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
+    #[serde(
+        default = "default_true",
+        deserialize_with = "deserialize_bool_lenient"
+    )]
     pub symmetric: bool,
 
     /// Per-channel quantization
-    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
+    #[serde(
+        default = "default_true",
+        deserialize_with = "deserialize_bool_lenient"
+    )]
     pub per_channel: bool,
 }
 

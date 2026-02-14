@@ -345,7 +345,9 @@ mod tests {
         let result = evaluator
             .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
             .unwrap();
-        assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
+        assert!(result
+            .get_score(Metric::Precision(Average::Macro))
+            .is_some());
     }
 
     #[test]
@@ -420,7 +422,9 @@ mod tests {
         assert!(result.get_score(Metric::Accuracy).is_some());
         assert!(result.get_score(Metric::R2).is_none());
         assert!(result.get_score(Metric::MSE).is_none());
-        assert!(result.get_score(Metric::ROUGE(RougeVariant::RougeL)).is_none());
+        assert!(result
+            .get_score(Metric::ROUGE(RougeVariant::RougeL))
+            .is_none());
         assert!(result.get_score(Metric::PassAtK(5)).is_none());
         assert!(result.get_score(Metric::NDCGAtK(10)).is_none());
     }

@@ -18,6 +18,7 @@ use crate::tokenizer::HfTokenizer;
 use crate::trace::TRACER;
 use crate::train::{LMBatch, TransformerTrainConfig, TransformerTrainer};
 use crate::transformer::{load_safetensors_weights, Architecture, Transformer, TransformerConfig};
+use crate::yaml_mode;
 use std::fs;
 use std::path::Path;
 
@@ -39,23 +40,9 @@ use std::path::Path;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
-    // Step 1: Load YAML file
-    let yaml_content = fs::read_to_string(config_path.as_ref()).map_err(|e| {
-        Error::ConfigError(format!(
-            "Failed to read config file {}: {}",
-            config_path.as_ref().display(),
-            e
-        ))
-    })?;
+    let spec = load_config(config_path)?;
 
-    // Step 2: Parse YAML
-    let spec: TrainSpec = serde_yaml::from_str(&yaml_content)
-        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {e}")))?;
-
-    // Step 3: Validate configuration
-    validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {e}")))?;
-
-    // Step 4: Dispatch based on model mode
+    // Dispatch based on model mode
     match spec.model.mode {
         ModelMode::Transformer => train_transformer_from_spec(&spec),
         ModelMode::Tabular => train_tabular_from_spec(&spec),
@@ -369,14 +356,16 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
                 return Ok(TransformerConfig {
                     hidden_size: hf_config["hidden_size"]
                         .as_u64()
-                        .unwrap_or(QWEN_HIDDEN_SIZE as u64) as usize,
+                        .unwrap_or(QWEN_HIDDEN_SIZE as u64)
+                        as usize,
                     num_attention_heads: hf_config["num_attention_heads"]
                         .as_u64()
                         .unwrap_or(QWEN_NUM_ATTENTION_HEADS as u64)
                         as usize,
                     num_kv_heads: hf_config["num_key_value_heads"]
                         .as_u64()
-                        .unwrap_or(QWEN_NUM_KV_HEADS as u64) as usize,
+                        .unwrap_or(QWEN_NUM_KV_HEADS as u64)
+                        as usize,
                     intermediate_size: hf_config["intermediate_size"]
                         .as_u64()
                         .unwrap_or(QWEN_INTERMEDIATE_SIZE as u64)
@@ -393,9 +382,7 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
                         .unwrap_or(QWEN_MAX_POSITION_EMBEDDINGS as u64)
                         as usize,
                     rms_norm_eps: hf_config["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32,
-                    rope_theta: hf_config["rope_theta"]
-                        .as_f64()
-                        .unwrap_or(QWEN_ROPE_THETA) as f32,
+                    rope_theta: hf_config["rope_theta"].as_f64().unwrap_or(QWEN_ROPE_THETA) as f32,
                     use_bias: hf_config["attention_bias"].as_bool().unwrap_or(false),
                 });
             }
@@ -428,45 +415,54 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
 fn load_lm_batches(spec: &TrainSpec) -> Result<Vec<LMBatch>> {
     let batch_size = spec.data.batch_size;
     let seq_len = spec.data.seq_len.unwrap_or(512);
-
-    // Try to load tokenizer if specified
     let tokenizer = load_tokenizer(spec)?;
 
-    // Check if training data file exists
-    if spec.data.train.exists() {
-        if let Some(ext) = spec.data.train.extension() {
-            if ext == "json" || ext == "jsonl" {
-                if let Ok(content) = std::fs::read_to_string(&spec.data.train) {
-                    // Try to load data from JSON
-                    return load_lm_batches_from_json(
-                        &content,
-                        tokenizer.as_ref(),
-                        batch_size,
-                        seq_len,
-                        spec.data.input_column.as_deref(),
-                    );
-                }
-            } else if ext == "parquet" {
-                // For parquet, we need to extract text column and tokenize
-                if let Some(ref tokenizer) = tokenizer {
-                    return load_lm_batches_from_parquet(
-                        &spec.data.train,
-                        tokenizer,
-                        batch_size,
-                        seq_len,
-                        spec.data.input_column.as_deref().unwrap_or("text"),
-                    );
-                }
-            }
-        }
+    if let Some(result) = try_load_lm_from_file(spec, tokenizer.as_ref(), batch_size, seq_len) {
+        return result;
     }
 
-    // Fallback: Create demo batches for testing
     eprintln!(
         "Warning: Training data not found at '{}', using demo LM batches",
         spec.data.train.display()
     );
     create_demo_lm_batches(batch_size, seq_len)
+}
+
+/// Attempt to load LM batches from the training data file
+fn try_load_lm_from_file(
+    spec: &TrainSpec,
+    tokenizer: Option<&HfTokenizer>,
+    batch_size: usize,
+    seq_len: usize,
+) -> Option<Result<Vec<LMBatch>>> {
+    if !spec.data.train.exists() {
+        return None;
+    }
+    let ext = spec.data.train.extension()?;
+
+    if ext == "json" || ext == "jsonl" {
+        let content = std::fs::read_to_string(&spec.data.train).ok()?;
+        return Some(load_lm_batches_from_json(
+            &content,
+            tokenizer,
+            batch_size,
+            seq_len,
+            spec.data.input_column.as_deref(),
+        ));
+    }
+
+    if ext == "parquet" {
+        let tokenizer = tokenizer?;
+        return Some(load_lm_batches_from_parquet(
+            &spec.data.train,
+            tokenizer,
+            batch_size,
+            seq_len,
+            spec.data.input_column.as_deref().unwrap_or("text"),
+        ));
+    }
+
+    None
 }
 
 /// Load HfTokenizer from spec if tokenizer path is specified
@@ -490,6 +486,86 @@ fn load_tokenizer(spec: &TrainSpec) -> Result<Option<HfTokenizer>> {
     Ok(Some(HfTokenizer::qwen2()))
 }
 
+/// Extract text strings from a JSON array using the given column names
+fn extract_texts_from_array(array: &[serde_json::Value], text_col: &str) -> Vec<String> {
+    array
+        .iter()
+        .filter_map(|e| {
+            e.get(text_col)
+                .or_else(|| e.get("content"))
+                .and_then(|v| v.as_str())
+                .map(String::from)
+        })
+        .collect()
+}
+
+/// Try loading from a JSON array (either pre-tokenized or text)
+fn try_load_from_array(
+    array: &[serde_json::Value],
+    tokenizer: Option<&HfTokenizer>,
+    batch_size: usize,
+    seq_len: usize,
+    text_col: &str,
+    label: &str,
+) -> Option<Result<Vec<LMBatch>>> {
+    // Check for pre-tokenized
+    if array.first().and_then(|e| e.get("input_ids")).is_some() {
+        return Some(load_pretokenized_json(array, batch_size, seq_len));
+    }
+
+    // Extract text and tokenize
+    let tokenizer = tokenizer?;
+    let texts = extract_texts_from_array(array, text_col);
+    if texts.is_empty() {
+        return None;
+    }
+
+    println!(
+        "  Loaded {} text examples from {label}, tokenizing...",
+        texts.len()
+    );
+    Some(tokenize_texts_to_batches(
+        &texts, tokenizer, batch_size, seq_len,
+    ))
+}
+
+/// Try loading from JSONL (newline-delimited JSON)
+fn try_load_from_jsonl(
+    content: &str,
+    tokenizer: Option<&HfTokenizer>,
+    batch_size: usize,
+    seq_len: usize,
+    text_col: &str,
+) -> Option<Result<Vec<LMBatch>>> {
+    let tokenizer = tokenizer?;
+    let texts: Vec<String> = content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .and_then(|obj| {
+                    obj.get(text_col)
+                        .or_else(|| obj.get("content"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                })
+        })
+        .collect();
+
+    if texts.is_empty() {
+        return None;
+    }
+
+    println!(
+        "  Loaded {} text examples from JSONL, tokenizing...",
+        texts.len()
+    );
+    Some(tokenize_texts_to_batches(
+        &texts, tokenizer, batch_size, seq_len,
+    ))
+}
+
 /// Load LM batches from JSON content
 ///
 /// Supports formats:
@@ -503,96 +579,37 @@ fn load_lm_batches_from_json(
     seq_len: usize,
     input_column: Option<&str>,
 ) -> Result<Vec<LMBatch>> {
-    // Determine the text column name
     let text_col = input_column.unwrap_or("text");
 
     // Try parsing as single JSON object or array
     if let Ok(data) = serde_json::from_str::<serde_json::Value>(content) {
-        // Check for pre-tokenized format first
+        // Try {"examples": [...]} format
         if let Some(examples) = data.get("examples").and_then(|e| e.as_array()) {
-            // Check if first example has input_ids (pre-tokenized)
-            if examples.first().and_then(|e| e.get("input_ids")).is_some() {
-                return load_pretokenized_json(examples, batch_size, seq_len);
-            }
-
-            // Otherwise, extract text and tokenize
-            if let Some(tokenizer) = tokenizer {
-                let texts: Vec<String> = examples
-                    .iter()
-                    .filter_map(|e| {
-                        e.get(text_col)
-                            .or_else(|| e.get("content"))
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    })
-                    .collect();
-
-                if !texts.is_empty() {
-                    println!(
-                        "  Loaded {} text examples from JSON, tokenizing...",
-                        texts.len()
-                    );
-                    return tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len);
-                }
+            if let Some(result) =
+                try_load_from_array(examples, tokenizer, batch_size, seq_len, text_col, "JSON")
+            {
+                return result;
             }
         }
 
-        // Try as array of objects
+        // Try top-level array format
         if let Some(array) = data.as_array() {
-            // Check for pre-tokenized
-            if array.first().and_then(|e| e.get("input_ids")).is_some() {
-                return load_pretokenized_json(array, batch_size, seq_len);
-            }
-
-            // Extract text and tokenize
-            if let Some(tokenizer) = tokenizer {
-                let texts: Vec<String> = array
-                    .iter()
-                    .filter_map(|e| {
-                        e.get(text_col)
-                            .or_else(|| e.get("content"))
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    })
-                    .collect();
-
-                if !texts.is_empty() {
-                    println!(
-                        "  Loaded {} text examples from JSON array, tokenizing...",
-                        texts.len()
-                    );
-                    return tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len);
-                }
+            if let Some(result) = try_load_from_array(
+                array,
+                tokenizer,
+                batch_size,
+                seq_len,
+                text_col,
+                "JSON array",
+            ) {
+                return result;
             }
         }
     }
 
-    // Try parsing as JSONL (newline-delimited JSON)
-    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
-    if !lines.is_empty() {
-        if let Some(tokenizer) = tokenizer {
-            let texts: Vec<String> = lines
-                .iter()
-                .filter_map(|line| {
-                    serde_json::from_str::<serde_json::Value>(line)
-                        .ok()
-                        .and_then(|obj| {
-                            obj.get(text_col)
-                                .or_else(|| obj.get("content"))
-                                .and_then(|v| v.as_str())
-                                .map(String::from)
-                        })
-                })
-                .collect();
-
-            if !texts.is_empty() {
-                println!(
-                    "  Loaded {} text examples from JSONL, tokenizing...",
-                    texts.len()
-                );
-                return tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len);
-            }
-        }
+    // Try JSONL format
+    if let Some(result) = try_load_from_jsonl(content, tokenizer, batch_size, seq_len, text_col) {
+        return result;
     }
 
     // Fallback to demo batches
@@ -723,9 +740,21 @@ fn create_demo_lm_batches(batch_size: usize, seq_len: usize) -> Result<Vec<LMBat
     Ok(batches)
 }
 
+/// Detect whether YAML content is in the new manifest format.
+///
+/// Returns true if the content contains an `entrenar:` key at the start of a line,
+/// which is the discriminating field in the manifest schema.
+fn is_manifest_format(yaml: &str) -> bool {
+    yaml.lines()
+        .any(|line| line.starts_with("entrenar:") || line.starts_with("entrenar :"))
+}
+
 /// Load training spec from YAML file (without running training)
 ///
-/// Useful for testing config parsing and validation separately from training.
+/// Auto-detects format:
+/// - If the YAML contains `entrenar:`, it's parsed as a `TrainingManifest` and
+///   converted to `TrainSpec` via the bridge converter.
+/// - Otherwise, it's parsed directly as `TrainSpec` (legacy format).
 pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<TrainSpec> {
     let yaml_content = fs::read_to_string(config_path.as_ref()).map_err(|e| {
         Error::ConfigError(format!(
@@ -735,12 +764,34 @@ pub fn load_config<P: AsRef<Path>>(config_path: P) -> Result<TrainSpec> {
         ))
     })?;
 
-    let spec: TrainSpec = serde_yaml::from_str(&yaml_content)
-        .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {e}")))?;
+    if is_manifest_format(&yaml_content) {
+        // New declarative manifest format
+        let manifest: yaml_mode::TrainingManifest = serde_yaml::from_str(&yaml_content)
+            .map_err(|e| Error::ConfigError(format!("Failed to parse manifest YAML: {e}")))?;
 
-    validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {e}")))?;
+        yaml_mode::validate_manifest(&manifest)
+            .map_err(|e| Error::ConfigError(format!("Invalid manifest: {e}")))?;
 
-    Ok(spec)
+        let bridge_result = yaml_mode::manifest_to_spec(&manifest)
+            .map_err(|e| Error::ConfigError(format!("Manifest conversion failed: {e}")))?;
+
+        for warning in &bridge_result.warnings {
+            eprintln!("Warning: {warning}");
+        }
+
+        validate_config(&bridge_result.spec)
+            .map_err(|e| Error::ConfigError(format!("Invalid config after conversion: {e}")))?;
+
+        Ok(bridge_result.spec)
+    } else {
+        // Legacy TrainSpec format
+        let spec: TrainSpec = serde_yaml::from_str(&yaml_content)
+            .map_err(|e| Error::ConfigError(format!("Failed to parse YAML config: {e}")))?;
+
+        validate_config(&spec).map_err(|e| Error::ConfigError(format!("Invalid config: {e}")))?;
+
+        Ok(spec)
+    }
 }
 
 #[cfg(test)]
@@ -934,5 +985,107 @@ mod tests {
         let batches = tokenize_texts_to_batches(&texts, &tokenizer, 2, 64).unwrap();
         // May fall back to demo batches if single token is filtered
         assert!(!batches.is_empty());
+    }
+
+    // =========================================================================
+    // Format auto-detection tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_manifest_format_detects_entrenar_key() {
+        assert!(is_manifest_format("entrenar: \"1.0\"\nname: test\n"));
+        assert!(is_manifest_format("# comment\nentrenar: \"1.0\"\n"));
+        assert!(is_manifest_format("entrenar : \"1.0\"\n"));
+    }
+
+    #[test]
+    fn test_is_manifest_format_rejects_legacy() {
+        let legacy = r"
+model:
+  path: model.gguf
+data:
+  train: train.parquet
+  batch_size: 8
+optimizer:
+  name: adam
+  lr: 0.001
+";
+        assert!(!is_manifest_format(legacy));
+    }
+
+    #[test]
+    fn test_load_config_manifest_format() {
+        use std::io::Write;
+        let manifest_yaml = r#"
+entrenar: "1.0"
+name: "test-bridge"
+version: "1.0.0"
+
+model:
+  source: "./models/test.safetensors"
+
+data:
+  source: "./data/train.parquet"
+  loader:
+    batch_size: 16
+    shuffle: true
+
+optimizer:
+  name: adam
+  lr: 0.0001
+
+training:
+  epochs: 5
+"#;
+        let dir = std::env::temp_dir().join("entrenar_bridge_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("manifest_test.yaml");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(manifest_yaml.as_bytes()).unwrap();
+
+        let spec = load_config(&path).unwrap();
+        assert_eq!(
+            spec.model.path,
+            std::path::PathBuf::from("./models/test.safetensors")
+        );
+        assert_eq!(
+            spec.data.train,
+            std::path::PathBuf::from("./data/train.parquet")
+        );
+        assert_eq!(spec.data.batch_size, 16);
+        assert_eq!(spec.optimizer.name, "adam");
+        assert!((spec.optimizer.lr - 0.0001).abs() < 1e-6);
+        assert_eq!(spec.training.epochs, 5);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_load_config_legacy_format() {
+        use std::io::Write;
+        let legacy_yaml = r#"
+model:
+  path: model.gguf
+  layers: []
+
+data:
+  train: train.parquet
+  batch_size: 8
+
+optimizer:
+  name: adam
+  lr: 0.001
+"#;
+        let dir = std::env::temp_dir().join("entrenar_bridge_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("legacy_test.yaml");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(legacy_yaml.as_bytes()).unwrap();
+
+        let spec = load_config(&path).unwrap();
+        assert_eq!(spec.optimizer.name, "adam");
+        assert_eq!(spec.data.batch_size, 8);
+
+        std::fs::remove_file(&path).ok();
     }
 }

@@ -197,10 +197,21 @@ fn test_invalid_lr_scheduler() {
 
 #[test]
 fn test_valid_lr_schedulers() {
-    for scheduler in ["cosine", "linear", "constant"] {
+    for scheduler in [
+        "cosine",
+        "linear",
+        "constant",
+        "step",
+        "exponential",
+        "one_cycle",
+        "plateau",
+    ] {
         let mut spec = create_valid_spec();
         spec.training.lr_scheduler = Some(scheduler.to_string());
-        assert!(validate_config(&spec).is_ok());
+        assert!(
+            validate_config(&spec).is_ok(),
+            "scheduler '{scheduler}' should be valid"
+        );
     }
 }
 
@@ -218,10 +229,13 @@ fn test_invalid_save_interval() {
 
 #[test]
 fn test_valid_optimizers() {
-    for opt in ["adam", "adamw", "sgd"] {
+    for opt in ["adam", "adamw", "sgd", "rmsprop", "adagrad", "lamb"] {
         let mut spec = create_valid_spec();
         spec.optimizer.name = opt.to_string();
-        assert!(validate_config(&spec).is_ok());
+        assert!(
+            validate_config(&spec).is_ok(),
+            "optimizer '{opt}' should be valid"
+        );
     }
 }
 

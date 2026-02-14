@@ -656,11 +656,25 @@ mod tests {
             TrainingStatus::Initializing,
         ] {
             match status {
-                TrainingStatus::Running => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::SUCCESS),
-                TrainingStatus::Completed => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::PRIMARY),
-                TrainingStatus::Paused => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::WARNING),
-                TrainingStatus::Failed(_) => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::ERROR),
-                TrainingStatus::Initializing => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::INFO),
+                TrainingStatus::Running => assert_eq!(
+                    TrainingPalette::status_color(status),
+                    TrainingPalette::SUCCESS
+                ),
+                TrainingStatus::Completed => assert_eq!(
+                    TrainingPalette::status_color(status),
+                    TrainingPalette::PRIMARY
+                ),
+                TrainingStatus::Paused => assert_eq!(
+                    TrainingPalette::status_color(status),
+                    TrainingPalette::WARNING
+                ),
+                TrainingStatus::Failed(_) => assert_eq!(
+                    TrainingPalette::status_color(status),
+                    TrainingPalette::ERROR
+                ),
+                TrainingStatus::Initializing => {
+                    assert_eq!(TrainingPalette::status_color(status), TrainingPalette::INFO)
+                }
             }
         }
     }
