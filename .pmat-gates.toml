@@ -36,3 +36,4 @@ require_api_docs = true
 enabled = true
 cache_strategy = "o1"
 max_hook_time_ms = 500
+gui_coverage_report = "target/probar/coverage-heatmap.png"
