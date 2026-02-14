@@ -46,8 +46,9 @@ adapters/
 *.gguf
 *.bin
 *.ckpt
-models/
+models/*
 !models/README.md
+!models/tokenizer.json
 
 # HuggingFace cache
 .cache/huggingface/
@@ -68,8 +69,9 @@ generated_tests/
 *.ckpt
 *.bin
 adapters/
-models/
+models/*
 !models/README.md
+!models/tokenizer.json
 experiments/
 
 # HuggingFace

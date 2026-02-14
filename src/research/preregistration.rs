@@ -181,19 +181,19 @@ impl SignedPreRegistration {
     pub fn verify(&self) -> Result<bool, PreRegistrationError> {
         // Decode public key
         let pk_bytes =
-            hex::decode(&self.public_key).map_err(|_| PreRegistrationError::InvalidPublicKey)?;
+            hex::decode(&self.public_key).map_err(|_err| PreRegistrationError::InvalidPublicKey)?;
         let pk_array: [u8; 32] = pk_bytes
             .try_into()
-            .map_err(|_| PreRegistrationError::InvalidPublicKey)?;
+            .map_err(|_err| PreRegistrationError::InvalidPublicKey)?;
         let public_key = VerifyingKey::from_bytes(&pk_array)
-            .map_err(|_| PreRegistrationError::InvalidPublicKey)?;
+            .map_err(|_err| PreRegistrationError::InvalidPublicKey)?;
 
         // Decode signature
         let sig_bytes =
-            hex::decode(&self.signature).map_err(|_| PreRegistrationError::InvalidSignature)?;
+            hex::decode(&self.signature).map_err(|_err| PreRegistrationError::InvalidSignature)?;
         let sig_array: [u8; 64] = sig_bytes
             .try_into()
-            .map_err(|_| PreRegistrationError::InvalidSignature)?;
+            .map_err(|_err| PreRegistrationError::InvalidSignature)?;
         let signature = Signature::from_bytes(&sig_array);
 
         // Verify signature

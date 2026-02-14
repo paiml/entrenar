@@ -81,7 +81,7 @@ impl WasmMetricsCollector {
             .into_iter()
             .map(|(k, v)| (k.as_str().to_string(), WasmMetricStats::from(v)))
             .collect();
-        serde_json::to_string(&json_map).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string(&json_map).unwrap_or_else(|_err| "{}".to_string())
     }
 
     /// Get loss statistics.

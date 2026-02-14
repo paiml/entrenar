@@ -1,6 +1,7 @@
 # P-Value Calibration Check
 
-This example verifies the statistical validity of drift detection tests by checking that p-values are uniformly distributed under the null hypothesis (no drift).
+This example verifies the statistical validity of drift detection tests by checking that p-values are uniformly
+distributed under the null hypothesis (no drift).
 
 ## Running the Example
 

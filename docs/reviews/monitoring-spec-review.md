@@ -7,27 +7,39 @@
 
 ## 1. Executive Summary
 
-The specification proposes a robust, theoretically sound monitoring architecture for `entrenar`. It correctly identifies critical gaps in the current "silent failure" mode of training (e.g., the MoE expert failure in #154).
+The specification proposes a robust, theoretically sound monitoring architecture for `entrenar`. It correctly identifies
+critical gaps in the current "silent failure" mode of training (e.g., the MoE expert failure in #154).
 
-The specification relies heavily on the `trueno-*`, `aprender`, and `realizar` ecosystem. It has been clarified that these are existing projects within the broader PAIML ecosystem. Additionally, the project includes `renacer` (configured via `renacer.toml`) which provides the "Andon" performance assertion capabilities. This context means the timeline estimates (Section 10) are more realistic for *integration* rather than building these components from scratch.
+The specification relies heavily on the `trueno-*`, `aprender`, and `realizar` ecosystem. It has been clarified that
+these are existing projects within the broader PAIML ecosystem. Additionally, the project includes `renacer`
+(configured via `renacer.toml`) which provides the "Andon" performance assertion capabilities. This context means the
+timeline estimates (Section 10) are more realistic for *integration* rather than building these components from scratch.
 
 ## 2. Code Review (Snippets & Architecture)
 
 ### 2.1 Metrics Collection (Section 4.1)
 **Rating:** ⭐⭐⭐⭐☆ (Strong)
-- **Strengths:** The use of `trueno::Vector` for SIMD-accelerated aggregation is an excellent choice for maintaining the `<1%` overhead target. The `MetricsCollector` struct structure is idiomatic.
-- **Concerns:** The snippet implies "Zero-copy metric collection," but passing `loss` (f64) or `accuracy` (f64) is trivial copying. True zero-copy relevance usually applies to large tensor transfers. Clarify if this refers to avoiding serialization overhead during the hot loop.
+- **Strengths:** The use of `trueno::Vector` for SIMD-accelerated aggregation is an excellent choice for maintaining the
+  `<1%` overhead target. The `MetricsCollector` struct structure is idiomatic.
+- **Concerns:** The snippet implies "Zero-copy metric collection," but passing `loss` (f64) or `accuracy` (f64) is
+  trivial copying. True zero-copy relevance usually applies to large tensor transfers. Clarify if this refers to
+  avoiding serialization overhead during the hot loop.
 
 ### 2.2 Storage & Visualization (Section 4.2, 4.3)
 **Rating:** ⭐⭐⭐⭐☆ (Strong, given external project existence)
-- **Strengths:** Parquet is the correct choice for columnar metric storage. The existence of `trueno-db` and `trueno-viz` as external PAIML projects clarifies their integration.
-- **Recommendation:** The specification should explicitly state the nature of these dependencies (e.g., separate crates in a workspace, git submodules, etc.) to avoid ambiguity. The current 8-hour estimate for integration seems reasonable if the external projects are stable.
+- **Strengths:** Parquet is the correct choice for columnar metric storage. The existence of `trueno-db` and
+  `trueno-viz` as external PAIML projects clarifies their integration.
+- **Recommendation:** The specification should explicitly state the nature of these dependencies
+  (e.g., separate crates in a workspace, git submodules, etc.) to avoid ambiguity. The current 8-hour estimate for
+  integration seems reasonable if the external projects are stable.
 
 ### 2.3 Andon System (Section 8)
 **Rating:** ⭐⭐⭐⭐⭐ (Excellent - with Renacer integration)
 - **Strengths:** The `AndonSystem` concept is critical.
-- **Strategic Alignment:** The project already contains `renacer.toml`, indicating `renacer` is the designated tool for performance assertions and "stop the line" logic.
-- **Recommendation:** Replace the custom `AndonSystem` struct in the spec with direct integration of `renacer`'s runtime library. Use `renacer.toml` as the single source of truth for thresholds (e.g., "max_duration_ms").
+- **Strategic Alignment:** The project already contains `renacer.toml`, indicating `renacer` is the designated tool for
+  performance assertions and "stop the line" logic.
+- **Recommendation:** Replace the custom `AndonSystem` struct in the spec with direct integration of `renacer`'s runtime
+  library. Use `renacer.toml` as the single source of truth for thresholds (e.g., "max_duration_ms").
 
 ## 3. Support Review: Problem-Solution Fit
 
@@ -42,12 +54,19 @@ Does this spec solve the "Current State" problems?
 
 ## 4. Toyota Way Analysis
 
-The specification demonstrates a deep integration of Toyota Production System (TPS) principles, moving beyond surface-level labeling.
+The specification demonstrates a deep integration of Toyota Production System (TPS) principles, moving beyond
+surface-level labeling.
 
-*   **自働化 (Jidoka):** The spec explicitly automates the "detection of abnormality." The `AndonSystem` is not just logging; it effectively "stops the conveyor belt" (training loop) when defects (NaNs, divergence) are found.
-*   **現地現物 (Genchi Genbutsu):** The insistence on "measured, not inferred" metrics ensures decisions are based on facts. The dashboard enables engineers to "go and see" the training state immediately.
-*   **改善 (Kaizen):** The `trueno-graph` lineage tracking enables continuous improvement by linking performance changes to specific code/hyperparameter versions.
-*   **反省 (Hansei):** The automated post-mortem report generation is a brilliant addition, ensuring that every failure yields a learning opportunity.
+*   **自働化 (Jidoka):** The spec explicitly automates the "detection of abnormality."
+    The `AndonSystem` is not just logging; it effectively "stops the conveyor belt"
+    (training loop) when defects (NaNs, divergence) are found.
+*   **現地現物 (Genchi Genbutsu):** The insistence on "measured, not inferred" metrics
+    ensures decisions are based on facts. The dashboard enables engineers
+    to "go and see" the training state immediately.
+*   **改善 (Kaizen):** The `trueno-graph` lineage tracking enables continuous improvement
+    by linking performance changes to specific code/hyperparameter versions.
+*   **反省 (Hansei):** The automated post-mortem report generation is a brilliant addition,
+    ensuring that every failure yields a learning opportunity.
 
 ## 5. Academic Foundation Review
 
@@ -73,7 +92,8 @@ The specification cites 10 peer-reviewed papers. Here is an analysis of their re
     *   *Application:* Drives the requirement for strict "Performance < 1% overhead" measurement.
 7.  **Paleyes et al. (2022) "Challenges in Deploying ML":**
     *   *Relevance:* Deployment.
-    *   *Application:* Highlights the disconnect between training and serving, addressed here by sharing metrics schemas.
+    *   *Application:* Highlights the disconnect between training and serving, addressed here by sharing metrics
+        schemas.
 8.  **Polyzotis et al. (2018) "Data Lifecycle":**
     *   *Relevance:* Data Quality.
     *   *Application:* Justifies the schema enforcement in `trueno-db`.
@@ -86,9 +106,14 @@ The specification cites 10 peer-reviewed papers. Here is an analysis of their re
 
 ## 6. Recommendations
 
-1.  **Clarify Dependency Integration:** The specification should explicitly state the nature of the integration for `trueno-db`, `trueno-viz`, `trueno-graph`, `aprender`, and `realizar` within the `entrenar` project (e.g., as workspace members, git dependencies, or private registry crates). This will remove any ambiguity for implementers.
-2.  **Estimate Realism:** Given that the `trueno-*`, `aprender`, and `realizar` components exist as separate projects, the initial time estimates for integration (e.g., 8 hours for Phase 3 Visualization) appear more realistic.
-3.  **Integration:** Create a `mock` implementation of the `MetricsEmitter` trait immediately so the training loop can be instrumented even before the backend storage is fully integrated.
+1.  **Clarify Dependency Integration:** The specification should explicitly state the nature of the integration for
+    `trueno-db`, `trueno-viz`, `trueno-graph`, `aprender`, and `realizar` within the `entrenar` project
+    (e.g., as workspace members, git dependencies, or private registry crates). This will remove any ambiguity for
+    implementers.
+2.  **Estimate Realism:** Given that the `trueno-*`, `aprender`, and `realizar` components exist as separate projects,
+    the initial time estimates for integration (e.g., 8 hours for Phase 3 Visualization) appear more realistic.
+3.  **Integration:** Create a `mock` implementation of the `MetricsEmitter` trait immediately so the training loop can
+    be instrumented even before the backend storage is fully integrated.
 
 ---
 *Review generated by Gemini Agent for PAIML Team*

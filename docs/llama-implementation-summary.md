@@ -10,7 +10,8 @@
 
 ## Overview
 
-This implementation integrates LLaMA 2 transformer architecture with entrenar's training infrastructure, following EXTREME TDD principles from Certeza, PMAT roadmap methodology, and renacer tracing concepts.
+This implementation integrates LLaMA 2 transformer architecture with entrenar's training infrastructure, following
+EXTREME TDD principles from Certeza, PMAT roadmap methodology, and renacer tracing concepts.
 
 ## Implementation Details
 
@@ -38,7 +39,8 @@ This implementation integrates LLaMA 2 transformer architecture with entrenar's 
   - Parameter counting: `count_parameters()`
   - 6 unit tests validating structure
 
-**Key Design:** Reference implementation demonstrating structure. Production would require additional ops (softmax, layer_norm, RoPE, causal masking) in entrenar core.
+**Key Design:** Reference implementation demonstrating structure. Production would require additional ops
+(softmax, layer_norm, RoPE, causal masking) in entrenar core.
 
 #### `examples/llama2/train.rs` (483 lines)
 **Training from scratch with full pipeline:**

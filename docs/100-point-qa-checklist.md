@@ -3,13 +3,15 @@
 **Epic:** ENT-EPIC-001
 **Spec Version:** 1.8.0
 **QA Date:** 2025-11-30
-**Toyota Way Principles:** Jidoka (automation with human touch), Genchi Genbutsu (go and see), Poka-Yoke (error-proofing)
+**Toyota Way Principles:** Jidoka (automation with human touch), Genchi Genbutsu (go and see), Poka-Yoke
+(error-proofing)
 
 ---
 
 ## Overview
 
-This checklist enables systematic validation of the Experiment Tracking Specification v1.8.0 implementation across the sovereign AI stack. Each item requires manual verification with pass/fail status.
+This checklist enables systematic validation of the Experiment Tracking Specification v1.8.0 implementation across the
+sovereign AI stack. Each item requires manual verification with pass/fail status.
 
 **Scoring:**
 - 90-100 points: Production ready
@@ -337,34 +339,44 @@ cd ~/src/entrenar && cargo doc --no-deps
 
 The following peer-reviewed works inform this QA methodology:
 
-1. **Liker, J.K. (2004).** *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer.* McGraw-Hill. ISBN: 978-0071392310.
-   - Foundation for Jidoka (automation with human touch) and Genchi Genbutsu (go and see) principles applied throughout this checklist.
+1. **Liker, J.K. (2004).** *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer.*
+   McGraw-Hill. ISBN: 978-0071392310.
+   - Foundation for Jidoka (automation with human touch) and Genchi Genbutsu (go and see) principles applied throughout
+     this checklist.
 
-2. **Shingo, S. (1986).** *Zero Quality Control: Source Inspection and the Poka-Yoke System.* Productivity Press. ISBN: 978-0915299072.
+2. **Shingo, S. (1986).** *Zero Quality Control: Source Inspection and the Poka-Yoke System.* Productivity Press. ISBN:
+   978-0915299072.
    - Poka-Yoke (error-proofing) methodology for validation checks that prevent defects at source.
 
 3. **Deming, W.E. (1986).** *Out of the Crisis.* MIT Press. ISBN: 978-0262541152.
    - Statistical quality control principles for the 90/80/70 scoring thresholds and continuous improvement philosophy.
 
-4. **Wilkinson, M.D., et al. (2016).** "The FAIR Guiding Principles for scientific data management and stewardship." *Scientific Data* 3, 160018. https://doi.org/10.1038/sdata.2016.18
+4. **Wilkinson, M.D., et al. (2016).** "The FAIR Guiding Principles for scientific data management and stewardship."
+   *Scientific Data* 3, 160018. https://doi.org/10.1038/sdata.2016.18
    - FAIR principles (Findable, Accessible, Interoperable, Reusable) for research artifact validation in Phase 7.
 
-5. **Brand, A., et al. (2015).** "Beyond authorship: attribution, contribution, collaboration, and credit." *Learned Publishing* 28(2), 151-155. https://doi.org/10.1087/20150211
+5. **Brand, A., et al. (2015).** "Beyond authorship: attribution, contribution, collaboration, and credit." *Learned
+   Publishing* 28(2), 151-155. https://doi.org/10.1087/20150211
    - CRediT (Contributor Roles Taxonomy) for author attribution validation.
 
-6. **Lamport, L. (1978).** "Time, Clocks, and the Ordering of Events in a Distributed System." *Communications of the ACM* 21(7), 558-565. https://doi.org/10.1145/359545.359563
+6. **Lamport, L. (1978).** "Time, Clocks, and the Ordering of Events in a Distributed System." *Communications of the
+   ACM* 21(7), 558-565. https://doi.org/10.1145/359545.359563
    - Lamport timestamps for causal ordering validation in behavioral integrity checks.
 
-7. **Sculley, D., et al. (2015).** "Hidden Technical Debt in Machine Learning Systems." *Advances in Neural Information Processing Systems* 28 (NIPS 2015).
+7. **Sculley, D., et al. (2015).** "Hidden Technical Debt in Machine Learning Systems." *Advances in Neural Information
+   Processing Systems* 28 (NIPS 2015).
    - Anti-pattern detection methodology for ML systems quality gates.
 
-8. **Patterson, D., et al. (2021).** "Carbon Emissions and Large Neural Network Training." *arXiv:2104.10350*. https://arxiv.org/abs/2104.10350
+8. **Patterson, D., et al. (2021).** "Carbon Emissions and Large Neural Network Training." *arXiv:2104.10350*.
+   <https://arxiv.org/abs/2104.10350>
    - Energy and carbon tracking methodology for efficiency metrics validation.
 
-9. **Hu, E.J., et al. (2021).** "LoRA: Low-Rank Adaptation of Large Language Models." *arXiv:2106.09685*. https://arxiv.org/abs/2106.09685
+9. **Hu, E.J., et al. (2021).** "LoRA: Low-Rank Adaptation of Large Language Models." *arXiv:2106.09685*.
+   <https://arxiv.org/abs/2106.09685>
    - LoRA/QLoRA paradigm definitions for model paradigm validation.
 
-10. **Soergel, D., et al. (2023).** "RO-Crate: A Community Approach to Research Object Packaging." *Data Science Journal* 22(1), 8. https://doi.org/10.5334/dsj-2023-008
+10. **Soergel, D., et al. (2023).** "RO-Crate: A Community Approach to Research Object Packaging." *Data Science
+    Journal* 22(1), 8. https://doi.org/10.5334/dsj-2023-008
     - RO-Crate 1.1 specification compliance for research bundling validation.
 
 ---

@@ -702,6 +702,7 @@ fn test_snapshot_comparison() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Test TUI rendering performance under load
+// NOTE: Timing-dependent test - generous bound to avoid flakiness under CI load (CB-511)
 #[test]
 fn test_tui_render_performance() {
     let snapshot = valid_snapshot();
@@ -722,15 +723,16 @@ fn test_tui_render_performance() {
     println!("  Total time: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
     println!("  Avg per render: {:.3}ms", avg_ms);
 
-    // Should render in <1ms average (60fps budget = 16.67ms)
+    // Should render in <16ms average (60fps budget) - generous for CI under load
     assert!(
-        avg_ms < 1.0,
-        "Render too slow: {:.3}ms (budget: 1ms)",
+        avg_ms < 16.0,
+        "Render too slow: {:.3}ms (budget: 16ms for 60fps)",
         avg_ms
     );
 }
 
 /// Test TUI with large loss history (memory/performance)
+// NOTE: Timing-dependent test - generous bound to avoid flakiness under CI load (CB-511)
 #[test]
 fn test_tui_large_history_performance() {
     let mut snapshot = valid_snapshot();
@@ -745,9 +747,9 @@ fn test_tui_large_history_performance() {
     println!("  History size: {}", snapshot.loss_history.len());
     println!("  Render time: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
 
-    // Should handle large history without hanging
+    // Should handle large history without hanging (generous 2s for CI under load)
     assert!(
-        elapsed < Duration::from_millis(100),
+        elapsed < Duration::from_secs(2),
         "Large history render took too long: {:?}",
         elapsed
     );

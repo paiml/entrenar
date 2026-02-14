@@ -466,7 +466,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Academic References
 
-1. Hinton, G., Vinyals, O., & Dean, J. (2015). "Distilling the Knowledge in a Neural Network." *NIPS Deep Learning Workshop*.
+1. Hinton, G., Vinyals, O., & Dean, J. (2015). "Distilling the Knowledge in a Neural Network." *NIPS Deep Learning
+   Workshop*.
 
 2. Hu, E. J., et al. (2021). "LoRA: Low-Rank Adaptation of Large Language Models." *ICLR 2022*.
 
@@ -474,4 +475,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 4. Sun, S., et al. (2019). "Patient Knowledge Distillation for BERT Model Compression." *EMNLP 2019*.
 
-5. Zagoruyko, S., & Komodakis, N. (2017). "Paying More Attention to Attention: Improving the Performance of CNNs via Attention Transfer." *ICLR 2017*.
+5. Zagoruyko, S., & Komodakis, N. (2017). "Paying More Attention to Attention: Improving the Performance of CNNs via
+   Attention Transfer." *ICLR 2017*.

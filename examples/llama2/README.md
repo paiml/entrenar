@@ -2,7 +2,8 @@
 
 **Complete transformer architecture demonstration using entrenar's training infrastructure**
 
-This directory contains production-ready examples of training and fine-tuning LLaMA 2 models using entrenar's autograd, optimizers, and LoRA/QLoRA features.
+This directory contains production-ready examples of training and fine-tuning LLaMA 2 models using entrenar's autograd,
+optimizers, and LoRA/QLoRA features.
 
 ## Overview
 
@@ -352,7 +353,8 @@ cargo test gradient_check_swiglu
 - **LoRA Paper**: [Hu et al., 2021](https://arxiv.org/abs/2106.09685)
 - **QLoRA Paper**: [Dettmers et al., 2023](https://arxiv.org/abs/2305.14314)
 - **Entrenar Book**: [https://paiml.github.io/entrenar](https://paiml.github.io/entrenar)
-- **LLaMA Integration Spec**: [docs/specifications/llama-ideas-inclusion-spec.md](../../docs/specifications/llama-ideas-inclusion-spec.md)
+- **LLaMA Integration Spec**:
+  [docs/specifications/llama-ideas-inclusion-spec.md](../../docs/specifications/llama-ideas-inclusion-spec.md)
 
 ## License
 

@@ -4,7 +4,8 @@ This directory contains fuzz testing targets for entrenar, following the Certeza
 
 ## Overview
 
-Fuzz testing validates that entrenar's core functionality never panics or crashes with arbitrary inputs. This is critical for production-ready ML infrastructure.
+Fuzz testing validates that entrenar's core functionality never panics or crashes with arbitrary inputs. This is
+critical for production-ready ML infrastructure.
 
 ## Fuzz Targets
 

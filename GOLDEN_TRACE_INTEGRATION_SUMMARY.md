@@ -8,9 +8,14 @@
 
 ## Executive Summary
 
-Successfully integrated Renacer (syscall tracer with build-time assertions) into **entrenar**, the training & optimization library with LLaMA 2 transformer support, autograd, LoRA/QLoRA parameter-efficient fine-tuning, and production-ready observability. Captured golden traces for 3 ML training examples, establishing performance baselines for basic training loops, model I/O, and LoRA fine-tuning.
+Successfully integrated Renacer (syscall tracer with build-time assertions) into **entrenar**, the training &
+optimization library with LLaMA 2 transformer support, autograd, LoRA/QLoRA parameter-efficient fine-tuning, and
+production-ready observability. Captured golden traces for 3 ML training examples, establishing performance baselines
+for basic training loops, model I/O, and LoRA fine-tuning.
 
-**Key Achievement**: Validated entrenar's training performance with sub-millisecond basic training (0.720ms for 10 epochs), fast model serialization (1.191ms for JSON/YAML I/O), and efficient LoRA fine-tuning (144.728ms for 3 epochs with 162.4M parameter model, 99.3% parameter reduction).
+**Key Achievement**: Validated entrenar's training performance with sub-millisecond basic training
+(0.720ms for 10 epochs), fast model serialization (1.191ms for JSON/YAML I/O), and efficient LoRA fine-tuning
+(144.728ms for 3 epochs with 162.4M parameter model, 99.3% parameter reduction).
 
 ---
 
@@ -54,7 +59,9 @@ threshold = 0.7
 fail_on_violation = false  # Warning only (gradient descent has intentional loops)
 ```
 
-**Rationale**: ML training involves compute-intensive autograd operations, gradient computation, and model checkpointing. Performance budgets set at 2s for training iterations, 10K syscall budget for tape operations, and 2GB memory limit for model state.
+**Rationale**: ML training involves compute-intensive autograd operations, gradient computation, and model
+checkpointing. Performance budgets set at 2s for training iterations, 10K syscall budget for tape operations, and 2GB
+memory limit for model state.
 
 ### 2. Golden Trace Capture Script (`scripts/capture_golden_traces.sh`)
 
@@ -113,7 +120,8 @@ Captured canonical execution traces:
   - Batch size: 3
   - Learning rate: 0.01 (with step decay)
   - Gradient clipping enabled (max_norm=1.0)
-- **Interpretation**: Pure compute workload. 72µs/epoch validates trueno (SIMD-accelerated tensors) efficiency. Minimal I/O overhead. Ideal for production training loops.
+- **Interpretation**: Pure compute workload. 72µs/epoch validates trueno (SIMD-accelerated tensors) efficiency. Minimal
+  I/O overhead. Ideal for production training loops.
 
 #### 2. model_io (1.191ms) - Fast Serialization 💾
 - **Multi-Format I/O**: Saves to JSON + YAML, loads from both (4 formats total)
@@ -130,7 +138,8 @@ Captured canonical execution traces:
   - Metadata: name, architecture, version
   - Custom metadata: input_dim=4, hidden_dim=2, output_dim=1, activation="relu"
 - **Data Integrity**: Validation checks pass for JSON/YAML round-trips
-- **Interpretation**: Fast serialization validates serde integration. Unlink cleanup prevents file leaks. Ready for production model checkpointing.
+- **Interpretation**: Fast serialization validates serde integration. Unlink cleanup prevents file leaks. Ready for
+  production model checkpointing.
 
 #### 3. llama2_finetune_lora (144.728ms) - Parameter-Efficient Fine-Tuning 🦙
 - **LoRA Efficiency**: 162.4M base parameters → 1.2M trainable (99.3% reduction)
@@ -161,9 +170,11 @@ Captured canonical execution traces:
   - Final checkpoint saved to `checkpoints/lora_adapters.bin`
   - Adapters merged into base model for inference
 - **Interpretation**:
-  - **getrandom dominance (53.45%)**: Random initialization overhead for 1.2M adapter parameters + dropout sampling. Consider caching RNG state.
+  - **getrandom dominance (53.45%)**: Random initialization overhead for 1.2M adapter parameters + dropout sampling.
+    Consider caching RNG state.
   - **munmap latency (395µs/call)**: Large memory deallocations. 137 calls suggest per-layer gradient cleanup.
-  - **mremap frequency (511 calls)**: ndarray reallocations during backward pass. Optimize by pre-allocating gradient buffers.
+  - **mremap frequency (511 calls)**: ndarray reallocations during backward pass. Optimize by pre-allocating gradient
+    buffers.
   - **Overall**: 144.728ms for 300 training steps = **482µs/step average**. Validates LoRA parameter efficiency.
 
 ### Performance Budget Compliance
@@ -176,7 +187,8 @@ Captured canonical execution traces:
 | God Process Detection | threshold 0.8 | No violations | ✅ PASS |
 | Tight Loop Detection | threshold 0.7 | No violations | ✅ PASS |
 
-**Verdict**: All training operations comfortably meet performance budgets. llama2_finetune_lora is 13.8× faster than 2s budget (144.728ms for 300 steps). **No anti-patterns detected**.
+**Verdict**: All training operations comfortably meet performance budgets. llama2_finetune_lora is 13.8× faster than 2s
+budget (144.728ms for 300 steps). **No anti-patterns detected**.
 
 ---
 
@@ -198,7 +210,8 @@ Captured canonical execution traces:
 
 #### LoRA Fine-Tuning
 - **Pattern**: Randomness + memory management for adapter training
-- **Syscalls**: getrandom (adapter init + dropout), munmap (gradient cleanup), mremap (ndarray realloc), mmap (allocation)
+- **Syscalls**: getrandom (adapter init + dropout), munmap (gradient cleanup), mremap (ndarray realloc), mmap
+  (allocation)
 - **Observed**: 10866 syscalls, 53.45% getrandom (9914 calls), 37.48% munmap (137 calls), 6.89% mremap (511 calls)
 - **Interpretation**:
   - **getrandom bottleneck**: 9914 calls for 1.2M adapter parameters + dropout. Optimize by batching random samples.
@@ -209,7 +222,8 @@ Captured canonical execution traces:
 
 **No anti-patterns detected** ✅
 
-- **God Process**: No violations (threshold 0.8). Training properly uses trueno for SIMD-accelerated compute (not doing everything in pure Rust).
+- **God Process**: No violations (threshold 0.8). Training properly uses trueno for SIMD-accelerated compute
+  (not doing everything in pure Rust).
 - **Tight Loop**: No violations (threshold 0.7). Gradient descent loops are intentional and optimized.
 
 ---
@@ -362,7 +376,8 @@ Renacer trace: golden_traces/training_loop_summary.txt"
 fail_fast = true  # Stop on first assertion failure
 ```
 
-**Effect**: CI pipeline halts immediately if training latency exceeds 2s budget, preventing performance regressions from propagating downstream.
+**Effect**: CI pipeline halts immediately if training latency exceeds 2s budget, preventing performance regressions from
+propagating downstream.
 
 ### Muda (Waste Elimination)
 
@@ -545,13 +560,18 @@ fn benchmark_lora(c: &mut Criterion) {
 
 ## Conclusion
 
-**entrenar** training & optimization integration with Renacer is **complete and successful**. Golden traces establish performance baselines for:
+**entrenar** training & optimization integration with Renacer is **complete and successful**. Golden traces establish
+performance baselines for:
 
-1. **Training Loop** (0.720ms): Sub-millisecond autograd + optimizer. Pure compute workload with minimal syscall overhead (92 total).
+1. **Training Loop** (0.720ms): Sub-millisecond autograd + optimizer. Pure compute workload with minimal syscall
+   overhead (92 total).
 2. **Model I/O** (1.191ms): Fast JSON/YAML serialization. Balanced I/O with proper cleanup (unlink).
-3. **LoRA Fine-Tuning** (144.728ms): Parameter-efficient training (162.4M → 1.2M params, 99.3% reduction). Dominated by getrandom (53.45%) for random initialization.
+3. **LoRA Fine-Tuning** (144.728ms): Parameter-efficient training
+   (162.4M → 1.2M params, 99.3% reduction). Dominated by getrandom (53.45%)
+   for random initialization.
 
-**Performance budgets comfortably met** with 13.8× headroom on training iteration latency (144.728ms vs 2000ms budget). **No anti-patterns detected**. Ready for production CI/CD integration.
+**Performance budgets comfortably met** with 13.8× headroom on training iteration latency (144.728ms vs 2000ms budget).
+**No anti-patterns detected**. Ready for production CI/CD integration.
 
 **Key Optimization Opportunities**:
 1. Batch random sampling to reduce getrandom overhead (53.45% → 30%)

@@ -1,6 +1,7 @@
 # Installation
 
-This guide will help you install Entrenar and set up your development environment for neural network training with autograd, optimizers, and LoRA/QLoRA fine-tuning.
+This guide will help you install Entrenar and set up your development environment for neural network training with
+autograd, optimizers, and LoRA/QLoRA fine-tuning.
 
 ## Prerequisites
 

@@ -1,6 +1,8 @@
 # Introduction
 
-**Entrenar** (Spanish: "to train") is a high-performance Rust library for training and optimizing neural networks with automatic differentiation, state-of-the-art optimizers, and memory-efficient LoRA/QLoRA fine-tuning. The name reflects the library's mission: to provide a complete, production-ready training infrastructure for modern machine learning.
+**Entrenar** (Spanish: "to train") is a high-performance Rust library for training and optimizing neural networks with
+automatic differentiation, state-of-the-art optimizers, and memory-efficient LoRA/QLoRA fine-tuning. The name reflects
+the library's mission: to provide a complete, production-ready training infrastructure for modern machine learning.
 
 ## The Problem: Training Complexity
 

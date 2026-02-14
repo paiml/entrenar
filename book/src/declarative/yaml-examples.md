@@ -1,6 +1,7 @@
 # YAML Examples Catalog
 
-This page catalogs all 30 YAML configuration examples, organized by category. Each example demonstrates a specific training scenario.
+This page catalogs all 30 YAML configuration examples, organized by category. Each example demonstrates a specific
+training scenario.
 
 ## Overview
 

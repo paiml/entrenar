@@ -224,7 +224,7 @@ impl CudaTrainer {
     pub fn device_name(&self) -> String {
         self.ctx
             .device_name()
-            .unwrap_or_else(|_| "Unknown GPU".to_string())
+            .unwrap_or_else(|_err| "Unknown GPU".to_string())
     }
 
     /// Get total GPU memory in bytes

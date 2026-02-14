@@ -4,7 +4,8 @@ Evaluate LLM outputs for relevance, coherence, groundedness, and harmfulness.
 
 ## Toyota Principle: Genchi Genbutsu
 
-"Go and see" - directly observe model outputs to understand quality. Systematic evaluation enables data-driven improvement.
+"Go and see" - directly observe model outputs to understand quality. Systematic evaluation enables data-driven
+improvement.
 
 ## Quick Start
 

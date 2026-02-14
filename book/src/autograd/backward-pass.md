@@ -1,6 +1,7 @@
 # Backward Pass
 
-The **backward pass** computes gradients by traversing the computational graph in reverse order, applying the chain rule at each operation. This chapter explains the mechanics of gradient propagation in Entrenar.
+The **backward pass** computes gradients by traversing the computational graph in reverse order, applying the chain rule
+at each operation. This chapter explains the mechanics of gradient propagation in Entrenar.
 
 ## The Chain Rule
 

@@ -8,7 +8,8 @@
 
 ## Executive Summary
 
-The **PAIML Sovereign AI Stack** is a comprehensive, pure-Rust ecosystem for building, training, and deploying machine learning systems with **zero external dependencies**. The stack prioritizes:
+The **PAIML Sovereign AI Stack** is a comprehensive, pure-Rust ecosystem for building, training, and deploying machine
+learning systems with **zero external dependencies**. The stack prioritizes:
 
 1. **Sovereignty** - Full control, no cloud lock-in, air-gap deployable
 2. **Performance** - SIMD/GPU/WASM acceleration throughout
@@ -470,47 +471,71 @@ for test in tests {
 
 ## Scientific Validation (Code Review)
 
-The following peer-reviewed publications support the architectural decisions and quality standards defined in this specification, particularly regarding the "Toyota Way" (reliability/safety) and "Sovereign AI" (portability/performance) goals.
+The following peer-reviewed publications support the architectural decisions and quality standards defined in this
+specification, particularly regarding the "Toyota Way" (reliability/safety) and "Sovereign AI" (portability/performance)
+goals.
 
 1. **Rust/Memory Safety (Sovereignty & Quality)**
-   *   *Jung, R., et al. (2017). "RustBelt: Securing the Foundations of the Rust Programming Language." Proc. ACM Program. Lang. 2 (POPL).*
-   *   **Annotation:** Validates the choice of Rust for a "Sovereign" stack by mathematically proving that Rust's safety guarantees (ownership, type safety) hold even when interacting with "unsafe" low-level code, essential for a secure, zero-dependency AI stack.
+   *   *Jung, R., et al. (2017). "RustBelt: Securing the Foundations of the Rust Programming Language." Proc. ACM
+       Program. Lang. 2 (POPL).*
+   *   **Annotation:** Validates the choice of Rust for a "Sovereign" stack by mathematically proving that Rust's safety
+       guarantees (ownership, type safety) hold even when interacting with "unsafe" low-level code, essential for a
+       secure, zero-dependency AI stack.
 
 2. **WASM-First Design (Portability)**
    *   *Haas, A., et al. (2017). "Bringing the Web up to Speed with WebAssembly." PLDI '17.*
-   *   **Annotation:** Supports the `aprender`/`realizar` strategy of treating the browser as a first-class deployment target (Performance/Portability), demonstrating that WASM can achieve near-native execution speeds.
+   *   **Annotation:** Supports the `aprender`/`realizar` strategy of treating the browser as a first-class deployment
+       target (Performance/Portability), demonstrating that WASM can achieve near-native execution speeds.
 
 3. **Columnar Storage & Vectorization (trueno-db)**
    *   *Abadi, D., et al. (2008). "Column-stores vs. row-stores: how different are they really?" SIGMOD '08.*
-   *   **Annotation:** Justifies the architectural split between `trueno-db` (columnar/Parquet) and transactional memory, confirming that for the analytical workloads (OLAP) typical in AI training/data loading, column-stores provide order-of-magnitude performance benefits.
+   *   **Annotation:** Justifies the architectural split between `trueno-db` (columnar/Parquet) and transactional
+       memory, confirming that for the analytical workloads (OLAP) typical in AI training/data loading, column-stores
+       provide order-of-magnitude performance benefits.
 
 4. **Graph Storage efficiency (trueno-graph)**
-   *   *Sakr, S., et al. (2021). "The Future is Big Graphs: A Community View on Graph Processing Systems." Communications of the ACM.*
-   *   **Annotation:** Validates the use of Compressed Sparse Row (CSR) and Parquet for `trueno-graph`, ensuring that the graph processing layer aligns with modern state-of-the-art practices for storage efficiency and traversal speed.
+   *   *Sakr, S., et al. (2021). "The Future is Big Graphs: A Community View on Graph Processing Systems."
+       Communications of the ACM.*
+   *   **Annotation:** Validates the use of Compressed Sparse Row (CSR) and Parquet for `trueno-graph`, ensuring that
+       the graph processing layer aligns with modern state-of-the-art practices for storage efficiency and traversal
+       speed.
 
 5. **Authenticated Encryption (Security)**
    *   *Bernstein, D. J., et al. (2012). "High-speed high-security signatures." Journal of Cryptographic Engineering.*
-   *   **Annotation:** Supports the `aprender` format's use of Ed25519 for model signing, confirming it as a high-performance, side-channel-resistant choice suitable for verifying model provenance without slowing down loading times.
+   *   **Annotation:** Supports the `aprender` format's use of Ed25519 for model signing, confirming it as a
+       high-performance, side-channel-resistant choice suitable for verifying model provenance without slowing down
+       loading times.
 
 6. **Mutation Testing (Quality/Toyota Way)**
-   *   *Jia, Y., & Harman, M. (2011). "An analysis and survey of the development of mutation testing." IEEE Trans. Softw. Eng.*
-   *   **Annotation:** Provides the scientific basis for the "EXTREME TDD" and `cargo-mutants` requirement, illustrating that mutation testing is a superior proxy for fault detection capability compared to simple code coverage.
+   *   *Jia, Y., & Harman, M. (2011). "An analysis and survey of the development of mutation testing." IEEE Trans.
+       Softw. Eng.*
+   *   **Annotation:** Provides the scientific basis for the "EXTREME TDD" and `cargo-mutants` requirement, illustrating
+       that mutation testing is a superior proxy for fault detection capability compared to simple code coverage.
 
 7. **Model Explainability (Ethics/Quality)**
-   *   *Arrieta, A. B., et al. (2020). "Explainable Artificial Intelligence (XAI): Concepts, taxonomies, opportunities and challenges toward responsible AI." Information Fusion.*
-   *   **Annotation:** Reinforces the requirement for `.apr` metadata (Model Cards) and `trueno-viz` capabilities, emphasizing that sovereignty includes the ability to understand and audit model decision-making processes.
+   *   *Arrieta, A. B., et al. (2020). "Explainable Artificial Intelligence (XAI): Concepts, taxonomies, opportunities
+       and challenges toward responsible AI." Information Fusion.*
+   *   **Annotation:** Reinforces the requirement for `.apr` metadata (Model Cards) and `trueno-viz` capabilities,
+       emphasizing that sovereignty includes the ability to understand and audit model decision-making processes.
 
 8. **Parameter-Efficient Fine-Tuning (entrenar)**
    *   *Hu, E. J., et al. (2021). "LoRA: Low-Rank Adaptation of Large Language Models." ICLR 2022.*
-   *   **Annotation:** Directly supports the `entrenar` roadmap item for "LoRA/QLoRA fine-tuning", proving that massive efficiency gains in training memory/compute are possible without sacrificing model quality.
+   *   **Annotation:** Directly supports the `entrenar` roadmap item for "LoRA/QLoRA fine-tuning", proving that massive
+       efficiency gains in training memory/compute are possible without sacrificing model quality.
 
 9. **Quantization Strategies (Inference)**
-   *   *Jacob, B., et al. (2018). "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference." CVPR 2018.*
-   *   **Annotation:** Validates the `.apr` flags for Q4_0/Q8_0 quantization, demonstrating that integer-only arithmetic is a viable path for high-performance inference on edge devices (Sovereignty/Portability) with minimal accuracy loss.
+   *   *Jacob, B., et al. (2018). "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only
+       Inference." CVPR 2018.*
+   *   **Annotation:** Validates the `.apr` flags for Q4_0/Q8_0 quantization, demonstrating that integer-only arithmetic
+       is a viable path for high-performance inference on edge devices (Sovereignty/Portability) with minimal accuracy
+       loss.
 
 10. **Morsel-Driven Parallelism (trueno-db)**
-    *   *Leis, V., et al. (2014). "Morsel-driven parallelism: a NUMA-aware query evaluation framework for the many-core age." SIGMOD '14.*
-    *   **Annotation:** (Expansion on existing ref) Specifically validates `trueno-db`'s "128MB morsel paging" architecture, showing this fine-grained task scheduling is optimal for modern multi-core CPUs compared to traditional thread-per-query models.
+    *   *Leis, V., et al. (2014). "Morsel-driven parallelism: a NUMA-aware query evaluation framework for the many-core
+        age." SIGMOD '14.*
+    *   **Annotation:** (Expansion on existing ref) Specifically validates `trueno-db`'s "128MB morsel paging"
+        architecture, showing this fine-grained task scheduling is optimal for modern multi-core CPUs compared to
+        traditional thread-per-query models.
 
 ## References
 

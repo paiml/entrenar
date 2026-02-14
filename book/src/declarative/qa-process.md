@@ -1,6 +1,7 @@
 # Toyota Way QA Process
 
-This document defines the **25-point QA checklist** used for validating all YAML Mode training scenarios. Based on Toyota Way manufacturing principles.
+This document defines the **25-point QA checklist** used for validating all YAML Mode training scenarios. Based on
+Toyota Way manufacturing principles.
 
 ## Philosophy
 

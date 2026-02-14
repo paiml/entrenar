@@ -113,6 +113,12 @@ exclude = [
     "*.md",
     "models/",
     "wasm-pkg/",
+    "target/",
+    "**/*.profraw",
+    "**/*.profdata",
+    ".vscode/",
+    ".idea/",
+    "**/*.proptest-regressions",
 ]
 
 [lib]

@@ -1,6 +1,7 @@
 # Academic Research Artifacts
 
-The research module provides tools for academic research workflows, supporting FAIR data principles, proper attribution, and reproducible science.
+The research module provides tools for academic research workflows, supporting FAIR data principles, proper attribution,
+and reproducible science.
 
 ## Why Research Artifacts?
 

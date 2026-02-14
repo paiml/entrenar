@@ -1,6 +1,7 @@
 # Case Study: Pruning Pipeline
 
-This example demonstrates the end-to-end pruning workflow using Entrenar, including schedule configuration, calibration setup, and pipeline management.
+This example demonstrates the end-to-end pruning workflow using Entrenar, including schedule configuration, calibration
+setup, and pipeline management.
 
 ## Running the Example
 

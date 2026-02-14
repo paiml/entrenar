@@ -1,6 +1,7 @@
 # MLOps Overview
 
-Entrenar provides a comprehensive MLOps toolkit for production machine learning workflows, following Toyota Production System principles.
+Entrenar provides a comprehensive MLOps toolkit for production machine learning workflows, following Toyota Production
+System principles.
 
 ## Toyota Way Principles
 

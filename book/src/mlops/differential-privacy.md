@@ -4,7 +4,8 @@ Privacy-preserving training with Differentially Private SGD (DP-SGD) and Rényi 
 
 ## Toyota Principle: Jidoka
 
-Protect the quality of privacy guarantees. Just as Jidoka stops production when defects are detected, DP-SGD ensures privacy bounds are never exceeded.
+Protect the quality of privacy guarantees. Just as Jidoka stops production when defects are detected, DP-SGD ensures
+privacy bounds are never exceeded.
 
 ## Quick Start
 

@@ -8,7 +8,9 @@
 
 ## 1. Executive Summary
 
-**CITL (Compiler-in-the-Loop)** is a training paradigm that uses compiler diagnostics as a self-supervised learning signal. This document explains how it works, why it's effective, and how it generalizes beyond Rust/Python to any language with a compiler or linter.
+**CITL (Compiler-in-the-Loop)** is a training paradigm that uses compiler diagnostics as a self-supervised learning
+signal. This document explains how it works, why it's effective, and how it generalizes beyond Rust/Python to any
+language with a compiler or linter.
 
 ---
 

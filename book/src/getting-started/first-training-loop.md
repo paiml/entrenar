@@ -1,6 +1,7 @@
 # First Training Loop
 
-This guide will walk you through building a complete, production-ready training pipeline with validation, checkpointing, and early stopping.
+This guide will walk you through building a complete, production-ready training pipeline with validation, checkpointing,
+and early stopping.
 
 ## Complete Training Example
 

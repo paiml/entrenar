@@ -11,13 +11,16 @@
 
 ## 1. Executive Summary
 
-This specification defines a **CUDA-first** fine-tuning pipeline for Qwen2.5-Coder-0.5B. Entrenar's value proposition is **world-class Rust training**, which requires leveraging the full PAIML stack's GPU capabilities via `trueno-gpu`.
+This specification defines a **CUDA-first** fine-tuning pipeline for Qwen2.5-Coder-0.5B. Entrenar's value proposition is
+**world-class Rust training**, which requires leveraging the full PAIML stack's GPU capabilities via `trueno-gpu`.
 
-**The First Law of Entrenar**: *Efficiency and Quality are not mutually exclusive, provided the optimizer is given sufficient compute.*
+**The First Law of Entrenar**: *Efficiency and Quality are not mutually exclusive, provided the optimizer is given
+sufficient compute.*
 
 **The Second Law of Entrenar**: *Sufficient compute means GPU compute.*
 
-The system has achieved **Detached Monitoring Verification** with a native TUI monitor. **Forward and backward CUDA kernels are now fully verified, unblocking full model training.**
+The system has achieved **Detached Monitoring Verification** with a native TUI monitor. **Forward and backward CUDA
+kernels are now fully verified, unblocking full model training.**
 
 ### 1.1 Objectives
 
@@ -37,7 +40,9 @@ The system has achieved **Detached Monitoring Verification** with a native TUI m
 | **CUDA Utilization** | >70% GPU (full fwd pass) | ✅ Phase 22 CudaTransformerBlock (ENT-147-154) |
 | **Throughput** | >100 tokens/second | ✅ Phase 22 fused SwiGLU + CUDA backward (ENT-150-151) |
 
-**Phase 22 Resolution (ENT-147-154):** Created `CudaTransformerBlock` in `src/transformer/cuda_block.rs` with full CUDA kernel integration: RMSNorm, GEMM (Q/K/V/O projections + FFN), fused SwiGLU activation. Backward pass uses `gemm_backward_a/b`, `rms_norm_backward`, `silu_backward`. Benchmark in `examples/cuda_training_benchmark.rs`.
+**Phase 22 Resolution (ENT-147-154):** Created `CudaTransformerBlock` in `src/transformer/cuda_block.rs` with full CUDA
+kernel integration: RMSNorm, GEMM (Q/K/V/O projections + FFN), fused SwiGLU activation. Backward pass uses
+`gemm_backward_a/b`, `rms_norm_backward`, `silu_backward`. Benchmark in `examples/cuda_training_benchmark.rs`.
 
 ---
 
@@ -577,7 +582,8 @@ experiments/
 
 ## 9. Popperian Falsification QA (100 Points)
 
-Following Karl Popper's philosophy of science, we define falsifiable hypotheses and tests to validate them. Each test can **disprove** a claim, ensuring scientific rigor.
+Following Karl Popper's philosophy of science, we define falsifiable hypotheses and tests to validate them. Each test
+can **disprove** a claim, ensuring scientific rigor.
 
 ### 9.1 Scoring Rubric
 
@@ -956,7 +962,8 @@ mod popperian_tests {
 
 ## 10. Real-Time TUI Specification
 
-To provide immediate visibility into the "Learning Dynamics" (H4), the pipeline shall include a native Terminal User Interface (TUI) inspired by `presentar`.
+To provide immediate visibility into the "Learning Dynamics" (H4), the pipeline shall include a native Terminal User
+Interface (TUI) inspired by `presentar`.
 
 **Architectural Requirement:** The TUI must operate as a **Detached Observer**.
 1.  **Producer:** The training loop writes atomic state updates to a memory-mapped file or SQLite DB (`trueno-db`).
@@ -980,7 +987,8 @@ Comparison with industry-standard training monitoring tools:
 | **Multi-run** | ✅ | ✅ | None | None | 📋 Future Enhancement |
 
 **Key Inspirations:**
-- [PyTorch Lightning RichProgressBar](https://lightning.ai/docs/pytorch/stable/common/progress_bar.html) - Color themes, ETA
+- [PyTorch Lightning RichProgressBar](https://lightning.ai/docs/pytorch/stable/common/progress_bar.html) - Color themes,
+  ETA
 - [TensorBoard Scalars](https://www.tensorflow.org/tensorboard/get_started) - Real-time metrics, gradient tracking
 - [Weights & Biases](https://wandb.ai/site/) - Run comparison, hyperparameter filtering
 - [nvitop](https://github.com/XuehaiPan/nvitop) - Colored GPU bars, temperature thresholds
@@ -1048,7 +1056,8 @@ Comparison with industry-standard training monitoring tools:
 
 ### 10.4 Progress Bars
 
-Inspired by [tqdm](https://github.com/tqdm/tqdm) and [Rich Progress](https://rich.readthedocs.io/en/latest/progress.html):
+Inspired by [tqdm](https://github.com/tqdm/tqdm) and
+[Rich Progress](https://rich.readthedocs.io/en/latest/progress.html):
 
 ```
 # Epoch progress with percentage and ETA
@@ -1117,7 +1126,8 @@ Power:  ████████████░░░░░░░░  285W/450W 
 
 ### 10.8 TUI Testing Requirements (probar Compliance)
 
-**CRITICAL REQUIREMENT:** The TUI MUST be tested using ALL testing capabilities from `../probar` (published as `jugar-probar`).
+**CRITICAL REQUIREMENT:** The TUI MUST be tested using ALL testing capabilities from `../probar`
+(published as `jugar-probar`).
 
 #### 10.8.1 Required probar Features
 
@@ -1200,7 +1210,8 @@ jugar-probar = "0.2"  # TUI snapshot testing
 
 ### 10.9 Headless Mode (CRITICAL)
 
-**REQUIREMENT:** The training monitor MUST support both TUI and headless modes with **full feature parity**, following the `trueno/cbtop` pattern.
+**REQUIREMENT:** The training monitor MUST support both TUI and headless modes with **full feature parity**, following
+the `trueno/cbtop` pattern.
 
 #### 10.9.1 Architecture
 
@@ -1423,7 +1434,8 @@ cargo run --example finetune_real --features nvml -- \
    *Verification:* Successfully implemented with specialized function->test pairs.
 
 2. **Model Size**: **0.5B (Verified)**
-   *Verification:* Confirmed viability on RTX 4090 with <4GB VRAM usage. Real inference duration: ~3.6s per forward pass.
+   *Verification:* Confirmed viability on RTX 4090 with <4GB VRAM usage. Real inference duration: ~3.6s per forward
+   pass.
 
 3. **Proptest Ratio**: **60% Proptest Data**
    *Verification:* High ratio established to maximize falsification potential.
@@ -1431,7 +1443,8 @@ cargo run --example finetune_real --features nvml -- \
 4. **Inference Baseline**: **FALSIFIED (BPE Impact)**
    *Hypothesis:* BPE would reduce initial loss by 30%.
    *Result:* Falsified. Loss increased slightly (19.83 -> 20.05).
-   *Conclusion:* Tokenizer works (variable lengths verified), but static alignment is insufficient. Gradient descent is required.
+   *Conclusion:* Tokenizer works (variable lengths verified), but static alignment is insufficient. Gradient descent is
+   required.
 
 5. **Learning Infrastructure**: **CORROBORATED (H4)**
    *Hypothesis:* Backward pass will update weights.
@@ -1473,17 +1486,20 @@ cargo run --example finetune_real --features nvml -- \
     - `entrenar`: Full CUDA integration via `CudaTransformerBlock`
 
 12. **Training Kernels**: **VERIFIED (Phase 11, Week 3)**
-    *Verification:* All 14 critical forward/backward kernels (ReLU, GELU, SiLU, Softmax, Norm, GEMM) are implemented and tested in `trueno-gpu` and wired into `entrenar`.
+    *Verification:* All 14 critical forward/backward kernels (ReLU, GELU, SiLU, Softmax, Norm, GEMM) are implemented and
+    tested in `trueno-gpu` and wired into `entrenar`.
     *Finding:* FlashAttention backward is not blocking; standard decomposition is sufficient for Phase 11.
     *Status:* Unblocked for Week 4 (Optimizer Kernels).
 
 13. **Optimizer Fusion**: **VERIFIED (Phase 11, Week 4)**
-    *Verification:* `AdamWStepKernel` and `GradientClipKernel` implemented in `trueno-gpu` and integrated into `entrenar`.
+    *Verification:* `AdamWStepKernel` and `GradientClipKernel` implemented in `trueno-gpu` and integrated into
+    `entrenar`.
     *Impact:* Enables pure-GPU training loop (no CPU synchronization for weight updates).
     *Status:* Unblocked for Week 5 (Integration).
 
 14. **CudaTrainer API**: **VERIFIED (Phase 11, Week 5)**
-    *Verification:* High-level `CudaTrainer` API implemented in `src/autograd/cuda_training.rs` and validated via `cuda_training_benchmark.rs`.
+    *Verification:* High-level `CudaTrainer` API implemented in `src/autograd/cuda_training.rs` and validated via
+    `cuda_training_benchmark.rs`.
     *Impact:* Abstracts low-level kernel launches into a clean training interface (matmul, backward, adamw).
     *Status:* Unblocked for final `finetune_real` integration.
 
@@ -1494,7 +1510,8 @@ cargo run --example finetune_real --features nvml -- \
 > "A theory is scientific if and only if it is falsifiable."
 > — Karl Popper, *The Logic of Scientific Discovery* (1959)
 
-We apply this to ML evaluation: every claim about model capability must have a test that could **disprove** it. If a test cannot fail, it provides no information.
+We apply this to ML evaluation: every claim about model capability must have a test that could **disprove** it. If a
+test cannot fail, it provides no information.
 
 **Example Application:**
 
@@ -1508,9 +1525,12 @@ We apply this to ML evaluation: every claim about model capability must have a t
 
 ## 16. PMAT (Popperian Metric Analysis Tool) Integration
 
-To ensure the 100-point QA checklist is enforced with scientific rigor, the pipeline must integrate with the project's PMAT system.
+To ensure the 100-point QA checklist is enforced with scientific rigor, the pipeline must integrate with the project's
+PMAT system.
 
-**Definitive Protocol:** See [SPEC-QA-001: Comprehensive QA & Falsification Protocol](./comprehensive-qa-falsification.md) for the detailed 100-point matrix.
+**Definitive Protocol:** See
+[SPEC-QA-001: Comprehensive QA & Falsification Protocol](./comprehensive-qa-falsification.md) for the detailed 100-point
+matrix.
 
 ### 16.1 Automated Gates
 
@@ -1523,17 +1543,21 @@ To ensure the 100-point QA checklist is enforced with scientific rigor, the pipe
 
 ### 16.2 Continuous Falsification
 
-The evaluation pipeline shall run on every commit to the `adapters` repository. Any degradation in the Popperian Score constitutes a "Regression of Knowledge" and requires immediate *Hansei* (reflection).
+The evaluation pipeline shall run on every commit to the `adapters` repository. Any degradation in the Popperian Score
+constitutes a "Regression of Knowledge" and requires immediate *Hansei* (reflection).
 
 ---
 
 ## Appendix C: PMAT ComputeBrick Integration
 
-Following the "Brick Architecture" (v2.0), the evaluation results must be exportable as a standardized **ComputeBrick Metric Set**.
+Following the "Brick Architecture" (v2.0), the evaluation results must be exportable as a standardized **ComputeBrick
+Metric Set**.
 
 1. **Metrics Format**: JSON-LD with semantic pointers to the source functions.
-2. **Observability**: Integrate with `cbtop` for real-time visualization of the "falsification rate" during batch evaluation.
-3. **Traceability**: Every generated test must be linked to the specific model version and adapter weights via SHA-256 hashes.
+2. **Observability**: Integrate with `cbtop` for real-time visualization of the "falsification rate" during batch
+   evaluation.
+3. **Traceability**: Every generated test must be linked to the specific model version and adapter weights via SHA-256
+   hashes.
 
 ---
 

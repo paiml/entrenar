@@ -7,15 +7,21 @@
 
 ## Abstract
 
-This specification defines a real-time terminal-based monitoring and visualization system for neural network training in Entrenar. The system leverages **trueno-viz** exclusively for hardware-accelerated rendering of training metrics, loss curves, and diagnostic information directly to terminal output. The design prioritizes low-latency updates, minimal memory overhead, and compatibility with headless server environments.
+This specification defines a real-time terminal-based monitoring and visualization system for neural network training in
+Entrenar. The system leverages **trueno-viz** exclusively for hardware-accelerated rendering of training metrics, loss
+curves, and diagnostic information directly to terminal output. The design prioritizes low-latency updates, minimal
+memory overhead, and compatibility with headless server environments.
 
 ## 1. Introduction
 
 ### 1.1 Background
 
-Real-time visualization of training metrics is essential for debugging, hyperparameter tuning, and understanding model convergence behavior [1]. Traditional approaches rely on browser-based dashboards (TensorBoard, Weights & Biases) which introduce latency, require network connectivity, and cannot operate in headless environments.
+Real-time visualization of training metrics is essential for debugging, hyperparameter tuning, and understanding model
+convergence behavior [1]. Traditional approaches rely on browser-based dashboards (TensorBoard, Weights & Biases) which
+introduce latency, require network connectivity, and cannot operate in headless environments.
 
-Terminal-based visualization provides immediate feedback within the training environment itself, enabling rapid iteration cycles critical to modern ML development workflows [2].
+Terminal-based visualization provides immediate feedback within the training environment itself, enabling rapid
+iteration cycles critical to modern ML development workflows [2].
 
 ### 1.2 Design Goals
 
@@ -29,13 +35,17 @@ Terminal-based visualization provides immediate feedback within the training env
 
 This specification draws upon the following peer-reviewed research:
 
-> **[1]** Lipton, Z. C., & Steinhardt, J. (2019). "Troubling Trends in Machine Learning Scholarship." *Queue*, 17(1), 45-77. ACM. https://doi.org/10.1145/3317287.3328534
+> **[1]** Lipton, Z. C., & Steinhardt, J. (2019). "Troubling Trends in Machine Learning Scholarship." *Queue*, 17(1),
+45-77. ACM. https://doi.org/10.1145/3317287.3328534
 >
-> *Annotation: Highlights the importance of interpretability and debugging tools in ML systems, motivating real-time monitoring capabilities.*
+> *Annotation: Highlights the importance of interpretability and debugging tools in ML systems, motivating real-time
+monitoring capabilities.*
 
-> **[2]** Sculley, D., et al. (2015). "Hidden Technical Debt in Machine Learning Systems." *Advances in Neural Information Processing Systems (NeurIPS)*, 28, 2503-2511.
+> **[2]** Sculley, D., et al. (2015). "Hidden Technical Debt in Machine Learning Systems." *Advances in Neural
+Information Processing Systems (NeurIPS)*, 28, 2503-2511.
 >
-> *Annotation: Identifies configuration and monitoring as critical infrastructure for sustainable ML systems, justifying investment in training observability.*
+> *Annotation: Identifies configuration and monitoring as critical infrastructure for sustainable ML systems, justifying
+investment in training observability.*
 
 ## 2. Architecture
 
@@ -87,9 +97,11 @@ This specification draws upon the following peer-reviewed research:
 
 The visualization pipeline implements a **producer-consumer pattern** with backpressure handling [3]:
 
-> **[3]** Welsh, M., Culler, D., & Brewer, E. (2001). "SEDA: An Architecture for Well-Conditioned, Scalable Internet Services." *ACM SIGOPS Operating Systems Review*, 35(5), 230-243.
+> **[3]** Welsh, M., Culler, D., & Brewer, E. (2001). "SEDA: An Architecture for Well-Conditioned, Scalable Internet
+Services." *ACM SIGOPS Operating Systems Review*, 35(5), 230-243.
 >
-> *Annotation: SEDA's staged event-driven architecture informs our callback-based design with bounded buffers to prevent memory exhaustion under high update rates.*
+> *Annotation: SEDA's staged event-driven architecture informs our callback-based design with bounded buffers to prevent
+memory exhaustion under high update rates.*
 
 ```rust
 // Simplified data flow
@@ -120,9 +132,11 @@ trueno-viz provides three terminal rendering modes with automatic capability det
 
 The ASCII ramp implements **perceptual uniformity** based on Weber-Fechner law [4]:
 
-> **[4]** Stevens, S. S. (1957). "On the psychophysical law." *Psychological Review*, 64(3), 153-181. American Psychological Association.
+> **[4]** Stevens, S. S. (1957). "On the psychophysical law." *Psychological Review*, 64(3), 153-181. American
+Psychological Association.
 >
-> *Annotation: Human brightness perception is logarithmic. Our grayscale ramp is designed for perceptually uniform steps, ensuring training curves are visually accurate.*
+> *Annotation: Human brightness perception is logarithmic. Our grayscale ramp is designed for perceptually uniform
+steps, ensuring training curves are visually accurate.*
 
 The grayscale conversion uses **Rec. 709 luminance coefficients**:
 
@@ -132,7 +146,8 @@ let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
 ### 3.3 Unicode Half-Block Rendering
 
-Unicode half-block characters (`▀` U+2580, `▄` U+2584) achieve **2x vertical resolution** by encoding two pixels per character cell:
+Unicode half-block characters (`▀` U+2580, `▄` U+2584) achieve **2x vertical resolution** by encoding two pixels per
+character cell:
 
 ```
 ┌───┐
@@ -141,17 +156,21 @@ Unicode half-block characters (`▀` U+2580, `▄` U+2584) achieve **2x vertical
 └───┘
 ```
 
-This technique doubles effective vertical resolution without increasing character count, critical for displaying detailed loss curves in constrained terminal heights [5].
+This technique doubles effective vertical resolution without increasing character count, critical for displaying
+detailed loss curves in constrained terminal heights [5].
 
-> **[5]** Baudisch, P., & Gutwin, C. (2004). "Multiblending: Displaying overlapping windows simultaneously without the drawbacks of alpha blending." *Proceedings of CHI 2004*, 367-374. ACM.
+> **[5]** Baudisch, P., & Gutwin, C. (2004). "Multiblending: Displaying overlapping windows simultaneously without the
+drawbacks of alpha blending." *Proceedings of CHI 2004*, 367-374. ACM.
 >
-> *Annotation: While focused on windowing systems, this work establishes principles for maximizing information density in constrained display areas, applicable to our terminal constraints.*
+> *Annotation: While focused on windowing systems, this work establishes principles for maximizing information density
+in constrained display areas, applicable to our terminal constraints.*
 
 ## 4. Visualization Components
 
 ### 4.1 Loss Curve (`LossCurve`)
 
-The loss curve component provides streaming visualization of training metrics with exponential moving average (EMA) smoothing.
+The loss curve component provides streaming visualization of training metrics with exponential moving average (EMA)
+smoothing.
 
 #### 4.1.1 EMA Smoothing
 
@@ -163,9 +182,11 @@ smoothed[t] = α * smoothed[t-1] + (1 - α) * raw[t]
 
 Where `α ∈ [0.0, 0.99]` controls smoothing strength.
 
-> **[6]** Hunter, J. S. (1986). "The Exponentially Weighted Moving Average." *Journal of Quality Technology*, 18(4), 203-210.
+> **[6]** Hunter, J. S. (1986). "The Exponentially Weighted Moving Average." *Journal of Quality Technology*, 18(4),
+203-210.
 >
-> *Annotation: EMA is optimal for online trend estimation with bounded memory, matching our O(1) memory requirement for streaming visualization.*
+> *Annotation: EMA is optimal for online trend estimation with bounded memory, matching our O(1) memory requirement for
+streaming visualization.*
 
 #### 4.1.2 Best Value Markers
 
@@ -198,7 +219,8 @@ Compact inline sparklines for status bars using **miniature bar charts** [7]:
 
 > **[7]** Tufte, E. R. (2006). *Beautiful Evidence*. Graphics Press. pp. 46-63.
 >
-> *Annotation: Tufte's sparkline concept—"intense, simple, word-sized graphics"—directly informs our compact inline metric display design.*
+> *Annotation: Tufte's sparkline concept—"intense, simple, word-sized graphics"—directly informs our compact inline
+metric display design.*
 
 ```
 Loss: 0.0234 ▁▂▃▄▅▆▇█▇▆▅▄▃  Best: 0.0189 @ epoch 47
@@ -226,9 +248,11 @@ fn sparkline(values: &[f32], width: usize) -> String {
 
 Training progress with ETA estimation using **Kalman filtering** for stable predictions [8]:
 
-> **[8]** Welch, G., & Bishop, G. (1995). "An Introduction to the Kalman Filter." *Technical Report TR 95-041*, University of North Carolina at Chapel Hill.
+> **[8]** Welch, G., & Bishop, G. (1995). "An Introduction to the Kalman Filter." *Technical Report TR 95-041*,
+University of North Carolina at Chapel Hill.
 >
-> *Annotation: Kalman filtering provides optimal ETA estimates by modeling step duration as a noisy linear process, avoiding erratic ETA jumps common in naive implementations.*
+> *Annotation: Kalman filtering provides optimal ETA estimates by modeling step duration as a noisy linear process,
+avoiding erratic ETA jumps common in naive implementations.*
 
 ```
 Epoch 15/100 [████████████░░░░░░░░░░░░░░░░░░] 40% │ 12.3 steps/s │ ETA: 2h 15m
@@ -265,7 +289,8 @@ Composable dashboard layout with ANSI cursor control for flicker-free updates:
 
 ### 4.5 Health Monitoring (Andon Cord)
 
-In the spirit of **Jidoka** (automation with a human touch), the monitor actively detects training abnormalities and "pulls the cord" (flashing alert):
+In the spirit of **Jidoka** (automation with a human touch), the monitor actively detects training abnormalities and
+"pulls the cord" (flashing alert):
 
 - **NaN/Inf Detection**: Immediate red flashing alert if loss becomes invalid.
 - **Divergence Check**: Alert if loss exceeds 3σ of EMA.
@@ -284,9 +309,11 @@ if ctx.loss.is_nan() || ctx.loss.is_infinite() {
 
 To prevent terminal flooding while maintaining responsiveness, we implement **adaptive refresh rate** [9]:
 
-> **[9]** Card, S. K., Robertson, G. G., & Mackinlay, J. D. (1991). "The Information Visualizer: An Information Workspace." *Proceedings of CHI 1991*, 181-186. ACM.
+> **[9]** Card, S. K., Robertson, G. G., & Mackinlay, J. D. (1991). "The Information Visualizer: An Information
+Workspace." *Proceedings of CHI 1991*, 181-186. ACM.
 >
-> *Annotation: Establishes 100ms as the threshold for perceived instantaneous response, guiding our minimum refresh interval.*
+> *Annotation: Establishes 100ms as the threshold for perceived instantaneous response, guiding our minimum refresh
+interval.*
 
 ```rust
 pub struct RefreshPolicy {
@@ -502,9 +529,12 @@ monitor:
 
 For large epoch counts (>1000), Douglas-Peucker simplification reduces rendering complexity [10]:
 
-> **[10]** Douglas, D. H., & Peucker, T. K. (1973). "Algorithms for the reduction of the number of points required to represent a digitized line or its caricature." *Cartographica: The International Journal for Geographic Information and Geovisualization*, 10(2), 112-122.
+> **[10]** Douglas, D. H., & Peucker, T. K. (1973). "Algorithms for the reduction of the number of points required to
+represent a digitized line or its caricature." *Cartographica: The International Journal for Geographic Information and
+Geovisualization*, 10(2), 112-122.
 >
-> *Annotation: The Douglas-Peucker algorithm achieves O(n log n) complexity for polyline simplification, essential for rendering 10,000+ epoch curves in real-time.*
+> *Annotation: The Douglas-Peucker algorithm achieves O(n log n) complexity for polyline simplification, essential for
+rendering 10,000+ epoch curves in real-time.*
 
 ```rust
 // Automatic simplification for large datasets
@@ -607,9 +637,11 @@ Layer 3  ▓▓▓  ▓▓▓  ▓▓▓▓ ▓▓▓▓ ▓▓▓
 
 ### 10.3 Academic Reference
 
-> **[11]** Sundararajan, M., Taly, A., & Yan, Q. (2017). "Axiomatic Attribution for Deep Networks." *ICML 2017*, 3319-3328.
+> **[11]** Sundararajan, M., Taly, A., & Yan, Q. (2017). "Axiomatic Attribution for Deep Networks." *ICML 2017*,
+3319-3328.
 >
-> *Annotation: Integrated Gradients provides theoretically grounded feature attribution, already implemented in aprender::interpret.*
+> *Annotation: Integrated Gradients provides theoretically grounded feature attribution, already implemented in
+aprender::interpret.*
 
 ### 10.4 API Extension
 
@@ -652,11 +684,13 @@ impl TerminalMonitorCallback {
 
 2. Sculley, D., et al. (2015). "Hidden Technical Debt in Machine Learning Systems." *NeurIPS*, 28, 2503-2511.
 
-3. Welsh, M., Culler, D., & Brewer, E. (2001). "SEDA: An Architecture for Well-Conditioned, Scalable Internet Services." *ACM SIGOPS Operating Systems Review*, 35(5), 230-243.
+3. Welsh, M., Culler, D., & Brewer, E. (2001). "SEDA: An Architecture for Well-Conditioned, Scalable Internet Services."
+   *ACM SIGOPS Operating Systems Review*, 35(5), 230-243.
 
 4. Stevens, S. S. (1957). "On the psychophysical law." *Psychological Review*, 64(3), 153-181.
 
-5. Baudisch, P., & Gutwin, C. (2004). "Multiblending: Displaying overlapping windows simultaneously without the drawbacks of alpha blending." *CHI 2004*, 367-374.
+5. Baudisch, P., & Gutwin, C. (2004). "Multiblending: Displaying overlapping windows simultaneously without the
+   drawbacks of alpha blending." *CHI 2004*, 367-374.
 
 6. Hunter, J. S. (1986). "The Exponentially Weighted Moving Average." *Journal of Quality Technology*, 18(4), 203-210.
 
@@ -664,9 +698,11 @@ impl TerminalMonitorCallback {
 
 8. Welch, G., & Bishop, G. (1995). "An Introduction to the Kalman Filter." *TR 95-041*, UNC Chapel Hill.
 
-9. Card, S. K., Robertson, G. G., & Mackinlay, J. D. (1991). "The Information Visualizer: An Information Workspace." *CHI 1991*, 181-186.
+9. Card, S. K., Robertson, G. G., & Mackinlay, J. D. (1991). "The Information Visualizer: An Information Workspace."
+   *CHI 1991*, 181-186.
 
-10. Douglas, D. H., & Peucker, T. K. (1973). "Algorithms for the reduction of the number of points required to represent a digitized line or its caricature." *Cartographica*, 10(2), 112-122.
+10. Douglas, D. H., & Peucker, T. K. (1973). "Algorithms for the reduction of the number of points required to represent
+    a digitized line or its caricature." *Cartographica*, 10(2), 112-122.
 
 11. Sundararajan, M., Taly, A., & Yan, Q. (2017). "Axiomatic Attribution for Deep Networks." *ICML 2017*, 3319-3328.
 

@@ -1,6 +1,9 @@
 # Quality Gates (Jidoka)
 
-Entrenar implements quality gates following Jidoka (自働化) principles - automation with a human touch. The quality module provides structured metrics, supply chain auditing, and failure diagnostics to ensure training runs meet quality standards before deployment.
+Entrenar implements quality gates following Jidoka (自働化) principles -
+automation with a human touch. The quality module provides structured metrics,
+supply chain auditing, and failure diagnostics to ensure training runs
+meet quality standards before deployment.
 
 ## Overview
 

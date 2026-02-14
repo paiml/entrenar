@@ -50,7 +50,8 @@
 - **Monitoring** - Real-time metrics, drift detection, Andon alerts
 - **Explainability** - Feature attribution via SHAP, Integrated Gradients
 
-Part of the [PAIML Stack](https://github.com/paiml), built on [trueno](https://crates.io/crates/trueno) for SIMD-accelerated operations.
+Part of the [PAIML Stack](https://github.com/paiml), built on [trueno](https://crates.io/crates/trueno) for
+SIMD-accelerated operations.
 
 ## Installation
 

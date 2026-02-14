@@ -47,7 +47,7 @@ pub fn generate_yaml(
     data: Option<&str>,
 ) -> String {
     let manifest = generate_manifest(template, name, model, data);
-    serde_yaml::to_string(&manifest).unwrap_or_else(|_| "# Error generating YAML".to_string())
+    serde_yaml::to_string(&manifest).unwrap_or_else(|_err| "# Error generating YAML".to_string())
 }
 
 fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> TrainingManifest {

@@ -1,6 +1,7 @@
 # Tape-Based Computation Graphs
 
-Entrenar uses a **tape-based** approach to record computational graphs during the forward pass and replay them in reverse during backpropagation. This chapter explains how the tape works and why it's efficient.
+Entrenar uses a **tape-based** approach to record computational graphs during the forward pass and replay them in
+reverse during backpropagation. This chapter explains how the tape works and why it's efficient.
 
 ## The Tape Metaphor
 

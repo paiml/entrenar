@@ -9,25 +9,41 @@
 
 ## Abstract
 
-This specification defines the **integrated telemetry and experimentation system** for the `entrenar` ecosystem. Unlike generic tracking solutions, this system is architected specifically for `entrenar`'s topology: it utilizes **TruenoDB** for time-series storage, **Renacer** for system-level tracing, **WebAssembly** for edge deployment, and explicit support for **Sweeps** (Bench) and **Memory Planning** (LoRA).
+This specification defines the **integrated telemetry and experimentation system** for the `entrenar` ecosystem. Unlike
+generic tracking solutions, this system is architected specifically for `entrenar`'s topology: it utilizes **TruenoDB**
+for time-series storage, **Renacer** for system-level tracing, **WebAssembly** for edge deployment, and explicit support
+for **Sweeps** (Bench) and **Memory Planning** (LoRA).
 
 **Critical capabilities:**
 - **v1.2.0:** Real-time dashboards via `DashboardSource` trait (Terminal + WASM)
-- **v1.3.0:** Interactive Session tracking (optional `ruchy` integration), PMAT code quality, CITL knowledge metrics, Kalman ETA, HuggingFace supply chain verification
-- **v1.4.0:** Static analysis integration (cognitive complexity, cargo-deny), structured error diagnostics, TUI standardization via `trueno-viz`
-- **v1.5.0:** **Cost-efficient ML first-class support**: device abstraction (CPU/GPU/TPU/Apple Silicon), energy tracking (watts, carbon), cost metrics, model paradigm parity (traditional ML, fine-tuning, distillation, MoE), Pareto frontier benchmarking
-- **v1.6.0:** **Renacer deep integration**: semantic equivalence scoring, behavioral integrity gates, platform-aware efficiency (Server/Edge), Lamport clock lineage, trace compression policy, architectural anti-pattern detection (God Process, Tight Loop)
-- **v1.7.0:** **Academic research support**: FAIR-compliant artifacts, ORCID author attribution, DOI minting, pre-registration (hypothesis locking), literate programming (Typst/mdBook—NOT Jupyter), CFF/BibTeX citation generation, Zenodo/figshare archival
-- **v1.8.0:** **Conference-ready research**: double-blind anonymization (`--anonymize`), cryptographic pre-registration (Ed25519 + OpenTimestamps), Jupyter notebook bridge for reviewers, upstream citation graph aggregation, RO-Crate offline bundling
+- **v1.3.0:** Interactive Session tracking (optional `ruchy` integration), PMAT code quality, CITL knowledge metrics,
+  Kalman ETA, HuggingFace supply chain verification
+- **v1.4.0:** Static analysis integration (cognitive complexity, cargo-deny), structured error diagnostics, TUI
+  standardization via `trueno-viz`
+- **v1.5.0:** **Cost-efficient ML first-class support**: device abstraction (CPU/GPU/TPU/Apple Silicon), energy tracking
+  (watts, carbon), cost metrics, model paradigm parity (traditional ML, fine-tuning, distillation, MoE), Pareto frontier
+  benchmarking
+- **v1.6.0:** **Renacer deep integration**: semantic equivalence scoring, behavioral integrity gates, platform-aware
+  efficiency (Server/Edge), Lamport clock lineage, trace compression policy, architectural anti-pattern detection
+  (God Process, Tight Loop)
+- **v1.7.0:** **Academic research support**: FAIR-compliant artifacts, ORCID author attribution, DOI minting,
+  pre-registration (hypothesis locking), literate programming (Typst/mdBook—NOT Jupyter), CFF/BibTeX citation
+  generation, Zenodo/figshare archival
+- **v1.8.0:** **Conference-ready research**: double-blind anonymization (`--anonymize`), cryptographic pre-registration
+  (Ed25519 + OpenTimestamps), Jupyter notebook bridge for reviewers, upstream citation graph aggregation, RO-Crate
+  offline bundling
 
-It strictly adheres to the Toyota Way principles, ensuring that "Science" (Model Metrics) and "Systems" (Performance Telemetry) are unified into a single source of truth (*Integrated Visual Control*).
+It strictly adheres to the Toyota Way principles, ensuring that "Science" (Model Metrics) and "Systems"
+(Performance Telemetry) are unified into a single source of truth (*Integrated Visual Control*).
 
 ---
 
 ## 1. Introduction
 
 ### 1.1 The "Split-Brain" Problem
-Traditional MLOps separates "Experiment Tracking" (Accuracy/Loss) from "System Observability" (Latency/Memory). In high-performance Rust ML, this is *Muda* (Waste). A model that converges (High Accuracy) but causes latency spikes (High Syscalls) is a failure.
+Traditional MLOps separates "Experiment Tracking" (Accuracy/Loss) from "System Observability" (Latency/Memory). In
+high-performance Rust ML, this is *Muda* (Waste). A model that converges (High Accuracy) but causes latency spikes
+(High Syscalls) is a failure.
 
 ### 1.2 Solution: Unified Telemetry
 We define an **Experiment** not as a log file, but as a root **Renacer Span** stored in **TruenoDB**.
@@ -150,7 +166,8 @@ lineage:
 
 ## 7. Live Dashboard Integration (Mieruka)
 
-**CRITICAL:** Experiments MUST be viewable in real-time. This section defines the bridge between `entrenar::tracking::Run` and `entrenar::monitor::{Dashboard, WasmDashboard}`.
+**CRITICAL:** Experiments MUST be viewable in real-time. This section defines the bridge between
+`entrenar::tracking::Run` and `entrenar::monitor::{Dashboard, WasmDashboard}`.
 
 ### 7.1 The Dashboard Source Trait
 
@@ -478,7 +495,8 @@ params:
 
 ### 14.1 Prior Art: ruchy Session Recording
 
-> **Optional Integration:** The `ruchy` REPL (../ruchy) has mature session recording with Lamport clock causality. When stable, entrenar SHOULD integrate via feature flag.
+> **Optional Integration:** The `ruchy` REPL (../ruchy) has mature session recording with Lamport clock causality. When
+stable, entrenar SHOULD integrate via feature flag.
 
 ```toml
 # Cargo.toml - optional ruchy integration
@@ -637,7 +655,8 @@ ORDER BY m.value DESC;
 
 ## 16. CITL Knowledge Tracking (Kaizen)
 
-**NEW in v1.3.0:** In Compiler-in-the-Loop, we're not minimizing loss—we're maximizing compilation success and generating repair knowledge [43][48].
+**NEW in v1.3.0:** In Compiler-in-the-Loop, we're not minimizing loss—we're maximizing compilation success and
+generating repair knowledge [43][48].
 
 ### 16.1 KnowledgeDelta Metric
 
@@ -1056,7 +1075,8 @@ entrenar runs list --format json
 
 ## 22. Compute Device & Efficiency Tracking (Heijunka)
 
-**NEW in v1.5.0:** The sovereign stack's core mission is **cost-efficient ML**. CPU inference is often 10-100x cheaper than GPU. Track device, energy, and cost as first-class metrics [61][62].
+**NEW in v1.5.0:** The sovereign stack's core mission is **cost-efficient ML**. CPU inference is often 10-100x cheaper
+than GPU. Track device, energy, and cost as first-class metrics [61][62].
 
 ### 22.1 Device Abstraction
 
@@ -1527,7 +1547,8 @@ pub fn render_pareto_chart(benchmark: &CostPerformanceBenchmark) -> trueno_viz::
 
 ## 25. Behavioral Integrity (Standardization)
 
-**NEW in v1.6.0:** Accuracy alone is insufficient. Renacer's Semantic Equivalence score proves *behavioral stability* across runs [68].
+**NEW in v1.6.0:** Accuracy alone is insufficient. Renacer's Semantic Equivalence score proves *behavioral stability*
+across runs [68].
 
 ### 25.1 Semantic Equivalence Score
 
@@ -1679,7 +1700,8 @@ artifact:
 
 ## 27. Architectural Quality Gates (Jidoka)
 
-**NEW in v1.6.0:** Renacer detects anti-patterns (God Process, Tight Loop). Block Golden promotion if architectural defects exist [70].
+**NEW in v1.6.0:** Renacer detects anti-patterns (God Process, Tight Loop). Block Golden promotion if architectural
+defects exist [70].
 
 ### 27.1 Anti-Pattern Detection
 
@@ -1897,7 +1919,8 @@ run:
 
 ## 29. Lamport Clock Lineage (Genchi Genbutsu)
 
-**NEW in v1.6.0:** Timestamps are unreliable in distributed systems. Use Renacer's Lamport clocks for causal ordering [72].
+**NEW in v1.6.0:** Timestamps are unreliable in distributed systems. Use Renacer's Lamport clocks for causal ordering
+[72].
 
 ### 29.1 Logical Time in Lineage
 
@@ -2009,7 +2032,8 @@ run:
 
 ## 30. Sovereign Deployment (Academic/Air-Gapped)
 
-**NEW in v1.6.0:** Universities and research institutions need self-hosted, offline-capable deployments. No cloud dependencies [78][79].
+**NEW in v1.6.0:** Universities and research institutions need self-hosted, offline-capable deployments. No cloud
+dependencies [78][79].
 
 ### 30.1 Distribution Formats
 
@@ -2396,7 +2420,8 @@ pub enum SyncProtocol {
 
 ## 31. Academic Research Artifacts (Kaizen)
 
-**NEW in v1.7.0:** Scientists need citable, reproducible artifacts—not Jupyter notebooks. FAIR principles with Rust-native literate programming [80][81].
+**NEW in v1.7.0:** Scientists need citable, reproducible artifacts—not Jupyter notebooks. FAIR principles with
+Rust-native literate programming [80][81].
 
 ### 31.1 Research Artifact Structure
 
@@ -3661,7 +3686,8 @@ This specification (v1.8.0) explicitly addresses all ecosystem review findings.
 48. **Sutton, R. S., & Barto, A. G. (2018).** Reinforcement learning: An introduction. *MIT Press*.
 49. **Zhu, L., et al. (2022).** Supply chain security for machine learning. *arXiv*.
 50. **Fowler, M. (2006).** Continuous integration. *martinfowler.com*.
-51. **ruchy. (2024).** REPL Replay Testing System with Lamport clocks. *github.com/paiml/ruchy*. *(Prior art for Session tracking)*
+51. **ruchy. (2024).** REPL Replay Testing System with Lamport clocks. *github.com/paiml/ruchy*.
+    *(Prior art for Session tracking)*
 52. **Ohm, M., et al. (2020).** Backstabber's knife collection: Open source supply chain attacks. *DIMVA*.
 53. **Beyer, B., et al. (2016).** Site Reliability Engineering: How Google Runs Production Systems. *O'Reilly*.
 54. **Few, S. (2006).** Information dashboard design. *O'Reilly*.
@@ -3692,12 +3718,14 @@ This specification (v1.8.0) explicitly addresses all ecosystem review findings.
 79. **Wheeler, D. A. (2015).** Countering trusting trust through diverse double-compiling. *ACSAC*.
 80. **Wilkinson, M. D., et al. (2016).** The FAIR guiding principles for scientific data management. *Scientific Data*.
 81. **Stodden, V., et al. (2016).** Enhancing reproducibility for computational methods. *Science*.
-82. **Brand, A., et al. (2015).** Beyond authorship: Attribution, contribution, collaboration. *Learned Publishing*. *(CRediT taxonomy)*
+82. **Brand, A., et al. (2015).** Beyond authorship: Attribution, contribution, collaboration. *Learned Publishing*.
+    *(CRediT taxonomy)*
 83. **Druskat, S., et al. (2021).** Citation File Format (CFF). *Journal of Open Source Software*.
 84. **Haug, M., & Mädje, L. (2022).** Typst: A new markup-based typesetting system. *TUGboat*.
 85. **Nosek, B. A., et al. (2018).** The preregistration revolution. *PNAS*.
 86. **Tomkins, A., et al. (2017).** Reviewer bias in single- versus double-blind peer review. *PNAS*.
 87. **Nosek, B. A., et al. (2018).** The preregistration revolution (extended). *PNAS*. *(Cryptographic commitment)*
-88. **Pimentel, J. F., et al. (2019).** A large-scale study about quality and reproducibility of Jupyter notebooks. *MSR*.
+88. **Pimentel, J. F., et al. (2019).** A large-scale study about quality and reproducibility of Jupyter notebooks.
+    *MSR*.
 89. **Stodden, V., et al. (2013).** Toward reproducible computational research. *ISE*.
 90. **Bechhofer, S., et al. (2013).** Why linked data is not enough for scientists. *FGCS*. *(RO-Crate)*

@@ -1,6 +1,7 @@
 # Pruning Pipeline
 
-The pruning pipeline manages the end-to-end workflow from model loading to compressed export. This chapter covers the pipeline stages and state machine.
+The pruning pipeline manages the end-to-end workflow from model loading to compressed export. This chapter covers the
+pipeline stages and state machine.
 
 ## Pipeline Stages
 

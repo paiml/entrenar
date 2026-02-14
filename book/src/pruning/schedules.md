@@ -1,6 +1,7 @@
 # Pruning Schedules
 
-Pruning schedules control when and how sparsity is introduced during training. The right schedule can significantly impact final model quality.
+Pruning schedules control when and how sparsity is introduced during training. The right schedule can significantly
+impact final model quality.
 
 ## Overview
 
@@ -170,7 +171,8 @@ The cubic curve has desirable properties:
 
 ### Reference
 
-> Zhu, M., & Gupta, S. (2017). "To Prune, or Not to Prune: Exploring the Efficacy of Pruning for Model Compression." arXiv:1710.01878
+> Zhu, M., & Gupta, S. (2017). "To Prune, or Not to Prune: Exploring the Efficacy of Pruning for Model Compression."
+arXiv:1710.01878
 
 ## Choosing a Schedule
 

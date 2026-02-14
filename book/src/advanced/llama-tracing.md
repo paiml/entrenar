@@ -1,6 +1,7 @@
 # LLaMA Training Observability & Tracing
 
-This guide covers the **Phase 4** observability stack for LLaMA training in entrenar, using **renacer** for syscall-level tracing, **OpenTelemetry** for distributed tracing, and **Jaeger** for trace visualization.
+This guide covers the **Phase 4** observability stack for LLaMA training in entrenar, using **renacer** for
+syscall-level tracing, **OpenTelemetry** for distributed tracing, and **Jaeger** for trace visualization.
 
 ## Overview
 

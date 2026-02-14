@@ -111,7 +111,7 @@ pub fn relu_backward(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -164,7 +164,7 @@ pub fn gelu_backward(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -217,7 +217,7 @@ pub fn silu_backward(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -271,7 +271,7 @@ pub fn softmax_backward(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -331,7 +331,7 @@ pub fn rms_norm_backward(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -395,7 +395,7 @@ pub fn layer_norm_backward(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -458,7 +458,7 @@ pub fn gemm_backward_a(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -517,7 +517,7 @@ pub fn gemm_backward_b(
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 

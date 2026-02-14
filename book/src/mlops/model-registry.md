@@ -4,7 +4,8 @@ Manage model lifecycle with staging workflows, promotion policies, and version c
 
 ## Toyota Principle: Kanban
 
-Visual workflow management for model stages. Models flow through stages (Development → Staging → Production → Archived) like parts through a factory.
+Visual workflow management for model stages. Models flow through stages
+(Development → Staging → Production → Archived) like parts through a factory.
 
 ## Quick Start
 

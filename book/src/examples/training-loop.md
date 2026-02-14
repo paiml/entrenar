@@ -1,6 +1,7 @@
 # Basic Training Loop
 
-This example demonstrates the fundamental training loop with gradient clipping, learning rate scheduling, and epoch-based training.
+This example demonstrates the fundamental training loop with gradient clipping, learning rate scheduling, and
+epoch-based training.
 
 ## Running the Example
 

@@ -1,6 +1,7 @@
 # Preflight Validation
 
-Catch data and environment issues before training starts. Research shows preflight validation prevents 30-50% of ML pipeline failures.
+Catch data and environment issues before training starts. Research shows preflight validation prevents 30-50% of ML
+pipeline failures.
 
 ## Toyota Principle: Jidoka (自働化)
 

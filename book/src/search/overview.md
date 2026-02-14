@@ -1,6 +1,7 @@
 # Search Algorithms
 
-Entrenar provides search algorithms for exploring code generation spaces, particularly useful for program synthesis tasks.
+Entrenar provides search algorithms for exploring code generation spaces, particularly useful for program synthesis
+tasks.
 
 ## Available Algorithms
 

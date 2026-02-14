@@ -147,7 +147,7 @@ impl SovereignDistribution {
 
     /// Serialize to JSON manifest
     pub fn to_manifest_json(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string_pretty(self).unwrap_or_else(|_err| "{}".to_string())
     }
 
     /// Parse from JSON manifest

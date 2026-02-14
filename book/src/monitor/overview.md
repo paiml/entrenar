@@ -1,6 +1,7 @@
 # Real-Time Training Monitoring
 
-The monitor module provides comprehensive real-time visibility into training runs, implementing Toyota Way principles for quality assurance.
+The monitor module provides comprehensive real-time visibility into training runs, implementing Toyota Way principles
+for quality assurance.
 
 ## Features
 

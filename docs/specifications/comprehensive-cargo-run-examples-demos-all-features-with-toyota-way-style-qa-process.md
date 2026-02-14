@@ -9,14 +9,17 @@
 
 ## 1. Philosophy & Principles (The Toyota Way)
 
-This document establishes the standard work for executing and validating the `entrenar` machine learning ecosystem. We adhere to the 4 P's of the Toyota Way:
+This document establishes the standard work for executing and validating the `entrenar` machine learning ecosystem. We
+adhere to the 4 P's of the Toyota Way:
 
-1.  **Philosophy**: Long-term systems thinking. We value safety and reliability over short-term speed. "Human life is at stake."
+1.  **Philosophy**: Long-term systems thinking. We value safety and reliability over short-term speed. "Human life is at
+    stake."
 2.  **Process**: Eliminate waste (*Muda*). Build quality in (*Jidoka*). Create continuous flow. Use visual control.
 3.  **People**: Respect partners and challenge them to grow.
 4.  **Problem Solving**: Go and see (*Genchi Genbutsu*) to understand the situation. Decide slowly, implement rapidly.
 
-Every example below represents a **Standardized Work** instruction. The 25-point QA checklist is our **Poka-Yoke** (mistake-proofing) mechanism to ensure zero defects in mission-critical AI models.
+Every example below represents a **Standardized Work** instruction. The 25-point QA checklist is our **Poka-Yoke**
+(mistake-proofing) mechanism to ensure zero defects in mission-critical AI models.
 
 ---
 
@@ -1170,18 +1173,24 @@ _Safety Officer_ _____________________
 **Date**: 2025-11-30
 **Verdict**: **APPROVED WITH ANNOTATIONS**
 
-This specification demonstrates rigorous adherence to lean manufacturing principles adapted for ML systems engineering. The 25-point QA checklist and 100 execution scenarios provide comprehensive coverage of safety-critical ML deployment concerns.
+This specification demonstrates rigorous adherence to lean manufacturing principles adapted for ML systems engineering.
+The 25-point QA checklist and 100 execution scenarios provide comprehensive coverage of safety-critical ML deployment
+concerns.
 
 ---
 
 ### Annotation 1: Toyota Production System Adaptation (Section 1)
 
-**Observation**: The adaptation of Jidoka (autonomation) and Poka-Yoke (mistake-proofing) to ML training is well-founded.
+**Observation**: The adaptation of Jidoka (autonomation) and Poka-Yoke (mistake-proofing) to ML training is
+well-founded.
 
 **Academic Support**:
-> [1] Liker, J.K. (2004). "The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer." *McGraw-Hill Education*. ISBN: 978-0071392310.
+> [1] Liker, J.K. (2004). "The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer."
+*McGraw-Hill Education*. ISBN: 978-0071392310.
 
-The document correctly identifies the 4 P's (Philosophy, Process, People, Problem Solving). The mapping of Jidoka to NaN/Inf detection (Checklist items 2, 7, 59) aligns with the original intent of "stopping to fix problems" before propagation.
+The document correctly identifies the 4 P's (Philosophy, Process, People, Problem Solving). The mapping of Jidoka to
+NaN/Inf detection (Checklist items 2, 7, 59) aligns with the original intent of "stopping to fix problems" before
+propagation.
 
 **PMAT Alignment**: ✅
 - `max_cyclomatic = 10` supports the "build quality in" principle by keeping functions small and testable
@@ -1194,7 +1203,8 @@ The document correctly identifies the 4 P's (Philosophy, Process, People, Proble
 **Observation**: Deterministic replay (seed=42, bit-exact reproduction) is essential for scientific validity.
 
 **Academic Support**:
-> [2] Pineau, J., et al. (2021). "Improving Reproducibility in Machine Learning Research." *Journal of Machine Learning Research*, 22(164):1-20. https://jmlr.org/papers/v22/20-303.html
+> [2] Pineau, J., et al. (2021). "Improving Reproducibility in Machine Learning Research." *Journal of Machine Learning
+Research*, 22(164):1-20. https://jmlr.org/papers/v22/20-303.html
 
 The specification addresses the "reproducibility crisis" in ML by mandating:
 - Fixed global seeds (Scenario 5)
@@ -1212,7 +1222,8 @@ The specification addresses the "reproducibility crisis" in ML by mandating:
 **Observation**: Finite difference gradient validation is correctly specified as a quality gate.
 
 **Academic Support**:
-> [3] Baydin, A.G., et al. (2018). "Automatic Differentiation in Machine Learning: A Survey." *Journal of Machine Learning Research*, 18(153):1-43. https://jmlr.org/papers/v18/17-468.html
+> [3] Baydin, A.G., et al. (2018). "Automatic Differentiation in Machine Learning: A Survey." *Journal of Machine
+Learning Research*, 18(153):1-43. https://jmlr.org/papers/v18/17-468.html
 
 The specification requires gradient error < 1e-3 (CLAUDE.md), validated via:
 ```rust
@@ -1233,9 +1244,12 @@ This matches the survey's recommendation for numerical gradient checking during 
 **Observation**: QAT with straight-through estimator (STE) for INT8 deployment is correctly scoped.
 
 **Academic Support**:
-> [4] Jacob, B., et al. (2018). "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference." *IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 2704-2713. DOI: 10.1109/CVPR.2018.00286
+> [4] Jacob, B., et al. (2018). "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only
+Inference." *IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 2704-2713. DOI:
+10.1109/CVPR.2018.00286
 
-The specification's QA focus "Accuracy drop < 1%" aligns with the paper's findings that proper QAT maintains model quality within this threshold for standard architectures.
+The specification's QA focus "Accuracy drop < 1%" aligns with the paper's findings that proper QAT maintains model
+quality within this threshold for standard architectures.
 
 **PMAT Alignment**: ✅
 - `target_dirs = ["src/quant/"]` ensures quantization code is mutation-tested
@@ -1248,9 +1262,12 @@ The specification's QA focus "Accuracy drop < 1%" aligns with the paper's findin
 **Observation**: LoRA rank selection and memory reduction targets are well-specified.
 
 **Academic Support**:
-> [5] Hu, E., et al. (2022). "LoRA: Low-Rank Adaptation of Large Language Models." *International Conference on Learning Representations (ICLR)*. https://arxiv.org/abs/2106.09685
+> [5] Hu, E., et al. (2022). "LoRA: Low-Rank Adaptation of Large Language Models." *International Conference on Learning
+Representations (ICLR)*. https://arxiv.org/abs/2106.09685
 
-The specification's "Trainable params < 1% of total" (Scenario 31) and "VRAM reduction > 50%" (Scenario 32) are consistent with LoRA's empirical results. The 4-bit QLoRA variant (Scenario 32) correctly targets memory-constrained deployments.
+The specification's "Trainable params < 1% of total" (Scenario 31) and "VRAM reduction > 50%" (Scenario 32) are
+consistent with LoRA's empirical results. The 4-bit QLoRA variant (Scenario 32) correctly targets memory-constrained
+deployments.
 
 **PMAT Alignment**: ✅
 - Phase 3 tickets (ENT-016 through ENT-021) cover LoRA implementation
@@ -1263,9 +1280,11 @@ The specification's "Trainable params < 1% of total" (Scenario 31) and "VRAM red
 **Observation**: Teacher-student training with temperature scaling is correctly specified.
 
 **Academic Support**:
-> [6] Hinton, G., Vinyals, O., & Dean, J. (2015). "Distilling the Knowledge in a Neural Network." *NIPS Deep Learning Workshop*. https://arxiv.org/abs/1503.02531
+> [6] Hinton, G., Vinyals, O., & Dean, J. (2015). "Distilling the Knowledge in a Neural Network." *NIPS Deep Learning
+Workshop*. https://arxiv.org/abs/1503.02531
 
-The QA focus "Student matches 90% of teacher performance" is a reasonable target based on the original distillation paper's findings. The specification correctly identifies temperature-scaled softmax as the core mechanism.
+The QA focus "Student matches 90% of teacher performance" is a reasonable target based on the original distillation
+paper's findings. The specification correctly identifies temperature-scaled softmax as the core mechanism.
 
 **PMAT Alignment**: ✅
 - Phase 7 tickets (ENT-037 through ENT-040) cover distillation
@@ -1278,9 +1297,11 @@ The QA focus "Student matches 90% of teacher performance" is a reasonable target
 **Observation**: TIES merging with trim + sign election is correctly identified.
 
 **Academic Support**:
-> [7] Yadav, P., et al. (2023). "TIES-Merging: Resolving Interference When Merging Models." *NeurIPS 2023*. https://arxiv.org/abs/2306.01708
+> [7] Yadav, P., et al. (2023). "TIES-Merging: Resolving Interference When Merging Models." *NeurIPS 2023*.
+<https://arxiv.org/abs/2306.01708>
 
-The specification's QA focus "Merged model outperforms individuals on combined task" captures the key value proposition. The density parameter (0.2 in config example) aligns with TIES recommendations.
+The specification's QA focus "Merged model outperforms individuals on combined task" captures the key value proposition.
+The density parameter (0.2 in config example) aligns with TIES recommendations.
 
 **PMAT Alignment**: ✅
 - Phase 5 tickets (ENT-028 through ENT-032) cover merging
@@ -1293,9 +1314,11 @@ The specification's QA focus "Merged model outperforms individuals on combined t
 **Observation**: DP-epsilon specification for privacy guarantees is well-formed.
 
 **Academic Support**:
-> [8] Abadi, M., et al. (2016). "Deep Learning with Differential Privacy." *ACM SIGSAC Conference on Computer and Communications Security (CCS)*, pp. 308-318. DOI: 10.1145/2976749.2978318
+> [8] Abadi, M., et al. (2016). "Deep Learning with Differential Privacy." *ACM SIGSAC Conference on Computer and
+Communications Security (CCS)*, pp. 308-318. DOI: 10.1145/2976749.2978318
 
-The specification's `--dp-epsilon 1.0` flag aligns with the DP-SGD framework. The QA focus "Noise injection verified" ensures the privacy mechanism is actually active.
+The specification's `--dp-epsilon 1.0` flag aligns with the DP-SGD framework. The QA focus "Noise injection verified"
+ensures the privacy mechanism is actually active.
 
 **PMAT Alignment**: ⚠️ RECOMMENDATION
 - Add explicit privacy budget tracking to monitoring scenarios
@@ -1308,9 +1331,12 @@ The specification's `--dp-epsilon 1.0` flag aligns with the DP-SGD framework. Th
 **Observation**: FGSM attack testing is appropriate for baseline robustness.
 
 **Academic Support**:
-> [9] Goodfellow, I.J., Shlens, J., & Szegedy, C. (2015). "Explaining and Harnessing Adversarial Examples." *International Conference on Learning Representations (ICLR)*. https://arxiv.org/abs/1412.6572
+> [9] Goodfellow, I.J., Shlens, J., & Szegedy, C. (2015). "Explaining and Harnessing Adversarial Examples."
+*International Conference on Learning Representations (ICLR)*. https://arxiv.org/abs/1412.6572
 
-The QA focus "Accuracy under attack > 50%" is a reasonable baseline. However, FGSM is a weak attack—consider adding PGD (Projected Gradient Descent) for stronger robustness verification.
+The QA focus "Accuracy under attack > 50%" is a reasonable baseline. However,
+FGSM is a weak attack—consider adding PGD (Projected Gradient Descent)
+for stronger robustness verification.
 
 **PMAT Alignment**: ⚠️ RECOMMENDATION
 - Add PGD attack scenario for comprehensive robustness testing
@@ -1323,9 +1349,11 @@ The QA focus "Accuracy under attack > 50%" is a reasonable baseline. However, FG
 **Observation**: Tarantula suspiciousness scoring is well-suited for compiler decision tracing.
 
 **Academic Support**:
-> [10] Jones, J.A., Harrold, M.J., & Stasko, J. (2002). "Visualization of Test Information to Assist Fault Localization." *International Conference on Software Engineering (ICSE)*, pp. 467-477. DOI: 10.1145/581339.581397
+> [10] Jones, J.A., Harrold, M.J., & Stasko, J. (2002). "Visualization of Test Information to Assist Fault
+Localization." *International Conference on Software Engineering (ICSE)*, pp. 467-477. DOI: 10.1145/581339.581397
 
-The specification's "Suspiciousness score > 0.8 for known bug" threshold is aggressive but achievable for well-isolated faults. The Tarantula formula:
+The specification's "Suspiciousness score > 0.8 for known bug" threshold is aggressive but achievable for well-isolated
+faults. The Tarantula formula:
 ```
 suspiciousness(s) = (failed(s)/totalfailed) / ((failed(s)/totalfailed) + (passed(s)/totalpassed))
 ```
@@ -1340,7 +1368,8 @@ is correctly applicable to compiler decision tracing in CITL.
 ### Critical Review: Gaps & Recommendations
 
 #### Gap 1: Missing Formal Verification
-The specification lacks formal methods for safety-critical claims. For "human life at stake" scenarios (Section J), consider:
+The specification lacks formal methods for safety-critical claims. For "human life at stake" scenarios (Section J),
+consider:
 - Model checking for state machine properties
 - Abstract interpretation for numerical bounds
 
@@ -1350,7 +1379,8 @@ Scenario 45 (Integrated Gradients) is good, but XAI research has advanced:
 - Add concept activation vectors (CAVs) for high-level explanations
 
 #### Gap 3: Data Poisoning Baseline
-Scenario 10 claims "Identify 100% of injected outliers"—this is unrealistic for sophisticated attacks. Revise to "Identify > 90% of obvious outliers" with a defined threat model.
+Scenario 10 claims "Identify 100% of injected outliers"—this is unrealistic for sophisticated attacks. Revise to
+"Identify > 90% of obvious outliers" with a defined threat model.
 
 #### Gap 4: Federated Learning Rigor
 Scenario 78 (federated mock) needs:
@@ -1375,25 +1405,35 @@ Scenario 78 (federated mock) needs:
 
 ### References (IEEE Format)
 
-[1] J. K. Liker, *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer*. New York, NY, USA: McGraw-Hill, 2004.
+[1] J. K. Liker, *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer*. New York, NY, USA:
+McGraw-Hill, 2004.
 
-[2] J. Pineau et al., "Improving Reproducibility in Machine Learning Research," *J. Mach. Learn. Res.*, vol. 22, no. 164, pp. 1–20, 2021.
+[2] J. Pineau et al., "Improving Reproducibility in Machine Learning Research," *J. Mach. Learn. Res.*, vol. 22, no.
+164, pp. 1–20, 2021.
 
-[3] A. G. Baydin, B. A. Pearlmutter, A. A. Radul, and J. M. Siskind, "Automatic Differentiation in Machine Learning: A Survey," *J. Mach. Learn. Res.*, vol. 18, no. 153, pp. 1–43, 2018.
+[3] A. G. Baydin, B. A. Pearlmutter, A. A. Radul, and J. M. Siskind, "Automatic Differentiation in Machine Learning: A
+Survey," *J. Mach. Learn. Res.*, vol. 18, no. 153, pp. 1–43, 2018.
 
-[4] B. Jacob et al., "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference," in *Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)*, 2018, pp. 2704–2713.
+[4] B. Jacob et al., "Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference," in
+*Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)*, 2018, pp. 2704–2713.
 
-[5] E. Hu et al., "LoRA: Low-Rank Adaptation of Large Language Models," in *Proc. Int. Conf. Learn. Represent. (ICLR)*, 2022.
+[5] E. Hu et al., "LoRA: Low-Rank Adaptation of Large Language Models," in *Proc. Int. Conf. Learn. Represent. (ICLR)*,
+2022.
 
-[6] G. Hinton, O. Vinyals, and J. Dean, "Distilling the Knowledge in a Neural Network," in *NIPS Deep Learning Workshop*, 2015.
+[6] G. Hinton, O. Vinyals, and J. Dean, "Distilling the Knowledge in a Neural Network," in *NIPS Deep Learning
+Workshop*, 2015.
 
-[7] P. Yadav et al., "TIES-Merging: Resolving Interference When Merging Models," in *Proc. Adv. Neural Inf. Process. Syst. (NeurIPS)*, 2023.
+[7] P. Yadav et al., "TIES-Merging: Resolving Interference When Merging Models," in *Proc. Adv. Neural Inf. Process.
+Syst. (NeurIPS)*, 2023.
 
-[8] M. Abadi et al., "Deep Learning with Differential Privacy," in *Proc. ACM SIGSAC Conf. Comput. Commun. Secur. (CCS)*, 2016, pp. 308–318.
+[8] M. Abadi et al., "Deep Learning with Differential Privacy," in *Proc. ACM SIGSAC Conf. Comput. Commun. Secur.
+(CCS)*, 2016, pp. 308–318.
 
-[9] I. J. Goodfellow, J. Shlens, and C. Szegedy, "Explaining and Harnessing Adversarial Examples," in *Proc. Int. Conf. Learn. Represent. (ICLR)*, 2015.
+[9] I. J. Goodfellow, J. Shlens, and C. Szegedy, "Explaining and Harnessing Adversarial Examples," in *Proc. Int. Conf.
+Learn. Represent. (ICLR)*, 2015.
 
-[10] J. A. Jones, M. J. Harrold, and J. Stasko, "Visualization of Test Information to Assist Fault Localization," in *Proc. Int. Conf. Softw. Eng. (ICSE)*, 2002, pp. 467–477.
+[10] J. A. Jones, M. J. Harrold, and J. Stasko, "Visualization of Test Information to Assist Fault Localization," in
+*Proc. Int. Conf. Softw. Eng. (ICSE)*, 2002, pp. 467–477.
 
 ---
 

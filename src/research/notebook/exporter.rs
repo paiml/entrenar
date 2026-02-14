@@ -173,7 +173,7 @@ impl NotebookExporter {
             }).collect::<Vec<_>>()
         });
 
-        serde_json::to_string_pretty(&notebook).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string_pretty(&notebook).unwrap_or_else(|_err| "{}".to_string())
     }
 
     /// Get the number of cells

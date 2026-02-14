@@ -1,6 +1,7 @@
 # Model Evaluation Framework (APR-073)
 
-The Model Evaluation Framework provides standardized metrics, model comparison, and drift detection following **Toyota Way** principles:
+The Model Evaluation Framework provides standardized metrics, model comparison, and drift detection following **Toyota
+Way** principles:
 
 - **Jidoka** (Automation with Human Touch): Automated drift detection that signals when intervention is needed
 - **Mieruka** (Visual Control): Clear, structured reports for metrics and comparisons

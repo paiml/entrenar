@@ -55,9 +55,11 @@
 
 Most survived mutants fall into these categories:
 
-1. **Requires_grad logic** (2 mutants): Boolean operator changes in gradient flag checks don't affect test outcomes when all inputs have matching gradient requirements
+1. **Requires_grad logic** (2 mutants): Boolean operator changes in gradient flag checks don't affect test outcomes when
+   all inputs have matching gradient requirements
 
-2. **Numerical precision** (15 mutants): Small arithmetic changes in complex gradient computations that fall within our tolerance thresholds (0.1-0.2 for finite difference validation)
+2. **Numerical precision** (15 mutants): Small arithmetic changes in complex gradient computations that fall within our
+   tolerance thresholds (0.1-0.2 for finite difference validation)
 
 3. **Edge cases** (5 mutants): Operations in code paths not extensively covered by our property tests
 
@@ -76,6 +78,9 @@ Most survived mutants fall into these categories:
 
 ## Conclusion
 
-The mutation testing validates that our test suite effectively catches 93.4% of introduced bugs in backward operations. This significantly exceeds the 80% EXTREME TDD requirement and demonstrates high confidence in the correctness of the autograd implementation.
+The mutation testing validates that our test suite effectively catches 93.4% of introduced bugs in backward operations.
+This significantly exceeds the 80% EXTREME TDD requirement and demonstrates high confidence in the correctness of the
+autograd implementation.
 
-The 22 survived mutants are primarily in numerical computation areas where our tolerance-based gradient checking allows small deviations, which is acceptable for a floating-point autograd system.
+The 22 survived mutants are primarily in numerical computation areas where our tolerance-based gradient checking allows
+small deviations, which is acceptable for a floating-point autograd system.

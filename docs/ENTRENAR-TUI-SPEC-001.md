@@ -6,7 +6,8 @@
 
 ## Overview
 
-The entrenar TUI monitor implements a btop/ptop-style training visualization with probar compliance for testing and falsification. Features epoch-by-epoch history table and run configuration display.
+The entrenar TUI monitor implements a btop/ptop-style training visualization with probar compliance for testing and
+falsification. Features epoch-by-epoch history table and run configuration display.
 
 ## Probar Integration
 

@@ -211,6 +211,7 @@ impl CudaTransformerBlock {
     /// * `output` - Output tensor on GPU (seq_len * hidden_size)
     /// * `seq_len` - Sequence length
     /// * `stream` - CUDA stream for async execution
+    #[allow(clippy::cast_possible_truncation)] // GPU kernel params: tensor dims fit in u32
     pub fn forward(
         &mut self,
         input: &GpuBuffer<f32>,
@@ -349,6 +350,7 @@ impl CudaTransformerBlock {
     }
 
     /// Compute multi-head attention on GPU with CUDA softmax
+    #[allow(clippy::cast_possible_truncation)] // head_dim always small; f32 sqrt is intentional
     fn compute_attention_cuda(&mut self, seq_len: usize, _stream: &CudaStream) -> Result<()> {
         let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_attention_heads;
@@ -441,6 +443,7 @@ impl CudaTransformerBlock {
     /// - `scratch.grad_input_norm` - Gradient for input RMSNorm weight
     /// - `scratch.grad_post_attn_norm` - Gradient for post-attention RMSNorm weight
     /// - `scratch.grad_gate/up/down` - Gradients for FFN weights
+    #[allow(clippy::cast_possible_truncation)] // GPU kernel params: tensor dims fit in u32
     pub fn backward(
         &mut self,
         input: &GpuBuffer<f32>,

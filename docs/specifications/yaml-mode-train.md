@@ -9,7 +9,10 @@
 
 ## Executive Summary
 
-This specification defines a **declarative, no-code training interface** for entrenar that enables ML practitioners to configure, execute, and monitor model training using only YAML configuration files. Inspired by the Toyota Production System's principles of standardization, mistake-proofing, and continuous improvement, this approach eliminates boilerplate code and reduces training configuration errors by 73% compared to imperative approaches [1].
+This specification defines a **declarative, no-code training interface** for entrenar that enables ML practitioners to
+configure, execute, and monitor model training using only YAML configuration files. Inspired by the Toyota Production
+System's principles of standardization, mistake-proofing, and continuous improvement, this approach eliminates
+boilerplate code and reduces training configuration errors by 73% compared to imperative approaches [1].
 
 ### Core Principles
 
@@ -48,7 +51,8 @@ output: { ... }                    # Output and artifact settings
 
 ### 1.2 Type System
 
-All configuration values are statically typed and validated at parse time, following the poka-yoke principle of defect prevention at the source [2].
+All configuration values are statically typed and validated at parse time, following the poka-yoke principle of defect
+prevention at the source [2].
 
 | Type | YAML Syntax | Example |
 |------|-------------|---------|
@@ -361,7 +365,8 @@ training:
 
 ## 6. LoRA Configuration
 
-Low-Rank Adaptation enables efficient fine-tuning by reducing trainable parameters by 99%+ while maintaining comparable performance [5].
+Low-Rank Adaptation enables efficient fine-tuning by reducing trainable parameters by 99%+ while maintaining comparable
+performance [5].
 
 ```yaml
 lora:
@@ -433,7 +438,8 @@ quantize:
 
 ## 8. Monitoring Configuration
 
-Real-time monitoring implements the Toyota Way's genchi genbutsu (go and see) principle, enabling immediate visibility into training dynamics [7].
+Real-time monitoring implements the Toyota Way's genchi genbutsu (go and see) principle, enabling immediate visibility
+into training dynamics [7].
 
 ```yaml
 monitoring:
@@ -837,45 +843,85 @@ quality:
 
 ## References
 
-[1] Liker, J.K. (2004). *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer*. McGraw-Hill. ISBN: 978-0071392310. **Validation**: Chapter 6 establishes that standardized work reduces defects by 50-80% in manufacturing; our 73% error reduction in ML configuration aligns with these findings.
+[1] Liker, J.K. (2004). *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer*. McGraw-Hill.
+ISBN: 978-0071392310. **Validation**: Chapter 6 establishes that standardized work reduces defects by 50-80% in
+manufacturing; our 73% error reduction in ML configuration aligns with these findings.
 
-[2] Shingo, S. (1986). *Zero Quality Control: Source Inspection and the Poka-yoke System*. Productivity Press. ISBN: 978-0915299072. **Validation**: Demonstrates that defect prevention at source (schema validation) is 10x more cost-effective than detection (runtime errors).
+[2] Shingo, S. (1986). *Zero Quality Control: Source Inspection and the Poka-yoke System*. Productivity Press. ISBN:
+978-0915299072. **Validation**: Demonstrates that defect prevention at source (schema validation) is 10x more
+cost-effective than detection (runtime errors).
 
-[3] Smith, L.N. & Topin, N. (2019). "Super-Convergence: Very Fast Training of Neural Networks Using Large Learning Rates." *Artificial Intelligence and Statistics (AISTATS)*. arXiv:1708.07120. **Validation**: Shows one-cycle learning rate policy achieves same accuracy in 1/10th training time.
+[3] Smith, L.N. & Topin, N. (2019). "Super-Convergence: Very Fast Training of Neural Networks Using Large Learning
+Rates." *Artificial Intelligence and Statistics (AISTATS)*. arXiv:1708.07120. **Validation**: Shows one-cycle learning
+rate policy achieves same accuracy in 1/10th training time.
 
-[4] Micikevicius, P., et al. (2018). "Mixed Precision Training." *International Conference on Learning Representations (ICLR)*. arXiv:1710.03740. **Validation**: Demonstrates 2-3x speedup with no accuracy loss using FP16/BF16.
+[4] Micikevicius, P., et al. (2018). "Mixed Precision Training." *International Conference on Learning Representations
+(ICLR)*. arXiv:1710.03740. **Validation**: Demonstrates 2-3x speedup with no accuracy loss using FP16/BF16.
 
-[5] Hu, E.J., et al. (2022). "LoRA: Low-Rank Adaptation of Large Language Models." *International Conference on Learning Representations (ICLR)*. arXiv:2106.09685. **Validation**: Reduces trainable parameters by 10,000x while matching full fine-tuning performance.
+[5] Hu, E.J., et al. (2022). "LoRA: Low-Rank Adaptation of Large Language Models." *International Conference on Learning
+Representations (ICLR)*. arXiv:2106.09685. **Validation**: Reduces trainable parameters by 10,000x while matching full
+fine-tuning performance.
 
-[6] Dettmers, T., et al. (2023). "QLoRA: Efficient Finetuning of Quantized LLMs." *Advances in Neural Information Processing Systems (NeurIPS)*. arXiv:2305.14314. **Validation**: Enables fine-tuning 65B parameter models on single 48GB GPU.
+[6] Dettmers, T., et al. (2023). "QLoRA: Efficient Finetuning of Quantized LLMs." *Advances in Neural Information
+Processing Systems (NeurIPS)*. arXiv:2305.14314. **Validation**: Enables fine-tuning 65B parameter models on single 48GB
+GPU.
 
-[7] Ohno, T. (1988). *Toyota Production System: Beyond Large-Scale Production*. Productivity Press. ISBN: 978-0915299140. **Validation**: Chapter 4's genchi genbutsu (go and see) principle validates real-time monitoring for immediate problem detection.
+[7] Ohno, T. (1988). *Toyota Production System: Beyond Large-Scale Production*. Productivity Press. ISBN:
+978-0915299140. **Validation**: Chapter 4's genchi genbutsu (go and see) principle validates real-time monitoring for
+immediate problem detection.
 
-[8] Pezoa, F., et al. (2016). "Foundations of JSON Schema." *International Conference on World Wide Web (WWW)*. DOI: 10.1145/2872427.2883029. **Validation**: Formal semantics for JSON Schema validation guarantee configuration correctness.
+[8] Pezoa, F., et al. (2016). "Foundations of JSON Schema." *International Conference on World Wide Web (WWW)*. DOI:
+10.1145/2872427.2883029. **Validation**: Formal semantics for JSON Schema validation guarantee configuration
+correctness.
 
-[9] Spear, S. & Bowen, H.K. (1999). "Decoding the DNA of the Toyota Production System." *Harvard Business Review*, 77(5), 96-106. **Validation**: Standardized work enables reproducibility; our deterministic seeding implements this principle.
+[9] Spear, S. & Bowen, H.K. (1999). "Decoding the DNA of the Toyota Production System." *Harvard Business Review*,
+77(5), 96-106. **Validation**: Standardized work enables reproducibility; our deterministic seeding implements this
+principle.
 
-[10] Womack, J.P., Jones, D.T., & Roos, D. (1990). *The Machine That Changed the World: The Story of Lean Production*. Free Press. ISBN: 978-0743299794. **Validation**: Establishes quantitative quality metrics as foundational to continuous improvement.
+[10] Womack, J.P., Jones, D.T., & Roos, D. (1990). *The Machine That Changed the World: The Story of Lean Production*.
+Free Press. ISBN: 978-0743299794. **Validation**: Establishes quantitative quality metrics as foundational to continuous
+improvement.
 
-[11] Sculley, D., et al. (2015). "Hidden Technical Debt in Machine Learning Systems." *Advances in Neural Information Processing Systems (NeurIPS)*. **Validation**: Identifies specific forms of "Muda" (waste) in ML pipelines, reinforcing the need for the declarative, simplified configuration interface defined in this spec to reduce maintenance overhead.
+[11] Sculley, D., et al. (2015). "Hidden Technical Debt in Machine Learning Systems." *Advances in Neural Information
+Processing Systems (NeurIPS)*. **Validation**: Identifies specific forms of "Muda" (waste) in ML pipelines, reinforcing
+the need for the declarative, simplified configuration interface defined in this spec to reduce maintenance overhead.
 
-[12] Breck, E., et al. (2017). "The ML Test Score: A Rubric for ML Production Readiness and Technical Debt Reduction." *IEEE International Conference on Big Data*. **Validation**: Provides a checklist-based approach to reliability, mirroring the "Standardized Work" principle; our schema validation implements several of these tests automatically.
+[12] Breck, E., et al. (2017). "The ML Test Score: A Rubric for ML Production Readiness and Technical Debt Reduction."
+*IEEE International Conference on Big Data*. **Validation**: Provides a checklist-based approach to reliability,
+mirroring the "Standardized Work" principle; our schema validation implements several of these tests automatically.
 
-[13] Amershi, S., et al. (2019). "Software Engineering for Machine Learning: A Case Study." *International Conference on Software Engineering (ICSE)*. **Validation**: Highlights the friction points in ML workflows at Microsoft, validating our focus on "Heijunka" (leveling) through consistent tooling and "Genchi Genbutsu" (data monitoring).
+[13] Amershi, S., et al. (2019). "Software Engineering for Machine Learning: A Case Study." *International Conference on
+Software Engineering (ICSE)*. **Validation**: Highlights the friction points in ML workflows at Microsoft, validating
+our focus on "Heijunka" (leveling) through consistent tooling and "Genchi Genbutsu" (data monitoring).
 
-[14] Sato, D., Wider, A., & Windheuser, C. (2019). "Continuous Delivery for Machine Learning." *Automating the End-to-End Lifecycle of Machine Learning Applications*. **Validation**: Adapts "Jidoka" (automation) to ML; our "Poka-yoke" CI/CD integration plan (Phase 2) is directly supported by these findings on automated release pipelines.
+[14] Sato, D., Wider, A., & Windheuser, C. (2019). "Continuous Delivery for Machine Learning." *Automating the
+End-to-End Lifecycle of Machine Learning Applications*. **Validation**: Adapts "Jidoka" (automation) to ML; our
+"Poka-yoke" CI/CD integration plan (Phase 2) is directly supported by these findings on automated release pipelines.
 
-[15] Renggli, C., et al. (2019). "Continuous Integration of Machine Learning Models with EASE.ML/CI." *Proceedings of the 2nd SysML Conference*. **Validation**: Demonstrates that automated quality gates (Jidoka) prevent degradation; our `early_stopping` and `validation` schemas implement these quality gates declaratively.
+[15] Renggli, C., et al. (2019). "Continuous Integration of Machine Learning Models with EASE.ML/CI." *Proceedings of
+the 2nd SysML Conference*. **Validation**: Demonstrates that automated quality gates (Jidoka) prevent degradation; our
+`early_stopping` and `validation` schemas implement these quality gates declaratively.
 
-[16] Vartak, M., et al. (2016). "ModelDB: A System for Machine Learning Model Management." *Workshop on Human-In-the-Loop Data Analytics (HILDA)*. **Validation**: Addresses the "Visual Control" principle; our `monitoring.tracking` specification aligns with this work to ensure full visibility of the model lifecycle.
+[16] Vartak, M., et al. (2016). "ModelDB: A System for Machine Learning Model Management." *Workshop on
+Human-In-the-Loop Data Analytics (HILDA)*. **Validation**: Addresses the "Visual Control" principle; our
+`monitoring.tracking` specification aligns with this work to ensure full visibility of the model lifecycle.
 
-[17] Zaharia, M., et al. (2018). "Accelerating the Machine Learning Lifecycle with MLflow." *IEEE Data Engineering Bulletin*. **Validation**: Confirms that standardized packaging (like our YAML manifest) reduces the "switching cost" waste (Muda) between experimentation and production.
+[17] Zaharia, M., et al. (2018). "Accelerating the Machine Learning Lifecycle with MLflow." *IEEE Data Engineering
+Bulletin*. **Validation**: Confirms that standardized packaging (like our YAML manifest) reduces the "switching cost"
+waste (Muda) between experimentation and production.
 
-[18] Basiri, A., et al. (2016). "Chaos Engineering." *IEEE Software*. **Validation**: While primarily about resilience, this relates to "Poka-yoke" by actively testing system limits; our `monitoring.alerts` system is designed to catch the failure modes identified by such stress testing.
+[18] Basiri, A., et al. (2016). "Chaos Engineering." *IEEE Software*. **Validation**: While primarily about resilience,
+this relates to "Poka-yoke" by actively testing system limits; our `monitoring.alerts` system is designed to catch the
+failure modes identified by such stress testing.
 
-[19] Polyzotis, N., et al. (2017). "Data Validation for Machine Learning." *Proceedings of ML Systems (MLSys)*. **Validation**: Directly supports our schema-based "Poka-yoke"; shows that catching data errors early (at configuration/ingestion) prevents costly downstream failures (waste).
+[19] Polyzotis, N., et al. (2017). "Data Validation for Machine Learning." *Proceedings of ML Systems (MLSys)*.
+**Validation**: Directly supports our schema-based "Poka-yoke"; shows that catching data errors early
+(at configuration/ingestion) prevents costly downstream failures (waste).
 
-[20] Baylor, D., et al. (2017). "TFX: A TensorFlow-Based Production-Scale Machine Learning Platform." *Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining*. **Validation**: Describes an industrial-scale implementation of these principles; our `entrenar` spec democratizes these "Toyota Way" patterns found in TFX for general use.
+[20] Baylor, D., et al. (2017). "TFX: A TensorFlow-Based Production-Scale Machine Learning Platform." *Proceedings of
+the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining*. **Validation**: Describes an
+industrial-scale implementation of these principles; our `entrenar` spec democratizes these "Toyota Way" patterns found
+in TFX for general use.
 
 ---
 

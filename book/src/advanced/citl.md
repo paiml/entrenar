@@ -697,21 +697,25 @@ The CITL module implements algorithms from peer-reviewed research:
 
 ### Fault Localization
 
-1. Jones, J. A., & Harrold, M. J. (2005). "Empirical Evaluation of the Tarantula Automatic Fault-Localization Technique." *ASE*.
+1. Jones, J. A., & Harrold, M. J. (2005). "Empirical Evaluation of the Tarantula Automatic Fault-Localization
+   Technique." *ASE*.
 2. Zeller, A. (2002). "Isolating cause-effect chains from computer programs." *FSE*.
 3. Chilimbi, T. M., et al. (2009). "HOLMES: Effective Statistical Debugging via Efficient Path Profiling." *ICSE*.
 
 ### Hybrid Retrieval
 
-4. Cormack, G. V., Clarke, C. L., & Buettcher, S. (2009). "Reciprocal rank fusion outperforms condorcet and individual rank learning methods." *SIGIR*.
+4. Cormack, G. V., Clarke, C. L., & Buettcher, S. (2009). "Reciprocal rank fusion outperforms condorcet and individual
+   rank learning methods." *SIGIR*.
 5. Lewis, P., et al. (2020). "Retrieval-augmented generation for knowledge-intensive NLP tasks." *NeurIPS*.
 
 ### Compiler-Feedback Learning (LLM Bootstrapping Foundation)
 
 6. Wang, B., et al. (2022). "Compilable Neural Code Generation with Compiler Feedback." *ACL*.
 7. Yasunaga, M., & Liang, P. (2020). "Graph-based, Self-Supervised Program Repair from Diagnostic Feedback." *ICML*.
-8. Dou, S., et al. (2024). "StepCoder: Improve Code Generation with Reinforcement Learning from Compiler Feedback." *arXiv:2402.01391*.
-9. Le, H., et al. (2022). "CodeRL: Mastering Code Generation through Pretrained Models and Deep Reinforcement Learning." *NeurIPS*.
+8. Dou, S., et al. (2024). "StepCoder: Improve Code Generation with Reinforcement Learning from Compiler Feedback."
+   *arXiv:2402.01391*.
+9. Le, H., et al. (2022). "CodeRL: Mastering Code Generation through Pretrained Models and Deep Reinforcement Learning."
+   *NeurIPS*.
 
 ### Knowledge Distillation (LLM to Local Oracle)
 

@@ -1,6 +1,7 @@
 # Dashboard Overview
 
-The Dashboard module provides real-time training monitoring capabilities with support for both native and browser-based dashboards.
+The Dashboard module provides real-time training monitoring capabilities with support for both native and browser-based
+dashboards.
 
 ## Features
 

@@ -7,7 +7,10 @@
 
 ## Abstract
 
-This specification defines a pipeline for downloading arbitrary models from Hugging Face Hub, performing knowledge distillation from large teacher models to compact student models, and fine-tuning pretrained models on custom datasets. The pipeline integrates with the PAIML stack (entrenar, aprender, trueno, realizar) to provide a pure-Rust ML training ecosystem.
+This specification defines a pipeline for downloading arbitrary models from Hugging Face Hub, performing knowledge
+distillation from large teacher models to compact student models, and fine-tuning pretrained models on custom datasets.
+The pipeline integrates with the PAIML stack (entrenar, aprender, trueno, realizar) to provide a pure-Rust ML training
+ecosystem.
 
 ## 1. Overview
 
@@ -729,34 +732,44 @@ impl DistillationLoss {
 
 ## 11. Academic References
 
-1. **Hinton, G., Vinyals, O., & Dean, J.** (2015). "Distilling the Knowledge in a Neural Network." *arXiv:1503.02531*. [[link]](https://arxiv.org/abs/1503.02531)
+1. **Hinton, G., Vinyals, O., & Dean, J.** (2015). "Distilling the Knowledge in a Neural Network." *arXiv:1503.02531*.
+   [[link]](https://arxiv.org/abs/1503.02531)
    - Foundation paper for knowledge distillation with temperature scaling
 
-2. **Sun, S., Cheng, Y., Gan, Z., & Liu, J.** (2019). "Patient Knowledge Distillation for BERT Model Compression." *EMNLP 2019*. [[link]](https://arxiv.org/abs/1908.09355)
+2. **Sun, S., Cheng, Y., Gan, Z., & Liu, J.** (2019). "Patient Knowledge Distillation for BERT Model Compression."
+   *EMNLP 2019*. [[link]](https://arxiv.org/abs/1908.09355)
    - Progressive layer-wise distillation for transformers
 
-3. **Zagoruyko, S., & Komodakis, N.** (2017). "Paying More Attention to Attention: Improving the Performance of CNNs via Attention Transfer." *ICLR 2017*. [[link]](https://arxiv.org/abs/1612.03928)
+3. **Zagoruyko, S., & Komodakis, N.** (2017). "Paying More Attention to Attention: Improving the Performance of CNNs via
+   Attention Transfer." *ICLR 2017*. [[link]](https://arxiv.org/abs/1612.03928)
    - Attention map transfer between teacher and student
 
-4. **Hu, E. J., Shen, Y., Wallis, P., et al.** (2021). "LoRA: Low-Rank Adaptation of Large Language Models." *arXiv:2106.09685*. [[link]](https://arxiv.org/abs/2106.09685)
+4. **Hu, E. J., Shen, Y., Wallis, P., et al.** (2021). "LoRA: Low-Rank Adaptation of Large Language Models."
+   *arXiv:2106.09685*. [[link]](https://arxiv.org/abs/2106.09685)
    - Parameter-efficient fine-tuning with low-rank adapters
 
-5. **Dettmers, T., Pagnoni, A., Holtzman, A., & Zettlemoyer, L.** (2023). "QLoRA: Efficient Finetuning of Quantized LLMs." *arXiv:2305.14314*. [[link]](https://arxiv.org/abs/2305.14314)
+5. **Dettmers, T., Pagnoni, A., Holtzman, A., & Zettlemoyer, L.** (2023). "QLoRA: Efficient Finetuning of Quantized
+   LLMs." *arXiv:2305.14314*. [[link]](https://arxiv.org/abs/2305.14314)
    - 4-bit quantization with LoRA for memory efficiency
 
-6. **Chen, T., Xu, B., Zhang, C., & Guestrin, C.** (2016). "Training Deep Nets with Sublinear Memory Cost." *arXiv:1604.06174*. [[link]](https://arxiv.org/abs/1604.06174)
+6. **Chen, T., Xu, B., Zhang, C., & Guestrin, C.** (2016). "Training Deep Nets with Sublinear Memory Cost."
+   *arXiv:1604.06174*. [[link]](https://arxiv.org/abs/1604.06174)
    - Gradient checkpointing for memory-efficient training
 
-7. **Sanh, V., Debut, L., Chaumond, J., & Wolf, T.** (2019). "DistilBERT, a distilled version of BERT." *arXiv:1910.01108*. [[link]](https://arxiv.org/abs/1910.01108)
+7. **Sanh, V., Debut, L., Chaumond, J., & Wolf, T.** (2019). "DistilBERT, a distilled version of BERT."
+   *arXiv:1910.01108*. [[link]](https://arxiv.org/abs/1910.01108)
    - Practical BERT distillation achieving 97% performance at 60% size
 
-8. **Jiao, X., Yin, Y., Shang, L., et al.** (2020). "TinyBERT: Distilling BERT for Natural Language Understanding." *EMNLP 2020*. [[link]](https://arxiv.org/abs/1909.10351)
+8. **Jiao, X., Yin, Y., Shang, L., et al.** (2020). "TinyBERT: Distilling BERT for Natural Language Understanding."
+   *EMNLP 2020*. [[link]](https://arxiv.org/abs/1909.10351)
    - Two-stage distillation with embedding and prediction layer matching
 
-9. **Wang, W., Wei, F., Dong, L., et al.** (2020). "MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers." *NeurIPS 2020*. [[link]](https://arxiv.org/abs/2002.10957)
+9. **Wang, W., Wei, F., Dong, L., et al.** (2020). "MiniLM: Deep Self-Attention Distillation for Task-Agnostic
+   Compression of Pre-Trained Transformers." *NeurIPS 2020*. [[link]](https://arxiv.org/abs/2002.10957)
    - Self-attention value relation distillation
 
-10. **Feng, Z., Guo, D., Tang, D., et al.** (2020). "CodeBERT: A Pre-Trained Model for Programming and Natural Languages." *EMNLP 2020*. [[link]](https://arxiv.org/abs/2002.08155)
+10. **Feng, Z., Guo, D., Tang, D., et al.** (2020). "CodeBERT: A Pre-Trained Model for Programming and Natural
+    Languages." *EMNLP 2020*. [[link]](https://arxiv.org/abs/2002.08155)
     - Pre-trained model for code understanding (potential teacher model)
 
 ## 12. Implementation Phases

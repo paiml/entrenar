@@ -6,7 +6,8 @@
 
 ## Overview
 
-Updated Entrenar mdBook documentation to accurately reflect v0.1.0 **COMPLETE** status, following strict anti-hallucination quality standards from trueno/aprender projects.
+Updated Entrenar mdBook documentation to accurately reflect v0.1.0 **COMPLETE** status, following strict
+anti-hallucination quality standards from trueno/aprender projects.
 
 ## Anti-Hallucination Quality Standards Applied
 
@@ -158,7 +159,8 @@ test result: ok. 258 passed; 0 failed; 0 ignored
 4-8. `book/src/merging/{ties,dare,slerp,multi-model,best-practices}.md` - Placeholders
 
 9. `book/src/distillation/what-is-distillation.md` ✅ Complete
-10-14. `book/src/distillation/{temperature-kl,multi-teacher,progressive,loss-functions,student-teacher}.md` - Placeholders
+10-14. `book/src/distillation/{temperature-kl,multi-teacher,progressive,loss-functions,student-teacher}.md` -
+Placeholders
 
 15-16. `book/src/training/{trainer-api,train-config}.md` - Placeholders
 

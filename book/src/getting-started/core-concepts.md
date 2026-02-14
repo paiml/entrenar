@@ -1,6 +1,7 @@
 # Core Concepts
 
-This chapter explains the fundamental concepts behind Entrenar's design and how they work together to provide a complete neural network training system.
+This chapter explains the fundamental concepts behind Entrenar's design and how they work together to provide a complete
+neural network training system.
 
 ## Architecture Overview
 
@@ -31,7 +32,8 @@ Entrenar is built on four core pillars:
 
 ## 1. Tensors
 
-**Tensors** are the fundamental data structure in Entrenar, representing multi-dimensional arrays with optional gradient tracking.
+**Tensors** are the fundamental data structure in Entrenar, representing multi-dimensional arrays with optional gradient
+tracking.
 
 ### Tensor Creation
 
@@ -87,7 +89,8 @@ use entrenar::autograd::ops::matmul;
 let result = matmul(&a, &b, rows, cols, batch_size);
 ```
 
-**Key Insight**: Tensor operations use references (`&`) to avoid consuming the original tensors, allowing reuse in computational graphs.
+**Key Insight**: Tensor operations use references (`&`) to avoid consuming the original tensors, allowing reuse in
+computational graphs.
 
 ## 2. Automatic Differentiation (Autograd)
 
@@ -468,4 +471,5 @@ save_adapter(&qlora, "custom_adapter.json")?;
 
 ---
 
-**Ready to explore the autograd engine?** Continue to [What is Automatic Differentiation?](../autograd/what-is-autograd.md) →
+**Ready to explore the autograd engine?** Continue to
+[What is Automatic Differentiation?](../autograd/what-is-autograd.md) →

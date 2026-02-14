@@ -7,7 +7,9 @@
 
 ## Executive Summary
 
-This specification defines five demonstration sub-crates for the Entrenar training library, each showcasing distinct capabilities of the HuggingFace distillation pipeline. The design follows Toyota Production System (TPS) principles and PMAT Extreme TDD methodology to ensure zero-defect quality.
+This specification defines five demonstration sub-crates for the Entrenar training library, each showcasing distinct
+capabilities of the HuggingFace distillation pipeline. The design follows Toyota Production System (TPS) principles and
+PMAT Extreme TDD methodology to ensure zero-defect quality.
 
 ---
 
@@ -52,7 +54,8 @@ This specification defines five demonstration sub-crates for the Entrenar traini
 
 ### Purpose
 
-End-to-end CLI for knowledge distillation workflows, implementing the complete teacher-student training pipeline from model fetching through export.
+End-to-end CLI for knowledge distillation workflows, implementing the complete teacher-student training pipeline from
+model fetching through export.
 
 ### Architecture
 
@@ -209,7 +212,8 @@ fn full_pipeline_produces_valid_output() {
 
 ### Purpose
 
-Interactive REPL (Read-Eval-Print Loop) for exploratory model analysis, distillation experiments, and rapid prototyping. Implements the Genchi Genbutsu principle through hands-on model interaction.
+Interactive REPL (Read-Eval-Print Loop) for exploratory model analysis, distillation experiments, and rapid prototyping.
+Implements the Genchi Genbutsu principle through hands-on model interaction.
 
 ### Architecture
 
@@ -342,7 +346,8 @@ fn session_state_survives_serialization_roundtrip() {
 
 ### Purpose
 
-Specialized tool for LoRA/QLoRA configuration optimization, memory planning, and adapter management. Implements Kaizen through iterative configuration refinement.
+Specialized tool for LoRA/QLoRA configuration optimization, memory planning, and adapter management. Implements Kaizen
+through iterative configuration refinement.
 
 ### Architecture
 
@@ -483,7 +488,8 @@ fn lora_merge_produces_mathematically_correct_weights() {
 
 ### Purpose
 
-Deep inspection and analysis of SafeTensors models with architecture detection, memory profiling, and format conversion. Implements Andon through comprehensive model visualization.
+Deep inspection and analysis of SafeTensors models with architecture detection, memory profiling, and format conversion.
+Implements Andon through comprehensive model visualization.
 
 ### Architecture
 
@@ -629,7 +635,8 @@ fn safetensors_to_gguf_preserves_weights() {
 
 ### Purpose
 
-Comprehensive benchmarking suite for distillation strategies, measuring loss convergence, throughput, and quality metrics. Implements Kaizen through data-driven optimization.
+Comprehensive benchmarking suite for distillation strategies, measuring loss convergence, throughput, and quality
+metrics. Implements Kaizen through data-driven optimization.
 
 ### Architecture
 
@@ -907,7 +914,8 @@ pub mod error {
 ## References (Complete Bibliography)
 
 ### Knowledge Distillation (Sub-Crate 1)
-1. Hinton, G., Vinyals, O., & Dean, J. (2015). Distilling the Knowledge in a Neural Network. *NIPS Deep Learning Workshop*.
+1. Hinton, G., Vinyals, O., & Dean, J. (2015). Distilling the Knowledge in a Neural Network. *NIPS Deep Learning
+   Workshop*.
 2. Romero, A., et al. (2015). FitNets: Hints for Thin Deep Nets. *ICLR 2015*.
 3. Zagoruyko, S., & Komodakis, N. (2017). Paying More Attention to Attention. *ICLR 2017*.
 4. Sun, S., et al. (2019). Patient Knowledge Distillation for BERT Model Compression. *EMNLP 2019*.
@@ -981,54 +989,91 @@ pub mod error {
 
 ## Peer Review Annotations (Toyota Way Analysis)
 
-The following annotations review the specification through the lens of the Toyota Production System (TPS), highlighting alignment with lean principles and supporting academic literature.
+The following annotations review the specification through the lens of the Toyota Production System (TPS), highlighting
+alignment with lean principles and supporting academic literature.
 
 ### 1. Jidoka & Poka-Yoke (Mistake Proofing)
 **Ref:** `entrenar-distill validate` & `entrenar-inspect validate`
-*   **Annotation:** The explicit inclusion of pre-flight validation commands implements software *Poka-Yoke*. By catching configuration errors (e.g., tensor shape mismatches, NaN values) before the expensive training process begins, we adhere to the *Jidoka* principle of stopping the line to fix problems immediately.
-*   **Support:** Shingo, S. (1986). *Zero Quality Control: Source Inspection and the Poka-yoke System*. In a software context, **Pugh, K. (2011)** in *Lean-Agile Acceptance Test-Driven-Development* argues that executable specifications (like these validation commands) are the ultimate form of defect prevention.
+*   **Annotation:** The explicit inclusion of pre-flight validation commands implements software *Poka-Yoke*. By
+    catching configuration errors (e.g., tensor shape mismatches, NaN values) before the expensive training process
+    begins, we adhere to the *Jidoka* principle of stopping the line to fix problems immediately.
+*   **Support:** Shingo, S. (1986). *Zero Quality Control: Source Inspection and the Poka-yoke System*. In a software
+    context, **Pugh, K. (2011)** in *Lean-Agile Acceptance Test-Driven-Development* argues that executable
+    specifications (like these validation commands) are the ultimate form of defect prevention.
 
 ### 2. Heijunka (Leveling) via Resource Planning
 **Ref:** `entrenar-lora plan` (MemoryPlanner)
-*   **Annotation:** The `MemoryPlanner` component is a digital implementation of *Heijunka*. It levels the production load by predicting memory demands against hardware constraints, preventing the *Muri* (overburden) of the GPU which typically results in OOM crashes.
-*   **Support:** **Rajbhandari, S., et al. (2020)** ("ZeRO: Memory Optimizations...") demonstrate that static analysis of model architecture versus device state is critical for efficient training of large models, effectively leveling the schedule for hardware utilization.
+*   **Annotation:** The `MemoryPlanner` component is a digital implementation of *Heijunka*. It levels the production
+    load by predicting memory demands against hardware constraints, preventing the *Muri* (overburden) of the GPU which
+    typically results in OOM crashes.
+*   **Support:** **Rajbhandari, S., et al. (2020)** ("ZeRO: Memory Optimizations...") demonstrate that static analysis
+    of model architecture versus device state is critical for efficient training of large models, effectively leveling
+    the schedule for hardware utilization.
 
 ### 3. Genchi Genbutsu (Go and See)
 **Ref:** `entrenar-shell` (REPL)
-*   **Annotation:** The interactive REPL facilitates *Genchi Genbutsu*. Rather than relying on documentation or assumptions ("reports"), the engineer interacts directly with the "gemba" (the actual model tensors and weights) to verify their state.
-*   **Support:** **Kery, M. B., et al. (2018)** ("The Story in the Notebook") found that immediate, interactive feedback loops in exploratory programming significantly reduce cognitive load and error rates compared to batch-process debugging.
+*   **Annotation:** The interactive REPL facilitates *Genchi Genbutsu*. Rather than relying on documentation or
+    assumptions ("reports"), the engineer interacts directly with the "gemba" (the actual model tensors and weights) to
+    verify their state.
+*   **Support:** **Kery, M. B., et al. (2018)** ("The Story in the Notebook") found that immediate, interactive feedback
+    loops in exploratory programming significantly reduce cognitive load and error rates compared to batch-process
+    debugging.
 
 ### 4. Kaizen (Continuous Improvement) via Sweep
 **Ref:** `entrenar-bench` (Sweeper)
-*   **Annotation:** The hyperparameter sweep functionality automates the data collection required for *Kaizen*. It moves optimization from "gut feel" to scientific method, reducing the *Muda* of ineffective training runs.
-*   **Support:** **Bergstra, J., & Bengio, Y. (2012)** ("Random Search for Hyper-Parameter Optimization") empirically prove that systematic (even random) exploration of the hyperparameter space yields better results with less compute resource waste than manual tuning.
+*   **Annotation:** The hyperparameter sweep functionality automates the data collection required for *Kaizen*. It moves
+    optimization from "gut feel" to scientific method, reducing the *Muda* of ineffective training runs.
+*   **Support:** **Bergstra, J., & Bengio, Y. (2012)** ("Random Search for Hyper-Parameter Optimization") empirically
+    prove that systematic (even random) exploration of the hyperparameter space yields better results with less compute
+    resource waste than manual tuning.
 
 ### 5. Andon (Visualizing Problems)
 **Ref:** `entrenar-inspect` (IntegrityChecker)
-*   **Annotation:** The integrity checker functions as an automated *Andon* cord. By detecting silent data corruptions (like architecture incompatibility or precision loss) and halting the process with "rich error messages," it prevents defects from passing downstream.
-*   **Support:** **Sculley, D., et al. (2015)** ("Hidden Technical Debt in Machine Learning Systems") identify "Data Dependencies Cost" and the lack of automated verification as a primary source of system accumulation. This tool directly pays down that debt.
+*   **Annotation:** The integrity checker functions as an automated *Andon* cord. By detecting silent data corruptions
+    (like architecture incompatibility or precision loss) and halting the process with "rich error messages," it
+    prevents defects from passing downstream.
+*   **Support:** **Sculley, D., et al. (2015)** ("Hidden Technical Debt in Machine Learning Systems") identify "Data
+    Dependencies Cost" and the lack of automated verification as a primary source of system accumulation. This tool
+    directly pays down that debt.
 
 ### 6. Muda (Waste) Reduction via Modularity
 **Ref:** `entrenar-common`
-*   **Annotation:** The extraction of shared logic into `entrenar-common` eliminates the *Muda* of defect correction in duplicate code. This follows the "Single Source of Truth" pattern, essential for maintainability.
-*   **Support:** **Parnas, D. L. (1972)** ("On the criteria to be used in decomposing systems into modules") established that modularity based on information hiding (encapsulating the "secret" of implementation) is the key to reducing the cost of software change.
+*   **Annotation:** The extraction of shared logic into `entrenar-common` eliminates the *Muda* of defect correction in
+    duplicate code. This follows the "Single Source of Truth" pattern, essential for maintainability.
+*   **Support:** **Parnas, D. L. (1972)** ("On the criteria to be used in decomposing systems into modules") established
+    that modularity based on information hiding (encapsulating the "secret" of implementation) is the key to reducing
+    the cost of software change.
 
 ### 7. Standardization (Standardized Work)
 **Ref:** `entrenar-common::cli::styles`
-*   **Annotation:** Standardizing terminal output and interaction patterns reduces the cognitive *Muri* for users. In TPS, Standardized Work is the baseline for improvement; here, a consistent CLI UX allows users to focus on the ML task, not the tool syntax.
-*   **Support:** **Norman, D. A. (2013)** (*The Design of Everyday Things*) emphasizes that consistency in signifiers and feedback mechanisms is critical for reducing operator error in complex systems.
+*   **Annotation:** Standardizing terminal output and interaction patterns reduces the cognitive *Muri* for users. In
+    TPS, Standardized Work is the baseline for improvement; here, a consistent CLI UX allows users to focus on the ML
+    task, not the tool syntax.
+*   **Support:** **Norman, D. A. (2013)** (*The Design of Everyday Things*) emphasizes that consistency in signifiers
+    and feedback mechanisms is critical for reducing operator error in complex systems.
 
 ### 8. SMED (Single Minute Exchange of Die)
 **Ref:** `entrenar-lora convert` & `entrenar-distill export`
-*   **Annotation:** The ability to rapidly convert between training formats (SafeTensors/PyTorch) and inference formats (GGUF) mimics *SMED*. It reduces the "changeover time" between the training phase and the deployment phase, accelerating the feedback loop.
-*   **Support:** **Fowler, M. (2018)** (*Refactoring*) describes "Data Mappers" and "Gateway" patterns as essential for decoupling systems, allowing independent evolution and rapid interchange of parts (formats).
+*   **Annotation:** The ability to rapidly convert between training formats (SafeTensors/PyTorch) and inference formats
+    (GGUF) mimics *SMED*. It reduces the "changeover time" between the training phase and the deployment phase,
+    accelerating the feedback loop.
+*   **Support:** **Fowler, M. (2018)** (*Refactoring*) describes "Data Mappers" and "Gateway" patterns as essential for
+    decoupling systems, allowing independent evolution and rapid interchange of parts (formats).
 
 ### 9. Visual Control
 **Ref:** `trueno-viz` (Loss Curves)
-*   **Annotation:** Embedding visualizations directly in the terminal provides *Visual Control*. Abnormalities in loss convergence (e.g., divergence, stalling) become immediately apparent without requiring context switching to a web browser (Wait Time/Muda).
-*   **Support:** **Tufte, E. R. (2001)** (*The Visual Display of Quantitative Information*) argues that "graphical excellence" consists of complex ideas communicated with clarity, precision, and efficiency, which is critical for rapid decision-making in engineering.
+*   **Annotation:** Embedding visualizations directly in the terminal provides *Visual Control*. Abnormalities in loss
+    convergence (e.g., divergence, stalling) become immediately apparent without requiring context switching to a web
+    browser (Wait Time/Muda).
+*   **Support:** **Tufte, E. R. (2001)** (*The Visual Display of Quantitative Information*) argues that "graphical
+    excellence" consists of complex ideas communicated with clarity, precision, and efficiency, which is critical for
+    rapid decision-making in engineering.
 
 ### 10. Respect for People (Human-Centric Design)
 **Ref:** Error Handling Strategy ("Actionable Diagnostics")
-*   **Annotation:** The specification's insistence on "rich error messages with actionable diagnostics" embodies the TPS principle of *Respect for People*. It treats the developer as an intelligent operator who needs clear information to succeed, not cryptic codes.
-*   **Support:** **Myers, B. A., et al. (2016)** ("Programmers are Users too") highlight that usability flaws in API and tool design are a major contributor to software defects. Actionable error messages are a primary intervention for improving developer productivity and satisfaction.
+*   **Annotation:** The specification's insistence on "rich error messages with actionable diagnostics" embodies the TPS
+    principle of *Respect for People*. It treats the developer as an intelligent operator who needs clear information to
+    succeed, not cryptic codes.
+*   **Support:** **Myers, B. A., et al. (2016)** ("Programmers are Users too") highlight that usability flaws in API and
+    tool design are a major contributor to software defects. Actionable error messages are a primary intervention for
+    improving developer productivity and satisfaction.

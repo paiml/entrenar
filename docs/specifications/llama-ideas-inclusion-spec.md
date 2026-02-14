@@ -7,7 +7,10 @@
 
 ## Executive Summary
 
-This specification outlines the integration of LLaMA transformer architecture into entrenar's training infrastructure, enhanced with quality methodologies from certeza, PMAT roadmap workflows, and renacer tracing capabilities. The goal is to provide a complete, production-ready example of training and fine-tuning transformer models using entrenar's autograd, optimizers, and LoRA/QLoRA features.
+This specification outlines the integration of LLaMA transformer architecture into entrenar's training infrastructure,
+enhanced with quality methodologies from certeza, PMAT roadmap workflows, and renacer tracing capabilities. The goal is
+to provide a complete, production-ready example of training and fine-tuning transformer models using entrenar's
+autograd, optimizers, and LoRA/QLoRA features.
 
 ## 1. LLaMA Architecture Integration
 
@@ -113,7 +116,9 @@ tier3: ## ON-MERGE: Mutation testing (hours)
     cargo mutants --file src/lora/layer.rs
 ```
 
-**Rationale:** Different verification techniques at different time scales prevent context-switching waste. LLaMA examples should have fast gradient checks (tier1) for inner loop development, full integration tests (tier2) for commits, and mutation testing (tier3) for merge gates.
+**Rationale:** Different verification techniques at different time scales prevent context-switching waste. LLaMA
+examples should have fast gradient checks (tier1) for inner loop development, full integration tests (tier2) for
+commits, and mutation testing (tier3) for merge gates.
 
 **Implementation:** Add `examples/llama2/Makefile` with tiered targets.
 
@@ -162,7 +167,8 @@ proptest! {
 }
 ```
 
-**Rationale:** Transformers have deep mathematical properties (equivariance, shape preservation) that property-based tests can verify across wide input ranges. Catches edge cases that unit tests miss.
+**Rationale:** Transformers have deep mathematical properties (equivariance, shape preservation) that property-based
+tests can verify across wide input ranges. Catches edge cases that unit tests miss.
 
 **Implementation:** Add `tests/property_llama.rs` with 20+ properties for LLaMA components.
 
@@ -179,7 +185,8 @@ proptest! {
 | **Feed-forward layers** | Medium | Unit tests + Coverage (90%) + Mutation (80%) |
 | **Embeddings** | Low | Unit tests + Coverage (85%) |
 
-**Rationale:** From certeza line 436-441: "Spend 40% of verification time on the 5-10% highest-risk code." Attention mechanism bugs are catastrophic (silent gradient errors); embedding bugs are obvious (immediate NaN).
+**Rationale:** From certeza line 436-441: "Spend 40% of verification time on the 5-10% highest-risk code." Attention
+mechanism bugs are catastrophic (silent gradient errors); embedding bugs are obvious (immediate NaN).
 
 **Implementation:**
 - Run `cargo mutants --file src/autograd/attention.rs` nightly (tier3)
@@ -219,7 +226,8 @@ fn test_attention_backward_mutation_resistant() {
 }
 ```
 
-**Rationale:** Certeza achieves 97.7% mutation score by designing tests that kill common mutations. Attention backward passes have subtle bugs (scaling, transpose) that standard tests miss.
+**Rationale:** Certeza achieves 97.7% mutation score by designing tests that kill common mutations. Attention backward
+passes have subtle bugs (scaling, transpose) that standard tests miss.
 
 **Implementation:** Add mutation-resistant tests for all autograd ops in `tests/mutation_resistant_attention.rs`.
 
@@ -249,7 +257,8 @@ fn verify_attention_shape_preservation() {
 }
 ```
 
-**Rationale:** From certeza line 451-458: Formal verification for 1-5% of highest-risk code. Attention shape bugs cause silent errors; formally prove they can't happen.
+**Rationale:** From certeza line 451-458: Formal verification for 1-5% of highest-risk code. Attention shape bugs cause
+silent errors; formally prove they can't happen.
 
 **Implementation:** Add `src/autograd/attention_proofs.rs` with Kani proofs (tier3, nightly CI).
 
@@ -288,7 +297,8 @@ fn test_llama_training_under_memory_pressure() {
 }
 ```
 
-**Rationale:** Certeza line 276-305 shows chaos testing prevents silent failures. LLaMA training on GPUs hits OOM frequently; chaos tests ensure graceful degradation.
+**Rationale:** Certeza line 276-305 shows chaos testing prevents silent failures. LLaMA training on GPUs hits OOM
+frequently; chaos tests ensure graceful degradation.
 
 **Implementation:** Add `tests/chaos_llama.rs` with memory/CPU limit tests (tier3).
 
@@ -320,7 +330,8 @@ fuzz_target!(|data: &[u8]| {
 });
 ```
 
-**Rationale:** Certeza line 318-334 shows fuzz testing discovers edge cases. Tokenizers have complex state machines; fuzzing finds Unicode/boundary bugs.
+**Rationale:** Certeza line 318-334 shows fuzz testing discovers edge cases. Tokenizers have complex state machines;
+fuzzing finds Unicode/boundary bugs.
 
 **Implementation:** Add `fuzz/fuzz_targets/` directory with tokenizer, model input fuzzing (tier3).
 
@@ -353,7 +364,8 @@ proptest! {
 }
 ```
 
-**Rationale:** Certeza line 183 shows trueno integration for fast SIMD stats. Property tests generate millions of test cases; SIMD speeds up test execution 3-10x.
+**Rationale:** Certeza line 183 shows trueno integration for fast SIMD stats. Property tests generate millions of test
+cases; SIMD speeds up test execution 3-10x.
 
 **Implementation:** Use trueno::Vector in `tests/property_llama.rs` for test data generation.
 
@@ -377,7 +389,8 @@ coverage-critical:
     @echo "Target: 100% lines, 95%+ branches"
 ```
 
-**Rationale:** Certeza line 420-431 targets 95%+ coverage. LLaMA attention has critical conditional branches (padding, causal masking); uncovered branches = production bugs.
+**Rationale:** Certeza line 420-431 targets 95%+ coverage. LLaMA attention has critical conditional branches
+(padding, causal masking); uncovered branches = production bugs.
 
 **Implementation:** Add `make coverage-critical` target, fail CI if attention.rs coverage < 95%.
 
@@ -410,7 +423,8 @@ impl TrainingMonitor {
 }
 ```
 
-**Rationale:** Certeza line 222-245 applies Toyota Way principles. Long-running training jobs can mask quality regressions; Andon Cord stops the line when defects detected.
+**Rationale:** Certeza line 222-245 applies Toyota Way principles. Long-running training jobs can mask quality
+regressions; Andon Cord stops the line when defects detected.
 
 **Implementation:** Add pre-training quality gate in `examples/llama2/train.rs` checking TDG baseline.
 
@@ -465,7 +479,8 @@ roadmap:
           - "Memory benchmark in README"
 ```
 
-**Rationale:** PMAT README line 89 shows workflow prompts enforce EXTREME TDD. Auto-generate roadmap from specification ensures systematic implementation.
+**Rationale:** PMAT README line 89 shows workflow prompts enforce EXTREME TDD. Auto-generate roadmap from specification
+ensures systematic implementation.
 
 **Implementation:** Run `pmat generate-roadmap` on this spec, create `docs/roadmaps/llama-integration.yaml`.
 
@@ -495,7 +510,8 @@ pmat tdg check-regression \
   --fail-on-regression
 ```
 
-**Rationale:** PMAT line 231-256 shows TDG enforcement system. LLaMA examples are high-visibility code; enforce A grade minimum to prevent technical debt.
+**Rationale:** PMAT line 231-256 shows TDG enforcement system. LLaMA examples are high-visibility code; enforce A grade
+minimum to prevent technical debt.
 
 **Implementation:** Add `.pmat/tdg-rules.toml` with `llama_min_grade = "A"`, install git hooks.
 
@@ -520,7 +536,8 @@ pmat mutate \
   --fail-on-threshold
 ```
 
-**Rationale:** PMAT line 190-228 shows mutation testing evaluates test suite quality. LLaMA attention backward pass needs 85%+ mutation score to catch gradient bugs.
+**Rationale:** PMAT line 190-228 shows mutation testing evaluates test suite quality. LLaMA attention backward pass
+needs 85%+ mutation score to catch gradient bugs.
 
 **Implementation:** Add `make mutation-llama` target, run in tier3 CI.
 
@@ -546,7 +563,8 @@ pmat tdg history --since HEAD~50 --format json | \
   jq '.history[] | select(.score.grade | test("C|D|F"))'
 ```
 
-**Rationale:** PMAT line 317-367 shows git-commit correlation for "quality archaeology." LLaMA training spans weeks; track which commit introduced bugs.
+**Rationale:** PMAT line 317-367 shows git-commit correlation for "quality archaeology." LLaMA training spans weeks;
+track which commit introduced bugs.
 
 **Implementation:** Run `pmat tdg --with-git-context` after each training checkpoint.
 
@@ -573,7 +591,8 @@ pmat prompt refactor-hotspots \
   --set TARGET_FILE="src/autograd/attention.rs"
 ```
 
-**Rationale:** PMAT line 133-187 shows 11 workflow prompts enforce EXTREME TDD and Toyota Way. LLaMA development benefits from standardized prompts.
+**Rationale:** PMAT line 133-187 shows 11 workflow prompts enforce EXTREME TDD and Toyota Way. LLaMA development
+benefits from standardized prompts.
 
 **Implementation:** Create `prompts/llama-development.yaml` with LLaMA-specific prompts.
 
@@ -602,7 +621,8 @@ renacer --function-time --source -- \
 #   3. trueno::matmul_simd      - 12.4% (330ms, 123 syscalls)
 ```
 
-**Rationale:** Renacer line 343-363 shows function profiling detects I/O bottlenecks. LLaMA training bottlenecked by checkpoint loading; renacer identifies it.
+**Rationale:** Renacer line 343-363 shows function profiling detects I/O bottlenecks. LLaMA training bottlenecked by
+checkpoint loading; renacer identifies it.
 
 **Implementation:** Add `make profile-llama` target running renacer on training example.
 
@@ -635,7 +655,8 @@ renacer --otlp-endpoint http://localhost:4317 \
 #   - Child span: "optimizer_step" (89ms)
 ```
 
-**Rationale:** Renacer line 421-447 shows OTLP export to Jaeger/Tempo. LLaMA training is complex; distributed tracing visualizes forward/backward pass timing.
+**Rationale:** Renacer line 421-447 shows OTLP export to Jaeger/Tempo. LLaMA training is complex; distributed tracing
+visualizes forward/backward pass timing.
 
 **Implementation:** Add OTLP tracing to `examples/llama2/train.rs`, document in README.
 
@@ -664,7 +685,8 @@ renacer --anomaly-realtime \
 #   🟢 Low (3-4σ):    12 anomalies (noise)
 ```
 
-**Rationale:** Renacer line 394-419 shows real-time anomaly detection with severity classification. LLaMA training hits hardware issues (GPU throttling, disk contention); catch them early.
+**Rationale:** Renacer line 394-419 shows real-time anomaly detection with severity classification. LLaMA training hits
+hardware issues (GPU throttling, disk contention); catch them early.
 
 **Implementation:** Run `renacer --anomaly-realtime` during long training runs, alert on High severity.
 
@@ -700,7 +722,8 @@ renacer --ml-anomaly \
 # }
 ```
 
-**Rationale:** Renacer line 58-65 shows ML anomaly detection using aprender KMeans. Traditional z-score fails with multi-modal latency distributions; ML clustering handles it.
+**Rationale:** Renacer line 58-65 shows ML anomaly detection using aprender KMeans. Traditional z-score fails with
+multi-modal latency distributions; ML clustering handles it.
 
 **Implementation:** Add post-training analysis script using renacer ML output.
 
@@ -731,7 +754,9 @@ renacer --transpiler-map finetune.sourcemap.json \
 #   2. train_loop (Python:finetune.py:78)    - 32.1% (850ms)
 ```
 
-**Rationale:** Renacer line 67-79 shows transpiler source mapping for Python→Rust and C→Rust. Users fine-tuning LLaMA with transpiled code need to debug in original language.
+**Rationale:** Renacer line 67-79 shows transpiler source mapping for Python→Rust
+and C→Rust. Users fine-tuning LLaMA with transpiled code need to debug
+in original language.
 
 **Implementation:** Add source mapping example in `examples/llama2/transpiled_finetuning.md`.
 

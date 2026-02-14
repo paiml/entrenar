@@ -1,6 +1,7 @@
 # Fine-Tune Real: End-to-End Rust Test Generation
 
-The `finetune_real` example demonstrates real-world fine-tuning of a pre-trained language model (Qwen2.5-Coder-0.5B) for Rust test generation.
+The `finetune_real` example demonstrates real-world fine-tuning of a pre-trained language model (Qwen2.5-Coder-0.5B) for
+Rust test generation.
 
 ## Overview
 

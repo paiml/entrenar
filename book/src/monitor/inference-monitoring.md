@@ -11,7 +11,8 @@ The inference monitoring module provides comprehensive tracing for model predict
 - **Explainability**: Human-readable explanations for predictions
 - **Provenance Graphs**: Reconstruct incident causality chains
 
-This follows the Toyota Way principle of **現地現物 (Genchi Genbutsu)** - every decision is traceable to ground truth.
+This follows the Toyota Way principle of **現地現物 (Genchi Genbutsu)** -
+every decision is traceable to ground truth.
 
 ## Decision Paths
 
@@ -331,4 +332,5 @@ println!("{}", String::from_utf8_lossy(&json));
 cargo run --example inference_monitor
 ```
 
-This demonstrates all components working together: collectors, safety monitoring, counterfactuals, provenance graphs, and serialization.
+This demonstrates all components working together: collectors, safety monitoring, counterfactuals, provenance graphs,
+and serialization.

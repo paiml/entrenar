@@ -1,6 +1,8 @@
 # What is Automatic Differentiation?
 
-**Automatic Differentiation (Autograd)** is a technique for computing derivatives of functions specified by computer programs. It's the foundation of modern deep learning, enabling neural networks to learn through gradient-based optimization.
+**Automatic Differentiation (Autograd)** is a technique for computing derivatives of functions specified by computer
+programs. It's the foundation of modern deep learning, enabling neural networks to learn through gradient-based
+optimization.
 
 ## The Problem: Manual Derivatives
 

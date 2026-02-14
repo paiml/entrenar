@@ -1,6 +1,7 @@
 # Calibration for Pruning
 
-Activation-weighted pruning methods like Wanda and SparseGPT require calibration data to estimate input statistics. This chapter covers setting up and using calibration.
+Activation-weighted pruning methods like Wanda and SparseGPT require calibration data to estimate input statistics. This
+chapter covers setting up and using calibration.
 
 ## Why Calibration?
 

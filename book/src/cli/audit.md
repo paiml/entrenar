@@ -1,6 +1,7 @@
 # Audit Command
 
-The `entrenar audit` command performs bias detection, fairness analysis, privacy checks, and security audits on models and datasets.
+The `entrenar audit` command performs bias detection, fairness analysis, privacy checks, and security audits on models
+and datasets.
 
 ## Usage
 

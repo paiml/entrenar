@@ -1,6 +1,7 @@
 # Pruning Overview
 
-Entrenar provides a comprehensive pruning module for neural network compression, enabling efficient model deployment through structured weight removal.
+Entrenar provides a comprehensive pruning module for neural network compression, enabling efficient model deployment
+through structured weight removal.
 
 ## What is Pruning?
 

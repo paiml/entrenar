@@ -1,6 +1,8 @@
 # Model Lineage
 
-Entrenar provides comprehensive lineage tracking for experiment reproducibility using Lamport timestamps and causal event ordering. The integrity module enables behavioral verification, trace storage policies, and promotion gates for ML model deployment.
+Entrenar provides comprehensive lineage tracking for experiment reproducibility using Lamport timestamps and causal
+event ordering. The integrity module enables behavioral verification, trace storage policies, and promotion gates for ML
+model deployment.
 
 ## Overview
 
@@ -12,7 +14,8 @@ The lineage system consists of three components:
 
 ## Lamport Timestamps
 
-Lamport timestamps provide a logical clock for ordering events in distributed systems without relying on synchronized physical clocks.
+Lamport timestamps provide a logical clock for ordering events in distributed systems without relying on synchronized
+physical clocks.
 
 ```rust
 use entrenar::integrity::LamportTimestamp;

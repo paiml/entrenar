@@ -1,6 +1,7 @@
 # Drift Detection Simulation
 
-This example demonstrates drift detection with KS test and PSI, showing how to set up baseline distributions, detect drift, and use Andon callbacks.
+This example demonstrates drift detection with KS test and PSI, showing how to set up baseline distributions, detect
+drift, and use Andon callbacks.
 
 ## Running the Example
 

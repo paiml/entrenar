@@ -29,7 +29,8 @@
 
 ## 1. Executive Summary
 
-Entrenar lacks visibility into training health. This spec defines a real-time monitoring system using existing PAIML infrastructure:
+Entrenar lacks visibility into training health. This spec defines a real-time monitoring system using existing PAIML
+infrastructure:
 
 | Component | Tool | Purpose |
 |-----------|------|---------|

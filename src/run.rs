@@ -30,7 +30,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -118,7 +118,9 @@ impl<S: ExperimentStorage> Run<S> {
     pub fn new(experiment_id: &str, storage: Arc<Mutex<S>>, config: TracingConfig) -> Result<Self> {
         // Create run in storage
         let run_id = {
-            let mut store = storage.lock().unwrap_or_else(PoisonError::into_inner);
+            let mut store = storage
+                .lock()
+                .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?;
             let run_id = store.create_run(experiment_id)?;
             store.start_run(&run_id)?;
             run_id
@@ -129,7 +131,7 @@ impl<S: ExperimentStorage> Run<S> {
             let span_id = Self::create_span(&run_id);
             storage
                 .lock()
-                .unwrap_or_else(PoisonError::into_inner)
+                .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?
                 .set_span_id(&run_id, &span_id)?;
             Some(span_id)
         } else {
@@ -188,7 +190,7 @@ impl<S: ExperimentStorage> Run<S> {
 
         self.storage
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+            .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?
             .log_metric(&self.id, key, step, value)?;
 
         // Emit span event if tracing enabled
@@ -222,7 +224,7 @@ impl<S: ExperimentStorage> Run<S> {
 
         self.storage
             .lock()
-            .unwrap_or_else(PoisonError::into_inner)
+            .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?
             .complete_run(&self.id, status)?;
 
         self.finished = true;

@@ -4,7 +4,8 @@ Track experiments, runs, metrics, parameters, and artifacts with a local-first S
 
 ## Toyota Principle: Genchi Genbutsu
 
-"Go and see" - understand the situation through direct observation. Experiment tracking enables data-driven decisions by capturing everything that happens during training.
+"Go and see" - understand the situation through direct observation. Experiment tracking enables data-driven decisions by
+capturing everything that happens during training.
 
 ## Quick Start
 

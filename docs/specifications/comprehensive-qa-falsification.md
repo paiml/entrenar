@@ -11,9 +11,12 @@
 
 ## 1. Executive Summary
 
-This document defines the **Comprehensive QA Falsification Protocol** for the `entrenar` CUDA-first fine-tuning pipeline. It serves as the final gatekeeper before release, ensuring that the 100% ticket completion translates to 100% scientific validity.
+This document defines the **Comprehensive QA Falsification Protocol** for the `entrenar` CUDA-first fine-tuning
+pipeline. It serves as the final gatekeeper before release, ensuring that the 100% ticket completion translates to 100%
+scientific validity.
 
-**V1.8.0 Update:** **Category B (Kernels)** is marked fully VERIFIED following the fix of the RMSNorm warp-shuffle bug. Adjusted coverage stands at **93.88%**, surviving 4558 severity tests.
+**V1.8.0 Update:** **Category B (Kernels)** is marked fully VERIFIED following the fix of the RMSNorm warp-shuffle bug.
+Adjusted coverage stands at **93.88%**, surviving 4558 severity tests.
 
 ---
 

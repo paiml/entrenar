@@ -169,7 +169,7 @@ impl WasmDashboard {
             accuracy_color: self.options.accuracy_color.clone(),
             background_color: self.options.background_color.clone(),
         };
-        serde_json::to_string(&state).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string(&state).unwrap_or_else(|_err| "{}".to_string())
     }
 }
 

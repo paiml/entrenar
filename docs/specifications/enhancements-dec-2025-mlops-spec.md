@@ -9,15 +9,20 @@
 
 ## Executive Summary
 
-This specification consolidates all open enhancement tickets for the Entrenar training library, aligned with **Toyota Production System (TPS)** principles. The enhancements span experiment tracking, database backends, model lifecycle management, hyperparameter optimization, GPU monitoring, LLM evaluation, and CI/CD infrastructure.
+This specification consolidates all open enhancement tickets for the Entrenar training library, aligned with **Toyota
+Production System (TPS)** principles. The enhancements span experiment tracking, database backends, model lifecycle
+management, hyperparameter optimization, GPU monitoring, LLM evaluation, and CI/CD infrastructure.
 
-**Core Philosophy:** Following the Toyota Way's emphasis on **Genchi Genbutsu** (go and see), **Jidoka** (built-in quality), and **Kaizen** (continuous improvement), these enhancements prioritize:
+**Core Philosophy:** Following the Toyota Way's emphasis on **Genchi Genbutsu** (go and see), **Jidoka**
+(built-in quality), and **Kaizen** (continuous improvement), these enhancements prioritize:
 
-> **Validation [5]:** Establishes the 14 principles including Genchi Genbutsu (go and see), Jidoka (built-in quality), and Kaizen (continuous improvement) that guide this specification.
+> **Validation [5]:** Establishes the 14 principles including Genchi Genbutsu (go and see), Jidoka (built-in quality),
+and Kaizen (continuous improvement) that guide this specification.
 
 1. **Sovereign Architecture** - Local-first SQLite over external PostgreSQL dependencies
 2. **Muda Elimination** - Remove waste through declarative configuration
-   > **Validation [8]:** Identifies "glue code" and configuration debt as major sources of ML system complexity, validating our declarative YAML approach.
+   > **Validation [8]:** Identifies "glue code" and configuration debt as major sources of ML system complexity,
+   validating our declarative YAML approach.
 3. **Poka-yoke** - Mistake-proof through schema validation and type safety
 4. **Heijunka** - Level workloads through batched operations and streaming
 5. **Andon** - Real-time alerting and quality stop mechanisms
@@ -41,7 +46,8 @@ This specification consolidates all open enhancement tickets for the Entrenar tr
 
 ## 1. Ticket Registry
 
-> **Validation [9]:** Microsoft's study of 500+ ML engineers validates that experiment management and model versioning are top pain points, confirming our prioritization.
+> **Validation [9]:** Microsoft's study of 500+ ML engineers validates that experiment management and model versioning
+are top pain points, confirming our prioritization.
 
 | Ticket | Title | Priority | Toyota Principle |
 |--------|-------|----------|------------------|
@@ -70,9 +76,11 @@ This specification consolidates all open enhancement tickets for the Entrenar tr
 
 ### 2.1 Experiment Tracking Module (#31)
 
-**Toyota Principle:** Genchi Genbutsu (go and see) - Real-time visibility into training runs enables immediate problem detection.
+**Toyota Principle:** Genchi Genbutsu (go and see) - Real-time visibility into training runs enables immediate problem
+detection.
 
-> **Validation [7]:** Validates our experiment tracking API design; MLflow's tracking server architecture informs our REST API and storage abstraction.
+> **Validation [7]:** Validates our experiment tracking API design; MLflow's tracking server architecture informs our
+REST API and storage abstraction.
 
 #### Design
 
@@ -109,7 +117,8 @@ pub trait ExperimentStorage: Send + Sync {
 
 #### Pre-flight Validation (Jidoka)
 
-> **Validation [10]:** Establishes that pre-flight data validation catches 30-50% of ML pipeline failures before training, supporting our Jidoka-inspired preflight system.
+> **Validation [10]:** Establishes that pre-flight data validation catches 30-50% of ML pipeline failures before
+training, supporting our Jidoka-inspired preflight system.
 
 ```rust
 pub struct Preflight {
@@ -132,7 +141,8 @@ impl Preflight {
 
 ### 2.2 Sovereign Database Backend (#68)
 
-**Toyota Principle:** Heijunka (leveling) - SQLite provides consistent, predictable performance without external dependencies.
+**Toyota Principle:** Heijunka (leveling) - SQLite provides consistent, predictable performance without external
+dependencies.
 
 **CRITICAL DECISION:** Prefer SQLite over PostgreSQL for sovereign, local-first architecture.
 
@@ -432,7 +442,8 @@ pub enum ParameterDomain {
 
 #### TPE Implementation (Bergstra et al., 2011) [1]
 
-> **Validation [1]:** Establishes Tree-structured Parzen Estimator (TPE) as superior to random search for hyperparameter optimization, achieving 2-10x speedup in finding optimal configurations.
+> **Validation [1]:** Establishes Tree-structured Parzen Estimator (TPE) as superior to random search for hyperparameter
+optimization, achieving 2-10x speedup in finding optimal configurations.
 
 ```rust
 pub struct TPEOptimizer {
@@ -467,7 +478,8 @@ impl TPEOptimizer {
 
 #### Hyperband Successive Halving (Li et al., 2018) [2]
 
-> **Validation [2]:** Demonstrates that successive halving with early stopping achieves equivalent results with 5-30x less computation than grid search.
+> **Validation [2]:** Demonstrates that successive halving with early stopping achieves equivalent results with 5-30x
+less computation than grid search.
 
 ```rust
 pub struct HyperbandScheduler {
@@ -533,7 +545,8 @@ impl HyperbandScheduler {
 
 **Toyota Principle:** Andon - Visual alerting system for immediate problem detection.
 
-> **Validation [6]:** Chapter 4's Andon system (visual alerting) directly informs our GPU monitoring and alert architecture.
+> **Validation [6]:** Chapter 4's Andon system (visual alerting) directly informs our GPU monitoring and alert
+architecture.
 
 ```rust
 /// GPU metrics snapshot (via NVML)
@@ -763,7 +776,8 @@ pub trait LLMEvaluator {
 
 **Toyota Principle:** Jidoka - Built-in privacy protection stops data leakage.
 
-> **Validation [3]:** Establishes DP-SGD as the foundational algorithm for privacy-preserving deep learning, proving (ε, δ)-differential privacy guarantees.
+> **Validation [3]:** Establishes DP-SGD as the foundational algorithm for privacy-preserving deep learning, proving
+(ε, δ)-differential privacy guarantees.
 
 ```rust
 /// DP-SGD implementation following Abadi et al. (2016) [3]
@@ -1136,35 +1150,55 @@ impl<S: ExperimentStorageAsync> SyncStorage<S> {
 
 ## 10. Peer-Reviewed References
 
-**[1]** Bergstra, J., Bardenet, R., Bengio, Y., & Kegl, B. (2011). **Algorithms for Hyper-Parameter Optimization.** *Advances in Neural Information Processing Systems (NeurIPS) 24*, 2546-2554.
-*Validation: Establishes Tree-structured Parzen Estimator (TPE) as superior to random search for hyperparameter optimization, achieving 2-10x speedup in finding optimal configurations.*
+**[1]** Bergstra, J., Bardenet, R., Bengio, Y., & Kegl, B. (2011). **Algorithms for Hyper-Parameter Optimization.**
+*Advances in Neural Information Processing Systems (NeurIPS) 24*, 2546-2554.
+*Validation: Establishes Tree-structured Parzen Estimator (TPE) as superior to random search for hyperparameter
+optimization, achieving 2-10x speedup in finding optimal configurations.*
 
-**[2]** Li, L., Jamieson, K., DeSalvo, G., Rostamizadeh, A., & Talwalkar, A. (2018). **Hyperband: A Novel Bandit-Based Approach to Hyperparameter Optimization.** *Journal of Machine Learning Research (JMLR) 18*, 1-52.
-*Validation: Demonstrates that successive halving with early stopping achieves equivalent results with 5-30x less computation than grid search.*
+**[2]** Li, L., Jamieson, K., DeSalvo, G., Rostamizadeh, A., & Talwalkar, A. (2018). **Hyperband: A Novel Bandit-Based
+Approach to Hyperparameter Optimization.** *Journal of Machine Learning Research (JMLR) 18*, 1-52.
+*Validation: Demonstrates that successive halving with early stopping achieves equivalent results with 5-30x less
+computation than grid search.*
 
-**[3]** Abadi, M., Chu, A., Goodfellow, I., McMahan, H.B., Mironov, I., Talwar, K., & Zhang, L. (2016). **Deep Learning with Differential Privacy.** *Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security (CCS)*, 308-318.
-*Validation: Establishes DP-SGD as the foundational algorithm for privacy-preserving deep learning, proving (ε, δ)-differential privacy guarantees.*
+**[3]** Abadi, M., Chu, A., Goodfellow, I., McMahan, H.B., Mironov, I., Talwar, K., & Zhang, L. (2016). **Deep Learning
+with Differential Privacy.** *Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security
+(CCS)*, 308-318.
+*Validation: Establishes DP-SGD as the foundational algorithm for privacy-preserving deep learning, proving
+(ε, δ)-differential privacy guarantees.*
 
-**[4]** Mironov, I. (2017). **Renyi Differential Privacy.** *2017 IEEE 30th Computer Security Foundations Symposium (CSF)*, 263-275.
-*Validation: Introduces RDP accounting which provides tighter privacy bounds (up to 2x better ε) than basic composition for iterative mechanisms like SGD.*
+**[4]** Mironov, I. (2017). **Renyi Differential Privacy.** *2017 IEEE 30th Computer Security Foundations Symposium
+(CSF)*, 263-275.
+*Validation: Introduces RDP accounting which provides tighter privacy bounds (up to 2x better ε) than basic composition
+for iterative mechanisms like SGD.*
 
-**[5]** Liker, J.K. (2004). **The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer.** McGraw-Hill. ISBN: 978-0071392310.
-*Validation: Establishes the 14 principles including Genchi Genbutsu (go and see), Jidoka (built-in quality), and Kaizen (continuous improvement) that guide this specification.*
+**[5]** Liker, J.K. (2004). **The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer.**
+McGraw-Hill. ISBN: 978-0071392310.
+*Validation: Establishes the 14 principles including Genchi Genbutsu (go and see), Jidoka (built-in quality), and Kaizen
+(continuous improvement) that guide this specification.*
 
-**[6]** Ohno, T. (1988). **Toyota Production System: Beyond Large-Scale Production.** Productivity Press. ISBN: 978-0915299140.
+**[6]** Ohno, T. (1988). **Toyota Production System: Beyond Large-Scale Production.** Productivity Press. ISBN:
+978-0915299140.
 *Validation: Chapter 4's Andon system (visual alerting) directly informs our GPU monitoring and alert architecture.*
 
-**[7]** Zaharia, M., et al. (2018). **Accelerating the Machine Learning Lifecycle with MLflow.** *IEEE Data Engineering Bulletin 41(4)*, 39-45.
-*Validation: Validates our experiment tracking API design; MLflow's tracking server architecture informs our REST API and storage abstraction.*
+**[7]** Zaharia, M., et al. (2018). **Accelerating the Machine Learning Lifecycle with MLflow.** *IEEE Data Engineering
+Bulletin 41(4)*, 39-45.
+*Validation: Validates our experiment tracking API design; MLflow's tracking server architecture informs our REST API
+and storage abstraction.*
 
-**[8]** Sculley, D., et al. (2015). **Hidden Technical Debt in Machine Learning Systems.** *Advances in Neural Information Processing Systems (NeurIPS) 28*.
-*Validation: Identifies "glue code" and configuration debt as major sources of ML system complexity, validating our declarative YAML approach.*
+**[8]** Sculley, D., et al. (2015). **Hidden Technical Debt in Machine Learning Systems.** *Advances in Neural
+Information Processing Systems (NeurIPS) 28*.
+*Validation: Identifies "glue code" and configuration debt as major sources of ML system complexity, validating our
+declarative YAML approach.*
 
-**[9]** Amershi, S., et al. (2019). **Software Engineering for Machine Learning: A Case Study.** *International Conference on Software Engineering (ICSE)*, 291-300.
-*Validation: Microsoft's study of 500+ ML engineers validates that experiment management and model versioning are top pain points, confirming our prioritization.*
+**[9]** Amershi, S., et al. (2019). **Software Engineering for Machine Learning: A Case Study.** *International
+Conference on Software Engineering (ICSE)*, 291-300.
+*Validation: Microsoft's study of 500+ ML engineers validates that experiment management and model versioning are top
+pain points, confirming our prioritization.*
 
-**[10]** Polyzotis, N., Roy, S., Whang, S.E., & Zinkevich, M. (2017). **Data Validation for Machine Learning.** *Proceedings of Machine Learning and Systems (MLSys)*.
-*Validation: Establishes that pre-flight data validation catches 30-50% of ML pipeline failures before training, supporting our Jidoka-inspired preflight system.*
+**[10]** Polyzotis, N., Roy, S., Whang, S.E., & Zinkevich, M. (2017). **Data Validation for Machine Learning.**
+*Proceedings of Machine Learning and Systems (MLSys)*.
+*Validation: Establishes that pre-flight data validation catches 30-50% of ML pipeline failures before training,
+supporting our Jidoka-inspired preflight system.*
 
 ---
 

@@ -85,9 +85,11 @@ $ cargo build
 
 ## Release Notes Excerpt
 
-> **Entrenar** (Spanish: "to train") is a high-performance Rust library for training and optimizing neural networks with automatic differentiation, state-of-the-art optimizers, and memory-efficient LoRA/QLoRA fine-tuning.
+> **Entrenar** (Spanish: "to train") is a high-performance Rust library for training and optimizing neural networks with
+automatic differentiation, state-of-the-art optimizers, and memory-efficient LoRA/QLoRA fine-tuning.
 
-> This is the initial production-ready release of Entrenar, featuring a complete training infrastructure built with EXTREME TDD methodology.
+> This is the initial production-ready release of Entrenar, featuring a complete training infrastructure built with
+EXTREME TDD methodology.
 
 > **Quality Grade:** A+ (Zero defects, 258 passing tests, EXTREME TDD methodology)
 

@@ -106,7 +106,7 @@ impl GpuMonitor {
                 continue;
             };
 
-            let name = device.name().unwrap_or_else(|_| format!("GPU {i}"));
+            let name = device.name().unwrap_or_else(|_err| format!("GPU {i}"));
 
             // Utilization rates
             let (utilization_percent, memory_utilization_percent) = device
@@ -325,7 +325,7 @@ impl GpuMonitor {
 
 impl Default for GpuMonitor {
     fn default() -> Self {
-        Self::new().unwrap_or_else(|_| Self::mock(0))
+        Self::new().unwrap_or_else(|_err| Self::mock(0))
     }
 }
 

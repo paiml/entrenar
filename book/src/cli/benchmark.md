@@ -1,6 +1,7 @@
 # Benchmark Commands
 
-The `entrenar-bench` CLI provides tools for distillation benchmarking, hyperparameter sweeps, and cost-performance analysis.
+The `entrenar-bench` CLI provides tools for distillation benchmarking, hyperparameter sweeps, and cost-performance
+analysis.
 
 ## Commands Overview
 

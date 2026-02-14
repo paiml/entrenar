@@ -181,7 +181,7 @@ pub struct AnonymizedArtifact {
 impl AnonymizedArtifact {
     /// Convert to a format suitable for double-blind export (JSON)
     pub fn to_double_blind_json(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string_pretty(self).unwrap_or_else(|_err| "{}".to_string())
     }
 
     /// Get author count

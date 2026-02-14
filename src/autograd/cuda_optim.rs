@@ -111,7 +111,7 @@ pub fn adamw_step_cuda(
     let cache = OPTIM_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -184,7 +184,7 @@ pub fn adam_step_cuda(
     let cache = OPTIM_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
@@ -268,7 +268,7 @@ pub fn gradient_clip_cuda(
     let cache = OPTIM_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_| {
+    let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 

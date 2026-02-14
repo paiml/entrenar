@@ -3,7 +3,8 @@
 > **Version:** 1.0.0
 > **Status:** Draft Specification
 > **Author:** PAIML Team
-> **Toyota Way Principle:** 現地現物 (Genchi Genbutsu) - Go and see for yourself; decisions must be traceable to ground truth
+> **Toyota Way Principle:** 現地現物 (Genchi Genbutsu) - Go and see for yourself;
+decisions must be traceable to ground truth
 
 ---
 
@@ -30,7 +31,9 @@
 
 ## 1. Executive Summary
 
-This specification defines a unified system for **real-time explainability** and **deep audit logging** of machine learning decisions made by APR format models (aprender). The system operates across all trueno compute backends (Scalar, SIMD, GPU, WASM) with deterministic, reproducible decision traces.
+This specification defines a unified system for **real-time explainability** and **deep audit logging** of machine
+learning decisions made by APR format models (aprender). The system operates across all trueno compute backends
+(Scalar, SIMD, GPU, WASM) with deterministic, reproducible decision traces.
 
 ### Key Capabilities
 
@@ -62,9 +65,11 @@ Input → [BLACK BOX] → Output → ??? → Accident
                          "Why did it decide that?"
 ```
 
-**Cloudflare Incident (2025-11-18)**: A single `unwrap()` panic in production caused a 3+ hour global outage. The root cause took hours to identify because decision paths were not logged.
+**Cloudflare Incident (2025-11-18)**: A single `unwrap()` panic in production caused a 3+ hour global outage. The root
+cause took hours to identify because decision paths were not logged.
 
-**Tesla Autopilot Investigations**: NHTSA investigations require reconstruction of every decision made in the 30 seconds before an incident—data that often doesn't exist in sufficient detail.
+**Tesla Autopilot Investigations**: NHTSA investigations require reconstruction of every decision made in the 30 seconds
+before an incident—data that often doesn't exist in sufficient detail.
 
 ### Current State in PAIML Stack
 
@@ -460,11 +465,14 @@ impl Counterfactual {
 }
 ```
 
-**Use Case**: When an AV's perception model misclassifies a cat as "unknown object," the counterfactual reveals: "Classification would have been 'animal' if pixel region [x1,y1,x2,y2] brightness increased by 12%"—indicating a lighting sensitivity issue.
+**Use Case**: When an AV's perception model misclassifies a cat as "unknown object," the counterfactual reveals:
+"Classification would have been 'animal' if pixel region [x1,y1,x2,y2] brightness increased by 12%"—indicating a
+lighting sensitivity issue.
 
 ### The Gray Box Architecture
 
-To resolve the tension between deep learning performance and regulatory transparency, we adopt a **Gray Box** architecture that wraps high-performance neural networks in mathematically rigorous explainability layers:
+To resolve the tension between deep learning performance and regulatory transparency, we adopt a **Gray Box**
+architecture that wraps high-performance neural networks in mathematically rigorous explainability layers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -904,7 +912,9 @@ pub enum EmergencyCondition {
 
 ## 9.5. Provenance Graph Integration
 
-Beyond sequential decision traces, safety-critical applications benefit from **Provenance Graphs** that capture the causal relationships between system entities. This approach, pioneered by frameworks like Flash and Unicorn, enables reconstruction of complex multi-step decision chains.
+Beyond sequential decision traces, safety-critical applications benefit from **Provenance Graphs** that capture the
+causal relationships between system entities. This approach, pioneered by frameworks like Flash and Unicorn, enables
+reconstruction of complex multi-step decision chains.
 
 ### Provenance Graph for ML Decisions
 
@@ -1376,23 +1386,31 @@ pub struct KaizenAnalyzer {
 
 ## 14. Academic Foundation
 
-This specification builds on peer-reviewed research in explainable AI, audit logging, log anomaly detection, provenance analysis, and safety-critical systems. The citations are organized by domain to facilitate deeper exploration.
+This specification builds on peer-reviewed research in explainable AI, audit logging, log anomaly detection, provenance
+analysis, and safety-critical systems. The citations are organized by domain to facilitate deeper exploration.
 
 ### Explainability Foundations (XAI)
 
-1. **Ribeiro, M. T., Singh, S., & Guestrin, C.** (2016). "Why Should I Trust You?" Explaining the Predictions of Any Classifier. *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining*, 1135-1144. https://doi.org/10.1145/2939672.2939778
-   - *Foundation for LIME (Local Interpretable Model-agnostic Explanations). Post-hoc explanation via local perturbation.*
+1. **Ribeiro, M. T., Singh, S., & Guestrin, C.** (2016). "Why Should I Trust You?" Explaining the Predictions of Any
+   Classifier. *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining*,
+   1135-1144. https://doi.org/10.1145/2939672.2939778
+   - *Foundation for LIME (Local Interpretable Model-agnostic Explanations). Post-hoc explanation via local
+     perturbation.*
 
-2. **Lundberg, S. M., & Lee, S. I.** (2017). A Unified Approach to Interpreting Model Predictions. *Advances in Neural Information Processing Systems*, 30, 4765-4774.
+2. **Lundberg, S. M., & Lee, S. I.** (2017). A Unified Approach to Interpreting Model Predictions. *Advances in Neural
+   Information Processing Systems*, 30, 4765-4774.
    - *SHAP values: Game-theoretic feature attribution with consistency guarantees.*
 
-3. **Molnar, C.** (2022). *Interpretable Machine Learning: A Guide for Making Black Box Models Explainable* (2nd ed.). https://christophm.github.io/interpretable-ml-book/
+3. **Molnar, C.** (2022). *Interpretable Machine Learning: A Guide for Making Black Box Models Explainable* (2nd ed.).
+   <https://christophm.github.io/interpretable-ml-book/>
    - *Comprehensive survey of explainability methods including counterfactuals.*
 
-4. **Arrieta, A. B., et al.** (2020). Explainable Artificial Intelligence (XAI): Concepts, taxonomies, opportunities and challenges toward responsible AI. *Information Fusion*, 58, 82-115. https://doi.org/10.1016/j.inffus.2019.12.012
+4. **Arrieta, A. B., et al.** (2020). Explainable Artificial Intelligence (XAI): Concepts, taxonomies, opportunities and
+   challenges toward responsible AI. *Information Fusion*, 58, 82-115. https://doi.org/10.1016/j.inffus.2019.12.012
    - *Taxonomy of XAI approaches for regulatory compliance (GDPR, EU AI Act).*
 
-5. **Guidotti, R., et al.** (2018). A Survey of Methods for Explaining Black Box Models. *ACM Computing Surveys*, 51(5), 1-42. https://doi.org/10.1145/3236009
+5. **Guidotti, R., et al.** (2018). A Survey of Methods for Explaining Black Box Models. *ACM Computing Surveys*, 51(5),
+   1-42. https://doi.org/10.1145/3236009
    - *Systematic review: model-agnostic vs model-specific explanation methods.*
 
 ### Decision Trees & Ensemble Explainability
@@ -1400,35 +1418,45 @@ This specification builds on peer-reviewed research in explainable AI, audit log
 6. **Breiman, L.** (2001). Random Forests. *Machine Learning*, 45(1), 5-32. https://doi.org/10.1023/A:1010933404324
    - *Original Random Forest paper with permutation-based feature importance.*
 
-7. **Friedman, J. H.** (2001). Greedy Function Approximation: A Gradient Boosting Machine. *The Annals of Statistics*, 29(5), 1189-1232.
+7. **Friedman, J. H.** (2001). Greedy Function Approximation: A Gradient Boosting Machine. *The Annals of Statistics*,
+   29(5), 1189-1232.
    - *Gradient boosting with partial dependence plots for feature effects.*
 
-8. **Palczewska, A., et al.** (2014). Interpreting Random Forest Classification Models Using a Feature Contribution Method. *Integration of Reusable Systems*, 193-218. https://doi.org/10.1007/978-3-319-04717-1_9
+8. **Palczewska, A., et al.** (2014). Interpreting Random Forest Classification Models Using a Feature Contribution
+   Method. *Integration of Reusable Systems*, 193-218. https://doi.org/10.1007/978-3-319-04717-1_9
    - *Per-prediction feature contribution decomposition for ensemble models.*
 
 ### Neural Network Interpretability
 
-9. **Simonyan, K., Vedaldi, A., & Zisserman, A.** (2014). Deep Inside Convolutional Networks: Visualising Image Classification Models and Saliency Maps. *ICLR Workshop*.
+9. **Simonyan, K., Vedaldi, A., & Zisserman, A.** (2014). Deep Inside Convolutional Networks: Visualising Image
+   Classification Models and Saliency Maps. *ICLR Workshop*.
    - *Gradient-based saliency maps for input attribution.*
 
-10. **Sundararajan, M., Taly, A., & Yan, Q.** (2017). Axiomatic Attribution for Deep Networks. *Proceedings of the 34th International Conference on Machine Learning*, 70, 3319-3328.
+10. **Sundararajan, M., Taly, A., & Yan, Q.** (2017). Axiomatic Attribution for Deep Networks. *Proceedings of the 34th
+    International Conference on Machine Learning*, 70, 3319-3328.
     - *Integrated Gradients: Axiomatically-grounded attribution satisfying sensitivity and implementation invariance.*
 
-11. **Selvaraju, R. R., et al.** (2017). Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization. *Proceedings of the IEEE International Conference on Computer Vision*, 618-626.
+11. **Selvaraju, R. R., et al.** (2017). Grad-CAM: Visual Explanations from Deep Networks via Gradient-based
+    Localization. *Proceedings of the IEEE International Conference on Computer Vision*, 618-626.
     - *Gradient-weighted Class Activation Mapping for CNN interpretability.*
 
 ### Log Anomaly Detection & Sequence Modeling
 
-12. **Du, M., Li, F., Zheng, G., & Srikumar, V.** (2017). DeepLog: Anomaly Detection and Diagnosis from System Logs through Deep Learning. *Proceedings of the ACM SIGSAC Conference on Computer and Communications Security*, 1285-1298.
+12. **Du, M., Li, F., Zheng, G., & Srikumar, V.** (2017). DeepLog: Anomaly Detection and Diagnosis from System Logs
+    through Deep Learning. *Proceedings of the ACM SIGSAC Conference on Computer and Communications Security*,
+    1285-1298.
     - *Foundational LSTM-based log anomaly detection treating logs as natural language sequences.*
 
-13. **Meng, W., et al.** (2019). LogAnomaly: Unsupervised Detection of Sequential and Quantitative Anomalies in Unstructured Logs. *IJCAI*, 4739-4745.
+13. **Meng, W., et al.** (2019). LogAnomaly: Unsupervised Detection of Sequential and Quantitative Anomalies in
+    Unstructured Logs. *IJCAI*, 4739-4745.
     - *Template2Vec semantic embeddings for unified sequential and quantitative anomaly detection.*
 
-14. **Guo, H., et al.** (2021). LogBERT: Log Anomaly Detection via BERT. *International Joint Conference on Neural Networks (IJCNN)*.
+14. **Guo, H., et al.** (2021). LogBERT: Log Anomaly Detection via BERT. *International Joint Conference on Neural
+    Networks (IJCNN)*.
     - *Transformer-based self-supervised log analysis with masked log key prediction.*
 
-15. **Yang, L., et al.** (2021). PLELog: Semi-supervised Log Anomaly Detection via Probabilistic Label Estimation. *ICSE*.
+15. **Yang, L., et al.** (2021). PLELog: Semi-supervised Log Anomaly Detection via Probabilistic Label Estimation.
+    *ICSE*.
     - *Attention-based GRU with probabilistic label estimation for label-scarce environments.*
 
 ### Log Parsing & Semantic Representation
@@ -1436,32 +1464,39 @@ This specification builds on peer-reviewed research in explainable AI, audit log
 16. **He, P., et al.** (2017). Drain: An Online Log Parsing Approach with Fixed Depth Tree. *ICWS*.
     - *Streaming log parser using fixed-depth tree structure for real-time template extraction.*
 
-17. **Nedelkoski, S., Bogatinovski, J., Acker, A., Cardoso, J., & Kao, O.** (2020). Self-Supervised Log Parsing. *ECML PKDD*.
+17. **Nedelkoski, S., Bogatinovski, J., Acker, A., Cardoso, J., & Kao, O.** (2020). Self-Supervised Log Parsing. *ECML
+    PKDD*.
     - *NuLog: Masked language modeling for joint parsing and representation learning.*
 
-18. **Meng, W., et al.** (2020). Log2Vec: A Heterogeneous Graph Embedding Based Approach for Detecting Cyber Threats within Enterprise. *CCS*.
+18. **Meng, W., et al.** (2020). Log2Vec: A Heterogeneous Graph Embedding Based Approach for Detecting Cyber Threats
+    within Enterprise. *CCS*.
     - *Semantic-aware log embeddings handling out-of-vocabulary tokens.*
 
 ### Provenance Analysis & Attack Path Reconstruction
 
-19. **Hassan, W. U., et al.** (2020). Tactical Provenance Analysis for Endpoint Detection and Response Systems. *IEEE S&P*.
+19. **Hassan, W. U., et al.** (2020). Tactical Provenance Analysis for Endpoint Detection and Response Systems. *IEEE
+    S&P*.
     - *Flash: Provenance graph representation learning with temporal-causal enforcement for APT detection.*
 
 20. **Han, X., et al.** (2020). Unicorn: Runtime Provenance-Based Detector for Advanced Persistent Threats. *NDSS*.
     - *Graph sketching for modeling long-running system execution and detecting slow APT campaigns.*
 
-21. **Manzoor, E., Milajerdi, S. M., & Akoglu, L.** (2016). Fast Memory-efficient Anomaly Detection in Streaming Heterogeneous Graphs. *KDD*.
+21. **Manzoor, E., Milajerdi, S. M., & Akoglu, L.** (2016). Fast Memory-efficient Anomaly Detection in Streaming
+    Heterogeneous Graphs. *KDD*.
     - *StreamSpot: Constant-memory streaming graph anomaly detection via graph shingles.*
 
-22. **Liu, F., et al.** (2018). ProTracer: Towards Practical Provenance Tracing by Alternating Between Logging and Tainting. *NDSS*.
+22. **Liu, F., et al.** (2018). ProTracer: Towards Practical Provenance Tracing by Alternating Between Logging and
+    Tainting. *NDSS*.
     - *Alternating logging/tainting to reduce provenance graph storage overhead while maintaining forensic fidelity.*
 
 ### Safety-Critical Systems & Automotive
 
-23. **Koopman, P., & Wagner, M.** (2016). Challenges in Autonomous Vehicle Testing and Validation. *SAE International Journal of Transportation Safety*, 4(1), 15-24. https://doi.org/10.4271/2016-01-0128
+23. **Koopman, P., & Wagner, M.** (2016). Challenges in Autonomous Vehicle Testing and Validation. *SAE International
+    Journal of Transportation Safety*, 4(1), 15-24. https://doi.org/10.4271/2016-01-0128
     - *AV testing requirements: edge cases, simulation, and operational design domains.*
 
-24. **Shalev-Shwartz, S., Shammah, S., & Shashua, A.** (2017). On a Formal Model of Safe and Scalable Self-driving Cars. *arXiv preprint arXiv:1708.06374*.
+24. **Shalev-Shwartz, S., Shammah, S., & Shashua, A.** (2017). On a Formal Model of Safe and Scalable Self-driving Cars.
+    *arXiv preprint arXiv:1708.06374*.
     - *Responsibility-Sensitive Safety (RSS): Mathematical framework for blame-free AV decisions.*
 
 25. **ISO 26262:2018** Road vehicles — Functional safety. *International Organization for Standardization*.
@@ -1469,10 +1504,12 @@ This specification builds on peer-reviewed research in explainable AI, audit log
 
 ### Audit Logging, Integrity & Blockchain
 
-26. **Buneman, P., Khanna, S., & Tan, W. C.** (2001). Why and Where: A Characterization of Data Provenance. *International Conference on Database Theory*, 316-330. https://doi.org/10.1007/3-540-44503-X_20
+26. **Buneman, P., Khanna, S., & Tan, W. C.** (2001). Why and Where: A Characterization of Data Provenance.
+    *International Conference on Database Theory*, 316-330. https://doi.org/10.1007/3-540-44503-X_20
     - *Foundational theory distinguishing why-provenance from where-provenance.*
 
-27. **Herschel, M., Diestelkämper, R., & Ben Lahmar, H.** (2017). A Survey on Provenance: What for? What form? What from? *The VLDB Journal*, 26(6), 881-906. https://doi.org/10.1007/s00778-017-0486-1
+27. **Herschel, M., Diestelkämper, R., & Ben Lahmar, H.** (2017). A Survey on Provenance: What for? What form? What
+    from? *The VLDB Journal*, 26(6), 881-906. https://doi.org/10.1007/s00778-017-0486-1
     - *Comprehensive provenance taxonomy: annotation, inversion, and lazy vs eager capture.*
 
 28. **Nakamoto, S.** (2008). Bitcoin: A Peer-to-Peer Electronic Cash System.
@@ -1483,15 +1520,18 @@ This specification builds on peer-reviewed research in explainable AI, audit log
 
 ### Real-Time Systems & Scheduling
 
-30. **Liu, C. L., & Layland, J. W.** (1973). Scheduling Algorithms for Multiprogramming in a Hard-Real-Time Environment. *Journal of the ACM*, 20(1), 46-61. https://doi.org/10.1145/321738.321743
+30. **Liu, C. L., & Layland, J. W.** (1973). Scheduling Algorithms for Multiprogramming in a Hard-Real-Time Environment.
+    *Journal of the ACM*, 20(1), 46-61. https://doi.org/10.1145/321738.321743
     - *Rate-monotonic scheduling theory for real-time latency guarantees.*
 
-31. **Kopetz, H.** (2011). *Real-Time Systems: Design Principles for Distributed Embedded Applications* (2nd ed.). Springer.
+31. **Kopetz, H.** (2011). *Real-Time Systems: Design Principles for Distributed Embedded Applications* (2nd ed.).
+    Springer.
     - *Determinism, fault tolerance, and temporal firewalls in safety-critical systems.*
 
 ### SIMD, GPU & Performance Optimization
 
-32. **Fog, A.** (2021). *Optimizing Software in C++: An Optimization Guide for Windows, Linux and Mac Platforms*. https://www.agner.org/optimize/
+32. **Fog, A.** (2021). *Optimizing Software in C++: An Optimization Guide for Windows, Linux and Mac Platforms*.
+    <https://www.agner.org/optimize/>
     - *SIMD optimization: AVX2/AVX-512 vectorization, cache-aware algorithms.*
 
 33. **Intel Corporation.** (2023). *Intel® 64 and IA-32 Architectures Optimization Reference Manual*.
@@ -1499,10 +1539,12 @@ This specification builds on peer-reviewed research in explainable AI, audit log
 
 ### Drift Detection & Concept Shift
 
-34. **Gama, J., et al.** (2014). A Survey on Concept Drift Adaptation. *ACM Computing Surveys*, 46(4), 1-37. https://doi.org/10.1145/2523813
+34. **Gama, J., et al.** (2014). A Survey on Concept Drift Adaptation. *ACM Computing Surveys*, 46(4), 1-37.
+    <https://doi.org/10.1145/2523813>
     - *Drift detection methods: DDM, EDDM, ADWIN for evolving data streams.*
 
-35. **Baena-García, M., et al.** (2006). Early Drift Detection Method. *Fourth International Workshop on Knowledge Discovery from Data Streams*.
+35. **Baena-García, M., et al.** (2006). Early Drift Detection Method. *Fourth International Workshop on Knowledge
+    Discovery from Data Streams*.
     - *EDDM: Statistical approach for early warning of distribution shift.*
 
 ### Agentic AI & LLM Integration
@@ -1515,7 +1557,8 @@ This specification builds on peer-reviewed research in explainable AI, audit log
 
 ### Audit-Ready & Regulatory Frameworks
 
-38. **Antunes, N., et al.** (2023). EARL: Explainable and Audit-Ready Logging for Clinical AI. *Journal of Biomedical Informatics*.
+38. **Antunes, N., et al.** (2023). EARL: Explainable and Audit-Ready Logging for Clinical AI. *Journal of Biomedical
+    Informatics*.
     - *Unified architecture: prediction + XAI explanation + provenance in cryptographically-secured audit trail.*
 
 39. **European Commission.** (2024). EU Artificial Intelligence Act. *Official Journal of the European Union*.
@@ -1523,8 +1566,10 @@ This specification builds on peer-reviewed research in explainable AI, audit log
 
 ### Toyota Production System & Quality
 
-40. **Liker, J. K.** (2004). *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer*. McGraw-Hill.
-    - *Genchi Genbutsu (go and see), Jidoka (automation with human oversight), Andon (visual alerting), Kaizen (continuous improvement).*
+40. **Liker, J. K.** (2004). *The Toyota Way: 14 Management Principles from the World's Greatest Manufacturer*.
+    McGraw-Hill.
+    - *Genchi Genbutsu (go and see), Jidoka (automation with human oversight), Andon (visual alerting), Kaizen
+      (continuous improvement).*
 
 ---
 
@@ -1698,4 +1743,5 @@ confidence_intervals = true
 
 ---
 
-*Document generated in accordance with Toyota Way principles. All decisions in this specification are traceable to requirements and academic foundations.*
+*Document generated in accordance with Toyota Way principles. All decisions in this specification are traceable to
+requirements and academic foundations.*

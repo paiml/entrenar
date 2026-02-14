@@ -1,6 +1,7 @@
 # Fine-tune for Test Generation
 
-This example demonstrates fine-tuning Qwen2-0.5B-Coder to generate Rust unit tests and property-based tests from function implementations using QLoRA for memory efficiency.
+This example demonstrates fine-tuning Qwen2-0.5B-Coder to generate Rust unit tests and property-based tests from
+function implementations using QLoRA for memory efficiency.
 
 ## Running the Example
 

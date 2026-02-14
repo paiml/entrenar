@@ -1,6 +1,7 @@
 # Inspect Command
 
-The `entrenar inspect` command provides data and model inspection capabilities for SafeTensors, GGUF, Parquet, and CSV files.
+The `entrenar inspect` command provides data and model inspection capabilities for SafeTensors, GGUF, Parquet, and CSV
+files.
 
 ## Usage
 

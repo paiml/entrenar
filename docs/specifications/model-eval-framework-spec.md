@@ -12,7 +12,9 @@
 
 ## Abstract
 
-This specification defines the **integrated model evaluation and drift detection system** for the `aprender` ecosystem. Adhering to the **Toyota Way**, it transforms model evaluation from a manual, ad-hoc process into an automated, continuous control loop (*Jidoka*).
+This specification defines the **integrated model evaluation and drift detection system** for the `aprender` ecosystem.
+Adhering to the **Toyota Way**, it transforms model evaluation from a manual, ad-hoc process into an automated,
+continuous control loop (*Jidoka*).
 
 Crucially, this framework is **not isolated**. It integrates directly with:
 1.  **Renacer:** To trace evaluation overhead and ensure "Science" (metrics) doesn't kill "Systems" (latency).
@@ -39,8 +41,10 @@ Add `aprender::eval` module with:
 
 ### 1.3 Mandatory Adoption (Standardization)
 To ensure ecosystem consistency, the following "Gurus" (Workflows) **MUST** use `aprender::eval`:
-1.  **Fine-Tuning Guru (LoRA/QLoRA):** Must use `ModelEvaluator` to compare Base vs. Fine-Tuned performance (e.g., "Win Rate" or specific task metrics).
-2.  **Quantization Guru (PTQ/QAT):** Must use `ModelEvaluator` to quantify accuracy degradation (e.g., FP16 vs INT4). Relative accuracy drop > 1% triggers a failure.
+1.  **Fine-Tuning Guru (LoRA/QLoRA):** Must use `ModelEvaluator` to compare Base vs. Fine-Tuned performance
+    (e.g., "Win Rate" or specific task metrics).
+2.  **Quantization Guru (PTQ/QAT):** Must use `ModelEvaluator` to quantify accuracy degradation (e.g., FP16 vs INT4).
+    Relative accuracy drop > 1% triggers a failure.
 3.  **Distillation Guru:** Must use `ModelEvaluator` to verify Student vs. Teacher parity.
 
 ---
@@ -127,7 +131,8 @@ pub fn classification_report(y_pred: &[usize], y_true: &[usize]) -> String;
 
 ### 3.2 Model Evaluator (`src/eval/evaluator.rs`)
 
-The `ModelEvaluator` manages the lifecycle of testing and comparison. It is responsible for reporting metrics to `Renacer`.
+The `ModelEvaluator` manages the lifecycle of testing and comparison. It is responsible for reporting metrics to
+`Renacer`.
 
 ```rust
 /// Configuration for model evaluation
@@ -222,7 +227,8 @@ impl ModelEvaluator {
 
 ### 3.3 Drift Detection (`src/eval/drift.rs`)
 
-Implements **Jidoka** (Automation with a Human Touch). Detects when the process is out of control and signals for help (Retraining).
+Implements **Jidoka** (Automation with a Human Touch). Detects when the process is out of control and signals for help
+(Retraining).
 
 ```rust
 /// Statistical test for drift detection
@@ -389,7 +395,8 @@ renacer = ["dep:renacer"]           # Enable tracing integration
 ## 8. Quality Requirements
 
 -   **Test Coverage:** ≥95% via `make coverage` (Strict).
-    -   **Performance Constraint:** Coverage suite must run in **< 5 minutes** to ensure rapid feedback loops (Toyota Way).
+    -   **Performance Constraint:** Coverage suite must run in **< 5 minutes** to ensure rapid feedback loops
+        (Toyota Way).
 -   **Mutation Score:** ≥85% (cargo-mutants).
 -   **Property Tests:** 1000+ iterations per metric.
 -   **No Panics:** All public APIs must return `Result`.
@@ -454,17 +461,27 @@ fn main() -> Result<()> {
 
 ## 10. QA & Falsification (PMAT)
 
-To ensure this specification is implemented correctly, the following **10-Point PMAT Checklist** must be verified before release (v1.0.0).
+To ensure this specification is implemented correctly, the following **10-Point PMAT Checklist** must be verified before
+release (v1.0.0).
 
-1.  [ ] **Unit Tests:** All metrics (`accuracy`, `f1`, etc.) match `sklearn` reference values to within `1e-6` precision.
-2.  [ ] **Property Tests:** `proptest` passes **100,000 iterations** (up from 10k) for all metrics, verifying invariants (e.g., `accuracy <= 1.0`, `F1 symmetry`).
-3.  [ ] **Mutation Testing:** `cargo mutants` score > **90%** (up from 85%) for `metrics/` and `drift/` modules, ensuring no "pseudo-tested" code.
-4.  [ ] **Integration:** `entrenar` callback successfully triggers a dummy job within **10ms** when drift is simulated (Real-time Andon).
-5.  [ ] **Drift Statistical Power:** KS and Chi-Square tests demonstrate **p-value calibration** (uniform under null hypothesis) via `examples/calibration_check.rs`.
-6.  [ ] **Renacer Tracing:** `ModelEvaluator` produces a visible Span in `jaeger` with correct tags, adding **< 2% overhead** to inference.
-7.  [ ] **Performance Complexity:** Metric calculation complexity verified as **O(N)**; overhead must be < 5ms for N=1M samples on Reference Hardware.
-8.  [ ] **WASM:** `aprender-eval` compiles to `wasm32-unknown-unknown` and runs in browser with **zero allocations** in the hot loop.
-9.  [ ] **Documentation:** All examples in `mdbook` use `{{#include}}` and compile; "Documentation as Code" principle enforced.
+1.  [ ] **Unit Tests:** All metrics (`accuracy`, `f1`, etc.) match `sklearn` reference values to within `1e-6`
+    precision.
+2.  [ ] **Property Tests:** `proptest` passes **100,000 iterations** (up from 10k) for all metrics, verifying invariants
+    (e.g., `accuracy <= 1.0`, `F1 symmetry`).
+3.  [ ] **Mutation Testing:** `cargo mutants` score > **90%** (up from 85%) for `metrics/` and `drift/` modules,
+    ensuring no "pseudo-tested" code.
+4.  [ ] **Integration:** `entrenar` callback successfully triggers a dummy job within **10ms** when drift is simulated
+    (Real-time Andon).
+5.  [ ] **Drift Statistical Power:** KS and Chi-Square tests demonstrate **p-value calibration**
+    (uniform under null hypothesis) via `examples/calibration_check.rs`.
+6.  [ ] **Renacer Tracing:** `ModelEvaluator` produces a visible Span in `jaeger` with correct tags, adding **< 2%
+    overhead** to inference.
+7.  [ ] **Performance Complexity:** Metric calculation complexity verified as **O(N)**; overhead must be < 5ms for N=1M
+    samples on Reference Hardware.
+8.  [ ] **WASM:** `aprender-eval` compiles to `wasm32-unknown-unknown` and runs in browser with **zero allocations** in
+    the hot loop.
+9.  [ ] **Documentation:** All examples in `mdbook` use `{{#include}}` and compile; "Documentation as Code" principle
+    enforced.
 10. [ ] **Compliance:** `pmat comply` passes with **0 violations** (Grade A, clean logs, no `unwrap()`, no `panic!`).
 
 ---
@@ -472,16 +489,23 @@ To ensure this specification is implemented correctly, the following **10-Point 
 ## 11. References
 
 ### Peer-Reviewed Literature
-1.  **Drift Detection:** Gama, J., et al. (2014). "A Survey on Concept Drift Adaptation." *ACM Computing Surveys*. [DOI:10.1145/2523813](https://doi.org/10.1145/2523813)
-2.  **Continuous Learning (Jidoka):** Lesort, T., et al. (2020). "Continual Learning for Robotics: Definition, Framework, Learning Strategies, Opportunities and Challenges." *Information Fusion*. [DOI:10.1016/j.inffus.2019.12.004](https://doi.org/10.1016/j.inffus.2019.12.004)
-3.  **LoRA Evaluation:** Hu, E. J., et al. (2021). "LoRA: Low-Rank Adaptation of Large Language Models." *ICLR 2022*. [arXiv:2106.09685](https://arxiv.org/abs/2106.09685)
-4.  **Quantization (QLoRA):** Dettmers, T., et al. (2023). "QLoRA: Efficient Finetuning of Quantized LLMs." *NeurIPS 2023*. [arXiv:2305.14314](https://arxiv.org/abs/2305.14314)
-5.  **MLOps Architecture:** Kreuzberger, D., et al. (2023). "Machine Learning Operations (MLOps): Overview, Definition, and Architecture." *IEEE Access*.
+1.  **Drift Detection:** Gama, J., et al. (2014). "A Survey on Concept Drift Adaptation." *ACM Computing Surveys*.
+    [DOI:10.1145/2523813](https://doi.org/10.1145/2523813)
+2.  **Continuous Learning (Jidoka):** Lesort, T., et al. (2020). "Continual Learning for Robotics: Definition,
+    Framework, Learning Strategies, Opportunities and Challenges." *Information Fusion*.
+    [DOI:10.1016/j.inffus.2019.12.004](https://doi.org/10.1016/j.inffus.2019.12.004)
+3.  **LoRA Evaluation:** Hu, E. J., et al. (2021). "LoRA: Low-Rank Adaptation of Large Language Models." *ICLR 2022*.
+    [arXiv:2106.09685](https://arxiv.org/abs/2106.09685)
+4.  **Quantization (QLoRA):** Dettmers, T., et al. (2023). "QLoRA: Efficient Finetuning of Quantized LLMs." *NeurIPS
+    2023*. [arXiv:2305.14314](https://arxiv.org/abs/2305.14314)
+5.  **MLOps Architecture:** Kreuzberger, D., et al. (2023). "Machine Learning Operations (MLOps): Overview, Definition,
+    and Architecture." *IEEE Access*.
 
 ### Standard References
 -   **Toyota Way:** Jidoka (Automation), Mieruka (Visual Control).
 -   **Vision Sync:** `entrenar/docs/specifications/paiml-sai-vision-sync.md`
--   **Sklearn:** [Classification Report](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.classification_report.html)
+-   **Sklearn:**
+    [Classification Report](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.classification_report.html)
 -   **PSI:** [Population Stability Index Guide](https://www.listendata.com/2015/05/population-stability-index.html)
 -   **Brick Architecture:** `docs/specifications/brick-architecture.md` (Zero-JS Visualization Standard)
 
@@ -495,7 +519,8 @@ The Model Evaluation Framework (APR-073) has been fully implemented and verified
 1.  **Classification Metrics:** Verified with 8 `sklearn` parity tests (1e-6 precision).
 2.  **Model Evaluator:** Leaderboard and performance tracking verified.
 3.  **Cross-Validation:** KFold integration complete.
-4.  **Drift Detection:** KS, Chi-Square, and PSI verified via `examples/calibration_check.rs` and `examples/drift_simulation.rs`.
+4.  **Drift Detection:** KS, Chi-Square, and PSI verified via `examples/calibration_check.rs` and
+    `examples/drift_simulation.rs`.
 5.  **Entrenar Integration:** `AutoRetrainer` and Andon loop verified with <10ms callback latency.
 6.  **WASM Compatibility:** Verified core logic compilation for `wasm32-unknown-unknown`.
 7.  **Testing:** 63 module tests + 17 property tests (100k iterations each) passing.
@@ -507,7 +532,8 @@ The Model Evaluation Framework (APR-073) has been fully implemented and verified
 
 ## Appendix D: Documentation Integration Strategy
 
-To ensure "Documentation is Code" (The Toyota Way), all examples in the `mdbook` MUST be sourced directly from compiled, tested Rust files using the `{{#include ...}}` directive.
+To ensure "Documentation is Code" (The Toyota Way), all examples in the `mdbook` MUST be sourced directly from compiled,
+tested Rust files using the `{{#include ...}}` directive.
 
 **DO NOT** write code blocks manually in markdown.
 

@@ -1,6 +1,7 @@
 # Research Commands
 
-The `entrenar research` command provides tools for academic research workflows, including artifact initialization, pre-registration, citation generation, and repository deposits.
+The `entrenar research` command provides tools for academic research workflows, including artifact initialization,
+pre-registration, citation generation, and repository deposits.
 
 ## Commands Overview
 

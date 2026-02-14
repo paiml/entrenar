@@ -1,6 +1,7 @@
 # Experiment Tracking
 
-Entrenar provides a comprehensive experiment tracking system that integrates with distributed tracing for observability across training runs.
+Entrenar provides a comprehensive experiment tracking system that integrates with distributed tracing for observability
+across training runs.
 
 ## Overview
 

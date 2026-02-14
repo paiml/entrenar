@@ -2,7 +2,8 @@
 
 ## Overview
 
-This directory contains golden traces captured from entrenar (training & optimization library with autograd, LoRA, quantization) examples.
+This directory contains golden traces captured from entrenar
+(training & optimization library with autograd, LoRA, quantization) examples.
 
 ## Trace Files
 
@@ -102,9 +103,13 @@ From initial golden trace capture:
 | `llama2_finetune_lora` | 144.728ms | 10866 | LoRA fine-tuning (162.4M params → 1.2M trainable, 3 epochs, 300 steps) |
 
 **Key Insights:**
-- **training_loop** (0.720ms): Extremely fast compute-bound training. Dominated by write (26.39%) for metrics output. Minimal syscall overhead (92 total).
-- **model_io** (1.191ms): Fast serialization. Write (25.69%) for JSON/YAML output, read (7.39%) for loading. 3 unlink calls for cleanup.
-- **llama2_finetune_lora** (144.728ms): Dominated by getrandom (53.45%, 9914 calls) for random initialization. Munmap (37.48%, 137 calls) for memory management. Mremap (6.89%, 511 calls) for ndarray reallocation. Training 162.4M parameter model with only 1.2M trainable (99.3% reduction).
+- **training_loop** (0.720ms): Extremely fast compute-bound training. Dominated by write (26.39%) for metrics output.
+  Minimal syscall overhead (92 total).
+- **model_io** (1.191ms): Fast serialization. Write (25.69%) for JSON/YAML output, read (7.39%) for loading. 3 unlink
+  calls for cleanup.
+- **llama2_finetune_lora** (144.728ms): Dominated by getrandom (53.45%, 9914 calls) for random initialization. Munmap
+  (37.48%, 137 calls) for memory management. Mremap (6.89%, 511 calls) for ndarray reallocation. Training 162.4M
+  parameter model with only 1.2M trainable (99.3% reduction).
 
 ## Training & Optimization Performance Characteristics
 

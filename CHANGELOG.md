@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 #### Model Evaluation Framework (APR-073)
-- **Standardized Metrics** - Classification (Accuracy, F1, Precision, Recall, Confusion Matrix) with sklearn parity (1e-6 precision).
-- **Drift Detection** - KS, Chi-Square, and PSI (Population Stability Index) statistical tests for data/concept drift detection.
+- **Standardized Metrics** - Classification (Accuracy, F1, Precision, Recall, Confusion Matrix) with sklearn parity
+  (1e-6 precision).
+- **Drift Detection** - KS, Chi-Square, and PSI (Population Stability Index) statistical tests for data/concept drift
+  detection.
 - **ModelEvaluator** - Multi-model comparison and leaderboard generation.
 - **Entrenar Integration** - `AutoRetrainer` with Andon loop; <10ms callback latency verified.
 - **Renacer Tracing** - Feature-gated tracing for evaluation overhead monitoring.

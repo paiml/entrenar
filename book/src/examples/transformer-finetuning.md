@@ -1,6 +1,7 @@
 # Transformer Fine-Tuning
 
-This example demonstrates fine-tuning a large language model (Qwen2.5-Coder-1.5B) using entrenar's transformer training pipeline.
+This example demonstrates fine-tuning a large language model (Qwen2.5-Coder-1.5B) using entrenar's transformer training
+pipeline.
 
 ## Overview
 

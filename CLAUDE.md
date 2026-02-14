@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Entrenar** is a Rust training and optimization library for neural networks, part of the PAIML stack. It provides autograd, optimizers, quantization (QAT/PTQ), LoRA/QLoRA, model merging (TIES/DARE/SLERP), and knowledge distillation.
+**Entrenar** is a Rust training and optimization library for neural networks, part of the PAIML stack. It provides
+autograd, optimizers, quantization (QAT/PTQ), LoRA/QLoRA, model merging (TIES/DARE/SLERP), and knowledge distillation.
 
 **Status:** Specification phase - implementation not yet started.
 
@@ -13,7 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `realizar` - GGUF model I/O (inference only)
 - `aprender` - Loss functions, APR format (training checkpoints)
 
-**Critical Constraint:** Entrenar depends on backward propagation operations that do not yet exist in Trueno. Phase 1 cannot start until `trueno/src/ops/backward.rs` is implemented.
+**Critical Constraint:** Entrenar depends on backward propagation operations that do not yet exist in Trueno. Phase 1
+cannot start until `trueno/src/ops/backward.rs` is implemented.
 
 ## LAYOUT-002: Row-Major Mandate
 
@@ -135,7 +137,8 @@ make clean              # Remove build artifacts
 
 ## Code Search (pmat query)
 
-**NEVER use grep or rg for code discovery.** Use `pmat query` instead -- it returns quality-annotated, ranked results with TDG scores and fault annotations.
+**NEVER use grep or rg for code discovery.** Use `pmat query` instead -- it returns quality-annotated, ranked results
+with TDG scores and fault annotations.
 
 ```bash
 # Find functions by intent
@@ -429,7 +432,8 @@ batuta oracle --rag "model merging TIES DARE SLERP"
 batuta oracle --rag "knowledge distillation multi-teacher"
 ```
 
-The RAG index (341+ docs) includes CLAUDE.md, README.md, and source files from all stack components plus Python ground truth corpora for cross-language pattern matching.
+The RAG index (341+ docs) includes CLAUDE.md, README.md, and source files from all stack components plus Python ground
+truth corpora for cross-language pattern matching.
 
 Index auto-updates via post-commit hooks and `ora-fresh` on shell login.
 To manually check freshness: `ora-fresh`

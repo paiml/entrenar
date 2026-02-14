@@ -4,7 +4,8 @@ Toyota Way Jidoka (自働化) principle: Stop-the-line on critical failures.
 
 ## Concept
 
-In Toyota manufacturing, the Andon cord allows any worker to stop the production line when they detect a defect. In training, this translates to automatic stopping on critical issues.
+In Toyota manufacturing, the Andon cord allows any worker to stop the production line when they detect a defect. In
+training, this translates to automatic stopping on critical issues.
 
 ## Usage
 

@@ -4,7 +4,8 @@ Real-time GPU metrics collection with Andon alerting system for proactive issue 
 
 ## Toyota Principle: Andon (行灯)
 
-Visual signaling system that alerts operators to problems. GPU monitoring provides real-time visibility into hardware health with automatic alerts.
+Visual signaling system that alerts operators to problems. GPU monitoring provides real-time visibility into hardware
+health with automatic alerts.
 
 ## Quick Start
 
