@@ -8,7 +8,7 @@ use crate::weights::load_safetensors_weights;
 use crate::MemoryEstimate;
 use entrenar::distill::{save_student_checkpoint, DistillationCheckpoint, DistillationLoss};
 use entrenar_common::{EntrenarError, Result};
-use ndarray::Array2;
+use ndarray::{Array2, Axis};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -134,27 +134,29 @@ impl<'a> Pipeline<'a> {
         let (mut student_weights, student_shapes) = load_safetensors_weights(student_path)?;
 
         // Create distillation loss function
-        let loss_fn = DistillationLoss::new(
-            self.config.distillation.temperature,
-            self.config.distillation.alpha,
-        );
+        let temperature = self.config.distillation.temperature;
+        let alpha = self.config.distillation.alpha;
+        let loss_fn = DistillationLoss::new(temperature, alpha);
 
         let lr = self.config.training.learning_rate as f32;
 
         // Derive synthetic logits from weight tensors for loss computation.
         // In a full pipeline, these would come from forward passes through
-        // teacher and student models.
+        // teacher and student models. Here we use weight slices as logits
+        // and apply proper KD gradient descent in logit space.
         let batch_size = self.config.training.batch_size as usize;
         let num_classes = 32; // Synthetic vocab slice
 
         let teacher_logits = build_synthetic_logits(&teacher_weights, batch_size, num_classes);
         let labels: Vec<usize> = (0..batch_size).map(|i| i % num_classes).collect();
 
+        // Maintain student logits as a mutable array for gradient descent
+        let mut student_logits = build_synthetic_logits(&student_weights, batch_size, num_classes);
+
         let mut metrics = TrainingMetrics::default();
         let mut best_loss = f32::MAX;
 
         // Initial loss measurement
-        let student_logits = build_synthetic_logits(&student_weights, batch_size, num_classes);
         let initial_loss = loss_fn.forward(&student_logits, &teacher_logits, &labels);
         metrics.initial_loss = initial_loss;
         best_loss = best_loss.min(initial_loss);
@@ -166,18 +168,21 @@ impl<'a> Pipeline<'a> {
             let steps_this_epoch = (1000 / u64::from(self.config.training.batch_size)).max(1);
 
             for _s in 0..steps_this_epoch {
-                // Compute current student logits from weights
-                let student_logits =
-                    build_synthetic_logits(&student_weights, batch_size, num_classes);
-
                 // Compute distillation loss
                 let loss = loss_fn.forward(&student_logits, &teacher_logits, &labels);
                 best_loss = best_loss.min(loss);
 
-                // Simple gradient step on student weights (SGD-like update).
-                // The gradient approximation: student_softmax - teacher_softmax
-                // drives student outputs toward teacher outputs.
-                apply_gradient_step(&mut student_weights, &teacher_weights, lr);
+                // Compute KD gradient: d(loss)/d(student_logits)
+                let grad = kd_gradient(
+                    &student_logits,
+                    &teacher_logits,
+                    &labels,
+                    temperature,
+                    alpha,
+                );
+
+                // SGD update in logit space
+                student_logits = &student_logits - &(grad * lr);
 
                 step += 1;
             }
@@ -186,13 +191,20 @@ impl<'a> Pipeline<'a> {
         let elapsed = train_start.elapsed().as_secs_f32().max(1e-6);
 
         // Final loss measurement
-        let final_logits = build_synthetic_logits(&student_weights, batch_size, num_classes);
-        let final_loss = loss_fn.forward(&final_logits, &teacher_logits, &labels);
+        let final_loss = loss_fn.forward(&student_logits, &teacher_logits, &labels);
 
         metrics.final_loss = final_loss;
         metrics.best_loss = best_loss.min(final_loss);
         metrics.steps_completed = step;
         metrics.throughput = (step as f32 * batch_size as f32) / elapsed;
+
+        // Write trained logits back into student weight tensor
+        write_logits_to_weights(
+            &mut student_weights,
+            &student_logits,
+            batch_size,
+            num_classes,
+        );
 
         Ok((metrics, student_weights, student_shapes))
     }
@@ -355,21 +367,67 @@ fn build_synthetic_logits(
         .expect("shape matches needed elements")
 }
 
-/// Apply a simple gradient step to student weights, nudging them toward teacher.
+/// Compute the knowledge distillation gradient with respect to student logits.
 ///
-/// Uses a direct interpolation step: w_student += lr * (w_teacher - w_student)
-/// for shared tensor names, which minimizes the KD loss when teacher is the target.
-fn apply_gradient_step(
-    student_weights: &mut HashMap<String, Vec<f32>>,
-    teacher_weights: &HashMap<String, Vec<f32>>,
-    lr: f32,
+/// The gradient of the KD loss L = α·T²·KL(teacher_T || student_T) + (1-α)·CE(student, labels):
+///
+/// ∂L/∂z_student = α·T·(softmax(z_s/T) - softmax(z_t/T))
+///               + (1-α)·(softmax(z_s) - one_hot(labels))
+fn kd_gradient(
+    student_logits: &Array2<f32>,
+    teacher_logits: &Array2<f32>,
+    labels: &[usize],
+    temperature: f32,
+    alpha: f32,
+) -> Array2<f32> {
+    let batch_size = student_logits.nrows();
+    let num_classes = student_logits.ncols();
+
+    // Soft target gradient: α·T·(softmax(student/T) - softmax(teacher/T))
+    let student_soft = softmax_2d(&(student_logits / temperature));
+    let teacher_soft = softmax_2d(&(teacher_logits / temperature));
+    let soft_grad = (&student_soft - &teacher_soft) * (alpha * temperature);
+
+    // Hard target gradient: (1-α)·(softmax(student) - one_hot(labels))
+    let student_hard = softmax_2d(student_logits);
+    let mut one_hot = Array2::zeros((batch_size, num_classes));
+    for (i, &label) in labels.iter().enumerate() {
+        if label < num_classes {
+            one_hot[[i, label]] = 1.0;
+        }
+    }
+    let hard_grad = (&student_hard - &one_hot) * (1.0 - alpha);
+
+    // Combined gradient
+    &soft_grad + &hard_grad
+}
+
+/// Compute softmax along the last axis of a 2D array.
+fn softmax_2d(x: &Array2<f32>) -> Array2<f32> {
+    let mut result = x.clone();
+    for mut row in result.axis_iter_mut(Axis(0)) {
+        let max_val = row.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+        row.mapv_inplace(|v| (v - max_val).exp());
+        let sum: f32 = row.sum();
+        row.mapv_inplace(|v| v / sum);
+    }
+    result
+}
+
+/// Write trained logit values back into the first suitable weight tensor.
+fn write_logits_to_weights(
+    weights: &mut HashMap<String, Vec<f32>>,
+    logits: &Array2<f32>,
+    batch_size: usize,
+    num_classes: usize,
 ) {
-    for (name, student_data) in student_weights.iter_mut() {
-        if let Some(teacher_data) = teacher_weights.get(name) {
-            let len = student_data.len().min(teacher_data.len());
-            for i in 0..len {
-                student_data[i] += lr * (teacher_data[i] - student_data[i]);
-            }
+    let needed = batch_size * num_classes;
+    let logit_data: Vec<f32> = logits.iter().copied().collect();
+
+    for data in weights.values_mut() {
+        if data.len() >= needed {
+            data[..needed].copy_from_slice(&logit_data);
+            return;
         }
     }
 }
@@ -473,19 +531,27 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_gradient_step_converges() {
-        let teacher: HashMap<String, Vec<f32>> = [("w".to_string(), vec![1.0, 2.0, 3.0])].into();
-        let mut student: HashMap<String, Vec<f32>> =
-            [("w".to_string(), vec![0.0, 0.0, 0.0])].into();
+    fn test_kd_gradient_reduces_loss() {
+        let teacher =
+            Array2::from_shape_vec((2, 4), vec![2.0, 1.0, 0.5, 0.1, 1.5, 1.2, 0.8, 0.3]).unwrap();
+        let mut student =
+            Array2::from_shape_vec((2, 4), vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2]).unwrap();
+        let labels = vec![0, 1];
+        let loss_fn = DistillationLoss::new(4.0, 0.7);
 
-        // After many steps, student should approach teacher
+        let initial_loss = loss_fn.forward(&student, &teacher, &labels);
+
+        // Apply gradient steps
         for _ in 0..100 {
-            apply_gradient_step(&mut student, &teacher, 0.1);
+            let grad = kd_gradient(&student, &teacher, &labels, 4.0, 0.7);
+            student = &student - &(grad * 0.5);
         }
 
-        for (&s, &t) in student["w"].iter().zip(teacher["w"].iter()) {
-            assert!((s - t).abs() < 0.01, "student={s}, teacher={t}");
-        }
+        let final_loss = loss_fn.forward(&student, &teacher, &labels);
+        assert!(
+            final_loss < initial_loss,
+            "KD gradient did not reduce loss: {initial_loss} -> {final_loss}"
+        );
     }
 
     #[test]
@@ -567,5 +633,203 @@ mod tests {
 
         // Verify distillation metadata sidecar was created
         assert!(output_dir.join("distillation_metadata.json").exists());
+    }
+
+    /// Falsification: does training actually reduce loss?
+    #[test]
+    fn test_falsify_training_reduces_loss() {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Teacher: higher magnitude weights (stronger signal)
+        let teacher_data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.02 - 2.0).collect();
+        let teacher_bytes: Vec<u8> = bytemuck::cast_slice(&teacher_data).to_vec();
+        let teacher_views = vec![(
+            "layer.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &teacher_bytes).unwrap(),
+        )];
+        let teacher_path = tmp.path().join("teacher.safetensors");
+        std::fs::write(
+            &teacher_path,
+            safetensors::serialize(teacher_views, None).unwrap(),
+        )
+        .unwrap();
+
+        // Student: different initialization
+        let student_data: Vec<f32> = (0..256).map(|i| (i as f32) * -0.01 + 1.0).collect();
+        let student_bytes: Vec<u8> = bytemuck::cast_slice(&student_data).to_vec();
+        let student_views = vec![(
+            "layer.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &student_bytes).unwrap(),
+        )];
+        let student_path = tmp.path().join("student.safetensors");
+        std::fs::write(
+            &student_path,
+            safetensors::serialize(student_views, None).unwrap(),
+        )
+        .unwrap();
+
+        let output_dir = tmp.path().join("output");
+        let mut config = DistillConfig::minimal(
+            teacher_path.to_str().unwrap(),
+            student_path.to_str().unwrap(),
+        );
+        config.output.dir = output_dir;
+        config.training.epochs = 5;
+        config.training.batch_size = 4;
+        config.training.learning_rate = 0.01;
+
+        let pipeline = Pipeline::new(&config);
+        let result = pipeline.execute().unwrap();
+
+        eprintln!(
+            "initial_loss={}, final_loss={}, best_loss={}, steps={}",
+            result.metrics.initial_loss,
+            result.metrics.final_loss,
+            result.metrics.best_loss,
+            result.metrics.steps_completed
+        );
+
+        // FALSIFICATION: loss must actually decrease
+        assert!(
+            result.metrics.final_loss < result.metrics.initial_loss,
+            "Training did NOT reduce loss! initial={} final={}",
+            result.metrics.initial_loss,
+            result.metrics.final_loss
+        );
+    }
+
+    /// Falsification: does export produce valid re-loadable SafeTensors?
+    #[test]
+    fn test_falsify_export_roundtrip() {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Create identical teacher/student so training doesn't matter
+        let data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.01).collect();
+        let data_bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
+        let views = vec![(
+            "layer.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &data_bytes).unwrap(),
+        )];
+        let model_path = tmp.path().join("model.safetensors");
+        std::fs::write(&model_path, safetensors::serialize(views, None).unwrap()).unwrap();
+
+        let output_dir = tmp.path().join("output");
+        let mut config =
+            DistillConfig::minimal(model_path.to_str().unwrap(), model_path.to_str().unwrap());
+        config.output.dir = output_dir.clone();
+        config.training.epochs = 1;
+        config.training.batch_size = 4;
+
+        let pipeline = Pipeline::new(&config);
+        let result = pipeline.execute().unwrap();
+
+        // FALSIFICATION: can we re-load the exported file?
+        let exported_data = std::fs::read(&result.output_path).unwrap();
+        let loaded = safetensors::SafeTensors::deserialize(&exported_data)
+            .expect("exported SafeTensors file is not valid!");
+
+        // Must contain the same tensor name
+        assert!(
+            loaded.names().contains(&"layer.weight"),
+            "exported file missing 'layer.weight' tensor, has: {:?}",
+            loaded.names()
+        );
+
+        // Check the data is f32 and has correct shape
+        let tensor = loaded.tensor("layer.weight").unwrap();
+        assert_eq!(tensor.dtype(), Dtype::F32);
+        assert_eq!(tensor.shape(), &[16, 16]);
+
+        // FALSIFICATION: metadata sidecar must parse as valid JSON
+        let meta_path = output_dir.join("distillation_metadata.json");
+        let meta_str = std::fs::read_to_string(&meta_path).unwrap();
+        let meta: entrenar::distill::DistillationCheckpoint =
+            serde_json::from_str(&meta_str).expect("metadata sidecar is not valid JSON!");
+        assert!(meta.temperature > 0.0);
+    }
+
+    /// Falsification: what happens with mismatched teacher/student tensor names?
+    #[test]
+    fn test_falsify_mismatched_tensor_names() {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Teacher has "encoder.weight"
+        let data: Vec<f32> = vec![1.0; 256];
+        let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
+        let teacher_views = vec![(
+            "encoder.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap(),
+        )];
+        let teacher_path = tmp.path().join("teacher.safetensors");
+        std::fs::write(
+            &teacher_path,
+            safetensors::serialize(teacher_views, None).unwrap(),
+        )
+        .unwrap();
+
+        // Student has "decoder.weight" (completely different name)
+        let student_views = vec![(
+            "decoder.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap(),
+        )];
+        let student_path = tmp.path().join("student.safetensors");
+        std::fs::write(
+            &student_path,
+            safetensors::serialize(student_views, None).unwrap(),
+        )
+        .unwrap();
+
+        let output_dir = tmp.path().join("output");
+        let mut config = DistillConfig::minimal(
+            teacher_path.to_str().unwrap(),
+            student_path.to_str().unwrap(),
+        );
+        config.output.dir = output_dir;
+        config.training.epochs = 1;
+        config.training.batch_size = 4;
+
+        // Should NOT panic even with mismatched tensor names
+        let pipeline = Pipeline::new(&config);
+        let result = pipeline.execute();
+        // This should succeed - gradient step just won't match any names
+        assert!(
+            result.is_ok(),
+            "Pipeline panicked on mismatched tensors: {result:?}"
+        );
+    }
+
+    /// Falsification: single-element tensor edge case
+    #[test]
+    fn test_falsify_tiny_tensors() {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Single element tensor - too small for batch_size * num_classes
+        let data: Vec<f32> = vec![0.5];
+        let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
+        let views = vec![("w", TensorView::new(Dtype::F32, vec![1], &bytes).unwrap())];
+        let path = tmp.path().join("tiny.safetensors");
+        std::fs::write(&path, safetensors::serialize(views, None).unwrap()).unwrap();
+
+        let output_dir = tmp.path().join("output");
+        let mut config = DistillConfig::minimal(path.to_str().unwrap(), path.to_str().unwrap());
+        config.output.dir = output_dir;
+        config.training.epochs = 1;
+        config.training.batch_size = 2;
+
+        let pipeline = Pipeline::new(&config);
+        // Should NOT panic - should fall back to synthetic logits
+        let result = pipeline.execute();
+        assert!(
+            result.is_ok(),
+            "Pipeline panicked on tiny tensor: {result:?}"
+        );
     }
 }
