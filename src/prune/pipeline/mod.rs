@@ -12,6 +12,8 @@
 
 mod metrics;
 mod orchestrator;
+mod prune_quantize;
+mod sparse_export;
 mod stage;
 #[cfg(test)]
 mod tests;

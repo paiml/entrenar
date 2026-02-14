@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::format::ExportFormat;
+use super::gguf_writer::{GgufMetadataValue, GgufQuantization, GgufWriter};
 use super::result::ExportResult;
 use super::weights::{ModelMetadata, ModelWeights};
 
@@ -17,6 +18,8 @@ pub struct Exporter {
     pub(super) default_format: ExportFormat,
     /// Include metadata
     pub(super) include_metadata: bool,
+    /// GGUF quantization mode
+    pub(super) gguf_quantization: GgufQuantization,
 }
 
 impl Default for Exporter {
@@ -33,6 +36,7 @@ impl Exporter {
             output_dir: PathBuf::from("."),
             default_format: ExportFormat::SafeTensors,
             include_metadata: true,
+            gguf_quantization: GgufQuantization::None,
         }
     }
 
@@ -54,6 +58,13 @@ impl Exporter {
     #[must_use]
     pub fn include_metadata(mut self, include: bool) -> Self {
         self.include_metadata = include;
+        self
+    }
+
+    /// Set GGUF quantization mode
+    #[must_use]
+    pub fn gguf_quantization(mut self, quant: GgufQuantization) -> Self {
+        self.gguf_quantization = quant;
         self
     }
 
@@ -173,30 +184,70 @@ impl Exporter {
         })
     }
 
-    /// Export to GGUF format
+    /// Export to GGUF format with real tensor data
     fn export_gguf(&self, weights: &ModelWeights, path: &Path) -> Result<ExportResult> {
-        // Mock GGUF export - actual implementation would use gguf crate
-        let mut output = Vec::new();
+        let mut writer = GgufWriter::new();
 
-        // GGUF magic number
-        output.extend_from_slice(b"GGUF");
-        output.extend_from_slice(&3u32.to_le_bytes()); // Version 3
+        // Write metadata from ModelMetadata
+        if self.include_metadata {
+            if let Some(arch) = &weights.metadata.architecture {
+                writer.write_string("general.architecture", arch);
+            }
+            if let Some(name) = &weights.metadata.model_name {
+                writer.write_string("general.name", name);
+            }
+            writer.write_metadata_kv(
+                "general.parameter_count",
+                GgufMetadataValue::U64(weights.metadata.num_params),
+            );
+            if let Some(hidden) = weights.metadata.hidden_size {
+                writer.write_metadata_kv(
+                    "general.hidden_size",
+                    GgufMetadataValue::U32(hidden as u32),
+                );
+            }
+            if let Some(layers) = weights.metadata.num_layers {
+                writer
+                    .write_metadata_kv("general.num_layers", GgufMetadataValue::U32(layers as u32));
+            }
+        }
 
-        // Tensor count
-        output.extend_from_slice(&(weights.tensors.len() as u64).to_le_bytes());
+        // Write tensor data — sort names for deterministic output
+        let mut tensor_names: Vec<&String> = weights.tensors.keys().collect();
+        tensor_names.sort();
 
-        // Metadata count (mock)
-        output.extend_from_slice(&0u64.to_le_bytes());
+        for name in &tensor_names {
+            let data = &weights.tensors[*name];
+            let shape = weights
+                .shapes
+                .get(*name)
+                .cloned()
+                .unwrap_or_else(|| vec![data.len()]);
 
-        std::fs::write(path, &output).map_err(|e| FetchError::ConfigParseError {
-            message: format!("Failed to write file: {e}"),
+            match self.gguf_quantization {
+                GgufQuantization::None => {
+                    writer.write_tensor_data_f32(name.as_str(), data, shape);
+                }
+                GgufQuantization::Q4_0 => {
+                    writer.write_tensor_data_q4_0(name.as_str(), data, shape);
+                }
+                GgufQuantization::Q8_0 => {
+                    writer.write_tensor_data_q8_0(name.as_str(), data, shape);
+                }
+            }
+        }
+
+        let output = writer.finalize();
+
+        std::fs::write(path, &output).map_err(|e| FetchError::GgufWriteError {
+            message: format!("Failed to write GGUF file: {e}"),
         })?;
 
         Ok(ExportResult {
             path: path.to_path_buf(),
             format: ExportFormat::GGUF,
             size_bytes: output.len() as u64,
-            num_tensors: weights.tensors.len(),
+            num_tensors: tensor_names.len(),
         })
     }
 

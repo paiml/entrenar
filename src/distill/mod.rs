@@ -8,6 +8,7 @@
 //! - **Temperature-scaled KL divergence**: Standard distillation loss with soft targets
 //! - **Multi-teacher ensemble**: Distill from multiple teachers simultaneously
 //! - **Progressive distillation**: Layer-wise distillation for intermediate representations
+//! - **Checkpoint saving**: Student model checkpoints with distillation metadata
 //!
 //! ## Example
 //!
@@ -23,6 +24,7 @@
 //! assert!(loss > 0.0);
 //! ```
 
+pub mod checkpoint;
 mod ensemble;
 mod loss;
 mod progressive;
@@ -30,6 +32,7 @@ mod progressive;
 #[cfg(test)]
 mod tests;
 
+pub use checkpoint::{save_student_checkpoint, DistillationCheckpoint};
 pub use ensemble::EnsembleDistiller;
 pub use loss::DistillationLoss;
 pub use progressive::ProgressiveDistiller;

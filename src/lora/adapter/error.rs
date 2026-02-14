@@ -16,4 +16,10 @@ pub enum AdapterError {
 
     #[error("Dimension mismatch: expected {expected}, got {actual}")]
     DimensionMismatch { expected: String, actual: String },
+
+    #[error("SafeTensors error: {0}")]
+    SafeTensors(String),
+
+    #[error("PEFT format error: {0}")]
+    PeftFormatError(String),
 }

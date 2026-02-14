@@ -102,6 +102,10 @@ pub enum FetchError {
     /// HTTP request error
     #[error("HTTP error: {message}")]
     HttpError { message: String },
+
+    /// GGUF write/serialization error
+    #[error("GGUF write error: {message}")]
+    GgufWriteError { message: String },
 }
 
 impl FetchError {
@@ -247,6 +251,9 @@ mod tests {
             },
             FetchError::HttpError {
                 message: "connection refused".into(),
+            },
+            FetchError::GgufWriteError {
+                message: "alignment error".into(),
             },
         ];
 

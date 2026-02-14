@@ -13,7 +13,15 @@ mod benchmarks;
 #[cfg(test)]
 mod gradient_tests;
 
-pub use adapter::{load_adapter, save_adapter, AdapterError, AdapterMetadata, LoRAAdapter};
+pub use adapter::{
+    load_adapter, load_adapter_peft, merge_and_collect, merge_qlora_and_collect, save_adapter,
+    save_adapter_peft, AdapterError, AdapterFormat, AdapterMetadata, LoRAAdapter, MergedModel,
+    PeftAdapterBundle, PeftAdapterConfig,
+};
+#[cfg(feature = "hub-publish")]
+pub use adapter::{
+    merge_export_publish, merge_qlora_export_publish, MergePublishError, MergePublishResult,
+};
 pub use config::LoRAConfig;
 pub use layer::LoRALayer;
 pub use qlora::{MemoryStats, QLoRALayer};

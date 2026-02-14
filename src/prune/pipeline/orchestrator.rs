@@ -98,6 +98,45 @@ impl PruneFinetunePipeline {
         self.stage = PruningStage::Failed;
     }
 
+    /// Execute the export stage.
+    ///
+    /// This is called when the pipeline reaches the `Exporting` stage.
+    /// Exports the pruned model weights and sparsity metadata.
+    ///
+    /// Returns `Ok(())` and advances to `Complete` on success, or
+    /// sets the pipeline to `Failed` on error.
+    pub fn execute_export(
+        &mut self,
+        weights: &std::collections::HashMap<String, Vec<f32>>,
+        shapes: &std::collections::HashMap<String, Vec<usize>>,
+        output_dir: impl AsRef<std::path::Path>,
+        filename: &str,
+    ) -> Result<super::sparse_export::SparseExportResult, String> {
+        if self.stage != PruningStage::Exporting {
+            return Err(format!(
+                "Cannot export in stage {:?}, expected Exporting",
+                self.stage
+            ));
+        }
+
+        match super::sparse_export::export_sparse_model(
+            weights,
+            shapes,
+            &self.metrics,
+            output_dir,
+            filename,
+        ) {
+            Ok(result) => {
+                self.advance(); // -> Complete
+                Ok(result)
+            }
+            Err(e) => {
+                self.fail(format!("Export failed: {e}"));
+                Err(format!("Export failed: {e}"))
+            }
+        }
+    }
+
     /// Reset the pipeline to idle state.
     pub fn reset(&mut self) {
         self.stage = PruningStage::Idle;

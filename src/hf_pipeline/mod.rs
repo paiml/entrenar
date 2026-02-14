@@ -45,7 +45,12 @@ pub use dataset::{
 };
 pub use distillation::{AttentionTransfer, DistillationLoss, ProgressiveDistillation};
 pub use error::{FetchError, Result};
-pub use export::{ExportFormat, ExportResult, Exporter, ModelMetadata, ModelWeights};
+pub use export::{
+    quantize_and_export, verify_gguf, ExportFormat, ExportResult, Exporter, GgufQuantization,
+    GgufSummary, GgufTensorInfo, ModelMetadata, ModelWeights, QuantExportResult,
+};
+#[cfg(feature = "hub-publish")]
+pub use export::{quantize_export_publish, QuantPublishError, QuantPublishResult};
 pub use fetcher::{Architecture, FetchOptions, HfModelFetcher, ModelArtifact, WeightFormat};
 pub use fine_tune::{FineTuneConfig, FineTuneMethod, MemoryRequirement, MixedPrecision};
 pub use loader::{MemoryEstimate, SafeTensorsTeacher, TeacherModel};

@@ -176,6 +176,42 @@ impl QLoRALayer {
     pub fn is_merged(&self) -> bool {
         self.merged
     }
+
+    /// Merge adapter into dequantized base weight, returning full-precision f32 weights
+    ///
+    /// Computes: `dequantize(base_4bit) + scale * B @ A`
+    ///
+    /// This produces a merged weight matrix that can be exported as SafeTensors or GGUF.
+    /// The result is a flat Vec<f32> of shape [d_out, d_in] in row-major layout.
+    pub fn merge_to_f32(&self) -> Vec<f32> {
+        // Dequantize base weight
+        let mut merged = dequantize_4bit(&self.base_weight_quantized);
+
+        // Compute scale * B @ A and add to merged weights
+        // A: [rank, d_in], B: [d_out, rank]
+        // B @ A = [d_out, d_in]
+        let a_data = self.lora_a.data();
+        let b_data = self.lora_b.data();
+
+        for row in 0..self.d_out {
+            for col in 0..self.d_in {
+                let mut sum = 0.0f32;
+                for r in 0..self.rank {
+                    let b_val = b_data[row * self.rank + r];
+                    let a_val = a_data[r * self.d_in + col];
+                    sum += b_val * a_val;
+                }
+                merged[row * self.d_in + col] += self.scale * sum;
+            }
+        }
+
+        merged
+    }
+
+    /// Get reference to quantized base weights
+    pub fn base_weight_quantized(&self) -> &Quantized4Bit {
+        &self.base_weight_quantized
+    }
 }
 
 /// Memory usage statistics for QLoRA layer
@@ -441,6 +477,76 @@ mod tests {
         assert_eq!(qlora.d_out(), 3);
         assert_eq!(qlora.d_in(), 2);
         assert_abs_diff_eq!(qlora.scale(), 4.0, epsilon = 1e-6); // 8/2 = 4
+    }
+
+    #[test]
+    fn test_qlora_merge_to_f32_dimensions() {
+        let d_out = 8;
+        let d_in = 16;
+        let base_weight = Tensor::from_vec(vec![1.0; d_out * d_in], false);
+        let qlora = QLoRALayer::new(base_weight, d_out, d_in, 4, 8.0);
+
+        let merged = qlora.merge_to_f32();
+        assert_eq!(merged.len(), d_out * d_in);
+    }
+
+    #[test]
+    fn test_qlora_merge_to_f32_includes_adapter() {
+        let d_out = 4;
+        let d_in = 4;
+        let base_weight = Tensor::from_vec(vec![0.0; d_out * d_in], false);
+        let mut qlora = QLoRALayer::new(base_weight, d_out, d_in, 2, 2.0);
+
+        // Set adapter weights to known values
+        *qlora.lora_a_mut().data_mut() = ndarray::arr1(&[1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0]);
+        *qlora.lora_b_mut().data_mut() = ndarray::arr1(&[1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0]);
+
+        let merged = qlora.merge_to_f32();
+
+        // Base is all zeros (within quant error), adapter should contribute non-zero values
+        let adapter_contribution: f32 = merged.iter().map(|v| v.abs()).sum();
+        assert!(
+            adapter_contribution > 0.0,
+            "Merged weights should include adapter contribution"
+        );
+    }
+
+    #[test]
+    fn test_qlora_merge_to_f32_equivalence_with_lora() {
+        // For small values, QLoRA merge should approximate LoRA merge
+        let d_out = 4;
+        let d_in = 4;
+        let base_data = vec![
+            0.5, 0.3, -0.2, 0.1, 0.4, -0.1, 0.6, 0.2, -0.3, 0.5, 0.1, -0.4, 0.2, 0.3, -0.5, 0.6,
+        ];
+        let base_weight = Tensor::from_vec(base_data.clone(), false);
+        let mut lora = LoRALayer::new(base_weight.clone(), d_out, d_in, 2, 4.0);
+
+        let a_data = vec![0.1, 0.2, -0.1, 0.3, 0.2, -0.2, 0.1, 0.1];
+        let b_data = vec![0.3, -0.1, 0.2, 0.1, -0.2, 0.3, 0.1, -0.1];
+        *lora.lora_a_mut().data_mut() = ndarray::arr1(&a_data);
+        *lora.lora_b_mut().data_mut() = ndarray::arr1(&b_data);
+
+        let mut qlora = QLoRALayer::from_lora(lora.clone());
+        // Copy same adapter weights
+        *qlora.lora_a_mut().data_mut() = ndarray::arr1(&a_data);
+        *qlora.lora_b_mut().data_mut() = ndarray::arr1(&b_data);
+
+        // Merge LoRA in-place and extract base weight as the merged result
+        lora.merge();
+        let lora_merged: Vec<f32> = lora.base_weight().data().to_vec();
+        let qlora_merged = qlora.merge_to_f32();
+
+        assert_eq!(lora_merged.len(), qlora_merged.len());
+        for i in 0..lora_merged.len() {
+            let diff = (lora_merged[i] - qlora_merged[i]).abs();
+            assert!(
+                diff < 0.5,
+                "Merge difference too large at {i}: lora={}, qlora={}, diff={diff}",
+                lora_merged[i],
+                qlora_merged[i]
+            );
+        }
     }
 
     #[test]
