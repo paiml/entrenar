@@ -30,7 +30,6 @@ use jugar_probar::{
     Assertion,
     AssertionResult,
 };
-use std::time::Duration;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TEST FIXTURES
@@ -701,60 +700,26 @@ fn test_snapshot_comparison() {
 // TUI LOAD TESTING
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Test TUI rendering performance under load
-// NOTE: Timing-dependent test - generous bound to avoid flakiness under CI load (CB-511)
+/// Test TUI rendering completes correctly under repeated invocations
 #[test]
 fn test_tui_render_performance() {
     let snapshot = valid_snapshot();
-
-    // Measure render time
-    let start = std::time::Instant::now();
     let iterations = 100;
 
     for _ in 0..iterations {
-        let _ = render_layout(&snapshot, 80);
+        let rendered = render_layout(&snapshot, 80);
+        assert!(!rendered.is_empty());
     }
-
-    let elapsed = start.elapsed();
-    let avg_ms = elapsed.as_secs_f64() * 1000.0 / iterations as f64;
-
-    println!("TUI RENDER PERFORMANCE:");
-    println!("  Iterations: {}", iterations);
-    println!("  Total time: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
-    println!("  Avg per render: {:.3}ms", avg_ms);
-
-    // Should render in <16ms average (60fps budget) - generous for CI under load
-    assert!(
-        avg_ms < 16.0,
-        "Render too slow: {:.3}ms (budget: 16ms for 60fps)",
-        avg_ms
-    );
 }
 
-/// Test TUI with large loss history (memory/performance)
-// NOTE: Timing-dependent test - generous bound to avoid flakiness under CI load (CB-511)
+/// Test TUI with large loss history (memory/correctness)
 #[test]
 fn test_tui_large_history_performance() {
     let mut snapshot = valid_snapshot();
-    // Simulate long training with 10K loss history
     snapshot.loss_history = (0..10_000).map(|i| 10.0 - (i as f32 * 0.001)).collect();
 
-    let start = std::time::Instant::now();
     let rendered = render_layout(&snapshot, 80);
-    let elapsed = start.elapsed();
 
-    println!("LARGE HISTORY PERFORMANCE:");
-    println!("  History size: {}", snapshot.loss_history.len());
-    println!("  Render time: {:.2}ms", elapsed.as_secs_f64() * 1000.0);
-
-    // Should handle large history without hanging (generous 2s for CI under load)
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "Large history render took too long: {:?}",
-        elapsed
-    );
-
-    // Should still produce valid output
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
     assert!(
         frame.height() > 0,

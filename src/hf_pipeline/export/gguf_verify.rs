@@ -4,6 +4,26 @@
 
 use crate::hf_pipeline::error::FetchError;
 
+/// Read a little-endian u32 from a byte slice at the given offset.
+/// Caller must ensure `pos + 4 <= data.len()`.
+fn read_u32_le(data: &[u8], pos: usize) -> Result<u32, FetchError> {
+    let bytes: [u8; 4] = data
+        .get(pos..pos + 4)
+        .and_then(|s| s.try_into().ok())
+        .ok_or_else(|| truncation_error(pos))?;
+    Ok(u32::from_le_bytes(bytes))
+}
+
+/// Read a little-endian u64 from a byte slice at the given offset.
+/// Caller must ensure `pos + 8 <= data.len()`.
+fn read_u64_le(data: &[u8], pos: usize) -> Result<u64, FetchError> {
+    let bytes: [u8; 8] = data
+        .get(pos..pos + 8)
+        .and_then(|s| s.try_into().ok())
+        .ok_or_else(|| truncation_error(pos))?;
+    Ok(u64::from_le_bytes(bytes))
+}
+
 /// Summary of a verified GGUF file
 #[derive(Debug, Clone)]
 pub struct GgufSummary {
@@ -68,24 +88,25 @@ fn parse_header(data: &[u8]) -> Result<GgufHeader, FetchError> {
         });
     }
 
-    if &data[0..4] != b"GGUF" {
+    let magic = data.get(0..4).unwrap_or_default();
+    if magic != b"GGUF" {
         return Err(FetchError::ConfigParseError {
             message: format!(
                 "Invalid GGUF magic: expected 'GGUF', got '{}'",
-                String::from_utf8_lossy(&data[0..4])
+                String::from_utf8_lossy(magic)
             ),
         });
     }
 
-    let version = u32::from_le_bytes(data[4..8].try_into().unwrap());
+    let version = read_u32_le(data, 4)?;
     if version != 3 {
         return Err(FetchError::ConfigParseError {
             message: format!("Unsupported GGUF version: {version} (expected 3)"),
         });
     }
 
-    let tensor_count = u64::from_le_bytes(data[8..16].try_into().unwrap());
-    let metadata_count = u64::from_le_bytes(data[16..24].try_into().unwrap());
+    let tensor_count = read_u64_le(data, 8)?;
+    let metadata_count = read_u64_le(data, 16)?;
 
     Ok(GgufHeader {
         version,
@@ -99,10 +120,7 @@ fn skip_all_metadata(data: &[u8], start: usize, count: u64) -> Result<usize, Fet
     let mut pos = start;
     for _ in 0..count {
         pos = skip_gguf_string(data, pos)?;
-        if pos + 4 > data.len() {
-            return Err(truncation_error(pos));
-        }
-        let value_type = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
+        let value_type = read_u32_le(data, pos)?;
         pos += 4;
         pos = skip_gguf_value(data, pos, value_type)?;
     }
@@ -114,34 +132,22 @@ fn parse_tensor_info(data: &[u8], pos: usize) -> Result<(GgufTensorInfo, usize),
     let (name, mut pos) = read_gguf_string(data, pos)?;
 
     // n_dimensions
-    if pos + 4 > data.len() {
-        return Err(truncation_error(pos));
-    }
-    let n_dims = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
+    let n_dims = read_u32_le(data, pos)?;
     pos += 4;
 
     // Dimensions
     let mut shape = Vec::with_capacity(n_dims as usize);
     for _ in 0..n_dims {
-        if pos + 8 > data.len() {
-            return Err(truncation_error(pos));
-        }
-        shape.push(u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap()));
+        shape.push(read_u64_le(data, pos)?);
         pos += 8;
     }
 
     // dtype
-    if pos + 4 > data.len() {
-        return Err(truncation_error(pos));
-    }
-    let dtype = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
+    let dtype = read_u32_le(data, pos)?;
     pos += 4;
 
     // offset
-    if pos + 8 > data.len() {
-        return Err(truncation_error(pos));
-    }
-    let offset = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+    let offset = read_u64_le(data, pos)?;
     pos += 8;
 
     Ok((
@@ -173,10 +179,7 @@ fn parse_all_tensor_info(
 
 /// Read a GGUF string at the given position, return (string, new_position)
 fn read_gguf_string(data: &[u8], pos: usize) -> Result<(String, usize), FetchError> {
-    if pos + 8 > data.len() {
-        return Err(truncation_error(pos));
-    }
-    let len = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap()) as usize;
+    let len = read_u64_le(data, pos)? as usize;
     let start = pos + 8;
     let end = start + len;
     if end > data.len() {
@@ -209,11 +212,8 @@ fn skip_gguf_value(data: &[u8], pos: usize, value_type: u32) -> Result<usize, Fe
 
 /// Skip a GGUF array value: type(4) + count(8) + values
 fn skip_gguf_array(data: &[u8], pos: usize) -> Result<usize, FetchError> {
-    if pos + 12 > data.len() {
-        return Err(truncation_error(pos));
-    }
-    let elem_type = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
-    let count = u64::from_le_bytes(data[pos + 4..pos + 12].try_into().unwrap());
+    let elem_type = read_u32_le(data, pos)?;
+    let count = read_u64_le(data, pos + 4)?;
     let mut p = pos + 12;
     for _ in 0..count {
         p = skip_gguf_value(data, p, elem_type)?;

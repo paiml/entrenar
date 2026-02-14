@@ -10,22 +10,25 @@
 //! use entrenar::storage::{InMemoryStorage, ExperimentStorage};
 //! use entrenar::run::{Run, TracingConfig};
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut storage = InMemoryStorage::new();
-//! let exp_id = storage.create_experiment("my-exp", None).unwrap();
+//! let exp_id = storage.create_experiment("my-exp", None)?;
 //! let storage = Arc::new(Mutex::new(storage));
 //!
 //! let config = TracingConfig::default();
-//! let mut run = Run::new(&exp_id, storage.clone(), config).unwrap();
+//! let mut run = Run::new(&exp_id, storage.clone(), config)?;
 //!
 //! // Log metrics - auto-increments step
-//! run.log_metric("loss", 0.5).unwrap();
-//! run.log_metric("loss", 0.4).unwrap();
+//! run.log_metric("loss", 0.5)?;
+//! run.log_metric("loss", 0.4)?;
 //!
 //! // Or log with explicit step
-//! run.log_metric_at("accuracy", 0, 0.85).unwrap();
+//! run.log_metric_at("accuracy", 0, 0.85)?;
 //!
 //! // Complete the run
-//! run.finish(entrenar::storage::RunStatus::Success).unwrap();
+//! run.finish(entrenar::storage::RunStatus::Success)?;
+//! # Ok(())
+//! # }
 //! ```
 
 use std::collections::HashMap;

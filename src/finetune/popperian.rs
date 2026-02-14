@@ -38,7 +38,8 @@ impl QAGrade {
             85..=89 => Self::BPlus,
             80..=84 => Self::B,
             70..=79 => Self::C,
-            _ => Self::F,
+            0..=69 => Self::F,
+            101.. => Self::F,
         }
     }
 

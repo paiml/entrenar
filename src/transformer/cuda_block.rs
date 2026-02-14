@@ -18,6 +18,12 @@
 use std::sync::Arc;
 
 #[cfg(feature = "cuda")]
+#[inline]
+fn saturating_u32(v: usize) -> u32 {
+    v.min(u32::MAX as usize) as u32
+}
+
+#[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaContext, CudaStream, GpuBuffer};
 
 #[cfg(feature = "cuda")]
@@ -211,7 +217,6 @@ impl CudaTransformerBlock {
     /// * `output` - Output tensor on GPU (seq_len * hidden_size)
     /// * `seq_len` - Sequence length
     /// * `stream` - CUDA stream for async execution
-    #[allow(clippy::cast_possible_truncation)] // GPU kernel params: tensor dims fit in u32
     pub fn forward(
         &mut self,
         input: &GpuBuffer<f32>,
@@ -228,8 +233,8 @@ impl CudaTransformerBlock {
             input,
             &self.input_norm_weight,
             &mut self.scratch.norm1_out,
-            seq_len as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
             stream,
         )?;
 
@@ -238,9 +243,9 @@ impl CudaTransformerBlock {
             &self.scratch.norm1_out,
             &self.w_q,
             &mut self.scratch.q,
-            seq_len as u32,
-            hidden_size as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
             stream,
         )?;
 
@@ -248,9 +253,9 @@ impl CudaTransformerBlock {
             &self.scratch.norm1_out,
             &self.w_k,
             &mut self.scratch.k,
-            seq_len as u32,
-            hidden_size as u32,
-            kv_hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
             stream,
         )?;
 
@@ -258,9 +263,9 @@ impl CudaTransformerBlock {
             &self.scratch.norm1_out,
             &self.w_v,
             &mut self.scratch.v,
-            seq_len as u32,
-            hidden_size as u32,
-            kv_hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
             stream,
         )?;
 
@@ -273,9 +278,9 @@ impl CudaTransformerBlock {
             &self.scratch.attn_out,
             &self.w_o,
             &mut self.scratch.o_proj_out,
-            seq_len as u32,
-            hidden_size as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
             stream,
         )?;
 
@@ -292,8 +297,8 @@ impl CudaTransformerBlock {
             &self.scratch.residual1,
             &self.post_attn_norm_weight,
             &mut self.scratch.norm2_out,
-            seq_len as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
             stream,
         )?;
 
@@ -302,9 +307,9 @@ impl CudaTransformerBlock {
             &self.scratch.norm2_out,
             &self.w_gate,
             &mut self.scratch.gate_out,
-            seq_len as u32,
-            hidden_size as u32,
-            intermediate_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
             stream,
         )?;
 
@@ -312,9 +317,9 @@ impl CudaTransformerBlock {
             &self.scratch.norm2_out,
             &self.w_up,
             &mut self.scratch.up_out,
-            seq_len as u32,
-            hidden_size as u32,
-            intermediate_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
             stream,
         )?;
 
@@ -323,7 +328,7 @@ impl CudaTransformerBlock {
             &self.scratch.gate_out,
             &self.scratch.up_out,
             &mut self.scratch.swiglu_out,
-            (seq_len * intermediate_size) as u32,
+            saturating_u32(seq_len * intermediate_size),
             stream,
         )?;
 
@@ -332,9 +337,9 @@ impl CudaTransformerBlock {
             &self.scratch.swiglu_out,
             &self.w_down,
             &mut self.scratch.ffn_out,
-            seq_len as u32,
-            intermediate_size as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(intermediate_size),
+            saturating_u32(hidden_size),
             stream,
         )?;
 
@@ -350,7 +355,6 @@ impl CudaTransformerBlock {
     }
 
     /// Compute multi-head attention on GPU with CUDA softmax
-    #[allow(clippy::cast_possible_truncation)] // head_dim always small; f32 sqrt is intentional
     fn compute_attention_cuda(&mut self, seq_len: usize, _stream: &CudaStream) -> Result<()> {
         let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_attention_heads;
@@ -443,7 +447,6 @@ impl CudaTransformerBlock {
     /// - `scratch.grad_input_norm` - Gradient for input RMSNorm weight
     /// - `scratch.grad_post_attn_norm` - Gradient for post-attention RMSNorm weight
     /// - `scratch.grad_gate/up/down` - Gradients for FFN weights
-    #[allow(clippy::cast_possible_truncation)] // GPU kernel params: tensor dims fit in u32
     pub fn backward(
         &mut self,
         input: &GpuBuffer<f32>,
@@ -468,9 +471,9 @@ impl CudaTransformerBlock {
             grad_output,
             &self.w_down,
             &mut self.scratch.grad_swiglu,
-            seq_len as u32,
-            intermediate_size as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(intermediate_size),
+            saturating_u32(hidden_size),
             stream,
         )?;
 
@@ -479,9 +482,9 @@ impl CudaTransformerBlock {
             &self.scratch.swiglu_out,
             grad_output,
             &mut self.scratch.grad_down,
-            seq_len as u32,
-            intermediate_size as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(intermediate_size),
+            saturating_u32(hidden_size),
             stream,
         )?;
 
@@ -507,9 +510,9 @@ impl CudaTransformerBlock {
             &self.scratch.norm2_out,
             &self.scratch.grad_hidden,
             &mut self.scratch.grad_gate,
-            seq_len as u32,
-            hidden_size as u32,
-            intermediate_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
             stream,
         )?;
 
@@ -519,9 +522,9 @@ impl CudaTransformerBlock {
             &self.scratch.grad_hidden,
             &self.w_gate,
             &mut self.scratch.norm2_out, // Reuse as temp output
-            seq_len as u32,
-            hidden_size as u32,
-            intermediate_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
             stream,
         )?;
 
@@ -536,8 +539,8 @@ impl CudaTransformerBlock {
             &self.scratch.grad_hidden,
             grad_input,
             &mut self.scratch.grad_post_attn_norm,
-            seq_len as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
             eps,
             stream,
         )?;
@@ -567,8 +570,8 @@ impl CudaTransformerBlock {
             &self.scratch.grad_hidden,
             grad_input,
             &mut self.scratch.grad_input_norm,
-            seq_len as u32,
-            hidden_size as u32,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
             eps,
             stream,
         )?;

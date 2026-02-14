@@ -99,7 +99,18 @@ impl ParameterDomain {
             (ParameterDomain::Categorical { choices }, ParameterValue::Categorical(s)) => {
                 choices.contains(s)
             }
-            _ => false,
+            (
+                ParameterDomain::Continuous { .. } | ParameterDomain::Categorical { .. },
+                ParameterValue::Int(_),
+            )
+            | (
+                ParameterDomain::Continuous { .. } | ParameterDomain::Discrete { .. },
+                ParameterValue::Categorical(_),
+            )
+            | (
+                ParameterDomain::Discrete { .. } | ParameterDomain::Categorical { .. },
+                ParameterValue::Float(_),
+            ) => false,
         }
     }
 }

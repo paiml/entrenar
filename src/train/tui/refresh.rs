@@ -74,12 +74,17 @@ impl RefreshPolicy {
         self.last_refresh = Instant::now();
         self.last_step = global_step;
     }
+
+    /// Simulate time passage for deterministic testing.
+    #[cfg(test)]
+    fn advance_time(&mut self, duration: Duration) {
+        self.last_refresh -= duration;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
 
     #[test]
     fn test_refresh_policy_default() {
@@ -97,32 +102,28 @@ mod tests {
         assert_eq!(policy.step_interval, 5);
     }
 
-    // NOTE: Timing-dependent test - uses generous sleep to avoid flakiness under CI load (CB-511)
     #[test]
     fn test_refresh_policy_rate_limiting() {
         let mut policy = RefreshPolicy::new(50, 1000, 1);
-
-        // Force initial state
         policy.force_refresh(0);
 
         // Immediate call should be blocked (min_interval not elapsed)
         let blocked = !policy.should_refresh(1);
         assert!(blocked, "Immediate refresh should be blocked");
 
-        // After waiting well past min_interval, refresh should be allowed
-        thread::sleep(Duration::from_millis(200));
+        // Simulate 400ms passing (deterministic, no thread::sleep)
+        policy.advance_time(Duration::from_millis(400));
         let allowed = policy.should_refresh(2);
         assert!(allowed, "Refresh should be allowed after min_interval");
     }
 
-    // NOTE: Timing-dependent test - uses generous sleep to avoid flakiness under CI load (CB-511)
     #[test]
     fn test_refresh_policy_step_interval() {
         let mut policy = RefreshPolicy::new(0, 10000, 10);
         policy.force_refresh(0);
 
-        // Wait enough time to ensure min_interval (0ms) is met
-        thread::sleep(Duration::from_millis(10));
+        // Simulate time past min_interval (deterministic)
+        policy.advance_time(Duration::from_millis(20));
 
         // Step 5 should not trigger (need 10 steps)
         assert!(!policy.should_refresh(5));
@@ -137,15 +138,13 @@ mod tests {
         assert_eq!(policy.last_step, 100);
     }
 
-    // NOTE: Timing-dependent test - uses generous sleep to avoid flakiness under CI load (CB-511)
     #[test]
     fn test_refresh_policy_max_interval_triggers() {
-        // Use a larger max_interval so the sleep margin is comfortable
         let mut policy = RefreshPolicy::new(10, 50, 1000);
         policy.force_refresh(0);
 
-        // Wait well past max_interval
-        thread::sleep(Duration::from_millis(200));
+        // Simulate 500ms passing (deterministic)
+        policy.advance_time(Duration::from_millis(500));
 
         // Should trigger due to max_interval
         assert!(policy.should_refresh(1));
@@ -167,12 +166,13 @@ mod tests {
         assert!(debug_str.contains("RefreshPolicy"));
     }
 
-    // NOTE: Timing-dependent test - uses generous sleep to avoid flakiness under CI load (CB-511)
     #[test]
     fn test_refresh_policy_no_refresh_below_step_interval() {
         let mut policy = RefreshPolicy::new(0, 10000, 100);
         policy.force_refresh(0);
-        thread::sleep(Duration::from_millis(10));
+
+        // Simulate time past min_interval (deterministic)
+        policy.advance_time(Duration::from_millis(20));
 
         // Steps below interval should not trigger
         assert!(!policy.should_refresh(50));

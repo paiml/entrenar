@@ -65,11 +65,24 @@ impl ModelEvaluator {
             let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
 
             let score = match primary_metric {
-                Metric::Accuracy => cm.accuracy(),
+                Metric::Accuracy
+                | Metric::R2
+                | Metric::MSE
+                | Metric::MAE
+                | Metric::RMSE
+                | Metric::Silhouette
+                | Metric::Inertia
+                | Metric::WER
+                | Metric::RTFx
+                | Metric::BLEU
+                | Metric::ROUGE(_)
+                | Metric::Perplexity
+                | Metric::MMLUAccuracy
+                | Metric::PassAtK(_)
+                | Metric::NDCGAtK(_) => cm.accuracy(),
                 Metric::Precision(avg) => metrics.precision_avg(avg),
                 Metric::Recall(avg) => metrics.recall_avg(avg),
                 Metric::F1(avg) => metrics.f1_avg(avg),
-                _ => cm.accuracy(),
             };
 
             fold_scores.push(score);
@@ -132,7 +145,20 @@ impl ModelEvaluator {
                 Metric::Precision(avg) => metrics.precision_avg(*avg),
                 Metric::Recall(avg) => metrics.recall_avg(*avg),
                 Metric::F1(avg) => metrics.f1_avg(*avg),
-                _ => continue, // Skip non-classification metrics
+                Metric::R2
+                | Metric::MSE
+                | Metric::MAE
+                | Metric::RMSE
+                | Metric::Silhouette
+                | Metric::Inertia
+                | Metric::WER
+                | Metric::RTFx
+                | Metric::BLEU
+                | Metric::ROUGE(_)
+                | Metric::Perplexity
+                | Metric::MMLUAccuracy
+                | Metric::PassAtK(_)
+                | Metric::NDCGAtK(_) => continue,
             };
             result.add_score(*metric, score);
         }

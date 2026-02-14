@@ -866,3 +866,22 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-168
+  github_issue: null
+  item_type: task
+  title: 'CB-500 Kaizen: comply advisory cleanup'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T17:26:48Z
+  updated: 2026-02-14T17:26:53.138446257+00:00
+  spec: null
+  acceptance_criteria:
+  - Fix CB-900 markdown false positive, CB-515 catch-all match arms to explicit variants, CB-511 eliminate thread::sleep flaky tests, CB-508 add clippy allows for clamped casts
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - kaizen
+  - compliance
+  notes: null

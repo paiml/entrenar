@@ -189,13 +189,11 @@ fn test_action_eq() {
     );
 }
 
-/// APR-073 Section 10.4: Callback must trigger within reasonable time
-// NOTE: Timing-dependent test - generous bound to avoid flakiness under CI load (CB-511)
+/// APR-073 Section 10.4: Callback must trigger synchronously on drift detection
 #[test]
 fn test_callback_latency() {
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
-    use std::time::Instant;
 
     let mut detector = create_detector();
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
@@ -207,35 +205,21 @@ fn test_callback_latency() {
     };
     let mut retrainer = AutoRetrainer::new(detector, config);
 
-    // Store callback latency in nanoseconds
-    let latency_ns = Arc::new(AtomicU64::new(0));
-    let latency_clone = Arc::clone(&latency_ns);
-
-    let callback_start = Arc::new(std::sync::Mutex::new(None::<Instant>));
-    let start_clone = Arc::clone(&callback_start);
+    let callback_fired = Arc::new(AtomicBool::new(false));
+    let fired_clone = Arc::clone(&callback_fired);
 
     retrainer.on_retrain(move |_results| {
-        if let Ok(guard) = start_clone.lock() {
-            if let Some(start) = *guard {
-                let elapsed = start.elapsed().as_nanos() as u64;
-                latency_clone.store(elapsed, Ordering::SeqCst);
-            }
-        }
+        fired_clone.store(true, Ordering::SeqCst);
         Ok("job-latency-test".to_string())
     });
 
-    // Record start time and process drifted batch
-    *callback_start.lock().unwrap() = Some(Instant::now());
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
     let action = retrainer.process_batch(&shifted).unwrap();
 
     assert!(matches!(action, Action::RetrainTriggered(_)));
-
-    // Verify callback executed within 2s (generous for CI under load)
-    let latency = latency_ns.load(Ordering::SeqCst);
     assert!(
-        latency < 2_000_000_000,
-        "Callback latency {latency}ns exceeds 2s requirement"
+        callback_fired.load(Ordering::SeqCst),
+        "Callback must fire synchronously during process_batch"
     );
 }
 

@@ -115,13 +115,24 @@ impl Metric {
 impl fmt::Display for Metric {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Metric::Accuracy
+            | Metric::R2
+            | Metric::MSE
+            | Metric::MAE
+            | Metric::RMSE
+            | Metric::Silhouette
+            | Metric::Inertia
+            | Metric::WER
+            | Metric::RTFx
+            | Metric::BLEU
+            | Metric::Perplexity
+            | Metric::MMLUAccuracy => write!(f, "{}", self.name()),
             Metric::Precision(avg) => write!(f, "Precision({avg:?})"),
             Metric::Recall(avg) => write!(f, "Recall({avg:?})"),
             Metric::F1(avg) => write!(f, "F1({avg:?})"),
             Metric::ROUGE(variant) => write!(f, "{variant}"),
             Metric::PassAtK(k) => write!(f, "pass@{k}"),
             Metric::NDCGAtK(k) => write!(f, "NDCG@{k}"),
-            _ => write!(f, "{}", self.name()),
         }
     }
 }

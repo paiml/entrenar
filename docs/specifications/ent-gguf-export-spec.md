@@ -66,7 +66,8 @@ This must hold for any tensor with >= 32 elements.
 
 ### C-007: Q4_0 Block Encoding Size
 
-Q4_0 encoding produces exactly `ceil(n_elements / 32) * 18` bytes (2-byte f16 scale + 16 bytes packed 4-bit data per block).
+Q4_0 encoding produces exactly `ceil(n_elements / 32) * 18` bytes
+(2-byte f16 scale + 16 bytes packed 4-bit data per block).
 
 **Disconfirming evidence**: `quantize_to_gguf_bytes(data, Q4_0).0.len() != ceil(data.len() / 32) * 18`.
 
@@ -85,7 +86,7 @@ recovered from the GGUF file at the correct offset with identical IEEE 754 bits.
 
 ### C-010: Empty Data Handling
 
-`quantize_to_gguf_bytes(&[], mode)` returns `(vec![], dtype)` for all three modes. No panic, no allocation.
+`quantize_to_gguf_bytes(&[], mode)` returns `(vec!(), dtype)` for all three modes. No panic, no allocation.
 
 **Disconfirming evidence**: Empty input producing non-empty output or panicking.
 

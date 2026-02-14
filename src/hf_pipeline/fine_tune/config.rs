@@ -179,8 +179,7 @@ impl FineTuneConfig {
                 // Quantized base + FP16 LoRA
                 let base = match bits {
                     4 => total_params / 2,
-                    8 => total_params,
-                    _ => total_params,
+                    2 | 3 | 5..=8 | 0 | 1 | 9.. => total_params,
                 };
                 base + trainable * 2
             }
