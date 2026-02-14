@@ -534,11 +534,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'CB-120: Fix NaN-unsafe partial_cmp().unwrap() calls'
-  status: inprogress
+  status: completed
   priority: high
   assigned_to: null
   created: 2026-02-05T14:57:39Z
-  updated: 2026-02-05T14:57:44.410160497+00:00
+  updated: 2026-02-14T21:15:04.486927764+00:00
   spec: null
   acceptance_criteria:
   - Replace partial_cmp().unwrap() with total_cmp() in 10 locations
