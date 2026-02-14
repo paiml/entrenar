@@ -5,6 +5,28 @@
 
 use std::fmt;
 
+/// Safely convert an f32 to u8 with bounds clamping.
+/// Clamps to [0.0, 255.0] then converts through u16 with `try_from` for safety.
+#[inline]
+fn clamped_f32_to_u8(value: f32) -> u8 {
+    let clamped = value.clamp(0.0, 255.0);
+    // After clamp, value is in [0.0, 255.0]. Cast to u16 is safe for this range.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let wide = clamped as u16;
+    // u16 in [0, 255] always fits in u8; unwrap_or provides defense-in-depth
+    u8::try_from(wide).unwrap_or(u8::MAX)
+}
+
+/// Safely convert a non-negative f32 to usize with bounds clamping.
+#[inline]
+fn clamped_f32_to_usize(value: f32) -> usize {
+    let clamped = value.max(0.0);
+    // Value is non-negative after max(0.0); cast is safe for practical display sizes
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let result = clamped as usize;
+    result
+}
+
 /// Terminal color capability mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColorMode {
@@ -268,46 +290,58 @@ impl TrainingPalette {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Color for GPU utilization based on percentage
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn gpu_util_color(percent: f32) -> Rgb {
-        match percent.clamp(0.0, 100.0) as u32 {
-            0..=30 => Self::MUTED,    // Low (gray - underutilized)
-            31..=70 => Self::SUCCESS, // Good (green)
-            71..=90 => Self::INFO,    // High (blue)
-            _ => Self::PRIMARY,       // Very high (cyan)
+        let p = percent.clamp(0.0, 100.0);
+        if p <= 30.0 {
+            Self::MUTED // Low (gray - underutilized)
+        } else if p <= 70.0 {
+            Self::SUCCESS // Good (green)
+        } else if p <= 90.0 {
+            Self::INFO // High (blue)
+        } else {
+            Self::PRIMARY // Very high (cyan)
         }
     }
 
     /// Color for VRAM usage based on percentage
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn vram_color(percent: f32) -> Rgb {
-        match percent.clamp(0.0, 100.0) as u32 {
-            0..=50 => Self::SUCCESS,  // OK (green)
-            51..=75 => Self::INFO,    // Moderate (blue)
-            76..=90 => Self::WARNING, // High (yellow)
-            _ => Self::ERROR,         // Critical (red)
+        let p = percent.clamp(0.0, 100.0);
+        if p <= 50.0 {
+            Self::SUCCESS // OK (green)
+        } else if p <= 75.0 {
+            Self::INFO // Moderate (blue)
+        } else if p <= 90.0 {
+            Self::WARNING // High (yellow)
+        } else {
+            Self::ERROR // Critical (red)
         }
     }
 
     /// Color for temperature in Celsius
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn temp_color(celsius: f32) -> Rgb {
-        match celsius.clamp(0.0, 200.0) as u32 {
-            0..=50 => Self::SUCCESS,  // Cool (green)
-            51..=70 => Self::INFO,    // Normal (blue)
-            71..=80 => Self::WARNING, // Warm (yellow)
-            _ => Self::ERROR,         // Hot (red)
+        let t = celsius.clamp(0.0, 200.0);
+        if t <= 50.0 {
+            Self::SUCCESS // Cool (green)
+        } else if t <= 70.0 {
+            Self::INFO // Normal (blue)
+        } else if t <= 80.0 {
+            Self::WARNING // Warm (yellow)
+        } else {
+            Self::ERROR // Hot (red)
         }
     }
 
     /// Color for power usage based on percentage of limit
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn power_color(percent: f32) -> Rgb {
-        match percent.clamp(0.0, 100.0) as u32 {
-            0..=60 => Self::SUCCESS,  // Low (green)
-            61..=80 => Self::INFO,    // Moderate (blue)
-            81..=95 => Self::WARNING, // High (yellow)
-            _ => Self::ERROR,         // At limit (red)
+        let p = percent.clamp(0.0, 100.0);
+        if p <= 60.0 {
+            Self::SUCCESS // Low (green)
+        } else if p <= 80.0 {
+            Self::INFO // Moderate (blue)
+        } else if p <= 95.0 {
+            Self::WARNING // High (yellow)
+        } else {
+            Self::ERROR // At limit (red)
         }
     }
 
@@ -327,7 +361,6 @@ impl TrainingPalette {
 
     /// Color for loss value (lower is better)
     /// Returns a gradient from red (high loss) to green (low loss)
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn loss_color(loss: f32, min_loss: f32, max_loss: f32) -> Rgb {
         if max_loss <= min_loss {
             return Self::INFO;
@@ -340,17 +373,17 @@ impl TrainingPalette {
             // Green to yellow
             let t = normalized * 2.0;
             (
-                (80.0 + t * 175.0).clamp(0.0, 255.0) as u8,
-                (200.0 - t * 7.0).clamp(0.0, 255.0) as u8,
-                (120.0 - t * 113.0).clamp(0.0, 255.0) as u8,
+                clamped_f32_to_u8(80.0 + t * 175.0),
+                clamped_f32_to_u8(200.0 - t * 7.0),
+                clamped_f32_to_u8(120.0 - t * 113.0),
             )
         } else {
             // Yellow to red
             let t = (normalized - 0.5) * 2.0;
             (
-                (255.0 - t * 11.0).clamp(0.0, 255.0) as u8,
-                (193.0 - t * 126.0).clamp(0.0, 255.0) as u8,
-                (7.0 + t * 47.0).clamp(0.0, 255.0) as u8,
+                clamped_f32_to_u8(255.0 - t * 11.0),
+                clamped_f32_to_u8(193.0 - t * 126.0),
+                clamped_f32_to_u8(7.0 + t * 47.0),
             )
         };
 
@@ -384,14 +417,14 @@ impl TrainingPalette {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Color for progress bar fill based on completion percentage
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn progress_color(percent: f32) -> Rgb {
-        match percent.clamp(0.0, 100.0) as u32 {
-            0..=25 => Self::INFO,     // Starting (blue)
-            26..=50 => Self::INFO,    // Quarter way
-            51..=75 => Self::INFO,    // Half way
-            76..=99 => Self::SUCCESS, // Almost done (green)
-            _ => Self::PRIMARY,       // Complete (cyan)
+        let p = percent.clamp(0.0, 100.0);
+        if p <= 75.0 {
+            Self::INFO // In progress (blue)
+        } else if p < 100.0 {
+            Self::SUCCESS // Almost done (green)
+        } else {
+            Self::PRIMARY // Complete (cyan)
         }
     }
 }
@@ -404,8 +437,10 @@ impl TrainingPalette {
 pub fn colored_bar(value: f32, max: f32, width: usize, color: Rgb, mode: ColorMode) -> String {
     let percent = if max > 0.0 { value / max } else { 0.0 };
     let percent = percent.clamp(0.0, 1.0);
-    #[allow(clippy::cast_precision_loss)]
-    let filled = ((percent * width as f32) as usize).min(width);
+    // Safe: width is a display column count, clamped to u16 range for lossless f32 conversion
+    let width_clamped = u16::try_from(width).unwrap_or(u16::MAX);
+    let filled_f32 = f32::from(width_clamped) * percent;
+    let filled = clamped_f32_to_usize(filled_f32.clamp(0.0, f32::from(width_clamped))).min(width);
     let empty = width.saturating_sub(filled);
 
     let filled_str: String = std::iter::repeat_n('█', filled).collect();

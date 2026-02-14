@@ -18,10 +18,11 @@ const BRAILLE_DOTS: [u32; 8] = [0x01, 0x02, 0x04, 0x40, 0x08, 0x10, 0x20, 0x80];
 // CORE RENDERING
 // ═══════════════════════════════════════════════════════════════════════════════
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+#[allow(clippy::cast_precision_loss)]
 pub fn build_block_bar(percent: f32, width: usize) -> String {
     let pct = percent.clamp(0.0, 100.0);
-    let filled = ((pct / 100.0) * width as f32).max(0.0) as usize;
+    let filled_f = ((pct / 100.0) * width as f32).clamp(0.0, width as f32);
+    let filled = filled_f as usize;
     let empty = width.saturating_sub(filled);
     format!(
         "{}{}",
@@ -30,10 +31,11 @@ pub fn build_block_bar(percent: f32, width: usize) -> String {
     )
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+#[allow(clippy::cast_precision_loss)]
 pub fn build_colored_block_bar(percent: f32, width: usize, color_mode: ColorMode) -> String {
     let pct = percent.clamp(0.0, 100.0);
-    let filled = ((pct / 100.0) * width as f32).max(0.0) as usize;
+    let filled_f = ((pct / 100.0) * width as f32).clamp(0.0, width as f32);
+    let filled = filled_f as usize;
     let empty = width.saturating_sub(filled);
 
     let color = pct_color(pct);
@@ -51,35 +53,40 @@ pub fn build_colored_block_bar(percent: f32, width: usize, color_mode: ColorMode
     }
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+/// Safely convert an f32 in [0.0, 255.0] to u8, clamping to valid range.
+#[inline]
+fn f32_to_u8(v: f32) -> u8 {
+    u8::try_from(v.clamp(0.0, 255.0) as u32).unwrap_or(u8::MAX)
+}
+
 fn pct_color(pct: f32) -> (u8, u8, u8) {
     let p = pct.clamp(0.0, 100.0);
     if p >= 90.0 {
         (255, 64, 64)
     } else if p >= 75.0 {
         let t = (p - 75.0) / 15.0;
-        (255, (180.0 - t * 116.0).clamp(0.0, 255.0) as u8, 64)
+        (255, f32_to_u8(180.0 - t * 116.0), 64)
     } else if p >= 50.0 {
         let t = (p - 50.0) / 25.0;
-        (255, (220.0 - t * 40.0).clamp(0.0, 255.0) as u8, 64)
+        (255, f32_to_u8(220.0 - t * 40.0), 64)
     } else if p >= 25.0 {
         let t = (p - 25.0) / 25.0;
         (
-            (100.0 + t * 155.0).clamp(0.0, 255.0) as u8,
+            f32_to_u8(100.0 + t * 155.0),
             220,
-            (100.0 - t * 36.0).clamp(0.0, 255.0) as u8,
+            f32_to_u8(100.0 - t * 36.0),
         )
     } else {
         let t = p / 25.0;
         (
-            (64.0 + t * 36.0).clamp(0.0, 255.0) as u8,
-            (180.0 + t * 40.0).clamp(0.0, 255.0) as u8,
-            (220.0 - t * 120.0).clamp(0.0, 255.0) as u8,
+            f32_to_u8(64.0 + t * 36.0),
+            f32_to_u8(180.0 + t * 40.0),
+            f32_to_u8(220.0 - t * 120.0),
         )
     }
 }
 
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+#[allow(clippy::cast_precision_loss)]
 pub fn render_sparkline(data: &[f32], width: usize, color_mode: ColorMode) -> String {
     if data.is_empty() {
         return " ".repeat(width);
@@ -106,12 +113,12 @@ pub fn render_sparkline(data: &[f32], width: usize, color_mode: ColorMode) -> St
         let v2 = data.get(idx2).copied().unwrap_or(v1);
 
         let h1 = if v1.is_finite() {
-            (((v1 - min) / range) * 3.99).max(0.0) as usize
+            (((v1 - min) / range) * 3.99).clamp(0.0, 3.0) as usize
         } else {
             0
         };
         let h2 = if v2.is_finite() {
-            (((v2 - min) / range) * 3.99).max(0.0) as usize
+            (((v2 - min) / range) * 3.99).clamp(0.0, 3.0) as usize
         } else {
             0
         };
@@ -148,7 +155,6 @@ pub fn render_sparkline(data: &[f32], width: usize, color_mode: ColorMode) -> St
     }
 }
 
-#[allow(clippy::cast_precision_loss)]
 pub fn trend_arrow(data: &[f32]) -> &'static str {
     if data.len() < 2 {
         return ARROW_FLAT;
@@ -157,9 +163,11 @@ pub fn trend_arrow(data: &[f32]) -> &'static str {
     if recent.len() < 2 {
         return ARROW_FLAT;
     }
-    let avg_recent: f32 = recent.iter().sum::<f32>() / recent.len() as f32;
+    // recent.len() is at most 5, so no precision loss converting to f32
+    let avg_recent: f32 = recent.iter().sum::<f32>() / (recent.len() as f32);
     let old_count = data.len().saturating_sub(5).clamp(1, 5);
-    let avg_old: f32 = data.iter().rev().skip(5).take(5).copied().sum::<f32>() / old_count as f32;
+    // old_count is at most 5, so no precision loss converting to f32
+    let avg_old: f32 = data.iter().rev().skip(5).take(5).copied().sum::<f32>() / (old_count as f32);
 
     if avg_recent < avg_old * 0.95 {
         ARROW_DOWN
@@ -184,11 +192,13 @@ pub fn format_duration(d: Duration) -> String {
     )
 }
 
+#[allow(clippy::cast_precision_loss)]
 pub fn format_bytes(bytes: u64) -> String {
     if bytes >= 1024 * 1024 * 1024 {
-        let gb = bytes / (1024 * 1024 * 1024);
-        let frac = (bytes % (1024 * 1024 * 1024)) as f64 / (1024.0 * 1024.0 * 1024.0);
-        format!("{:.1}G", gb as f64 + frac)
+        // Both conversions are u64-to-f64 which may lose precision for very
+        // large values, but formatting to one decimal place makes this benign.
+        let gb_f = bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+        format!("{gb_f:.1}G")
     } else if bytes >= 1024 * 1024 {
         let mb = bytes / (1024 * 1024);
         format!("{mb}M")
@@ -230,7 +240,6 @@ pub struct EpochSummary {
     pub tokens_per_sec: f32,
 }
 
-#[allow(clippy::cast_precision_loss)]
 pub fn compute_epoch_summaries(snapshot: &TrainingSnapshot) -> Vec<EpochSummary> {
     if snapshot.steps_per_epoch == 0 || snapshot.loss_history.is_empty() {
         return Vec::new();
@@ -245,7 +254,9 @@ pub fn compute_epoch_summaries(snapshot: &TrainingSnapshot) -> Vec<EpochSummary>
             continue;
         }
 
-        let avg_loss = valid.iter().sum::<f32>() / valid.len() as f32;
+        // valid.len() <= steps_per_epoch, bounded by training config, safe for f32
+        let valid_count = valid.len().min(usize::from(u16::MAX)) as f32;
+        let avg_loss = valid.iter().sum::<f32>() / valid_count;
         let min_loss = valid.iter().copied().fold(f32::INFINITY, f32::min);
         let max_loss = valid.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let end_loss = *valid.last().unwrap_or(&0.0);
@@ -256,8 +267,8 @@ pub fn compute_epoch_summaries(snapshot: &TrainingSnapshot) -> Vec<EpochSummary>
             let lr_start = epoch_idx * steps;
             let lr_end = (lr_start + steps).min(snapshot.lr_history.len());
             if lr_start < snapshot.lr_history.len() {
-                snapshot.lr_history[lr_start..lr_end].iter().sum::<f32>()
-                    / (lr_end - lr_start).max(1) as f32
+                let lr_span = (lr_end - lr_start).max(1).min(usize::from(u16::MAX)) as f32;
+                snapshot.lr_history[lr_start..lr_end].iter().sum::<f32>() / lr_span
             } else {
                 snapshot.learning_rate
             }
@@ -285,7 +296,6 @@ pub fn render_layout(snapshot: &TrainingSnapshot, width: usize) -> String {
     render_layout_colored(snapshot, width, ColorMode::detect())
 }
 
-#[allow(clippy::cast_precision_loss)]
 pub fn render_layout_colored(
     snapshot: &TrainingSnapshot,
     width: usize,
@@ -342,7 +352,6 @@ fn render_header(
     lines.push(format!("─{:─<w$}─", "", w = w - 2));
 }
 
-#[allow(clippy::cast_precision_loss)]
 fn render_progress(
     lines: &mut Vec<String>,
     snapshot: &TrainingSnapshot,
@@ -351,14 +360,17 @@ fn render_progress(
 ) {
     let epoch = snapshot.epoch.min(snapshot.total_epochs);
     let epoch_pct = if snapshot.total_epochs > 0 {
-        (epoch as f32 / snapshot.total_epochs as f32 * 100.0).min(100.0)
+        // Percentage computed as f64 for precision, then narrowed after clamping
+        let pct = (epoch as f64 / snapshot.total_epochs as f64 * 100.0).clamp(0.0, 100.0);
+        pct as f32
     } else {
         0.0
     };
 
     let step = snapshot.step.min(snapshot.steps_per_epoch);
     let step_pct = if snapshot.steps_per_epoch > 0 {
-        (step as f32 / snapshot.steps_per_epoch as f32 * 100.0).min(100.0)
+        let pct = (step as f64 / snapshot.steps_per_epoch as f64 * 100.0).clamp(0.0, 100.0);
+        pct as f32
     } else {
         0.0
     };
