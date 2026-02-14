@@ -28,7 +28,11 @@ mod error;
 mod export;
 mod fetcher;
 mod fine_tune;
+#[cfg(feature = "hub-publish")]
+pub mod leaderboard;
 mod loader;
+#[cfg(feature = "hub-publish")]
+pub mod publish;
 mod trainer;
 
 #[cfg(test)]

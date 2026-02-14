@@ -90,6 +90,18 @@ pub enum FetchError {
     /// SafeTensors parsing error
     #[error("SafeTensors parse error: {message}")]
     SafeTensorsParseError { message: String },
+
+    /// Leaderboard not found
+    #[error("Leaderboard not found: {kind}")]
+    LeaderboardNotFound { kind: String },
+
+    /// Leaderboard data parsing error
+    #[error("Failed to parse leaderboard data: {message}")]
+    LeaderboardParseError { message: String },
+
+    /// HTTP request error
+    #[error("HTTP error: {message}")]
+    HttpError { message: String },
 }
 
 impl FetchError {
@@ -226,6 +238,15 @@ mod tests {
                 tensor: "t".into(),
                 expected: vec![1, 2],
                 actual: vec![3, 4],
+            },
+            FetchError::LeaderboardNotFound {
+                kind: "OpenASR".into(),
+            },
+            FetchError::LeaderboardParseError {
+                message: "missing field".into(),
+            },
+            FetchError::HttpError {
+                message: "connection refused".into(),
             },
         ];
 

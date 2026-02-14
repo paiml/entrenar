@@ -122,6 +122,7 @@ cuda = ["realizar/cuda", "trueno-gpu/cuda", "tokio"]  # NVIDIA CUDA compute via 
 nvml = ["nvml-wrapper"]  # Real GPU monitoring via NVIDIA NVML
 parquet = ["dep:alimentar", "dep:arrow"]  # Parquet batch loading via alimentar
 hub = ["dep:hf-hub", "aprender/hf-hub-integration"]  # HuggingFace Hub model fetching
+hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard reading
 
 [dependencies]
 # Core PAIML stack
@@ -164,6 +165,7 @@ nvml-wrapper = { version = "0.10", optional = true }  # NVIDIA NVML bindings for
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 hf-hub = { version = "0.4", optional = true }  # HuggingFace Hub API (gated behind hub feature)
+reqwest = { version = "0.12", features = ["json", "blocking"], optional = true }  # HTTP client for HF Hub publishing/leaderboard
 zip = "2.2"  # RO-Crate ZIP export (requires native compression, not available on WASM)
 alimentar = { version = "0.2.4", optional = true }  # Dataset loading with parquet/arrow support (gated behind parquet feature)
 

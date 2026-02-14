@@ -530,3 +530,307 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-067
+  github_issue: null
+  item_type: task
+  title: 'CB-120: Fix NaN-unsafe partial_cmp().unwrap() calls'
+  status: inprogress
+  priority: high
+  assigned_to: null
+  created: 2026-02-05T14:57:39Z
+  updated: 2026-02-05T14:57:44.410160497+00:00
+  spec: null
+  acceptance_criteria:
+  - Replace partial_cmp().unwrap() with total_cmp() in 10 locations
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels:
+  - compliance
+  - cb-120
+  notes: null
+- id: PMAT-068
+  github_issue: null
+  item_type: task
+  title: CB-121
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-05T15:05:30Z
+  updated: 2026-02-05T15:05:34.587723893+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: ENT-155
+  github_issue: null
+  item_type: task
+  title: 'ENT-155: Extend Metric enum with generative AI variants'
+  status: completed
+  priority: high
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - Add WER, RTFx, BLEU, ROUGE, Perplexity, MMLUAccuracy, PassAtK, NDCGAtK variants
+  - Add RougeVariant companion enum
+  - Update higher_is_better(), name(), Display
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - eval
+  - metrics
+  notes: null
+- id: ENT-156
+  github_issue: null
+  item_type: task
+  title: 'ENT-156: WER and RTFx computation'
+  status: completed
+  priority: high
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - word_error_rate via Levenshtein edit distance at word level
+  - real_time_factor_inverse computation
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - eval
+  - asr
+  notes: null
+- id: ENT-157
+  github_issue: null
+  item_type: task
+  title: 'ENT-157: BLEU, ROUGE, Perplexity'
+  status: completed
+  priority: high
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - BLEU score with modified n-gram precision and brevity penalty
+  - ROUGE-N and ROUGE-L F1 scores
+  - Perplexity from log-probabilities
+  phases: []
+  subtasks: []
+  estimated_effort: 4h
+  labels:
+  - eval
+  - text-gen
+  notes: null
+- id: ENT-158
+  github_issue: null
+  item_type: task
+  title: 'ENT-158: pass@k and NDCG@k'
+  status: completed
+  priority: high
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - pass@k unbiased estimator (Chen et al. 2021)
+  - NDCG@k normalized discounted cumulative gain
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - eval
+  - code
+  - retrieval
+  notes: null
+- id: ENT-159
+  github_issue: null
+  item_type: task
+  title: 'ENT-159: Generative metrics module wiring and property tests'
+  status: completed
+  priority: high
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - Module wiring with re-exports
+  - Property tests for all metrics via proptest
+  - WER, BLEU bounds, pass@k monotonicity, NDCG perfect ranking
+  phases: []
+  subtasks: []
+  estimated_effort: 3h
+  labels:
+  - eval
+  - testing
+  notes: null
+- id: ENT-160
+  github_issue: null
+  item_type: task
+  title: 'ENT-160: HF Leaderboard types'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - LeaderboardKind enum (OpenASR, OpenLLMv2, MTEB, BigCodeBench, Custom)
+  - LeaderboardEntry and HfLeaderboard structs
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - hf-pipeline
+  - leaderboard
+  notes: null
+- id: ENT-161
+  github_issue: null
+  item_type: task
+  title: 'ENT-161: HF Leaderboard HTTP client'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - LeaderboardClient with fetch, fetch_paginated, find_model
+  - Uses HF datasets-server JSON API
+  - Token resolution via HfModelFetcher::resolve_token()
+  phases: []
+  subtasks: []
+  estimated_effort: 3h
+  labels:
+  - hf-pipeline
+  - leaderboard
+  notes: null
+- id: ENT-162
+  github_issue: null
+  item_type: task
+  title: 'ENT-162: Leaderboard-to-EvalResult parser'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - to_leaderboard() converts HfLeaderboard to native Leaderboard
+  - column_to_metric() per-kind column mapping
+  - compare_with_leaderboard() inserts user model for ranking
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - hf-pipeline
+  - leaderboard
+  notes: null
+- id: ENT-163
+  github_issue: null
+  item_type: task
+  title: 'ENT-163: Leaderboard wiring and tests'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - Module wiring with feature gate hub-publish
+  - Error variants in FetchError
+  - Unit and integration tests
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - hf-pipeline
+  - leaderboard
+  notes: null
+- id: ENT-164
+  github_issue: null
+  item_type: task
+  title: 'ENT-164: Publisher types and config'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - PublishConfig with repo_id, repo_type, private, token, license, tags
+  - PublishResult and PublishError types
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - hf-pipeline
+  - publish
+  notes: null
+- id: ENT-165
+  github_issue: null
+  item_type: task
+  title: 'ENT-165: HF Publisher core'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - HfPublisher with create_repo, upload_file, upload_bytes, publish
+  - Uses HF REST API via reqwest
+  - Token resolution from env/file
+  phases: []
+  subtasks: []
+  estimated_effort: 4h
+  labels:
+  - hf-pipeline
+  - publish
+  notes: null
+- id: ENT-166
+  github_issue: null
+  item_type: task
+  title: 'ENT-166: Model card generator'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - ModelCard struct with from_eval_result() and to_markdown()
+  - YAML front matter with model-index, license, tags
+  - Markdown body with evaluation results table
+  phases: []
+  subtasks: []
+  estimated_effort: 3h
+  labels:
+  - hf-pipeline
+  - publish
+  notes: null
+- id: ENT-167
+  github_issue: null
+  item_type: task
+  title: 'ENT-167: Leaderboard submission + OutputConfig integration'
+  status: completed
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T00:00:00Z
+  updated: 2026-02-14T00:00:00Z
+  spec: null
+  acceptance_criteria:
+  - JSONL submission formatting for leaderboard results
+  - OutputConfig extended with generate_model_card, hub_license, hub_tags, hub_private
+  phases: []
+  subtasks: []
+  estimated_effort: 2h
+  labels:
+  - hf-pipeline
+  - publish
+  notes: null

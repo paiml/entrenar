@@ -17,6 +17,6 @@ mod tests;
 pub use config::EvalConfig;
 pub use kfold::KFold;
 pub use leaderboard::Leaderboard;
-pub use metric::Metric;
+pub use metric::{Metric, RougeVariant};
 pub use model_evaluator::ModelEvaluator;
 pub use result::EvalResult;

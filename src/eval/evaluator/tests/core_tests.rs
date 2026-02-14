@@ -156,6 +156,98 @@ fn test_metric_display_all_variants() {
     assert_eq!(format!("{}", Metric::Silhouette), "Silhouette");
 }
 
+// ─── New generative metric variant tests ─────────────────────────────
+
+#[test]
+fn test_metric_higher_is_better_generative() {
+    assert!(!Metric::WER.higher_is_better());
+    assert!(Metric::RTFx.higher_is_better());
+    assert!(Metric::BLEU.higher_is_better());
+    assert!(Metric::ROUGE(RougeVariant::Rouge1).higher_is_better());
+    assert!(Metric::ROUGE(RougeVariant::Rouge2).higher_is_better());
+    assert!(Metric::ROUGE(RougeVariant::RougeL).higher_is_better());
+    assert!(!Metric::Perplexity.higher_is_better());
+    assert!(Metric::MMLUAccuracy.higher_is_better());
+    assert!(Metric::PassAtK(1).higher_is_better());
+    assert!(Metric::NDCGAtK(10).higher_is_better());
+}
+
+#[test]
+fn test_metric_name_generative() {
+    assert_eq!(Metric::WER.name(), "WER");
+    assert_eq!(Metric::RTFx.name(), "RTFx");
+    assert_eq!(Metric::BLEU.name(), "BLEU");
+    assert_eq!(Metric::ROUGE(RougeVariant::Rouge1).name(), "ROUGE");
+    assert_eq!(Metric::Perplexity.name(), "Perplexity");
+    assert_eq!(Metric::MMLUAccuracy.name(), "MMLU");
+    assert_eq!(Metric::PassAtK(1).name(), "pass@k");
+    assert_eq!(Metric::NDCGAtK(10).name(), "NDCG@k");
+}
+
+#[test]
+fn test_metric_display_generative() {
+    assert_eq!(format!("{}", Metric::WER), "WER");
+    assert_eq!(format!("{}", Metric::RTFx), "RTFx");
+    assert_eq!(format!("{}", Metric::BLEU), "BLEU");
+    assert_eq!(
+        format!("{}", Metric::ROUGE(RougeVariant::Rouge1)),
+        "ROUGE-1"
+    );
+    assert_eq!(
+        format!("{}", Metric::ROUGE(RougeVariant::Rouge2)),
+        "ROUGE-2"
+    );
+    assert_eq!(
+        format!("{}", Metric::ROUGE(RougeVariant::RougeL)),
+        "ROUGE-L"
+    );
+    assert_eq!(format!("{}", Metric::Perplexity), "Perplexity");
+    assert_eq!(format!("{}", Metric::MMLUAccuracy), "MMLU");
+    assert_eq!(format!("{}", Metric::PassAtK(1)), "pass@1");
+    assert_eq!(format!("{}", Metric::PassAtK(100)), "pass@100");
+    assert_eq!(format!("{}", Metric::NDCGAtK(5)), "NDCG@5");
+    assert_eq!(format!("{}", Metric::NDCGAtK(10)), "NDCG@10");
+}
+
+#[test]
+fn test_rouge_variant_display() {
+    assert_eq!(format!("{}", RougeVariant::Rouge1), "ROUGE-1");
+    assert_eq!(format!("{}", RougeVariant::Rouge2), "ROUGE-2");
+    assert_eq!(format!("{}", RougeVariant::RougeL), "ROUGE-L");
+}
+
+#[test]
+fn test_leaderboard_with_generative_metrics() {
+    let mut leaderboard = Leaderboard::new(Metric::WER);
+
+    let mut result1 = EvalResult::new("Whisper-large");
+    result1.add_score(Metric::WER, 0.08);
+    leaderboard.add(result1);
+
+    let mut result2 = EvalResult::new("Whisper-small");
+    result2.add_score(Metric::WER, 0.15);
+    leaderboard.add(result2);
+
+    // Best WER is lowest → Whisper-large
+    assert_eq!(leaderboard.best().unwrap().model_name, "Whisper-large");
+}
+
+#[test]
+fn test_metric_generative_equality() {
+    assert_eq!(Metric::PassAtK(1), Metric::PassAtK(1));
+    assert_ne!(Metric::PassAtK(1), Metric::PassAtK(10));
+    assert_eq!(Metric::NDCGAtK(5), Metric::NDCGAtK(5));
+    assert_ne!(Metric::NDCGAtK(5), Metric::NDCGAtK(10));
+    assert_eq!(
+        Metric::ROUGE(RougeVariant::Rouge1),
+        Metric::ROUGE(RougeVariant::Rouge1)
+    );
+    assert_ne!(
+        Metric::ROUGE(RougeVariant::Rouge1),
+        Metric::ROUGE(RougeVariant::Rouge2)
+    );
+}
+
 #[test]
 fn test_eval_result_display() {
     let mut result = EvalResult::new("TestModel");

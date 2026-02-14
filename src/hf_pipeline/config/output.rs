@@ -18,6 +18,14 @@ pub struct OutputConfig {
     pub push_to_hub: bool,
     /// Hub repository ID
     pub hub_repo_id: Option<String>,
+    /// Generate model card (README.md) on publish
+    pub generate_model_card: bool,
+    /// License for Hub publication (SPDX identifier, e.g., "apache-2.0")
+    pub hub_license: Option<String>,
+    /// Tags for Hub discoverability
+    pub hub_tags: Vec<String>,
+    /// Whether the Hub repository should be private
+    pub hub_private: bool,
 }
 
 impl Default for OutputConfig {
@@ -29,6 +37,10 @@ impl Default for OutputConfig {
             log_steps: 10,
             push_to_hub: false,
             hub_repo_id: None,
+            generate_model_card: true,
+            hub_license: None,
+            hub_tags: Vec::new(),
+            hub_private: false,
         }
     }
 }

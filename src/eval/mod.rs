@@ -28,6 +28,7 @@
 pub mod classification;
 pub mod drift;
 pub mod evaluator;
+pub mod generative;
 pub mod retrain;
 
 // Re-export basic drift types from monitor for backward compatibility
@@ -45,4 +46,12 @@ pub use retrain::{
 pub use classification::{
     classification_report, confusion_matrix, Average, ConfusionMatrix, MultiClassMetrics,
 };
-pub use evaluator::{EvalConfig, EvalResult, KFold, Leaderboard, Metric, ModelEvaluator};
+pub use evaluator::{
+    EvalConfig, EvalResult, KFold, Leaderboard, Metric, ModelEvaluator, RougeVariant,
+};
+
+// Re-export generative metric functions
+pub use generative::{
+    bleu_score, ndcg_at_k, pass_at_k, perplexity, real_time_factor_inverse, rouge_l, rouge_n,
+    word_error_rate,
+};
