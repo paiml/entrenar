@@ -4,7 +4,7 @@
 # 25-point QA checklist per scenario = 2,500 validation points
 
 roadmap_version: '1.0'
-github_enabled: true
+github_enabled: "true"
 github_repo: null
 
 epic:
