@@ -410,6 +410,35 @@ mod tests {
     }
 
     #[test]
+    fn test_trueno_complete_run_failed() {
+        let mut backend = TruenoBackend::new();
+        let exp_id = backend.create_experiment("test-exp", None).unwrap();
+        let run_id = backend.create_run(&exp_id).unwrap();
+
+        backend.start_run(&run_id).unwrap();
+        backend.complete_run(&run_id, RunStatus::Failed).unwrap();
+
+        assert_eq!(backend.get_run_status(&run_id).unwrap(), RunStatus::Failed);
+    }
+
+    #[test]
+    fn test_trueno_complete_run_cancelled() {
+        let mut backend = TruenoBackend::new();
+        let exp_id = backend.create_experiment("test-exp", None).unwrap();
+        let run_id = backend.create_run(&exp_id).unwrap();
+
+        backend.start_run(&run_id).unwrap();
+        backend
+            .complete_run(&run_id, RunStatus::Cancelled)
+            .unwrap();
+
+        assert_eq!(
+            backend.get_run_status(&run_id).unwrap(),
+            RunStatus::Cancelled
+        );
+    }
+
+    #[test]
     fn test_trueno_set_and_get_span_id() {
         let mut backend = TruenoBackend::new();
         let exp_id = backend.create_experiment("test-exp", None).unwrap();
