@@ -26,6 +26,9 @@ pub mod submission;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod falsification_tests;
+
 pub use config::{PublishConfig, RepoType};
 pub use model_card::ModelCard;
 pub use publisher::HfPublisher;

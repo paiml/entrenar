@@ -14,6 +14,9 @@ pub mod text_gen;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod falsification_tests;
+
 // Re-exports
 pub use asr::{real_time_factor_inverse, word_error_rate};
 pub use code::pass_at_k;
