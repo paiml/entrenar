@@ -5,7 +5,7 @@ model:
 data:
   train: "data/train.csv"
   batch_size: 32
-  auto_infer_types: "true"
+  auto_infer_types: true
 
 optimizer:
   name: "adam"
