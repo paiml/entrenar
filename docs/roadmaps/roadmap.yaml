@@ -1009,11 +1009,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'GH-66 Phase 1: Wire TrainingManifest into training pipeline'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2026-02-14T22:24:03Z
-  updated: 2026-02-14T22:24:07.394974812+00:00
+  updated: 2026-02-14T22:26:07.582395760+00:00
   spec: null
   acceptance_criteria: []
   phases: []
