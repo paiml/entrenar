@@ -22,7 +22,8 @@ impl ModelStage {
     pub fn can_transition_to(&self, target: ModelStage) -> bool {
         match (self, target) {
             // Any stage can go to Archived
-            (_, ModelStage::Archived) => true,
+            (ModelStage::None | ModelStage::Development | ModelStage::Staging
+            | ModelStage::Production | ModelStage::Archived, ModelStage::Archived) => true,
             // None can go to Development
             (ModelStage::None, ModelStage::Development) => true,
             // Development can go to Staging
@@ -36,8 +37,17 @@ impl ModelStage {
             // Archived can be restored to Development
             (ModelStage::Archived, ModelStage::Development) => true,
             // Same stage is a no-op
-            (a, b) if *a == b => true,
-            _ => false,
+            (ModelStage::None, ModelStage::None)
+            | (ModelStage::Development, ModelStage::Development)
+            | (ModelStage::Staging, ModelStage::Staging)
+            | (ModelStage::Production, ModelStage::Production) => true,
+            // Invalid transitions
+            (ModelStage::Development | ModelStage::Staging | ModelStage::Production
+            | ModelStage::Archived, ModelStage::None)
+            | (ModelStage::Production, ModelStage::Development)
+            | (ModelStage::None | ModelStage::Archived, ModelStage::Staging)
+            | (ModelStage::None | ModelStage::Development | ModelStage::Archived,
+                ModelStage::Production) => false,
         }
     }
 

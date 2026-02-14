@@ -3,6 +3,7 @@
 //! Provides ANSI color output with automatic terminal capability detection.
 //! Based on presentar's color system with semantic colors for training metrics.
 
+use super::state::{LossTrend, TrainingStatus};
 use std::fmt;
 
 /// Safely convert an f32 to u8 with bounds clamping.
@@ -351,11 +352,14 @@ impl TrainingPalette {
 
     /// Color for gradient norm (explosion warning)
     pub fn grad_norm_color(norm: f32) -> Rgb {
-        match norm {
-            n if n <= 1.0 => Self::SUCCESS,  // Healthy
-            n if n <= 5.0 => Self::INFO,     // Normal
-            n if n <= 10.0 => Self::WARNING, // High
-            _ => Self::ERROR,                // Explosion risk
+        if norm <= 1.0 {
+            Self::SUCCESS // Healthy
+        } else if norm <= 5.0 {
+            Self::INFO // Normal
+        } else if norm <= 10.0 {
+            Self::WARNING // High
+        } else {
+            Self::ERROR // Explosion risk
         }
     }
 
@@ -391,24 +395,23 @@ impl TrainingPalette {
     }
 
     /// Color for training status
-    pub fn status_color(status: &str) -> Rgb {
-        match status.to_lowercase().as_str() {
-            "running" => Self::SUCCESS,
-            "completed" => Self::PRIMARY,
-            "paused" => Self::WARNING,
-            "failed" => Self::ERROR,
-            "initializing" => Self::INFO,
-            _ => Self::MUTED,
+    pub fn status_color(status: &TrainingStatus) -> Rgb {
+        match status {
+            TrainingStatus::Running => Self::SUCCESS,
+            TrainingStatus::Completed => Self::PRIMARY,
+            TrainingStatus::Paused => Self::WARNING,
+            TrainingStatus::Failed(_) => Self::ERROR,
+            TrainingStatus::Initializing => Self::INFO,
         }
     }
 
     /// Color for loss trend indicator
-    pub fn loss_trend_color(trend: &str) -> Rgb {
+    pub fn loss_trend_color(trend: &LossTrend) -> Rgb {
         match trend {
-            "decreasing" => Self::SUCCESS, // Good - loss is going down
-            "stable" => Self::INFO,        // Neutral - plateauing
-            "increasing" => Self::ERROR,   // Bad - loss is going up
-            _ => Self::MUTED,              // Unknown
+            LossTrend::Decreasing => Self::SUCCESS, // Good - loss is going down
+            LossTrend::Stable => Self::INFO,        // Neutral - plateauing
+            LossTrend::Increasing => Self::ERROR,   // Bad - loss is going up
+            LossTrend::Unknown => Self::MUTED,      // Not enough data
         }
     }
 
@@ -629,29 +632,20 @@ mod tests {
     #[test]
     fn test_status_color_all_variants() {
         // Exercise every match arm in TrainingPalette::status_color
-        let running = TrainingPalette::status_color("running");
+        let running = TrainingPalette::status_color(&TrainingStatus::Running);
         assert_eq!(running, TrainingPalette::SUCCESS);
 
-        let completed = TrainingPalette::status_color("completed");
+        let completed = TrainingPalette::status_color(&TrainingStatus::Completed);
         assert_eq!(completed, TrainingPalette::PRIMARY);
 
-        let paused = TrainingPalette::status_color("paused");
+        let paused = TrainingPalette::status_color(&TrainingStatus::Paused);
         assert_eq!(paused, TrainingPalette::WARNING);
 
-        let failed = TrainingPalette::status_color("failed");
+        let failed = TrainingPalette::status_color(&TrainingStatus::Failed("error".to_string()));
         assert_eq!(failed, TrainingPalette::ERROR);
 
-        let initializing = TrainingPalette::status_color("initializing");
+        let initializing = TrainingPalette::status_color(&TrainingStatus::Initializing);
         assert_eq!(initializing, TrainingPalette::INFO);
-
-        let unknown = TrainingPalette::status_color("unknown_state");
-        assert_eq!(unknown, TrainingPalette::MUTED);
-
-        // Case-insensitive
-        assert_eq!(
-            TrainingPalette::status_color("RUNNING"),
-            TrainingPalette::SUCCESS
-        );
     }
 
     #[test]

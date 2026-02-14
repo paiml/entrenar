@@ -56,7 +56,7 @@ impl AdaptiveCurriculum {
         match attempt {
             0 => self.default_tier,
             1 => 2,
-            _ => 3,
+            2.. => 3,
         }
     }
 
