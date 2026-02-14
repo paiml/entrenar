@@ -202,3 +202,178 @@ impl ModelEvaluator {
         &self.config
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval::classification::Average;
+    use crate::eval::evaluator::metric::RougeVariant;
+
+    #[test]
+    fn test_cv_precision_arm() {
+        let config = EvalConfig {
+            metrics: vec![Metric::Precision(Average::Macro)],
+            cv_folds: 2,
+            seed: 42,
+            ..Default::default()
+        };
+        let evaluator = ModelEvaluator::new(config);
+        let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
+        let result = evaluator
+            .evaluate_cv("Test", &y_true, |_, test_idx| {
+                test_idx.iter().map(|&i| y_true[i]).collect()
+            })
+            .unwrap();
+        assert!(result.cv_mean.is_some());
+    }
+
+    #[test]
+    fn test_cv_recall_arm() {
+        let config = EvalConfig {
+            metrics: vec![Metric::Recall(Average::Weighted)],
+            cv_folds: 2,
+            seed: 42,
+            ..Default::default()
+        };
+        let evaluator = ModelEvaluator::new(config);
+        let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
+        let result = evaluator
+            .evaluate_cv("Test", &y_true, |_, test_idx| {
+                test_idx.iter().map(|&i| y_true[i]).collect()
+            })
+            .unwrap();
+        assert!(result.cv_mean.is_some());
+    }
+
+    #[test]
+    fn test_cv_f1_arm() {
+        let config = EvalConfig {
+            metrics: vec![Metric::F1(Average::Micro)],
+            cv_folds: 2,
+            seed: 42,
+            ..Default::default()
+        };
+        let evaluator = ModelEvaluator::new(config);
+        let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
+        let result = evaluator
+            .evaluate_cv("Test", &y_true, |_, test_idx| {
+                test_idx.iter().map(|&i| y_true[i]).collect()
+            })
+            .unwrap();
+        assert!(result.cv_mean.is_some());
+    }
+
+    #[test]
+    fn test_cv_accuracy_fallback_arm() {
+        // Test the grouped arm: Accuracy|R2|MSE|... => cm.accuracy()
+        for metric in [
+            Metric::Accuracy,
+            Metric::R2,
+            Metric::MSE,
+            Metric::MAE,
+            Metric::RMSE,
+            Metric::Silhouette,
+            Metric::Inertia,
+            Metric::WER,
+            Metric::RTFx,
+            Metric::BLEU,
+            Metric::ROUGE(RougeVariant::Rouge1),
+            Metric::Perplexity,
+            Metric::MMLUAccuracy,
+            Metric::PassAtK(1),
+            Metric::NDCGAtK(5),
+        ] {
+            let config = EvalConfig {
+                metrics: vec![metric],
+                cv_folds: 2,
+                seed: 42,
+                ..Default::default()
+            };
+            let evaluator = ModelEvaluator::new(config);
+            let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
+            let result = evaluator
+                .evaluate_cv("Test", &y_true, |_, test_idx| {
+                    test_idx.iter().map(|&i| y_true[i]).collect()
+                })
+                .unwrap();
+            assert!(
+                result.cv_mean.is_some(),
+                "CV should succeed with metric {metric:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_classify_precision_arm() {
+        let config = EvalConfig {
+            metrics: vec![Metric::Precision(Average::Macro)],
+            ..Default::default()
+        };
+        let evaluator = ModelEvaluator::new(config);
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .unwrap();
+        assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
+    }
+
+    #[test]
+    fn test_classify_recall_arm() {
+        let config = EvalConfig {
+            metrics: vec![Metric::Recall(Average::Micro)],
+            ..Default::default()
+        };
+        let evaluator = ModelEvaluator::new(config);
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .unwrap();
+        assert!(result.get_score(Metric::Recall(Average::Micro)).is_some());
+    }
+
+    #[test]
+    fn test_classify_f1_arm() {
+        let config = EvalConfig {
+            metrics: vec![Metric::F1(Average::Weighted)],
+            ..Default::default()
+        };
+        let evaluator = ModelEvaluator::new(config);
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .unwrap();
+        assert!(result.get_score(Metric::F1(Average::Weighted)).is_some());
+    }
+
+    #[test]
+    fn test_classify_skips_non_classification_metrics() {
+        // Tests the grouped continue arm: R2|MSE|...|NDCGAtK(_) => continue
+        let config = EvalConfig {
+            metrics: vec![
+                Metric::Accuracy,
+                Metric::R2,
+                Metric::MSE,
+                Metric::MAE,
+                Metric::RMSE,
+                Metric::Silhouette,
+                Metric::Inertia,
+                Metric::WER,
+                Metric::RTFx,
+                Metric::BLEU,
+                Metric::ROUGE(RougeVariant::RougeL),
+                Metric::Perplexity,
+                Metric::MMLUAccuracy,
+                Metric::PassAtK(5),
+                Metric::NDCGAtK(10),
+            ],
+            ..Default::default()
+        };
+        let evaluator = ModelEvaluator::new(config);
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .unwrap();
+        assert!(result.get_score(Metric::Accuracy).is_some());
+        assert!(result.get_score(Metric::R2).is_none());
+        assert!(result.get_score(Metric::MSE).is_none());
+        assert!(result.get_score(Metric::ROUGE(RougeVariant::RougeL)).is_none());
+        assert!(result.get_score(Metric::PassAtK(5)).is_none());
+        assert!(result.get_score(Metric::NDCGAtK(10)).is_none());
+    }
+}

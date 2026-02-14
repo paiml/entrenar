@@ -923,4 +923,59 @@ mod tests {
         assert!(layout.contains("Loss"));
         assert!(layout.contains("Step"));
     }
+
+    #[test]
+    fn test_render_header_initializing() {
+        let snapshot = TrainingSnapshot {
+            status: TrainingStatus::Initializing,
+            model_name: "TestModel".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Init"));
+    }
+
+    #[test]
+    fn test_render_header_running() {
+        let snapshot = TrainingSnapshot {
+            status: TrainingStatus::Running,
+            model_name: "TestModel".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Running"));
+    }
+
+    #[test]
+    fn test_render_header_paused() {
+        let snapshot = TrainingSnapshot {
+            status: TrainingStatus::Paused,
+            model_name: "TestModel".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Paused"));
+    }
+
+    #[test]
+    fn test_render_header_completed() {
+        let snapshot = TrainingSnapshot {
+            status: TrainingStatus::Completed,
+            model_name: "TestModel".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("Done"));
+    }
+
+    #[test]
+    fn test_render_header_failed() {
+        let snapshot = TrainingSnapshot {
+            status: TrainingStatus::Failed("out of memory".to_string()),
+            model_name: "TestModel".to_string(),
+            ..Default::default()
+        };
+        let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
+        assert!(layout.contains("FAIL"));
+    }
 }

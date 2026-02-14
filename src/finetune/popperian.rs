@@ -636,9 +636,40 @@ mod tests {
     }
 
     #[test]
-    fn test_qa_grade_display() {
+    fn test_qa_grade_display_aplus() {
         assert_eq!(format!("{}", QAGrade::APlus), "A+ (Excellent)");
+    }
+
+    #[test]
+    fn test_qa_grade_display_a() {
+        assert_eq!(format!("{}", QAGrade::A), "A  (Very Good)");
+    }
+
+    #[test]
+    fn test_qa_grade_display_bplus() {
+        assert_eq!(format!("{}", QAGrade::BPlus), "B+ (Good)");
+    }
+
+    #[test]
+    fn test_qa_grade_display_b() {
+        assert_eq!(format!("{}", QAGrade::B), "B  (Satisfactory)");
+    }
+
+    #[test]
+    fn test_qa_grade_display_c() {
+        assert_eq!(format!("{}", QAGrade::C), "C  (Needs Improvement)");
+    }
+
+    #[test]
+    fn test_qa_grade_display_f() {
         assert_eq!(format!("{}", QAGrade::F), "F  (Failing)");
+    }
+
+    #[test]
+    fn test_qa_grade_from_score_overflow() {
+        // Tests the 101.. => Self::F arm
+        assert_eq!(QAGrade::from_score(101), QAGrade::F);
+        assert_eq!(QAGrade::from_score(255), QAGrade::F);
     }
 
     #[test]
