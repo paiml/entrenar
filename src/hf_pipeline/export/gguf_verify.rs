@@ -231,12 +231,19 @@ fn truncation_error(pos: usize) -> FetchError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hf_pipeline::export::gguf_writer::GgufWriter;
+    use crate::hf_pipeline::export::gguf_writer::{quantize_to_gguf_bytes, GgufQuantization};
+    use aprender::format::gguf::{export_tensors_to_gguf, GgmlType, GgufTensor, GgufValue};
+
+    /// Helper: serialize GGUF to a Vec<u8> via aprender
+    fn write_gguf(tensors: &[GgufTensor], metadata: &[(String, GgufValue)]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        export_tensors_to_gguf(&mut buf, tensors, metadata).unwrap();
+        buf
+    }
 
     #[test]
     fn test_verify_empty_gguf() {
-        let writer = GgufWriter::new();
-        let data = writer.finalize();
+        let data = write_gguf(&[], &[]);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.version, 3);
@@ -246,9 +253,8 @@ mod tests {
 
     #[test]
     fn test_verify_with_metadata() {
-        let mut writer = GgufWriter::new();
-        writer.write_string("general.name", "test");
-        let data = writer.finalize();
+        let metadata = vec![("general.name".into(), GgufValue::String("test".into()))];
+        let data = write_gguf(&[], &metadata);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.metadata_count, 1);
@@ -256,10 +262,21 @@ mod tests {
 
     #[test]
     fn test_verify_with_tensors() {
-        let mut writer = GgufWriter::new();
-        writer.write_tensor_data_f32("w1", &[1.0, 2.0, 3.0], vec![3]);
-        writer.write_tensor_data_f32("w2", &[4.0, 5.0], vec![2]);
-        let data = writer.finalize();
+        let tensors = vec![
+            GgufTensor {
+                name: "w1".into(),
+                shape: vec![3],
+                dtype: GgmlType::F32,
+                data: bytemuck::cast_slice(&[1.0f32, 2.0, 3.0]).to_vec(),
+            },
+            GgufTensor {
+                name: "w2".into(),
+                shape: vec![2],
+                dtype: GgmlType::F32,
+                data: bytemuck::cast_slice(&[4.0f32, 5.0]).to_vec(),
+            },
+        ];
+        let data = write_gguf(&tensors, &[]);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.tensor_count, 2);
@@ -270,10 +287,17 @@ mod tests {
 
     #[test]
     fn test_roundtrip_f32() {
-        let mut writer = GgufWriter::new();
-        writer.write_string("general.architecture", "llama");
-        writer.write_tensor_data_f32("layer.0.weight", &[1.0; 128], vec![8, 16]);
-        let data = writer.finalize();
+        let metadata = vec![(
+            "general.architecture".into(),
+            GgufValue::String("llama".into()),
+        )];
+        let tensors = vec![GgufTensor {
+            name: "layer.0.weight".into(),
+            shape: vec![8, 16],
+            dtype: GgmlType::F32,
+            data: bytemuck::cast_slice(&[1.0f32; 128]).to_vec(),
+        }];
+        let data = write_gguf(&tensors, &metadata);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.tensor_count, 1);
@@ -284,9 +308,14 @@ mod tests {
 
     #[test]
     fn test_roundtrip_q4_0() {
-        let mut writer = GgufWriter::new();
-        writer.write_tensor_data_q4_0("quantized", &[0.5; 64], vec![64]);
-        let data = writer.finalize();
+        let (bytes, dtype) = quantize_to_gguf_bytes(&[0.5; 64], GgufQuantization::Q4_0);
+        let tensors = vec![GgufTensor {
+            name: "quantized".into(),
+            shape: vec![64],
+            dtype,
+            data: bytes,
+        }];
+        let data = write_gguf(&tensors, &[]);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.tensors[0].dtype, 2); // Q4_0
@@ -294,9 +323,14 @@ mod tests {
 
     #[test]
     fn test_roundtrip_q8_0() {
-        let mut writer = GgufWriter::new();
-        writer.write_tensor_data_q8_0("quantized", &[0.5; 32], vec![32]);
-        let data = writer.finalize();
+        let (bytes, dtype) = quantize_to_gguf_bytes(&[0.5; 32], GgufQuantization::Q8_0);
+        let tensors = vec![GgufTensor {
+            name: "quantized".into(),
+            shape: vec![32],
+            dtype,
+            data: bytes,
+        }];
+        let data = write_gguf(&tensors, &[]);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.tensors[0].dtype, 8); // Q8_0
@@ -351,11 +385,15 @@ mod tests {
 
     #[test]
     fn test_verify_u32_metadata() {
-        use crate::hf_pipeline::export::gguf_writer::GgufMetadataValue;
-        let mut writer = GgufWriter::new();
-        writer.write_metadata_kv("layers", GgufMetadataValue::U32(32));
-        writer.write_tensor_data_f32("w", &[1.0], vec![1]);
-        let data = writer.finalize();
+        let metadata = vec![("layers".into(), GgufValue::Uint32(32))];
+        let (bytes, dtype) = quantize_to_gguf_bytes(&[1.0], GgufQuantization::None);
+        let tensors = vec![GgufTensor {
+            name: "w".into(),
+            shape: vec![1],
+            dtype,
+            data: bytes,
+        }];
+        let data = write_gguf(&tensors, &metadata);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.metadata_count, 1);
@@ -364,10 +402,8 @@ mod tests {
 
     #[test]
     fn test_verify_f32_metadata() {
-        use crate::hf_pipeline::export::gguf_writer::GgufMetadataValue;
-        let mut writer = GgufWriter::new();
-        writer.write_metadata_kv("loss", GgufMetadataValue::F32(0.42));
-        let data = writer.finalize();
+        let metadata = vec![("loss".into(), GgufValue::Float32(0.42))];
+        let data = write_gguf(&[], &metadata);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.metadata_count, 1);
@@ -375,10 +411,8 @@ mod tests {
 
     #[test]
     fn test_verify_u64_metadata() {
-        use crate::hf_pipeline::export::gguf_writer::GgufMetadataValue;
-        let mut writer = GgufWriter::new();
-        writer.write_metadata_kv("params", GgufMetadataValue::U64(7_000_000_000));
-        let data = writer.finalize();
+        let metadata = vec![("params".into(), GgufValue::Uint64(7_000_000_000))];
+        let data = write_gguf(&[], &metadata);
 
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.metadata_count, 1);

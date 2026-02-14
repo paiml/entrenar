@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::format::ExportFormat;
-use super::gguf_writer::{GgufMetadataValue, GgufQuantization, GgufWriter};
+use super::gguf_writer::{quantize_to_gguf_bytes, GgufQuantization};
 use super::result::ExportResult;
 use super::weights::{ModelMetadata, ModelWeights};
 
@@ -184,38 +184,45 @@ impl Exporter {
         })
     }
 
-    /// Export to GGUF format with real tensor data
+    /// Export to GGUF format with real tensor data (delegates to aprender)
     fn export_gguf(&self, weights: &ModelWeights, path: &Path) -> Result<ExportResult> {
-        let mut writer = GgufWriter::new();
+        use aprender::format::gguf::{export_tensors_to_gguf, GgufTensor, GgufValue};
 
-        // Write metadata from ModelMetadata
+        // Build metadata
+        let mut metadata: Vec<(String, GgufValue)> = Vec::new();
         if self.include_metadata {
             if let Some(arch) = &weights.metadata.architecture {
-                writer.write_string("general.architecture", arch);
+                metadata.push((
+                    "general.architecture".into(),
+                    GgufValue::String(arch.clone()),
+                ));
             }
             if let Some(name) = &weights.metadata.model_name {
-                writer.write_string("general.name", name);
+                metadata.push(("general.name".into(), GgufValue::String(name.clone())));
             }
-            writer.write_metadata_kv(
-                "general.parameter_count",
-                GgufMetadataValue::U64(weights.metadata.num_params),
-            );
+            metadata.push((
+                "general.parameter_count".into(),
+                GgufValue::Uint64(weights.metadata.num_params),
+            ));
             if let Some(hidden) = weights.metadata.hidden_size {
-                writer.write_metadata_kv(
-                    "general.hidden_size",
-                    GgufMetadataValue::U32(hidden as u32),
-                );
+                metadata.push((
+                    "general.hidden_size".into(),
+                    GgufValue::Uint32(hidden as u32),
+                ));
             }
             if let Some(layers) = weights.metadata.num_layers {
-                writer
-                    .write_metadata_kv("general.num_layers", GgufMetadataValue::U32(layers as u32));
+                metadata.push((
+                    "general.num_layers".into(),
+                    GgufValue::Uint32(layers as u32),
+                ));
             }
         }
 
-        // Write tensor data — sort names for deterministic output
+        // Build tensors — sort names for deterministic output
         let mut tensor_names: Vec<&String> = weights.tensors.keys().collect();
         tensor_names.sort();
 
+        let mut tensors: Vec<GgufTensor> = Vec::new();
         for name in &tensor_names {
             let data = &weights.tensors[*name];
             let shape = weights
@@ -223,30 +230,31 @@ impl Exporter {
                 .get(*name)
                 .cloned()
                 .unwrap_or_else(|| vec![data.len()]);
-
-            match self.gguf_quantization {
-                GgufQuantization::None => {
-                    writer.write_tensor_data_f32(name.as_str(), data, shape);
-                }
-                GgufQuantization::Q4_0 => {
-                    writer.write_tensor_data_q4_0(name.as_str(), data, shape);
-                }
-                GgufQuantization::Q8_0 => {
-                    writer.write_tensor_data_q8_0(name.as_str(), data, shape);
-                }
-            }
+            let (bytes, dtype) = quantize_to_gguf_bytes(data, self.gguf_quantization);
+            tensors.push(GgufTensor {
+                name: (*name).clone(),
+                shape: shape.iter().map(|&d| d as u64).collect(),
+                dtype,
+                data: bytes,
+            });
         }
 
-        let output = writer.finalize();
-
-        std::fs::write(path, &output).map_err(|e| FetchError::GgufWriteError {
-            message: format!("Failed to write GGUF file: {e}"),
+        // Write via aprender
+        let mut file = std::fs::File::create(path).map_err(|e| FetchError::GgufWriteError {
+            message: format!("Failed to create GGUF file: {e}"),
         })?;
+        export_tensors_to_gguf(&mut file, &tensors, &metadata).map_err(|e| {
+            FetchError::GgufWriteError {
+                message: format!("Failed to write GGUF data: {e}"),
+            }
+        })?;
+
+        let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
         Ok(ExportResult {
             path: path.to_path_buf(),
             format: ExportFormat::GGUF,
-            size_bytes: output.len() as u64,
+            size_bytes: size,
             num_tensors: tensor_names.len(),
         })
     }
