@@ -904,3 +904,19 @@ roadmap:
   - debt
   - coverage
   notes: null
+- id: PMAT-170
+  github_issue: null
+  item_type: task
+  title: 'CB-511 Kaizen: fix remaining flaky time-based tests'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T18:02:12Z
+  updated: 2026-02-14T18:02:16.457302290+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
