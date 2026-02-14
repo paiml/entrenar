@@ -34,13 +34,16 @@ impl KernelCache {
     }
 
     pub(super) fn get_or_compile(&mut self, name: &str, ptx: &str) -> Result<&mut CudaModule> {
-        if !self.modules.contains_key(name) {
-            let module = CudaModule::from_ptx(&self.ctx, ptx).map_err(|e| {
-                CudaTensorError::KernelError(format!("Failed to compile {name}: {e:?}"))
-            })?;
-            self.modules.insert(name.to_string(), module);
+        use std::collections::hash_map::Entry;
+        match self.modules.entry(name.to_string()) {
+            Entry::Occupied(e) => Ok(e.into_mut()),
+            Entry::Vacant(e) => {
+                let module = CudaModule::from_ptx(&self.ctx, ptx).map_err(|err| {
+                    CudaTensorError::KernelError(format!("Failed to compile {name}: {err:?}"))
+                })?;
+                Ok(e.insert(module))
+            }
         }
-        Ok(self.modules.get_mut(name).unwrap())
     }
 }
 
