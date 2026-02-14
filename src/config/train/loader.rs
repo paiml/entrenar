@@ -96,7 +96,10 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         match precision.as_str() {
             "bf16" => train_config = train_config.with_bf16(),
             "fp16" => train_config = train_config.with_fp16(),
-            _ => {} // fp32 is default
+            "fp32" => {} // fp32 is the default, no action needed
+            other => {
+                eprintln!("Warning: unknown mixed_precision value '{other}', defaulting to fp32");
+            }
         }
     }
 
