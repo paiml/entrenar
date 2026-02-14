@@ -195,12 +195,12 @@ fn skip_gguf_string(data: &[u8], pos: usize) -> Result<usize, FetchError> {
 /// Skip a GGUF value based on its type, returning the new position
 fn skip_gguf_value(data: &[u8], pos: usize, value_type: u32) -> Result<usize, FetchError> {
     match value_type {
-        0 | 1 | 7 => Ok(pos + 1),          // UINT8, INT8, BOOL
-        2 | 3 => Ok(pos + 2),              // UINT16, INT16
-        4..=6 => Ok(pos + 4),              // UINT32, INT32, FLOAT32
-        8 => skip_gguf_string(data, pos),  // STRING
-        10..=12 => Ok(pos + 8),            // UINT64, INT64, FLOAT64
-        9 => skip_gguf_array(data, pos),   // ARRAY
+        0 | 1 | 7 => Ok(pos + 1),         // UINT8, INT8, BOOL
+        2 | 3 => Ok(pos + 2),             // UINT16, INT16
+        4..=6 => Ok(pos + 4),             // UINT32, INT32, FLOAT32
+        8 => skip_gguf_string(data, pos), // STRING
+        10..=12 => Ok(pos + 8),           // UINT64, INT64, FLOAT64
+        9 => skip_gguf_array(data, pos),  // ARRAY
         _ => Err(FetchError::ConfigParseError {
             message: format!("Unknown GGUF metadata type: {value_type}"),
         }),
