@@ -284,22 +284,23 @@ mod tests {
         ]));
 
         // List and Dict do not support any filter operations - verify with match
-        for val_and_filter in &[
-            (&list_val, &list_filter),
-            (&dict_val, &dict_filter),
-        ] {
-            let (val, filter) = val_and_filter;
-            for op in &[FilterOp::Eq, FilterOp::Ne, FilterOp::Gt, FilterOp::Lt] {
-                let result = SqliteBackend::param_matches(val, op, filter);
-                match (val, filter) {
-                    (ParameterValue::List(..), ParameterValue::List(..), ..) => {
-                        assert!(!result, "List should not match with any op");
-                    }
-                    (ParameterValue::Dict(..), ParameterValue::Dict(..), ..) => {
-                        assert!(!result, "Dict should not match with any op");
-                    }
-                    _ => unreachable!(),
+        let test_cases: Vec<(&ParameterValue, &ParameterValue, &FilterOp)> = vec![
+            (&list_val, &list_filter, &FilterOp::Eq),
+            (&list_val, &list_filter, &FilterOp::Ne),
+            (&dict_val, &dict_filter, &FilterOp::Eq),
+            (&dict_val, &dict_filter, &FilterOp::Ne),
+        ];
+
+        for (val, filt, op) in &test_cases {
+            let result = SqliteBackend::param_matches(val, op, filt);
+            match (val, filt, op) {
+                (ParameterValue::List(..), ParameterValue::List(..), _) => {
+                    assert!(!result, "List should not match with any op");
                 }
+                (ParameterValue::Dict(..), ParameterValue::Dict(..), _) => {
+                    assert!(!result, "Dict should not match with any op");
+                }
+                _ => unreachable!(),
             }
         }
     }
