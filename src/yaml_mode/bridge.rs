@@ -41,7 +41,7 @@ pub fn manifest_to_spec(manifest: &TrainingManifest) -> Result<BridgeResult, Bri
     let model = convert_model(manifest, &mut warnings)?;
     let data = convert_data(manifest, &mut warnings)?;
     let optimizer = convert_optimizer(manifest)?;
-    let training = convert_training(manifest, &mut warnings);
+    let training = convert_training(manifest, model.mode, &mut warnings);
     let lora = convert_lora(manifest, &mut warnings);
     let quantize = convert_quantize(manifest);
 
@@ -137,9 +137,29 @@ fn convert_data(
 
     let batch_size = data_cfg.loader.as_ref().map_or(8, |l| l.batch_size);
 
-    if data_cfg.preprocessing.is_some() {
-        warnings.push("data.preprocessing is not supported in legacy TrainSpec".into());
+    // Bridge LLM data fields directly from manifest
+    let mut tokenizer = data_cfg.tokenizer.as_ref().map(PathBuf::from);
+    let seq_len = data_cfg.seq_len;
+    let input_column = data_cfg.input_column.clone();
+    let output_column = data_cfg.output_column.clone();
+    let mut max_length = data_cfg.max_length;
+
+    // Fallback: extract tokenizer/max_length from preprocessing Tokenize step
+    if let Some(ref steps) = data_cfg.preprocessing {
+        for step in steps {
+            if let crate::yaml_mode::manifest::data::PreprocessingStep::Tokenize { tokenize } = step
+            {
+                if tokenizer.is_none() {
+                    tokenizer = Some(PathBuf::from(&tokenize.tokenizer));
+                }
+                if max_length.is_none() {
+                    max_length = tokenize.max_length;
+                }
+                break;
+            }
+        }
     }
+
     if data_cfg.augmentation.is_some() {
         warnings.push("data.augmentation is not supported in legacy TrainSpec".into());
     }
@@ -149,11 +169,11 @@ fn convert_data(
         val,
         batch_size,
         auto_infer_types: true,
-        seq_len: None,
-        tokenizer: None,
-        input_column: None,
-        output_column: None,
-        max_length: None,
+        seq_len,
+        tokenizer,
+        input_column,
+        output_column,
+        max_length,
     })
 }
 
@@ -192,7 +212,11 @@ fn convert_optimizer(manifest: &TrainingManifest) -> Result<OptimSpec, BridgeErr
 }
 
 /// Convert training config from manifest to spec
-fn convert_training(manifest: &TrainingManifest, warnings: &mut Vec<String>) -> TrainingParams {
+fn convert_training(
+    manifest: &TrainingManifest,
+    model_mode: ModelMode,
+    warnings: &mut Vec<String>,
+) -> TrainingParams {
     let training_cfg = manifest.training.as_ref();
     let scheduler_cfg = manifest.scheduler.as_ref();
     let output_cfg = manifest.output.as_ref();
@@ -224,8 +248,69 @@ fn convert_training(manifest: &TrainingManifest, warnings: &mut Vec<String>) -> 
         .and_then(|w| w.steps)
         .unwrap_or(0);
 
+    // Collect scheduler-specific params into a HashMap
+    let scheduler_params = scheduler_cfg.and_then(|s| {
+        let mut params: HashMap<String, serde_json::Value> = HashMap::new();
+
+        if let Some(v) = s.t_max {
+            params.insert("t_max".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.eta_min {
+            params.insert("eta_min".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.step_size {
+            params.insert("step_size".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.gamma {
+            params.insert("gamma".into(), serde_json::json!(v));
+        }
+        if let Some(ref v) = s.mode {
+            params.insert("mode".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.factor {
+            params.insert("factor".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.patience {
+            params.insert("patience".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.threshold {
+            params.insert("threshold".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.max_lr {
+            params.insert("max_lr".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.pct_start {
+            params.insert("pct_start".into(), serde_json::json!(v));
+        }
+        if let Some(ref v) = s.anneal_strategy {
+            params.insert("anneal_strategy".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.div_factor {
+            params.insert("div_factor".into(), serde_json::json!(v));
+        }
+        if let Some(v) = s.final_div_factor {
+            params.insert("final_div_factor".into(), serde_json::json!(v));
+        }
+
+        if params.is_empty() {
+            None
+        } else {
+            Some(params)
+        }
+    });
+
     let output_dir =
         output_cfg.map_or_else(|| PathBuf::from("./checkpoints"), |o| PathBuf::from(&o.dir));
+
+    // Training mode: CausalLm for transformer models, Regression otherwise
+    let mode = if model_mode == ModelMode::Transformer {
+        TrainingMode::CausalLm
+    } else {
+        TrainingMode::default()
+    };
+
+    // Pass through manifest seed
+    let seed = manifest.seed;
 
     if training_cfg
         .and_then(|t| t.early_stopping.as_ref())
@@ -244,10 +329,12 @@ fn convert_training(manifest: &TrainingManifest, warnings: &mut Vec<String>) -> 
         warmup_steps,
         save_interval,
         output_dir,
-        mode: TrainingMode::default(),
+        mode,
         gradient_accumulation,
         checkpoints: None,
         mixed_precision,
+        scheduler_params,
+        seed,
     }
 }
 
@@ -327,6 +414,11 @@ mod tests {
                 preprocessing: None,
                 augmentation: None,
                 loader: None,
+                tokenizer: None,
+                seq_len: None,
+                input_column: None,
+                output_column: None,
+                max_length: None,
             }),
             model: Some(ModelConfig {
                 source: "./models/base.safetensors".into(),
@@ -433,6 +525,11 @@ mod tests {
             preprocessing: None,
             augmentation: None,
             loader: None,
+            tokenizer: None,
+            seq_len: None,
+            input_column: None,
+            output_column: None,
+            max_length: None,
         });
         let err = manifest_to_spec(&manifest).unwrap_err();
         assert!(matches!(err, BridgeError::MissingRequired(_)));
@@ -767,6 +864,7 @@ mod tests {
 entrenar: "1.0"
 name: "full-test"
 version: "1.0.0"
+seed: 42
 
 model:
   source: "./models/llama.safetensors"
@@ -777,6 +875,11 @@ model:
 data:
   source: "./data/train.jsonl"
   val: "./data/val.jsonl"
+  tokenizer: "./tokenizer.json"
+  seq_len: 2048
+  input_column: text
+  output_column: target
+  max_length: 512
   loader:
     batch_size: 16
     shuffle: true
@@ -789,6 +892,8 @@ optimizer:
 
 scheduler:
   name: cosine
+  T_max: 1000
+  eta_min: 0.000001
   warmup:
     steps: 200
 
@@ -838,8 +943,19 @@ output:
             Some(PathBuf::from("./data/val.jsonl"))
         );
         assert_eq!(result.spec.data.batch_size, 16);
+        // LLM data fields
+        assert_eq!(
+            result.spec.data.tokenizer,
+            Some(PathBuf::from("./tokenizer.json"))
+        );
+        assert_eq!(result.spec.data.seq_len, Some(2048));
+        assert_eq!(result.spec.data.input_column, Some("text".into()));
+        assert_eq!(result.spec.data.output_column, Some("target".into()));
+        assert_eq!(result.spec.data.max_length, Some(512));
+        // Optimizer
         assert_eq!(result.spec.optimizer.name, "adamw");
         assert!((result.spec.optimizer.lr - 0.0003).abs() < 1e-6);
+        // Training
         assert_eq!(result.spec.training.epochs, 3);
         assert_eq!(result.spec.training.grad_clip, Some(1.0));
         assert_eq!(result.spec.training.gradient_accumulation, Some(8));
@@ -851,6 +967,14 @@ output:
             result.spec.training.output_dir,
             PathBuf::from("./outputs/full-test")
         );
+        // Training mode: transformer → CausalLm
+        assert_eq!(result.spec.training.mode, TrainingMode::CausalLm);
+        // Seed
+        assert_eq!(result.spec.training.seed, Some(42));
+        // Scheduler params
+        let sched_params = result.spec.training.scheduler_params.as_ref().unwrap();
+        assert_eq!(sched_params["t_max"], serde_json::json!(1000));
+        assert_eq!(sched_params["eta_min"], serde_json::json!(0.000001));
 
         let lora = result.spec.lora.unwrap();
         assert_eq!(lora.rank, 32);
@@ -859,5 +983,264 @@ output:
         assert_eq!(quant.bits, 4);
         assert!(quant.symmetric);
         assert!(quant.per_channel);
+    }
+
+    // === Phase 2 Tests ===
+
+    #[test]
+    fn test_transformer_gets_causal_lm_mode() {
+        let mut manifest = minimal_manifest();
+        manifest.model.as_mut().unwrap().architecture = Some(ArchitectureConfig {
+            arch_type: "transformer".into(),
+            hidden_size: None,
+            num_layers: None,
+            num_heads: None,
+            vocab_size: None,
+            max_seq_length: None,
+            layers: None,
+        });
+        let result = manifest_to_spec(&manifest).unwrap();
+        assert_eq!(result.spec.training.mode, TrainingMode::CausalLm);
+    }
+
+    #[test]
+    fn test_tabular_gets_regression_mode() {
+        let manifest = minimal_manifest();
+        let result = manifest_to_spec(&manifest).unwrap();
+        assert_eq!(result.spec.model.mode, ModelMode::Tabular);
+        assert_eq!(result.spec.training.mode, TrainingMode::Regression);
+    }
+
+    #[test]
+    fn test_data_llm_fields_converted() {
+        let mut manifest = minimal_manifest();
+        let data = manifest.data.as_mut().unwrap();
+        data.tokenizer = Some("./tokenizer.json".into());
+        data.seq_len = Some(2048);
+        data.input_column = Some("text".into());
+        data.output_column = Some("label".into());
+        data.max_length = Some(512);
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        assert_eq!(
+            result.spec.data.tokenizer,
+            Some(PathBuf::from("./tokenizer.json"))
+        );
+        assert_eq!(result.spec.data.seq_len, Some(2048));
+        assert_eq!(result.spec.data.input_column, Some("text".into()));
+        assert_eq!(result.spec.data.output_column, Some("label".into()));
+        assert_eq!(result.spec.data.max_length, Some(512));
+    }
+
+    #[test]
+    fn test_data_tokenizer_from_preprocessing_fallback() {
+        use crate::yaml_mode::manifest::data::{PreprocessingStep, TokenizeConfig};
+
+        let mut manifest = minimal_manifest();
+        let data = manifest.data.as_mut().unwrap();
+        // No top-level tokenizer, but set preprocessing
+        data.preprocessing = Some(vec![PreprocessingStep::Tokenize {
+            tokenize: TokenizeConfig {
+                tokenizer: "./fallback-tokenizer.json".into(),
+                max_length: Some(256),
+                padding: None,
+                truncation: None,
+            },
+        }]);
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        assert_eq!(
+            result.spec.data.tokenizer,
+            Some(PathBuf::from("./fallback-tokenizer.json"))
+        );
+        assert_eq!(result.spec.data.max_length, Some(256));
+    }
+
+    #[test]
+    fn test_data_toplevel_tokenizer_takes_precedence() {
+        use crate::yaml_mode::manifest::data::{PreprocessingStep, TokenizeConfig};
+
+        let mut manifest = minimal_manifest();
+        let data = manifest.data.as_mut().unwrap();
+        data.tokenizer = Some("./primary.json".into());
+        data.max_length = Some(1024);
+        data.preprocessing = Some(vec![PreprocessingStep::Tokenize {
+            tokenize: TokenizeConfig {
+                tokenizer: "./fallback.json".into(),
+                max_length: Some(256),
+                padding: None,
+                truncation: None,
+            },
+        }]);
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        // Top-level takes precedence over preprocessing fallback
+        assert_eq!(
+            result.spec.data.tokenizer,
+            Some(PathBuf::from("./primary.json"))
+        );
+        assert_eq!(result.spec.data.max_length, Some(1024));
+    }
+
+    #[test]
+    fn test_scheduler_params_cosine() {
+        let mut manifest = minimal_manifest();
+        manifest.scheduler = Some(SchedulerConfig {
+            name: "cosine".into(),
+            warmup: None,
+            t_max: Some(500),
+            eta_min: Some(1e-6),
+            step_size: None,
+            gamma: None,
+            mode: None,
+            factor: None,
+            patience: None,
+            threshold: None,
+            max_lr: None,
+            pct_start: None,
+            anneal_strategy: None,
+            div_factor: None,
+            final_div_factor: None,
+        });
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        let params = result.spec.training.scheduler_params.unwrap();
+        assert_eq!(params["t_max"], serde_json::json!(500));
+        assert_eq!(params["eta_min"], serde_json::json!(1e-6));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_scheduler_params_step() {
+        let mut manifest = minimal_manifest();
+        manifest.scheduler = Some(SchedulerConfig {
+            name: "step".into(),
+            warmup: None,
+            t_max: None,
+            eta_min: None,
+            step_size: Some(30),
+            gamma: Some(0.1),
+            mode: None,
+            factor: None,
+            patience: None,
+            threshold: None,
+            max_lr: None,
+            pct_start: None,
+            anneal_strategy: None,
+            div_factor: None,
+            final_div_factor: None,
+        });
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        let params = result.spec.training.scheduler_params.unwrap();
+        assert_eq!(params["step_size"], serde_json::json!(30));
+        assert_eq!(params["gamma"], serde_json::json!(0.1));
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn test_scheduler_params_plateau() {
+        let mut manifest = minimal_manifest();
+        manifest.scheduler = Some(SchedulerConfig {
+            name: "plateau".into(),
+            warmup: None,
+            t_max: None,
+            eta_min: None,
+            step_size: None,
+            gamma: None,
+            mode: Some("min".into()),
+            factor: Some(0.1),
+            patience: Some(10),
+            threshold: Some(1e-4),
+            max_lr: None,
+            pct_start: None,
+            anneal_strategy: None,
+            div_factor: None,
+            final_div_factor: None,
+        });
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        let params = result.spec.training.scheduler_params.unwrap();
+        assert_eq!(params["mode"], serde_json::json!("min"));
+        assert_eq!(params["factor"], serde_json::json!(0.1));
+        assert_eq!(params["patience"], serde_json::json!(10));
+        assert_eq!(params["threshold"], serde_json::json!(1e-4));
+        assert_eq!(params.len(), 4);
+    }
+
+    #[test]
+    fn test_scheduler_params_one_cycle() {
+        let mut manifest = minimal_manifest();
+        manifest.scheduler = Some(SchedulerConfig {
+            name: "one_cycle".into(),
+            warmup: None,
+            t_max: None,
+            eta_min: None,
+            step_size: None,
+            gamma: None,
+            mode: None,
+            factor: None,
+            patience: None,
+            threshold: None,
+            max_lr: Some(0.01),
+            pct_start: Some(0.3),
+            anneal_strategy: Some("cos".into()),
+            div_factor: Some(25.0),
+            final_div_factor: Some(1e4),
+        });
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        let params = result.spec.training.scheduler_params.unwrap();
+        assert_eq!(params["max_lr"], serde_json::json!(0.01));
+        assert_eq!(params["pct_start"], serde_json::json!(0.3));
+        assert_eq!(params["anneal_strategy"], serde_json::json!("cos"));
+        assert_eq!(params["div_factor"], serde_json::json!(25.0));
+        assert_eq!(params["final_div_factor"], serde_json::json!(1e4));
+        assert_eq!(params.len(), 5);
+    }
+
+    #[test]
+    fn test_scheduler_no_params_yields_none() {
+        let mut manifest = minimal_manifest();
+        manifest.scheduler = Some(SchedulerConfig {
+            name: "cosine".into(),
+            warmup: Some(WarmupConfig {
+                steps: Some(100),
+                ratio: None,
+                start_lr: None,
+            }),
+            t_max: None,
+            eta_min: None,
+            step_size: None,
+            gamma: None,
+            mode: None,
+            factor: None,
+            patience: None,
+            threshold: None,
+            max_lr: None,
+            pct_start: None,
+            anneal_strategy: None,
+            div_factor: None,
+            final_div_factor: None,
+        });
+
+        let result = manifest_to_spec(&manifest).unwrap();
+        // Only warmup set, no scheduler-specific params → None
+        assert!(result.spec.training.scheduler_params.is_none());
+    }
+
+    #[test]
+    fn test_seed_passed_through() {
+        let mut manifest = minimal_manifest();
+        manifest.seed = Some(12345);
+        let result = manifest_to_spec(&manifest).unwrap();
+        assert_eq!(result.spec.training.seed, Some(12345));
+    }
+
+    #[test]
+    fn test_seed_none_when_not_set() {
+        let manifest = minimal_manifest();
+        let result = manifest_to_spec(&manifest).unwrap();
+        assert!(result.spec.training.seed.is_none());
     }
 }

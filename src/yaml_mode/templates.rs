@@ -83,6 +83,11 @@ fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> Trai
                 drop_last: Some(false),
                 prefetch_factor: None,
             }),
+            tokenizer: None,
+            seq_len: None,
+            input_column: None,
+            output_column: None,
+            max_length: None,
         }),
         model: model.map(|m| ModelConfig {
             source: m.to_string(),
