@@ -270,3 +270,227 @@ impl Exporter {
         self.export(weights, format, path)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hf_pipeline::export::weights::ModelMetadata;
+
+    fn make_test_weights() -> ModelWeights {
+        let mut weights = ModelWeights::new();
+        weights.add_tensor("layer.0.weight", vec![1.0; 64], vec![8, 8]);
+        weights.metadata = ModelMetadata {
+            model_name: Some("test-model".to_string()),
+            architecture: Some("llama".to_string()),
+            num_params: 64,
+            ..Default::default()
+        };
+        weights
+    }
+
+    // =================================================================
+    // TIER 4: Builder pattern & defaults
+    // =================================================================
+
+    #[test]
+    fn test_falsify_exporter_default_values() {
+        let exp = Exporter::new();
+        assert_eq!(exp.output_dir, PathBuf::from("."));
+        assert_eq!(exp.default_format, ExportFormat::SafeTensors);
+        assert!(exp.include_metadata);
+        assert_eq!(exp.gguf_quantization, GgufQuantization::None);
+    }
+
+    #[test]
+    fn test_falsify_exporter_default_eq_new() {
+        let a = Exporter::new();
+        let b = Exporter::default();
+        assert_eq!(a.output_dir, b.output_dir);
+        assert_eq!(a.default_format, b.default_format);
+        assert_eq!(a.include_metadata, b.include_metadata);
+        assert_eq!(a.gguf_quantization, b.gguf_quantization);
+    }
+
+    #[test]
+    fn test_falsify_builder_order_independence() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+
+        let result1 = Exporter::new()
+            .output_dir(dir.path())
+            .gguf_quantization(GgufQuantization::Q4_0)
+            .include_metadata(false)
+            .export(&weights, ExportFormat::GGUF, "a.gguf")
+            .unwrap();
+
+        let result2 = Exporter::new()
+            .include_metadata(false)
+            .gguf_quantization(GgufQuantization::Q4_0)
+            .output_dir(dir.path())
+            .export(&weights, ExportFormat::GGUF, "b.gguf")
+            .unwrap();
+
+        assert_eq!(result1.size_bytes, result2.size_bytes);
+        assert_eq!(result1.num_tensors, result2.num_tensors);
+    }
+
+    #[test]
+    fn test_falsify_builder_setter_override() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+
+        // Set Q8_0 then override to Q4_0
+        let result = Exporter::new()
+            .output_dir(dir.path())
+            .gguf_quantization(GgufQuantization::Q8_0)
+            .gguf_quantization(GgufQuantization::Q4_0)
+            .include_metadata(false)
+            .export(&weights, ExportFormat::GGUF, "override.gguf")
+            .unwrap();
+
+        let file_data = std::fs::read(dir.path().join("override.gguf")).unwrap();
+        let summary = crate::hf_pipeline::export::gguf_verify::verify_gguf(&file_data).unwrap();
+        // Should be Q4_0 (dtype=2), not Q8_0 (dtype=8)
+        assert_eq!(summary.tensors[0].dtype, 2, "override should use Q4_0");
+    }
+
+    // =================================================================
+    // TIER 4: Format rejection & regression
+    // =================================================================
+
+    #[test]
+    fn test_falsify_pytorch_format_rejected() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new().output_dir(dir.path());
+        let result = exporter.export(&weights, ExportFormat::PyTorch, "model.pt");
+        assert!(result.is_err(), "PyTorch export must be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, FetchError::PickleSecurityRisk),
+            "error must be PickleSecurityRisk, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_falsify_safetensors_export_works() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new().output_dir(dir.path());
+        let result = exporter
+            .export(&weights, ExportFormat::SafeTensors, "model.safetensors")
+            .unwrap();
+        assert_eq!(result.format, ExportFormat::SafeTensors);
+        assert!(result.size_bytes > 0);
+        assert!(dir.path().join("model.safetensors").exists());
+    }
+
+    #[test]
+    fn test_falsify_apr_export_works() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new().output_dir(dir.path());
+        let result = exporter
+            .export(&weights, ExportFormat::APR, "model.apr.json")
+            .unwrap();
+        assert_eq!(result.format, ExportFormat::APR);
+        assert!(result.size_bytes > 0);
+        assert!(dir.path().join("model.apr.json").exists());
+    }
+
+    #[test]
+    fn test_falsify_safetensors_ignores_quantization_setting() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        // Set Q4_0 quant — should be silently ignored for SafeTensors
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .gguf_quantization(GgufQuantization::Q4_0);
+        let result = exporter
+            .export(&weights, ExportFormat::SafeTensors, "model.safetensors")
+            .unwrap();
+        assert_eq!(result.format, ExportFormat::SafeTensors);
+        assert!(result.size_bytes > 0);
+    }
+
+    // =================================================================
+    // TIER 4: export_auto() format detection
+    // =================================================================
+
+    #[test]
+    fn test_falsify_export_auto_detects_gguf() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .default_format(ExportFormat::APR);
+        let result = exporter.export_auto(&weights, "model.gguf").unwrap();
+        assert_eq!(result.format, ExportFormat::GGUF);
+    }
+
+    #[test]
+    fn test_falsify_export_auto_detects_safetensors() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .default_format(ExportFormat::GGUF);
+        let result = exporter.export_auto(&weights, "model.safetensors").unwrap();
+        assert_eq!(result.format, ExportFormat::SafeTensors);
+    }
+
+    #[test]
+    fn test_falsify_export_auto_detects_apr() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .default_format(ExportFormat::GGUF);
+        let result = exporter.export_auto(&weights, "model.apr.json").unwrap();
+        assert_eq!(result.format, ExportFormat::APR);
+    }
+
+    #[test]
+    fn test_falsify_export_auto_unknown_extension_uses_default() {
+        let weights = make_test_weights();
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .default_format(ExportFormat::GGUF);
+        let result = exporter.export_auto(&weights, "model.unknown").unwrap();
+        assert_eq!(result.format, ExportFormat::GGUF);
+    }
+
+    // =================================================================
+    // TIER 4: num_tensors invariant
+    // =================================================================
+
+    #[test]
+    fn test_falsify_num_tensors_matches_input() {
+        for n in [0, 1, 3, 10] {
+            let mut weights = ModelWeights::new();
+            for i in 0..n {
+                weights.add_tensor(format!("t.{i}"), vec![1.0], vec![1]);
+            }
+
+            let dir = tempfile::tempdir().unwrap();
+            let exporter = Exporter::new()
+                .output_dir(dir.path())
+                .include_metadata(false);
+            let result = exporter
+                .export(&weights, ExportFormat::GGUF, "count.gguf")
+                .unwrap();
+            assert_eq!(
+                result.num_tensors, n,
+                "num_tensors mismatch for {n} input tensors"
+            );
+
+            let file_data = std::fs::read(dir.path().join("count.gguf")).unwrap();
+            let summary = crate::hf_pipeline::export::gguf_verify::verify_gguf(&file_data).unwrap();
+            assert_eq!(
+                summary.tensor_count, n as u64,
+                "GGUF header tensor_count mismatch for {n}"
+            );
+        }
+    }
+}

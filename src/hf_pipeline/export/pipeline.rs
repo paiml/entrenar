@@ -418,4 +418,169 @@ mod tests {
             "f32 data must survive pipeline exactly"
         );
     }
+
+    // =====================================================================
+    // TIER 3: File size monotonicity across varying tensor counts
+    // =====================================================================
+
+    #[test]
+    fn test_falsify_pipeline_size_monotonic_with_tensor_count() {
+        // For same quant mode, more tensors → larger file
+        let mut prev_size = 0u64;
+        for n in [1, 2, 4, 8] {
+            let mut weights = ModelWeights::new();
+            for i in 0..n {
+                weights.add_tensor(format!("layer.{i}.weight"), vec![1.0; 64], vec![8, 8]);
+            }
+            weights.metadata.num_params = n as u64 * 64;
+
+            let tmp = TempDir::new().unwrap();
+            let result =
+                quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
+                    .unwrap();
+
+            assert!(
+                result.export.size_bytes > prev_size,
+                "F32 {n} tensors ({}) must be > prev ({prev_size})",
+                result.export.size_bytes
+            );
+            prev_size = result.export.size_bytes;
+        }
+    }
+
+    #[test]
+    fn test_falsify_pipeline_q4_size_monotonic_with_tensor_count() {
+        let mut prev_size = 0u64;
+        for n in [1, 2, 4, 8] {
+            let mut weights = ModelWeights::new();
+            for i in 0..n {
+                weights.add_tensor(format!("layer.{i}.weight"), vec![1.0; 64], vec![8, 8]);
+            }
+            weights.metadata.num_params = n as u64 * 64;
+
+            let tmp = TempDir::new().unwrap();
+            let result =
+                quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "model.gguf")
+                    .unwrap();
+
+            assert!(
+                result.export.size_bytes > prev_size,
+                "Q4_0 {n} tensors ({}) must be > prev ({prev_size})",
+                result.export.size_bytes
+            );
+            prev_size = result.export.size_bytes;
+        }
+    }
+
+    #[test]
+    fn test_falsify_pipeline_size_ordering_at_multiple_scales() {
+        // For various tensor element counts, always: Q4 < Q8 < F32
+        for n_elements in [32, 128, 512, 1024] {
+            let mut weights = ModelWeights::new();
+            weights.add_tensor("w", vec![0.5; n_elements], vec![n_elements]);
+            weights.metadata.num_params = n_elements as u64;
+
+            let sizes: Vec<(GgufQuantization, u64)> = [
+                GgufQuantization::None,
+                GgufQuantization::Q8_0,
+                GgufQuantization::Q4_0,
+            ]
+            .iter()
+            .map(|&quant| {
+                let tmp = TempDir::new().unwrap();
+                let result = quantize_and_export(&weights, quant, tmp.path(), "m.gguf").unwrap();
+                (quant, result.export.size_bytes)
+            })
+            .collect();
+
+            let (_, f32_size) = sizes[0];
+            let (_, q8_size) = sizes[1];
+            let (_, q4_size) = sizes[2];
+
+            assert!(
+                q4_size < q8_size,
+                "at {n_elements} elements: Q4={q4_size} must be < Q8={q8_size}"
+            );
+            assert!(
+                q8_size < f32_size,
+                "at {n_elements} elements: Q8={q8_size} must be < F32={f32_size}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_falsify_pipeline_magic_bytes_all_quant_modes() {
+        let weights = make_test_weights();
+        for quant in [
+            GgufQuantization::None,
+            GgufQuantization::Q4_0,
+            GgufQuantization::Q8_0,
+        ] {
+            let tmp = TempDir::new().unwrap();
+            quantize_and_export(&weights, quant, tmp.path(), "model.gguf").unwrap();
+            let file_data = std::fs::read(tmp.path().join("model.gguf")).unwrap();
+            assert_eq!(
+                &file_data[0..4],
+                b"GGUF",
+                "magic bytes wrong for pipeline {quant:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_falsify_pipeline_readme_file_size_field() {
+        let weights = make_test_weights();
+        let tmp = TempDir::new().unwrap();
+        let result =
+            quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
+                .unwrap();
+        let readme = result.readme.unwrap();
+        // README should contain the human-readable size string
+        let size_str = result.export.size_human();
+        assert!(
+            readme.contains(&size_str),
+            "README should contain size '{size_str}', got:\n{readme}"
+        );
+    }
+
+    #[test]
+    fn test_falsify_pipeline_readme_tensor_count() {
+        let weights = make_test_weights();
+        let tmp = TempDir::new().unwrap();
+        let result =
+            quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
+                .unwrap();
+        let readme = result.readme.unwrap();
+        assert!(
+            readme.contains(&format!("{}", result.export.num_tensors)),
+            "README should contain tensor count {}",
+            result.export.num_tensors
+        );
+    }
+
+    #[test]
+    fn test_falsify_pipeline_readme_has_yaml_frontmatter() {
+        let weights = make_test_weights();
+        let tmp = TempDir::new().unwrap();
+        let result =
+            quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
+                .unwrap();
+        let readme = result.readme.unwrap();
+        assert!(
+            readme.starts_with("---\n"),
+            "README must start with YAML frontmatter"
+        );
+        assert!(
+            readme.contains("tags:"),
+            "README must have tags in frontmatter"
+        );
+        assert!(
+            readme.contains("- gguf"),
+            "README frontmatter must tag 'gguf'"
+        );
+        assert!(
+            readme.contains("- entrenar"),
+            "README frontmatter must tag 'entrenar'"
+        );
+    }
 }
