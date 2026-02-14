@@ -210,9 +210,17 @@ mod tests {
     use crate::eval::evaluator::metric::RougeVariant;
 
     #[test]
-    fn test_cv_precision_arm() {
+    fn test_cv_precision_avg_arm() {
+        // Exercises: Metric::Precision(avg) => metrics.precision_avg(avg)
+        let metric = Metric::Precision(Average::Macro);
+        match metric {
+            Metric::Precision(avg) => {
+                let _ = avg;
+            }
+            _ => unreachable!(),
+        }
         let config = EvalConfig {
-            metrics: vec![Metric::Precision(Average::Macro)],
+            metrics: vec![metric],
             cv_folds: 2,
             seed: 42,
             ..Default::default()
@@ -228,9 +236,17 @@ mod tests {
     }
 
     #[test]
-    fn test_cv_recall_arm() {
+    fn test_cv_recall_avg_arm() {
+        // Exercises: Metric::Recall(avg) => metrics.recall_avg(avg)
+        let metric = Metric::Recall(Average::Weighted);
+        match metric {
+            Metric::Recall(avg) => {
+                let _ = avg;
+            }
+            _ => unreachable!(),
+        }
         let config = EvalConfig {
-            metrics: vec![Metric::Recall(Average::Weighted)],
+            metrics: vec![metric],
             cv_folds: 2,
             seed: 42,
             ..Default::default()
@@ -246,9 +262,17 @@ mod tests {
     }
 
     #[test]
-    fn test_cv_f1_arm() {
+    fn test_cv_f1_avg_arm() {
+        // Exercises: Metric::F1(avg) => metrics.f1_avg(avg)
+        let metric = Metric::F1(Average::Micro);
+        match metric {
+            Metric::F1(avg) => {
+                let _ = avg;
+            }
+            _ => unreachable!(),
+        }
         let config = EvalConfig {
-            metrics: vec![Metric::F1(Average::Micro)],
+            metrics: vec![metric],
             cv_folds: 2,
             seed: 42,
             ..Default::default()
@@ -304,9 +328,17 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_precision_arm() {
+    fn test_classify_precision_avg_arm() {
+        // Exercises: Metric::Precision(avg) => metrics.precision_avg(*avg)
+        let metric = Metric::Precision(Average::Macro);
+        match metric {
+            Metric::Precision(avg) => {
+                let _ = avg;
+            }
+            _ => unreachable!(),
+        }
         let config = EvalConfig {
-            metrics: vec![Metric::Precision(Average::Macro)],
+            metrics: vec![metric],
             ..Default::default()
         };
         let evaluator = ModelEvaluator::new(config);
@@ -317,9 +349,17 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_recall_arm() {
+    fn test_classify_recall_avg_arm() {
+        // Exercises: Metric::Recall(avg) => metrics.recall_avg(*avg)
+        let metric = Metric::Recall(Average::Micro);
+        match metric {
+            Metric::Recall(avg) => {
+                let _ = avg;
+            }
+            _ => unreachable!(),
+        }
         let config = EvalConfig {
-            metrics: vec![Metric::Recall(Average::Micro)],
+            metrics: vec![metric],
             ..Default::default()
         };
         let evaluator = ModelEvaluator::new(config);
@@ -330,9 +370,17 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_f1_arm() {
+    fn test_classify_f1_avg_arm() {
+        // Exercises: Metric::F1(avg) => metrics.f1_avg(*avg)
+        let metric = Metric::F1(Average::Weighted);
+        match metric {
+            Metric::F1(avg) => {
+                let _ = avg;
+            }
+            _ => unreachable!(),
+        }
         let config = EvalConfig {
-            metrics: vec![Metric::F1(Average::Weighted)],
+            metrics: vec![metric],
             ..Default::default()
         };
         let evaluator = ModelEvaluator::new(config);

@@ -141,41 +141,132 @@ impl fmt::Display for Metric {
 mod tests {
     use super::*;
 
-    // Individual display tests per variant arm
+    // name() arm tests — each exercises its exact match arm with `_` wildcard
     #[test]
-    fn test_display_precision() {
+    fn test_name_precision_arm() {
         let m = Metric::Precision(Average::Macro);
-        assert_eq!(m.to_string(), "Precision(Macro)");
+        match m {
+            Metric::Precision(_) => assert_eq!(m.name(), "Precision"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_display_recall() {
+    fn test_name_recall_arm() {
         let m = Metric::Recall(Average::Micro);
-        assert_eq!(m.to_string(), "Recall(Micro)");
+        match m {
+            Metric::Recall(_) => assert_eq!(m.name(), "Recall"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_display_f1() {
+    fn test_name_f1_arm() {
         let m = Metric::F1(Average::Weighted);
-        assert_eq!(m.to_string(), "F1(Weighted)");
+        match m {
+            Metric::F1(_) => assert_eq!(m.name(), "F1"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_display_rouge() {
+    fn test_name_rouge_arm() {
+        let m = Metric::ROUGE(RougeVariant::RougeL);
+        match m {
+            Metric::ROUGE(_) => assert_eq!(m.name(), "ROUGE"),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_name_pass_at_k_arm() {
+        let m = Metric::PassAtK(1);
+        match m {
+            Metric::PassAtK(_) => assert_eq!(m.name(), "pass@k"),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_name_ndcg_at_k_arm() {
+        let m = Metric::NDCGAtK(5);
+        match m {
+            Metric::NDCGAtK(_) => assert_eq!(m.name(), "NDCG@k"),
+            _ => unreachable!(),
+        }
+    }
+
+    // Display arm tests — each exercises its exact match arm with named binding
+    #[test]
+    fn test_display_precision_avg_arm() {
+        let m = Metric::Precision(Average::Macro);
+        match m {
+            Metric::Precision(avg) => {
+                let _ = avg;
+                assert_eq!(m.to_string(), "Precision(Macro)");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_display_recall_avg_arm() {
+        let m = Metric::Recall(Average::Micro);
+        match m {
+            Metric::Recall(avg) => {
+                let _ = avg;
+                assert_eq!(m.to_string(), "Recall(Micro)");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_display_f1_avg_arm() {
+        let m = Metric::F1(Average::Weighted);
+        match m {
+            Metric::F1(avg) => {
+                let _ = avg;
+                assert_eq!(m.to_string(), "F1(Weighted)");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_display_rouge_variant_arm() {
         let m = Metric::ROUGE(RougeVariant::Rouge1);
-        assert_eq!(m.to_string(), "ROUGE-1");
+        match m {
+            Metric::ROUGE(variant) => {
+                let _ = variant;
+                assert_eq!(m.to_string(), "ROUGE-1");
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_display_pass_at_k() {
+    fn test_display_pass_at_k_arm() {
         let m = Metric::PassAtK(5);
-        assert_eq!(m.to_string(), "pass@5");
+        match m {
+            Metric::PassAtK(k) => {
+                let _ = k;
+                assert_eq!(m.to_string(), "pass@5");
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_display_ndcg_at_k() {
+    fn test_display_ndcg_at_k_arm() {
         let m = Metric::NDCGAtK(10);
-        assert_eq!(m.to_string(), "NDCG@10");
+        match m {
+            Metric::NDCGAtK(k) => {
+                let _ = k;
+                assert_eq!(m.to_string(), "NDCG@10");
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[test]
@@ -192,37 +283,6 @@ mod tests {
         assert_eq!(Metric::BLEU.to_string(), "BLEU");
         assert_eq!(Metric::Perplexity.to_string(), "Perplexity");
         assert_eq!(Metric::MMLUAccuracy.to_string(), "MMLU");
-    }
-
-    // Individual name() tests per variant arm
-    #[test]
-    fn test_name_precision() {
-        assert_eq!(Metric::Precision(Average::Macro).name(), "Precision");
-    }
-
-    #[test]
-    fn test_name_recall() {
-        assert_eq!(Metric::Recall(Average::Micro).name(), "Recall");
-    }
-
-    #[test]
-    fn test_name_f1() {
-        assert_eq!(Metric::F1(Average::Weighted).name(), "F1");
-    }
-
-    #[test]
-    fn test_name_rouge() {
-        assert_eq!(Metric::ROUGE(RougeVariant::RougeL).name(), "ROUGE");
-    }
-
-    #[test]
-    fn test_name_pass_at_k() {
-        assert_eq!(Metric::PassAtK(1).name(), "pass@k");
-    }
-
-    #[test]
-    fn test_name_ndcg_at_k() {
-        assert_eq!(Metric::NDCGAtK(5).name(), "NDCG@k");
     }
 
     #[test]

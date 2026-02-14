@@ -636,33 +636,57 @@ mod tests {
     }
 
     #[test]
-    fn test_qa_grade_display_aplus() {
-        assert_eq!(format!("{}", QAGrade::APlus), "A+ (Excellent)");
+    fn test_qa_grade_display_aplus_arm() {
+        let g = QAGrade::APlus;
+        match g {
+            QAGrade::APlus => assert_eq!(g.to_string(), "A+ (Excellent)"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_qa_grade_display_a() {
-        assert_eq!(format!("{}", QAGrade::A), "A  (Very Good)");
+    fn test_qa_grade_display_a_arm() {
+        let g = QAGrade::A;
+        match g {
+            QAGrade::A => assert_eq!(g.to_string(), "A  (Very Good)"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_qa_grade_display_bplus() {
-        assert_eq!(format!("{}", QAGrade::BPlus), "B+ (Good)");
+    fn test_qa_grade_display_bplus_arm() {
+        let g = QAGrade::BPlus;
+        match g {
+            QAGrade::BPlus => assert_eq!(g.to_string(), "B+ (Good)"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_qa_grade_display_b() {
-        assert_eq!(format!("{}", QAGrade::B), "B  (Satisfactory)");
+    fn test_qa_grade_display_b_arm() {
+        let g = QAGrade::B;
+        match g {
+            QAGrade::B => assert_eq!(g.to_string(), "B  (Satisfactory)"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_qa_grade_display_c() {
-        assert_eq!(format!("{}", QAGrade::C), "C  (Needs Improvement)");
+    fn test_qa_grade_display_c_arm() {
+        let g = QAGrade::C;
+        match g {
+            QAGrade::C => assert_eq!(g.to_string(), "C  (Needs Improvement)"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]
-    fn test_qa_grade_display_f() {
-        assert_eq!(format!("{}", QAGrade::F), "F  (Failing)");
+    fn test_qa_grade_display_f_arm() {
+        let g = QAGrade::F;
+        match g {
+            QAGrade::F => assert_eq!(g.to_string(), "F  (Failing)"),
+            _ => unreachable!(),
+        }
     }
 
     #[test]

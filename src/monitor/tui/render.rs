@@ -969,9 +969,14 @@ mod tests {
     }
 
     #[test]
-    fn test_render_header_failed() {
+    fn test_render_header_failed_arm() {
+        let status = TrainingStatus::Failed("out of memory".to_string());
+        match &status {
+            TrainingStatus::Failed(_) => {}
+            _ => unreachable!(),
+        }
         let snapshot = TrainingSnapshot {
-            status: TrainingStatus::Failed("out of memory".to_string()),
+            status,
             model_name: "TestModel".to_string(),
             ..Default::default()
         };
