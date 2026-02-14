@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default number of training steps between checkpoint saves.
+const DEFAULT_SAVE_STEPS: usize = 500;
+
 /// Output configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -32,7 +35,7 @@ impl Default for OutputConfig {
     fn default() -> Self {
         Self {
             dir: "./output".to_string(),
-            save_steps: 500,
+            save_steps: DEFAULT_SAVE_STEPS,
             eval_steps: 100,
             log_steps: 10,
             push_to_hub: false,

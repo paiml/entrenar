@@ -2,6 +2,9 @@
 //!
 //! Generates starter manifests for common training scenarios.
 
+/// Default `T_max` for cosine annealing scheduler (total steps before restart).
+const DEFAULT_COSINE_ANNEALING_T_MAX: usize = 10000;
+
 use super::manifest::{
     AlertConfig, CallbackConfig, CallbackType, ChartConfig, CheckpointConfig, DataConfig,
     DataLoader, DataSplit, EarlyStoppingConfig, GradientConfig, LoraConfig, MetricsOutputConfig,
@@ -110,7 +113,7 @@ fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> Trai
                 ratio: None,
                 start_lr: Some(1e-7),
             }),
-            t_max: Some(10000),
+            t_max: Some(DEFAULT_COSINE_ANNEALING_T_MAX),
             eta_min: Some(1e-6),
             step_size: None,
             gamma: None,

@@ -2,6 +2,9 @@
 
 use super::error::{Result, TokenizerError};
 
+/// GPT-2 vocabulary size (50257 BPE tokens, with ID 50256 used as both pad and EOS).
+const GPT2_VOCAB_SIZE: u32 = 50256;
+
 // Re-export aprender BPE types for HuggingFace compatibility
 pub use aprender::text::bpe::{
     bytes_to_unicode, load_from_files as load_hf_from_files, load_from_json as load_hf_from_json,
@@ -25,8 +28,8 @@ impl HfTokenizer {
     pub fn gpt2() -> Self {
         Self {
             inner: HfBpeTokenizer::gpt2_base(),
-            pad_id: 50256,
-            eos_id: Some(50256),
+            pad_id: GPT2_VOCAB_SIZE,
+            eos_id: Some(GPT2_VOCAB_SIZE),
             bos_id: None,
         }
     }
@@ -239,7 +242,7 @@ mod tests {
     fn test_hf_tokenizer_gpt2() {
         let tokenizer = HfTokenizer::gpt2();
         assert!(tokenizer.vocab_size() > 0);
-        assert_eq!(tokenizer.pad_id(), 50256);
+        assert_eq!(tokenizer.pad_id(), GPT2_VOCAB_SIZE);
     }
 
     #[test]

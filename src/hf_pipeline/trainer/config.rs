@@ -6,6 +6,9 @@ use crate::hf_pipeline::distillation::{
 use crate::hf_pipeline::fine_tune::FineTuneConfig;
 use std::path::PathBuf;
 
+/// Default number of training steps between checkpoint saves.
+const DEFAULT_SAVE_STEPS: usize = 500;
+
 /// Distillation training configuration
 #[derive(Debug, Clone)]
 pub struct TrainerConfig {
@@ -52,7 +55,7 @@ impl Default for TrainerConfig {
             epochs: 3,
             steps_per_epoch: 0,
             log_every_n_steps: 10,
-            save_every_n_steps: 500,
+            save_every_n_steps: DEFAULT_SAVE_STEPS,
             eval_every_n_steps: 100,
             max_grad_norm: 1.0,
             seed: 42,
