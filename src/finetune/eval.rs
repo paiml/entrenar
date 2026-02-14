@@ -4,6 +4,9 @@
 
 use std::process::Command;
 
+/// Default placeholder inference latency in milliseconds
+const DEFAULT_INFERENCE_LATENCY_MS: f32 = 250.0;
+
 /// Evaluation metrics
 #[derive(Debug, Clone, Default)]
 pub struct EvalMetrics {
@@ -254,7 +257,7 @@ impl TestEvaluator {
             branch_coverage_delta: 12.0, // Would need actual coverage measurement
             line_coverage_delta: 15.0,
             avg_tests_per_function: total_tests as f32 / total,
-            inference_latency_ms: 250.0, // Would measure actual inference
+            inference_latency_ms: DEFAULT_INFERENCE_LATENCY_MS, // Would measure actual inference
         }
     }
 }

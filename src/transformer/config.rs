@@ -11,6 +11,11 @@ const LLAMA2_13B_INTERMEDIATE_SIZE: usize = 13824;
 const LLAMA_VOCAB_SIZE: usize = 32000;
 const MISTRAL_INTERMEDIATE_SIZE: usize = 14336;
 const MISTRAL_MAX_SEQ_LEN: usize = 32768;
+const QWEN2_0_5B_HIDDEN_SIZE: usize = 896;
+const QWEN2_0_5B_INTERMEDIATE_SIZE: usize = 4864;
+const QWEN2_VOCAB_SIZE: usize = 151936;
+const QWEN2_MAX_SEQ_LEN: usize = 32768;
+const QWEN2_ROPE_THETA: f32 = 1_000_000.0;
 const DEFAULT_ROPE_THETA: f32 = 10000.0;
 
 /// Configuration for transformer models
@@ -90,15 +95,15 @@ impl TransformerConfig {
     /// Qwen2 0.5B configuration (good for testing)
     pub fn qwen2_0_5b() -> Self {
         Self {
-            hidden_size: 896,
+            hidden_size: QWEN2_0_5B_HIDDEN_SIZE,
             num_attention_heads: 14,
             num_kv_heads: 2,
-            intermediate_size: 4864,
+            intermediate_size: QWEN2_0_5B_INTERMEDIATE_SIZE,
             num_hidden_layers: 24,
-            vocab_size: 151936,
-            max_position_embeddings: 32768,
+            vocab_size: QWEN2_VOCAB_SIZE,
+            max_position_embeddings: QWEN2_MAX_SEQ_LEN,
             rms_norm_eps: 1e-6,
-            rope_theta: 1000000.0,
+            rope_theta: QWEN2_ROPE_THETA,
             use_bias: true,
         }
     }
@@ -114,7 +119,7 @@ impl TransformerConfig {
             vocab_size: 1000,
             max_position_embeddings: 512,
             rms_norm_eps: 1e-6,
-            rope_theta: 10000.0,
+            rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
         }
     }

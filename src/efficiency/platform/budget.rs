@@ -2,6 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Maximum startup latency for mobile web targets (milliseconds)
+const MOBILE_MAX_STARTUP_MS: u64 = 200;
+/// Default maximum startup latency for WASM deployment (milliseconds)
+const DEFAULT_MAX_STARTUP_MS: u64 = 500;
+
 /// WASM deployment budget constraints
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WasmBudget {
@@ -27,7 +32,7 @@ impl WasmBudget {
     pub fn mobile() -> Self {
         Self {
             max_binary_size: 2 * 1024 * 1024,    // 2 MB
-            max_startup_ms: 200,                 // 200 ms
+            max_startup_ms: MOBILE_MAX_STARTUP_MS,
             max_memory_bytes: 128 * 1024 * 1024, // 128 MB
         }
     }
@@ -63,7 +68,7 @@ impl Default for WasmBudget {
     fn default() -> Self {
         Self {
             max_binary_size: 5 * 1024 * 1024,    // 5 MB
-            max_startup_ms: 500,                 // 500 ms
+            max_startup_ms: DEFAULT_MAX_STARTUP_MS,
             max_memory_bytes: 256 * 1024 * 1024, // 256 MB
         }
     }
