@@ -316,11 +316,15 @@ fn export_safetensors(
 
     let views: Vec<(&str, TensorView<'_>)> = tensor_data
         .iter()
-        .map(|(name, bytes, shape)| {
-            let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
-            (name.as_str(), view)
+        .map(|(name, bytes, shape)| -> entrenar_common::Result<_> {
+            let view = TensorView::new(Dtype::F32, shape.clone(), bytes).map_err(|e| {
+                entrenar_common::EntrenarError::Serialization {
+                    message: format!("TensorView creation failed for {name}: {e}"),
+                }
+            })?;
+            Ok((name.as_str(), view))
         })
-        .collect();
+        .collect::<entrenar_common::Result<Vec<_>>>()?;
 
     let st_bytes = safetensors::serialize(views, None).map_err(|e| {
         entrenar_common::EntrenarError::Serialization {
