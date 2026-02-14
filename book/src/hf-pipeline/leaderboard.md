@@ -1,6 +1,9 @@
 # HuggingFace Leaderboard Integration
 
-Entrenar can fetch and parse HuggingFace open evaluation leaderboards, then rank your model against published results. All types live in `entrenar::hf_pipeline::leaderboard`. This module is feature-gated under `hub-publish`.
+Entrenar can fetch and parse HuggingFace open evaluation
+leaderboards, then rank your model against published results.
+All types live in `entrenar::hf_pipeline::leaderboard`.
+This module is feature-gated under `hub-publish`.
 
 ```toml
 [dependencies]
@@ -9,7 +12,8 @@ entrenar = { version = "0.5", features = ["hub-publish"] }
 
 ## LeaderboardKind
 
-Identifies which HuggingFace leaderboard to query. Each variant maps to a dataset repository ID and a primary ranking metric.
+Identifies which HuggingFace leaderboard to query. Each variant
+maps to a dataset repository ID and a primary ranking metric.
 
 ```rust,ignore
 use entrenar::hf_pipeline::leaderboard::LeaderboardKind;
@@ -32,7 +36,9 @@ assert_eq!(kind.primary_metric(), Metric::WER);
 
 ## LeaderboardClient
 
-HTTP client that fetches leaderboard data from the HuggingFace datasets-server JSON API. Token is resolved automatically from `HF_TOKEN` env var or `~/.cache/huggingface/token`.
+HTTP client that fetches leaderboard data from the HuggingFace
+datasets-server JSON API. Token is resolved automatically from
+`HF_TOKEN` env var or `~/.cache/huggingface/token`.
 
 ```rust,ignore
 use entrenar::hf_pipeline::leaderboard::{LeaderboardClient, LeaderboardKind};
@@ -60,11 +66,15 @@ let page2 = client.fetch_paginated(LeaderboardKind::OpenLLMv2, 100, 50)?;
 let entry = client.find_model(LeaderboardKind::BigCodeBench, "deepseek-coder-v2")?;
 ```
 
-The client hits the datasets-server rows endpoint (`https://datasets-server.huggingface.co/rows`) which returns JSON directly, avoiding Parquet parsing.
+The client hits the datasets-server rows endpoint
+(`https://datasets-server.huggingface.co/rows`) which returns
+JSON directly, avoiding Parquet parsing.
 
 ## Column-to-Metric Mapping
 
-The `column_to_metric` function translates leaderboard-specific column names into `Metric` enum variants. Each `LeaderboardKind` has its own mapping table.
+The `column_to_metric` function translates leaderboard-specific
+column names into `Metric` enum variants. Each `LeaderboardKind`
+has its own mapping table.
 
 ```rust,ignore
 use entrenar::hf_pipeline::leaderboard::{column_to_metric, LeaderboardKind};
@@ -89,11 +99,16 @@ assert_eq!(
 );
 ```
 
-The generic mapper (used for `Custom` leaderboards) recognizes common column names: `accuracy`, `wer`, `bleu`, `rouge1`, `rouge2`, `rougel`, `perplexity`, `mmlu`, `pass@1`, and `ndcg@10`.
+The generic mapper (used for `Custom` leaderboards) recognizes
+common column names: `accuracy`, `wer`, `bleu`, `rouge1`,
+`rouge2`, `rougel`, `perplexity`, `mmlu`, `pass@1`,
+and `ndcg@10`.
 
 ## Comparing Against a Leaderboard
 
-Use `compare_with_leaderboard` to insert your model's `EvalResult` into a fetched leaderboard. The result is a sorted `Leaderboard` with your model ranked alongside published entries.
+Use `compare_with_leaderboard` to insert your model's
+`EvalResult` into a fetched leaderboard. The result is a sorted
+`Leaderboard` with your model ranked alongside published entries.
 
 ```rust,ignore
 use entrenar::eval::evaluator::{EvalResult, Metric};

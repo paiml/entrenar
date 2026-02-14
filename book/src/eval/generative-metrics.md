@@ -1,6 +1,9 @@
 # Generative AI Evaluation Metrics
 
-Entrenar provides domain-specific metrics for evaluating generative models across speech recognition, text generation, code synthesis, and information retrieval. All functions live in `entrenar::eval::generative`.
+Entrenar provides domain-specific metrics for evaluating
+generative models across speech recognition, text generation,
+code synthesis, and information retrieval. All functions live
+in `entrenar::eval::generative`.
 
 ## Metric Enum Variants
 
@@ -68,7 +71,9 @@ assert_eq!(rtfx, 100.0);
 
 ## BLEU
 
-Modified n-gram precision with brevity penalty (Papineni et al., 2002). Standard metric for machine translation. Returns a value in `[0, 1]`.
+Modified n-gram precision with brevity penalty
+(Papineni et al., 2002). Standard metric for machine
+translation. Returns a value in `[0, 1]`.
 
 ```rust,ignore
 use entrenar::eval::generative::bleu_score;
@@ -84,11 +89,15 @@ let score = bleu_score(references, hypothesis, 4);
 assert!(score > 0.5);
 ```
 
-Internally computes clipped n-gram counts for orders 1 through `max_n`, takes the geometric mean, and applies a brevity penalty for short hypotheses.
+Internally computes clipped n-gram counts for orders 1
+through `max_n`, takes the geometric mean, and applies a
+brevity penalty for short hypotheses.
 
 ## ROUGE (1/2/L)
 
-Recall-Oriented Understudy for Gisting Evaluation. Measures n-gram overlap (ROUGE-N) or longest common subsequence (ROUGE-L) as F1 scores.
+Recall-Oriented Understudy for Gisting Evaluation. Measures
+n-gram overlap (ROUGE-N) or longest common subsequence
+(ROUGE-L) as F1 scores.
 
 ```rust,ignore
 use entrenar::eval::generative::{rouge_n, rouge_l};
@@ -113,7 +122,9 @@ Both functions return `0.0` when either input is empty or too short for the requ
 
 ## Perplexity
 
-Exponentiated average negative log-probability. Lower values indicate a better language model. Minimum possible value is `1.0` for a perfect predictor.
+Exponentiated average negative log-probability. Lower values
+indicate a better language model. Minimum possible value is
+`1.0` for a perfect predictor.
 
 **Formula:** `PPL = exp(-1/N * sum(log_probs))`
 
@@ -135,11 +146,16 @@ assert!(perplexity(&[]).is_infinite());
 
 ## MMLUAccuracy
 
-LLM benchmark accuracy covering MMLU, MMLU-PRO, BBH, and similar multiple-choice evaluations. Represented as `Metric::MMLUAccuracy` in the enum. Tracked as a distinct variant to enable leaderboard-specific column mapping.
+LLM benchmark accuracy covering MMLU, MMLU-PRO, BBH, and
+similar multiple-choice evaluations. Represented as
+`Metric::MMLUAccuracy` in the enum. Tracked as a distinct
+variant to enable leaderboard-specific column mapping.
 
 ## pass@k
 
-Unbiased estimator for functional correctness of code generation (Chen et al., 2021). Computes the probability that at least one of `k` samples passes all test cases.
+Unbiased estimator for functional correctness of code
+generation (Chen et al., 2021). Computes the probability that
+at least one of `k` samples passes all test cases.
 
 **Formula:** `pass@k = 1 - C(n-c, k) / C(n, k)`
 
@@ -167,7 +183,10 @@ Computation uses log-space arithmetic to avoid overflow for large `n`.
 
 ## NDCG@k
 
-Normalized Discounted Cumulative Gain. Measures ranking quality for search and retrieval by comparing the actual ranking against the ideal (sorted) ranking. Returns a value in `[0, 1]` where `1.0` is a perfect ranking.
+Normalized Discounted Cumulative Gain. Measures ranking quality
+for search and retrieval by comparing the actual ranking against
+the ideal (sorted) ranking. Returns a value in `[0, 1]` where
+`1.0` is a perfect ranking.
 
 **Formula:** `NDCG@k = DCG@k / IDCG@k` where `DCG = sum((2^rel_i - 1) / log2(i+1))`
 
