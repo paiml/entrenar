@@ -406,11 +406,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'New task: ENT-024'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2025-11-26T15:01:07.304577818+00:00
-  updated: 2025-11-26T15:01:07.304577818+00:00
+  updated: 2026-02-14T21:51:19Z
   spec: null
   acceptance_criteria: []
   phases: []
@@ -486,11 +486,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'New task: ENT-035'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2025-11-26T22:46:30.498394636+00:00
-  updated: 2025-11-26T22:46:30.498394636+00:00
+  updated: 2026-02-14T21:51:19Z
   spec: null
   acceptance_criteria: []
   phases: []
@@ -817,22 +817,6 @@ roadmap:
   labels:
   - hf-pipeline
   - publish
-  notes: null
-- id: spec
-  github_issue: null
-  item_type: task
-  title: 'New task: spec'
-  status: inprogress
-  priority: medium
-  assigned_to: null
-  created: 2026-02-14T11:40:46.480203657+00:00
-  updated: 2026-02-14T11:48:58.573091786+00:00
-  spec: null
-  acceptance_criteria: []
-  phases: []
-  subtasks: []
-  estimated_effort: null
-  labels: []
   notes: null
 - id: ENT-GGUF-EXPORT
   github_issue: null
