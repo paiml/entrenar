@@ -952,3 +952,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-173
+  github_issue: null
+  item_type: task
+  title: 'CB-515 Kaizen: replace catch-all match arms with explicit variants'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T18:29:49Z
+  updated: 2026-02-14T18:29:53.290527979+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
