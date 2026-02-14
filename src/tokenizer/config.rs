@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default vocabulary size (LLaMA/Mistral family)
+const DEFAULT_VOCAB_SIZE: usize = 32000;
+
 /// Special tokens
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecialTokens {
@@ -58,7 +61,7 @@ pub struct TokenizerConfig {
 impl Default for TokenizerConfig {
     fn default() -> Self {
         Self {
-            vocab_size: 32000,
+            vocab_size: DEFAULT_VOCAB_SIZE,
             min_frequency: 2,
             special_tokens: SpecialTokens::default(),
             lowercase: false,
