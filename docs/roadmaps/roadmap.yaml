@@ -1,5 +1,5 @@
 roadmap_version: '1.0'
-github_enabled: true
+github_enabled: "true"
 github_repo: null
 roadmap:
 - id: ENT-002
@@ -929,6 +929,22 @@ roadmap:
   assigned_to: null
   created: 2026-02-14T18:09:59Z
   updated: 2026-02-14T18:18:36.801845600+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: PMAT-172
+  github_issue: null
+  item_type: task
+  title: 'CB-950 Kaizen: quote truthy strings in YAML files'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T18:18:49Z
+  updated: 2026-02-14T18:18:53.052841081+00:00
   spec: null
   acceptance_criteria: []
   phases: []

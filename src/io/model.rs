@@ -1,8 +1,33 @@
 //! Model structure for serialization
 
 use crate::Tensor;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
+
+/// Deserialize a bool from either a YAML boolean (`true`) or a quoted string (`"true"`).
+/// This supports CB-950 compliance where all truthy values must be quoted in YAML.
+fn deserialize_bool_lenient<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum BoolOrString {
+        Bool(bool),
+        Str(String),
+    }
+
+    match BoolOrString::deserialize(deserializer)? {
+        BoolOrString::Bool(b) => Ok(b),
+        BoolOrString::Str(s) => match s.to_lowercase().as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            other => Err(serde::de::Error::custom(format!(
+                "expected 'true' or 'false', got '{other}'"
+            ))),
+        },
+    }
+}
 
 /// Model metadata containing architecture and training information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +80,7 @@ pub struct ParameterInfo {
     pub dtype: String,
 
     /// Whether this parameter requires gradients
+    #[serde(deserialize_with = "deserialize_bool_lenient")]
     pub requires_grad: bool,
 }
 

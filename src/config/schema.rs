@@ -2,9 +2,34 @@
 //!
 //! ENT-114: Added `ModelMode` and `TrainingMode` for LLM training support.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// Deserialize a bool from either a YAML boolean (`true`) or a quoted string (`"true"`).
+/// This supports CB-950 compliance where all truthy values must be quoted in YAML.
+fn deserialize_bool_lenient<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum BoolOrString {
+        Bool(bool),
+        Str(String),
+    }
+
+    match BoolOrString::deserialize(deserializer)? {
+        BoolOrString::Bool(b) => Ok(b),
+        BoolOrString::Str(s) => match s.to_lowercase().as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            other => Err(serde::de::Error::custom(format!(
+                "expected 'true' or 'false', got '{other}'"
+            ))),
+        },
+    }
+}
 
 /// Model execution mode
 ///
@@ -99,7 +124,7 @@ pub struct DataConfig {
     pub batch_size: usize,
 
     /// Auto-infer feature types from data
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
     pub auto_infer_types: bool,
 
     /// Sequence length (for transformers)
@@ -182,11 +207,11 @@ pub struct QuantSpec {
     pub bits: u8,
 
     /// Symmetric quantization
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
     pub symmetric: bool,
 
     /// Per-channel quantization
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
     pub per_channel: bool,
 }
 
@@ -466,5 +491,36 @@ optimizer:
         assert!(params.gradient_accumulation.is_none());
         assert!(params.checkpoints.is_none());
         assert!(params.mixed_precision.is_none());
+    }
+
+    /// CB-950: Verify that quoted boolean strings ("true"/"false") deserialize correctly.
+    /// PMAT compliance requires all YAML truthy values to be quoted.
+    #[test]
+    fn test_cb950_quoted_booleans_deserialize() {
+        let yaml = r#"
+model:
+  path: model.gguf
+  layers: []
+
+data:
+  train: train.parquet
+  batch_size: 8
+  auto_infer_types: "true"
+
+optimizer:
+  name: adam
+  lr: 0.001
+
+quantize:
+  bits: 4
+  symmetric: "true"
+  per_channel: "false"
+"#;
+
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+        assert!(spec.data.auto_infer_types);
+        let quant = spec.quantize.unwrap();
+        assert!(quant.symmetric);
+        assert!(!quant.per_channel);
     }
 }
