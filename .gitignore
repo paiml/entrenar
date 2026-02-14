@@ -101,3 +101,4 @@ book/book/
 .pmat/metrics/
 .pmat-work/
 .pmat-metrics/
+.pmat/workspace.db
