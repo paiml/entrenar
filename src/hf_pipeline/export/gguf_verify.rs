@@ -1497,4 +1497,91 @@ mod tests {
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.metadata_count, 12);
     }
+
+    // =====================================================================
+    // Direct skip_gguf_value match arm coverage (type tags 0-12)
+    // =====================================================================
+
+    #[test]
+    fn test_skip_gguf_value_type_0_uint8() {
+        // Type 0 (UINT8): skip 1 byte → match arm 0 | 1 | 7
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 0).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_1_int8() {
+        // Type 1 (INT8): skip 1 byte → match arm 0 | 1 | 7
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 1).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_7_bool() {
+        // Type 7 (BOOL): skip 1 byte → match arm 0 | 1 | 7
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 7).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_2_uint16() {
+        // Type 2 (UINT16): skip 2 bytes → match arm 2 | 3
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 2).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_3_int16() {
+        // Type 3 (INT16): skip 2 bytes → match arm 2 | 3
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 3).unwrap(), 2);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_4_uint32() {
+        // Type 4 (UINT32): skip 4 bytes → match arm 4..=6
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 4).unwrap(), 4);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_5_int32() {
+        // Type 5 (INT32): skip 4 bytes → match arm 4..=6
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 5).unwrap(), 4);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_6_float32() {
+        // Type 6 (FLOAT32): skip 4 bytes → match arm 4..=6
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 6).unwrap(), 4);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_10_uint64() {
+        // Type 10 (UINT64): skip 8 bytes → match arm 10..=12
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 10).unwrap(), 8);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_11_int64() {
+        // Type 11 (INT64): skip 8 bytes → match arm 10..=12
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 11).unwrap(), 8);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_type_12_float64() {
+        // Type 12 (FLOAT64): skip 8 bytes → match arm 10..=12
+        let data = vec![0u8; 16];
+        assert_eq!(skip_gguf_value(&data, 0, 12).unwrap(), 8);
+    }
+
+    #[test]
+    fn test_skip_gguf_value_unknown_type() {
+        let data = vec![0u8; 16];
+        assert!(skip_gguf_value(&data, 0, 99).is_err());
+    }
 }

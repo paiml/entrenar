@@ -199,3 +199,134 @@ impl Clone for PruneFinetunePipeline {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_pipeline() -> PruneFinetunePipeline {
+        PruneFinetunePipeline::new(PruningConfig::new())
+    }
+
+    #[test]
+    fn test_advance_from_idle() {
+        let mut p = make_pipeline();
+        assert_eq!(p.stage(), PruningStage::Idle);
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Calibrating);
+    }
+
+    #[test]
+    fn test_advance_full_pipeline_with_finetune() {
+        // Default config has fine_tune_after_pruning=true
+        let mut p = make_pipeline();
+
+        // Idle → Calibrating
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Calibrating);
+
+        // Calibrating → ComputingImportance
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::ComputingImportance);
+
+        // ComputingImportance → Pruning
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Pruning);
+
+        // Pruning → FineTuning (fine_tune_after_pruning=true)
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::FineTuning);
+
+        // FineTuning → Evaluating
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Evaluating);
+
+        // Evaluating → Exporting
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Exporting);
+
+        // Exporting → Complete
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Complete);
+
+        // Complete stays Complete
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Complete);
+    }
+
+    #[test]
+    fn test_advance_skip_finetune() {
+        let config = PruningConfig::new().with_fine_tune(false);
+        let mut p = PruneFinetunePipeline::new(config);
+        // Advance to Pruning
+        p.advance(); // Calibrating
+        p.advance(); // ComputingImportance
+        p.advance(); // Pruning
+        // Pruning → Evaluating (fine_tune_after_pruning=false)
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Evaluating);
+    }
+
+    #[test]
+    fn test_advance_failed_stays_failed() {
+        let mut p = make_pipeline();
+        p.fail("test error");
+        assert_eq!(p.stage(), PruningStage::Failed);
+        p.advance();
+        assert_eq!(p.stage(), PruningStage::Failed);
+    }
+
+    #[test]
+    fn test_overall_progress_all_stages() {
+        // Default config has fine_tune_after_pruning=true
+        let mut p = make_pipeline();
+
+        // Idle → 0.0
+        assert_eq!(p.overall_progress(), 0.0);
+
+        // Calibrating → ~0.1
+        p.advance();
+        assert!(p.overall_progress() >= 0.1);
+
+        // ComputingImportance → 0.25
+        p.advance();
+        assert_eq!(p.overall_progress(), 0.25);
+
+        // Pruning → 0.4
+        p.advance();
+        assert_eq!(p.overall_progress(), 0.4);
+
+        // FineTuning → 0.6
+        p.advance();
+        assert_eq!(p.overall_progress(), 0.6);
+
+        // Evaluating → 0.8
+        p.advance();
+        assert_eq!(p.overall_progress(), 0.8);
+
+        // Exporting → 0.95
+        p.advance();
+        assert_eq!(p.overall_progress(), 0.95);
+
+        // Complete → 1.0
+        p.advance();
+        assert_eq!(p.overall_progress(), 1.0);
+    }
+
+    #[test]
+    fn test_overall_progress_failed() {
+        let mut p = make_pipeline();
+        p.fail("test");
+        assert_eq!(p.overall_progress(), 0.0);
+    }
+
+    #[test]
+    fn test_reset_to_idle() {
+        let mut p = make_pipeline();
+        p.advance();
+        p.advance();
+        p.reset();
+        assert_eq!(p.stage(), PruningStage::Idle);
+        assert!(p.error().is_none());
+    }
+}

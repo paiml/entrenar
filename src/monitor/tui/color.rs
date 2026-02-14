@@ -593,6 +593,34 @@ mod tests {
     }
 
     #[test]
+    fn test_status_color_all_variants() {
+        // Exercise every match arm in TrainingPalette::status_color
+        let running = TrainingPalette::status_color("running");
+        assert_eq!(running, TrainingPalette::SUCCESS);
+
+        let completed = TrainingPalette::status_color("completed");
+        assert_eq!(completed, TrainingPalette::PRIMARY);
+
+        let paused = TrainingPalette::status_color("paused");
+        assert_eq!(paused, TrainingPalette::WARNING);
+
+        let failed = TrainingPalette::status_color("failed");
+        assert_eq!(failed, TrainingPalette::ERROR);
+
+        let initializing = TrainingPalette::status_color("initializing");
+        assert_eq!(initializing, TrainingPalette::INFO);
+
+        let unknown = TrainingPalette::status_color("unknown_state");
+        assert_eq!(unknown, TrainingPalette::MUTED);
+
+        // Case-insensitive
+        assert_eq!(
+            TrainingPalette::status_color("RUNNING"),
+            TrainingPalette::SUCCESS
+        );
+    }
+
+    #[test]
     fn test_colored_bar() {
         let bar = colored_bar(50.0, 100.0, 10, TrainingPalette::SUCCESS, ColorMode::Mono);
         assert!(bar.contains('█'));
