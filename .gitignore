@@ -90,3 +90,10 @@ book/book/
 .pmat/context.idx/
 .pmat/workspace.idx/
 .pmat/deps-cache.json
+.pmat/baseline.json
+.pmat/bug-hunter-cache/
+.pmat/context.db
+.pmat/dead-code-cache.json
+.pmat/metrics/
+.pmat-work/
+.pmat-metrics/
