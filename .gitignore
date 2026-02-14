@@ -20,6 +20,9 @@ target
 .idea/
 .vscode/
 
+# Cargo local config
+.cargo/
+
 # Temporary files
 *.tmp
 *.bak
