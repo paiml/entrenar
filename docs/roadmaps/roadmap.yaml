@@ -1004,11 +1004,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'CB-518: eliminate expensive clone calls in loops'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2026-02-14T21:09:11Z
-  updated: 2026-02-14T21:09:15.712537740+00:00
+  updated: 2026-02-14T21:10:03.726314229+00:00
   spec: null
   acceptance_criteria:
   - Replace clone() calls inside for loops with iterator-based approaches (trainer.rs) and Cow borrows (results.rs)
