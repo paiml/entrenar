@@ -984,3 +984,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-175
+  github_issue: null
+  item_type: task
+  title: 'CB-516 Kaizen: extract hardcoded magic numbers to named constants'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T19:18:11Z
+  updated: 2026-02-14T19:18:11.160566341+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
