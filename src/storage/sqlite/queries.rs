@@ -207,3 +207,68 @@ impl SqliteBackend {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_param_matches_all_filter_ops() {
+        let float_val = ParameterValue::Float(5.0);
+        let float_filter = ParameterValue::Float(5.0);
+        let string_val = ParameterValue::String("hello world".to_string());
+        let string_filter = ParameterValue::String("hello".to_string());
+
+        for op in &[
+            FilterOp::Eq,
+            FilterOp::Ne,
+            FilterOp::Gt,
+            FilterOp::Lt,
+            FilterOp::Gte,
+            FilterOp::Lte,
+            FilterOp::Contains,
+            FilterOp::StartsWith,
+        ] {
+            match op {
+                FilterOp::Eq => {
+                    assert!(SqliteBackend::param_matches(&float_val, op, &float_filter));
+                }
+                FilterOp::Ne => {
+                    assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
+                }
+                FilterOp::Gt => {
+                    assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
+                }
+                FilterOp::Lt => {
+                    assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
+                }
+                FilterOp::Gte => {
+                    assert!(SqliteBackend::param_matches(&float_val, op, &float_filter));
+                }
+                FilterOp::Lte => {
+                    assert!(SqliteBackend::param_matches(&float_val, op, &float_filter));
+                }
+                FilterOp::Contains => {
+                    // Unsupported for Float, but supported for String
+                    assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
+                    assert!(SqliteBackend::param_matches(&string_val, op, &string_filter));
+                }
+                FilterOp::StartsWith => {
+                    assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
+                    assert!(SqliteBackend::param_matches(&string_val, op, &string_filter));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_param_matches_cross_type_returns_false() {
+        let float_val = ParameterValue::Float(42.0);
+        let int_filter = ParameterValue::Int(42);
+        // Cross-type comparisons always return false
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Eq, &int_filter));
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Ne, &int_filter));
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Gt, &int_filter));
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Lt, &int_filter));
+    }
+}
