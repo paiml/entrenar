@@ -255,79 +255,41 @@ impl TransformerTrainer {
     ) -> crate::Result<()> {
         // Collect all model parameters with proper names
         let model_params = self.model.parameters();
+        let num_total = model_params.len();
 
-        // Build parameter list with names matching transformer architecture
-        let mut params: Vec<(String, Tensor)> = Vec::with_capacity(model_params.len());
+        // Build parameter names matching transformer architecture conventions
+        let num_layers = (num_total - 2) / 9;
+        let mut names: Vec<String> = Vec::with_capacity(num_total);
 
-        // Name parameters based on their position in the model
-        // This matches standard transformer weight naming conventions
-        params.push((
-            "model.embed_tokens.weight".to_string(),
-            model_params[0].clone(),
-        ));
-        params.push(("model.norm.weight".to_string(), model_params[1].clone()));
+        names.push("model.embed_tokens.weight".to_string());
+        names.push("model.norm.weight".to_string());
 
         // Each layer has: input_norm, post_attn_norm, 4 attention weights, 3 FFN weights = 9 params
-        let num_layers = (model_params.len() - 2) / 9;
-        let mut idx = 2;
-
         for layer in 0..num_layers {
-            // Layer norms
-            params.push((
-                format!("model.layers.{layer}.input_layernorm.weight"),
-                model_params[idx].clone(),
+            names.push(format!("model.layers.{layer}.input_layernorm.weight"));
+            names.push(format!(
+                "model.layers.{layer}.post_attention_layernorm.weight"
             ));
-            idx += 1;
-            params.push((
-                format!("model.layers.{layer}.post_attention_layernorm.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
-
-            // Attention weights (q, k, v, o)
-            params.push((
-                format!("model.layers.{layer}.self_attn.q_proj.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
-            params.push((
-                format!("model.layers.{layer}.self_attn.k_proj.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
-            params.push((
-                format!("model.layers.{layer}.self_attn.v_proj.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
-            params.push((
-                format!("model.layers.{layer}.self_attn.o_proj.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
-
-            // FFN weights (gate, up, down)
-            params.push((
-                format!("model.layers.{layer}.mlp.gate_proj.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
-            params.push((
-                format!("model.layers.{layer}.mlp.up_proj.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
-            params.push((
-                format!("model.layers.{layer}.mlp.down_proj.weight"),
-                model_params[idx].clone(),
-            ));
-            idx += 1;
+            names.push(format!("model.layers.{layer}.self_attn.q_proj.weight"));
+            names.push(format!("model.layers.{layer}.self_attn.k_proj.weight"));
+            names.push(format!("model.layers.{layer}.self_attn.v_proj.weight"));
+            names.push(format!("model.layers.{layer}.self_attn.o_proj.weight"));
+            names.push(format!("model.layers.{layer}.mlp.gate_proj.weight"));
+            names.push(format!("model.layers.{layer}.mlp.up_proj.weight"));
+            names.push(format!("model.layers.{layer}.mlp.down_proj.weight"));
         }
 
         // LM head if present
-        if idx < model_params.len() {
-            params.push(("lm_head.weight".to_string(), model_params[idx].clone()));
+        if names.len() < num_total {
+            names.push("lm_head.weight".to_string());
         }
+
+        // Pair names with cloned parameters (clone outside loop via iterator)
+        let params: Vec<(String, Tensor)> = names
+            .into_iter()
+            .zip(model_params)
+            .map(|(name, tensor)| (name, tensor.clone()))
+            .collect();
 
         let metadata = ModelMetadata::new(name, architecture);
         let model = Model::new(metadata, params);

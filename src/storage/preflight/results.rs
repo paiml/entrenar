@@ -1,5 +1,7 @@
 //! Preflight validation results.
 
+use std::borrow::Cow;
+
 use super::{CheckMetadata, CheckResult};
 
 /// Results from running preflight checks
@@ -109,17 +111,17 @@ impl PreflightResults {
                 CheckResult::Skipped { .. } => "○",
             };
 
-            let message = match result {
-                CheckResult::Passed { message } => message.clone(),
+            let message: Cow<'_, str> = match result {
+                CheckResult::Passed { message } => Cow::Borrowed(message),
                 CheckResult::Failed { message, details } => {
                     if let Some(d) = details {
-                        format!("{message} ({d})")
+                        Cow::Owned(format!("{message} ({d})"))
                     } else {
-                        message.clone()
+                        Cow::Borrowed(message)
                     }
                 }
-                CheckResult::Warning { message } => message.clone(),
-                CheckResult::Skipped { reason } => reason.clone(),
+                CheckResult::Warning { message } => Cow::Borrowed(message),
+                CheckResult::Skipped { reason } => Cow::Borrowed(reason),
             };
 
             lines.push(format!("{status} {}: {message}", check.name));
