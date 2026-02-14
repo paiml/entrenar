@@ -9,6 +9,9 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+/// Default TUI refresh interval in milliseconds
+const DEFAULT_REFRESH_MS: u64 = 500;
+
 /// TUI Monitor configuration
 #[derive(Debug, Clone)]
 pub struct TuiMonitorConfig {
@@ -27,7 +30,7 @@ pub struct TuiMonitorConfig {
 impl Default for TuiMonitorConfig {
     fn default() -> Self {
         Self {
-            refresh_ms: 500,
+            refresh_ms: DEFAULT_REFRESH_MS,
             width: 80,
             height: 24,
             compact: false,

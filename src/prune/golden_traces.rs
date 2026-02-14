@@ -11,6 +11,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Maximum allowed latency for importance computation per layer (milliseconds)
+const IMPORTANCE_LATENCY_MAX_MS: u64 = 5000;
+/// Maximum allowed syscall/span count during calibration
+const CALIBRATION_SYSCALL_BUDGET: u64 = 5000;
+
 /// Performance assertion for a pruning operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PruningAssertion {
@@ -72,7 +77,7 @@ impl PruningGoldenTraces {
             PruningAssertion {
                 name: "pruning_importance_latency",
                 assertion_type: AssertionType::Latency,
-                max_value: 5000, // <5s per layer
+                max_value: IMPORTANCE_LATENCY_MAX_MS, // <5s per layer
                 fail_on_violation: true,
                 enabled: true,
             },
@@ -96,7 +101,7 @@ impl PruningGoldenTraces {
             PruningAssertion {
                 name: "calibration_syscall_budget",
                 assertion_type: AssertionType::SpanCount,
-                max_value: 5000,
+                max_value: CALIBRATION_SYSCALL_BUDGET,
                 fail_on_violation: false, // Warning only
                 enabled: true,
             },
