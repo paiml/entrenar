@@ -77,7 +77,13 @@ impl NotebookExporter {
             exporter.kernel = match primary_lang {
                 Some("rust") => KernelSpec::evcxr(),
                 Some("julia") => KernelSpec::julia(),
-                _ => KernelSpec::python3(),
+                Some(other_lang) => {
+                    eprintln!(
+                        "Warning: unsupported kernel language '{other_lang}', defaulting to Python 3"
+                    );
+                    KernelSpec::python3()
+                }
+                None => KernelSpec::python3(),
             };
 
             // Simple parsing: add everything before first code block as markdown

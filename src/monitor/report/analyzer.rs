@@ -139,7 +139,9 @@ impl HanseiAnalyzer {
                     Trend::Oscillating
                 }
             }
-            _ => Trend::Stable,
+            Metric::LearningRate | Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
+                Trend::Stable
+            }
         }
     }
 
@@ -257,7 +259,7 @@ impl HanseiAnalyzer {
                     });
                 }
             }
-            _ => {}
+            Metric::Epoch | Metric::Batch | Metric::Custom(_) => {}
         }
     }
 

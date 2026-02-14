@@ -111,7 +111,7 @@ impl PromptVersion {
                 _ if in_var => {
                     current.push(c);
                 }
-                _ => {}
+                _non_brace => {}
             }
         }
         vars
