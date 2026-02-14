@@ -45,14 +45,28 @@ impl MonitorConfig {
         let layout = match self.layout.as_str() {
             "minimal" => DashboardLayout::Minimal,
             "full" => DashboardLayout::Full,
-            _ => DashboardLayout::Compact,
+            "compact" => DashboardLayout::Compact,
+            _ => {
+                eprintln!(
+                    "Warning: unknown layout '{}', defaulting to Compact",
+                    self.layout
+                );
+                DashboardLayout::Compact
+            }
         };
 
         let mode = match self.terminal_mode.as_str() {
             "ascii" => TerminalMode::Ascii,
             "ansi" => TerminalMode::Ansi,
             "unicode" => TerminalMode::Unicode,
-            _ => TerminalCapabilities::detect().recommended_mode(),
+            "auto" => TerminalCapabilities::detect().recommended_mode(),
+            _ => {
+                eprintln!(
+                    "Warning: unknown terminal_mode '{}', defaulting to auto-detect",
+                    self.terminal_mode
+                );
+                TerminalCapabilities::detect().recommended_mode()
+            }
         };
 
         TerminalMonitorCallback::new()

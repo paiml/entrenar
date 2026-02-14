@@ -53,7 +53,7 @@ impl CallbackManager {
             match cb.on_epoch_begin(ctx) {
                 CallbackAction::Stop => return CallbackAction::Stop,
                 CallbackAction::SkipEpoch => return CallbackAction::SkipEpoch,
-                _ => {}
+                CallbackAction::Continue => {}
             }
         }
         CallbackAction::Continue

@@ -96,6 +96,7 @@ impl SqliteBackend {
     /// Check if a parameter value matches a filter
     fn param_matches(value: &ParameterValue, op: &FilterOp, filter_value: &ParameterValue) -> bool {
         match (value, filter_value, op) {
+            // Float comparisons
             (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Eq) => {
                 (v - fv).abs() < f64::EPSILON
             }
@@ -107,6 +108,7 @@ impl SqliteBackend {
             (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Gte) => v >= fv,
             (ParameterValue::Float(v), ParameterValue::Float(fv), FilterOp::Lte) => v <= fv,
 
+            // Int comparisons
             (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Eq) => v == fv,
             (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Ne) => v != fv,
             (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Gt) => v > fv,
@@ -114,6 +116,7 @@ impl SqliteBackend {
             (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Gte) => v >= fv,
             (ParameterValue::Int(v), ParameterValue::Int(fv), FilterOp::Lte) => v <= fv,
 
+            // String comparisons
             (ParameterValue::String(v), ParameterValue::String(fv), FilterOp::Eq) => v == fv,
             (ParameterValue::String(v), ParameterValue::String(fv), FilterOp::Ne) => v != fv,
             (ParameterValue::String(v), ParameterValue::String(fv), FilterOp::Contains) => {
@@ -123,10 +126,27 @@ impl SqliteBackend {
                 v.starts_with(fv.as_str())
             }
 
+            // Bool comparisons
             (ParameterValue::Bool(v), ParameterValue::Bool(fv), FilterOp::Eq) => v == fv,
             (ParameterValue::Bool(v), ParameterValue::Bool(fv), FilterOp::Ne) => v != fv,
 
-            _ => false,
+            // Unsupported ops for same-type pairs
+            (ParameterValue::Float(..), ParameterValue::Float(..), FilterOp::Contains | FilterOp::StartsWith)
+            | (ParameterValue::Int(..), ParameterValue::Int(..), FilterOp::Contains | FilterOp::StartsWith)
+            | (ParameterValue::String(..), ParameterValue::String(..), FilterOp::Gt | FilterOp::Lt | FilterOp::Gte | FilterOp::Lte)
+            | (ParameterValue::Bool(..), ParameterValue::Bool(..), FilterOp::Gt | FilterOp::Lt | FilterOp::Gte | FilterOp::Lte | FilterOp::Contains | FilterOp::StartsWith) => false,
+
+            // List and Dict do not support any filter operations
+            (ParameterValue::List(..), ParameterValue::List(..), _)
+            | (ParameterValue::Dict(..), ParameterValue::Dict(..), _) => false,
+
+            // Cross-type comparisons are not supported
+            (ParameterValue::Float(..), ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
+            | (ParameterValue::Int(..), ParameterValue::Float(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
+            | (ParameterValue::String(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::Bool(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
+            | (ParameterValue::Bool(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
+            | (ParameterValue::List(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::Dict(..), _)
+            | (ParameterValue::Dict(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::List(..), _) => false,
         }
     }
 
