@@ -238,7 +238,6 @@ fn export_command(
         });
     }
 
-    // In real implementation, would use Exporter
     if !cli.is_quiet() {
         println!(
             "{}",
@@ -249,6 +248,39 @@ fn export_command(
                 quantize
             ))
         );
+    }
+
+    // Load source weights from SafeTensors
+    let (weights, shapes) = entrenar_distill::load_safetensors_weights(input)?;
+
+    // Create output parent directory if needed
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| entrenar_common::EntrenarError::Io {
+                context: format!("creating output directory: {}", parent.display()),
+                source: e,
+            })?;
+        }
+    }
+
+    match format {
+        "safetensors" => {
+            export_safetensors(&weights, &shapes, output)?;
+        }
+        "gguf" => {
+            export_gguf(&weights, &shapes, output, quantize)?;
+        }
+        "apr" | "json" => {
+            export_apr(&weights, output)?;
+        }
+        other => {
+            return Err(entrenar_common::EntrenarError::UnsupportedFormat {
+                format: other.to_string(),
+            });
+        }
+    }
+
+    if !cli.is_quiet() {
         println!(
             "{}",
             entrenar_common::cli::styles::success(&format!("Exported to {}", output.display()))
@@ -256,4 +288,136 @@ fn export_command(
     }
 
     Ok(())
+}
+
+/// Export weights as SafeTensors format.
+fn export_safetensors(
+    weights: &std::collections::HashMap<String, Vec<f32>>,
+    shapes: &std::collections::HashMap<String, Vec<usize>>,
+    output: &std::path::Path,
+) -> entrenar_common::Result<()> {
+    use safetensors::tensor::{Dtype, TensorView};
+
+    let mut sorted_names: Vec<&String> = weights.keys().collect();
+    sorted_names.sort();
+
+    let tensor_data: Vec<(String, Vec<u8>, Vec<usize>)> = sorted_names
+        .iter()
+        .map(|name| {
+            let data = &weights[*name];
+            let bytes: Vec<u8> = bytemuck::cast_slice(data).to_vec();
+            let shape = shapes
+                .get(*name)
+                .cloned()
+                .unwrap_or_else(|| vec![data.len()]);
+            ((*name).clone(), bytes, shape)
+        })
+        .collect();
+
+    let views: Vec<(&str, TensorView<'_>)> = tensor_data
+        .iter()
+        .map(|(name, bytes, shape)| {
+            let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+            (name.as_str(), view)
+        })
+        .collect();
+
+    let st_bytes = safetensors::serialize(views, None).map_err(|e| {
+        entrenar_common::EntrenarError::Serialization {
+            message: format!("SafeTensors serialization failed: {e}"),
+        }
+    })?;
+
+    std::fs::write(output, st_bytes).map_err(|e| entrenar_common::EntrenarError::Io {
+        context: format!("writing SafeTensors output: {}", output.display()),
+        source: e,
+    })
+}
+
+/// Export weights as GGUF format (requires `hub` feature for real quantization).
+fn export_gguf(
+    weights: &std::collections::HashMap<String, Vec<f32>>,
+    shapes: &std::collections::HashMap<String, Vec<usize>>,
+    output: &std::path::Path,
+    quantize: &str,
+) -> entrenar_common::Result<()> {
+    #[cfg(feature = "hub")]
+    {
+        let quant = match quantize {
+            "q4_0" | "Q4_0" => entrenar::hf_pipeline::GgufQuantization::Q4_0,
+            "q8_0" | "Q8_0" => entrenar::hf_pipeline::GgufQuantization::Q8_0,
+            "none" | "None" | "f32" => entrenar::hf_pipeline::GgufQuantization::None,
+            other => {
+                return Err(entrenar_common::EntrenarError::ConfigValue {
+                    field: "quantize".into(),
+                    message: format!("unknown quantization: {other}"),
+                    suggestion: "Use one of: none, q4_0, q8_0".into(),
+                });
+            }
+        };
+
+        let mw = entrenar_distill::weights::weights_to_model_weights(
+            weights.clone(),
+            shapes.clone(),
+        );
+
+        let output_dir = output
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let filename = output
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("model.gguf"));
+
+        let exporter = entrenar::hf_pipeline::Exporter::new()
+            .output_dir(output_dir)
+            .gguf_quantization(quant);
+
+        exporter
+            .export(&mw, entrenar::hf_pipeline::ExportFormat::GGUF, filename)
+            .map_err(|e| entrenar_common::EntrenarError::Internal {
+                message: format!("GGUF export failed: {e}"),
+            })?;
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "hub"))]
+    {
+        let _ = (weights, shapes, output, quantize);
+        Err(entrenar_common::EntrenarError::HuggingFace {
+            message: "GGUF export requires the 'hub' feature. \
+                      Rebuild with: cargo build -p entrenar-distill --features hub"
+                .to_string(),
+        })
+    }
+}
+
+/// Export weights as APR (JSON) format via entrenar's io module.
+fn export_apr(
+    weights: &std::collections::HashMap<String, Vec<f32>>,
+    output: &std::path::Path,
+) -> entrenar_common::Result<()> {
+    // Build a simple JSON representation of the model weights
+    let model_data = serde_json::json!({
+        "format": "apr",
+        "version": "1.0",
+        "tensors": weights.iter().map(|(name, data)| {
+            serde_json::json!({
+                "name": name,
+                "shape": [data.len()],
+                "data": data,
+            })
+        }).collect::<Vec<_>>(),
+    });
+
+    let json = serde_json::to_string_pretty(&model_data).map_err(|e| {
+        entrenar_common::EntrenarError::Serialization {
+            message: format!("APR JSON serialization failed: {e}"),
+        }
+    })?;
+
+    std::fs::write(output, json).map_err(|e| entrenar_common::EntrenarError::Io {
+        context: format!("writing APR output: {}", output.display()),
+        source: e,
+    })
 }

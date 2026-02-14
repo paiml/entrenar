@@ -15,10 +15,12 @@
 pub mod config;
 pub mod pipeline;
 pub mod validation;
+pub mod weights;
 
 pub use config::DistillConfig;
 pub use pipeline::{Pipeline, PipelineResult};
 pub use validation::ConfigValidator;
+pub use weights::load_safetensors_weights;
 
 use entrenar_common::Result;
 
