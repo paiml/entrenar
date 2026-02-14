@@ -1,7 +1,7 @@
 //! GGUF binary parsing helpers
 
-use crate::hf_pipeline::error::FetchError;
 use super::types::GgufTensorInfo;
+use crate::hf_pipeline::error::FetchError;
 
 /// Read a little-endian u32 from a byte slice at the given offset.
 /// Caller must ensure `pos + 4 <= data.len()`.
@@ -135,10 +135,7 @@ pub(super) fn parse_all_tensor_info(
 }
 
 /// Read a GGUF string at the given position, return (string, new_position)
-pub(super) fn read_gguf_string(
-    data: &[u8],
-    pos: usize,
-) -> Result<(String, usize), FetchError> {
+pub(super) fn read_gguf_string(data: &[u8], pos: usize) -> Result<(String, usize), FetchError> {
     let len = read_u64_le(data, pos)? as usize;
     let start = pos + 8;
     let end = start + len;

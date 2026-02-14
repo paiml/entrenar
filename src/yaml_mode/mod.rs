@@ -28,6 +28,7 @@
 //!   epochs: 10
 //! ```
 
+pub mod bridge;
 mod manifest;
 mod templates;
 mod validation;
@@ -35,6 +36,7 @@ mod validation;
 #[cfg(test)]
 mod tests;
 
+pub use bridge::{manifest_to_spec, BridgeError, BridgeResult};
 pub use manifest::{
     AuditConfig, BackpressureConfig, BenchmarkConfig, CallbackConfig, CallbackType, CitlConfig,
     DataConfig, DataLoader, DataSplit, DebugConfig, DistillModelRef, DistillationConfig,

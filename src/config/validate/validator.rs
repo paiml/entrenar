@@ -83,7 +83,7 @@ fn validate_learning_rate(spec: &TrainSpec) -> Result<(), ValidationError> {
 
 /// Validate optimizer name is supported
 fn validate_optimizer(spec: &TrainSpec) -> Result<(), ValidationError> {
-    const VALID_OPTIMIZERS: [&str; 3] = ["adam", "adamw", "sgd"];
+    const VALID_OPTIMIZERS: [&str; 6] = ["adam", "adamw", "sgd", "rmsprop", "adagrad", "lamb"];
     if !VALID_OPTIMIZERS.contains(&spec.optimizer.name.as_str()) {
         return Err(ValidationError::InvalidOptimizer(
             spec.optimizer.name.clone(),
@@ -142,7 +142,15 @@ fn validate_save_interval(spec: &TrainSpec) -> Result<(), ValidationError> {
 /// Validate LR scheduler if specified
 fn validate_lr_scheduler(spec: &TrainSpec) -> Result<(), ValidationError> {
     if let Some(scheduler) = &spec.training.lr_scheduler {
-        const VALID_SCHEDULERS: [&str; 3] = ["cosine", "linear", "constant"];
+        const VALID_SCHEDULERS: [&str; 7] = [
+            "cosine",
+            "linear",
+            "constant",
+            "step",
+            "exponential",
+            "one_cycle",
+            "plateau",
+        ];
         if !VALID_SCHEDULERS.contains(&scheduler.as_str()) {
             return Err(ValidationError::InvalidLRScheduler(scheduler.clone()));
         }

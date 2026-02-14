@@ -124,11 +124,7 @@ fn render_progress(
     ));
 }
 
-fn render_metrics(
-    lines: &mut Vec<String>,
-    snapshot: &TrainingSnapshot,
-    color_mode: ColorMode,
-) {
+fn render_metrics(lines: &mut Vec<String>, snapshot: &TrainingSnapshot, color_mode: ColorMode) {
     let loss_str = if snapshot.loss.is_finite() {
         format!("{:.4}", snapshot.loss)
     } else {
@@ -227,7 +223,11 @@ fn render_gpu_section(
             gpu.device_name.chars().take(20).collect::<String>(),
             util_bar,
             gpu.utilization_percent,
-            Styled::new(&format!("{:.0}\u{00B0}C", gpu.temperature_celsius), color_mode).fg(temp_color),
+            Styled::new(
+                &format!("{:.0}\u{00B0}C", gpu.temperature_celsius),
+                color_mode
+            )
+            .fg(temp_color),
             gpu.power_watts
         ));
 
@@ -310,11 +310,17 @@ fn epoch_trend_arrow(
         let current = &summaries[start_idx + i];
         let change = (current.avg_loss - prev.avg_loss) / prev.avg_loss.abs().max(0.001);
         if change < -0.02 {
-            Styled::new("\u{2193}", color_mode).fg((100, 255, 100)).to_string()
+            Styled::new("\u{2193}", color_mode)
+                .fg((100, 255, 100))
+                .to_string()
         } else if change > 0.02 {
-            Styled::new("\u{2191}", color_mode).fg((255, 100, 100)).to_string()
+            Styled::new("\u{2191}", color_mode)
+                .fg((255, 100, 100))
+                .to_string()
         } else {
-            Styled::new("\u{2192}", color_mode).fg((150, 150, 150)).to_string()
+            Styled::new("\u{2192}", color_mode)
+                .fg((150, 150, 150))
+                .to_string()
         }
     } else {
         " ".to_string()

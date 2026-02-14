@@ -221,12 +221,7 @@ mod tests {
 
     #[test]
     fn test_kernel_selection_all_language_variants() {
-        let languages: &[Option<&str>] = &[
-            Some("rust"),
-            Some("julia"),
-            Some("javascript"),
-            None,
-        ];
+        let languages: &[Option<&str>] = &[Some("rust"), Some("julia"), Some("javascript"), None];
 
         for lang in languages {
             // Syntactic match covering all arms from from_literate kernel selection

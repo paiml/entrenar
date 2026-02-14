@@ -31,7 +31,7 @@ impl WasmBudget {
     /// Create a strict budget for mobile web
     pub fn mobile() -> Self {
         Self {
-            max_binary_size: 2 * 1024 * 1024,    // 2 MB
+            max_binary_size: 2 * 1024 * 1024, // 2 MB
             max_startup_ms: MOBILE_MAX_STARTUP_MS,
             max_memory_bytes: 128 * 1024 * 1024, // 128 MB
         }
@@ -67,7 +67,7 @@ impl WasmBudget {
 impl Default for WasmBudget {
     fn default() -> Self {
         Self {
-            max_binary_size: 5 * 1024 * 1024,    // 5 MB
+            max_binary_size: 5 * 1024 * 1024, // 5 MB
             max_startup_ms: DEFAULT_MAX_STARTUP_MS,
             max_memory_bytes: 256 * 1024 * 1024, // 256 MB
         }

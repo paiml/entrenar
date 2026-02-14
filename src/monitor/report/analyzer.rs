@@ -424,10 +424,16 @@ mod tests {
             let trend = analyzer.determine_trend(metric, &stable_stats);
             let _ = match metric {
                 Metric::Loss => {
-                    assert!(matches!(trend, Trend::Stable | Trend::Improving | Trend::Degrading | Trend::Oscillating));
+                    assert!(matches!(
+                        trend,
+                        Trend::Stable | Trend::Improving | Trend::Degrading | Trend::Oscillating
+                    ));
                 }
                 Metric::Accuracy => {
-                    assert!(matches!(trend, Trend::Stable | Trend::Improving | Trend::Degrading | Trend::Oscillating));
+                    assert!(matches!(
+                        trend,
+                        Trend::Stable | Trend::Improving | Trend::Degrading | Trend::Oscillating
+                    ));
                 }
                 Metric::GradientNorm => {
                     assert!(matches!(trend, Trend::Stable | Trend::Oscillating));
@@ -494,7 +500,10 @@ mod tests {
                 }
                 Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
                     // No-op branch
-                    assert!(issues.is_empty(), "Epoch/Batch/Custom should produce no issues");
+                    assert!(
+                        issues.is_empty(),
+                        "Epoch/Batch/Custom should produce no issues"
+                    );
                 }
             }
         }

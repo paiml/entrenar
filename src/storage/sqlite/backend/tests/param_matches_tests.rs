@@ -31,7 +31,11 @@ fn test_param_filter_cross_type_float_vs_int_eq() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(results.len(), 0, "Float 42.0 should not match Int 42 with Eq");
+    assert_eq!(
+        results.len(),
+        0,
+        "Float 42.0 should not match Int 42 with Eq"
+    );
 }
 
 #[test]
@@ -51,7 +55,11 @@ fn test_param_filter_cross_type_int_vs_float_eq() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(results.len(), 0, "Int 42 should not match Float 42.0 with Eq");
+    assert_eq!(
+        results.len(),
+        0,
+        "Int 42 should not match Float 42.0 with Eq"
+    );
 }
 
 #[test]
@@ -119,7 +127,11 @@ fn test_param_filter_cross_type_int_vs_string() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(results.len(), 0, "Int 42 should not match String '42' with Eq");
+    assert_eq!(
+        results.len(),
+        0,
+        "Int 42 should not match String '42' with Eq"
+    );
 }
 
 #[test]
@@ -183,11 +195,7 @@ fn test_param_filter_cross_type_float_vs_list() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Float 3.14 should not match List with Eq"
-    );
+    assert_eq!(results.len(), 0, "Float 3.14 should not match List with Eq");
 }
 
 #[test]
@@ -294,7 +302,11 @@ fn test_param_filter_cross_type_ne_float_vs_int() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(results.len(), 0, "Float 42.0 should not match Int 42 with Ne");
+    assert_eq!(
+        results.len(),
+        0,
+        "Float 42.0 should not match Int 42 with Ne"
+    );
 }
 
 #[test]
@@ -338,7 +350,11 @@ fn test_param_filter_cross_type_lt_int_vs_float() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(results.len(), 0, "Int 10 should not match Float 50.0 with Lt");
+    assert_eq!(
+        results.len(),
+        0,
+        "Int 10 should not match Float 50.0 with Lt"
+    );
 }
 
 #[test]
@@ -754,11 +770,7 @@ fn test_param_filter_list_eq_list() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "List-to-list Eq should not be supported"
-    );
+    assert_eq!(results.len(), 0, "List-to-list Eq should not be supported");
 }
 
 #[test]
@@ -782,11 +794,7 @@ fn test_param_filter_list_ne_list() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "List-to-list Ne should not be supported"
-    );
+    assert_eq!(results.len(), 0, "List-to-list Ne should not be supported");
 }
 
 #[test]
@@ -810,11 +818,7 @@ fn test_param_filter_list_gt_list() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "List-to-list Gt should not be supported"
-    );
+    assert_eq!(results.len(), 0, "List-to-list Gt should not be supported");
 }
 
 #[test]
@@ -836,11 +840,7 @@ fn test_param_filter_dict_eq_dict() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Dict-to-dict Eq should not be supported"
-    );
+    assert_eq!(results.len(), 0, "Dict-to-dict Eq should not be supported");
 }
 
 #[test]
@@ -865,11 +865,7 @@ fn test_param_filter_dict_ne_dict() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Dict-to-dict Ne should not be supported"
-    );
+    assert_eq!(results.len(), 0, "Dict-to-dict Ne should not be supported");
 }
 
 #[test]
@@ -1005,14 +1001,14 @@ fn test_filter_op_variant_coverage() {
 
     for op in &ops {
         let expected = match op {
-            FilterOp::Eq => true,   // 5.0 == 5.0
-            FilterOp::Ne => false,  // 5.0 != 5.0 is false
-            FilterOp::Gt => false,  // 5.0 > 5.0 is false
-            FilterOp::Lt => false,  // 5.0 < 5.0 is false
-            FilterOp::Gte => true,  // 5.0 >= 5.0
-            FilterOp::Lte => true,  // 5.0 <= 5.0
-            FilterOp::Contains => false,    // unsupported for Float
-            FilterOp::StartsWith => false,  // unsupported for Float
+            FilterOp::Eq => true,          // 5.0 == 5.0
+            FilterOp::Ne => false,         // 5.0 != 5.0 is false
+            FilterOp::Gt => false,         // 5.0 > 5.0 is false
+            FilterOp::Lt => false,         // 5.0 < 5.0 is false
+            FilterOp::Gte => true,         // 5.0 >= 5.0
+            FilterOp::Lte => true,         // 5.0 <= 5.0
+            FilterOp::Contains => false,   // unsupported for Float
+            FilterOp::StartsWith => false, // unsupported for Float
         };
 
         let filters = vec![ParamFilter {
@@ -1023,6 +1019,9 @@ fn test_filter_op_variant_coverage() {
 
         let results = backend.search_runs_by_params(&filters).unwrap();
         let matched = !results.is_empty();
-        assert_eq!(matched, expected, "FilterOp::{op:?} on Float(5.0) vs Float(5.0)");
+        assert_eq!(
+            matched, expected,
+            "FilterOp::{op:?} on Float(5.0) vs Float(5.0)"
+        );
     }
 }

@@ -67,8 +67,7 @@ fn test_falsify_special_float_values_survive() {
     let data = write_gguf(&tensors, &[]);
     let summary = verify_gguf(&data).unwrap();
     let data_start = find_data_section_start(&data, &summary);
-    let recovered =
-        extract_f32_tensor_data(&data, data_start, &summary.tensors[0], special.len());
+    let recovered = extract_f32_tensor_data(&data, data_start, &summary.tensors[0], special.len());
 
     for (i, (&orig, &rec)) in special.iter().zip(recovered.iter()).enumerate() {
         if orig.is_nan() {
@@ -440,7 +439,10 @@ fn test_falsify_utf8_tensor_names() {
     let summary = verify_gguf(&data).unwrap();
     assert_eq!(summary.tensor_count, 2);
     assert_eq!(summary.tensors[0].name, "layer.\u{706B}.weight");
-    assert_eq!(summary.tensors[1].name, "\u{43C}\u{43E}\u{434}\u{435}\u{43B}\u{44C}.bias");
+    assert_eq!(
+        summary.tensors[1].name,
+        "\u{43C}\u{43E}\u{434}\u{435}\u{43B}\u{44C}.bias"
+    );
 }
 
 #[test]
@@ -452,7 +454,10 @@ fn test_falsify_utf8_metadata_values() {
         ),
         (
             "general.architecture".into(),
-            GgufValue::String("\u{442}\u{440}\u{430}\u{43D}\u{441}\u{444}\u{43E}\u{440}\u{43C}\u{435}\u{440}".into()),
+            GgufValue::String(
+                "\u{442}\u{440}\u{430}\u{43D}\u{441}\u{444}\u{43E}\u{440}\u{43C}\u{435}\u{440}"
+                    .into(),
+            ),
         ),
     ];
     let data = write_gguf(&[], &metadata);

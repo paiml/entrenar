@@ -131,22 +131,91 @@ impl SqliteBackend {
             (ParameterValue::Bool(v), ParameterValue::Bool(fv), FilterOp::Ne) => v != fv,
 
             // Unsupported ops for same-type pairs
-            (ParameterValue::Float(..), ParameterValue::Float(..), FilterOp::Contains | FilterOp::StartsWith)
-            | (ParameterValue::Int(..), ParameterValue::Int(..), FilterOp::Contains | FilterOp::StartsWith)
-            | (ParameterValue::String(..), ParameterValue::String(..), FilterOp::Gt | FilterOp::Lt | FilterOp::Gte | FilterOp::Lte)
-            | (ParameterValue::Bool(..), ParameterValue::Bool(..), FilterOp::Gt | FilterOp::Lt | FilterOp::Gte | FilterOp::Lte | FilterOp::Contains | FilterOp::StartsWith) => false,
+            (
+                ParameterValue::Float(..),
+                ParameterValue::Float(..),
+                FilterOp::Contains | FilterOp::StartsWith,
+            )
+            | (
+                ParameterValue::Int(..),
+                ParameterValue::Int(..),
+                FilterOp::Contains | FilterOp::StartsWith,
+            )
+            | (
+                ParameterValue::String(..),
+                ParameterValue::String(..),
+                FilterOp::Gt | FilterOp::Lt | FilterOp::Gte | FilterOp::Lte,
+            )
+            | (
+                ParameterValue::Bool(..),
+                ParameterValue::Bool(..),
+                FilterOp::Gt
+                | FilterOp::Lt
+                | FilterOp::Gte
+                | FilterOp::Lte
+                | FilterOp::Contains
+                | FilterOp::StartsWith,
+            ) => false,
 
             // List and Dict do not support any filter operations
             (ParameterValue::List(..), ParameterValue::List(..), _)
             | (ParameterValue::Dict(..), ParameterValue::Dict(..), _) => false,
 
             // Cross-type comparisons are not supported
-            (ParameterValue::Float(..), ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
-            | (ParameterValue::Int(..), ParameterValue::Float(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
-            | (ParameterValue::String(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::Bool(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
-            | (ParameterValue::Bool(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::List(..) | ParameterValue::Dict(..), _)
-            | (ParameterValue::List(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::Dict(..), _)
-            | (ParameterValue::Dict(..), ParameterValue::Float(..) | ParameterValue::Int(..) | ParameterValue::String(..) | ParameterValue::Bool(..) | ParameterValue::List(..), _) => false,
+            (
+                ParameterValue::Float(..),
+                ParameterValue::Int(..)
+                | ParameterValue::String(..)
+                | ParameterValue::Bool(..)
+                | ParameterValue::List(..)
+                | ParameterValue::Dict(..),
+                _,
+            )
+            | (
+                ParameterValue::Int(..),
+                ParameterValue::Float(..)
+                | ParameterValue::String(..)
+                | ParameterValue::Bool(..)
+                | ParameterValue::List(..)
+                | ParameterValue::Dict(..),
+                _,
+            )
+            | (
+                ParameterValue::String(..),
+                ParameterValue::Float(..)
+                | ParameterValue::Int(..)
+                | ParameterValue::Bool(..)
+                | ParameterValue::List(..)
+                | ParameterValue::Dict(..),
+                _,
+            )
+            | (
+                ParameterValue::Bool(..),
+                ParameterValue::Float(..)
+                | ParameterValue::Int(..)
+                | ParameterValue::String(..)
+                | ParameterValue::List(..)
+                | ParameterValue::Dict(..),
+                _,
+            )
+            | (
+                ParameterValue::List(..),
+                ParameterValue::Float(..)
+                | ParameterValue::Int(..)
+                | ParameterValue::String(..)
+                | ParameterValue::Bool(..)
+                | ParameterValue::Dict(..),
+                _,
+            )
+            | (
+                ParameterValue::Dict(..),
+                ParameterValue::Float(..)
+                | ParameterValue::Int(..)
+                | ParameterValue::String(..)
+                | ParameterValue::Bool(..)
+                | ParameterValue::List(..),
+                _,
+            ) => false,
         }
     }
 
@@ -251,11 +320,19 @@ mod tests {
                 FilterOp::Contains => {
                     // Unsupported for Float, but supported for String
                     assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
-                    assert!(SqliteBackend::param_matches(&string_val, op, &string_filter));
+                    assert!(SqliteBackend::param_matches(
+                        &string_val,
+                        op,
+                        &string_filter
+                    ));
                 }
                 FilterOp::StartsWith => {
                     assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
-                    assert!(SqliteBackend::param_matches(&string_val, op, &string_filter));
+                    assert!(SqliteBackend::param_matches(
+                        &string_val,
+                        op,
+                        &string_filter
+                    ));
                 }
             }
         }
@@ -266,22 +343,36 @@ mod tests {
         let float_val = ParameterValue::Float(42.0);
         let int_filter = ParameterValue::Int(42);
         // Cross-type comparisons always return false
-        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Eq, &int_filter));
-        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Ne, &int_filter));
-        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Gt, &int_filter));
-        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Lt, &int_filter));
+        assert!(!SqliteBackend::param_matches(
+            &float_val,
+            &FilterOp::Eq,
+            &int_filter
+        ));
+        assert!(!SqliteBackend::param_matches(
+            &float_val,
+            &FilterOp::Ne,
+            &int_filter
+        ));
+        assert!(!SqliteBackend::param_matches(
+            &float_val,
+            &FilterOp::Gt,
+            &int_filter
+        ));
+        assert!(!SqliteBackend::param_matches(
+            &float_val,
+            &FilterOp::Lt,
+            &int_filter
+        ));
     }
 
     #[test]
     fn test_param_matches_list_and_dict_always_false() {
         let list_val = ParameterValue::List(vec![ParameterValue::Int(1)]);
         let list_filter = ParameterValue::List(vec![ParameterValue::Int(1)]);
-        let dict_val = ParameterValue::Dict(HashMap::from([
-            ("k".to_string(), ParameterValue::Int(1)),
-        ]));
-        let dict_filter = ParameterValue::Dict(HashMap::from([
-            ("k".to_string(), ParameterValue::Int(1)),
-        ]));
+        let dict_val =
+            ParameterValue::Dict(HashMap::from([("k".to_string(), ParameterValue::Int(1))]));
+        let dict_filter =
+            ParameterValue::Dict(HashMap::from([("k".to_string(), ParameterValue::Int(1))]));
 
         // List and Dict do not support any filter operations - verify with match
         let test_cases: Vec<(&ParameterValue, &ParameterValue, &FilterOp)> = vec![

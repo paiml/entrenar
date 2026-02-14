@@ -262,7 +262,7 @@ mod tests {
         p.advance(); // Calibrating
         p.advance(); // ComputingImportance
         p.advance(); // Pruning
-        // Pruning → Evaluating (fine_tune_after_pruning=false)
+                     // Pruning → Evaluating (fine_tune_after_pruning=false)
         p.advance();
         assert_eq!(p.stage(), PruningStage::Evaluating);
     }

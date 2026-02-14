@@ -49,7 +49,8 @@ pub use infer::{
     FeatureType, InferenceConfig, InferredSchema,
 };
 pub use schema::{
-    DataConfig, LoRASpec, MergeSpec, ModelRef, OptimSpec, QuantSpec, TrainSpec, TrainingParams,
+    DataConfig, LoRASpec, MergeSpec, ModelMode, ModelRef, OptimSpec, QuantSpec, TrainSpec,
+    TrainingMode, TrainingParams,
 };
 pub use train::{load_config, train_from_yaml};
 pub use validate::{validate_config, ValidationError};
