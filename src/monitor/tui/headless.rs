@@ -307,7 +307,9 @@ impl HeadlessMonitor {
                         TrainingStatus::Failed(msg) => {
                             eprintln!("\nTraining failed: {msg}");
                         }
-                        _ => {}
+                        TrainingStatus::Initializing
+                        | TrainingStatus::Running
+                        | TrainingStatus::Paused => {}
                     }
                     break;
                 }

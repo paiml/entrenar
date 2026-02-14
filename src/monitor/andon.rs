@@ -179,7 +179,7 @@ impl AndonSystem {
         let should_stop = match alert.level {
             AlertLevel::Critical => self.config.stop_on_critical,
             AlertLevel::Error => self.config.stop_on_error,
-            _ => false,
+            AlertLevel::Info | AlertLevel::Warning => false,
         };
 
         if should_stop {

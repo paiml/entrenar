@@ -43,7 +43,7 @@ impl From<u8> for PathType {
             2 => PathType::Forest,
             3 => PathType::KNN,
             4 => PathType::Neural,
-            _ => PathType::Custom,
+            5..=255 => PathType::Custom,
         }
     }
 }

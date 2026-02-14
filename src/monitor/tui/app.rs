@@ -170,7 +170,9 @@ impl TuiMonitor {
             TrainingStatus::Failed(msg) => {
                 writeln!(stdout, "║  Status:    FAILED - {msg}                    ║")?;
             }
-            _ => {}
+            TrainingStatus::Initializing
+            | TrainingStatus::Running
+            | TrainingStatus::Paused => {}
         }
 
         writeln!(

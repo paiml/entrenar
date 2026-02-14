@@ -100,7 +100,10 @@ impl LLMMetrics {
             m if m.contains("claude-3-opus") => (0.015, 0.075),
             m if m.contains("claude-3-sonnet") => (0.003, 0.015),
             m if m.contains("claude-3-haiku") => (0.00025, 0.00125),
-            _ => (0.001, 0.002), // Default conservative estimate
+            m if m.contains("gemini") => (0.00025, 0.0005),
+            m if m.contains("mistral") => (0.0002, 0.0006),
+            m if m.contains("llama") => (0.0002, 0.0006),
+            _other => (0.001, 0.002), // Default conservative estimate for unknown models
         };
 
         let prompt_cost = (f64::from(self.prompt_tokens) / 1000.0) * prompt_price;
