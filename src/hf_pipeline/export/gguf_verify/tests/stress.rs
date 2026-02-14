@@ -221,3 +221,69 @@ fn test_falsify_deterministic_output() {
         "identical weights must produce identical GGUF files"
     );
 }
+
+#[test]
+fn test_falsify_exporter_write_error_on_readonly_path() {
+    // Export to a path that cannot be created should return GgufWriteError
+    use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+    let mut weights = ModelWeights::new();
+    weights.add_tensor("w", vec![1.0], vec![1]);
+
+    let exporter = Exporter::new().output_dir("/proc/nonexistent_dir");
+    let result = exporter.export(&weights, ExportFormat::GGUF, "fail.gguf");
+    assert!(result.is_err(), "export to invalid path must fail");
+}
+
+#[test]
+fn test_falsify_exporter_creates_parent_directories() {
+    // Export to a nested path should create parent directories
+    use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+    let mut weights = ModelWeights::new();
+    weights.add_tensor("w", vec![1.0], vec![1]);
+
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("deep").join("nested").join("path");
+    let exporter = Exporter::new().output_dir(&nested).include_metadata(false);
+    let result = exporter.export(&weights, ExportFormat::GGUF, "model.gguf");
+    assert!(result.is_ok(), "export should create parent directories");
+    assert!(nested.join("model.gguf").exists());
+}
+
+#[test]
+fn test_falsify_exporter_partial_metadata_combinations() {
+    // Test all 4 combinations of architecture/model_name being Some/None
+    use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+    let cases: Vec<(Option<&str>, Option<&str>, u64)> = vec![
+        (None, None, 1),                      // only param_count
+        (Some("llama"), None, 2),             // arch + param_count
+        (None, Some("my-model"), 2),          // name + param_count
+        (Some("llama"), Some("my-model"), 3), // arch + name + param_count
+    ];
+
+    for (arch, name, expected_meta) in cases {
+        let mut weights = ModelWeights::new();
+        weights.add_tensor("w", vec![1.0], vec![1]);
+        weights.metadata.num_params = 1;
+        weights.metadata.architecture = arch.map(String::from);
+        weights.metadata.model_name = name.map(String::from);
+        weights.metadata.hidden_size = None;
+        weights.metadata.num_layers = None;
+
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new().output_dir(dir.path());
+        exporter
+            .export(&weights, ExportFormat::GGUF, "meta.gguf")
+            .unwrap();
+
+        let file_data = std::fs::read(dir.path().join("meta.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+        assert_eq!(
+            summary.metadata_count, expected_meta,
+            "arch={arch:?}, name={name:?}: expected {expected_meta} metadata, got {}",
+            summary.metadata_count
+        );
+    }
+}
