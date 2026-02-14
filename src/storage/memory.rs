@@ -79,7 +79,7 @@ impl InMemoryStorage {
         let mut hasher = Sha256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        format!("sha256-{}", hex::encode(&result[..16])) // Use first 16 bytes
+        format!("sha256-{}", hex::encode(result.get(..16).unwrap_or(&result))) // Use first 16 bytes
     }
 }
 

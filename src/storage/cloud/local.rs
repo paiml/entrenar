@@ -33,7 +33,7 @@ impl LocalBackend {
     /// Get the file path for a hash
     fn hash_to_path(&self, hash: &str) -> PathBuf {
         // Use subdirectories based on hash prefix for better filesystem performance
-        let prefix = &hash[..2];
+        let prefix = hash.get(..2).unwrap_or(hash);
         self.base_path.join(prefix).join(hash)
     }
 }

@@ -47,6 +47,7 @@ adapters/
 *.bin
 *.ckpt
 models/
+!models/README.md
 
 # HuggingFace cache
 .cache/huggingface/
@@ -68,6 +69,7 @@ generated_tests/
 *.bin
 adapters/
 models/
+!models/README.md
 experiments/
 
 # HuggingFace

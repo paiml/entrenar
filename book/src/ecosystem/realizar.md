@@ -1,6 +1,7 @@
 # Realizar GGUF Export
 
-The ecosystem module provides GGUF export functionality for model quantization and distribution via integration with Realizar.
+The ecosystem module provides GGUF export functionality for model
+quantization and distribution via integration with Realizar.
 
 ## Quantization Types
 

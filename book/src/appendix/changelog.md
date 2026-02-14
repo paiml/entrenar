@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `eval/evaluator.rs` → `evaluator/` (metric, config, result, leaderboard, kfold, model_evaluator, tests)
   - `hf_pipeline/fetcher.rs` → `fetcher/` (types, options, hf_fetcher, tests)
   - `efficiency/device.rs` → `device/` (simd, cpu, gpu, tpu, apple, compute, tests)
-  - `monitor/llm.rs` → `llm/` (error, metrics, prompt, eval_result, traits, stats, memory_evaluator, heuristics, tests)
-  - `monitor/inference/provenance.rs` → `provenance/` (node, edge, graph, attack, reconstructor, tests)
+  - `monitor/llm.rs` → `llm/` (error, metrics, prompt, eval_result,
+    traits, stats, memory_evaluator, heuristics, tests)
+  - `monitor/inference/provenance.rs` → `provenance/`
+    (node, edge, graph, attack, reconstructor, tests)
   - `citl/pattern_store.rs` → `pattern_store/` (chunk_id, fix_pattern, suggestion, config, store, data, tests)
   - `storage/registry.rs` → `registry/` (stage, version, comparison, transition, policy, error, traits, memory)
   - `citl/trainer.rs` → `trainer/` (span, trace, outcome, correlation, config, stats, citl)

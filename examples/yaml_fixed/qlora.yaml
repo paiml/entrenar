@@ -17,5 +17,5 @@ lora:
 
 quantize:
   bits: 4
-  symmetric: true
-  per_channel: true
+  symmetric: "true"
+  per_channel: "true"

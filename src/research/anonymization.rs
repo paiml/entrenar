@@ -83,7 +83,7 @@ impl AnonymizationConfig {
         hasher.update(self.salt.as_bytes());
         hasher.update(original_id.as_bytes());
         let hash = hasher.finalize();
-        format!("anon-{}", hex::encode(&hash[..8])) // Use first 8 bytes for brevity
+        format!("anon-{}", hex::encode(hash.get(..8).unwrap_or(&hash))) // Use first 8 bytes for brevity
     }
 
     /// Anonymize a research artifact

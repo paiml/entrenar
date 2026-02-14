@@ -30,3 +30,9 @@ require_doc_tests = true
 require_readme = true
 require_changelog = true
 require_api_docs = true
+
+[compute-brick]
+# ComputeBrick compliance (CB-030+)
+enabled = true
+cache_strategy = "o1"
+max_hook_time_ms = 500

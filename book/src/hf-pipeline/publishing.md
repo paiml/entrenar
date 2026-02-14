@@ -1,6 +1,9 @@
 # Publishing to HuggingFace Hub
 
-Entrenar can publish trained models, model cards, and evaluation results directly to HuggingFace Hub repositories. All types live in `entrenar::hf_pipeline::publish`. This module is feature-gated under `hub-publish`.
+Entrenar can publish trained models, model cards, and evaluation
+results directly to HuggingFace Hub repositories. All types live in
+`entrenar::hf_pipeline::publish`. This module is feature-gated
+under `hub-publish`.
 
 ```toml
 [dependencies]
@@ -114,7 +117,9 @@ println!("Model card: {}", result.model_card_generated);
 
 ## ModelCard Generation
 
-`ModelCard` renders a HuggingFace-compatible `README.md` with YAML front matter. The front matter encodes license, language, tags, base model, and evaluation metrics in the `model-index` format.
+`ModelCard` renders a HuggingFace-compatible `README.md` with YAML
+front matter. The front matter encodes license, language, tags, base
+model, and evaluation metrics in the `model-index` format.
 
 ```rust,ignore
 use entrenar::hf_pipeline::publish::ModelCard;
@@ -162,7 +167,8 @@ Model: my-model
 
 ## JSONL Submission Formatting
 
-For leaderboard submissions that require JSONL format, use the `format_submission_jsonl` and `format_submissions_jsonl` functions.
+For leaderboard submissions that require JSONL format, use the
+`format_submission_jsonl` and `format_submissions_jsonl` functions.
 
 ```rust,ignore
 use entrenar::hf_pipeline::publish::{format_submission_jsonl, format_submissions_jsonl};
@@ -181,7 +187,9 @@ let results = vec![result];
 let jsonl = format_submissions_jsonl(&results);
 ```
 
-Metric keys are mapped to leaderboard-compatible names: `wer`, `bleu`, `rouge_1`, `perplexity`, `mmlu_accuracy`, `pass@k`, `ndcg@k`.
+Metric keys are mapped to leaderboard-compatible names: `wer`,
+`bleu`, `rouge_1`, `perplexity`, `mmlu_accuracy`, `pass@k`,
+`ndcg@k`.
 
 ## Error Handling
 

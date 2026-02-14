@@ -1,6 +1,8 @@
 # Ruchy Session Bridge
 
-The Ruchy session bridge preserves training history from interactive Ruchy sessions, converting them to Entrenar artifacts for reproducibility and archival.
+The Ruchy session bridge preserves training history from interactive
+Ruchy sessions, converting them to Entrenar artifacts for
+reproducibility and archival.
 
 ## Feature Flag
 

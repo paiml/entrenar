@@ -76,7 +76,7 @@ impl GridSearch {
         }
 
         let (name, values) = &param_values[0];
-        let rest = &param_values[1..];
+        let rest = param_values.get(1..).unwrap_or_default();
         let rest_configs = Self::cartesian_product(rest);
 
         values

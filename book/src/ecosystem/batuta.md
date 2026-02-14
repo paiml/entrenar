@@ -1,6 +1,8 @@
 # Batuta Integration
 
-Batuta provides GPU pricing and queue management services. The ecosystem module integrates with Batuta for cost estimation and ETA adjustments.
+Batuta provides GPU pricing and queue management services. The
+ecosystem module integrates with Batuta for cost estimation and
+ETA adjustments.
 
 ## BatutaClient
 

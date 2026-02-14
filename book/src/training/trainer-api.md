@@ -1,6 +1,8 @@
 # Trainer API
 
-The `Trainer` struct provides a high-level abstraction for training neural networks with full callback support, automatic metrics tracking, and gradient management.
+The `Trainer` struct provides a high-level abstraction for training
+neural networks with full callback support, automatic metrics
+tracking, and gradient management.
 
 ## Overview
 

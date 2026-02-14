@@ -1,6 +1,8 @@
 # Callback System
 
-The callback system provides extensible hooks into the training loop, enabling behaviors like early stopping, checkpointing, progress logging, and real-time monitoring without modifying the core trainer.
+The callback system provides extensible hooks into the training loop,
+enabling behaviors like early stopping, checkpointing, progress
+logging, and real-time monitoring without modifying the core trainer.
 
 ## Overview
 

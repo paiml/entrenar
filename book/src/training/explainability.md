@@ -1,6 +1,8 @@
 # Explainability Callback
 
-The `ExplainabilityCallback` integrates aprender's interpret module into the training loop, providing feature attribution and importance analysis during model evaluation.
+The `ExplainabilityCallback` integrates aprender's interpret module
+into the training loop, providing feature attribution and importance
+analysis during model evaluation.
 
 ## Overview
 

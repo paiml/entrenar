@@ -87,6 +87,7 @@ impl From<(u8, u8, u8)> for Rgb {
 
 impl Rgb {
     /// Convert to ANSI 256-color index (approximate)
+    #[allow(clippy::cast_possible_truncation)] // u16 * 5 / 255 always fits in u8 (max 5)
     pub fn to_256(self) -> u8 {
         // Use the 216 color cube (indices 16-231)
         // Each channel has 6 levels: 0, 95, 135, 175, 215, 255
@@ -268,6 +269,7 @@ impl TrainingPalette {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Color for GPU utilization based on percentage
+    #[allow(clippy::cast_possible_truncation)] // f32 percent clamped to 0..100 fits u32
     pub fn gpu_util_color(percent: f32) -> Rgb {
         match percent as u32 {
             0..=30 => Self::MUTED,    // Low (gray - underutilized)
@@ -278,6 +280,7 @@ impl TrainingPalette {
     }
 
     /// Color for VRAM usage based on percentage
+    #[allow(clippy::cast_possible_truncation)] // f32 percent clamped to 0..100 fits u32
     pub fn vram_color(percent: f32) -> Rgb {
         match percent as u32 {
             0..=50 => Self::SUCCESS,  // OK (green)
@@ -288,6 +291,7 @@ impl TrainingPalette {
     }
 
     /// Color for temperature in Celsius
+    #[allow(clippy::cast_possible_truncation)] // f32 celsius for display fits u32
     pub fn temp_color(celsius: f32) -> Rgb {
         match celsius as u32 {
             0..=50 => Self::SUCCESS,  // Cool (green)
@@ -298,6 +302,7 @@ impl TrainingPalette {
     }
 
     /// Color for power usage based on percentage of limit
+    #[allow(clippy::cast_possible_truncation)] // f32 percent clamped to 0..100 fits u32
     pub fn power_color(percent: f32) -> Rgb {
         match percent as u32 {
             0..=60 => Self::SUCCESS,  // Low (green)
@@ -323,6 +328,7 @@ impl TrainingPalette {
 
     /// Color for loss value (lower is better)
     /// Returns a gradient from red (high loss) to green (low loss)
+    #[allow(clippy::cast_possible_truncation)] // interpolated RGB values clamped to 0..255
     pub fn loss_color(loss: f32, min_loss: f32, max_loss: f32) -> Rgb {
         if max_loss <= min_loss {
             return Self::INFO;
@@ -379,6 +385,7 @@ impl TrainingPalette {
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Color for progress bar fill based on completion percentage
+    #[allow(clippy::cast_possible_truncation)] // f32 percent clamped to 0..100 fits u32
     pub fn progress_color(percent: f32) -> Rgb {
         match percent as u32 {
             0..=25 => Self::INFO,     // Starting (blue)
@@ -395,6 +402,7 @@ impl TrainingPalette {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Render a colored progress bar
+#[allow(clippy::cast_possible_truncation)] // percent * width always fits usize for TUI bars
 pub fn colored_bar(value: f32, max: f32, width: usize, color: Rgb, mode: ColorMode) -> String {
     let percent = if max > 0.0 { value / max } else { 0.0 };
     let percent = percent.clamp(0.0, 1.0);

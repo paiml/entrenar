@@ -1,6 +1,9 @@
 # Sovereign Deployment
 
-The sovereign module enables air-gapped deployment scenarios for universities, enterprises, and environments without reliable internet access. Think of it like the old-school Linux .ISO hosting at university mirror sites.
+The sovereign module enables air-gapped deployment scenarios for
+universities, enterprises, and environments without reliable internet
+access. Think of it like the old-school Linux .ISO hosting at
+university mirror sites.
 
 ## Why Sovereign Deployment?
 

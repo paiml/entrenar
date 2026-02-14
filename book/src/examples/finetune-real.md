@@ -84,4 +84,4 @@ Training state is persisted to `experiments/finetune-real/training_state.json` f
 - Crash recovery
 - Experiment tracking
 
-See [TUI Monitor Documentation](../monitoring/tui-monitor.md) for details.
+See [TUI Monitor Documentation](../monitor/dashboard.md) for details.

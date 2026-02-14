@@ -1,6 +1,9 @@
 # Curriculum Learning
 
-Curriculum learning progressively increases training difficulty, starting with easy examples and advancing to harder ones as the model improves. This is particularly effective for CITL (Compiler-in-the-Loop) training where error complexity varies.
+Curriculum learning progressively increases training difficulty,
+starting with easy examples and advancing to harder ones as the
+model improves. This is particularly effective for CITL
+(Compiler-in-the-Loop) training where error complexity varies.
 
 ## Overview
 

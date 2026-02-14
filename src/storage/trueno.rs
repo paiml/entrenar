@@ -74,7 +74,7 @@ impl TruenoBackend {
         let mut hasher = Sha256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        format!("sha256-{}", hex::encode(&result[..16]))
+        format!("sha256-{}", hex::encode(result.get(..16).unwrap_or(&result)))
     }
 
     /// Convert our RunStatus to trueno-db's RunStatus

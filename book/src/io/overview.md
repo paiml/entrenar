@@ -1,6 +1,7 @@
 # Model I/O Overview
 
-**Model I/O** provides save/load functionality for neural network models with support for multiple serialization formats.
+**Model I/O** provides save/load functionality for neural network
+models with support for multiple serialization formats.
 
 ## The Problem
 

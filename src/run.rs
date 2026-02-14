@@ -188,7 +188,7 @@ impl<S: ExperimentStorage> Run<S> {
 
         self.storage
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .log_metric(&self.id, key, step, value)?;
 
         // Emit span event if tracing enabled
@@ -222,7 +222,7 @@ impl<S: ExperimentStorage> Run<S> {
 
         self.storage
             .lock()
-            .unwrap()
+            .unwrap_or_else(PoisonError::into_inner)
             .complete_run(&self.id, status)?;
 
         self.finished = true;

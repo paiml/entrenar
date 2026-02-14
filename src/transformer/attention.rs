@@ -124,7 +124,7 @@ impl MultiHeadAttention {
             let q_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * hidden_size + h * head_dim;
-                    q.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                    q.data().as_slice().expect("contiguous Q tensor")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
@@ -132,7 +132,7 @@ impl MultiHeadAttention {
             let k_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * kv_hidden_size + kv_h * head_dim;
-                    k.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                    k.data().as_slice().expect("contiguous K tensor")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
@@ -140,7 +140,7 @@ impl MultiHeadAttention {
             let v_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * kv_hidden_size + kv_h * head_dim;
-                    v.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                    v.data().as_slice().expect("contiguous V tensor")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
@@ -153,7 +153,7 @@ impl MultiHeadAttention {
                 &q_tensor, &k_tensor, &v_tensor, seq_len, head_dim, seq_len, head_dim,
             );
 
-            attn_outputs.extend_from_slice(attn_out.data().as_slice().unwrap());
+            attn_outputs.extend_from_slice(attn_out.data().as_slice().expect("contiguous attention output"));
         }
 
         // Concatenate heads and reshape: (seq_len, num_heads * head_dim) = (seq_len, hidden_size)
@@ -354,7 +354,7 @@ impl MultiHeadAttentionWithLoRA {
             let q_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * hidden_size + h * head_dim;
-                    q.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                    q.data().as_slice().expect("contiguous Q tensor")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
@@ -362,7 +362,7 @@ impl MultiHeadAttentionWithLoRA {
             let k_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * kv_hidden_size + kv_h * head_dim;
-                    k.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                    k.data().as_slice().expect("contiguous K tensor")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
@@ -370,7 +370,7 @@ impl MultiHeadAttentionWithLoRA {
             let v_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * kv_hidden_size + kv_h * head_dim;
-                    v.data().as_slice().unwrap()[start..start + head_dim].to_vec()
+                    v.data().as_slice().expect("contiguous V tensor")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
@@ -383,7 +383,7 @@ impl MultiHeadAttentionWithLoRA {
                 &q_tensor, &k_tensor, &v_tensor, seq_len, head_dim, seq_len, head_dim,
             );
 
-            attn_outputs.extend_from_slice(attn_out.data().as_slice().unwrap());
+            attn_outputs.extend_from_slice(attn_out.data().as_slice().expect("contiguous attention output"));
         }
 
         // Concatenate heads and reorder

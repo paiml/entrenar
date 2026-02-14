@@ -1,6 +1,7 @@
 # Model Merging Overview
 
-**Model merging** combines multiple fine-tuned models into a single unified model that retains capabilities from all source models.
+**Model merging** combines multiple fine-tuned models into a single
+unified model that retains capabilities from all source models.
 
 ## The Problem
 

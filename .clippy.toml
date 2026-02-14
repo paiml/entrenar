@@ -7,3 +7,9 @@ cognitive-complexity-threshold = 15
 # Additional strictness
 too-many-arguments-threshold = 7
 type-complexity-threshold = 250
+
+# CB-503: Disallowed methods for safety
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "Not thread-safe, use a config struct instead" },
+    { path = "std::env::remove_var", reason = "Not thread-safe, use a config struct instead" },
+]

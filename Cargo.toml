@@ -100,6 +100,20 @@ repository = "https://github.com/paiml/entrenar"
 license = "MIT"
 keywords = ["machine-learning", "neural-networks", "autograd", "lora", "quantization"]
 categories = ["science", "mathematics"]
+exclude = [
+    "book/",
+    "docs/",
+    "examples/",
+    "tests/",
+    "scripts/",
+    ".pmat/",
+    ".pmat-work/",
+    ".pmat-metrics/",
+    ".github/",
+    "*.md",
+    "models/",
+    "wasm-pkg/",
+]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

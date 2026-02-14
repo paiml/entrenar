@@ -26,13 +26,13 @@ impl ArtifactBackend for InMemoryBackend {
 
         self.data
             .write()
-            .unwrap()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
             .insert(hash.clone(), data.to_vec());
 
         let metadata = ArtifactMetadata::new(name, &hash, data.len() as u64);
         self.metadata
             .write()
-            .unwrap()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
             .insert(hash.clone(), metadata);
 
         Ok(hash)
@@ -41,36 +41,53 @@ impl ArtifactBackend for InMemoryBackend {
     fn get(&self, hash: &str) -> Result<Vec<u8>> {
         self.data
             .read()
-            .unwrap()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
             .get(hash)
             .cloned()
             .ok_or_else(|| CloudError::NotFound(hash.to_string()))
     }
 
     fn exists(&self, hash: &str) -> Result<bool> {
-        Ok(self.data.read().unwrap().contains_key(hash))
+        Ok(self
+            .data
+            .read()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
+            .contains_key(hash))
     }
 
     fn delete(&self, hash: &str) -> Result<()> {
-        let removed = self.data.write().unwrap().remove(hash);
+        let removed = self
+            .data
+            .write()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
+            .remove(hash);
         if removed.is_none() {
             return Err(CloudError::NotFound(hash.to_string()));
         }
-        self.metadata.write().unwrap().remove(hash);
+        self.metadata
+            .write()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
+            .remove(hash);
         Ok(())
     }
 
     fn get_metadata(&self, hash: &str) -> Result<ArtifactMetadata> {
         self.metadata
             .read()
-            .unwrap()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
             .get(hash)
             .cloned()
             .ok_or_else(|| CloudError::NotFound(hash.to_string()))
     }
 
     fn list(&self) -> Result<Vec<ArtifactMetadata>> {
-        Ok(self.metadata.read().unwrap().values().cloned().collect())
+        Ok(self
+            .metadata
+            .read()
+            .map_err(|e| CloudError::Backend(e.to_string()))?
+            .values()
+            .cloned()
+            .collect())
     }
 
     fn backend_type(&self) -> &'static str {

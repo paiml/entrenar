@@ -51,6 +51,7 @@ impl ReproducibilityConfig {
     }
 
     /// Apply reproducibility settings to environment
+    #[allow(clippy::disallowed_methods)] // Intentional: CUDA env vars for reproducibility
     pub fn apply(&self) {
         // Set environment variables for PyTorch/CUDA if used
         std::env::set_var("PYTHONHASHSEED", self.seed.to_string());

@@ -116,7 +116,7 @@ impl TraceSerializer {
         // Skip path type and reserved bytes (bytes[5], bytes[6], bytes[7])
 
         // Deserialize trace
-        DecisionTrace::from_bytes(&bytes[8..]).map_err(|e| {
+        DecisionTrace::from_bytes(bytes.get(8..).unwrap_or_default()).map_err(|e| {
             SerializationError::InvalidFormat(format!("Path deserialization failed: {e}"))
         })
     }

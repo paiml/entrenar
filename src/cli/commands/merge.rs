@@ -127,7 +127,8 @@ fn perform_ties_merge(models: &[Model], args: &MergeArgs) -> Result<Model, Strin
         density: args.density.unwrap_or(0.2),
     };
     let base = &models[0];
-    ties_merge(&models[1..], base, &config).map_err(|e| format!("TIES merge failed: {e}"))
+    ties_merge(models.get(1..).unwrap_or_default(), base, &config)
+        .map_err(|e| format!("TIES merge failed: {e}"))
 }
 
 /// DARE merge with dropout
@@ -137,7 +138,8 @@ fn perform_dare_merge(models: &[Model], args: &MergeArgs) -> Result<Model, Strin
         seed: None,
     };
     let base = &models[0];
-    dare_merge(&models[1..], base, &config).map_err(|e| format!("DARE merge failed: {e}"))
+    dare_merge(models.get(1..).unwrap_or_default(), base, &config)
+        .map_err(|e| format!("DARE merge failed: {e}"))
 }
 
 /// SLERP merge (requires exactly 2 models)
