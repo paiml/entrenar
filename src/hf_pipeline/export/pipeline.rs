@@ -217,4 +217,205 @@ mod tests {
             f32_result.export.size_bytes
         );
     }
+
+    // =====================================================================
+    // Falsification: pipeline roundtrip via verify_gguf
+    // =====================================================================
+
+    #[test]
+    fn test_falsify_pipeline_f32_gguf_is_valid() {
+        use crate::hf_pipeline::export::gguf_verify::verify_gguf;
+
+        let weights = make_test_weights();
+        let tmp = TempDir::new().unwrap();
+        quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "f32.gguf").unwrap();
+
+        let file_data = std::fs::read(tmp.path().join("f32.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+
+        assert_eq!(summary.version, 3);
+        assert_eq!(summary.tensor_count, 2);
+        // Metadata: architecture + name + parameter_count = 3
+        assert_eq!(summary.metadata_count, 3);
+        // Tensors sorted alphabetically
+        assert_eq!(summary.tensors[0].name, "layer.0.bias");
+        assert_eq!(summary.tensors[1].name, "layer.0.weight");
+        // Both F32
+        assert_eq!(summary.tensors[0].dtype, 0);
+        assert_eq!(summary.tensors[1].dtype, 0);
+        // Shapes
+        assert_eq!(summary.tensors[0].shape, vec![16]);
+        assert_eq!(summary.tensors[1].shape, vec![16, 16]);
+    }
+
+    #[test]
+    fn test_falsify_pipeline_q4_0_gguf_is_valid() {
+        use crate::hf_pipeline::export::gguf_verify::verify_gguf;
+
+        let weights = make_test_weights();
+        let tmp = TempDir::new().unwrap();
+        quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "q4.gguf").unwrap();
+
+        let file_data = std::fs::read(tmp.path().join("q4.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+
+        assert_eq!(summary.tensor_count, 2);
+        // Both Q4_0
+        assert_eq!(summary.tensors[0].dtype, 2);
+        assert_eq!(summary.tensors[1].dtype, 2);
+    }
+
+    #[test]
+    fn test_falsify_pipeline_q8_0_gguf_is_valid() {
+        use crate::hf_pipeline::export::gguf_verify::verify_gguf;
+
+        let weights = make_test_weights();
+        let tmp = TempDir::new().unwrap();
+        quantize_and_export(&weights, GgufQuantization::Q8_0, tmp.path(), "q8.gguf").unwrap();
+
+        let file_data = std::fs::read(tmp.path().join("q8.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+
+        assert_eq!(summary.tensor_count, 2);
+        // Both Q8_0
+        assert_eq!(summary.tensors[0].dtype, 8);
+        assert_eq!(summary.tensors[1].dtype, 8);
+    }
+
+    #[test]
+    fn test_falsify_pipeline_q8_smaller_than_f32() {
+        let weights = make_test_weights();
+        let tmp_f32 = TempDir::new().unwrap();
+        let tmp_q8 = TempDir::new().unwrap();
+
+        let f32_result = quantize_and_export(
+            &weights,
+            GgufQuantization::None,
+            tmp_f32.path(),
+            "model.gguf",
+        )
+        .unwrap();
+        let q8_result = quantize_and_export(
+            &weights,
+            GgufQuantization::Q8_0,
+            tmp_q8.path(),
+            "model.gguf",
+        )
+        .unwrap();
+
+        assert!(
+            q8_result.export.size_bytes < f32_result.export.size_bytes,
+            "Q8_0 ({}) should be smaller than F32 ({})",
+            q8_result.export.size_bytes,
+            f32_result.export.size_bytes
+        );
+    }
+
+    #[test]
+    fn test_falsify_pipeline_q4_smaller_than_q8() {
+        let weights = make_test_weights();
+        let tmp_q4 = TempDir::new().unwrap();
+        let tmp_q8 = TempDir::new().unwrap();
+
+        let q4_result = quantize_and_export(
+            &weights,
+            GgufQuantization::Q4_0,
+            tmp_q4.path(),
+            "model.gguf",
+        )
+        .unwrap();
+        let q8_result = quantize_and_export(
+            &weights,
+            GgufQuantization::Q8_0,
+            tmp_q8.path(),
+            "model.gguf",
+        )
+        .unwrap();
+
+        assert!(
+            q4_result.export.size_bytes < q8_result.export.size_bytes,
+            "Q4_0 ({}) should be smaller than Q8_0 ({})",
+            q4_result.export.size_bytes,
+            q8_result.export.size_bytes
+        );
+    }
+
+    #[test]
+    fn test_falsify_pipeline_readme_contains_quantization_mode() {
+        let weights = make_test_weights();
+
+        for (quant, expected_str) in [
+            (GgufQuantization::None, "F32 (unquantized)"),
+            (GgufQuantization::Q4_0, "Q4_0 (4-bit)"),
+            (GgufQuantization::Q8_0, "Q8_0 (8-bit)"),
+        ] {
+            let tmp = TempDir::new().unwrap();
+            let result = quantize_and_export(&weights, quant, tmp.path(), "model.gguf").unwrap();
+            let readme = result.readme.unwrap();
+            assert!(
+                readme.contains(expected_str),
+                "README for {quant:?} should contain '{expected_str}', got:\n{readme}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_falsify_pipeline_f32_data_integrity_through_pipeline() {
+        // Verify actual tensor bytes survive the full pipeline
+        use crate::hf_pipeline::export::gguf_verify::verify_gguf;
+
+        let mut weights = ModelWeights::new();
+        let original: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) * 0.1).collect();
+        weights.add_tensor("test_data", original.clone(), vec![8, 8]);
+        weights.metadata.num_params = 64;
+
+        let tmp = TempDir::new().unwrap();
+        quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "data.gguf").unwrap();
+
+        let file_data = std::fs::read(tmp.path().join("data.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+        assert_eq!(summary.tensors[0].name, "test_data");
+        assert_eq!(summary.tensors[0].shape, vec![8, 8]);
+        assert_eq!(summary.tensors[0].dtype, 0); // F32
+
+        // Extract and verify actual data
+        // Find data section: skip header (24) + metadata + tensor info
+        let mut pos = 24;
+        // Skip metadata
+        for _ in 0..summary.metadata_count {
+            // Skip key string
+            let key_len = u64::from_le_bytes(file_data[pos..pos + 8].try_into().unwrap()) as usize;
+            pos += 8 + key_len;
+            let value_type = u32::from_le_bytes(file_data[pos..pos + 4].try_into().unwrap());
+            pos += 4;
+            match value_type {
+                4..=6 => pos += 4, // U32/I32/F32
+                8 => {
+                    let len =
+                        u64::from_le_bytes(file_data[pos..pos + 8].try_into().unwrap()) as usize;
+                    pos += 8 + len;
+                }
+                10..=12 => pos += 8, // U64/I64/F64
+                _ => {}
+            }
+        }
+        // Skip tensor info
+        let name_len = u64::from_le_bytes(file_data[pos..pos + 8].try_into().unwrap()) as usize;
+        pos += 8 + name_len;
+        let n_dims = u32::from_le_bytes(file_data[pos..pos + 4].try_into().unwrap()) as usize;
+        pos += 4 + n_dims * 8 + 4 + 8; // dims + dtype + offset
+
+        // Now pos is at the start of tensor data
+        let data_start = pos;
+        let recovered: Vec<f32> = (0..64)
+            .map(|i| {
+                let off = data_start + i * 4;
+                f32::from_le_bytes(file_data[off..off + 4].try_into().unwrap())
+            })
+            .collect();
+        assert_eq!(
+            original, recovered,
+            "f32 data must survive pipeline exactly"
+        );
+    }
 }

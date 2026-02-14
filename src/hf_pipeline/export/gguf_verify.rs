@@ -818,6 +818,199 @@ mod tests {
         assert_eq!(summary.tensor_count, 1);
     }
 
+    #[test]
+    fn test_falsify_minimal_metadata_only_param_count() {
+        // All optional metadata fields are None — only num_params should appear
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        weights.add_tensor("w", vec![1.0, 2.0], vec![2]);
+        weights.metadata.num_params = 2;
+        // architecture, model_name, hidden_size, num_layers all None
+
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new().output_dir(dir.path());
+        exporter
+            .export(&weights, ExportFormat::GGUF, "minimal.gguf")
+            .unwrap();
+
+        let file_data = std::fs::read(dir.path().join("minimal.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+        // Only general.parameter_count should be present
+        assert_eq!(summary.metadata_count, 1);
+        assert_eq!(summary.tensor_count, 1);
+    }
+
+    #[test]
+    fn test_falsify_exporter_alphabetical_tensor_sort() {
+        // Tensors added in reverse order must appear alphabetically in GGUF
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        // Add in reverse alphabetical order
+        weights.add_tensor("z_layer", vec![3.0], vec![1]);
+        weights.add_tensor("m_layer", vec![2.0], vec![1]);
+        weights.add_tensor("a_layer", vec![1.0], vec![1]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .include_metadata(false);
+        exporter
+            .export(&weights, ExportFormat::GGUF, "sorted.gguf")
+            .unwrap();
+
+        let file_data = std::fs::read(dir.path().join("sorted.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+        assert_eq!(summary.tensor_count, 3);
+        assert_eq!(summary.tensors[0].name, "a_layer");
+        assert_eq!(summary.tensors[1].name, "m_layer");
+        assert_eq!(summary.tensors[2].name, "z_layer");
+
+        // Verify data follows the sorted order (a=1.0, m=2.0, z=3.0)
+        let data_start = find_data_section_start(&file_data, &summary);
+        let a_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[0], 1);
+        let m_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[1], 1);
+        let z_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[2], 1);
+        assert!(
+            (a_data[0] - 1.0).abs() < f32::EPSILON,
+            "a_layer should be 1.0"
+        );
+        assert!(
+            (m_data[0] - 2.0).abs() < f32::EPSILON,
+            "m_layer should be 2.0"
+        );
+        assert!(
+            (z_data[0] - 3.0).abs() < f32::EPSILON,
+            "z_layer should be 3.0"
+        );
+    }
+
+    #[test]
+    fn test_falsify_utf8_tensor_names() {
+        // Non-ASCII tensor names must roundtrip correctly
+        let tensors = vec![
+            GgufTensor {
+                name: "layer.火.weight".into(),
+                shape: vec![1],
+                dtype: GgmlType::F32,
+                data: bytemuck::cast_slice(&[1.0f32]).to_vec(),
+            },
+            GgufTensor {
+                name: "модель.bias".into(),
+                shape: vec![1],
+                dtype: GgmlType::F32,
+                data: bytemuck::cast_slice(&[2.0f32]).to_vec(),
+            },
+        ];
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.tensor_count, 2);
+        assert_eq!(summary.tensors[0].name, "layer.火.weight");
+        assert_eq!(summary.tensors[1].name, "модель.bias");
+    }
+
+    #[test]
+    fn test_falsify_utf8_metadata_values() {
+        let metadata = vec![
+            (
+                "general.name".into(),
+                GgufValue::String("模型-テスト".into()),
+            ),
+            (
+                "general.architecture".into(),
+                GgufValue::String("трансформер".into()),
+            ),
+        ];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 2);
+    }
+
+    #[test]
+    fn test_falsify_10d_tensor_shape() {
+        // 10-dimensional shape must survive roundtrip
+        let shape = vec![2u64, 2, 2, 2, 2, 2, 2, 2, 2, 2]; // 1024 elements
+        let num_elements: u64 = shape.iter().product();
+        let values: Vec<f32> = (0..num_elements).map(|i| i as f32).collect();
+        let tensors = vec![GgufTensor {
+            name: "10d".into(),
+            shape: shape.clone(),
+            dtype: GgmlType::F32,
+            data: bytemuck::cast_slice(&values).to_vec(),
+        }];
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.tensors[0].shape, shape);
+        assert_eq!(summary.tensors[0].shape.len(), 10);
+    }
+
+    #[test]
+    fn test_falsify_exporter_write_error_on_readonly_path() {
+        // Export to a path that cannot be created should return GgufWriteError
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        weights.add_tensor("w", vec![1.0], vec![1]);
+
+        let exporter = Exporter::new().output_dir("/proc/nonexistent_dir");
+        let result = exporter.export(&weights, ExportFormat::GGUF, "fail.gguf");
+        assert!(result.is_err(), "export to invalid path must fail");
+    }
+
+    #[test]
+    fn test_falsify_exporter_creates_parent_directories() {
+        // Export to a nested path should create parent directories
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        weights.add_tensor("w", vec![1.0], vec![1]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("deep").join("nested").join("path");
+        let exporter = Exporter::new().output_dir(&nested).include_metadata(false);
+        let result = exporter.export(&weights, ExportFormat::GGUF, "model.gguf");
+        assert!(result.is_ok(), "export should create parent directories");
+        assert!(nested.join("model.gguf").exists());
+    }
+
+    #[test]
+    fn test_falsify_exporter_partial_metadata_combinations() {
+        // Test all 4 combinations of architecture/model_name being Some/None
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let cases: Vec<(Option<&str>, Option<&str>, u64)> = vec![
+            (None, None, 1),                      // only param_count
+            (Some("llama"), None, 2),             // arch + param_count
+            (None, Some("my-model"), 2),          // name + param_count
+            (Some("llama"), Some("my-model"), 3), // arch + name + param_count
+        ];
+
+        for (arch, name, expected_meta) in cases {
+            let mut weights = ModelWeights::new();
+            weights.add_tensor("w", vec![1.0], vec![1]);
+            weights.metadata.num_params = 1;
+            weights.metadata.architecture = arch.map(String::from);
+            weights.metadata.model_name = name.map(String::from);
+            weights.metadata.hidden_size = None;
+            weights.metadata.num_layers = None;
+
+            let dir = tempfile::tempdir().unwrap();
+            let exporter = Exporter::new().output_dir(dir.path());
+            exporter
+                .export(&weights, ExportFormat::GGUF, "meta.gguf")
+                .unwrap();
+
+            let file_data = std::fs::read(dir.path().join("meta.gguf")).unwrap();
+            let summary = verify_gguf(&file_data).unwrap();
+            assert_eq!(
+                summary.metadata_count, expected_meta,
+                "arch={arch:?}, name={name:?}: expected {expected_meta} metadata, got {}",
+                summary.metadata_count
+            );
+        }
+    }
+
     proptest! {
         #![proptest_config(proptest::test_runner::Config::with_cases(100))]
 
