@@ -4,6 +4,15 @@
 
 use serde::{Deserialize, Serialize};
 
+// Well-known model architecture constants
+const LLAMA2_7B_INTERMEDIATE_SIZE: usize = 11008;
+const LLAMA2_13B_HIDDEN_SIZE: usize = 5120;
+const LLAMA2_13B_INTERMEDIATE_SIZE: usize = 13824;
+const LLAMA_VOCAB_SIZE: usize = 32000;
+const MISTRAL_INTERMEDIATE_SIZE: usize = 14336;
+const MISTRAL_MAX_SEQ_LEN: usize = 32768;
+const DEFAULT_ROPE_THETA: f32 = 10000.0;
+
 /// Configuration for transformer models
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformerConfig {
@@ -36,12 +45,12 @@ impl TransformerConfig {
             hidden_size: 4096,
             num_attention_heads: 32,
             num_kv_heads: 32,
-            intermediate_size: 11008,
+            intermediate_size: LLAMA2_7B_INTERMEDIATE_SIZE,
             num_hidden_layers: 32,
-            vocab_size: 32000,
+            vocab_size: LLAMA_VOCAB_SIZE,
             max_position_embeddings: 4096,
             rms_norm_eps: 1e-6,
-            rope_theta: 10000.0,
+            rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
         }
     }
@@ -49,15 +58,15 @@ impl TransformerConfig {
     /// LLaMA 2 13B configuration
     pub fn llama2_13b() -> Self {
         Self {
-            hidden_size: 5120,
+            hidden_size: LLAMA2_13B_HIDDEN_SIZE,
             num_attention_heads: 40,
             num_kv_heads: 40,
-            intermediate_size: 13824,
+            intermediate_size: LLAMA2_13B_INTERMEDIATE_SIZE,
             num_hidden_layers: 40,
-            vocab_size: 32000,
+            vocab_size: LLAMA_VOCAB_SIZE,
             max_position_embeddings: 4096,
             rms_norm_eps: 1e-6,
-            rope_theta: 10000.0,
+            rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
         }
     }
@@ -68,12 +77,12 @@ impl TransformerConfig {
             hidden_size: 4096,
             num_attention_heads: 32,
             num_kv_heads: 8, // Grouped-query attention
-            intermediate_size: 14336,
+            intermediate_size: MISTRAL_INTERMEDIATE_SIZE,
             num_hidden_layers: 32,
-            vocab_size: 32000,
-            max_position_embeddings: 32768,
+            vocab_size: LLAMA_VOCAB_SIZE,
+            max_position_embeddings: MISTRAL_MAX_SEQ_LEN,
             rms_norm_eps: 1e-5,
-            rope_theta: 10000.0,
+            rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
         }
     }
