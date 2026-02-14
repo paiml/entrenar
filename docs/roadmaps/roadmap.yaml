@@ -850,3 +850,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: ENT-GGUF-EXPORT
+  github_issue: null
+  item_type: task
+  title: 'New task: ENT-GGUF-EXPORT'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-14T16:31:41.228873161+00:00
+  updated: 2026-02-14T16:31:41.228873161+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
