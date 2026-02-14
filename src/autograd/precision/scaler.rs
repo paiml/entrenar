@@ -2,6 +2,9 @@
 
 use super::MixedPrecisionConfig;
 
+/// Default number of successful steps before the loss scale is increased
+const DEFAULT_SCALE_GROWTH_INTERVAL: usize = 2000;
+
 /// Gradient scaler for mixed-precision training
 ///
 /// Handles loss scaling to prevent gradient underflow in fp16 training.
@@ -32,7 +35,7 @@ impl GradScaler {
             scale: initial_scale,
             growth_factor: 2.0,
             backoff_factor: 0.5,
-            growth_interval: 2000,
+            growth_interval: DEFAULT_SCALE_GROWTH_INTERVAL,
             steps_since_growth: 0,
             dynamic: true,
             overflow_count: 0,

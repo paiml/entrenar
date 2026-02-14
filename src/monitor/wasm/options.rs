@@ -3,6 +3,11 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+/// Default canvas width in pixels for the WASM dashboard
+const DEFAULT_DASHBOARD_WIDTH: u32 = 800;
+/// Default canvas height in pixels for the WASM dashboard
+const DEFAULT_DASHBOARD_HEIGHT: u32 = 400;
+
 /// Dashboard rendering options.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Clone)]
@@ -21,8 +26,8 @@ impl WasmDashboardOptions {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new() -> Self {
         Self {
-            width: 800,
-            height: 400,
+            width: DEFAULT_DASHBOARD_WIDTH,
+            height: DEFAULT_DASHBOARD_HEIGHT,
             background_color: "#1a1a2e".to_string(),
             loss_color: "#ff6b6b".to_string(),
             accuracy_color: "#4ecdc4".to_string(),

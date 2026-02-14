@@ -2,6 +2,9 @@
 
 use super::Precision;
 
+/// Default number of successful steps before the loss scale is increased
+const DEFAULT_SCALE_GROWTH_INTERVAL: usize = 2000;
+
 /// Configuration for mixed-precision training
 #[derive(Debug, Clone)]
 pub struct MixedPrecisionConfig {
@@ -30,7 +33,7 @@ impl MixedPrecisionConfig {
             initial_scale: 1.0,
             scale_growth_factor: 2.0,
             scale_backoff_factor: 0.5,
-            scale_growth_interval: 2000,
+            scale_growth_interval: DEFAULT_SCALE_GROWTH_INTERVAL,
             dynamic_scaling: false,
         }
     }
@@ -43,7 +46,7 @@ impl MixedPrecisionConfig {
             initial_scale: 65536.0, // 2^16
             scale_growth_factor: 2.0,
             scale_backoff_factor: 0.5,
-            scale_growth_interval: 2000,
+            scale_growth_interval: DEFAULT_SCALE_GROWTH_INTERVAL,
             dynamic_scaling: true,
         }
     }
@@ -56,7 +59,7 @@ impl MixedPrecisionConfig {
             initial_scale: 1.0, // bf16 has larger dynamic range, less scaling needed
             scale_growth_factor: 2.0,
             scale_backoff_factor: 0.5,
-            scale_growth_interval: 2000,
+            scale_growth_interval: DEFAULT_SCALE_GROWTH_INTERVAL,
             dynamic_scaling: false, // Often not needed for bf16
         }
     }
