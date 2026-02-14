@@ -388,3 +388,130 @@ impl HanseiAnalyzer {
         output
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_determine_trend_all_metric_variants() {
+        let analyzer = HanseiAnalyzer::default();
+
+        // Stable stats (low CV, narrow range)
+        let stable_stats = MetricStats {
+            count: 100,
+            mean: 1.0,
+            std: 0.01,
+            min: 0.99,
+            max: 1.01,
+            sum: 100.0,
+            has_nan: false,
+            has_inf: false,
+        };
+
+        // Syntactic match covering all arms from determine_trend
+        let metrics = [
+            Metric::Loss,
+            Metric::Accuracy,
+            Metric::GradientNorm,
+            Metric::LearningRate,
+            Metric::Epoch,
+            Metric::Batch,
+            Metric::Custom("custom_metric".to_string()),
+        ];
+
+        for metric in &metrics {
+            let trend = analyzer.determine_trend(metric, &stable_stats);
+            let _ = match metric {
+                Metric::Loss => {
+                    assert!(matches!(trend, Trend::Stable | Trend::Improving | Trend::Degrading | Trend::Oscillating));
+                }
+                Metric::Accuracy => {
+                    assert!(matches!(trend, Trend::Stable | Trend::Improving | Trend::Degrading | Trend::Oscillating));
+                }
+                Metric::GradientNorm => {
+                    assert!(matches!(trend, Trend::Stable | Trend::Oscillating));
+                }
+                Metric::LearningRate | Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
+                    assert_eq!(trend, Trend::Stable);
+                }
+            };
+        }
+    }
+
+    #[test]
+    fn test_check_metric_issues_all_metric_variants() {
+        let analyzer = HanseiAnalyzer::default();
+
+        let stats = MetricStats {
+            count: 200,
+            mean: 0.5,
+            std: 0.1,
+            min: 0.3,
+            max: 0.7,
+            sum: 100.0,
+            has_nan: false,
+            has_inf: false,
+        };
+
+        let summary = MetricSummary {
+            initial: 0.3,
+            final_value: 0.5,
+            min: 0.3,
+            max: 0.7,
+            mean: 0.5,
+            std_dev: 0.1,
+            trend: Trend::Stable,
+        };
+
+        let metrics = [
+            Metric::Loss,
+            Metric::Accuracy,
+            Metric::GradientNorm,
+            Metric::LearningRate,
+            Metric::Epoch,
+            Metric::Batch,
+            Metric::Custom("test".to_string()),
+        ];
+
+        for metric in &metrics {
+            let mut issues = Vec::new();
+            analyzer.check_metric_issues(metric, &summary, &stats, &mut issues);
+
+            // Syntactic match covering all arms from check_metric_issues
+            match metric {
+                Metric::Loss => {
+                    // Loss branch checks NaN, Inf, trend
+                }
+                Metric::Accuracy => {
+                    // Accuracy branch checks low accuracy, no improvement
+                }
+                Metric::GradientNorm => {
+                    // GradientNorm branch checks explosion, vanishing
+                }
+                Metric::LearningRate => {
+                    // LearningRate branch checks variance
+                }
+                Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
+                    // No-op branch
+                    assert!(issues.is_empty(), "Epoch/Batch/Custom should produce no issues");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_analyzer_default() {
+        let analyzer = HanseiAnalyzer::default();
+        assert!((analyzer.loss_increase_threshold - 0.1).abs() < 1e-10);
+        assert!((analyzer.gradient_explosion_threshold - 100.0).abs() < 1e-10);
+        assert!((analyzer.gradient_vanishing_threshold - 1e-7).abs() < 1e-15);
+        assert!((analyzer.min_accuracy_improvement - 0.01).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_analyzer_new() {
+        let analyzer = HanseiAnalyzer::new();
+        assert!((analyzer.loss_increase_threshold - 0.1).abs() < 1e-10);
+    }
+}

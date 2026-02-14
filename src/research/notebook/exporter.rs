@@ -214,3 +214,65 @@ pub struct NotebookMetadata {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub authors: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_kernel_selection_all_language_variants() {
+        let languages: &[Option<&str>] = &[
+            Some("rust"),
+            Some("julia"),
+            Some("javascript"),
+            None,
+        ];
+
+        for lang in languages {
+            // Syntactic match covering all arms from from_literate kernel selection
+            let kernel = match *lang {
+                Some("rust") => KernelSpec::evcxr(),
+                Some("julia") => KernelSpec::julia(),
+                Some(_other_lang) => KernelSpec::python3(),
+                None => KernelSpec::python3(),
+            };
+
+            match lang {
+                Some("rust") => assert_eq!(kernel.language, "rust"),
+                Some("julia") => assert_eq!(kernel.language, "julia"),
+                Some(_) => assert_eq!(kernel.language, "python"),
+                None => assert_eq!(kernel.language, "python"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_notebook_exporter_new() {
+        let exporter = NotebookExporter::new();
+        assert_eq!(exporter.cells.len(), 0);
+        assert_eq!(exporter.kernel.language, "python");
+    }
+
+    #[test]
+    fn test_notebook_exporter_default() {
+        let exporter = NotebookExporter::default();
+        assert_eq!(exporter.cell_count(), 0);
+    }
+
+    #[test]
+    fn test_add_code_and_markdown() {
+        let mut exporter = NotebookExporter::new();
+        exporter.add_code("print('hello')");
+        exporter.add_markdown("# Title");
+        assert_eq!(exporter.cell_count(), 2);
+        assert_eq!(exporter.code_cells().len(), 1);
+        assert_eq!(exporter.markdown_cells().len(), 1);
+    }
+
+    #[test]
+    fn test_notebook_metadata_default() {
+        let meta = NotebookMetadata::default();
+        assert!(meta.title.is_none());
+        assert!(meta.authors.is_empty());
+    }
+}

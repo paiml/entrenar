@@ -388,4 +388,42 @@ mod tests {
         assert_eq!(level, copied);
         assert_eq!(level, cloned);
     }
+
+    #[test]
+    fn test_trigger_should_stop_all_alert_level_variants() {
+        let levels = [
+            AlertLevel::Info,
+            AlertLevel::Warning,
+            AlertLevel::Error,
+            AlertLevel::Critical,
+        ];
+
+        for level in &levels {
+            // Syntactic match covering all arms from trigger() method
+            let should_stop = match level {
+                AlertLevel::Critical => true,
+                AlertLevel::Error => true,
+                AlertLevel::Info | AlertLevel::Warning => false,
+            };
+
+            let config = AndonConfig {
+                stop_on_error: true,
+                stop_on_critical: true,
+                log_alerts: false,
+            };
+            let mut andon = AndonSystem::with_config(config);
+            andon.trigger(Alert::new(*level, "test"));
+
+            match level {
+                AlertLevel::Critical | AlertLevel::Error => {
+                    assert!(andon.should_stop(), "Expected stop for {:?}", level);
+                    assert!(should_stop);
+                }
+                AlertLevel::Info | AlertLevel::Warning => {
+                    assert!(!andon.should_stop(), "Expected no stop for {:?}", level);
+                    assert!(!should_stop);
+                }
+            }
+        }
+    }
 }

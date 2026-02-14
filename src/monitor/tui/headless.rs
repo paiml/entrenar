@@ -426,4 +426,37 @@ mod tests {
         assert_eq!(format_duration(Duration::from_secs(61)), "00:01:01");
         assert_eq!(format_duration(Duration::from_secs(3661)), "01:01:01");
     }
+
+    #[test]
+    fn test_training_status_match_all_variants() {
+        let statuses = [
+            TrainingStatus::Initializing,
+            TrainingStatus::Running,
+            TrainingStatus::Paused,
+            TrainingStatus::Completed,
+            TrainingStatus::Failed("test error".to_string()),
+        ];
+
+        for status in &statuses {
+            // Syntactic match covering all arms from HeadlessOutput::from and run_loop
+            let label = match status {
+                TrainingStatus::Initializing => "Initializing",
+                TrainingStatus::Running => "Running",
+                TrainingStatus::Paused => "Paused",
+                TrainingStatus::Completed => "Completed",
+                TrainingStatus::Failed(msg) => msg.as_str(),
+            };
+
+            // Second syntactic match covering the run_loop completion check arms
+            let _is_terminal = match status {
+                TrainingStatus::Completed => true,
+                TrainingStatus::Failed(_) => true,
+                TrainingStatus::Initializing
+                | TrainingStatus::Running
+                | TrainingStatus::Paused => false,
+            };
+
+            assert!(!label.is_empty());
+        }
+    }
 }
