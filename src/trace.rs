@@ -298,7 +298,6 @@ mod tests {
         let tracer = Tracer::new();
         tracer.enable();
         tracer.start(TraceStep::Matmul);
-        std::thread::sleep(std::time::Duration::from_millis(1));
         tracer.end(TraceStep::Matmul, "2x2");
         // Verify measurement was recorded
         let report = tracer.report();
@@ -316,10 +315,7 @@ mod tests {
     fn test_tracer_span_enabled() {
         let tracer = Tracer::new();
         tracer.enable();
-        let result = tracer.span(TraceStep::Attention, "4 heads", || {
-            std::thread::sleep(std::time::Duration::from_millis(1));
-            "done"
-        });
+        let result = tracer.span(TraceStep::Attention, "4 heads", || "done");
         assert_eq!(result, "done");
         let report = tracer.report();
         assert!(report.contains("Attention"));
@@ -349,7 +345,6 @@ mod tests {
         tracer.enable();
 
         tracer.start(TraceStep::Matmul);
-        std::thread::sleep(std::time::Duration::from_millis(1));
         tracer.end(TraceStep::Matmul, "512x512");
 
         tracer.start(TraceStep::Transpose);
@@ -365,16 +360,21 @@ mod tests {
     #[test]
     fn test_tracer_report_dr_popper_analysis() {
         let tracer = Tracer::new();
-        tracer.enable();
 
-        // Add compute time (Matmul)
-        tracer.start(TraceStep::Matmul);
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        tracer.end(TraceStep::Matmul, "compute");
-
-        // Add overhead time (Transpose + Alloc)
-        tracer.start(TraceStep::Transpose);
-        tracer.end(TraceStep::Transpose, "overhead1");
+        // Inject deterministic measurements directly to avoid time-dependent sleeps
+        {
+            let mut measurements = tracer.measurements.lock().unwrap();
+            measurements.push(TraceMeasurement {
+                step: TraceStep::Matmul,
+                duration: Duration::from_millis(50),
+                metadata: "compute".to_string(),
+            });
+            measurements.push(TraceMeasurement {
+                step: TraceStep::Transpose,
+                duration: Duration::from_millis(10),
+                metadata: "overhead1".to_string(),
+            });
+        }
 
         let report = tracer.report();
         assert!(report.contains("Dr. Popper Analysis"));

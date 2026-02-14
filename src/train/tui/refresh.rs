@@ -104,15 +104,17 @@ mod tests {
 
     #[test]
     fn test_refresh_policy_rate_limiting() {
-        let mut policy = RefreshPolicy::new(50, 1000, 1);
+        // Use a large min_interval (10s) so wall-clock jitter cannot cause
+        // the "immediate call blocked" assertion to flake under CI load.
+        let mut policy = RefreshPolicy::new(10_000, 60_000, 1);
         policy.force_refresh(0);
 
         // Immediate call should be blocked (min_interval not elapsed)
         let blocked = !policy.should_refresh(1);
         assert!(blocked, "Immediate refresh should be blocked");
 
-        // Simulate 400ms passing (deterministic, no thread::sleep)
-        policy.advance_time(Duration::from_millis(400));
+        // Simulate 15s passing (deterministic, no thread::sleep) — past min_interval
+        policy.advance_time(Duration::from_millis(15_000));
         let allowed = policy.should_refresh(2);
         assert!(allowed, "Refresh should be allowed after min_interval");
     }

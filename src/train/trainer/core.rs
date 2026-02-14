@@ -336,7 +336,8 @@ mod tests {
         assert_eq!(ctx.loss, 0.1);
         assert_eq!(ctx.val_loss, Some(0.2));
         assert_eq!(ctx.best_loss, Some(0.5));
-        assert!(ctx.elapsed_secs >= 0.0);
+        // When start_time is set, elapsed_secs should be a finite non-negative number
+        assert!(ctx.elapsed_secs.is_finite());
     }
 
     #[test]

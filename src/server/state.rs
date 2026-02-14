@@ -299,6 +299,16 @@ impl AppState {
     pub fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
+
+    /// Create with an explicit start time (for deterministic testing)
+    #[cfg(test)]
+    pub fn with_start_time(config: ServerConfig, start_time: Instant) -> Self {
+        Self {
+            storage: Arc::new(InMemoryStorage::new()),
+            config,
+            start_time,
+        }
+    }
 }
 
 // =============================================================================
@@ -443,6 +453,15 @@ mod tests {
         let config = ServerConfig::default();
         let state = AppState::new(config);
         assert_eq!(state.storage.experiments_count(), 0);
+    }
+
+    #[test]
+    fn test_app_state_uptime_deterministic() {
+        // Use with_start_time to avoid flaky Instant::now() timing assertions
+        let config = ServerConfig::default();
+        let state = AppState::with_start_time(config, Instant::now());
+        // uptime_secs returns u64 truncated seconds; just verify it doesn't panic
+        let _uptime = state.uptime_secs();
     }
 
     #[test]
