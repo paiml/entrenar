@@ -1416,4 +1416,85 @@ mod tests {
             "identical weights must produce identical GGUF files"
         );
     }
+
+    // =====================================================================
+    // Coverage: skip_gguf_value match arms for all GGUF metadata types
+    // =====================================================================
+
+    #[test]
+    fn test_verify_uint8_metadata() {
+        let metadata = vec![("flag".into(), GgufValue::Uint8(42))];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 1);
+    }
+
+    #[test]
+    fn test_verify_int8_metadata() {
+        let metadata = vec![("offset".into(), GgufValue::Int8(-1))];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 1);
+    }
+
+    #[test]
+    fn test_verify_bool_metadata() {
+        let metadata = vec![("enabled".into(), GgufValue::Bool(true))];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 1);
+    }
+
+    #[test]
+    fn test_verify_uint16_metadata() {
+        let metadata = vec![("vocab_size".into(), GgufValue::Uint16(32000))];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 1);
+    }
+
+    #[test]
+    fn test_verify_int16_metadata() {
+        let metadata = vec![("temperature".into(), GgufValue::Int16(-100))];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 1);
+    }
+
+    #[test]
+    fn test_verify_int64_metadata() {
+        let metadata = vec![("timestamp".into(), GgufValue::Int64(-9_000_000))];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 1);
+    }
+
+    #[test]
+    fn test_verify_float64_metadata() {
+        let metadata = vec![("learning_rate".into(), GgufValue::Float64(1e-5))];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 1);
+    }
+
+    #[test]
+    fn test_verify_all_metadata_types_combined() {
+        let metadata = vec![
+            ("u8_val".into(), GgufValue::Uint8(255)),
+            ("i8_val".into(), GgufValue::Int8(-128)),
+            ("u16_val".into(), GgufValue::Uint16(65535)),
+            ("i16_val".into(), GgufValue::Int16(-32768)),
+            ("u32_val".into(), GgufValue::Uint32(100)),
+            ("i32_val".into(), GgufValue::Int32(-1)),
+            ("f32_val".into(), GgufValue::Float32(3.14)),
+            ("bool_val".into(), GgufValue::Bool(false)),
+            ("str_val".into(), GgufValue::String("test".into())),
+            ("u64_val".into(), GgufValue::Uint64(u64::MAX)),
+            ("i64_val".into(), GgufValue::Int64(i64::MIN)),
+            ("f64_val".into(), GgufValue::Float64(2.718281828)),
+        ];
+        let data = write_gguf(&[], &metadata);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.metadata_count, 12);
+    }
 }

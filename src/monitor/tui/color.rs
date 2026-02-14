@@ -491,6 +491,36 @@ mod tests {
     }
 
     #[test]
+    fn test_rgb_to_16_all_boolean_combos() {
+        // (r>85, g>85, b>85) = (true, true, true) → white (7), bright → 15
+        assert_eq!(Rgb::new(200, 200, 200).to_16(), 15); // bright white
+
+        // (true, true, false) → yellow (3), bright → 11
+        assert_eq!(Rgb::new(200, 200, 50).to_16(), 11); // bright yellow
+
+        // (true, false, true) → magenta (5), bright → 13
+        assert_eq!(Rgb::new(200, 50, 200).to_16(), 13); // bright magenta
+
+        // (false, true, true) → cyan (6), bright → 14
+        assert_eq!(Rgb::new(50, 200, 200).to_16(), 14); // bright cyan
+
+        // (true, false, false) → red (1), not bright → 1
+        assert_eq!(Rgb::new(100, 50, 50).to_16(), 1); // dark red
+
+        // (false, true, false) → green (2), not bright → 2
+        assert_eq!(Rgb::new(50, 100, 50).to_16(), 2); // dark green
+
+        // (false, false, true) → blue (4), not bright → 4
+        assert_eq!(Rgb::new(50, 50, 100).to_16(), 4); // dark blue
+
+        // (false, false, false) with dominant channels
+        assert_eq!(Rgb::new(60, 20, 20).to_16(), 1); // near-black, r dominant
+        assert_eq!(Rgb::new(20, 60, 20).to_16(), 2); // near-black, g dominant
+        assert_eq!(Rgb::new(20, 20, 60).to_16(), 4); // near-black, b dominant
+        assert_eq!(Rgb::new(20, 20, 20).to_16(), 0); // true black
+    }
+
+    #[test]
     fn test_styled_display_truecolor() {
         let styled = Styled::new("test", ColorMode::TrueColor).fg(Rgb::new(255, 0, 0));
         let output = styled.to_string();
