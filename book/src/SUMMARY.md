@@ -208,6 +208,12 @@
   - [Chi-Square Test](./eval/chi-square-test.md)
   - [PSI (Population Stability Index)](./eval/psi.md)
 - [Auto-Retraining (Andon Loop)](./eval/auto-retraining.md)
+- [Generative AI Metrics](./eval/generative-metrics.md)
+
+# HuggingFace Pipeline
+
+- [Leaderboard Integration](./hf-pipeline/leaderboard.md)
+- [Publishing to HF Hub](./hf-pipeline/publishing.md)
 
 # Examples
 
