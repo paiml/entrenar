@@ -1,5 +1,15 @@
 //! Main entry points for YAML-based training
 
+// Default model architecture constants (Qwen2.5-Coder-0.5B)
+const QWEN_HIDDEN_SIZE: usize = 896;
+const QWEN_NUM_ATTENTION_HEADS: usize = 14;
+const QWEN_NUM_KV_HEADS: usize = 2;
+const QWEN_INTERMEDIATE_SIZE: usize = 4864;
+const QWEN_NUM_HIDDEN_LAYERS: usize = 24;
+const QWEN_VOCAB_SIZE: usize = 151936;
+const QWEN_MAX_POSITION_EMBEDDINGS: usize = 32768;
+const QWEN_ROPE_THETA: f64 = 1_000_000.0;
+
 use super::batches::load_training_batches;
 use crate::config::schema::{ModelMode, TrainSpec};
 use crate::config::validate::validate_config;
@@ -357,20 +367,35 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
             // Try parsing as HuggingFace config.json format
             if let Ok(hf_config) = serde_json::from_str::<serde_json::Value>(&config_content) {
                 return Ok(TransformerConfig {
-                    hidden_size: hf_config["hidden_size"].as_u64().unwrap_or(896) as usize,
-                    num_attention_heads: hf_config["num_attention_heads"].as_u64().unwrap_or(14)
+                    hidden_size: hf_config["hidden_size"]
+                        .as_u64()
+                        .unwrap_or(QWEN_HIDDEN_SIZE as u64) as usize,
+                    num_attention_heads: hf_config["num_attention_heads"]
+                        .as_u64()
+                        .unwrap_or(QWEN_NUM_ATTENTION_HEADS as u64)
                         as usize,
-                    num_kv_heads: hf_config["num_key_value_heads"].as_u64().unwrap_or(2) as usize,
-                    intermediate_size: hf_config["intermediate_size"].as_u64().unwrap_or(4864)
+                    num_kv_heads: hf_config["num_key_value_heads"]
+                        .as_u64()
+                        .unwrap_or(QWEN_NUM_KV_HEADS as u64) as usize,
+                    intermediate_size: hf_config["intermediate_size"]
+                        .as_u64()
+                        .unwrap_or(QWEN_INTERMEDIATE_SIZE as u64)
                         as usize,
-                    num_hidden_layers: hf_config["num_hidden_layers"].as_u64().unwrap_or(24)
+                    num_hidden_layers: hf_config["num_hidden_layers"]
+                        .as_u64()
+                        .unwrap_or(QWEN_NUM_HIDDEN_LAYERS as u64)
                         as usize,
-                    vocab_size: hf_config["vocab_size"].as_u64().unwrap_or(151936) as usize,
+                    vocab_size: hf_config["vocab_size"]
+                        .as_u64()
+                        .unwrap_or(QWEN_VOCAB_SIZE as u64) as usize,
                     max_position_embeddings: hf_config["max_position_embeddings"]
                         .as_u64()
-                        .unwrap_or(32768) as usize,
+                        .unwrap_or(QWEN_MAX_POSITION_EMBEDDINGS as u64)
+                        as usize,
                     rms_norm_eps: hf_config["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32,
-                    rope_theta: hf_config["rope_theta"].as_f64().unwrap_or(1000000.0) as f32,
+                    rope_theta: hf_config["rope_theta"]
+                        .as_f64()
+                        .unwrap_or(QWEN_ROPE_THETA) as f32,
                     use_bias: hf_config["attention_bias"].as_bool().unwrap_or(false),
                 });
             }
@@ -381,15 +406,15 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
     // Qwen2.5-Coder-0.5B-like dimensions (scaled down)
     eprintln!("Warning: No model config found, using demo transformer config");
     Ok(TransformerConfig {
-        hidden_size: 896,
-        num_attention_heads: 14,
-        num_kv_heads: 2,
-        intermediate_size: 4864,
-        num_hidden_layers: 24,
-        vocab_size: 151936,
-        max_position_embeddings: 32768,
+        hidden_size: QWEN_HIDDEN_SIZE,
+        num_attention_heads: QWEN_NUM_ATTENTION_HEADS,
+        num_kv_heads: QWEN_NUM_KV_HEADS,
+        intermediate_size: QWEN_INTERMEDIATE_SIZE,
+        num_hidden_layers: QWEN_NUM_HIDDEN_LAYERS,
+        vocab_size: QWEN_VOCAB_SIZE,
+        max_position_embeddings: QWEN_MAX_POSITION_EMBEDDINGS,
         rms_norm_eps: 1e-6,
-        rope_theta: 1000000.0,
+        rope_theta: QWEN_ROPE_THETA as f32,
         use_bias: false,
     })
 }
