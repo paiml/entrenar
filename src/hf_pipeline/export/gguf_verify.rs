@@ -417,4 +417,545 @@ mod tests {
         let summary = verify_gguf(&data).unwrap();
         assert_eq!(summary.metadata_count, 1);
     }
+
+    // =====================================================================
+    // Falsification tests: adversarial property-based roundtrip verification
+    // =====================================================================
+
+    use proptest::prelude::*;
+
+    /// Extract f32 tensor data from raw GGUF bytes at the given tensor's offset.
+    /// `data_section_start` is the byte offset where the tensor data section begins.
+    /// Uses manual LE decoding to avoid alignment requirements of bytemuck::cast_slice.
+    fn extract_f32_tensor_data(
+        gguf_bytes: &[u8],
+        data_section_start: usize,
+        tensor_info: &GgufTensorInfo,
+        num_elements: usize,
+    ) -> Vec<f32> {
+        let start = data_section_start + tensor_info.offset as usize;
+        (0..num_elements)
+            .map(|i| {
+                let off = start + i * 4;
+                f32::from_le_bytes(gguf_bytes[off..off + 4].try_into().unwrap())
+            })
+            .collect()
+    }
+
+    /// Find the start of the tensor data section by scanning past header + metadata + tensor info.
+    ///
+    /// Note: aprender's `export_tensors_to_gguf` places tensor data immediately after
+    /// tensor info with NO alignment padding. Tensor offsets in the info entries are
+    /// relative to this position.
+    fn find_data_section_start(gguf_bytes: &[u8], summary: &GgufSummary) -> usize {
+        let mut pos = 24; // skip header
+                          // Skip metadata
+        for _ in 0..summary.metadata_count {
+            let (_, new_pos) = read_gguf_string(gguf_bytes, pos).unwrap();
+            pos = new_pos;
+            let value_type = u32::from_le_bytes(gguf_bytes[pos..pos + 4].try_into().unwrap());
+            pos += 4;
+            pos = skip_gguf_value(gguf_bytes, pos, value_type).unwrap();
+        }
+        // Skip tensor info
+        for _ in 0..summary.tensor_count {
+            let (_, new_pos) = read_gguf_string(gguf_bytes, pos).unwrap();
+            pos = new_pos;
+            let n_dims = u32::from_le_bytes(gguf_bytes[pos..pos + 4].try_into().unwrap()) as usize;
+            pos += 4 + n_dims * 8 + 4 + 8; // dims + dtype + offset
+        }
+        pos
+    }
+
+    #[test]
+    fn test_falsify_f32_tensor_data_survives_roundtrip() {
+        // Adversarial: verify actual float bytes, not just structural metadata
+        let original: Vec<f32> = (0..256).map(|i| (i as f32 - 128.0) * 0.0137).collect();
+        let tensors = vec![GgufTensor {
+            name: "weights".into(),
+            shape: vec![16, 16],
+            dtype: GgmlType::F32,
+            data: bytemuck::cast_slice(&original).to_vec(),
+        }];
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+        let data_start = find_data_section_start(&data, &summary);
+        let recovered = extract_f32_tensor_data(&data, data_start, &summary.tensors[0], 256);
+        assert_eq!(
+            original, recovered,
+            "f32 tensor data must survive roundtrip exactly"
+        );
+    }
+
+    #[test]
+    fn test_falsify_special_float_values_survive() {
+        // Edge case floats: 0, -0, subnormals, max, min, inf, -inf, NaN
+        let special: Vec<f32> = vec![
+            0.0,
+            -0.0,
+            f32::MIN_POSITIVE, // smallest positive normal
+            f32::EPSILON,
+            f32::MAX,
+            f32::MIN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            // Pad to block size of 32
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+            5.0,
+            6.0,
+            7.0,
+            8.0,
+            9.0,
+            10.0,
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0,
+            20.0,
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+        ];
+        let tensors = vec![GgufTensor {
+            name: "special".into(),
+            shape: vec![special.len() as u64],
+            dtype: GgmlType::F32,
+            data: bytemuck::cast_slice(&special).to_vec(),
+        }];
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+        let data_start = find_data_section_start(&data, &summary);
+        let recovered =
+            extract_f32_tensor_data(&data, data_start, &summary.tensors[0], special.len());
+
+        for (i, (&orig, &rec)) in special.iter().zip(recovered.iter()).enumerate() {
+            if orig.is_nan() {
+                assert!(rec.is_nan(), "index {i}: NaN must survive roundtrip");
+            } else {
+                assert_eq!(
+                    orig.to_bits(),
+                    rec.to_bits(),
+                    "index {i}: bitwise equality failed for {orig}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_falsify_multi_tensor_ordering_preserved() {
+        // Verify tensor order is deterministic and matches insertion order
+        let names: Vec<String> = (0..8).map(|i| format!("layer.{i}.weight")).collect();
+        let tensors: Vec<GgufTensor> = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let val = (i + 1) as f32;
+                GgufTensor {
+                    name: name.clone(),
+                    shape: vec![1],
+                    dtype: GgmlType::F32,
+                    data: bytemuck::cast_slice(&[val]).to_vec(),
+                }
+            })
+            .collect();
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+
+        assert_eq!(summary.tensor_count, 8);
+        for (i, info) in summary.tensors.iter().enumerate() {
+            assert_eq!(info.name, names[i], "tensor {i} name mismatch");
+            assert_eq!(info.dtype, 0, "tensor {i} should be F32");
+        }
+
+        // Verify actual data values
+        let data_start = find_data_section_start(&data, &summary);
+        for (i, info) in summary.tensors.iter().enumerate() {
+            let recovered = extract_f32_tensor_data(&data, data_start, info, 1);
+            let expected = (i + 1) as f32;
+            assert!(
+                (recovered[0] - expected).abs() < f32::EPSILON,
+                "tensor {i} data mismatch: expected {expected}, got {}",
+                recovered[0]
+            );
+        }
+    }
+
+    #[test]
+    fn test_falsify_mixed_metadata_types_roundtrip() {
+        // All metadata types in one file — verify none corrupt the parse
+        let metadata = vec![
+            ("str.key".into(), GgufValue::String("hello world".into())),
+            ("u32.key".into(), GgufValue::Uint32(42)),
+            ("u64.key".into(), GgufValue::Uint64(u64::MAX)),
+            ("f32.key".into(), GgufValue::Float32(std::f32::consts::PI)),
+            ("i32.key".into(), GgufValue::Int32(-999)),
+            ("bool.key".into(), GgufValue::Bool(true)),
+        ];
+        let tensors = vec![GgufTensor {
+            name: "t".into(),
+            shape: vec![4],
+            dtype: GgmlType::F32,
+            data: bytemuck::cast_slice(&[1.0f32, 2.0, 3.0, 4.0]).to_vec(),
+        }];
+        let data = write_gguf(&tensors, &metadata);
+        let summary = verify_gguf(&data).unwrap();
+
+        assert_eq!(summary.metadata_count, 6);
+        assert_eq!(summary.tensor_count, 1);
+        assert_eq!(summary.tensors[0].name, "t");
+        assert_eq!(summary.tensors[0].shape, vec![4]);
+    }
+
+    #[test]
+    fn test_falsify_q4_0_q8_0_f32_mixed_in_single_file() {
+        // Mix all three quantization types in one GGUF file
+        let f32_data = [1.0f32; 32];
+        let (q4_bytes, q4_dtype) = quantize_to_gguf_bytes(&[0.5; 64], GgufQuantization::Q4_0);
+        let (q8_bytes, q8_dtype) = quantize_to_gguf_bytes(&[0.3; 32], GgufQuantization::Q8_0);
+
+        let tensors = vec![
+            GgufTensor {
+                name: "f32_tensor".into(),
+                shape: vec![32],
+                dtype: GgmlType::F32,
+                data: bytemuck::cast_slice(&f32_data).to_vec(),
+            },
+            GgufTensor {
+                name: "q4_tensor".into(),
+                shape: vec![64],
+                dtype: q4_dtype,
+                data: q4_bytes,
+            },
+            GgufTensor {
+                name: "q8_tensor".into(),
+                shape: vec![32],
+                dtype: q8_dtype,
+                data: q8_bytes,
+            },
+        ];
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+
+        assert_eq!(summary.tensor_count, 3);
+        assert_eq!(summary.tensors[0].dtype, 0); // F32
+        assert_eq!(summary.tensors[1].dtype, 2); // Q4_0
+        assert_eq!(summary.tensors[2].dtype, 8); // Q8_0
+
+        // Verify f32 data is intact
+        let data_start = find_data_section_start(&data, &summary);
+        let recovered = extract_f32_tensor_data(&data, data_start, &summary.tensors[0], 32);
+        assert_eq!(recovered, f32_data.to_vec());
+    }
+
+    #[test]
+    fn test_falsify_long_tensor_name() {
+        // Adversarial: 1000-char tensor name
+        let long_name = "a".repeat(1000);
+        let tensors = vec![GgufTensor {
+            name: long_name.clone(),
+            shape: vec![1],
+            dtype: GgmlType::F32,
+            data: bytemuck::cast_slice(&[42.0f32]).to_vec(),
+        }];
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.tensors[0].name, long_name);
+    }
+
+    #[test]
+    fn test_falsify_high_dimensional_shape() {
+        // 5D tensor shape
+        let shape = vec![2u64, 3, 4, 5, 6];
+        let num_elements: u64 = shape.iter().product();
+        let values: Vec<f32> = (0..num_elements).map(|i| i as f32).collect();
+        let tensors = vec![GgufTensor {
+            name: "5d".into(),
+            shape: shape.clone(),
+            dtype: GgmlType::F32,
+            data: bytemuck::cast_slice(&values).to_vec(),
+        }];
+        let data = write_gguf(&tensors, &[]);
+        let summary = verify_gguf(&data).unwrap();
+        assert_eq!(summary.tensors[0].shape, shape);
+
+        let data_start = find_data_section_start(&data, &summary);
+        let recovered = extract_f32_tensor_data(
+            &data,
+            data_start,
+            &summary.tensors[0],
+            num_elements as usize,
+        );
+        assert_eq!(values, recovered);
+    }
+
+    #[test]
+    fn test_falsify_exporter_gguf_roundtrip_via_file() {
+        // Full pipeline: Exporter.export_gguf() → read file → verify_gguf() → check
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        weights.add_tensor("attn.q", vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+        weights.add_tensor("attn.k", vec![5.0, 6.0, 7.0, 8.0], vec![2, 2]);
+        weights.metadata.architecture = Some("llama".into());
+        weights.metadata.model_name = Some("test-falsify".into());
+        weights.metadata.num_params = 8;
+        weights.metadata.hidden_size = Some(2);
+        weights.metadata.num_layers = Some(1);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("falsify.gguf");
+
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .gguf_quantization(GgufQuantization::None);
+        let result = exporter
+            .export(&weights, ExportFormat::GGUF, "falsify.gguf")
+            .unwrap();
+
+        assert_eq!(result.num_tensors, 2);
+        assert!(result.size_bytes > 0);
+
+        let file_data = std::fs::read(&path).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+
+        assert_eq!(summary.version, 3);
+        assert_eq!(summary.tensor_count, 2);
+        // Metadata: architecture + name + parameter_count + hidden_size + num_layers = 5
+        assert_eq!(summary.metadata_count, 5);
+
+        // Tensors should be sorted alphabetically
+        assert_eq!(summary.tensors[0].name, "attn.k");
+        assert_eq!(summary.tensors[1].name, "attn.q");
+        assert_eq!(summary.tensors[0].dtype, 0); // F32
+        assert_eq!(summary.tensors[1].dtype, 0);
+        assert_eq!(summary.tensors[0].shape, vec![2, 2]);
+        assert_eq!(summary.tensors[1].shape, vec![2, 2]);
+
+        // Verify actual data
+        let data_start = find_data_section_start(&file_data, &summary);
+        let k_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[0], 4);
+        let q_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[1], 4);
+        assert_eq!(k_data, vec![5.0, 6.0, 7.0, 8.0]);
+        assert_eq!(q_data, vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_falsify_exporter_q4_0_roundtrip_via_file() {
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        let data: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) * 0.1).collect();
+        weights.add_tensor("quantized_layer", data, vec![64]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .gguf_quantization(GgufQuantization::Q4_0);
+        let result = exporter
+            .export(&weights, ExportFormat::GGUF, "q4.gguf")
+            .unwrap();
+        assert_eq!(result.num_tensors, 1);
+
+        let file_data = std::fs::read(dir.path().join("q4.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+        assert_eq!(summary.tensors[0].dtype, 2); // Q4_0
+        assert_eq!(summary.tensors[0].shape, vec![64]);
+    }
+
+    #[test]
+    fn test_falsify_exporter_q8_0_roundtrip_via_file() {
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        let data: Vec<f32> = (0..128).map(|i| (i as f32) * 0.01).collect();
+        weights.add_tensor("q8_layer", data, vec![128]);
+
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .gguf_quantization(GgufQuantization::Q8_0);
+        let result = exporter
+            .export(&weights, ExportFormat::GGUF, "q8.gguf")
+            .unwrap();
+        assert_eq!(result.num_tensors, 1);
+
+        let file_data = std::fs::read(dir.path().join("q8.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+        assert_eq!(summary.tensors[0].dtype, 8); // Q8_0
+        assert_eq!(summary.tensors[0].shape, vec![128]);
+    }
+
+    #[test]
+    fn test_falsify_no_metadata_mode() {
+        // Exporter with include_metadata=false must produce 0 metadata entries
+        use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
+
+        let mut weights = ModelWeights::new();
+        weights.add_tensor("w", vec![1.0], vec![1]);
+        weights.metadata.architecture = Some("llama".into());
+        weights.metadata.model_name = Some("should-not-appear".into());
+
+        let dir = tempfile::tempdir().unwrap();
+        let exporter = Exporter::new()
+            .output_dir(dir.path())
+            .include_metadata(false);
+        exporter
+            .export(&weights, ExportFormat::GGUF, "nometa.gguf")
+            .unwrap();
+
+        let file_data = std::fs::read(dir.path().join("nometa.gguf")).unwrap();
+        let summary = verify_gguf(&file_data).unwrap();
+        assert_eq!(summary.metadata_count, 0);
+        assert_eq!(summary.tensor_count, 1);
+    }
+
+    proptest! {
+        #![proptest_config(proptest::test_runner::Config::with_cases(100))]
+
+        #[test]
+        fn prop_falsify_arbitrary_f32_tensors_roundtrip(
+            n_tensors in 1usize..6,
+            n_elements in 1usize..64,
+        ) {
+            let tensors: Vec<GgufTensor> = (0..n_tensors)
+                .map(|i| {
+                    let data: Vec<f32> = (0..n_elements)
+                        .map(|j| (i * n_elements + j) as f32 * 0.1)
+                        .collect();
+                    GgufTensor {
+                        name: format!("tensor.{i}"),
+                        shape: vec![n_elements as u64],
+                        dtype: GgmlType::F32,
+                        data: bytemuck::cast_slice(&data).to_vec(),
+                    }
+                })
+                .collect();
+
+            let gguf_bytes = write_gguf(&tensors, &[]);
+            let summary = verify_gguf(&gguf_bytes).unwrap();
+
+            prop_assert_eq!(summary.tensor_count, n_tensors as u64);
+            prop_assert_eq!(summary.tensors.len(), n_tensors);
+
+            // Verify every tensor's name, shape, dtype
+            for (i, info) in summary.tensors.iter().enumerate() {
+                prop_assert_eq!(&info.name, &format!("tensor.{i}"));
+                prop_assert_eq!(&info.shape, &vec![n_elements as u64]);
+                prop_assert_eq!(info.dtype, 0); // F32
+            }
+
+            // Verify actual f32 data roundtrips
+            let data_start = find_data_section_start(&gguf_bytes, &summary);
+            for (i, info) in summary.tensors.iter().enumerate() {
+                let recovered = extract_f32_tensor_data(&gguf_bytes, data_start, info, n_elements);
+                for (j, &val) in recovered.iter().enumerate() {
+                    let expected = (i * n_elements + j) as f32 * 0.1;
+                    prop_assert!(
+                        (val - expected).abs() < 1e-6,
+                        "tensor {i} element {j}: expected {expected}, got {val}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn prop_falsify_metadata_count_always_matches(
+            n_metadata in 0usize..8,
+        ) {
+            let metadata: Vec<(String, GgufValue)> = (0..n_metadata)
+                .map(|i| (format!("key.{i}"), GgufValue::Uint32(i as u32)))
+                .collect();
+            let gguf_bytes = write_gguf(&[], &metadata);
+            let summary = verify_gguf(&gguf_bytes).unwrap();
+            prop_assert_eq!(summary.metadata_count, n_metadata as u64);
+            prop_assert_eq!(summary.tensor_count, 0);
+        }
+
+        #[test]
+        fn prop_falsify_q4_0_roundtrip_preserves_dtype(
+            n_elements in 1usize..128,
+        ) {
+            let data: Vec<f32> = vec![0.42; n_elements];
+            let (bytes, dtype) = quantize_to_gguf_bytes(&data, GgufQuantization::Q4_0);
+            let tensors = vec![GgufTensor {
+                name: "q4".into(),
+                shape: vec![n_elements as u64],
+                dtype,
+                data: bytes,
+            }];
+            let gguf_bytes = write_gguf(&tensors, &[]);
+            let summary = verify_gguf(&gguf_bytes).unwrap();
+            prop_assert_eq!(summary.tensors[0].dtype, 2); // Q4_0
+            prop_assert_eq!(&summary.tensors[0].shape, &vec![n_elements as u64]);
+        }
+
+        #[test]
+        fn prop_falsify_q8_0_roundtrip_preserves_dtype(
+            n_elements in 1usize..128,
+        ) {
+            let data: Vec<f32> = vec![0.42; n_elements];
+            let (bytes, dtype) = quantize_to_gguf_bytes(&data, GgufQuantization::Q8_0);
+            let tensors = vec![GgufTensor {
+                name: "q8".into(),
+                shape: vec![n_elements as u64],
+                dtype,
+                data: bytes,
+            }];
+            let gguf_bytes = write_gguf(&tensors, &[]);
+            let summary = verify_gguf(&gguf_bytes).unwrap();
+            prop_assert_eq!(summary.tensors[0].dtype, 8); // Q8_0
+            prop_assert_eq!(&summary.tensors[0].shape, &vec![n_elements as u64]);
+        }
+
+        #[test]
+        fn prop_falsify_gguf_header_always_valid(
+            n_tensors in 0usize..5,
+            n_metadata in 0usize..5,
+            n_elements in 1usize..32,
+        ) {
+            let metadata: Vec<(String, GgufValue)> = (0..n_metadata)
+                .map(|i| (format!("m.{i}"), GgufValue::String(format!("v{i}"))))
+                .collect();
+            let tensors: Vec<GgufTensor> = (0..n_tensors)
+                .map(|i| GgufTensor {
+                    name: format!("t.{i}"),
+                    shape: vec![n_elements as u64],
+                    dtype: GgmlType::F32,
+                    data: vec![0u8; n_elements * 4],
+                })
+                .collect();
+
+            let gguf_bytes = write_gguf(&tensors, &metadata);
+
+            // Header must always be valid
+            prop_assert_eq!(&gguf_bytes[0..4], b"GGUF");
+            prop_assert_eq!(
+                u32::from_le_bytes(gguf_bytes[4..8].try_into().unwrap()),
+                3
+            );
+            prop_assert_eq!(
+                u64::from_le_bytes(gguf_bytes[8..16].try_into().unwrap()),
+                n_tensors as u64
+            );
+            prop_assert_eq!(
+                u64::from_le_bytes(gguf_bytes[16..24].try_into().unwrap()),
+                n_metadata as u64
+            );
+
+            // Must verify cleanly
+            let summary = verify_gguf(&gguf_bytes).unwrap();
+            prop_assert_eq!(summary.version, 3);
+            prop_assert_eq!(summary.tensor_count, n_tensors as u64);
+            prop_assert_eq!(summary.metadata_count, n_metadata as u64);
+        }
+    }
 }
