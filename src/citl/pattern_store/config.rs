@@ -2,6 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Default embedding dimension for the pattern store
+const DEFAULT_EMBEDDING_DIM: usize = 384;
+
 /// Configuration for the pattern store
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PatternStoreConfig {
@@ -17,7 +20,7 @@ impl Default for PatternStoreConfig {
     fn default() -> Self {
         Self {
             chunk_size: 256,
-            embedding_dim: 384,
+            embedding_dim: DEFAULT_EMBEDDING_DIM,
             rrf_k: 60.0,
         }
     }
