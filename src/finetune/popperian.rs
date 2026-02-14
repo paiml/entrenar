@@ -523,19 +523,63 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_qa_grade_from_score() {
-        assert_eq!(QAGrade::from_score(100), QAGrade::APlus);
-        assert_eq!(QAGrade::from_score(95), QAGrade::APlus);
-        assert_eq!(QAGrade::from_score(94), QAGrade::A);
-        assert_eq!(QAGrade::from_score(90), QAGrade::A);
-        assert_eq!(QAGrade::from_score(89), QAGrade::BPlus);
-        assert_eq!(QAGrade::from_score(85), QAGrade::BPlus);
-        assert_eq!(QAGrade::from_score(84), QAGrade::B);
-        assert_eq!(QAGrade::from_score(80), QAGrade::B);
-        assert_eq!(QAGrade::from_score(79), QAGrade::C);
-        assert_eq!(QAGrade::from_score(70), QAGrade::C);
-        assert_eq!(QAGrade::from_score(69), QAGrade::F);
-        assert_eq!(QAGrade::from_score(0), QAGrade::F);
+    fn test_from_score_95_to_100_arm() {
+        for score in [95u8, 97, 100] {
+            match score {
+                95..=100 => assert_eq!(QAGrade::from_score(score), QAGrade::APlus),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_score_90_to_94_arm() {
+        for score in [90u8, 92, 94] {
+            match score {
+                90..=94 => assert_eq!(QAGrade::from_score(score), QAGrade::A),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_score_85_to_89_arm() {
+        for score in [85u8, 87, 89] {
+            match score {
+                85..=89 => assert_eq!(QAGrade::from_score(score), QAGrade::BPlus),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_score_80_to_84_arm() {
+        for score in [80u8, 82, 84] {
+            match score {
+                80..=84 => assert_eq!(QAGrade::from_score(score), QAGrade::B),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_score_70_to_79_arm() {
+        for score in [70u8, 75, 79] {
+            match score {
+                70..=79 => assert_eq!(QAGrade::from_score(score), QAGrade::C),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
+    fn test_from_score_0_to_69_arm() {
+        for score in [0u8, 35, 69] {
+            match score {
+                0..=69 => assert_eq!(QAGrade::from_score(score), QAGrade::F),
+                _ => unreachable!(),
+            }
+        }
     }
 
     #[test]
