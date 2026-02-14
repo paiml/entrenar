@@ -2,6 +2,25 @@
 
 use serde::{Deserialize, Serialize};
 
+// ---------------------------------------------------------------------------
+// Mock GPU hardware constants (modelled after NVIDIA RTX 4090)
+// ---------------------------------------------------------------------------
+
+/// Total VRAM in megabytes for the mock GPU device
+const MOCK_GPU_MEMORY_TOTAL_MB: u64 = 24576;
+/// Typical board power draw in watts
+const MOCK_GPU_POWER_WATTS: f32 = 250.0;
+/// Maximum power limit in watts
+const MOCK_GPU_POWER_LIMIT_WATTS: f32 = 450.0;
+/// Core clock frequency in MHz
+const MOCK_GPU_CLOCK_MHZ: u32 = 2100;
+/// Memory clock frequency in MHz
+const MOCK_GPU_MEMORY_CLOCK_MHZ: u32 = 10_000;
+/// PCIe receive throughput in KB/s
+const MOCK_GPU_PCIE_RX_KBPS: u64 = 2000;
+/// Placeholder PID for the mock training process
+const MOCK_PROCESS_PID: u32 = 12345;
+
 /// Process using GPU resources
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GpuProcess {
@@ -62,18 +81,18 @@ impl GpuMetrics {
             name: format!("Mock GPU {device_id}"),
             utilization_percent: 75,
             memory_used_mb: 8192,
-            memory_total_mb: 24576,
+            memory_total_mb: MOCK_GPU_MEMORY_TOTAL_MB,
             memory_utilization_percent: 33,
             temperature_celsius: 65,
-            power_watts: 250.0,
-            power_limit_watts: 450.0,
-            clock_mhz: 2100,
-            memory_clock_mhz: 10000,
+            power_watts: MOCK_GPU_POWER_WATTS,
+            power_limit_watts: MOCK_GPU_POWER_LIMIT_WATTS,
+            clock_mhz: MOCK_GPU_CLOCK_MHZ,
+            memory_clock_mhz: MOCK_GPU_MEMORY_CLOCK_MHZ,
             pcie_tx_kbps: 1000,
-            pcie_rx_kbps: 2000,
+            pcie_rx_kbps: MOCK_GPU_PCIE_RX_KBPS,
             fan_speed_percent: 50,
             processes: vec![GpuProcess {
-                pid: 12345,
+                pid: MOCK_PROCESS_PID,
                 exe_path: "/usr/bin/mock_training".to_string(),
                 gpu_memory_mb: 4096,
                 cpu_percent: 95.0,

@@ -12,6 +12,9 @@ use std::time::{Duration, Instant};
 /// Default TUI refresh interval in milliseconds
 const DEFAULT_REFRESH_MS: u64 = 500;
 
+/// Maximum number of loss values retained in the chart history
+const LOSS_HISTORY_MAX: usize = 200;
+
 /// TUI Monitor configuration
 #[derive(Debug, Clone)]
 pub struct TuiMonitorConfig {
@@ -283,7 +286,7 @@ impl TrainingStateWriter {
         Self {
             state: TrainingState::new(experiment_dir),
             snapshot,
-            history_max: 200, // Keep last 200 loss values for chart
+            history_max: LOSS_HISTORY_MAX,
         }
     }
 
