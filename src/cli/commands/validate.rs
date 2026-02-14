@@ -6,11 +6,16 @@ use crate::config::{load_config, validate_config, TrainSpec, ValidateArgs};
 
 /// Format model information as a string
 pub fn format_model_info(spec: &TrainSpec) -> String {
-    format!(
-        "  Model path: {}\n  Target layers: {:?}",
-        spec.model.path.display(),
-        spec.model.layers
-    )
+    let mode_str = format!("{:?}", spec.model.mode).to_lowercase();
+    let mut lines = vec![
+        format!("  Model path: {}", spec.model.path.display()),
+        format!("  Model mode: {mode_str}"),
+        format!("  Target layers: {:?}", spec.model.layers),
+    ];
+    if let Some(ref config) = spec.model.config {
+        lines.push(format!("  Config preset: {config}"));
+    }
+    lines.join("\n")
 }
 
 /// Format data configuration as a string
@@ -20,6 +25,21 @@ pub fn format_data_info(spec: &TrainSpec) -> String {
         lines.push(format!("  Validation data: {}", val.display()));
     }
     lines.push(format!("  Batch size: {}", spec.data.batch_size));
+    if let Some(ref tokenizer) = spec.data.tokenizer {
+        lines.push(format!("  Tokenizer: {}", tokenizer.display()));
+    }
+    if let Some(seq_len) = spec.data.seq_len {
+        lines.push(format!("  Sequence length: {seq_len}"));
+    }
+    if let Some(ref col) = spec.data.input_column {
+        lines.push(format!("  Input column: {col}"));
+    }
+    if let Some(ref col) = spec.data.output_column {
+        lines.push(format!("  Output column: {col}"));
+    }
+    if let Some(max_len) = spec.data.max_length {
+        lines.push(format!("  Max length: {max_len}"));
+    }
     lines.join("\n")
 }
 
@@ -37,9 +57,34 @@ pub fn format_optimizer_info(spec: &TrainSpec) -> String {
 
 /// Format training configuration as a string
 pub fn format_training_info(spec: &TrainSpec) -> String {
-    let mut lines = vec![format!("  Epochs: {}", spec.training.epochs)];
+    let training_mode = format!("{:?}", spec.training.mode).to_lowercase();
+    let mut lines = vec![
+        format!("  Training mode: {training_mode}"),
+        format!("  Epochs: {}", spec.training.epochs),
+    ];
     if let Some(clip) = spec.training.grad_clip {
         lines.push(format!("  Gradient clipping: {clip}"));
+    }
+    if let Some(ref sched) = spec.training.lr_scheduler {
+        let mut sched_str = format!("  Scheduler: {sched}");
+        if spec.training.warmup_steps > 0 {
+            sched_str.push_str(&format!(" (warmup={} steps)", spec.training.warmup_steps));
+        }
+        lines.push(sched_str);
+        if let Some(ref params) = spec.training.scheduler_params {
+            for (k, v) in params {
+                lines.push(format!("    {k}: {v}"));
+            }
+        }
+    }
+    if let Some(ga) = spec.training.gradient_accumulation {
+        lines.push(format!("  Gradient accumulation: {ga}"));
+    }
+    if let Some(ref mp) = spec.training.mixed_precision {
+        lines.push(format!("  Mixed precision: {mp}"));
+    }
+    if let Some(seed) = spec.training.seed {
+        lines.push(format!("  Seed: {seed}"));
     }
     lines.push(format!(
         "  Output dir: {}",
@@ -200,6 +245,17 @@ mod tests {
         let info = format_model_info(&spec);
         assert!(info.contains("/model/path"));
         assert!(info.contains("layer1"));
+        assert!(info.contains("tabular"));
+    }
+
+    #[test]
+    fn test_format_model_info_transformer() {
+        let mut spec = make_test_spec();
+        spec.model.mode = crate::config::ModelMode::Transformer;
+        spec.model.config = Some("qwen2_1_5b".into());
+        let info = format_model_info(&spec);
+        assert!(info.contains("transformer"));
+        assert!(info.contains("qwen2_1_5b"));
     }
 
     #[test]
@@ -221,6 +277,22 @@ mod tests {
     }
 
     #[test]
+    fn test_format_data_info_llm_fields() {
+        let mut spec = make_test_spec();
+        spec.data.tokenizer = Some(std::path::PathBuf::from("./tokenizer.json"));
+        spec.data.seq_len = Some(2048);
+        spec.data.input_column = Some("text".into());
+        spec.data.output_column = Some("label".into());
+        spec.data.max_length = Some(512);
+        let info = format_data_info(&spec);
+        assert!(info.contains("tokenizer.json"));
+        assert!(info.contains("2048"));
+        assert!(info.contains("text"));
+        assert!(info.contains("label"));
+        assert!(info.contains("512"));
+    }
+
+    #[test]
     fn test_format_optimizer_info() {
         let spec = make_test_spec();
         let info = format_optimizer_info(&spec);
@@ -235,8 +307,30 @@ mod tests {
         let spec = make_test_spec();
         let info = format_training_info(&spec);
         assert!(info.contains("10"));
-        assert!(info.contains("1"));
+        assert!(info.contains("regression"));
         assert!(info.contains("/output"));
+    }
+
+    #[test]
+    fn test_format_training_info_full() {
+        let mut spec = make_test_spec();
+        spec.training.mode = crate::config::TrainingMode::CausalLm;
+        spec.training.lr_scheduler = Some("cosine".into());
+        spec.training.warmup_steps = 200;
+        spec.training.gradient_accumulation = Some(8);
+        spec.training.mixed_precision = Some("bf16".into());
+        spec.training.seed = Some(42);
+        let mut params = HashMap::new();
+        params.insert("t_max".into(), serde_json::json!(1000));
+        spec.training.scheduler_params = Some(params);
+        let info = format_training_info(&spec);
+        assert!(info.contains("causal"));
+        assert!(info.contains("cosine"));
+        assert!(info.contains("warmup=200"));
+        assert!(info.contains("t_max"));
+        assert!(info.contains("8"));
+        assert!(info.contains("bf16"));
+        assert!(info.contains("42"));
     }
 
     #[test]

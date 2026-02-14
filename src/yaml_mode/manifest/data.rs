@@ -43,6 +43,27 @@ pub struct DataConfig {
     /// DataLoader settings
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loader: Option<DataLoader>,
+
+    // === LLM data fields (mirrors TrainSpec DataConfig) ===
+    /// Path to tokenizer.json (for transformer/LLM training)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokenizer: Option<String>,
+
+    /// Sequence length (for transformers)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq_len: Option<usize>,
+
+    /// Input text column name (for transformer mode)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_column: Option<String>,
+
+    /// Output/target text column name (for transformer mode)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_column: Option<String>,
+
+    /// Maximum tokenization length
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
 }
 
 /// Data split ratios

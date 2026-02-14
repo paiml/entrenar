@@ -275,6 +275,14 @@ pub struct TrainingParams {
     /// Use mixed precision training (bf16 or fp16)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mixed_precision: Option<String>,
+
+    /// Scheduler-specific parameters (t_max, gamma, step_size, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler_params: Option<HashMap<String, serde_json::Value>>,
+
+    /// Global random seed for reproducibility
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
 }
 
 impl Default for TrainingParams {
@@ -290,6 +298,8 @@ impl Default for TrainingParams {
             gradient_accumulation: None,
             checkpoints: None,
             mixed_precision: None,
+            scheduler_params: None,
+            seed: None,
         }
     }
 }
@@ -500,6 +510,38 @@ optimizer:
         assert!(params.gradient_accumulation.is_none());
         assert!(params.checkpoints.is_none());
         assert!(params.mixed_precision.is_none());
+        assert!(params.scheduler_params.is_none());
+        assert!(params.seed.is_none());
+    }
+
+    #[test]
+    fn test_deserialize_scheduler_params_and_seed() {
+        let yaml = r"
+model:
+  path: model.gguf
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adam
+  lr: 0.001
+
+training:
+  epochs: 5
+  seed: 42
+  lr_scheduler: cosine
+  scheduler_params:
+    t_max: 1000
+    eta_min: 0.000001
+";
+
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(spec.training.seed, Some(42));
+        let params = spec.training.scheduler_params.unwrap();
+        assert_eq!(params["t_max"], serde_json::json!(1000));
+        assert_eq!(params["eta_min"], serde_json::json!(0.000001));
     }
 
     /// CB-950: Verify that quoted boolean strings ("true"/"false") deserialize correctly.

@@ -23,28 +23,100 @@ pub fn run_train(args: TrainArgs, level: LogLevel) -> Result<(), String> {
             LogLevel::Normal,
             "Dry run - config validated successfully",
         );
+        // Model info with mode
+        let mode_str = format!("{:?}", spec.model.mode).to_lowercase();
         log(
             level,
-            LogLevel::Verbose,
-            &format!("  Model: {}", spec.model.path.display()),
+            LogLevel::Normal,
+            &format!("  Model: {} ({})", spec.model.path.display(), mode_str),
         );
+        // Training mode
+        let training_mode = format!("{:?}", spec.training.mode).to_lowercase();
         log(
             level,
-            LogLevel::Verbose,
+            LogLevel::Normal,
+            &format!("  Training mode: {training_mode}"),
+        );
+        // Optimizer
+        log(
+            level,
+            LogLevel::Normal,
             &format!(
                 "  Optimizer: {} (lr={})",
                 spec.optimizer.name, spec.optimizer.lr
             ),
         );
+        // Scheduler
+        if let Some(ref sched) = spec.training.lr_scheduler {
+            let warmup = if spec.training.warmup_steps > 0 {
+                format!(" (warmup={} steps)", spec.training.warmup_steps)
+            } else {
+                String::new()
+            };
+            log(
+                level,
+                LogLevel::Normal,
+                &format!("  Scheduler: {sched}{warmup}"),
+            );
+        }
+        // Epochs and batch size
         log(
             level,
-            LogLevel::Verbose,
+            LogLevel::Normal,
             &format!("  Epochs: {}", spec.training.epochs),
         );
         log(
             level,
-            LogLevel::Verbose,
+            LogLevel::Normal,
             &format!("  Batch size: {}", spec.data.batch_size),
+        );
+        // Gradient accumulation
+        if let Some(ga) = spec.training.gradient_accumulation {
+            let effective = spec.data.batch_size * ga;
+            log(
+                level,
+                LogLevel::Normal,
+                &format!("  Gradient accumulation: {ga} (effective batch={effective})"),
+            );
+        }
+        // Mixed precision
+        if let Some(ref mp) = spec.training.mixed_precision {
+            log(level, LogLevel::Normal, &format!("  Mixed precision: {mp}"));
+        }
+        // LoRA
+        if let Some(ref lora) = spec.lora {
+            log(
+                level,
+                LogLevel::Normal,
+                &format!(
+                    "  LoRA: rank={}, alpha={}, modules={:?}",
+                    lora.rank, lora.alpha, lora.target_modules
+                ),
+            );
+        }
+        // Quantization
+        if let Some(ref quant) = spec.quantize {
+            let scheme = if quant.symmetric {
+                "symmetric"
+            } else {
+                "asymmetric"
+            };
+            let gran = if quant.per_channel {
+                "per-channel"
+            } else {
+                "per-tensor"
+            };
+            log(
+                level,
+                LogLevel::Normal,
+                &format!("  Quantization: {}-bit {} {}", quant.bits, scheme, gran),
+            );
+        }
+        // Output dir
+        log(
+            level,
+            LogLevel::Normal,
+            &format!("  Output: {}", spec.training.output_dir.display()),
         );
         return Ok(());
     }
