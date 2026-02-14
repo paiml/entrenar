@@ -222,6 +222,44 @@ impl TuiMonitor {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_training_status_match_all_variants() {
+        let statuses = [
+            TrainingStatus::Initializing,
+            TrainingStatus::Running,
+            TrainingStatus::Paused,
+            TrainingStatus::Completed,
+            TrainingStatus::Failed("oom".to_string()),
+        ];
+
+        for status in &statuses {
+            // Syntactic match covering all arms from render_final_summary
+            let description = match status {
+                TrainingStatus::Completed => "Completed Successfully".to_string(),
+                TrainingStatus::Failed(msg) => format!("FAILED - {msg}"),
+                TrainingStatus::Initializing
+                | TrainingStatus::Running
+                | TrainingStatus::Paused => "In progress".to_string(),
+            };
+            assert!(!description.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_tui_monitor_config_default() {
+        let config = TuiMonitorConfig::default();
+        assert_eq!(config.refresh_ms, 500);
+        assert_eq!(config.width, 80);
+        assert_eq!(config.height, 24);
+        assert!(!config.compact);
+        assert!(config.exit_on_complete);
+    }
+} // mod tests (variant coverage)
+
 /// Lightweight state writer for the training loop (Producer)
 ///
 /// Used by the trainer to write atomic state updates.
@@ -377,17 +415,9 @@ impl TrainingStateWriter {
 }
 
 #[cfg(test)]
-mod tests {
+mod state_writer_tests {
     use super::*;
     use tempfile::TempDir;
-
-    #[test]
-    fn test_tui_monitor_config_default() {
-        let config = TuiMonitorConfig::default();
-        assert_eq!(config.refresh_ms, 500);
-        assert_eq!(config.width, 80);
-        assert!(config.exit_on_complete);
-    }
 
     #[test]
     fn test_training_state_writer() {

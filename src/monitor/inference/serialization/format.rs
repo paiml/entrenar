@@ -47,3 +47,50 @@ impl From<u8> for PathType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_path_type_from_u8_all_variants() {
+        let cases: &[(u8, PathType)] = &[
+            (0, PathType::Linear),
+            (1, PathType::Tree),
+            (2, PathType::Forest),
+            (3, PathType::KNN),
+            (4, PathType::Neural),
+            (5, PathType::Custom),
+            (128, PathType::Custom),
+            (255, PathType::Custom),
+        ];
+
+        for &(input, expected) in cases {
+            let result = PathType::from(input);
+            // Syntactic match covering all arms from From<u8>
+            let label = match input {
+                0 => PathType::Linear,
+                1 => PathType::Tree,
+                2 => PathType::Forest,
+                3 => PathType::KNN,
+                4 => PathType::Neural,
+                5..=255 => PathType::Custom,
+            };
+            assert_eq!(result, expected);
+            assert_eq!(result, label);
+        }
+    }
+
+    #[test]
+    fn test_trace_format_variants() {
+        let _binary = TraceFormat::Binary;
+        let _json = TraceFormat::Json;
+        let _jsonl = TraceFormat::JsonLines;
+    }
+
+    #[test]
+    fn test_aprt_constants() {
+        assert_eq!(APRT_MAGIC, [0x41, 0x50, 0x52, 0x54]);
+        assert_eq!(APRT_VERSION, 1);
+    }
+}

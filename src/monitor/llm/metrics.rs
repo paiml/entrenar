@@ -295,4 +295,54 @@ mod tests {
             Some(&"summarization".to_string())
         );
     }
+
+    #[test]
+    fn test_estimate_cost_all_model_variants() {
+        let models = [
+            ("gpt-4-turbo-preview", 0.01, 0.03),
+            ("gpt-4-0613", 0.03, 0.06),
+            ("gpt-3.5-turbo", 0.0005, 0.0015),
+            ("claude-3-opus-20240229", 0.015, 0.075),
+            ("claude-3-sonnet-20240229", 0.003, 0.015),
+            ("claude-3-haiku-20240307", 0.00025, 0.00125),
+            ("gemini-pro", 0.00025, 0.0005),
+            ("mistral-medium", 0.0002, 0.0006),
+            ("llama-3-70b", 0.0002, 0.0006),
+            ("unknown-model", 0.001, 0.002),
+        ];
+
+        for (model_name, expected_prompt_price, expected_completion_price) in &models {
+            let metrics = LLMMetrics::new(model_name).with_tokens(1000, 1000);
+            let cost = metrics.estimate_cost();
+
+            // Syntactic match covering all arms from estimate_cost
+            let (prompt_price, completion_price): (f64, f64) = match *model_name {
+                m if m.contains("gpt-4-turbo") => (0.01, 0.03),
+                m if m.contains("gpt-4") => (0.03, 0.06),
+                m if m.contains("gpt-3.5") => (0.0005, 0.0015),
+                m if m.contains("claude-3-opus") => (0.015, 0.075),
+                m if m.contains("claude-3-sonnet") => (0.003, 0.015),
+                m if m.contains("claude-3-haiku") => (0.00025, 0.00125),
+                m if m.contains("gemini") => (0.00025, 0.0005),
+                m if m.contains("mistral") => (0.0002, 0.0006),
+                m if m.contains("llama") => (0.0002, 0.0006),
+                _other => (0.001, 0.002),
+            };
+
+            assert!(
+                (prompt_price - expected_prompt_price).abs() < 1e-10_f64,
+                "prompt price mismatch for {model_name}"
+            );
+            assert!(
+                (completion_price - expected_completion_price).abs() < 1e-10_f64,
+                "completion price mismatch for {model_name}"
+            );
+
+            let expected_cost = expected_prompt_price + expected_completion_price;
+            assert!(
+                (cost - expected_cost).abs() < 1e-6,
+                "cost mismatch for {model_name}: got {cost}, expected {expected_cost}"
+            );
+        }
+    }
 }

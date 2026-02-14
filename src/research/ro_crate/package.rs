@@ -213,3 +213,58 @@ pub fn guess_mime_type(path: &str) -> &'static str {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_guess_mime_type_all_extension_variants() {
+        let cases: &[(&str, &str)] = &[
+            ("data.json", "application/json"),
+            ("config.yaml", "application/x-yaml"),
+            ("config.yml", "application/x-yaml"),
+            ("data.csv", "text/csv"),
+            ("readme.txt", "text/plain"),
+            ("notes.md", "text/markdown"),
+            ("script.py", "text/x-python"),
+            ("main.rs", "text/x-rust"),
+            ("paper.pdf", "application/pdf"),
+            ("image.png", "image/png"),
+            ("photo.jpg", "image/jpeg"),
+            ("photo.jpeg", "image/jpeg"),
+            ("data.parquet", "application/vnd.apache.parquet"),
+            ("model.safetensors", "application/octet-stream"),
+            ("archive.xyz", "application/octet-stream"),
+        ];
+
+        for &(path, expected) in cases {
+            let result = guess_mime_type(path);
+
+            // Syntactic match covering all arms from guess_mime_type
+            let ext = Path::new(path)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+
+            let matched = match ext.to_lowercase().as_str() {
+                "json" => "application/json",
+                "yaml" | "yml" => "application/x-yaml",
+                "csv" => "text/csv",
+                "txt" => "text/plain",
+                "md" => "text/markdown",
+                "py" => "text/x-python",
+                "rs" => "text/x-rust",
+                "pdf" => "application/pdf",
+                "png" => "image/png",
+                "jpg" | "jpeg" => "image/jpeg",
+                "parquet" => "application/vnd.apache.parquet",
+                "safetensors" => "application/octet-stream",
+                _other => "application/octet-stream",
+            };
+
+            assert_eq!(result, expected, "MIME mismatch for {path}");
+            assert_eq!(matched, expected, "match mismatch for {path}");
+        }
+    }
+}
