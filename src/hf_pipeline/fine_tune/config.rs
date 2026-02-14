@@ -11,6 +11,9 @@ use crate::lora::LoRAConfig;
 use super::memory::{MemoryRequirement, MixedPrecision};
 use super::method::FineTuneMethod;
 
+/// Default number of training steps between checkpoint saves.
+const DEFAULT_SAVE_STEPS: usize = 500;
+
 /// Fine-tuning configuration
 #[derive(Debug, Clone)]
 pub struct FineTuneConfig {
@@ -57,7 +60,7 @@ impl Default for FineTuneConfig {
             gradient_accumulation_steps: 4,
             weight_decay: 0.01,
             warmup_ratio: 0.03,
-            save_steps: 500,
+            save_steps: DEFAULT_SAVE_STEPS,
             eval_steps: 100,
             gradient_checkpointing: true,
             mixed_precision: Some(MixedPrecision::Bf16),

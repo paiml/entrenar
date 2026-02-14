@@ -5,6 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Number of days in a standard year, used for archival retention policy.
+const DAYS_PER_YEAR: u32 = 365;
+
 /// Compression algorithm for trace data
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum CompressionAlgorithm {
@@ -147,7 +150,7 @@ impl TraceStoragePolicy {
     pub fn archival() -> Self {
         Self {
             compression: CompressionAlgorithm::Zstd,
-            retention_days: 365,
+            retention_days: DAYS_PER_YEAR,
             max_size_bytes: 100 * 1024 * 1024 * 1024, // 100 GB
             sample_rate: 0.25,
         }
