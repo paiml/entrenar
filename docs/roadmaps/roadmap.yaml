@@ -940,11 +940,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'CB-950 Kaizen: quote truthy strings in YAML files'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2026-02-14T18:18:49Z
-  updated: 2026-02-14T18:18:53.052841081+00:00
+  updated: 2026-02-14T18:27:29.682017061+00:00
   spec: null
   acceptance_criteria: []
   phases: []
