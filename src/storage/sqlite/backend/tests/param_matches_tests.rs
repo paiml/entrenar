@@ -976,3 +976,53 @@ fn test_param_filter_dict_vs_list() {
     let results = backend.search_runs_by_params(&filters).unwrap();
     assert_eq!(results.len(), 0, "Dict should not match List with Eq");
 }
+
+// -------------------------------------------------------------------------
+// Syntactic match coverage for FilterOp variants (satisfies variant scanner)
+// -------------------------------------------------------------------------
+
+#[test]
+fn test_filter_op_variant_coverage() {
+    let mut backend = SqliteBackend::open_in_memory().unwrap();
+    let exp_id = backend.create_experiment("test", None).unwrap();
+
+    let run = backend.create_run(&exp_id).unwrap();
+    backend
+        .log_param(&run, "x", ParameterValue::Float(5.0))
+        .unwrap();
+
+    // Exercise every FilterOp variant through param_matches
+    let ops = [
+        FilterOp::Eq,
+        FilterOp::Ne,
+        FilterOp::Gt,
+        FilterOp::Lt,
+        FilterOp::Gte,
+        FilterOp::Lte,
+        FilterOp::Contains,
+        FilterOp::StartsWith,
+    ];
+
+    for op in &ops {
+        let expected = match op {
+            FilterOp::Eq => true,   // 5.0 == 5.0
+            FilterOp::Ne => false,  // 5.0 != 5.0 is false
+            FilterOp::Gt => false,  // 5.0 > 5.0 is false
+            FilterOp::Lt => false,  // 5.0 < 5.0 is false
+            FilterOp::Gte => true,  // 5.0 >= 5.0
+            FilterOp::Lte => true,  // 5.0 <= 5.0
+            FilterOp::Contains => false,    // unsupported for Float
+            FilterOp::StartsWith => false,  // unsupported for Float
+        };
+
+        let filters = vec![ParamFilter {
+            key: "x".to_string(),
+            op: op.clone(),
+            value: ParameterValue::Float(5.0),
+        }];
+
+        let results = backend.search_runs_by_params(&filters).unwrap();
+        let matched = !results.is_empty();
+        assert_eq!(matched, expected, "FilterOp::{op:?} on Float(5.0) vs Float(5.0)");
+    }
+}

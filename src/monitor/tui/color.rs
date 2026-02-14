@@ -646,6 +646,23 @@ mod tests {
 
         let initializing = TrainingPalette::status_color(&TrainingStatus::Initializing);
         assert_eq!(initializing, TrainingPalette::INFO);
+
+        // Verify exhaustive match on all TrainingStatus variants
+        for status in &[
+            TrainingStatus::Running,
+            TrainingStatus::Completed,
+            TrainingStatus::Paused,
+            TrainingStatus::Failed("test".to_string()),
+            TrainingStatus::Initializing,
+        ] {
+            match status {
+                TrainingStatus::Running => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::SUCCESS),
+                TrainingStatus::Completed => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::PRIMARY),
+                TrainingStatus::Paused => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::WARNING),
+                TrainingStatus::Failed(_) => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::ERROR),
+                TrainingStatus::Initializing => assert_eq!(TrainingPalette::status_color(status), TrainingPalette::INFO),
+            }
+        }
     }
 
     #[test]
