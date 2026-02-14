@@ -873,11 +873,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'DEBT: Match arm test co-location for metric.rs'
-  status: planned
+  status: inprogress
   priority: medium
   assigned_to: null
   created: 2026-02-14T17:40:51Z
-  updated: 2026-02-14T17:40:51Z
+  updated: 2026-02-14T21:48:24.867415667+00:00
   spec: null
   acceptance_criteria:
   - PMAT falsify claim 18 requires match arm tests co-located in same file. Tests exist in cv_tests.rs but PMAT scanner expects them in metric.rs test module. All 18 Metric variants are tested via test_metric_display_all_variants and test_cv_non_classification_metric_falls_back_to_accuracy.
