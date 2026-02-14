@@ -4,6 +4,8 @@ use super::Precision;
 
 /// Default number of successful steps before the loss scale is increased
 const DEFAULT_SCALE_GROWTH_INTERVAL: usize = 2000;
+/// Initial loss scale for fp16 mixed-precision (2^16)
+const FP16_INITIAL_LOSS_SCALE: f32 = 65536.0;
 
 /// Configuration for mixed-precision training
 #[derive(Debug, Clone)]
@@ -43,7 +45,7 @@ impl MixedPrecisionConfig {
         Self {
             compute_precision: Precision::Fp16,
             weight_precision: Precision::Fp32,
-            initial_scale: 65536.0, // 2^16
+            initial_scale: FP16_INITIAL_LOSS_SCALE,
             scale_growth_factor: 2.0,
             scale_backoff_factor: 0.5,
             scale_growth_interval: DEFAULT_SCALE_GROWTH_INTERVAL,
