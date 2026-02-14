@@ -269,6 +269,9 @@
 - [Test Generation (Qwen2-0.5B)](./examples/finetune-test-gen.md)
 - [Real Fine-Tuning (Qwen2.5-Coder-0.5B)](./examples/finetune-real.md)
 
+## Evaluation & Publishing
+- [OpenASR Leaderboard (Whisper)](./examples/open-asr-leaderboard.md)
+
 ## Advanced
 - [Compiler-in-the-Loop (CITL)](./examples/citl.md)
 - [Research Artifact Management](./examples/research.md)
