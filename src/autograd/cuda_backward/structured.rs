@@ -1,0 +1,203 @@
+#![allow(unsafe_code)]
+#![allow(trivial_casts)]
+#![allow(clippy::borrow_as_ptr)]
+#![allow(clippy::ref_as_ptr)]
+
+#[cfg(feature = "cuda")]
+use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
+#[cfg(feature = "cuda")]
+use trueno_gpu::kernels::backward::{
+    LayerNormBackwardKernel, RmsNormBackwardKernel, SoftmaxBackwardKernel,
+};
+#[cfg(feature = "cuda")]
+use trueno_gpu::kernels::Kernel;
+
+use super::super::cuda_tensor::{CudaTensorError, Result};
+#[cfg(feature = "cuda")]
+use super::cache::KERNEL_CACHE;
+
+/// Softmax backward pass on GPU
+///
+/// Computes: grad_input = softmax_output * (grad_output - sum(grad_output * softmax_output))
+#[cfg(feature = "cuda")]
+pub fn softmax_backward(
+    softmax_output: &GpuBuffer<f32>,
+    grad_output: &GpuBuffer<f32>,
+    grad_input: &mut GpuBuffer<f32>,
+    batch_size: u32,
+    seq_len: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let kernel = SoftmaxBackwardKernel::new(batch_size, seq_len);
+    let ptx = kernel.emit_ptx();
+
+    let cache = KERNEL_CACHE
+        .get()
+        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("softmax_backward_{batch_size}_{seq_len}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    // Softmax backward uses warp-parallel reduction
+    let config = LaunchConfig {
+        grid: (batch_size, 1, 1),
+        block: (32.min(seq_len), 1, 1), // Warp size
+        shared_mem: 0,
+    };
+
+    let output_ptr = softmax_output.as_ptr();
+    let grad_out_ptr = grad_output.as_ptr();
+    let grad_in_ptr = grad_input.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 5] = [
+        &output_ptr as *const _ as *mut _,
+        &grad_out_ptr as *const _ as *mut _,
+        &grad_in_ptr as *const _ as *mut _,
+        &batch_size as *const _ as *mut _,
+        &seq_len as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
+    unsafe {
+        stream
+            .launch_kernel(module, "softmax_backward", &config, &mut args)
+            .map_err(|e| {
+                CudaTensorError::KernelError(format!("Softmax backward launch failed: {e:?}"))
+            })?;
+    }
+
+    Ok(())
+}
+
+/// RMSNorm backward pass on GPU
+///
+/// Computes gradients for input and gamma parameters
+#[cfg(feature = "cuda")]
+pub fn rms_norm_backward(
+    input: &GpuBuffer<f32>,
+    gamma: &GpuBuffer<f32>,
+    grad_output: &GpuBuffer<f32>,
+    grad_input: &mut GpuBuffer<f32>,
+    grad_gamma: &mut GpuBuffer<f32>,
+    batch_size: u32,
+    hidden_size: u32,
+    eps: f32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let kernel = RmsNormBackwardKernel::new(batch_size, hidden_size, eps);
+    let ptx = kernel.emit_ptx();
+
+    let cache = KERNEL_CACHE
+        .get()
+        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("rms_norm_backward_{batch_size}_{hidden_size}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    let config = LaunchConfig {
+        grid: (batch_size, 1, 1),
+        block: (256.min(hidden_size), 1, 1),
+        shared_mem: 0,
+    };
+
+    let input_ptr = input.as_ptr();
+    let gamma_ptr = gamma.as_ptr();
+    let grad_out_ptr = grad_output.as_ptr();
+    let grad_in_ptr = grad_input.as_ptr();
+    let grad_gamma_ptr = grad_gamma.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 8] = [
+        &input_ptr as *const _ as *mut _,
+        &gamma_ptr as *const _ as *mut _,
+        &grad_out_ptr as *const _ as *mut _,
+        &grad_in_ptr as *const _ as *mut _,
+        &grad_gamma_ptr as *const _ as *mut _,
+        &batch_size as *const _ as *mut _,
+        &hidden_size as *const _ as *mut _,
+        &eps as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
+    unsafe {
+        stream
+            .launch_kernel(module, "rms_norm_backward", &config, &mut args)
+            .map_err(|e| {
+                CudaTensorError::KernelError(format!("RMSNorm backward launch failed: {e:?}"))
+            })?;
+    }
+
+    Ok(())
+}
+
+/// LayerNorm backward pass on GPU
+///
+/// Computes gradients for input, gamma, and beta parameters
+#[cfg(feature = "cuda")]
+pub fn layer_norm_backward(
+    input: &GpuBuffer<f32>,
+    gamma: &GpuBuffer<f32>,
+    grad_output: &GpuBuffer<f32>,
+    grad_input: &mut GpuBuffer<f32>,
+    grad_gamma: &mut GpuBuffer<f32>,
+    grad_beta: &mut GpuBuffer<f32>,
+    batch_size: u32,
+    hidden_size: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let kernel = LayerNormBackwardKernel::new(batch_size, hidden_size);
+    let ptx = kernel.emit_ptx();
+
+    let cache = KERNEL_CACHE
+        .get()
+        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("layer_norm_backward_{batch_size}_{hidden_size}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    let config = LaunchConfig {
+        grid: (batch_size, 1, 1),
+        block: (256.min(hidden_size), 1, 1),
+        shared_mem: 0,
+    };
+
+    let input_ptr = input.as_ptr();
+    let gamma_ptr = gamma.as_ptr();
+    let grad_out_ptr = grad_output.as_ptr();
+    let grad_in_ptr = grad_input.as_ptr();
+    let grad_gamma_ptr = grad_gamma.as_ptr();
+    let grad_beta_ptr = grad_beta.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 8] = [
+        &input_ptr as *const _ as *mut _,
+        &gamma_ptr as *const _ as *mut _,
+        &grad_out_ptr as *const _ as *mut _,
+        &grad_in_ptr as *const _ as *mut _,
+        &grad_gamma_ptr as *const _ as *mut _,
+        &grad_beta_ptr as *const _ as *mut _,
+        &batch_size as *const _ as *mut _,
+        &hidden_size as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
+    unsafe {
+        stream
+            .launch_kernel(module, "layer_norm_backward", &config, &mut args)
+            .map_err(|e| {
+                CudaTensorError::KernelError(format!("LayerNorm backward launch failed: {e:?}"))
+            })?;
+    }
+
+    Ok(())
+}
