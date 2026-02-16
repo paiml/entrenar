@@ -93,13 +93,13 @@ impl CodeGan {
             .iter()
             .map(|&p| -smoothed_real * p.max(1e-7).ln())
             .sum::<f32>()
-            / real_probs.len() as f32;
+            / real_probs.len().max(1) as f32;
 
         let fake_loss: f32 = fake_probs
             .iter()
             .map(|&p| -(1.0 - p).max(1e-7).ln())
             .sum::<f32>()
-            / fake_probs.len() as f32;
+            / fake_probs.len().max(1) as f32;
 
         real_loss + fake_loss
     }
@@ -110,7 +110,7 @@ impl CodeGan {
 
         // Generator wants discriminator to output 1 (real) for fakes
         let loss: f32 =
-            fake_probs.iter().map(|&p| -p.max(1e-7).ln()).sum::<f32>() / fake_probs.len() as f32;
+            fake_probs.iter().map(|&p| -p.max(1e-7).ln()).sum::<f32>() / fake_probs.len().max(1) as f32;
 
         loss
     }

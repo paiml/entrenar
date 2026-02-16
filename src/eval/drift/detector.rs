@@ -254,6 +254,17 @@ impl DriftDetector {
         current: &[f64],
         threshold: f64,
     ) -> DriftResult {
+        if baseline.is_empty() || current.is_empty() {
+            return DriftResult {
+                feature: format!("feature_{feature_idx}"),
+                test: DriftTest::PSI { threshold },
+                statistic: 0.0,
+                p_value: 0.0,
+                drifted: false,
+                severity: Severity::None,
+            };
+        }
+
         // Create 10 bins based on baseline deciles
         let n_bins = 10;
         let mut sorted_baseline: Vec<f64> = baseline.to_vec();

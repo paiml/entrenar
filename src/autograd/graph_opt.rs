@@ -410,15 +410,9 @@ pub enum ShapeError {
     /// Input shape not found
     UnknownInput(NodeId),
     /// Dimension mismatch between operands
-    DimMismatch {
-        expected: usize,
-        got: usize,
-    },
+    DimMismatch { expected: usize, got: usize },
     /// Insufficient dimensions for operation
-    InsufficientDims {
-        required: usize,
-        got: usize,
-    },
+    InsufficientDims { required: usize, got: usize },
 }
 
 impl std::fmt::Display for ShapeError {
@@ -621,7 +615,16 @@ impl OptimizationPass for ConstantFolding {
                         continue; // Can't fold
                     }
                 }
-                _ => continue, // Unsupported op for folding
+                // Guard failures: foldable ops with unexpected input counts
+                OpType::Add | OpType::Mul | OpType::Sum | OpType::Scale => continue,
+                // Non-foldable ops
+                OpType::Matmul
+                | OpType::Relu
+                | OpType::Gelu
+                | OpType::Softmax
+                | OpType::LayerNorm
+                | OpType::Attention
+                | OpType::Constant => continue,
             };
 
             // Replace node with constant
@@ -1293,7 +1296,10 @@ mod tests {
         let result = tracker.infer_matmul(2, 0, 1);
         assert!(result.is_err());
         match result.unwrap_err() {
-            ShapeError::InsufficientDims { required: 2, got: 1 } => {}
+            ShapeError::InsufficientDims {
+                required: 2,
+                got: 1,
+            } => {}
             other => panic!("expected InsufficientDims, got {other:?}"),
         }
     }

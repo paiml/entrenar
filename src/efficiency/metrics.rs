@@ -61,7 +61,7 @@ impl EnergyMetrics {
             total_watts += avg_watts;
         }
 
-        let watts_avg = total_watts / (readings.len() - 1) as f64;
+        let watts_avg = total_watts / (readings.len() - 1).max(1) as f64;
         Self::new(watts_avg, total_joules, samples)
     }
 

@@ -124,7 +124,7 @@ impl DistillationLoss {
             loss -= prob.ln();
         }
 
-        loss / labels.len() as f32
+        loss / labels.len().max(1) as f32
     }
 }
 

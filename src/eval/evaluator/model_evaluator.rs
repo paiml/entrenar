@@ -89,13 +89,13 @@ impl ModelEvaluator {
         }
 
         // Compute mean and std
-        let cv_mean = fold_scores.iter().sum::<f64>() / fold_scores.len() as f64;
+        let cv_mean = fold_scores.iter().sum::<f64>() / fold_scores.len().max(1) as f64;
         let cv_std = if fold_scores.len() > 1 {
             let variance = fold_scores
                 .iter()
                 .map(|s| (s - cv_mean).powi(2))
                 .sum::<f64>()
-                / (fold_scores.len() - 1) as f64;
+                / (fold_scores.len().saturating_sub(1)).max(1) as f64;
             variance.sqrt()
         } else {
             0.0
