@@ -1053,3 +1053,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-182
+  github_issue: null
+  item_type: task
+  title: 'GH-83: Selective Gradient Checkpointing with Policy-Based Rematerialization'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-16T22:10:14Z
+  updated: 2026-02-16T22:10:18.612123787+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
