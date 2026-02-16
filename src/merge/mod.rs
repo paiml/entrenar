@@ -93,29 +93,38 @@ pub(crate) fn validate_models(models: &[Model]) -> Result<(), MergeError> {
 
     let reference = &models[0];
     for (i, model) in models.iter().enumerate().skip(1) {
-        // Check all parameters exist
-        for name in reference.keys() {
-            if !model.contains_key(name) {
-                return Err(MergeError::IncompatibleArchitectures(format!(
-                    "Model {i} missing parameter: {name}"
-                )));
-            }
-        }
-
-        // Check shapes match
-        for (name, ref_tensor) in reference {
-            let model_tensor = &model[name];
-            if ref_tensor.len() != model_tensor.len() {
-                return Err(MergeError::ShapeMismatch(format!(
-                    "{} (model 0: {}, model {}: {})",
-                    name,
-                    ref_tensor.len(),
-                    i,
-                    model_tensor.len()
-                )));
-            }
-        }
+        validate_model_keys(reference, model, i)?;
+        validate_model_shapes(reference, model, i)?;
     }
 
+    Ok(())
+}
+
+/// Check all reference parameters exist in the model.
+fn validate_model_keys(reference: &Model, model: &Model, idx: usize) -> Result<(), MergeError> {
+    for name in reference.keys() {
+        if !model.contains_key(name) {
+            return Err(MergeError::IncompatibleArchitectures(format!(
+                "Model {idx} missing parameter: {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Check all parameter shapes match between reference and model.
+fn validate_model_shapes(reference: &Model, model: &Model, idx: usize) -> Result<(), MergeError> {
+    for (name, ref_tensor) in reference {
+        let model_tensor = &model[name];
+        if ref_tensor.len() != model_tensor.len() {
+            return Err(MergeError::ShapeMismatch(format!(
+                "{} (model 0: {}, model {}: {})",
+                name,
+                ref_tensor.len(),
+                idx,
+                model_tensor.len()
+            )));
+        }
+    }
     Ok(())
 }
