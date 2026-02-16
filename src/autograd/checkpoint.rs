@@ -374,7 +374,15 @@ impl CheckpointPolicy for SaveMatmuls {
         match op.op_type {
             OpType::Matmul => 100.0,
             OpType::Attention => 150.0,
-            _ => 1.0,
+            OpType::Add
+            | OpType::Mul
+            | OpType::Scale
+            | OpType::Sum
+            | OpType::Relu
+            | OpType::Gelu
+            | OpType::Softmax
+            | OpType::LayerNorm
+            | OpType::Constant => 1.0,
         }
     }
 }
@@ -402,9 +410,7 @@ impl BinomialCheckpointing {
     pub fn checkpoint_indices(&self) -> Vec<usize> {
         let num_checkpoints = optimal_checkpoints(self.num_layers);
         let interval = self.num_layers / num_checkpoints.max(1);
-        (0..self.num_layers)
-            .step_by(interval.max(1))
-            .collect()
+        (0..self.num_layers).step_by(interval.max(1)).collect()
     }
 }
 
@@ -515,9 +521,7 @@ impl PolicyCheckpointManager {
 
     /// Check if an activation is saved for a given layer
     pub fn is_saved(&self, layer_index: usize) -> bool {
-        self.saved
-            .get(layer_index)
-            .is_some_and(Option::is_some)
+        self.saved.get(layer_index).is_some_and(Option::is_some)
     }
 
     /// Get total bytes used by saved activations
@@ -982,10 +986,7 @@ mod tests {
     #[test]
     fn test_estimate_policy_tradeoff_save_nothing() {
         let policy = SaveNothing;
-        let infos = vec![
-            make_op(OpType::Matmul, 1000),
-            make_op(OpType::Add, 200),
-        ];
+        let infos = vec![make_op(OpType::Matmul, 1000), make_op(OpType::Add, 200)];
 
         let (saved, used, overhead) = estimate_policy_tradeoff(&policy, &infos);
         assert_eq!(saved, 1200); // Nothing saved

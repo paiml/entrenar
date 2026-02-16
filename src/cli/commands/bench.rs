@@ -68,7 +68,7 @@ pub fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
         let p50 = latencies[latencies.len() * 50 / 100];
         let p95 = latencies[latencies.len() * 95 / 100];
         let p99 = latencies[latencies.len() * 99 / 100];
-        let mean = latencies.iter().sum::<f64>() / latencies.len() as f64;
+        let mean = latencies.iter().sum::<f64>() / latencies.len().max(1) as f64;
         let throughput = 1000.0 / mean * *batch_size as f64;
 
         if args.format == OutputFormat::Json {

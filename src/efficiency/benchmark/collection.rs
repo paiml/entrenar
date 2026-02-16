@@ -166,13 +166,13 @@ impl CostPerformanceBenchmark {
             count: self.entries.len(),
             quality_min: qualities.iter().copied().fold(f64::INFINITY, f64::min),
             quality_max: qualities.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-            quality_avg: qualities.iter().sum::<f64>() / qualities.len() as f64,
+            quality_avg: qualities.iter().sum::<f64>() / qualities.len().max(1) as f64,
             cost_min: costs.iter().copied().fold(f64::INFINITY, f64::min),
             cost_max: costs.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-            cost_avg: costs.iter().sum::<f64>() / costs.len() as f64,
+            cost_avg: costs.iter().sum::<f64>() / costs.len().max(1) as f64,
             energy_min: energies.iter().copied().fold(f64::INFINITY, f64::min),
             energy_max: energies.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-            energy_avg: energies.iter().sum::<f64>() / energies.len() as f64,
+            energy_avg: energies.iter().sum::<f64>() / energies.len().max(1) as f64,
             pareto_count: self.pareto_frontier().len(),
         }
     }
