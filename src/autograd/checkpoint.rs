@@ -22,6 +22,7 @@
 //! }, &input);
 //! ```
 
+use crate::autograd::graph_opt::OpType;
 use crate::Tensor;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -286,6 +287,287 @@ pub fn optimal_checkpoints(num_layers: usize) -> usize {
     ((num_layers as f64).sqrt().ceil() as usize).max(1)
 }
 
+// ---------------------------------------------------------------------------
+// Policy-based selective gradient checkpointing (GH-83)
+// ---------------------------------------------------------------------------
+
+/// Metadata about an operation, used by checkpoint policies to decide
+/// whether to save or recompute its output activation.
+#[derive(Debug, Clone)]
+pub struct OperationInfo {
+    /// The type of operation
+    pub op_type: OpType,
+    /// Output size in bytes (batch_size * elements * sizeof(f32))
+    pub output_bytes: usize,
+    /// Whether any input has a batch dimension (ndim > 2)
+    pub has_batch_dim: bool,
+    /// Layer index in the sequential model
+    pub layer_index: usize,
+}
+
+impl OperationInfo {
+    /// Create operation info for a given op type and output size
+    pub fn new(op_type: OpType, output_bytes: usize) -> Self {
+        Self {
+            op_type,
+            output_bytes,
+            has_batch_dim: false,
+            layer_index: 0,
+        }
+    }
+
+    /// Set whether this operation has batch dimensions
+    pub fn with_batch_dim(mut self, has_batch: bool) -> Self {
+        self.has_batch_dim = has_batch;
+        self
+    }
+
+    /// Set the layer index
+    pub fn with_layer_index(mut self, index: usize) -> Self {
+        self.layer_index = index;
+        self
+    }
+}
+
+/// Policy for deciding which activations to save vs recompute during
+/// gradient checkpointing.
+///
+/// Implementations control the memory/compute tradeoff by returning `true`
+/// from `should_save` for operations whose outputs should be cached.
+pub trait CheckpointPolicy {
+    /// Returns true if this operation's output should be saved (not recomputed)
+    fn should_save(&self, op: &OperationInfo) -> bool;
+
+    /// Estimated relative cost of recomputing this operation (default: 1.0)
+    fn recompute_cost(&self, _op: &OperationInfo) -> f64 {
+        1.0
+    }
+}
+
+/// Save everything — maximum memory usage, no recomputation overhead.
+pub struct SaveAll;
+
+impl CheckpointPolicy for SaveAll {
+    fn should_save(&self, _op: &OperationInfo) -> bool {
+        true
+    }
+}
+
+/// Save nothing — minimum memory usage, full recomputation during backward.
+pub struct SaveNothing;
+
+impl CheckpointPolicy for SaveNothing {
+    fn should_save(&self, _op: &OperationInfo) -> bool {
+        false
+    }
+}
+
+/// Save only matrix multiplication results (most expensive to recompute).
+pub struct SaveMatmuls;
+
+impl CheckpointPolicy for SaveMatmuls {
+    fn should_save(&self, op: &OperationInfo) -> bool {
+        matches!(op.op_type, OpType::Matmul | OpType::Attention)
+    }
+
+    fn recompute_cost(&self, op: &OperationInfo) -> f64 {
+        match op.op_type {
+            OpType::Matmul => 100.0,
+            OpType::Attention => 150.0,
+            _ => 1.0,
+        }
+    }
+}
+
+/// Save matmuls that do NOT have batch dimensions (common in transformers).
+/// These are typically the most expensive weight-projection operations.
+pub struct SaveUnbatchedMatmuls;
+
+impl CheckpointPolicy for SaveUnbatchedMatmuls {
+    fn should_save(&self, op: &OperationInfo) -> bool {
+        matches!(op.op_type, OpType::Matmul | OpType::Attention) && !op.has_batch_dim
+    }
+}
+
+/// Save activations at regular intervals (every N layers).
+/// Uses the binomial checkpointing strategy: checkpoint sqrt(N) layers
+/// for O(sqrt(N)) memory with O(1) extra forward passes.
+pub struct BinomialCheckpointing {
+    /// Total number of layers in the model
+    pub num_layers: usize,
+}
+
+impl BinomialCheckpointing {
+    /// Compute the indices that should be checkpointed
+    pub fn checkpoint_indices(&self) -> Vec<usize> {
+        let num_checkpoints = optimal_checkpoints(self.num_layers);
+        let interval = self.num_layers / num_checkpoints.max(1);
+        (0..self.num_layers)
+            .step_by(interval.max(1))
+            .collect()
+    }
+}
+
+impl CheckpointPolicy for BinomialCheckpointing {
+    fn should_save(&self, op: &OperationInfo) -> bool {
+        let indices = self.checkpoint_indices();
+        indices.contains(&op.layer_index)
+    }
+}
+
+/// Save activations up to a memory budget (in bytes).
+pub struct MemoryBudget {
+    /// Maximum total bytes for saved activations
+    pub max_bytes: usize,
+    /// Current bytes used (interior mutability for stateful tracking)
+    used_bytes: RefCell<usize>,
+}
+
+impl MemoryBudget {
+    /// Create a new memory budget policy
+    pub fn new(max_bytes: usize) -> Self {
+        Self {
+            max_bytes,
+            used_bytes: RefCell::new(0),
+        }
+    }
+
+    /// Get the current bytes used
+    pub fn used_bytes(&self) -> usize {
+        *self.used_bytes.borrow()
+    }
+
+    /// Reset the used bytes counter
+    pub fn reset(&self) {
+        *self.used_bytes.borrow_mut() = 0;
+    }
+}
+
+impl CheckpointPolicy for MemoryBudget {
+    fn should_save(&self, op: &OperationInfo) -> bool {
+        let current = *self.used_bytes.borrow();
+        if current + op.output_bytes <= self.max_bytes {
+            *self.used_bytes.borrow_mut() += op.output_bytes;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Custom policy using a predicate function.
+pub struct CustomPolicy<F: Fn(&OperationInfo) -> bool> {
+    predicate: F,
+}
+
+impl<F: Fn(&OperationInfo) -> bool> CustomPolicy<F> {
+    /// Create a custom policy from a predicate
+    pub fn new(predicate: F) -> Self {
+        Self { predicate }
+    }
+}
+
+impl<F: Fn(&OperationInfo) -> bool> CheckpointPolicy for CustomPolicy<F> {
+    fn should_save(&self, op: &OperationInfo) -> bool {
+        (self.predicate)(op)
+    }
+}
+
+/// Policy-based checkpoint manager that uses a `CheckpointPolicy` to
+/// decide which activations to save vs recompute.
+pub struct PolicyCheckpointManager {
+    /// Activation storage (layer_index -> saved tensor)
+    saved: Vec<Option<Tensor>>,
+    /// Total bytes saved
+    total_bytes_saved: usize,
+    /// Number of layers
+    num_layers: usize,
+}
+
+impl PolicyCheckpointManager {
+    /// Create a new policy checkpoint manager
+    pub fn new(num_layers: usize) -> Self {
+        Self {
+            saved: vec![None; num_layers],
+            total_bytes_saved: 0,
+            num_layers,
+        }
+    }
+
+    /// Record a forward activation, saving it if the policy says so
+    pub fn record<P: CheckpointPolicy>(
+        &mut self,
+        layer_index: usize,
+        activation: &Tensor,
+        op_info: &OperationInfo,
+        policy: &P,
+    ) {
+        if policy.should_save(op_info) && layer_index < self.num_layers {
+            self.saved[layer_index] = Some(activation.clone());
+            self.total_bytes_saved += op_info.output_bytes;
+        }
+    }
+
+    /// Get a saved activation (returns None if it was not saved / needs recompute)
+    pub fn get(&self, layer_index: usize) -> Option<&Tensor> {
+        self.saved.get(layer_index).and_then(|s| s.as_ref())
+    }
+
+    /// Check if an activation is saved for a given layer
+    pub fn is_saved(&self, layer_index: usize) -> bool {
+        self.saved
+            .get(layer_index)
+            .is_some_and(Option::is_some)
+    }
+
+    /// Get total bytes used by saved activations
+    pub fn total_bytes(&self) -> usize {
+        self.total_bytes_saved
+    }
+
+    /// Get the number of saved activations
+    pub fn num_saved(&self) -> usize {
+        self.saved.iter().filter(|s| s.is_some()).count()
+    }
+
+    /// Clear all saved activations
+    pub fn clear(&mut self) {
+        self.saved.iter_mut().for_each(|s| *s = None);
+        self.total_bytes_saved = 0;
+    }
+
+    /// Get the total number of layers
+    pub fn num_layers(&self) -> usize {
+        self.num_layers
+    }
+}
+
+/// Estimate the memory/compute tradeoff for a given policy on a model.
+///
+/// Returns `(bytes_saved, bytes_used, recompute_overhead)` where:
+/// - `bytes_saved` is the memory freed by not saving some activations
+/// - `bytes_used` is the memory used by saved activations
+/// - `recompute_overhead` is the estimated relative compute cost of recomputation
+pub fn estimate_policy_tradeoff<P: CheckpointPolicy>(
+    policy: &P,
+    layer_infos: &[OperationInfo],
+) -> (usize, usize, f64) {
+    let mut bytes_saved = 0usize;
+    let mut bytes_used = 0usize;
+    let mut recompute_overhead = 0.0f64;
+
+    for info in layer_infos {
+        if policy.should_save(info) {
+            bytes_used += info.output_bytes;
+        } else {
+            bytes_saved += info.output_bytes;
+            recompute_overhead += policy.recompute_cost(info);
+        }
+    }
+
+    (bytes_saved, bytes_used, recompute_overhead)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,5 +771,260 @@ mod tests {
 
         // Should have tracked some memory savings
         assert!(manager.memory_saved_segments() > 0);
+    }
+
+    // --- Policy tests (GH-83) ---
+
+    fn make_op(op_type: OpType, bytes: usize) -> OperationInfo {
+        OperationInfo::new(op_type, bytes)
+    }
+
+    #[test]
+    fn test_operation_info_builder() {
+        let info = OperationInfo::new(OpType::Matmul, 1024)
+            .with_batch_dim(true)
+            .with_layer_index(5);
+        assert_eq!(info.op_type, OpType::Matmul);
+        assert_eq!(info.output_bytes, 1024);
+        assert!(info.has_batch_dim);
+        assert_eq!(info.layer_index, 5);
+    }
+
+    #[test]
+    fn test_save_all_policy() {
+        let policy = SaveAll;
+        assert!(policy.should_save(&make_op(OpType::Add, 100)));
+        assert!(policy.should_save(&make_op(OpType::Matmul, 10000)));
+        assert!(policy.should_save(&make_op(OpType::Relu, 50)));
+    }
+
+    #[test]
+    fn test_save_nothing_policy() {
+        let policy = SaveNothing;
+        assert!(!policy.should_save(&make_op(OpType::Add, 100)));
+        assert!(!policy.should_save(&make_op(OpType::Matmul, 10000)));
+        assert!(!policy.should_save(&make_op(OpType::Relu, 50)));
+    }
+
+    #[test]
+    fn test_save_matmuls_policy() {
+        let policy = SaveMatmuls;
+        assert!(policy.should_save(&make_op(OpType::Matmul, 1000)));
+        assert!(policy.should_save(&make_op(OpType::Attention, 2000)));
+        assert!(!policy.should_save(&make_op(OpType::Add, 100)));
+        assert!(!policy.should_save(&make_op(OpType::Relu, 50)));
+        assert!(!policy.should_save(&make_op(OpType::Softmax, 100)));
+    }
+
+    #[test]
+    fn test_save_matmuls_recompute_cost() {
+        let policy = SaveMatmuls;
+        assert!((policy.recompute_cost(&make_op(OpType::Matmul, 0)) - 100.0).abs() < f64::EPSILON);
+        assert!(
+            (policy.recompute_cost(&make_op(OpType::Attention, 0)) - 150.0).abs() < f64::EPSILON
+        );
+        assert!((policy.recompute_cost(&make_op(OpType::Add, 0)) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_save_unbatched_matmuls_policy() {
+        let policy = SaveUnbatchedMatmuls;
+
+        // No batch dim -> should save
+        let unbatched = OperationInfo::new(OpType::Matmul, 1000).with_batch_dim(false);
+        assert!(policy.should_save(&unbatched));
+
+        // With batch dim -> should not save
+        let batched = OperationInfo::new(OpType::Matmul, 1000).with_batch_dim(true);
+        assert!(!policy.should_save(&batched));
+
+        // Non-matmul -> should not save
+        let add = OperationInfo::new(OpType::Add, 100).with_batch_dim(false);
+        assert!(!policy.should_save(&add));
+    }
+
+    #[test]
+    fn test_binomial_checkpointing_indices() {
+        let policy = BinomialCheckpointing { num_layers: 16 };
+        let indices = policy.checkpoint_indices();
+
+        // sqrt(16) = 4 checkpoints, interval = 16/4 = 4
+        assert_eq!(indices, vec![0, 4, 8, 12]);
+    }
+
+    #[test]
+    fn test_binomial_checkpointing_policy() {
+        let policy = BinomialCheckpointing { num_layers: 16 };
+
+        let at_checkpoint = OperationInfo::new(OpType::Add, 100).with_layer_index(0);
+        assert!(policy.should_save(&at_checkpoint));
+
+        let not_at_checkpoint = OperationInfo::new(OpType::Add, 100).with_layer_index(1);
+        assert!(!policy.should_save(&not_at_checkpoint));
+
+        let at_checkpoint_4 = OperationInfo::new(OpType::Add, 100).with_layer_index(4);
+        assert!(policy.should_save(&at_checkpoint_4));
+    }
+
+    #[test]
+    fn test_memory_budget_policy() {
+        let policy = MemoryBudget::new(500);
+
+        // First op fits
+        let op1 = make_op(OpType::Matmul, 200);
+        assert!(policy.should_save(&op1));
+        assert_eq!(policy.used_bytes(), 200);
+
+        // Second op fits
+        let op2 = make_op(OpType::Add, 200);
+        assert!(policy.should_save(&op2));
+        assert_eq!(policy.used_bytes(), 400);
+
+        // Third op doesn't fit
+        let op3 = make_op(OpType::Relu, 200);
+        assert!(!policy.should_save(&op3));
+        assert_eq!(policy.used_bytes(), 400);
+
+        // Reset and try again
+        policy.reset();
+        assert_eq!(policy.used_bytes(), 0);
+        assert!(policy.should_save(&op3));
+    }
+
+    #[test]
+    fn test_custom_policy() {
+        // Only save ops with output > 500 bytes
+        let policy = CustomPolicy::new(|op: &OperationInfo| op.output_bytes > 500);
+
+        assert!(!policy.should_save(&make_op(OpType::Add, 100)));
+        assert!(policy.should_save(&make_op(OpType::Matmul, 1000)));
+        assert!(!policy.should_save(&make_op(OpType::Relu, 500)));
+        assert!(policy.should_save(&make_op(OpType::Softmax, 501)));
+    }
+
+    #[test]
+    fn test_policy_checkpoint_manager_basic() {
+        let mut manager = PolicyCheckpointManager::new(4);
+        let policy = SaveAll;
+
+        let tensor = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
+        let info = make_op(OpType::Matmul, 12);
+
+        manager.record(0, &tensor, &info, &policy);
+        assert!(manager.is_saved(0));
+        assert!(!manager.is_saved(1));
+        assert_eq!(manager.num_saved(), 1);
+        assert_eq!(manager.total_bytes(), 12);
+
+        // Retrieve saved activation
+        let saved = manager.get(0).unwrap();
+        assert_eq!(saved.len(), 3);
+    }
+
+    #[test]
+    fn test_policy_checkpoint_manager_selective() {
+        let mut manager = PolicyCheckpointManager::new(4);
+        let policy = SaveMatmuls;
+
+        let t1 = Tensor::from_vec(vec![1.0], true);
+        let t2 = Tensor::from_vec(vec![2.0], true);
+
+        // Matmul -> saved
+        manager.record(0, &t1, &make_op(OpType::Matmul, 4), &policy);
+        // Add -> not saved
+        manager.record(1, &t2, &make_op(OpType::Add, 4), &policy);
+
+        assert!(manager.is_saved(0));
+        assert!(!manager.is_saved(1));
+        assert_eq!(manager.num_saved(), 1);
+    }
+
+    #[test]
+    fn test_policy_checkpoint_manager_clear() {
+        let mut manager = PolicyCheckpointManager::new(2);
+        let policy = SaveAll;
+
+        let t = Tensor::from_vec(vec![1.0], true);
+        manager.record(0, &t, &make_op(OpType::Add, 4), &policy);
+
+        manager.clear();
+        assert_eq!(manager.num_saved(), 0);
+        assert_eq!(manager.total_bytes(), 0);
+        assert!(!manager.is_saved(0));
+    }
+
+    #[test]
+    fn test_policy_checkpoint_manager_out_of_bounds() {
+        let mut manager = PolicyCheckpointManager::new(2);
+        let policy = SaveAll;
+
+        let t = Tensor::from_vec(vec![1.0], true);
+        // Layer index beyond capacity — should be a no-op
+        manager.record(5, &t, &make_op(OpType::Add, 4), &policy);
+        assert_eq!(manager.num_saved(), 0);
+    }
+
+    #[test]
+    fn test_estimate_policy_tradeoff_save_all() {
+        let policy = SaveAll;
+        let infos = vec![
+            make_op(OpType::Matmul, 1000),
+            make_op(OpType::Add, 200),
+            make_op(OpType::Relu, 200),
+        ];
+
+        let (saved, used, overhead) = estimate_policy_tradeoff(&policy, &infos);
+        assert_eq!(saved, 0); // Everything saved
+        assert_eq!(used, 1400);
+        assert!((overhead - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_estimate_policy_tradeoff_save_nothing() {
+        let policy = SaveNothing;
+        let infos = vec![
+            make_op(OpType::Matmul, 1000),
+            make_op(OpType::Add, 200),
+        ];
+
+        let (saved, used, overhead) = estimate_policy_tradeoff(&policy, &infos);
+        assert_eq!(saved, 1200); // Nothing saved
+        assert_eq!(used, 0);
+        assert!(overhead > 0.0); // Must recompute everything
+    }
+
+    #[test]
+    fn test_estimate_policy_tradeoff_save_matmuls() {
+        let policy = SaveMatmuls;
+        let infos = vec![
+            make_op(OpType::Matmul, 1000),
+            make_op(OpType::Add, 200),
+            make_op(OpType::Relu, 200),
+        ];
+
+        let (saved, used, overhead) = estimate_policy_tradeoff(&policy, &infos);
+        assert_eq!(used, 1000); // Only matmul saved
+        assert_eq!(saved, 400); // Add + Relu not saved
+        assert!(overhead > 0.0); // Recompute cost for add + relu
+    }
+
+    #[test]
+    fn test_policy_checkpoint_manager_num_layers() {
+        let manager = PolicyCheckpointManager::new(8);
+        assert_eq!(manager.num_layers(), 8);
+    }
+
+    #[test]
+    fn test_binomial_single_layer() {
+        let policy = BinomialCheckpointing { num_layers: 1 };
+        let indices = policy.checkpoint_indices();
+        assert_eq!(indices, vec![0]);
+    }
+
+    #[test]
+    fn test_default_recompute_cost() {
+        let policy = SaveAll;
+        let info = make_op(OpType::Add, 100);
+        assert!((policy.recompute_cost(&info) - 1.0).abs() < f64::EPSILON);
     }
 }

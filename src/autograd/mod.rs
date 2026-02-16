@@ -44,8 +44,10 @@ mod tests;
 
 pub use backward::BackwardOp;
 pub use checkpoint::{
-    checkpoint, checkpoint_if, estimate_memory_savings, optimal_checkpoints, CheckpointConfig,
-    CheckpointManager, CheckpointedSegment,
+    checkpoint, checkpoint_if, estimate_memory_savings, estimate_policy_tradeoff,
+    optimal_checkpoints, BinomialCheckpointing, CheckpointConfig, CheckpointManager,
+    CheckpointPolicy, CheckpointedSegment, CustomPolicy, MemoryBudget, OperationInfo,
+    PolicyCheckpointManager, SaveAll, SaveMatmuls, SaveNothing, SaveUnbatchedMatmuls,
 };
 pub use context::Context;
 pub use cuda_training::{cuda_training_available, CudaTrainer};
