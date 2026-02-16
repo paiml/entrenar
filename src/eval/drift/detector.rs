@@ -274,7 +274,7 @@ impl DriftDetector {
         let mut edges = Vec::with_capacity(n_bins + 1);
         edges.push(f64::NEG_INFINITY);
         for i in 1..n_bins {
-            let idx = (sorted_baseline.len() * i / n_bins).min(sorted_baseline.len() - 1);
+            let idx = (sorted_baseline.len() * i / n_bins.max(1)).min(sorted_baseline.len() - 1);
             edges.push(sorted_baseline[idx]);
         }
         edges.push(f64::INFINITY);

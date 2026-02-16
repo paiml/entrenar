@@ -17,7 +17,7 @@ pub fn quantization_mse(original: &[f32], dequantized: &[f32]) -> f32 {
         .map(|(a, b)| (a - b).powi(2))
         .sum();
 
-    sum_sq / original.len() as f32
+    sum_sq / original.len().max(1) as f32
 }
 
 /// Compare per-channel vs per-tensor quantization error

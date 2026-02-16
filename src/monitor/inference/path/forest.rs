@@ -47,9 +47,9 @@ impl ForestPath {
             return 1.0;
         }
 
-        let mean = predictions.iter().sum::<f32>() / predictions.len() as f32;
+        let mean = predictions.iter().sum::<f32>() / predictions.len().max(1) as f32;
         let variance =
-            predictions.iter().map(|p| (p - mean).powi(2)).sum::<f32>() / predictions.len() as f32;
+            predictions.iter().map(|p| (p - mean).powi(2)).sum::<f32>() / predictions.len().max(1) as f32;
 
         // Convert variance to agreement (higher variance = lower agreement)
         1.0 / (1.0 + variance)

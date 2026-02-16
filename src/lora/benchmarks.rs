@@ -154,6 +154,25 @@ impl BenchmarkResults {
     }
 }
 
+/// Benchmark a single layer, returning (LoRA stats, QLoRA stats).
+fn benchmark_single_layer(
+    name: &str,
+    d_out: usize,
+    d_in: usize,
+    rank: usize,
+    alpha: f32,
+) -> (LayerMemoryStats, LayerMemoryStats) {
+    let base_weight = Tensor::from_vec(vec![1.0; d_out * d_in], false);
+
+    let lora = LoRALayer::new(base_weight.clone(), d_out, d_in, rank, alpha);
+    let lora_stats = LayerMemoryStats::from_lora(name.to_string(), &lora);
+
+    let qlora = QLoRALayer::new(base_weight, d_out, d_in, rank, alpha);
+    let qlora_stats = LayerMemoryStats::from_qlora(name.to_string(), &qlora);
+
+    (lora_stats, qlora_stats)
+}
+
 /// Run memory benchmark for a specific model configuration
 ///
 /// # Arguments
@@ -167,15 +186,9 @@ pub fn benchmark_model(
     let mut qlora_stats = Vec::new();
 
     for (name, d_out, d_in, rank, alpha) in layers {
-        let base_weight = Tensor::from_vec(vec![1.0; d_out * d_in], false);
-
-        // Create LoRA layer
-        let lora = LoRALayer::new(base_weight.clone(), *d_out, *d_in, *rank, *alpha);
-        lora_stats.push(LayerMemoryStats::from_lora(name.to_string(), &lora));
-
-        // Create QLoRA layer
-        let qlora = QLoRALayer::new(base_weight, *d_out, *d_in, *rank, *alpha);
-        qlora_stats.push(LayerMemoryStats::from_qlora(name.to_string(), &qlora));
+        let (lora, qlora) = benchmark_single_layer(name, *d_out, *d_in, *rank, *alpha);
+        lora_stats.push(lora);
+        qlora_stats.push(qlora);
     }
 
     BenchmarkResults::new(model_name.to_string(), lora_stats, qlora_stats)

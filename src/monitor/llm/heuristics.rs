@@ -44,7 +44,7 @@ pub fn compute_coherence(response: &str) -> f64 {
     }
 
     // Bonus for reasonable length
-    let avg_words = response.split_whitespace().count() as f64 / sentences.len() as f64;
+    let avg_words = response.split_whitespace().count() as f64 / sentences.len().max(1) as f64;
     if (5.0..=30.0).contains(&avg_words) {
         score += 0.1;
     }

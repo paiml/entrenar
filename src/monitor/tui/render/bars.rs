@@ -156,7 +156,7 @@ pub fn trend_arrow(data: &[f32]) -> &'static str {
         return ARROW_FLAT;
     }
     // recent.len() is at most 5, so no precision loss converting to f32
-    let avg_recent: f32 = recent.iter().sum::<f32>() / (recent.len() as f32);
+    let avg_recent: f32 = recent.iter().sum::<f32>() / (recent.len().max(1) as f32);
     let old_count = data.len().saturating_sub(5).clamp(1, 5);
     // old_count is at most 5, so no precision loss converting to f32
     let avg_old: f32 = data.iter().rev().skip(5).take(5).copied().sum::<f32>() / (old_count as f32);
