@@ -26,6 +26,7 @@
 mod backward;
 pub mod checkpoint;
 mod context;
+pub mod graph_opt;
 #[cfg(feature = "cuda")]
 pub mod cuda_backward;
 #[cfg(feature = "cuda")]
@@ -48,6 +49,11 @@ pub use checkpoint::{
 };
 pub use context::Context;
 pub use cuda_training::{cuda_training_available, CudaTrainer};
+pub use graph_opt::{
+    traced_binary_op, CommonSubexprElimination, ComputeGraph, ConstantFolding,
+    DeadCodeElimination, GraphOptimizer, NodeId, OpType, OptimizationPass, OptimizationReport,
+    ShapeError, ShapeTracker, TracedTensor, TracedValue,
+};
 pub use ops::*;
 pub use precision::{
     bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32, GradScaler, MixedPrecisionConfig, Precision,
