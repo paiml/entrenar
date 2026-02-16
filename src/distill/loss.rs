@@ -121,7 +121,7 @@ impl DistillationLoss {
         let mut loss = 0.0;
         for (i, &label) in labels.iter().enumerate() {
             let prob = probs[[i, label]].max(1e-10); // Avoid log(0)
-            loss -= prob.ln();
+            loss -= prob.max(f32::MIN_POSITIVE).ln();
         }
 
         loss / labels.len().max(1) as f32

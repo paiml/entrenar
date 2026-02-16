@@ -163,18 +163,18 @@ impl TPEOptimizer {
                 let good_values: Vec<f64> = good_trials
                     .iter()
                     .filter_map(|t| t.config.get(name)?.as_float())
-                    .map(|v| if *log_scale { v.ln() } else { v })
+                    .map(|v| if *log_scale { v.max(f64::MIN_POSITIVE).ln() } else { v })
                     .collect();
 
                 let bad_values: Vec<f64> = bad_trials
                     .iter()
                     .filter_map(|t| t.config.get(name)?.as_float())
-                    .map(|v| if *log_scale { v.ln() } else { v })
+                    .map(|v| if *log_scale { v.max(f64::MIN_POSITIVE).ln() } else { v })
                     .collect();
 
                 // Sample from l(x) / g(x) using simple KDE approximation
                 let (effective_low, effective_high) = if *log_scale {
-                    (low.ln(), high.ln())
+                    (low.max(f64::MIN_POSITIVE).ln(), high.max(f64::MIN_POSITIVE).ln())
                 } else {
                     (*low, *high)
                 };

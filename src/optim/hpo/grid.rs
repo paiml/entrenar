@@ -34,8 +34,8 @@ impl GridSearch {
                         log_scale,
                     } => {
                         if *log_scale {
-                            let log_low = low.ln();
-                            let log_high = high.ln();
+                            let log_low = low.max(f64::MIN_POSITIVE).ln();
+                            let log_high = high.max(f64::MIN_POSITIVE).ln();
                             (0..self.n_points)
                                 .map(|i| {
                                     let t = i as f64 / (self.n_points - 1) as f64;

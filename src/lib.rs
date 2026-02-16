@@ -24,6 +24,8 @@
 //! - **dashboard**: Real-time training monitoring and WASM bindings
 //! - **yaml_mode**: Declarative YAML Mode Training (v1.0 spec)
 //! - **transformer**: Transformer layers with autograd support
+//! - **moe**: Mixture of Experts sparse routing layer
+//! - **decision**: Decision pattern storage and CITL trainer (GH-28, GH-29)
 //! - **cli**: Command-line interface handlers
 //! - **finetune**: Fine-tuning pipeline with Popperian QA (SPEC-FT-001)
 
@@ -33,6 +35,7 @@ pub mod citl;
 pub mod cli;
 pub mod config;
 pub mod dashboard;
+pub mod decision;
 pub mod distill;
 pub mod ecosystem;
 pub mod efficiency;
@@ -46,6 +49,7 @@ pub mod integrity;
 pub mod io;
 pub mod lora;
 pub mod merge;
+pub mod moe;
 pub mod monitor;
 pub mod optim;
 pub mod prune;
@@ -56,9 +60,11 @@ pub mod run;
 pub mod search;
 pub mod server;
 pub mod sovereign;
+pub mod staging;
 pub mod storage;
 pub mod tokenizer;
 pub mod trace;
+pub mod tracking;
 pub mod train;
 pub mod transformer;
 pub mod yaml_mode;

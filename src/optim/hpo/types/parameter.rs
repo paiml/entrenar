@@ -64,8 +64,8 @@ impl ParameterDomain {
                 log_scale,
             } => {
                 let value = if *log_scale {
-                    let log_low = low.ln();
-                    let log_high = high.ln();
+                    let log_low = low.max(f64::MIN_POSITIVE).ln();
+                    let log_high = high.max(f64::MIN_POSITIVE).ln();
                     let log_val = log_low + rng.random::<f64>() * (log_high - log_low);
                     log_val.exp()
                 } else {

@@ -115,7 +115,7 @@ pub fn rdp_to_dp(orders: &[f64], rdp: &[f64], delta: f64) -> (f64, f64) {
         return (f64::INFINITY, delta);
     }
 
-    let log_delta = delta.ln();
+    let log_delta = delta.max(f64::MIN_POSITIVE).ln();
 
     // Find optimal order
     let mut min_epsilon = f64::INFINITY;
@@ -124,8 +124,8 @@ pub fn rdp_to_dp(orders: &[f64], rdp: &[f64], delta: f64) -> (f64, f64) {
             continue;
         }
         // epsilon = rdp_alpha - (log(delta) + log(alpha - 1)) / (alpha - 1) + log(alpha / (alpha - 1))
-        let epsilon = rdp_alpha + (1.0 / (alpha - 1.0)) * ((alpha - 1.0) / alpha).ln()
-            - (log_delta + (alpha - 1.0).ln()) / (alpha - 1.0);
+        let epsilon = rdp_alpha + (1.0 / (alpha - 1.0)) * ((alpha - 1.0) / alpha).max(f64::MIN_POSITIVE).ln()
+            - (log_delta + (alpha - 1.0).max(f64::MIN_POSITIVE).ln()) / (alpha - 1.0);
 
         if epsilon < min_epsilon && epsilon >= 0.0 {
             min_epsilon = epsilon;

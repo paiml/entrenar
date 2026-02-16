@@ -63,7 +63,7 @@ impl NodeStats {
             return f64::INFINITY;
         }
         let exploitation = self.mean_reward;
-        let exploration = c * ((parent_visits as f64).ln() / self.visits as f64).sqrt();
+        let exploration = c * ((parent_visits as f64).max(1.0).ln() / self.visits as f64).sqrt();
         exploitation + exploration
     }
 
