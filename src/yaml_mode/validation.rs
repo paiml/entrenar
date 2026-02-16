@@ -134,52 +134,118 @@ fn validate_required_fields(manifest: &TrainingManifest) -> ValidationResult<()>
     Ok(())
 }
 
-/// Validate optimizer configuration
-fn validate_optimizer(optim: &super::manifest::OptimizerConfig) -> ValidationResult<()> {
-    // Validate optimizer name
-    let name_lower = optim.name.to_lowercase();
-    if !VALID_OPTIMIZERS.contains(&name_lower.as_str()) {
-        return Err(ManifestError::InvalidOptimizer(format!(
-            "Unknown optimizer '{}'. Valid options: {:?}",
-            optim.name, VALID_OPTIMIZERS
-        )));
-    }
+// ---------------------------------------------------------------------------
+// Shared range-check helpers (reduce nesting in callers)
+// ---------------------------------------------------------------------------
 
-    // Validate learning rate > 0
-    if optim.lr <= 0.0 {
+/// Validate that a required f64 is strictly positive
+fn validate_positive_f64(value: f64, field: &str, constraint: &str) -> ValidationResult<()> {
+    if value <= 0.0 {
         return Err(ManifestError::InvalidRange {
-            field: "optimizer.lr".to_string(),
-            value: optim.lr.to_string(),
-            constraint: "> 0".to_string(),
+            field: field.to_string(),
+            value: value.to_string(),
+            constraint: constraint.to_string(),
         });
     }
+    Ok(())
+}
 
-    // Validate weight_decay >= 0
-    if let Some(wd) = optim.weight_decay {
-        if wd < 0.0 {
+/// Validate that an optional usize, if present, is non-zero (>= 1)
+fn validate_nonzero_usize(value: Option<usize>, field: &str) -> ValidationResult<()> {
+    if let Some(v) = value {
+        if v == 0 {
             return Err(ManifestError::InvalidRange {
-                field: "optimizer.weight_decay".to_string(),
-                value: wd.to_string(),
+                field: field.to_string(),
+                value: v.to_string(),
+                constraint: ">= 1".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate that an optional f64, if present, is non-negative (>= 0)
+fn validate_nonneg_f64(value: Option<f64>, field: &str) -> ValidationResult<()> {
+    if let Some(v) = value {
+        if v < 0.0 {
+            return Err(ManifestError::InvalidRange {
+                field: field.to_string(),
+                value: v.to_string(),
                 constraint: ">= 0".to_string(),
             });
         }
     }
-
-    // Validate betas in (0, 1)
-    if let Some(ref betas) = optim.betas {
-        for (i, beta) in betas.iter().enumerate() {
-            if *beta <= 0.0 || *beta >= 1.0 {
-                return Err(ManifestError::InvalidRange {
-                    field: format!("optimizer.betas[{i}]"),
-                    value: beta.to_string(),
-                    constraint: "in (0, 1)".to_string(),
-                });
-            }
-        }
-    }
-
     Ok(())
 }
+
+/// Validate that an optional f64, if present, lies within the half-open range [0, 1)
+fn validate_dropout_range(value: Option<f64>, field: &str) -> ValidationResult<()> {
+    if let Some(v) = value {
+        if !(0.0..1.0).contains(&v) {
+            return Err(ManifestError::InvalidRange {
+                field: field.to_string(),
+                value: v.to_string(),
+                constraint: "in [0, 1)".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate that an optional u8, if present, is a valid quantization bit width
+fn validate_quant_bits(bits: Option<u8>) -> ValidationResult<()> {
+    if let Some(b) = bits {
+        if !VALID_QUANT_BITS.contains(&b) {
+            return Err(ManifestError::InvalidQuantBits { bits: b });
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Optimizer validation
+// ---------------------------------------------------------------------------
+
+/// Validate optimizer configuration
+fn validate_optimizer(optim: &super::manifest::OptimizerConfig) -> ValidationResult<()> {
+    validate_optimizer_name(&optim.name)?;
+    validate_positive_f64(optim.lr, "optimizer.lr", "> 0")?;
+    validate_nonneg_f64(optim.weight_decay, "optimizer.weight_decay")?;
+    validate_optimizer_betas(optim.betas.as_deref())?;
+    Ok(())
+}
+
+/// Validate optimizer name against the allow-list
+fn validate_optimizer_name(name: &str) -> ValidationResult<()> {
+    let name_lower = name.to_lowercase();
+    if !VALID_OPTIMIZERS.contains(&name_lower.as_str()) {
+        return Err(ManifestError::InvalidOptimizer(format!(
+            "Unknown optimizer '{name}'. Valid options: {VALID_OPTIMIZERS:?}",
+        )));
+    }
+    Ok(())
+}
+
+/// Validate that each beta value is in the open interval (0, 1)
+fn validate_optimizer_betas(betas: Option<&[f64]>) -> ValidationResult<()> {
+    let Some(betas) = betas else {
+        return Ok(());
+    };
+    for (i, beta) in betas.iter().enumerate() {
+        if *beta <= 0.0 || *beta >= 1.0 {
+            return Err(ManifestError::InvalidRange {
+                field: format!("optimizer.betas[{i}]"),
+                value: beta.to_string(),
+                constraint: "in (0, 1)".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Scheduler validation
+// ---------------------------------------------------------------------------
 
 /// Validate scheduler configuration
 fn validate_scheduler(sched: &super::manifest::SchedulerConfig) -> ValidationResult<()> {
@@ -194,104 +260,120 @@ fn validate_scheduler(sched: &super::manifest::SchedulerConfig) -> ValidationRes
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Training validation
+// ---------------------------------------------------------------------------
+
 /// Validate training configuration
 fn validate_training(training: &super::manifest::TrainingConfig) -> ValidationResult<()> {
-    // Check mutual exclusivity of duration options
-    let duration_options = [
-        training.epochs.is_some(),
-        training.max_steps.is_some(),
-        training.duration.is_some(),
-    ];
-
-    let count = duration_options.iter().filter(|&&x| x).count();
-    if count > 1 {
-        if training.epochs.is_some() && training.max_steps.is_some() {
-            return Err(ManifestError::MutuallyExclusive {
-                field1: "training.epochs".to_string(),
-                field2: "training.max_steps".to_string(),
-            });
-        }
-        if training.epochs.is_some() && training.duration.is_some() {
-            return Err(ManifestError::MutuallyExclusive {
-                field1: "training.epochs".to_string(),
-                field2: "training.duration".to_string(),
-            });
-        }
-        if training.max_steps.is_some() && training.duration.is_some() {
-            return Err(ManifestError::MutuallyExclusive {
-                field1: "training.max_steps".to_string(),
-                field2: "training.duration".to_string(),
-            });
-        }
-    }
-
-    // Validate epochs > 0
-    if let Some(epochs) = training.epochs {
-        if epochs == 0 {
-            return Err(ManifestError::InvalidRange {
-                field: "training.epochs".to_string(),
-                value: epochs.to_string(),
-                constraint: ">= 1".to_string(),
-            });
-        }
-    }
-
-    // Validate gradient config
-    if let Some(ref grad) = training.gradient {
-        if let Some(accum) = grad.accumulation_steps {
-            if accum == 0 {
-                return Err(ManifestError::InvalidRange {
-                    field: "training.gradient.accumulation_steps".to_string(),
-                    value: accum.to_string(),
-                    constraint: ">= 1".to_string(),
-                });
-            }
-        }
-    }
-
+    validate_duration_exclusivity(training)?;
+    validate_nonzero_usize(training.epochs, "training.epochs")?;
+    validate_gradient_config(training.gradient.as_ref())?;
     Ok(())
 }
+
+/// Ensure at most one of epochs / max_steps / duration is specified
+fn validate_duration_exclusivity(
+    training: &super::manifest::TrainingConfig,
+) -> ValidationResult<()> {
+    let has_epochs = training.epochs.is_some();
+    let has_max_steps = training.max_steps.is_some();
+    let has_duration = training.duration.is_some();
+
+    if let Some((f1, f2)) = first_duration_conflict(has_epochs, has_max_steps, has_duration) {
+        return Err(ManifestError::MutuallyExclusive {
+            field1: f1.to_string(),
+            field2: f2.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Return the first pair of conflicting duration fields, if any
+fn first_duration_conflict(
+    has_epochs: bool,
+    has_max_steps: bool,
+    has_duration: bool,
+) -> Option<(&'static str, &'static str)> {
+    if has_epochs && has_max_steps {
+        return Some(("training.epochs", "training.max_steps"));
+    }
+    if has_epochs && has_duration {
+        return Some(("training.epochs", "training.duration"));
+    }
+    if has_max_steps && has_duration {
+        return Some(("training.max_steps", "training.duration"));
+    }
+    None
+}
+
+/// Validate gradient accumulation steps if present
+fn validate_gradient_config(
+    gradient: Option<&super::manifest::GradientConfig>,
+) -> ValidationResult<()> {
+    let Some(grad) = gradient else {
+        return Ok(());
+    };
+    validate_nonzero_usize(
+        grad.accumulation_steps,
+        "training.gradient.accumulation_steps",
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Data validation
+// ---------------------------------------------------------------------------
 
 /// Validate data configuration
 fn validate_data(data: &super::manifest::DataConfig) -> ValidationResult<()> {
-    // Validate batch_size > 0
-    if let Some(ref loader) = data.loader {
-        if loader.batch_size == 0 {
-            return Err(ManifestError::InvalidRange {
-                field: "data.loader.batch_size".to_string(),
-                value: "0".to_string(),
-                constraint: ">= 1".to_string(),
-            });
-        }
+    validate_loader_batch_size(data.loader.as_ref())?;
+    validate_split_ratios(data.split.as_ref())
+}
+
+/// Validate that loader batch_size > 0
+fn validate_loader_batch_size(
+    loader: Option<&super::manifest::DataLoader>,
+) -> ValidationResult<()> {
+    let Some(loader) = loader else {
+        return Ok(());
+    };
+    if loader.batch_size == 0 {
+        return Err(ManifestError::InvalidRange {
+            field: "data.loader.batch_size".to_string(),
+            value: "0".to_string(),
+            constraint: ">= 1".to_string(),
+        });
     }
-
-    // Validate split ratios sum to 1.0 (with tolerance)
-    if let Some(ref split) = data.split {
-        let mut sum = split.train;
-        if let Some(val) = split.val {
-            sum += val;
-        }
-        if let Some(test) = split.test {
-            sum += test;
-        }
-
-        // Allow small tolerance for floating point
-        if (sum - 1.0).abs() > 0.001 {
-            return Err(ManifestError::InvalidSplitRatios { sum });
-        }
-
-        // Validate individual ratios in [0, 1]
-        if split.train < 0.0 || split.train > 1.0 {
-            return Err(ManifestError::InvalidRange {
-                field: "data.split.train".to_string(),
-                value: split.train.to_string(),
-                constraint: "in [0, 1]".to_string(),
-            });
-        }
-    }
-
     Ok(())
 }
+
+/// Validate data split ratios sum to 1.0 and train ratio is in [0, 1]
+fn validate_split_ratios(split: Option<&super::manifest::DataSplit>) -> ValidationResult<()> {
+    let Some(split) = split else {
+        return Ok(());
+    };
+
+    let sum = split.train + split.val.unwrap_or(0.0) + split.test.unwrap_or(0.0);
+
+    // Allow small tolerance for floating point
+    if (sum - 1.0).abs() > 0.001 {
+        return Err(ManifestError::InvalidSplitRatios { sum });
+    }
+
+    // Validate individual ratios in [0, 1]
+    if split.train < 0.0 || split.train > 1.0 {
+        return Err(ManifestError::InvalidRange {
+            field: "data.split.train".to_string(),
+            value: split.train.to_string(),
+            constraint: "in [0, 1]".to_string(),
+        });
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// LoRA validation
+// ---------------------------------------------------------------------------
 
 /// Validate LoRA configuration
 fn validate_lora(lora: &super::manifest::LoraConfig) -> ValidationResult<()> {
@@ -300,51 +382,38 @@ fn validate_lora(lora: &super::manifest::LoraConfig) -> ValidationResult<()> {
         return Ok(());
     }
 
-    // Target modules required when enabled
+    validate_lora_target_modules(lora)?;
+    validate_lora_rank(lora.rank)?;
+    validate_positive_f64(lora.alpha, "lora.alpha", "> 0")?;
+    validate_dropout_range(lora.dropout, "lora.dropout")?;
+    validate_quant_bits(lora.quantize_bits)
+}
+
+/// Validate that at least one of target_modules or target_modules_pattern is provided
+fn validate_lora_target_modules(lora: &super::manifest::LoraConfig) -> ValidationResult<()> {
     if lora.target_modules.is_empty() && lora.target_modules_pattern.is_none() {
         return Err(ManifestError::EmptyRequiredField(
             "lora.target_modules".to_string(),
         ));
     }
+    Ok(())
+}
 
-    // Validate rank > 0
-    if lora.rank == 0 {
+/// Validate LoRA rank is at least 1
+fn validate_lora_rank(rank: usize) -> ValidationResult<()> {
+    if rank == 0 {
         return Err(ManifestError::InvalidRange {
             field: "lora.rank".to_string(),
             value: "0".to_string(),
             constraint: ">= 1".to_string(),
         });
     }
-
-    // Validate alpha > 0
-    if lora.alpha <= 0.0 {
-        return Err(ManifestError::InvalidRange {
-            field: "lora.alpha".to_string(),
-            value: lora.alpha.to_string(),
-            constraint: "> 0".to_string(),
-        });
-    }
-
-    // Validate dropout in [0, 1)
-    if let Some(dropout) = lora.dropout {
-        if !(0.0..1.0).contains(&dropout) {
-            return Err(ManifestError::InvalidRange {
-                field: "lora.dropout".to_string(),
-                value: dropout.to_string(),
-                constraint: "in [0, 1)".to_string(),
-            });
-        }
-    }
-
-    // Validate QLoRA bits
-    if let Some(bits) = lora.quantize_bits {
-        if !VALID_QUANT_BITS.contains(&bits) {
-            return Err(ManifestError::InvalidQuantBits { bits });
-        }
-    }
-
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Quantization validation
+// ---------------------------------------------------------------------------
 
 /// Validate quantization configuration
 fn validate_quantize(quant: &super::manifest::QuantizeConfig) -> ValidationResult<()> {

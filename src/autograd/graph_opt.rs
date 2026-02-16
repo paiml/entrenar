@@ -233,10 +233,15 @@ impl ComputeGraph {
 
     /// Compute topological order of non-removed nodes
     pub fn topological_order(&self) -> Vec<NodeId> {
+        let (in_degree, adjacency) = self.build_graph_maps();
+        Self::kahns_algorithm(in_degree, &adjacency)
+    }
+
+    /// Build in-degree counts and adjacency lists for non-removed nodes
+    fn build_graph_maps(&self) -> (HashMap<NodeId, usize>, HashMap<NodeId, Vec<NodeId>>) {
         let mut in_degree: HashMap<NodeId, usize> = HashMap::new();
         let mut adjacency: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 
-        // Build in-degree and adjacency for non-removed nodes
         for node in &self.nodes {
             if node.is_removed() {
                 continue;
@@ -250,7 +255,14 @@ impl ComputeGraph {
             }
         }
 
-        // Kahn's algorithm
+        (in_degree, adjacency)
+    }
+
+    /// Run Kahn's algorithm to produce a topological ordering
+    fn kahns_algorithm(
+        mut in_degree: HashMap<NodeId, usize>,
+        adjacency: &HashMap<NodeId, Vec<NodeId>>,
+    ) -> Vec<NodeId> {
         let mut queue: Vec<NodeId> = in_degree
             .iter()
             .filter(|(_, &deg)| deg == 0)
@@ -259,17 +271,17 @@ impl ComputeGraph {
         queue.sort_unstable_by(|a, b| b.cmp(a)); // Descending so pop() yields smallest first
 
         let mut order = Vec::new();
+        let empty = Vec::new();
         while let Some(id) = queue.pop() {
             order.push(id);
-            if let Some(neighbors) = adjacency.get(&id) {
-                for &neighbor in neighbors {
-                    if let Some(deg) = in_degree.get_mut(&neighbor) {
-                        *deg -= 1;
-                        if *deg == 0 {
-                            queue.push(neighbor);
-                            queue.sort_unstable_by(|a, b| b.cmp(a));
-                        }
-                    }
+            for &neighbor in adjacency.get(&id).unwrap_or(&empty) {
+                let Some(deg) = in_degree.get_mut(&neighbor) else {
+                    continue;
+                };
+                *deg -= 1;
+                if *deg == 0 {
+                    queue.push(neighbor);
+                    queue.sort_unstable_by(|a, b| b.cmp(a));
                 }
             }
         }
@@ -300,6 +312,15 @@ impl Default for ComputeGraph {
     }
 }
 
+/// Get or create a graph node for a traced value.
+/// Dynamic values already have a node; constants are materialized into the graph.
+fn ensure_graph_node(value: &TracedValue, graph: &mut ComputeGraph) -> NodeId {
+    match value {
+        TracedValue::Dynamic(id) => *id,
+        TracedValue::Constant(data) => graph.add_constant(data.clone()),
+    }
+}
+
 /// Perform a traced binary operation with constant folding
 ///
 /// If both inputs are constants, the operation is evaluated immediately.
@@ -326,14 +347,8 @@ where
     }
 
     // At least one is dynamic: create graph node
-    let a_node = match a.value.node_id() {
-        Some(id) => id,
-        None => graph.add_constant(a.value.as_constant().unwrap().clone()),
-    };
-    let b_node = match b.value.node_id() {
-        Some(id) => id,
-        None => graph.add_constant(b.value.as_constant().unwrap().clone()),
-    };
+    let a_node = ensure_graph_node(&a.value, graph);
+    let b_node = ensure_graph_node(&b.value, graph);
 
     let output_shape = a.shape.clone(); // Assumes same shape for now
     let node_id = graph.add_op(op_type, vec![a_node, b_node], output_shape.clone());
@@ -370,21 +385,23 @@ fn try_additive_identity(a: &TracedTensor, b: &TracedTensor) -> Option<TracedTen
 
 /// Multiplicative identity/annihilator: x*1=x, 1*x=x, x*0=0, 0*x=0
 fn try_multiplicative_identity(a: &TracedTensor, b: &TracedTensor) -> Option<TracedTensor> {
-    if let Some(b_const) = b.value.as_constant() {
-        if is_ones(b_const) {
-            return Some(a.clone());
-        }
-        if is_zeros(b_const) {
-            return Some(TracedTensor::constant(Array1::zeros(a.shape[0])));
-        }
+    // Check b as the constant operand (x * 1, x * 0)
+    if let Some(result) = try_mul_const(b, a) {
+        return Some(result);
     }
-    if let Some(a_const) = a.value.as_constant() {
-        if is_ones(a_const) {
-            return Some(b.clone());
-        }
-        if is_zeros(a_const) {
-            return Some(TracedTensor::constant(Array1::zeros(b.shape[0])));
-        }
+    // Check a as the constant operand (1 * x, 0 * x)
+    try_mul_const(a, b)
+}
+
+/// If `maybe_const` is a multiplicative identity (1) or annihilator (0),
+/// return the folded result. `other` is the non-constant operand.
+fn try_mul_const(maybe_const: &TracedTensor, other: &TracedTensor) -> Option<TracedTensor> {
+    let c = maybe_const.value.as_constant()?;
+    if is_ones(c) {
+        return Some(other.clone());
+    }
+    if is_zeros(c) {
+        return Some(TracedTensor::constant(Array1::zeros(other.shape[0])));
     }
     None
 }
@@ -449,6 +466,31 @@ impl ShapeTracker {
         self.shapes.get(&node_id).map(Vec::as_slice)
     }
 
+    /// Look up a node's shape, returning an error if not registered
+    fn require_shape(&self, node_id: NodeId) -> Result<Vec<usize>, ShapeError> {
+        self.shapes
+            .get(&node_id)
+            .cloned()
+            .ok_or(ShapeError::UnknownInput(node_id))
+    }
+
+    /// Validate that a shape has at least `min` dimensions
+    fn require_min_dims(shape: &[usize], min: usize) -> Result<(), ShapeError> {
+        if shape.len() < min {
+            return Err(ShapeError::InsufficientDims {
+                required: min,
+                got: shape.len(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Store an output shape and return a clone
+    fn store_output(&mut self, output_id: NodeId, shape: Vec<usize>) -> Vec<usize> {
+        self.shapes.insert(output_id, shape.clone());
+        shape
+    }
+
     /// Infer output shape for an element-wise binary operation
     pub fn infer_elementwise(
         &mut self,
@@ -456,14 +498,8 @@ impl ShapeTracker {
         a_id: NodeId,
         b_id: NodeId,
     ) -> Result<Vec<usize>, ShapeError> {
-        let a_shape = self
-            .shapes
-            .get(&a_id)
-            .ok_or(ShapeError::UnknownInput(a_id))?;
-        let b_shape = self
-            .shapes
-            .get(&b_id)
-            .ok_or(ShapeError::UnknownInput(b_id))?;
+        let a_shape = self.require_shape(a_id)?;
+        let b_shape = self.require_shape(b_id)?;
 
         if a_shape != b_shape {
             return Err(ShapeError::DimMismatch {
@@ -472,9 +508,7 @@ impl ShapeTracker {
             });
         }
 
-        let output_shape = a_shape.clone();
-        self.shapes.insert(output_id, output_shape.clone());
-        Ok(output_shape)
+        Ok(self.store_output(output_id, a_shape))
     }
 
     /// Infer output shape for a matmul operation
@@ -484,29 +518,11 @@ impl ShapeTracker {
         a_id: NodeId,
         b_id: NodeId,
     ) -> Result<Vec<usize>, ShapeError> {
-        let a_shape = self
-            .shapes
-            .get(&a_id)
-            .ok_or(ShapeError::UnknownInput(a_id))?
-            .to_vec();
-        let b_shape = self
-            .shapes
-            .get(&b_id)
-            .ok_or(ShapeError::UnknownInput(b_id))?
-            .to_vec();
+        let a_shape = self.require_shape(a_id)?;
+        let b_shape = self.require_shape(b_id)?;
 
-        if a_shape.len() < 2 {
-            return Err(ShapeError::InsufficientDims {
-                required: 2,
-                got: a_shape.len(),
-            });
-        }
-        if b_shape.len() < 2 {
-            return Err(ShapeError::InsufficientDims {
-                required: 2,
-                got: b_shape.len(),
-            });
-        }
+        Self::require_min_dims(&a_shape, 2)?;
+        Self::require_min_dims(&b_shape, 2)?;
 
         let k1 = a_shape[a_shape.len() - 1];
         let k2 = b_shape[b_shape.len() - 2];
@@ -520,9 +536,7 @@ impl ShapeTracker {
 
         let m = a_shape[a_shape.len() - 2];
         let n = b_shape[b_shape.len() - 1];
-        let output_shape = vec![m, n];
-        self.shapes.insert(output_id, output_shape.clone());
-        Ok(output_shape)
+        Ok(self.store_output(output_id, vec![m, n]))
     }
 
     /// Infer output shape for a sum (reduction) operation
@@ -531,13 +545,8 @@ impl ShapeTracker {
         output_id: NodeId,
         input_id: NodeId,
     ) -> Result<Vec<usize>, ShapeError> {
-        self.shapes
-            .get(&input_id)
-            .ok_or(ShapeError::UnknownInput(input_id))?;
-
-        let output_shape = vec![1];
-        self.shapes.insert(output_id, output_shape.clone());
-        Ok(output_shape)
+        self.require_shape(input_id)?;
+        Ok(self.store_output(output_id, vec![1]))
     }
 
     /// Get the number of tracked shapes
@@ -570,6 +579,45 @@ pub trait OptimizationPass {
 /// graph construction time.
 pub struct ConstantFolding;
 
+/// Try to evaluate a foldable operation with all-constant inputs.
+/// Returns `None` if the operation cannot be folded.
+fn try_eval_constant_op(op_type: OpType, inputs: &[&Array1<f32>]) -> Option<Array1<f32>> {
+    match (op_type, inputs) {
+        (OpType::Add, [a, b]) => Some(*a + *b),
+        (OpType::Mul, [a, b]) => Some(*a * *b),
+        (OpType::Sum, [a]) => Some(Array1::from(vec![a.sum()])),
+        (OpType::Scale, [a, b]) if b.len() == 1 => Some(*a * b[0]),
+        _ => None,
+    }
+}
+
+impl ConstantFolding {
+    /// Attempt to fold a single node to a constant value.
+    /// Returns `Some(result)` if the node can be folded, `None` otherwise.
+    fn try_fold_node(graph: &ComputeGraph, node_id: NodeId) -> Option<Array1<f32>> {
+        let node = &graph.nodes[node_id];
+        if node.is_removed() || node.is_constant() {
+            return None;
+        }
+
+        let all_const = node
+            .input_ids
+            .iter()
+            .all(|&id| graph.nodes[id].is_constant());
+        if !all_const {
+            return None;
+        }
+
+        let inputs: Vec<&Array1<f32>> = node
+            .input_ids
+            .iter()
+            .map(|&id| graph.nodes[id].constant_value.as_ref().unwrap())
+            .collect();
+
+        try_eval_constant_op(node.op_type, &inputs)
+    }
+}
+
 impl OptimizationPass for ConstantFolding {
     fn name(&self) -> &'static str {
         "constant_folding"
@@ -580,59 +628,13 @@ impl OptimizationPass for ConstantFolding {
         let order = graph.topological_order();
 
         for node_id in order {
-            let node = &graph.nodes[node_id];
-            if node.is_removed() || node.is_constant() {
-                continue;
+            if let Some(result) = Self::try_fold_node(graph, node_id) {
+                let node_mut = &mut graph.nodes[node_id];
+                node_mut.constant_value = Some(result);
+                node_mut.op_type = OpType::Constant;
+                node_mut.input_ids.clear();
+                changes += 1;
             }
-
-            // Check if all inputs are constants
-            let all_const = node
-                .input_ids
-                .iter()
-                .all(|&id| graph.nodes[id].is_constant());
-
-            if !all_const {
-                continue;
-            }
-
-            // Gather constant inputs
-            let inputs: Vec<&Array1<f32>> = node
-                .input_ids
-                .iter()
-                .map(|&id| graph.nodes[id].constant_value.as_ref().unwrap())
-                .collect();
-
-            // Evaluate the operation
-            let result = match node.op_type {
-                OpType::Add if inputs.len() == 2 => inputs[0] + inputs[1],
-                OpType::Mul if inputs.len() == 2 => inputs[0] * inputs[1],
-                OpType::Sum if inputs.len() == 1 => Array1::from(vec![inputs[0].sum()]),
-                OpType::Scale if inputs.len() == 2 => {
-                    // Scale: a * scalar (second input is single element)
-                    if inputs[1].len() == 1 {
-                        inputs[0] * inputs[1][0]
-                    } else {
-                        continue; // Can't fold
-                    }
-                }
-                // Guard failures: foldable ops with unexpected input counts
-                OpType::Add | OpType::Mul | OpType::Sum | OpType::Scale => continue,
-                // Non-foldable ops
-                OpType::Matmul
-                | OpType::Relu
-                | OpType::Gelu
-                | OpType::Softmax
-                | OpType::LayerNorm
-                | OpType::Attention
-                | OpType::Constant => continue,
-            };
-
-            // Replace node with constant
-            let node_mut = &mut graph.nodes[node_id];
-            node_mut.constant_value = Some(result);
-            node_mut.op_type = OpType::Constant;
-            node_mut.input_ids.clear();
-            changes += 1;
         }
 
         changes
@@ -642,15 +644,9 @@ impl OptimizationPass for ConstantFolding {
 /// Dead code elimination pass — removes nodes not reachable from outputs.
 pub struct DeadCodeElimination;
 
-impl OptimizationPass for DeadCodeElimination {
-    fn name(&self) -> &'static str {
-        "dce"
-    }
-
-    fn run(&self, graph: &mut ComputeGraph) -> usize {
-        let mut changes = 0;
-
-        // Find all nodes reachable from outputs via BFS
+impl DeadCodeElimination {
+    /// Find all nodes reachable from outputs via DFS
+    fn find_reachable(graph: &ComputeGraph) -> HashSet<NodeId> {
         let mut reachable = HashSet::new();
         let mut stack: Vec<NodeId> = graph.output_ids.clone();
 
@@ -659,13 +655,23 @@ impl OptimizationPass for DeadCodeElimination {
                 continue;
             }
             if !graph.nodes[id].is_removed() {
-                for &input_id in &graph.nodes[id].input_ids {
-                    stack.push(input_id);
-                }
+                stack.extend_from_slice(&graph.nodes[id].input_ids);
             }
         }
 
-        // Remove unreachable, non-removed nodes
+        reachable
+    }
+}
+
+impl OptimizationPass for DeadCodeElimination {
+    fn name(&self) -> &'static str {
+        "dce"
+    }
+
+    fn run(&self, graph: &mut ComputeGraph) -> usize {
+        let reachable = Self::find_reachable(graph);
+        let mut changes = 0;
+
         for id in 0..graph.nodes.len() {
             if !reachable.contains(&id) && !graph.nodes[id].is_removed() {
                 graph.nodes[id].mark_removed();
