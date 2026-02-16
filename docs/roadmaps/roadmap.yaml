@@ -1041,11 +1041,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'GH-84: Constant Folding at Graph Construction Time'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2026-02-16T21:59:04Z
-  updated: 2026-02-16T21:59:09.287829285+00:00
+  updated: 2026-02-16T22:09:56.549071563+00:00
   spec: null
   acceptance_criteria: []
   phases: []
