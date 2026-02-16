@@ -17,7 +17,7 @@ pub(crate) fn softmax(logits: &Array1<f32>) -> Array1<f32> {
 pub(crate) fn log_softmax(logits: &Array1<f32>) -> Array1<f32> {
     let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     let shifted = logits.mapv(|x| x - max);
-    let log_sum_exp = shifted.mapv(f32::exp).sum().ln();
+    let log_sum_exp = shifted.mapv(f32::exp).sum().max(f32::MIN_POSITIVE).ln();
     shifted.mapv(|x| x - log_sum_exp)
 }
 
@@ -27,7 +27,7 @@ pub(crate) fn kl_divergence(log_q: &Array1<f32>, p: &Array1<f32>) -> f32 {
     // Since we have log(Q), we compute: sum(P * log(P)) - sum(P * log(Q))
     let p_log_p: f32 = p
         .iter()
-        .map(|&pi| if pi > 1e-10 { pi * pi.ln() } else { 0.0 })
+        .map(|&pi| if pi > 1e-10 { pi * pi.max(f32::MIN_POSITIVE).ln() } else { 0.0 })
         .sum();
     let p_log_q: f32 = p.iter().zip(log_q.iter()).map(|(&pi, &lqi)| pi * lqi).sum();
     p_log_p - p_log_q

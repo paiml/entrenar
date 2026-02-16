@@ -38,6 +38,7 @@ pub mod gpu;
 pub mod inference;
 pub mod lineage;
 pub mod llm;
+pub mod params;
 pub mod prometheus;
 pub mod report;
 pub mod storage;
@@ -53,6 +54,7 @@ pub use lineage::{ChangeType, Derivation, ModelLineage, ModelMetadata};
 pub use llm::{
     EvalResult, InMemoryLLMEvaluator, LLMError, LLMEvaluator, LLMMetrics, PromptId, PromptVersion,
 };
+pub use params::{ParamDiff, ParamLogger, ParamValue};
 pub use report::{
     HanseiAnalyzer, IssueSeverity, MetricSummary, PostTrainingReport, TrainingIssue, Trend,
 };

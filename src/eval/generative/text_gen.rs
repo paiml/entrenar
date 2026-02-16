@@ -40,11 +40,12 @@ pub fn bleu_score(references: &[&str], hypothesis: &str, max_n: usize) -> f64 {
         if precision == 0.0 {
             return 0.0;
         }
-        log_precisions.push(precision.ln());
+        log_precisions.push(precision.max(f64::MIN_POSITIVE).ln());
     }
 
     // Geometric mean of precisions (uniform weights)
-    let avg_log_precision: f64 = log_precisions.iter().sum::<f64>() / log_precisions.len().max(1) as f64;
+    let avg_log_precision: f64 =
+        log_precisions.iter().sum::<f64>() / log_precisions.len().max(1) as f64;
 
     // Brevity penalty
     let hyp_len = hyp_tokens.len();

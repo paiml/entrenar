@@ -109,8 +109,8 @@ impl CodeGan {
         let fake_probs = self.discriminate(fake_samples);
 
         // Generator wants discriminator to output 1 (real) for fakes
-        let loss: f32 =
-            fake_probs.iter().map(|&p| -p.max(1e-7).ln()).sum::<f32>() / fake_probs.len().max(1) as f32;
+        let loss: f32 = fake_probs.iter().map(|&p| -p.max(1e-7).ln()).sum::<f32>()
+            / fake_probs.len().max(1) as f32;
 
         loss
     }

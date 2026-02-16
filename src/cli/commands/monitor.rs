@@ -44,7 +44,7 @@ pub fn run_monitor(args: MonitorArgs, level: LogLevel) -> Result<(), String> {
     let mut psi = 0.0f64;
     for (expected, actual) in baseline_buckets.iter().zip(current_buckets.iter()) {
         if *expected > 0.0 && *actual > 0.0 {
-            psi += (*actual - *expected) * (*actual / *expected).ln();
+            psi += (*actual - *expected) * (*actual / *expected).max(f64::MIN_POSITIVE).ln();
         }
     }
     psi = psi.abs();

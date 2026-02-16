@@ -133,7 +133,7 @@ impl EnsembleDistiller {
 
         // Convert back to logits (inverse softmax via log)
         // Note: This is approximate - exact inverse doesn't exist
-        ensemble_probs.mapv(|p: f32| (p + 1e-10_f32).ln() * self.temperature)
+        ensemble_probs.mapv(|p: f32| (p + 1e-10_f32).max(f32::MIN_POSITIVE).ln() * self.temperature)
     }
 
     /// Compute ensemble distillation loss

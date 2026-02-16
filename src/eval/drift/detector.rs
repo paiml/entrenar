@@ -291,7 +291,7 @@ impl DriftDetector {
         for (b_count, c_count) in baseline_counts.iter().zip(current_counts.iter()) {
             let b_pct = (*b_count as f64 + 0.0001) / (total_baseline + 0.001);
             let c_pct = (*c_count as f64 + 0.0001) / (total_current + 0.001);
-            psi += (c_pct - b_pct) * (c_pct / b_pct).ln();
+            psi += (c_pct - b_pct) * (c_pct / b_pct).max(f64::MIN_POSITIVE).ln();
         }
 
         let (drifted, severity) = if psi >= threshold {

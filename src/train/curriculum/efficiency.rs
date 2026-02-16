@@ -9,7 +9,7 @@ pub fn efficiency_score(accuracy: f32, corpus_size_bytes: usize) -> f32 {
     if corpus_size_bytes <= 1 {
         return accuracy;
     }
-    accuracy / (corpus_size_bytes as f32).ln()
+    accuracy / (corpus_size_bytes as f32).max(f32::MIN_POSITIVE).ln()
 }
 
 /// Compare tiers and select optimal based on efficiency
