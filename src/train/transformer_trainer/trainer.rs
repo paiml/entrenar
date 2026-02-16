@@ -184,7 +184,7 @@ impl TransformerTrainer {
             total_loss += batch_loss;
         }
 
-        total_loss / batches.len() as f32
+        total_loss / batches.len().max(1) as f32
     }
 
     /// Get current step count

@@ -6,13 +6,20 @@ use crate::io::{load_model, Model, ModelMetadata};
 use crate::optim::{Adam, AdamW, Optimizer, SGD};
 use crate::Tensor;
 
+// Optimizer parameter field name constants (CB-525)
+const PARAM_MOMENTUM: &str = "momentum";
+const PARAM_BETA1: &str = "beta1";
+const PARAM_BETA2: &str = "beta2";
+const PARAM_EPS: &str = "eps";
+const PARAM_WEIGHT_DECAY: &str = "weight_decay";
+
 /// Build optimizer from configuration
 pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
     match spec.name.to_lowercase().as_str() {
         "sgd" => {
             let momentum = spec
                 .params
-                .get("momentum")
+                .get(PARAM_MOMENTUM)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.0) as f32;
 
@@ -21,19 +28,19 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
         "adam" => {
             let beta1 = spec
                 .params
-                .get("beta1")
+                .get(PARAM_BETA1)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.9) as f32;
 
             let beta2 = spec
                 .params
-                .get("beta2")
+                .get(PARAM_BETA2)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.999) as f32;
 
             let eps = spec
                 .params
-                .get("eps")
+                .get(PARAM_EPS)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(1e-8) as f32;
 
@@ -42,25 +49,25 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
         "adamw" => {
             let beta1 = spec
                 .params
-                .get("beta1")
+                .get(PARAM_BETA1)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.9) as f32;
 
             let beta2 = spec
                 .params
-                .get("beta2")
+                .get(PARAM_BETA2)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.999) as f32;
 
             let eps = spec
                 .params
-                .get("eps")
+                .get(PARAM_EPS)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(1e-8) as f32;
 
             let weight_decay = spec
                 .params
-                .get("weight_decay")
+                .get(PARAM_WEIGHT_DECAY)
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.01) as f32;
 

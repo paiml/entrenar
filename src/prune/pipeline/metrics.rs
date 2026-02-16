@@ -113,7 +113,7 @@ impl PruningMetrics {
             .iter()
             .map(|(_, s)| (s - mean).powi(2))
             .sum::<f32>()
-            / self.layer_sparsity.len() as f32;
+            / self.layer_sparsity.len().max(1) as f32;
         variance
     }
 

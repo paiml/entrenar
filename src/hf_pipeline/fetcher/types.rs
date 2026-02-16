@@ -45,6 +45,7 @@ impl WeightFormat {
 }
 
 /// Model architecture information
+// CB-519: Serialize + Deserialize derive is intentional for config round-trip
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Architecture {
     /// BERT-style encoder

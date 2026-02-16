@@ -7,6 +7,28 @@ use crate::quant::{quantize_tensor, QuantGranularity, QuantMode, QuantizedTensor
 use safetensors::SafeTensors;
 use std::collections::HashMap;
 
+/// Load and deserialize a SafeTensors model from disk.
+fn load_safetensors(args: &QuantizeArgs) -> Result<Vec<u8>, String> {
+    std::fs::read(&args.model).map_err(|e| format!("Failed to read model file: {e}"))
+}
+
+/// Serialize quantized tensors and write to output path.
+fn save_quantized(
+    quantized_tensors: &HashMap<String, QuantizedTensor>,
+    args: &QuantizeArgs,
+) -> Result<(), String> {
+    // Note: Quantized tensors use custom block formats (Q4_0, Q8_0) that are not
+    // directly compatible with SafeTensors. For SafeTensors output, use GGUF export
+    // or dequantize first. JSON format preserves the quantization parameters.
+    let output_data = serde_json::to_vec_pretty(quantized_tensors)
+        .map_err(|e| format!("Failed to serialize: {e}"))?;
+
+    std::fs::write(&args.output, &output_data)
+        .map_err(|e| format!("Failed to write output: {e}"))?;
+
+    Ok(())
+}
+
 pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
     log(
         level,
@@ -36,7 +58,7 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
     }
 
     // Load safetensors model
-    let data = std::fs::read(&args.model).map_err(|e| format!("Failed to read model file: {e}"))?;
+    let data = load_safetensors(&args)?;
 
     let tensors =
         SafeTensors::deserialize(&data).map_err(|e| format!("Failed to parse safetensors: {e}"))?;
@@ -103,14 +125,7 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
     }
 
     // Save quantized model as JSON
-    // Note: Quantized tensors use custom block formats (Q4_0, Q8_0) that are not
-    // directly compatible with SafeTensors. For SafeTensors output, use GGUF export
-    // or dequantize first. JSON format preserves the quantization parameters.
-    let output_data = serde_json::to_vec_pretty(&quantized_tensors)
-        .map_err(|e| format!("Failed to serialize: {e}"))?;
-
-    std::fs::write(&args.output, &output_data)
-        .map_err(|e| format!("Failed to write output: {e}"))?;
+    save_quantized(&quantized_tensors, &args)?;
 
     let compression_ratio = if total_quantized_bytes > 0 {
         total_original_bytes as f64 / total_quantized_bytes as f64

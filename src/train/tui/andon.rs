@@ -157,8 +157,8 @@ impl AndonSystem {
         if values.len() < 2 {
             return None;
         }
-        let mean = values.iter().sum::<f32>() / values.len() as f32;
-        let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / values.len() as f32;
+        let mean = values.iter().sum::<f32>() / values.len().max(1) as f32;
+        let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / values.len().max(1) as f32;
         Some(variance.sqrt())
     }
 

@@ -69,7 +69,7 @@ impl Metric for Accuracy {
             })
             .count() as f32;
 
-        correct / predictions.len() as f32
+        correct / predictions.len().max(1) as f32
     }
 
     fn name(&self) -> &'static str {

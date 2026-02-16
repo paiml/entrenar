@@ -62,14 +62,14 @@ pub fn analyze_error(
         .collect();
 
     let mse = quantization_mse(original, &dequantized);
-    let mae = errors.iter().sum::<f32>() / errors.len() as f32;
+    let mae = errors.iter().sum::<f32>() / errors.len().max(1) as f32;
     let max_error = errors.iter().copied().fold(0.0f32, f32::max);
 
     let outlier_count = errors.iter().filter(|&&e| e > outlier_threshold).count();
-    let outlier_rate = outlier_count as f32 / errors.len() as f32;
+    let outlier_rate = outlier_count as f32 / errors.len().max(1) as f32;
 
     // SQNR = 10 * log10(signal_power / noise_power)
-    let signal_power: f32 = original.iter().map(|x| x * x).sum::<f32>() / original.len() as f32;
+    let signal_power: f32 = original.iter().map(|x| x * x).sum::<f32>() / original.len().max(1) as f32;
     let noise_power = mse;
     let sqnr_db = if noise_power > 1e-10 {
         10.0 * (signal_power / noise_power).log10()

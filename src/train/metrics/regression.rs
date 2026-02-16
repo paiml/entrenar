@@ -95,7 +95,7 @@ impl Metric for MAE {
             .zip(targets.data().iter())
             .map(|(&p, &t)| (p - t).abs())
             .sum::<f32>()
-            / predictions.len() as f32
+            / predictions.len().max(1) as f32
     }
 
     fn name(&self) -> &'static str {
@@ -141,7 +141,7 @@ impl Metric for RMSE {
             .zip(targets.data().iter())
             .map(|(&p, &t)| (p - t).powi(2))
             .sum::<f32>()
-            / predictions.len() as f32;
+            / predictions.len().max(1) as f32;
 
         mse.sqrt()
     }

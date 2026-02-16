@@ -4,6 +4,18 @@ use serde::{Deserialize, Serialize};
 
 use super::{Advisory, AuditStatus, Result, Severity, SupplyChainError};
 
+// Field name constants for cargo-deny JSON parsing (CB-525)
+const FIELD_TYPE: &str = "type";
+const FIELD_FIELDS: &str = "fields";
+const FIELD_SEVERITY: &str = "severity";
+const FIELD_CODE: &str = "code";
+const FIELD_LABELS: &str = "labels";
+const FIELD_SPAN: &str = "span";
+const FIELD_CRATE: &str = "crate";
+const FIELD_NAME: &str = "name";
+const FIELD_VERSION: &str = "version";
+const FIELD_MESSAGE: &str = "message";
+
 /// Dependency audit result
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DependencyAudit {
@@ -89,24 +101,24 @@ impl DependencyAudit {
                 .map_err(|e| SupplyChainError::ParseError(e.to_string()))?;
 
             // Skip non-diagnostic messages
-            if value.get("type").and_then(|t| t.as_str()) != Some("diagnostic") {
+            if value.get(FIELD_TYPE).and_then(|t| t.as_str()) != Some("diagnostic") {
                 continue;
             }
 
-            let fields = match value.get("fields") {
+            let fields = match value.get(FIELD_FIELDS) {
                 Some(f) => f,
                 None => continue,
             };
 
             // Extract severity
             let severity_str = fields
-                .get("severity")
+                .get(FIELD_SEVERITY)
                 .and_then(|s| s.as_str())
                 .unwrap_or("none");
 
             let is_vulnerability = severity_str == "error"
                 && fields
-                    .get("code")
+                    .get(FIELD_CODE)
                     .and_then(|c| c.as_str())
                     .is_some_and(|c| c.starts_with('A'));
 
@@ -115,30 +127,30 @@ impl DependencyAudit {
             }
 
             // Extract crate info from labels
-            if let Some(labels) = fields.get("labels").and_then(|l| l.as_array()) {
+            if let Some(labels) = fields.get(FIELD_LABELS).and_then(|l| l.as_array()) {
                 for label in labels {
-                    if let Some(span) = label.get("span") {
-                        if let Some(krate) = span.get("crate") {
+                    if let Some(span) = label.get(FIELD_SPAN) {
+                        if let Some(krate) = span.get(FIELD_CRATE) {
                             let crate_name = krate
-                                .get("name")
+                                .get(FIELD_NAME)
                                 .and_then(|n| n.as_str())
                                 .unwrap_or("unknown")
                                 .to_string();
 
                             let version = krate
-                                .get("version")
+                                .get(FIELD_VERSION)
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("unknown")
                                 .to_string();
 
                             let message = fields
-                                .get("message")
+                                .get(FIELD_MESSAGE)
                                 .and_then(|m| m.as_str())
                                 .unwrap_or("Unknown vulnerability")
                                 .to_string();
 
                             let code = fields
-                                .get("code")
+                                .get(FIELD_CODE)
                                 .and_then(|c| c.as_str())
                                 .unwrap_or("UNKNOWN")
                                 .to_string();
