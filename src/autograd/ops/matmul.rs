@@ -44,31 +44,41 @@ pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     TRACER.start(TraceStep::Transpose);
     let mut transposed = vec![0.0f32; rows * cols];
 
-    // Blocked transpose for cache efficiency on large matrices
     const BLOCK_SIZE: usize = 32;
     if rows >= BLOCK_SIZE && cols >= BLOCK_SIZE {
-        for r_block in (0..rows).step_by(BLOCK_SIZE) {
-            for c_block in (0..cols).step_by(BLOCK_SIZE) {
-                let r_end = (r_block + BLOCK_SIZE).min(rows);
-                let c_end = (c_block + BLOCK_SIZE).min(cols);
-                for r in r_block..r_end {
-                    for c in c_block..c_end {
-                        transposed[c * rows + r] = data[r * cols + c];
-                    }
-                }
-            }
-        }
+        transpose_blocked(data, &mut transposed, rows, cols, BLOCK_SIZE);
     } else {
-        // Simple transpose for small matrices
-        for r in 0..rows {
-            for c in 0..cols {
-                transposed[c * rows + r] = data[r * cols + c];
-            }
-        }
+        transpose_simple(data, &mut transposed, rows, cols);
     }
 
     TRACER.end(TraceStep::Transpose, format!("{rows}x{cols}"));
     transposed
+}
+
+/// Blocked transpose for cache efficiency on large matrices.
+#[inline]
+fn transpose_blocked(src: &[f32], dst: &mut [f32], rows: usize, cols: usize, block: usize) {
+    for r_block in (0..rows).step_by(block) {
+        for c_block in (0..cols).step_by(block) {
+            let r_end = (r_block + block).min(rows);
+            let c_end = (c_block + block).min(cols);
+            for r in r_block..r_end {
+                for c in c_block..c_end {
+                    dst[c * rows + r] = src[r * cols + c];
+                }
+            }
+        }
+    }
+}
+
+/// Simple transpose for small matrices.
+#[inline]
+fn transpose_simple(src: &[f32], dst: &mut [f32], rows: usize, cols: usize) {
+    for r in 0..rows {
+        for c in 0..cols {
+            dst[c * rows + r] = src[r * cols + c];
+        }
+    }
 }
 
 /// Compute matrix multiplication using realizar CUDA if available, else SIMD CPU

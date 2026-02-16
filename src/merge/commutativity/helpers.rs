@@ -25,23 +25,19 @@ pub fn models_approx_equal(m1: &Model, m2: &Model, tolerance: f32) -> bool {
     if m1.len() != m2.len() {
         return false;
     }
-    for (name, t1) in m1 {
-        if let Some(t2) = m2.get(name) {
-            let d1 = t1.data();
-            let d2 = t2.data();
-            if d1.len() != d2.len() {
-                return false;
-            }
-            for (a, b) in d1.iter().zip(d2.iter()) {
-                if (a - b).abs() > tolerance {
-                    return false;
-                }
-            }
-        } else {
-            return false;
-        }
-    }
-    true
+    m1.iter()
+        .all(|(name, t1)| tensors_approx_equal(t1, m2.get(name), tolerance))
+}
+
+/// Compare two tensors for approximate equality within tolerance.
+fn tensors_approx_equal(
+    t1: &Tensor,
+    t2: Option<&Tensor>,
+    tolerance: f32,
+) -> bool {
+    let Some(t2) = t2 else { return false };
+    let (d1, d2) = (t1.data(), t2.data());
+    d1.len() == d2.len() && d1.iter().zip(d2.iter()).all(|(a, b)| (a - b).abs() <= tolerance)
 }
 
 #[cfg(test)]

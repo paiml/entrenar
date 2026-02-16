@@ -179,59 +179,70 @@ fn select_top_k_with_capacity(
 ) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
     let batch_size = probs.nrows();
     let num_experts = probs.ncols();
-
-    // Track how many tokens have been assigned to each expert
     let mut expert_counts = vec![0usize; num_experts];
     let mut all_indices = Vec::with_capacity(batch_size);
     let mut all_weights = Vec::with_capacity(batch_size);
 
     for i in 0..batch_size {
-        let row = probs.row(i);
-
-        // Sort expert indices by probability (descending)
-        let mut sorted: Vec<(usize, f32)> = row.iter().copied().enumerate().collect();
-        sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        let mut token_indices = Vec::with_capacity(top_k);
-        let mut token_weights = Vec::with_capacity(top_k);
-
-        for &(expert_idx, weight) in &sorted {
-            if token_indices.len() >= top_k {
-                break;
-            }
-            if expert_counts[expert_idx] < capacity {
-                token_indices.push(expert_idx);
-                token_weights.push(weight);
-                expert_counts[expert_idx] += 1;
-            }
-        }
-
-        // If capacity prevented full assignment, pad with the last selected expert
-        // (edge case: can happen with very low capacity factor)
-        while token_indices.len() < top_k {
-            if let Some(&last_idx) = token_indices.last() {
-                token_indices.push(last_idx);
-                token_weights.push(0.0);
-            } else {
-                // Degenerate case: no expert had capacity — assign to expert 0
-                token_indices.push(0);
-                token_weights.push(1.0 / top_k as f32);
-            }
-        }
-
-        // Renormalize weights so they sum to 1.0
-        let weight_sum: f32 = token_weights.iter().sum();
-        if weight_sum > 0.0 {
-            for w in &mut token_weights {
-                *w /= weight_sum;
-            }
-        }
-
-        all_indices.push(token_indices);
-        all_weights.push(token_weights);
+        let (indices, weights) =
+            assign_token_experts(probs.row(i).as_slice().unwrap(), top_k, capacity, &mut expert_counts);
+        all_indices.push(indices);
+        all_weights.push(weights);
     }
 
     (all_indices, all_weights)
+}
+
+/// Assign top-k experts for a single token, respecting capacity limits.
+fn assign_token_experts(
+    row: &[f32],
+    top_k: usize,
+    capacity: usize,
+    expert_counts: &mut [usize],
+) -> (Vec<usize>, Vec<f32>) {
+    let mut sorted: Vec<(usize, f32)> = row.iter().copied().enumerate().collect();
+    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut indices = Vec::with_capacity(top_k);
+    let mut weights = Vec::with_capacity(top_k);
+
+    for &(expert_idx, weight) in &sorted {
+        if indices.len() >= top_k {
+            break;
+        }
+        if expert_counts[expert_idx] < capacity {
+            indices.push(expert_idx);
+            weights.push(weight);
+            expert_counts[expert_idx] += 1;
+        }
+    }
+
+    pad_assignments(&mut indices, &mut weights, top_k);
+    renormalize_weights(&mut weights);
+    (indices, weights)
+}
+
+/// Pad assignments to top_k if capacity prevented full assignment.
+fn pad_assignments(indices: &mut Vec<usize>, weights: &mut Vec<f32>, top_k: usize) {
+    while indices.len() < top_k {
+        if let Some(&last_idx) = indices.last() {
+            indices.push(last_idx);
+            weights.push(0.0);
+        } else {
+            indices.push(0);
+            weights.push(1.0 / top_k as f32);
+        }
+    }
+}
+
+/// Renormalize weights to sum to 1.0.
+fn renormalize_weights(weights: &mut [f32]) {
+    let sum: f32 = weights.iter().sum();
+    if sum > 0.0 {
+        for w in weights.iter_mut() {
+            *w /= sum;
+        }
+    }
 }
 
 /// Compute the fraction of tokens routed to each expert.
