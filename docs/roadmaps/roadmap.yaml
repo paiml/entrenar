@@ -1085,3 +1085,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-184
+  github_issue: null
+  item_type: task
+  title: 'Phase 2: HF Model ID auto-resolve in YAML config'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-17T10:12:36Z
+  updated: 2026-02-17T10:12:39.350676977+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
