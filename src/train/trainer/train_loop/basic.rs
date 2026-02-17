@@ -8,6 +8,13 @@ use crate::train::Batch;
 use crate::Tensor;
 use std::time::Instant;
 
+/// Result of running the inner step loop for one epoch
+pub(super) struct EpochStepResult {
+    pub total_loss: f32,
+    pub num_batches: usize,
+    pub stopped_early: bool,
+}
+
 impl Trainer {
     /// Train for multiple epochs with full callback support
     ///
@@ -44,126 +51,206 @@ impl Trainer {
         let mut stopped_early = false;
         let mut final_loss = 0.0;
 
-        // Fire train_begin
         let ctx = self.build_context(0, max_epochs, 0, 0, 0.0, None);
         if self.callbacks.on_train_begin(&ctx) == CallbackAction::Stop {
-            return TrainResult {
-                final_epoch: 0,
-                final_loss: 0.0,
-                best_loss: 0.0,
-                stopped_early: true,
-                elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
-            };
+            return self.make_early_stop_result();
         }
 
         for epoch in 0..max_epochs {
-            // Fire epoch_begin
-            let ctx = self.build_context(epoch, max_epochs, 0, 0, final_loss, None);
-            match self.callbacks.on_epoch_begin(&ctx) {
-                CallbackAction::Stop => {
-                    stopped_early = true;
-                    break;
-                }
-                CallbackAction::SkipEpoch => continue,
-                CallbackAction::Continue => {}
+            let action = self.fire_epoch_begin(epoch, max_epochs, final_loss);
+            if action == CallbackAction::Stop {
+                stopped_early = true;
+                break;
+            }
+            if action == CallbackAction::SkipEpoch {
+                continue;
             }
 
-            // Collect batches and count them
             let batches: Vec<Batch> = batch_fn().into_iter().collect();
             let steps_per_epoch = batches.len();
 
-            // Train epoch with step callbacks and gradient accumulation
-            let mut total_loss = 0.0;
-            let mut num_batches = 0;
-            let accum_steps = self.config.gradient_accumulation_steps.max(1);
-
-            for (step, batch) in batches.into_iter().enumerate() {
-                // Fire step_begin
-                let ctx =
-                    self.build_context(epoch, max_epochs, step, steps_per_epoch, final_loss, None);
-                if self.callbacks.on_step_begin(&ctx) == CallbackAction::Stop {
-                    stopped_early = true;
-                    break;
-                }
-
-                // Zero gradients at start of accumulation window
-                if step % accum_steps == 0 {
-                    self.optimizer.zero_grad(&mut self.params);
-                }
-
-                // Accumulate gradients
-                let loss = self.accumulate_gradients(&batch, &forward_fn);
-                total_loss += loss;
-                num_batches += 1;
-
-                // Optimizer step at end of accumulation window (or last batch)
-                let is_accum_boundary = (step + 1) % accum_steps == 0;
-                let is_last_batch = step + 1 == steps_per_epoch;
-                if is_accum_boundary || is_last_batch {
-                    // Gradient clipping
-                    if let Some(max_norm) = self.config.max_grad_norm {
-                        clip_grad_norm(&mut self.params, max_norm);
-                    }
-                    // Optimizer step
-                    self.optimizer.step(&mut self.params);
-                }
-
-                // Update metrics
-                self.metrics.increment_step();
-
-                // Fire step_end
-                let ctx = self.build_context(epoch, max_epochs, step, steps_per_epoch, loss, None);
-                if self.callbacks.on_step_end(&ctx) == CallbackAction::Stop {
-                    stopped_early = true;
-                    break;
-                }
-            }
-
+            let step_result = self.run_epoch_steps(
+                batches,
+                steps_per_epoch,
+                epoch,
+                max_epochs,
+                final_loss,
+                &forward_fn,
+            );
+            stopped_early = step_result.stopped_early;
             if stopped_early {
                 break;
             }
 
-            // Calculate epoch loss
-            let avg_loss = if num_batches > 0 {
-                total_loss / num_batches as f32
-            } else {
-                0.0
-            };
+            let avg_loss = safe_avg(step_result.total_loss, step_result.num_batches);
             final_loss = avg_loss;
-
-            // Update best loss
-            if self.best_loss.is_none_or(|bl| avg_loss < bl) {
-                self.best_loss = Some(avg_loss);
-            }
-
-            // Record epoch metrics
+            self.update_best_loss(avg_loss);
             self.metrics.record_epoch(avg_loss, self.lr());
 
-            // Fire epoch_end
-            let ctx = self.build_context(
-                epoch,
-                max_epochs,
-                steps_per_epoch,
-                steps_per_epoch,
-                avg_loss,
-                None,
-            );
-            if self.callbacks.on_epoch_end(&ctx) == CallbackAction::Stop {
+            if self.fire_epoch_end(epoch, max_epochs, steps_per_epoch, avg_loss, None) {
                 stopped_early = true;
                 break;
             }
         }
 
-        // Fire train_end
+        self.finalize_training(max_epochs, final_loss, self.best_loss.unwrap_or(final_loss), stopped_early)
+    }
+
+    // -- Shared helpers used by both basic.rs and validation.rs --
+
+    /// Fire the epoch_begin callback and return the requested action
+    pub(super) fn fire_epoch_begin(
+        &mut self,
+        epoch: usize,
+        max_epochs: usize,
+        current_loss: f32,
+    ) -> CallbackAction {
+        let ctx = self.build_context(epoch, max_epochs, 0, 0, current_loss, None);
+        self.callbacks.on_epoch_begin(&ctx)
+    }
+
+    /// Fire the epoch_end callback; returns true if training should stop
+    pub(super) fn fire_epoch_end(
+        &mut self,
+        epoch: usize,
+        max_epochs: usize,
+        steps_per_epoch: usize,
+        loss: f32,
+        val_loss: Option<f32>,
+    ) -> bool {
+        let ctx = self.build_context(
+            epoch,
+            max_epochs,
+            steps_per_epoch,
+            steps_per_epoch,
+            loss,
+            val_loss,
+        );
+        self.callbacks.on_epoch_end(&ctx) == CallbackAction::Stop
+    }
+
+    /// Run the inner step loop for one epoch
+    pub(super) fn run_epoch_steps<F>(
+        &mut self,
+        batches: Vec<Batch>,
+        steps_per_epoch: usize,
+        epoch: usize,
+        max_epochs: usize,
+        current_loss: f32,
+        forward_fn: &F,
+    ) -> EpochStepResult
+    where
+        F: Fn(&Tensor) -> Tensor,
+    {
+        let mut total_loss = 0.0;
+        let mut num_batches = 0;
+        let accum_steps = self.config.gradient_accumulation_steps.max(1);
+
+        for (step, batch) in batches.into_iter().enumerate() {
+            let ctx =
+                self.build_context(epoch, max_epochs, step, steps_per_epoch, current_loss, None);
+            if self.callbacks.on_step_begin(&ctx) == CallbackAction::Stop {
+                return EpochStepResult {
+                    total_loss,
+                    num_batches,
+                    stopped_early: true,
+                };
+            }
+
+            if step % accum_steps == 0 {
+                self.optimizer.zero_grad(&mut self.params);
+            }
+
+            let loss = self.accumulate_gradients(&batch, forward_fn);
+            total_loss += loss;
+            num_batches += 1;
+
+            self.maybe_clip_and_step(step, steps_per_epoch, accum_steps);
+            self.metrics.increment_step();
+
+            let ctx = self.build_context(epoch, max_epochs, step, steps_per_epoch, loss, None);
+            if self.callbacks.on_step_end(&ctx) == CallbackAction::Stop {
+                return EpochStepResult {
+                    total_loss,
+                    num_batches,
+                    stopped_early: true,
+                };
+            }
+        }
+
+        EpochStepResult {
+            total_loss,
+            num_batches,
+            stopped_early: false,
+        }
+    }
+
+    /// Clip gradients and run optimizer step at accumulation boundaries
+    fn maybe_clip_and_step(
+        &mut self,
+        step: usize,
+        steps_per_epoch: usize,
+        accum_steps: usize,
+    ) {
+        let is_accum_boundary = (step + 1).is_multiple_of(accum_steps);
+        let is_last_batch = step + 1 == steps_per_epoch;
+        if is_accum_boundary || is_last_batch {
+            if let Some(max_norm) = self.config.max_grad_norm {
+                clip_grad_norm(&mut self.params, max_norm);
+            }
+            self.optimizer.step(&mut self.params);
+        }
+    }
+
+    /// Update best_loss if the new loss is lower
+    pub(super) fn update_best_loss(&mut self, loss: f32) {
+        if self.best_loss.is_none_or(|bl| loss < bl) {
+            self.best_loss = Some(loss);
+        }
+    }
+
+    /// Create a TrainResult for immediate early stop at train_begin
+    pub(super) fn make_early_stop_result(&self) -> TrainResult {
+        TrainResult {
+            final_epoch: 0,
+            final_loss: 0.0,
+            best_loss: 0.0,
+            stopped_early: true,
+            elapsed_secs: self.elapsed_secs(),
+        }
+    }
+
+    /// Fire train_end and build the final TrainResult
+    pub(super) fn finalize_training(
+        &mut self,
+        max_epochs: usize,
+        final_loss: f32,
+        best_loss: f32,
+        stopped_early: bool,
+    ) -> TrainResult {
         let ctx = self.build_context(self.metrics.epoch, max_epochs, 0, 0, final_loss, None);
         self.callbacks.on_train_end(&ctx);
 
         TrainResult {
             final_epoch: self.metrics.epoch,
             final_loss,
-            best_loss: self.best_loss.unwrap_or(final_loss),
+            best_loss,
             stopped_early,
-            elapsed_secs: self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64()),
+            elapsed_secs: self.elapsed_secs(),
         }
+    }
+
+    /// Compute elapsed seconds from start_time
+    pub(super) fn elapsed_secs(&self) -> f64 {
+        self.start_time.map_or(0.0, |t| t.elapsed().as_secs_f64())
+    }
+}
+
+/// Safely compute average, returning 0.0 for empty sets
+pub(super) fn safe_avg(total: f32, count: usize) -> f32 {
+    if count > 0 {
+        total / count as f32
+    } else {
+        0.0
     }
 }

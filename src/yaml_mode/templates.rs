@@ -60,137 +60,16 @@ fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> Trai
         version: "1.0.0".to_string(),
         description: Some("Training experiment".to_string()),
         seed: Some(42),
-        data: data.map(|d| DataConfig {
-            source: Some(d.to_string()),
-            format: None,
-            split: Some(DataSplit {
-                train: 0.8,
-                val: Some(0.1),
-                test: Some(0.1),
-                stratify: None,
-                seed: Some(42),
-            }),
-            train: None,
-            val: None,
-            test: None,
-            preprocessing: None,
-            augmentation: None,
-            loader: Some(DataLoader {
-                batch_size: 32,
-                shuffle: true,
-                num_workers: Some(4),
-                pin_memory: Some(true),
-                drop_last: Some(false),
-                prefetch_factor: None,
-            }),
-            tokenizer: None,
-            seq_len: None,
-            input_column: None,
-            output_column: None,
-            max_length: None,
-        }),
-        model: model.map(|m| ModelConfig {
-            source: m.to_string(),
-            format: None,
-            architecture: None,
-            freeze: None,
-            device: Some("auto".to_string()),
-            dtype: Some("float32".to_string()),
-        }),
-        optimizer: Some(OptimizerConfig {
-            name: "adamw".to_string(),
-            lr: 0.001,
-            weight_decay: Some(0.01),
-            betas: Some(vec![0.9, 0.999]),
-            eps: Some(1e-8),
-            amsgrad: None,
-            momentum: None,
-            nesterov: None,
-            dampening: None,
-            alpha: None,
-            centered: None,
-            param_groups: None,
-        }),
-        scheduler: Some(SchedulerConfig {
-            name: "cosine_annealing".to_string(),
-            warmup: Some(WarmupConfig {
-                steps: Some(100),
-                ratio: None,
-                start_lr: Some(1e-7),
-            }),
-            t_max: Some(DEFAULT_COSINE_ANNEALING_T_MAX),
-            eta_min: Some(1e-6),
-            step_size: None,
-            gamma: None,
-            mode: None,
-            factor: None,
-            patience: None,
-            threshold: None,
-            max_lr: None,
-            pct_start: None,
-            anneal_strategy: None,
-            div_factor: None,
-            final_div_factor: None,
-        }),
-        training: Some(TrainingConfig {
-            epochs: Some(10),
-            max_steps: None,
-            duration: None,
-            gradient: Some(GradientConfig {
-                accumulation_steps: Some(1),
-                clip_norm: Some(1.0),
-                clip_value: None,
-            }),
-            mixed_precision: None,
-            distributed: None,
-            checkpoint: Some(CheckpointConfig {
-                save_every: Some(1000),
-                keep_last: Some(3),
-                save_best: Some(true),
-                metric: Some("val_loss".to_string()),
-                mode: Some("min".to_string()),
-            }),
-            early_stopping: Some(EarlyStoppingConfig {
-                enabled: true,
-                metric: Some("val_loss".to_string()),
-                patience: Some(5),
-                min_delta: Some(0.001),
-                mode: Some("min".to_string()),
-            }),
-            validation: None,
-            deterministic: None,
-            benchmark: None,
-        }),
+        data: data.map(default_data_config),
+        model: model.map(default_model_config),
+        optimizer: Some(default_optimizer_config()),
+        scheduler: Some(default_scheduler_config()),
+        training: Some(default_training_config()),
         lora: None,
         quantize: None,
-        monitoring: Some(MonitoringConfig {
-            terminal: Some(TerminalMonitor {
-                enabled: true,
-                refresh_rate: Some(100),
-                metrics: Some(vec!["loss".to_string(), "accuracy".to_string()]),
-                charts: None,
-            }),
-            tracking: None,
-            system: None,
-            alerts: None,
-            drift_detection: None,
-        }),
+        monitoring: Some(default_monitoring_config()),
         callbacks: None,
-        output: Some(OutputConfig {
-            dir: "./output/{{ name }}/{{ timestamp }}".to_string(),
-            model: Some(ModelOutputConfig {
-                format: Some("safetensors".to_string()),
-                save_optimizer: Some(true),
-                save_scheduler: Some(true),
-            }),
-            metrics: None,
-            report: Some(ReportConfig {
-                enabled: true,
-                format: Some("markdown".to_string()),
-                include_plots: Some(true),
-            }),
-            registry: None,
-        }),
+        output: Some(default_output_config()),
         // Extended configurations (YAML Mode QA Epic)
         citl: None,
         rag: None,
@@ -209,6 +88,155 @@ fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> Trai
         strict: None,
         strict_validation: None,
         require_peer_review: None,
+    }
+}
+
+fn default_data_config(source: &str) -> DataConfig {
+    DataConfig {
+        source: Some(source.to_string()),
+        format: None,
+        split: Some(DataSplit {
+            train: 0.8,
+            val: Some(0.1),
+            test: Some(0.1),
+            stratify: None,
+            seed: Some(42),
+        }),
+        train: None,
+        val: None,
+        test: None,
+        preprocessing: None,
+        augmentation: None,
+        loader: Some(DataLoader {
+            batch_size: 32,
+            shuffle: true,
+            num_workers: Some(4),
+            pin_memory: Some(true),
+            drop_last: Some(false),
+            prefetch_factor: None,
+        }),
+        tokenizer: None,
+        seq_len: None,
+        input_column: None,
+        output_column: None,
+        max_length: None,
+    }
+}
+
+fn default_model_config(source: &str) -> ModelConfig {
+    ModelConfig {
+        source: source.to_string(),
+        format: None,
+        architecture: None,
+        freeze: None,
+        device: Some("auto".to_string()),
+        dtype: Some("float32".to_string()),
+    }
+}
+
+fn default_optimizer_config() -> OptimizerConfig {
+    OptimizerConfig {
+        name: "adamw".to_string(),
+        lr: 0.001,
+        weight_decay: Some(0.01),
+        betas: Some(vec![0.9, 0.999]),
+        eps: Some(1e-8),
+        amsgrad: None,
+        momentum: None,
+        nesterov: None,
+        dampening: None,
+        alpha: None,
+        centered: None,
+        param_groups: None,
+    }
+}
+
+fn default_scheduler_config() -> SchedulerConfig {
+    SchedulerConfig {
+        name: "cosine_annealing".to_string(),
+        warmup: Some(WarmupConfig {
+            steps: Some(100),
+            ratio: None,
+            start_lr: Some(1e-7),
+        }),
+        t_max: Some(DEFAULT_COSINE_ANNEALING_T_MAX),
+        eta_min: Some(1e-6),
+        step_size: None,
+        gamma: None,
+        mode: None,
+        factor: None,
+        patience: None,
+        threshold: None,
+        max_lr: None,
+        pct_start: None,
+        anneal_strategy: None,
+        div_factor: None,
+        final_div_factor: None,
+    }
+}
+
+fn default_training_config() -> TrainingConfig {
+    TrainingConfig {
+        epochs: Some(10),
+        max_steps: None,
+        duration: None,
+        gradient: Some(GradientConfig {
+            accumulation_steps: Some(1),
+            clip_norm: Some(1.0),
+            clip_value: None,
+        }),
+        mixed_precision: None,
+        distributed: None,
+        checkpoint: Some(CheckpointConfig {
+            save_every: Some(1000),
+            keep_last: Some(3),
+            save_best: Some(true),
+            metric: Some("val_loss".to_string()),
+            mode: Some("min".to_string()),
+        }),
+        early_stopping: Some(EarlyStoppingConfig {
+            enabled: true,
+            metric: Some("val_loss".to_string()),
+            patience: Some(5),
+            min_delta: Some(0.001),
+            mode: Some("min".to_string()),
+        }),
+        validation: None,
+        deterministic: None,
+        benchmark: None,
+    }
+}
+
+fn default_monitoring_config() -> MonitoringConfig {
+    MonitoringConfig {
+        terminal: Some(TerminalMonitor {
+            enabled: true,
+            refresh_rate: Some(100),
+            metrics: Some(vec!["loss".to_string(), "accuracy".to_string()]),
+            charts: None,
+        }),
+        tracking: None,
+        system: None,
+        alerts: None,
+        drift_detection: None,
+    }
+}
+
+fn default_output_config() -> OutputConfig {
+    OutputConfig {
+        dir: "./output/{{ name }}/{{ timestamp }}".to_string(),
+        model: Some(ModelOutputConfig {
+            format: Some("safetensors".to_string()),
+            save_optimizer: Some(true),
+            save_scheduler: Some(true),
+        }),
+        metrics: None,
+        report: Some(ReportConfig {
+            enabled: true,
+            format: Some("markdown".to_string()),
+            include_plots: Some(true),
+        }),
+        registry: None,
     }
 }
 
