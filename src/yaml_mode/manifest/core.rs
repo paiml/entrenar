@@ -17,6 +17,7 @@ use super::model::ModelConfig;
 use super::monitoring::MonitoringConfig;
 use super::optimizer::OptimizerConfig;
 use super::output::OutputConfig;
+use super::publish::PublishConfig;
 use super::quantize::QuantizeConfig;
 use super::scheduler::SchedulerConfig;
 use super::training::TrainingConfig;
@@ -85,6 +86,10 @@ pub struct TrainingManifest {
     /// Output and artifact configuration
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<OutputConfig>,
+
+    /// Publish configuration for auto-uploading to HuggingFace Hub
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish: Option<PublishConfig>,
 
     // Extended configurations for YAML Mode QA Epic
     /// CITL (Compiler-in-the-Loop) configuration

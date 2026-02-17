@@ -462,6 +462,7 @@ mod tests {
             monitoring: None,
             callbacks: None,
             output: None,
+            publish: None,
             citl: None,
             rag: None,
             graph: None,

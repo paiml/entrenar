@@ -22,9 +22,53 @@ pub struct InitArgs {
     #[arg(long)]
     pub model: Option<String>,
 
+    /// Base model HF repo ID (e.g., Qwen/Qwen2.5-Coder-0.5B)
+    #[arg(long)]
+    pub base: Option<String>,
+
+    /// Training method (overrides --template)
+    #[arg(long)]
+    pub method: Option<TrainingMethod>,
+
     /// Data source path or URI
     #[arg(long)]
     pub data: Option<String>,
+}
+
+/// Training method for --method flag
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TrainingMethod {
+    /// Full fine-tuning
+    Full,
+    /// LoRA fine-tuning
+    Lora,
+    /// QLoRA (quantized LoRA) fine-tuning
+    Qlora,
+}
+
+impl std::str::FromStr for TrainingMethod {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "full" => Ok(TrainingMethod::Full),
+            "lora" => Ok(TrainingMethod::Lora),
+            "qlora" => Ok(TrainingMethod::Qlora),
+            _ => Err(format!(
+                "Unknown method: {s}. Valid methods: full, lora, qlora"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for TrainingMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TrainingMethod::Full => write!(f, "full"),
+            TrainingMethod::Lora => write!(f, "lora"),
+            TrainingMethod::Qlora => write!(f, "qlora"),
+        }
+    }
 }
 
 /// Init template type
@@ -106,5 +150,21 @@ mod tests {
     #[test]
     fn test_init_template_default() {
         assert_eq!(InitTemplate::default(), InitTemplate::Minimal);
+    }
+
+    #[test]
+    fn test_training_method_from_str() {
+        assert_eq!("full".parse::<TrainingMethod>().unwrap(), TrainingMethod::Full);
+        assert_eq!("lora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
+        assert_eq!("qlora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Qlora);
+        assert_eq!("LORA".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
+        assert!("invalid".parse::<TrainingMethod>().is_err());
+    }
+
+    #[test]
+    fn test_training_method_display() {
+        assert_eq!(format!("{}", TrainingMethod::Full), "full");
+        assert_eq!(format!("{}", TrainingMethod::Lora), "lora");
+        assert_eq!(format!("{}", TrainingMethod::Qlora), "qlora");
     }
 }

@@ -27,7 +27,7 @@ mod tests;
 // Re-export all public types
 pub use core::{apply_overrides, parse_args, Cli, Command, InfoArgs, TrainArgs, ValidateArgs};
 pub use extended::{AuditArgs, BenchArgs, CompletionArgs, InspectArgs, MonitorArgs, PublishArgs};
-pub use init::{InitArgs, InitTemplate};
+pub use init::{InitArgs, InitTemplate, TrainingMethod};
 pub use quant_merge::{MergeArgs, MergeMethod, QuantMethod, QuantizeArgs};
 pub use research::{
     BundleArgs, CiteArgs, DepositArgs, ExportArgs, PreregisterArgs, ResearchArgs, ResearchCommand,

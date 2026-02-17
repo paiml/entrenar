@@ -42,7 +42,7 @@ pub use cli::{
     ExportArgs, ExportFormat, InfoArgs, InitArgs, InitTemplate, InspectArgs, InspectMode,
     LicenseArg, MergeArgs, MergeMethod, MonitorArgs, OutputFormat, PreregisterArgs, PublishArgs,
     QuantMethod, QuantizeArgs, ResearchArgs, ResearchCommand, ResearchInitArgs, ShellType,
-    TrainArgs, ValidateArgs, VerifyArgs,
+    TrainArgs, TrainingMethod, ValidateArgs, VerifyArgs,
 };
 pub use infer::{
     collect_stats_from_samples, infer_schema, infer_schema_from_path, infer_type, ColumnStats,
