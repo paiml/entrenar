@@ -39,21 +39,12 @@ impl ModelParadigm {
     /// compared to inference-only memory.
     pub fn typical_memory_multiplier(&self) -> f64 {
         match self {
-            Self::TraditionalMl => 1.5, // Minimal overhead
-            Self::DeepLearning => 4.0,  // Gradients + optimizer state + activations
-            Self::FineTuning(method) => {
-                match method {
-                    FineTuneMethod::Full => 4.0,         // Same as deep learning
-                    FineTuneMethod::LoRA { .. } => 1.2,  // Base frozen + small adapters
-                    FineTuneMethod::QLoRA { .. } => 1.1, // Quantized base + adapters
-                    FineTuneMethod::Adapter => 1.5,
-                    FineTuneMethod::Prefix => 1.3,
-                    FineTuneMethod::IA3 => 1.1,
-                }
-            }
-            Self::Distillation => 5.0, // Teacher + student models
-            Self::MoE => 2.0,          // Active experts only
-            Self::Ensemble => 3.0,     // Multiple models, typically smaller
+            Self::TraditionalMl => 1.5,
+            Self::DeepLearning => 4.0,
+            Self::FineTuning(method) => method.memory_multiplier(),
+            Self::Distillation => 5.0,
+            Self::MoE => 2.0,
+            Self::Ensemble => 3.0,
         }
     }
 
@@ -63,24 +54,12 @@ impl ModelParadigm {
     /// training from scratch.
     pub fn typical_training_speedup(&self) -> f64 {
         match self {
-            Self::TraditionalMl => 10.0, // Very fast training
-            Self::DeepLearning => 1.0,   // Baseline
-            Self::FineTuning(method) => {
-                match method {
-                    FineTuneMethod::Full => 2.0, // Pretrained initialization helps
-                    FineTuneMethod::LoRA { rank, .. } => {
-                        // Higher rank = slower but still faster than full
-                        5.0 / (1.0 + (f64::from(*rank) / 64.0))
-                    }
-                    FineTuneMethod::QLoRA { .. } => 6.0,
-                    FineTuneMethod::Adapter => 4.0,
-                    FineTuneMethod::Prefix => 5.0,
-                    FineTuneMethod::IA3 => 8.0,
-                }
-            }
-            Self::Distillation => 1.5, // Training student is faster than teacher
-            Self::MoE => 0.8,          // Routing overhead
-            Self::Ensemble => 0.5,     // Train multiple models
+            Self::TraditionalMl => 10.0,
+            Self::DeepLearning => 1.0,
+            Self::FineTuning(method) => method.training_speedup(),
+            Self::Distillation => 1.5,
+            Self::MoE => 0.8,
+            Self::Ensemble => 0.5,
         }
     }
 
@@ -89,19 +68,12 @@ impl ModelParadigm {
     /// Returns expected quality as a fraction of full fine-tuning quality.
     pub fn typical_quality_retention(&self) -> f64 {
         match self {
-            Self::TraditionalMl => 0.7, // Depends heavily on task
-            Self::DeepLearning => 1.0,  // Baseline
-            Self::FineTuning(method) => match method {
-                FineTuneMethod::Full => 1.0,
-                FineTuneMethod::LoRA { rank, .. } => 0.95 + (f64::from(*rank) / 256.0).min(0.05),
-                FineTuneMethod::QLoRA { .. } => 0.93,
-                FineTuneMethod::Adapter => 0.92,
-                FineTuneMethod::Prefix => 0.88,
-                FineTuneMethod::IA3 => 0.90,
-            },
-            Self::Distillation => 0.85, // Student typically slightly worse
-            Self::MoE => 1.05,          // Can exceed with specialization
-            Self::Ensemble => 1.02,     // Slight improvement from diversity
+            Self::TraditionalMl => 0.7,
+            Self::DeepLearning => 1.0,
+            Self::FineTuning(method) => method.quality_retention(),
+            Self::Distillation => 0.85,
+            Self::MoE => 1.05,
+            Self::Ensemble => 1.02,
         }
     }
 
@@ -131,15 +103,8 @@ impl ModelParadigm {
         match self {
             Self::TraditionalMl => 10.0,
             Self::DeepLearning => 1.0,
-            Self::FineTuning(method) => match method {
-                FineTuneMethod::Full => 1.0,
-                FineTuneMethod::LoRA { .. } => 2.0,
-                FineTuneMethod::QLoRA { .. } => 4.0,
-                FineTuneMethod::Adapter => 1.5,
-                FineTuneMethod::Prefix => 1.8,
-                FineTuneMethod::IA3 => 3.0,
-            },
-            Self::Distillation => 0.5, // Need memory for both models
+            Self::FineTuning(method) => method.batch_size_multiplier(),
+            Self::Distillation => 0.5,
             Self::MoE => 1.2,
             Self::Ensemble => 0.3,
         }

@@ -93,20 +93,8 @@ impl TransformerTrainer {
         (loss_val, loss, logits)
     }
 
-    /// Process a batch (forward + backward + optimizer step)
-    ///
-    /// Returns average loss for the batch
-    pub fn train_batch(&mut self, batch: &LMBatch) -> f32 {
-        if batch.batch_size == 0 {
-            return 0.0;
-        }
-
-        // Zero gradients at start of accumulation cycle
-        if self.accumulated_batches == 0 {
-            let mut params = self.model.parameters_mut();
-            self.optimizer.zero_grad_refs(&mut params);
-        }
-
+    /// Compute forward + backward for all items in a batch, returning average loss.
+    fn compute_batch_gradients(&self, batch: &LMBatch) -> f32 {
         let mut total_loss = 0.0;
 
         for i in 0..batch.batch_size {
@@ -119,53 +107,65 @@ impl TransformerTrainer {
 
             let (loss_val, loss, _logits) = self.forward_single(input_ids, target_ids);
 
-            // Backward pass - compute gradients
             if let Some(backward_op) = loss.backward_op() {
                 backward_op.backward();
             }
 
-            // Scale loss for gradient accumulation
-            let scaled_loss = loss_val / self.config.accumulation_steps as f32;
-            total_loss += scaled_loss;
+            total_loss += loss_val / self.config.accumulation_steps as f32;
         }
 
-        let avg_loss = total_loss / batch.batch_size as f32;
+        total_loss / batch.batch_size as f32
+    }
 
-        // Track accumulation
+    /// Apply gradient clipping and run the optimizer step, then reset accumulation.
+    fn clip_and_step(&mut self) {
+        if let Some(max_norm) = self.config.base.max_grad_norm {
+            let params = self.model.parameters();
+            let total_norm: f32 = params
+                .iter()
+                .filter_map(|p| p.grad())
+                .map(|g| g.iter().map(|x| x * x).sum::<f32>())
+                .sum::<f32>()
+                .sqrt();
+
+            if total_norm > max_norm {
+                let scale = max_norm / (total_norm + 1e-6);
+                // FUTURE: in-place gradient scaling for strict clipping
+                let _ = scale;
+            }
+        }
+
+        let mut params = self.model.parameters_mut();
+        self.optimizer.step_refs(&mut params);
+
+        self.step += 1;
+        self.metrics.losses.push(self.accumulated_loss);
+        self.metrics.increment_step();
+
+        self.accumulated_loss = 0.0;
+        self.accumulated_batches = 0;
+    }
+
+    /// Process a batch (forward + backward + optimizer step)
+    ///
+    /// Returns average loss for the batch
+    pub fn train_batch(&mut self, batch: &LMBatch) -> f32 {
+        if batch.batch_size == 0 {
+            return 0.0;
+        }
+
+        if self.accumulated_batches == 0 {
+            let mut params = self.model.parameters_mut();
+            self.optimizer.zero_grad_refs(&mut params);
+        }
+
+        let avg_loss = self.compute_batch_gradients(batch);
+
         self.accumulated_loss += avg_loss;
         self.accumulated_batches += 1;
 
-        // Perform optimizer step if accumulation is complete
         if self.accumulated_batches >= self.config.accumulation_steps {
-            // Apply gradient clipping if configured
-            if let Some(max_norm) = self.config.base.max_grad_norm {
-                let params = self.model.parameters();
-                let total_norm: f32 = params
-                    .iter()
-                    .filter_map(|p| p.grad())
-                    .map(|g| g.iter().map(|x| x * x).sum::<f32>())
-                    .sum::<f32>()
-                    .sqrt();
-
-                if total_norm > max_norm {
-                    let scale = max_norm / (total_norm + 1e-6);
-                    // Scale gradients: AdamW handles large gradients via adaptive lr
-                    // FUTURE: in-place gradient scaling for strict clipping
-                    let _ = scale;
-                }
-            }
-
-            // Update weights
-            let mut params = self.model.parameters_mut();
-            self.optimizer.step_refs(&mut params);
-
-            self.step += 1;
-            self.metrics.losses.push(self.accumulated_loss);
-            self.metrics.increment_step();
-
-            // Reset accumulation
-            self.accumulated_loss = 0.0;
-            self.accumulated_batches = 0;
+            self.clip_and_step();
         }
 
         avg_loss

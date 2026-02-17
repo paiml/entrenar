@@ -76,6 +76,54 @@ impl FineTuneMethod {
             Self::Full => 100.0,
         }
     }
+
+    /// Memory multiplier relative to inference-only model size during training.
+    pub fn memory_multiplier(&self) -> f64 {
+        match self {
+            Self::Full => 4.0,
+            Self::LoRA { .. } => 1.2,
+            Self::QLoRA { .. } => 1.1,
+            Self::Adapter => 1.5,
+            Self::Prefix => 1.3,
+            Self::IA3 => 1.1,
+        }
+    }
+
+    /// Training speedup factor relative to training from scratch.
+    pub fn training_speedup(&self) -> f64 {
+        match self {
+            Self::Full => 2.0,
+            Self::LoRA { rank, .. } => 5.0 / (1.0 + (f64::from(*rank) / 64.0)),
+            Self::QLoRA { .. } => 6.0,
+            Self::Adapter => 4.0,
+            Self::Prefix => 5.0,
+            Self::IA3 => 8.0,
+        }
+    }
+
+    /// Expected quality retention as a fraction of full fine-tuning quality.
+    pub fn quality_retention(&self) -> f64 {
+        match self {
+            Self::Full => 1.0,
+            Self::LoRA { rank, .. } => 0.95 + (f64::from(*rank) / 256.0).min(0.05),
+            Self::QLoRA { .. } => 0.93,
+            Self::Adapter => 0.92,
+            Self::Prefix => 0.88,
+            Self::IA3 => 0.90,
+        }
+    }
+
+    /// Recommended batch size multiplier due to lower memory usage.
+    pub fn batch_size_multiplier(&self) -> f64 {
+        match self {
+            Self::Full => 1.0,
+            Self::LoRA { .. } => 2.0,
+            Self::QLoRA { .. } => 4.0,
+            Self::Adapter => 1.5,
+            Self::Prefix => 1.8,
+            Self::IA3 => 3.0,
+        }
+    }
 }
 
 impl std::fmt::Display for FineTuneMethod {
