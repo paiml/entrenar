@@ -97,12 +97,20 @@ mod cuda_benchmark {
         }
     }
 
-    /// Run the CUDA training benchmark
-    pub fn run_benchmark() -> Result<(), Box<dyn std::error::Error>> {
-        println!("═══════════════════════════════════════════════════════════════");
-        println!("   CUDA Training Benchmark - SPEC-FT-001 v3.2.0");
-        println!("═══════════════════════════════════════════════════════════════");
+    /// GPU buffer collection for training
+    struct Buffers {
+        hidden: GpuBuffer<f32>,
+        weights: GpuBuffer<f32>,
+        logits: GpuBuffer<f32>,
+        grad_output: GpuBuffer<f32>,
+        grad_hidden: GpuBuffer<f32>,
+        grad_weights: GpuBuffer<f32>,
+        m_state: GpuBuffer<f32>,
+        v_state: GpuBuffer<f32>,
+    }
 
+    /// Initialize CUDA: check availability, create context/stream, warm up kernel caches.
+    fn init_cuda() -> Result<(Arc<CudaContext>, CudaStream), Box<dyn std::error::Error>> {
         // 1. Check CUDA availability
         println!("\n[1/6] Checking CUDA availability...");
         if !cuda_available() {
@@ -134,98 +142,82 @@ mod cuda_benchmark {
         println!("   Backward kernels: ready");
         println!("   Optimizer kernels: ready");
 
-        // 4. Setup training configuration
-        let config = TrainingConfig::default();
-        println!("\n[4/6] Training configuration:");
-        println!("   Batch size: {}", config.batch_size);
-        println!("   Sequence length: {}", config.seq_len);
-        println!("   Hidden size: {}", config.hidden_size);
-        println!("   Vocab size: {}", config.vocab_size);
-        println!("   Epochs: {}", config.num_epochs);
-        println!("   Steps per epoch: {}", config.num_steps_per_epoch);
-        println!("   Learning rate: {}", config.learning_rate);
+        Ok((ctx, stream))
+    }
 
-        // Calculate dimensions for LM head matmul: (batch * seq, hidden) @ (hidden, vocab)
-        let m = (config.batch_size * config.seq_len) as u32;
-        let k = config.hidden_size as u32;
-        let n = config.vocab_size as u32;
-
-        // 5. Allocate GPU buffers
+    /// Allocate all GPU buffers for training (hidden states, weights, logits, gradients, optimizer state).
+    fn allocate_buffers(
+        ctx: &Arc<CudaContext>,
+        m: u32,
+        k: u32,
+        n: u32,
+    ) -> Result<Buffers, Box<dyn std::error::Error>> {
         println!("\n[5/6] Allocating GPU buffers...");
 
         // Input hidden states: (batch * seq, hidden)
         let hidden_data: Vec<f32> = (0..m * k)
             .map(|i| ((i as f32 * 0.01).sin() * 0.1))
             .collect();
-        let hidden = GpuBuffer::from_host(&ctx, &hidden_data)?;
+        let hidden = GpuBuffer::from_host(ctx, &hidden_data)?;
 
         // LM head weights: (hidden, vocab)
         let weights_data: Vec<f32> = (0..k * n)
             .map(|i| ((i as f32 * 0.001).cos() * 0.02))
             .collect();
-        let mut weights = GpuBuffer::from_host(&ctx, &weights_data)?;
+        let weights = GpuBuffer::from_host(ctx, &weights_data)?;
 
         // Output logits: (batch * seq, vocab)
         let logits_zeros = vec![0.0f32; (m * n) as usize];
-        let mut logits = GpuBuffer::from_host(&ctx, &logits_zeros)?;
+        let logits = GpuBuffer::from_host(ctx, &logits_zeros)?;
 
         // Gradients
         let grad_output_data: Vec<f32> = (0..m * n).map(|i| (i as f32 % 100.0) * 0.001).collect();
-        let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data)?;
+        let grad_output = GpuBuffer::from_host(ctx, &grad_output_data)?;
         let grad_hidden_zeros = vec![0.0f32; (m * k) as usize];
-        let mut grad_hidden = GpuBuffer::from_host(&ctx, &grad_hidden_zeros)?;
+        let grad_hidden = GpuBuffer::from_host(ctx, &grad_hidden_zeros)?;
         let grad_weights_zeros = vec![0.0f32; (k * n) as usize];
-        let mut grad_weights = GpuBuffer::from_host(&ctx, &grad_weights_zeros)?;
+        let grad_weights = GpuBuffer::from_host(ctx, &grad_weights_zeros)?;
 
         // Optimizer state
         let m_state_zeros = vec![0.0f32; (k * n) as usize];
-        let mut m_state = GpuBuffer::from_host(&ctx, &m_state_zeros)?; // First moment
+        let m_state = GpuBuffer::from_host(ctx, &m_state_zeros)?; // First moment
         let v_state_zeros = vec![0.0f32; (k * n) as usize];
-        let mut v_state = GpuBuffer::from_host(&ctx, &v_state_zeros)?; // Second moment
+        let v_state = GpuBuffer::from_host(ctx, &v_state_zeros)?; // Second moment
 
         let total_params = (k * n) as usize;
-        let memory_used = (m * k + k * n + m * n + m * k + k * n + k * n + k * n) as usize * 4; // bytes
+        let memory_used = (m * k + k * n + m * n + m * k + k * n + k * n + k * n) as usize * 4;
         println!("   Hidden states: {} elements", m * k);
         println!("   LM head weights: {} elements", k * n);
         println!("   Logits: {} elements", m * n);
         println!("   Total parameters: {}", total_params);
         println!("   GPU memory used: {:.1} MB", memory_used as f64 / 1e6);
 
-        // 6. Run training loop with timing
+        Ok(Buffers {
+            hidden,
+            weights,
+            logits,
+            grad_output,
+            grad_hidden,
+            grad_weights,
+            m_state,
+            v_state,
+        })
+    }
+
+    /// Run warmup iterations followed by the timed training loop.
+    /// Returns accumulated metrics and total step count.
+    fn run_training_loop(
+        buffers: &mut Buffers,
+        config: &TrainingConfig,
+        m: u32,
+        k: u32,
+        n: u32,
+        stream: &CudaStream,
+    ) -> Result<(Metrics, u32), Box<dyn std::error::Error>> {
         println!("\n[6/6] Running training benchmark...");
 
         // Warmup with error recovery
-        println!("   Warming up ({} iterations)...", config.warmup_iterations);
-        let mut warmup_ok = false;
-        for attempt in 0..3 {
-            let result: Result<(), Box<dyn std::error::Error>> = (|| {
-                for _ in 0..config.warmup_iterations {
-                    gemm_forward(&hidden, &weights, &mut logits, m, k, n, &stream)?;
-                    stream.synchronize()?;
-                }
-                Ok(())
-            })();
-
-            match result {
-                Ok(()) => {
-                    warmup_ok = true;
-                    break;
-                }
-                Err(e) if attempt < 2 => {
-                    eprintln!(
-                        "   Warmup attempt {} failed: {}. Retrying...",
-                        attempt + 1,
-                        e
-                    );
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                }
-                Err(e) => return Err(e),
-            }
-        }
-
-        if !warmup_ok {
-            return Err("Warmup failed after 3 attempts".into());
-        }
+        run_warmup(buffers, config, m, k, n, stream)?;
 
         // Benchmark
         let total_start = Instant::now();
@@ -240,17 +232,39 @@ mod cuda_benchmark {
 
                 // Forward pass: hidden @ weights -> logits
                 let forward_start = Instant::now();
-                gemm_forward(&hidden, &weights, &mut logits, m, k, n, &stream)?;
+                gemm_forward(
+                    &buffers.hidden,
+                    &buffers.weights,
+                    &mut buffers.logits,
+                    m,
+                    k,
+                    n,
+                    stream,
+                )?;
                 stream.synchronize()?;
                 metrics.forward_time += forward_start.elapsed();
                 metrics.num_forward_passes += 1;
 
                 // Backward pass: compute gradients
                 let backward_start = Instant::now();
-                // grad_hidden = grad_output @ weights^T
-                gemm_backward_a(&grad_output, &weights, &mut grad_hidden, m, k, n, &stream)?;
-                // grad_weights = hidden^T @ grad_output
-                gemm_backward_b(&hidden, &grad_output, &mut grad_weights, m, k, n, &stream)?;
+                gemm_backward_a(
+                    &buffers.grad_output,
+                    &buffers.weights,
+                    &mut buffers.grad_hidden,
+                    m,
+                    k,
+                    n,
+                    stream,
+                )?;
+                gemm_backward_b(
+                    &buffers.hidden,
+                    &buffers.grad_output,
+                    &mut buffers.grad_weights,
+                    m,
+                    k,
+                    n,
+                    stream,
+                )?;
                 stream.synchronize()?;
                 metrics.backward_time += backward_start.elapsed();
                 metrics.num_backward_passes += 1;
@@ -258,10 +272,10 @@ mod cuda_benchmark {
                 // Optimizer step: update weights
                 let optim_start = Instant::now();
                 adamw_step_cuda(
-                    &mut weights,
-                    &grad_weights,
-                    &mut m_state,
-                    &mut v_state,
+                    &mut buffers.weights,
+                    &buffers.grad_weights,
+                    &mut buffers.m_state,
+                    &mut buffers.v_state,
                     config.learning_rate,
                     0.9,   // beta1
                     0.999, // beta2
@@ -269,7 +283,7 @@ mod cuda_benchmark {
                     0.01,  // weight_decay
                     step_count,
                     k * n,
-                    &stream,
+                    stream,
                 )?;
                 stream.synchronize()?;
                 metrics.optimizer_time += optim_start.elapsed();
@@ -296,8 +310,69 @@ mod cuda_benchmark {
         }
 
         metrics.total_time = total_start.elapsed();
+        Ok((metrics, step_count))
+    }
 
-        // Calculate performance metrics
+    /// Run warmup iterations with up to 3 retry attempts.
+    fn run_warmup(
+        buffers: &mut Buffers,
+        config: &TrainingConfig,
+        m: u32,
+        k: u32,
+        n: u32,
+        stream: &CudaStream,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        println!("   Warming up ({} iterations)...", config.warmup_iterations);
+        let mut warmup_ok = false;
+        for attempt in 0..3 {
+            let result: Result<(), Box<dyn std::error::Error>> = (|| {
+                for _ in 0..config.warmup_iterations {
+                    gemm_forward(
+                        &buffers.hidden,
+                        &buffers.weights,
+                        &mut buffers.logits,
+                        m,
+                        k,
+                        n,
+                        stream,
+                    )?;
+                    stream.synchronize()?;
+                }
+                Ok(())
+            })();
+
+            match result {
+                Ok(()) => {
+                    warmup_ok = true;
+                    break;
+                }
+                Err(e) if attempt < 2 => {
+                    eprintln!(
+                        "   Warmup attempt {} failed: {}. Retrying...",
+                        attempt + 1,
+                        e
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        if !warmup_ok {
+            return Err("Warmup failed after 3 attempts".into());
+        }
+        Ok(())
+    }
+
+    /// Print benchmark results and verify against SPEC-FT-001 targets.
+    fn print_results(
+        metrics: &Metrics,
+        config: &TrainingConfig,
+        m: u32,
+        k: u32,
+        n: u32,
+        total_params: usize,
+    ) {
         let total_tokens =
             config.batch_size * config.seq_len * config.num_epochs * config.num_steps_per_epoch;
 
@@ -307,7 +382,6 @@ mod cuda_benchmark {
         let total_flops = (forward_flops + backward_flops)
             * (config.num_epochs * config.num_steps_per_epoch) as u64;
 
-        // Print results
         println!("\n═══════════════════════════════════════════════════════════════");
         println!("   BENCHMARK RESULTS");
         println!("═══════════════════════════════════════════════════════════════");
@@ -384,6 +458,36 @@ mod cuda_benchmark {
         }
 
         println!("\n═══════════════════════════════════════════════════════════════");
+    }
+
+    /// Run the CUDA training benchmark
+    pub fn run_benchmark() -> Result<(), Box<dyn std::error::Error>> {
+        println!("═══════════════════════════════════════════════════════════════");
+        println!("   CUDA Training Benchmark - SPEC-FT-001 v3.2.0");
+        println!("═══════════════════════════════════════════════════════════════");
+
+        let (ctx, stream) = init_cuda()?;
+
+        // 4. Setup training configuration
+        let config = TrainingConfig::default();
+        println!("\n[4/6] Training configuration:");
+        println!("   Batch size: {}", config.batch_size);
+        println!("   Sequence length: {}", config.seq_len);
+        println!("   Hidden size: {}", config.hidden_size);
+        println!("   Vocab size: {}", config.vocab_size);
+        println!("   Epochs: {}", config.num_epochs);
+        println!("   Steps per epoch: {}", config.num_steps_per_epoch);
+        println!("   Learning rate: {}", config.learning_rate);
+
+        // Calculate dimensions for LM head matmul: (batch * seq, hidden) @ (hidden, vocab)
+        let m = (config.batch_size * config.seq_len) as u32;
+        let k = config.hidden_size as u32;
+        let n = config.vocab_size as u32;
+        let total_params = (k * n) as usize;
+
+        let mut buffers = allocate_buffers(&ctx, m, k, n)?;
+        let (metrics, _step_count) = run_training_loop(&mut buffers, &config, m, k, n, &stream)?;
+        print_results(&metrics, &config, m, k, n, total_params);
 
         Ok(())
     }

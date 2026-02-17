@@ -270,93 +270,39 @@ pub struct PopperianQA {
 
 impl PopperianQA {
     pub fn score(&self) -> u8 {
-        let mut score = 0u8;
-        if self.r1_same_loss_curve {
-            score += 5;
-        }
-        if self.r2_same_final_weights {
-            score += 5;
-        }
-        if self.r3_same_eval_metrics {
-            score += 5;
-        }
-        if self.r4_environment_locked {
-            score += 5;
-        }
-
-        if self.c1_parses_as_rust {
-            score += 5;
-        }
-        if self.c2_type_checks {
-            score += 5;
-        }
-        if self.c3_no_unused_warnings {
-            score += 5;
-        }
-        if self.c4_links_correctly {
-            score += 5;
-        }
-
-        if self.x1_tests_pass_on_correct {
-            score += 5;
-        }
-        if self.x2_tests_fail_on_mutant {
-            score += 5;
-        }
-        if self.x3_assertions_meaningful {
-            score += 5;
-        }
-        if self.x4_no_tautologies {
-            score += 5;
-        }
-
-        if self.v1_branch_coverage_delta {
-            score += 5;
-        }
-        if self.v2_line_coverage_delta {
-            score += 5;
-        }
-        if self.v3_edge_cases_present {
-            score += 5;
-        }
-
-        if self.e1_vram_under_8gb {
-            score += 3;
-        }
-        if self.e2_training_under_4hrs {
-            score += 4;
-        }
-        if self.e3_inference_under_1s {
-            score += 3;
-        }
-
-        if self.g1_handles_generics {
-            score += 2;
-        }
-        if self.g2_handles_lifetimes {
-            score += 2;
-        }
-        if self.g3_handles_async {
-            score += 2;
-        }
-        if self.g4_handles_unsafe {
-            score += 2;
-        }
-        if self.g5_handles_macros {
-            score += 2;
-        }
-
-        if self.d1_test_names_descriptive {
-            score += 2;
-        }
-        if self.d2_comments_present {
-            score += 2;
-        }
-        if self.d3_proptest_strategies_clear {
-            score += 1;
-        }
-
-        score
+        let weighted: &[(bool, u8)] = &[
+            (self.r1_same_loss_curve, 5),
+            (self.r2_same_final_weights, 5),
+            (self.r3_same_eval_metrics, 5),
+            (self.r4_environment_locked, 5),
+            (self.c1_parses_as_rust, 5),
+            (self.c2_type_checks, 5),
+            (self.c3_no_unused_warnings, 5),
+            (self.c4_links_correctly, 5),
+            (self.x1_tests_pass_on_correct, 5),
+            (self.x2_tests_fail_on_mutant, 5),
+            (self.x3_assertions_meaningful, 5),
+            (self.x4_no_tautologies, 5),
+            (self.v1_branch_coverage_delta, 5),
+            (self.v2_line_coverage_delta, 5),
+            (self.v3_edge_cases_present, 5),
+            (self.e1_vram_under_8gb, 3),
+            (self.e2_training_under_4hrs, 4),
+            (self.e3_inference_under_1s, 3),
+            (self.g1_handles_generics, 2),
+            (self.g2_handles_lifetimes, 2),
+            (self.g3_handles_async, 2),
+            (self.g4_handles_unsafe, 2),
+            (self.g5_handles_macros, 2),
+            (self.d1_test_names_descriptive, 2),
+            (self.d2_comments_present, 2),
+            (self.d3_proptest_strategies_clear, 1),
+        ];
+        weighted
+            .iter()
+            .filter(|(passed, _)| *passed)
+            .map(|(_, pts)| pts)
+            .sum()
     }
 
     pub fn print_report(&self) {
@@ -428,40 +374,153 @@ struct Args {
     refresh_ms: u64,
 }
 
-fn main() {
-    let args = Args::parse();
+/// TUI Monitor Mode (Consumer - Detached Observer per SPEC-FT-001 Section 10)
+fn run_monitor_mode(args: &Args) {
+    let experiment_dir = args.experiment.as_deref().unwrap_or(&args.output);
 
-    // =========================================================================
-    // TUI Monitor Mode (Consumer - Detached Observer per SPEC-FT-001 Section 10)
-    // =========================================================================
-    if args.monitor {
-        let experiment_dir = args.experiment.as_deref().unwrap_or(&args.output);
+    println!("📺 TUI Monitor Mode (SPEC-FT-001 Section 10)");
+    println!("============================================");
+    println!("Experiment: {experiment_dir}");
+    println!("Refresh:    {}ms", args.refresh_ms);
+    println!();
 
-        println!("📺 TUI Monitor Mode (SPEC-FT-001 Section 10)");
-        println!("============================================");
-        println!("Experiment: {experiment_dir}");
-        println!("Refresh:    {}ms", args.refresh_ms);
-        println!();
+    let config = TuiMonitorConfig {
+        refresh_ms: args.refresh_ms,
+        width: 80,
+        height: 24,
+        exit_on_complete: true,
+        ..Default::default()
+    };
 
-        let config = TuiMonitorConfig {
-            refresh_ms: args.refresh_ms,
-            width: 80,
-            height: 24,
-            exit_on_complete: true,
-            ..Default::default()
-        };
+    let mut monitor = TuiMonitor::new(experiment_dir, config);
+    if let Err(e) = monitor.run() {
+        eprintln!("Monitor error: {e}");
+        std::process::exit(1);
+    }
+}
 
-        let mut monitor = TuiMonitor::new(experiment_dir, config);
-        if let Err(e) = monitor.run() {
-            eprintln!("Monitor error: {e}");
-            std::process::exit(1);
+/// Execute the training loop across all epochs and steps, writing state
+/// updates for the TUI monitor at each step.
+fn run_training_loop(
+    model: &mut QwenWithQLoRA,
+    optimizer: &mut AdamW,
+    scheduler: &mut CosineAnnealingLR,
+    state_writer: &mut TrainingStateWriter,
+    args: &Args,
+    steps_per_epoch: usize,
+) {
+    println!("🚀 Starting training...");
+    println!("   Data mix: 75% Unit Tests, 25% Property Tests (Proptest)");
+
+    for epoch in 0..args.epochs {
+        println!("Epoch {}/{}", epoch + 1, args.epochs);
+
+        for step in 0..steps_per_epoch {
+            // Simulated loss curve
+            let loss = 2.5 - (epoch as f32 * 0.5) - (step as f32 * 0.05);
+
+            // Optimizer step (mock - parameters updated in-place)
+            let _ = &mut *model;
+
+            let new_lr = {
+                scheduler.step();
+                scheduler.get_lr()
+            };
+            optimizer.set_lr(new_lr);
+
+            // Simulate gradient norm
+            let grad_norm = 1.5 + (step as f32 * 0.1);
+
+            // Simulate throughput
+            let tokens_per_second = 1200.0 + (step as f32 * 50.0);
+
+            // Write state update for TUI monitor
+            if let Err(e) = state_writer.update_step(
+                epoch + 1,
+                step + 1,
+                loss,
+                new_lr,
+                grad_norm,
+                tokens_per_second,
+            ) {
+                eprintln!("Warning: Could not write training state: {e}");
+            }
+
+            // Simulate GPU telemetry update (every step)
+            let gpu = GpuTelemetry {
+                device_name: "RTX 4090".to_string(),
+                utilization_percent: 85.0 + (step as f32 * 2.0),
+                vram_used_gb: 3.2 + (step as f32 * 0.1),
+                vram_total_gb: 24.0,
+                temperature_celsius: 62.0 + (step as f32 * 1.5),
+                power_watts: 320.0 + (step as f32 * 5.0),
+                power_limit_watts: 450.0,
+                processes: vec![],
+            };
+            let _ = state_writer.update_gpu(gpu);
+
+            // Simulate sample peek update (every 2 steps)
+            if step % 2 == 0 {
+                let sample = SamplePeek {
+                    input_preview: "fn is_even(n: u32) -> bool { n % 2 == 0 }".to_string(),
+                    target_preview: "#[test] fn test_is_even() { assert!(is_even(2)); }"
+                        .to_string(),
+                    generated_preview: "#[test] fn test_is_even() { assert!(is_even(2)); }"
+                        .to_string(),
+                    token_match_percent: 95.0 + (epoch as f32 * 1.5),
+                };
+                let _ = state_writer.update_sample(sample);
+            }
+
+            println!("  Step {}: loss={:.4}, lr={:.2e}", step + 1, loss, new_lr);
+
+            // Simulate training time
+            std::thread::sleep(std::time::Duration::from_millis(200));
         }
-        return;
+    }
+}
+
+/// Run verification checks, save adapters, and optionally publish to
+/// HuggingFace Hub.
+fn run_verification(qa: &mut PopperianQA, args: &Args, state_writer: &TrainingStateWriter) {
+    // Verify reproducibility (R1)
+    if args.seed == 42 {
+        qa.r1_same_loss_curve = true;
     }
 
-    // =========================================================================
-    // Training Mode (Producer - writes to metric store)
-    // =========================================================================
+    // Verify efficiency (E1, E2)
+    qa.e1_vram_under_8gb = true; // 0.5B QLoRA is tiny (~2GB)
+    qa.e2_training_under_4hrs = true;
+
+    // Verify correctness (mock based on "mock" rigorous mutation testing)
+    println!("\n🧬 Running Mutation Analysis (Stratified Sampling)...");
+    println!("   - Mutants killed: 72/100 (Score: 72%)");
+    qa.x1_tests_pass_on_correct = true;
+    qa.x2_tests_fail_on_mutant = true;
+    qa.x3_assertions_meaningful = true;
+
+    // Save locally
+    println!("\n💾 Saving adapters to {}/checkpoints/best", args.output);
+    fs::create_dir_all(format!("{}/checkpoints/best", args.output)).ok();
+
+    // Publish
+    if args.publish {
+        println!("☁️  Publishing adapters to HuggingFace Hub (Mandatory Step)...");
+        // hf_hub::upload(...)
+        println!("   ✓ Published to paiml/qwen2.5-coder-0.5b-testgen");
+    }
+
+    qa.print_report();
+
+    println!(
+        "\n📺 Training state saved to: {}",
+        state_writer.state_path().display()
+    );
+}
+
+/// Full training pipeline: initialize model, optimizer, run training loop,
+/// verify results, and publish adapters.
+fn run_training(args: &Args) {
     println!("🧪 Qwen2.5-Coder Rust Test Gen Fine-Tuner");
     println!("========================================");
     println!("Configuration:");
@@ -523,75 +582,14 @@ fn main() {
     println!();
 
     // 4. Training Loop
-    println!("🚀 Starting training...");
-    println!("   Data mix: 75% Unit Tests, 25% Property Tests (Proptest)");
-
-    for epoch in 0..args.epochs {
-        println!("Epoch {}/{}", epoch + 1, args.epochs);
-
-        for step in 0..steps_per_epoch {
-            // Simulated loss curve
-            let loss = 2.5 - (epoch as f32 * 0.5) - (step as f32 * 0.05);
-
-            // Optimizer step (mock - parameters updated in-place)
-            let _ = &mut model;
-
-            let new_lr = {
-                scheduler.step();
-                scheduler.get_lr()
-            };
-            optimizer.set_lr(new_lr);
-
-            // Simulate gradient norm
-            let grad_norm = 1.5 + (step as f32 * 0.1);
-
-            // Simulate throughput
-            let tokens_per_second = 1200.0 + (step as f32 * 50.0);
-
-            // Write state update for TUI monitor
-            if let Err(e) = state_writer.update_step(
-                epoch + 1,
-                step + 1,
-                loss,
-                new_lr,
-                grad_norm,
-                tokens_per_second,
-            ) {
-                eprintln!("Warning: Could not write training state: {e}");
-            }
-
-            // Simulate GPU telemetry update (every step)
-            let gpu = GpuTelemetry {
-                device_name: "RTX 4090".to_string(),
-                utilization_percent: 85.0 + (step as f32 * 2.0),
-                vram_used_gb: 3.2 + (step as f32 * 0.1),
-                vram_total_gb: 24.0,
-                temperature_celsius: 62.0 + (step as f32 * 1.5),
-                power_watts: 320.0 + (step as f32 * 5.0),
-                power_limit_watts: 450.0,
-                processes: vec![],
-            };
-            let _ = state_writer.update_gpu(gpu);
-
-            // Simulate sample peek update (every 2 steps)
-            if step % 2 == 0 {
-                let sample = SamplePeek {
-                    input_preview: "fn is_even(n: u32) -> bool { n % 2 == 0 }".to_string(),
-                    target_preview: "#[test] fn test_is_even() { assert!(is_even(2)); }"
-                        .to_string(),
-                    generated_preview: "#[test] fn test_is_even() { assert!(is_even(2)); }"
-                        .to_string(),
-                    token_match_percent: 95.0 + (epoch as f32 * 1.5),
-                };
-                let _ = state_writer.update_sample(sample);
-            }
-
-            println!("  Step {}: loss={:.4}, lr={:.2e}", step + 1, loss, new_lr);
-
-            // Simulate training time
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
-    }
+    run_training_loop(
+        &mut model,
+        &mut optimizer,
+        &mut scheduler,
+        &mut state_writer,
+        args,
+        steps_per_epoch,
+    );
 
     // Mark training as completed
     if let Err(e) = state_writer.complete() {
@@ -599,40 +597,17 @@ fn main() {
     }
 
     // 5. Verification & Publish
+    run_verification(&mut qa, args, &state_writer);
+}
 
-    // Verify reproducibility (R1)
-    if args.seed == 42 {
-        qa.r1_same_loss_curve = true;
+fn main() {
+    let args = Args::parse();
+
+    if args.monitor {
+        run_monitor_mode(&args);
+    } else {
+        run_training(&args);
     }
-
-    // Verify efficiency (E1, E2)
-    qa.e1_vram_under_8gb = true; // 0.5B QLoRA is tiny (~2GB)
-    qa.e2_training_under_4hrs = true;
-
-    // Verify correctness (mock based on "mock" rigorous mutation testing)
-    println!("\n🧬 Running Mutation Analysis (Stratified Sampling)...");
-    println!("   - Mutants killed: 72/100 (Score: 72%)");
-    qa.x1_tests_pass_on_correct = true;
-    qa.x2_tests_fail_on_mutant = true;
-    qa.x3_assertions_meaningful = true;
-
-    // Save locally
-    println!("\n💾 Saving adapters to {}/checkpoints/best", args.output);
-    fs::create_dir_all(format!("{}/checkpoints/best", args.output)).ok();
-
-    // Publish
-    if args.publish {
-        println!("☁️  Publishing adapters to HuggingFace Hub (Mandatory Step)...");
-        // hf_hub::upload(...)
-        println!("   ✓ Published to paiml/qwen2.5-coder-0.5b-testgen");
-    }
-
-    qa.print_report();
-
-    println!(
-        "\n📺 Training state saved to: {}",
-        state_writer.state_path().display()
-    );
 }
 
 #[cfg(test)]
