@@ -1716,9 +1716,7 @@ fn run_experiment_full_ft(
 
     let mut trainable_params_1 = vec![lm_head_weights_1];
     println!("   Mode: Full Fine-Tuning (all weights trainable)");
-    println!(
-        "   Trainable params: {full_ft_params} ({full_ft_memory_mb:.2} MB)"
-    );
+    println!("   Trainable params: {full_ft_params} ({full_ft_memory_mb:.2} MB)");
     let epochs = hp.epochs_full_ft;
     let lr = hp.lr_full_ft;
     println!("   Epochs: {epochs}, LR: {lr}");
@@ -2034,9 +2032,7 @@ fn print_lora_config(
         lora_params,
         (lora_params as f32 / full_ft_params as f32) * 100.0
     );
-    println!(
-        "   Memory (trainable): {lora_memory_mb:.4} MB ({memory_savings:.1}% savings)"
-    );
+    println!("   Memory (trainable): {lora_memory_mb:.4} MB ({memory_savings:.1}% savings)");
     let epochs = hp.epochs_lora;
     let lr = hp.lr_lora;
     println!("   Epochs: {epochs}, LR: {lr} (3x baseline)");
