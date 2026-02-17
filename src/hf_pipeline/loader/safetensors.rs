@@ -128,25 +128,25 @@ fn detect_layer_count(names: &[String]) -> usize {
     }
 }
 
+/// Parse a leading integer from `s`, stopping at the first `.` or end of string.
+fn parse_leading_index(s: &str) -> Option<usize> {
+    let numeric_part = match s.find('.') {
+        Some(end) => &s[..end],
+        None => s,
+    };
+    numeric_part.parse::<usize>().ok()
+}
+
 /// Extract layer index from tensor name
 fn extract_layer_index(name: &str) -> Option<usize> {
     // Common patterns for layer indices
-    let patterns = [".layer.", ".layers.", ".h."];
+    const PATTERNS: &[&str] = &[".layer.", ".layers.", ".h."];
 
-    for pattern in patterns {
-        if let Some(pos) = name.find(pattern) {
-            let after_pattern = &name[pos + pattern.len()..];
-            if let Some(end) = after_pattern.find('.') {
-                if let Ok(idx) = after_pattern[..end].parse::<usize>() {
-                    return Some(idx);
-                }
-            } else if let Ok(idx) = after_pattern.parse::<usize>() {
-                return Some(idx);
-            }
-        }
-    }
-
-    None
+    PATTERNS.iter().find_map(|pattern| {
+        let pos = name.find(pattern)?;
+        let after_pattern = &name[pos + pattern.len()..];
+        parse_leading_index(after_pattern)
+    })
 }
 
 /// Extract the dimension of a square 2D tensor, optionally requiring a minimum size.

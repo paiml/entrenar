@@ -566,6 +566,40 @@ fn try_load_from_jsonl(
     ))
 }
 
+/// Try to load LM batches from a parsed JSON value (object or array)
+fn try_load_from_json_value(
+    data: &serde_json::Value,
+    tokenizer: Option<&HfTokenizer>,
+    batch_size: usize,
+    seq_len: usize,
+    text_col: &str,
+) -> Option<Result<Vec<LMBatch>>> {
+    // Try {"examples": [...]} format
+    if let Some(examples) = data.get("examples").and_then(|e| e.as_array()) {
+        if let Some(result) =
+            try_load_from_array(examples, tokenizer, batch_size, seq_len, text_col, "JSON")
+        {
+            return Some(result);
+        }
+    }
+
+    // Try top-level array format
+    if let Some(array) = data.as_array() {
+        if let Some(result) = try_load_from_array(
+            array,
+            tokenizer,
+            batch_size,
+            seq_len,
+            text_col,
+            "JSON array",
+        ) {
+            return Some(result);
+        }
+    }
+
+    None
+}
+
 /// Load LM batches from JSON content
 ///
 /// Supports formats:
@@ -583,27 +617,10 @@ fn load_lm_batches_from_json(
 
     // Try parsing as single JSON object or array
     if let Ok(data) = serde_json::from_str::<serde_json::Value>(content) {
-        // Try {"examples": [...]} format
-        if let Some(examples) = data.get("examples").and_then(|e| e.as_array()) {
-            if let Some(result) =
-                try_load_from_array(examples, tokenizer, batch_size, seq_len, text_col, "JSON")
-            {
-                return result;
-            }
-        }
-
-        // Try top-level array format
-        if let Some(array) = data.as_array() {
-            if let Some(result) = try_load_from_array(
-                array,
-                tokenizer,
-                batch_size,
-                seq_len,
-                text_col,
-                "JSON array",
-            ) {
-                return result;
-            }
+        if let Some(result) =
+            try_load_from_json_value(&data, tokenizer, batch_size, seq_len, text_col)
+        {
+            return result;
         }
     }
 
