@@ -87,7 +87,7 @@ implementations and delete its own copies over time.
 | Module | Entrenar LOC | Aprender LOC | Migration |
 |--------|-------------|-------------|-----------|
 | **Pruning integration** | 8,148 | 11,093 | Keep entrenar's training-loop integration; use aprender's algorithms |
-| **HF Hub client** | 12,789 | 1,510 | Entrenar keeps pipeline orchestration; use `aprender::hf_hub::HfHubClient` for HTTP |
+| **HF Hub client** | 12,789 | 1,510 | Entrenar keeps full ownership (`crate::hf_pipeline`) |
 
 #### Phase 3: Keep in Entrenar (No Delegation)
 
@@ -123,8 +123,9 @@ use aprender::metrics::{accuracy, f1_score, precision, recall};
 // Pruning: wrap aprender's algorithms in entrenar's training scheduler
 use aprender::pruning::{MagnitudePruner, WandaPruner, Importance};
 
-// HF Hub: use aprender's client for HTTP operations
-use aprender::hf_hub::{HfHubClient, PushOptions, UploadResult};
+// HF Hub: entrenar owns pipeline orchestration via HfPublisher/HfModelFetcher
+use crate::hf_pipeline::publish::publisher::HfPublisher;
+use crate::hf_pipeline::HfModelFetcher;
 
 // Serialization: use aprender's format writers
 use aprender::format::gguf::{export_tensors_to_gguf, GgmlType};
@@ -328,7 +329,7 @@ $ entrenar train config.yaml
 | Task | File | Description |
 |------|------|-------------|
 | Schema | `src/config/schema.rs` | Add `PublishSpec` to `TrainSpec` |
-| Validation | `src/config/validate.rs` | Validate repo ID format |
+| Validation | `src/config/validate/validator.rs` | Validate repo ID format |
 | Integration | `src/config/train/loader.rs` | Call publish after training |
 | Tests | `src/config/tests/` | YAML parsing, publish-after-train |
 
@@ -345,10 +346,10 @@ $ entrenar train config.yaml
 
 | Task | Entrenar Files to Modify | Aprender Dependency |
 |------|--------------------------|---------------------|
-| Loss delegation | Delete `src/train/loss/mse.rs`, etc. | `aprender::loss::*` |
+| Loss delegation | Delegate forward in `src/train/loss/mse/` | `aprender::loss::*` |
 | Metrics delegation | Delete `src/train/metrics/` | `aprender::metrics::*` |
 | Pruning delegation | Refactor `src/prune/` | `aprender::pruning::*` |
-| HF client delegation | Refactor `src/hf_pipeline/publish/publisher.rs` | `aprender::hf_hub::HfHubClient` |
+| HF client delegation | Refactor `src/hf_pipeline/publish/publisher.rs` | Keep in entrenar (pipeline orchestration) |
 
 ## 6. Aprender Changes Needed
 
@@ -357,7 +358,7 @@ For entrenar to delegate cleanly, aprender may need minor additions:
 | Addition | Location | Reason |
 |----------|----------|--------|
 | `Loss` trait must be `Send + Sync` | `aprender::loss` | Entrenar uses multi-threaded training |
-| `HfHubClient::upload_file()` must support large files | `aprender::hf_hub` | SafeTensors can be multi-GB |
+| `HfPublisher` must support large file uploads | `crate::hf_pipeline` | SafeTensors can be multi-GB |
 | Export `Pruner` trait publicly | `aprender::pruning` | Entrenar needs to wrap pruners |
 | Add `CausalLMLoss` to aprender (optional) | `aprender::loss` | Or keep in entrenar as extension |
 
