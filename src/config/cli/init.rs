@@ -154,10 +154,22 @@ mod tests {
 
     #[test]
     fn test_training_method_from_str() {
-        assert_eq!("full".parse::<TrainingMethod>().unwrap(), TrainingMethod::Full);
-        assert_eq!("lora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
-        assert_eq!("qlora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Qlora);
-        assert_eq!("LORA".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
+        assert_eq!(
+            "full".parse::<TrainingMethod>().unwrap(),
+            TrainingMethod::Full
+        );
+        assert_eq!(
+            "lora".parse::<TrainingMethod>().unwrap(),
+            TrainingMethod::Lora
+        );
+        assert_eq!(
+            "qlora".parse::<TrainingMethod>().unwrap(),
+            TrainingMethod::Qlora
+        );
+        assert_eq!(
+            "LORA".parse::<TrainingMethod>().unwrap(),
+            TrainingMethod::Lora
+        );
         assert!("invalid".parse::<TrainingMethod>().is_err());
     }
 

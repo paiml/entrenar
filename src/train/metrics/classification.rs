@@ -12,7 +12,11 @@ use super::Metric;
 /// Entrenar's training concern: model outputs are continuous (logits/probabilities),
 /// so thresholding is part of evaluation. After thresholding, the discrete labels
 /// can be passed to aprender for metric computation.
-fn threshold_to_labels(predictions: &Tensor, targets: &Tensor, threshold: f32) -> (Vec<usize>, Vec<usize>) {
+fn threshold_to_labels(
+    predictions: &Tensor,
+    targets: &Tensor,
+    threshold: f32,
+) -> (Vec<usize>, Vec<usize>) {
     let y_pred: Vec<usize> = predictions
         .data()
         .iter()

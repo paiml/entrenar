@@ -585,7 +585,7 @@ mod tests {
             "smart-test",
             Some("Qwen/Qwen2.5-Coder-0.5B"),
             None,
-            Some(32),  // small model rank
+            Some(32),   // small model rank
             Some(3e-4), // small model lr
         );
         let lora = manifest.lora.unwrap();
@@ -612,14 +612,8 @@ mod tests {
     #[test]
     fn test_smart_defaults_no_hints() {
         // Without hints, defaults should be unchanged
-        let manifest = generate_manifest_with_hints(
-            Template::Lora,
-            "no-hints",
-            None,
-            None,
-            None,
-            None,
-        );
+        let manifest =
+            generate_manifest_with_hints(Template::Lora, "no-hints", None, None, None, None);
         let lora = manifest.lora.unwrap();
         assert_eq!(lora.rank, 16); // original default
         assert!((lora.alpha - 32.0).abs() < 0.01);

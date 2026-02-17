@@ -4,8 +4,8 @@
 //! while wrapping them in entrenar's `Metric` trait for integration with the
 //! training loop and evaluation framework.
 
-use aprender::primitives::Vector;
 use crate::Tensor;
+use aprender::primitives::Vector;
 
 use super::Metric;
 
