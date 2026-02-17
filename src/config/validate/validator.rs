@@ -25,9 +25,13 @@ pub fn validate_config(spec: &TrainSpec) -> Result<(), ValidationError> {
     Ok(())
 }
 
-/// Validate model path exists
+/// Validate model path exists (or is a valid HuggingFace repo ID)
 #[cfg(not(test))]
 fn validate_model_path(spec: &TrainSpec) -> Result<(), ValidationError> {
+    // Accept HF repo IDs — they'll be resolved at training time
+    if spec.model.is_hf_repo_id() {
+        return Ok(());
+    }
     if !spec.model.path.exists() {
         return Err(ValidationError::ModelPathNotFound(
             spec.model.path.display().to_string(),
