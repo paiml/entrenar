@@ -121,7 +121,6 @@ impl Architecture {
             Self::Custom { .. } => 0, // Unknown
         }
     }
-
 }
 
 /// Downloaded model artifact

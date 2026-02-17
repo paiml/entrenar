@@ -39,7 +39,8 @@ pub fn pass_at_k(n: usize, c: usize, k: usize) -> f64 {
         if numerator <= 0.0 {
             return 1.0;
         }
-        log_ratio += numerator.max(f64::MIN_POSITIVE).ln() - denominator.max(f64::MIN_POSITIVE).ln();
+        log_ratio +=
+            numerator.max(f64::MIN_POSITIVE).ln() - denominator.max(f64::MIN_POSITIVE).ln();
     }
 
     1.0 - log_ratio.exp()
