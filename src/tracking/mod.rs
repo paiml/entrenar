@@ -16,22 +16,25 @@
 //! use entrenar::tracking::{ExperimentTracker, RunStatus};
 //! use entrenar::tracking::storage::InMemoryBackend;
 //!
+//! # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 //! let backend = InMemoryBackend::new();
 //! let mut tracker = ExperimentTracker::new("my-experiment", backend);
 //! tracker.add_tag("team", "ml-infra");
 //!
-//! let run_id = tracker.start_run(Some("baseline-v1")).unwrap();
-//! tracker.log_param(&run_id, "lr", "0.001").unwrap();
-//! tracker.log_metric(&run_id, "loss", 0.5, 1).unwrap();
-//! tracker.log_metric(&run_id, "loss", 0.3, 2).unwrap();
-//! tracker.log_artifact(&run_id, "model.safetensors").unwrap();
-//! tracker.end_run(&run_id, RunStatus::Completed).unwrap();
+//! let run_id = tracker.start_run(Some("baseline-v1"))?;
+//! tracker.log_param(&run_id, "lr", "0.001")?;
+//! tracker.log_metric(&run_id, "loss", 0.5, 1)?;
+//! tracker.log_metric(&run_id, "loss", 0.3, 2)?;
+//! tracker.log_artifact(&run_id, "model.safetensors")?;
+//! tracker.end_run(&run_id, RunStatus::Completed)?;
 //!
-//! let run = tracker.get_run(&run_id).unwrap();
-//! assert_eq!(run.params.get("lr").unwrap(), "0.001");
+//! let run = tracker.get_run(&run_id)?;
+//! assert_eq!(run.params.get("lr").unwrap_or(&String::new()), "0.001");
 //!
-//! let all = tracker.list_runs().unwrap();
+//! let all = tracker.list_runs()?;
 //! assert_eq!(all.len(), 1);
+//! # Ok(())
+//! # }
 //! ```
 
 pub mod storage;

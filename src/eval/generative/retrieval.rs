@@ -45,7 +45,7 @@ fn dcg(scores: &[f64]) -> f64 {
         .enumerate()
         .map(|(i, &rel)| {
             let gain = (2.0f64).powf(rel) - 1.0;
-            let discount = ((i + 2) as f64).log2(); // log2(i+1+1) since i is 0-indexed
+            let discount = ((i + 2) as f64).max(f64::MIN_POSITIVE).log2(); // log2(i+1+1) since i is 0-indexed
             gain / discount
         })
         .sum()

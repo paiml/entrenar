@@ -26,7 +26,7 @@ impl GradientFlowHeatmap {
     pub fn update(&mut self, layer: usize, col: usize, grad_norm: f32) {
         if layer < self.gradients.len() && col < self.column_labels.len() {
             // Store log scale for visualization
-            self.gradients[layer][col] = (grad_norm + 1e-8).ln();
+            self.gradients[layer][col] = (grad_norm + 1e-8).max(f32::MIN_POSITIVE).ln();
         }
     }
 
