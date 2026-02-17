@@ -4,6 +4,86 @@ use super::types::{LeafInfo, TreeSplit};
 use crate::monitor::inference::path::traits::{DecisionPath, PathError};
 use serde::{Deserialize, Serialize};
 
+/// Stateful byte reader that tracks offset and validates bounds.
+struct ByteReader<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> ByteReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    fn read_u8(&mut self) -> Result<u8, PathError> {
+        self.ensure_available(1)?;
+        let val = self.data[self.offset];
+        self.offset += 1;
+        Ok(val)
+    }
+
+    fn read_bool(&mut self) -> Result<bool, PathError> {
+        Ok(self.read_u8()? != 0)
+    }
+
+    fn read_u32(&mut self) -> Result<u32, PathError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = u32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    fn read_f32(&mut self) -> Result<f32, PathError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = f32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    fn read_f32_vec(&mut self) -> Result<Vec<f32>, PathError> {
+        let len = self.read_u32()? as usize;
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(self.read_f32()?);
+        }
+        Ok(vec)
+    }
+
+    fn read_optional<T>(
+        &mut self,
+        read_value: impl FnOnce(&mut Self) -> Result<T, PathError>,
+    ) -> Result<Option<T>, PathError> {
+        let present = self.read_bool()?;
+        if present {
+            Ok(Some(read_value(self)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn ensure_available(&self, needed: usize) -> Result<(), PathError> {
+        if self.offset + needed > self.data.len() {
+            return Err(PathError::InsufficientData {
+                expected: self.offset + needed,
+                actual: self.data.len(),
+            });
+        }
+        Ok(())
+    }
+}
+
 /// Decision path for tree-based models
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TreePath {
@@ -153,7 +233,9 @@ impl DecisionPath for TreePath {
             });
         }
 
-        let version = bytes[0];
+        let mut reader = ByteReader::new(bytes);
+
+        let version = reader.read_u8()?;
         if version != 1 {
             return Err(PathError::VersionMismatch {
                 expected: 1,
@@ -161,51 +243,14 @@ impl DecisionPath for TreePath {
             });
         }
 
-        let mut offset = 1;
-        let n_splits = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
+        // Splits
+        let n_splits = reader.read_u32()? as usize;
         let mut splits = Vec::with_capacity(n_splits);
         for _ in 0..n_splits {
-            if offset + 13 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 13,
-                    actual: bytes.len(),
-                });
-            }
-
-            let feature_idx = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            let threshold = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-
-            let went_left = bytes[offset] != 0;
-            offset += 1;
-
-            let n_samples = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
+            let feature_idx = reader.read_u32()? as usize;
+            let threshold = reader.read_f32()?;
+            let went_left = reader.read_bool()?;
+            let n_samples = reader.read_u32()? as usize;
             splits.push(TreeSplit {
                 feature_idx,
                 threshold,
@@ -215,140 +260,17 @@ impl DecisionPath for TreePath {
         }
 
         // Leaf info
-        if offset + 9 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 9,
-                actual: bytes.len(),
-            });
-        }
-
-        let prediction = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        let n_samples = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        let has_dist = bytes[offset] != 0;
-        offset += 1;
-
-        let class_distribution = if has_dist {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let n_classes = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            let mut dist = Vec::with_capacity(n_classes);
-            for _ in 0..n_classes {
-                if offset + 4 > bytes.len() {
-                    return Err(PathError::InsufficientData {
-                        expected: offset + 4,
-                        actual: bytes.len(),
-                    });
-                }
-                let p = f32::from_le_bytes([
-                    bytes[offset],
-                    bytes[offset + 1],
-                    bytes[offset + 2],
-                    bytes[offset + 3],
-                ]);
-                offset += 4;
-                dist.push(p);
-            }
-            Some(dist)
-        } else {
-            None
-        };
-
+        let prediction = reader.read_f32()?;
+        let n_samples = reader.read_u32()? as usize;
+        let class_distribution = reader.read_optional(ByteReader::read_f32_vec)?;
         let leaf = LeafInfo {
             prediction,
             n_samples,
             class_distribution,
         };
 
-        // Gini path
-        if offset + 4 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 4,
-                actual: bytes.len(),
-            });
-        }
-        let n_gini = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        let mut gini_path = Vec::with_capacity(n_gini);
-        for _ in 0..n_gini {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let g = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-            gini_path.push(g);
-        }
-
-        // Contributions
-        if offset + 4 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 4,
-                actual: bytes.len(),
-            });
-        }
-        let n_contrib = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        let mut contributions = Vec::with_capacity(n_contrib);
-        for _ in 0..n_contrib {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let c = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-            contributions.push(c);
-        }
+        let gini_path = reader.read_f32_vec()?;
+        let contributions = reader.read_f32_vec()?;
 
         Ok(Self {
             splits,
