@@ -225,6 +225,36 @@ fn validate_command(
     Ok(())
 }
 
+/// Ensure the parent directory of `path` exists, creating it if necessary.
+fn ensure_parent_dir(path: &std::path::Path) -> entrenar_common::Result<()> {
+    let parent = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => return Ok(()),
+    };
+    std::fs::create_dir_all(parent).map_err(|e| entrenar_common::EntrenarError::Io {
+        context: format!("creating output directory: {}", parent.display()),
+        source: e,
+    })
+}
+
+/// Dispatch export to the correct format handler.
+fn dispatch_export(
+    format: &str,
+    weights: &std::collections::HashMap<String, Vec<f32>>,
+    shapes: &std::collections::HashMap<String, Vec<usize>>,
+    output: &std::path::Path,
+    quantize: &str,
+) -> entrenar_common::Result<()> {
+    match format {
+        "safetensors" => export_safetensors(weights, shapes, output),
+        "gguf" => export_gguf(weights, shapes, output, quantize),
+        "apr" | "json" => export_apr(weights, output),
+        other => Err(entrenar_common::EntrenarError::UnsupportedFormat {
+            format: other.to_string(),
+        }),
+    }
+}
+
 fn export_command(
     input: &std::path::Path,
     format: &str,
@@ -250,35 +280,10 @@ fn export_command(
         );
     }
 
-    // Load source weights from SafeTensors
     let (weights, shapes) = entrenar_distill::load_safetensors_weights(input)?;
 
-    // Create output parent directory if needed
-    if let Some(parent) = output.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(|e| entrenar_common::EntrenarError::Io {
-                context: format!("creating output directory: {}", parent.display()),
-                source: e,
-            })?;
-        }
-    }
-
-    match format {
-        "safetensors" => {
-            export_safetensors(&weights, &shapes, output)?;
-        }
-        "gguf" => {
-            export_gguf(&weights, &shapes, output, quantize)?;
-        }
-        "apr" | "json" => {
-            export_apr(&weights, output)?;
-        }
-        other => {
-            return Err(entrenar_common::EntrenarError::UnsupportedFormat {
-                format: other.to_string(),
-            });
-        }
-    }
+    ensure_parent_dir(output)?;
+    dispatch_export(format, &weights, &shapes, output, quantize)?;
 
     if !cli.is_quiet() {
         println!(

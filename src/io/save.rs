@@ -34,40 +34,40 @@ use std::path::Path;
 pub fn save_model(model: &Model, path: impl AsRef<Path>, config: &SaveConfig) -> Result<()> {
     let path = path.as_ref();
 
-    // Convert model to serializable state
-    let state = model.to_state();
-
-    // Serialize based on format
     match config.format {
-        ModelFormat::SafeTensors => {
-            // SafeTensors is binary format - handle separately
-            return save_safetensors(model, path);
-        }
-        ModelFormat::Json => {
-            let data = if config.pretty {
-                serde_json::to_string_pretty(&state)
-                    .map_err(|e| Error::Serialization(format!("JSON serialization failed: {e}")))?
-            } else {
-                serde_json::to_string(&state)
-                    .map_err(|e| Error::Serialization(format!("JSON serialization failed: {e}")))?
-            };
-            let mut file = File::create(path)?;
-            file.write_all(data.as_bytes())?;
-        }
-        ModelFormat::Yaml => {
-            let data = serde_yaml::to_string(&state)
-                .map_err(|e| Error::Serialization(format!("YAML serialization failed: {e}")))?;
-            let mut file = File::create(path)?;
-            file.write_all(data.as_bytes())?;
-        }
+        ModelFormat::SafeTensors => save_safetensors(model, path),
+        ModelFormat::Json => save_json(model, path, config.pretty),
+        ModelFormat::Yaml => save_yaml(model, path),
         #[cfg(feature = "gguf")]
-        ModelFormat::Gguf => {
-            return Err(Error::Serialization(
-                "GGUF format not yet implemented. Enable 'gguf' feature and use realizar integration.".to_string()
-            ));
-        }
+        ModelFormat::Gguf => Err(Error::Serialization(
+            "GGUF format not yet implemented. Enable 'gguf' feature and use realizar integration."
+                .to_string(),
+        )),
     }
+}
 
+/// Serialize and save a model as JSON
+fn save_json(model: &Model, path: &Path, pretty: bool) -> Result<()> {
+    let state = model.to_state();
+    let data = if pretty {
+        serde_json::to_string_pretty(&state)
+            .map_err(|e| Error::Serialization(format!("JSON serialization failed: {e}")))?
+    } else {
+        serde_json::to_string(&state)
+            .map_err(|e| Error::Serialization(format!("JSON serialization failed: {e}")))?
+    };
+    let mut file = File::create(path)?;
+    file.write_all(data.as_bytes())?;
+    Ok(())
+}
+
+/// Serialize and save a model as YAML
+fn save_yaml(model: &Model, path: &Path) -> Result<()> {
+    let state = model.to_state();
+    let data = serde_yaml::to_string(&state)
+        .map_err(|e| Error::Serialization(format!("YAML serialization failed: {e}")))?;
+    let mut file = File::create(path)?;
+    file.write_all(data.as_bytes())?;
     Ok(())
 }
 
