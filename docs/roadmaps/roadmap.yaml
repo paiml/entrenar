@@ -1073,11 +1073,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'Phase 1: entrenar publish CLI command'
-  status: inprogress
+  status: completed
   priority: medium
   assigned_to: null
   created: 2026-02-17T09:51:53Z
-  updated: 2026-02-17T09:51:58.208878081+00:00
+  updated: 2026-02-17T10:05:22.228255800+00:00
   spec: null
   acceptance_criteria: []
   phases: []
