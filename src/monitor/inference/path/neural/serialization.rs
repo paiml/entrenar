@@ -2,6 +2,97 @@
 
 use super::{DecisionPath, NeuralPath, PathError};
 
+/// Stateful byte reader that tracks offset and validates bounds.
+struct ByteReader<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> ByteReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    /// Read a single byte, advancing the offset.
+    fn read_u8(&mut self) -> Result<u8, PathError> {
+        self.ensure_available(1)?;
+        let val = self.data[self.offset];
+        self.offset += 1;
+        Ok(val)
+    }
+
+    /// Read a little-endian u32, advancing the offset.
+    fn read_u32(&mut self) -> Result<u32, PathError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = u32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    /// Read a little-endian f32, advancing the offset.
+    fn read_f32(&mut self) -> Result<f32, PathError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = f32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    /// Read a length-prefixed `Vec<f32>`.
+    fn read_f32_vec(&mut self) -> Result<Vec<f32>, PathError> {
+        let len = self.read_u32()? as usize;
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(self.read_f32()?);
+        }
+        Ok(vec)
+    }
+
+    /// Read an optional field: 1-byte flag, then the value if present.
+    fn read_optional<T>(
+        &mut self,
+        read_value: impl FnOnce(&mut Self) -> Result<T, PathError>,
+    ) -> Result<Option<T>, PathError> {
+        let present = self.read_u8()? != 0;
+        if present {
+            Ok(Some(read_value(self)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Read a length-prefixed `Vec<Vec<f32>>` (nested layers).
+    fn read_nested_f32_vecs(&mut self) -> Result<Vec<Vec<f32>>, PathError> {
+        let n_layers = self.read_u32()? as usize;
+        let mut layers = Vec::with_capacity(n_layers);
+        for _ in 0..n_layers {
+            layers.push(self.read_f32_vec()?);
+        }
+        Ok(layers)
+    }
+
+    fn ensure_available(&self, needed: usize) -> Result<(), PathError> {
+        if self.offset + needed > self.data.len() {
+            return Err(PathError::InsufficientData {
+                expected: self.offset + needed,
+                actual: self.data.len(),
+            });
+        }
+        Ok(())
+    }
+}
+
 impl DecisionPath for NeuralPath {
     fn explain(&self) -> String {
         let mut explanation = format!(
@@ -100,7 +191,9 @@ impl DecisionPath for NeuralPath {
             });
         }
 
-        let version = bytes[0];
+        let mut reader = ByteReader::new(bytes);
+
+        let version = reader.read_u8()?;
         if version != 1 {
             return Err(PathError::VersionMismatch {
                 expected: 1,
@@ -108,234 +201,12 @@ impl DecisionPath for NeuralPath {
             });
         }
 
-        let mut offset = 1;
-
-        // Input gradient
-        let n_grad = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        let mut input_gradient = Vec::with_capacity(n_grad);
-        for _ in 0..n_grad {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let g = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-            input_gradient.push(g);
-        }
-
-        // Prediction and confidence
-        if offset + 8 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 8,
-                actual: bytes.len(),
-            });
-        }
-        let prediction = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        let confidence = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        // Activations
-        if offset + 1 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 1,
-                actual: bytes.len(),
-            });
-        }
-        let has_activations = bytes[offset] != 0;
-        offset += 1;
-
-        let activations = if has_activations {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let n_layers = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            let mut layers = Vec::with_capacity(n_layers);
-            for _ in 0..n_layers {
-                if offset + 4 > bytes.len() {
-                    return Err(PathError::InsufficientData {
-                        expected: offset + 4,
-                        actual: bytes.len(),
-                    });
-                }
-                let layer_len = u32::from_le_bytes([
-                    bytes[offset],
-                    bytes[offset + 1],
-                    bytes[offset + 2],
-                    bytes[offset + 3],
-                ]) as usize;
-                offset += 4;
-
-                let mut layer = Vec::with_capacity(layer_len);
-                for _ in 0..layer_len {
-                    if offset + 4 > bytes.len() {
-                        return Err(PathError::InsufficientData {
-                            expected: offset + 4,
-                            actual: bytes.len(),
-                        });
-                    }
-                    let a = f32::from_le_bytes([
-                        bytes[offset],
-                        bytes[offset + 1],
-                        bytes[offset + 2],
-                        bytes[offset + 3],
-                    ]);
-                    offset += 4;
-                    layer.push(a);
-                }
-                layers.push(layer);
-            }
-            Some(layers)
-        } else {
-            None
-        };
-
-        // Attention weights (similar pattern)
-        if offset + 1 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 1,
-                actual: bytes.len(),
-            });
-        }
-        let has_attention = bytes[offset] != 0;
-        offset += 1;
-
-        let attention_weights = if has_attention {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let n_layers = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            let mut layers = Vec::with_capacity(n_layers);
-            for _ in 0..n_layers {
-                if offset + 4 > bytes.len() {
-                    return Err(PathError::InsufficientData {
-                        expected: offset + 4,
-                        actual: bytes.len(),
-                    });
-                }
-                let layer_len = u32::from_le_bytes([
-                    bytes[offset],
-                    bytes[offset + 1],
-                    bytes[offset + 2],
-                    bytes[offset + 3],
-                ]) as usize;
-                offset += 4;
-
-                let mut layer = Vec::with_capacity(layer_len);
-                for _ in 0..layer_len {
-                    if offset + 4 > bytes.len() {
-                        return Err(PathError::InsufficientData {
-                            expected: offset + 4,
-                            actual: bytes.len(),
-                        });
-                    }
-                    let a = f32::from_le_bytes([
-                        bytes[offset],
-                        bytes[offset + 1],
-                        bytes[offset + 2],
-                        bytes[offset + 3],
-                    ]);
-                    offset += 4;
-                    layer.push(a);
-                }
-                layers.push(layer);
-            }
-            Some(layers)
-        } else {
-            None
-        };
-
-        // Integrated gradients
-        if offset + 1 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 1,
-                actual: bytes.len(),
-            });
-        }
-        let has_ig = bytes[offset] != 0;
-        offset += 1;
-
-        let integrated_gradients = if has_ig {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let n_ig = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            let mut ig = Vec::with_capacity(n_ig);
-            for _ in 0..n_ig {
-                if offset + 4 > bytes.len() {
-                    return Err(PathError::InsufficientData {
-                        expected: offset + 4,
-                        actual: bytes.len(),
-                    });
-                }
-                let g = f32::from_le_bytes([
-                    bytes[offset],
-                    bytes[offset + 1],
-                    bytes[offset + 2],
-                    bytes[offset + 3],
-                ]);
-                offset += 4;
-                ig.push(g);
-            }
-            Some(ig)
-        } else {
-            None
-        };
+        let input_gradient = reader.read_f32_vec()?;
+        let prediction = reader.read_f32()?;
+        let confidence = reader.read_f32()?;
+        let activations = reader.read_optional(ByteReader::read_nested_f32_vecs)?;
+        let attention_weights = reader.read_optional(ByteReader::read_nested_f32_vecs)?;
+        let integrated_gradients = reader.read_optional(ByteReader::read_f32_vec)?;
 
         Ok(Self {
             input_gradient,

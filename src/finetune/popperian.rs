@@ -181,101 +181,46 @@ impl PopperianQA {
     /// Calculate total score (0-100)
     #[must_use]
     pub fn score(&self) -> u8 {
-        let mut score = 0u8;
-
-        // Reproducibility (20 points)
-        if self.r1_same_loss_curve {
-            score += 5;
-        }
-        if self.r2_same_final_weights {
-            score += 5;
-        }
-        if self.r3_same_eval_metrics {
-            score += 5;
-        }
-        if self.r4_environment_locked {
-            score += 5;
-        }
-
-        // Compilation (20 points)
-        if self.c1_parses_as_rust {
-            score += 5;
-        }
-        if self.c2_type_checks {
-            score += 5;
-        }
-        if self.c3_no_unused_warnings {
-            score += 5;
-        }
-        if self.c4_links_correctly {
-            score += 5;
-        }
-
-        // Correctness (20 points)
-        if self.x1_tests_pass_on_correct {
-            score += 5;
-        }
-        if self.x2_tests_fail_on_mutant {
-            score += 5;
-        }
-        if self.x3_assertions_meaningful {
-            score += 5;
-        }
-        if self.x4_no_tautologies {
-            score += 5;
-        }
-
-        // Coverage (15 points)
-        if self.v1_branch_coverage_delta {
-            score += 5;
-        }
-        if self.v2_line_coverage_delta {
-            score += 5;
-        }
-        if self.v3_edge_cases_present {
-            score += 5;
-        }
-
-        // Efficiency (10 points)
-        if self.e1_vram_under_8gb {
-            score += 3;
-        }
-        if self.e2_training_under_4hrs {
-            score += 4;
-        }
-        if self.e3_inference_under_1s {
-            score += 3;
-        }
-
-        // Edge Cases (10 points)
-        if self.g1_handles_generics {
-            score += 2;
-        }
-        if self.g2_handles_lifetimes {
-            score += 2;
-        }
-        if self.g3_handles_async {
-            score += 2;
-        }
-        if self.g4_handles_unsafe {
-            score += 2;
-        }
-        if self.g5_handles_macros {
-            score += 2;
-        }
-
-        // Documentation (5 points)
-        if self.d1_test_names_descriptive {
-            score += 2;
-        }
-        if self.d2_comments_present {
-            score += 2;
-        }
-        if self.d3_proptest_strategies_clear {
-            score += 1;
-        }
-
-        score
+        let weighted: &[(bool, u8)] = &[
+            // Reproducibility (20 points)
+            (self.r1_same_loss_curve, 5),
+            (self.r2_same_final_weights, 5),
+            (self.r3_same_eval_metrics, 5),
+            (self.r4_environment_locked, 5),
+            // Compilation (20 points)
+            (self.c1_parses_as_rust, 5),
+            (self.c2_type_checks, 5),
+            (self.c3_no_unused_warnings, 5),
+            (self.c4_links_correctly, 5),
+            // Correctness (20 points)
+            (self.x1_tests_pass_on_correct, 5),
+            (self.x2_tests_fail_on_mutant, 5),
+            (self.x3_assertions_meaningful, 5),
+            (self.x4_no_tautologies, 5),
+            // Coverage (15 points)
+            (self.v1_branch_coverage_delta, 5),
+            (self.v2_line_coverage_delta, 5),
+            (self.v3_edge_cases_present, 5),
+            // Efficiency (10 points)
+            (self.e1_vram_under_8gb, 3),
+            (self.e2_training_under_4hrs, 4),
+            (self.e3_inference_under_1s, 3),
+            // Edge Cases (10 points)
+            (self.g1_handles_generics, 2),
+            (self.g2_handles_lifetimes, 2),
+            (self.g3_handles_async, 2),
+            (self.g4_handles_unsafe, 2),
+            (self.g5_handles_macros, 2),
+            // Documentation (5 points)
+            (self.d1_test_names_descriptive, 2),
+            (self.d2_comments_present, 2),
+            (self.d3_proptest_strategies_clear, 1),
+        ];
+        weighted
+            .iter()
+            .filter(|(passed, _)| *passed)
+            .map(|(_, pts)| pts)
+            .sum()
     }
 
     /// Get quality grade
@@ -355,166 +300,97 @@ impl PopperianQA {
     #[must_use]
     pub fn report(&self) -> String {
         let mut out = String::new();
-        out.push_str("# Popperian Falsification QA Report\n\n");
-        out.push_str(&format!("**Score:** {}/100\n", self.score()));
-        out.push_str(&format!("**Grade:** {}\n", self.grade()));
-        out.push_str(&format!(
-            "**Items Passed:** {}/{}\n\n",
-            self.passed_count(),
-            self.total_items()
-        ));
-
-        out.push_str("## Reproducibility (20 pts)\n");
-        out.push_str(&format!(
-            "- [{}] R1: Same loss curve\n",
-            if self.r1_same_loss_curve { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] R2: Same final weights\n",
-            if self.r2_same_final_weights { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] R3: Same eval metrics\n",
-            if self.r3_same_eval_metrics { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] R4: Environment locked\n",
-            if self.r4_environment_locked { "x" } else { " " }
-        ));
-
-        out.push_str("\n## Compilation (20 pts)\n");
-        out.push_str(&format!(
-            "- [{}] C1: Parses as Rust\n",
-            if self.c1_parses_as_rust { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] C2: Type checks\n",
-            if self.c2_type_checks { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] C3: No unused warnings\n",
-            if self.c3_no_unused_warnings { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] C4: Links correctly\n",
-            if self.c4_links_correctly { "x" } else { " " }
-        ));
-
-        out.push_str("\n## Correctness (20 pts)\n");
-        out.push_str(&format!(
-            "- [{}] X1: Tests pass on correct\n",
-            if self.x1_tests_pass_on_correct {
-                "x"
-            } else {
-                " "
-            }
-        ));
-        out.push_str(&format!(
-            "- [{}] X2: Tests fail on mutant\n",
-            if self.x2_tests_fail_on_mutant {
-                "x"
-            } else {
-                " "
-            }
-        ));
-        out.push_str(&format!(
-            "- [{}] X3: Assertions meaningful\n",
-            if self.x3_assertions_meaningful {
-                "x"
-            } else {
-                " "
-            }
-        ));
-        out.push_str(&format!(
-            "- [{}] X4: No tautologies\n",
-            if self.x4_no_tautologies { "x" } else { " " }
-        ));
-
-        out.push_str("\n## Coverage (15 pts)\n");
-        out.push_str(&format!(
-            "- [{}] V1: Branch coverage +5%\n",
-            if self.v1_branch_coverage_delta {
-                "x"
-            } else {
-                " "
-            }
-        ));
-        out.push_str(&format!(
-            "- [{}] V2: Line coverage +10%\n",
-            if self.v2_line_coverage_delta {
-                "x"
-            } else {
-                " "
-            }
-        ));
-        out.push_str(&format!(
-            "- [{}] V3: Edge cases present\n",
-            if self.v3_edge_cases_present { "x" } else { " " }
-        ));
-
-        out.push_str("\n## Efficiency (10 pts)\n");
-        out.push_str(&format!(
-            "- [{}] E1: VRAM < 8GB\n",
-            if self.e1_vram_under_8gb { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] E2: Training < 4hrs\n",
-            if self.e2_training_under_4hrs {
-                "x"
-            } else {
-                " "
-            }
-        ));
-        out.push_str(&format!(
-            "- [{}] E3: Inference < 1s\n",
-            if self.e3_inference_under_1s { "x" } else { " " }
-        ));
-
-        out.push_str("\n## Edge Cases (10 pts)\n");
-        out.push_str(&format!(
-            "- [{}] G1: Handles generics\n",
-            if self.g1_handles_generics { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] G2: Handles lifetimes\n",
-            if self.g2_handles_lifetimes { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] G3: Handles async\n",
-            if self.g3_handles_async { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] G4: Handles unsafe\n",
-            if self.g4_handles_unsafe { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] G5: Handles macros\n",
-            if self.g5_handles_macros { "x" } else { " " }
-        ));
-
-        out.push_str("\n## Documentation (5 pts)\n");
-        out.push_str(&format!(
-            "- [{}] D1: Descriptive test names\n",
-            if self.d1_test_names_descriptive {
-                "x"
-            } else {
-                " "
-            }
-        ));
-        out.push_str(&format!(
-            "- [{}] D2: Comments present\n",
-            if self.d2_comments_present { "x" } else { " " }
-        ));
-        out.push_str(&format!(
-            "- [{}] D3: Clear proptest strategies\n",
-            if self.d3_proptest_strategies_clear {
-                "x"
-            } else {
-                " "
-            }
-        ));
-
+        report_header(&mut out, self);
+        report_section(&mut out, "## Reproducibility (20 pts)\n", &self.reproducibility_items());
+        report_section(&mut out, "\n## Compilation (20 pts)\n", &self.compilation_items());
+        report_section(&mut out, "\n## Correctness (20 pts)\n", &self.correctness_items());
+        report_section(&mut out, "\n## Coverage (15 pts)\n", &self.coverage_items());
+        report_section(&mut out, "\n## Efficiency (10 pts)\n", &self.efficiency_items());
+        report_section(&mut out, "\n## Edge Cases (10 pts)\n", &self.edge_case_items());
+        report_section(&mut out, "\n## Documentation (5 pts)\n", &self.documentation_items());
         out
+    }
+
+    fn reproducibility_items(&self) -> Vec<(bool, &'static str)> {
+        vec![
+            (self.r1_same_loss_curve, "R1: Same loss curve"),
+            (self.r2_same_final_weights, "R2: Same final weights"),
+            (self.r3_same_eval_metrics, "R3: Same eval metrics"),
+            (self.r4_environment_locked, "R4: Environment locked"),
+        ]
+    }
+
+    fn compilation_items(&self) -> Vec<(bool, &'static str)> {
+        vec![
+            (self.c1_parses_as_rust, "C1: Parses as Rust"),
+            (self.c2_type_checks, "C2: Type checks"),
+            (self.c3_no_unused_warnings, "C3: No unused warnings"),
+            (self.c4_links_correctly, "C4: Links correctly"),
+        ]
+    }
+
+    fn correctness_items(&self) -> Vec<(bool, &'static str)> {
+        vec![
+            (self.x1_tests_pass_on_correct, "X1: Tests pass on correct"),
+            (self.x2_tests_fail_on_mutant, "X2: Tests fail on mutant"),
+            (self.x3_assertions_meaningful, "X3: Assertions meaningful"),
+            (self.x4_no_tautologies, "X4: No tautologies"),
+        ]
+    }
+
+    fn coverage_items(&self) -> Vec<(bool, &'static str)> {
+        vec![
+            (self.v1_branch_coverage_delta, "V1: Branch coverage +5%"),
+            (self.v2_line_coverage_delta, "V2: Line coverage +10%"),
+            (self.v3_edge_cases_present, "V3: Edge cases present"),
+        ]
+    }
+
+    fn efficiency_items(&self) -> Vec<(bool, &'static str)> {
+        vec![
+            (self.e1_vram_under_8gb, "E1: VRAM < 8GB"),
+            (self.e2_training_under_4hrs, "E2: Training < 4hrs"),
+            (self.e3_inference_under_1s, "E3: Inference < 1s"),
+        ]
+    }
+
+    fn edge_case_items(&self) -> Vec<(bool, &'static str)> {
+        vec![
+            (self.g1_handles_generics, "G1: Handles generics"),
+            (self.g2_handles_lifetimes, "G2: Handles lifetimes"),
+            (self.g3_handles_async, "G3: Handles async"),
+            (self.g4_handles_unsafe, "G4: Handles unsafe"),
+            (self.g5_handles_macros, "G5: Handles macros"),
+        ]
+    }
+
+    fn documentation_items(&self) -> Vec<(bool, &'static str)> {
+        vec![
+            (self.d1_test_names_descriptive, "D1: Descriptive test names"),
+            (self.d2_comments_present, "D2: Comments present"),
+            (self.d3_proptest_strategies_clear, "D3: Clear proptest strategies"),
+        ]
+    }
+}
+
+/// Write report header with score, grade, and item count.
+fn report_header(out: &mut String, qa: &PopperianQA) {
+    out.push_str("# Popperian Falsification QA Report\n\n");
+    out.push_str(&format!("**Score:** {}/100\n", qa.score()));
+    out.push_str(&format!("**Grade:** {}\n", qa.grade()));
+    out.push_str(&format!(
+        "**Items Passed:** {}/{}\n\n",
+        qa.passed_count(),
+        qa.total_items()
+    ));
+}
+
+/// Write a report section with heading and checklist items.
+fn report_section(out: &mut String, heading: &str, items: &[(bool, &str)]) {
+    out.push_str(heading);
+    for &(passed, label) in items {
+        let mark = if passed { "x" } else { " " };
+        out.push_str(&format!("- [{mark}] {label}\n"));
     }
 }
 
