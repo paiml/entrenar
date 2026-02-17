@@ -1,8 +1,30 @@
 //! Classification metrics: Accuracy, Precision, Recall, F1
+//!
+//! Thresholding (continuous predictions → discrete labels) is entrenar's concern.
+//! Metric computation on discrete labels delegates to `aprender::metrics::classification`.
 
 use crate::Tensor;
 
 use super::Metric;
+
+/// Convert continuous predictions and targets to discrete binary labels.
+///
+/// Entrenar's training concern: model outputs are continuous (logits/probabilities),
+/// so thresholding is part of evaluation. After thresholding, the discrete labels
+/// can be passed to aprender for metric computation.
+fn threshold_to_labels(predictions: &Tensor, targets: &Tensor, threshold: f32) -> (Vec<usize>, Vec<usize>) {
+    let y_pred: Vec<usize> = predictions
+        .data()
+        .iter()
+        .map(|&p| usize::from(p >= threshold))
+        .collect();
+    let y_true: Vec<usize> = targets
+        .data()
+        .iter()
+        .map(|&t| usize::from(t >= 0.5))
+        .collect();
+    (y_pred, y_true)
+}
 
 /// Accuracy metric for classification
 ///
@@ -58,18 +80,9 @@ impl Metric for Accuracy {
             return 0.0;
         }
 
-        let correct = predictions
-            .data()
-            .iter()
-            .zip(targets.data().iter())
-            .filter(|(&p, &t)| {
-                // Binary classification
-                let pred_class = if p >= self.threshold { 1.0 } else { 0.0 };
-                (pred_class - t).abs() < 0.5
-            })
-            .count() as f32;
-
-        correct / predictions.len().max(1) as f32
+        // Threshold to discrete labels (entrenar's concern), then delegate to aprender
+        let (y_pred, y_true) = threshold_to_labels(predictions, targets, self.threshold);
+        aprender::metrics::classification::accuracy(&y_pred, &y_true)
     }
 
     fn name(&self) -> &'static str {
@@ -113,23 +126,30 @@ impl Metric for Precision {
     fn compute(&self, predictions: &Tensor, targets: &Tensor) -> f32 {
         assert_eq!(predictions.len(), targets.len());
 
-        let mut true_positives = 0;
-        let mut predicted_positives = 0;
+        if predictions.is_empty() {
+            return 0.0;
+        }
 
-        for (&p, &t) in predictions.data().iter().zip(targets.data().iter()) {
-            let pred_positive = p >= self.threshold;
-            let actual_positive = t >= 0.5;
+        // Threshold to discrete labels (entrenar), count from labels
+        // Note: aprender's precision() uses macro/micro/weighted averaging which
+        // differs from binary positive-class precision. We threshold via entrenar,
+        // then compute TP/FP from discrete labels.
+        let (y_pred, y_true) = threshold_to_labels(predictions, targets, self.threshold);
 
-            if pred_positive {
+        let mut true_positives = 0usize;
+        let mut predicted_positives = 0usize;
+
+        for (&p, &t) in y_pred.iter().zip(y_true.iter()) {
+            if p == 1 {
                 predicted_positives += 1;
-                if actual_positive {
+                if t == 1 {
                     true_positives += 1;
                 }
             }
         }
 
         if predicted_positives == 0 {
-            return 0.0; // No predictions made
+            return 0.0;
         }
 
         true_positives as f32 / predicted_positives as f32
@@ -176,23 +196,27 @@ impl Metric for Recall {
     fn compute(&self, predictions: &Tensor, targets: &Tensor) -> f32 {
         assert_eq!(predictions.len(), targets.len());
 
-        let mut true_positives = 0;
-        let mut actual_positives = 0;
+        if predictions.is_empty() {
+            return 0.0;
+        }
 
-        for (&p, &t) in predictions.data().iter().zip(targets.data().iter()) {
-            let pred_positive = p >= self.threshold;
-            let actual_positive = t >= 0.5;
+        // Threshold to discrete labels (entrenar), count from labels
+        let (y_pred, y_true) = threshold_to_labels(predictions, targets, self.threshold);
 
-            if actual_positive {
+        let mut true_positives = 0usize;
+        let mut actual_positives = 0usize;
+
+        for (&p, &t) in y_pred.iter().zip(y_true.iter()) {
+            if t == 1 {
                 actual_positives += 1;
-                if pred_positive {
+                if p == 1 {
                     true_positives += 1;
                 }
             }
         }
 
         if actual_positives == 0 {
-            return 0.0; // No positive samples
+            return 0.0;
         }
 
         true_positives as f32 / actual_positives as f32
