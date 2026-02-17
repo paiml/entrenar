@@ -5,6 +5,82 @@ use serde::{Deserialize, Serialize};
 use super::traits::{DecisionPath, PathError};
 use super::tree::TreePath;
 
+/// Stateful byte reader that tracks offset and validates bounds.
+struct ByteReader<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> ByteReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    fn read_u8(&mut self) -> Result<u8, PathError> {
+        self.ensure_available(1)?;
+        let val = self.data[self.offset];
+        self.offset += 1;
+        Ok(val)
+    }
+
+    fn read_u32(&mut self) -> Result<u32, PathError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = u32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    fn read_f32(&mut self) -> Result<f32, PathError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = f32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    fn read_f32_vec(&mut self) -> Result<Vec<f32>, PathError> {
+        let len = self.read_u32()? as usize;
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(self.read_f32()?);
+        }
+        Ok(vec)
+    }
+
+    /// Read a length-prefixed sub-message: u32 byte-length, then delegate to a parser.
+    fn read_sub_message<T>(
+        &mut self,
+        parser: impl FnOnce(&[u8]) -> Result<T, PathError>,
+    ) -> Result<T, PathError> {
+        let len = self.read_u32()? as usize;
+        self.ensure_available(len)?;
+        let result = parser(&self.data[self.offset..self.offset + len])?;
+        self.offset += len;
+        Ok(result)
+    }
+
+    fn ensure_available(&self, needed: usize) -> Result<(), PathError> {
+        if self.offset + needed > self.data.len() {
+            return Err(PathError::InsufficientData {
+                expected: self.offset + needed,
+                actual: self.data.len(),
+            });
+        }
+        Ok(())
+    }
+}
+
 /// Decision path for ensemble models (Random Forest, Gradient Boosting)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ForestPath {
@@ -148,7 +224,9 @@ impl DecisionPath for ForestPath {
             });
         }
 
-        let version = bytes[0];
+        let mut reader = ByteReader::new(bytes);
+
+        let version = reader.read_u8()?;
         if version != 1 {
             return Err(PathError::VersionMismatch {
                 expected: 1,
@@ -156,133 +234,18 @@ impl DecisionPath for ForestPath {
             });
         }
 
-        let mut offset = 1;
-
-        // Number of trees
-        let n_trees = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
+        // Tree paths (length-prefixed sub-messages)
+        let n_trees = reader.read_u32()? as usize;
         let mut tree_paths = Vec::with_capacity(n_trees);
         for _ in 0..n_trees {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let tree_len = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            if offset + tree_len > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + tree_len,
-                    actual: bytes.len(),
-                });
-            }
-
-            let tree_path = TreePath::from_bytes(&bytes[offset..offset + tree_len])?;
+            let tree_path = reader.read_sub_message(TreePath::from_bytes)?;
             tree_paths.push(tree_path);
-            offset += tree_len;
         }
 
-        // Tree predictions
-        if offset + 4 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 4,
-                actual: bytes.len(),
-            });
-        }
-        let n_preds = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        let mut tree_predictions = Vec::with_capacity(n_preds);
-        for _ in 0..n_preds {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let pred = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-            tree_predictions.push(pred);
-        }
-
-        // Ensemble prediction and agreement
-        if offset + 8 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 8,
-                actual: bytes.len(),
-            });
-        }
-        let ensemble_prediction = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        let tree_agreement = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        // Feature importance
-        if offset + 4 > bytes.len() {
-            return Err(PathError::InsufficientData {
-                expected: offset + 4,
-                actual: bytes.len(),
-            });
-        }
-        let n_imp = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        let mut feature_importance = Vec::with_capacity(n_imp);
-        for _ in 0..n_imp {
-            if offset + 4 > bytes.len() {
-                return Err(PathError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let imp = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-            feature_importance.push(imp);
-        }
+        let tree_predictions = reader.read_f32_vec()?;
+        let ensemble_prediction = reader.read_f32()?;
+        let tree_agreement = reader.read_f32()?;
+        let feature_importance = reader.read_f32_vec()?;
 
         Ok(Self {
             tree_paths,
