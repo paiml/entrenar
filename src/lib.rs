@@ -29,6 +29,7 @@
 //! - **cli**: Command-line interface handlers
 //! - **finetune**: Fine-tuning pipeline with Popperian QA (SPEC-FT-001)
 
+pub mod aprender_compat;
 pub mod autograd;
 #[cfg(feature = "citl")]
 pub mod citl;
