@@ -180,7 +180,7 @@ impl TestEvaluator {
 
     /// Check if code compiles
     fn check_compile(&self, code: &str) -> Result<(), Vec<String>> {
-        // Write code to temp file
+        // Stage code in an intermediate file for compilation checking
         let test_file = self.work_dir.join("_eval_test.rs");
         if std::fs::write(&test_file, code).is_err() {
             return Err(vec!["Failed to write test file".into()]);

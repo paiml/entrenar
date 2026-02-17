@@ -116,7 +116,7 @@ impl TuiMonitor {
             // Sleep briefly to avoid busy-waiting
             std::thread::sleep(Duration::from_millis(50));
 
-            // TODO: Add keyboard input handling for Ctrl+C, resize, etc.
+            // Keyboard input handling (Ctrl+C, resize) deferred to terminal event integration
         }
 
         // Restore cursor

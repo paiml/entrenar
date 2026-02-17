@@ -112,6 +112,37 @@ fn convert_model(
     })
 }
 
+/// Resolve the training data path from manifest data config.
+///
+/// Prefers explicit `train` field; falls back to `source`.
+fn resolve_train_path(
+    data_cfg: &crate::yaml_mode::manifest::data::DataConfig,
+) -> Result<PathBuf, BridgeError> {
+    data_cfg
+        .train
+        .as_deref()
+        .or(data_cfg.source.as_deref())
+        .map(PathBuf::from)
+        .ok_or_else(|| BridgeError::MissingRequired("data.source or data.train".into()))
+}
+
+/// Extract tokenizer path and max_length from the first Tokenize preprocessing step.
+///
+/// Returns `(Option<PathBuf>, Option<usize>)` for tokenizer and max_length respectively.
+fn extract_preprocessing_tokenizer(
+    steps: &[crate::yaml_mode::manifest::data::PreprocessingStep],
+) -> (Option<PathBuf>, Option<usize>) {
+    for step in steps {
+        if let crate::yaml_mode::manifest::data::PreprocessingStep::Tokenize { tokenize } = step {
+            return (
+                Some(PathBuf::from(&tokenize.tokenizer)),
+                tokenize.max_length,
+            );
+        }
+    }
+    (None, None)
+}
+
 /// Convert data config from manifest to spec
 fn convert_data(
     manifest: &TrainingManifest,
@@ -122,19 +153,8 @@ fn convert_data(
         .as_ref()
         .ok_or_else(|| BridgeError::MissingRequired("data".into()))?;
 
-    // Determine training data path: explicit train field, or source field
-    let train = if let Some(ref train_path) = data_cfg.train {
-        PathBuf::from(train_path)
-    } else if let Some(ref source) = data_cfg.source {
-        PathBuf::from(source)
-    } else {
-        return Err(BridgeError::MissingRequired(
-            "data.source or data.train".into(),
-        ));
-    };
-
+    let train = resolve_train_path(data_cfg)?;
     let val = data_cfg.val.as_ref().map(PathBuf::from);
-
     let batch_size = data_cfg.loader.as_ref().map_or(8, |l| l.batch_size);
 
     // Bridge LLM data fields directly from manifest
@@ -146,17 +166,12 @@ fn convert_data(
 
     // Fallback: extract tokenizer/max_length from preprocessing Tokenize step
     if let Some(ref steps) = data_cfg.preprocessing {
-        for step in steps {
-            if let crate::yaml_mode::manifest::data::PreprocessingStep::Tokenize { tokenize } = step
-            {
-                if tokenizer.is_none() {
-                    tokenizer = Some(PathBuf::from(&tokenize.tokenizer));
-                }
-                if max_length.is_none() {
-                    max_length = tokenize.max_length;
-                }
-                break;
-            }
+        let (fallback_tok, fallback_len) = extract_preprocessing_tokenizer(steps);
+        if tokenizer.is_none() {
+            tokenizer = fallback_tok;
+        }
+        if max_length.is_none() {
+            max_length = fallback_len;
         }
     }
 

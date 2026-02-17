@@ -149,42 +149,56 @@ fn extract_layer_index(name: &str) -> Option<usize> {
     None
 }
 
-/// Detect hidden size from tensor shapes
-fn detect_hidden_size(tensors: &safetensors::SafeTensors<'_>, names: &[String]) -> usize {
-    // Look for attention query weight which is typically [hidden_size, hidden_size]
-    let query_patterns = [
+/// Extract the dimension of a square 2D tensor, optionally requiring a minimum size.
+fn square_dim(
+    tensors: &safetensors::SafeTensors<'_>,
+    name: &str,
+    min_size: usize,
+) -> Option<usize> {
+    let shape = tensors.tensor(name).ok()?.shape().to_vec();
+    if shape.len() == 2 && shape[0] == shape[1] && shape[0] >= min_size {
+        Some(shape[0])
+    } else {
+        None
+    }
+}
+
+/// Detect hidden size from attention query weight tensors.
+///
+/// Looks for tensors matching known query-projection naming patterns
+/// (e.g. `.query.weight`, `.q_proj.weight`) that are square matrices.
+fn detect_from_query_weights(
+    tensors: &safetensors::SafeTensors<'_>,
+    names: &[String],
+) -> Option<usize> {
+    const QUERY_PATTERNS: &[&str] = &[
         ".query.weight",
         ".q_proj.weight",
         ".self_attn.q_proj.weight",
     ];
 
-    for name in names {
-        for pattern in query_patterns {
-            if name.ends_with(pattern) {
-                if let Ok(tensor) = tensors.tensor(name) {
-                    let shape = tensor.shape();
-                    if shape.len() == 2 && shape[0] == shape[1] {
-                        return shape[0];
-                    }
-                }
-            }
-        }
-    }
+    names.iter().find_map(|name| {
+        let matches_pattern = QUERY_PATTERNS.iter().any(|p| name.ends_with(p));
+        matches_pattern.then(|| square_dim(tensors, name, 1)).flatten()
+    })
+}
 
-    // Fallback: look for any large square weight matrix
-    for name in names {
-        if name.contains("weight") {
-            if let Ok(tensor) = tensors.tensor(name) {
-                let shape = tensor.shape();
-                if shape.len() == 2 && shape[0] == shape[1] && shape[0] >= 256 {
-                    return shape[0];
-                }
-            }
-        }
-    }
+/// Detect hidden size from any large square weight matrix (fallback heuristic).
+fn detect_from_square_weights(
+    tensors: &safetensors::SafeTensors<'_>,
+    names: &[String],
+) -> Option<usize> {
+    names
+        .iter()
+        .filter(|name| name.contains("weight"))
+        .find_map(|name| square_dim(tensors, name, 256))
+}
 
-    // Default to 768 (BERT-base)
-    768
+/// Detect hidden size from tensor shapes
+fn detect_hidden_size(tensors: &safetensors::SafeTensors<'_>, names: &[String]) -> usize {
+    detect_from_query_weights(tensors, names)
+        .or_else(|| detect_from_square_weights(tensors, names))
+        .unwrap_or(768) // Default to 768 (BERT-base)
 }
 
 impl TeacherModel for SafeTensorsTeacher {

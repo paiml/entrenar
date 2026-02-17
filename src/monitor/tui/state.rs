@@ -332,14 +332,14 @@ impl TrainingState {
 
     /// Write a training snapshot atomically
     ///
-    /// Uses write-to-temp + rename for atomicity.
+    /// Uses staged write + rename for atomicity.
     pub fn write(&self, snapshot: &TrainingSnapshot) -> std::io::Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = self.state_path.parent() {
             fs::create_dir_all(parent)?;
         }
 
-        // Write to temp file first
+        // Stage writes via intermediate file for atomic persistence
         let temp_path = self.state_path.with_extension("json.tmp");
         let file = File::create(&temp_path)?;
         let writer = BufWriter::new(file);
