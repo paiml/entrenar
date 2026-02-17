@@ -37,60 +37,59 @@ impl FailureCategory {
         }
     }
 
+    /// Pattern table: each entry maps keywords to a failure category.
+    /// Checked in priority order (first match wins).
+    const CATEGORY_PATTERNS: &'static [(&'static [&'static str], FailureCategory)] = &[
+        (
+            &["nan", "inf", "exploding", "diverge", "gradient"],
+            FailureCategory::ModelConvergence,
+        ),
+        (
+            &[
+                "out of memory",
+                "oom",
+                "memory",
+                "timeout",
+                "disk full",
+                "no space",
+            ],
+            FailureCategory::ResourceExhaustion,
+        ),
+        (
+            &[
+                "corrupt",
+                "invalid data",
+                "missing feature",
+                "data format",
+                "parse error",
+                "invalid shape",
+            ],
+            FailureCategory::DataQuality,
+        ),
+        (
+            &["dependency", "crate", "version", "build error", "compile"],
+            FailureCategory::DependencyFailure,
+        ),
+        (
+            &[
+                "config",
+                "parameter",
+                "invalid value",
+                "missing field",
+                "required",
+            ],
+            FailureCategory::ConfigurationError,
+        ),
+    ];
+
     /// Attempt to categorize from error message patterns
     pub fn from_error_message(message: &str) -> Self {
         let lower = message.to_lowercase();
 
-        // Model convergence patterns
-        if lower.contains("nan")
-            || lower.contains("inf")
-            || lower.contains("exploding")
-            || lower.contains("diverge")
-            || lower.contains("gradient")
-        {
-            return Self::ModelConvergence;
-        }
-
-        // Resource exhaustion patterns
-        if lower.contains("out of memory")
-            || lower.contains("oom")
-            || lower.contains("memory")
-            || lower.contains("timeout")
-            || lower.contains("disk full")
-            || lower.contains("no space")
-        {
-            return Self::ResourceExhaustion;
-        }
-
-        // Data quality patterns
-        if lower.contains("corrupt")
-            || lower.contains("invalid data")
-            || lower.contains("missing feature")
-            || lower.contains("data format")
-            || lower.contains("parse error")
-            || lower.contains("invalid shape")
-        {
-            return Self::DataQuality;
-        }
-
-        // Dependency patterns
-        if lower.contains("dependency")
-            || lower.contains("crate")
-            || lower.contains("version")
-            || lower.contains("build error")
-            || lower.contains("compile")
-        {
-            return Self::DependencyFailure;
-        }
-
-        // Configuration patterns
-        if lower.contains("config")
-            || lower.contains("parameter")
-            || lower.contains("invalid value")
-            || lower.contains("missing field")
-            || lower.contains("required")
-        {
-            return Self::ConfigurationError;
+        for (patterns, category) in Self::CATEGORY_PATTERNS {
+            if patterns.iter().any(|p| lower.contains(p)) {
+                return *category;
+            }
         }
 
         Self::Unknown

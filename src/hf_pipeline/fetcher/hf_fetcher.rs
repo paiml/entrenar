@@ -106,6 +106,97 @@ impl HfModelFetcher {
         Ok((parts[0], parts[1]))
     }
 
+    /// Resolve the list of files to download, falling back to defaults if empty.
+    fn resolve_files(options: &FetchOptions) -> Vec<String> {
+        if options.files.is_empty() {
+            vec!["model.safetensors".to_string(), "config.json".to_string()]
+        } else {
+            options.files.clone()
+        }
+    }
+
+    /// Check that no file uses an unsafe format (e.g. pickle) unless explicitly allowed.
+    fn check_security(files: &[String], allow_pickle: bool) -> Result<()> {
+        for file in files {
+            if let Some(format) = WeightFormat::from_filename(file) {
+                if !format.is_safe() && !allow_pickle {
+                    return Err(FetchError::PickleSecurityRisk);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Build the hf-hub sync API client with optional authentication.
+    fn build_api(
+        &self,
+        cache_path: &std::path::Path,
+    ) -> Result<hf_hub::api::sync::Api> {
+        let mut api_builder =
+            hf_hub::api::sync::ApiBuilder::new().with_cache_dir(cache_path.to_path_buf());
+
+        if let Some(token) = &self.token {
+            api_builder = api_builder.with_token(Some(token.clone()));
+        }
+
+        api_builder
+            .build()
+            .map_err(|e| FetchError::ConfigParseError {
+                message: format!("Failed to initialize HF API: {e}"),
+            })
+    }
+
+    /// Download a single file from a repo, copying it into the cache directory.
+    fn download_file(
+        repo: &hf_hub::api::sync::ApiRepo,
+        api: &hf_hub::api::sync::Api,
+        repo_id: &str,
+        revision: &str,
+        file: &str,
+        cache_path: &std::path::Path,
+    ) -> Result<()> {
+        let download_result = if revision == "main" {
+            repo.get(file)
+        } else {
+            let revision_repo = api.repo(hf_hub::Repo::with_revision(
+                repo_id.to_string(),
+                hf_hub::RepoType::Model,
+                revision.to_string(),
+            ));
+            revision_repo.get(file)
+        };
+
+        match download_result {
+            Ok(path) => {
+                let dest = cache_path.join(file);
+                if path != dest {
+                    if let Some(parent) = dest.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    if path.exists() && !dest.exists() {
+                        std::fs::copy(&path, &dest)?;
+                    }
+                }
+                Ok(())
+            }
+            Err(hf_hub::api::sync::ApiError::RequestError(e)) => {
+                if e.to_string().contains("404") {
+                    Err(FetchError::FileNotFound {
+                        repo: repo_id.to_string(),
+                        file: file.to_string(),
+                    })
+                } else {
+                    Err(FetchError::ConfigParseError {
+                        message: format!("Download failed: {e}"),
+                    })
+                }
+            }
+            Err(e) => Err(FetchError::ConfigParseError {
+                message: format!("Download failed: {e}"),
+            }),
+        }
+    }
+
     /// Download a model from HuggingFace Hub
     ///
     /// # Arguments
@@ -117,23 +208,10 @@ impl HfModelFetcher {
     ///
     /// Returns error if download fails, repo not found, or security check fails.
     pub fn download_model(&self, repo_id: &str, options: FetchOptions) -> Result<ModelArtifact> {
-        let (_org, _name) = Self::parse_repo_id(repo_id)?;
+        Self::parse_repo_id(repo_id)?;
 
-        // Determine files to download
-        let files = if options.files.is_empty() {
-            vec!["model.safetensors".to_string(), "config.json".to_string()]
-        } else {
-            options.files.clone()
-        };
-
-        // Check for security risks
-        for file in &files {
-            if let Some(format) = WeightFormat::from_filename(file) {
-                if !format.is_safe() && !options.allow_pytorch_pickle {
-                    return Err(FetchError::PickleSecurityRisk);
-                }
-            }
-        }
+        let files = Self::resolve_files(&options);
+        Self::check_security(&files, options.allow_pytorch_pickle)?;
 
         // Create local cache path
         let cache_path = options
@@ -142,7 +220,6 @@ impl HfModelFetcher {
             .unwrap_or_else(|| self.cache_dir.clone())
             .join(repo_id.replace('/', "--"))
             .join(&options.revision);
-
         std::fs::create_dir_all(&cache_path)?;
 
         // Detect format from files
@@ -151,68 +228,11 @@ impl HfModelFetcher {
             .find_map(|f| WeightFormat::from_filename(f))
             .unwrap_or(WeightFormat::SafeTensors);
 
-        // Use hf-hub for actual downloads
-        let mut api_builder =
-            hf_hub::api::sync::ApiBuilder::new().with_cache_dir(cache_path.clone());
-
-        if let Some(token) = &self.token {
-            api_builder = api_builder.with_token(Some(token.clone()));
-        }
-
-        let api = api_builder
-            .build()
-            .map_err(|e| FetchError::ConfigParseError {
-                message: format!("Failed to initialize HF API: {e}"),
-            })?;
-
+        let api = self.build_api(&cache_path)?;
         let repo = api.model(repo_id.to_string());
 
-        // Download each requested file
         for file in &files {
-            let download_result = if options.revision == "main" {
-                repo.get(file)
-            } else {
-                // For non-main revisions, we need to use repo.revision()
-                let revision_repo = api.repo(hf_hub::Repo::with_revision(
-                    repo_id.to_string(),
-                    hf_hub::RepoType::Model,
-                    options.revision.clone(),
-                ));
-                revision_repo.get(file)
-            };
-
-            match download_result {
-                Ok(path) => {
-                    // Copy to our cache structure if not already there
-                    let dest = cache_path.join(file);
-                    if path != dest {
-                        if let Some(parent) = dest.parent() {
-                            std::fs::create_dir_all(parent)?;
-                        }
-                        // Only copy if source exists and dest doesn't
-                        if path.exists() && !dest.exists() {
-                            std::fs::copy(&path, &dest)?;
-                        }
-                    }
-                }
-                Err(hf_hub::api::sync::ApiError::RequestError(e)) => {
-                    // Check if it's a 404
-                    if e.to_string().contains("404") {
-                        return Err(FetchError::FileNotFound {
-                            repo: repo_id.to_string(),
-                            file: file.clone(),
-                        });
-                    }
-                    return Err(FetchError::ConfigParseError {
-                        message: format!("Download failed: {e}"),
-                    });
-                }
-                Err(e) => {
-                    return Err(FetchError::ConfigParseError {
-                        message: format!("Download failed: {e}"),
-                    });
-                }
-            }
+            Self::download_file(&repo, &api, repo_id, &options.revision, file, &cache_path)?;
         }
 
         Ok(ModelArtifact {

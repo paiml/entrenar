@@ -226,6 +226,58 @@ fn convert_optimizer(manifest: &TrainingManifest) -> Result<OptimSpec, BridgeErr
     Ok(OptimSpec { name, lr, params })
 }
 
+/// Collect scheduler-specific parameters into a HashMap.
+///
+/// Inserts each optional scheduler field that is `Some` into the map.
+/// Returns `None` if no parameters were set.
+fn collect_scheduler_params(
+    s: &crate::yaml_mode::manifest::scheduler::SchedulerConfig,
+) -> Option<HashMap<String, serde_json::Value>> {
+    /// Helper: insert a JSON-serializable value into the map if `Some`.
+    fn insert_opt<V: serde::Serialize>(
+        params: &mut HashMap<String, serde_json::Value>,
+        key: &str,
+        value: &Option<V>,
+    ) {
+        if let Some(v) = value {
+            params.insert(key.into(), serde_json::json!(v));
+        }
+    }
+
+    let mut params = HashMap::new();
+    insert_opt(&mut params, "t_max", &s.t_max);
+    insert_opt(&mut params, "eta_min", &s.eta_min);
+    insert_opt(&mut params, "step_size", &s.step_size);
+    insert_opt(&mut params, "gamma", &s.gamma);
+    insert_opt(&mut params, "mode", &s.mode);
+    insert_opt(&mut params, "factor", &s.factor);
+    insert_opt(&mut params, "patience", &s.patience);
+    insert_opt(&mut params, "threshold", &s.threshold);
+    insert_opt(&mut params, "max_lr", &s.max_lr);
+    insert_opt(&mut params, "pct_start", &s.pct_start);
+    insert_opt(&mut params, "anneal_strategy", &s.anneal_strategy);
+    insert_opt(&mut params, "div_factor", &s.div_factor);
+    insert_opt(&mut params, "final_div_factor", &s.final_div_factor);
+
+    if params.is_empty() { None } else { Some(params) }
+}
+
+/// Emit warnings for unsupported training sub-fields.
+fn warn_unsupported_training_fields(
+    training_cfg: Option<&crate::yaml_mode::manifest::training::TrainingConfig>,
+    warnings: &mut Vec<String>,
+) {
+    if training_cfg
+        .and_then(|t| t.early_stopping.as_ref())
+        .is_some()
+    {
+        warnings.push("training.early_stopping is not supported in legacy TrainSpec".into());
+    }
+    if training_cfg.and_then(|t| t.distributed.as_ref()).is_some() {
+        warnings.push("training.distributed is not supported in legacy TrainSpec".into());
+    }
+}
+
 /// Convert training config from manifest to spec
 fn convert_training(
     manifest: &TrainingManifest,
@@ -263,79 +315,20 @@ fn convert_training(
         .and_then(|w| w.steps)
         .unwrap_or(0);
 
-    // Collect scheduler-specific params into a HashMap
-    let scheduler_params = scheduler_cfg.and_then(|s| {
-        let mut params: HashMap<String, serde_json::Value> = HashMap::new();
-
-        if let Some(v) = s.t_max {
-            params.insert("t_max".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.eta_min {
-            params.insert("eta_min".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.step_size {
-            params.insert("step_size".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.gamma {
-            params.insert("gamma".into(), serde_json::json!(v));
-        }
-        if let Some(ref v) = s.mode {
-            params.insert("mode".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.factor {
-            params.insert("factor".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.patience {
-            params.insert("patience".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.threshold {
-            params.insert("threshold".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.max_lr {
-            params.insert("max_lr".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.pct_start {
-            params.insert("pct_start".into(), serde_json::json!(v));
-        }
-        if let Some(ref v) = s.anneal_strategy {
-            params.insert("anneal_strategy".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.div_factor {
-            params.insert("div_factor".into(), serde_json::json!(v));
-        }
-        if let Some(v) = s.final_div_factor {
-            params.insert("final_div_factor".into(), serde_json::json!(v));
-        }
-
-        if params.is_empty() {
-            None
-        } else {
-            Some(params)
-        }
-    });
+    let scheduler_params = scheduler_cfg.and_then(collect_scheduler_params);
 
     let output_dir =
         output_cfg.map_or_else(|| PathBuf::from("./checkpoints"), |o| PathBuf::from(&o.dir));
 
-    // Training mode: CausalLm for transformer models, Regression otherwise
     let mode = if model_mode == ModelMode::Transformer {
         TrainingMode::CausalLm
     } else {
         TrainingMode::default()
     };
 
-    // Pass through manifest seed
     let seed = manifest.seed;
 
-    if training_cfg
-        .and_then(|t| t.early_stopping.as_ref())
-        .is_some()
-    {
-        warnings.push("training.early_stopping is not supported in legacy TrainSpec".into());
-    }
-    if training_cfg.and_then(|t| t.distributed.as_ref()).is_some() {
-        warnings.push("training.distributed is not supported in legacy TrainSpec".into());
-    }
+    warn_unsupported_training_fields(training_cfg, warnings);
 
     TrainingParams {
         epochs,
