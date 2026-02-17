@@ -237,7 +237,7 @@ fn collect_scheduler_params(
     fn insert_opt<V: serde::Serialize>(
         params: &mut HashMap<String, serde_json::Value>,
         key: &str,
-        value: &Option<V>,
+        value: Option<&V>,
     ) {
         if let Some(v) = value {
             params.insert(key.into(), serde_json::json!(v));
@@ -245,19 +245,19 @@ fn collect_scheduler_params(
     }
 
     let mut params = HashMap::new();
-    insert_opt(&mut params, "t_max", &s.t_max);
-    insert_opt(&mut params, "eta_min", &s.eta_min);
-    insert_opt(&mut params, "step_size", &s.step_size);
-    insert_opt(&mut params, "gamma", &s.gamma);
-    insert_opt(&mut params, "mode", &s.mode);
-    insert_opt(&mut params, "factor", &s.factor);
-    insert_opt(&mut params, "patience", &s.patience);
-    insert_opt(&mut params, "threshold", &s.threshold);
-    insert_opt(&mut params, "max_lr", &s.max_lr);
-    insert_opt(&mut params, "pct_start", &s.pct_start);
-    insert_opt(&mut params, "anneal_strategy", &s.anneal_strategy);
-    insert_opt(&mut params, "div_factor", &s.div_factor);
-    insert_opt(&mut params, "final_div_factor", &s.final_div_factor);
+    insert_opt(&mut params, "t_max", s.t_max.as_ref());
+    insert_opt(&mut params, "eta_min", s.eta_min.as_ref());
+    insert_opt(&mut params, "step_size", s.step_size.as_ref());
+    insert_opt(&mut params, "gamma", s.gamma.as_ref());
+    insert_opt(&mut params, "mode", s.mode.as_ref());
+    insert_opt(&mut params, "factor", s.factor.as_ref());
+    insert_opt(&mut params, "patience", s.patience.as_ref());
+    insert_opt(&mut params, "threshold", s.threshold.as_ref());
+    insert_opt(&mut params, "max_lr", s.max_lr.as_ref());
+    insert_opt(&mut params, "pct_start", s.pct_start.as_ref());
+    insert_opt(&mut params, "anneal_strategy", s.anneal_strategy.as_ref());
+    insert_opt(&mut params, "div_factor", s.div_factor.as_ref());
+    insert_opt(&mut params, "final_div_factor", s.final_div_factor.as_ref());
 
     if params.is_empty() {
         None

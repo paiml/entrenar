@@ -40,9 +40,9 @@ pub use cli::{
     apply_overrides, parse_args, ArchiveProviderArg, ArtifactTypeArg, AuditArgs, AuditType,
     BenchArgs, BundleArgs, CitationFormat, CiteArgs, Cli, Command, CompletionArgs, DepositArgs,
     ExportArgs, ExportFormat, InfoArgs, InitArgs, InitTemplate, InspectArgs, InspectMode,
-    LicenseArg, MergeArgs, MergeMethod, MonitorArgs, OutputFormat, PreregisterArgs, QuantMethod,
-    QuantizeArgs, ResearchArgs, ResearchCommand, ResearchInitArgs, ShellType, TrainArgs,
-    ValidateArgs, VerifyArgs,
+    LicenseArg, MergeArgs, MergeMethod, MonitorArgs, OutputFormat, PreregisterArgs, PublishArgs,
+    QuantMethod, QuantizeArgs, ResearchArgs, ResearchCommand, ResearchInitArgs, ShellType,
+    TrainArgs, ValidateArgs, VerifyArgs,
 };
 pub use infer::{
     collect_stats_from_samples, infer_schema, infer_schema_from_path, infer_type, ColumnStats,
