@@ -42,9 +42,9 @@ pub use manifest::{
     DataConfig, DataLoader, DataSplit, DebugConfig, DistillModelRef, DistillationConfig,
     DriftDetectionConfig, GradientConfig, GraphConfig, InspectConfig, LoraConfig,
     MixedPrecisionConfig, ModelConfig, MonitoringConfig, OptimizerConfig, OutputConfig,
-    PreprocessingStep, PrivacyConfig, QuantizeConfig, RagConfig, SchedulerConfig, SessionConfig,
-    SigningConfig, StressConfig, TerminalMonitor, TrackingConfig, TrainingConfig, TrainingManifest,
-    PublishConfig, VerificationConfig, WarmupConfig,
+    PreprocessingStep, PrivacyConfig, PublishConfig, QuantizeConfig, RagConfig, SchedulerConfig,
+    SessionConfig, SigningConfig, StressConfig, TerminalMonitor, TrackingConfig, TrainingConfig,
+    TrainingManifest, VerificationConfig, WarmupConfig,
 };
 pub use templates::{generate_manifest, generate_manifest_with_hints, generate_yaml, Template};
 pub use validation::{validate_manifest, ManifestError, ValidationResult};

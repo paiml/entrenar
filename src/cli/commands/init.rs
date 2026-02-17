@@ -193,11 +193,7 @@ pub fn run_init(args: InitArgs, level: LogLevel) -> Result<(), String> {
     }
     if let Some(fmt) = data_format {
         if fmt != DataFormat::Unknown {
-            log(
-                level,
-                LogLevel::Normal,
-                &format!("Data format: {fmt}"),
-            );
+            log(level, LogLevel::Normal, &format!("Data format: {fmt}"));
         }
     }
 

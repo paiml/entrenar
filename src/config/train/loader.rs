@@ -1172,10 +1172,7 @@ optimizer:
         // Without hub-publish feature: error with helpful message
         // With hub-publish feature: would attempt download
         #[cfg(not(feature = "hub-publish"))]
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("hub-publish"));
+        assert!(result.unwrap_err().to_string().contains("hub-publish"));
         #[cfg(feature = "hub-publish")]
         let _ = result; // May succeed or fail depending on network
     }

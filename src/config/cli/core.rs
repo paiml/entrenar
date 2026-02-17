@@ -3,7 +3,9 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use super::extended::{AuditArgs, BenchArgs, CompletionArgs, InspectArgs, MonitorArgs, PublishArgs};
+use super::extended::{
+    AuditArgs, BenchArgs, CompletionArgs, InspectArgs, MonitorArgs, PublishArgs,
+};
 use super::init::InitArgs;
 use super::quant_merge::{MergeArgs, QuantizeArgs};
 use super::research::ResearchArgs;

@@ -102,15 +102,7 @@ fn do_publish(
 fn collect_model_files(dir: &Path) -> Result<Vec<(std::path::PathBuf, String)>, std::io::Error> {
     let mut files = Vec::new();
 
-    let extensions = [
-        "safetensors",
-        "gguf",
-        "bin",
-        "json",
-        "yaml",
-        "yml",
-        "txt",
-    ];
+    let extensions = ["safetensors", "gguf", "bin", "json", "yaml", "yml", "txt"];
 
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -310,9 +302,7 @@ mod tests {
         // With hub-publish feature, this would attempt actual upload
         let result = run_publish(args, LogLevel::Quiet);
         #[cfg(not(feature = "hub-publish"))]
-        assert!(result
-            .unwrap_err()
-            .contains("hub-publish"));
+        assert!(result.unwrap_err().contains("hub-publish"));
         #[cfg(feature = "hub-publish")]
         let _ = result; // May succeed or fail depending on HF_TOKEN
     }

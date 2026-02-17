@@ -729,10 +729,7 @@ optimizer:
 ";
         let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
         assert!(spec.model.is_hf_repo_id());
-        assert_eq!(
-            spec.model.path,
-            PathBuf::from("Qwen/Qwen2.5-Coder-0.5B")
-        );
+        assert_eq!(spec.model.path, PathBuf::from("Qwen/Qwen2.5-Coder-0.5B"));
     }
 
     // === Publish Section Tests ===
