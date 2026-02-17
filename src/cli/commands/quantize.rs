@@ -136,7 +136,11 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
             .map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
 
         if tensor.dtype() != safetensors::tensor::Dtype::F32 {
-            log(level, LogLevel::Verbose, &format!("  Skipping {name} (not F32)"));
+            log(
+                level,
+                LogLevel::Verbose,
+                &format!("  Skipping {name} (not F32)"),
+            );
             continue;
         }
 

@@ -23,10 +23,26 @@ fn audit_bias(args: &AuditArgs, level: LogLevel) -> Result<(), String> {
     let pass = demographic_parity >= f64::from(args.threshold);
 
     log(level, LogLevel::Normal, "Bias Audit Results:");
-    log(level, LogLevel::Normal, &format!("  Demographic parity ratio: {demographic_parity:.3}"));
-    log(level, LogLevel::Normal, &format!("  Equalized odds: {equalized_odds:.3}"));
-    log(level, LogLevel::Normal, &format!("  Threshold: {:.3}", args.threshold));
-    log(level, LogLevel::Normal, &format!("  Status: {}", if pass { "PASS" } else { "FAIL" }));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Demographic parity ratio: {demographic_parity:.3}"),
+    );
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Equalized odds: {equalized_odds:.3}"),
+    );
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Threshold: {:.3}", args.threshold),
+    );
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Status: {}", if pass { "PASS" } else { "FAIL" }),
+    );
 
     if args.format == OutputFormat::Json {
         let result = serde_json::json!({
@@ -53,8 +69,16 @@ fn audit_fairness(args: &AuditArgs, level: LogLevel) {
     let pass = calibration_error <= (1.0 - f64::from(args.threshold));
 
     log(level, LogLevel::Normal, "Fairness Audit Results:");
-    log(level, LogLevel::Normal, &format!("  Calibration error: {calibration_error:.3}"));
-    log(level, LogLevel::Normal, &format!("  Status: {}", if pass { "PASS" } else { "FAIL" }));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Calibration error: {calibration_error:.3}"),
+    );
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Status: {}", if pass { "PASS" } else { "FAIL" }),
+    );
 }
 
 /// Run privacy audit: PII pattern scan.
@@ -70,7 +94,11 @@ fn audit_privacy(level: LogLevel) {
 /// Run security audit: deserialization and code execution checks.
 fn audit_security(level: LogLevel) {
     log(level, LogLevel::Normal, "Security Audit Results:");
-    log(level, LogLevel::Normal, "  Pickle deserialization: Safe (SafeTensors)");
+    log(
+        level,
+        LogLevel::Normal,
+        "  Pickle deserialization: Safe (SafeTensors)",
+    );
     log(level, LogLevel::Normal, "  Code execution vectors: None");
     log(level, LogLevel::Normal, "  Status: PASS");
 }
@@ -86,11 +114,23 @@ pub fn run_audit(args: AuditArgs, level: LogLevel) -> Result<(), String> {
         return Err(format!("File not found: {}", args.input.display()));
     }
 
-    log(level, LogLevel::Normal, &format!("  Audit type: {}", args.audit_type));
-    log(level, LogLevel::Normal, &format!("  Threshold: {}", args.threshold));
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Audit type: {}", args.audit_type),
+    );
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("  Threshold: {}", args.threshold),
+    );
 
     if let Some(attr) = &args.protected_attr {
-        log(level, LogLevel::Normal, &format!("  Protected attribute: {attr}"));
+        log(
+            level,
+            LogLevel::Normal,
+            &format!("  Protected attribute: {attr}"),
+        );
     }
 
     match args.audit_type {

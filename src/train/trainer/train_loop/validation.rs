@@ -121,11 +121,7 @@ impl Trainer {
     /// Run validation batches and return average validation loss
     ///
     /// Returns `None` if there are no validation batches or no loss function.
-    fn compute_validation_loss<F, BV, IV>(
-        &mut self,
-        val_fn: &BV,
-        forward_fn: &F,
-    ) -> Option<f32>
+    fn compute_validation_loss<F, BV, IV>(&mut self, val_fn: &BV, forward_fn: &F) -> Option<f32>
     where
         F: Fn(&Tensor) -> Tensor,
         BV: Fn() -> IV,
