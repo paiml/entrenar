@@ -246,6 +246,7 @@ mod tests {
             quantize: None,
             merge: None,
             training: TrainingParams::default(),
+            publish: None,
         };
 
         let model = build_model(&spec).unwrap();
@@ -308,6 +309,7 @@ mod tests {
             quantize: None,
             merge: None,
             training: TrainingParams::default(),
+            publish: None,
         };
 
         let loaded = build_model(&spec).unwrap();
@@ -369,6 +371,7 @@ mod tests {
             quantize: None,
             merge: None,
             training: TrainingParams::default(),
+            publish: None,
         };
 
         let loaded = build_model(&spec).unwrap();

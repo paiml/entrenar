@@ -55,4 +55,10 @@ pub enum ValidationError {
 
     #[error("Invalid LR scheduler: {0} (must be one of: cosine, linear, constant)")]
     InvalidLRScheduler(String),
+
+    #[error("Invalid publish repo: {0} (must be org/name format)")]
+    InvalidPublishRepo(String),
+
+    #[error("Invalid publish format: {0} (must be safetensors or gguf)")]
+    InvalidPublishFormat(String),
 }

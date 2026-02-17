@@ -1101,3 +1101,19 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: PMAT-185
+  github_issue: null
+  item_type: task
+  title: 'Phase 3: YAML publish section for auto-publish after training'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-02-17T10:13:32Z
+  updated: 2026-02-17T10:13:38.697090822+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null

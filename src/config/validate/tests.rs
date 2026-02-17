@@ -26,6 +26,7 @@ fn create_valid_spec() -> TrainSpec {
         quantize: None,
         merge: None,
         training: TrainingParams::default(),
+        publish: None,
     }
 }
 
@@ -352,6 +353,74 @@ fn test_valid_config_with_all_optional_fields() {
     spec.merge = Some(MergeSpec {
         method: "ties".to_string(),
         params: HashMap::new(),
+    });
+    assert!(validate_config(&spec).is_ok());
+}
+
+#[test]
+fn test_valid_publish_config() {
+    let mut spec = create_valid_spec();
+    spec.publish = Some(PublishSpec {
+        repo: "myuser/my-model".to_string(),
+        private: false,
+        model_card: true,
+        merge_adapters: false,
+        format: "safetensors".to_string(),
+    });
+    assert!(validate_config(&spec).is_ok());
+}
+
+#[test]
+fn test_invalid_publish_repo_no_slash() {
+    let mut spec = create_valid_spec();
+    spec.publish = Some(PublishSpec {
+        repo: "invalid-repo".to_string(),
+        private: false,
+        model_card: true,
+        merge_adapters: false,
+        format: "safetensors".to_string(),
+    });
+    let err = validate_config(&spec).unwrap_err();
+    assert!(matches!(err, ValidationError::InvalidPublishRepo(_)));
+}
+
+#[test]
+fn test_invalid_publish_repo_empty_parts() {
+    let mut spec = create_valid_spec();
+    spec.publish = Some(PublishSpec {
+        repo: "/model".to_string(),
+        private: false,
+        model_card: true,
+        merge_adapters: false,
+        format: "safetensors".to_string(),
+    });
+    let err = validate_config(&spec).unwrap_err();
+    assert!(matches!(err, ValidationError::InvalidPublishRepo(_)));
+}
+
+#[test]
+fn test_invalid_publish_format() {
+    let mut spec = create_valid_spec();
+    spec.publish = Some(PublishSpec {
+        repo: "org/model".to_string(),
+        private: false,
+        model_card: true,
+        merge_adapters: false,
+        format: "pytorch".to_string(),
+    });
+    let err = validate_config(&spec).unwrap_err();
+    assert!(matches!(err, ValidationError::InvalidPublishFormat(_)));
+}
+
+#[test]
+fn test_valid_publish_gguf_format() {
+    let mut spec = create_valid_spec();
+    spec.publish = Some(PublishSpec {
+        repo: "org/model".to_string(),
+        private: false,
+        model_card: true,
+        merge_adapters: false,
+        format: "gguf".to_string(),
     });
     assert!(validate_config(&spec).is_ok());
 }

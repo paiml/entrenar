@@ -92,6 +92,7 @@ fn test_load_training_batches_nonexistent_file() {
         quantize: None,
         merge: None,
         training: Default::default(),
+        publish: None,
     };
 
     let result = load_training_batches(&spec);
@@ -133,6 +134,7 @@ fn test_load_training_batches_unsupported_format() {
         quantize: None,
         merge: None,
         training: Default::default(),
+        publish: None,
     };
 
     let result = load_training_batches(&spec);
@@ -265,6 +267,7 @@ fn test_load_training_batches_json_file() {
         quantize: None,
         merge: None,
         training: Default::default(),
+        publish: None,
     };
 
     let result = load_training_batches(&spec);

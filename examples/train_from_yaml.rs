@@ -56,6 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output_dir: PathBuf::from("./checkpoints"),
             ..Default::default()
         },
+        publish: None,
     };
 
     // Serialize to YAML
