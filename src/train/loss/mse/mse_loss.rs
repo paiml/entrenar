@@ -1,4 +1,9 @@
 //! Mean Squared Error Loss
+//!
+//! Forward scalar computation delegates to [`aprender::loss::mse_loss`].
+//! Gradient computation (backward) is entrenar's autograd concern.
+
+use aprender::primitives::Vector;
 
 use crate::autograd::BackwardOp;
 use crate::Tensor;
@@ -10,6 +15,9 @@ use crate::train::loss::LossFn;
 /// Mean Squared Error Loss
 ///
 /// L = mean((predictions - targets)^2)
+///
+/// Forward scalar delegates to [`aprender::loss::mse_loss`].
+/// Backward gradient is computed by entrenar's autograd.
 ///
 /// # Example
 ///
@@ -34,19 +42,19 @@ impl LossFn for MSELoss {
             "Predictions and targets must have same length"
         );
 
-        // Compute squared error
-        let diff = predictions.data() - targets.data();
-        let squared = &diff * &diff;
-        let mse = squared.mean().unwrap_or(0.0);
+        // Delegate forward scalar to aprender
+        let pred_vec = Vector::from_slice(predictions.data().as_slice().expect("contiguous tensor data"));
+        let tgt_vec = Vector::from_slice(targets.data().as_slice().expect("contiguous tensor data"));
+        let mse = aprender::loss::mse_loss(&pred_vec, &tgt_vec);
 
-        // Create loss tensor
         let mut loss = Tensor::from_vec(vec![mse], true);
 
-        // Set up gradient: d(MSE)/d(pred) = 2 * (pred - target) / n
+        // Gradient computation is entrenar's autograd concern
+        // d(MSE)/d(pred) = 2 * (pred - target) / n
+        let diff = predictions.data() - targets.data();
         let n = predictions.len() as f32;
         let grad = &diff * (2.0 / n);
 
-        // Store gradient computation
         struct MSEBackward {
             pred_grad_cell: Rc<std::cell::RefCell<Option<Array1<f32>>>>,
             grad: Array1<f32>,
@@ -54,7 +62,6 @@ impl LossFn for MSELoss {
 
         impl BackwardOp for MSEBackward {
             fn backward(&self) {
-                // Accumulate gradient to predictions
                 let mut pred_grad = self.pred_grad_cell.borrow_mut();
                 if let Some(existing) = pred_grad.as_mut() {
                     *existing = &*existing + &self.grad;

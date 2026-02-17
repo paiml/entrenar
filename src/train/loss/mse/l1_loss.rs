@@ -1,4 +1,9 @@
 //! L1 Loss (Mean Absolute Error)
+//!
+//! Forward scalar computation delegates to [`aprender::loss::mae_loss`].
+//! Gradient computation (backward) is entrenar's autograd concern.
+
+use aprender::primitives::Vector;
 
 use crate::autograd::BackwardOp;
 use crate::Tensor;
@@ -11,7 +16,8 @@ use crate::train::loss::LossFn;
 ///
 /// L = mean(|predictions - targets|)
 ///
-/// More robust to outliers than MSE, but has non-smooth gradient at zero.
+/// Forward scalar delegates to [`aprender::loss::mae_loss`].
+/// Backward gradient is computed by entrenar's autograd.
 ///
 /// # Example
 ///
@@ -36,13 +42,16 @@ impl LossFn for L1Loss {
             "Predictions and targets must have same length"
         );
 
-        let diff = predictions.data() - targets.data();
-        let abs_diff = diff.mapv(f32::abs);
-        let mae = abs_diff.mean().unwrap_or(0.0);
+        // Delegate forward scalar to aprender
+        let pred_vec = Vector::from_slice(predictions.data().as_slice().expect("contiguous tensor data"));
+        let tgt_vec = Vector::from_slice(targets.data().as_slice().expect("contiguous tensor data"));
+        let mae = aprender::loss::mae_loss(&pred_vec, &tgt_vec);
 
         let mut loss = Tensor::from_vec(vec![mae], true);
 
-        // Gradient: sign(pred - target) / n
+        // Gradient computation is entrenar's autograd concern
+        // d(L1)/d(pred) = sign(pred - target) / n
+        let diff = predictions.data() - targets.data();
         let n = predictions.len() as f32;
         let grad: Array1<f32> = diff.mapv(|d| d.signum() / n);
 

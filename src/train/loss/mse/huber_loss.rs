@@ -1,4 +1,9 @@
 //! Huber Loss (Smooth L1 Loss)
+//!
+//! Forward scalar computation delegates to [`aprender::loss::huber_loss`].
+//! Gradient computation (backward) is entrenar's autograd concern.
+
+use aprender::primitives::Vector;
 
 use crate::autograd::BackwardOp;
 use crate::Tensor;
@@ -60,25 +65,17 @@ impl LossFn for HuberLoss {
             "Predictions and targets must have same length"
         );
 
+        // Delegate forward scalar to aprender
+        let pred_vec = Vector::from_slice(predictions.data().as_slice().expect("contiguous tensor data"));
+        let tgt_vec = Vector::from_slice(targets.data().as_slice().expect("contiguous tensor data"));
+        let mean_loss = aprender::loss::huber_loss(&pred_vec, &tgt_vec, self.delta);
+
+        let mut loss = Tensor::from_vec(vec![mean_loss], true);
+
+        // Gradient computation is entrenar's autograd concern
         let diff = predictions.data() - targets.data();
         let n = predictions.len() as f32;
         let delta = self.delta;
-
-        // Compute Huber loss per element
-        let losses: Vec<f32> = diff
-            .iter()
-            .map(|&d| {
-                let abs_d = d.abs();
-                if abs_d <= delta {
-                    0.5 * d * d
-                } else {
-                    delta * (abs_d - 0.5 * delta)
-                }
-            })
-            .collect();
-
-        let mean_loss: f32 = losses.iter().sum::<f32>() / n;
-        let mut loss = Tensor::from_vec(vec![mean_loss], true);
 
         // Compute gradient per element
         // d(Huber)/d(pred) = error if |error| <= delta
