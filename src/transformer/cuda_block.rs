@@ -502,7 +502,7 @@ impl CudaTransformerBlock {
         // === Backward through FFN gate projection ===
         // gate_out = norm2_out @ w_gate
         // grad_norm2_for_gate = grad_gate_out @ w_gate^T
-        // Copy grad_hidden to a temp to avoid aliasing
+        // Clone grad_hidden to separate buffer preventing mutable borrow conflict
         let grad_hidden_data = gpu_to_vec(&self.scratch.grad_hidden)?;
 
         // grad_w_gate = norm2_out^T @ grad_gate_out
@@ -548,7 +548,7 @@ impl CudaTransformerBlock {
         // === Backward through first residual connection ===
         // residual1 = input + o_proj_out
         // grad_input += grad_residual1
-        // Copy to temp to avoid aliasing
+        // Clone to separate buffers preventing mutable borrow conflict
         let grad_in_data = gpu_to_vec(grad_input)?;
         let grad_out_data = gpu_to_vec(grad_output)?;
         let sum: Vec<f32> = grad_in_data

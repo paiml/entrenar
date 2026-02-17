@@ -184,8 +184,9 @@ fn select_top_k_with_capacity(
     let mut all_weights = Vec::with_capacity(batch_size);
 
     for i in 0..batch_size {
+        let row: Vec<f32> = probs.row(i).to_vec();
         let (indices, weights) =
-            assign_token_experts(probs.row(i).as_slice().unwrap(), top_k, capacity, &mut expert_counts);
+            assign_token_experts(&row, top_k, capacity, &mut expert_counts);
         all_indices.push(indices);
         all_weights.push(weights);
     }

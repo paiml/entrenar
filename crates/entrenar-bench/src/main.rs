@@ -460,48 +460,42 @@ fn cost_performance_command(
     Ok(())
 }
 
-fn recommend_command(
+/// Print constraint summary to stdout.
+fn print_constraints(
     max_gpu_hours: Option<f64>,
     max_cost: Option<f64>,
     min_accuracy: Option<f64>,
     max_memory: Option<f64>,
-    gpu: &str,
-    cli: &entrenar_common::Cli,
-) -> entrenar_common::Result<()> {
-    // Parse GPU type
-    let cost_model = parse_gpu_model(gpu)?;
+) {
+    println!("Constraints:");
 
-    if !cli.is_quiet() {
-        println!("{}", styles::header("Configuration Recommendation"));
-        println!(
-            "GPU: {} (${:.2}/hour)\n",
-            cost_model.gpu_type, cost_model.cost_per_hour
-        );
+    let constraint_lines: Vec<String> = [
+        max_gpu_hours.map(|h| format!("  \u{2022} Max GPU-hours: {h}")),
+        max_cost.map(|c| format!("  \u{2022} Max cost: ${c}")),
+        min_accuracy.map(|a| format!("  \u{2022} Min accuracy: {:.1}%", a * 100.0)),
+        max_memory.map(|m| format!("  \u{2022} Max memory: {m} GB")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
 
-        println!("Constraints:");
-        if let Some(h) = max_gpu_hours {
-            println!("  • Max GPU-hours: {h}");
+    if constraint_lines.is_empty() {
+        println!("  (none specified - showing all recommendations)");
+    } else {
+        for line in &constraint_lines {
+            println!("{line}");
         }
-        if let Some(c) = max_cost {
-            println!("  • Max cost: ${c}");
-        }
-        if let Some(a) = min_accuracy {
-            println!("  • Min accuracy: {:.1}%", a * 100.0);
-        }
-        if let Some(m) = max_memory {
-            println!("  • Max memory: {m} GB");
-        }
-        if max_gpu_hours.is_none()
-            && max_cost.is_none()
-            && min_accuracy.is_none()
-            && max_memory.is_none()
-        {
-            println!("  (none specified - showing all recommendations)");
-        }
-        println!();
     }
+    println!();
+}
 
-    // Build constraints
+/// Build a `Constraints` value from optional fields.
+fn build_constraints(
+    max_gpu_hours: Option<f64>,
+    max_cost: Option<f64>,
+    min_accuracy: Option<f64>,
+    max_memory: Option<f64>,
+) -> Constraints {
     let mut constraints = Constraints::new();
     if let Some(h) = max_gpu_hours {
         constraints = constraints.with_max_gpu_hours(h);
@@ -515,8 +509,76 @@ fn recommend_command(
     if let Some(m) = max_memory {
         constraints = constraints.with_max_memory(m);
     }
+    constraints
+}
 
-    // Generate sample data and analyze
+/// Print human-readable recommendation output (non-JSON).
+fn print_recommendations(recommendations: &[entrenar_bench::cost::Recommendation]) {
+    if recommendations.is_empty() {
+        println!(
+            "{}",
+            styles::warning("No configurations match the specified constraints.")
+        );
+        println!("\nTry relaxing your constraints:");
+        println!("  \u{2022} Increase max-cost or max-gpu-hours");
+        println!("  \u{2022} Decrease min-accuracy");
+        println!("  \u{2022} Increase max-memory");
+        return;
+    }
+
+    println!("Recommendations:\n");
+    for (i, rec) in recommendations.iter().enumerate() {
+        let bullet = if i == 0 { "\u{2605}" } else { "\u{2022}" };
+        println!("{bullet} {} ({})", rec.point.name, rec.reason);
+        println!("    GPU hours: {:.1}", rec.point.gpu_hours);
+        println!("    Cost: ${:.2}", rec.point.cost_usd);
+        println!("    Accuracy: {:.1}%", rec.point.accuracy * 100.0);
+        println!("    Memory: {:.0} GB", rec.point.memory_gb);
+        print_optional_config(&rec.point.config);
+        println!();
+    }
+
+    if let Some(top) = recommendations.first() {
+        println!(
+            "{}",
+            styles::success(&format!("Top recommendation: {}", top.point.name))
+        );
+    }
+}
+
+/// Print optional configuration fields (LoRA rank, quantization bits, temperature).
+fn print_optional_config(config: &entrenar_bench::cost::ConfigParams) {
+    if let Some(rank) = config.lora_rank {
+        println!("    LoRA rank: {rank}");
+    }
+    if let Some(bits) = config.quant_bits {
+        println!("    Quantization: {bits}-bit");
+    }
+    if let Some(temp) = config.temperature {
+        println!("    Temperature: {temp}");
+    }
+}
+
+fn recommend_command(
+    max_gpu_hours: Option<f64>,
+    max_cost: Option<f64>,
+    min_accuracy: Option<f64>,
+    max_memory: Option<f64>,
+    gpu: &str,
+    cli: &entrenar_common::Cli,
+) -> entrenar_common::Result<()> {
+    let cost_model = parse_gpu_model(gpu)?;
+
+    if !cli.is_quiet() {
+        println!("{}", styles::header("Configuration Recommendation"));
+        println!(
+            "GPU: {} (${:.2}/hour)\n",
+            cost_model.gpu_type, cost_model.cost_per_hour
+        );
+        print_constraints(max_gpu_hours, max_cost, min_accuracy, max_memory);
+    }
+
+    let constraints = build_constraints(max_gpu_hours, max_cost, min_accuracy, max_memory);
     let points = generate_sample_points(&cost_model);
     let analysis = CostPerformanceAnalysis::from_points(points);
     let recommendations = analysis.recommend(&constraints);
@@ -534,43 +596,8 @@ fn recommend_command(
         if let Ok(json_str) = serde_json::to_string_pretty(&json) {
             println!("{json_str}");
         }
-    } else if recommendations.is_empty() {
-        println!(
-            "{}",
-            styles::warning("No configurations match the specified constraints.")
-        );
-        println!("\nTry relaxing your constraints:");
-        println!("  • Increase max-cost or max-gpu-hours");
-        println!("  • Decrease min-accuracy");
-        println!("  • Increase max-memory");
     } else {
-        println!("Recommendations:\n");
-        for (i, rec) in recommendations.iter().enumerate() {
-            let bullet = if i == 0 { "★" } else { "•" };
-            println!("{bullet} {} ({})", rec.point.name, rec.reason);
-            println!("    GPU hours: {:.1}", rec.point.gpu_hours);
-            println!("    Cost: ${:.2}", rec.point.cost_usd);
-            println!("    Accuracy: {:.1}%", rec.point.accuracy * 100.0);
-            println!("    Memory: {:.0} GB", rec.point.memory_gb);
-
-            if let Some(rank) = rec.point.config.lora_rank {
-                println!("    LoRA rank: {rank}");
-            }
-            if let Some(bits) = rec.point.config.quant_bits {
-                println!("    Quantization: {bits}-bit");
-            }
-            if let Some(temp) = rec.point.config.temperature {
-                println!("    Temperature: {temp}");
-            }
-            println!();
-        }
-
-        if let Some(top) = recommendations.first() {
-            println!(
-                "{}",
-                styles::success(&format!("Top recommendation: {}", top.point.name))
-            );
-        }
+        print_recommendations(&recommendations);
     }
 
     Ok(())
