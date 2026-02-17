@@ -93,7 +93,12 @@ impl Trainer {
             }
         }
 
-        self.finalize_training(max_epochs, final_loss, self.best_loss.unwrap_or(final_loss), stopped_early)
+        self.finalize_training(
+            max_epochs,
+            final_loss,
+            self.best_loss.unwrap_or(final_loss),
+            stopped_early,
+        )
     }
 
     // -- Shared helpers used by both basic.rs and validation.rs --
@@ -186,12 +191,7 @@ impl Trainer {
     }
 
     /// Clip gradients and run optimizer step at accumulation boundaries
-    fn maybe_clip_and_step(
-        &mut self,
-        step: usize,
-        steps_per_epoch: usize,
-        accum_steps: usize,
-    ) {
+    fn maybe_clip_and_step(&mut self, step: usize, steps_per_epoch: usize, accum_steps: usize) {
         let is_accum_boundary = (step + 1).is_multiple_of(accum_steps);
         let is_last_batch = step + 1 == steps_per_epoch;
         if is_accum_boundary || is_last_batch {

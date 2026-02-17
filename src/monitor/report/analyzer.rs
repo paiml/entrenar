@@ -108,14 +108,17 @@ impl HanseiAnalyzer {
             Metric::Loss => range_trend(stats, true),
             Metric::Accuracy => range_trend(stats, false),
             Metric::GradientNorm => {
-                if cv < 0.2 { Trend::Stable } else { Trend::Oscillating }
+                if cv < 0.2 {
+                    Trend::Stable
+                } else {
+                    Trend::Oscillating
+                }
             }
             Metric::LearningRate | Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
                 Trend::Stable
             }
         }
     }
-
 }
 
 fn coeff_of_variation(stats: &MetricStats) -> f64 {
@@ -138,7 +141,11 @@ fn range_trend(stats: &MetricStats, lower_is_better: bool) -> Trend {
     } else {
         stats.mean > mid
     };
-    if improving { Trend::Improving } else { Trend::Degrading }
+    if improving {
+        Trend::Improving
+    } else {
+        Trend::Degrading
+    }
 }
 
 impl HanseiAnalyzer {
@@ -170,7 +177,9 @@ impl HanseiAnalyzer {
                 severity: IssueSeverity::Critical,
                 category: "Numerical Stability".to_string(),
                 description: "NaN values detected in loss".to_string(),
-                recommendation: "Reduce learning rate, add gradient clipping, or check data preprocessing".to_string(),
+                recommendation:
+                    "Reduce learning rate, add gradient clipping, or check data preprocessing"
+                        .to_string(),
             });
         }
         if stats.has_inf {
@@ -211,10 +220,7 @@ impl HanseiAnalyzer {
             issues.push(TrainingIssue {
                 severity: IssueSeverity::Warning,
                 category: "Performance".to_string(),
-                description: format!(
-                    "Final accuracy is low: {:.2}%",
-                    summary.final_value * 100.0
-                ),
+                description: format!("Final accuracy is low: {:.2}%", summary.final_value * 100.0),
                 recommendation: "Consider model architecture changes or hyperparameter tuning"
                     .to_string(),
             });
@@ -233,19 +239,12 @@ impl HanseiAnalyzer {
     }
 
     /// Check gradient norms for explosion and vanishing.
-    fn check_gradient_issues(
-        &self,
-        stats: &MetricStats,
-        issues: &mut Vec<TrainingIssue>,
-    ) {
+    fn check_gradient_issues(&self, stats: &MetricStats, issues: &mut Vec<TrainingIssue>) {
         if stats.max > self.gradient_explosion_threshold {
             issues.push(TrainingIssue {
                 severity: IssueSeverity::Error,
                 category: "Gradient Health".to_string(),
-                description: format!(
-                    "Gradient explosion detected: max norm = {:.2e}",
-                    stats.max
-                ),
+                description: format!("Gradient explosion detected: max norm = {:.2e}", stats.max),
                 recommendation: "Enable gradient clipping (e.g., max_norm=1.0)".to_string(),
             });
         }
@@ -265,11 +264,7 @@ impl HanseiAnalyzer {
     }
 
     /// Check learning rate schedule for high variance.
-    fn check_lr_issues(
-        &self,
-        summary: &MetricSummary,
-        issues: &mut Vec<TrainingIssue>,
-    ) {
+    fn check_lr_issues(&self, summary: &MetricSummary, issues: &mut Vec<TrainingIssue>) {
         if summary.std_dev > summary.mean * 0.5 {
             issues.push(TrainingIssue {
                 severity: IssueSeverity::Info,

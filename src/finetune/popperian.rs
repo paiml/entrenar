@@ -301,13 +301,37 @@ impl PopperianQA {
     pub fn report(&self) -> String {
         let mut out = String::new();
         report_header(&mut out, self);
-        report_section(&mut out, "## Reproducibility (20 pts)\n", &self.reproducibility_items());
-        report_section(&mut out, "\n## Compilation (20 pts)\n", &self.compilation_items());
-        report_section(&mut out, "\n## Correctness (20 pts)\n", &self.correctness_items());
+        report_section(
+            &mut out,
+            "## Reproducibility (20 pts)\n",
+            &self.reproducibility_items(),
+        );
+        report_section(
+            &mut out,
+            "\n## Compilation (20 pts)\n",
+            &self.compilation_items(),
+        );
+        report_section(
+            &mut out,
+            "\n## Correctness (20 pts)\n",
+            &self.correctness_items(),
+        );
         report_section(&mut out, "\n## Coverage (15 pts)\n", &self.coverage_items());
-        report_section(&mut out, "\n## Efficiency (10 pts)\n", &self.efficiency_items());
-        report_section(&mut out, "\n## Edge Cases (10 pts)\n", &self.edge_case_items());
-        report_section(&mut out, "\n## Documentation (5 pts)\n", &self.documentation_items());
+        report_section(
+            &mut out,
+            "\n## Efficiency (10 pts)\n",
+            &self.efficiency_items(),
+        );
+        report_section(
+            &mut out,
+            "\n## Edge Cases (10 pts)\n",
+            &self.edge_case_items(),
+        );
+        report_section(
+            &mut out,
+            "\n## Documentation (5 pts)\n",
+            &self.documentation_items(),
+        );
         out
     }
 
@@ -368,7 +392,10 @@ impl PopperianQA {
         vec![
             (self.d1_test_names_descriptive, "D1: Descriptive test names"),
             (self.d2_comments_present, "D2: Comments present"),
-            (self.d3_proptest_strategies_clear, "D3: Clear proptest strategies"),
+            (
+                self.d3_proptest_strategies_clear,
+                "D3: Clear proptest strategies",
+            ),
         ]
     }
 }

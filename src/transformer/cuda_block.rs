@@ -467,7 +467,13 @@ impl CudaTransformerBlock {
 
         // Backward through first residual connection and input RMSNorm
         self.backward_residual_and_input_norm(
-            input, grad_output, grad_input, seq_len, hidden_size, eps, stream,
+            input,
+            grad_output,
+            grad_input,
+            seq_len,
+            hidden_size,
+            eps,
+            stream,
         )?;
 
         Ok(())
