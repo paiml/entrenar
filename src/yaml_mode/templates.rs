@@ -312,11 +312,9 @@ fn generate_qlora(name: &str, model: Option<&str>, data: Option<&str>) -> Traini
     manifest
 }
 
-fn generate_full(name: &str, model: Option<&str>, data: Option<&str>) -> TrainingManifest {
-    let mut manifest = generate_qlora(name, model, data);
-
-    // Add quantization config
-    manifest.quantize = Some(QuantizeConfig {
+/// Build the full quantization config section.
+fn full_quantize_config() -> QuantizeConfig {
+    QuantizeConfig {
         enabled: false,
         bits: 8,
         scheme: Some("symmetric".to_string()),
@@ -325,10 +323,12 @@ fn generate_full(name: &str, model: Option<&str>, data: Option<&str>) -> Trainin
         qat: None,
         calibration: None,
         exclude: Some(vec!["lm_head".to_string(), "embed_tokens".to_string()]),
-    });
+    }
+}
 
-    // Full monitoring
-    manifest.monitoring = Some(MonitoringConfig {
+/// Build the full monitoring config with terminal, tracking, system, and alerts.
+fn full_monitoring_config(name: &str) -> MonitoringConfig {
+    MonitoringConfig {
         terminal: Some(TerminalMonitor {
             enabled: true,
             refresh_rate: Some(100),
@@ -383,10 +383,12 @@ fn generate_full(name: &str, model: Option<&str>, data: Option<&str>) -> Trainin
             },
         ]),
         drift_detection: None,
-    });
+    }
+}
 
-    // Add callbacks
-    manifest.callbacks = Some(vec![
+/// Build the full callbacks list (checkpoint, LR monitor, gradient monitor).
+fn full_callbacks_config() -> Vec<CallbackConfig> {
+    vec![
         CallbackConfig {
             callback_type: CallbackType::Checkpoint,
             trigger: "epoch_end".to_string(),
@@ -408,10 +410,12 @@ fn generate_full(name: &str, model: Option<&str>, data: Option<&str>) -> Trainin
             config: None,
             script: None,
         },
-    ]);
+    ]
+}
 
-    // Full output config
-    manifest.output = Some(OutputConfig {
+/// Build the full output config with model, metrics, report, and registry.
+fn full_output_config() -> OutputConfig {
+    OutputConfig {
         dir: "./experiments/{{ name }}/{{ timestamp }}".to_string(),
         model: Some(ModelOutputConfig {
             format: Some("safetensors".to_string()),
@@ -438,7 +442,16 @@ fn generate_full(name: &str, model: Option<&str>, data: Option<&str>) -> Trainin
             include_config: Some(true),
             include_metrics: Some(true),
         }),
-    });
+    }
+}
+
+fn generate_full(name: &str, model: Option<&str>, data: Option<&str>) -> TrainingManifest {
+    let mut manifest = generate_qlora(name, model, data);
+
+    manifest.quantize = Some(full_quantize_config());
+    manifest.monitoring = Some(full_monitoring_config(name));
+    manifest.callbacks = Some(full_callbacks_config());
+    manifest.output = Some(full_output_config());
 
     manifest
 }

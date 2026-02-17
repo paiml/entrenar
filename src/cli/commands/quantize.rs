@@ -29,13 +29,72 @@ fn save_quantized(
     Ok(())
 }
 
-pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Quantizing {} to {}-bit", args.model.display(), args.bits),
-    );
+/// Validate and convert CLI arguments to quant module types.
+fn resolve_quant_params(args: &QuantizeArgs) -> Result<(QuantMode, QuantGranularity), String> {
+    if args.bits != 4 && args.bits != 8 {
+        return Err(format!("Unsupported bit width: {}. Use 4 or 8.", args.bits));
+    }
 
+    let mode = match args.method {
+        QuantMethod::Symmetric => QuantMode::Symmetric,
+        QuantMethod::Asymmetric => QuantMode::Asymmetric,
+    };
+
+    let granularity = if args.per_channel {
+        QuantGranularity::PerChannel
+    } else {
+        QuantGranularity::PerTensor
+    };
+
+    Ok((mode, granularity))
+}
+
+/// Byte-size tracking for compression ratio computation.
+struct ByteAccumulator {
+    original: usize,
+    quantized: usize,
+}
+
+impl ByteAccumulator {
+    fn new() -> Self {
+        Self {
+            original: 0,
+            quantized: 0,
+        }
+    }
+
+    fn compression_ratio(&self) -> f64 {
+        if self.quantized > 0 {
+            self.original as f64 / self.quantized as f64
+        } else {
+            1.0
+        }
+    }
+}
+
+/// Quantize a single F32 tensor and return the result with byte accounting.
+fn quantize_single_tensor(
+    tensor: &safetensors::tensor::TensorView<'_>,
+    granularity: QuantGranularity,
+    mode: QuantMode,
+    bits: u8,
+) -> (QuantizedTensor, usize) {
+    let shape: Vec<usize> = tensor.shape().to_vec();
+    let num_elements: usize = shape.iter().product();
+    let original_bytes = num_elements * 4; // 4 bytes per f32
+
+    let bytes = tensor.data();
+    let values: Vec<f32> = bytes
+        .chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect();
+
+    let quantized = quantize_tensor(&values, &shape, granularity, mode, bits);
+    (quantized, original_bytes)
+}
+
+/// Log verbose details about quantization arguments.
+fn log_quant_args(args: &QuantizeArgs, level: LogLevel) {
     log(
         level,
         LogLevel::Verbose,
@@ -51,64 +110,40 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
         LogLevel::Verbose,
         &format!("  Output: {}", args.output.display()),
     );
+}
 
-    // Validate bit width
-    if args.bits != 4 && args.bits != 8 {
-        return Err(format!("Unsupported bit width: {}. Use 4 or 8.", args.bits));
-    }
+pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
+    log(
+        level,
+        LogLevel::Normal,
+        &format!("Quantizing {} to {}-bit", args.model.display(), args.bits),
+    );
 
-    // Load safetensors model
+    log_quant_args(&args, level);
+
+    let (mode, granularity) = resolve_quant_params(&args)?;
+
     let data = load_safetensors(&args)?;
-
     let tensors =
         SafeTensors::deserialize(&data).map_err(|e| format!("Failed to parse safetensors: {e}"))?;
 
-    // Convert CLI args to quant module types
-    let mode = match args.method {
-        QuantMethod::Symmetric => QuantMode::Symmetric,
-        QuantMethod::Asymmetric => QuantMode::Asymmetric,
-    };
-
-    let granularity = if args.per_channel {
-        QuantGranularity::PerChannel
-    } else {
-        QuantGranularity::PerTensor
-    };
-
-    // Quantize each tensor
     let mut quantized_tensors: HashMap<String, QuantizedTensor> = HashMap::new();
-    let mut total_original_bytes = 0usize;
-    let mut total_quantized_bytes = 0usize;
+    let mut bytes = ByteAccumulator::new();
 
     for name in tensors.names() {
         let tensor = tensors
             .tensor(name)
             .map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
 
-        // Only quantize float tensors
         if tensor.dtype() != safetensors::tensor::Dtype::F32 {
-            log(
-                level,
-                LogLevel::Verbose,
-                &format!("  Skipping {name} (not F32)"),
-            );
+            log(level, LogLevel::Verbose, &format!("  Skipping {name} (not F32)"));
             continue;
         }
 
-        let shape: Vec<usize> = tensor.shape().to_vec();
-        let num_elements: usize = shape.iter().product();
-        total_original_bytes += num_elements * 4; // 4 bytes per f32
-
-        // Convert bytes to f32 values
-        let bytes = tensor.data();
-        let values: Vec<f32> = bytes
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-            .collect();
-
-        // Quantize
-        let quantized = quantize_tensor(&values, &shape, granularity, mode, args.bits);
-        total_quantized_bytes += quantized.memory_bytes();
+        let (quantized, original_bytes) =
+            quantize_single_tensor(&tensor, granularity, mode, args.bits);
+        bytes.original += original_bytes;
+        bytes.quantized += quantized.memory_bytes();
 
         log(
             level,
@@ -116,7 +151,7 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
             &format!(
                 "  Quantized {}: {:?} -> {} bytes",
                 name,
-                shape,
+                tensor.shape(),
                 quantized.memory_bytes()
             ),
         );
@@ -124,14 +159,7 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
         quantized_tensors.insert((*name).to_string(), quantized);
     }
 
-    // Save quantized model as JSON
     save_quantized(&quantized_tensors, &args)?;
-
-    let compression_ratio = if total_quantized_bytes > 0 {
-        total_original_bytes as f64 / total_quantized_bytes as f64
-    } else {
-        1.0
-    };
 
     log(
         level,
@@ -139,7 +167,7 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
         &format!(
             "Quantization complete: {} tensors, {:.1}x compression",
             quantized_tensors.len(),
-            compression_ratio
+            bytes.compression_ratio()
         ),
     );
     log(
