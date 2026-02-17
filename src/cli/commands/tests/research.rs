@@ -1122,6 +1122,8 @@ fn test_init_command_stdout() {
         output: None, // stdout
         template: InitTemplate::Minimal,
         model: None,
+        base: None,
+        method: None,
         data: None,
     };
 
@@ -1140,6 +1142,8 @@ fn test_init_command_qlora_template() {
         output: Some(output_path.clone()),
         template: InitTemplate::Qlora,
         model: Some("/path/to/model".to_string()),
+        base: None,
+        method: None,
         data: Some("/path/to/data".to_string()),
     };
 
@@ -1158,6 +1162,8 @@ fn test_init_command_full_template() {
         output: Some(output_path.clone()),
         template: InitTemplate::Full,
         model: None,
+        base: None,
+        method: None,
         data: None,
     };
 

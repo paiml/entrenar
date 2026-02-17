@@ -111,6 +111,8 @@ fn test_init_command() {
         output: Some(output_path.clone()),
         template: InitTemplate::Minimal,
         model: None,
+        base: None,
+        method: None,
         data: None,
     };
 
@@ -129,6 +131,8 @@ fn test_init_command_with_lora_template() {
         output: Some(output_path.clone()),
         template: InitTemplate::Lora,
         model: Some("/path/to/model".to_string()),
+        base: None,
+        method: None,
         data: Some("/path/to/data".to_string()),
     };
 
@@ -179,6 +183,8 @@ fn test_run_command_quiet() {
             output: Some(output_path),
             template: InitTemplate::Minimal,
             model: None,
+            base: None,
+            method: None,
             data: None,
         }),
     };
@@ -1246,6 +1252,8 @@ fn test_run_command_normal_log_level() {
             output: Some(output_path),
             template: InitTemplate::Minimal,
             model: None,
+            base: None,
+            method: None,
             data: None,
         }),
     };

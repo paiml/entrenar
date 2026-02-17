@@ -44,9 +44,9 @@ pub use manifest::{
     MixedPrecisionConfig, ModelConfig, MonitoringConfig, OptimizerConfig, OutputConfig,
     PreprocessingStep, PrivacyConfig, QuantizeConfig, RagConfig, SchedulerConfig, SessionConfig,
     SigningConfig, StressConfig, TerminalMonitor, TrackingConfig, TrainingConfig, TrainingManifest,
-    VerificationConfig, WarmupConfig,
+    PublishConfig, VerificationConfig, WarmupConfig,
 };
-pub use templates::{generate_manifest, generate_yaml, Template};
+pub use templates::{generate_manifest, generate_manifest_with_hints, generate_yaml, Template};
 pub use validation::{validate_manifest, ManifestError, ValidationResult};
 
 use std::path::Path;

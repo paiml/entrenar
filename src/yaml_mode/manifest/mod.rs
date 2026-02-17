@@ -26,6 +26,7 @@ pub mod model;
 pub mod monitoring;
 pub mod optimizer;
 pub mod output;
+pub mod publish;
 pub mod quantize;
 pub mod scheduler;
 pub mod training;
@@ -49,6 +50,7 @@ pub use optimizer::OptimizerConfig;
 pub use output::{
     MetricsOutputConfig, ModelOutputConfig, OutputConfig, RegistryConfig, ReportConfig,
 };
+pub use publish::PublishConfig;
 pub use quantize::QuantizeConfig;
 pub use scheduler::{SchedulerConfig, WarmupConfig};
 pub use training::{

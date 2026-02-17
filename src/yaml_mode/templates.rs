@@ -34,12 +34,40 @@ pub fn generate_manifest(
     model: Option<&str>,
     data: Option<&str>,
 ) -> TrainingManifest {
-    match template {
+    generate_manifest_with_hints(template, name, model, data, None, None)
+}
+
+/// Generate a training manifest with optional smart defaults
+pub fn generate_manifest_with_hints(
+    template: Template,
+    name: &str,
+    model: Option<&str>,
+    data: Option<&str>,
+    lora_rank: Option<u32>,
+    learning_rate: Option<f64>,
+) -> TrainingManifest {
+    let mut manifest = match template {
         Template::Minimal => generate_minimal(name, model, data),
         Template::Lora => generate_lora(name, model, data),
         Template::Qlora => generate_qlora(name, model, data),
         Template::Full => generate_full(name, model, data),
+    };
+
+    // Apply smart defaults if provided
+    if let Some(rank) = lora_rank {
+        if let Some(ref mut lora) = manifest.lora {
+            lora.rank = rank.min(1024) as usize;
+            // Alpha is typically 2x rank
+            lora.alpha = f64::from(rank * 2);
+        }
     }
+    if let Some(lr) = learning_rate {
+        if let Some(ref mut optim) = manifest.optimizer {
+            optim.lr = lr;
+        }
+    }
+
+    manifest
 }
 
 /// Generate YAML string from a template
@@ -48,8 +76,11 @@ pub fn generate_yaml(
     name: &str,
     model: Option<&str>,
     data: Option<&str>,
+    lora_rank: Option<u32>,
+    learning_rate: Option<f64>,
 ) -> String {
-    let manifest = generate_manifest(template, name, model, data);
+    let manifest =
+        generate_manifest_with_hints(template, name, model, data, lora_rank, learning_rate);
     serde_yaml::to_string(&manifest).unwrap_or_else(|_err| "# Error generating YAML".to_string())
 }
 
@@ -70,6 +101,7 @@ fn generate_minimal(name: &str, model: Option<&str>, data: Option<&str>) -> Trai
         monitoring: Some(default_monitoring_config()),
         callbacks: None,
         output: Some(default_output_config()),
+        publish: None,
         // Extended configurations (YAML Mode QA Epic)
         citl: None,
         rag: None,
@@ -521,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_generate_yaml_output() {
-        let yaml = generate_yaml(Template::Minimal, "yaml-test", None, None);
+        let yaml = generate_yaml(Template::Minimal, "yaml-test", None, None, None, None);
         assert!(yaml.contains("entrenar: '1.0'") || yaml.contains("entrenar: \"1.0\""));
         assert!(yaml.contains("yaml-test"));
     }
@@ -544,5 +576,106 @@ mod tests {
                 "Template {template:?} produced invalid manifest: {result:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_smart_defaults_lora_rank() {
+        let manifest = generate_manifest_with_hints(
+            Template::Lora,
+            "smart-test",
+            Some("Qwen/Qwen2.5-Coder-0.5B"),
+            None,
+            Some(32),  // small model rank
+            Some(3e-4), // small model lr
+        );
+        let lora = manifest.lora.unwrap();
+        assert_eq!(lora.rank, 32);
+        assert!((lora.alpha - 64.0).abs() < 0.01); // alpha = 2 * rank
+        assert!((manifest.optimizer.unwrap().lr - 3e-4).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_smart_defaults_large_model() {
+        let manifest = generate_manifest_with_hints(
+            Template::Qlora,
+            "large-test",
+            Some("meta-llama/Llama-3-13B"),
+            None,
+            Some(128),
+            Some(1e-4),
+        );
+        let lora = manifest.lora.unwrap();
+        assert_eq!(lora.rank, 128);
+        assert!((lora.alpha - 256.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_smart_defaults_no_hints() {
+        // Without hints, defaults should be unchanged
+        let manifest = generate_manifest_with_hints(
+            Template::Lora,
+            "no-hints",
+            None,
+            None,
+            None,
+            None,
+        );
+        let lora = manifest.lora.unwrap();
+        assert_eq!(lora.rank, 16); // original default
+        assert!((lora.alpha - 32.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_minimal_has_no_publish() {
+        let manifest = generate_manifest(Template::Minimal, "test", None, None);
+        assert!(manifest.publish.is_none());
+    }
+
+    #[test]
+    fn test_publish_config_yaml_roundtrip() {
+        use super::super::manifest::PublishConfig;
+
+        let yaml = r#"
+            repo: "myuser/my-model"
+            private: false
+            model_card: true
+            merge_adapters: true
+            format: safetensors
+        "#;
+        let config: PublishConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.repo, "myuser/my-model");
+        assert!(!config.private);
+        assert!(config.model_card);
+        assert!(config.merge_adapters);
+        assert_eq!(config.format, "safetensors");
+    }
+
+    #[test]
+    fn test_publish_config_defaults() {
+        use super::super::manifest::PublishConfig;
+
+        let yaml = r#"repo: "org/name""#;
+        let config: PublishConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!config.private);
+        assert!(config.model_card); // default true
+        assert!(!config.merge_adapters);
+        assert_eq!(config.format, "safetensors"); // default
+    }
+
+    #[test]
+    fn test_manifest_with_publish_section() {
+        let yaml = r#"
+entrenar: "1.0"
+name: test
+version: "1.0.0"
+publish:
+  repo: myuser/my-model
+  merge_adapters: true
+"#;
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+        let publish = manifest.publish.unwrap();
+        assert_eq!(publish.repo, "myuser/my-model");
+        assert!(publish.merge_adapters);
+        assert!(publish.model_card); // default
     }
 }
