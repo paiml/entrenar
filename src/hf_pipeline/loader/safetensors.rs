@@ -179,7 +179,9 @@ fn detect_from_query_weights(
 
     names.iter().find_map(|name| {
         let matches_pattern = QUERY_PATTERNS.iter().any(|p| name.ends_with(p));
-        matches_pattern.then(|| square_dim(tensors, name, 1)).flatten()
+        matches_pattern
+            .then(|| square_dim(tensors, name, 1))
+            .flatten()
     })
 }
 

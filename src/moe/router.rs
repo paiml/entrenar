@@ -185,8 +185,7 @@ fn select_top_k_with_capacity(
 
     for i in 0..batch_size {
         let row: Vec<f32> = probs.row(i).to_vec();
-        let (indices, weights) =
-            assign_token_experts(&row, top_k, capacity, &mut expert_counts);
+        let (indices, weights) = assign_token_experts(&row, top_k, capacity, &mut expert_counts);
         all_indices.push(indices);
         all_weights.push(weights);
     }

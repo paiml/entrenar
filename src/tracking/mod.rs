@@ -269,9 +269,7 @@ impl<B: TrackingBackend> ExperimentTracker<B> {
         }
         self.backend
             .load_run(run_id)
-            .map_err(|e| {
-                TrackingError::RunNotFound(format!("{run_id}: {e}"))
-            })
+            .map_err(|e| TrackingError::RunNotFound(format!("{run_id}: {e}")))
     }
 
     /// List all runs (active + persisted)

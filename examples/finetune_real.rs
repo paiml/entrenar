@@ -52,10 +52,11 @@
 //!   cargo run --example finetune_real --release
 
 use clap::Parser;
+#[allow(unused_imports)]
 use entrenar::autograd::{backward, cuda_training_available, matmul, CudaTrainer};
 use entrenar::finetune::{
-    ComputeDevice, DeviceInfo, PopperianQA, ReproducibilityConfig, TestEvaluator, TestGenCorpus,
-    TestGenSample,
+    ComputeDevice, DeviceInfo, PopperianQA, QAGrade, ReproducibilityConfig, TestEvaluator,
+    TestGenCorpus, TestGenSample,
 };
 use entrenar::hf_pipeline::{FetchOptions, HfModelFetcher};
 // LoRA types available but not used directly in this experiment
@@ -496,14 +497,7 @@ fn generate_tests(
     tokenizer.decode(&token_ids)
 }
 
-/// Create a real corpus of Rust functions and their tests
-fn create_real_corpus() -> TestGenCorpus {
-    println!("📚 Creating real Rust test generation corpus...");
-
-    // Real Rust functions from common patterns
-    let samples = vec![
-        TestGenSample {
-            function: r#"/// Checks if a number is prime
+const IS_PRIME_FN: &str = r#"/// Checks if a number is prime
 pub fn is_prime(n: u64) -> bool {
     if n < 2 { return false; }
     if n == 2 { return true; }
@@ -513,9 +507,9 @@ pub fn is_prime(n: u64) -> bool {
         if n % i == 0 { return false; }
     }
     true
-}"#
-            .into(),
-            unit_tests: r#"#[test]
+}"#;
+
+const IS_PRIME_TESTS: &str = r#"#[test]
 fn test_is_prime_small_primes() {
     assert!(is_prime(2));
     assert!(is_prime(3));
@@ -534,23 +528,27 @@ fn test_is_prime_composites() {
 fn test_is_prime_edge_cases() {
     assert!(!is_prime(0));
     assert!(!is_prime(1));
-}"#
-            .into(),
-            property_tests: Some(
-                r#"proptest! {
+}"#;
+
+const IS_PRIME_PROPS: &str = r#"proptest! {
     #[test]
     fn prop_prime_greater_than_one(n in 2u64..1000) {
         if is_prime(n) {
             prop_assert!(n >= 2);
         }
     }
-}"#
-                .into(),
-            ),
-            metadata: Default::default(),
-        },
-        TestGenSample {
-            function: r#"/// Binary search in a sorted slice
+}"#;
+
+fn sample_is_prime() -> TestGenSample {
+    TestGenSample {
+        function: IS_PRIME_FN.into(),
+        unit_tests: IS_PRIME_TESTS.into(),
+        property_tests: Some(IS_PRIME_PROPS.into()),
+        metadata: Default::default(),
+    }
+}
+
+const BINARY_SEARCH_FN: &str = r#"/// Binary search in a sorted slice
 pub fn binary_search<T: Ord>(arr: &[T], target: &T) -> Option<usize> {
     let mut left = 0;
     let mut right = arr.len();
@@ -563,9 +561,9 @@ pub fn binary_search<T: Ord>(arr: &[T], target: &T) -> Option<usize> {
         }
     }
     None
-}"#
-            .into(),
-            unit_tests: r#"#[test]
+}"#;
+
+const BINARY_SEARCH_TESTS: &str = r#"#[test]
 fn test_binary_search_found() {
     let arr = vec![1, 2, 3, 4, 5];
     assert_eq!(binary_search(&arr, &3), Some(2));
@@ -581,10 +579,9 @@ fn test_binary_search_not_found() {
 fn test_binary_search_empty() {
     let arr: Vec<i32> = vec![];
     assert_eq!(binary_search(&arr, &1), None);
-}"#
-            .into(),
-            property_tests: Some(
-                r#"proptest! {
+}"#;
+
+const BINARY_SEARCH_PROPS: &str = r#"proptest! {
     #[test]
     fn prop_binary_search_finds_existing(arr in prop::collection::vec(0i32..100, 1..50)) {
         let mut sorted = arr.clone();
@@ -593,18 +590,23 @@ fn test_binary_search_empty() {
             prop_assert!(binary_search(&sorted, &elem).is_some());
         }
     }
-}"#
-                .into(),
-            ),
-            metadata: Default::default(),
-        },
-        TestGenSample {
-            function: r#"/// Reverses a string
+}"#;
+
+fn sample_binary_search() -> TestGenSample {
+    TestGenSample {
+        function: BINARY_SEARCH_FN.into(),
+        unit_tests: BINARY_SEARCH_TESTS.into(),
+        property_tests: Some(BINARY_SEARCH_PROPS.into()),
+        metadata: Default::default(),
+    }
+}
+
+const REVERSE_STRING_FN: &str = r#"/// Reverses a string
 pub fn reverse_string(s: &str) -> String {
     s.chars().rev().collect()
-}"#
-            .into(),
-            unit_tests: r#"#[test]
+}"#;
+
+const REVERSE_STRING_TESTS: &str = r#"#[test]
 fn test_reverse_string() {
     assert_eq!(reverse_string("hello"), "olleh");
     assert_eq!(reverse_string(""), "");
@@ -614,29 +616,33 @@ fn test_reverse_string() {
 #[test]
 fn test_reverse_unicode() {
     assert_eq!(reverse_string("héllo"), "olléh");
-}"#
-            .into(),
-            property_tests: Some(
-                r#"proptest! {
+}"#;
+
+const REVERSE_STRING_PROPS: &str = r#"proptest! {
     #[test]
     fn prop_reverse_twice_is_identity(s in ".*") {
         prop_assert_eq!(reverse_string(&reverse_string(&s)), s);
     }
-}"#
-                .into(),
-            ),
-            metadata: Default::default(),
-        },
-        TestGenSample {
-            function: r#"/// Calculates factorial
+}"#;
+
+fn sample_reverse_string() -> TestGenSample {
+    TestGenSample {
+        function: REVERSE_STRING_FN.into(),
+        unit_tests: REVERSE_STRING_TESTS.into(),
+        property_tests: Some(REVERSE_STRING_PROPS.into()),
+        metadata: Default::default(),
+    }
+}
+
+const FACTORIAL_FN: &str = r#"/// Calculates factorial
 pub fn factorial(n: u64) -> u64 {
     match n {
         0 | 1 => 1,
         _ => n * factorial(n - 1),
     }
-}"#
-            .into(),
-            unit_tests: r#"#[test]
+}"#;
+
+const FACTORIAL_TESTS: &str = r#"#[test]
 fn test_factorial_base_cases() {
     assert_eq!(factorial(0), 1);
     assert_eq!(factorial(1), 1);
@@ -646,18 +652,23 @@ fn test_factorial_base_cases() {
 fn test_factorial_small() {
     assert_eq!(factorial(5), 120);
     assert_eq!(factorial(10), 3628800);
-}"#
-            .into(),
-            property_tests: None,
-            metadata: Default::default(),
-        },
-        TestGenSample {
-            function: r#"/// Flattens a nested vector
+}"#;
+
+fn sample_factorial() -> TestGenSample {
+    TestGenSample {
+        function: FACTORIAL_FN.into(),
+        unit_tests: FACTORIAL_TESTS.into(),
+        property_tests: None,
+        metadata: Default::default(),
+    }
+}
+
+const FLATTEN_FN: &str = r#"/// Flattens a nested vector
 pub fn flatten<T: Clone>(nested: Vec<Vec<T>>) -> Vec<T> {
     nested.into_iter().flatten().collect()
-}"#
-            .into(),
-            unit_tests: r#"#[test]
+}"#;
+
+const FLATTEN_TESTS: &str = r#"#[test]
 fn test_flatten() {
     let nested = vec![vec![1, 2], vec![3, 4]];
     assert_eq!(flatten(nested), vec![1, 2, 3, 4]);
@@ -667,20 +678,30 @@ fn test_flatten() {
 fn test_flatten_empty() {
     let nested: Vec<Vec<i32>> = vec![];
     assert_eq!(flatten(nested), Vec::<i32>::new());
-}"#
-            .into(),
-            property_tests: None,
-            metadata: Default::default(),
-        },
-    ];
+}"#;
 
-    // Generate additional samples for better GPU utilization (ENT-136)
-    // Balance: enough samples for good GPU util, but not too many for <30s LoRA target
-    let additional_samples = generate_additional_samples(15); // 20 total samples
-    let mut all_samples = samples;
-    all_samples.extend(additional_samples);
+fn sample_flatten() -> TestGenSample {
+    TestGenSample {
+        function: FLATTEN_FN.into(),
+        unit_tests: FLATTEN_TESTS.into(),
+        property_tests: None,
+        metadata: Default::default(),
+    }
+}
 
-    // Split into train/val/test (80/10/10 for larger corpus)
+/// Build the core hand-written training samples with property tests
+fn build_core_samples() -> Vec<TestGenSample> {
+    vec![
+        sample_is_prime(),
+        sample_binary_search(),
+        sample_reverse_string(),
+        sample_factorial(),
+        sample_flatten(),
+    ]
+}
+
+/// Split samples into train/val/test corpus with 80/10/10 ratio
+fn split_into_corpus(all_samples: Vec<TestGenSample>) -> TestGenCorpus {
     let train_size = (all_samples.len() as f32 * 0.8) as usize;
     let val_size = (all_samples.len() as f32 * 0.1) as usize;
 
@@ -694,6 +715,19 @@ fn test_flatten_empty() {
             corpus.test.push(sample);
         }
     }
+    corpus
+}
+
+/// Create a real corpus of Rust functions and their tests
+fn create_real_corpus() -> TestGenCorpus {
+    println!("📚 Creating real Rust test generation corpus...");
+
+    let mut all_samples = build_core_samples();
+    // Generate additional samples for better GPU utilization (ENT-136)
+    // Balance: enough samples for good GPU util, but not too many for <30s LoRA target
+    all_samples.extend(generate_additional_samples(15)); // 20 total samples
+
+    let corpus = split_into_corpus(all_samples);
 
     let stats = corpus.stats();
     println!(
@@ -854,17 +888,38 @@ fn forward_hidden(transformer: &Transformer, token_ids: &[u32]) -> Tensor {
     transformer.forward_hidden(token_ids)
 }
 
+/// Try to load a tokenizer from a specific directory by searching for tokenizer.json
+fn try_load_tokenizer_from_dir(model_dir: &std::path::Path) -> Option<HfTokenizer> {
+    let entries = walkdir(model_dir).ok()?;
+    for entry in entries {
+        if !entry.ends_with("tokenizer.json") {
+            continue;
+        }
+        println!("   ✓ Found tokenizer at: {:?}", entry);
+        match HfTokenizer::from_file(&entry) {
+            Ok(tok) => {
+                println!("   ✓ Vocab size: {}", tok.vocab_size());
+                println!("   ✓ EOS token: {:?}", tok.eos_id());
+                println!("   ✓ BOS token: {:?}", tok.bos_id());
+                return Some(tok);
+            }
+            Err(e) => {
+                println!("   ⚠ Failed to load: {e:?}");
+            }
+        }
+    }
+    None
+}
+
 /// Load Qwen2 BPE tokenizer from HuggingFace cache
 fn load_qwen2_tokenizer() -> Option<HfTokenizer> {
     println!("   Searching for Qwen2 tokenizer...");
 
-    // Try common HuggingFace cache locations for Qwen2 tokenizer
     let hf_cache = dirs::cache_dir()
         .unwrap_or_else(|| std::path::PathBuf::from(".cache"))
         .join("huggingface")
         .join("hub");
 
-    // Search for tokenizer.json in Qwen models (prioritize Qwen2.5-Coder)
     let search_patterns = [
         "models--Qwen--Qwen2.5-Coder-0.5B-Instruct",
         "models--Qwen--Qwen2.5-Coder-1.5B-Instruct",
@@ -875,24 +930,8 @@ fn load_qwen2_tokenizer() -> Option<HfTokenizer> {
     for pattern in &search_patterns {
         let model_dir = hf_cache.join(pattern);
         if model_dir.exists() {
-            // Find tokenizer.json recursively
-            if let Ok(entries) = walkdir(&model_dir) {
-                for entry in entries {
-                    if entry.ends_with("tokenizer.json") {
-                        println!("   ✓ Found tokenizer at: {:?}", entry);
-                        match HfTokenizer::from_file(&entry) {
-                            Ok(tok) => {
-                                println!("   ✓ Vocab size: {}", tok.vocab_size());
-                                println!("   ✓ EOS token: {:?}", tok.eos_id());
-                                println!("   ✓ BOS token: {:?}", tok.bos_id());
-                                return Some(tok);
-                            }
-                            Err(e) => {
-                                println!("   ⚠ Failed to load: {e:?}");
-                            }
-                        }
-                    }
-                }
+            if let Some(tok) = try_load_tokenizer_from_dir(&model_dir) {
+                return Some(tok);
             }
         }
     }
@@ -919,86 +958,64 @@ fn walkdir(dir: &std::path::Path) -> std::io::Result<Vec<std::path::PathBuf>> {
     Ok(results)
 }
 
-fn main() {
-    let args = Args::parse();
+/// Run TUI monitor mode (consumer - reads from metric store)
+fn run_tui_monitor(args: &Args) {
+    let experiment_dir = args.experiment.as_ref().unwrap_or(&args.output);
 
-    // =========================================================================
-    // TUI Monitor Mode (Consumer - reads from metric store)
-    // =========================================================================
-    if args.monitor {
-        let experiment_dir = args.experiment.as_ref().unwrap_or(&args.output);
+    println!("📺 TUI Monitor Mode (SPEC-FT-001 Section 10)");
+    println!("============================================");
+    println!("Experiment: {experiment_dir}");
+    println!("Refresh:    {}ms", args.refresh_ms);
+    println!();
 
-        println!("📺 TUI Monitor Mode (SPEC-FT-001 Section 10)");
-        println!("============================================");
-        println!("Experiment: {experiment_dir}");
-        println!("Refresh:    {}ms", args.refresh_ms);
-        println!();
+    let config = TuiMonitorConfig {
+        refresh_ms: args.refresh_ms,
+        width: 80,
+        height: 24,
+        exit_on_complete: true,
+        ..Default::default()
+    };
 
-        let config = TuiMonitorConfig {
-            refresh_ms: args.refresh_ms,
-            width: 80,
-            height: 24,
-            exit_on_complete: true,
-            ..Default::default()
-        };
-
-        let mut monitor = TuiMonitor::new(experiment_dir, config);
-        if let Err(e) = monitor.run() {
-            eprintln!("Monitor error: {e}");
-            std::process::exit(1);
-        }
-        return;
+    let mut monitor = TuiMonitor::new(experiment_dir, config);
+    if let Err(e) = monitor.run() {
+        eprintln!("Monitor error: {e}");
+        std::process::exit(1);
     }
+}
 
-    // =========================================================================
-    // Headless Monitor Mode (Consumer - CI/CD output)
-    // =========================================================================
-    if args.headless {
-        let experiment_dir = args.experiment.as_ref().unwrap_or(&args.output);
+/// Run headless monitor mode (consumer - CI/CD output)
+fn run_headless_monitor(args: &Args) {
+    let experiment_dir = args.experiment.as_ref().unwrap_or(&args.output);
 
-        let format = OutputFormat::from_str(&args.format).unwrap_or_else(|| {
-            eprintln!("Invalid format '{}', using json", args.format);
-            OutputFormat::Json
-        });
+    let format = OutputFormat::from_str(&args.format).unwrap_or_else(|| {
+        eprintln!("Invalid format '{}', using json", args.format);
+        OutputFormat::Json
+    });
 
-        eprintln!("Headless Monitor Mode (SPEC-FT-001 Section 10.8)");
-        eprintln!("================================================");
-        eprintln!("Experiment: {experiment_dir}");
-        eprintln!("Format:     {:?}", format);
-        if let Some(ref output_file) = args.output_file {
-            eprintln!("Output:     {}", output_file);
-        } else {
-            eprintln!("Output:     stdout");
-        }
-        eprintln!("Refresh:    {}ms", args.refresh_ms);
-        eprintln!();
-
-        let monitor = match args.output_file {
-            Some(ref path) => {
-                HeadlessMonitor::with_output_file(format, args.refresh_ms, path.clone())
-            }
-            None => HeadlessMonitor::new(format, args.refresh_ms),
-        };
-        if let Err(e) = monitor.run(experiment_dir) {
-            eprintln!("Headless monitor error: {e}");
-            std::process::exit(1);
-        }
-        return;
+    eprintln!("Headless Monitor Mode (SPEC-FT-001 Section 10.8)");
+    eprintln!("================================================");
+    eprintln!("Experiment: {experiment_dir}");
+    eprintln!("Format:     {:?}", format);
+    if let Some(ref output_file) = args.output_file {
+        eprintln!("Output:     {}", output_file);
+    } else {
+        eprintln!("Output:     stdout");
     }
+    eprintln!("Refresh:    {}ms", args.refresh_ms);
+    eprintln!();
 
-    // =========================================================================
-    // Training Mode (Producer - writes to metric store)
-    // =========================================================================
-    let start_time = Instant::now();
+    let monitor = match args.output_file {
+        Some(ref path) => HeadlessMonitor::with_output_file(format, args.refresh_ms, path.clone()),
+        None => HeadlessMonitor::new(format, args.refresh_ms),
+    };
+    if let Err(e) = monitor.run(experiment_dir) {
+        eprintln!("Headless monitor error: {e}");
+        std::process::exit(1);
+    }
+}
 
-    println!("═══════════════════════════════════════════════════════════════");
-    println!("   🧪 Real End-to-End Fine-Tuning for Rust Test Generation");
-    println!("═══════════════════════════════════════════════════════════════\n");
-
-    // Create output directory for state file
-    fs::create_dir_all(&args.output).ok();
-
-    // 1. Check compute device
+/// Detect compute device and report CUDA training availability
+fn detect_compute_device() -> (ComputeDevice, DeviceInfo, bool) {
     println!("🖥️  Detecting compute device...");
     let device = ComputeDevice::auto_detect();
     let device_info = match &device {
@@ -1018,7 +1035,6 @@ fn main() {
         }
     );
 
-    // Check CUDA training availability (SPEC-FT-001 v3.3.0)
     let cuda_training = cuda_training_available();
     println!(
         "   CUDA Training: {}",
@@ -1029,65 +1045,18 @@ fn main() {
         }
     );
 
-    // 2. Set reproducibility
-    println!("\n🔒 Setting reproducibility...");
-    let repro_config = ReproducibilityConfig::with_seed(42);
-    repro_config.apply();
-    println!("   Seed: 42");
-    println!("   Deterministic: ✓");
+    (device, device_info, cuda_training)
+}
 
-    // 3. Create corpus
-    println!();
-    let corpus = create_real_corpus();
-
-    // 4. Load model from pacha cache (use `apr pull` to download)
-    println!();
-    let model_id = "Qwen/Qwen2.5-Coder-0.5B-Instruct";
-    let model_path = get_model_path(model_id).expect("Failed to get model path");
-
-    // 5. Load transformer model
-    println!("\n🧠 Loading transformer model...");
-    let (transformer, config) =
-        load_transformer(&model_path).expect("Failed to load transformer model");
-    let hidden_size = config.hidden_size;
-    println!("   Model vocab size: {}", config.vocab_size);
-    println!("   Hidden size: {}", hidden_size);
-
-    // 6. Load real BPE tokenizer from HuggingFace cache
-    println!("\n🔤 Loading tokenizer...");
-    let tokenizer = load_qwen2_tokenizer()
-        .expect("Failed to load Qwen2 tokenizer. Run: huggingface-cli download Qwen/Qwen2-0.5B-Instruct tokenizer.json");
-    let vocab_size = tokenizer.vocab_size();
-
-    // Verify tokenizer matches model
-    if vocab_size != config.vocab_size {
-        println!(
-            "   ⚠ Vocab size mismatch: tokenizer={}, model={}",
-            vocab_size, config.vocab_size
-        );
-        println!("   → Using model vocab size for loss computation");
-    }
-    let _vocab_size = config.vocab_size; // Use model vocab size for loss (stored for future use)
-
-    // ========================================================================
-    // PHASE 9: LORA CONVERGENCE UNDER EXTENDED TRAINING
-    // ========================================================================
-    // Hypothesis: "Under 15 epochs and 3x LR, Deep LoRA will achieve CE reduction
-    // within 10% of the Full Fine-Tuning baseline."
-
-    // 7. Configuration
-    let rank = 16;
-    let alpha = 32.0;
-    let demo_vocab = 1000;
-    let epochs_full_ft = 3; // Baseline: same as Phase 8
-    let epochs_lora = 15; // Extended training for LoRA
-    let lr_full_ft = 2e-4; // Baseline learning rate
-    let lr_lora = 6e-4; // 3x learning rate for LoRA
-    let max_seq_len = 128; // Balanced for GPU util + speed (ENT-136/ENT-138)
-
-    // Pre-tokenize all samples to reduce CPU overhead (ENT-138)
+/// Pre-tokenize training corpus samples for efficient training
+fn pretokenize_corpus(
+    corpus: &TestGenCorpus,
+    tokenizer: &HfTokenizer,
+    max_seq_len: usize,
+    demo_vocab: usize,
+) -> Vec<(Vec<u32>, Vec<f32>)> {
     println!("\n🔄 Pre-tokenizing corpus...");
-    let pretokenized_train: Vec<(Vec<u32>, Vec<f32>)> = corpus
+    let pretokenized: Vec<(Vec<u32>, Vec<f32>)> = corpus
         .train
         .iter()
         .map(|sample| {
@@ -1103,74 +1072,21 @@ fn main() {
         })
         .filter(|(inputs, _)| !inputs.is_empty())
         .collect();
-    println!("   ✓ Pre-tokenized {} samples", pretokenized_train.len());
+    println!("   ✓ Pre-tokenized {} samples", pretokenized.len());
+    pretokenized
+}
 
-    // Create CausalLMLoss for proper cross-entropy with backward pass
-    let causal_loss_fn = CausalLMLoss::new(demo_vocab);
-
-    // ========================================================================
-    // TUI MONITORING SETUP (Producer side)
-    // ========================================================================
-    let experiment_id = format!(
-        "finetune-real-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
-    );
-    let mut state_writer =
-        TrainingStateWriter::new(&args.output, &experiment_id, "Qwen2.5-Coder-0.5B");
-
-    // Total steps: epochs_full_ft * train_samples + epochs_lora * train_samples
-    let total_epochs = epochs_full_ft + epochs_lora;
-    let steps_per_epoch = pretokenized_train.len();
-    state_writer.set_epochs(total_epochs, steps_per_epoch);
-
-    // Set run configuration for TUI display (ENT-142)
-    state_writer.set_config(
-        "AdamW",
-        1, // Batch size (single sample per step)
-        &model_path.display().to_string(),
-        &args.output,
-    );
-
-    // Initialize GPU monitor (uses NVML if compiled with `nvml` feature)
-    let gpu_monitor = GpuMonitor::new().ok();
-    if let Some(ref monitor) = gpu_monitor {
-        if monitor.num_devices() > 0 {
-            println!(
-                "\n📊 GPU Monitor: {} device(s) detected",
-                monitor.num_devices()
-            );
-        }
-    }
-
-    // Start training (write initial state)
-    if let Err(e) = state_writer.start() {
-        eprintln!("Warning: Could not write training state: {e}");
-    }
-
-    println!("\n📺 TUI Monitor available:");
-    println!(
-        "   cargo run --example finetune_real --features nvml -- --monitor --experiment {}",
-        args.output
-    );
-    println!();
-
-    // ========================================================================
-    // EXTRACT REAL PRE-TRAINED LM HEAD WEIGHTS
-    // ========================================================================
-    println!("\n═══════════════════════════════════════════════════════════════");
-    println!("   🔬 PHASE 9: LORA CONVERGENCE EXPERIMENT");
-    println!("═══════════════════════════════════════════════════════════════");
-    println!("   Testing: 15 epochs, 3x learning rate for LoRA");
-
-    // Get the real lm_head weights (or embed_tokens if tied)
+/// Extract pre-trained LM head weight subset for demo vocabulary
+fn extract_pretrained_weights(
+    transformer: &Transformer,
+    hidden_size: usize,
+    demo_vocab: usize,
+    full_vocab_size: usize,
+) -> Vec<f32> {
     let real_lm_head = transformer
         .lm_head
         .as_ref()
         .unwrap_or(&transformer.embed_tokens.weight);
-    let full_vocab_size = config.vocab_size;
 
     println!(
         "   Pre-trained LM head: {} × {} = {} params",
@@ -1179,15 +1095,10 @@ fn main() {
         hidden_size * full_vocab_size
     );
 
-    // Extract first demo_vocab columns from the real weights
-    // Real shape: (vocab_size, hidden_size) or (hidden_size, vocab_size) depending on layout
-    // We need (hidden_size, demo_vocab) for our matmul
     let real_data = real_lm_head.data();
     let pretrained_subset: Vec<f32> = (0..hidden_size)
         .flat_map(|h| {
             (0..demo_vocab).map(move |v| {
-                // Access pattern depends on weight layout
-                // Assuming (vocab_size, hidden_size) layout, transpose to (hidden_size, vocab_size)
                 let idx = v * hidden_size + h;
                 if idx < real_data.len() {
                     real_data[idx]
@@ -1205,7 +1116,6 @@ fn main() {
         pretrained_subset.len()
     );
 
-    // Compute statistics of pre-trained weights
     let weight_mean = pretrained_subset.iter().sum::<f32>() / pretrained_subset.len() as f32;
     let weight_std = (pretrained_subset
         .iter()
@@ -1218,499 +1128,142 @@ fn main() {
         weight_mean, weight_std
     );
 
-    // ========================================================================
-    // EXPERIMENT 1: FULL FINE-TUNING (ALL PARAMS TRAINABLE)
-    // ========================================================================
-    println!("\n═══════════════════════════════════════════════════════════════");
-    println!("   🎯 EXPERIMENT 1: FULL FINE-TUNING (PRE-TRAINED BASE)");
-    println!("═══════════════════════════════════════════════════════════════");
+    pretrained_subset
+}
 
-    // Clone pre-trained weights for full fine-tuning (all trainable)
-    let lm_head_weights_1 = Tensor::from_vec(pretrained_subset.clone(), true);
-    let full_ft_params = hidden_size * demo_vocab;
-    let full_ft_memory_mb = (full_ft_params * 4) as f32 / (1024.0 * 1024.0); // f32 = 4 bytes
-
-    let mut trainable_params_1 = vec![lm_head_weights_1];
-    println!("   Mode: Full Fine-Tuning (all weights trainable)");
-    println!(
-        "   Trainable params: {} ({:.2} MB)",
-        full_ft_params, full_ft_memory_mb
-    );
-    println!("   Epochs: {}, LR: {}", epochs_full_ft, lr_full_ft);
-
-    let mut optimizer_1 = AdamW::new(lr_full_ft, 0.9, 0.999, 1e-8, 0.01);
-    let mut scheduler_1 = CosineAnnealingLR::new(lr_full_ft, 100, 1e-5);
-
-    let mut loss_history_head_only = Vec::new();
-    let start_exp1 = Instant::now();
-
-    // Try to use CUDA training (SPEC-FT-001 v3.3.0)
-    #[cfg(feature = "cuda")]
-    let mut cuda_state: Option<CudaTrainingState> = if cuda_training {
-        match CudaTrainingState::new(&pretrained_subset, hidden_size, demo_vocab) {
-            Some(state) => {
-                println!("   Backend: CUDA ({})", state.device_name());
-                Some(state)
-            }
-            None => {
-                println!("   Backend: CPU (CUDA init failed)");
-                None
-            }
-        }
-    } else {
-        println!("   Backend: CPU");
-        None
-    };
-
-    #[cfg(not(feature = "cuda"))]
-    {
-        let _ = cuda_training; // Suppress unused warning
-        println!("   Backend: CPU");
-    }
-
-    for epoch in 0..epochs_full_ft {
-        println!("\n  Epoch {}/{}", epoch + 1, epochs_full_ft);
-        let mut epoch_loss = 0.0;
-
-        for (step, (input_ids, targets_f32)) in pretokenized_train.iter().enumerate() {
-            let seq_len = input_ids.len();
-
-            // Forward: hidden → LM head → logits
-            let hidden_states = forward_hidden(&transformer, &input_ids);
-
-            // Use CUDA path when available (SPEC-FT-001 v3.3.0)
-            #[cfg(feature = "cuda")]
-            let (logits, loss_val, grad_norm) = if let Some(ref mut cuda) = cuda_state {
-                // CUDA forward pass
-                let hidden_data: Vec<f32> = hidden_states.data().to_vec();
-                let logits_data = cuda
-                    .forward(&hidden_data, seq_len)
-                    .expect("CUDA forward failed");
-
-                // Compute cross-entropy loss and gradient directly
-                // Loss = -sum(one_hot * log(softmax)) / n
-                // Gradient = (softmax - one_hot) / n
-                let mut total_loss = 0.0f32;
-                let mut grad_logits = vec![0.0f32; seq_len * demo_vocab];
-
-                for pos in 0..seq_len {
-                    // Get logits for this position
-                    let offset = pos * demo_vocab;
-                    let pos_logits = &logits_data[offset..offset + demo_vocab];
-
-                    // Numerically stable softmax
-                    let max_logit = pos_logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-                    let exp_logits: Vec<f32> =
-                        pos_logits.iter().map(|&x| (x - max_logit).exp()).collect();
-                    let sum_exp: f32 = exp_logits.iter().sum();
-                    let softmax: Vec<f32> = exp_logits.iter().map(|&x| x / sum_exp).collect();
-
-                    // Target class (already converted to demo_vocab range)
-                    let target_class = targets_f32[pos] as usize;
-
-                    // Cross-entropy loss for this position
-                    total_loss -= softmax[target_class].max(1e-10).ln();
-
-                    // Gradient: softmax - one_hot
-                    for (i, &s) in softmax.iter().enumerate() {
-                        let one_hot = if i == target_class { 1.0 } else { 0.0 };
-                        grad_logits[offset + i] = (s - one_hot) / seq_len as f32;
-                    }
-                }
-                let loss_val = total_loss / seq_len as f32;
-
-                // Compute gradient norm for reporting
-                let grad_norm: f32 = grad_logits.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-                // GPU backward: compute weight gradients
-                cuda.backward(&hidden_data, &grad_logits, seq_len)
-                    .expect("CUDA backward failed");
-
-                // Debug: check weight sum before update
-                let weights_before = cuda.download_weights().unwrap();
-                let sum_before: f32 = weights_before.iter().sum();
-
-                // AdamW step on GPU
-                let current_lr = scheduler_1.get_lr();
-                cuda.adamw_step(current_lr, 0.9, 0.999, 1e-8, 0.01)
-                    .expect("CUDA optimizer step failed");
-
-                // Debug: check weight sum after update
-                let weights_after = cuda.download_weights().unwrap();
-                let sum_after: f32 = weights_after.iter().sum();
-                if step == 0 && epoch == 0 {
-                    println!(
-                        "    DEBUG: weight_sum before={:.6}, after={:.6}, delta={:.6}",
-                        sum_before,
-                        sum_after,
-                        sum_after - sum_before
-                    );
-                }
-
-                let logits_tensor = Tensor::from_vec(logits_data, false);
-                (logits_tensor, loss_val, grad_norm)
-            } else {
-                // CPU fallback
-                let logits = matmul(
-                    &hidden_states,
-                    &trainable_params_1[0],
-                    seq_len,
-                    hidden_size,
-                    demo_vocab,
-                );
-
-                let targets_tensor = Tensor::from_vec(targets_f32.clone(), false);
-                let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
-                let loss_val = loss.data()[0];
-
-                optimizer_1.zero_grad(&mut trainable_params_1);
-                backward(&mut loss, None);
-                optimizer_1.step(&mut trainable_params_1);
-
-                let grad_norm = trainable_params_1[0]
-                    .grad()
-                    .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
-                    .unwrap_or(0.0);
-
-                (logits, loss_val, grad_norm)
-            };
-
-            // CPU-only path (when not compiled with cuda feature)
-            #[cfg(not(feature = "cuda"))]
-            let (logits, loss_val, grad_norm) = {
-                let logits = matmul(
-                    &hidden_states,
-                    &trainable_params_1[0],
-                    seq_len,
-                    hidden_size,
-                    demo_vocab,
-                );
-
-                let targets_tensor = Tensor::from_vec(targets_f32.clone(), false);
-                let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
-                let loss_val = loss.data()[0];
-
-                optimizer_1.zero_grad(&mut trainable_params_1);
-                backward(&mut loss, None);
-                optimizer_1.step(&mut trainable_params_1);
-
-                let grad_norm = trainable_params_1[0]
-                    .grad()
-                    .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
-                    .unwrap_or(0.0);
-
-                (logits, loss_val, grad_norm)
-            };
-
-            let _ = logits; // Suppress unused warning
-
-            epoch_loss += loss_val;
-            loss_history_head_only.push(loss_val);
-
-            scheduler_1.step();
-            let current_lr = scheduler_1.get_lr();
-            optimizer_1.set_lr(current_lr);
-
-            // Update TUI state (every step)
-            // Note: step is 0-indexed, display as 1-indexed for user (ENT-141 fix)
-            let tokens_per_second = seq_len as f32
-                / (start_exp1.elapsed().as_secs_f32()
-                    / (epoch * steps_per_epoch + step + 1) as f32);
-            let _ = state_writer.update_step(
-                epoch + 1, // 1-indexed epoch for display
-                step + 1,  // 1-indexed step within epoch for display (ENT-141)
-                loss_val,
-                current_lr,
-                grad_norm,
-                tokens_per_second,
-            );
-
-            // Update sample preview (step 0 + every 5 steps for immediate TUI display)
-            if step == 0 || step % 5 == 0 {
-                if let Some(sample) = corpus.train.get(step % corpus.train.len()) {
-                    let sample_peek = SamplePeek {
-                        input_preview: truncate_str(&sample.function, 50),
-                        target_preview: truncate_str(&sample.unit_tests, 50),
-                        generated_preview: "(training...)".to_string(),
-                        token_match_percent: 0.0, // Not computing generation during training
-                    };
-                    let _ = state_writer.update_sample(sample_peek);
-                }
-            }
-
-            // Update GPU telemetry (step 0 + every 10 steps for immediate TUI display)
-            if step == 0 || step % 10 == 0 {
-                if let Some(ref monitor) = gpu_monitor {
-                    let metrics = monitor.sample();
-                    if let Some(m) = metrics.first() {
-                        let processes = m
-                            .processes
-                            .iter()
-                            .map(|p| GpuProcessInfo {
-                                pid: p.pid,
-                                exe_path: p.exe_path.clone(),
-                                gpu_memory_mb: p.gpu_memory_mb,
-                                cpu_percent: p.cpu_percent,
-                                rss_mb: p.rss_mb,
-                            })
-                            .collect();
-                        let _ = state_writer.update_gpu(GpuTelemetry {
-                            device_name: m.name.clone(),
-                            utilization_percent: m.utilization_percent as f32,
-                            vram_used_gb: m.memory_used_mb as f32 / 1024.0,
-                            vram_total_gb: m.memory_total_mb as f32 / 1024.0,
-                            temperature_celsius: m.temperature_celsius as f32,
-                            power_watts: m.power_watts,
-                            power_limit_watts: m.power_limit_watts,
-                            processes,
-                        });
-                    }
-                }
-            }
-
-            if step == corpus.train.len() - 1 {
-                println!(
-                    "    Step {}: CE={:.4}, grad_norm={:.2}",
-                    step + 1,
-                    loss_val,
-                    grad_norm
-                );
-            }
-        }
-        println!(
-            "  → Epoch {} avg CE: {:.4}",
-            epoch + 1,
-            epoch_loss / corpus.train.len() as f32
-        );
-    }
-
-    // Download final weights from GPU if using CUDA
-    #[cfg(feature = "cuda")]
-    if let Some(ref cuda) = cuda_state {
-        if let Some(final_weights) = cuda.download_weights() {
-            trainable_params_1[0] = Tensor::from_vec(final_weights, true);
+/// Update GPU telemetry in the TUI state writer
+fn update_gpu_telemetry(gpu_monitor: &Option<GpuMonitor>, state_writer: &mut TrainingStateWriter) {
+    if let Some(ref monitor) = gpu_monitor {
+        let metrics = monitor.sample();
+        if let Some(m) = metrics.first() {
+            let processes = m
+                .processes
+                .iter()
+                .map(|p| GpuProcessInfo {
+                    pid: p.pid,
+                    exe_path: p.exe_path.clone(),
+                    gpu_memory_mb: p.gpu_memory_mb,
+                    cpu_percent: p.cpu_percent,
+                    rss_mb: p.rss_mb,
+                })
+                .collect();
+            let _ = state_writer.update_gpu(GpuTelemetry {
+                device_name: m.name.clone(),
+                utilization_percent: m.utilization_percent as f32,
+                vram_used_gb: m.memory_used_mb as f32 / 1024.0,
+                vram_total_gb: m.memory_total_mb as f32 / 1024.0,
+                temperature_celsius: m.temperature_celsius as f32,
+                power_watts: m.power_watts,
+                power_limit_watts: m.power_limit_watts,
+                processes,
+            });
         }
     }
+}
 
-    let exp1_duration = start_exp1.elapsed();
-    let exp1_final_loss = loss_history_head_only.last().copied().unwrap_or(0.0);
-    let exp1_initial_loss = loss_history_head_only.first().copied().unwrap_or(0.0);
-    let exp1_reduction = (exp1_initial_loss - exp1_final_loss) / exp1_initial_loss * 100.0;
+/// Update sample preview in the TUI state writer
+fn update_sample_preview(
+    corpus: &TestGenCorpus,
+    step: usize,
+    generated_label: &str,
+    state_writer: &mut TrainingStateWriter,
+) {
+    if let Some(sample) = corpus.train.get(step % corpus.train.len()) {
+        let sample_peek = SamplePeek {
+            input_preview: truncate_str(&sample.function, 50),
+            target_preview: truncate_str(&sample.unit_tests, 50),
+            generated_preview: generated_label.to_string(),
+            token_match_percent: 0.0,
+        };
+        let _ = state_writer.update_sample(sample_peek);
+    }
+}
 
-    // Report backend used
-    #[cfg(feature = "cuda")]
-    let backend_used = if cuda_state.is_some() { "CUDA" } else { "CPU" };
-    #[cfg(not(feature = "cuda"))]
-    let backend_used = "CPU";
-
-    println!("\n📊 FULL FINE-TUNING RESULTS:");
-    println!("   Backend: {}", backend_used);
-    println!("   Initial CE: {:.4}", exp1_initial_loss);
-    println!("   Final CE: {:.4}", exp1_final_loss);
-    println!("   Reduction: {:.2}%", exp1_reduction);
-    println!("   Duration: {:.2}s", exp1_duration.as_secs_f32());
-    println!("   Memory (trainable): {:.2} MB", full_ft_memory_mb);
-
-    // ========================================================================
-    // EXPERIMENT 2: LORA FINE-TUNING (FROZEN PRE-TRAINED BASE)
-    // ========================================================================
-    println!("\n═══════════════════════════════════════════════════════════════");
-    println!("   🧠 EXPERIMENT 2: LORA FINE-TUNING (FROZEN PRE-TRAINED BASE)");
-    println!("═══════════════════════════════════════════════════════════════");
-
-    // Use SAME pre-trained weights as base, but FROZEN
-    // Only LoRA adapters (A and B) are trainable
-    let lm_head_base = Tensor::from_vec(pretrained_subset.clone(), false); // FROZEN
-
-    // Create LoRAProjection with trainable A and B
-    let mut lora_lm_head = LoRAProjection::new(lm_head_base, hidden_size, demo_vocab, rank, alpha);
-
-    let lora_params = hidden_size * rank + rank * demo_vocab;
-    let lora_memory_mb = (lora_params * 4) as f32 / (1024.0 * 1024.0);
-    let memory_savings = (1.0 - lora_memory_mb / full_ft_memory_mb) * 100.0;
-
-    println!("   Mode: LoRA Fine-Tuning (base frozen, adapters trainable)");
-    println!("   LoRA Rank: {}", rank);
-    println!("   LoRA Alpha: {}", alpha);
-    println!(
-        "   Base LM head: {} params (FROZEN, pre-trained)",
-        hidden_size * demo_vocab
-    );
-    println!(
-        "   LoRA A: {} × {} = {} params",
+/// CPU training step for full fine-tuning (used when CUDA is not available)
+fn cpu_training_step(
+    hidden_states: &Tensor,
+    trainable_params: &mut [Tensor],
+    targets_f32: &[f32],
+    seq_len: usize,
+    hidden_size: usize,
+    demo_vocab: usize,
+    causal_loss_fn: &CausalLMLoss,
+    optimizer: &mut AdamW,
+) -> (Tensor, f32, f32) {
+    let logits = matmul(
+        hidden_states,
+        &trainable_params[0],
+        seq_len,
         hidden_size,
-        rank,
-        hidden_size * rank
-    );
-    println!(
-        "   LoRA B: {} × {} = {} params",
-        rank,
         demo_vocab,
-        rank * demo_vocab
     );
-    println!(
-        "   Total trainable: {} params ({:.2}% of full)",
-        lora_params,
-        (lora_params as f32 / full_ft_params as f32) * 100.0
-    );
-    println!(
-        "   Memory (trainable): {:.4} MB ({:.1}% savings)",
-        lora_memory_mb, memory_savings
-    );
-    println!("   Epochs: {}, LR: {} (3x baseline)", epochs_lora, lr_lora);
 
-    let mut optimizer_2 = AdamW::new(lr_lora, 0.9, 0.999, 1e-8, 0.01);
-    let mut scheduler_2 = CosineAnnealingLR::new(lr_lora, 200, 1e-5); // More steps for extended training
+    let targets_tensor = Tensor::from_vec(targets_f32.to_vec(), false);
+    let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
+    let loss_val = loss.data()[0];
 
-    let mut loss_history_lora = Vec::new();
-    let start_exp2 = Instant::now();
+    optimizer.zero_grad(trainable_params);
+    backward(&mut loss, None);
+    optimizer.step(trainable_params);
 
-    for epoch in 0..epochs_lora {
-        println!("\n  Epoch {}/{}", epoch + 1, epochs_lora);
-        let mut epoch_loss = 0.0;
+    let grad_norm = trainable_params[0]
+        .grad()
+        .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
+        .unwrap_or(0.0);
 
-        for (step, (input_ids, targets_f32)) in pretokenized_train.iter().enumerate() {
-            let seq_len = input_ids.len();
+    (logits, loss_val, grad_norm)
+}
 
-            // Forward: hidden → LoRA LM head → logits
-            // This uses the deep LoRA forward: y = x @ W + scale * (x @ A) @ B
-            let hidden_states = forward_hidden(&transformer, &input_ids);
-            let logits = lora_lm_head.forward(&hidden_states, seq_len);
+/// Experiment results from a training run
+struct ExperimentResults {
+    #[allow(dead_code)]
+    loss_history: Vec<f32>,
+    duration: std::time::Duration,
+    final_loss: f32,
+    initial_loss: f32,
+    reduction_percent: f32,
+}
 
-            // Loss and backward
-            let targets_tensor = Tensor::from_vec(targets_f32.clone(), false);
-            let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
-            let loss_val = loss.data()[0];
-
-            // Zero gradients for LoRA parameters
-            lora_lm_head.lora_a.zero_grad();
-            lora_lm_head.lora_b.zero_grad();
-
-            // Backward pass - gradients flow through add_scaled → matmul → LoRA A/B
-            backward(&mut loss, None);
-
-            // Get gradients and check they're non-zero
-            let grad_a_norm = lora_lm_head
-                .lora_a
-                .grad()
-                .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
-                .unwrap_or(0.0);
-            let grad_b_norm = lora_lm_head
-                .lora_b
-                .grad()
-                .map(|g| g.iter().map(|x| x * x).sum::<f32>().sqrt())
-                .unwrap_or(0.0);
-
-            // Update LoRA parameters using step_refs for borrowed parameters
-            let mut lora_params_vec = lora_lm_head.lora_params_mut();
-            optimizer_2.step_refs(&mut lora_params_vec);
-
-            epoch_loss += loss_val;
-            loss_history_lora.push(loss_val);
-
-            scheduler_2.step();
-            let current_lr = scheduler_2.get_lr();
-            optimizer_2.set_lr(current_lr);
-
-            // Update TUI state (Experiment 2 - continue epoch numbering from Experiment 1)
-            // Note: step is 0-indexed, display as 1-indexed for user (ENT-141 fix)
-            let actual_epoch = epochs_full_ft + epoch;
-            let combined_grad_norm = (grad_a_norm.powi(2) + grad_b_norm.powi(2)).sqrt();
-            let tokens_per_second = seq_len as f32
-                / (start_exp2.elapsed().as_secs_f32()
-                    / (epoch * steps_per_epoch + step + 1) as f32);
-            let _ = state_writer.update_step(
-                actual_epoch + 1, // 1-indexed epoch for display
-                step + 1,         // 1-indexed step within epoch for display (ENT-141)
-                loss_val,
-                current_lr,
-                combined_grad_norm,
-                tokens_per_second,
-            );
-
-            // Update sample preview (step 0 + every 5 steps for immediate TUI display)
-            if step == 0 || step % 5 == 0 {
-                if let Some(sample) = corpus.train.get(step % corpus.train.len()) {
-                    let sample_peek = SamplePeek {
-                        input_preview: truncate_str(&sample.function, 50),
-                        target_preview: truncate_str(&sample.unit_tests, 50),
-                        generated_preview: "(LoRA training...)".to_string(),
-                        token_match_percent: 0.0, // Not computing generation during training
-                    };
-                    let _ = state_writer.update_sample(sample_peek);
-                }
-            }
-
-            // Update GPU telemetry (step 0 + every 10 steps for immediate TUI display)
-            if step == 0 || step % 10 == 0 {
-                if let Some(ref monitor) = gpu_monitor {
-                    let metrics = monitor.sample();
-                    if let Some(m) = metrics.first() {
-                        let processes = m
-                            .processes
-                            .iter()
-                            .map(|p| GpuProcessInfo {
-                                pid: p.pid,
-                                exe_path: p.exe_path.clone(),
-                                gpu_memory_mb: p.gpu_memory_mb,
-                                cpu_percent: p.cpu_percent,
-                                rss_mb: p.rss_mb,
-                            })
-                            .collect();
-                        let _ = state_writer.update_gpu(GpuTelemetry {
-                            device_name: m.name.clone(),
-                            utilization_percent: m.utilization_percent as f32,
-                            vram_used_gb: m.memory_used_mb as f32 / 1024.0,
-                            vram_total_gb: m.memory_total_mb as f32 / 1024.0,
-                            temperature_celsius: m.temperature_celsius as f32,
-                            power_watts: m.power_watts,
-                            power_limit_watts: m.power_limit_watts,
-                            processes,
-                        });
-                    }
-                }
-            }
-
-            if step == corpus.train.len() - 1 {
-                println!(
-                    "    Step {}: CE={:.4}, grad_A={:.4}, grad_B={:.4}",
-                    step + 1,
-                    loss_val,
-                    grad_a_norm,
-                    grad_b_norm
-                );
-            }
+impl ExperimentResults {
+    fn from_loss_history(loss_history: &[f32], duration: std::time::Duration) -> Self {
+        let final_loss = loss_history.last().copied().unwrap_or(0.0);
+        let initial_loss = loss_history.first().copied().unwrap_or(0.0);
+        let reduction_percent = if initial_loss > 0.0 {
+            (initial_loss - final_loss) / initial_loss * 100.0
+        } else {
+            0.0
+        };
+        Self {
+            loss_history: loss_history.to_vec(),
+            duration,
+            final_loss,
+            initial_loss,
+            reduction_percent,
         }
-        println!(
-            "  → Epoch {} avg CE: {:.4}",
-            epoch + 1,
-            epoch_loss / corpus.train.len() as f32
-        );
     }
+}
 
-    let exp2_duration = start_exp2.elapsed();
-    let exp2_final_loss = loss_history_lora.last().copied().unwrap_or(0.0);
-    let exp2_initial_loss = loss_history_lora.first().copied().unwrap_or(0.0);
-    let exp2_reduction = (exp2_initial_loss - exp2_final_loss) / exp2_initial_loss * 100.0;
-
-    println!("\n📊 LORA FINE-TUNING RESULTS:");
-    println!("   Initial CE: {:.4}", exp2_initial_loss);
-    println!("   Final CE: {:.4}", exp2_final_loss);
-    println!("   Reduction: {:.2}%", exp2_reduction);
-    println!("   Duration: {:.2}s", exp2_duration.as_secs_f32());
-    println!("   Memory (trainable): {:.4} MB", lora_memory_mb);
-
-    // ========================================================================
-    // PHASE 8 HYPOTHESIS TEST
-    // ========================================================================
+/// Run Phase 9 hypothesis test (H9: LoRA convergence)
+fn run_hypothesis_test_h9(
+    exp1: &ExperimentResults,
+    exp2: &ExperimentResults,
+    full_ft_params: usize,
+    full_ft_memory_mb: f32,
+    lora_params: usize,
+    lora_memory_mb: f32,
+    memory_savings: f32,
+    epochs_full_ft: usize,
+    lr_full_ft: f32,
+    epochs_lora: usize,
+    lr_lora: f32,
+) {
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   📈 PHASE 8: HYPOTHESIS TEST");
     println!("═══════════════════════════════════════════════════════════════");
 
-    // Calculate metrics for hypothesis testing
-    let reduction_gap = (exp1_reduction - exp2_reduction).abs();
-    let reduction_ratio = if exp1_reduction > 0.0 {
-        exp2_reduction / exp1_reduction * 100.0
+    let reduction_gap = (exp1.reduction_percent - exp2.reduction_percent).abs();
+    let reduction_ratio = if exp1.reduction_percent > 0.0 {
+        exp2.reduction_percent / exp1.reduction_percent * 100.0
     } else {
         0.0
     };
@@ -1719,8 +1272,8 @@ fn main() {
     println!("     • Trainable params: {}", full_ft_params);
     println!("     • Memory: {:.2} MB", full_ft_memory_mb);
     println!("     • Epochs: {}, LR: {}", epochs_full_ft, lr_full_ft);
-    println!("     • CE Reduction: {:.2}%", exp1_reduction);
-    println!("     • Duration: {:.2}s", exp1_duration.as_secs_f32());
+    println!("     • CE Reduction: {:.2}%", exp1.reduction_percent);
+    println!("     • Duration: {:.2}s", exp1.duration.as_secs_f32());
 
     println!("\n   LORA FINE-TUNING (Extended):");
     println!(
@@ -1733,8 +1286,8 @@ fn main() {
         lora_memory_mb, memory_savings
     );
     println!("     • Epochs: {}, LR: {} (3x)", epochs_lora, lr_lora);
-    println!("     • CE Reduction: {:.2}%", exp2_reduction);
-    println!("     • Duration: {:.2}s", exp2_duration.as_secs_f32());
+    println!("     • CE Reduction: {:.2}%", exp2.reduction_percent);
+    println!("     • Duration: {:.2}s", exp2.duration.as_secs_f32());
 
     println!("\n   HYPOTHESIS TEST (H9):");
     println!("     Prediction: Under 15 epochs + 3x LR, LoRA CE reduction within 10% of Full FT");
@@ -1769,21 +1322,35 @@ fn main() {
             "✗ FALSIFIED - LoRA cannot match Full FT even with extended training"
         }
     );
+}
 
-    // Use the combined loss history for artifacts
-    let mut loss_history = loss_history_head_only.clone();
-    loss_history.extend(loss_history_lora.clone());
+/// Extract the test portion from generated code
+fn extract_test_portion(generated: &str) -> &str {
+    let test_start = generated.find("#[cfg(test)]").unwrap_or(0);
+    if test_start > 0 {
+        &generated[test_start..]
+    } else {
+        generated
+    }
+}
 
-    // Final metrics for downstream
-    let sample_0_e1 = loss_history_lora.first().copied().unwrap_or(0.0);
-    let sample_0_e3 = loss_history_lora.last().copied().unwrap_or(0.0);
-    let _ce_decreasing = sample_0_e3 < sample_0_e1;
+/// Evaluation metrics for generated tests
+struct EvalMetrics {
+    compile_count: usize,
+    total_mutants_killed: usize,
+    total_mutants: usize,
+    total_tests: usize,
+    generated_samples: Vec<(String, String)>,
+}
 
-    // ========================================================================
-    // PHASE 10: EXTERNAL QUALITY VALIDATION
-    // ========================================================================
-    // Hypothesis: "A model trained via this Golden Specification will produce
-    // generated Rust tests with >90% compilation rate and >70% mutation score."
+/// Run Phase 10 quality validation - generate and evaluate tests
+fn run_quality_validation(
+    transformer: &Transformer,
+    lora_lm_head: &LoRAProjection,
+    tokenizer: &HfTokenizer,
+    corpus: &TestGenCorpus,
+    hidden_size: usize,
+) -> EvalMetrics {
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   🔬 PHASE 10: EXTERNAL QUALITY VALIDATION");
     println!("═══════════════════════════════════════════════════════════════");
@@ -1792,11 +1359,13 @@ fn main() {
     let evaluator = TestEvaluator::default().mutation_sample(20);
     let max_new_tokens = 200;
 
-    let mut compile_count = 0;
-    let mut total_mutants_killed = 0;
-    let mut total_mutants = 0;
-    let mut total_tests = 0;
-    let mut generated_samples: Vec<(String, String)> = Vec::new();
+    let mut metrics = EvalMetrics {
+        compile_count: 0,
+        total_mutants_killed: 0,
+        total_mutants: 0,
+        total_tests: 0,
+        generated_samples: Vec::new(),
+    };
 
     // Generate and evaluate tests for each holdout sample
     for (idx, sample) in corpus.test.iter().enumerate() {
@@ -1806,98 +1375,86 @@ fn main() {
             &sample.function.chars().take(50).collect::<String>()
         );
 
-        // Generate tests using trained model
         let generated = generate_tests(
-            &transformer,
-            &lora_lm_head,
-            &tokenizer,
+            transformer,
+            lora_lm_head,
+            tokenizer,
             &sample.function,
             max_new_tokens,
             hidden_size,
         );
 
-        // Extract just the test portion (after the function)
-        let test_start = generated.find("#[cfg(test)]").unwrap_or(0);
-        let generated_tests = if test_start > 0 {
-            &generated[test_start..]
-        } else {
-            &generated
-        };
-
+        let generated_tests = extract_test_portion(&generated);
         println!(
             "     Generated {} chars of test code",
             generated_tests.len()
         );
 
-        // Evaluate the generated tests
         let result = evaluator.evaluate(&sample.function, generated_tests);
-
         if result.compiles {
-            compile_count += 1;
+            metrics.compile_count += 1;
             println!("     ✓ Compiles");
         } else {
             println!("     ✗ Compile error");
         }
 
-        total_mutants_killed += result.mutants_killed;
-        total_mutants += result.mutants_total;
-        total_tests += 1;
-
-        // Store for later analysis
-        generated_samples.push((sample.function.clone(), generated_tests.to_string()));
+        metrics.total_mutants_killed += result.mutants_killed;
+        metrics.total_mutants += result.mutants_total;
+        metrics.total_tests += 1;
+        metrics
+            .generated_samples
+            .push((sample.function.clone(), generated_tests.to_string()));
     }
 
     // Also evaluate on training samples (sanity check)
     println!("\n   Evaluating on training samples (sanity check)...");
     for sample in &corpus.train {
         let generated = generate_tests(
-            &transformer,
-            &lora_lm_head,
-            &tokenizer,
+            transformer,
+            lora_lm_head,
+            tokenizer,
             &sample.function,
             max_new_tokens,
             hidden_size,
         );
 
-        let test_start = generated.find("#[cfg(test)]").unwrap_or(0);
-        let generated_tests = if test_start > 0 {
-            &generated[test_start..]
-        } else {
-            &generated
-        };
-
+        let generated_tests = extract_test_portion(&generated);
         let result = evaluator.evaluate(&sample.function, generated_tests);
         if result.compiles {
-            compile_count += 1;
+            metrics.compile_count += 1;
         }
-        total_mutants_killed += result.mutants_killed;
-        total_mutants += result.mutants_total;
-        total_tests += 1;
+        metrics.total_mutants_killed += result.mutants_killed;
+        metrics.total_mutants += result.mutants_total;
+        metrics.total_tests += 1;
     }
 
-    let compile_rate = compile_count as f32 / total_tests as f32;
-    let mutation_score = if total_mutants > 0 {
-        total_mutants_killed as f32 / total_mutants as f32
+    metrics
+}
+
+/// Print Phase 10 generation results and hypothesis test
+fn print_generation_results(metrics: &EvalMetrics) -> (f32, f32, bool) {
+    let compile_rate = metrics.compile_count as f32 / metrics.total_tests as f32;
+    let mutation_score = if metrics.total_mutants > 0 {
+        metrics.total_mutants_killed as f32 / metrics.total_mutants as f32
     } else {
         0.0
     };
 
     println!("\n📊 GENERATION RESULTS:");
-    println!("   Samples evaluated: {}", total_tests);
+    println!("   Samples evaluated: {}", metrics.total_tests);
     println!(
         "   Compilation rate: {:.1}% ({}/{})",
         compile_rate * 100.0,
-        compile_count,
-        total_tests
+        metrics.compile_count,
+        metrics.total_tests
     );
     println!(
         "   Mutation score: {:.1}% ({}/{})",
         mutation_score * 100.0,
-        total_mutants_killed,
-        total_mutants
+        metrics.total_mutants_killed,
+        metrics.total_mutants
     );
 
-    // Phase 10 Hypothesis Test
     println!("\n   HYPOTHESIS TEST (H10):");
     println!("     Prediction 1: Compilation rate >90%");
     println!("     Observed: {:.1}%", compile_rate * 100.0);
@@ -1928,28 +1485,30 @@ fn main() {
         }
     );
 
-    // 11. Popperian QA (updated for Phase 10)
+    (compile_rate, mutation_score, h10_passed)
+}
+
+/// Run Popperian falsification QA and return (score, grade)
+fn run_popperian_qa(
+    compile_rate: f32,
+    mutation_score: f32,
+    device_info: &DeviceInfo,
+    device: &ComputeDevice,
+    start_time: &Instant,
+    corpus: &TestGenCorpus,
+) -> (u8, QAGrade) {
     println!("\n🔍 Popperian Falsification QA...");
     let mut qa = PopperianQA::new();
 
-    // Check reproducibility
     qa.r4_environment_locked = true;
-
-    // Check compilation (based on generation evaluation)
-    qa.c1_parses_as_rust = compile_rate >= 0.9; // Phase 10 target
+    qa.c1_parses_as_rust = compile_rate >= 0.9;
     qa.c2_type_checks = compile_rate >= 0.9;
-
-    // Check efficiency
     qa.e1_vram_under_8gb = device_info.memory_gb < 8.0 || matches!(device, ComputeDevice::Cpu);
     qa.e2_training_under_4hrs = start_time.elapsed().as_secs() < 14400;
     qa.e3_inference_under_1s = true;
-
-    // Check correctness (based on mutation testing)
-    qa.x1_tests_pass_on_correct = mutation_score >= 0.7; // Phase 10 target
+    qa.x1_tests_pass_on_correct = mutation_score >= 0.7;
     qa.x3_assertions_meaningful = mutation_score >= 0.5;
     qa.x4_no_tautologies = mutation_score >= 0.5;
-
-    // Check coverage
     qa.v3_edge_cases_present = corpus
         .train
         .iter()
@@ -1961,27 +1520,554 @@ fn main() {
     println!("   Score: {}/100", score);
     println!("   Grade: {:?}", grade);
 
-    // 12. Save artifacts
-    println!("\n💾 Saving artifacts...");
+    // Save QA report
     let output_dir = Path::new("./experiments/finetune-real");
     fs::create_dir_all(output_dir).ok();
-
-    // Save loss history
-    let loss_json = serde_json::to_string_pretty(&loss_history).unwrap_or_default();
-    fs::write(output_dir.join("loss_history.json"), loss_json).ok();
-    println!("   ✓ Loss history saved");
-
-    // Save generated samples
-    let samples_json = serde_json::to_string_pretty(&generated_samples).unwrap_or_default();
-    fs::write(output_dir.join("generated_samples.json"), samples_json).ok();
-    println!("   ✓ Generated samples saved");
-
-    // Save QA report
     let qa_report = qa.report();
     fs::write(output_dir.join("qa_report.md"), &qa_report).ok();
     println!("   ✓ QA report saved");
 
-    // Summary
+    (score, grade)
+}
+
+/// Save experiment artifacts (loss history, generated samples)
+fn save_artifacts(loss_history: &[f32], generated_samples: &[(String, String)]) {
+    println!("\n💾 Saving artifacts...");
+    let output_dir = Path::new("./experiments/finetune-real");
+    fs::create_dir_all(output_dir).ok();
+
+    let loss_json = serde_json::to_string_pretty(loss_history).unwrap_or_default();
+    fs::write(output_dir.join("loss_history.json"), loss_json).ok();
+    println!("   ✓ Loss history saved");
+
+    let samples_json = serde_json::to_string_pretty(generated_samples).unwrap_or_default();
+    fs::write(output_dir.join("generated_samples.json"), samples_json).ok();
+    println!("   ✓ Generated samples saved");
+}
+
+/// Bundled training hyperparameters shared across experiments
+struct TrainingHyperparams {
+    rank: usize,
+    alpha: f32,
+    demo_vocab: usize,
+    epochs_full_ft: usize,
+    epochs_lora: usize,
+    lr_full_ft: f32,
+    lr_lora: f32,
+    hidden_size: usize,
+}
+
+/// Shared mutable training context passed to experiment runners
+struct TrainingContext<'a> {
+    state_writer: &'a mut TrainingStateWriter,
+    gpu_monitor: &'a Option<GpuMonitor>,
+    corpus: &'a TestGenCorpus,
+    pretokenized_train: &'a [(Vec<u32>, Vec<f32>)],
+    causal_loss_fn: &'a CausalLMLoss,
+    transformer: &'a Transformer,
+    steps_per_epoch: usize,
+}
+
+/// Results from Experiment 1 (full fine-tuning) including trained params
+struct FullFtOutput {
+    results: ExperimentResults,
+    loss_history: Vec<f32>,
+    full_ft_params: usize,
+    full_ft_memory_mb: f32,
+}
+
+/// Results from Experiment 2 (LoRA fine-tuning) including trained model
+struct LoraOutput {
+    results: ExperimentResults,
+    loss_history: Vec<f32>,
+    lora_lm_head: LoRAProjection,
+    lora_params: usize,
+    lora_memory_mb: f32,
+    memory_savings: f32,
+}
+
+/// CUDA training step: forward, softmax CE loss, backward, and optimizer step.
+/// Returns (logits_tensor, loss_val, grad_norm).
+#[cfg(feature = "cuda")]
+fn cuda_training_step(
+    cuda: &mut CudaTrainingState,
+    hidden_states: &Tensor,
+    targets_f32: &[f32],
+    seq_len: usize,
+    demo_vocab: usize,
+    scheduler: &CosineAnnealingLR,
+    epoch: usize,
+    step: usize,
+) -> (Tensor, f32, f32) {
+    let hidden_data: Vec<f32> = hidden_states.data().to_vec();
+    let logits_data = cuda
+        .forward(&hidden_data, seq_len)
+        .expect("CUDA forward failed");
+
+    let (total_loss, grad_logits) =
+        compute_softmax_ce_grads(&logits_data, targets_f32, seq_len, demo_vocab);
+    let loss_val = total_loss / seq_len as f32;
+    let grad_norm: f32 = grad_logits.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    cuda.backward(&hidden_data, &grad_logits, seq_len)
+        .expect("CUDA backward failed");
+
+    let weights_before = cuda.download_weights().unwrap();
+    let sum_before: f32 = weights_before.iter().sum();
+
+    let current_lr = scheduler.get_lr();
+    cuda.adamw_step(current_lr, 0.9, 0.999, 1e-8, 0.01)
+        .expect("CUDA optimizer step failed");
+
+    let weights_after = cuda.download_weights().unwrap();
+    let sum_after: f32 = weights_after.iter().sum();
+    if step == 0 && epoch == 0 {
+        println!(
+            "    DEBUG: weight_sum before={:.6}, after={:.6}, delta={:.6}",
+            sum_before,
+            sum_after,
+            sum_after - sum_before
+        );
+    }
+
+    let logits_tensor = Tensor::from_vec(logits_data, false);
+    (logits_tensor, loss_val, grad_norm)
+}
+
+/// Compute softmax cross-entropy loss and gradients for all positions.
+/// Returns (total_loss, grad_logits).
+#[cfg(feature = "cuda")]
+fn compute_softmax_ce_grads(
+    logits_data: &[f32],
+    targets_f32: &[f32],
+    seq_len: usize,
+    demo_vocab: usize,
+) -> (f32, Vec<f32>) {
+    let mut total_loss = 0.0f32;
+    let mut grad_logits = vec![0.0f32; seq_len * demo_vocab];
+
+    for pos in 0..seq_len {
+        let offset = pos * demo_vocab;
+        let pos_logits = &logits_data[offset..offset + demo_vocab];
+
+        let max_logit = pos_logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let exp_logits: Vec<f32> = pos_logits.iter().map(|&x| (x - max_logit).exp()).collect();
+        let sum_exp: f32 = exp_logits.iter().sum();
+        let softmax: Vec<f32> = exp_logits.iter().map(|&x| x / sum_exp).collect();
+
+        let target_class = targets_f32[pos] as usize;
+        total_loss -= softmax[target_class].max(1e-10).ln();
+
+        for (i, &s) in softmax.iter().enumerate() {
+            let one_hot = if i == target_class { 1.0 } else { 0.0 };
+            grad_logits[offset + i] = (s - one_hot) / seq_len as f32;
+        }
+    }
+
+    (total_loss, grad_logits)
+}
+
+/// Log step metrics and update TUI state for a single training step
+fn log_step_metrics(
+    ctx: &mut TrainingContext<'_>,
+    epoch_display: usize,
+    step: usize,
+    loss_val: f32,
+    current_lr: f32,
+    grad_norm: f32,
+    elapsed_secs: f32,
+    label: &str,
+) {
+    let seq_len = ctx.pretokenized_train[step].0.len();
+    let total_steps = epoch_display * ctx.steps_per_epoch + step + 1;
+    let tokens_per_second = seq_len as f32 / (elapsed_secs / total_steps as f32);
+    let _ = ctx.state_writer.update_step(
+        epoch_display,
+        step + 1,
+        loss_val,
+        current_lr,
+        grad_norm,
+        tokens_per_second,
+    );
+
+    if step == 0 || step.is_multiple_of(5) {
+        update_sample_preview(ctx.corpus, step, label, ctx.state_writer);
+    }
+
+    if step == 0 || step.is_multiple_of(10) {
+        update_gpu_telemetry(ctx.gpu_monitor, ctx.state_writer);
+    }
+}
+
+/// Run Experiment 1: Full fine-tuning with pre-trained LM head weights
+fn run_experiment_full_ft(
+    ctx: &mut TrainingContext<'_>,
+    hp: &TrainingHyperparams,
+    pretrained_subset: &[f32],
+    cuda_training: bool,
+) -> FullFtOutput {
+    println!("\n═══════════════════════════════════════════════════════════════");
+    println!("   🎯 EXPERIMENT 1: FULL FINE-TUNING (PRE-TRAINED BASE)");
+    println!("═══════════════════════════════════════════════════════════════");
+
+    let lm_head_weights_1 = Tensor::from_vec(pretrained_subset.to_vec(), true);
+    let full_ft_params = hp.hidden_size * hp.demo_vocab;
+    let full_ft_memory_mb = (full_ft_params * 4) as f32 / (1024.0 * 1024.0);
+
+    let mut trainable_params_1 = vec![lm_head_weights_1];
+    println!("   Mode: Full Fine-Tuning (all weights trainable)");
+    println!(
+        "   Trainable params: {full_ft_params} ({full_ft_memory_mb:.2} MB)"
+    );
+    let epochs = hp.epochs_full_ft;
+    let lr = hp.lr_full_ft;
+    println!("   Epochs: {epochs}, LR: {lr}");
+
+    let mut optimizer_1 = AdamW::new(hp.lr_full_ft, 0.9, 0.999, 1e-8, 0.01);
+    let mut scheduler_1 = CosineAnnealingLR::new(hp.lr_full_ft, 100, 1e-5);
+
+    let mut loss_history = Vec::new();
+    let start_exp1 = Instant::now();
+
+    init_cuda_or_cpu_backend(cuda_training, pretrained_subset, hp);
+
+    #[cfg(feature = "cuda")]
+    let mut cuda_state: Option<CudaTrainingState> = if cuda_training {
+        match CudaTrainingState::new(pretrained_subset, hp.hidden_size, hp.demo_vocab) {
+            Some(state) => {
+                println!("   Backend: CUDA ({})", state.device_name());
+                Some(state)
+            }
+            None => {
+                println!("   Backend: CPU (CUDA init failed)");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let train_len = ctx.corpus.train.len();
+
+    for epoch in 0..hp.epochs_full_ft {
+        println!("\n  Epoch {}/{}", epoch + 1, hp.epochs_full_ft);
+        let mut epoch_loss = 0.0;
+
+        for (step, (input_ids, targets_f32)) in ctx.pretokenized_train.iter().enumerate() {
+            let seq_len = input_ids.len();
+            let hidden_states = forward_hidden(ctx.transformer, input_ids);
+
+            #[cfg(feature = "cuda")]
+            let (logits, loss_val, grad_norm) = if let Some(ref mut cuda) = cuda_state {
+                cuda_training_step(
+                    cuda,
+                    &hidden_states,
+                    targets_f32,
+                    seq_len,
+                    hp.demo_vocab,
+                    &scheduler_1,
+                    epoch,
+                    step,
+                )
+            } else {
+                cpu_training_step(
+                    &hidden_states,
+                    &mut trainable_params_1,
+                    targets_f32,
+                    seq_len,
+                    hp.hidden_size,
+                    hp.demo_vocab,
+                    ctx.causal_loss_fn,
+                    &mut optimizer_1,
+                )
+            };
+
+            #[cfg(not(feature = "cuda"))]
+            let (logits, loss_val, grad_norm) = cpu_training_step(
+                &hidden_states,
+                &mut trainable_params_1,
+                targets_f32,
+                seq_len,
+                hp.hidden_size,
+                hp.demo_vocab,
+                ctx.causal_loss_fn,
+                &mut optimizer_1,
+            );
+
+            let _ = logits;
+            epoch_loss += loss_val;
+            loss_history.push(loss_val);
+
+            scheduler_1.step();
+            let current_lr = scheduler_1.get_lr();
+            optimizer_1.set_lr(current_lr);
+
+            log_step_metrics(
+                ctx,
+                epoch + 1,
+                step,
+                loss_val,
+                current_lr,
+                grad_norm,
+                start_exp1.elapsed().as_secs_f32(),
+                "(training...)",
+            );
+
+            if step == train_len - 1 {
+                println!(
+                    "    Step {}: CE={:.4}, grad_norm={:.2}",
+                    step + 1,
+                    loss_val,
+                    grad_norm
+                );
+            }
+        }
+        println!(
+            "  → Epoch {} avg CE: {:.4}",
+            epoch + 1,
+            epoch_loss / train_len as f32
+        );
+    }
+
+    #[cfg(feature = "cuda")]
+    if let Some(ref cuda) = cuda_state {
+        if let Some(final_weights) = cuda.download_weights() {
+            trainable_params_1[0] = Tensor::from_vec(final_weights, true);
+        }
+    }
+
+    let results = ExperimentResults::from_loss_history(&loss_history, start_exp1.elapsed());
+    print_full_ft_results(&results, full_ft_memory_mb);
+
+    FullFtOutput {
+        results,
+        loss_history,
+        full_ft_params,
+        full_ft_memory_mb,
+    }
+}
+
+/// Print backend label based on available CUDA state
+fn init_cuda_or_cpu_backend(
+    cuda_training: bool,
+    _pretrained_subset: &[f32],
+    _hp: &TrainingHyperparams,
+) {
+    #[cfg(not(feature = "cuda"))]
+    {
+        let _ = cuda_training;
+        println!("   Backend: CPU");
+    }
+    #[cfg(feature = "cuda")]
+    if !cuda_training {
+        println!("   Backend: CPU");
+    }
+}
+
+/// Print Experiment 1 results summary
+fn print_full_ft_results(results: &ExperimentResults, full_ft_memory_mb: f32) {
+    println!("\n📊 FULL FINE-TUNING RESULTS:");
+    println!("   Initial CE: {:.4}", results.initial_loss);
+    println!("   Final CE: {:.4}", results.final_loss);
+    println!("   Reduction: {:.2}%", results.reduction_percent);
+    println!("   Duration: {:.2}s", results.duration.as_secs_f32());
+    println!("   Memory (trainable): {full_ft_memory_mb:.2} MB");
+}
+
+/// Run Experiment 2: LoRA fine-tuning with frozen pre-trained base
+fn run_experiment_lora(
+    ctx: &mut TrainingContext<'_>,
+    hp: &TrainingHyperparams,
+    pretrained_subset: &[f32],
+    full_ft_params: usize,
+    full_ft_memory_mb: f32,
+) -> LoraOutput {
+    println!("\n═══════════════════════════════════════════════════════════════");
+    println!("   🧠 EXPERIMENT 2: LORA FINE-TUNING (FROZEN PRE-TRAINED BASE)");
+    println!("═══════════════════════════════════════════════════════════════");
+
+    let lm_head_base = Tensor::from_vec(pretrained_subset.to_vec(), false);
+    let mut lora_lm_head = LoRAProjection::new(
+        lm_head_base,
+        hp.hidden_size,
+        hp.demo_vocab,
+        hp.rank,
+        hp.alpha,
+    );
+
+    let lora_params = hp.hidden_size * hp.rank + hp.rank * hp.demo_vocab;
+    let lora_memory_mb = (lora_params * 4) as f32 / (1024.0 * 1024.0);
+    let memory_savings = (1.0 - lora_memory_mb / full_ft_memory_mb) * 100.0;
+
+    print_lora_config(
+        hp,
+        full_ft_params,
+        lora_params,
+        lora_memory_mb,
+        memory_savings,
+    );
+
+    let mut optimizer_2 = AdamW::new(hp.lr_lora, 0.9, 0.999, 1e-8, 0.01);
+    let mut scheduler_2 = CosineAnnealingLR::new(hp.lr_lora, 200, 1e-5);
+
+    let mut loss_history = Vec::new();
+    let start_exp2 = Instant::now();
+    let train_len = ctx.corpus.train.len();
+
+    for epoch in 0..hp.epochs_lora {
+        println!("\n  Epoch {}/{}", epoch + 1, hp.epochs_lora);
+        let mut epoch_loss = 0.0;
+
+        for (step, (input_ids, targets_f32)) in ctx.pretokenized_train.iter().enumerate() {
+            let seq_len = input_ids.len();
+
+            let hidden_states = forward_hidden(ctx.transformer, input_ids);
+            let logits = lora_lm_head.forward(&hidden_states, seq_len);
+
+            let targets_tensor = Tensor::from_vec(targets_f32.clone(), false);
+            let mut loss = ctx.causal_loss_fn.forward(&logits, &targets_tensor);
+            let loss_val = loss.data()[0];
+
+            lora_lm_head.lora_a.zero_grad();
+            lora_lm_head.lora_b.zero_grad();
+
+            backward(&mut loss, None);
+
+            let grad_a_norm = lora_lm_head
+                .lora_a
+                .grad()
+                .map_or(0.0, |g| g.iter().map(|x| x * x).sum::<f32>().sqrt());
+            let grad_b_norm = lora_lm_head
+                .lora_b
+                .grad()
+                .map_or(0.0, |g| g.iter().map(|x| x * x).sum::<f32>().sqrt());
+
+            let mut lora_params_vec = lora_lm_head.lora_params_mut();
+            optimizer_2.step_refs(&mut lora_params_vec);
+
+            epoch_loss += loss_val;
+            loss_history.push(loss_val);
+
+            scheduler_2.step();
+            let current_lr = scheduler_2.get_lr();
+            optimizer_2.set_lr(current_lr);
+
+            let actual_epoch = hp.epochs_full_ft + epoch;
+            let combined_grad_norm = (grad_a_norm.powi(2) + grad_b_norm.powi(2)).sqrt();
+
+            log_step_metrics(
+                ctx,
+                actual_epoch + 1,
+                step,
+                loss_val,
+                current_lr,
+                combined_grad_norm,
+                start_exp2.elapsed().as_secs_f32(),
+                "(LoRA training...)",
+            );
+
+            if step == train_len - 1 {
+                println!(
+                    "    Step {}: CE={:.4}, grad_A={:.4}, grad_B={:.4}",
+                    step + 1,
+                    loss_val,
+                    grad_a_norm,
+                    grad_b_norm
+                );
+            }
+        }
+        println!(
+            "  → Epoch {} avg CE: {:.4}",
+            epoch + 1,
+            epoch_loss / train_len as f32
+        );
+    }
+
+    let results = ExperimentResults::from_loss_history(&loss_history, start_exp2.elapsed());
+
+    println!("\n📊 LORA FINE-TUNING RESULTS:");
+    println!("   Initial CE: {:.4}", results.initial_loss);
+    println!("   Final CE: {:.4}", results.final_loss);
+    println!("   Reduction: {:.2}%", results.reduction_percent);
+    println!("   Duration: {:.2}s", results.duration.as_secs_f32());
+    println!("   Memory (trainable): {lora_memory_mb:.4} MB");
+
+    LoraOutput {
+        results,
+        loss_history,
+        lora_lm_head,
+        lora_params,
+        lora_memory_mb,
+        memory_savings,
+    }
+}
+
+/// Print LoRA experiment configuration summary
+fn print_lora_config(
+    hp: &TrainingHyperparams,
+    full_ft_params: usize,
+    lora_params: usize,
+    lora_memory_mb: f32,
+    memory_savings: f32,
+) {
+    println!("   Mode: LoRA Fine-Tuning (base frozen, adapters trainable)");
+    println!("   LoRA Rank: {}", hp.rank);
+    println!("   LoRA Alpha: {}", hp.alpha);
+    println!(
+        "   Base LM head: {} params (FROZEN, pre-trained)",
+        hp.hidden_size * hp.demo_vocab
+    );
+    println!(
+        "   LoRA A: {} × {} = {} params",
+        hp.hidden_size,
+        hp.rank,
+        hp.hidden_size * hp.rank
+    );
+    println!(
+        "   LoRA B: {} × {} = {} params",
+        hp.rank,
+        hp.demo_vocab,
+        hp.rank * hp.demo_vocab
+    );
+    println!(
+        "   Total trainable: {} params ({:.2}% of full)",
+        lora_params,
+        (lora_params as f32 / full_ft_params as f32) * 100.0
+    );
+    println!(
+        "   Memory (trainable): {lora_memory_mb:.4} MB ({memory_savings:.1}% savings)"
+    );
+    let epochs = hp.epochs_lora;
+    let lr = hp.lr_lora;
+    println!("   Epochs: {epochs}, LR: {lr} (3x baseline)");
+}
+
+/// Initialize GPU monitor and log detected devices
+fn init_gpu_monitor() -> Option<GpuMonitor> {
+    let gpu_monitor = GpuMonitor::new().ok();
+    if let Some(ref monitor) = gpu_monitor {
+        if monitor.num_devices() > 0 {
+            println!(
+                "\n📊 GPU Monitor: {} device(s) detected",
+                monitor.num_devices()
+            );
+        }
+    }
+    gpu_monitor
+}
+
+/// Print the final summary of the entire experiment run
+fn print_final_summary(
+    start_time: &Instant,
+    loss_history: &[f32],
+    compile_rate: f32,
+    mutation_score: f32,
+    score: u8,
+    grade: &QAGrade,
+    h10_passed: bool,
+    output_dir: &str,
+    state_writer: &mut TrainingStateWriter,
+) {
     let duration = start_time.elapsed();
     println!("\n═══════════════════════════════════════════════════════════════");
     println!("   ✅ SPEC-FT-001 Complete!");
@@ -1993,9 +2079,8 @@ fn main() {
     );
     println!("   Compile rate: {:.1}%", compile_rate * 100.0);
     println!("   Mutation score: {:.1}%", mutation_score * 100.0);
-    println!("   QA Grade: {:?} ({}/100)", grade, score);
+    println!("   QA Grade: {grade:?} ({score}/100)");
 
-    // Phase 10 verdict
     if h10_passed {
         println!("\n   🏆 GOLDEN SPECIFICATION VALIDATED!");
         println!("   The model earns its 'Coder' title.");
@@ -2005,7 +2090,191 @@ fn main() {
         println!("\n   ⚠️  Model needs significant improvement for code generation.");
     }
 
-    // Mark training as complete in TUI state
     let _ = state_writer.complete();
-    println!("\n📺 Training state saved to: {}", args.output);
+    println!("\n📺 Training state saved to: {output_dir}");
+}
+
+fn main() {
+    let args = Args::parse();
+
+    if args.monitor {
+        run_tui_monitor(&args);
+        return;
+    }
+
+    if args.headless {
+        run_headless_monitor(&args);
+        return;
+    }
+
+    // =========================================================================
+    // Training Mode (Producer - writes to metric store)
+    // =========================================================================
+    let start_time = Instant::now();
+
+    println!("═══════════════════════════════════════════════════════════════");
+    println!("   🧪 Real End-to-End Fine-Tuning for Rust Test Generation");
+    println!("═══════════════════════════════════════════════════════════════\n");
+
+    fs::create_dir_all(&args.output).ok();
+
+    let (device, device_info, cuda_training) = detect_compute_device();
+
+    println!("\n🔒 Setting reproducibility...");
+    let repro_config = ReproducibilityConfig::with_seed(42);
+    repro_config.apply();
+    println!("   Seed: 42");
+    println!("   Deterministic: ✓");
+
+    println!();
+    let corpus = create_real_corpus();
+
+    println!();
+    let model_id = "Qwen/Qwen2.5-Coder-0.5B-Instruct";
+    let model_path = get_model_path(model_id).expect("Failed to get model path");
+
+    println!("\n🧠 Loading transformer model...");
+    let (transformer, config) =
+        load_transformer(&model_path).expect("Failed to load transformer model");
+    let hidden_size = config.hidden_size;
+    println!("   Model vocab size: {}", config.vocab_size);
+    println!("   Hidden size: {hidden_size}");
+
+    println!("\n🔤 Loading tokenizer...");
+    let tokenizer = load_qwen2_tokenizer()
+        .expect("Failed to load Qwen2 tokenizer. Run: huggingface-cli download Qwen/Qwen2-0.5B-Instruct tokenizer.json");
+
+    if tokenizer.vocab_size() != config.vocab_size {
+        println!(
+            "   ⚠ Vocab size mismatch: tokenizer={}, model={}",
+            tokenizer.vocab_size(),
+            config.vocab_size
+        );
+        println!("   → Using model vocab size for loss computation");
+    }
+
+    let hp = TrainingHyperparams {
+        rank: 16,
+        alpha: 32.0,
+        demo_vocab: 1000,
+        epochs_full_ft: 3,
+        epochs_lora: 15,
+        lr_full_ft: 2e-4,
+        lr_lora: 6e-4,
+        hidden_size,
+    };
+
+    let pretokenized_train = pretokenize_corpus(&corpus, &tokenizer, 128, hp.demo_vocab);
+    let causal_loss_fn = CausalLMLoss::new(hp.demo_vocab);
+
+    let experiment_id = format!(
+        "finetune-real-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    );
+    let mut state_writer =
+        TrainingStateWriter::new(&args.output, &experiment_id, "Qwen2.5-Coder-0.5B");
+
+    let steps_per_epoch = pretokenized_train.len();
+    state_writer.set_epochs(hp.epochs_full_ft + hp.epochs_lora, steps_per_epoch);
+    state_writer.set_config("AdamW", 1, &model_path.display().to_string(), &args.output);
+
+    let gpu_monitor = init_gpu_monitor();
+
+    if let Err(e) = state_writer.start() {
+        eprintln!("Warning: Could not write training state: {e}");
+    }
+
+    println!("\n📺 TUI Monitor available:");
+    println!(
+        "   cargo run --example finetune_real --features nvml -- --monitor --experiment {}",
+        args.output
+    );
+    println!();
+
+    // Extract pre-trained LM head weights
+    println!("\n═══════════════════════════════════════════════════════════════");
+    println!("   🔬 PHASE 9: LORA CONVERGENCE EXPERIMENT");
+    println!("═══════════════════════════════════════════════════════════════");
+    println!("   Testing: 15 epochs, 3x learning rate for LoRA");
+
+    let pretrained_subset =
+        extract_pretrained_weights(&transformer, hidden_size, hp.demo_vocab, config.vocab_size);
+
+    // Run experiments via extracted helpers
+    let mut ctx = TrainingContext {
+        state_writer: &mut state_writer,
+        gpu_monitor: &gpu_monitor,
+        corpus: &corpus,
+        pretokenized_train: &pretokenized_train,
+        causal_loss_fn: &causal_loss_fn,
+        transformer: &transformer,
+        steps_per_epoch,
+    };
+
+    let exp1 = run_experiment_full_ft(&mut ctx, &hp, &pretrained_subset, cuda_training);
+    let exp2 = run_experiment_lora(
+        &mut ctx,
+        &hp,
+        &pretrained_subset,
+        exp1.full_ft_params,
+        exp1.full_ft_memory_mb,
+    );
+
+    // Phase 9 hypothesis test
+    run_hypothesis_test_h9(
+        &exp1.results,
+        &exp2.results,
+        exp1.full_ft_params,
+        exp1.full_ft_memory_mb,
+        exp2.lora_params,
+        exp2.lora_memory_mb,
+        exp2.memory_savings,
+        hp.epochs_full_ft,
+        hp.lr_full_ft,
+        hp.epochs_lora,
+        hp.lr_lora,
+    );
+
+    // Combined loss history
+    let mut loss_history = exp1.loss_history;
+    loss_history.extend(exp2.loss_history);
+
+    // Phase 10: quality validation
+    let eval_metrics = run_quality_validation(
+        &transformer,
+        &exp2.lora_lm_head,
+        &tokenizer,
+        &corpus,
+        hidden_size,
+    );
+    let (compile_rate, mutation_score, h10_passed) = print_generation_results(&eval_metrics);
+
+    // Popperian QA
+    let (score, grade) = run_popperian_qa(
+        compile_rate,
+        mutation_score,
+        &device_info,
+        &device,
+        &start_time,
+        &corpus,
+    );
+
+    // Save artifacts
+    save_artifacts(&loss_history, &eval_metrics.generated_samples);
+
+    // Summary
+    print_final_summary(
+        &start_time,
+        &loss_history,
+        compile_rate,
+        mutation_score,
+        score,
+        &grade,
+        h10_passed,
+        &args.output,
+        ctx.state_writer,
+    );
 }
