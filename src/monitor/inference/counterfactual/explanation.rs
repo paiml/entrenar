@@ -199,7 +199,9 @@ impl Counterfactual {
             });
         }
 
-        let version = bytes[0];
+        let mut reader = ByteReader::new(bytes);
+
+        let version = reader.read_u8()?;
         if version != 1 {
             return Err(CounterfactualError::VersionMismatch {
                 expected: 1,
@@ -207,194 +209,23 @@ impl Counterfactual {
             });
         }
 
-        let mut offset = 1;
+        let original_decision = reader.read_u32_as_usize()?;
+        let original_confidence = reader.read_f32()?;
+        let alternative_decision = reader.read_u32_as_usize()?;
+        let alternative_confidence = reader.read_f32()?;
+        let n_features = reader.read_u32_as_usize()?;
 
-        let original_decision = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
+        let original_input = reader.read_f32_vec_n(n_features)?;
+        let counterfactual_input = reader.read_f32_vec_n(n_features)?;
 
-        let original_confidence = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        let alternative_decision = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        let alternative_confidence = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        let n_features = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
-        // Original input
-        let mut original_input = Vec::with_capacity(n_features);
-        for _ in 0..n_features {
-            if offset + 4 > bytes.len() {
-                return Err(CounterfactualError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let v = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-            original_input.push(v);
-        }
-
-        // Counterfactual input
-        let mut counterfactual_input = Vec::with_capacity(n_features);
-        for _ in 0..n_features {
-            if offset + 4 > bytes.len() {
-                return Err(CounterfactualError::InsufficientData {
-                    expected: offset + 4,
-                    actual: bytes.len(),
-                });
-            }
-            let v = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-            counterfactual_input.push(v);
-        }
-
-        // Changes
-        if offset + 4 > bytes.len() {
-            return Err(CounterfactualError::InsufficientData {
-                expected: offset + 4,
-                actual: bytes.len(),
-            });
-        }
-        let n_changes = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]) as usize;
-        offset += 4;
-
+        let n_changes = reader.read_u32_as_usize()?;
         let mut changes = Vec::with_capacity(n_changes);
         for _ in 0..n_changes {
-            if offset + 20 > bytes.len() {
-                return Err(CounterfactualError::InsufficientData {
-                    expected: offset + 20,
-                    actual: bytes.len(),
-                });
-            }
-
-            let feature_idx = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            let original_value = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-
-            let counterfactual_value = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-
-            let delta = f32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]);
-            offset += 4;
-
-            let name_len = u32::from_le_bytes([
-                bytes[offset],
-                bytes[offset + 1],
-                bytes[offset + 2],
-                bytes[offset + 3],
-            ]) as usize;
-            offset += 4;
-
-            let feature_name = if name_len > 0 {
-                if offset + name_len > bytes.len() {
-                    return Err(CounterfactualError::InsufficientData {
-                        expected: offset + name_len,
-                        actual: bytes.len(),
-                    });
-                }
-                let name = String::from_utf8_lossy(&bytes[offset..offset + name_len]).to_string();
-                offset += name_len;
-                Some(name)
-            } else {
-                None
-            };
-
-            changes.push(FeatureChange {
-                feature_idx,
-                feature_name,
-                original_value,
-                counterfactual_value,
-                delta,
-            });
+            changes.push(reader.read_feature_change()?);
         }
 
-        // Metrics
-        if offset + 8 > bytes.len() {
-            return Err(CounterfactualError::InsufficientData {
-                expected: offset + 8,
-                actual: bytes.len(),
-            });
-        }
-        let sparsity = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        offset += 4;
-
-        let distance = f32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
+        let sparsity = reader.read_f32()?;
+        let distance = reader.read_f32()?;
 
         Ok(Self {
             original_input,
@@ -407,5 +238,99 @@ impl Counterfactual {
             sparsity,
             distance,
         })
+    }
+}
+
+/// Stateful byte reader that tracks offset and validates bounds.
+struct ByteReader<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> ByteReader<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
+    }
+
+    fn read_u8(&mut self) -> Result<u8, CounterfactualError> {
+        self.ensure_available(1)?;
+        let val = self.data[self.offset];
+        self.offset += 1;
+        Ok(val)
+    }
+
+    fn read_u32(&mut self) -> Result<u32, CounterfactualError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = u32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    fn read_u32_as_usize(&mut self) -> Result<usize, CounterfactualError> {
+        Ok(self.read_u32()? as usize)
+    }
+
+    fn read_f32(&mut self) -> Result<f32, CounterfactualError> {
+        self.ensure_available(4)?;
+        let o = self.offset;
+        let val = f32::from_le_bytes([
+            self.data[o],
+            self.data[o + 1],
+            self.data[o + 2],
+            self.data[o + 3],
+        ]);
+        self.offset += 4;
+        Ok(val)
+    }
+
+    fn read_f32_vec_n(&mut self, n: usize) -> Result<Vec<f32>, CounterfactualError> {
+        let mut vec = Vec::with_capacity(n);
+        for _ in 0..n {
+            vec.push(self.read_f32()?);
+        }
+        Ok(vec)
+    }
+
+    fn read_string(&mut self, len: usize) -> Result<String, CounterfactualError> {
+        self.ensure_available(len)?;
+        let s = String::from_utf8_lossy(&self.data[self.offset..self.offset + len]).to_string();
+        self.offset += len;
+        Ok(s)
+    }
+
+    fn read_feature_change(&mut self) -> Result<FeatureChange, CounterfactualError> {
+        let feature_idx = self.read_u32_as_usize()?;
+        let original_value = self.read_f32()?;
+        let counterfactual_value = self.read_f32()?;
+        let delta = self.read_f32()?;
+        let name_len = self.read_u32_as_usize()?;
+        let feature_name = if name_len > 0 {
+            Some(self.read_string(name_len)?)
+        } else {
+            None
+        };
+        Ok(FeatureChange {
+            feature_idx,
+            feature_name,
+            original_value,
+            counterfactual_value,
+            delta,
+        })
+    }
+
+    fn ensure_available(&self, needed: usize) -> Result<(), CounterfactualError> {
+        if self.offset + needed > self.data.len() {
+            return Err(CounterfactualError::InsufficientData {
+                expected: self.offset + needed,
+                actual: self.data.len(),
+            });
+        }
+        Ok(())
     }
 }

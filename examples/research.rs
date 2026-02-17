@@ -19,10 +19,8 @@ use entrenar::research::{
 };
 use std::path::PathBuf;
 
-fn main() -> entrenar::Result<()> {
-    println!("=== Entrenar Academic Research Demo ===\n");
-
-    // 1. Create Research Artifact with Authors
+/// Section 1: Create Research Artifact with Authors
+fn demo_artifact() -> (ResearchArtifact, Author) {
     println!("--- Research Artifact (ENT-019) ---");
 
     let author1 = Author::new("Alice Smith")
@@ -68,7 +66,11 @@ fn main() -> entrenar::Result<()> {
     }
     println!();
 
-    // 2. Citation Generation
+    (artifact, author1)
+}
+
+/// Section 2: Citation Generation
+fn demo_citation(artifact: &ResearchArtifact) -> CitationMetadata {
     println!("--- Citation Generation (ENT-020) ---");
 
     let citation = CitationMetadata::new(artifact.clone(), 2024)
@@ -91,7 +93,11 @@ fn main() -> entrenar::Result<()> {
     }
     println!("...\n");
 
-    // 3. Literate Document
+    citation
+}
+
+/// Section 3: Literate Document
+fn demo_literate_document() -> LiterateDocument {
     println!("--- Literate Document (ENT-021) ---");
 
     let literate_content = r#"
@@ -132,7 +138,11 @@ fn main() {
     }
     println!();
 
-    // 4. Pre-Registration
+    doc
+}
+
+/// Section 4: Pre-Registration
+fn demo_preregistration() {
     println!("--- Pre-Registration (ENT-022) ---");
 
     let prereg = PreRegistration::new(
@@ -156,15 +166,17 @@ fn main() {
     println!("  Signed: Yes (Ed25519)");
     println!("  Signature valid: {}", signed.verify().unwrap());
     println!();
+}
 
-    // 5. Anonymization
+/// Section 5: Anonymization
+fn demo_anonymization(artifact: &ResearchArtifact) {
     println!("--- Anonymization (ENT-023) ---");
 
     let anon_config = AnonymizationConfig::new("review-salt-2024")
         .with_author_replacement("Anonymous Author")
         .with_affiliation_replacement("Anonymous Institution");
 
-    let anon_artifact = anon_config.anonymize(&artifact);
+    let anon_artifact = anon_config.anonymize(artifact);
 
     println!("Original artifact:");
     println!("  ID: {}", artifact.id);
@@ -190,11 +202,13 @@ fn main() {
         anon_config.verify_original_id(&anon_artifact, "dataset-2024-ml")
     );
     println!();
+}
 
-    // 6. Jupyter Notebook Export
+/// Section 6: Jupyter Notebook Export
+fn demo_notebook(doc: &LiterateDocument) {
     println!("--- Notebook Export (ENT-024) ---");
 
-    let notebook = NotebookExporter::from_literate(&doc);
+    let notebook = NotebookExporter::from_literate(doc);
 
     println!("Generated notebook:");
     println!(
@@ -215,8 +229,10 @@ fn main() {
         rust_notebook.cell_count()
     );
     println!();
+}
 
-    // 7. Citation Graph
+/// Section 7: Citation Graph
+fn demo_citation_graph(citation: &CitationMetadata) {
     println!("--- Citation Graph (ENT-025) ---");
 
     let mut graph = CitationGraph::new();
@@ -263,12 +279,14 @@ fn main() {
         graph.aggregate_all_citations("our-paper").len()
     );
     println!();
+}
 
-    // 8. RO-Crate Packaging
+/// Section 8: RO-Crate Packaging
+fn demo_rocrate(artifact: &ResearchArtifact) {
     println!("--- RO-Crate Packaging (ENT-026) ---");
 
     let crate_path = PathBuf::from("/tmp/entrenar-research-demo");
-    let mut ro_crate = RoCrate::from_artifact(&artifact, &crate_path);
+    let mut ro_crate = RoCrate::from_artifact(artifact, &crate_path);
 
     ro_crate.add_text_file("README.md", "# Dataset\n\nThis is a demo dataset.");
     ro_crate.add_text_file("data/train.csv", "x,y,label\n1,2,0\n3,4,1");
@@ -283,8 +301,10 @@ fn main() {
     let zip_data = ro_crate.to_zip().unwrap();
     println!("  ZIP size: {} bytes", zip_data.len());
     println!();
+}
 
-    // 9. Archive Deposit
+/// Section 9: Archive Deposit
+fn demo_archive_deposit(artifact: &ResearchArtifact) {
     println!("--- Archive Deposit (ENT-027) ---");
 
     let deposit = ArchiveDeposit::new(ArchiveProvider::Zenodo, artifact.clone())
@@ -306,6 +326,20 @@ fn main() {
         println!("  - {}: {}", provider, provider.base_url());
     }
     println!();
+}
+
+fn main() -> entrenar::Result<()> {
+    println!("=== Entrenar Academic Research Demo ===\n");
+
+    let (artifact, _author1) = demo_artifact();
+    let citation = demo_citation(&artifact);
+    let doc = demo_literate_document();
+    demo_preregistration();
+    demo_anonymization(&artifact);
+    demo_notebook(&doc);
+    demo_citation_graph(&citation);
+    demo_rocrate(&artifact);
+    demo_archive_deposit(&artifact);
 
     // Summary
     println!("=== Demo Complete ===");

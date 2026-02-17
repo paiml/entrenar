@@ -141,20 +141,12 @@ impl Explainable for DecisionTreeModel {
     }
 }
 
-fn main() {
-    println!("╔════════════════════════════════════════════════════════════════╗");
-    println!("║     Real-Time Inference Monitoring Example                      ║");
-    println!("║     Toyota Way: 現地現物 (Genchi Genbutsu)                      ║");
-    println!("╚════════════════════════════════════════════════════════════════╝\n");
+// =============================================================================
+// Extracted demo functions (one per Part) to reduce cognitive complexity
+// =============================================================================
 
-    // =========================================================================
-    // Part 1: Linear Model with Ring Collector (Real-Time Gaming Use Case)
-    // =========================================================================
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Part 1: Linear Model with RingCollector (Video Games)");
-    println!("Target: <100ns per trace, bounded memory");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
+/// Part 1: Linear Model with Ring Collector (Real-Time Gaming Use Case)
+fn demo_linear_ring_collector() {
     let model = LinearModel::new(vec![2.0, -1.5, 0.8], 0.5);
     let collector: RingCollector<LinearPath, 64> = RingCollector::new();
     let mut monitor = InferenceMonitor::new(model, collector);
@@ -188,15 +180,10 @@ fn main() {
     let last_traces = monitor.collector().recent(1);
     let last_trace = last_traces[0];
     println!("Decision explanation:\n{}", last_trace.explain());
+}
 
-    // =========================================================================
-    // Part 2: Decision Tree with Stream Collector (Persistent Logging)
-    // =========================================================================
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Part 2: Decision Tree with StreamCollector (Persistent Logging)");
-    println!("Target: Write-through to file/network");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
+/// Part 2: Decision Tree with Stream Collector (Persistent Logging)
+fn demo_tree_stream_collector() {
     let tree_model = DecisionTreeModel::new();
     let buffer = Cursor::new(Vec::new());
     let stream_collector: StreamCollector<TreePath, _> =
@@ -218,15 +205,10 @@ fn main() {
     }
 
     println!("Total traces logged: {}", tree_monitor.collector().len());
+}
 
-    // =========================================================================
-    // Part 3: Hash Chain Collector (Safety-Critical AV Use Case)
-    // =========================================================================
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Part 3: HashChainCollector (Autonomous Vehicle)");
-    println!("Target: Tamper-evident audit trail with SHA-256");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
+/// Part 3: Hash Chain Collector (Safety-Critical AV Use Case)
+fn demo_hash_chain_collector() {
     let av_model = LinearModel::new(vec![1.0, -0.5, 0.3, 0.8], 0.1);
     let hash_collector: HashChainCollector<LinearPath> = HashChainCollector::new();
     let mut av_monitor = InferenceMonitor::new(av_model, hash_collector);
@@ -268,15 +250,10 @@ fn main() {
         av_monitor.collector().latest_hash()[2],
         av_monitor.collector().latest_hash()[3]
     );
+}
 
-    // =========================================================================
-    // Part 4: Safety Andon Integration
-    // =========================================================================
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Part 4: Safety Andon (自働化 Jidoka)");
-    println!("Target: Automatic quality checks with alerts");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
+/// Part 4: Safety Andon Integration
+fn demo_safety_andon() {
     let mut andon = SafetyAndon::new(SafetyIntegrityLevel::SIL2)
         .with_min_confidence(0.7)
         .with_low_confidence_threshold(3);
@@ -314,15 +291,10 @@ fn main() {
     for alert in andon.history() {
         println!("  [{:?}] {}", alert.level, alert.message);
     }
+}
 
-    // =========================================================================
-    // Part 5: Counterfactual Explanations
-    // =========================================================================
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Part 5: Counterfactual Explanations");
-    println!("Target: 'What would need to change to flip the decision?'");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
+/// Part 5: Counterfactual Explanations
+fn demo_counterfactual() {
     let feature_names = vec![
         "income".to_string(),
         "debt_ratio".to_string(),
@@ -343,15 +315,10 @@ fn main() {
     println!("{}", counterfactual.explain());
     println!("\nSparsity (L1): {:.3}", counterfactual.sparsity);
     println!("Distance (L2): {:.3}", counterfactual.distance);
+}
 
-    // =========================================================================
-    // Part 6: Provenance Graph for Incident Reconstruction
-    // =========================================================================
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Part 6: Provenance Graph (Incident Reconstruction)");
-    println!("Target: Reconstruct causal chain for forensic analysis");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
+/// Part 6: Provenance Graph for Incident Reconstruction
+fn demo_provenance_graph() {
     let mut graph = ProvenanceGraph::new();
 
     // Build incident provenance: Camera -> Preprocess -> Detect -> Action
@@ -423,14 +390,10 @@ fn main() {
             anomaly.severity * 100.0
         );
     }
+}
 
-    // =========================================================================
-    // Part 7: Serialization (Binary and JSON)
-    // =========================================================================
-    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    println!("Part 7: Trace Serialization (APRT Binary + JSON)");
-    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
+/// Part 7: Serialization (Binary and JSON)
+fn demo_serialization() {
     let path = LinearPath::new(vec![0.5, -0.3, 0.2], 0.1, 0.5, 0.62).with_probability(0.62);
     let trace = DecisionTrace::new(1_000_000_000, 42, 0xdeadbeef, path, 0.62, 500);
 
@@ -462,6 +425,54 @@ fn main() {
     println!("  Original sequence: {}", trace.sequence);
     println!("  Restored sequence: {}", restored.sequence);
     println!("  Match: {}", trace.sequence == restored.sequence);
+}
+
+fn main() {
+    println!("╔════════════════════════════════════════════════════════════════╗");
+    println!("║     Real-Time Inference Monitoring Example                      ║");
+    println!("║     Toyota Way: 現地現物 (Genchi Genbutsu)                      ║");
+    println!("╚════════════════════════════════════════════════════════════════╝\n");
+
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Part 1: Linear Model with RingCollector (Video Games)");
+    println!("Target: <100ns per trace, bounded memory");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    demo_linear_ring_collector();
+
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Part 2: Decision Tree with StreamCollector (Persistent Logging)");
+    println!("Target: Write-through to file/network");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    demo_tree_stream_collector();
+
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Part 3: HashChainCollector (Autonomous Vehicle)");
+    println!("Target: Tamper-evident audit trail with SHA-256");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    demo_hash_chain_collector();
+
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Part 4: Safety Andon (自働化 Jidoka)");
+    println!("Target: Automatic quality checks with alerts");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    demo_safety_andon();
+
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Part 5: Counterfactual Explanations");
+    println!("Target: 'What would need to change to flip the decision?'");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    demo_counterfactual();
+
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Part 6: Provenance Graph (Incident Reconstruction)");
+    println!("Target: Reconstruct causal chain for forensic analysis");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    demo_provenance_graph();
+
+    println!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!("Part 7: Trace Serialization (APRT Binary + JSON)");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    demo_serialization();
 
     println!("\n╔════════════════════════════════════════════════════════════════╗");
     println!("║                    Example Complete!                            ║");
