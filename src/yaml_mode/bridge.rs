@@ -64,6 +64,7 @@ pub fn manifest_to_spec(manifest: &TrainingManifest) -> Result<BridgeResult, Bri
         lora,
         quantize,
         merge: None,
+        publish: None,
     };
 
     Ok(BridgeResult { spec, warnings })

@@ -141,6 +141,7 @@ mod tests {
                     quantize,
                     merge,
                     training,
+                    publish: None,
                 },
             )
     }
@@ -457,6 +458,7 @@ mod tests {
             quantize: None,
             merge: None,
             training: TrainingParams::default(),
+            publish: None,
         };
 
         let yaml = serde_yaml::to_string(&spec).unwrap();

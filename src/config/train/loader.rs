@@ -995,6 +995,7 @@ mod tests {
             lora: None,
             quantize: None,
             merge: None,
+            publish: None,
         };
 
         let config = build_transformer_config_from_spec(&spec).unwrap();

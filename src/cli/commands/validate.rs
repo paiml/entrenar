@@ -236,6 +236,7 @@ mod tests {
                     p
                 },
             }),
+            publish: None,
         }
     }
 

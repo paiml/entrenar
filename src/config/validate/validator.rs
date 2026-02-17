@@ -22,6 +22,7 @@ pub fn validate_config(spec: &TrainSpec) -> Result<(), ValidationError> {
     validate_lora(spec)?;
     validate_quantization(spec)?;
     validate_merge(spec)?;
+    validate_publish(spec)?;
     Ok(())
 }
 
@@ -229,5 +230,27 @@ fn validate_merge(spec: &TrainSpec) -> Result<(), ValidationError> {
     if !VALID_METHODS.contains(&merge.method.as_str()) {
         return Err(ValidationError::InvalidMergeMethod(merge.method.clone()));
     }
+    Ok(())
+}
+
+/// Validate publish configuration if present
+fn validate_publish(spec: &TrainSpec) -> Result<(), ValidationError> {
+    let Some(publish) = &spec.publish else {
+        return Ok(());
+    };
+
+    // Repo ID must contain exactly one `/`
+    let parts: Vec<&str> = publish.repo.split('/').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        return Err(ValidationError::InvalidPublishRepo(publish.repo.clone()));
+    }
+
+    // Format must be safetensors or gguf
+    if publish.format != "safetensors" && publish.format != "gguf" {
+        return Err(ValidationError::InvalidPublishFormat(
+            publish.format.clone(),
+        ));
+    }
+
     Ok(())
 }

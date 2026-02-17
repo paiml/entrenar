@@ -402,6 +402,7 @@ fn create_test_spec() -> crate::config::TrainSpec {
         quantize: None,
         merge: None,
         training: Default::default(),
+        publish: None,
     }
 }
 

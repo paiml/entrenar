@@ -84,6 +84,37 @@ pub struct TrainSpec {
     /// Training hyperparameters
     #[serde(default)]
     pub training: TrainingParams,
+
+    /// Optional auto-publish after training completes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish: Option<PublishSpec>,
+}
+
+/// Auto-publish configuration for uploading to HuggingFace Hub after training.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishSpec {
+    /// HuggingFace repo ID (e.g., "myuser/my-model")
+    pub repo: String,
+
+    /// Make the repository private
+    #[serde(default)]
+    pub private: bool,
+
+    /// Generate and upload a model card
+    #[serde(default = "default_true")]
+    pub model_card: bool,
+
+    /// Merge LoRA adapters before publishing
+    #[serde(default)]
+    pub merge_adapters: bool,
+
+    /// Export format (safetensors or gguf)
+    #[serde(default = "default_safetensors")]
+    pub format: String,
+}
+
+fn default_safetensors() -> String {
+    "safetensors".to_string()
 }
 
 /// Model reference and target layers
@@ -702,5 +733,81 @@ optimizer:
             spec.model.path,
             PathBuf::from("Qwen/Qwen2.5-Coder-0.5B")
         );
+    }
+
+    // === Publish Section Tests ===
+
+    #[test]
+    fn test_deserialize_with_publish_section() {
+        let yaml = r"
+model:
+  path: model.gguf
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+
+publish:
+  repo: myuser/my-model
+  private: false
+  model_card: true
+  merge_adapters: true
+  format: safetensors
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+        let publish = spec.publish.unwrap();
+        assert_eq!(publish.repo, "myuser/my-model");
+        assert!(!publish.private);
+        assert!(publish.model_card);
+        assert!(publish.merge_adapters);
+        assert_eq!(publish.format, "safetensors");
+    }
+
+    #[test]
+    fn test_deserialize_without_publish_section() {
+        let yaml = r"
+model:
+  path: model.gguf
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adam
+  lr: 0.001
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+        assert!(spec.publish.is_none());
+    }
+
+    #[test]
+    fn test_publish_spec_defaults() {
+        let yaml = r"
+model:
+  path: model.gguf
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adam
+  lr: 0.001
+
+publish:
+  repo: org/model
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+        let publish = spec.publish.unwrap();
+        assert_eq!(publish.repo, "org/model");
+        assert!(!publish.private);
+        assert!(publish.model_card);
+        assert!(!publish.merge_adapters);
+        assert_eq!(publish.format, "safetensors");
     }
 }

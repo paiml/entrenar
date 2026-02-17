@@ -37,6 +37,7 @@ fn arb_valid_spec() -> impl Strategy<Value = TrainSpec> {
                 grad_clip,
                 ..Default::default()
             },
+            publish: None,
         })
 }
 

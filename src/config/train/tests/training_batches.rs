@@ -26,6 +26,7 @@ fn test_load_training_batches_missing_file() {
         quantize: None,
         merge: None,
         training: TrainingParams::default(),
+        publish: None,
     };
 
     // Should fall back to demo batches
@@ -59,6 +60,7 @@ fn test_load_training_batches_unsupported_extension() {
         quantize: None,
         merge: None,
         training: TrainingParams::default(),
+        publish: None,
     };
 
     // Should fall back to demo batches for unsupported format
@@ -94,6 +96,7 @@ fn test_load_training_batches_json() {
         quantize: None,
         merge: None,
         training: TrainingParams::default(),
+        publish: None,
     };
 
     let result = load_training_batches(&spec);
