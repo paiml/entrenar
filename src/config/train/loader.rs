@@ -20,7 +20,7 @@ use crate::train::{LMBatch, TransformerTrainConfig, TransformerTrainer};
 use crate::transformer::{load_safetensors_weights, Architecture, Transformer, TransformerConfig};
 use crate::yaml_mode;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Train a model from YAML configuration file
 ///
@@ -71,8 +71,11 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     // Build TransformerConfig from spec
     let model_config = build_transformer_config_from_spec(spec)?;
 
+    // Resolve model path (downloads from HF Hub if repo ID)
+    let resolved_path = resolve_model_path(&spec.model.path)?;
+
     // Try to load model weights if path exists (ENT-117)
-    let transformer = load_transformer_model(&spec.model.path, &model_config)?;
+    let transformer = load_transformer_model(&resolved_path, &model_config)?;
 
     // Build TransformerTrainConfig
     let mut train_config = TransformerTrainConfig::new(model_config)
@@ -291,6 +294,47 @@ fn train_tabular_from_spec(spec: &TrainSpec) -> Result<()> {
     println!();
 
     Ok(())
+}
+
+/// Resolve a model path, downloading from HuggingFace Hub if it's a repo ID.
+///
+/// If `model_path` looks like a HF repo ID (e.g., "Qwen/Qwen2.5-Coder-0.5B"),
+/// downloads the model to the HF cache and returns the resolved local path.
+/// Otherwise, returns the original path unchanged.
+#[cfg(feature = "hub-publish")]
+fn resolve_model_path(model_path: &Path) -> Result<PathBuf> {
+    use crate::config::schema::is_hf_repo_id;
+    use crate::hf_pipeline::fetcher::{FetchOptions, HfModelFetcher};
+
+    let path_str = model_path.to_string_lossy();
+    if !is_hf_repo_id(&path_str) {
+        return Ok(model_path.to_path_buf());
+    }
+
+    println!("Downloading {path_str} from HuggingFace Hub...");
+    let fetcher = HfModelFetcher::new()
+        .map_err(|e| Error::ConfigError(format!("HF fetcher initialization: {e}")))?;
+
+    let artifact = fetcher
+        .download_model(&path_str, FetchOptions::new())
+        .map_err(|e| Error::ConfigError(format!("Model download failed: {e}")))?;
+
+    println!("  Cached at: {}", artifact.path.display());
+    Ok(artifact.path)
+}
+
+#[cfg(not(feature = "hub-publish"))]
+fn resolve_model_path(model_path: &Path) -> Result<PathBuf> {
+    use crate::config::schema::is_hf_repo_id;
+
+    let path_str = model_path.to_string_lossy();
+    if is_hf_repo_id(&path_str) {
+        return Err(Error::ConfigError(format!(
+            "HF model ID '{path_str}' requires the 'hub-publish' feature. \
+             Rebuild with: cargo install entrenar --features hub-publish"
+        )));
+    }
+    Ok(model_path.to_path_buf())
 }
 
 /// Load transformer model from SafeTensors weights if available
@@ -1104,5 +1148,34 @@ optimizer:
         assert_eq!(spec.data.batch_size, 8);
 
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_resolve_model_path_local_file() {
+        let local_path = Path::new("model.safetensors");
+        let resolved = resolve_model_path(local_path).unwrap();
+        assert_eq!(resolved, PathBuf::from("model.safetensors"));
+    }
+
+    #[test]
+    fn test_resolve_model_path_local_dir() {
+        let local_path = Path::new("./output/model.gguf");
+        let resolved = resolve_model_path(local_path).unwrap();
+        assert_eq!(resolved, PathBuf::from("./output/model.gguf"));
+    }
+
+    #[test]
+    fn test_resolve_model_path_hf_repo_id() {
+        let hf_path = Path::new("Qwen/Qwen2.5-Coder-0.5B");
+        let result = resolve_model_path(hf_path);
+        // Without hub-publish feature: error with helpful message
+        // With hub-publish feature: would attempt download
+        #[cfg(not(feature = "hub-publish"))]
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("hub-publish"));
+        #[cfg(feature = "hub-publish")]
+        let _ = result; // May succeed or fail depending on network
     }
 }

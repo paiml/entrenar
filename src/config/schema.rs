@@ -89,7 +89,8 @@ pub struct TrainSpec {
 /// Model reference and target layers
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelRef {
-    /// Path to base model (GGUF, safetensors, etc.)
+    /// Path to base model — local path (GGUF, safetensors, etc.) or HuggingFace repo ID
+    /// (e.g., "Qwen/Qwen2.5-Coder-0.5B"). HF repo IDs are auto-detected and downloaded.
     #[serde(default)]
     pub path: PathBuf,
 
@@ -106,6 +107,59 @@ pub struct ModelRef {
     /// Only used when mode=transformer
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config: Option<String>,
+}
+
+impl ModelRef {
+    /// Check if the model path looks like a HuggingFace repo ID (e.g., "org/model-name").
+    ///
+    /// Detection: contains exactly one `/`, no file extension, and both parts are non-empty.
+    pub fn is_hf_repo_id(&self) -> bool {
+        let s = self.path.to_string_lossy();
+        is_hf_repo_id(&s)
+    }
+}
+
+/// Check if a string looks like a HuggingFace repo ID.
+///
+/// Returns true if the string has the format "org/name" where:
+/// - There is exactly one `/`
+/// - Both parts are non-empty
+/// - The name doesn't end with a known model file extension
+/// - The string doesn't start with `.` or `/` (not a filesystem path)
+pub fn is_hf_repo_id(s: &str) -> bool {
+    // Must not start with `.` or `/` (those are filesystem paths)
+    if s.starts_with('.') || s.starts_with('/') {
+        return false;
+    }
+
+    let parts: Vec<&str> = s.split('/').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+
+    let (org, name) = (parts[0], parts[1]);
+
+    // Both parts must be non-empty
+    if org.is_empty() || name.is_empty() {
+        return false;
+    }
+
+    // Reject if name ends with a known model file extension
+    let file_extensions = [
+        ".safetensors",
+        ".gguf",
+        ".bin",
+        ".pt",
+        ".pth",
+        ".onnx",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".txt",
+    ];
+    let name_lower = name.to_lowercase();
+    !file_extensions.iter().any(|ext| name_lower.ends_with(ext))
 }
 
 /// Data configuration
@@ -573,5 +627,80 @@ quantize:
         let quant = spec.quantize.unwrap();
         assert!(quant.symmetric);
         assert!(!quant.per_channel);
+    }
+
+    // === HF Repo ID Detection Tests ===
+
+    #[test]
+    fn test_is_hf_repo_id_valid() {
+        assert!(is_hf_repo_id("Qwen/Qwen2.5-Coder-0.5B"));
+        assert!(is_hf_repo_id("meta-llama/Llama-2-7b"));
+        assert!(is_hf_repo_id("google/gemma-2b"));
+        assert!(is_hf_repo_id("myuser/my-model"));
+    }
+
+    #[test]
+    fn test_is_hf_repo_id_local_paths() {
+        assert!(!is_hf_repo_id("model.gguf"));
+        assert!(!is_hf_repo_id("./models/model.safetensors"));
+        assert!(!is_hf_repo_id("/absolute/path/model.bin"));
+        assert!(!is_hf_repo_id("relative/path/model.gguf"));
+    }
+
+    #[test]
+    fn test_is_hf_repo_id_edge_cases() {
+        assert!(!is_hf_repo_id(""));
+        assert!(!is_hf_repo_id("/"));
+        assert!(!is_hf_repo_id("single-part"));
+        assert!(!is_hf_repo_id("too/many/parts"));
+        assert!(!is_hf_repo_id(".hidden/path"));
+        assert!(!is_hf_repo_id("/org/name"));
+        assert!(!is_hf_repo_id("org/"));
+        assert!(!is_hf_repo_id("/name"));
+    }
+
+    #[test]
+    fn test_is_hf_repo_id_with_extension_rejected() {
+        // Files with extensions are local paths, not HF IDs
+        assert!(!is_hf_repo_id("org/model.safetensors"));
+        assert!(!is_hf_repo_id("user/model.gguf"));
+    }
+
+    #[test]
+    fn test_model_ref_is_hf_repo_id() {
+        let model = ModelRef {
+            path: PathBuf::from("Qwen/Qwen2.5-Coder-0.5B"),
+            ..Default::default()
+        };
+        assert!(model.is_hf_repo_id());
+
+        let model = ModelRef {
+            path: PathBuf::from("model.gguf"),
+            ..Default::default()
+        };
+        assert!(!model.is_hf_repo_id());
+    }
+
+    #[test]
+    fn test_deserialize_hf_repo_id_as_model_path() {
+        let yaml = r"
+model:
+  path: Qwen/Qwen2.5-Coder-0.5B
+  mode: transformer
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adamw
+  lr: 0.0001
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).unwrap();
+        assert!(spec.model.is_hf_repo_id());
+        assert_eq!(
+            spec.model.path,
+            PathBuf::from("Qwen/Qwen2.5-Coder-0.5B")
+        );
     }
 }
