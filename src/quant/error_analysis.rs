@@ -73,7 +73,7 @@ pub fn analyze_error(
         original.iter().map(|x| x * x).sum::<f32>() / original.len().max(1) as f32;
     let noise_power = mse;
     let sqnr_db = if noise_power > 1e-10 {
-        10.0 * (signal_power / noise_power).log10()
+        10.0 * (signal_power / noise_power).max(f32::MIN_POSITIVE).log10()
     } else {
         f32::INFINITY
     };

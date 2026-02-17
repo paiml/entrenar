@@ -50,7 +50,7 @@ impl LossFn for CrossEntropyLoss {
             .data()
             .iter()
             .zip(probs.iter())
-            .map(|(&t, &p)| -t * (p + 1e-10).ln())
+            .map(|(&t, &p)| -t * (p + 1e-10).max(f32::MIN_POSITIVE).ln())
             .sum();
 
         // Create loss tensor

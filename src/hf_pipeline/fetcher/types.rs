@@ -45,8 +45,9 @@ impl WeightFormat {
 }
 
 /// Model architecture information
-// CB-519: Serialize + Deserialize derive is intentional for config round-trip
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// CB-519: Serialize + Deserialize derive is intentional for config round-trip.
+// PartialEq enables exact structural validation (not just param_count) after deserialization.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Architecture {
     /// BERT-style encoder
     BERT {
@@ -120,6 +121,7 @@ impl Architecture {
             Self::Custom { .. } => 0, // Unknown
         }
     }
+
 }
 
 /// Downloaded model artifact
