@@ -100,44 +100,15 @@ impl HanseiAnalyzer {
     }
 
     fn determine_trend(&self, metric: &Metric, stats: &MetricStats) -> Trend {
-        let cv = if stats.mean.abs() > 1e-10 {
-            stats.std / stats.mean.abs()
-        } else {
-            0.0
-        };
-
-        // High coefficient of variation indicates oscillation
+        let cv = coeff_of_variation(stats);
         if cv > 0.5 {
             return Trend::Oscillating;
         }
-
-        // For loss, lower is better
-        // For accuracy, higher is better
         match metric {
-            Metric::Loss => {
-                if stats.max - stats.min < stats.std * 0.5 {
-                    Trend::Stable
-                } else if stats.mean < f64::midpoint(stats.min, stats.max) {
-                    Trend::Improving
-                } else {
-                    Trend::Degrading
-                }
-            }
-            Metric::Accuracy => {
-                if stats.max - stats.min < stats.std * 0.5 {
-                    Trend::Stable
-                } else if stats.mean > f64::midpoint(stats.min, stats.max) {
-                    Trend::Improving
-                } else {
-                    Trend::Degrading
-                }
-            }
+            Metric::Loss => range_trend(stats, true),
+            Metric::Accuracy => range_trend(stats, false),
             Metric::GradientNorm => {
-                if cv < 0.2 {
-                    Trend::Stable
-                } else {
-                    Trend::Oscillating
-                }
+                if cv < 0.2 { Trend::Stable } else { Trend::Oscillating }
             }
             Metric::LearningRate | Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
                 Trend::Stable
@@ -145,6 +116,32 @@ impl HanseiAnalyzer {
         }
     }
 
+}
+
+fn coeff_of_variation(stats: &MetricStats) -> f64 {
+    if stats.mean.abs() > 1e-10 {
+        stats.std / stats.mean.abs()
+    } else {
+        0.0
+    }
+}
+
+/// Determine trend based on whether mean is above or below midpoint.
+/// `lower_is_better` = true for loss, false for accuracy.
+fn range_trend(stats: &MetricStats, lower_is_better: bool) -> Trend {
+    if stats.max - stats.min < stats.std * 0.5 {
+        return Trend::Stable;
+    }
+    let mid = f64::midpoint(stats.min, stats.max);
+    let improving = if lower_is_better {
+        stats.mean < mid
+    } else {
+        stats.mean > mid
+    };
+    if improving { Trend::Improving } else { Trend::Degrading }
+}
+
+impl HanseiAnalyzer {
     fn check_metric_issues(
         &self,
         metric: &Metric,
@@ -153,113 +150,133 @@ impl HanseiAnalyzer {
         issues: &mut Vec<TrainingIssue>,
     ) {
         match metric {
-            Metric::Loss => {
-                // Check for NaN/Inf
-                if stats.has_nan {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Critical,
-                        category: "Numerical Stability".to_string(),
-                        description: "NaN values detected in loss".to_string(),
-                        recommendation: "Reduce learning rate, add gradient clipping, or check data preprocessing".to_string(),
-                    });
-                }
-                if stats.has_inf {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Critical,
-                        category: "Numerical Stability".to_string(),
-                        description: "Infinity values detected in loss".to_string(),
-                        recommendation: "Check for division by zero, reduce learning rate"
-                            .to_string(),
-                    });
-                }
-                // Check for loss not decreasing
-                if summary.trend == Trend::Degrading {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Warning,
-                        category: "Convergence".to_string(),
-                        description: "Loss appears to be increasing over training".to_string(),
-                        recommendation: "Consider reducing learning rate or checking data quality"
-                            .to_string(),
-                    });
-                }
-                // Check for high variance (oscillating loss)
-                if summary.trend == Trend::Oscillating {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Warning,
-                        category: "Stability".to_string(),
-                        description: "Loss is oscillating significantly".to_string(),
-                        recommendation: "Reduce learning rate or increase batch size".to_string(),
-                    });
-                }
-            }
-            Metric::Accuracy => {
-                // Check for low final accuracy
-                if summary.final_value < 0.5 && stats.count > 100 {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Warning,
-                        category: "Performance".to_string(),
-                        description: format!(
-                            "Final accuracy is low: {:.2}%",
-                            summary.final_value * 100.0
-                        ),
-                        recommendation:
-                            "Consider model architecture changes or hyperparameter tuning"
-                                .to_string(),
-                    });
-                }
-                // Check for no improvement
-                if summary.trend == Trend::Stable
-                    && summary.max - summary.min < self.min_accuracy_improvement
-                {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Info,
-                        category: "Convergence".to_string(),
-                        description: "Accuracy shows minimal improvement".to_string(),
-                        recommendation: "Model may have converged or may be stuck in local minimum"
-                            .to_string(),
-                    });
-                }
-            }
-            Metric::GradientNorm => {
-                // Check for gradient explosion
-                if stats.max > self.gradient_explosion_threshold {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Error,
-                        category: "Gradient Health".to_string(),
-                        description: format!(
-                            "Gradient explosion detected: max norm = {:.2e}",
-                            stats.max
-                        ),
-                        recommendation: "Enable gradient clipping (e.g., max_norm=1.0)".to_string(),
-                    });
-                }
-                // Check for vanishing gradients
-                if stats.mean < self.gradient_vanishing_threshold && stats.count > 10 {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Warning,
-                        category: "Gradient Health".to_string(),
-                        description: format!(
-                            "Possible vanishing gradients: mean norm = {:.2e}",
-                            stats.mean
-                        ),
-                        recommendation:
-                            "Consider using residual connections or different activation functions"
-                                .to_string(),
-                    });
-                }
-            }
-            Metric::LearningRate => {
-                // Check if LR is too high based on loss behavior
-                if summary.std_dev > summary.mean * 0.5 {
-                    issues.push(TrainingIssue {
-                        severity: IssueSeverity::Info,
-                        category: "Hyperparameters".to_string(),
-                        description: "Learning rate schedule shows high variance".to_string(),
-                        recommendation: "Review learning rate schedule configuration".to_string(),
-                    });
-                }
-            }
+            Metric::Loss => self.check_loss_issues(summary, stats, issues),
+            Metric::Accuracy => self.check_accuracy_issues(summary, stats, issues),
+            Metric::GradientNorm => self.check_gradient_issues(stats, issues),
+            Metric::LearningRate => self.check_lr_issues(summary, issues),
             Metric::Epoch | Metric::Batch | Metric::Custom(_) => {}
+        }
+    }
+
+    /// Check loss metric for NaN/Inf, degrading trend, and oscillation.
+    fn check_loss_issues(
+        &self,
+        summary: &MetricSummary,
+        stats: &MetricStats,
+        issues: &mut Vec<TrainingIssue>,
+    ) {
+        if stats.has_nan {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Critical,
+                category: "Numerical Stability".to_string(),
+                description: "NaN values detected in loss".to_string(),
+                recommendation: "Reduce learning rate, add gradient clipping, or check data preprocessing".to_string(),
+            });
+        }
+        if stats.has_inf {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Critical,
+                category: "Numerical Stability".to_string(),
+                description: "Infinity values detected in loss".to_string(),
+                recommendation: "Check for division by zero, reduce learning rate".to_string(),
+            });
+        }
+        if summary.trend == Trend::Degrading {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Warning,
+                category: "Convergence".to_string(),
+                description: "Loss appears to be increasing over training".to_string(),
+                recommendation: "Consider reducing learning rate or checking data quality"
+                    .to_string(),
+            });
+        }
+        if summary.trend == Trend::Oscillating {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Warning,
+                category: "Stability".to_string(),
+                description: "Loss is oscillating significantly".to_string(),
+                recommendation: "Reduce learning rate or increase batch size".to_string(),
+            });
+        }
+    }
+
+    /// Check accuracy metric for low values and stagnation.
+    fn check_accuracy_issues(
+        &self,
+        summary: &MetricSummary,
+        stats: &MetricStats,
+        issues: &mut Vec<TrainingIssue>,
+    ) {
+        if summary.final_value < 0.5 && stats.count > 100 {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Warning,
+                category: "Performance".to_string(),
+                description: format!(
+                    "Final accuracy is low: {:.2}%",
+                    summary.final_value * 100.0
+                ),
+                recommendation: "Consider model architecture changes or hyperparameter tuning"
+                    .to_string(),
+            });
+        }
+        if summary.trend == Trend::Stable
+            && summary.max - summary.min < self.min_accuracy_improvement
+        {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Info,
+                category: "Convergence".to_string(),
+                description: "Accuracy shows minimal improvement".to_string(),
+                recommendation: "Model may have converged or may be stuck in local minimum"
+                    .to_string(),
+            });
+        }
+    }
+
+    /// Check gradient norms for explosion and vanishing.
+    fn check_gradient_issues(
+        &self,
+        stats: &MetricStats,
+        issues: &mut Vec<TrainingIssue>,
+    ) {
+        if stats.max > self.gradient_explosion_threshold {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Error,
+                category: "Gradient Health".to_string(),
+                description: format!(
+                    "Gradient explosion detected: max norm = {:.2e}",
+                    stats.max
+                ),
+                recommendation: "Enable gradient clipping (e.g., max_norm=1.0)".to_string(),
+            });
+        }
+        if stats.mean < self.gradient_vanishing_threshold && stats.count > 10 {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Warning,
+                category: "Gradient Health".to_string(),
+                description: format!(
+                    "Possible vanishing gradients: mean norm = {:.2e}",
+                    stats.mean
+                ),
+                recommendation:
+                    "Consider using residual connections or different activation functions"
+                        .to_string(),
+            });
+        }
+    }
+
+    /// Check learning rate schedule for high variance.
+    fn check_lr_issues(
+        &self,
+        summary: &MetricSummary,
+        issues: &mut Vec<TrainingIssue>,
+    ) {
+        if summary.std_dev > summary.mean * 0.5 {
+            issues.push(TrainingIssue {
+                severity: IssueSeverity::Info,
+                category: "Hyperparameters".to_string(),
+                description: "Learning rate schedule shows high variance".to_string(),
+                recommendation: "Review learning rate schedule configuration".to_string(),
+            });
         }
     }
 

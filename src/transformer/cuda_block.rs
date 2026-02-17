@@ -459,13 +459,29 @@ impl CudaTransformerBlock {
         let intermediate_size = self.config.intermediate_size;
         let eps = 1e-5_f32;
 
-        // === Backward through final residual connection ===
-        // grad_output flows to both residual1 and ffn_out
-        // grad_residual1 = grad_output
-        // grad_ffn_out = grad_output
+        // Backward through final residual: grad_output flows to both residual1 and ffn_out
+        self.backward_ffn(grad_output, seq_len, hidden_size, intermediate_size, stream)?;
 
-        // === Backward through FFN down projection ===
-        // ffn_out = swiglu_out @ w_down
+        // Backward through post-attention RMSNorm
+        self.backward_post_attn_norm(grad_input, seq_len, hidden_size, eps, stream)?;
+
+        // Backward through first residual connection and input RMSNorm
+        self.backward_residual_and_input_norm(
+            input, grad_output, grad_input, seq_len, hidden_size, eps, stream,
+        )?;
+
+        Ok(())
+    }
+
+    /// Backward through FFN: down projection, SwiGLU, and gate projection.
+    fn backward_ffn(
+        &mut self,
+        grad_output: &GpuBuffer<f32>,
+        seq_len: usize,
+        hidden_size: usize,
+        intermediate_size: usize,
+        stream: &CudaStream,
+    ) -> Result<()> {
         // grad_swiglu = grad_ffn_out @ w_down^T
         gemm_backward_a(
             grad_output,
@@ -488,10 +504,7 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // === Backward through fused SwiGLU ===
-        // swiglu_out = SiLU(gate_out) * up_out
-        // Need to compute gradients for both gate_out and up_out
-        // For simplicity, use SiLU backward on gate and multiply with up
+        // SiLU backward on gate
         silu_backward(
             &self.scratch.gate_out,
             &self.scratch.grad_swiglu,
@@ -499,9 +512,6 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // === Backward through FFN gate projection ===
-        // gate_out = norm2_out @ w_gate
-        // grad_norm2_for_gate = grad_gate_out @ w_gate^T
         // Clone grad_hidden to separate buffer preventing mutable borrow conflict
         let grad_hidden_data = gpu_to_vec(&self.scratch.grad_hidden)?;
 
@@ -528,8 +538,18 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // === Backward through post-attention RMSNorm ===
-        // Copy norm2_out (now contains grad) to grad_hidden for input
+        Ok(())
+    }
+
+    /// Backward through post-attention RMSNorm.
+    fn backward_post_attn_norm(
+        &mut self,
+        grad_input: &mut GpuBuffer<f32>,
+        seq_len: usize,
+        hidden_size: usize,
+        eps: f32,
+        stream: &CudaStream,
+    ) -> Result<()> {
         let grad_norm2_data = gpu_to_vec(&self.scratch.norm2_out)?;
         vec_to_gpu(&mut self.scratch.grad_hidden, &grad_norm2_data)?;
 
@@ -543,12 +563,21 @@ impl CudaTransformerBlock {
             saturating_u32(hidden_size),
             eps,
             stream,
-        )?;
+        )
+    }
 
-        // === Backward through first residual connection ===
-        // residual1 = input + o_proj_out
-        // grad_input += grad_residual1
-        // Clone to separate buffers preventing mutable borrow conflict
+    /// Backward through first residual connection and input RMSNorm.
+    fn backward_residual_and_input_norm(
+        &mut self,
+        input: &GpuBuffer<f32>,
+        grad_output: &GpuBuffer<f32>,
+        grad_input: &mut GpuBuffer<f32>,
+        seq_len: usize,
+        hidden_size: usize,
+        eps: f32,
+        stream: &CudaStream,
+    ) -> Result<()> {
+        // residual1 = input + o_proj_out; grad_input += grad_residual1
         let grad_in_data = gpu_to_vec(grad_input)?;
         let grad_out_data = gpu_to_vec(grad_output)?;
         let sum: Vec<f32> = grad_in_data
@@ -559,8 +588,6 @@ impl CudaTransformerBlock {
             .collect();
         vec_to_gpu(grad_input, &sum)?;
 
-        // === Backward through input RMSNorm ===
-        // (Simplified - full impl would backprop through attention)
         // Copy grad_input to grad_hidden to avoid aliasing
         vec_to_gpu(&mut self.scratch.grad_hidden, &sum)?;
 
@@ -574,9 +601,7 @@ impl CudaTransformerBlock {
             saturating_u32(hidden_size),
             eps,
             stream,
-        )?;
-
-        Ok(())
+        )
     }
 }
 
