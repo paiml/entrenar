@@ -128,10 +128,7 @@ impl HfModelFetcher {
     }
 
     /// Build the hf-hub sync API client with optional authentication.
-    fn build_api(
-        &self,
-        cache_path: &std::path::Path,
-    ) -> Result<hf_hub::api::sync::Api> {
+    fn build_api(&self, cache_path: &std::path::Path) -> Result<hf_hub::api::sync::Api> {
         let mut api_builder =
             hf_hub::api::sync::ApiBuilder::new().with_cache_dir(cache_path.to_path_buf());
 

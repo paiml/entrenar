@@ -259,7 +259,11 @@ fn collect_scheduler_params(
     insert_opt(&mut params, "div_factor", &s.div_factor);
     insert_opt(&mut params, "final_div_factor", &s.final_div_factor);
 
-    if params.is_empty() { None } else { Some(params) }
+    if params.is_empty() {
+        None
+    } else {
+        Some(params)
+    }
 }
 
 /// Emit warnings for unsupported training sub-fields.
