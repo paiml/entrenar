@@ -1,4 +1,4 @@
-//! Extended command types - Completion, Bench, Inspect, Audit, Monitor
+//! Extended command types - Completion, Bench, Inspect, Audit, Monitor, Publish
 
 use clap::Parser;
 use std::path::PathBuf;
@@ -103,6 +103,42 @@ pub struct MonitorArgs {
     /// Output format (text, json)
     #[arg(short, long, default_value = "text")]
     pub format: OutputFormat,
+}
+
+/// Arguments for the publish command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct PublishArgs {
+    /// Path to trained model output directory
+    #[arg(value_name = "MODEL_DIR", default_value = "./output")]
+    pub model_dir: PathBuf,
+
+    /// HuggingFace repo ID (e.g., myuser/my-model)
+    #[arg(long)]
+    pub repo: String,
+
+    /// Make the repository private
+    #[arg(long)]
+    pub private: bool,
+
+    /// Generate and upload a model card
+    #[arg(long, default_value_t = true)]
+    pub model_card: bool,
+
+    /// Merge LoRA adapters into base weights before publishing
+    #[arg(long)]
+    pub merge_adapters: bool,
+
+    /// Base model HF repo ID (for model card metadata)
+    #[arg(long)]
+    pub base_model: Option<String>,
+
+    /// Export format (safetensors or gguf)
+    #[arg(long, default_value = "safetensors")]
+    pub format: String,
+
+    /// Dry run (validate but don't upload)
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[cfg(test)]

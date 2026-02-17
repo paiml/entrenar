@@ -8,6 +8,7 @@ mod init;
 mod inspect;
 mod merge;
 mod monitor;
+mod publish;
 mod quantize;
 mod research;
 mod train;
@@ -43,5 +44,6 @@ pub fn run_command(cli: Cli) -> Result<(), String> {
         Command::Inspect(args) => inspect::run_inspect(args, log_level),
         Command::Audit(args) => audit::run_audit(args, log_level),
         Command::Monitor(args) => monitor::run_monitor(args, log_level),
+        Command::Publish(args) => publish::run_publish(args, log_level),
     }
 }

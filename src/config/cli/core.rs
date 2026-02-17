@@ -3,7 +3,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use super::extended::{AuditArgs, BenchArgs, CompletionArgs, InspectArgs, MonitorArgs};
+use super::extended::{AuditArgs, BenchArgs, CompletionArgs, InspectArgs, MonitorArgs, PublishArgs};
 use super::init::InitArgs;
 use super::quant_merge::{MergeArgs, QuantizeArgs};
 use super::research::ResearchArgs;
@@ -69,6 +69,9 @@ pub enum Command {
 
     /// Monitor model for drift
     Monitor(MonitorArgs),
+
+    /// Publish a trained model to HuggingFace Hub
+    Publish(PublishArgs),
 }
 
 /// Arguments for the train command
