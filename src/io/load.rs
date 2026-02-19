@@ -76,7 +76,9 @@ fn load_gguf(path: &Path) -> Result<Model> {
     let reader = GgufReader::from_file(path)
         .map_err(|e| Error::Serialization(format!("GGUF parsing failed: {e}")))?;
 
-    let arch = reader.architecture().unwrap_or_else(|| "unknown".to_string());
+    let arch = reader
+        .architecture()
+        .unwrap_or_else(|| "unknown".to_string());
     let name = reader.model_name().unwrap_or_else(|| {
         path.file_stem()
             .and_then(|s| s.to_str())
