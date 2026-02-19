@@ -48,15 +48,10 @@ impl BackwardOp for ReluBackward {
 /// GELU activation (Gaussian Error Linear Unit)
 ///
 /// GELU(x) ≈ 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
+///
+/// ONE PATH: Forward math delegates to `trueno::gelu_scalar` (UCBD §4).
 pub fn gelu(a: &Tensor) -> Tensor {
-    const SQRT_2_OVER_PI: f32 = 0.797_884_6; // √(2/π)
-    const COEFF: f32 = 0.044_715;
-
-    let data = a.data().mapv(|x| {
-        let x3 = x * x * x;
-        let inner = SQRT_2_OVER_PI * (x + COEFF * x3);
-        0.5 * x * (1.0 + inner.tanh())
-    });
+    let data = a.data().mapv(trueno::gelu_scalar);
 
     let requires_grad = a.requires_grad();
     let mut result = Tensor::new(data, requires_grad);
@@ -119,11 +114,10 @@ impl BackwardOp for GeluBackward {
 /// Swish activation (also known as SiLU - Sigmoid Linear Unit)
 ///
 /// Swish(x) = x * sigmoid(x) = x / (1 + e^(-x))
+///
+/// ONE PATH: Forward math delegates to `trueno::silu_scalar` (UCBD §4).
 pub fn swish(a: &Tensor) -> Tensor {
-    let data = a.data().mapv(|x| {
-        let sigmoid = 1.0 / (1.0 + (-x).exp());
-        x * sigmoid
-    });
+    let data = a.data().mapv(trueno::silu_scalar);
 
     let requires_grad = a.requires_grad();
     let mut result = Tensor::new(data, requires_grad);

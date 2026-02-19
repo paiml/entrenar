@@ -147,7 +147,7 @@ hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
-trueno = "0.14.3"  # SIMD-accelerated compute from crates.io
+trueno = "0.14"  # SIMD-accelerated compute (local patch via [patch.crates-io])
 trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
 realizar = { version = "0.6", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.25"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
@@ -352,4 +352,5 @@ required-features = ["nvml"]
 # trueno-gpu needs local patch for relu_backward selp fix
 [patch.crates-io]
 realizar = { path = "../realizar" }
+trueno = { path = "../trueno" }
 trueno-gpu = { path = "../trueno/trueno-gpu" }
