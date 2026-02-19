@@ -35,9 +35,13 @@ pub fn load_model(path: impl AsRef<Path>) -> Result<Model> {
     let format = ModelFormat::from_extension(ext)
         .ok_or_else(|| Error::Serialization(format!("Unsupported file extension: {ext}")))?;
 
-    // Handle SafeTensors separately (binary format)
+    // Handle binary formats separately
     if format == ModelFormat::SafeTensors {
         return load_safetensors(path);
+    }
+    #[cfg(feature = "gguf")]
+    if format == ModelFormat::Gguf {
+        return load_gguf(path);
     }
 
     // Read file content (text formats)
@@ -54,15 +58,45 @@ pub fn load_model(path: impl AsRef<Path>) -> Result<Model> {
             .map_err(|e| Error::Serialization(format!("YAML deserialization failed: {e}")))?,
         ModelFormat::SafeTensors => unreachable!(), // Handled above
         #[cfg(feature = "gguf")]
-        ModelFormat::Gguf => {
-            return Err(Error::Serialization(
-                "GGUF format not yet implemented. Enable 'gguf' feature and use realizar integration.".to_string()
-            ));
-        }
+        ModelFormat::Gguf => unreachable!(), // Handled above
     };
 
     // Convert state to model
     Ok(Model::from_state(state))
+}
+
+/// Load model from GGUF format via aprender's GgufReader.
+///
+/// UCBD §5: All model loading goes through the canonical stack.
+/// GGUF → aprender::format::gguf::GgufReader → dequantized f32 tensors → Model.
+#[cfg(feature = "gguf")]
+fn load_gguf(path: &Path) -> Result<Model> {
+    use aprender::format::gguf::GgufReader;
+
+    let reader = GgufReader::from_file(path)
+        .map_err(|e| Error::Serialization(format!("GGUF parsing failed: {e}")))?;
+
+    let arch = reader.architecture().unwrap_or_else(|| "unknown".to_string());
+    let name = reader.model_name().unwrap_or_else(|| {
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("gguf-model")
+            .to_string()
+    });
+
+    let metadata = ModelMetadata::new(name, arch);
+
+    // Extract all tensors as dequantized f32 (handles Q4_K, Q6_K, Q8_0, F16, etc.)
+    let all_tensors = reader
+        .get_all_tensors_f32()
+        .map_err(|e| Error::Serialization(format!("GGUF tensor extraction failed: {e}")))?;
+
+    let parameters: Vec<(String, Tensor)> = all_tensors
+        .into_iter()
+        .map(|(name, (data, _shape))| (name, Tensor::from_vec(data, false)))
+        .collect();
+
+    Ok(Model::new(metadata, parameters))
 }
 
 /// Load model from SafeTensors format (HuggingFace compatible)
