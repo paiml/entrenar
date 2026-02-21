@@ -213,7 +213,7 @@ Now that Entrenar is installed:
 
 ## Getting Help
 
-- **Documentation**: [https://paiml.github.io/entrenar](https://paiml.github.io/entrenar)
+- **Documentation**: [https://docs.rs/entrenar](https://docs.rs/entrenar)
 - **Issues**: [GitHub Issues](https://github.com/paiml/entrenar/issues)
 - **Examples**: See `examples/` directory in the repository
 - **Tests**: See `src/*/tests.rs` for usage patterns
