@@ -12,6 +12,7 @@ mutation_score = 60
 # Enforce quality gates in CI
 enforce_in_ci = true
 block_on_failure = true
+run_clippy = true
 
 [thresholds]
 # Complexity thresholds
