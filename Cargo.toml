@@ -91,7 +91,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.5.10"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.87"
 authors = ["PAIML <hello@paiml.com>"]
@@ -111,7 +111,7 @@ exclude = [
     ".pmat-metrics/",
     ".github/",
     "*.md",
-    "models/",
+    "/models/",
     "wasm-pkg/",
     "target/",
     "**/*.profraw",
@@ -119,6 +119,13 @@ exclude = [
     ".vscode/",
     ".idea/",
     "**/*.proptest-regressions",
+    "/checkpoints/",
+    "/data/",
+    "/golden_traces/",
+    "/output/",
+    "/outputs/",
+    "*.gguf",
+    "*.parquet",
 ]
 
 [lib]
@@ -147,10 +154,10 @@ hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard
 [dependencies]
 # Core PAIML stack
 ndarray = "0.16"
-trueno = "0.14"  # SIMD-accelerated compute (local patch via [patch.crates-io])
+trueno = "0.15"  # SIMD-accelerated compute (local patch via [patch.crates-io])
 trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
-realizar = { version = "0.6", optional = true }  # CUDA inference engine with working GEMM
-aprender = "0.25"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
+realizar = { version = "0.7", optional = true }  # CUDA inference engine with working GEMM
+aprender = "0.26"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
 trueno-db = { version = "0.3.11", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
