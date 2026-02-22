@@ -1,18 +1,12 @@
 //! Decision Path Types (ENT-102)
 //!
 //! Model-specific decision paths for explainability.
+//!
+//! GH-305: Types now live in `aprender::explainable::path` (source of truth).
+//! This module re-exports them for backwards compatibility.
 
-mod forest;
-mod knn;
-mod linear;
-mod neural;
-mod traits;
-mod tree;
-
-// Re-export all public types
-pub use forest::ForestPath;
-pub use knn::KNNPath;
-pub use linear::LinearPath;
-pub use neural::NeuralPath;
-pub use traits::{DecisionPath, PathError};
-pub use tree::{LeafInfo, TreePath, TreeSplit};
+// Re-export all public types from aprender (source of truth)
+pub use aprender::explainable::path::{
+    DecisionPath, ForestPath, KNNPath, LeafInfo, LinearPath, NeuralPath, PathError, TreePath,
+    TreeSplit,
+};

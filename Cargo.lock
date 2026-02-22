@@ -244,24 +244,26 @@ dependencies = [
 
 [[package]]
 name = "aprender"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c85734a8105872bdc276d1271b93eadf2954e5d9016d92e7c8421292f0a5f6"
+version = "0.26.0"
 dependencies = [
+ "batuta-common",
  "bincode",
  "dirs 6.0.0",
  "getrandom 0.2.17",
  "hf-hub",
  "memmap2",
  "minijinja",
+ "provable-contracts-macros",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rayon",
  "rmp-serde",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2",
- "trueno 0.14.6",
+ "trueno 0.15.0",
+ "trueno-quant",
  "ureq",
 ]
 
@@ -1917,11 +1919,11 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.5.10"
+version = "0.6.0"
 dependencies = [
  "alimentar",
  "approx",
- "aprender 0.25.1",
+ "aprender 0.26.0",
  "arrow 57.2.0",
  "axum 0.8.8",
  "bytemuck",
@@ -1957,7 +1959,7 @@ dependencies = [
  "toml",
  "tower 0.5.3",
  "tower-http",
- "trueno 0.14.6",
+ "trueno 0.15.0",
  "trueno-db",
  "trueno-gpu",
  "trueno-rag",
@@ -4504,7 +4506,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.14.0",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "provable-contracts-macros"
+version = "0.1.1"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn",
@@ -4729,7 +4740,7 @@ dependencies = [
 
 [[package]]
 name = "realizar"
-version = "0.6.14"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -4756,7 +4767,7 @@ dependencies = [
  "tokio-stream",
  "tower 0.4.13",
  "tracing",
- "trueno 0.14.6",
+ "trueno 0.15.0",
  "trueno-gpu",
  "trueno-quant",
  "uuid",
@@ -6022,6 +6033,22 @@ dependencies = [
 [[package]]
 name = "trueno"
 version = "0.14.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90b0f08c743a6d63e691f80624e67e306e83f9bc532ebc618b2352cd02126e7e"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "hostname",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
+name = "trueno"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -6622,7 +6649,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

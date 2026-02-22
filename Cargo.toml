@@ -91,7 +91,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 rust-version = "1.87"
 authors = ["PAIML <hello@paiml.com>"]
@@ -157,7 +157,7 @@ ndarray = "0.16"
 trueno = "0.15"  # SIMD-accelerated compute (local patch via [patch.crates-io])
 trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
 realizar = { version = "0.7", optional = true }  # CUDA inference engine with working GEMM
-aprender = "0.26"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
+aprender = "0.26.1"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
 trueno-db = { version = "0.3.11", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
@@ -358,6 +358,7 @@ required-features = ["nvml"]
 # realizar needs local patch due to trueno-gpu API changes
 # trueno-gpu needs local patch for relu_backward selp fix
 [patch.crates-io]
+aprender = { path = "../aprender" }  # GH-305: use local aprender for re-exported path types
 realizar = { path = "../realizar" }
 trueno = { path = "../trueno" }
 trueno-gpu = { path = "../trueno/trueno-gpu" }
