@@ -49,7 +49,8 @@ pub use collector::{
 };
 pub use counterfactual::{Counterfactual, FeatureChange};
 pub use path::{
-    DecisionPath, ForestPath, KNNPath, LeafInfo, LinearPath, NeuralPath, TreePath, TreeSplit,
+    DecisionPath, ForestPath, KNNPath, LeafInfo, LinearPath, NeuralPath, PathError, TreePath,
+    TreeSplit,
 };
 pub use provenance::{
     Anomaly, AttackPath, CausalRelation, IncidentReconstructor, NodeId, ProvenanceEdge,
@@ -93,17 +94,9 @@ pub fn hash_features(features: &[f32]) -> u64 {
     fnv1a_hash(bytes)
 }
 
-/// Trait for models that can explain their predictions
-pub trait Explainable {
-    /// Model-specific decision path type
-    type Path: DecisionPath;
-
-    /// Predict with full decision trace for each sample
-    fn predict_explained(&self, x: &[f32], n_samples: usize) -> (Vec<f32>, Vec<Self::Path>);
-
-    /// Single-sample explanation (for streaming)
-    fn explain_one(&self, sample: &[f32]) -> Self::Path;
-}
+// GH-305: Explainable trait now lives in aprender (source of truth).
+// Re-exported here for backwards compatibility.
+pub use aprender::explainable::path::Explainable;
 
 /// High-level inference monitor
 ///
