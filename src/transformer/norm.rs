@@ -158,4 +158,88 @@ mod tests {
         let grad = norm.weight.grad().unwrap();
         assert!(grad.iter().all(|&v| v.is_finite()));
     }
+
+    // =========================================================================
+    // FALSIFY-N: §2.1.5-6 Layer Norms — Five-Whys Gap Analysis (Refs PMAT-332)
+    //
+    // Contract: tensor-layout-v1.yaml §tensors.input_layernorm/post_attention_layernorm/final_norm
+    //   apr_shape: "[hidden]"
+    //   transpose: "false"
+    //   kernel: "element-wise multiply"
+    //
+    // Five-Whys:
+    //   Why 1: from_params accepts ANY tensor length without validation
+    //   Why 2: RMSNorm stores raw Tensor with no length check
+    //   Why 3: Wrong-length norm produces wrong-scale hidden states
+    //   Why 4: Mismatched norm length panics at element-wise multiply
+    //   Why 5: No constructor-time length check exists
+    //
+    // Popper (1959): "These tests attempt to falsify the claim that
+    // entrenar's norm handling prevents shape-related runtime errors."
+    // =========================================================================
+
+    /// FALSIFY-N1e: from_params accepts wrong-length norm weight — gap documented
+    ///
+    /// RMSNorm.from_params doesn't validate weight.len() == hidden_size.
+    /// A wrong-length weight will panic at runtime during element-wise multiply.
+    #[test]
+    fn falsify_n1e_from_params_accepts_wrong_length_norm() {
+        let mut params = HashMap::new();
+        // WRONG: weight has 7 elements, should be hidden_size=4
+        params.insert(
+            "test.weight".to_string(),
+            Tensor::from_vec(vec![1.0; 7], true),
+        );
+        let norm = RMSNorm::from_params(&params, "test", 1e-6);
+        // GAP: from_params returns Some even though weight length is wrong
+        assert!(norm.is_some(),
+            "FALSIFY-N1e: Documents gap — from_params does NOT validate norm weight length");
+    }
+
+    /// FALSIFY-N2e: RMSNorm forward produces finite output for valid input
+    #[test]
+    fn falsify_n2e_norm_output_finite() {
+        let norm = RMSNorm::new(8, 1e-6);
+        let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
+        let output = norm.forward(&x);
+        assert!(output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-N2e: RMSNorm output must be finite for valid input");
+    }
+
+    /// FALSIFY-N3e: RMSNorm weight length matches hidden_size when constructed via new()
+    #[test]
+    fn falsify_n3e_new_constructor_correct_length() {
+        let hidden_sizes = [64, 128, 256, 896, 4096];
+        for &hidden in &hidden_sizes {
+            let norm = RMSNorm::new(hidden, 1e-6);
+            assert_eq!(norm.weight.len(), hidden,
+                "FALSIFY-N3e: RMSNorm::new({hidden}) weight must have {hidden} elements");
+        }
+    }
+
+    /// FALSIFY-N4e: Batched forward preserves sequence*hidden dimension
+    #[test]
+    fn falsify_n4e_batched_forward_preserves_dims() {
+        let hidden = 8;
+        let seq_len = 4;
+        let norm = RMSNorm::new(hidden, 1e-6);
+        let x = Tensor::from_vec(vec![0.5; seq_len * hidden], true);
+        let output = norm.forward_batched(&x, seq_len, hidden);
+        assert_eq!(output.len(), seq_len * hidden,
+            "FALSIFY-N4e: Batched norm must preserve seq_len * hidden dimension");
+        assert!(output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-N4e: Batched norm output must be finite");
+    }
+
+    /// FALSIFY-N5e: RMSNorm handles extreme but finite input values
+    ///
+    /// Very large values should still produce finite output due to normalization.
+    #[test]
+    fn falsify_n5e_extreme_input_still_finite() {
+        let norm = RMSNorm::new(4, 1e-6);
+        let x = Tensor::from_vec(vec![1e30, -1e30, 1e30, -1e30], true);
+        let output = norm.forward(&x);
+        assert!(output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-N5e: RMSNorm must handle extreme values without Inf/NaN");
+    }
 }

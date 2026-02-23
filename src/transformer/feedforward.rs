@@ -212,6 +212,111 @@ mod tests {
         assert!(ffn.is_none());
     }
 
+    // =========================================================================
+    // FALSIFY-F: §2.1.4 FFN Projections — Five-Whys Gap Analysis (Refs PMAT-333)
+    //
+    // Contract: tensor-layout-v1.yaml §tensors.gate_proj/up_proj/down_proj
+    //   gate_proj: [intermediate, hidden], up_proj: [intermediate, hidden]
+    //   down_proj: [hidden, intermediate]
+    //   SwiGLU: FFN(x) = down_proj(SiLU(gate_proj(x)) * up_proj(x))
+    //
+    // Five-Whys:
+    //   Why 1: from_params accepts ANY tensor shape without validation
+    //   Why 2: FeedForward stores raw Tensor, no ValidatedWeight wrapper
+    //   Why 3: entrenar uses flattened 1D Tensors — no shape metadata
+    //   Why 4: Shape errors only manifest at matmul time (runtime panic)
+    //   Why 5: No constructor-time shape check exists (PMAT-333 gap)
+    //
+    // Popper (1959): "These tests attempt to falsify the claim that
+    // entrenar's FFN construction prevents shape-related runtime panics."
+    // =========================================================================
+
+    /// FALSIFY-F1e: from_params accepts wrong-shape gate_proj — documents PMAT-333 gap
+    ///
+    /// gate_proj should be [hidden_size * intermediate_size] elements.
+    /// from_params accepts any tensor shape because it only checks key existence.
+    #[test]
+    fn falsify_f1e_from_params_accepts_wrong_shape_gate() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let intermediate_size = config.intermediate_size;
+
+        let mut params = HashMap::new();
+        // WRONG: gate_proj has 42 elements instead of hidden*intermediate
+        params.insert(
+            "ffn.gate_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; 42], true),
+        );
+        params.insert(
+            "ffn.up_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+        );
+        params.insert(
+            "ffn.down_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true),
+        );
+
+        // GAP: from_params returns Some even though gate_proj is wrong shape
+        let ffn = FeedForward::from_params(&config, &params, "ffn");
+        assert!(ffn.is_some(),
+            "FALSIFY-F1e: Documents PMAT-333 — from_params does NOT validate FFN shapes");
+    }
+
+    /// FALSIFY-F2e: SwiGLU forward produces correct output dimensions
+    ///
+    /// For correct weights, output.len() == seq_len * hidden_size.
+    #[test]
+    fn falsify_f2e_swiglu_forward_correct_dims() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        let seq_len = 4;
+        let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
+        let output = ffn.forward(&x, seq_len);
+        assert_eq!(output.len(), seq_len * config.hidden_size,
+            "FALSIFY-F2e: FFN output must be seq_len * hidden_size");
+    }
+
+    /// FALSIFY-F3e: FFN output is finite for valid inputs
+    ///
+    /// SwiGLU with bounded inputs must produce finite outputs.
+    /// If gate/up/down weights contain NaN/Inf, output would be NaN.
+    #[test]
+    fn falsify_f3e_ffn_output_finite() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
+        let output = ffn.forward(&x, 2);
+        assert!(output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-F3e: FFN output must be finite for bounded inputs");
+    }
+
+    /// FALSIFY-F4e: gate_proj and up_proj share dimensions
+    ///
+    /// SwiGLU requires SiLU(gate(x)) * up(x) — element-wise multiply.
+    /// gate_proj and up_proj must produce identically-sized outputs.
+    #[test]
+    fn falsify_f4e_gate_up_shape_parity() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        assert_eq!(ffn.w_gate.len(), ffn.w_up.len(),
+            "FALSIFY-F4e: gate_proj and up_proj must have identical size for SwiGLU multiply");
+    }
+
+    /// FALSIFY-F5e: down_proj dimensions reversed from gate/up
+    ///
+    /// gate/up: [hidden, intermediate] (transposed to row-major)
+    /// down: [intermediate, hidden] (reversed)
+    /// Total elements should still be hidden * intermediate.
+    #[test]
+    fn falsify_f5e_down_proj_reversed_same_total() {
+        let config = TransformerConfig::tiny();
+        let ffn = FeedForward::new(&config);
+        assert_eq!(ffn.w_gate.len(), ffn.w_down.len(),
+            "FALSIFY-F5e: gate and down must have same total elements (H*I)");
+        assert_eq!(ffn.w_down.len(), config.hidden_size * config.intermediate_size,
+            "FALSIFY-F5e: down_proj must have hidden*intermediate elements");
+    }
+
     #[test]
     fn test_ffn_backward_gradient_exists() {
         let config = TransformerConfig::tiny();
