@@ -433,21 +433,23 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
                     intermediate_size,
                     num_hidden_layers,
                     vocab_size,
+                    // R-04 (Meyer DbC): generic defaults, not Qwen2-specific.
+                    // 2048 is the safe minimum; rope_theta 10000 is the LLaMA/Mistral standard.
                     max_position_embeddings: hf_config["max_position_embeddings"]
                         .as_u64()
-                        .unwrap_or(QWEN_MAX_POSITION_EMBEDDINGS as u64)
+                        .unwrap_or(2048)
                         as usize,
                     rms_norm_eps: hf_config["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32,
-                    rope_theta: hf_config["rope_theta"].as_f64().unwrap_or(QWEN_ROPE_THETA) as f32,
+                    rope_theta: hf_config["rope_theta"].as_f64().unwrap_or(10_000.0) as f32,
                     use_bias: hf_config["attention_bias"].as_bool().unwrap_or(false),
                 });
             }
         }
     }
 
-    // Default: Use a small demo config for testing
-    // Qwen2.5-Coder-0.5B-like dimensions (scaled down)
-    eprintln!("Warning: No model config found, using demo transformer config");
+    // R-05 (Meyer DbC): Explicit Qwen2-0.5B demo config — NOT a generic default.
+    // This path is ONLY for testing without a model. Production callers must provide config.json.
+    eprintln!("WARNING: No model config found — using Qwen2-0.5B demo config (NOT suitable for production training)");
     Ok(TransformerConfig {
         hidden_size: QWEN_HIDDEN_SIZE,
         num_attention_heads: QWEN_NUM_ATTENTION_HEADS,
