@@ -396,31 +396,43 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
                 .map_err(|e| Error::ConfigError(format!("Failed to read model config: {e}")))?;
 
             // Try parsing as HuggingFace config.json format
+            // C-10/C-11 (Meyer DbC): Required fields must be present — no silent Qwen2-0.5B defaults.
             if let Ok(hf_config) = serde_json::from_str::<serde_json::Value>(&config_content) {
+                let hidden_size = hf_config["hidden_size"]
+                    .as_u64()
+                    .ok_or_else(|| Error::ConfigError(
+                        "C-11: config.json missing 'hidden_size' — cannot train without model dimensions".into()
+                    ))? as usize;
+                let num_attention_heads = hf_config["num_attention_heads"]
+                    .as_u64()
+                    .ok_or_else(|| Error::ConfigError(
+                        "C-11: config.json missing 'num_attention_heads'".into()
+                    ))? as usize;
+                let num_hidden_layers = hf_config["num_hidden_layers"]
+                    .as_u64()
+                    .ok_or_else(|| Error::ConfigError(
+                        "C-11: config.json missing 'num_hidden_layers'".into()
+                    ))? as usize;
+                let vocab_size = hf_config["vocab_size"]
+                    .as_u64()
+                    .ok_or_else(|| Error::ConfigError(
+                        "C-10: config.json missing 'vocab_size' — training with wrong vocab corrupts embeddings".into()
+                    ))? as usize;
+                let intermediate_size = hf_config["intermediate_size"]
+                    .as_u64()
+                    .ok_or_else(|| Error::ConfigError(
+                        "C-11: config.json missing 'intermediate_size'".into()
+                    ))? as usize;
                 return Ok(TransformerConfig {
-                    hidden_size: hf_config["hidden_size"]
-                        .as_u64()
-                        .unwrap_or(QWEN_HIDDEN_SIZE as u64)
-                        as usize,
-                    num_attention_heads: hf_config["num_attention_heads"]
-                        .as_u64()
-                        .unwrap_or(QWEN_NUM_ATTENTION_HEADS as u64)
-                        as usize,
+                    hidden_size,
+                    num_attention_heads,
                     num_kv_heads: hf_config["num_key_value_heads"]
                         .as_u64()
-                        .unwrap_or(QWEN_NUM_KV_HEADS as u64)
+                        .unwrap_or(num_attention_heads as u64)
                         as usize,
-                    intermediate_size: hf_config["intermediate_size"]
-                        .as_u64()
-                        .unwrap_or(QWEN_INTERMEDIATE_SIZE as u64)
-                        as usize,
-                    num_hidden_layers: hf_config["num_hidden_layers"]
-                        .as_u64()
-                        .unwrap_or(QWEN_NUM_HIDDEN_LAYERS as u64)
-                        as usize,
-                    vocab_size: hf_config["vocab_size"]
-                        .as_u64()
-                        .unwrap_or(QWEN_VOCAB_SIZE as u64) as usize,
+                    intermediate_size,
+                    num_hidden_layers,
+                    vocab_size,
                     max_position_embeddings: hf_config["max_position_embeddings"]
                         .as_u64()
                         .unwrap_or(QWEN_MAX_POSITION_EMBEDDINGS as u64)
