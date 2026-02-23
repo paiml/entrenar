@@ -125,19 +125,22 @@ impl ArchitectureDetector {
         let hidden_dim = shapes
             .iter()
             .find(|(name, _)| name.contains("embed") || name.contains("wte"))
-            .map_or(4096, |(_, shape)| shape.last().copied().unwrap_or(0));
+            // N-05 (Meyer DbC): 0 when no embedding tensor found, not hardcoded 4096.
+            .map_or(0, |(_, shape)| shape.last().copied().unwrap_or(0));
 
         let num_layers = shapes
             .keys()
             .filter(|name| name.contains(".layers.") || name.contains(".h."))
             .filter_map(|name| name.split('.').find_map(|part| part.parse::<u32>().ok()))
             .max()
-            .map_or(32, |n| n + 1);
+            // N-05: 0 when no layer tensors found, not hardcoded 32.
+            .map_or(0, |n| n + 1);
 
         let vocab_size = shapes
             .iter()
             .find(|(name, _)| name.contains("embed_tokens") || name.contains("wte"))
-            .map_or(32000, |(_, shape)| shape.first().copied().unwrap_or(0));
+            // N-05: 0 when no embedding tensor found, not hardcoded 32000.
+            .map_or(0, |(_, shape)| shape.first().copied().unwrap_or(0));
 
         let num_heads = estimate_num_heads(hidden_dim);
 
