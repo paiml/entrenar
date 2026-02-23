@@ -29,11 +29,16 @@ impl Leaderboard {
     }
 
     /// Sort by primary metric
+    ///
+    /// N-06 (Meyer DbC): Models with missing scores sort last, not to an
+    /// arbitrary position. `NEG_INFINITY` for "higher is better" and
+    /// `INFINITY` for "lower is better" ensure worst-possible semantics.
     pub fn sort(&mut self) {
         let higher_is_better = self.primary_metric.higher_is_better();
+        let missing = if higher_is_better { f64::NEG_INFINITY } else { f64::INFINITY };
         self.results.sort_by(|a, b| {
-            let score_a = a.get_score(self.primary_metric).unwrap_or(0.0);
-            let score_b = b.get_score(self.primary_metric).unwrap_or(0.0);
+            let score_a = a.get_score(self.primary_metric).unwrap_or(missing);
+            let score_b = b.get_score(self.primary_metric).unwrap_or(missing);
             if higher_is_better {
                 score_b
                     .partial_cmp(&score_a)
@@ -49,9 +54,10 @@ impl Leaderboard {
     /// Sort by a specific metric
     pub fn sort_by(&mut self, metric: Metric) {
         let higher_is_better = metric.higher_is_better();
+        let missing = if higher_is_better { f64::NEG_INFINITY } else { f64::INFINITY };
         self.results.sort_by(|a, b| {
-            let score_a = a.get_score(metric).unwrap_or(0.0);
-            let score_b = b.get_score(metric).unwrap_or(0.0);
+            let score_a = a.get_score(metric).unwrap_or(missing);
+            let score_b = b.get_score(metric).unwrap_or(missing);
             if higher_is_better {
                 score_b
                     .partial_cmp(&score_a)
@@ -173,5 +179,108 @@ impl fmt::Display for Leaderboard {
         writeln!(f, "{:─<15}┘", "")?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_result(name: &str, metric: Metric, score: Option<f64>) -> EvalResult {
+        let mut r = EvalResult::new(name);
+        if let Some(s) = score {
+            r.add_score(metric, s);
+        }
+        r
+    }
+
+    // =========================================================================
+    // FALSIFY tests — contract violation sweep (N-06)
+    // =========================================================================
+
+    #[test]
+    fn test_falsify_n06_missing_score_sorts_last_higher_is_better() {
+        // N-06: A model with a missing score for a "higher is better" metric
+        // must sort LAST, not to an arbitrary middle position.
+        let metric = Metric::Accuracy;
+        assert!(metric.higher_is_better());
+
+        let mut lb = Leaderboard::new(metric);
+        lb.results.push(make_result("good", metric, Some(0.9)));
+        lb.results.push(make_result("missing", metric, None));
+        lb.results.push(make_result("bad", metric, Some(0.1)));
+        lb.sort();
+
+        assert_eq!(lb.results[0].model_name, "good");
+        assert_eq!(lb.results[1].model_name, "bad");
+        assert_eq!(
+            lb.results[2].model_name, "missing",
+            "Model with missing score must sort last for higher-is-better metric"
+        );
+    }
+
+    #[test]
+    fn test_falsify_n06_missing_score_sorts_last_lower_is_better() {
+        // N-06: A model with a missing score for a "lower is better" metric
+        // must also sort LAST.
+        let metric = Metric::MSE;
+        assert!(!metric.higher_is_better());
+
+        let mut lb = Leaderboard::new(metric);
+        lb.results.push(make_result("good", metric, Some(0.01)));
+        lb.results.push(make_result("missing", metric, None));
+        lb.results.push(make_result("bad", metric, Some(10.0)));
+        lb.sort();
+
+        assert_eq!(lb.results[0].model_name, "good");
+        assert_eq!(lb.results[1].model_name, "bad");
+        assert_eq!(
+            lb.results[2].model_name, "missing",
+            "Model with missing score must sort last for lower-is-better metric"
+        );
+    }
+
+    #[test]
+    fn test_falsify_n06_sort_by_missing_score_sorts_last() {
+        // N-06: sort_by() also uses correct missing-score semantics.
+        let primary = Metric::Accuracy;
+        let secondary = Metric::Perplexity; // lower is better
+        assert!(!secondary.higher_is_better());
+
+        let mut lb = Leaderboard::new(primary);
+
+        let mut r1 = make_result("model_a", primary, Some(0.8));
+        r1.add_score(secondary, 5.0);
+        lb.results.push(r1);
+
+        let r2 = make_result("model_b", primary, Some(0.9));
+        // model_b has NO perplexity score
+        lb.results.push(r2);
+
+        let mut r3 = make_result("model_c", primary, Some(0.7));
+        r3.add_score(secondary, 100.0);
+        lb.results.push(r3);
+
+        lb.sort_by(secondary);
+
+        assert_eq!(lb.results[0].model_name, "model_a", "lowest perplexity first");
+        assert_eq!(lb.results[1].model_name, "model_c");
+        assert_eq!(
+            lb.results[2].model_name, "model_b",
+            "Missing perplexity score must sort last"
+        );
+    }
+
+    #[test]
+    fn test_leaderboard_add_and_best() {
+        let metric = Metric::Accuracy;
+        let mut lb = Leaderboard::new(metric);
+
+        lb.add(make_result("bad", metric, Some(0.5)));
+        lb.add(make_result("best", metric, Some(0.99)));
+        lb.add(make_result("mid", metric, Some(0.75)));
+
+        let best = lb.best().expect("should have a best");
+        assert_eq!(best.model_name, "best");
     }
 }

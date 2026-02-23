@@ -165,7 +165,9 @@ fn estimate_num_heads(hidden_dim: usize) -> u32 {
     } else if hidden_dim.is_multiple_of(128) {
         head_dim_128 as u32
     } else {
-        32 // Default
+        // N-05 (Meyer DbC): return 0 (unknown) instead of hardcoded 32.
+        // Callers must handle 0 as "could not estimate".
+        0
     }
 }
 
@@ -259,8 +261,8 @@ mod tests {
 
     #[test]
     fn test_estimate_num_heads_default() {
-        // Non-divisible hidden dim should return default
-        assert_eq!(estimate_num_heads(1000), 32);
+        // N-05: Non-divisible hidden dim returns 0 (unknown), not hardcoded 32
+        assert_eq!(estimate_num_heads(1000), 0);
     }
 
     #[test]
@@ -334,6 +336,37 @@ mod tests {
         let detector = ArchitectureDetector::new();
         // Empty detector should return Unknown
         assert_eq!(detector.detect(), Architecture::Unknown);
+    }
+
+    // =========================================================================
+    // FALSIFY tests — contract violation sweep (N-05)
+    // =========================================================================
+
+    #[test]
+    fn test_falsify_n05_estimate_num_heads_non_divisible_returns_zero() {
+        // N-05: estimate_num_heads must return 0 (unknown) for non-standard
+        // hidden dims, never a hardcoded guess like 32.
+        for dim in [7, 13, 97, 1000, 1001, 3] {
+            assert_eq!(
+                estimate_num_heads(dim),
+                0,
+                "estimate_num_heads({dim}) must be 0 (unknown), not a hardcoded fallback"
+            );
+        }
+    }
+
+    #[test]
+    fn test_falsify_n05_detect_from_shapes_missing_tensors_returns_zero_dims() {
+        // N-05: When no embedding/layer tensors are found, dimensions must be 0,
+        // not hardcoded architecture-specific defaults.
+        let shapes = HashMap::new();
+        let detector = ArchitectureDetector::new().with_tensors(vec![]);
+        let info = detector.detect_from_shapes(&shapes);
+
+        assert_eq!(info.hidden_dim, 0, "hidden_dim must be 0 when no embedding tensor found");
+        assert_eq!(info.num_layers, 0, "num_layers must be 0 when no layer tensors found");
+        assert_eq!(info.vocab_size, 0, "vocab_size must be 0 when no embedding tensor found");
+        assert_eq!(info.num_heads, 0, "num_heads must be 0 when hidden_dim is 0");
     }
 
     #[test]

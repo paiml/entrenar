@@ -440,19 +440,33 @@ fn execute_help(topic: Option<&str>) -> Result<String> {
     }
 }
 
+/// N-04 (Meyer DbC): Best-effort architecture guess from model ID string.
+/// This is informational only (shell display) — actual architecture detection
+/// for inference uses tensor-name-based `ArchitectureDetector::detect()`.
+/// Order matters: more specific patterns must come before generic ones
+/// (e.g., "mistral" before "llama" since Mistral inherits LLaMA naming).
+const ARCH_PATTERNS: &[(&[&str], &str)] = &[
+    (&["qwen"], "qwen"),
+    (&["phi"], "phi"),
+    (&["falcon"], "falcon"),
+    (&["mistral", "mixtral"], "mistral"),
+    (&["llama"], "llama"),
+    (&["bert"], "bert"),
+    (&["gpt"], "gpt"),
+];
+
 fn detect_architecture(model_id: &str) -> String {
     let lower = model_id.to_lowercase();
-    if lower.contains("llama") {
-        "llama".to_string()
-    } else if lower.contains("bert") {
-        "bert".to_string()
-    } else if lower.contains("gpt") {
-        "gpt".to_string()
-    } else if lower.contains("mistral") {
-        "mistral".to_string()
-    } else {
-        "unknown".to_string()
+    for (patterns, arch) in ARCH_PATTERNS {
+        if patterns.iter().any(|p| lower.contains(p)) {
+            return (*arch).to_string();
+        }
     }
+    eprintln!(
+        "Warning: could not detect architecture from model ID '{model_id}', \
+         defaulting to 'unknown' (use tensor-based detection for accuracy)"
+    );
+    "unknown".to_string()
 }
 
 fn estimate_params(model_id: &str) -> u64 {
@@ -748,7 +762,36 @@ mod tests {
         assert_eq!(detect_architecture("bert-base-uncased"), "bert");
         assert_eq!(detect_architecture("openai-gpt"), "gpt");
         assert_eq!(detect_architecture("mistralai/Mistral-7B"), "mistral");
+        assert_eq!(detect_architecture("Qwen/Qwen2.5-Coder-0.5B"), "qwen");
+        assert_eq!(detect_architecture("microsoft/phi-2"), "phi");
+        assert_eq!(detect_architecture("tiiuae/falcon-7b"), "falcon");
+        assert_eq!(detect_architecture("mistralai/Mixtral-8x7B"), "mistral");
         assert_eq!(detect_architecture("custom-model"), "unknown");
+    }
+
+    // =========================================================================
+    // FALSIFY tests — contract violation sweep (N-04)
+    // =========================================================================
+
+    #[test]
+    fn test_falsify_n04_mistral_before_llama_in_ambiguous_id() {
+        // N-04: "mistral" must be checked before "llama" since some Mistral
+        // model IDs contain both substrings. Mistral-specific detection
+        // should take priority.
+        assert_eq!(
+            detect_architecture("mistral-llama-variant"),
+            "mistral",
+            "Mistral should take priority over LLaMA in ambiguous IDs"
+        );
+    }
+
+    #[test]
+    fn test_falsify_n04_unknown_is_explicit() {
+        // N-04: Unknown architecture must be an explicit "unknown" string,
+        // never an empty string or a silent default to a known architecture.
+        let result = detect_architecture("totally-custom-model-v3");
+        assert_eq!(result, "unknown");
+        assert!(!result.is_empty());
     }
 
     #[test]
