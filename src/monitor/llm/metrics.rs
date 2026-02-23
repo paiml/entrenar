@@ -91,20 +91,42 @@ impl LLMMetrics {
     }
 
     /// Calculate cost based on model pricing (approximate)
+    ///
+    /// N-07 (Meyer DbC): Prices are approximate and may be stale. Order matters:
+    /// more specific patterns (e.g., "gpt-4-turbo") must precede generic ones
+    /// ("gpt-4") to avoid mis-categorization. Unknown models warn and use a
+    /// conservative default.
     pub fn estimate_cost(&self) -> f64 {
-        // Approximate pricing per 1K tokens (as of late 2024)
-        let (prompt_price, completion_price) = match self.model_name.as_str() {
-            m if m.contains("gpt-4-turbo") => (0.01, 0.03),
-            m if m.contains("gpt-4") => (0.03, 0.06),
-            m if m.contains("gpt-3.5") => (0.0005, 0.0015),
-            m if m.contains("claude-3-opus") => (0.015, 0.075),
-            m if m.contains("claude-3-sonnet") => (0.003, 0.015),
-            m if m.contains("claude-3-haiku") => (0.00025, 0.00125),
-            m if m.contains("gemini") => (0.00025, 0.0005),
-            m if m.contains("mistral") => (0.0002, 0.0006),
-            m if m.contains("llama") => (0.0002, 0.0006),
-            _other => (0.001, 0.002), // Default conservative estimate for unknown models
-        };
+        // Approximate pricing per 1K tokens (as of late 2024).
+        // Table-driven: (pattern, prompt_price, completion_price).
+        // Order matters — more specific patterns first.
+        const PRICING: &[(&str, f64, f64)] = &[
+            ("gpt-4-turbo", 0.01, 0.03),
+            ("gpt-4o", 0.005, 0.015),
+            ("gpt-4", 0.03, 0.06),
+            ("gpt-3.5", 0.0005, 0.0015),
+            ("claude-3-opus", 0.015, 0.075),
+            ("claude-3-sonnet", 0.003, 0.015),
+            ("claude-3-haiku", 0.00025, 0.00125),
+            ("gemini", 0.00025, 0.0005),
+            ("mistral", 0.0002, 0.0006),
+            ("llama", 0.0002, 0.0006),
+        ];
+
+        let (prompt_price, completion_price) = PRICING
+            .iter()
+            .find(|(pattern, _, _)| self.model_name.contains(pattern))
+            .map_or_else(
+                || {
+                    eprintln!(
+                        "Warning: unknown model '{}' for cost estimation, using conservative default \
+                         ($0.001/$0.002 per 1K tokens)",
+                        self.model_name
+                    );
+                    (0.001, 0.002)
+                },
+                |&(_, p, c)| (p, c),
+            );
 
         let prompt_cost = (f64::from(self.prompt_tokens) / 1000.0) * prompt_price;
         let completion_cost = (f64::from(self.completion_tokens) / 1000.0) * completion_price;
@@ -296,49 +318,78 @@ mod tests {
         );
     }
 
+    // =========================================================================
+    // FALSIFY tests — contract violation sweep (N-07)
+    // =========================================================================
+
+    #[test]
+    fn test_falsify_n07_gpt4_turbo_before_gpt4() {
+        // N-07: "gpt-4-turbo-preview" must match "gpt-4-turbo" tier ($0.01),
+        // not "gpt-4" tier ($0.03). Order of match arms matters.
+        let turbo = LLMMetrics::new("gpt-4-turbo-preview").with_tokens(1000, 0);
+        let base = LLMMetrics::new("gpt-4-0613").with_tokens(1000, 0);
+
+        let turbo_cost = turbo.estimate_cost();
+        let base_cost = base.estimate_cost();
+
+        assert!(
+            turbo_cost < base_cost,
+            "gpt-4-turbo-preview ({turbo_cost}) must be cheaper than gpt-4 ({base_cost})"
+        );
+    }
+
+    #[test]
+    fn test_falsify_n07_gpt4o_distinct_from_gpt4() {
+        // N-07: "gpt-4o" must match its own tier, not fall through to "gpt-4".
+        let gpt4o = LLMMetrics::new("gpt-4o-2024-05-13").with_tokens(1000, 1000);
+        let gpt4 = LLMMetrics::new("gpt-4-0613").with_tokens(1000, 1000);
+
+        let gpt4o_cost = gpt4o.estimate_cost();
+        let gpt4_cost = gpt4.estimate_cost();
+
+        assert!(
+            gpt4o_cost < gpt4_cost,
+            "gpt-4o ({gpt4o_cost}) must be cheaper than gpt-4 ({gpt4_cost})"
+        );
+    }
+
+    #[test]
+    fn test_falsify_n07_unknown_model_uses_conservative_default() {
+        // N-07: Unknown models must use the conservative default, never $0.
+        let metrics = LLMMetrics::new("totally-unknown-model-v9").with_tokens(1000, 1000);
+        let cost = metrics.estimate_cost();
+
+        assert!(
+            cost > 0.0,
+            "Unknown model cost must be > 0, got {cost}"
+        );
+        // Conservative default: $0.001 prompt + $0.002 completion = $0.003 per 1K
+        assert!(
+            (cost - 0.003).abs() < 1e-6,
+            "Expected conservative default ~$0.003, got {cost}"
+        );
+    }
+
     #[test]
     fn test_estimate_cost_all_model_variants() {
+        // (model_name, expected_total_cost_per_1K_prompt_1K_completion)
         let models = [
-            ("gpt-4-turbo-preview", 0.01, 0.03),
-            ("gpt-4-0613", 0.03, 0.06),
-            ("gpt-3.5-turbo", 0.0005, 0.0015),
-            ("claude-3-opus-20240229", 0.015, 0.075),
-            ("claude-3-sonnet-20240229", 0.003, 0.015),
-            ("claude-3-haiku-20240307", 0.00025, 0.00125),
-            ("gemini-pro", 0.00025, 0.0005),
-            ("mistral-medium", 0.0002, 0.0006),
-            ("llama-3-70b", 0.0002, 0.0006),
-            ("unknown-model", 0.001, 0.002),
+            ("gpt-4-turbo-preview", 0.01 + 0.03),
+            ("gpt-4o-2024-05-13", 0.005 + 0.015),
+            ("gpt-4-0613", 0.03 + 0.06),
+            ("gpt-3.5-turbo", 0.0005 + 0.0015),
+            ("claude-3-opus-20240229", 0.015 + 0.075),
+            ("claude-3-sonnet-20240229", 0.003 + 0.015),
+            ("claude-3-haiku-20240307", 0.00025 + 0.00125),
+            ("gemini-pro", 0.00025 + 0.0005),
+            ("mistral-medium", 0.0002 + 0.0006),
+            ("llama-3-70b", 0.0002 + 0.0006),
+            ("unknown-model", 0.001 + 0.002),
         ];
 
-        for (model_name, expected_prompt_price, expected_completion_price) in &models {
+        for (model_name, expected_cost) in &models {
             let metrics = LLMMetrics::new(model_name).with_tokens(1000, 1000);
             let cost = metrics.estimate_cost();
-
-            // Syntactic match covering all arms from estimate_cost
-            let (prompt_price, completion_price): (f64, f64) = match *model_name {
-                m if m.contains("gpt-4-turbo") => (0.01, 0.03),
-                m if m.contains("gpt-4") => (0.03, 0.06),
-                m if m.contains("gpt-3.5") => (0.0005, 0.0015),
-                m if m.contains("claude-3-opus") => (0.015, 0.075),
-                m if m.contains("claude-3-sonnet") => (0.003, 0.015),
-                m if m.contains("claude-3-haiku") => (0.00025, 0.00125),
-                m if m.contains("gemini") => (0.00025, 0.0005),
-                m if m.contains("mistral") => (0.0002, 0.0006),
-                m if m.contains("llama") => (0.0002, 0.0006),
-                _other => (0.001, 0.002),
-            };
-
-            assert!(
-                (prompt_price - expected_prompt_price).abs() < 1e-10_f64,
-                "prompt price mismatch for {model_name}"
-            );
-            assert!(
-                (completion_price - expected_completion_price).abs() < 1e-10_f64,
-                "completion price mismatch for {model_name}"
-            );
-
-            let expected_cost = expected_prompt_price + expected_completion_price;
             assert!(
                 (cost - expected_cost).abs() < 1e-6,
                 "cost mismatch for {model_name}: got {cost}, expected {expected_cost}"

@@ -81,7 +81,13 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     let mut train_config = TransformerTrainConfig::new(model_config)
         .with_lr(spec.optimizer.lr)
         .with_warmup_steps(spec.training.warmup_steps)
-        .with_max_seq_len(spec.data.seq_len.unwrap_or(512));
+        .with_max_seq_len({
+            let seq_len = spec.data.seq_len.unwrap_or_else(|| {
+                eprintln!("Warning: seq_len not specified in config, defaulting to 512");
+                512
+            });
+            seq_len
+        });
 
     if let Some(clip) = spec.training.grad_clip {
         train_config = train_config.with_grad_clip(clip);
@@ -395,54 +401,8 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
             let config_content = std::fs::read_to_string(config_file)
                 .map_err(|e| Error::ConfigError(format!("Failed to read model config: {e}")))?;
 
-            // Try parsing as HuggingFace config.json format
-            // C-10/C-11 (Meyer DbC): Required fields must be present — no silent Qwen2-0.5B defaults.
             if let Ok(hf_config) = serde_json::from_str::<serde_json::Value>(&config_content) {
-                let hidden_size = hf_config["hidden_size"]
-                    .as_u64()
-                    .ok_or_else(|| Error::ConfigError(
-                        "C-11: config.json missing 'hidden_size' — cannot train without model dimensions".into()
-                    ))? as usize;
-                let num_attention_heads = hf_config["num_attention_heads"]
-                    .as_u64()
-                    .ok_or_else(|| Error::ConfigError(
-                        "C-11: config.json missing 'num_attention_heads'".into()
-                    ))? as usize;
-                let num_hidden_layers = hf_config["num_hidden_layers"]
-                    .as_u64()
-                    .ok_or_else(|| Error::ConfigError(
-                        "C-11: config.json missing 'num_hidden_layers'".into()
-                    ))? as usize;
-                let vocab_size = hf_config["vocab_size"]
-                    .as_u64()
-                    .ok_or_else(|| Error::ConfigError(
-                        "C-10: config.json missing 'vocab_size' — training with wrong vocab corrupts embeddings".into()
-                    ))? as usize;
-                let intermediate_size = hf_config["intermediate_size"]
-                    .as_u64()
-                    .ok_or_else(|| Error::ConfigError(
-                        "C-11: config.json missing 'intermediate_size'".into()
-                    ))? as usize;
-                return Ok(TransformerConfig {
-                    hidden_size,
-                    num_attention_heads,
-                    num_kv_heads: hf_config["num_key_value_heads"]
-                        .as_u64()
-                        .unwrap_or(num_attention_heads as u64)
-                        as usize,
-                    intermediate_size,
-                    num_hidden_layers,
-                    vocab_size,
-                    // R-04 (Meyer DbC): generic defaults, not Qwen2-specific.
-                    // 2048 is the safe minimum; rope_theta 10000 is the LLaMA/Mistral standard.
-                    max_position_embeddings: hf_config["max_position_embeddings"]
-                        .as_u64()
-                        .unwrap_or(2048)
-                        as usize,
-                    rms_norm_eps: hf_config["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32,
-                    rope_theta: hf_config["rope_theta"].as_f64().unwrap_or(10_000.0) as f32,
-                    use_bias: hf_config["attention_bias"].as_bool().unwrap_or(false),
-                });
+                return parse_hf_config(&hf_config);
             }
         }
     }
@@ -461,6 +421,83 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
         rms_norm_eps: 1e-6,
         rope_theta: QWEN_ROPE_THETA as f32,
         use_bias: false,
+    })
+}
+
+/// Parse HuggingFace config.json into `TransformerConfig`.
+///
+/// C-10/C-11 (Meyer DbC): Required fields (hidden_size, num_attention_heads,
+/// num_hidden_layers, vocab_size, intermediate_size) must be present — no silent defaults.
+/// R-04: Optional fields use generic defaults with warnings for likely-wrong values.
+fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
+    let hidden_size = hf_config["hidden_size"]
+        .as_u64()
+        .ok_or_else(|| Error::ConfigError(
+            "C-11: config.json missing 'hidden_size' — cannot train without model dimensions".into()
+        ))? as usize;
+    let num_attention_heads = hf_config["num_attention_heads"]
+        .as_u64()
+        .ok_or_else(|| Error::ConfigError(
+            "C-11: config.json missing 'num_attention_heads'".into()
+        ))? as usize;
+    let num_hidden_layers = hf_config["num_hidden_layers"]
+        .as_u64()
+        .ok_or_else(|| Error::ConfigError(
+            "C-11: config.json missing 'num_hidden_layers'".into()
+        ))? as usize;
+    let vocab_size = hf_config["vocab_size"]
+        .as_u64()
+        .ok_or_else(|| Error::ConfigError(
+            "C-10: config.json missing 'vocab_size' — training with wrong vocab corrupts embeddings".into()
+        ))? as usize;
+    let intermediate_size = hf_config["intermediate_size"]
+        .as_u64()
+        .ok_or_else(|| Error::ConfigError(
+            "C-11: config.json missing 'intermediate_size'".into()
+        ))? as usize;
+
+    // R-04 (Meyer DbC): Optional fields with generic defaults.
+    // num_kv_heads → num_attention_heads is the correct GQA→MHA fallback.
+    // max_position_embeddings → 2048 is a conservative safe minimum.
+    // rms_norm_eps → 1e-6 is the most common default.
+    // rope_theta → 10000 is the LLaMA/Mistral standard (WRONG for Qwen at 1M).
+    // use_bias → false is correct for most modern architectures.
+    let num_kv_heads = hf_config["num_key_value_heads"]
+        .as_u64()
+        .unwrap_or(num_attention_heads as u64)
+        as usize;
+
+    let max_position_embeddings = match hf_config["max_position_embeddings"].as_u64() {
+        Some(v) => v as usize,
+        None => {
+            eprintln!("Warning: config.json missing 'max_position_embeddings', defaulting to 2048");
+            2048
+        }
+    };
+
+    let rope_theta = match hf_config["rope_theta"].as_f64() {
+        Some(v) => v as f32,
+        None => {
+            eprintln!("Warning: config.json missing 'rope_theta', defaulting to 10000.0 \
+                (Qwen models use 1000000.0 — check your config)");
+            10_000.0
+        }
+    };
+
+    let rms_norm_eps = hf_config["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32;
+    let use_bias = hf_config["attention_bias"].as_bool().unwrap_or(false);
+
+    Ok(TransformerConfig {
+        hidden_size,
+        num_attention_heads,
+        num_kv_heads,
+        intermediate_size,
+        num_hidden_layers,
+        vocab_size,
+        max_position_embeddings,
+        rms_norm_eps,
+        rope_theta,
+        use_bias,
     })
 }
 
@@ -1163,6 +1200,122 @@ optimizer:
         assert_eq!(spec.data.batch_size, 8);
 
         std::fs::remove_file(&path).ok();
+    }
+
+    // =========================================================================
+    // FALSIFY tests — contract violation sweep (C-10/C-11, R-04)
+    // =========================================================================
+
+    #[test]
+    fn test_falsify_c10_c11_config_with_all_required_fields_succeeds() {
+        // C-10/C-11: config.json with all 5 required fields must parse successfully.
+        use std::io::Write;
+        let config_json = r#"{
+            "hidden_size": 768,
+            "num_attention_heads": 12,
+            "num_hidden_layers": 6,
+            "vocab_size": 30000,
+            "intermediate_size": 3072,
+            "max_position_embeddings": 512,
+            "rms_norm_eps": 1e-5,
+            "rope_theta": 10000.0,
+            "attention_bias": true
+        }"#;
+        let dir = std::env::temp_dir().join("entrenar_falsify_c10");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config_path = dir.join("config.json");
+        let mut f = std::fs::File::create(&config_path).unwrap();
+        f.write_all(config_json.as_bytes()).unwrap();
+
+        let spec = TrainSpec {
+            model: crate::config::schema::ModelRef {
+                path: PathBuf::from("/nonexistent/model"),
+                config: Some(config_path.to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+            data: crate::config::schema::DataConfig {
+                train: PathBuf::from("/nonexistent/data.json"),
+                batch_size: 4,
+                ..Default::default()
+            },
+            optimizer: crate::config::schema::OptimSpec {
+                name: "adam".to_string(),
+                lr: 1e-4,
+                params: std::collections::HashMap::new(),
+            },
+            training: crate::config::schema::TrainingParams {
+                epochs: 1,
+                output_dir: PathBuf::from("/tmp"),
+                ..Default::default()
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+            publish: None,
+        };
+
+        let config = build_transformer_config_from_spec(&spec).unwrap();
+        assert_eq!(config.hidden_size, 768);
+        assert_eq!(config.num_attention_heads, 12);
+        assert_eq!(config.num_hidden_layers, 6);
+        assert_eq!(config.vocab_size, 30000);
+        assert_eq!(config.intermediate_size, 3072);
+        assert_eq!(config.max_position_embeddings, 512);
+        assert!(config.use_bias);
+
+        std::fs::remove_file(&config_path).ok();
+    }
+
+    #[test]
+    fn test_falsify_c11_missing_hidden_size_errors() {
+        // C-11: config.json missing hidden_size must return Err, not silently default.
+        use std::io::Write;
+        let config_json = r#"{
+            "num_attention_heads": 12,
+            "num_hidden_layers": 6,
+            "vocab_size": 30000,
+            "intermediate_size": 3072
+        }"#;
+        let dir = std::env::temp_dir().join("entrenar_falsify_c11");
+        std::fs::create_dir_all(&dir).unwrap();
+        let config_path = dir.join("config_no_hidden.json");
+        let mut f = std::fs::File::create(&config_path).unwrap();
+        f.write_all(config_json.as_bytes()).unwrap();
+
+        let spec = TrainSpec {
+            model: crate::config::schema::ModelRef {
+                path: PathBuf::from("/nonexistent/model"),
+                config: Some(config_path.to_string_lossy().into_owned()),
+                ..Default::default()
+            },
+            data: crate::config::schema::DataConfig {
+                train: PathBuf::from("/nonexistent/data.json"),
+                batch_size: 4,
+                ..Default::default()
+            },
+            optimizer: crate::config::schema::OptimSpec {
+                name: "adam".to_string(),
+                lr: 1e-4,
+                params: std::collections::HashMap::new(),
+            },
+            training: crate::config::schema::TrainingParams {
+                epochs: 1,
+                output_dir: PathBuf::from("/tmp"),
+                ..Default::default()
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+            publish: None,
+        };
+
+        let err = build_transformer_config_from_spec(&spec).unwrap_err();
+        assert!(
+            err.to_string().contains("hidden_size"),
+            "Error must mention 'hidden_size': {err}"
+        );
+
+        std::fs::remove_file(&config_path).ok();
     }
 
     #[test]
