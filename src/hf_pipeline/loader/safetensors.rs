@@ -200,7 +200,8 @@ fn detect_from_square_weights(
 fn detect_hidden_size(tensors: &safetensors::SafeTensors<'_>, names: &[String]) -> usize {
     detect_from_query_weights(tensors, names)
         .or_else(|| detect_from_square_weights(tensors, names))
-        .unwrap_or(768) // Default to 768 (BERT-base)
+        // C-15 (Meyer DbC): 0 = unknown, no architecture-specific magic number.
+        .unwrap_or(0)
 }
 
 impl TeacherModel for SafeTensorsTeacher {
