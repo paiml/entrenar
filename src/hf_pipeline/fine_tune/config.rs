@@ -141,30 +141,31 @@ impl FineTuneConfig {
         self
     }
 
-    /// Estimate trainable parameters based on fine-tuning method
+    /// Estimate trainable parameters based on fine-tuning method.
+    ///
+    /// N-06 (Meyer DbC): Derives hidden_size and num_layers from total_params
+    /// using the approximation total ≈ 12 * L * d² (transformer scaling law).
     #[must_use]
     pub fn estimate_trainable_params(&self, total_params: u64) -> u64 {
+        // Estimate hidden_size from total params: total ≈ 12 * L * d²
+        // Rough: d ≈ sqrt(total / 384) for typical 32-layer model
+        let d = ((total_params as f64 / 384.0).sqrt() as u64).max(64);
+        let num_layers_est = (total_params / (12 * d * d)).clamp(1, 128);
+
         match &self.method {
             FineTuneMethod::Full => total_params,
             FineTuneMethod::LoRA(config) => {
-                // LoRA params = 2 * rank * d * num_modules
-                // Rough estimate assuming attention projections
-                let d = 4096; // Typical hidden size
+                // LoRA params = 2 * rank * d * num_modules * num_layers
                 let num_modules = config.num_target_modules().max(4);
-                let num_layers = 32; // Typical
-                2 * (config.rank as u64) * d * (num_modules as u64) * num_layers
+                2 * (config.rank as u64) * d * (num_modules as u64) * num_layers_est
             }
             FineTuneMethod::QLoRA { lora_config, .. } => {
-                let d = 4096;
                 let num_modules = lora_config.num_target_modules().max(4);
-                let num_layers = 32;
-                2 * (lora_config.rank as u64) * d * (num_modules as u64) * num_layers
+                2 * (lora_config.rank as u64) * d * (num_modules as u64) * num_layers_est
             }
             FineTuneMethod::PrefixTuning { prefix_length } => {
                 // Prefix params = prefix_length * hidden_size * 2 * num_layers
-                let hidden_size = 4096u64;
-                let num_layers = 32u64;
-                (*prefix_length as u64) * hidden_size * 2 * num_layers
+                (*prefix_length as u64) * d * 2 * num_layers_est
             }
         }
     }

@@ -172,7 +172,10 @@ fn generate_mock_tensors(total_params: u64) -> Vec<TensorInfo> {
 
     let num_layers =
         (total_params / (hidden_dim as u64 * hidden_dim as u64 * 12)).clamp(1, 80) as usize;
-    let vocab_size = 32000;
+    // N-05 (Meyer DbC): derive vocab_size from embedding params and hidden_dim.
+    // vocab_size ≈ embed_params / hidden_dim. Clamp to plausible range.
+    let embed_params = total_params / 10; // ~10% of params in embeddings
+    let vocab_size = (embed_params as usize / hidden_dim).clamp(256, 200_000);
 
     let mut tensors = Vec::new();
 
