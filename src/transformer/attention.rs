@@ -770,4 +770,148 @@ mod tests {
         let params = attn.parameters_mut();
         assert_eq!(params.len(), 4);
     }
+
+    // =========================================================================
+    // FALSIFY-A: §2.1.3 Attention Projections — Five-Whys Gap Analysis (Refs PMAT-331)
+    //
+    // Contract: tensor-layout-v1.yaml §tensors.q_proj/k_proj/v_proj/o_proj
+    //   q_proj: [num_heads*head_dim, hidden] (= [hidden, hidden] for MHA)
+    //   k_proj: [num_kv_heads*head_dim, hidden] (smaller for GQA)
+    //   v_proj: [num_kv_heads*head_dim, hidden] (smaller for GQA)
+    //   o_proj: [hidden, num_heads*head_dim]
+    //
+    // Five-Whys:
+    //   Why 1: Trained model's attention weights could be wrong shape
+    //   Why 2: from_params accepts any tensor without shape validation
+    //   Why 3: No ValidatedWeight in entrenar
+    //   Why 4: entrenar predates the Poka-Yoke contract
+    //   Why 5: No cross-crate contract enforcement for training weights
+    //
+    // Popper (1959): "These tests attempt to falsify the claim that
+    // entrenar's attention weight handling prevents degenerate models."
+    // =========================================================================
+
+    /// FALSIFY-A1e: from_params accepts wrong-shape Q weight (documents gap)
+    ///
+    /// This proves that from_params does NOT validate Q projection shape.
+    /// A tensor of 50 elements is accepted when hidden*hidden is expected.
+    /// (PMAT-331: entrenar lacks ValidatedWeight for attention)
+    #[test]
+    fn falsify_a1e_from_params_accepts_wrong_shape_q_weight() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+
+        let mut params = HashMap::new();
+        // WRONG-SHAPE q_proj: 50 elements instead of hidden*hidden
+        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; 50], true));
+        // Correct k, v, o
+        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+
+        let attn = MultiHeadAttention::from_params(&config, &params, "attn");
+        // Currently accepted — this IS the gap that PMAT-331 tracks
+        assert!(attn.is_some(),
+            "FALSIFY-A1e: from_params currently accepts wrong-shape q_proj (gap: PMAT-331)");
+    }
+
+    /// FALSIFY-A2e: GQA init produces correct K/V dimensions
+    ///
+    /// For GQA (num_kv_heads < num_heads), K/V must be smaller than Q.
+    /// If init uses num_heads for K/V, the shapes are wrong.
+    #[test]
+    fn falsify_a2e_gqa_init_correct_kv_dimensions() {
+        let mut config = TransformerConfig::tiny();
+        config.num_kv_heads = 1; // Force GQA: 1 KV head, but num_heads > 1
+
+        let attn = MultiHeadAttention::new(&config);
+        let head_dim = config.head_dim();
+        let kv_hidden = config.num_kv_heads * head_dim; // 1 * head_dim
+
+        // Q: hidden * hidden
+        assert_eq!(attn.w_q.len(), config.hidden_size * config.hidden_size,
+            "FALSIFY-A2e: Q projection must be hidden*hidden");
+
+        // K: hidden * kv_hidden (smaller than Q for GQA)
+        assert_eq!(attn.w_k.len(), config.hidden_size * kv_hidden,
+            "FALSIFY-A2e: K projection must use num_kv_heads, not num_heads");
+
+        // V: hidden * kv_hidden (same as K)
+        assert_eq!(attn.w_v.len(), config.hidden_size * kv_hidden,
+            "FALSIFY-A2e: V projection must use num_kv_heads, not num_heads");
+
+        // O: hidden * hidden (matches Q output)
+        assert_eq!(attn.w_o.len(), config.hidden_size * config.hidden_size,
+            "FALSIFY-A2e: O projection must be hidden*hidden");
+
+        // K/V must be SMALLER than Q for GQA
+        assert!(attn.w_k.len() < attn.w_q.len(),
+            "FALSIFY-A2e: For GQA, K weight must be smaller than Q weight");
+    }
+
+    /// FALSIFY-A3e: GQA forward produces correct output dimensions
+    ///
+    /// With num_kv_heads < num_heads, the forward pass must still produce
+    /// [seq_len, hidden_size] output (not [seq_len, kv_hidden]).
+    #[test]
+    fn falsify_a3e_gqa_forward_correct_output_dims() {
+        let mut config = TransformerConfig::tiny();
+        config.num_kv_heads = 1; // Force GQA
+
+        let attn = MultiHeadAttention::new(&config);
+        let seq_len = 3;
+        let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
+        let output = attn.forward(&x, seq_len);
+
+        assert_eq!(output.len(), seq_len * config.hidden_size,
+            "FALSIFY-A3e: GQA output must be seq_len * hidden_size, not seq_len * kv_hidden");
+    }
+
+    /// FALSIFY-A4e: Attention init produces non-degenerate values
+    ///
+    /// Like FALSIFY-E7a for embeddings: init must produce varied, finite values.
+    #[test]
+    fn falsify_a4e_init_produces_valid_attention_weights() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+
+        for (name, w) in [("w_q", &attn.w_q), ("w_k", &attn.w_k), ("w_v", &attn.w_v), ("w_o", &attn.w_o)] {
+            let data = w.data();
+            let slice = data.as_slice().expect("data as slice");
+
+            // No NaN
+            let nan_count = slice.iter().filter(|v| v.is_nan()).count();
+            assert_eq!(nan_count, 0, "FALSIFY-A4e: {name} init must not contain NaN");
+
+            // No Inf
+            let inf_count = slice.iter().filter(|v| v.is_infinite()).count();
+            assert_eq!(inf_count, 0, "FALSIFY-A4e: {name} init must not contain Inf");
+
+            // Values vary
+            let min = slice.iter().copied().fold(f32::INFINITY, f32::min);
+            let max = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            assert!((max - min).abs() > 1e-6,
+                "FALSIFY-A4e: {name} init values are constant ({min}..{max}) — degenerate weight");
+        }
+    }
+
+    /// FALSIFY-A5e: Attention forward produces finite outputs
+    ///
+    /// If any attention weight is degenerate, output should still be finite
+    /// (the init is designed to prevent this).
+    #[test]
+    fn falsify_a5e_forward_produces_finite_output() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let seq_len = 4;
+        let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
+        let output = attn.forward(&x, seq_len);
+
+        let data = output.data();
+        let nan_count = data.iter().filter(|v| v.is_nan()).count();
+        let inf_count = data.iter().filter(|v| v.is_infinite()).count();
+        assert_eq!(nan_count, 0, "FALSIFY-A5e: Attention output must not contain NaN");
+        assert_eq!(inf_count, 0, "FALSIFY-A5e: Attention output must not contain Inf");
+    }
 }
