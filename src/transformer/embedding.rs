@@ -149,4 +149,108 @@ mod tests {
         let embed = Embedding::from_params(&params, "missing.weight", 100, 8);
         assert!(embed.is_none());
     }
+
+    // =========================================================================
+    // FALSIFY-E7: Entrenar embedding contract gap analysis (Refs PMAT-326)
+    //
+    // Five-Whys: §2.1.1 "What Are Embeddings" falsification sweep
+    //   Why 1: Trained model could have garbage embeddings
+    //   Why 2: No data quality validation during training
+    //   Why 3: Embedding uses raw Tensor, not ValidatedEmbedding
+    //   Why 4: entrenar predates the ValidatedEmbedding contract
+    //   Why 5: No cross-crate contract enforcement test existed
+    //
+    // Popper (1959): "These tests try to break the claim that
+    // entrenar's embedding pipeline prevents degenerate models."
+    // =========================================================================
+
+    /// FALSIFY-E7a: Embedding initialization produces non-degenerate values
+    ///
+    /// The init formula `(i * 0.111).sin() * scale` MUST produce varied,
+    /// finite values. If it doesn't, freshly-initialized models are DOA.
+    #[test]
+    fn falsify_e7a_init_produces_valid_embedding() {
+        let embed = Embedding::new(100, 64);
+        let data = embed.weight.data();
+        let slice = data.as_slice().expect("data as slice");
+
+        // No NaN
+        let nan_count = slice.iter().filter(|v| v.is_nan()).count();
+        assert_eq!(nan_count, 0, "FALSIFY-E7a: Init must not produce NaN");
+
+        // No Inf
+        let inf_count = slice.iter().filter(|v| v.is_infinite()).count();
+        assert_eq!(inf_count, 0, "FALSIFY-E7a: Init must not produce Inf");
+
+        // Not all zeros (<50% zeros per embedding contract)
+        let zero_count = slice.iter().filter(|v| v.abs() < 1e-10).count();
+        let zero_pct = 100.0 * zero_count as f64 / slice.len() as f64;
+        assert!(zero_pct < 50.0,
+            "FALSIFY-E7a: Init has {zero_pct:.1}% zeros — exceeds embedding contract threshold (50%)");
+
+        // Values vary (not constant)
+        let min = slice.iter().copied().fold(f32::INFINITY, f32::min);
+        let max = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        assert!((max - min).abs() > 1e-6,
+            "FALSIFY-E7a: Init values are constant ({min}..{max}) — degenerate embedding");
+    }
+
+    /// FALSIFY-E7b: Embedding shape matches vocab * hidden
+    #[test]
+    fn falsify_e7b_shape_matches_dimensions() {
+        let vocab_size = 151;
+        let hidden_size = 32;
+        let embed = Embedding::new(vocab_size, hidden_size);
+        assert_eq!(embed.weight.len(), vocab_size * hidden_size,
+            "FALSIFY-E7b: Embedding length must be vocab_size * hidden_size");
+    }
+
+    /// FALSIFY-E7c: from_params does NOT validate shape
+    ///
+    /// This test documents the gap: from_params accepts ANY tensor
+    /// regardless of whether its length matches vocab_size * hidden_size.
+    /// (PMAT-326: entrenar lacks ValidatedEmbedding)
+    #[test]
+    fn falsify_e7c_from_params_accepts_wrong_shape() {
+        let mut params = HashMap::new();
+        // Intentionally wrong size: 50 elements for 100*8=800 expected
+        params.insert(
+            "embed.weight".to_string(),
+            Tensor::from_vec(vec![0.1; 50], true),
+        );
+        let embed = Embedding::from_params(&params, "embed.weight", 100, 8);
+        // Currently accepted — this IS the gap that PMAT-326 tracks
+        assert!(embed.is_some(),
+            "FALSIFY-E7c: from_params currently accepts wrong-shape tensors (gap: PMAT-326)");
+    }
+
+    /// FALSIFY-E7d: OOB token_id produces zeros (not panic)
+    ///
+    /// Contract divergence: aprender skips OOB tokens, realizar/entrenar zero-fill.
+    /// This test documents entrenar's behavior.
+    #[test]
+    fn falsify_e7d_oob_token_produces_zeros_not_panic() {
+        let embed = Embedding::new(100, 8);
+        let tokens = vec![0, 999]; // 999 is way OOB
+        let output = embed.forward(&tokens);
+        assert_eq!(output.len(), 2 * 8);
+        // Token 0 should have non-zero values
+        let data = output.data();
+        let token0_l2: f32 = (0..8).map(|i| data[i] * data[i]).sum::<f32>().sqrt();
+        assert!(token0_l2 > 1e-6, "Token 0 should have non-zero embedding");
+        // Token 999 should be all zeros
+        let token999_l2: f32 = (8..16).map(|i| data[i] * data[i]).sum::<f32>().sqrt();
+        assert!(token999_l2 < 1e-10, "OOB token should be zero-filled");
+    }
+
+    /// FALSIFY-E7e: Embedding init is deterministic (reproducible)
+    #[test]
+    fn falsify_e7e_init_deterministic() {
+        let embed1 = Embedding::new(100, 64);
+        let embed2 = Embedding::new(100, 64);
+        let d1 = embed1.weight.data();
+        let d2 = embed2.weight.data();
+        assert_eq!(d1.as_slice().unwrap(), d2.as_slice().unwrap(),
+            "FALSIFY-E7e: Same vocab+hidden must produce identical initialization");
+    }
 }
