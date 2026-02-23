@@ -441,6 +441,157 @@ mod tests {
         assert!(logits.data().iter().all(|&v| v.is_finite()));
     }
 
+    // =========================================================================
+    // FALSIFY-L: §2.1.2 LM Head Contract — Five-Whys Gap Analysis (Refs PMAT-329)
+    //
+    // Contract: tensor-layout-v1.yaml §tensors.lm_head
+    //   critical: "true"
+    //   note: "GH-202 root cause - wrong shape caused [PAD] garbage output"
+    //
+    // Five-Whys:
+    //   Why 1: entrenar-trained model's lm_head could corrupt inference
+    //   Why 2: lm_head save/load has no shape validation
+    //   Why 3: from_params accepts ANY tensor for lm_head (like embedding)
+    //   Why 4: entrenar predates ValidatedWeight contract
+    //   Why 5: No cross-crate contract enforcement for trained models
+    //
+    // Popper (1959): "These tests attempt to falsify the claim that
+    // entrenar's lm_head handling prevents garbage output after training."
+    // =========================================================================
+
+    /// FALSIFY-L1e: from_params accepts wrong-shape lm_head (documents gap)
+    ///
+    /// This test proves that from_params does NOT validate lm_head shape.
+    /// A tensor of 50 elements is accepted when vocab*hidden=100*8=800 is expected.
+    /// (PMAT-329: entrenar lacks ValidatedWeight for lm_head)
+    #[test]
+    fn falsify_l1e_from_params_accepts_wrong_shape_lm_head() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let vocab_size = config.vocab_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+        let intermediate_size = config.intermediate_size;
+
+        let mut params = HashMap::new();
+
+        // Valid embedding + layers + norm
+        params.insert(
+            "model.embed_tokens.weight".to_string(),
+            Tensor::from_vec(vec![0.1; vocab_size * hidden_size], true),
+        );
+        for layer_idx in 0..config.num_hidden_layers {
+            let prefix = format!("model.layers.{layer_idx}");
+            params.insert(format!("{prefix}.input_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden_size], true));
+            params.insert(format!("{prefix}.self_attn.q_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+            params.insert(format!("{prefix}.self_attn.k_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+            params.insert(format!("{prefix}.self_attn.v_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+            params.insert(format!("{prefix}.self_attn.o_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+            params.insert(format!("{prefix}.post_attention_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden_size], true));
+            params.insert(format!("{prefix}.mlp.gate_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true));
+            params.insert(format!("{prefix}.mlp.up_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true));
+            params.insert(format!("{prefix}.mlp.down_proj.weight"), Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true));
+        }
+        params.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden_size], true));
+
+        // WRONG-SHAPE lm_head: 50 elements for hidden*vocab expected
+        params.insert(
+            "lm_head.weight".to_string(),
+            Tensor::from_vec(vec![0.1; 50], true),
+        );
+
+        let transformer = Transformer::from_params(&config, &params);
+        // Currently accepted — this IS the gap that PMAT-329 tracks
+        assert!(transformer.is_some(),
+            "FALSIFY-L1e: from_params currently accepts wrong-shape lm_head (gap: PMAT-329)");
+    }
+
+    /// FALSIFY-L2e: Tied embeddings produce valid logit dimensions
+    ///
+    /// When lm_head is None, the embedding weight [vocab, hidden] is used as lm_head.
+    /// The matmul must produce [seq_len, vocab_size] logits.
+    #[test]
+    fn falsify_l2e_tied_embeddings_produce_correct_logit_dims() {
+        let config = TransformerConfig::tiny();
+        let transformer = Transformer::new(&config);
+        assert!(transformer.lm_head.is_none(), "Default should use tied embeddings");
+
+        let tokens = vec![1, 2, 3];
+        let logits = transformer.forward(&tokens);
+        assert_eq!(logits.len(), 3 * config.vocab_size,
+            "FALSIFY-L2e: Tied embedding logits must be seq_len * vocab_size");
+
+        // All logits must be finite (not NaN/Inf)
+        let data = logits.data();
+        let nan_count = data.iter().filter(|v| v.is_nan()).count();
+        let inf_count = data.iter().filter(|v| v.is_infinite()).count();
+        assert_eq!(nan_count, 0, "FALSIFY-L2e: Tied logits must not contain NaN");
+        assert_eq!(inf_count, 0, "FALSIFY-L2e: Tied logits must not contain Inf");
+    }
+
+    /// FALSIFY-L3e: Separate lm_head produces valid logit dimensions
+    #[test]
+    fn falsify_l3e_separate_lm_head_produces_correct_logit_dims() {
+        let config = TransformerConfig::tiny();
+        let mut transformer = Transformer::new(&config);
+        transformer.lm_head = Some(Tensor::from_vec(
+            vec![0.1; config.hidden_size * config.vocab_size],
+            true,
+        ));
+
+        let tokens = vec![1, 2, 3];
+        let logits = transformer.forward(&tokens);
+        assert_eq!(logits.len(), 3 * config.vocab_size,
+            "FALSIFY-L3e: Separate lm_head logits must be seq_len * vocab_size");
+        let data = logits.data();
+        assert!(data.iter().all(|v| v.is_finite()),
+            "FALSIFY-L3e: Separate lm_head logits must all be finite");
+    }
+
+    /// FALSIFY-L4e: lm_head is included in parameters() and parameters_mut()
+    ///
+    /// If lm_head is present but not returned by parameters(), the optimizer
+    /// won't update it during training → frozen lm_head → garbage after finetuning.
+    #[test]
+    fn falsify_l4e_lm_head_in_parameter_list() {
+        let config = TransformerConfig::tiny();
+        let mut transformer = Transformer::new(&config);
+
+        // Without lm_head: N params
+        let n_without = transformer.parameters().len();
+
+        // With lm_head: N+1 params
+        transformer.lm_head = Some(Tensor::from_vec(
+            vec![0.1; config.hidden_size * config.vocab_size],
+            true,
+        ));
+        let n_with = transformer.parameters().len();
+        assert_eq!(n_with, n_without + 1,
+            "FALSIFY-L4e: lm_head must be included in parameters() — optimizer needs it");
+
+        // Also check parameters_mut
+        let n_mut = transformer.parameters_mut().len();
+        assert_eq!(n_mut, n_with,
+            "FALSIFY-L4e: parameters_mut() must include lm_head for gradient updates");
+    }
+
+    /// FALSIFY-L5e: forward_last returns exactly vocab_size logits
+    ///
+    /// The last token's logits are used for next-token prediction.
+    /// Off-by-one in the slice extraction → wrong token generated.
+    #[test]
+    fn falsify_l5e_forward_last_correct_size() {
+        let config = TransformerConfig::tiny();
+        let transformer = Transformer::new(&config);
+
+        let tokens = vec![1, 2, 3, 4, 5];
+        let logits = transformer.forward_last(&tokens);
+        assert_eq!(logits.len(), config.vocab_size,
+            "FALSIFY-L5e: forward_last must return exactly vocab_size logits");
+        let data = logits.data();
+        assert!(data.iter().all(|v| v.is_finite()),
+            "FALSIFY-L5e: forward_last logits must all be finite");
+    }
+
     #[test]
     fn test_causal_lm_loss_backward() {
         use crate::train::CausalLMLoss;
