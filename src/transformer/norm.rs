@@ -24,8 +24,24 @@ impl RMSNorm {
     }
 
     /// Create from parameters
-    pub fn from_params(params: &HashMap<String, Tensor>, prefix: &str, eps: f32) -> Option<Self> {
+    ///
+    /// # Contract (PMAT-332 norm)
+    /// Validates weight.len() == hidden_size.
+    /// Returns None if key is missing or length is wrong.
+    pub fn from_params(
+        params: &HashMap<String, Tensor>,
+        prefix: &str,
+        eps: f32,
+        hidden_size: usize,
+    ) -> Option<Self> {
         let weight = params.get(&format!("{prefix}.weight"))?.clone();
+        if weight.len() != hidden_size {
+            eprintln!(
+                "[PMAT-332] {prefix}.weight: length mismatch — got {}, expected {hidden_size}",
+                weight.len()
+            );
+            return None;
+        }
         Some(Self { weight, eps })
     }
 
@@ -132,7 +148,7 @@ mod tests {
             "test.weight".to_string(),
             Tensor::from_vec(vec![1.0, 1.0, 1.0, 1.0], true),
         );
-        let norm = RMSNorm::from_params(&params, "test", 1e-6);
+        let norm = RMSNorm::from_params(&params, "test", 1e-6, 4);
         assert!(norm.is_some());
         let norm = norm.unwrap();
         assert_eq!(norm.weight.len(), 4);
@@ -141,7 +157,7 @@ mod tests {
     #[test]
     fn test_rms_norm_from_params_missing() {
         let params: HashMap<String, Tensor> = HashMap::new();
-        let norm = RMSNorm::from_params(&params, "missing", 1e-6);
+        let norm = RMSNorm::from_params(&params, "missing", 1e-6, 4);
         assert!(norm.is_none());
     }
 
@@ -178,22 +194,22 @@ mod tests {
     // entrenar's norm handling prevents shape-related runtime errors."
     // =========================================================================
 
-    /// FALSIFY-N1e: from_params accepts wrong-length norm weight — gap documented
+    /// FALSIFY-N1e: from_params rejects wrong-length norm weight (PMAT-332 norm fix)
     ///
-    /// RMSNorm.from_params doesn't validate weight.len() == hidden_size.
-    /// A wrong-length weight will panic at runtime during element-wise multiply.
+    /// RMSNorm.from_params now validates weight.len() == hidden_size.
+    /// A wrong-length weight is rejected at construction time.
     #[test]
-    fn falsify_n1e_from_params_accepts_wrong_length_norm() {
+    fn falsify_n1e_from_params_rejects_wrong_length_norm() {
         let mut params = HashMap::new();
         // WRONG: weight has 7 elements, should be hidden_size=4
         params.insert(
             "test.weight".to_string(),
             Tensor::from_vec(vec![1.0; 7], true),
         );
-        let norm = RMSNorm::from_params(&params, "test", 1e-6);
-        // GAP: from_params returns Some even though weight length is wrong
-        assert!(norm.is_some(),
-            "FALSIFY-N1e: Documents gap — from_params does NOT validate norm weight length");
+        let norm = RMSNorm::from_params(&params, "test", 1e-6, 4);
+        // FIXED: from_params now rejects wrong-length weight
+        assert!(norm.is_none(),
+            "FALSIFY-N1e: PMAT-332 fix — from_params MUST reject wrong-length norm weight");
     }
 
     /// FALSIFY-N2e: RMSNorm forward produces finite output for valid input

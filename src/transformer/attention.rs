@@ -68,6 +68,9 @@ impl MultiHeadAttention {
     /// - `{prefix}.k_proj.weight`
     /// - `{prefix}.v_proj.weight`
     /// - `{prefix}.o_proj.weight`
+    /// # Contract (PMAT-331)
+    /// Validates Q/K/V/O projection shapes against config dimensions.
+    /// Returns None if any key is missing or shape is wrong.
     pub fn from_params(
         config: &TransformerConfig,
         params: &HashMap<String, Tensor>,
@@ -77,6 +80,26 @@ impl MultiHeadAttention {
         let w_k = params.get(&format!("{prefix}.k_proj.weight"))?.clone();
         let w_v = params.get(&format!("{prefix}.v_proj.weight"))?.clone();
         let w_o = params.get(&format!("{prefix}.o_proj.weight"))?.clone();
+
+        let hidden = config.hidden_size;
+        let kv_hidden = config.num_kv_heads * config.head_dim();
+
+        // PMAT-331: Shape validation for attention projections
+        let checks: &[(&str, &Tensor, usize)] = &[
+            ("q_proj", &w_q, hidden * hidden),
+            ("k_proj", &w_k, hidden * kv_hidden),
+            ("v_proj", &w_v, hidden * kv_hidden),
+            ("o_proj", &w_o, hidden * hidden),
+        ];
+        for &(name, tensor, expected) in checks {
+            if tensor.len() != expected {
+                eprintln!(
+                    "[PMAT-331] {prefix}.{name}: shape mismatch — got {} elements, expected {expected}",
+                    tensor.len()
+                );
+                return None;
+            }
+        }
 
         Some(Self {
             config: config.clone(),
@@ -791,13 +814,12 @@ mod tests {
     // entrenar's attention weight handling prevents degenerate models."
     // =========================================================================
 
-    /// FALSIFY-A1e: from_params accepts wrong-shape Q weight (documents gap)
+    /// FALSIFY-A1e: from_params rejects wrong-shape Q weight (PMAT-331 fix)
     ///
-    /// This proves that from_params does NOT validate Q projection shape.
-    /// A tensor of 50 elements is accepted when hidden*hidden is expected.
-    /// (PMAT-331: entrenar lacks ValidatedWeight for attention)
+    /// from_params now validates Q projection shape against config dimensions.
+    /// A tensor of 50 elements is rejected when hidden*hidden is expected.
     #[test]
-    fn falsify_a1e_from_params_accepts_wrong_shape_q_weight() {
+    fn falsify_a1e_from_params_rejects_wrong_shape_q_weight() {
         let config = TransformerConfig::tiny();
         let hidden_size = config.hidden_size;
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
@@ -811,9 +833,9 @@ mod tests {
         params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
 
         let attn = MultiHeadAttention::from_params(&config, &params, "attn");
-        // Currently accepted — this IS the gap that PMAT-331 tracks
-        assert!(attn.is_some(),
-            "FALSIFY-A1e: from_params currently accepts wrong-shape q_proj (gap: PMAT-331)");
+        // FIXED (PMAT-331): now rejected
+        assert!(attn.is_none(),
+            "FALSIFY-A1e: PMAT-331 fix — from_params MUST reject wrong-shape q_proj");
     }
 
     /// FALSIFY-A2e: GQA init produces correct K/V dimensions

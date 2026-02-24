@@ -32,6 +32,10 @@ impl Embedding {
     }
 
     /// Create from parameters
+    ///
+    /// # Contract (PMAT-326)
+    /// Validates weight.len() == vocab_size * hidden_size.
+    /// Returns None if key is missing or shape is wrong.
     pub fn from_params(
         params: &HashMap<String, Tensor>,
         name: &str,
@@ -39,6 +43,14 @@ impl Embedding {
         hidden_size: usize,
     ) -> Option<Self> {
         let weight = params.get(name)?.clone();
+        let expected = vocab_size * hidden_size;
+        if weight.len() != expected {
+            eprintln!(
+                "[PMAT-326] Embedding '{name}': shape mismatch — got {} elements, expected {expected} ({vocab_size}x{hidden_size})",
+                weight.len()
+            );
+            return None;
+        }
         Some(Self {
             weight,
             vocab_size,
@@ -205,13 +217,12 @@ mod tests {
             "FALSIFY-E7b: Embedding length must be vocab_size * hidden_size");
     }
 
-    /// FALSIFY-E7c: from_params does NOT validate shape
+    /// FALSIFY-E7c: from_params rejects wrong-shape tensor (PMAT-326 fix)
     ///
-    /// This test documents the gap: from_params accepts ANY tensor
-    /// regardless of whether its length matches vocab_size * hidden_size.
-    /// (PMAT-326: entrenar lacks ValidatedEmbedding)
+    /// from_params now validates weight.len() == vocab_size * hidden_size.
+    /// A tensor of 50 elements is rejected when 100*8=800 is expected.
     #[test]
-    fn falsify_e7c_from_params_accepts_wrong_shape() {
+    fn falsify_e7c_from_params_rejects_wrong_shape() {
         let mut params = HashMap::new();
         // Intentionally wrong size: 50 elements for 100*8=800 expected
         params.insert(
@@ -219,9 +230,9 @@ mod tests {
             Tensor::from_vec(vec![0.1; 50], true),
         );
         let embed = Embedding::from_params(&params, "embed.weight", 100, 8);
-        // Currently accepted — this IS the gap that PMAT-326 tracks
-        assert!(embed.is_some(),
-            "FALSIFY-E7c: from_params currently accepts wrong-shape tensors (gap: PMAT-326)");
+        // FIXED (PMAT-326): now rejected
+        assert!(embed.is_none(),
+            "FALSIFY-E7c: PMAT-326 fix — from_params MUST reject wrong-shape embedding");
     }
 
     /// FALSIFY-E7d: OOB token_id produces zeros (not panic)

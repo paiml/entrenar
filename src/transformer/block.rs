@@ -58,6 +58,7 @@ impl TransformerBlock {
             params,
             &format!("{prefix}.input_layernorm"),
             config.rms_norm_eps,
+            config.hidden_size,
         )?;
 
         let self_attn =
@@ -67,6 +68,7 @@ impl TransformerBlock {
             params,
             &format!("{prefix}.post_attention_layernorm"),
             config.rms_norm_eps,
+            config.hidden_size,
         )?;
 
         let ffn = FeedForward::from_params(config, params, &format!("{prefix}.mlp"))?;

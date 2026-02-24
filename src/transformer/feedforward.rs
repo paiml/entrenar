@@ -59,6 +59,10 @@ impl FeedForward {
     /// - `{prefix}.gate_proj.weight`
     /// - `{prefix}.up_proj.weight`
     /// - `{prefix}.down_proj.weight`
+    /// # Contract (PMAT-333)
+    /// Validates gate/up/down projection shapes against config dimensions.
+    /// gate/up: hidden_size * intermediate_size, down: intermediate_size * hidden_size
+    /// Returns None if any key is missing or shape is wrong.
     pub fn from_params(
         config: &TransformerConfig,
         params: &HashMap<String, Tensor>,
@@ -67,6 +71,25 @@ impl FeedForward {
         let w_gate = params.get(&format!("{prefix}.gate_proj.weight"))?.clone();
         let w_up = params.get(&format!("{prefix}.up_proj.weight"))?.clone();
         let w_down = params.get(&format!("{prefix}.down_proj.weight"))?.clone();
+
+        let expected_gate_up = config.hidden_size * config.intermediate_size;
+        let expected_down = config.intermediate_size * config.hidden_size;
+
+        // PMAT-333: Shape validation for FFN projections
+        let checks: &[(&str, &Tensor, usize)] = &[
+            ("gate_proj", &w_gate, expected_gate_up),
+            ("up_proj", &w_up, expected_gate_up),
+            ("down_proj", &w_down, expected_down),
+        ];
+        for &(name, tensor, expected) in checks {
+            if tensor.len() != expected {
+                eprintln!(
+                    "[PMAT-333] {prefix}.{name}: shape mismatch — got {} elements, expected {expected}",
+                    tensor.len()
+                );
+                return None;
+            }
+        }
 
         Some(Self {
             config: config.clone(),
@@ -231,12 +254,12 @@ mod tests {
     // entrenar's FFN construction prevents shape-related runtime panics."
     // =========================================================================
 
-    /// FALSIFY-F1e: from_params accepts wrong-shape gate_proj — documents PMAT-333 gap
+    /// FALSIFY-F1e: from_params rejects wrong-shape gate_proj (PMAT-333 fix)
     ///
     /// gate_proj should be [hidden_size * intermediate_size] elements.
-    /// from_params accepts any tensor shape because it only checks key existence.
+    /// from_params now validates shape against config dimensions.
     #[test]
-    fn falsify_f1e_from_params_accepts_wrong_shape_gate() {
+    fn falsify_f1e_from_params_rejects_wrong_shape_gate() {
         let config = TransformerConfig::tiny();
         let hidden_size = config.hidden_size;
         let intermediate_size = config.intermediate_size;
@@ -256,10 +279,10 @@ mod tests {
             Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true),
         );
 
-        // GAP: from_params returns Some even though gate_proj is wrong shape
+        // FIXED (PMAT-333): now rejected
         let ffn = FeedForward::from_params(&config, &params, "ffn");
-        assert!(ffn.is_some(),
-            "FALSIFY-F1e: Documents PMAT-333 — from_params does NOT validate FFN shapes");
+        assert!(ffn.is_none(),
+            "FALSIFY-F1e: PMAT-333 fix — from_params MUST reject wrong-shape gate_proj");
     }
 
     /// FALSIFY-F2e: SwiGLU forward produces correct output dimensions
