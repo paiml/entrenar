@@ -468,4 +468,30 @@ mod tests {
             }
         }
     }
+
+    /// FALSIFY-SM-007: Translation invariance — σ(x + c) = σ(x) for any scalar c
+    ///
+    /// Five-Whys (PMAT-354):
+    ///   Why 1: SM-INV-003 (translation invariance) had ZERO coverage
+    ///   Why 2: max-subtraction trick IMPLEMENTS this but nobody tested it
+    ///   Why 3: foundational to numerical stability but untested
+    ///
+    /// Contract: σ(x + c·1) = σ(x) for any scalar c.
+    #[test]
+    fn falsify_sm_007_translation_invariance() {
+        let base = array![[1.0_f32, 3.0, -2.0, 0.5]];
+        let base_probs = softmax_2d(&base);
+
+        for c in [100.0_f32, -100.0, 0.0, 42.0, -999.0] {
+            let shifted = array![[1.0 + c, 3.0 + c, -2.0 + c, 0.5 + c]];
+            let shifted_probs = softmax_2d(&shifted);
+
+            for (i, (&orig, &shift)) in base_probs.iter().zip(shifted_probs.iter()).enumerate() {
+                assert!(
+                    (orig - shift).abs() < 1e-5,
+                    "FALSIFIED SM-007: σ(x+{c})[{i}] = {shift} != σ(x)[{i}] = {orig}"
+                );
+            }
+        }
+    }
 }
