@@ -484,7 +484,11 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         }
     };
 
-    let rms_norm_eps = hf_config["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32;
+    let rms_norm_eps = hf_config["rms_norm_eps"].as_f64().unwrap_or_else(|| {
+        eprintln!("Warning: config.json missing 'rms_norm_eps', defaulting to 1e-6 \
+            (some models use 1e-5 or 1e-12 — check your config)");
+        1e-6
+    }) as f32;
     let use_bias = hf_config["attention_bias"].as_bool().unwrap_or(false);
 
     Ok(TransformerConfig {

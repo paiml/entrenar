@@ -109,8 +109,11 @@ impl Leaderboard {
         for result in &self.results {
             md.push_str(&format!("| {} |", result.model_name));
             for metric in &metrics {
-                let score = result.get_score(*metric).unwrap_or(0.0);
-                md.push_str(&format!(" {score:.4} |"));
+                match result.get_score(*metric) {
+                    Some(score) => md.push_str(&format!(" {score:.4} |")),
+                    // N-06: Missing scores display as "—" not "0.0000"
+                    None => md.push_str(" — |"),
+                }
             }
             md.push_str(&format!(" {:.2} |\n", result.inference_time_ms));
         }
@@ -165,8 +168,11 @@ impl fmt::Display for Leaderboard {
         for result in &self.results {
             write!(f, "│ {:width$} │", result.model_name, width = model_width)?;
             for metric in &metrics {
-                let score = result.get_score(*metric).unwrap_or(0.0);
-                write!(f, " {score:>10.4} │")?;
+                match result.get_score(*metric) {
+                    Some(score) => write!(f, " {score:>10.4} │")?,
+                    // N-06: Missing scores display as "—" not "0.0000"
+                    None => write!(f, " {:>10} │", "—")?,
+                }
             }
             writeln!(f, " {:>13.2} │", result.inference_time_ms)?;
         }
@@ -269,6 +275,30 @@ mod tests {
             lb.results[2].model_name, "model_b",
             "Missing perplexity score must sort last"
         );
+    }
+
+    #[test]
+    fn test_falsify_n06_display_missing_score_shows_dash() {
+        // N-06: Missing scores must display as "—", never "0.0000".
+        // A zero score is a valid measurement; a missing score is not.
+        let metric = Metric::Accuracy;
+        let mut lb = Leaderboard::new(metric);
+        lb.results.push(make_result("has_score", metric, Some(0.95)));
+        lb.results.push(make_result("no_score", metric, None));
+
+        let md = lb.to_markdown();
+        // Model with score should show numeric value
+        assert!(md.contains("0.95"), "scored model must show numeric value in markdown");
+        // Model without score must show dash, NOT "0.0000"
+        assert!(md.contains('—'), "missing score must show '—' in markdown, got:\n{md}");
+        assert!(
+            !md.contains("0.0000") || md.contains("0.9500"),
+            "markdown must not contain '0.0000' for missing scores"
+        );
+
+        // Also test Display trait
+        let display = format!("{lb}");
+        assert!(display.contains('—'), "missing score must show '—' in display output");
     }
 
     #[test]
