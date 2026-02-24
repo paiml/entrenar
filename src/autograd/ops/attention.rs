@@ -190,3 +190,181 @@ impl BackwardOp for AttentionBackward {
         }
     }
 }
+
+// =========================================================================
+// FALSIFY-ATT: attention-kernel-v1.yaml contract (entrenar attention)
+//
+// Five-Whys (PMAT-354):
+//   Why 1: entrenar had zero attention tests
+//   Why 2: attention was added for GPU GEMM acceleration, tested via model-level e2e
+//   Why 3: no mapping from attention-kernel-v1.yaml to entrenar test names
+//   Why 4: entrenar predates the provable-contracts YAML convention
+//   Why 5: scaled dot-product attention was "obviously correct"
+//
+// References:
+//   - provable-contracts/contracts/attention-kernel-v1.yaml
+//   - Vaswani et al. (2017) "Attention Is All You Need"
+// =========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::Array1;
+
+    /// FALSIFY-ATT-001: Weight normalization (indirect) — uniform V → output equals V
+    ///
+    /// If all V rows are identical [c, c, ...], any convex combination gives [c, c, ...].
+    /// This implies the weights summed to 1.0.
+    #[test]
+    fn falsify_att_001_weight_normalization_via_uniform_v() {
+        let seq_len = 3;
+        let d_k = 4;
+        let d_v = 4;
+        let v_row = vec![2.0, -1.0, 3.0, 0.5];
+        let v_data: Vec<f32> = v_row.iter().copied().cycle().take(seq_len * d_v).collect();
+
+        let q = Tensor::new(
+            Array1::from(vec![1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9]),
+            false,
+        );
+        let k = Tensor::new(
+            Array1::from(vec![0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9]),
+            false,
+        );
+        let v = Tensor::new(Array1::from(v_data), false);
+
+        let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
+        let out_data = output.data();
+        let out_slice = out_data.as_slice().expect("contiguous");
+
+        for i in 0..seq_len {
+            for d in 0..d_v {
+                let diff = (out_slice[i * d_v + d] - v_row[d]).abs();
+                assert!(
+                    diff < 1e-4,
+                    "FALSIFIED ATT-001: output[{i}][{d}] = {}, expected {} (uniform V → weights sum to 1)",
+                    out_slice[i * d_v + d],
+                    v_row[d]
+                );
+            }
+        }
+    }
+
+    /// FALSIFY-ATT-002: Output convexity — output bounded by min/max of V columns
+    ///
+    /// Contract: min_j(V[j][d]) ≤ output[i][d] ≤ max_j(V[j][d])
+    #[test]
+    fn falsify_att_002_output_convexity() {
+        let seq_len = 3;
+        let d_k = 4;
+        let d_v = 4;
+        let v_data = vec![
+            2.0, -3.0, 5.0, 1.0, -1.0, 4.0, -2.0, 7.0, 3.0, 0.0, -4.0, 6.0,
+        ];
+
+        let q = Tensor::new(
+            Array1::from(vec![1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9]),
+            false,
+        );
+        let k = Tensor::new(
+            Array1::from(vec![0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9]),
+            false,
+        );
+        let v = Tensor::new(Array1::from(v_data.clone()), false);
+
+        let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
+        let out_data = output.data();
+        let out_slice = out_data.as_slice().expect("contiguous");
+
+        for i in 0..seq_len {
+            for d in 0..d_v {
+                let out_val = out_slice[i * d_v + d];
+
+                let v_col_min = (0..seq_len)
+                    .map(|j| v_data[j * d_v + d])
+                    .fold(f32::INFINITY, f32::min);
+                let v_col_max = (0..seq_len)
+                    .map(|j| v_data[j * d_v + d])
+                    .fold(f32::NEG_INFINITY, f32::max);
+
+                assert!(
+                    out_val >= v_col_min - 1e-4 && out_val <= v_col_max + 1e-4,
+                    "FALSIFIED ATT-002: output[{i}][{d}] = {out_val} outside V column [{v_col_min}, {v_col_max}]"
+                );
+            }
+        }
+    }
+
+    /// FALSIFY-ATT-003: Scaling factor — uses 1/√d_k not 1/d_k
+    ///
+    /// With d_k=1, both scalings are identical (1/√1 = 1/1 = 1).
+    /// With d_k=4, 1/√4 = 0.5 but 1/4 = 0.25 — outputs differ.
+    /// We verify by comparing attention output against a manual reference.
+    #[test]
+    fn falsify_att_003_scaling_factor() {
+        let seq_len = 2;
+        let d_k = 4;
+        let d_v = 2;
+
+        let q_data = vec![1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let k_data = vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let v_data = vec![10.0, 20.0, 30.0, 40.0];
+
+        let q = Tensor::new(Array1::from(q_data.clone()), false);
+        let k = Tensor::new(Array1::from(k_data.clone()), false);
+        let v = Tensor::new(Array1::from(v_data.clone()), false);
+
+        let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
+        let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+
+        // Manual reference with correct 1/√d_k scaling
+        let scale = (d_k as f32).sqrt(); // 2.0
+        // Q[0] = [1,0,0,0], K[0] = [1,0,0,0], K[1] = [0,0,1,0]
+        // scores[0] = [dot(Q0,K0)/scale, dot(Q0,K1)/scale] = [1.0/2.0, 0.0/2.0] = [0.5, 0.0]
+        let s00 = 1.0 / scale;
+        let s01 = 0.0 / scale;
+        let max0 = s00.max(s01);
+        let e00 = (s00 - max0).exp();
+        let e01 = (s01 - max0).exp();
+        let sum0 = e00 + e01;
+        let w00 = e00 / sum0;
+        let w01 = e01 / sum0;
+        let ref_out_0_0 = w00 * v_data[0] + w01 * v_data[2];
+        let ref_out_0_1 = w00 * v_data[1] + w01 * v_data[3];
+
+        assert!(
+            (out_slice[0] - ref_out_0_0).abs() < 1e-4,
+            "FALSIFIED ATT-003: output[0][0] = {}, reference = {ref_out_0_0} (1/√d_k scaling)",
+            out_slice[0]
+        );
+        assert!(
+            (out_slice[1] - ref_out_0_1).abs() < 1e-4,
+            "FALSIFIED ATT-003: output[0][1] = {}, reference = {ref_out_0_1} (1/√d_k scaling)",
+            out_slice[1]
+        );
+    }
+
+    /// FALSIFY-ATT-005: Single position — softmax of single score is 1.0, output = V
+    #[test]
+    fn falsify_att_005_single_position() {
+        let seq_len = 1;
+        let d_k = 4;
+        let d_v = 4;
+        let v_data = vec![7.0, -3.0, 2.5, 11.0];
+
+        let q = Tensor::new(Array1::from(vec![1.0, 0.0, 0.0, 0.0]), false);
+        let k = Tensor::new(Array1::from(vec![0.5, 0.5, 0.5, 0.5]), false);
+        let v = Tensor::new(Array1::from(v_data.clone()), false);
+
+        let output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
+        let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+
+        for (d, (&out_val, &v_val)) in out_slice.iter().zip(v_data.iter()).enumerate() {
+            let diff = (out_val - v_val).abs();
+            assert!(
+                diff < 1e-5,
+                "FALSIFIED ATT-005: single position output[{d}] = {out_val}, expected V[{d}] = {v_val}"
+            );
+        }
+    }
+}
