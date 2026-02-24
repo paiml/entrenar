@@ -324,4 +324,73 @@ mod tests {
             "FALSIFIED EMB-007: higher temperature should increase entropy, got h_low={h_low}, h_high={h_high}"
         );
     }
+
+    // =========================================================================
+    // FALSIFY-SM: softmax-kernel-v1.yaml contract (entrenar's softmax_2d)
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had test_softmax_sums_to_one but no FALSIFY-SM-*
+    //   Why 2: existing test checks 1 property, not all 3 contract invariants
+    //   Why 3: no mapping from softmax-kernel-v1.yaml to entrenar tests
+    //   Why 4: entrenar predates the provable-contracts YAML
+    //   Why 5: distillation softmax was "obviously correct" (3 lines)
+    // =========================================================================
+
+    /// FALSIFY-SM-001: Softmax output sums to 1 per row
+    #[test]
+    fn falsify_sm_001_sums_to_one() {
+        let x = array![[3.0, 1.0, 0.5, -1.0], [-2.0, 0.0, 4.0, 1.0]];
+        let probs = softmax_2d(&x);
+
+        for (idx, row) in probs.axis_iter(Axis(0)).enumerate() {
+            let sum: f32 = row.sum();
+            assert_relative_eq!(
+                sum,
+                1.0,
+                epsilon = 1e-5
+            );
+            let _ = idx;
+        }
+    }
+
+    /// FALSIFY-SM-002: All softmax outputs strictly positive
+    #[test]
+    fn falsify_sm_002_strictly_positive() {
+        let x = array![[-10.0, -5.0, 0.0, 5.0, 10.0]];
+        let probs = softmax_2d(&x);
+
+        for &p in probs.iter() {
+            assert!(
+                p > 0.0,
+                "FALSIFIED SM-002: softmax output {p} not strictly positive"
+            );
+        }
+    }
+
+    /// FALSIFY-SM-003: Order preservation (argmax invariant)
+    #[test]
+    fn falsify_sm_003_order_preservation() {
+        let x = array![[1.0, 5.0, 3.0, 2.0]];
+        let probs = softmax_2d(&x);
+
+        let input_argmax = x
+            .row(0)
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .unwrap()
+            .0;
+        let output_argmax = probs
+            .row(0)
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .unwrap()
+            .0;
+
+        assert_eq!(
+            input_argmax, output_argmax,
+            "FALSIFIED SM-003: argmax changed from {input_argmax} to {output_argmax}"
+        );
+    }
 }
