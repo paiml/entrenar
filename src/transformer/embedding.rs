@@ -548,4 +548,81 @@ mod tests {
             "FALSIFIED EMB-005: forward output is all-zero (L2={l2_norm})"
         );
     }
+
+    // =========================================================================
+    // PROPTEST FALSIFY: Embedding property-based falsification
+    //
+    // Five-Whys (PMAT-354, Phase 9):
+    //   Why 1: EM/EMB tests used fixed vocab=100, hidden=32/48/64
+    //   Why 2: embedding forward() could have off-by-one at edge vocab sizes
+    //   Why 3: proptest explores vocab/hidden/seq_len combos humans don't anticipate
+    //   Why 4: determinism (EM-003, EMB-001) could break under certain init patterns
+    //   Why 5: YAML contracts explicitly call for "proptest with random..."
+    // =========================================================================
+
+    mod em_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        // EM-001-prop: output shape for random seq_len and hidden_size
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+            #[test]
+            fn falsify_em_001_prop_output_shape(
+                vocab_size in prop::sample::select(vec![50_usize, 100, 200, 500]),
+                hidden_size in prop::sample::select(vec![16_usize, 32, 48, 64]),
+                seq_len in 1_usize..32,
+            ) {
+                let embed = Embedding::new(vocab_size, hidden_size);
+                let tokens: Vec<u32> = (0..seq_len).map(|i| (i % vocab_size) as u32).collect();
+                let output = embed.forward(&tokens);
+                prop_assert_eq!(
+                    output.len(), seq_len * hidden_size,
+                    "FALSIFIED EM-001-prop: len={} != {}*{}={} (v={})",
+                    output.len(), seq_len, hidden_size, seq_len * hidden_size, vocab_size
+                );
+            }
+        }
+
+        // EM-003-prop: determinism for random tokens
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(50))]
+            #[test]
+            fn falsify_em_003_prop_determinism(
+                vocab_size in prop::sample::select(vec![50_usize, 100, 200]),
+                hidden_size in prop::sample::select(vec![16_usize, 32, 64]),
+                token_ids in proptest::collection::vec(0_u32..49, 1..16),
+            ) {
+                let embed = Embedding::new(vocab_size, hidden_size);
+                let out1 = embed.forward(&token_ids);
+                let out2 = embed.forward(&token_ids);
+                prop_assert_eq!(
+                    out1.data(), out2.data(),
+                    "FALSIFIED EM-003-prop: two calls differ (v={}, h={})",
+                    vocab_size, hidden_size
+                );
+            }
+        }
+
+        // EM-004-prop: finite output for random tokens
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+            #[test]
+            fn falsify_em_004_prop_finite(
+                vocab_size in prop::sample::select(vec![50_usize, 100, 200]),
+                hidden_size in prop::sample::select(vec![16_usize, 32, 64]),
+                token_ids in proptest::collection::vec(0_u32..49, 1..16),
+            ) {
+                let embed = Embedding::new(vocab_size, hidden_size);
+                let output = embed.forward(&token_ids);
+                for (i, v) in output.data().iter().enumerate() {
+                    prop_assert!(
+                        v.is_finite(),
+                        "FALSIFIED EM-004-prop: output[{}]={} not finite (v={}, h={})",
+                        i, v, vocab_size, hidden_size
+                    );
+                }
+            }
+        }
+    }
 }
