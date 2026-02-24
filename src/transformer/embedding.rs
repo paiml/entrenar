@@ -71,7 +71,11 @@ impl Embedding {
         for &token_id in token_ids {
             let idx = token_id as usize;
             if idx >= self.vocab_size {
-                // Out of vocabulary - use zeros
+                // N-09: OOB token → zeros. Contract: embedding-lookup-v1.yaml
+                eprintln!(
+                    "Warning: Embedding::forward token_id {} >= vocab_size {}. N-09 OOB escape.",
+                    token_id, self.vocab_size
+                );
                 output.extend(std::iter::repeat_n(0.0, self.hidden_size));
             } else {
                 let start = idx * self.hidden_size;
