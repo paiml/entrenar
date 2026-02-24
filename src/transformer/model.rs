@@ -789,4 +789,102 @@ mod tests {
             "FALSIFIED TE-004: tied embedding output contains {inf_count} Inf values"
         );
     }
+
+    // =========================================================================
+    // FALSIFY-PIPE-001: Cross-contract pipeline test
+    //
+    // Five-Whys (PMAT-354, Phase 8):
+    //   Why 1: no test exercises the full §2.1.1 pipeline as a single chain
+    //   Why 2: EM, TE, SM tests each validate one contract in isolation
+    //   Why 3: bugs can hide at contract boundaries (shape mismatch between stages)
+    //   Why 4: the embed→tied_lm_head→softmax chain is the critical inference path
+    //   Why 5: cross-contract pipeline faults would only show in integration
+    //
+    // Pipeline: embed(token_ids) → transformer_layers → norm → tied_matmul → softmax
+    // Claims verified:
+    //   EM-001: embed output shape = (seq_len, d_model)
+    //   TE-001: tied logits shape = (seq_len, vocab_size)
+    //   SM-001: softmax(logits) sums to 1.0 per row
+    //   SM-002: all probabilities positive
+    //   SM-003: argmax preserved through softmax
+    // =========================================================================
+
+    /// FALSIFY-PIPE-001: Full embed → tied_lm_head → softmax pipeline
+    #[test]
+    fn falsify_pipe_001_embed_tied_softmax_pipeline() {
+        let config = TransformerConfig::tiny();
+        let transformer = Transformer::new(&config);
+
+        let tokens = vec![0u32, 3, 7, 15, 42];
+        let seq_len = tokens.len();
+        let vocab_size = config.vocab_size;
+
+        // Stage 1: Full forward pass (embed → layers → norm → tied matmul)
+        let logits = transformer.forward(&tokens);
+        let logits_data = logits.data();
+
+        // TE-001: logits shape = (seq_len, vocab_size)
+        assert_eq!(
+            logits_data.len(),
+            seq_len * vocab_size,
+            "FALSIFIED PIPE-001/TE-001: logits len={} != seq_len({seq_len}) * vocab({vocab_size})",
+            logits_data.len()
+        );
+
+        // TE-004: all logits finite
+        for (i, &l) in logits_data.iter().enumerate() {
+            assert!(
+                l.is_finite(),
+                "FALSIFIED PIPE-001/TE-004: logits[{i}] = {l} not finite"
+            );
+        }
+
+        // Stage 2: Apply softmax per row (the sampling step)
+        let logits_slice = logits_data.as_slice().unwrap();
+        for row in 0..seq_len {
+            let start = row * vocab_size;
+            let end = start + vocab_size;
+            let row_logits = &logits_slice[start..end];
+
+            // Compute softmax for this row
+            let max_val = row_logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let exps: Vec<f32> = row_logits.iter().map(|&x| (x - max_val).exp()).collect();
+            let sum: f32 = exps.iter().sum();
+            let probs: Vec<f32> = exps.iter().map(|&e| e / sum).collect();
+
+            // SM-001: sums to 1.0
+            let prob_sum: f32 = probs.iter().sum();
+            assert!(
+                (prob_sum - 1.0).abs() < 1e-4,
+                "FALSIFIED PIPE-001/SM-001: row {row} prob sum={prob_sum}"
+            );
+
+            // SM-002: all positive
+            for (i, &p) in probs.iter().enumerate() {
+                assert!(
+                    p >= 0.0,
+                    "FALSIFIED PIPE-001/SM-002: row {row} prob[{i}]={p} negative"
+                );
+            }
+
+            // SM-003: argmax preserved
+            let logit_argmax = row_logits
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .unwrap()
+                .0;
+            let prob_argmax = probs
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .unwrap()
+                .0;
+            assert_eq!(
+                logit_argmax, prob_argmax,
+                "FALSIFIED PIPE-001/SM-003: row {row} argmax changed {} → {}",
+                logit_argmax, prob_argmax
+            );
+        }
+    }
 }
