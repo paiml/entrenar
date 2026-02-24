@@ -700,6 +700,51 @@ mod tests {
         }
     }
 
+    /// FALSIFY-TE-002: Tied equivalence — tied output == explicit matmul with cloned W
+    ///
+    /// Contract: forward() with tied lm_head must produce bit-identical output
+    /// to manually computing matmul(hidden, W_embed) with a separate copy of the
+    /// embedding weight matrix. If they diverge, the tied path silently aliases
+    /// or transposes incorrectly.
+    #[test]
+    fn falsify_te_002_tied_equivalence() {
+        let config = TransformerConfig::tiny();
+        let transformer = Transformer::new(&config);
+
+        // Tied path: forward() uses embed_tokens.weight as lm_head
+        let tokens = vec![0u32, 3, 7, 15, 42];
+        let tied_logits = transformer.forward(&tokens);
+
+        // Explicit path: clone embed weight, run hidden states, matmul manually
+        let hidden = transformer.forward_hidden(&tokens);
+        let w_clone = transformer.embed_tokens.weight.clone();
+        let explicit_logits = matmul(
+            &hidden,
+            &w_clone,
+            tokens.len(),
+            config.hidden_size,
+            config.vocab_size,
+        );
+
+        let tied_data = tied_logits.data();
+        let explicit_data = explicit_logits.data();
+
+        assert_eq!(
+            tied_data.len(),
+            explicit_data.len(),
+            "FALSIFIED TE-002: output lengths differ: {} vs {}",
+            tied_data.len(),
+            explicit_data.len()
+        );
+
+        for (i, (&t, &e)) in tied_data.iter().zip(explicit_data.iter()).enumerate() {
+            assert!(
+                (t - e).abs() < 1e-6,
+                "FALSIFIED TE-002: tied[{i}] = {t} != explicit[{i}] = {e}"
+            );
+        }
+    }
+
     /// FALSIFY-TE-003: No extra parameters for tied embeddings
     ///
     /// Contract: tied model has exactly N params, untied has N+1 (the separate lm_head)
