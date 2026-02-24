@@ -393,4 +393,79 @@ mod tests {
             "FALSIFIED SM-003: argmax changed from {input_argmax} to {output_argmax}"
         );
     }
+
+    /// FALSIFY-SM-004: Softmax outputs bounded in [0, 1]
+    ///
+    /// Contract: 0 <= softmax(x)_i <= 1 for all i
+    ///
+    /// N-10 escape: IEEE 754 f32 underflow — exp(-200) = 0.0 exactly, so the
+    /// mathematical open interval (0,1) becomes closed [0,1] in floating point.
+    /// This is correct behavior, not a bug.
+    #[test]
+    fn falsify_sm_004_bounded_zero_one() {
+        let x = array![[-100.0, -10.0, 0.0, 10.0, 100.0]];
+        let probs = softmax_2d(&x);
+
+        for &p in probs.iter() {
+            assert!(
+                (0.0..=1.0).contains(&p),
+                "FALSIFIED SM-004: softmax output {p} not in [0, 1]"
+            );
+        }
+
+        // For moderate inputs, outputs ARE strictly in (0, 1) — no underflow
+        let moderate = array![[1.0, 2.0, 3.0]];
+        let probs_mod = softmax_2d(&moderate);
+        for &p in probs_mod.iter() {
+            assert!(
+                p > 0.0 && p < 1.0,
+                "FALSIFIED SM-004: moderate softmax output {p} not in (0, 1)"
+            );
+        }
+    }
+
+    /// FALSIFY-SM-005: Numerical stability — extreme inputs don't produce NaN/Inf
+    ///
+    /// Contract: softmax is stable for inputs near f32 limits (via max-subtraction trick)
+    #[test]
+    fn falsify_sm_005_numerical_stability() {
+        let x = array![[1000.0, 999.0, 998.0]];
+        let probs = softmax_2d(&x);
+
+        for &p in probs.iter() {
+            assert!(
+                p.is_finite(),
+                "FALSIFIED SM-005: softmax output {p} not finite for extreme inputs"
+            );
+            assert!(
+                p > 0.0,
+                "FALSIFIED SM-005: softmax output {p} not positive for extreme inputs"
+            );
+        }
+
+        let sum: f32 = probs.iter().sum();
+        assert_relative_eq!(sum, 1.0, epsilon = 1e-5);
+    }
+
+    /// FALSIFY-SM-006: Identical elements → uniform distribution
+    ///
+    /// Contract: softmax([c, c, ..., c]) = [1/n, 1/n, ..., 1/n]
+    #[test]
+    fn falsify_sm_006_identical_elements_uniform() {
+        for n in [2, 4, 8, 16] {
+            let data: Vec<f32> = vec![7.0; n];
+            let x = Array2::from_shape_vec((1, n), data).unwrap();
+            let probs = softmax_2d(&x);
+
+            let expected = 1.0 / n as f32;
+            for (i, &p) in probs.iter().enumerate() {
+                assert_relative_eq!(
+                    p,
+                    expected,
+                    epsilon = 1e-6
+                );
+                let _ = i;
+            }
+        }
+    }
 }
