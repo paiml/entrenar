@@ -469,6 +469,22 @@ mod tests {
         }
     }
 
+    /// FALSIFY-SM-009: Single element boundary — softmax([x]) = [1.0]
+    ///
+    /// Contract: YAML SM-005 = softmax of a single element is always 1.0.
+    #[test]
+    fn falsify_sm_009_single_element() {
+        for x in [0.0_f32, 1.0, -1.0, 100.0, -100.0, f32::MIN_POSITIVE] {
+            let t = array![[x]];
+            let probs = softmax_2d(&t);
+            assert!(
+                (probs[[0, 0]] - 1.0).abs() < 1e-6,
+                "FALSIFIED SM-009: softmax([{x}]) = {}, expected 1.0",
+                probs[[0, 0]]
+            );
+        }
+    }
+
     /// FALSIFY-SM-007: Translation invariance — σ(x + c) = σ(x) for any scalar c
     ///
     /// Five-Whys (PMAT-354):
