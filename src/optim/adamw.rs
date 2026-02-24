@@ -439,4 +439,163 @@ mod tests {
         // Step size should be close to lr due to bias correction
         assert!(after_first.abs() > 0.05, "Bias correction not applied");
     }
+
+    // =========================================================================
+    // FALSIFY-AW: adamw-kernel-v1.yaml contract (entrenar AdamW)
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had 11 AdamW tests but zero FALSIFY-AW-* tests
+    //   Why 2: tests verify convergence/params, not optimizer invariants
+    //   Why 3: no mapping from adamw-kernel-v1.yaml to entrenar test names
+    //   Why 4: entrenar predates the provable-contracts YAML convention
+    //   Why 5: AdamW was "obviously correct" (standard implementation)
+    //
+    // References:
+    //   - provable-contracts/contracts/adamw-kernel-v1.yaml
+    //   - Loshchilov & Hutter (2019) "Decoupled Weight Decay Regularization"
+    // =========================================================================
+
+    /// FALSIFY-AW-002e: Second moment non-negativity
+    #[test]
+    fn falsify_aw_002e_second_moment_non_negative() {
+        let mut params = vec![Tensor::from_vec(vec![5.0, -3.0, 2.0, -1.0], true)];
+        let mut optimizer = AdamW::default_params(0.01);
+
+        for step in 0..50 {
+            let grad = params[0]
+                .data()
+                .mapv(|x| ((x + step as f32) * 0.37).sin() * 5.0);
+            params[0].set_grad(grad);
+            optimizer.step(&mut params);
+        }
+
+        // Check v (second moment) is non-negative
+        for v_opt in &optimizer.v {
+            if let Some(v_arr) = v_opt {
+                for (j, &v_val) in v_arr.iter().enumerate() {
+                    assert!(
+                        v_val >= 0.0,
+                        "FALSIFIED AW-002e: v[{j}] = {v_val} < 0 after 50 steps"
+                    );
+                }
+            }
+        }
+    }
+
+    /// FALSIFY-AW-003e: Bias correction factor > 1
+    #[test]
+    fn falsify_aw_003e_bias_correction() {
+        for &beta in &[0.9_f32, 0.99, 0.999] {
+            for t in 1..=100i32 {
+                let correction = 1.0 / (1.0 - beta.powi(t));
+                assert!(
+                    correction > 1.0,
+                    "FALSIFIED AW-003e: 1/(1-{beta}^{t}) = {correction} not > 1"
+                );
+            }
+        }
+    }
+
+    /// FALSIFY-AW-004e: Update finiteness with extreme values
+    #[test]
+    fn falsify_aw_004e_update_finiteness() {
+        let mut params = vec![Tensor::from_vec(vec![1e6, -1e6, 1e-6, -1e-6], true)];
+        let mut optimizer = AdamW::default_params(0.001);
+
+        let grad = params[0].data().mapv(|x| 2.0 * x);
+        params[0].set_grad(grad);
+        optimizer.step(&mut params);
+
+        for (i, &val) in params[0].data().iter().enumerate() {
+            assert!(
+                val.is_finite(),
+                "FALSIFIED AW-004e: param[{i}] = {val} (not finite)"
+            );
+        }
+    }
+
+    /// FALSIFY-AW-006e: Zero gradient — only weight decay modifies theta
+    #[test]
+    fn falsify_aw_006e_zero_gradient_weight_decay_only() {
+        let init_vals = vec![5.0, -3.0, 2.0];
+        let mut params = vec![Tensor::from_vec(init_vals.clone(), true)];
+        let lr = 0.01;
+        let wd = 0.1;
+        let mut optimizer = AdamW::new(lr, 0.9, 0.999, 1e-8, wd);
+
+        // Set zero gradient
+        params[0].set_grad(ndarray::Array1::zeros(3));
+        optimizer.step(&mut params);
+
+        // With zero gradient, only weight decay: theta_new ≈ theta * (1 - lr*wd)
+        let factor = 1.0 - lr * wd;
+        for (i, (&val, &init)) in params[0].data().iter().zip(init_vals.iter()).enumerate() {
+            let expected = init * factor;
+            let diff = (val - expected).abs();
+            assert!(
+                diff < 1e-4,
+                "FALSIFIED AW-006e: param[{i}] = {val}, expected {expected} (only wd)"
+            );
+        }
+    }
+
+    mod aw_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// FALSIFY-AW-002e-prop: Second moment non-negative for random gradients
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(50))]
+
+            #[test]
+            fn falsify_aw_002e_prop_second_moment_non_negative(
+                seed in 0..500u32,
+            ) {
+                let beta2 = 0.999_f32;
+                let n = 4;
+                let mut v = vec![0.0_f32; n];
+
+                for step in 0..20 {
+                    let g: Vec<f32> = (0..n)
+                        .map(|i| ((i as f32 + seed as f32 + step as f32 * 13.0) * 0.37).sin() * 10.0)
+                        .collect();
+                    for i in 0..n {
+                        v[i] = beta2 * v[i] + (1.0 - beta2) * g[i] * g[i];
+                    }
+                }
+
+                for (i, &vi) in v.iter().enumerate() {
+                    prop_assert!(vi >= 0.0, "FALSIFIED AW-002e-prop: v[{}] = {} < 0", i, vi);
+                }
+            }
+        }
+
+        /// FALSIFY-AW-004e-prop: Update finiteness for random initial params
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(50))]
+
+            #[test]
+            fn falsify_aw_004e_prop_update_finiteness(
+                seed in 0..500u32,
+            ) {
+                let data: Vec<f32> = (0..4)
+                    .map(|i| ((i as f32 + seed as f32) * 0.37).sin() * 100.0)
+                    .collect();
+                let mut params = vec![Tensor::from_vec(data.clone(), true)];
+                let mut optimizer = AdamW::default_params(0.001);
+
+                let grad_data: Vec<f32> = data.iter().map(|&x| 2.0 * x).collect();
+                params[0].set_grad(ndarray::Array1::from(grad_data));
+                optimizer.step(&mut params);
+
+                for (i, &val) in params[0].data().iter().enumerate() {
+                    prop_assert!(
+                        val.is_finite(),
+                        "FALSIFIED AW-004e-prop: param[{}] = {} (not finite)",
+                        i, val
+                    );
+                }
+            }
+        }
+    }
 }
