@@ -791,6 +791,101 @@ mod tests {
     }
 
     // =========================================================================
+    // PROPTEST FALSIFY-TE: Tied embeddings property-based falsification
+    //
+    // Five-Whys (PMAT-354, Phase 9):
+    //   Why 1: YAML tied-embeddings-v1.yaml calls for "proptest with seq_len in [1,128]"
+    //   Why 2: All 4 TE tests use fixed token sequences
+    //   Why 3: TE proptest had ZERO coverage across the entire stack
+    //   Why 4: Transformer construction is expensive, discouraging property testing
+    //   Why 5: Fixed tokens miss edge cases in arbitrary token→logit paths
+    //
+    // References:
+    //   - tied-embeddings-v1.yaml FALSIFY-TE-001: "proptest with seq_len in [1,128]"
+    //   - tied-embeddings-v1.yaml FALSIFY-TE-002: "clone W_embed, compare tied vs explicit"
+    //   - tied-embeddings-v1.yaml FALSIFY-TE-004: "proptest with finite x, check is_finite()"
+    // =========================================================================
+
+    mod te_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        // TE-001-prop: Output shape for random seq_len
+        // Construct transformer once per test run, vary only the token sequence
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(50))]
+            #[test]
+            fn falsify_te_001_prop_output_shape(
+                seq_len in 1_usize..32,
+            ) {
+                let config = TransformerConfig::tiny();
+                let transformer = Transformer::new(&config);
+                let tokens: Vec<u32> = (0..seq_len).map(|i| (i % config.vocab_size) as u32).collect();
+                let logits = transformer.forward(&tokens);
+                prop_assert_eq!(
+                    logits.len(),
+                    seq_len * config.vocab_size,
+                    "FALSIFIED TE-001-prop: seq_len={}, got len={}", seq_len, logits.len()
+                );
+            }
+        }
+
+        // TE-002-prop: Tied equivalence for random tokens
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(20))]
+            #[test]
+            fn falsify_te_002_prop_tied_equivalence(
+                token_ids in proptest::collection::vec(0_u32..999, 1..8),
+            ) {
+                let config = TransformerConfig::tiny();
+                let transformer = Transformer::new(&config);
+
+                let tied_logits = transformer.forward(&token_ids);
+                let hidden = transformer.forward_hidden(&token_ids);
+                let w_clone = transformer.embed_tokens.weight.clone();
+                let explicit_logits = matmul(
+                    &hidden, &w_clone,
+                    token_ids.len(), config.hidden_size, config.vocab_size,
+                );
+
+                let tied_data = tied_logits.data();
+                let explicit_data = explicit_logits.data();
+                prop_assert_eq!(tied_data.len(), explicit_data.len());
+
+                for (i, (&t, &e)) in tied_data.iter().zip(explicit_data.iter()).enumerate() {
+                    prop_assert!(
+                        (t - e).abs() < 1e-5,
+                        "FALSIFIED TE-002-prop: tied[{}]={} != explicit[{}]={}",
+                        i, t, i, e
+                    );
+                }
+            }
+        }
+
+        // TE-004-prop: All outputs finite for random tokens
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(30))]
+            #[test]
+            fn falsify_te_004_prop_finite(
+                token_ids in proptest::collection::vec(0_u32..999, 1..16),
+            ) {
+                let config = TransformerConfig::tiny();
+                let transformer = Transformer::new(&config);
+                let logits = transformer.forward(&token_ids);
+                let data = logits.data();
+
+                for (i, &v) in data.iter().enumerate() {
+                    prop_assert!(
+                        v.is_finite(),
+                        "FALSIFIED TE-004-prop: logits[{}]={} non-finite (n_tokens={})",
+                        i, v, token_ids.len()
+                    );
+                }
+            }
+        }
+    }
+
+    // =========================================================================
     // FALSIFY-PIPE-001: Cross-contract pipeline test
     //
     // Five-Whys (PMAT-354, Phase 8):
