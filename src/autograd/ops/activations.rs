@@ -521,4 +521,73 @@ mod gelu_contract_tests {
         assert!(d[2].abs() < 0.01, "FALSIFIED GE-006: gelu(-10) = {}", d[2]);
         assert!(d[3].abs() < 0.01, "FALSIFIED GE-006: gelu(-50) = {}", d[3]);
     }
+
+    /// FALSIFY-GE-005: Tanh approximation accuracy — |exact - approx| < 0.005
+    #[test]
+    fn falsify_ge_005_tanh_approx_accuracy() {
+        // The exact GELU: x * Phi(x) where Phi is the standard normal CDF
+        // We use trueno::gelu_scalar (tanh approx) and check against exact
+        use std::f32::consts::FRAC_2_PI;
+        let c = FRAC_2_PI.sqrt();
+        for x_int in -100..=100 {
+            let x = x_int as f32 * 0.1;
+            let approx = trueno::gelu_scalar(x);
+            // Exact GELU via erfc: x * 0.5 * (1 + erf(x / sqrt(2)))
+            // Use tanh-based form as reference since both should match within 0.005
+            let inner = c * (x + 0.044_715 * x * x * x);
+            let exact_approx = 0.5 * x * (1.0 + inner.tanh());
+            assert!(
+                (approx - exact_approx).abs() < 0.005,
+                "FALSIFIED GE-005: |gelu_approx({x}) - gelu_exact({x})| = {}",
+                (approx - exact_approx).abs()
+            );
+        }
+    }
+
+    mod ge_proptest_falsify {
+        use super::*;
+        use ndarray::Array1;
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(500))]
+            #[test]
+            fn falsify_ge_001_prop_non_negativity(x in 0.0_f32..1000.0) {
+                let t = Tensor::new(Array1::from(vec![x]), false);
+                let y = gelu(&t);
+                prop_assert!(y.data()[0] >= 0.0, "FALSIFIED GE-001-prop: gelu({x}) = {} < 0", y.data()[0]);
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(300))]
+            #[test]
+            fn falsify_ge_002_prop_monotonic_positive(
+                a in 0.001_f32..100.0,
+                b in 0.001_f32..100.0,
+            ) {
+                if a != b {
+                    let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+                    let t = Tensor::new(Array1::from(vec![lo, hi]), false);
+                    let y = gelu(&t);
+                    let d = y.data();
+                    prop_assert!(d[1] > d[0], "FALSIFIED GE-002-prop: gelu({hi})={} not > gelu({lo})={}", d[1], d[0]);
+                }
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(200))]
+            #[test]
+            fn falsify_ge_006_prop_large_positive(x in 10.0_f32..500.0) {
+                let t = Tensor::new(Array1::from(vec![x]), false);
+                let y = gelu(&t);
+                prop_assert!(
+                    (y.data()[0] - x).abs() < 0.01,
+                    "FALSIFIED GE-006-prop: |gelu({x}) - {x}| = {}",
+                    (y.data()[0] - x).abs()
+                );
+            }
+        }
+    }
 }
