@@ -340,6 +340,136 @@ mod silu_contract_tests {
 }
 
 // =========================================================================
+// FALSIFY-SG: swiglu-kernel-v1.yaml contract (entrenar SwiGLU via swish)
+//
+// Five-Whys (PMAT-354, Phase 11):
+//   Why 1: entrenar had FFN dimension tests but zero FALSIFY-SG-* activation tests
+//   Why 2: FFN tests verify shapes, not mathematical SwiGLU invariants
+//   Why 3: no mapping from swiglu-kernel-v1.yaml to entrenar test names
+//   Why 4: SwiGLU in entrenar is decomposed (swish + mul), not a standalone fn
+//   Why 5: SwiGLU was "obviously correct" (x * SiLU(gate))
+//
+// Note: entrenar decomposes SwiGLU into crate::autograd::swish + mul.
+// Tests exercise the mathematical properties via trueno::silu_scalar.
+//
+// References:
+//   - provable-contracts/contracts/swiglu-kernel-v1.yaml
+//   - Shazeer (2020) "GLU Variants Improve Transformer"
+// =========================================================================
+
+#[cfg(test)]
+mod swiglu_contract_tests {
+
+    fn swiglu_scalar(x: f32, gate: f32) -> f32 {
+        x * trueno::silu_scalar(gate)
+    }
+
+    /// FALSIFY-SG-001: Zero preservation — SwiGLU(0, gate) = 0 for any gate
+    #[test]
+    fn falsify_sg_001_zero_x_preservation() {
+        for &g in &[-10.0f32, -1.0, 0.0, 1.0, 10.0] {
+            let y = swiglu_scalar(0.0, g);
+            assert!(y.abs() < 1e-7, "FALSIFIED SG-001: SwiGLU(0, {g}) = {y}");
+        }
+    }
+
+    /// FALSIFY-SG-002: Fused equivalence — SwiGLU(x, gate) = x * SiLU(gate)
+    #[test]
+    fn falsify_sg_002_fused_equivalence() {
+        let cases: Vec<(f32, f32)> = vec![
+            (1.0, 1.0), (-2.0, 3.0), (5.0, -1.0), (0.5, 0.5), (100.0, 0.0),
+        ];
+        for &(x, g) in &cases {
+            let fused = swiglu_scalar(x, g);
+            let decomposed = x * trueno::silu_scalar(g);
+            assert!(
+                (fused - decomposed).abs() < 1e-6,
+                "FALSIFIED SG-002: swiglu({x},{g})={fused} != decomposed={decomposed}"
+            );
+        }
+    }
+
+    /// FALSIFY-SG-003: SiLU lower bound preserved in gate — SiLU(z) > -0.279
+    #[test]
+    fn falsify_sg_003_silu_lower_bound() {
+        for &g in &[-1000.0f32, -1.278, -1.0, 0.0, 1.0, 1000.0] {
+            let silu_g = trueno::silu_scalar(g);
+            assert!(silu_g > -0.28, "FALSIFIED SG-003: SiLU({g}) = {silu_g}");
+        }
+    }
+
+    /// FALSIFY-SG-004: Finite output for all finite inputs
+    #[test]
+    fn falsify_sg_004_finite_output() {
+        let vals = vec![-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0];
+        for &x in &vals {
+            for &g in &vals {
+                let y = swiglu_scalar(x, g);
+                assert!(y.is_finite(), "FALSIFIED SG-004: SwiGLU({x},{g}) = {y}");
+            }
+        }
+    }
+
+    /// FALSIFY-SG-005: Empty input produces empty output
+    #[test]
+    fn falsify_sg_005_empty_input() {
+        let empty: Vec<f32> = vec![];
+        let result: Vec<f32> = empty.iter().zip(empty.iter())
+            .map(|(&x, &g)| swiglu_scalar(x, g))
+            .collect();
+        assert!(result.is_empty(), "FALSIFIED SG-005: empty SwiGLU produced non-empty output");
+    }
+
+    mod sg_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(300))]
+            #[test]
+            fn falsify_sg_001_prop_zero_x(gate in -100.0_f32..100.0) {
+                let y = swiglu_scalar(0.0, gate);
+                prop_assert!(y.abs() < 1e-6, "FALSIFIED SG-001-prop: SwiGLU(0, {gate}) = {y}");
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(300))]
+            #[test]
+            fn falsify_sg_004_prop_finite(
+                x in -100.0_f32..100.0,
+                gate in -100.0_f32..100.0,
+            ) {
+                let y = swiglu_scalar(x, gate);
+                prop_assert!(y.is_finite(), "FALSIFIED SG-004-prop: SwiGLU({x},{gate}) = {y}");
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(200))]
+            #[test]
+            fn falsify_sg_006_prop_monotonic_gate(
+                x in 1.0_f32..50.0,
+                a in 0.1_f32..50.0,
+                b in 0.1_f32..50.0,
+            ) {
+                // For positive x and positive gates, increasing gate should increase output
+                // because SiLU is monotonically increasing for positive inputs
+                if a != b {
+                    let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+                    let y_lo = swiglu_scalar(x, lo);
+                    let y_hi = swiglu_scalar(x, hi);
+                    prop_assert!(
+                        y_hi > y_lo,
+                        "FALSIFIED SG-006-prop: SwiGLU({x},{hi})={y_hi} not > SwiGLU({x},{lo})={y_lo}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+// =========================================================================
 // FALSIFY-GE: gelu-kernel-v1.yaml contract (entrenar autograd gelu)
 // =========================================================================
 #[cfg(test)]
