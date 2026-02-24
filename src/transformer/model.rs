@@ -64,9 +64,24 @@ impl Transformer {
             .collect();
         let layers = layers?;
 
-        let norm = RMSNorm::from_params(params, "model.norm", config.rms_norm_eps)?;
+        let norm = RMSNorm::from_params(params, "model.norm", config.rms_norm_eps, config.hidden_size)?;
 
-        let lm_head = params.get("lm_head.weight").cloned();
+        // PMAT-329: Validate lm_head shape if present
+        let lm_head = if let Some(tensor) = params.get("lm_head.weight") {
+            let expected = config.hidden_size * config.vocab_size;
+            if tensor.len() != expected {
+                eprintln!(
+                    "[PMAT-329] lm_head.weight: shape mismatch — got {} elements, expected {expected} ({hidden}x{vocab})",
+                    tensor.len(),
+                    hidden = config.hidden_size,
+                    vocab = config.vocab_size,
+                );
+                return None;
+            }
+            Some(tensor.clone())
+        } else {
+            None
+        };
 
         Some(Self {
             config: config.clone(),
@@ -459,13 +474,12 @@ mod tests {
     // entrenar's lm_head handling prevents garbage output after training."
     // =========================================================================
 
-    /// FALSIFY-L1e: from_params accepts wrong-shape lm_head (documents gap)
+    /// FALSIFY-L1e: from_params rejects wrong-shape lm_head (PMAT-329 fix)
     ///
-    /// This test proves that from_params does NOT validate lm_head shape.
-    /// A tensor of 50 elements is accepted when vocab*hidden=100*8=800 is expected.
-    /// (PMAT-329: entrenar lacks ValidatedWeight for lm_head)
+    /// from_params now validates lm_head shape against vocab*hidden.
+    /// A tensor of 50 elements is rejected when vocab*hidden is expected.
     #[test]
-    fn falsify_l1e_from_params_accepts_wrong_shape_lm_head() {
+    fn falsify_l1e_from_params_rejects_wrong_shape_lm_head() {
         let config = TransformerConfig::tiny();
         let hidden_size = config.hidden_size;
         let vocab_size = config.vocab_size;
@@ -500,9 +514,9 @@ mod tests {
         );
 
         let transformer = Transformer::from_params(&config, &params);
-        // Currently accepted — this IS the gap that PMAT-329 tracks
-        assert!(transformer.is_some(),
-            "FALSIFY-L1e: from_params currently accepts wrong-shape lm_head (gap: PMAT-329)");
+        // FIXED (PMAT-329): now rejected
+        assert!(transformer.is_none(),
+            "FALSIFY-L1e: PMAT-329 fix — from_params MUST reject wrong-shape lm_head");
     }
 
     /// FALSIFY-L2e: Tied embeddings produce valid logit dimensions
