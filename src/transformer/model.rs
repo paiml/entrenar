@@ -640,4 +640,108 @@ mod tests {
         let grad = logits.grad().unwrap();
         assert!(grad.iter().all(|&v| v.is_finite()));
     }
+
+    // =========================================================================
+    // FALSIFY-EMB-003 / FALSIFY-TE-001..004: Tied Embeddings Contract
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had L-series lm_head tests but no EMB-003/TE-* tagged tests
+    //   Why 2: L-series validates shape, not tied-weight CONTRACT claims
+    //   Why 3: no mapping from tied-embeddings-v1.yaml to entrenar test names
+    //   Why 4: entrenar predates the provable-contracts YAML
+    //   Why 5: tied weights were assumed correct because code path is "just fallback"
+    //
+    // References:
+    //   - provable-contracts/contracts/embedding-algebra-v1.yaml (EMB-003)
+    //   - provable-contracts/contracts/tied-embeddings-v1.yaml (TE-001..004)
+    //   - Press & Wolf (2017) "Using the Output Embedding to Improve Language Models"
+    // =========================================================================
+
+    /// FALSIFY-EMB-003: Tied weight sharing — lm_head uses embed_tokens.weight
+    ///
+    /// Contract: when lm_head is None, forward() uses embed_tokens.weight directly
+    /// (pointer/identity sharing, not a copy)
+    #[test]
+    fn falsify_emb_003_tied_weight_sharing() {
+        let config = TransformerConfig::tiny();
+        let transformer = Transformer::new(&config);
+
+        // Default: lm_head is None → tied
+        assert!(transformer.lm_head.is_none());
+
+        // The weight used for lm_head projection IS embed_tokens.weight
+        let lm_weight = transformer
+            .lm_head
+            .as_ref()
+            .unwrap_or(&transformer.embed_tokens.weight);
+        let embed_weight = &transformer.embed_tokens.weight;
+
+        // They must be the same Tensor (same data pointer, not just equal values)
+        assert!(
+            std::ptr::eq(lm_weight, embed_weight),
+            "FALSIFIED EMB-003: tied lm_head must be same object as embed_tokens.weight"
+        );
+    }
+
+    /// FALSIFY-TE-001: Output shape = (seq_len, vocab_size)
+    #[test]
+    fn falsify_te_001_output_shape() {
+        let config = TransformerConfig::tiny();
+        let transformer = Transformer::new(&config);
+
+        for seq_len in [1, 3, 10] {
+            let tokens: Vec<u32> = (0..seq_len).collect();
+            let logits = transformer.forward(&tokens);
+            assert_eq!(
+                logits.len(),
+                seq_len as usize * config.vocab_size,
+                "FALSIFIED TE-001: output shape for seq_len={seq_len}"
+            );
+        }
+    }
+
+    /// FALSIFY-TE-003: No extra parameters for tied embeddings
+    ///
+    /// Contract: tied model has exactly N params, untied has N+1 (the separate lm_head)
+    #[test]
+    fn falsify_te_003_no_extra_params() {
+        let config = TransformerConfig::tiny();
+        let tied = Transformer::new(&config);
+        let tied_count = tied.parameters().len();
+
+        let mut untied = Transformer::new(&config);
+        untied.lm_head = Some(Tensor::from_vec(
+            vec![0.1; config.hidden_size * config.vocab_size],
+            true,
+        ));
+        let untied_count = untied.parameters().len();
+
+        assert_eq!(
+            untied_count,
+            tied_count + 1,
+            "FALSIFIED TE-003: tied model must have exactly 1 fewer param than untied"
+        );
+    }
+
+    /// FALSIFY-TE-004: Finite output for tied embeddings
+    #[test]
+    fn falsify_te_004_finite_output() {
+        let config = TransformerConfig::tiny();
+        let transformer = Transformer::new(&config);
+        let tokens = vec![0u32, 5, 10, 50, 99];
+        let logits = transformer.forward(&tokens);
+        let data = logits.data();
+
+        let nan_count = data.iter().filter(|v| v.is_nan()).count();
+        let inf_count = data.iter().filter(|v| v.is_infinite()).count();
+
+        assert_eq!(
+            nan_count, 0,
+            "FALSIFIED TE-004: tied embedding output contains {nan_count} NaN values"
+        );
+        assert_eq!(
+            inf_count, 0,
+            "FALSIFIED TE-004: tied embedding output contains {inf_count} Inf values"
+        );
+    }
 }

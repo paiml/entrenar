@@ -266,4 +266,62 @@ mod tests {
         assert!(loss_distill > 0.0);
         assert!(loss_hard > 0.0);
     }
+
+    // =========================================================================
+    // FALSIFY-EMB-006/007: Temperature scaling (embedding-algebra-v1.yaml)
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had 0 FALSIFY-EMB-* temperature tests
+    //   Why 2: temperature tests existed but weren't tagged to YAML contract
+    //   Why 3: no mapping from embedding-algebra-v1.yaml to entrenar test names
+    //   Why 4: distillation loss uses temperature but was not linked to contract
+    //   Why 5: EMB-006/007 were treated as inference-only, not training
+    //
+    // References:
+    //   - provable-contracts/contracts/embedding-algebra-v1.yaml
+    //   - Hinton et al. (2015) "Distilling the Knowledge in a Neural Network"
+    // =========================================================================
+
+    /// FALSIFY-EMB-006: Temperature=1.0 is identity for softmax
+    ///
+    /// Contract: softmax(x / 1.0) == softmax(x)
+    #[test]
+    fn falsify_emb_006_temperature_identity() {
+        let logits = array![[3.0, 1.0, 0.5, -1.0]];
+
+        let softmax_raw = softmax_2d(&logits);
+        let softmax_t1 = softmax_2d(&(&logits / 1.0));
+
+        for (a, b) in softmax_raw.iter().zip(softmax_t1.iter()) {
+            assert_relative_eq!(a, b, epsilon = 1e-6);
+        }
+    }
+
+    /// FALSIFY-EMB-007: Higher temperature → more uniform distribution
+    ///
+    /// Contract: entropy(softmax(x/T_high)) > entropy(softmax(x/T_low))
+    #[test]
+    fn falsify_emb_007_temperature_monotonicity() {
+        let logits = array![[5.0, 2.0, 0.1, -3.0]];
+
+        let probs_low = softmax_2d(&(&logits / 1.0));
+        let probs_high = softmax_2d(&(&logits / 10.0));
+
+        // Compute Shannon entropy: -Σ p_i * log(p_i)
+        let entropy = |probs: &Array2<f32>| -> f32 {
+            probs
+                .iter()
+                .filter(|&&p| p > 1e-10)
+                .map(|&p| -p * p.ln())
+                .sum()
+        };
+
+        let h_low = entropy(&probs_low);
+        let h_high = entropy(&probs_high);
+
+        assert!(
+            h_high > h_low,
+            "FALSIFIED EMB-007: higher temperature should increase entropy, got h_low={h_low}, h_high={h_high}"
+        );
+    }
 }

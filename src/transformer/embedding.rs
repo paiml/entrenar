@@ -380,4 +380,30 @@ mod tests {
             );
         }
     }
+
+    // =========================================================================
+    // FALSIFY-EMB-005: Non-zero embeddings (embedding-algebra-v1.yaml)
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had E7a init tests but no FALSIFY-EMB-005 tagged test
+    //   Why 2: E7a covers init validity, not the EMB "non-zero" algebra claim
+    //   Why 3: no mapping from embedding-algebra-v1.yaml to entrenar test names
+    //   Why 4: entrenar predates the provable-contracts YAML
+    //   Why 5: forward output non-zero was assumed from init non-zero
+    // =========================================================================
+
+    /// FALSIFY-EMB-005: forward output is non-zero for valid tokens
+    #[test]
+    fn falsify_emb_005_forward_non_zero() {
+        let embed = Embedding::new(100, 64);
+        let tokens = vec![0u32, 42, 99];
+        let output = embed.forward(&tokens);
+        let data = output.data();
+
+        let l2_norm: f32 = data.iter().map(|v| v * v).sum::<f32>().sqrt();
+        assert!(
+            l2_norm > 1e-6,
+            "FALSIFIED EMB-005: forward output is all-zero (L2={l2_norm})"
+        );
+    }
 }
