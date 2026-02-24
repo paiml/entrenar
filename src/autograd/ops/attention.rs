@@ -367,4 +367,95 @@ mod tests {
             );
         }
     }
+
+    mod att_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// FALSIFY-ATT-002-prop: Output convexity for random V
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+
+            #[test]
+            fn falsify_att_002_prop_output_convexity(
+                seed in 0..1000u32,
+            ) {
+                let seq = 3;
+                let d = 4;
+
+                let q_data: Vec<f32> = (0..seq * d)
+                    .map(|i| ((i as f32 + seed as f32) * 0.37).sin())
+                    .collect();
+                let k_data: Vec<f32> = (0..seq * d)
+                    .map(|i| ((i as f32 + seed as f32) * 0.73).cos())
+                    .collect();
+                let v_data: Vec<f32> = (0..seq * d)
+                    .map(|i| ((i as f32 + seed as f32) * 1.23).sin() * 5.0)
+                    .collect();
+
+                let q = Tensor::new(Array1::from(q_data), false);
+                let k = Tensor::new(Array1::from(k_data), false);
+                let v = Tensor::new(Array1::from(v_data.clone()), false);
+
+                let output = attention(&q, &k, &v, seq, d, seq, d);
+                let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+
+                for dim in 0..d {
+                    let v_min = (0..seq).map(|j| v_data[j * d + dim]).fold(f32::INFINITY, f32::min);
+                    let v_max = (0..seq).map(|j| v_data[j * d + dim]).fold(f32::NEG_INFINITY, f32::max);
+
+                    for i in 0..seq {
+                        let val = out_slice[i * d + dim];
+                        prop_assert!(
+                            val >= v_min - 1e-4 && val <= v_max + 1e-4,
+                            "FALSIFIED ATT-002-prop: output[{}][{}] = {} outside V [{}, {}]",
+                            i, dim, val, v_min, v_max
+                        );
+                    }
+                }
+            }
+        }
+
+        /// FALSIFY-ATT-001-prop: Uniform V → output equals V (weights sum to 1)
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+
+            #[test]
+            fn falsify_att_001_prop_uniform_v(
+                seq in 2..=5usize,
+                seed in 0..1000u32,
+            ) {
+                let d = 4;
+                let v_row: Vec<f32> = (0..d)
+                    .map(|i| ((i as f32 + seed as f32) * 1.23).sin() * 5.0)
+                    .collect();
+                let v_data: Vec<f32> = v_row.iter().copied().cycle().take(seq * d).collect();
+
+                let q_data: Vec<f32> = (0..seq * d)
+                    .map(|i| ((i as f32 + seed as f32) * 0.37).sin())
+                    .collect();
+                let k_data: Vec<f32> = (0..seq * d)
+                    .map(|i| ((i as f32 + seed as f32) * 0.73).cos())
+                    .collect();
+
+                let q = Tensor::new(Array1::from(q_data), false);
+                let k = Tensor::new(Array1::from(k_data), false);
+                let v = Tensor::new(Array1::from(v_data), false);
+
+                let output = attention(&q, &k, &v, seq, d, seq, d);
+                let out_slice = output.data().as_slice().expect("contiguous").to_vec();
+
+                for i in 0..seq {
+                    for dim in 0..d {
+                        let diff = (out_slice[i * d + dim] - v_row[dim]).abs();
+                        prop_assert!(
+                            diff < 1e-4,
+                            "FALSIFIED ATT-001-prop: output[{}][{}] = {}, expected {} (uniform V)",
+                            i, dim, out_slice[i * d + dim], v_row[dim]
+                        );
+                    }
+                }
+            }
+        }
+    }
 }
