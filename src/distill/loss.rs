@@ -510,4 +510,44 @@ mod tests {
             }
         }
     }
+
+    mod softmax_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        // FALSIFY-SM-001-prop: Normalization for random vectors
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(500))]
+            #[test]
+            fn falsify_sm_001_prop_sums_to_one(
+                logits in proptest::collection::vec(-100.0_f32..100.0, 2..64),
+            ) {
+                let n = logits.len();
+                let arr = Array2::from_shape_vec((1, n), logits).unwrap();
+                let probs = softmax_2d(&arr);
+                let sum: f32 = probs.row(0).sum();
+                prop_assert!(
+                    (sum - 1.0).abs() < 1e-4,
+                    "FALSIFIED SM-001-prop: sum={} for {} elements", sum, n
+                );
+            }
+        }
+
+        // FALSIFY-SM-002-prop: Positivity for random vectors
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(500))]
+            #[test]
+            fn falsify_sm_002_prop_positive(
+                logits in proptest::collection::vec(-500.0_f32..500.0, 2..32),
+            ) {
+                let n = logits.len();
+                let arr = Array2::from_shape_vec((1, n), logits).unwrap();
+                let probs = softmax_2d(&arr);
+                for (i, &p) in probs.row(0).iter().enumerate() {
+                    prop_assert!(p >= 0.0, "FALSIFIED SM-002-prop: probs[{}]={} negative", i, p);
+                    prop_assert!(p.is_finite(), "FALSIFIED SM-002-prop: probs[{}]={} non-finite", i, p);
+                }
+            }
+        }
+    }
 }
