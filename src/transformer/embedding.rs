@@ -268,4 +268,116 @@ mod tests {
         assert_eq!(d1.as_slice().unwrap(), d2.as_slice().unwrap(),
             "FALSIFY-E7e: Same vocab+hidden must produce identical initialization");
     }
+
+    // =========================================================================
+    // FALSIFY-EM-001..004: embedding-lookup-v1.yaml contract mapping
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar has E7a-e init tests but no forward-path EM-* tests
+    //   Why 2: E7 tests validate initialization, not the lookup/forward contract
+    //   Why 3: no mapping from embedding-lookup-v1.yaml to entrenar test names
+    //   Why 4: entrenar predates the provable-contracts YAML
+    //   Why 5: forward() was assumed correct because it's "just slicing"
+    //
+    // References:
+    //   - provable-contracts/contracts/embedding-lookup-v1.yaml
+    //   - src/transformer/embedding.rs::forward()
+    // =========================================================================
+
+    /// FALSIFY-EM-001: forward output shape = seq_len * hidden_size
+    #[test]
+    fn falsify_em_001_forward_output_shape() {
+        let embed = Embedding::new(100, 32);
+
+        for seq_len in [1, 3, 10, 50] {
+            let tokens: Vec<u32> = (0..seq_len).collect();
+            let output = embed.forward(&tokens);
+            assert_eq!(
+                output.len(),
+                seq_len as usize * 32,
+                "FALSIFIED EM-001: forward({seq_len} tokens) produced {} elements, expected {}",
+                output.len(),
+                seq_len as usize * 32
+            );
+        }
+    }
+
+    /// FALSIFY-EM-001b: empty input produces empty output
+    #[test]
+    fn falsify_em_001b_forward_empty_input() {
+        let embed = Embedding::new(100, 32);
+        let output = embed.forward(&[]);
+        assert_eq!(
+            output.len(),
+            0,
+            "FALSIFIED EM-001b: empty input should produce 0 elements"
+        );
+    }
+
+    /// FALSIFY-EM-003: forward determinism (same tokens → bit-identical output)
+    #[test]
+    fn falsify_em_003_forward_determinism() {
+        let embed = Embedding::new(100, 64);
+        let tokens = vec![5u32, 42, 0, 99, 17];
+
+        let o1 = embed.forward(&tokens);
+        let o2 = embed.forward(&tokens);
+
+        assert_eq!(
+            o1.data().as_slice().unwrap(),
+            o2.data().as_slice().unwrap(),
+            "FALSIFIED EM-003: forward() is non-deterministic"
+        );
+    }
+
+    /// FALSIFY-EM-004: forward output is finite (no NaN, no Inf)
+    #[test]
+    fn falsify_em_004_forward_finite_output() {
+        let embed = Embedding::new(200, 16);
+        let tokens: Vec<u32> = (0..200).collect();
+        let output = embed.forward(&tokens);
+        let data = output.data();
+
+        let nan_count = data.iter().filter(|v| v.is_nan()).count();
+        let inf_count = data.iter().filter(|v| v.is_infinite()).count();
+
+        assert_eq!(
+            nan_count, 0,
+            "FALSIFIED EM-004: forward output contains {} NaN values",
+            nan_count
+        );
+        assert_eq!(
+            inf_count, 0,
+            "FALSIFIED EM-004: forward output contains {} Inf values",
+            inf_count
+        );
+    }
+
+    /// FALSIFY-EM-005: forward value correctness (extractive — output[i] = W[token_id])
+    #[test]
+    fn falsify_em_005_forward_value_correctness() {
+        let embed = Embedding::new(50, 8);
+        let tokens = vec![0u32, 10, 49];
+        let output = embed.forward(&tokens);
+        let out_data = output.data();
+        let weight_data = embed.weight.data();
+
+        // Token 0: output[0..8] == weight[0..8]
+        for i in 0..8 {
+            assert_eq!(
+                out_data[i], weight_data[i],
+                "FALSIFIED EM-005: output[{i}] != weight[{i}] for token 0"
+            );
+        }
+        // Token 10: output[8..16] == weight[80..88]
+        for i in 0..8 {
+            assert_eq!(
+                out_data[8 + i],
+                weight_data[80 + i],
+                "FALSIFIED EM-005: output[{}] != weight[{}] for token 10",
+                8 + i,
+                80 + i
+            );
+        }
+    }
 }
