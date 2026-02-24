@@ -314,6 +314,59 @@ mod tests {
         );
     }
 
+    /// FALSIFY-EM-002: OOB token → zeros, no panic (N-09 escape)
+    ///
+    /// Contract: token_id >= vocab_size produces zero-filled output, not a panic.
+    /// Valid tokens alongside OOB tokens must still produce correct results.
+    #[test]
+    fn falsify_em_002_oob_safety() {
+        let vocab_size = 50;
+        let hidden = 8;
+        let embed = Embedding::new(vocab_size, hidden);
+
+        // Pure OOB tokens
+        let oob_output = embed.forward(&[999, 50, 100]);
+        let oob_data = oob_output.data();
+        for (i, &v) in oob_data.iter().enumerate() {
+            assert!(
+                v.abs() < 1e-10,
+                "FALSIFIED EM-002: OOB output[{i}] = {v}, expected 0.0"
+            );
+        }
+
+        // Mixed valid + OOB: valid tokens must still be correct
+        let mixed_output = embed.forward(&[0, 999, 49]);
+        let mixed_data = mixed_output.data();
+        let weight_data = embed.weight.data();
+
+        // Token 0 (valid): should match weight row 0
+        for d in 0..hidden {
+            assert_eq!(
+                mixed_data[d],
+                weight_data[d],
+                "FALSIFIED EM-002: valid token 0 corrupted at dim {d}"
+            );
+        }
+
+        // Token 999 (OOB): should be zeros
+        for d in 0..hidden {
+            assert!(
+                mixed_data[hidden + d].abs() < 1e-10,
+                "FALSIFIED EM-002: OOB token 999 at dim {d} = {}, expected 0.0",
+                mixed_data[hidden + d]
+            );
+        }
+
+        // Token 49 (valid boundary): should match weight row 49
+        for d in 0..hidden {
+            assert_eq!(
+                mixed_data[2 * hidden + d],
+                weight_data[49 * hidden + d],
+                "FALSIFIED EM-002: valid boundary token 49 corrupted at dim {d}"
+            );
+        }
+    }
+
     /// FALSIFY-EM-003: forward determinism (same tokens → bit-identical output)
     #[test]
     fn falsify_em_003_forward_determinism() {
