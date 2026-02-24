@@ -936,4 +936,201 @@ mod tests {
         assert_eq!(nan_count, 0, "FALSIFY-A5e: Attention output must not contain NaN");
         assert_eq!(inf_count, 0, "FALSIFY-A5e: Attention output must not contain Inf");
     }
+
+    // =========================================================================
+    // FALSIFY-GQ: gqa-kernel-v1.yaml contract (entrenar MultiHeadAttention GQA)
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had FALSIFY-A tests but zero FALSIFY-GQ-* tests
+    //   Why 2: FALSIFY-A tests verify projections/shapes, not GQA invariants
+    //   Why 3: no mapping from gqa-kernel-v1.yaml to entrenar test names
+    //   Why 4: entrenar's GQA support added after FALSIFY-A tests
+    //   Why 5: GQA was "obviously correct" (just index K/V by h/heads_per_kv)
+    //
+    // References:
+    //   - provable-contracts/contracts/gqa-kernel-v1.yaml
+    //   - Ainslie et al. (2023) "GQA: Training Generalized MQT Models"
+    // =========================================================================
+
+    /// FALSIFY-GQ-001e: GQA output shape correct for various head configs
+    #[test]
+    fn falsify_gq_001e_output_shape() {
+        for (num_heads, num_kv_heads) in [(2, 2), (4, 2), (4, 1), (2, 1)] {
+            let mut config = TransformerConfig::tiny();
+            config.num_attention_heads = num_heads;
+            config.num_kv_heads = num_kv_heads;
+
+            let attn = MultiHeadAttention::new(&config);
+            let seq_len = 3;
+            let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
+            let output = attn.forward(&x, seq_len);
+
+            assert_eq!(
+                output.len(),
+                seq_len * config.hidden_size,
+                "FALSIFIED GQ-001e: output len mismatch for heads={num_heads},kv={num_kv_heads}"
+            );
+        }
+    }
+
+    /// FALSIFY-GQ-002e: MHA degeneration — kv_heads == num_heads produces finite output
+    #[test]
+    fn falsify_gq_002e_mha_degeneration() {
+        let config = TransformerConfig::tiny(); // num_heads == num_kv_heads == 2
+        assert_eq!(config.num_attention_heads, config.num_kv_heads);
+
+        let attn = MultiHeadAttention::new(&config);
+        let seq_len = 4;
+        let x = Tensor::from_vec(
+            (0..seq_len * config.hidden_size)
+                .map(|i| (i as f32 * 0.37).sin())
+                .collect(),
+            true,
+        );
+        let output = attn.forward(&x, seq_len);
+
+        let data = output.data();
+        for (i, v) in data.iter().enumerate() {
+            assert!(
+                v.is_finite(),
+                "FALSIFIED GQ-002e: MHA output[{i}] = {v} (not finite)"
+            );
+        }
+    }
+
+    /// FALSIFY-GQ-004e: Head divisibility — GQA requires num_heads % num_kv_heads == 0
+    #[test]
+    fn falsify_gq_004e_head_divisibility() {
+        // Valid configurations should not panic
+        for (nh, nkv) in [(2, 1), (2, 2), (4, 1), (4, 2), (4, 4), (8, 2), (8, 4)] {
+            let mut config = TransformerConfig::tiny();
+            config.num_attention_heads = nh;
+            config.num_kv_heads = nkv;
+            assert_eq!(
+                nh % nkv, 0,
+                "FALSIFIED GQ-004e: test config has invalid head ratio"
+            );
+            // Should not panic during construction or forward
+            let attn = MultiHeadAttention::new(&config);
+            let x = Tensor::from_vec(vec![0.1; 2 * config.hidden_size], true);
+            let _ = attn.forward(&x, 2);
+        }
+    }
+
+    /// FALSIFY-GQ-006e: MQA boundary — kv_heads=1 broadcasts single KV to all heads
+    #[test]
+    fn falsify_gq_006e_mqa_boundary() {
+        let mut config = TransformerConfig::tiny();
+        config.num_attention_heads = 4;
+        config.num_kv_heads = 1;
+        // Adjust hidden_size to be divisible by 4 heads
+        config.hidden_size = 64;
+
+        let attn = MultiHeadAttention::new(&config);
+        let seq_len = 3;
+        let x = Tensor::from_vec(
+            (0..seq_len * config.hidden_size)
+                .map(|i| (i as f32 * 0.73).cos())
+                .collect(),
+            true,
+        );
+        let output = attn.forward(&x, seq_len);
+
+        assert_eq!(
+            output.len(),
+            seq_len * config.hidden_size,
+            "FALSIFIED GQ-006e: MQA output size wrong"
+        );
+
+        // All finite
+        let data = output.data();
+        for (i, v) in data.iter().enumerate() {
+            assert!(
+                v.is_finite(),
+                "FALSIFIED GQ-006e: MQA output[{i}] = {v} (not finite)"
+            );
+        }
+    }
+
+    mod gq_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// FALSIFY-GQ-001e-prop: GQA output shape for random configs
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(50))]
+
+            #[test]
+            fn falsify_gq_001e_prop_output_shape(
+                config_idx in 0..4usize,
+                seq_len in 2..=6usize,
+                seed in 0..500u32,
+            ) {
+                let configs: [(usize, usize); 4] = [
+                    (2, 2), (2, 1), (4, 2), (4, 1),
+                ];
+                let (num_heads, num_kv_heads) = configs[config_idx];
+                let mut config = TransformerConfig::tiny();
+                config.num_attention_heads = num_heads;
+                config.num_kv_heads = num_kv_heads;
+
+                let attn = MultiHeadAttention::new(&config);
+                let data: Vec<f32> = (0..seq_len * config.hidden_size)
+                    .map(|i| ((i as f32 + seed as f32) * 0.37).sin())
+                    .collect();
+                let x = Tensor::from_vec(data, true);
+                let output = attn.forward(&x, seq_len);
+
+                prop_assert_eq!(
+                    output.len(),
+                    seq_len * config.hidden_size,
+                    "FALSIFIED GQ-001e-prop: output len mismatch"
+                );
+
+                // All finite
+                for v in output.data().iter() {
+                    prop_assert!(
+                        v.is_finite(),
+                        "FALSIFIED GQ-001e-prop: non-finite output"
+                    );
+                }
+            }
+        }
+
+        /// FALSIFY-GQ-006e-prop: MQA boundary with random inputs
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(30))]
+
+            #[test]
+            fn falsify_gq_006e_prop_mqa_boundary(
+                seed in 0..500u32,
+                seq_len in 2..=5usize,
+            ) {
+                let mut config = TransformerConfig::tiny();
+                config.num_attention_heads = 4;
+                config.num_kv_heads = 1;
+                config.hidden_size = 64;
+
+                let attn = MultiHeadAttention::new(&config);
+                let data: Vec<f32> = (0..seq_len * config.hidden_size)
+                    .map(|i| ((i as f32 + seed as f32) * 0.73).cos())
+                    .collect();
+                let x = Tensor::from_vec(data, true);
+                let output = attn.forward(&x, seq_len);
+
+                prop_assert_eq!(
+                    output.len(),
+                    seq_len * config.hidden_size,
+                    "FALSIFIED GQ-006e-prop: MQA output len mismatch"
+                );
+
+                for v in output.data().iter() {
+                    prop_assert!(
+                        v.is_finite(),
+                        "FALSIFIED GQ-006e-prop: non-finite MQA output"
+                    );
+                }
+            }
+        }
+    }
 }
