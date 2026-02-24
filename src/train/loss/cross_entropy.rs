@@ -203,3 +203,247 @@ mod tests {
         assert!(grad[1].is_finite());
     }
 }
+
+// =========================================================================
+// FALSIFY-CE: cross-entropy-kernel-v1.yaml contract (entrenar CrossEntropyLoss)
+//
+// Five-Whys (PMAT-354):
+//   Why 1: entrenar had 7 CE tests but zero FALSIFY-CE-* contract tests
+//   Why 2: existing tests verify API shape, not mathematical invariants
+//   Why 3: no mapping from cross-entropy-kernel-v1.yaml claims to test names
+//   Why 4: entrenar CE predates the provable-contracts YAML convention
+//   Why 5: CE was "obviously correct" (standard softmax + NLL)
+//
+// References:
+//   - provable-contracts/contracts/cross-entropy-kernel-v1.yaml
+//   - Shannon (1948) "A Mathematical Theory of Communication"
+// =========================================================================
+#[cfg(test)]
+mod ce_contract_tests {
+    use super::*;
+    use ndarray::Array1;
+
+    /// Helper: create one-hot targets
+    fn one_hot(idx: usize, len: usize) -> Vec<f32> {
+        let mut v = vec![0.0; len];
+        v[idx] = 1.0;
+        v
+    }
+
+    /// FALSIFY-CE-001: Non-negativity — CE(targets, logits) >= 0
+    ///
+    /// Contract: Cross-entropy of valid probability targets is always non-negative.
+    #[test]
+    fn falsify_ce_001_non_negativity() {
+        let ce = CrossEntropyLoss;
+
+        let cases: Vec<(Vec<f32>, Vec<f32>)> = vec![
+            (vec![2.0, 1.0, 0.5], one_hot(0, 3)),
+            (vec![0.0, 0.0, 0.0], one_hot(1, 3)),
+            (vec![-10.0, 10.0], one_hot(0, 2)),
+            (vec![100.0, -100.0, 0.0], one_hot(2, 3)),
+            (vec![0.1, 0.2, 0.3, 0.4], one_hot(3, 4)),
+        ];
+
+        for (i, (logits, targets)) in cases.iter().enumerate() {
+            let pred = Tensor::from_vec(logits.clone(), false);
+            let tgt = Tensor::from_vec(targets.clone(), false);
+            let loss = ce.forward(&pred, &tgt);
+            let val = loss.data()[0];
+            assert!(
+                val >= -1e-6,
+                "FALSIFIED CE-001 case {i}: CE = {val} < 0"
+            );
+        }
+    }
+
+    /// FALSIFY-CE-002: Log-softmax upper bound — log_softmax(x)_i <= 0
+    ///
+    /// Contract: All log-softmax values must be non-positive.
+    #[test]
+    fn falsify_ce_002_log_softmax_upper_bound() {
+        let cases: Vec<Vec<f32>> = vec![
+            vec![1.0, 2.0, 3.0],
+            vec![0.0, 0.0, 0.0],
+            vec![-100.0, 100.0],
+            vec![1000.0, 1001.0, 999.0],
+            vec![-500.0, -500.0, -500.0, -500.0],
+        ];
+
+        for (i, logits) in cases.iter().enumerate() {
+            let x = Array1::from(logits.clone());
+            let probs = CrossEntropyLoss::softmax(&x);
+            for (j, &p) in probs.iter().enumerate() {
+                let log_p = p.ln();
+                assert!(
+                    log_p <= 1e-6,
+                    "FALSIFIED CE-002 case {i}[{j}]: log_softmax = {log_p} > 0"
+                );
+            }
+        }
+    }
+
+    /// FALSIFY-CE-003: Numerical stability — no NaN/Inf for finite logits
+    ///
+    /// Contract: CE must produce finite output for all finite inputs.
+    #[test]
+    fn falsify_ce_003_numerical_stability() {
+        let ce = CrossEntropyLoss;
+
+        let extreme_cases: Vec<(Vec<f32>, Vec<f32>)> = vec![
+            (vec![500.0, -500.0, 0.0], one_hot(0, 3)),
+            (vec![-1000.0, -1000.0, -1000.0], one_hot(1, 3)),
+            (vec![88.0, 88.0], one_hot(0, 2)),  // near f32 exp overflow
+            (vec![-88.0, -88.0, -88.0], one_hot(2, 3)),  // near f32 exp underflow
+        ];
+
+        for (i, (logits, targets)) in extreme_cases.iter().enumerate() {
+            let pred = Tensor::from_vec(logits.clone(), false);
+            let tgt = Tensor::from_vec(targets.clone(), false);
+            let loss = ce.forward(&pred, &tgt);
+            let val = loss.data()[0];
+            assert!(
+                val.is_finite(),
+                "FALSIFIED CE-003 case {i}: CE = {val} (not finite)"
+            );
+        }
+    }
+
+    /// FALSIFY-CE-006: Perfect prediction — CE approaches 0 as dominant logit grows
+    ///
+    /// Contract: CE(one_hot(k), logits) → 0 when logits_k >> logits_j for j≠k
+    #[test]
+    fn falsify_ce_006_perfect_prediction() {
+        let ce = CrossEntropyLoss;
+
+        for &target in &[0, 1, 2] {
+            let mut logits = vec![-50.0; 3];
+            logits[target] = 50.0;
+            let pred = Tensor::from_vec(logits, false);
+            let tgt = Tensor::from_vec(one_hot(target, 3), false);
+            let loss = ce.forward(&pred, &tgt);
+            let val = loss.data()[0];
+            assert!(
+                val < 1e-3,
+                "FALSIFIED CE-006: CE(one_hot({target}), dominant) = {val}, expected ≈ 0"
+            );
+        }
+    }
+
+    /// FALSIFY-CE-001b: Uniform logits — CE = log(C)
+    ///
+    /// Contract: When all logits are equal, softmax is uniform 1/C,
+    /// so CE = -log(1/C) = log(C).
+    #[test]
+    fn falsify_ce_001b_uniform_logits() {
+        let ce = CrossEntropyLoss;
+
+        for &nc in &[2_usize, 3, 5, 10] {
+            let logits = vec![1.0; nc];
+            let targets = one_hot(0, nc);
+            let pred = Tensor::from_vec(logits, false);
+            let tgt = Tensor::from_vec(targets, false);
+            let loss = ce.forward(&pred, &tgt);
+            let val = loss.data()[0];
+            let expected = (nc as f32).ln();
+            let diff = (val - expected).abs();
+            assert!(
+                diff < 1e-4,
+                "FALSIFIED CE-001b: CE(uniform, C={nc}) = {val}, expected log({nc}) = {expected}"
+            );
+        }
+    }
+
+    mod ce_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// FALSIFY-CE-001-prop: Non-negativity for random one-hot targets
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(200))]
+
+            #[test]
+            fn falsify_ce_001_prop_non_negativity(
+                nc in 2..=10usize,
+                target in 0..10usize,
+                seed in 0..1000u32,
+            ) {
+                let target = target % nc;
+                let logits: Vec<f32> = (0..nc)
+                    .map(|i| ((i as f32 + seed as f32) * 0.37).sin() * 10.0)
+                    .collect();
+
+                let ce = CrossEntropyLoss;
+                let pred = Tensor::from_vec(logits, false);
+                let tgt = Tensor::from_vec(one_hot(target, nc), false);
+                let loss = ce.forward(&pred, &tgt);
+                let val = loss.data()[0];
+                prop_assert!(
+                    val >= -1e-6,
+                    "FALSIFIED CE-001-prop: CE = {} < 0 (nc={}, target={})",
+                    val, nc, target
+                );
+            }
+        }
+
+        /// FALSIFY-CE-003-prop: Numerical stability for random logits
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(200))]
+
+            #[test]
+            fn falsify_ce_003_prop_finite_output(
+                nc in 2..=10usize,
+                target in 0..10usize,
+                scale in 0.1f32..100.0,
+                seed in 0..1000u32,
+            ) {
+                let target = target % nc;
+                let logits: Vec<f32> = (0..nc)
+                    .map(|i| ((i as f32 + seed as f32) * 0.73).cos() * scale)
+                    .collect();
+
+                let ce = CrossEntropyLoss;
+                let pred = Tensor::from_vec(logits, false);
+                let tgt = Tensor::from_vec(one_hot(target, nc), false);
+                let loss = ce.forward(&pred, &tgt);
+                let val = loss.data()[0];
+                prop_assert!(
+                    val.is_finite(),
+                    "FALSIFIED CE-003-prop: CE = {} (not finite) for nc={}, scale={}",
+                    val, nc, scale
+                );
+            }
+        }
+
+        /// FALSIFY-CE-002-prop: Log-softmax upper bound for random inputs
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(200))]
+
+            #[test]
+            fn falsify_ce_002_prop_log_softmax_bound(
+                nc in 2..=10usize,
+                scale in 0.1f32..100.0,
+                seed in 0..1000u32,
+            ) {
+                let logits: Vec<f32> = (0..nc)
+                    .map(|i| ((i as f32 + seed as f32) * 0.37).sin() * scale)
+                    .collect();
+                let x = Array1::from(logits);
+                let probs = CrossEntropyLoss::softmax(&x);
+                for (j, &p) in probs.iter().enumerate() {
+                    prop_assert!(
+                        p >= 0.0 && p <= 1.0 + 1e-6,
+                        "FALSIFIED CE-002-prop: softmax[{}] = {} outside [0,1]",
+                        j, p
+                    );
+                    let log_p = p.ln();
+                    prop_assert!(
+                        log_p <= 1e-6,
+                        "FALSIFIED CE-002-prop: log(softmax[{}]) = {} > 0",
+                        j, log_p
+                    );
+                }
+            }
+        }
+    }
+}
