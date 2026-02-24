@@ -509,7 +509,10 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
 /// 3. Demo mode fallback for testing
 fn load_lm_batches(spec: &TrainSpec) -> Result<Vec<LMBatch>> {
     let batch_size = spec.data.batch_size;
-    let seq_len = spec.data.seq_len.unwrap_or(512);
+    let seq_len = spec.data.seq_len.unwrap_or_else(|| {
+        eprintln!("Warning: seq_len not specified, defaulting to 512 for LM batch loading");
+        512
+    });
     let tokenizer = load_tokenizer(spec)?;
 
     if let Some(result) = try_load_lm_from_file(spec, tokenizer.as_ref(), batch_size, seq_len) {
