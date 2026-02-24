@@ -218,3 +218,57 @@ impl BackwardOp for SoftmaxBackward {
         }
     }
 }
+
+// =========================================================================
+// FALSIFY-GE: gelu-kernel-v1.yaml contract (entrenar autograd gelu)
+// =========================================================================
+#[cfg(test)]
+mod gelu_contract_tests {
+    use super::*;
+    use ndarray::Array1;
+
+    /// FALSIFY-GE-001: Non-negativity — gelu(x) >= 0 for positive x
+    #[test]
+    fn falsify_ge_001_non_negativity() {
+        let x = Tensor::new(Array1::from(vec![0.001, 0.1, 1.0, 5.0, 10.0, 100.0]), false);
+        let y = gelu(&x);
+        for (i, &val) in y.data().iter().enumerate() {
+            assert!(val >= 0.0, "FALSIFIED GE-001: gelu(positive)[{i}] = {val} < 0");
+        }
+    }
+
+    /// FALSIFY-GE-002: Monotonicity — ordering preserved for positive inputs
+    #[test]
+    fn falsify_ge_002_positive_monotonicity() {
+        let x = Tensor::new(Array1::from(vec![0.1, 0.5, 1.0, 2.0, 5.0, 10.0]), false);
+        let y = gelu(&x);
+        let data = y.data();
+        for i in 1..data.len() {
+            assert!(
+                data[i] > data[i - 1],
+                "FALSIFIED GE-002: gelu not monotonic: [{i}]={} not > [{}]={}",
+                data[i], i - 1, data[i - 1]
+            );
+        }
+    }
+
+    /// FALSIFY-GE-003: Zero preservation — gelu(0) = 0
+    #[test]
+    fn falsify_ge_003_zero_preservation() {
+        let x = Tensor::new(Array1::from(vec![0.0]), false);
+        let y = gelu(&x);
+        assert!(y.data()[0].abs() < 1e-7, "FALSIFIED GE-003: gelu(0) = {}", y.data()[0]);
+    }
+
+    /// FALSIFY-GE-006: Large input stability
+    #[test]
+    fn falsify_ge_006_large_input_stability() {
+        let x = Tensor::new(Array1::from(vec![10.0, 50.0, -10.0, -50.0]), false);
+        let y = gelu(&x);
+        let d = y.data();
+        assert!((d[0] - 10.0).abs() < 0.01, "FALSIFIED GE-006: gelu(10) = {}", d[0]);
+        assert!((d[1] - 50.0).abs() < 0.01, "FALSIFIED GE-006: gelu(50) = {}", d[1]);
+        assert!(d[2].abs() < 0.01, "FALSIFIED GE-006: gelu(-10) = {}", d[2]);
+        assert!(d[3].abs() < 0.01, "FALSIFIED GE-006: gelu(-50) = {}", d[3]);
+    }
+}
