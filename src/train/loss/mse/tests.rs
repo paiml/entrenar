@@ -321,3 +321,177 @@ fn test_gradient_accumulation_huber() {
     assert!(grad[0].is_finite());
     assert!(grad[1].is_finite());
 }
+
+// =========================================================================
+// FALSIFY-LF: loss-functions-v1.yaml contract (entrenar MSE, L1, Huber)
+//
+// Five-Whys (PMAT-354):
+//   Why 1: entrenar had 20+ loss tests but zero FALSIFY-LF-* tests
+//   Why 2: tests verify specific values, not mathematical invariants
+//   Why 3: no mapping from loss-functions-v1.yaml to entrenar test names
+//   Why 4: entrenar predates the provable-contracts YAML convention
+//   Why 5: losses were "obviously correct" (textbook formulas)
+//
+// References:
+//   - provable-contracts/contracts/loss-functions-v1.yaml
+// =========================================================================
+
+/// FALSIFY-LF-001e: MSE is non-negative
+#[test]
+fn falsify_lf_001e_mse_non_negative() {
+    for vals in [
+        (vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]),
+        (vec![-10.0, 0.0, 10.0], vec![5.0, -5.0, 0.0]),
+        (vec![0.0, 0.0], vec![100.0, -100.0]),
+    ] {
+        let pred = Tensor::from_vec(vals.0.clone(), true);
+        let target = Tensor::from_vec(vals.1, false);
+        let loss = MSELoss.forward(&pred, &target);
+        assert!(
+            loss.data()[0] >= 0.0,
+            "FALSIFIED LF-001e: MSE = {} < 0 for pred={:?}",
+            loss.data()[0],
+            vals.0
+        );
+    }
+}
+
+/// FALSIFY-LF-002e: Loss = 0 when pred == target (MSE, L1, Huber)
+#[test]
+fn falsify_lf_002e_zero_at_perfect() {
+    let data = vec![1.0, -2.0, 3.5, 0.0];
+    let pred = Tensor::from_vec(data.clone(), true);
+    let target = Tensor::from_vec(data, false);
+
+    let mse = MSELoss.forward(&pred, &target);
+    assert!(
+        mse.data()[0].abs() < 1e-6,
+        "FALSIFIED LF-002e: MSE(x,x) = {}",
+        mse.data()[0]
+    );
+
+    let pred2 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], true);
+    let target2 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], false);
+    let l1 = L1Loss.forward(&pred2, &target2);
+    assert!(
+        l1.data()[0].abs() < 1e-6,
+        "FALSIFIED LF-002e: L1(x,x) = {}",
+        l1.data()[0]
+    );
+
+    let pred3 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], true);
+    let target3 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], false);
+    let huber = HuberLoss::new(1.0).forward(&pred3, &target3);
+    assert!(
+        huber.data()[0].abs() < 1e-6,
+        "FALSIFIED LF-002e: Huber(x,x) = {}",
+        huber.data()[0]
+    );
+}
+
+/// FALSIFY-LF-004e: Huber continuity at transition point
+#[test]
+fn falsify_lf_004e_huber_transition_continuity() {
+    let delta = 1.0;
+    let eps = 0.001;
+
+    // Just below delta: quadratic region, 0.5 * (delta-eps)^2
+    let pred_below = Tensor::from_vec(vec![0.0], true);
+    let target_below = Tensor::from_vec(vec![delta - eps], false);
+    let loss_below = HuberLoss::new(delta).forward(&pred_below, &target_below);
+
+    // Just above delta: linear region, delta * (|delta+eps| - 0.5*delta)
+    let pred_above = Tensor::from_vec(vec![0.0], true);
+    let target_above = Tensor::from_vec(vec![delta + eps], false);
+    let loss_above = HuberLoss::new(delta).forward(&pred_above, &target_above);
+
+    // The two should be close (continuous transition)
+    let diff = (loss_above.data()[0] - loss_below.data()[0]).abs();
+    assert!(
+        diff < 2.0 * eps,
+        "FALSIFIED LF-004e: Huber discontinuous at delta: |L(δ+ε) - L(δ-ε)| = {diff}"
+    );
+}
+
+/// FALSIFY-LF-005e: L1(a, b) == L1(b, a)
+#[test]
+fn falsify_lf_005e_l1_symmetric() {
+    let a = Tensor::from_vec(vec![1.0, -3.0, 5.0], true);
+    let b = Tensor::from_vec(vec![4.0, 2.0, -1.0], false);
+    let loss_ab = L1Loss.forward(&a, &b);
+
+    let a2 = Tensor::from_vec(vec![4.0, 2.0, -1.0], true);
+    let b2 = Tensor::from_vec(vec![1.0, -3.0, 5.0], false);
+    let loss_ba = L1Loss.forward(&a2, &b2);
+
+    assert!(
+        (loss_ab.data()[0] - loss_ba.data()[0]).abs() < 1e-6,
+        "FALSIFIED LF-005e: L1(a,b)={} != L1(b,a)={}",
+        loss_ab.data()[0],
+        loss_ba.data()[0]
+    );
+}
+
+mod lf_proptest_falsify {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// FALSIFY-LF-001e-prop: MSE non-negative for random inputs
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn falsify_lf_001e_prop_mse_non_negative(
+            seed in 0..1000u32,
+            n in 2..=16usize,
+        ) {
+            let pred_data: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 + seed as f32) * 0.37).sin() * 10.0)
+                .collect();
+            let target_data: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 + seed as f32) * 0.73).cos() * 10.0)
+                .collect();
+
+            let pred = Tensor::from_vec(pred_data, true);
+            let target = Tensor::from_vec(target_data, false);
+            let loss = MSELoss.forward(&pred, &target);
+            prop_assert!(
+                loss.data()[0] >= 0.0,
+                "FALSIFIED LF-001e-prop: MSE = {} < 0",
+                loss.data()[0]
+            );
+        }
+    }
+
+    /// FALSIFY-LF-005e-prop: L1 symmetry for random inputs
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(100))]
+
+        #[test]
+        fn falsify_lf_005e_prop_l1_symmetric(
+            seed in 0..1000u32,
+            n in 2..=16usize,
+        ) {
+            let a_data: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 + seed as f32) * 0.37).sin() * 10.0)
+                .collect();
+            let b_data: Vec<f32> = (0..n)
+                .map(|i| ((i as f32 + seed as f32) * 0.73).cos() * 10.0)
+                .collect();
+
+            let loss_ab = L1Loss.forward(
+                &Tensor::from_vec(a_data.clone(), true),
+                &Tensor::from_vec(b_data.clone(), false),
+            );
+            let loss_ba = L1Loss.forward(
+                &Tensor::from_vec(b_data, true),
+                &Tensor::from_vec(a_data, false),
+            );
+            prop_assert!(
+                (loss_ab.data()[0] - loss_ba.data()[0]).abs() < 1e-5,
+                "FALSIFIED LF-005e-prop: L1(a,b)={} != L1(b,a)={}",
+                loss_ab.data()[0], loss_ba.data()[0]
+            );
+        }
+    }
+}
