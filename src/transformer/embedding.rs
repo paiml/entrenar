@@ -445,6 +445,95 @@ mod tests {
     //   Why 5: forward output non-zero was assumed from init non-zero
     // =========================================================================
 
+    // =========================================================================
+    // FALSIFY-EMB-001: Lookup determinism (embedding-algebra-v1.yaml)
+    //
+    // Five-Whys (PMAT-354, Phase 8):
+    //   Why 1: entrenar had EM-003 (determinism) but not EMB-001 (algebra contract)
+    //   Why 2: EM-003 tests forward() determinism, EMB-001 tests per-token lookup identity
+    //   Why 3: EMB-001 YAML says "proptest: embed(t) == embed(t) for random t"
+    //   Why 4: no mapping from embedding-algebra-v1.yaml EMB-001 to entrenar tests
+    //   Why 5: lookup determinism assumed from EM-003 but never isolated per-token
+    // =========================================================================
+
+    /// FALSIFY-EMB-001: same token always returns same vector
+    #[test]
+    fn falsify_emb_001_lookup_determinism() {
+        let embed = Embedding::new(200, 48);
+        for t in [0u32, 1, 42, 100, 199] {
+            let v1 = embed.forward(&[t]);
+            let v2 = embed.forward(&[t]);
+            assert_eq!(
+                v1.data(),
+                v2.data(),
+                "FALSIFIED EMB-001: embed({t}) != embed({t}) — non-deterministic lookup"
+            );
+        }
+    }
+
+    // =========================================================================
+    // FALSIFY-EMB-002: Shape preservation (embedding-algebra-v1.yaml)
+    //
+    // Five-Whys (PMAT-354, Phase 8):
+    //   Why 1: entrenar EM-001 tests output length but not EMB-002 per-token dimension
+    //   Why 2: EMB-002 YAML says "embedding output is d_model-dimensional"
+    //   Why 3: shape preservation for different hidden sizes never parametrically tested
+    //   Why 4: entrenar only used hidden_size=64 in EM-001 tests
+    //   Why 5: no systematic d_model variation in embedding tests
+    // =========================================================================
+
+    /// FALSIFY-EMB-002: embedding output dimension matches hidden_size
+    #[test]
+    fn falsify_emb_002_shape_preservation() {
+        for (v, d) in [(100, 32), (200, 64), (500, 128), (50, 16)] {
+            let embed = Embedding::new(v, d);
+            let output = embed.forward(&[0, 1, 2]);
+            assert_eq!(
+                output.data().len(),
+                3 * d,
+                "FALSIFIED EMB-002: vocab={v}, d_model={d}, output len={} != 3*{d}",
+                output.data().len()
+            );
+        }
+    }
+
+    // =========================================================================
+    // FALSIFY-EMB-004: Vocabulary bounds (embedding-algebra-v1.yaml)
+    //
+    // Five-Whys (PMAT-354, Phase 8):
+    //   Why 1: entrenar EM-002 tests OOB safety but not EMB-004 (algebra perspective)
+    //   Why 2: EMB-004 YAML says "out-of-range IDs rejected"
+    //   Why 3: entrenar silently zeros OOB (N-09) — need explicit boundary test
+    //   Why 4: boundary between valid and OOB never tested at exact vocab_size edge
+    //   Why 5: no EMB-004 tagged test existed in entrenar
+    // =========================================================================
+
+    /// FALSIFY-EMB-004: valid tokens non-zero, OOB tokens zero
+    #[test]
+    fn falsify_emb_004_vocabulary_bounds() {
+        let vocab = 50;
+        let d = 16;
+        let embed = Embedding::new(vocab, d);
+
+        // Last valid token must be non-zero
+        let valid_output = embed.forward(&[vocab as u32 - 1]);
+        let valid_norm: f32 = valid_output.data().iter().map(|v| v * v).sum();
+        assert!(
+            valid_norm > 0.0,
+            "FALSIFIED EMB-004: valid token {} produced zero embedding",
+            vocab - 1
+        );
+
+        // First OOB token must be zero (N-09 escape)
+        let oob_output = embed.forward(&[vocab as u32]);
+        let oob_norm: f32 = oob_output.data().iter().map(|v| v * v).sum();
+        assert!(
+            oob_norm == 0.0,
+            "FALSIFIED EMB-004: OOB token {} produced non-zero (norm={oob_norm})",
+            vocab
+        );
+    }
+
     /// FALSIFY-EMB-005: forward output is non-zero for valid tokens
     #[test]
     fn falsify_emb_005_forward_non_zero() {
