@@ -258,4 +258,76 @@ mod tests {
         assert!(output.data().iter().all(|v| v.is_finite()),
             "FALSIFY-N5e: RMSNorm must handle extreme values without Inf/NaN");
     }
+
+    // =========================================================================
+    // FALSIFY-RN: rmsnorm-kernel-v1.yaml contract (entrenar RMSNorm)
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had 10+ RMSNorm tests but zero FALSIFY-RN-* tagged tests
+    //   Why 2: existing tests verify API behavior, not mathematical invariants
+    //   Why 3: no mapping from rmsnorm-kernel-v1.yaml to entrenar test names
+    //   Why 4: entrenar predates the provable-contracts YAML convention
+    //   Why 5: norm was "obviously correct" (divide by RMS, multiply by weight)
+    //
+    // References:
+    //   - provable-contracts/contracts/rmsnorm-kernel-v1.yaml
+    //   - Zhang & Sennrich (2019) "Root Mean Square Layer Normalization"
+    // =========================================================================
+
+    /// FALSIFY-RN-002: Scale invariance — RMSNorm(α·x) = sign(α)·RMSNorm(x)
+    #[test]
+    fn falsify_rn_002_scale_invariance() {
+        let norm = RMSNorm::new(4, 1e-6);
+        let x = Tensor::from_vec(vec![1.0, -2.0, 3.0, -0.5], true);
+        let y_base = norm.forward(&x);
+
+        for &alpha in &[2.0_f32, 0.5, -1.0, 10.0] {
+            let x_scaled = Tensor::from_vec(
+                x.data().iter().map(|&v| v * alpha).collect(),
+                true,
+            );
+            let y_scaled = norm.forward(&x_scaled);
+
+            let sign = alpha.signum();
+            for (i, (&ys, &yb)) in y_scaled.data().iter().zip(y_base.data().iter()).enumerate() {
+                let expected = sign * yb;
+                let diff = (ys - expected).abs();
+                assert!(
+                    diff < 1e-3,
+                    "FALSIFIED RN-002: RMSNorm({alpha}·x)[{i}] = {ys}, expected {expected}"
+                );
+            }
+        }
+    }
+
+    /// FALSIFY-RN-004: Zero vector — RMSNorm(0) = 0 (not NaN)
+    #[test]
+    fn falsify_rn_004_zero_vector() {
+        let norm = RMSNorm::new(4, 1e-6);
+        let x = Tensor::from_vec(vec![0.0, 0.0, 0.0, 0.0], true);
+        let y = norm.forward(&x);
+
+        for (i, &val) in y.data().iter().enumerate() {
+            assert!(
+                val.is_finite(),
+                "FALSIFIED RN-004: RMSNorm(0)[{i}] = {val} (expected finite)"
+            );
+        }
+    }
+
+    /// FALSIFY-RN-005: Unit γ normalized RMS ≈ 1
+    #[test]
+    fn falsify_rn_005_unit_gamma_normalized_rms() {
+        let norm = RMSNorm::new(8, 1e-6);
+        let x = Tensor::from_vec(vec![1.0, -2.0, 3.0, -0.5, 4.0, -1.0, 2.5, -3.0], true);
+        let y = norm.forward(&x);
+        let y_data = y.data();
+
+        let rms_out: f32 = (y_data.iter().map(|&v| v * v).sum::<f32>() / y_data.len() as f32).sqrt();
+
+        assert!(
+            (rms_out - 1.0).abs() < 0.01,
+            "FALSIFIED RN-005: RMS(RMSNorm(x)) = {rms_out}, expected ≈ 1.0"
+        );
+    }
 }
