@@ -398,4 +398,116 @@ mod tests {
         let t2 = transpose(&t1, 3, 2);
         assert_eq!(data, t2);
     }
+
+    // =========================================================================
+    // FALSIFY-MM: matmul-kernel-v1.yaml contract (entrenar autograd matmul)
+    //
+    // Five-Whys (PMAT-354):
+    //   Why 1: entrenar had 10 matmul tests but zero FALSIFY-MM-* tests
+    //   Why 2: unit tests verify 2x2 cases and backward, not invariants
+    //   Why 3: no mapping from matmul-kernel-v1.yaml to entrenar test names
+    //   Why 4: entrenar predates the provable-contracts YAML convention
+    //   Why 5: matmul was "obviously correct" (textbook GEMM + autograd)
+    //
+    // References:
+    //   - provable-contracts/contracts/matmul-kernel-v1.yaml
+    // =========================================================================
+
+    /// FALSIFY-MM-001e: Shape correctness — output is [m, n]
+    #[test]
+    fn falsify_mm_001e_shape_correctness() {
+        for (m, k, n) in [(2, 3, 4), (1, 5, 1), (4, 4, 4), (3, 1, 2)] {
+            let result = matmul_compute(&vec![1.0; m * k], &vec![1.0; k * n], m, k, n);
+            assert_eq!(
+                result.len(),
+                m * n,
+                "FALSIFIED MM-001e: output len = {}, expected {} for ({m}x{k}) @ ({k}x{n})",
+                result.len(),
+                m * n
+            );
+        }
+    }
+
+    /// FALSIFY-MM-005e: Identity matrix — A @ I = A
+    #[test]
+    fn falsify_mm_005e_identity_matrix() {
+        let m = 3;
+        let k = 4;
+        let a: Vec<f32> = (0..m * k).map(|i| (i as f32 + 1.0) * 0.5).collect();
+        let mut identity = vec![0.0; k * k];
+        for i in 0..k {
+            identity[i * k + i] = 1.0;
+        }
+        let result = matmul_compute(&a, &identity, m, k, k);
+        for (i, (&got, &exp)) in result.iter().zip(a.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-5,
+                "FALSIFIED MM-005e: (A@I)[{i}] = {got}, expected {exp}"
+            );
+        }
+    }
+
+    /// FALSIFY-MM-002e: Numerical accuracy against reference
+    #[test]
+    fn falsify_mm_002e_numerical_accuracy() {
+        // 2x3 @ 3x2 known result
+        let a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let b = vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+        let result = matmul_compute(&a, &b, 2, 3, 2);
+        let expected = [58.0, 64.0, 139.0, 154.0];
+        for (i, (&got, &exp)) in result.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-4,
+                "FALSIFIED MM-002e: result[{i}] = {got}, expected {exp}"
+            );
+        }
+    }
+
+    mod mm_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// FALSIFY-MM-001e-prop: Shape correctness for random dimensions
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+
+            #[test]
+            fn falsify_mm_001e_prop_shape(
+                m in 1..=8usize,
+                k in 1..=8usize,
+                n in 1..=8usize,
+            ) {
+                let result = matmul_compute(&vec![1.0; m * k], &vec![1.0; k * n], m, k, n);
+                prop_assert_eq!(result.len(), m * n);
+            }
+        }
+
+        /// FALSIFY-MM-005e-prop: Identity matrix for random dimensions
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(50))]
+
+            #[test]
+            fn falsify_mm_005e_prop_identity(
+                m in 1..=6usize,
+                k in 1..=6usize,
+                seed in 0..500u32,
+            ) {
+                let a: Vec<f32> = (0..m * k)
+                    .map(|i| ((i as f32 + seed as f32) * 0.37).sin())
+                    .collect();
+                let mut identity = vec![0.0; k * k];
+                for i in 0..k {
+                    identity[i * k + i] = 1.0;
+                }
+                let result = matmul_compute(&a, &identity, m, k, k);
+                for (i, (&got, &exp)) in result.iter().zip(a.iter()).enumerate() {
+                    prop_assert!(
+                        (got - exp).abs() < 1e-4,
+                        "FALSIFIED MM-005e-prop: (A@I)[{}] = {}, expected {}",
+                        i, got, exp
+                    );
+                }
+            }
+        }
+    }
 }
