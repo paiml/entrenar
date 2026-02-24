@@ -625,4 +625,80 @@ mod tests {
             }
         }
     }
+
+    // =========================================================================
+    // PROPTEST FALSIFY: EMB algebra property-based falsification
+    //
+    // Five-Whys (PMAT-354, Phase 9):
+    //   Why 1: EMB-001/002/004/005 had zero proptest coverage in entrenar
+    //   Why 2: Determinism (EMB-001) only tested 5 fixed token IDs
+    //   Why 3: Shape preservation (EMB-002) only tested 4 (vocab, d) pairs
+    //   Why 4: Vocabulary bounds (EMB-004) only tested vocab=50
+    //   Why 5: proptest explores random token/dim combos at scale
+    // =========================================================================
+
+    mod emb_proptest_falsify {
+        use super::*;
+        use proptest::prelude::*;
+
+        // EMB-001-prop: lookup determinism for random tokens
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+            #[test]
+            fn falsify_emb_001_prop_determinism(
+                vocab_size in prop::sample::select(vec![50_usize, 100, 200]),
+                hidden_size in prop::sample::select(vec![16_usize, 32, 64]),
+                token_id in 0_u32..49,
+            ) {
+                let embed = Embedding::new(vocab_size, hidden_size);
+                let v1 = embed.forward(&[token_id]);
+                let v2 = embed.forward(&[token_id]);
+                prop_assert_eq!(
+                    v1.data(), v2.data(),
+                    "FALSIFIED EMB-001-prop: embed({}) non-deterministic (v={}, h={})",
+                    token_id, vocab_size, hidden_size
+                );
+            }
+        }
+
+        // EMB-002-prop: shape preservation for random dimensions
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+            #[test]
+            fn falsify_emb_002_prop_shape(
+                vocab_size in prop::sample::select(vec![50_usize, 100, 200, 500]),
+                hidden_size in prop::sample::select(vec![16_usize, 32, 48, 64, 128]),
+                seq_len in 1_usize..16,
+            ) {
+                let embed = Embedding::new(vocab_size, hidden_size);
+                let tokens: Vec<u32> = (0..seq_len).map(|i| (i % vocab_size) as u32).collect();
+                let output = embed.forward(&tokens);
+                prop_assert_eq!(
+                    output.data().len(), seq_len * hidden_size,
+                    "FALSIFIED EMB-002-prop: data len={} != {}*{}={} (v={})",
+                    output.data().len(), seq_len, hidden_size, seq_len * hidden_size, vocab_size
+                );
+            }
+        }
+
+        // EMB-005-prop: non-zero output for random valid tokens
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(100))]
+            #[test]
+            fn falsify_emb_005_prop_non_zero(
+                vocab_size in prop::sample::select(vec![50_usize, 100, 200]),
+                hidden_size in prop::sample::select(vec![16_usize, 32, 64]),
+                token_ids in proptest::collection::vec(0_u32..49, 1..8),
+            ) {
+                let embed = Embedding::new(vocab_size, hidden_size);
+                let output = embed.forward(&token_ids);
+                let l2_norm: f32 = output.data().iter().map(|v| v * v).sum::<f32>().sqrt();
+                prop_assert!(
+                    l2_norm > 1e-6,
+                    "FALSIFIED EMB-005-prop: output all-zero (L2={}, v={}, h={})",
+                    l2_norm, vocab_size, hidden_size
+                );
+            }
+        }
+    }
 }
