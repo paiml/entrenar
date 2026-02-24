@@ -220,6 +220,126 @@ impl BackwardOp for SoftmaxBackward {
 }
 
 // =========================================================================
+// FALSIFY-SI: silu-kernel-v1.yaml contract (entrenar via trueno::silu_scalar)
+//
+// Five-Whys (PMAT-354, Phase 11):
+//   Why 1: entrenar had zero FALSIFY-SI-* tests despite SiLU in CUDA forward
+//   Why 2: CUDA tests verify backward correctness, not mathematical invariants
+//   Why 3: no mapping from silu-kernel-v1.yaml to entrenar test names
+//   Why 4: entrenar predates the provable-contracts YAML convention
+//   Why 5: SiLU CUDA forward delegates to cuBLAS (assumed correct)
+//
+// Note: entrenar's SiLU is CUDA-only (silu_forward/silu_backward). These
+// tests exercise trueno::silu_scalar which is the canonical reference impl.
+//
+// References:
+//   - provable-contracts/contracts/silu-kernel-v1.yaml
+//   - Ramachandran et al. (2017) "Searching for Activation Functions"
+// =========================================================================
+
+#[cfg(test)]
+mod silu_contract_tests {
+    /// FALSIFY-SI-001: Zero preservation — SiLU(0) = 0
+    #[test]
+    fn falsify_si_001_zero_preservation() {
+        let y = trueno::silu_scalar(0.0);
+        assert!(y.abs() < 1e-7, "FALSIFIED SI-001: SiLU(0) = {y}, expected 0");
+    }
+
+    /// FALSIFY-SI-002: Global lower bound — SiLU(x) > -0.279 for all x
+    #[test]
+    fn falsify_si_002_global_lower_bound() {
+        let test_values: Vec<f32> = vec![
+            -100.0, -50.0, -10.0, -5.0, -2.0, -1.278, -1.0, -0.5, 0.0, 0.5, 1.0, 5.0, 100.0,
+        ];
+        for &x in &test_values {
+            let y = trueno::silu_scalar(x);
+            assert!(y > -0.28, "FALSIFIED SI-002: SiLU({x}) = {y}, expected > -0.279");
+        }
+    }
+
+    /// FALSIFY-SI-003: Monotonic for positive inputs
+    #[test]
+    fn falsify_si_003_monotonic_positive() {
+        let values: Vec<f32> = vec![0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 50.0, 100.0];
+        for i in 1..values.len() {
+            let y_prev = trueno::silu_scalar(values[i - 1]);
+            let y_curr = trueno::silu_scalar(values[i]);
+            assert!(
+                y_curr > y_prev,
+                "FALSIFIED SI-003: SiLU({}) = {y_curr} not > SiLU({}) = {y_prev}",
+                values[i], values[i - 1]
+            );
+        }
+    }
+
+    /// FALSIFY-SI-005: Asymptotic linearity — |SiLU(x) - x| < 0.01 for x > 10
+    #[test]
+    fn falsify_si_005_asymptotic_linearity() {
+        for &x in &[10.0f32, 20.0, 50.0, 100.0, 500.0] {
+            let y = trueno::silu_scalar(x);
+            assert!(
+                (y - x).abs() < 0.01,
+                "FALSIFIED SI-005: |SiLU({x}) - {x}| = {} >= 0.01",
+                (y - x).abs()
+            );
+        }
+    }
+
+    /// FALSIFY-SI-006: Large negative → 0
+    #[test]
+    fn falsify_si_006_large_negative_vanishes() {
+        for &x in &[-10.0f32, -20.0, -50.0, -100.0] {
+            let y = trueno::silu_scalar(x);
+            assert!(y.abs() < 0.01, "FALSIFIED SI-006: SiLU({x}) = {y}, expected ≈ 0");
+        }
+    }
+
+    mod si_proptest_falsify {
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(500))]
+            #[test]
+            fn falsify_si_002_prop_lower_bound(x in -1000.0_f32..1000.0) {
+                let y = trueno::silu_scalar(x);
+                prop_assert!(y > -0.28, "FALSIFIED SI-002-prop: SiLU({x}) = {y}");
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(300))]
+            #[test]
+            fn falsify_si_003_prop_monotonic_positive(
+                a in 0.001_f32..100.0,
+                b in 0.001_f32..100.0,
+            ) {
+                if a != b {
+                    let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+                    prop_assert!(
+                        trueno::silu_scalar(hi) > trueno::silu_scalar(lo),
+                        "FALSIFIED SI-003-prop: SiLU({hi}) not > SiLU({lo})"
+                    );
+                }
+            }
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(200))]
+            #[test]
+            fn falsify_si_005_prop_asymptotic(x in 10.0_f32..500.0) {
+                let y = trueno::silu_scalar(x);
+                prop_assert!(
+                    (y - x).abs() < 0.01,
+                    "FALSIFIED SI-005-prop: |SiLU({x}) - {x}| = {}",
+                    (y - x).abs()
+                );
+            }
+        }
+    }
+}
+
+// =========================================================================
 // FALSIFY-GE: gelu-kernel-v1.yaml contract (entrenar autograd gelu)
 // =========================================================================
 #[cfg(test)]
