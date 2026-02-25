@@ -16,6 +16,10 @@ const QWEN2_0_5B_INTERMEDIATE_SIZE: usize = 4864;
 const QWEN2_VOCAB_SIZE: usize = 151936;
 const QWEN2_MAX_SEQ_LEN: usize = 32768;
 const QWEN2_ROPE_THETA: f32 = 1_000_000.0;
+const QWEN3_5_9B_HIDDEN_SIZE: usize = 4096;
+const QWEN3_5_9B_INTERMEDIATE_SIZE: usize = 12288;
+const QWEN3_5_VOCAB_SIZE: usize = 248320;
+const QWEN3_5_MAX_SEQ_LEN: usize = 262144;
 const DEFAULT_ROPE_THETA: f32 = 10000.0;
 
 /// Configuration for transformer models
@@ -105,6 +109,26 @@ impl TransformerConfig {
             rms_norm_eps: 1e-6,
             rope_theta: QWEN2_ROPE_THETA,
             use_bias: true,
+        }
+    }
+
+    /// Qwen3.5 9B configuration
+    ///
+    /// Key differences from Qwen2: no attention bias, head_dim=256 (explicit),
+    /// vocab_size=248320, hybrid attention (standard + linear layers).
+    /// Contract: contracts/model-families/qwen3_5.yaml
+    pub fn qwen3_5_9b() -> Self {
+        Self {
+            hidden_size: QWEN3_5_9B_HIDDEN_SIZE,
+            num_attention_heads: 16,
+            num_kv_heads: 4,
+            intermediate_size: QWEN3_5_9B_INTERMEDIATE_SIZE,
+            num_hidden_layers: 32,
+            vocab_size: QWEN3_5_VOCAB_SIZE,
+            max_position_embeddings: QWEN3_5_MAX_SEQ_LEN,
+            rms_norm_eps: 1e-6,
+            rope_theta: QWEN2_ROPE_THETA, // Same 1M theta as Qwen2
+            use_bias: false,              // KEY: no attention bias (unlike Qwen2)
         }
     }
 
@@ -205,5 +229,32 @@ mod tests {
         let cloned = config.clone();
         assert_eq!(config.hidden_size, cloned.hidden_size);
         assert_eq!(config.vocab_size, cloned.vocab_size);
+    }
+
+    #[test]
+    fn test_qwen3_5_9b_config() {
+        let config = TransformerConfig::qwen3_5_9b();
+        assert_eq!(config.hidden_size, 4096);
+        assert_eq!(config.num_attention_heads, 16);
+        assert_eq!(config.num_kv_heads, 4);
+        assert_eq!(config.intermediate_size, 12288);
+        assert_eq!(config.num_hidden_layers, 32);
+        assert_eq!(config.vocab_size, 248320);
+        assert_eq!(config.max_position_embeddings, 262144);
+        assert!(!config.use_bias);
+    }
+
+    #[test]
+    fn test_qwen3_5_9b_head_dim() {
+        let config = TransformerConfig::qwen3_5_9b();
+        // 4096 / 16 = 256 (explicit head_dim, not derived from hidden/heads ratio)
+        assert_eq!(config.head_dim(), 256);
+    }
+
+    #[test]
+    fn test_qwen3_5_9b_gqa_ratio() {
+        let config = TransformerConfig::qwen3_5_9b();
+        let heads_per_kv = config.num_attention_heads / config.num_kv_heads;
+        assert_eq!(heads_per_kv, 4); // 16 / 4 = 4 Q heads per KV head
     }
 }
