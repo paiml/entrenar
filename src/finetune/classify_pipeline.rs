@@ -21,7 +21,7 @@ use super::classification::{
 use crate::autograd::matmul;
 use crate::lora::LoRAConfig;
 use crate::lora::LoRALayer;
-use crate::optim::{AdamW, Optimizer};
+use crate::optim::{clip_grad_norm_refs, AdamW, Optimizer};
 use crate::transformer::Transformer;
 use crate::transformer::TransformerConfig;
 use crate::Tensor;
@@ -44,6 +44,21 @@ pub struct ClassifyConfig {
     pub max_seq_len: usize,
     /// Log every N steps
     pub log_interval: usize,
+    /// Mini-batch size for `train_batch()`.
+    ///
+    /// Samples are processed one at a time (forward + backward), but the
+    /// optimizer step is applied once per batch after accumulating gradients.
+    pub batch_size: usize,
+    /// Number of gradient accumulation steps.
+    ///
+    /// Allows effective batch size = `batch_size * accumulation_steps` without
+    /// increasing peak memory beyond a single micro-batch forward pass.
+    pub accumulation_steps: usize,
+    /// Maximum gradient norm for clipping.
+    ///
+    /// When `Some(max_norm)`, gradients are clipped to this L2 norm before
+    /// the optimizer step. `None` disables gradient clipping.
+    pub gradient_clip_norm: Option<f32>,
 }
 
 impl Default for ClassifyConfig {
@@ -56,7 +71,31 @@ impl Default for ClassifyConfig {
             epochs: 3,
             max_seq_len: 512,
             log_interval: 100,
+            batch_size: 32,
+            accumulation_steps: 1,
+            gradient_clip_norm: Some(1.0),
         }
+    }
+}
+
+/// Result of processing one mini-batch via [`ClassifyPipeline::train_batch`].
+#[derive(Debug, Clone)]
+pub struct BatchResult {
+    /// Average cross-entropy loss across the batch
+    pub avg_loss: f32,
+    /// Number of correctly classified samples
+    pub correct: usize,
+    /// Total number of samples in the batch
+    pub total: usize,
+}
+
+impl BatchResult {
+    /// Compute classification accuracy as `correct / total`.
+    ///
+    /// Returns 0.0 for an empty batch (total == 0).
+    #[must_use]
+    pub fn accuracy(&self) -> f32 {
+        self.correct as f32 / self.total.max(1) as f32
     }
 }
 
@@ -254,6 +293,278 @@ impl ClassifyPipeline {
         self.optimizer.step_refs(&mut params);
 
         loss_val
+    }
+
+    // ── Mini-batch training (SSC-025) ───────────────────────────────────
+
+    /// Train on a mini-batch of samples with gradient accumulation.
+    ///
+    /// Unlike [`train_step`] which processes one sample and immediately calls
+    /// `optimizer.step()`, this method:
+    ///
+    /// 1. Zeros all gradients
+    /// 2. Iterates over every sample in the batch, computing forward + loss + backward
+    /// 3. Gradients accumulate naturally across samples (sum)
+    /// 4. Normalizes accumulated gradients by batch size
+    /// 5. Optionally clips gradient norm (if `config.gradient_clip_norm` is set)
+    /// 6. Calls `optimizer.step()` **once** for the entire batch
+    ///
+    /// This reduces optimizer overhead from O(N) to O(1) per batch and produces
+    /// smoother gradient estimates.
+    ///
+    /// # Arguments
+    /// * `samples` - Slice of `SafetySample` (shell text + label). Text is
+    ///   tokenized via byte-level encoding internally.
+    ///
+    /// # Returns
+    /// [`BatchResult`] with average loss, correct predictions, and total count
+    pub fn train_batch(&mut self, samples: &[SafetySample]) -> BatchResult {
+        if samples.is_empty() {
+            return BatchResult {
+                avg_loss: 0.0,
+                correct: 0,
+                total: 0,
+            };
+        }
+
+        let batch_size = samples.len();
+
+        // ── 1. Zero gradients ──────────────────────────────────────────
+        self.zero_all_gradients();
+
+        // ── 2. Accumulate gradients over all samples ───────────────────
+        let mut total_loss = 0.0f32;
+        let mut correct = 0usize;
+
+        for sample in samples {
+            let (loss, predicted) = self.forward_backward_single(&sample.input_ids(), sample.label);
+            total_loss += loss;
+            if predicted == sample.label {
+                correct += 1;
+            }
+        }
+
+        // ── 3. Normalize gradients by batch size ───────────────────────
+        self.scale_all_gradients(1.0 / batch_size as f32);
+
+        // ── 4. Gradient clipping ───────────────────────────────────────
+        if let Some(max_norm) = self.config.gradient_clip_norm {
+            let mut params = self.trainable_parameters_mut();
+            clip_grad_norm_refs(&mut params, max_norm);
+        }
+
+        // ── 5. Optimizer step (once for the whole batch) ───────────────
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        for lora in &mut self.lora_layers {
+            params.extend(lora.trainable_params());
+        }
+        params.extend(self.classifier.parameters_mut());
+        self.optimizer.step_refs(&mut params);
+
+        BatchResult {
+            avg_loss: total_loss / batch_size as f32,
+            correct,
+            total: batch_size,
+        }
+    }
+
+    /// Accumulate gradients for a micro-batch without calling optimizer.step().
+    ///
+    /// Use this with [`apply_accumulated_gradients`] for gradient accumulation
+    /// across multiple micro-batches. This enables effective batch sizes larger
+    /// than what fits in memory:
+    ///
+    /// ```text
+    /// effective_batch_size = micro_batch_size * accumulation_steps
+    /// ```
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Effective batch_size = 8 * 4 = 32
+    /// for micro_batch in data.chunks(8) {
+    ///     pipeline.accumulate_gradients(micro_batch);
+    /// }
+    /// pipeline.apply_accumulated_gradients(4);
+    /// ```
+    ///
+    /// # Arguments
+    /// * `micro_batch` - Slice of samples for one accumulation step
+    ///
+    /// # Returns
+    /// [`BatchResult`] for this micro-batch (loss/accuracy before optimizer step)
+    pub fn accumulate_gradients(&mut self, micro_batch: &[SafetySample]) -> BatchResult {
+        if micro_batch.is_empty() {
+            return BatchResult {
+                avg_loss: 0.0,
+                correct: 0,
+                total: 0,
+            };
+        }
+
+        let mut total_loss = 0.0f32;
+        let mut correct = 0usize;
+
+        for sample in micro_batch {
+            let (loss, predicted) = self.forward_backward_single(&sample.input_ids(), sample.label);
+            total_loss += loss;
+            if predicted == sample.label {
+                correct += 1;
+            }
+        }
+
+        BatchResult {
+            avg_loss: total_loss / micro_batch.len() as f32,
+            correct,
+            total: micro_batch.len(),
+        }
+    }
+
+    /// Normalize accumulated gradients and apply optimizer step.
+    ///
+    /// Call this after one or more [`accumulate_gradients`] calls. It:
+    /// 1. Divides all gradients by `num_accumulation_steps * micro_batch_size`
+    ///    (the total sample count across all micro-batches)
+    /// 2. Clips gradient norm if configured
+    /// 3. Calls `optimizer.step()` once
+    /// 4. Zeros all gradients for the next accumulation cycle
+    ///
+    /// # Arguments
+    /// * `total_samples` - Total number of samples accumulated (sum of micro-batch sizes)
+    pub fn apply_accumulated_gradients(&mut self, total_samples: usize) {
+        if total_samples == 0 {
+            return;
+        }
+
+        // ── 1. Normalize gradients ─────────────────────────────────────
+        self.scale_all_gradients(1.0 / total_samples as f32);
+
+        // ── 2. Gradient clipping ───────────────────────────────────────
+        if let Some(max_norm) = self.config.gradient_clip_norm {
+            let mut params = self.trainable_parameters_mut();
+            clip_grad_norm_refs(&mut params, max_norm);
+        }
+
+        // ── 3. Optimizer step ──────────────────────────────────────────
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        for lora in &mut self.lora_layers {
+            params.extend(lora.trainable_params());
+        }
+        params.extend(self.classifier.parameters_mut());
+        self.optimizer.step_refs(&mut params);
+
+        // ── 4. Zero gradients for next cycle ───────────────────────────
+        self.zero_all_gradients();
+    }
+
+    /// Forward pass + backward for a single sample (no optimizer step).
+    ///
+    /// Computes cross-entropy loss and accumulates gradients into the existing
+    /// gradient buffers (does NOT zero them first). Returns the loss and
+    /// the predicted class index (argmax of logits).
+    fn forward_backward_single(&mut self, token_ids: &[u32], label: usize) -> (f32, usize) {
+        let seq_len = token_ids.len();
+        let num_classes = self.config.num_classes;
+
+        // ── Forward pass ────────────────────────────────────────────────
+        let hidden = self.model.forward_hidden(token_ids);
+        let pooled = self.classifier.mean_pool(&hidden, seq_len);
+
+        let logits = matmul(
+            &pooled,
+            &self.classifier.weight,
+            1,
+            self.classifier.hidden_size(),
+            num_classes,
+        );
+
+        let logits_with_bias: Vec<f32> = logits
+            .data()
+            .as_slice()
+            .expect("contiguous logits")
+            .iter()
+            .zip(
+                self.classifier
+                    .bias
+                    .data()
+                    .as_slice()
+                    .expect("contiguous bias")
+                    .iter(),
+            )
+            .map(|(&l, &b)| l + b)
+            .collect();
+
+        // ── Predicted class (argmax) ────────────────────────────────────
+        let predicted = logits_with_bias
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("no NaN in logits"))
+            .map(|(idx, _)| idx)
+            .unwrap_or(0);
+
+        // ── Cross-entropy loss ──────────────────────────────────────────
+        let max_val = logits_with_bias
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits_with_bias
+            .iter()
+            .map(|&v| (v - max_val).exp())
+            .collect();
+        let sum_exp: f32 = exp_vals.iter().sum();
+        let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
+
+        let loss_val = -(probs[label].max(1e-10).ln());
+        let loss_val = if loss_val.is_finite() {
+            loss_val
+        } else {
+            100.0
+        };
+
+        // ── Backward ────────────────────────────────────────────────────
+        // dL/d_logits = softmax(logits) - one_hot(label)
+        let mut grad_logits = probs;
+        grad_logits[label] -= 1.0;
+
+        logits.set_grad(ndarray::Array1::from(grad_logits.clone()));
+        if let Some(op) = logits.backward_op() {
+            op.backward();
+        }
+
+        // Accumulate bias gradient (not set — accumulate)
+        self.classifier
+            .bias
+            .accumulate_grad(ndarray::Array1::from(grad_logits));
+
+        (loss_val, predicted)
+    }
+
+    /// Zero all trainable parameter gradients.
+    fn zero_all_gradients(&self) {
+        self.classifier.weight.zero_grad();
+        self.classifier.bias.zero_grad();
+        for lora in &self.lora_layers {
+            lora.lora_a().zero_grad();
+            lora.lora_b().zero_grad();
+        }
+    }
+
+    /// Scale all trainable parameter gradients by a constant factor.
+    ///
+    /// Used to normalize accumulated gradients: `grad *= factor`.
+    fn scale_all_gradients(&self, factor: f32) {
+        let all_params: Vec<&Tensor> = self
+            .lora_layers
+            .iter()
+            .flat_map(|l| vec![l.lora_a(), l.lora_b()])
+            .chain(self.classifier.parameters())
+            .collect();
+
+        for param in all_params {
+            if let Some(grad) = param.grad() {
+                param.set_grad(grad * factor);
+            }
+        }
     }
 
     /// Multi-label training step using BCE with logits loss.
@@ -637,5 +948,341 @@ mod tests {
         for lora in &pipeline.lora_layers {
             assert!(lora.is_merged(), "All adapters should be merged");
         }
+    }
+
+    // =========================================================================
+    // SSC-025: Mini-batch training with gradient accumulation
+    // =========================================================================
+
+    fn make_samples() -> Vec<SafetySample> {
+        vec![
+            SafetySample {
+                input: "echo hello".into(),
+                label: 0,
+            },
+            SafetySample {
+                input: "rm -rf /".into(),
+                label: 1,
+            },
+            SafetySample {
+                input: "ls -la".into(),
+                label: 2,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_ssc025_batch_result_accuracy() {
+        let r = BatchResult {
+            avg_loss: 1.0,
+            correct: 3,
+            total: 4,
+        };
+        assert!((r.accuracy() - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_ssc025_batch_result_accuracy_empty() {
+        let r = BatchResult {
+            avg_loss: 0.0,
+            correct: 0,
+            total: 0,
+        };
+        assert!((r.accuracy() - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_ssc025_batch_result_accuracy_perfect() {
+        let r = BatchResult {
+            avg_loss: 0.1,
+            correct: 10,
+            total: 10,
+        };
+        assert!((r.accuracy() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_ssc025_config_defaults() {
+        let config = ClassifyConfig::default();
+        assert_eq!(config.batch_size, 32);
+        assert_eq!(config.accumulation_steps, 1);
+        assert_eq!(config.gradient_clip_norm, Some(1.0));
+    }
+
+    #[test]
+    fn test_ssc025_config_custom_batch() {
+        let config = ClassifyConfig {
+            batch_size: 8,
+            accumulation_steps: 4,
+            gradient_clip_norm: Some(0.5),
+            ..ClassifyConfig::default()
+        };
+        assert_eq!(config.batch_size, 8);
+        assert_eq!(config.accumulation_steps, 4);
+        assert_eq!(config.gradient_clip_norm, Some(0.5));
+    }
+
+    #[test]
+    fn test_ssc025_train_batch_finite_loss() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            batch_size: 3,
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let samples = make_samples();
+
+        let result = pipeline.train_batch(&samples);
+        assert!(
+            result.avg_loss.is_finite(),
+            "SSC-025: batch loss must be finite, got {}",
+            result.avg_loss
+        );
+        assert!(result.avg_loss > 0.0, "Cross-entropy loss must be positive");
+        assert_eq!(result.total, 3);
+    }
+
+    #[test]
+    fn test_ssc025_train_batch_empty() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+
+        let result = pipeline.train_batch(&[]);
+        assert_eq!(result.total, 0);
+        assert_eq!(result.correct, 0);
+        assert!((result.avg_loss - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_ssc025_train_batch_convergence() {
+        // SSC-025: Loss must decrease over multiple batches
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            learning_rate: 1e-2,
+            gradient_clip_norm: None, // disable clipping for convergence test
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let samples = make_samples();
+
+        let mut first_loss = 0.0f32;
+        let mut last_loss = 0.0f32;
+
+        for epoch in 0..20 {
+            let result = pipeline.train_batch(&samples);
+            if epoch == 0 {
+                first_loss = result.avg_loss;
+            }
+            last_loss = result.avg_loss;
+        }
+
+        assert!(
+            last_loss < first_loss,
+            "SSC-025: Batch training must reduce loss. First: {first_loss:.4}, last: {last_loss:.4}"
+        );
+    }
+
+    #[test]
+    fn test_ssc025_gradient_clipping_bounds_norm() {
+        let model_config = tiny_config();
+        let max_norm = 0.5;
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            learning_rate: 1e-2,
+            gradient_clip_norm: Some(max_norm),
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let samples = make_samples();
+
+        // Run one batch — the internal clip should have bounded the norm
+        // We verify indirectly: the pipeline should not diverge with aggressive clipping
+        let result = pipeline.train_batch(&samples);
+        assert!(
+            result.avg_loss.is_finite(),
+            "SSC-025: clipped batch loss must be finite"
+        );
+    }
+
+    #[test]
+    fn test_ssc025_gradient_clipping_disabled() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let samples = make_samples();
+
+        let result = pipeline.train_batch(&samples);
+        assert!(
+            result.avg_loss.is_finite(),
+            "SSC-025: unclipped batch loss must be finite"
+        );
+    }
+
+    #[test]
+    fn test_ssc025_accumulate_gradients() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            learning_rate: 1e-2,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let samples = make_samples();
+
+        // Split into micro-batches of 1
+        pipeline.zero_all_gradients();
+        let mut total_samples = 0;
+        for sample in &samples {
+            let result = pipeline.accumulate_gradients(std::slice::from_ref(sample));
+            assert!(result.avg_loss.is_finite());
+            assert_eq!(result.total, 1);
+            total_samples += result.total;
+        }
+
+        // Apply accumulated gradients
+        pipeline.apply_accumulated_gradients(total_samples);
+
+        // Pipeline should still work after accumulation
+        let result = pipeline.train_batch(&samples);
+        assert!(result.avg_loss.is_finite());
+    }
+
+    #[test]
+    fn test_ssc025_accumulate_gradients_convergence() {
+        // Gradient accumulation should converge similarly to full-batch
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            learning_rate: 1e-2,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let samples = make_samples();
+
+        let mut first_loss = 0.0f32;
+        let mut last_loss = 0.0f32;
+
+        for epoch in 0..20 {
+            // Zero grads at start of each accumulation cycle
+            pipeline.zero_all_gradients();
+            let mut epoch_loss = 0.0f32;
+            let mut total = 0;
+            for sample in &samples {
+                let result = pipeline.accumulate_gradients(std::slice::from_ref(sample));
+                epoch_loss += result.avg_loss;
+                total += result.total;
+            }
+            pipeline.apply_accumulated_gradients(total);
+
+            let avg = epoch_loss / samples.len() as f32;
+            if epoch == 0 {
+                first_loss = avg;
+            }
+            last_loss = avg;
+        }
+
+        assert!(
+            last_loss < first_loss,
+            "SSC-025: Accumulated gradient training must reduce loss. First: {first_loss:.4}, last: {last_loss:.4}"
+        );
+    }
+
+    #[test]
+    fn test_ssc025_accumulate_gradients_empty() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+
+        let result = pipeline.accumulate_gradients(&[]);
+        assert_eq!(result.total, 0);
+        assert_eq!(result.correct, 0);
+
+        // apply with 0 should be a no-op
+        pipeline.apply_accumulated_gradients(0);
+    }
+
+    #[test]
+    fn test_ssc025_safety_sample_input_ids() {
+        let sample = SafetySample {
+            input: "echo".into(),
+            label: 0,
+        };
+        let ids = sample.input_ids();
+        assert_eq!(ids, vec![b'e' as u32, b'c' as u32, b'h' as u32, b'o' as u32]);
+    }
+
+    #[test]
+    fn test_ssc025_safety_sample_input_ids_empty() {
+        let sample = SafetySample {
+            input: String::new(),
+            label: 0,
+        };
+        assert!(sample.input_ids().is_empty());
+    }
+
+    #[test]
+    fn test_ssc025_batch_result_debug() {
+        let r = BatchResult {
+            avg_loss: 1.5,
+            correct: 2,
+            total: 3,
+        };
+        let debug = format!("{r:?}");
+        assert!(debug.contains("BatchResult"));
+        assert!(debug.contains("1.5"));
+    }
+
+    #[test]
+    fn test_ssc025_single_sample_batch() {
+        // A batch of 1 should behave like a single train_step
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let samples = vec![SafetySample {
+            input: "echo hello".into(),
+            label: 0,
+        }];
+
+        let result = pipeline.train_batch(&samples);
+        assert_eq!(result.total, 1);
+        assert!(result.avg_loss.is_finite());
+        assert!(result.avg_loss > 0.0);
     }
 }

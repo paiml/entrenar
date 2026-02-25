@@ -179,6 +179,20 @@ pub struct SafetySample {
     pub label: usize,
 }
 
+impl SafetySample {
+    /// Convert the input text to token IDs using byte-level encoding.
+    ///
+    /// Each byte of the UTF-8 representation is mapped to a `u32` token ID.
+    /// This provides a simple, deterministic tokenization suitable for the
+    /// classification pipeline. For production use with large vocabularies,
+    /// an external tokenizer (BPE, SentencePiece) should be used before
+    /// calling `train_step` directly.
+    #[must_use]
+    pub fn input_ids(&self) -> Vec<u32> {
+        self.input.bytes().map(u32::from).collect()
+    }
+}
+
 /// A multi-label shell safety corpus sample.
 ///
 /// A script can have multiple active labels (e.g., both non-deterministic AND needs-quoting).

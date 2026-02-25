@@ -33,7 +33,7 @@ pub use classification::{
     load_safety_corpus, ClassificationHead, MultiLabelSafetySample, SafetyCorpusStats,
     SafetySample,
 };
-pub use classify_pipeline::ClassifyPipeline;
+pub use classify_pipeline::{BatchResult, ClassifyConfig, ClassifyPipeline};
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
 pub use device::{ComputeDevice, DeviceInfo};
 pub use eval::{

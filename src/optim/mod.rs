@@ -13,7 +13,7 @@ mod simd;
 
 pub use adam::Adam;
 pub use adamw::AdamW;
-pub use clip::clip_grad_norm;
+pub use clip::{clip_grad_norm, clip_grad_norm_refs};
 pub use dp::{
     add_gaussian_noise, clip_gradient, estimate_noise_multiplier, grad_norm, privacy_cost_per_step,
     DpError, DpSgd, DpSgdConfig, PrivacyBudget, RdpAccountant,
