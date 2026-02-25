@@ -3,13 +3,16 @@
 //! This module provides the full transformer model for language modeling.
 
 use crate::autograd::matmul;
+use crate::error::{Error, Result};
 use crate::Tensor;
 use std::collections::HashMap;
+use std::path::Path;
 
 use super::block::TransformerBlock;
 use super::config::TransformerConfig;
 use super::embedding::Embedding;
 use super::norm::RMSNorm;
+use super::weights::{load_safetensors_weights, validate_weights, Architecture};
 
 /// Complete transformer model
 pub struct Transformer {
@@ -95,6 +98,135 @@ impl Transformer {
             norm,
             lm_head,
         })
+    }
+
+    /// Load transformer from SafeTensors file(s)
+    ///
+    /// Reads SafeTensors weights from `model_path`, converts BF16/F16 to F32,
+    /// validates shapes against `config`, checks for NaN/Inf, and constructs
+    /// the complete `Transformer`.
+    ///
+    /// # Arguments
+    ///
+    /// * `model_path` - Path to model directory or single SafeTensors file
+    /// * `config` - Transformer configuration specifying model dimensions
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::ConfigError` if:
+    /// - No SafeTensors files found
+    /// - Required weight tensors are missing
+    /// - Weight shapes do not match config dimensions
+    /// - Weights contain NaN or Inf values
+    /// - Layer count does not match config
+    pub fn from_safetensors(
+        model_path: impl AsRef<Path>,
+        config: &TransformerConfig,
+    ) -> Result<Self> {
+        let model_path = model_path.as_ref();
+
+        // Load and convert all weights from SafeTensors files
+        let weights = load_safetensors_weights(model_path, Architecture::Auto)?;
+
+        // Structural validation: all required keys present
+        validate_weights(&weights, config.num_hidden_layers)?;
+
+        // Shape validation against config dimensions
+        Self::validate_weight_shapes(&weights, config)?;
+
+        // NaN/Inf validation
+        Self::validate_weight_values(&weights)?;
+
+        // Build transformer from validated weights
+        Self::from_params(config, &weights).ok_or_else(|| {
+            Error::ConfigError(
+                "Failed to construct Transformer from loaded weights \
+                 (internal from_params returned None after validation passed)"
+                    .into(),
+            )
+        })
+    }
+
+    /// Validate that all weight tensor shapes match the config dimensions
+    fn validate_weight_shapes(
+        weights: &HashMap<String, Tensor>,
+        config: &TransformerConfig,
+    ) -> Result<()> {
+        let hidden = config.hidden_size;
+        let kv_hidden = config.num_kv_heads * config.head_dim();
+        let intermediate = config.intermediate_size;
+        let vocab = config.vocab_size;
+
+        // Helper closure for shape checking
+        let check = |name: &str, expected: usize| -> Result<()> {
+            if let Some(tensor) = weights.get(name) {
+                if tensor.len() != expected {
+                    return Err(Error::ConfigError(format!(
+                        "Shape mismatch for '{name}': expected {expected} elements, got {}",
+                        tensor.len()
+                    )));
+                }
+            }
+            // Missing keys are caught by validate_weights
+            Ok(())
+        };
+
+        // Global weights
+        check("model.embed_tokens.weight", vocab * hidden)?;
+        check("model.norm.weight", hidden)?;
+
+        // Optional lm_head
+        if weights.contains_key("lm_head.weight") {
+            check("lm_head.weight", vocab * hidden)?;
+        }
+
+        // Per-layer weights
+        for i in 0..config.num_hidden_layers {
+            let p = format!("model.layers.{i}");
+
+            // Layer norms
+            check(&format!("{p}.input_layernorm.weight"), hidden)?;
+            check(&format!("{p}.post_attention_layernorm.weight"), hidden)?;
+
+            // Attention projections
+            check(&format!("{p}.self_attn.q_proj.weight"), hidden * hidden)?;
+            check(&format!("{p}.self_attn.k_proj.weight"), hidden * kv_hidden)?;
+            check(&format!("{p}.self_attn.v_proj.weight"), hidden * kv_hidden)?;
+            check(&format!("{p}.self_attn.o_proj.weight"), hidden * hidden)?;
+
+            // MLP projections
+            check(
+                &format!("{p}.mlp.gate_proj.weight"),
+                hidden * intermediate,
+            )?;
+            check(&format!("{p}.mlp.up_proj.weight"), hidden * intermediate)?;
+            check(
+                &format!("{p}.mlp.down_proj.weight"),
+                intermediate * hidden,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Validate that no weight tensors contain NaN or Inf values
+    fn validate_weight_values(weights: &HashMap<String, Tensor>) -> Result<()> {
+        for (name, tensor) in weights {
+            let data = tensor.data();
+            for (i, &val) in data.iter().enumerate() {
+                if val.is_nan() {
+                    return Err(Error::ConfigError(format!(
+                        "NaN detected in weight '{name}' at index {i}"
+                    )));
+                }
+                if val.is_infinite() {
+                    return Err(Error::ConfigError(format!(
+                        "Inf detected in weight '{name}' at index {i}"
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Forward pass for language modeling
@@ -1044,6 +1176,797 @@ mod tests {
                 "FALSIFIED PIPE-001/SM-003: row {row} argmax changed {} → {}",
                 logit_argmax, prob_argmax
             );
+        }
+    }
+
+    // =========================================================================
+    // SSC-024: Transformer::from_safetensors() tests
+    //
+    // Tests for loading pretrained weights from SafeTensors files.
+    // Uses synthetic SafeTensors with the tiny config to avoid needing
+    // real 500MB model files in CI.
+    // =========================================================================
+
+    mod safetensors_tests {
+        use super::*;
+        use safetensors::serialize;
+        use safetensors::tensor::{Dtype, TensorView};
+        use tempfile::TempDir;
+
+        /// Helper: create a synthetic SafeTensors file with all weights
+        /// matching the tiny config (hidden=64, 2 layers, vocab=1000).
+        fn create_tiny_safetensors(dir: &std::path::Path) -> std::path::PathBuf {
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut tensors_data: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+            // Helper to create f32 bytes
+            let make_f32 = |n: usize, val: f32| -> Vec<u8> {
+                std::iter::repeat_n(val, n)
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect()
+            };
+
+            // Embedding
+            tensors_data.push((
+                "model.embed_tokens.weight".to_string(),
+                make_f32(vocab * hidden, 0.01),
+                vec![vocab, hidden],
+            ));
+
+            // Final norm
+            tensors_data.push((
+                "model.norm.weight".to_string(),
+                make_f32(hidden, 1.0),
+                vec![hidden],
+            ));
+
+            // Per-layer weights
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+
+                // Layer norms
+                tensors_data.push((
+                    format!("{p}.input_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.post_attention_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+
+                // Attention projections
+                tensors_data.push((
+                    format!("{p}.self_attn.q_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.self_attn.k_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.self_attn.v_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.self_attn.o_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+
+                // MLP projections
+                tensors_data.push((
+                    format!("{p}.mlp.gate_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.mlp.up_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.mlp.down_proj.weight"),
+                    make_f32(intermediate * hidden, 0.01),
+                    vec![hidden, intermediate],
+                ));
+            }
+
+            // Build TensorViews from owned data and serialize
+            let views: Vec<TensorView<'_>> = tensors_data
+                .iter()
+                .map(|(_, bytes, shape)| {
+                    TensorView::new(Dtype::F32, shape.clone(), bytes)
+                        .expect("valid tensor view")
+                })
+                .collect();
+
+            let named_views: Vec<(&str, &TensorView<'_>)> = tensors_data
+                .iter()
+                .zip(views.iter())
+                .map(|((name, _, _), view)| (name.as_str(), view))
+                .collect();
+
+            let file_path = dir.join("model.safetensors");
+            let serialized =
+                serialize(named_views, None::<std::collections::HashMap<String, String>>)
+                    .expect("serialize safetensors");
+            std::fs::write(&file_path, serialized).expect("write safetensors file");
+            file_path
+        }
+
+        /// Helper: create a SafeTensors file with bf16 weights (like real HF models)
+        fn create_tiny_bf16_safetensors(dir: &std::path::Path) -> std::path::PathBuf {
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut tensors_data: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+            // Helper to create bf16 bytes
+            let make_bf16 = |n: usize, val: f32| -> Vec<u8> {
+                std::iter::repeat_n(half::bf16::from_f32(val), n)
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect()
+            };
+
+            // Embedding
+            tensors_data.push((
+                "model.embed_tokens.weight".to_string(),
+                make_bf16(vocab * hidden, 0.01),
+                vec![vocab, hidden],
+            ));
+
+            // Final norm
+            tensors_data.push((
+                "model.norm.weight".to_string(),
+                make_bf16(hidden, 1.0),
+                vec![hidden],
+            ));
+
+            // Per-layer weights
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+
+                tensors_data.push((
+                    format!("{p}.input_layernorm.weight"),
+                    make_bf16(hidden, 1.0),
+                    vec![hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.post_attention_layernorm.weight"),
+                    make_bf16(hidden, 1.0),
+                    vec![hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.self_attn.q_proj.weight"),
+                    make_bf16(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.self_attn.k_proj.weight"),
+                    make_bf16(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.self_attn.v_proj.weight"),
+                    make_bf16(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.self_attn.o_proj.weight"),
+                    make_bf16(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.mlp.gate_proj.weight"),
+                    make_bf16(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.mlp.up_proj.weight"),
+                    make_bf16(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                tensors_data.push((
+                    format!("{p}.mlp.down_proj.weight"),
+                    make_bf16(intermediate * hidden, 0.01),
+                    vec![hidden, intermediate],
+                ));
+            }
+
+            let views: Vec<TensorView<'_>> = tensors_data
+                .iter()
+                .map(|(_, bytes, shape)| {
+                    TensorView::new(Dtype::BF16, shape.clone(), bytes)
+                        .expect("valid tensor view")
+                })
+                .collect();
+
+            let named_views: Vec<(&str, &TensorView<'_>)> = tensors_data
+                .iter()
+                .zip(views.iter())
+                .map(|((name, _, _), view)| (name.as_str(), view))
+                .collect();
+
+            let file_path = dir.join("model.safetensors");
+            let serialized =
+                serialize(named_views, None::<std::collections::HashMap<String, String>>)
+                    .expect("serialize safetensors");
+            std::fs::write(&file_path, serialized).expect("write safetensors file");
+            file_path
+        }
+
+        // -----------------------------------------------------------------
+        // Happy path tests
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_f32_success() {
+            let dir = TempDir::new().expect("create temp dir");
+            create_tiny_safetensors(dir.path());
+            let config = TransformerConfig::tiny();
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_ok(), "from_safetensors should succeed: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string()));
+
+            let transformer = result.expect("validated above");
+            assert_eq!(transformer.layers.len(), config.num_hidden_layers);
+            assert!(transformer.lm_head.is_none()); // tiny config has no lm_head
+        }
+
+        #[test]
+        fn test_ssc024_from_safetensors_bf16_conversion() {
+            let dir = TempDir::new().expect("create temp dir");
+            create_tiny_bf16_safetensors(dir.path());
+            let config = TransformerConfig::tiny();
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(
+                result.is_ok(),
+                "BF16 loading should succeed: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string())
+            );
+
+            let transformer = result.expect("validated above");
+            assert_eq!(transformer.layers.len(), config.num_hidden_layers);
+
+            // Verify forward pass produces finite output
+            let tokens = vec![1u32, 2, 3];
+            let logits = transformer.forward(&tokens);
+            assert_eq!(logits.len(), 3 * config.vocab_size);
+            assert!(
+                logits.data().iter().all(|v| v.is_finite()),
+                "BF16-loaded model should produce finite outputs"
+            );
+        }
+
+        #[test]
+        fn test_ssc024_from_safetensors_single_file_path() {
+            let dir = TempDir::new().expect("create temp dir");
+            let file_path = create_tiny_safetensors(dir.path());
+            let config = TransformerConfig::tiny();
+
+            // Pass the file path directly, not the directory
+            let result = Transformer::from_safetensors(&file_path, &config);
+            assert!(
+                result.is_ok(),
+                "Direct file path should work: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string())
+            );
+        }
+
+        #[test]
+        fn test_ssc024_loaded_model_forward_produces_finite() {
+            let dir = TempDir::new().expect("create temp dir");
+            create_tiny_safetensors(dir.path());
+            let config = TransformerConfig::tiny();
+
+            let transformer = Transformer::from_safetensors(dir.path(), &config)
+                .expect("loading should succeed");
+
+            // Run forward pass
+            let tokens = vec![0u32, 5, 42, 99];
+            let logits = transformer.forward(&tokens);
+
+            assert_eq!(logits.len(), tokens.len() * config.vocab_size);
+            let data = logits.data();
+            let nan_count = data.iter().filter(|v| v.is_nan()).count();
+            let inf_count = data.iter().filter(|v| v.is_infinite()).count();
+            assert_eq!(nan_count, 0, "Loaded model output must not contain NaN");
+            assert_eq!(inf_count, 0, "Loaded model output must not contain Inf");
+        }
+
+        // -----------------------------------------------------------------
+        // Error case: no SafeTensors files
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_no_files() {
+            let dir = TempDir::new().expect("create temp dir");
+            let config = TransformerConfig::tiny();
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_err());
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(
+                err_msg.contains("No SafeTensors files"),
+                "Error should mention missing files: {err_msg}"
+            );
+        }
+
+        // -----------------------------------------------------------------
+        // Error case: shape mismatch
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_wrong_embedding_shape() {
+            let dir = TempDir::new().expect("create temp dir");
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+
+            // Create a file with wrong embedding shape
+            let wrong_embed_bytes: Vec<u8> = std::iter::repeat_n(0.01_f32, 42)
+                .flat_map(|v| v.to_le_bytes())
+                .collect();
+
+            // We need at least embedding + norm + 2 layers to pass validate_weights.
+            // But the embedding shape is wrong, so validate_weight_shapes should catch it.
+            // Actually, we need ALL required keys for validate_weights to pass first.
+            // Let's create a full set but with wrong embedding size.
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+
+            let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+            let make_f32 = |n: usize, val: f32| -> Vec<u8> {
+                std::iter::repeat_n(val, n)
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect()
+            };
+
+            // WRONG: embedding has 42 elements instead of vocab * hidden
+            td.push((
+                "model.embed_tokens.weight".to_string(),
+                wrong_embed_bytes,
+                vec![42],
+            ));
+            td.push((
+                "model.norm.weight".to_string(),
+                make_f32(hidden, 1.0),
+                vec![hidden],
+            ));
+
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+            }
+
+            let views: Vec<TensorView<'_>> = td
+                .iter()
+                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> = td
+                .iter()
+                .zip(views.iter())
+                .map(|((n, _, _), v)| (n.as_str(), v))
+                .collect();
+
+            let file_path = dir.path().join("model.safetensors");
+            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            std::fs::write(&file_path, serialized).expect("write");
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_err(), "Wrong embedding shape should fail");
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(
+                err_msg.contains("Shape mismatch") || err_msg.contains("embed_tokens"),
+                "Error should indicate shape issue: {err_msg}"
+            );
+        }
+
+        // -----------------------------------------------------------------
+        // Error case: NaN in weights
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_nan_detection() {
+            let dir = TempDir::new().expect("create temp dir");
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+            let make_f32 = |n: usize, val: f32| -> Vec<u8> {
+                std::iter::repeat_n(val, n)
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect()
+            };
+
+            // Embedding with NaN injected
+            let mut embed_vals: Vec<f32> = vec![0.01; vocab * hidden];
+            embed_vals[42] = f32::NAN;
+            let embed_bytes: Vec<u8> = embed_vals.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+            td.push((
+                "model.embed_tokens.weight".to_string(),
+                embed_bytes,
+                vec![vocab, hidden],
+            ));
+            td.push((
+                "model.norm.weight".to_string(),
+                make_f32(hidden, 1.0),
+                vec![hidden],
+            ));
+
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+            }
+
+            let views: Vec<TensorView<'_>> = td
+                .iter()
+                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> = td
+                .iter()
+                .zip(views.iter())
+                .map(|((n, _, _), v)| (n.as_str(), v))
+                .collect();
+
+            let file_path = dir.path().join("model.safetensors");
+            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            std::fs::write(&file_path, serialized).expect("write");
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_err(), "NaN in weights should fail");
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(
+                err_msg.contains("NaN"),
+                "Error should mention NaN: {err_msg}"
+            );
+        }
+
+        // -----------------------------------------------------------------
+        // Error case: Inf in weights
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_inf_detection() {
+            let dir = TempDir::new().expect("create temp dir");
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+            let make_f32 = |n: usize, val: f32| -> Vec<u8> {
+                std::iter::repeat_n(val, n)
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect()
+            };
+
+            // norm with Inf injected
+            let mut norm_vals: Vec<f32> = vec![1.0; hidden];
+            norm_vals[0] = f32::INFINITY;
+            let norm_bytes: Vec<u8> = norm_vals.iter().flat_map(|v| v.to_le_bytes()).collect();
+
+            td.push((
+                "model.embed_tokens.weight".to_string(),
+                make_f32(vocab * hidden, 0.01),
+                vec![vocab, hidden],
+            ));
+            td.push((
+                "model.norm.weight".to_string(),
+                norm_bytes,
+                vec![hidden],
+            ));
+
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+            }
+
+            let views: Vec<TensorView<'_>> = td
+                .iter()
+                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> = td
+                .iter()
+                .zip(views.iter())
+                .map(|((n, _, _), v)| (n.as_str(), v))
+                .collect();
+
+            let file_path = dir.path().join("model.safetensors");
+            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            std::fs::write(&file_path, serialized).expect("write");
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_err(), "Inf in weights should fail");
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(
+                err_msg.contains("Inf"),
+                "Error should mention Inf: {err_msg}"
+            );
+        }
+
+        // -----------------------------------------------------------------
+        // Error case: missing layer weights (wrong layer count)
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_missing_layer() {
+            let dir = TempDir::new().expect("create temp dir");
+            // Create a file with 2 layers of weights
+            create_tiny_safetensors(dir.path());
+
+            // But try to load with config expecting 3 layers
+            let mut config = TransformerConfig::tiny();
+            config.num_hidden_layers = 3;
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_err(), "Missing layer 2 should fail");
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(
+                err_msg.contains("Missing") || err_msg.contains("layers.2"),
+                "Error should mention missing layer: {err_msg}"
+            );
+        }
+
+        // -----------------------------------------------------------------
+        // Error case: wrong attention projection shape
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_wrong_q_proj_shape() {
+            let dir = TempDir::new().expect("create temp dir");
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+            let make_f32 = |n: usize, val: f32| -> Vec<u8> {
+                std::iter::repeat_n(val, n)
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect()
+            };
+
+            td.push(("model.embed_tokens.weight".to_string(), make_f32(vocab * hidden, 0.01), vec![vocab, hidden]));
+            td.push(("model.norm.weight".to_string(), make_f32(hidden, 1.0), vec![hidden]));
+
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+
+                // WRONG: q_proj has 7 elements instead of hidden*hidden
+                if i == 0 {
+                    td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(7, 0.01), vec![7]));
+                } else {
+                    td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                }
+                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+            }
+
+            let views: Vec<TensorView<'_>> = td
+                .iter()
+                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> = td
+                .iter()
+                .zip(views.iter())
+                .map(|((n, _, _), v)| (n.as_str(), v))
+                .collect();
+
+            let file_path = dir.path().join("model.safetensors");
+            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            std::fs::write(&file_path, serialized).expect("write");
+
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_err(), "Wrong q_proj shape should fail");
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(
+                err_msg.contains("Shape mismatch") && err_msg.contains("q_proj"),
+                "Error should mention q_proj shape mismatch: {err_msg}"
+            );
+        }
+
+        // -----------------------------------------------------------------
+        // Validate weight_shapes helper independently
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_validate_weight_shapes_success() {
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut weights = HashMap::new();
+            weights.insert("model.embed_tokens.weight".to_string(), Tensor::from_vec(vec![0.1; vocab * hidden], true));
+            weights.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden], true));
+
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+                weights.insert(format!("{p}.input_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden], true));
+                weights.insert(format!("{p}.post_attention_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden], true));
+                weights.insert(format!("{p}.self_attn.q_proj.weight"), Tensor::from_vec(vec![0.1; hidden * hidden], true));
+                weights.insert(format!("{p}.self_attn.k_proj.weight"), Tensor::from_vec(vec![0.1; hidden * kv_hidden], true));
+                weights.insert(format!("{p}.self_attn.v_proj.weight"), Tensor::from_vec(vec![0.1; hidden * kv_hidden], true));
+                weights.insert(format!("{p}.self_attn.o_proj.weight"), Tensor::from_vec(vec![0.1; hidden * hidden], true));
+                weights.insert(format!("{p}.mlp.gate_proj.weight"), Tensor::from_vec(vec![0.1; hidden * intermediate], true));
+                weights.insert(format!("{p}.mlp.up_proj.weight"), Tensor::from_vec(vec![0.1; hidden * intermediate], true));
+                weights.insert(format!("{p}.mlp.down_proj.weight"), Tensor::from_vec(vec![0.1; intermediate * hidden], true));
+            }
+
+            let result = Transformer::validate_weight_shapes(&weights, &config);
+            assert!(result.is_ok(), "Valid shapes should pass: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string()));
+        }
+
+        #[test]
+        fn test_ssc024_validate_weight_shapes_wrong_norm() {
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let vocab = config.vocab_size;
+
+            let mut weights = HashMap::new();
+            weights.insert("model.embed_tokens.weight".to_string(), Tensor::from_vec(vec![0.1; vocab * hidden], true));
+            // Wrong norm size: 3 instead of hidden
+            weights.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; 3], true));
+
+            let result = Transformer::validate_weight_shapes(&weights, &config);
+            assert!(result.is_err());
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(err_msg.contains("model.norm.weight"));
+        }
+
+        // -----------------------------------------------------------------
+        // Validate weight_values helper independently
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_validate_weight_values_clean() {
+            let mut weights = HashMap::new();
+            weights.insert("a".to_string(), Tensor::from_vec(vec![0.1, 0.2, 0.3], true));
+            weights.insert("b".to_string(), Tensor::from_vec(vec![1.0, -1.0, 0.0], true));
+
+            let result = Transformer::validate_weight_values(&weights);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_ssc024_validate_weight_values_nan() {
+            let mut weights = HashMap::new();
+            weights.insert("clean".to_string(), Tensor::from_vec(vec![0.1, 0.2], true));
+            weights.insert("poisoned".to_string(), Tensor::from_vec(vec![0.1, f32::NAN, 0.3], true));
+
+            let result = Transformer::validate_weight_values(&weights);
+            assert!(result.is_err());
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(err_msg.contains("NaN"));
+            assert!(err_msg.contains("poisoned"));
+        }
+
+        #[test]
+        fn test_ssc024_validate_weight_values_inf() {
+            let mut weights = HashMap::new();
+            weights.insert("w".to_string(), Tensor::from_vec(vec![f32::NEG_INFINITY, 0.2], true));
+
+            let result = Transformer::validate_weight_values(&weights);
+            assert!(result.is_err());
+            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            assert!(err_msg.contains("Inf"));
+        }
+
+        // -----------------------------------------------------------------
+        // Name mapping integration: Qwen2 bias tensors are preserved
+        // -----------------------------------------------------------------
+
+        #[test]
+        fn test_ssc024_from_safetensors_with_extra_bias_tensors() {
+            // Qwen2 models have bias tensors that are loaded alongside weights.
+            // from_params ignores them (doesn't look for bias keys), but they
+            // should not cause errors.
+            let dir = TempDir::new().expect("create temp dir");
+            let config = TransformerConfig::tiny();
+            let hidden = config.hidden_size;
+            let kv_hidden = config.num_kv_heads * config.head_dim();
+            let intermediate = config.intermediate_size;
+            let vocab = config.vocab_size;
+
+            let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+            let make_f32 = |n: usize, val: f32| -> Vec<u8> {
+                std::iter::repeat_n(val, n)
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect()
+            };
+
+            td.push(("model.embed_tokens.weight".to_string(), make_f32(vocab * hidden, 0.01), vec![vocab, hidden]));
+            td.push(("model.norm.weight".to_string(), make_f32(hidden, 1.0), vec![hidden]));
+
+            for i in 0..config.num_hidden_layers {
+                let p = format!("model.layers.{i}");
+                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
+                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
+                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+
+                // Qwen2-style bias tensors
+                td.push((format!("{p}.self_attn.q_proj.bias"), make_f32(hidden, 0.0), vec![hidden]));
+                td.push((format!("{p}.self_attn.k_proj.bias"), make_f32(kv_hidden, 0.0), vec![kv_hidden]));
+                td.push((format!("{p}.self_attn.v_proj.bias"), make_f32(kv_hidden, 0.0), vec![kv_hidden]));
+            }
+
+            let views: Vec<TensorView<'_>> = td
+                .iter()
+                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> = td
+                .iter()
+                .zip(views.iter())
+                .map(|((n, _, _), v)| (n.as_str(), v))
+                .collect();
+
+            let file_path = dir.path().join("model.safetensors");
+            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            std::fs::write(&file_path, serialized).expect("write");
+
+            // Should succeed even with extra bias tensors
+            let result = Transformer::from_safetensors(dir.path(), &config);
+            assert!(result.is_ok(), "Extra bias tensors should not cause failure: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string()));
         }
     }
 }
