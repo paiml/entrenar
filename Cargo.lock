@@ -1339,7 +1339,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -4506,7 +4506,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -6158,15 +6158,14 @@ dependencies = [
 
 [[package]]
 name = "trueno-viz"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2cd289f7b15c454eba71083d18e4193f9e3488e384030751d091fec56acc5a7"
+version = "0.1.27"
 dependencies = [
  "base64",
+ "batuta-common",
  "libc",
  "png 0.17.16",
  "thiserror 2.0.18",
- "trueno 0.13.0",
+ "trueno 0.15.0",
 ]
 
 [[package]]
@@ -6662,7 +6661,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

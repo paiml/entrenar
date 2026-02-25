@@ -50,6 +50,46 @@ pub fn clip_grad_norm(params: &mut [Tensor], max_norm: f32) -> f32 {
     global_norm
 }
 
+/// Clip gradients by global norm on borrowed parameter references.
+///
+/// Identical to [`clip_grad_norm`] but accepts `&mut [&mut Tensor]` instead of
+/// `&mut [Tensor]`. This is useful when parameters are collected as mutable
+/// references from a model (e.g., LoRA layers + classification head).
+///
+/// # Arguments
+/// * `params` - Mutable slice of parameter references with gradients
+/// * `max_norm` - Maximum allowed global norm
+///
+/// # Returns
+/// The actual global norm before clipping
+pub fn clip_grad_norm_refs(params: &mut [&mut Tensor], max_norm: f32) -> f32 {
+    // Compute global norm: sqrt(sum of squared norms)
+    let mut total_norm_sq = 0.0;
+
+    for param in params.iter() {
+        if let Some(grad) = param.grad() {
+            let grad_norm_sq: f32 = grad.iter().map(|&g| g * g).sum();
+            total_norm_sq += grad_norm_sq;
+        }
+    }
+
+    let global_norm = total_norm_sq.sqrt();
+
+    // Only clip if global norm exceeds max_norm
+    if global_norm > max_norm {
+        let clip_coef = max_norm / global_norm;
+
+        for param in params.iter_mut() {
+            if let Some(grad) = param.grad() {
+                let clipped_grad = grad * clip_coef;
+                param.set_grad(clipped_grad);
+            }
+        }
+    }
+
+    global_norm
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,5 +225,60 @@ mod tests {
 
         // With max_norm = 0, gradients should be clipped to 0
         assert_abs_diff_eq!(params[0].grad().unwrap()[0], 0.0, epsilon = 1e-6);
+    }
+
+    // ── clip_grad_norm_refs tests (SSC-025) ──────────────────────────
+
+    #[test]
+    fn test_clip_grad_norm_refs_no_clipping() {
+        let mut p0 = Tensor::from_vec(vec![1.0, 2.0], true);
+        let mut p1 = Tensor::from_vec(vec![3.0], true);
+        p0.set_grad(ndarray::arr1(&[0.1, 0.2]));
+        p1.set_grad(ndarray::arr1(&[0.1]));
+
+        let global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
+        assert_abs_diff_eq!(global_norm, 0.245, epsilon = 1e-3);
+
+        assert_abs_diff_eq!(p0.grad().unwrap()[0], 0.1, epsilon = 1e-6);
+        assert_abs_diff_eq!(p0.grad().unwrap()[1], 0.2, epsilon = 1e-6);
+        assert_abs_diff_eq!(p1.grad().unwrap()[0], 0.1, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_clip_grad_norm_refs_with_clipping() {
+        let mut p0 = Tensor::from_vec(vec![1.0, 2.0], true);
+        let mut p1 = Tensor::from_vec(vec![3.0], true);
+        p0.set_grad(ndarray::arr1(&[3.0, 4.0]));
+        p1.set_grad(ndarray::arr1(&[0.0]));
+
+        let global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
+        assert_abs_diff_eq!(global_norm, 5.0, epsilon = 1e-6);
+
+        assert_abs_diff_eq!(p0.grad().unwrap()[0], 0.6, epsilon = 1e-6);
+        assert_abs_diff_eq!(p0.grad().unwrap()[1], 0.8, epsilon = 1e-6);
+        assert_abs_diff_eq!(p1.grad().unwrap()[0], 0.0, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_clip_grad_norm_refs_preserves_relative_magnitudes() {
+        let mut p0 = Tensor::from_vec(vec![1.0], true);
+        let mut p1 = Tensor::from_vec(vec![1.0], true);
+        p0.set_grad(ndarray::arr1(&[10.0]));
+        p1.set_grad(ndarray::arr1(&[5.0]));
+
+        let _global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
+
+        let grad0 = p0.grad().unwrap()[0];
+        let grad1 = p1.grad().unwrap()[0];
+        assert_abs_diff_eq!(grad0 / grad1, 2.0, epsilon = 1e-4);
+    }
+
+    #[test]
+    fn test_clip_grad_norm_refs_no_gradients() {
+        let mut p0 = Tensor::from_vec(vec![1.0, 2.0], false);
+        let mut p1 = Tensor::from_vec(vec![3.0], false);
+
+        let global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
+        assert_abs_diff_eq!(global_norm, 0.0, epsilon = 1e-6);
     }
 }
