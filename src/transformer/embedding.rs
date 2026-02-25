@@ -207,8 +207,10 @@ mod tests {
         // Values vary (not constant)
         let min = slice.iter().copied().fold(f32::INFINITY, f32::min);
         let max = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-        assert!((max - min).abs() > 1e-6,
-            "FALSIFY-E7a: Init values are constant ({min}..{max}) — degenerate embedding");
+        assert!(
+            (max - min).abs() > 1e-6,
+            "FALSIFY-E7a: Init values are constant ({min}..{max}) — degenerate embedding"
+        );
     }
 
     /// FALSIFY-E7b: Embedding shape matches vocab * hidden
@@ -217,8 +219,11 @@ mod tests {
         let vocab_size = 151;
         let hidden_size = 32;
         let embed = Embedding::new(vocab_size, hidden_size);
-        assert_eq!(embed.weight.len(), vocab_size * hidden_size,
-            "FALSIFY-E7b: Embedding length must be vocab_size * hidden_size");
+        assert_eq!(
+            embed.weight.len(),
+            vocab_size * hidden_size,
+            "FALSIFY-E7b: Embedding length must be vocab_size * hidden_size"
+        );
     }
 
     /// FALSIFY-E7c: from_params rejects wrong-shape tensor (PMAT-326 fix)
@@ -235,8 +240,10 @@ mod tests {
         );
         let embed = Embedding::from_params(&params, "embed.weight", 100, 8);
         // FIXED (PMAT-326): now rejected
-        assert!(embed.is_none(),
-            "FALSIFY-E7c: PMAT-326 fix — from_params MUST reject wrong-shape embedding");
+        assert!(
+            embed.is_none(),
+            "FALSIFY-E7c: PMAT-326 fix — from_params MUST reject wrong-shape embedding"
+        );
     }
 
     /// FALSIFY-E7d: OOB token_id produces zeros (not panic)
@@ -265,8 +272,11 @@ mod tests {
         let embed2 = Embedding::new(100, 64);
         let d1 = embed1.weight.data();
         let d2 = embed2.weight.data();
-        assert_eq!(d1.as_slice().unwrap(), d2.as_slice().unwrap(),
-            "FALSIFY-E7e: Same vocab+hidden must produce identical initialization");
+        assert_eq!(
+            d1.as_slice().unwrap(),
+            d2.as_slice().unwrap(),
+            "FALSIFY-E7e: Same vocab+hidden must produce identical initialization"
+        );
     }
 
     // =========================================================================
@@ -342,8 +352,7 @@ mod tests {
         // Token 0 (valid): should match weight row 0
         for d in 0..hidden {
             assert_eq!(
-                mixed_data[d],
-                weight_data[d],
+                mixed_data[d], weight_data[d],
                 "FALSIFIED EM-002: valid token 0 corrupted at dim {d}"
             );
         }

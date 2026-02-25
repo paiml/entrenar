@@ -15,6 +15,8 @@
 //! - Dettmers et al. (2023) "QLoRA: Efficient Finetuning of Quantized LLMs"
 //! - Popper (1959) "The Logic of Scientific Discovery"
 
+pub mod classification;
+pub mod classify_pipeline;
 mod corpus;
 mod device;
 mod eval;
@@ -24,6 +26,12 @@ mod reproducibility;
 #[cfg(test)]
 mod tests;
 
+pub use classification::{
+    bce_with_logits_loss, corpus_stats, cross_entropy_loss, load_multi_label_corpus,
+    load_safety_corpus, ClassificationHead, MultiLabelSafetySample, SafetyCorpusStats,
+    SafetySample,
+};
+pub use classify_pipeline::ClassifyPipeline;
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
 pub use device::{ComputeDevice, DeviceInfo};
 pub use eval::{

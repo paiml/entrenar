@@ -244,7 +244,7 @@ dependencies = [
 
 [[package]]
 name = "aprender"
-version = "0.26.0"
+version = "0.26.3"
 dependencies = [
  "batuta-common",
  "bincode",
@@ -254,13 +254,13 @@ dependencies = [
  "memmap2",
  "minijinja",
  "provable-contracts-macros",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
+ "rand 0.9.2",
+ "rand_chacha 0.9.0",
  "rayon",
  "rmp-serde",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml_ng",
  "sha2",
  "trueno 0.15.0",
  "trueno-quant",
@@ -1339,7 +1339,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.2.2",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1919,11 +1919,11 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "alimentar",
  "approx",
- "aprender 0.26.0",
+ "aprender 0.26.3",
  "arrow 57.2.0",
  "axum 0.8.8",
  "bytemuck",
@@ -4506,7 +4506,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn",
@@ -4740,7 +4740,7 @@ dependencies = [
 
 [[package]]
 name = "realizar"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -4760,7 +4760,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml_ng",
  "smallvec",
  "thiserror 1.0.69",
  "tokio",
@@ -5293,6 +5293,19 @@ name = "serde_yaml"
 version = "0.9.34+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
+name = "serde_yaml_ng"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap",
  "itoa",
@@ -6649,7 +6662,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

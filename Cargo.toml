@@ -354,6 +354,11 @@ name = "nvml_test"
 path = "examples/nvml_test.rs"
 required-features = ["nvml"]
 
+[[example]]
+name = "shell_safety_classify"
+path = "examples/shell_safety_classify.rs"
+required-features = []
+
 # Phase 11: CUDA-First Architecture (SPEC-FT-001 v3.0.0)
 # realizar needs local patch due to trueno-gpu API changes
 # trueno-gpu needs local patch for relu_backward selp fix

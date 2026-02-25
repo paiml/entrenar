@@ -250,10 +250,7 @@ mod ce_contract_tests {
             let tgt = Tensor::from_vec(targets.clone(), false);
             let loss = ce.forward(&pred, &tgt);
             let val = loss.data()[0];
-            assert!(
-                val >= -1e-6,
-                "FALSIFIED CE-001 case {i}: CE = {val} < 0"
-            );
+            assert!(val >= -1e-6, "FALSIFIED CE-001 case {i}: CE = {val} < 0");
         }
     }
 
@@ -293,8 +290,8 @@ mod ce_contract_tests {
         let extreme_cases: Vec<(Vec<f32>, Vec<f32>)> = vec![
             (vec![500.0, -500.0, 0.0], one_hot(0, 3)),
             (vec![-1000.0, -1000.0, -1000.0], one_hot(1, 3)),
-            (vec![88.0, 88.0], one_hot(0, 2)),  // near f32 exp overflow
-            (vec![-88.0, -88.0, -88.0], one_hot(2, 3)),  // near f32 exp underflow
+            (vec![88.0, 88.0], one_hot(0, 2)), // near f32 exp overflow
+            (vec![-88.0, -88.0, -88.0], one_hot(2, 3)), // near f32 exp underflow
         ];
 
         for (i, (logits, targets)) in extreme_cases.iter().enumerate() {

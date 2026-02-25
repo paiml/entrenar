@@ -363,10 +363,22 @@ mod tests {
         let detector = ArchitectureDetector::new().with_tensors(vec![]);
         let info = detector.detect_from_shapes(&shapes);
 
-        assert_eq!(info.hidden_dim, 0, "hidden_dim must be 0 when no embedding tensor found");
-        assert_eq!(info.num_layers, 0, "num_layers must be 0 when no layer tensors found");
-        assert_eq!(info.vocab_size, 0, "vocab_size must be 0 when no embedding tensor found");
-        assert_eq!(info.num_heads, 0, "num_heads must be 0 when hidden_dim is 0");
+        assert_eq!(
+            info.hidden_dim, 0,
+            "hidden_dim must be 0 when no embedding tensor found"
+        );
+        assert_eq!(
+            info.num_layers, 0,
+            "num_layers must be 0 when no layer tensors found"
+        );
+        assert_eq!(
+            info.vocab_size, 0,
+            "vocab_size must be 0 when no embedding tensor found"
+        );
+        assert_eq!(
+            info.num_heads, 0,
+            "num_heads must be 0 when hidden_dim is 0"
+        );
     }
 
     #[test]

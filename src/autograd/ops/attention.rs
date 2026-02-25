@@ -224,11 +224,15 @@ mod tests {
         let v_data: Vec<f32> = v_row.iter().copied().cycle().take(seq_len * d_v).collect();
 
         let q = Tensor::new(
-            Array1::from(vec![1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9]),
+            Array1::from(vec![
+                1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9,
+            ]),
             false,
         );
         let k = Tensor::new(
-            Array1::from(vec![0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9]),
+            Array1::from(vec![
+                0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9,
+            ]),
             false,
         );
         let v = Tensor::new(Array1::from(v_data), false);
@@ -263,11 +267,15 @@ mod tests {
         ];
 
         let q = Tensor::new(
-            Array1::from(vec![1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9]),
+            Array1::from(vec![
+                1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9,
+            ]),
             false,
         );
         let k = Tensor::new(
-            Array1::from(vec![0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9]),
+            Array1::from(vec![
+                0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9,
+            ]),
             false,
         );
         let v = Tensor::new(Array1::from(v_data.clone()), false);
@@ -319,8 +327,8 @@ mod tests {
 
         // Manual reference with correct 1/√d_k scaling
         let scale = (d_k as f32).sqrt(); // 2.0
-        // Q[0] = [1,0,0,0], K[0] = [1,0,0,0], K[1] = [0,0,1,0]
-        // scores[0] = [dot(Q0,K0)/scale, dot(Q0,K1)/scale] = [1.0/2.0, 0.0/2.0] = [0.5, 0.0]
+                                         // Q[0] = [1,0,0,0], K[0] = [1,0,0,0], K[1] = [0,0,1,0]
+                                         // scores[0] = [dot(Q0,K0)/scale, dot(Q0,K1)/scale] = [1.0/2.0, 0.0/2.0] = [0.5, 0.0]
         let s00 = 1.0 / scale;
         let s01 = 0.0 / scale;
         let max0 = s00.max(s01);

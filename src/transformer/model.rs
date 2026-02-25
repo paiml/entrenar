@@ -64,7 +64,12 @@ impl Transformer {
             .collect();
         let layers = layers?;
 
-        let norm = RMSNorm::from_params(params, "model.norm", config.rms_norm_eps, config.hidden_size)?;
+        let norm = RMSNorm::from_params(
+            params,
+            "model.norm",
+            config.rms_norm_eps,
+            config.hidden_size,
+        )?;
 
         // PMAT-329: Validate lm_head shape if present
         let lm_head = if let Some(tensor) = params.get("lm_head.weight") {
@@ -495,17 +500,47 @@ mod tests {
         );
         for layer_idx in 0..config.num_hidden_layers {
             let prefix = format!("model.layers.{layer_idx}");
-            params.insert(format!("{prefix}.input_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden_size], true));
-            params.insert(format!("{prefix}.self_attn.q_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-            params.insert(format!("{prefix}.self_attn.k_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-            params.insert(format!("{prefix}.self_attn.v_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-            params.insert(format!("{prefix}.self_attn.o_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
-            params.insert(format!("{prefix}.post_attention_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden_size], true));
-            params.insert(format!("{prefix}.mlp.gate_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true));
-            params.insert(format!("{prefix}.mlp.up_proj.weight"), Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true));
-            params.insert(format!("{prefix}.mlp.down_proj.weight"), Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true));
+            params.insert(
+                format!("{prefix}.input_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.q_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.k_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.v_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.self_attn.o_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.post_attention_layernorm.weight"),
+                Tensor::from_vec(vec![1.0; hidden_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.gate_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.up_proj.weight"),
+                Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
+            );
+            params.insert(
+                format!("{prefix}.mlp.down_proj.weight"),
+                Tensor::from_vec(vec![0.1; intermediate_size * hidden_size], true),
+            );
         }
-        params.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden_size], true));
+        params.insert(
+            "model.norm.weight".to_string(),
+            Tensor::from_vec(vec![1.0; hidden_size], true),
+        );
 
         // WRONG-SHAPE lm_head: 50 elements for hidden*vocab expected
         params.insert(
@@ -515,8 +550,10 @@ mod tests {
 
         let transformer = Transformer::from_params(&config, &params);
         // FIXED (PMAT-329): now rejected
-        assert!(transformer.is_none(),
-            "FALSIFY-L1e: PMAT-329 fix — from_params MUST reject wrong-shape lm_head");
+        assert!(
+            transformer.is_none(),
+            "FALSIFY-L1e: PMAT-329 fix — from_params MUST reject wrong-shape lm_head"
+        );
     }
 
     /// FALSIFY-L2e: Tied embeddings produce valid logit dimensions
@@ -527,19 +564,31 @@ mod tests {
     fn falsify_l2e_tied_embeddings_produce_correct_logit_dims() {
         let config = TransformerConfig::tiny();
         let transformer = Transformer::new(&config);
-        assert!(transformer.lm_head.is_none(), "Default should use tied embeddings");
+        assert!(
+            transformer.lm_head.is_none(),
+            "Default should use tied embeddings"
+        );
 
         let tokens = vec![1, 2, 3];
         let logits = transformer.forward(&tokens);
-        assert_eq!(logits.len(), 3 * config.vocab_size,
-            "FALSIFY-L2e: Tied embedding logits must be seq_len * vocab_size");
+        assert_eq!(
+            logits.len(),
+            3 * config.vocab_size,
+            "FALSIFY-L2e: Tied embedding logits must be seq_len * vocab_size"
+        );
 
         // All logits must be finite (not NaN/Inf)
         let data = logits.data();
         let nan_count = data.iter().filter(|v| v.is_nan()).count();
         let inf_count = data.iter().filter(|v| v.is_infinite()).count();
-        assert_eq!(nan_count, 0, "FALSIFY-L2e: Tied logits must not contain NaN");
-        assert_eq!(inf_count, 0, "FALSIFY-L2e: Tied logits must not contain Inf");
+        assert_eq!(
+            nan_count, 0,
+            "FALSIFY-L2e: Tied logits must not contain NaN"
+        );
+        assert_eq!(
+            inf_count, 0,
+            "FALSIFY-L2e: Tied logits must not contain Inf"
+        );
     }
 
     /// FALSIFY-L3e: Separate lm_head produces valid logit dimensions
@@ -554,11 +603,16 @@ mod tests {
 
         let tokens = vec![1, 2, 3];
         let logits = transformer.forward(&tokens);
-        assert_eq!(logits.len(), 3 * config.vocab_size,
-            "FALSIFY-L3e: Separate lm_head logits must be seq_len * vocab_size");
+        assert_eq!(
+            logits.len(),
+            3 * config.vocab_size,
+            "FALSIFY-L3e: Separate lm_head logits must be seq_len * vocab_size"
+        );
         let data = logits.data();
-        assert!(data.iter().all(|v| v.is_finite()),
-            "FALSIFY-L3e: Separate lm_head logits must all be finite");
+        assert!(
+            data.iter().all(|v| v.is_finite()),
+            "FALSIFY-L3e: Separate lm_head logits must all be finite"
+        );
     }
 
     /// FALSIFY-L4e: lm_head is included in parameters() and parameters_mut()
@@ -579,13 +633,18 @@ mod tests {
             true,
         ));
         let n_with = transformer.parameters().len();
-        assert_eq!(n_with, n_without + 1,
-            "FALSIFY-L4e: lm_head must be included in parameters() — optimizer needs it");
+        assert_eq!(
+            n_with,
+            n_without + 1,
+            "FALSIFY-L4e: lm_head must be included in parameters() — optimizer needs it"
+        );
 
         // Also check parameters_mut
         let n_mut = transformer.parameters_mut().len();
-        assert_eq!(n_mut, n_with,
-            "FALSIFY-L4e: parameters_mut() must include lm_head for gradient updates");
+        assert_eq!(
+            n_mut, n_with,
+            "FALSIFY-L4e: parameters_mut() must include lm_head for gradient updates"
+        );
     }
 
     /// FALSIFY-L5e: forward_last returns exactly vocab_size logits
@@ -599,11 +658,16 @@ mod tests {
 
         let tokens = vec![1, 2, 3, 4, 5];
         let logits = transformer.forward_last(&tokens);
-        assert_eq!(logits.len(), config.vocab_size,
-            "FALSIFY-L5e: forward_last must return exactly vocab_size logits");
+        assert_eq!(
+            logits.len(),
+            config.vocab_size,
+            "FALSIFY-L5e: forward_last must return exactly vocab_size logits"
+        );
         let data = logits.data();
-        assert!(data.iter().all(|v| v.is_finite()),
-            "FALSIFY-L5e: forward_last logits must all be finite");
+        assert!(
+            data.iter().all(|v| v.is_finite()),
+            "FALSIFY-L5e: forward_last logits must all be finite"
+        );
     }
 
     #[test]

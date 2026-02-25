@@ -344,11 +344,7 @@ mod tests {
 
         for (idx, row) in probs.axis_iter(Axis(0)).enumerate() {
             let sum: f32 = row.sum();
-            assert_relative_eq!(
-                sum,
-                1.0,
-                epsilon = 1e-5
-            );
+            assert_relative_eq!(sum, 1.0, epsilon = 1e-5);
             let _ = idx;
         }
     }
@@ -459,11 +455,7 @@ mod tests {
 
             let expected = 1.0 / n as f32;
             for (i, &p) in probs.iter().enumerate() {
-                assert_relative_eq!(
-                    p,
-                    expected,
-                    epsilon = 1e-6
-                );
+                assert_relative_eq!(p, expected, epsilon = 1e-6);
                 let _ = i;
             }
         }

@@ -15,15 +15,15 @@
 //! See `aprender/contracts/classification-finetune-v1.yaml`
 
 use super::classification::{
-    ClassificationHead, MultiLabelSafetySample, SafetySample, load_multi_label_corpus,
-    load_safety_corpus,
+    load_multi_label_corpus, load_safety_corpus, ClassificationHead, MultiLabelSafetySample,
+    SafetySample,
 };
 use crate::autograd::matmul;
 use crate::lora::LoRAConfig;
 use crate::lora::LoRALayer;
 use crate::optim::{AdamW, Optimizer};
-use crate::transformer::TransformerConfig;
 use crate::transformer::Transformer;
+use crate::transformer::TransformerConfig;
 use crate::Tensor;
 use std::path::Path;
 
@@ -85,10 +85,8 @@ impl ClassifyPipeline {
     /// * `classify_config` - Classification pipeline configuration
     pub fn new(model_config: &TransformerConfig, classify_config: ClassifyConfig) -> Self {
         let model = Transformer::new(model_config);
-        let classifier = ClassificationHead::new(
-            model_config.hidden_size,
-            classify_config.num_classes,
-        );
+        let classifier =
+            ClassificationHead::new(model_config.hidden_size, classify_config.num_classes);
 
         // Create LoRA layers for q_proj and v_proj in each transformer layer
         let lora_config = LoRAConfig::new(classify_config.lora_rank, classify_config.lora_alpha)
@@ -213,13 +211,20 @@ impl ClassifyPipeline {
             .iter()
             .copied()
             .fold(f32::NEG_INFINITY, f32::max);
-        let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
+        let exp_vals: Vec<f32> = logits_with_bias
+            .iter()
+            .map(|&v| (v - max_val).exp())
+            .collect();
         let sum_exp: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
 
         // Loss = -log(prob[target])
         let loss_val = -(probs[label].max(1e-10).ln());
-        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
+        let loss_val = if loss_val.is_finite() {
+            loss_val
+        } else {
+            100.0
+        };
 
         // ∂L/∂logits = probs - one_hot(target)
         // This is the well-known cross-entropy gradient
@@ -320,7 +325,11 @@ impl ClassifyPipeline {
             .sum::<f32>()
             / num_classes as f32;
 
-        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
+        let loss_val = if loss_val.is_finite() {
+            loss_val
+        } else {
+            100.0
+        };
 
         // ∂L/∂logits = (σ(x) - targets) / N
         let grad_logits: Vec<f32> = logits_with_bias
@@ -387,9 +396,11 @@ impl ClassifyPipeline {
     /// Count total trainable parameters.
     #[must_use]
     pub fn num_trainable_parameters(&self) -> usize {
-        let lora_params: usize = self.lora_layers.iter().map(|l: &LoRALayer| {
-            l.rank() * (l.d_in() + l.d_out())
-        }).sum();
+        let lora_params: usize = self
+            .lora_layers
+            .iter()
+            .map(|l: &LoRALayer| l.rank() * (l.d_in() + l.d_out()))
+            .sum();
         lora_params + self.classifier.num_parameters()
     }
 
@@ -517,7 +528,10 @@ mod tests {
         let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
         let params = pipeline.trainable_parameters_mut();
         // LoRA A + B per adapter + classifier weight + bias
-        assert!(params.len() >= 3, "Should have at least classifier + 1 LoRA adapter params");
+        assert!(
+            params.len() >= 3,
+            "Should have at least classifier + 1 LoRA adapter params"
+        );
     }
 
     #[test]

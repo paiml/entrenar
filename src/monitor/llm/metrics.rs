@@ -359,10 +359,7 @@ mod tests {
         let metrics = LLMMetrics::new("totally-unknown-model-v9").with_tokens(1000, 1000);
         let cost = metrics.estimate_cost();
 
-        assert!(
-            cost > 0.0,
-            "Unknown model cost must be > 0, got {cost}"
-        );
+        assert!(cost > 0.0, "Unknown model cost must be > 0, got {cost}");
         // Conservative default: $0.001 prompt + $0.002 completion = $0.003 per 1K
         assert!(
             (cost - 0.003).abs() < 1e-6,

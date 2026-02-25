@@ -430,21 +430,19 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
 /// num_hidden_layers, vocab_size, intermediate_size) must be present — no silent defaults.
 /// R-04: Optional fields use generic defaults with warnings for likely-wrong values.
 fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
-    let hidden_size = hf_config["hidden_size"]
-        .as_u64()
-        .ok_or_else(|| Error::ConfigError(
-            "C-11: config.json missing 'hidden_size' — cannot train without model dimensions".into()
-        ))? as usize;
-    let num_attention_heads = hf_config["num_attention_heads"]
-        .as_u64()
-        .ok_or_else(|| Error::ConfigError(
-            "C-11: config.json missing 'num_attention_heads'".into()
-        ))? as usize;
+    let hidden_size = hf_config["hidden_size"].as_u64().ok_or_else(|| {
+        Error::ConfigError(
+            "C-11: config.json missing 'hidden_size' — cannot train without model dimensions"
+                .into(),
+        )
+    })? as usize;
+    let num_attention_heads = hf_config["num_attention_heads"].as_u64().ok_or_else(|| {
+        Error::ConfigError("C-11: config.json missing 'num_attention_heads'".into())
+    })? as usize;
     let num_hidden_layers = hf_config["num_hidden_layers"]
         .as_u64()
-        .ok_or_else(|| Error::ConfigError(
-            "C-11: config.json missing 'num_hidden_layers'".into()
-        ))? as usize;
+        .ok_or_else(|| Error::ConfigError("C-11: config.json missing 'num_hidden_layers'".into()))?
+        as usize;
     let vocab_size = hf_config["vocab_size"]
         .as_u64()
         .ok_or_else(|| Error::ConfigError(
@@ -452,9 +450,8 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         ))? as usize;
     let intermediate_size = hf_config["intermediate_size"]
         .as_u64()
-        .ok_or_else(|| Error::ConfigError(
-            "C-11: config.json missing 'intermediate_size'".into()
-        ))? as usize;
+        .ok_or_else(|| Error::ConfigError("C-11: config.json missing 'intermediate_size'".into()))?
+        as usize;
 
     // R-04 (Meyer DbC): Optional fields with generic defaults.
     // num_kv_heads → num_attention_heads is the correct GQA→MHA fallback.
@@ -464,8 +461,7 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
     // use_bias → false is correct for most modern architectures.
     let num_kv_heads = hf_config["num_key_value_heads"]
         .as_u64()
-        .unwrap_or(num_attention_heads as u64)
-        as usize;
+        .unwrap_or(num_attention_heads as u64) as usize;
 
     let max_position_embeddings = match hf_config["max_position_embeddings"].as_u64() {
         Some(v) => v as usize,
@@ -478,15 +474,19 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
     let rope_theta = match hf_config["rope_theta"].as_f64() {
         Some(v) => v as f32,
         None => {
-            eprintln!("Warning: config.json missing 'rope_theta', defaulting to 10000.0 \
-                (Qwen models use 1000000.0 — check your config)");
+            eprintln!(
+                "Warning: config.json missing 'rope_theta', defaulting to 10000.0 \
+                (Qwen models use 1000000.0 — check your config)"
+            );
             10_000.0
         }
     };
 
     let rms_norm_eps = hf_config["rms_norm_eps"].as_f64().unwrap_or_else(|| {
-        eprintln!("Warning: config.json missing 'rms_norm_eps', defaulting to 1e-6 \
-            (some models use 1e-5 or 1e-12 — check your config)");
+        eprintln!(
+            "Warning: config.json missing 'rms_norm_eps', defaulting to 1e-6 \
+            (some models use 1e-5 or 1e-12 — check your config)"
+        );
         1e-6
     }) as f32;
     let use_bias = hf_config["attention_bias"].as_bool().unwrap_or(false);

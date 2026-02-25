@@ -208,8 +208,10 @@ mod tests {
         );
         let norm = RMSNorm::from_params(&params, "test", 1e-6, 4);
         // FIXED: from_params now rejects wrong-length weight
-        assert!(norm.is_none(),
-            "FALSIFY-N1e: PMAT-332 fix — from_params MUST reject wrong-length norm weight");
+        assert!(
+            norm.is_none(),
+            "FALSIFY-N1e: PMAT-332 fix — from_params MUST reject wrong-length norm weight"
+        );
     }
 
     /// FALSIFY-N2e: RMSNorm forward produces finite output for valid input
@@ -218,8 +220,10 @@ mod tests {
         let norm = RMSNorm::new(8, 1e-6);
         let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
         let output = norm.forward(&x);
-        assert!(output.data().iter().all(|v| v.is_finite()),
-            "FALSIFY-N2e: RMSNorm output must be finite for valid input");
+        assert!(
+            output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-N2e: RMSNorm output must be finite for valid input"
+        );
     }
 
     /// FALSIFY-N3e: RMSNorm weight length matches hidden_size when constructed via new()
@@ -228,8 +232,11 @@ mod tests {
         let hidden_sizes = [64, 128, 256, 896, 4096];
         for &hidden in &hidden_sizes {
             let norm = RMSNorm::new(hidden, 1e-6);
-            assert_eq!(norm.weight.len(), hidden,
-                "FALSIFY-N3e: RMSNorm::new({hidden}) weight must have {hidden} elements");
+            assert_eq!(
+                norm.weight.len(),
+                hidden,
+                "FALSIFY-N3e: RMSNorm::new({hidden}) weight must have {hidden} elements"
+            );
         }
     }
 
@@ -241,10 +248,15 @@ mod tests {
         let norm = RMSNorm::new(hidden, 1e-6);
         let x = Tensor::from_vec(vec![0.5; seq_len * hidden], true);
         let output = norm.forward_batched(&x, seq_len, hidden);
-        assert_eq!(output.len(), seq_len * hidden,
-            "FALSIFY-N4e: Batched norm must preserve seq_len * hidden dimension");
-        assert!(output.data().iter().all(|v| v.is_finite()),
-            "FALSIFY-N4e: Batched norm output must be finite");
+        assert_eq!(
+            output.len(),
+            seq_len * hidden,
+            "FALSIFY-N4e: Batched norm must preserve seq_len * hidden dimension"
+        );
+        assert!(
+            output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-N4e: Batched norm output must be finite"
+        );
     }
 
     /// FALSIFY-N5e: RMSNorm handles extreme but finite input values
@@ -255,8 +267,10 @@ mod tests {
         let norm = RMSNorm::new(4, 1e-6);
         let x = Tensor::from_vec(vec![1e30, -1e30, 1e30, -1e30], true);
         let output = norm.forward(&x);
-        assert!(output.data().iter().all(|v| v.is_finite()),
-            "FALSIFY-N5e: RMSNorm must handle extreme values without Inf/NaN");
+        assert!(
+            output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-N5e: RMSNorm must handle extreme values without Inf/NaN"
+        );
     }
 
     // =========================================================================
@@ -310,10 +324,7 @@ mod tests {
         let y_base = norm.forward(&x);
 
         for &alpha in &[2.0_f32, 0.5, -1.0, 10.0] {
-            let x_scaled = Tensor::from_vec(
-                x.data().iter().map(|&v| v * alpha).collect(),
-                true,
-            );
+            let x_scaled = Tensor::from_vec(x.data().iter().map(|&v| v * alpha).collect(), true);
             let y_scaled = norm.forward(&x_scaled);
 
             let sign = alpha.signum();
@@ -351,7 +362,8 @@ mod tests {
         let y = norm.forward(&x);
         let y_data = y.data();
 
-        let rms_out: f32 = (y_data.iter().map(|&v| v * v).sum::<f32>() / y_data.len() as f32).sqrt();
+        let rms_out: f32 =
+            (y_data.iter().map(|&v| v * v).sum::<f32>() / y_data.len() as f32).sqrt();
 
         assert!(
             (rms_out - 1.0).abs() < 0.01,
