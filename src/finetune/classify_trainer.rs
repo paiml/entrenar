@@ -410,13 +410,13 @@ impl ClassifyTrainer {
         })?;
         std::fs::write(&meta_path, meta_json)?;
 
-        // Save model weights as SafeTensors
+        // Save model weights as SafeTensors (classifier head + LoRA adapters)
         let params = self.pipeline.classifier.parameters();
         let st_path = path.join("model.safetensors");
 
-        // Collect tensor data
+        // Collect classifier head tensor data
         let tensor_names = ["classifier.weight", "classifier.bias"];
-        let tensor_data: Vec<(String, Vec<u8>, Vec<usize>)> = params
+        let mut tensor_data: Vec<(String, Vec<u8>, Vec<usize>)> = params
             .iter()
             .zip(tensor_names.iter())
             .map(|(tensor, name)| {
@@ -427,6 +427,35 @@ impl ClassifyTrainer {
                 (name.to_string(), bytes, shape)
             })
             .collect();
+
+        // Collect LoRA adapter weights (F-CLASS-008: Q/V projections)
+        // Convention: 2 adapters per layer (Q=even, V=odd)
+        for (idx, lora) in self.pipeline.lora_layers.iter().enumerate() {
+            let layer = idx / 2;
+            let proj = if idx % 2 == 0 { "q" } else { "v" };
+
+            // LoRA A: [rank, d_in]
+            let a_data = lora.lora_a().data();
+            let a_bytes: Vec<u8> =
+                bytemuck::cast_slice(a_data.as_slice().expect("contiguous lora_a")).to_vec();
+            let a_shape = vec![lora.rank(), lora.d_in()];
+            tensor_data.push((
+                format!("lora.{layer}.{proj}_proj.lora_a"),
+                a_bytes,
+                a_shape,
+            ));
+
+            // LoRA B: [d_out, rank]
+            let b_data = lora.lora_b().data();
+            let b_bytes: Vec<u8> =
+                bytemuck::cast_slice(b_data.as_slice().expect("contiguous lora_b")).to_vec();
+            let b_shape = vec![lora.d_out(), lora.rank()];
+            tensor_data.push((
+                format!("lora.{layer}.{proj}_proj.lora_b"),
+                b_bytes,
+                b_shape,
+            ));
+        }
 
         let views: Vec<(&str, safetensors::tensor::TensorView<'_>)> = tensor_data
             .iter()
