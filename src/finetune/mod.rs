@@ -17,6 +17,7 @@
 
 pub mod classification;
 pub mod classify_pipeline;
+pub mod classify_trainer;
 mod corpus;
 mod device;
 mod eval;
@@ -34,6 +35,7 @@ pub use classification::{
     SafetySample,
 };
 pub use classify_pipeline::{BatchResult, ClassifyConfig, ClassifyPipeline};
+pub use classify_trainer::{ClassifyTrainer, EpochMetrics, TrainResult, TrainingConfig};
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
 pub use device::{ComputeDevice, DeviceInfo};
 pub use eval::{
