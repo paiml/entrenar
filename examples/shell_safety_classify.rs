@@ -158,6 +158,7 @@ fn main() {
         epochs: 10,
         max_seq_len: 64,
         log_interval: 5,
+        ..ClassifyConfig::default()
     };
 
     let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
@@ -282,6 +283,7 @@ fn main() {
         epochs: 3,
         max_seq_len: 512,
         log_interval: 100,
+        ..ClassifyConfig::default()
     };
     let prod_pipeline = ClassifyPipeline::new(&qwen_config, prod_classify);
     println!("{}\n", prod_pipeline.summary());

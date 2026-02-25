@@ -567,6 +567,79 @@ impl ClassifyPipeline {
         }
     }
 
+
+    /// Forward-only pass for a single sample (no backward, no optimizer step).
+    ///
+    /// Computes cross-entropy loss and predicted class without accumulating
+    /// gradients. Used for validation/evaluation.
+    ///
+    /// # Arguments
+    /// * `token_ids` - Tokenized input
+    /// * `label` - Target class index
+    ///
+    /// # Returns
+    /// `(loss, predicted_class)` tuple
+    pub fn forward_only(&self, token_ids: &[u32], label: usize) -> (f32, usize) {
+        let seq_len = token_ids.len();
+        let num_classes = self.config.num_classes;
+
+        // Forward pass
+        let hidden = self.model.forward_hidden(token_ids);
+        let pooled = self.classifier.mean_pool(&hidden, seq_len);
+
+        let logits = matmul(
+            &pooled,
+            &self.classifier.weight,
+            1,
+            self.classifier.hidden_size(),
+            num_classes,
+        );
+
+        let logits_with_bias: Vec<f32> = logits
+            .data()
+            .as_slice()
+            .expect("contiguous logits")
+            .iter()
+            .zip(
+                self.classifier
+                    .bias
+                    .data()
+                    .as_slice()
+                    .expect("contiguous bias")
+                    .iter(),
+            )
+            .map(|(&l, &b)| l + b)
+            .collect();
+
+        // Predicted class (argmax)
+        let predicted = logits_with_bias
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("no NaN in logits"))
+            .map(|(idx, _)| idx)
+            .unwrap_or(0);
+
+        // Cross-entropy loss
+        let max_val = logits_with_bias
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits_with_bias
+            .iter()
+            .map(|&v| (v - max_val).exp())
+            .collect();
+        let sum_exp: f32 = exp_vals.iter().sum();
+        let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
+
+        let loss_val = -(probs[label].max(1e-10).ln());
+        let loss_val = if loss_val.is_finite() {
+            loss_val
+        } else {
+            100.0
+        };
+
+        (loss_val, predicted)
+    }
     /// Multi-label training step using BCE with logits loss.
     ///
     /// Unlike `train_step` which uses cross-entropy (mutually exclusive classes),
@@ -728,6 +801,19 @@ impl ClassifyPipeline {
         for lora in &mut self.lora_layers {
             lora.merge();
         }
+    }
+
+    /// Set the learning rate of the internal optimizer.
+    ///
+    /// Used by `ClassifyTrainer` to apply LR scheduling.
+    pub fn set_optimizer_lr(&mut self, lr: f32) {
+        self.optimizer.set_lr(lr);
+    }
+
+    /// Get the current learning rate of the internal optimizer.
+    #[must_use]
+    pub fn optimizer_lr(&self) -> f32 {
+        self.optimizer.lr()
     }
 
     /// Summary of the pipeline configuration.
