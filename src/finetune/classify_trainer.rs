@@ -329,13 +329,13 @@ impl ClassifyTrainer {
     /// Compute validation metrics (forward-only, no gradient updates).
     ///
     /// F-LOOP-009: Val set is frozen — same samples every epoch.
-    fn validate(&self) -> (f32, f32) {
+    fn validate(&mut self) -> (f32, f32) {
         let mut total_loss = 0.0f32;
         let mut correct = 0usize;
         let total = self.val_data.len();
 
         for sample in &self.val_data {
-            let ids = sample.input_ids();
+            let ids = self.pipeline.tokenize(&sample.input);
             let (loss, predicted) = self.pipeline.forward_only(&ids, sample.label);
             total_loss += loss;
             if predicted == sample.label {

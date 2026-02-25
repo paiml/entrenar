@@ -22,10 +22,18 @@ use crate::autograd::matmul;
 use crate::lora::LoRAConfig;
 use crate::lora::LoRALayer;
 use crate::optim::{clip_grad_norm_refs, AdamW, Optimizer};
+use crate::tokenizer::HfTokenizer;
 use crate::transformer::Transformer;
 use crate::transformer::TransformerConfig;
 use crate::Tensor;
 use std::path::Path;
+
+#[cfg(feature = "cuda")]
+use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
+#[cfg(feature = "cuda")]
+use crate::transformer::CudaTransformerBlock;
+#[cfg(feature = "cuda")]
+use std::sync::Arc;
 
 /// Classification fine-tuning pipeline configuration.
 #[derive(Debug, Clone)]
@@ -103,6 +111,9 @@ impl BatchResult {
 ///
 /// Owns the transformer, LoRA adapters, and classification head.
 /// Provides `train_step()` for single-step training and `train()` for full loop.
+///
+/// When compiled with `feature = "cuda"` and a GPU is available, the forward pass
+/// runs on CUDA via `CudaTransformerBlock`s for ~10-50x speedup (F-CUDA-007).
 pub struct ClassifyPipeline {
     /// Base transformer model (weights frozen)
     pub model: Transformer,
@@ -114,10 +125,18 @@ pub struct ClassifyPipeline {
     pub config: ClassifyConfig,
     /// AdamW optimizer for trainable parameters
     optimizer: AdamW,
+    /// Optional BPE tokenizer (None = byte-level fallback)
+    tokenizer: Option<HfTokenizer>,
+    /// CUDA trainer for GPU memory management (F-CUDA-002)
+    #[cfg(feature = "cuda")]
+    cuda_trainer: Option<CudaTrainer>,
+    /// CUDA-accelerated transformer blocks — one per layer (F-CUDA-006)
+    #[cfg(feature = "cuda")]
+    cuda_blocks: Option<Vec<CudaTransformerBlock>>,
 }
 
 impl ClassifyPipeline {
-    /// Create a new classification pipeline.
+    /// Create a new classification pipeline with random weights and byte-level tokenization.
     ///
     /// # Arguments
     /// * `model_config` - Transformer configuration (e.g., `TransformerConfig::qwen2_0_5b()`)
@@ -126,16 +145,122 @@ impl ClassifyPipeline {
         let model = Transformer::new(model_config);
         let classifier =
             ClassificationHead::new(model_config.hidden_size, classify_config.num_classes);
+        let mut lora_layers = Self::build_lora_layers(&model, model_config, &classify_config);
 
-        // Create LoRA layers for q_proj and v_proj in each transformer layer
+        // Ensure LoRA A/B matrices have requires_grad=true
+        for lora in &mut lora_layers {
+            for param in lora.trainable_params() {
+                param.set_requires_grad(true);
+            }
+        }
+
+        let optimizer = AdamW::default_params(classify_config.learning_rate);
+
+        Self {
+            model,
+            classifier,
+            lora_layers,
+            config: classify_config,
+            optimizer,
+            tokenizer: None,
+            #[cfg(feature = "cuda")]
+            cuda_trainer: None,
+            #[cfg(feature = "cuda")]
+            cuda_blocks: None,
+        }
+    }
+
+    /// Create a classification pipeline from pretrained weights.
+    ///
+    /// Loads a transformer from SafeTensors weights and optionally a BPE tokenizer
+    /// from `tokenizer.json` in the model directory.
+    ///
+    /// # Arguments
+    /// * `model_dir` - Directory containing SafeTensors weights (and optionally `tokenizer.json`)
+    /// * `model_config` - Transformer configuration matching the pretrained weights
+    /// * `classify_config` - Classification pipeline configuration
+    ///
+    /// # Errors
+    /// Returns error if the model directory doesn't exist or weights fail to load.
+    pub fn from_pretrained(
+        model_dir: impl AsRef<Path>,
+        model_config: &TransformerConfig,
+        classify_config: ClassifyConfig,
+    ) -> crate::Result<Self> {
+        let model_dir = model_dir.as_ref();
+
+        let model = Transformer::from_safetensors(model_dir, model_config)?;
+        let classifier =
+            ClassificationHead::new(model_config.hidden_size, classify_config.num_classes);
+        let mut lora_layers = Self::build_lora_layers(&model, model_config, &classify_config);
+
+        for lora in &mut lora_layers {
+            for param in lora.trainable_params() {
+                param.set_requires_grad(true);
+            }
+        }
+
+        // Load tokenizer if tokenizer.json exists (optional — falls back to byte-level)
+        let tokenizer_path = model_dir.join("tokenizer.json");
+        let tokenizer = if tokenizer_path.exists() {
+            Some(HfTokenizer::from_file(&tokenizer_path).map_err(|e| {
+                crate::Error::Io(format!("Failed to load tokenizer: {e}"))
+            })?)
+        } else {
+            None
+        };
+
+        let optimizer = AdamW::default_params(classify_config.learning_rate);
+
+        // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
+        #[cfg(feature = "cuda")]
+        let (cuda_trainer, cuda_blocks) = Self::try_init_cuda(&model, &model_config, &classify_config);
+
+        Ok(Self {
+            model,
+            classifier,
+            lora_layers,
+            config: classify_config,
+            optimizer,
+            tokenizer,
+            #[cfg(feature = "cuda")]
+            cuda_trainer,
+            #[cfg(feature = "cuda")]
+            cuda_blocks,
+        })
+    }
+
+    /// Tokenize input text using BPE tokenizer if available, else byte-level fallback.
+    ///
+    /// Truncates to `config.max_seq_len` and ensures at least one token.
+    pub(crate) fn tokenize(&self, text: &str) -> Vec<u32> {
+        let mut ids = if let Some(ref tok) = self.tokenizer {
+            tok.encode(text)
+        } else {
+            text.bytes().map(u32::from).collect()
+        };
+        ids.truncate(self.config.max_seq_len);
+        if ids.is_empty() {
+            ids.push(0);
+        }
+        ids
+    }
+
+    /// Build LoRA layers for Q and V projections across all transformer layers.
+    fn build_lora_layers(
+        model: &Transformer,
+        model_config: &TransformerConfig,
+        classify_config: &ClassifyConfig,
+    ) -> Vec<LoRALayer> {
         let lora_config = LoRAConfig::new(classify_config.lora_rank, classify_config.lora_alpha)
             .target_qv_projections();
 
         let mut lora_layers = Vec::new();
+        let hidden = model_config.hidden_size;
+        let head_dim = hidden / model_config.num_attention_heads;
+
         for layer in &model.layers {
             let attn = &layer.self_attn;
-            let hidden = model_config.hidden_size;
-            let head_dim = hidden / model_config.num_attention_heads;
 
             // Q projection LoRA
             if lora_config.should_apply("q_proj", None) {
@@ -170,21 +295,190 @@ impl ClassifyPipeline {
             }
         }
 
-        // Ensure LoRA A/B matrices have requires_grad=true
-        for lora in &mut lora_layers {
-            for param in lora.trainable_params() {
-                param.set_requires_grad(true);
+        lora_layers
+    }
+
+    // ── CUDA GPU acceleration (F-CUDA-001..014) ────────────────────────
+
+    /// Attempt to initialize CUDA acceleration.
+    ///
+    /// Creates `CudaTrainer` and uploads all transformer layer weights to GPU as
+    /// `CudaTransformerBlock`s. Returns `(None, None)` if CUDA is unavailable
+    /// or any initialization step fails (F-CUDA-003: graceful fallback).
+    #[cfg(feature = "cuda")]
+    fn try_init_cuda(
+        model: &Transformer,
+        model_config: &TransformerConfig,
+        classify_config: &ClassifyConfig,
+    ) -> (Option<CudaTrainer>, Option<Vec<CudaTransformerBlock>>) {
+        if !cuda_training_available() {
+            eprintln!("[CUDA] No CUDA runtime detected — using CPU");
+            return (None, None);
+        }
+
+        let trainer = match CudaTrainer::new() {
+            Ok(t) => {
+                eprintln!(
+                    "[CUDA] Initialized: {} ({:.1} GB)",
+                    t.device_name(),
+                    t.total_memory() as f64 / 1e9
+                );
+                t
+            }
+            Err(e) => {
+                eprintln!("[CUDA] Failed to create trainer: {e} — using CPU");
+                return (None, None);
+            }
+        };
+
+        let ctx = Arc::clone(trainer.context());
+        let max_seq_len = classify_config.max_seq_len;
+        let mut blocks = Vec::with_capacity(model.config.num_hidden_layers);
+
+        for (i, layer) in model.layers.iter().enumerate() {
+            // Extract weight data from CPU tensors (F-CUDA-005)
+            let input_norm = layer.input_norm.weight.data();
+            let input_norm = input_norm.as_slice().expect("contiguous input_norm");
+            let post_attn_norm = layer.post_attn_norm.weight.data();
+            let post_attn_norm = post_attn_norm.as_slice().expect("contiguous post_attn_norm");
+            let w_q = layer.self_attn.w_q.data();
+            let w_q = w_q.as_slice().expect("contiguous w_q");
+            let w_k = layer.self_attn.w_k.data();
+            let w_k = w_k.as_slice().expect("contiguous w_k");
+            let w_v = layer.self_attn.w_v.data();
+            let w_v = w_v.as_slice().expect("contiguous w_v");
+            let w_o = layer.self_attn.w_o.data();
+            let w_o = w_o.as_slice().expect("contiguous w_o");
+            let w_gate = layer.ffn.w_gate.data();
+            let w_gate = w_gate.as_slice().expect("contiguous w_gate");
+            let w_up = layer.ffn.w_up.data();
+            let w_up = w_up.as_slice().expect("contiguous w_up");
+            let w_down = layer.ffn.w_down.data();
+            let w_down = w_down.as_slice().expect("contiguous w_down");
+
+            match CudaTransformerBlock::new(
+                model_config,
+                i,
+                Arc::clone(&ctx),
+                input_norm,
+                post_attn_norm,
+                w_q,
+                w_k,
+                w_v,
+                w_o,
+                w_gate,
+                w_up,
+                w_down,
+                max_seq_len,
+            ) {
+                Ok(block) => blocks.push(block),
+                Err(e) => {
+                    eprintln!(
+                        "[CUDA] Failed to upload layer {i} to GPU: {e} — falling back to CPU"
+                    );
+                    return (None, None);
+                }
             }
         }
 
-        let optimizer = AdamW::default_params(classify_config.learning_rate);
+        eprintln!(
+            "[CUDA] Uploaded {} transformer layers to GPU (max_seq_len={})",
+            blocks.len(),
+            max_seq_len
+        );
 
-        Self {
-            model,
-            classifier,
-            lora_layers,
-            config: classify_config,
-            optimizer,
+        // F-CUDA-006: verify all layers uploaded
+        assert_eq!(blocks.len(), model.config.num_hidden_layers);
+
+        (Some(trainer), Some(blocks))
+    }
+
+    /// Forward pass through transformer layers, dispatching to GPU when available.
+    ///
+    /// - **GPU path** (F-CUDA-007..009): Embed on CPU, upload to GPU, run CUDA layers, download
+    /// - **CPU path**: Use `Transformer::forward_hidden()`
+    fn forward_hidden_dispatch(&mut self, token_ids: &[u32]) -> Tensor {
+        #[cfg(feature = "cuda")]
+        {
+            if let (Some(ref trainer), Some(ref mut blocks)) =
+                (&self.cuda_trainer, &mut self.cuda_blocks)
+            {
+                match Self::forward_hidden_cuda_impl(
+                    &self.model,
+                    token_ids,
+                    trainer,
+                    blocks,
+                ) {
+                    Some(tensor) => return tensor,
+                    None => {
+                        // Fallback logged inside forward_hidden_cuda_impl
+                    }
+                }
+            }
+        }
+
+        // CPU fallback
+        self.model.forward_hidden(token_ids)
+    }
+
+    /// GPU-accelerated forward pass (F-CUDA-007).
+    ///
+    /// 1. Embed tokens on CPU (F-CUDA-008: small op)
+    /// 2. Upload hidden states to GPU
+    /// 3. Run through all CudaTransformerBlocks
+    /// 4. Apply final RMSNorm on CPU
+    /// 5. Return hidden states (F-CUDA-009)
+    ///
+    /// Returns `None` on any GPU error, signaling caller to use CPU fallback.
+    #[cfg(feature = "cuda")]
+    fn forward_hidden_cuda_impl(
+        model: &Transformer,
+        token_ids: &[u32],
+        trainer: &CudaTrainer,
+        cuda_blocks: &mut [CudaTransformerBlock],
+    ) -> Option<Tensor> {
+        let seq_len = token_ids.len();
+        let hidden_size = model.config.hidden_size;
+
+        // Step 1: Embed on CPU
+        let hidden = model.embed_tokens.forward(token_ids);
+        let hidden_data = hidden.data();
+        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
+
+        // Step 2: Upload to GPU
+        let mut gpu_input = trainer.upload(hidden_slice).ok()?;
+        let mut gpu_output = trainer.zeros(seq_len * hidden_size).ok()?;
+
+        // Step 3: Run through CUDA transformer blocks
+        let stream = trainer.stream();
+        for (i, block) in cuda_blocks.iter_mut().enumerate() {
+            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream) {
+                eprintln!("[CUDA] Layer {i} forward failed: {e}");
+                return None;
+            }
+            // Swap: output becomes input for next layer
+            std::mem::swap(&mut gpu_input, &mut gpu_output);
+        }
+        // After the loop, gpu_input holds the final output (due to swap)
+
+        // Step 4: Download from GPU
+        let result_data = trainer.download(&gpu_input).ok()?;
+
+        // Step 5: Apply final RMSNorm on CPU
+        let result_tensor = Tensor::from_vec(result_data, false);
+        Some(model.norm.forward_batched(&result_tensor, seq_len, hidden_size))
+    }
+
+    /// Check if this pipeline is using CUDA acceleration.
+    #[must_use]
+    pub fn is_cuda(&self) -> bool {
+        #[cfg(feature = "cuda")]
+        {
+            self.cuda_blocks.is_some()
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            false
         }
     }
 
@@ -214,8 +508,8 @@ impl ClassifyPipeline {
             lora.lora_b().zero_grad();
         }
 
-        // ── 2. Forward pass ───────────────────────────────────────────
-        let hidden = self.model.forward_hidden(token_ids);
+        // ── 2. Forward pass (GPU-dispatched if available) ─────────────
+        let hidden = self.forward_hidden_dispatch(token_ids);
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
         // matmul builds autograd backward ops (connects classifier.weight to loss)
@@ -337,7 +631,8 @@ impl ClassifyPipeline {
         let mut correct = 0usize;
 
         for sample in samples {
-            let (loss, predicted) = self.forward_backward_single(&sample.input_ids(), sample.label);
+            let ids = self.tokenize(&sample.input);
+            let (loss, predicted) = self.forward_backward_single(&ids, sample.label);
             total_loss += loss;
             if predicted == sample.label {
                 correct += 1;
@@ -406,7 +701,8 @@ impl ClassifyPipeline {
         let mut correct = 0usize;
 
         for sample in micro_batch {
-            let (loss, predicted) = self.forward_backward_single(&sample.input_ids(), sample.label);
+            let ids = self.tokenize(&sample.input);
+            let (loss, predicted) = self.forward_backward_single(&ids, sample.label);
             total_loss += loss;
             if predicted == sample.label {
                 correct += 1;
@@ -466,8 +762,14 @@ impl ClassifyPipeline {
         let seq_len = token_ids.len();
         let num_classes = self.config.num_classes;
 
-        // ── Forward pass ────────────────────────────────────────────────
-        let hidden = self.model.forward_hidden(token_ids);
+        // ── Contract precondition (F-CLASS-002): label in bounds ─────────
+        debug_assert!(
+            label < num_classes,
+            "F-CLASS-002: label index {label} >= num_classes {num_classes}"
+        );
+
+        // ── Forward pass (GPU-dispatched if available) ──────────────────
+        let hidden = self.forward_hidden_dispatch(token_ids);
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
         let logits = matmul(
@@ -493,6 +795,19 @@ impl ClassifyPipeline {
             )
             .map(|(&l, &b)| l + b)
             .collect();
+
+        // ── Contract postcondition (F-CLASS-001): logit shape ────────────
+        debug_assert_eq!(
+            logits_with_bias.len(),
+            num_classes,
+            "F-CLASS-001: logits.len()={} != num_classes={num_classes}",
+            logits_with_bias.len()
+        );
+        // ── Contract postcondition: no NaN in logits ────────────────────
+        debug_assert!(
+            logits_with_bias.iter().all(|v| v.is_finite()),
+            "F-CLASS-001: logits contain NaN or Inf"
+        );
 
         // ── Predicted class (argmax) ────────────────────────────────────
         let predicted = logits_with_bias
@@ -520,6 +835,10 @@ impl ClassifyPipeline {
         } else {
             100.0
         };
+
+        // ── Contract postcondition (F-CLASS-005): loss finite & non-negative
+        debug_assert!(loss_val.is_finite(), "F-CLASS-005: loss is not finite");
+        debug_assert!(loss_val >= 0.0, "F-CLASS-005: loss is negative: {loss_val}");
 
         // ── Backward ────────────────────────────────────────────────────
         // dL/d_logits = softmax(logits) - one_hot(label)
@@ -579,12 +898,12 @@ impl ClassifyPipeline {
     ///
     /// # Returns
     /// `(loss, predicted_class)` tuple
-    pub fn forward_only(&self, token_ids: &[u32], label: usize) -> (f32, usize) {
+    pub fn forward_only(&mut self, token_ids: &[u32], label: usize) -> (f32, usize) {
         let seq_len = token_ids.len();
         let num_classes = self.config.num_classes;
 
-        // Forward pass
-        let hidden = self.model.forward_hidden(token_ids);
+        // Forward pass (F-CUDA-009: classification head runs on CPU after GPU hidden states)
+        let hidden = self.forward_hidden_dispatch(token_ids);
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
         let logits = matmul(
@@ -616,8 +935,7 @@ impl ClassifyPipeline {
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("no NaN in logits"))
-            .map(|(idx, _)| idx)
-            .unwrap_or(0);
+            .map_or(0, |(idx, _)| idx);
 
         // Cross-entropy loss
         let max_val = logits_with_bias
@@ -640,6 +958,7 @@ impl ClassifyPipeline {
 
         (loss_val, predicted)
     }
+
     /// Multi-label training step using BCE with logits loss.
     ///
     /// Unlike `train_step` which uses cross-entropy (mutually exclusive classes),
@@ -668,8 +987,8 @@ impl ClassifyPipeline {
             lora.lora_b().zero_grad();
         }
 
-        // ── 2. Forward pass ───────────────────────────────────────────
-        let hidden = self.model.forward_hidden(token_ids);
+        // ── 2. Forward pass (GPU-dispatched if available) ─────────────
+        let hidden = self.forward_hidden_dispatch(token_ids);
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
         let logits = matmul(
@@ -819,10 +1138,16 @@ impl ClassifyPipeline {
     /// Summary of the pipeline configuration.
     #[must_use]
     pub fn summary(&self) -> String {
+        let tokenizer_info = if let Some(ref tok) = self.tokenizer {
+            format!("BPE (vocab={})", tok.vocab_size())
+        } else {
+            "byte-level (256)".to_string()
+        };
         format!(
-            "ClassifyPipeline:\n  Model: {} hidden, {} layers\n  LoRA: rank={}, alpha={:.1}, {} adapters\n  Classifier: {}->{} ({} params)\n  Total trainable: {} params",
+            "ClassifyPipeline:\n  Model: {} hidden, {} layers\n  Tokenizer: {}\n  LoRA: rank={}, alpha={:.1}, {} adapters\n  Classifier: {}->{} ({} params)\n  Total trainable: {} params",
             self.model.config.hidden_size,
             self.model.config.num_hidden_layers,
+            tokenizer_info,
             self.config.lora_rank,
             self.config.lora_alpha,
             self.lora_layers.len(),
@@ -1370,5 +1695,87 @@ mod tests {
         assert_eq!(result.total, 1);
         assert!(result.avg_loss.is_finite());
         assert!(result.avg_loss > 0.0);
+    }
+
+    // =========================================================================
+    // Tokenizer integration tests
+    // =========================================================================
+
+    #[test]
+    fn test_tokenize_byte_level_fallback() {
+        // new() pipeline has no tokenizer — should use byte-level
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let pipeline = ClassifyPipeline::new(&model_config, classify_config);
+
+        let ids = pipeline.tokenize("echo");
+        assert_eq!(ids, vec![b'e' as u32, b'c' as u32, b'h' as u32, b'o' as u32]);
+    }
+
+    #[test]
+    fn test_tokenize_truncation() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            max_seq_len: 4,
+            ..ClassifyConfig::default()
+        };
+        let pipeline = ClassifyPipeline::new(&model_config, classify_config);
+
+        let ids = pipeline.tokenize("hello world");
+        assert_eq!(ids.len(), 4, "Should truncate to max_seq_len");
+    }
+
+    #[test]
+    fn test_tokenize_empty_guard() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let pipeline = ClassifyPipeline::new(&model_config, classify_config);
+
+        let ids = pipeline.tokenize("");
+        assert_eq!(ids.len(), 1, "Empty input should produce at least 1 token");
+        assert_eq!(ids[0], 0, "Empty input guard token should be 0");
+    }
+
+    #[test]
+    fn test_from_pretrained_missing_dir() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+
+        let result = ClassifyPipeline::from_pretrained(
+            "/nonexistent/model/dir",
+            &model_config,
+            classify_config,
+        );
+        assert!(result.is_err(), "from_pretrained with missing dir should fail");
+    }
+
+    #[test]
+    fn test_summary_shows_tokenizer_byte_level() {
+        let model_config = tiny_config();
+        let classify_config = ClassifyConfig::default();
+        let pipeline = ClassifyPipeline::new(&model_config, classify_config);
+        let summary = pipeline.summary();
+        assert!(
+            summary.contains("byte-level (256)"),
+            "Summary should show byte-level tokenizer, got: {summary}"
+        );
     }
 }
