@@ -112,6 +112,8 @@ pub struct ClassifyTrainer {
     val_data: Vec<SafetySample>,
     /// Base random seed
     rng_seed: u64,
+    /// Optional monitor writer for live TUI updates
+    monitor_writer: Option<crate::monitor::tui::TrainingStateWriter>,
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -177,7 +179,16 @@ impl ClassifyTrainer {
             train_data,
             val_data,
             rng_seed,
+            monitor_writer: None,
         })
+    }
+
+    /// Attach a monitor writer for live TUI updates.
+    ///
+    /// When set, training emits per-batch metrics to the experiment directory
+    /// via atomic JSON writes, enabling `apr monitor <dir>` from another shell.
+    pub fn set_monitor_writer(&mut self, writer: crate::monitor::tui::TrainingStateWriter) {
+        self.monitor_writer = Some(writer);
     }
 
     /// Run the full training loop.
@@ -205,6 +216,12 @@ impl ClassifyTrainer {
             total_steps,
         );
 
+        // Initialize monitor writer if attached
+        if let Some(ref mut writer) = self.monitor_writer {
+            writer.set_epochs(self.config.epochs, batches_per_epoch);
+            let _ = writer.start();
+        }
+
         let mut epoch_metrics_vec: Vec<EpochMetrics> = Vec::with_capacity(self.config.epochs);
         let mut best_val_loss = f32::INFINITY;
         let mut best_epoch: usize = 0;
@@ -218,7 +235,7 @@ impl ClassifyTrainer {
             self.shuffle_training_data(epoch);
 
             // Train one epoch
-            let (train_loss, train_accuracy) = self.train_epoch(&mut scheduler);
+            let (train_loss, train_accuracy) = self.train_epoch(&mut scheduler, epoch);
 
             // F-LOOP-002: Validate every epoch
             let (val_loss, val_accuracy) = self.validate();
@@ -276,6 +293,11 @@ impl ClassifyTrainer {
             }
         }
 
+        // Signal training completion to monitor
+        if let Some(ref mut writer) = self.monitor_writer {
+            let _ = writer.complete();
+        }
+
         let total_time_ms = total_start.elapsed().as_millis() as u64;
 
         TrainResult {
@@ -290,7 +312,7 @@ impl ClassifyTrainer {
     /// Train for one epoch, processing all training data in batches.
     ///
     /// Returns `(avg_loss, accuracy)` for the epoch.
-    fn train_epoch(&mut self, scheduler: &mut WarmupCosineDecayLR) -> (f32, f32) {
+    fn train_epoch(&mut self, scheduler: &mut WarmupCosineDecayLR, epoch: usize) -> (f32, f32) {
         let batch_size = self.pipeline.config.batch_size;
         let mut total_loss = 0.0f32;
         let mut total_correct = 0usize;
@@ -299,7 +321,7 @@ impl ClassifyTrainer {
         // Clone train_data to avoid borrow conflict (pipeline is &mut self)
         let train_snapshot: Vec<SafetySample> = self.train_data.clone();
 
-        for chunk in train_snapshot.chunks(batch_size) {
+        for (batch_idx, chunk) in train_snapshot.chunks(batch_size).enumerate() {
             // Apply current LR from scheduler
             self.pipeline.set_optimizer_lr(scheduler.get_lr());
 
@@ -307,6 +329,19 @@ impl ClassifyTrainer {
             total_loss += result.avg_loss * result.total as f32;
             total_correct += result.correct;
             total_samples += result.total;
+
+            // Emit per-batch metrics to monitor
+            if let Some(ref mut writer) = self.monitor_writer {
+                let running_avg_loss = total_loss / total_samples as f32;
+                let _ = writer.update_step(
+                    epoch + 1,
+                    batch_idx + 1,
+                    running_avg_loss,
+                    scheduler.get_lr(),
+                    0.0,
+                    0.0,
+                );
+            }
 
             // Step scheduler per batch
             scheduler.step();
