@@ -223,7 +223,12 @@ mod ln_contract_tests {
             let x_shifted = Tensor::from_vec(shifted, false);
             let y_shifted = layer_norm(&x_shifted, &gamma, &beta, 1e-5);
 
-            for (i, (&a, &b)) in y_base.data().iter().zip(y_shifted.data().iter()).enumerate() {
+            for (i, (&a, &b)) in y_base
+                .data()
+                .iter()
+                .zip(y_shifted.data().iter())
+                .enumerate()
+            {
                 let tol = 1e-3 * a.abs().max(1.0);
                 assert!(
                     (a - b).abs() < tol,

@@ -826,16 +826,30 @@ mod tests {
 
         let mut params = HashMap::new();
         // WRONG-SHAPE q_proj: 50 elements instead of hidden*hidden
-        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; 50], true));
+        params.insert(
+            "attn.q_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; 50], true),
+        );
         // Correct k, v, o
-        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
-        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+        params.insert(
+            "attn.k_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.v_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+        );
+        params.insert(
+            "attn.o_proj.weight".to_string(),
+            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+        );
 
         let attn = MultiHeadAttention::from_params(&config, &params, "attn");
         // FIXED (PMAT-331): now rejected
-        assert!(attn.is_none(),
-            "FALSIFY-A1e: PMAT-331 fix — from_params MUST reject wrong-shape q_proj");
+        assert!(
+            attn.is_none(),
+            "FALSIFY-A1e: PMAT-331 fix — from_params MUST reject wrong-shape q_proj"
+        );
     }
 
     /// FALSIFY-A2e: GQA init produces correct K/V dimensions
@@ -852,24 +866,38 @@ mod tests {
         let kv_hidden = config.num_kv_heads * head_dim; // 1 * head_dim
 
         // Q: hidden * hidden
-        assert_eq!(attn.w_q.len(), config.hidden_size * config.hidden_size,
-            "FALSIFY-A2e: Q projection must be hidden*hidden");
+        assert_eq!(
+            attn.w_q.len(),
+            config.hidden_size * config.hidden_size,
+            "FALSIFY-A2e: Q projection must be hidden*hidden"
+        );
 
         // K: hidden * kv_hidden (smaller than Q for GQA)
-        assert_eq!(attn.w_k.len(), config.hidden_size * kv_hidden,
-            "FALSIFY-A2e: K projection must use num_kv_heads, not num_heads");
+        assert_eq!(
+            attn.w_k.len(),
+            config.hidden_size * kv_hidden,
+            "FALSIFY-A2e: K projection must use num_kv_heads, not num_heads"
+        );
 
         // V: hidden * kv_hidden (same as K)
-        assert_eq!(attn.w_v.len(), config.hidden_size * kv_hidden,
-            "FALSIFY-A2e: V projection must use num_kv_heads, not num_heads");
+        assert_eq!(
+            attn.w_v.len(),
+            config.hidden_size * kv_hidden,
+            "FALSIFY-A2e: V projection must use num_kv_heads, not num_heads"
+        );
 
         // O: hidden * hidden (matches Q output)
-        assert_eq!(attn.w_o.len(), config.hidden_size * config.hidden_size,
-            "FALSIFY-A2e: O projection must be hidden*hidden");
+        assert_eq!(
+            attn.w_o.len(),
+            config.hidden_size * config.hidden_size,
+            "FALSIFY-A2e: O projection must be hidden*hidden"
+        );
 
         // K/V must be SMALLER than Q for GQA
-        assert!(attn.w_k.len() < attn.w_q.len(),
-            "FALSIFY-A2e: For GQA, K weight must be smaller than Q weight");
+        assert!(
+            attn.w_k.len() < attn.w_q.len(),
+            "FALSIFY-A2e: For GQA, K weight must be smaller than Q weight"
+        );
     }
 
     /// FALSIFY-A3e: GQA forward produces correct output dimensions
@@ -886,8 +914,11 @@ mod tests {
         let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
         let output = attn.forward(&x, seq_len);
 
-        assert_eq!(output.len(), seq_len * config.hidden_size,
-            "FALSIFY-A3e: GQA output must be seq_len * hidden_size, not seq_len * kv_hidden");
+        assert_eq!(
+            output.len(),
+            seq_len * config.hidden_size,
+            "FALSIFY-A3e: GQA output must be seq_len * hidden_size, not seq_len * kv_hidden"
+        );
     }
 
     /// FALSIFY-A4e: Attention init produces non-degenerate values
@@ -898,23 +929,36 @@ mod tests {
         let config = TransformerConfig::tiny();
         let attn = MultiHeadAttention::new(&config);
 
-        for (name, w) in [("w_q", &attn.w_q), ("w_k", &attn.w_k), ("w_v", &attn.w_v), ("w_o", &attn.w_o)] {
+        for (name, w) in [
+            ("w_q", &attn.w_q),
+            ("w_k", &attn.w_k),
+            ("w_v", &attn.w_v),
+            ("w_o", &attn.w_o),
+        ] {
             let data = w.data();
             let slice = data.as_slice().expect("data as slice");
 
             // No NaN
             let nan_count = slice.iter().filter(|v| v.is_nan()).count();
-            assert_eq!(nan_count, 0, "FALSIFY-A4e: {name} init must not contain NaN");
+            assert_eq!(
+                nan_count, 0,
+                "FALSIFY-A4e: {name} init must not contain NaN"
+            );
 
             // No Inf
             let inf_count = slice.iter().filter(|v| v.is_infinite()).count();
-            assert_eq!(inf_count, 0, "FALSIFY-A4e: {name} init must not contain Inf");
+            assert_eq!(
+                inf_count, 0,
+                "FALSIFY-A4e: {name} init must not contain Inf"
+            );
 
             // Values vary
             let min = slice.iter().copied().fold(f32::INFINITY, f32::min);
             let max = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            assert!((max - min).abs() > 1e-6,
-                "FALSIFY-A4e: {name} init values are constant ({min}..{max}) — degenerate weight");
+            assert!(
+                (max - min).abs() > 1e-6,
+                "FALSIFY-A4e: {name} init values are constant ({min}..{max}) — degenerate weight"
+            );
         }
     }
 
@@ -933,8 +977,14 @@ mod tests {
         let data = output.data();
         let nan_count = data.iter().filter(|v| v.is_nan()).count();
         let inf_count = data.iter().filter(|v| v.is_infinite()).count();
-        assert_eq!(nan_count, 0, "FALSIFY-A5e: Attention output must not contain NaN");
-        assert_eq!(inf_count, 0, "FALSIFY-A5e: Attention output must not contain Inf");
+        assert_eq!(
+            nan_count, 0,
+            "FALSIFY-A5e: Attention output must not contain NaN"
+        );
+        assert_eq!(
+            inf_count, 0,
+            "FALSIFY-A5e: Attention output must not contain Inf"
+        );
     }
 
     // =========================================================================
@@ -1007,7 +1057,8 @@ mod tests {
             config.num_attention_heads = nh;
             config.num_kv_heads = nkv;
             assert_eq!(
-                nh % nkv, 0,
+                nh % nkv,
+                0,
                 "FALSIFIED GQ-004e: test config has invalid head ratio"
             );
             // Should not panic during construction or forward

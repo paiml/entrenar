@@ -281,8 +281,10 @@ mod tests {
 
         // FIXED (PMAT-333): now rejected
         let ffn = FeedForward::from_params(&config, &params, "ffn");
-        assert!(ffn.is_none(),
-            "FALSIFY-F1e: PMAT-333 fix — from_params MUST reject wrong-shape gate_proj");
+        assert!(
+            ffn.is_none(),
+            "FALSIFY-F1e: PMAT-333 fix — from_params MUST reject wrong-shape gate_proj"
+        );
     }
 
     /// FALSIFY-F2e: SwiGLU forward produces correct output dimensions
@@ -295,8 +297,11 @@ mod tests {
         let seq_len = 4;
         let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
         let output = ffn.forward(&x, seq_len);
-        assert_eq!(output.len(), seq_len * config.hidden_size,
-            "FALSIFY-F2e: FFN output must be seq_len * hidden_size");
+        assert_eq!(
+            output.len(),
+            seq_len * config.hidden_size,
+            "FALSIFY-F2e: FFN output must be seq_len * hidden_size"
+        );
     }
 
     /// FALSIFY-F3e: FFN output is finite for valid inputs
@@ -309,8 +314,10 @@ mod tests {
         let ffn = FeedForward::new(&config);
         let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
         let output = ffn.forward(&x, 2);
-        assert!(output.data().iter().all(|v| v.is_finite()),
-            "FALSIFY-F3e: FFN output must be finite for bounded inputs");
+        assert!(
+            output.data().iter().all(|v| v.is_finite()),
+            "FALSIFY-F3e: FFN output must be finite for bounded inputs"
+        );
     }
 
     /// FALSIFY-F4e: gate_proj and up_proj share dimensions
@@ -321,8 +328,11 @@ mod tests {
     fn falsify_f4e_gate_up_shape_parity() {
         let config = TransformerConfig::tiny();
         let ffn = FeedForward::new(&config);
-        assert_eq!(ffn.w_gate.len(), ffn.w_up.len(),
-            "FALSIFY-F4e: gate_proj and up_proj must have identical size for SwiGLU multiply");
+        assert_eq!(
+            ffn.w_gate.len(),
+            ffn.w_up.len(),
+            "FALSIFY-F4e: gate_proj and up_proj must have identical size for SwiGLU multiply"
+        );
     }
 
     /// FALSIFY-F5e: down_proj dimensions reversed from gate/up
@@ -334,10 +344,16 @@ mod tests {
     fn falsify_f5e_down_proj_reversed_same_total() {
         let config = TransformerConfig::tiny();
         let ffn = FeedForward::new(&config);
-        assert_eq!(ffn.w_gate.len(), ffn.w_down.len(),
-            "FALSIFY-F5e: gate and down must have same total elements (H*I)");
-        assert_eq!(ffn.w_down.len(), config.hidden_size * config.intermediate_size,
-            "FALSIFY-F5e: down_proj must have hidden*intermediate elements");
+        assert_eq!(
+            ffn.w_gate.len(),
+            ffn.w_down.len(),
+            "FALSIFY-F5e: gate and down must have same total elements (H*I)"
+        );
+        assert_eq!(
+            ffn.w_down.len(),
+            config.hidden_size * config.intermediate_size,
+            "FALSIFY-F5e: down_proj must have hidden*intermediate elements"
+        );
     }
 
     #[test]
