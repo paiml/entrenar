@@ -95,6 +95,8 @@ pub struct BatchResult {
     pub correct: usize,
     /// Total number of samples in the batch
     pub total: usize,
+    /// Global gradient norm (before clipping). 0.0 if clipping disabled.
+    pub grad_norm: f32,
 }
 
 impl BatchResult {
@@ -618,6 +620,7 @@ impl ClassifyPipeline {
                 avg_loss: 0.0,
                 correct: 0,
                 total: 0,
+                grad_norm: 0.0,
             };
         }
 
@@ -642,11 +645,13 @@ impl ClassifyPipeline {
         // ── 3. Normalize gradients by batch size ───────────────────────
         self.scale_all_gradients(1.0 / batch_size as f32);
 
-        // ── 4. Gradient clipping ───────────────────────────────────────
-        if let Some(max_norm) = self.config.gradient_clip_norm {
+        // ── 4. Gradient clipping (captures pre-clip norm) ────────────
+        let grad_norm = if let Some(max_norm) = self.config.gradient_clip_norm {
             let mut params = self.trainable_parameters_mut();
-            clip_grad_norm_refs(&mut params, max_norm);
-        }
+            clip_grad_norm_refs(&mut params, max_norm)
+        } else {
+            self.compute_grad_norm()
+        };
 
         // ── 5. Optimizer step (once for the whole batch) ───────────────
         let mut params: Vec<&mut Tensor> = Vec::new();
@@ -660,6 +665,7 @@ impl ClassifyPipeline {
             avg_loss: total_loss / batch_size as f32,
             correct,
             total: batch_size,
+            grad_norm,
         }
     }
 
@@ -694,6 +700,7 @@ impl ClassifyPipeline {
                 avg_loss: 0.0,
                 correct: 0,
                 total: 0,
+                grad_norm: 0.0,
             };
         }
 
@@ -713,6 +720,7 @@ impl ClassifyPipeline {
             avg_loss: total_loss / micro_batch.len() as f32,
             correct,
             total: micro_batch.len(),
+            grad_norm: 0.0, // Grad norm computed at apply time, not accumulate time
         }
     }
 
@@ -886,6 +894,25 @@ impl ClassifyPipeline {
         }
     }
 
+
+    /// Compute the global L2 norm of all trainable gradients.
+    ///
+    /// Used by the monitor when gradient clipping is not enabled.
+    fn compute_grad_norm(&self) -> f32 {
+        let mut total_norm_sq = 0.0f32;
+        let all_params: Vec<&Tensor> = self
+            .lora_layers
+            .iter()
+            .flat_map(|l| vec![l.lora_a(), l.lora_b()])
+            .chain(self.classifier.parameters())
+            .collect();
+        for param in all_params {
+            if let Some(grad) = param.grad() {
+                total_norm_sq += grad.iter().map(|&g| g * g).sum::<f32>();
+            }
+        }
+        total_norm_sq.sqrt()
+    }
 
     /// Forward-only pass for a single sample (no backward, no optimizer step).
     ///
@@ -1388,6 +1415,7 @@ mod tests {
             avg_loss: 1.0,
             correct: 3,
             total: 4,
+            grad_norm: 0.0,
         };
         assert!((r.accuracy() - 0.75).abs() < 1e-6);
     }
@@ -1398,6 +1426,7 @@ mod tests {
             avg_loss: 0.0,
             correct: 0,
             total: 0,
+            grad_norm: 0.0,
         };
         assert!((r.accuracy() - 0.0).abs() < 1e-6);
     }
@@ -1408,6 +1437,7 @@ mod tests {
             avg_loss: 0.1,
             correct: 10,
             total: 10,
+            grad_norm: 0.0,
         };
         assert!((r.accuracy() - 1.0).abs() < 1e-6);
     }
@@ -1668,6 +1698,7 @@ mod tests {
             avg_loss: 1.5,
             correct: 2,
             total: 3,
+            grad_norm: 0.0,
         };
         let debug = format!("{r:?}");
         assert!(debug.contains("BatchResult"));

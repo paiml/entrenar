@@ -227,6 +227,7 @@ impl ClassifyTrainer {
         let mut best_epoch: usize = 0;
         let mut epochs_without_improvement: usize = 0;
         let mut stopped_early = false;
+        let mut training_failed = false;
 
         for epoch in 0..self.config.epochs {
             let epoch_start = std::time::Instant::now();
@@ -286,6 +287,16 @@ impl ClassifyTrainer {
                 );
             }
 
+            // Detect NaN/Inf loss — signal failure to monitor
+            if !train_loss.is_finite() || !val_loss.is_finite() {
+                if let Some(ref mut writer) = self.monitor_writer {
+                    let _ = writer.fail("NaN or Inf loss detected");
+                }
+                training_failed = true;
+                stopped_early = true;
+                break;
+            }
+
             // F-LOOP-010: Early stopping
             if epochs_without_improvement >= self.config.early_stopping_patience {
                 stopped_early = true;
@@ -293,9 +304,11 @@ impl ClassifyTrainer {
             }
         }
 
-        // Signal training completion to monitor
-        if let Some(ref mut writer) = self.monitor_writer {
-            let _ = writer.complete();
+        // Signal training completion to monitor (skip if already failed)
+        if !training_failed {
+            if let Some(ref mut writer) = self.monitor_writer {
+                let _ = writer.complete();
+            }
         }
 
         let total_time_ms = total_start.elapsed().as_millis() as u64;
@@ -321,6 +334,8 @@ impl ClassifyTrainer {
         // Clone train_data to avoid borrow conflict (pipeline is &mut self)
         let train_snapshot: Vec<SafetySample> = self.train_data.clone();
 
+        let epoch_start = std::time::Instant::now();
+
         for (batch_idx, chunk) in train_snapshot.chunks(batch_size).enumerate() {
             // Apply current LR from scheduler
             self.pipeline.set_optimizer_lr(scheduler.get_lr());
@@ -333,13 +348,19 @@ impl ClassifyTrainer {
             // Emit per-batch metrics to monitor
             if let Some(ref mut writer) = self.monitor_writer {
                 let running_avg_loss = total_loss / total_samples as f32;
+                let elapsed_secs = epoch_start.elapsed().as_secs_f32();
+                let samples_per_sec = if elapsed_secs > 0.0 {
+                    total_samples as f32 / elapsed_secs
+                } else {
+                    0.0
+                };
                 let _ = writer.update_step(
                     epoch + 1,
                     batch_idx + 1,
                     running_avg_loss,
                     scheduler.get_lr(),
-                    0.0,
-                    0.0,
+                    result.grad_norm,
+                    samples_per_sec,
                 );
             }
 
