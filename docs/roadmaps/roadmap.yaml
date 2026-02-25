@@ -1153,11 +1153,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'N-05: estimate_num_heads hardcoded 32 fallback'
-  status: inprogress
+  status: completed
   priority: high
   assigned_to: null
   created: 2026-02-25T08:32:00Z
-  updated: 2026-02-25T08:32:12.245021699+00:00
+  updated: 2026-02-25T08:37:46Z
   spec: null
   acceptance_criteria:
   - architecture.rs:168 returns hardcoded 32 when hidden_dim not divisible by 64/128. Should return 0 (unknown).
@@ -1170,11 +1170,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'N-06: leaderboard unwrap_or(0.0) silent zero'
-  status: planned
+  status: completed
   priority: high
   assigned_to: null
   created: 2026-02-25T08:32:04Z
-  updated: 2026-02-25T08:32:04Z
+  updated: 2026-02-25T08:37:50Z
   spec: null
   acceptance_criteria:
   - leaderboard.rs:35,53 uses unwrap_or(0.0) for missing scores. Should use NEG_INFINITY/INFINITY to sort missing scores last.
@@ -1187,11 +1187,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'N-07: loader.rs missing optional config field warnings'
-  status: planned
+  status: completed
   priority: medium
   assigned_to: null
   created: 2026-02-25T08:32:08Z
-  updated: 2026-02-25T08:32:08Z
+  updated: 2026-02-25T08:37:50Z
   spec: null
   acceptance_criteria:
   - loader.rs silent unwrap_or for rope_theta, max_position_embeddings, seq_len. Add eprintln warnings when defaulting.
