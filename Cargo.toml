@@ -158,7 +158,7 @@ trueno = "0.15"  # SIMD-accelerated compute (local patch via [patch.crates-io])
 trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
 realizar = { version = "0.7", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.26.1"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
-trueno-viz = { version = "0.1.20", features = ["terminal"] }  # Terminal visualization
+trueno-viz = { version = "0.1.27", features = ["terminal"] }  # Terminal visualization
 trueno-db = { version = "0.3.11", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
 renacer = { version = "0.9", optional = true }  # Distributed tracing
@@ -359,6 +359,11 @@ name = "shell_safety_classify"
 path = "examples/shell_safety_classify.rs"
 required-features = []
 
+[[example]]
+name = "design_by_contract"
+path = "examples/design_by_contract.rs"
+required-features = []
+
 # Phase 11: CUDA-First Architecture (SPEC-FT-001 v3.0.0)
 # realizar needs local patch due to trueno-gpu API changes
 # trueno-gpu needs local patch for relu_backward selp fix
@@ -367,3 +372,4 @@ aprender = { path = "../aprender" }  # GH-305: use local aprender for re-exporte
 realizar = { path = "../realizar" }
 trueno = { path = "../trueno" }
 trueno-gpu = { path = "../trueno/trueno-gpu" }
+trueno-viz = { path = "../trueno-viz" }
