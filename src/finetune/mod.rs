@@ -25,6 +25,8 @@ mod reproducibility;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_classification_contract_falsify;
 
 pub use classification::{
     bce_with_logits_loss, corpus_stats, cross_entropy_loss, load_multi_label_corpus,
