@@ -105,10 +105,7 @@ inspect:
     let inspect = manifest.inspect.unwrap();
     assert_eq!(inspect.mode, "detect");
     assert_eq!(inspect.z_threshold, Some(3.0));
-    assert_eq!(
-        inspect.columns,
-        Some(vec!["column_1".to_string(), "column_2".to_string()])
-    );
+    assert_eq!(inspect.columns, Some(vec!["column_1".to_string(), "column_2".to_string()]));
 }
 
 #[test]
@@ -156,10 +153,7 @@ audit:
     assert_eq!(audit.threshold, Some(0.1));
     assert_eq!(
         audit.metrics,
-        Some(vec![
-            "demographic_parity".to_string(),
-            "equalized_odds".to_string()
-        ])
+        Some(vec!["demographic_parity".to_string(), "equalized_odds".to_string()])
     );
 }
 
@@ -179,10 +173,7 @@ session:
     let session = manifest.session.unwrap();
     assert_eq!(session.id, "session-001");
     assert_eq!(session.auto_save, Some(true));
-    assert_eq!(
-        session.state_dir,
-        Some("./checkpoints/session-001".to_string())
-    );
+    assert_eq!(session.state_dir, Some("./checkpoints/session-001".to_string()));
 }
 
 #[test]

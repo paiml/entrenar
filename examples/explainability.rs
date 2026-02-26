@@ -23,11 +23,7 @@ fn main() {
     // Create explainability callback
     let mut explainer = ExplainabilityCallback::new(ExplainMethod::PermutationImportance)
         .with_top_k(3)
-        .with_feature_names(vec![
-            "feature_0".into(),
-            "feature_1".into(),
-            "feature_2".into(),
-        ]);
+        .with_feature_names(vec!["feature_0".into(), "feature_1".into(), "feature_2".into()]);
 
     println!("Configuration:");
     println!("  Method: {:?}", explainer.method());
@@ -66,9 +62,7 @@ fn main() {
         println!("Epoch {epoch}:");
         let result = explainer.results().last().unwrap();
         for (idx, score) in &result.importances {
-            let name = explainer
-                .feature_names()
-                .map_or("unknown", |n| n[*idx].as_str());
+            let name = explainer.feature_names().map_or("unknown", |n| n[*idx].as_str());
             println!("  {name}: {score:.6}");
         }
         println!();
@@ -78,9 +72,7 @@ fn main() {
     println!("Consistently important features:");
     let consistent = explainer.consistent_top_features();
     for (idx, avg_score) in &consistent {
-        let name = explainer
-            .feature_names()
-            .map_or("unknown", |n| n[*idx].as_str());
+        let name = explainer.feature_names().map_or("unknown", |n| n[*idx].as_str());
         println!("  {name}: avg_score={avg_score:.6}");
     }
 
@@ -101,12 +93,7 @@ fn main() {
     println!("\nIntegrated Gradients attributions:");
     for (idx, (_, attr)) in attributions.iter().enumerate() {
         // Expected: attr ≈ weight * (sample - baseline) = weight * sample
-        println!(
-            "  feature_{}: {:.4} (expected: {:.4})",
-            idx,
-            attr,
-            weights[idx] * sample[idx]
-        );
+        println!("  feature_{}: {:.4} (expected: {:.4})", idx, attr, weights[idx] * sample[idx]);
     }
 
     println!("\n--- Saliency Map Demo ---\n");
@@ -119,10 +106,7 @@ fn main() {
     println!("Saliency (gradients) for sample {:?}:", sample.as_slice());
     for (idx, (_, grad)) in saliency.iter().enumerate() {
         // For linear model, gradient = weight
-        println!(
-            "  feature_{}: {:.4} (expected: {:.4})",
-            idx, grad, weights[idx]
-        );
+        println!("  feature_{}: {:.4} (expected: {:.4})", idx, grad, weights[idx]);
     }
 
     println!("\n=== Example Complete ===");

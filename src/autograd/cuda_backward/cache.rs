@@ -33,11 +33,7 @@ pub(super) struct KernelCache {
 impl KernelCache {
     pub(super) fn new(ctx: Arc<CudaContext>) -> Self {
         let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
-        Self {
-            ctx,
-            modules: HashMap::new(),
-            sm_target,
-        }
+        Self { ctx, modules: HashMap::new(), sm_target }
     }
 
     pub(super) fn sm_target(&self) -> &str {

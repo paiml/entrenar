@@ -188,9 +188,8 @@ fn test_session_to_artifact_with_code_only() {
 
 #[test]
 fn test_build_session_description() {
-    let mut session = EntrenarSession::new("sess-001", "Test")
-        .with_architecture("gpt2")
-        .with_dataset("wiki");
+    let mut session =
+        EntrenarSession::new("sess-001", "Test").with_architecture("gpt2").with_dataset("wiki");
 
     session.metrics.add_loss(0.5);
     session.metrics.add_loss(0.2);
@@ -218,10 +217,7 @@ fn test_export_json_basic() {
     assert_eq!(json["user"], "tester");
     assert_eq!(json["metrics"]["total_steps"], 0);
     assert_eq!(json["code_cells_count"], 0);
-    assert!(json["tags"]
-        .as_array()
-        .unwrap()
-        .contains(&"export-test".into()));
+    assert!(json["tags"].as_array().unwrap().contains(&"export-test".into()));
 }
 
 #[test]
@@ -245,13 +241,7 @@ fn test_export_json_with_metrics() {
     assert_eq!(json["metrics"]["final_accuracy"], 0.85);
     assert_eq!(json["metrics"]["best_accuracy"], 0.85);
     assert_eq!(json["metrics"]["loss_history"].as_array().unwrap().len(), 3);
-    assert_eq!(
-        json["metrics"]["accuracy_history"]
-            .as_array()
-            .unwrap()
-            .len(),
-        2
-    );
+    assert_eq!(json["metrics"]["accuracy_history"].as_array().unwrap().len(), 2);
     assert!(json["metrics"]["custom_metrics"]["f1"].as_array().is_some());
 }
 

@@ -100,9 +100,9 @@ impl std::str::FromStr for MergeMethod {
             "dare" => Ok(MergeMethod::Dare),
             "slerp" => Ok(MergeMethod::Slerp),
             "average" | "avg" => Ok(MergeMethod::Average),
-            _ => Err(format!(
-                "Unknown merge method: {s}. Valid methods: ties, dare, slerp, average"
-            )),
+            _ => {
+                Err(format!("Unknown merge method: {s}. Valid methods: ties, dare, slerp, average"))
+            }
         }
     }
 }
@@ -113,22 +113,10 @@ mod tests {
 
     #[test]
     fn test_quant_method_from_str() {
-        assert_eq!(
-            "symmetric".parse::<QuantMethod>().unwrap(),
-            QuantMethod::Symmetric
-        );
-        assert_eq!(
-            "sym".parse::<QuantMethod>().unwrap(),
-            QuantMethod::Symmetric
-        );
-        assert_eq!(
-            "asymmetric".parse::<QuantMethod>().unwrap(),
-            QuantMethod::Asymmetric
-        );
-        assert_eq!(
-            "asym".parse::<QuantMethod>().unwrap(),
-            QuantMethod::Asymmetric
-        );
+        assert_eq!("symmetric".parse::<QuantMethod>().unwrap(), QuantMethod::Symmetric);
+        assert_eq!("sym".parse::<QuantMethod>().unwrap(), QuantMethod::Symmetric);
+        assert_eq!("asymmetric".parse::<QuantMethod>().unwrap(), QuantMethod::Asymmetric);
+        assert_eq!("asym".parse::<QuantMethod>().unwrap(), QuantMethod::Asymmetric);
         assert!("invalid".parse::<QuantMethod>().is_err());
     }
 
@@ -137,10 +125,7 @@ mod tests {
         assert_eq!("ties".parse::<MergeMethod>().unwrap(), MergeMethod::Ties);
         assert_eq!("dare".parse::<MergeMethod>().unwrap(), MergeMethod::Dare);
         assert_eq!("slerp".parse::<MergeMethod>().unwrap(), MergeMethod::Slerp);
-        assert_eq!(
-            "average".parse::<MergeMethod>().unwrap(),
-            MergeMethod::Average
-        );
+        assert_eq!("average".parse::<MergeMethod>().unwrap(), MergeMethod::Average);
         assert_eq!("avg".parse::<MergeMethod>().unwrap(), MergeMethod::Average);
         assert!("invalid".parse::<MergeMethod>().is_err());
     }

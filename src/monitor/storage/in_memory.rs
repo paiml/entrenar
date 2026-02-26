@@ -13,9 +13,7 @@ pub struct InMemoryStore {
 impl InMemoryStore {
     /// Create a new in-memory store
     pub fn new() -> Self {
-        Self {
-            records: Vec::new(),
-        }
+        Self { records: Vec::new() }
     }
 
     /// Get all records
@@ -45,21 +43,12 @@ impl MetricsStore for InMemoryStore {
     }
 
     fn query_all(&self, metric: &Metric) -> StorageResult<Vec<MetricRecord>> {
-        Ok(self
-            .records
-            .iter()
-            .filter(|r| &r.metric == metric)
-            .cloned()
-            .collect())
+        Ok(self.records.iter().filter(|r| &r.metric == metric).cloned().collect())
     }
 
     fn query_stats(&self, metric: &Metric) -> StorageResult<Option<MetricStats>> {
-        let values: Vec<f64> = self
-            .records
-            .iter()
-            .filter(|r| &r.metric == metric)
-            .map(|r| r.value)
-            .collect();
+        let values: Vec<f64> =
+            self.records.iter().filter(|r| &r.metric == metric).map(|r| r.value).collect();
 
         if values.is_empty() {
             return Ok(None);
@@ -81,16 +70,7 @@ impl MetricsStore for InMemoryStore {
         let has_nan = values.iter().any(|v| v.is_nan());
         let has_inf = values.iter().any(|v| v.is_infinite());
 
-        Ok(Some(MetricStats {
-            count,
-            mean,
-            std,
-            min,
-            max,
-            sum,
-            has_nan,
-            has_inf,
-        }))
+        Ok(Some(MetricStats { count, mean, std, min, max, sum, has_nan, has_inf }))
     }
 
     fn count(&self) -> StorageResult<usize> {

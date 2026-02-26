@@ -46,12 +46,7 @@ impl LossCurveDisplay {
             .lower_is_better(true)
             .build()
             .expect("LossCurve build should succeed");
-        Self {
-            loss_curve,
-            width,
-            height,
-            terminal_mode: TerminalMode::Unicode,
-        }
+        Self { loss_curve, width, height, terminal_mode: TerminalMode::Unicode }
     }
 
     /// Set terminal rendering mode.
@@ -121,10 +116,8 @@ impl LossCurveDisplay {
             TerminalMode::Ansi => TruenoTerminalMode::AnsiTrueColor,
         };
 
-        let encoder = TerminalEncoder::new()
-            .mode(trueno_mode)
-            .width(self.width)
-            .height(self.height / 2); // Terminal chars are ~2:1 aspect
+        let encoder =
+            TerminalEncoder::new().mode(trueno_mode).width(self.width).height(self.height / 2); // Terminal chars are ~2:1 aspect
 
         encoder.render(&fb)
     }

@@ -25,14 +25,7 @@ mod tests {
     #[test]
     fn test_tpe_suggest_startup() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 1e-5,
-                high: 1e-1,
-                log_scale: true,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 1e-5, high: 1e-1, log_scale: true });
 
         let mut tpe = TPEOptimizer::new(space).with_startup(5);
 
@@ -46,14 +39,7 @@ mod tests {
     #[test]
     fn test_tpe_record_and_best() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
         let mut tpe = TPEOptimizer::new(space);
 
@@ -78,14 +64,7 @@ mod tests {
     #[test]
     fn test_tpe_guided_sampling() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "x",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 10.0,
-                log_scale: false,
-            },
-        );
+        space.add("x", ParameterDomain::Continuous { low: 0.0, high: 10.0, log_scale: false });
 
         let mut tpe = TPEOptimizer::new(space).with_startup(5);
 
@@ -105,14 +84,7 @@ mod tests {
     #[test]
     fn test_tpe_record_failed() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
         let mut tpe = TPEOptimizer::new(space);
         let trial = tpe.suggest().unwrap();
@@ -125,20 +97,11 @@ mod tests {
     #[test]
     fn test_tpe_tpe_sampling_with_trials() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
         space.add("batch_size", ParameterDomain::Discrete { low: 8, high: 32 });
         space.add(
             "activation",
-            ParameterDomain::Categorical {
-                choices: vec!["relu".to_string(), "gelu".to_string()],
-            },
+            ParameterDomain::Categorical { choices: vec!["relu".to_string(), "gelu".to_string()] },
         );
 
         let mut tpe = TPEOptimizer::new(space).with_startup(3);
@@ -216,24 +179,15 @@ mod sampling_tests {
         use std::collections::HashMap;
 
         let mut config1 = HashMap::new();
-        config1.insert(
-            "opt".to_string(),
-            ParameterValue::Categorical("a".to_string()),
-        );
+        config1.insert("opt".to_string(), ParameterValue::Categorical("a".to_string()));
         let trial1 = Trial::new(0, config1);
 
         let mut config2 = HashMap::new();
-        config2.insert(
-            "opt".to_string(),
-            ParameterValue::Categorical("b".to_string()),
-        );
+        config2.insert("opt".to_string(), ParameterValue::Categorical("b".to_string()));
         let trial2 = Trial::new(1, config2);
 
         let mut config3 = HashMap::new();
-        config3.insert(
-            "opt".to_string(),
-            ParameterValue::Categorical("a".to_string()),
-        );
+        config3.insert("opt".to_string(), ParameterValue::Categorical("a".to_string()));
         let trial3 = Trial::new(2, config3);
 
         let trials: Vec<&Trial> = vec![&trial1, &trial2, &trial3];

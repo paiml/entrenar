@@ -67,14 +67,8 @@ fn test_model_entry_with_metadata() {
         .with_metadata("architecture", "llama")
         .with_metadata("quantization", "q4_0");
 
-    assert_eq!(
-        entry.metadata.get("architecture"),
-        Some(&"llama".to_string())
-    );
-    assert_eq!(
-        entry.metadata.get("quantization"),
-        Some(&"q4_0".to_string())
-    );
+    assert_eq!(entry.metadata.get("architecture"), Some(&"llama".to_string()));
+    assert_eq!(entry.metadata.get("quantization"), Some(&"q4_0".to_string()));
 }
 
 #[test]
@@ -116,20 +110,8 @@ fn test_registry_manifest_update_existing() {
 fn test_registry_manifest_total_size() {
     let mut manifest = RegistryManifest::new();
 
-    manifest.add(ModelEntry::new(
-        "a",
-        "1",
-        "",
-        100,
-        ModelSource::huggingface("a"),
-    ));
-    manifest.add(ModelEntry::new(
-        "b",
-        "1",
-        "",
-        200,
-        ModelSource::huggingface("b"),
-    ));
+    manifest.add(ModelEntry::new("a", "1", "", 100, ModelSource::huggingface("a")));
+    manifest.add(ModelEntry::new("b", "1", "", 200, ModelSource::huggingface("b")));
 
     assert_eq!(manifest.total_size_bytes(), 300);
 }
@@ -249,13 +231,7 @@ fn test_offline_registry_remove() {
     let temp = TempDir::new().unwrap();
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
-    registry.add_model(ModelEntry::new(
-        "test",
-        "1.0",
-        "",
-        100,
-        ModelSource::huggingface("test"),
-    ));
+    registry.add_model(ModelEntry::new("test", "1.0", "", 100, ModelSource::huggingface("test")));
     assert_eq!(registry.manifest.len(), 1);
 
     let removed = registry.remove("test");
@@ -287,15 +263,10 @@ fn test_offline_registry_save_and_load() {
 
 #[test]
 fn test_model_entry_serialization() {
-    let entry = ModelEntry::new(
-        "test",
-        "1.0",
-        "abc123",
-        1000,
-        ModelSource::huggingface("test/model"),
-    )
-    .with_format("gguf")
-    .with_metadata("arch", "llama");
+    let entry =
+        ModelEntry::new("test", "1.0", "abc123", 1000, ModelSource::huggingface("test/model"))
+            .with_format("gguf")
+            .with_metadata("arch", "llama");
 
     let json = serde_json::to_string(&entry).unwrap();
     let parsed: ModelEntry = serde_json::from_str(&json).unwrap();

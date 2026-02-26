@@ -264,11 +264,7 @@ mod tests {
     fn test_cubic_schedule_matches_golden_trace() {
         // TEST_ID: GOLD-003
         // Verify Cubic schedule behavior matches golden trace
-        let schedule = PruningSchedule::Cubic {
-            start_step: 0,
-            end_step: 100,
-            final_sparsity: 0.5,
-        };
+        let schedule = PruningSchedule::Cubic { start_step: 0, end_step: 100, final_sparsity: 0.5 };
         let golden = PruningGoldenTraces::schedule_traces()
             .into_iter()
             .find(|t| t.schedule_type == "cubic_0_100_50pct")

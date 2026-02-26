@@ -259,11 +259,7 @@ fn test_lora_forward_merged() {
 
     assert_eq!(output_unmerged.len(), output_merged.len());
     for i in 0..output_unmerged.len() {
-        assert_abs_diff_eq!(
-            output_unmerged.data()[i],
-            output_merged.data()[i],
-            epsilon = 1e-4
-        );
+        assert_abs_diff_eq!(output_unmerged.data()[i], output_merged.data()[i], epsilon = 1e-4);
     }
 }
 

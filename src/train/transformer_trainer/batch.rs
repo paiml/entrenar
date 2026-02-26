@@ -58,23 +58,13 @@ impl LMBatch {
             }
         }
 
-        Self {
-            input_ids,
-            target_ids,
-            batch_size,
-            seq_len,
-        }
+        Self { input_ids, target_ids, batch_size, seq_len }
     }
 
     /// Create a batch from a single sequence (for testing)
     pub fn single(input_ids: Vec<u32>, target_ids: Vec<u32>) -> Self {
         let seq_len = input_ids.len();
-        Self {
-            input_ids,
-            target_ids,
-            batch_size: 1,
-            seq_len,
-        }
+        Self { input_ids, target_ids, batch_size: 1, seq_len }
     }
 
     /// Get input IDs for a specific batch item

@@ -16,11 +16,7 @@ pub struct TpuInfo {
 impl TpuInfo {
     /// Create new TPU info
     pub fn new(version: impl Into<String>, cores: u32, hbm_bytes: u64) -> Self {
-        Self {
-            version: version.into(),
-            cores,
-            hbm_bytes,
-        }
+        Self { version: version.into(), cores, hbm_bytes }
     }
 
     /// Get HBM in GB

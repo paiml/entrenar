@@ -53,10 +53,7 @@ fn test_validate_command_basic() {
     let dir = TempDir::new().unwrap();
     let config_path = create_test_config(&dir);
 
-    let args = ValidateArgs {
-        config: config_path,
-        detailed: false,
-    };
+    let args = ValidateArgs { config: config_path, detailed: false };
 
     let result = validate::run_validate(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -67,10 +64,7 @@ fn test_validate_command_detailed() {
     let dir = TempDir::new().unwrap();
     let config_path = create_test_config(&dir);
 
-    let args = ValidateArgs {
-        config: config_path,
-        detailed: true,
-    };
+    let args = ValidateArgs { config: config_path, detailed: true };
 
     let result = validate::run_validate(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -78,10 +72,7 @@ fn test_validate_command_detailed() {
 
 #[test]
 fn test_validate_command_missing_file() {
-    let args = ValidateArgs {
-        config: PathBuf::from("/nonexistent/config.yaml"),
-        detailed: false,
-    };
+    let args = ValidateArgs { config: PathBuf::from("/nonexistent/config.yaml"), detailed: false };
 
     let result = validate::run_validate(args, LogLevel::Quiet);
     assert!(result.is_err());
@@ -92,10 +83,7 @@ fn test_info_command() {
     let dir = TempDir::new().unwrap();
     let config_path = create_test_config(&dir);
 
-    let args = InfoArgs {
-        config: config_path,
-        format: OutputFormat::Text,
-    };
+    let args = InfoArgs { config: config_path, format: OutputFormat::Text };
 
     let result = info::run_info(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -142,9 +130,7 @@ fn test_init_command_with_lora_template() {
 
 #[test]
 fn test_completion_command_bash() {
-    let args = CompletionArgs {
-        shell: ShellType::Bash,
-    };
+    let args = CompletionArgs { shell: ShellType::Bash };
 
     let result = completion::run_completion(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -152,9 +138,7 @@ fn test_completion_command_bash() {
 
 #[test]
 fn test_completion_command_zsh() {
-    let args = CompletionArgs {
-        shell: ShellType::Zsh,
-    };
+    let args = CompletionArgs { shell: ShellType::Zsh };
 
     let result = completion::run_completion(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -162,9 +146,7 @@ fn test_completion_command_zsh() {
 
 #[test]
 fn test_completion_command_fish() {
-    let args = CompletionArgs {
-        shell: ShellType::Fish,
-    };
+    let args = CompletionArgs { shell: ShellType::Fish };
 
     let result = completion::run_completion(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -201,10 +183,7 @@ fn test_run_command_verbose() {
     let cli = Cli {
         verbose: true,
         quiet: false,
-        command: Command::Validate(ValidateArgs {
-            config: config_path,
-            detailed: false,
-        }),
+        command: Command::Validate(ValidateArgs { config: config_path, detailed: false }),
     };
 
     let result = run_command(cli);
@@ -222,15 +201,9 @@ fn test_log_levels() {
 fn test_init_template_from_str() {
     use std::str::FromStr;
 
-    assert_eq!(
-        InitTemplate::from_str("minimal").unwrap(),
-        InitTemplate::Minimal
-    );
+    assert_eq!(InitTemplate::from_str("minimal").unwrap(), InitTemplate::Minimal);
     assert_eq!(InitTemplate::from_str("lora").unwrap(), InitTemplate::Lora);
-    assert_eq!(
-        InitTemplate::from_str("qlora").unwrap(),
-        InitTemplate::Qlora
-    );
+    assert_eq!(InitTemplate::from_str("qlora").unwrap(), InitTemplate::Qlora);
     assert_eq!(InitTemplate::from_str("full").unwrap(), InitTemplate::Full);
     assert!(InitTemplate::from_str("invalid").is_err());
 }
@@ -395,12 +368,8 @@ fn test_inspect_command_schema_mode() {
     let csv_path = dir.path().join("data.csv");
     std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").unwrap();
 
-    let args = InspectArgs {
-        input: csv_path,
-        mode: InspectMode::Schema,
-        columns: None,
-        z_threshold: 3.0,
-    };
+    let args =
+        InspectArgs { input: csv_path, mode: InspectMode::Schema, columns: None, z_threshold: 3.0 };
 
     let result = inspect::run_inspect(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -780,9 +749,7 @@ fn test_merge_command_slerp_wrong_model_count() {
 
     let result = merge::run_merge(args, LogLevel::Quiet);
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("SLERP requires exactly 2 models"));
+    assert!(result.unwrap_err().contains("SLERP requires exactly 2 models"));
 }
 
 #[test]
@@ -1168,10 +1135,7 @@ fn test_run_command_info() {
     let cli = Cli {
         verbose: false,
         quiet: true,
-        command: Command::Info(InfoArgs {
-            config: config_path,
-            format: OutputFormat::Text,
-        }),
+        command: Command::Info(InfoArgs { config: config_path, format: OutputFormat::Text }),
     };
 
     let result = run_command(cli);
@@ -1230,9 +1194,7 @@ fn test_run_command_completion() {
     let cli = Cli {
         verbose: false,
         quiet: true,
-        command: Command::Completion(CompletionArgs {
-            shell: ShellType::Bash,
-        }),
+        command: Command::Completion(CompletionArgs { shell: ShellType::Bash }),
     };
 
     let result = run_command(cli);

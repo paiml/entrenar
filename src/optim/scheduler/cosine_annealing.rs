@@ -30,12 +30,7 @@ impl CosineAnnealingLR {
     /// * `t_max` - Total number of steps for the schedule
     /// * `lr_min` - Minimum learning rate (default 0)
     pub fn new(lr_max: f32, t_max: usize, lr_min: f32) -> Self {
-        Self {
-            lr_max,
-            lr_min,
-            t_max,
-            current_step: 0,
-        }
+        Self { lr_max, lr_min, t_max, current_step: 0 }
     }
 
     /// Create scheduler with lr_min = 0

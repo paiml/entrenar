@@ -195,16 +195,8 @@ fn test_gguf_quant_type() {
     assert_eq!(GGUFQuantType::Q4_0.bytes_per_block(), 18);
     assert_eq!(GGUFQuantType::Q8_0.bytes_per_block(), 34);
 
-    assert_abs_diff_eq!(
-        GGUFQuantType::Q4_0.theoretical_compression(),
-        8.0,
-        epsilon = 0.1
-    );
-    assert_abs_diff_eq!(
-        GGUFQuantType::Q8_0.theoretical_compression(),
-        4.0,
-        epsilon = 0.1
-    );
+    assert_abs_diff_eq!(GGUFQuantType::Q4_0.theoretical_compression(), 8.0, epsilon = 0.1);
+    assert_abs_diff_eq!(GGUFQuantType::Q8_0.theoretical_compression(), 4.0, epsilon = 0.1);
 }
 
 #[test]
@@ -246,21 +238,10 @@ fn test_q8_0_better_than_q4_0() {
     let deq4 = q4.dequantize();
     let deq8 = q8.dequantize();
 
-    let error4: f32 = values
-        .iter()
-        .zip(deq4.iter())
-        .map(|(a, b)| (a - b).abs())
-        .sum();
-    let error8: f32 = values
-        .iter()
-        .zip(deq8.iter())
-        .map(|(a, b)| (a - b).abs())
-        .sum();
+    let error4: f32 = values.iter().zip(deq4.iter()).map(|(a, b)| (a - b).abs()).sum();
+    let error8: f32 = values.iter().zip(deq8.iter()).map(|(a, b)| (a - b).abs()).sum();
 
-    assert!(
-        error8 < error4,
-        "Q8_0 error {error8} should be < Q4_0 error {error4}"
-    );
+    assert!(error8 < error4, "Q8_0 error {error8} should be < Q4_0 error {error4}");
 }
 
 #[test]

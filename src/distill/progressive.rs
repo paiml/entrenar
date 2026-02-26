@@ -44,14 +44,8 @@ impl ProgressiveDistiller {
     ///
     /// Panics if layer_weights is empty or temperature <= 0
     pub fn new(layer_weights: Vec<f32>, temperature: f32) -> Self {
-        assert!(
-            !layer_weights.is_empty(),
-            "Must have at least one layer weight"
-        );
-        assert!(
-            temperature > 0.0,
-            "Temperature must be positive, got {temperature}"
-        );
+        assert!(!layer_weights.is_empty(), "Must have at least one layer weight");
+        assert!(temperature > 0.0, "Temperature must be positive, got {temperature}");
 
         let sum: f32 = layer_weights.iter().sum();
         assert!(sum > 0.0, "Layer weights must sum to positive value");
@@ -59,10 +53,7 @@ impl ProgressiveDistiller {
         // Normalize weights
         let normalized: Vec<f32> = layer_weights.iter().map(|&w| w / sum).collect();
 
-        Self {
-            layer_weights: normalized,
-            temperature,
-        }
+        Self { layer_weights: normalized, temperature }
     }
 
     /// Create progressive distiller with uniform layer weights
@@ -98,10 +89,8 @@ impl ProgressiveDistiller {
 
         let mut total_loss = 0.0;
 
-        for ((student, teacher), &weight) in student_hiddens
-            .iter()
-            .zip(teacher_hiddens)
-            .zip(&self.layer_weights)
+        for ((student, teacher), &weight) in
+            student_hiddens.iter().zip(teacher_hiddens).zip(&self.layer_weights)
         {
             assert_eq!(
                 student.shape(),
@@ -138,10 +127,8 @@ impl ProgressiveDistiller {
 
         let mut total_loss = 0.0;
 
-        for ((student, teacher), &weight) in student_hiddens
-            .iter()
-            .zip(teacher_hiddens)
-            .zip(&self.layer_weights)
+        for ((student, teacher), &weight) in
+            student_hiddens.iter().zip(teacher_hiddens).zip(&self.layer_weights)
         {
             assert_eq!(
                 student.shape(),
@@ -238,11 +225,7 @@ mod tests {
     fn test_uniform_progressive() {
         let distiller = ProgressiveDistiller::uniform(3, 2.0);
         assert_eq!(distiller.layer_weights.len(), 3);
-        assert_relative_eq!(
-            distiller.layer_weights.iter().sum::<f32>(),
-            1.0,
-            epsilon = 1e-6
-        );
+        assert_relative_eq!(distiller.layer_weights.iter().sum::<f32>(), 1.0, epsilon = 1e-6);
         for &w in &distiller.layer_weights {
             assert_relative_eq!(w, 1.0 / 3.0, epsilon = 1e-6);
         }
@@ -251,11 +234,7 @@ mod tests {
     #[test]
     fn test_weighted_progressive() {
         let distiller = ProgressiveDistiller::new(vec![1.0, 2.0, 3.0], 2.0);
-        assert_relative_eq!(
-            distiller.layer_weights.iter().sum::<f32>(),
-            1.0,
-            epsilon = 1e-6
-        );
+        assert_relative_eq!(distiller.layer_weights.iter().sum::<f32>(), 1.0, epsilon = 1e-6);
     }
 
     #[test]
@@ -302,14 +281,8 @@ mod tests {
     fn test_layer_wise_mse_loss() {
         let distiller = ProgressiveDistiller::uniform(2, 2.0);
 
-        let student_hiddens = vec![
-            array![[1.0, 2.0], [3.0, 4.0]],
-            array![[5.0, 6.0], [7.0, 8.0]],
-        ];
-        let teacher_hiddens = vec![
-            array![[1.1, 2.1], [3.1, 4.1]],
-            array![[5.1, 6.1], [7.1, 8.1]],
-        ];
+        let student_hiddens = vec![array![[1.0, 2.0], [3.0, 4.0]], array![[5.0, 6.0], [7.0, 8.0]]];
+        let teacher_hiddens = vec![array![[1.1, 2.1], [3.1, 4.1]], array![[5.1, 6.1], [7.1, 8.1]]];
 
         let loss = distiller.layer_wise_mse_loss(&student_hiddens, &teacher_hiddens);
         assert!(loss > 0.0);
@@ -320,14 +293,8 @@ mod tests {
     fn test_layer_wise_cosine_loss() {
         let distiller = ProgressiveDistiller::uniform(2, 2.0);
 
-        let student_hiddens = vec![
-            array![[1.0, 2.0], [3.0, 4.0]],
-            array![[5.0, 6.0], [7.0, 8.0]],
-        ];
-        let teacher_hiddens = vec![
-            array![[1.1, 2.1], [3.1, 4.1]],
-            array![[5.1, 6.1], [7.1, 8.1]],
-        ];
+        let student_hiddens = vec![array![[1.0, 2.0], [3.0, 4.0]], array![[5.0, 6.0], [7.0, 8.0]]];
+        let teacher_hiddens = vec![array![[1.1, 2.1], [3.1, 4.1]], array![[5.1, 6.1], [7.1, 8.1]]];
 
         let loss = distiller.layer_wise_cosine_loss(&student_hiddens, &teacher_hiddens);
         assert!(loss >= 0.0); // Cosine loss should be >= 0

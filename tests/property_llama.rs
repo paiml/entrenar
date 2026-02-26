@@ -31,10 +31,7 @@ fn llama_config_strategy() -> impl Strategy<Value = (usize, usize, usize, usize,
                 prop::num::usize::ANY.prop_map(|x| ((x % 4) + 1) * 64), // intermediate_size: 64-256
             )
         })
-        .prop_filter(
-            "hidden_size must be divisible by num_heads",
-            |(h, _, n, _, _)| h % n == 0,
-        )
+        .prop_filter("hidden_size must be divisible by num_heads", |(h, _, n, _, _)| h % n == 0)
 }
 
 proptest! {

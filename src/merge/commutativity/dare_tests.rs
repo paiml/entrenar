@@ -15,10 +15,7 @@ fn dare_zero_drop_is_commutative() {
     let r1 = dare_merge(&[m1.clone(), m2.clone()], &base, &config).unwrap();
     let r2 = dare_merge(&[m2, m1], &base, &config).unwrap();
 
-    assert!(
-        models_approx_equal(&r1, &r2, 1e-5),
-        "DARE with drop_prob=0 should be commutative"
-    );
+    assert!(models_approx_equal(&r1, &r2, 1e-5), "DARE with drop_prob=0 should be commutative");
 }
 
 #[test]

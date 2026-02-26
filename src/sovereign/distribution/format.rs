@@ -90,18 +90,12 @@ mod tests {
 
     #[test]
     fn test_distribution_format_mime_type_iso() {
-        assert_eq!(
-            DistributionFormat::Iso.mime_type(),
-            "application/x-iso9660-image"
-        );
+        assert_eq!(DistributionFormat::Iso.mime_type(), "application/x-iso9660-image");
     }
 
     #[test]
     fn test_distribution_format_mime_type_oci() {
-        assert_eq!(
-            DistributionFormat::Oci.mime_type(),
-            "application/vnd.oci.image.layer.v1.tar"
-        );
+        assert_eq!(DistributionFormat::Oci.mime_type(), "application/vnd.oci.image.layer.v1.tar");
     }
 
     #[test]
@@ -111,10 +105,7 @@ mod tests {
 
     #[test]
     fn test_distribution_format_mime_type_flatpak() {
-        assert_eq!(
-            DistributionFormat::Flatpak.mime_type(),
-            "application/vnd.flatpak"
-        );
+        assert_eq!(DistributionFormat::Flatpak.mime_type(), "application/vnd.flatpak");
     }
 
     #[test]

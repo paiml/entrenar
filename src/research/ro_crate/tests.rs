@@ -10,16 +10,11 @@ fn create_test_artifact() -> ResearchArtifact {
         .unwrap()
         .with_affiliation(Affiliation::new("MIT"));
 
-    ResearchArtifact::new(
-        "dataset-001",
-        "Test Dataset",
-        ArtifactType::Dataset,
-        License::CcBy4,
-    )
-    .with_author(author)
-    .with_doi("10.1234/test")
-    .with_description("A test dataset")
-    .with_keywords(["test", "dataset"])
+    ResearchArtifact::new("dataset-001", "Test Dataset", ArtifactType::Dataset, License::CcBy4)
+        .with_author(author)
+        .with_doi("10.1234/test")
+        .with_description("A test dataset")
+        .with_keywords(["test", "dataset"])
 }
 
 #[test]
@@ -157,10 +152,7 @@ fn test_descriptor_serialization() {
 fn test_entity_type_display() {
     assert_eq!(format!("{}", EntityType::Dataset), "Dataset");
     assert_eq!(format!("{}", EntityType::Person), "Person");
-    assert_eq!(
-        format!("{}", EntityType::Custom("MyType".to_string())),
-        "MyType"
-    );
+    assert_eq!(format!("{}", EntityType::Custom("MyType".to_string())), "MyType");
 }
 
 #[test]
@@ -177,8 +169,5 @@ fn test_artifact_metadata_in_crate() {
     assert_eq!(root.properties.get("name"), Some(&json!("Test Dataset")));
     assert_eq!(root.properties.get("version"), Some(&json!("1.0.0")));
     assert_eq!(root.properties.get("license"), Some(&json!("CC-BY-4.0")));
-    assert_eq!(
-        root.properties.get("identifier"),
-        Some(&json!("10.1234/test"))
-    );
+    assert_eq!(root.properties.get("identifier"), Some(&json!("10.1234/test")));
 }

@@ -14,12 +14,8 @@ pub fn session_to_artifact(
         return Err(RuchyBridgeError::NoTrainingHistory);
     }
 
-    let mut artifact = ResearchArtifact::new(
-        &session.id,
-        &session.name,
-        ArtifactType::Notebook,
-        License::Mit,
-    );
+    let mut artifact =
+        ResearchArtifact::new(&session.id, &session.name, ArtifactType::Notebook, License::Mit);
 
     // Add user as author if available
     if let Some(ref user) = session.user {

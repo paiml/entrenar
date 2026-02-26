@@ -14,8 +14,8 @@
 
 use super::classification::SafetySample;
 use super::classify_pipeline::ClassifyPipeline;
-use crate::optim::WarmupCosineDecayLR;
 use crate::optim::LRScheduler;
+use crate::optim::WarmupCosineDecayLR;
 use std::path::{Path, PathBuf};
 
 /// Training configuration for the classification trainer.
@@ -145,9 +145,7 @@ impl ClassifyTrainer {
         config: TrainingConfig,
     ) -> crate::Result<Self> {
         if corpus.is_empty() {
-            return Err(crate::Error::ConfigError(
-                "SSC-026: corpus must not be empty".to_string(),
-            ));
+            return Err(crate::Error::ConfigError("SSC-026: corpus must not be empty".to_string()));
         }
         if config.val_split <= 0.0 || config.val_split > 0.5 {
             return Err(crate::Error::ConfigError(format!(
@@ -156,9 +154,7 @@ impl ClassifyTrainer {
             )));
         }
         if config.epochs == 0 {
-            return Err(crate::Error::ConfigError(
-                "SSC-026: epochs must be > 0".to_string(),
-            ));
+            return Err(crate::Error::ConfigError("SSC-026: epochs must be > 0".to_string()));
         }
 
         let (train_data, val_data) = Self::split_dataset(&corpus, config.val_split, config.seed);
@@ -173,14 +169,7 @@ impl ClassifyTrainer {
 
         let rng_seed = config.seed;
 
-        Ok(Self {
-            pipeline,
-            config,
-            train_data,
-            val_data,
-            rng_seed,
-            monitor_writer: None,
-        })
+        Ok(Self { pipeline, config, train_data, val_data, rng_seed, monitor_writer: None })
     }
 
     /// Attach a monitor writer for live TUI updates.
@@ -209,12 +198,8 @@ impl ClassifyTrainer {
         let warmup_steps = (self.config.warmup_fraction * total_steps as f32) as usize;
         let lr_max = self.pipeline.optimizer_lr();
 
-        let mut scheduler = WarmupCosineDecayLR::new(
-            lr_max,
-            self.config.lr_min,
-            warmup_steps,
-            total_steps,
-        );
+        let mut scheduler =
+            WarmupCosineDecayLR::new(lr_max, self.config.lr_min, warmup_steps, total_steps);
 
         // Initialize monitor writer if attached
         if let Some(ref mut writer) = self.monitor_writer {
@@ -269,11 +254,8 @@ impl ClassifyTrainer {
                 epochs_without_improvement = 0;
 
                 // Save best checkpoint
-                let _ = self.save_checkpoint(
-                    &self.config.checkpoint_dir.join("best"),
-                    epoch,
-                    &metrics,
-                );
+                let _ =
+                    self.save_checkpoint(&self.config.checkpoint_dir.join("best"), epoch, &metrics);
             } else {
                 epochs_without_improvement += 1;
             }
@@ -349,11 +331,8 @@ impl ClassifyTrainer {
             if let Some(ref mut writer) = self.monitor_writer {
                 let running_avg_loss = total_loss / total_samples as f32;
                 let elapsed_secs = epoch_start.elapsed().as_secs_f32();
-                let samples_per_sec = if elapsed_secs > 0.0 {
-                    total_samples as f32 / elapsed_secs
-                } else {
-                    0.0
-                };
+                let samples_per_sec =
+                    if elapsed_secs > 0.0 { total_samples as f32 / elapsed_secs } else { 0.0 };
                 let _ = writer.update_step(
                     epoch + 1,
                     batch_idx + 1,
@@ -368,16 +347,9 @@ impl ClassifyTrainer {
             scheduler.step();
         }
 
-        let avg_loss = if total_samples > 0 {
-            total_loss / total_samples as f32
-        } else {
-            0.0
-        };
-        let accuracy = if total_samples > 0 {
-            total_correct as f32 / total_samples as f32
-        } else {
-            0.0
-        };
+        let avg_loss = if total_samples > 0 { total_loss / total_samples as f32 } else { 0.0 };
+        let accuracy =
+            if total_samples > 0 { total_correct as f32 / total_samples as f32 } else { 0.0 };
 
         (avg_loss, accuracy)
     }
@@ -399,16 +371,8 @@ impl ClassifyTrainer {
             }
         }
 
-        let avg_loss = if total > 0 {
-            total_loss / total as f32
-        } else {
-            0.0
-        };
-        let accuracy = if total > 0 {
-            correct as f32 / total as f32
-        } else {
-            0.0
-        };
+        let avg_loss = if total > 0 { total_loss / total as f32 } else { 0.0 };
+        let accuracy = if total > 0 { correct as f32 / total as f32 } else { 0.0 };
 
         (avg_loss, accuracy)
     }
@@ -442,10 +406,7 @@ impl ClassifyTrainer {
         metrics: &EpochMetrics,
     ) -> crate::Result<()> {
         std::fs::create_dir_all(path).map_err(|e| {
-            crate::Error::Io(format!(
-                "Failed to create checkpoint dir {}: {e}",
-                path.display()
-            ))
+            crate::Error::Io(format!("Failed to create checkpoint dir {}: {e}", path.display()))
         })?;
 
         // Save metadata.json
@@ -495,22 +456,14 @@ impl ClassifyTrainer {
             let a_bytes: Vec<u8> =
                 bytemuck::cast_slice(a_data.as_slice().expect("contiguous lora_a")).to_vec();
             let a_shape = vec![lora.rank(), lora.d_in()];
-            tensor_data.push((
-                format!("lora.{layer}.{proj}_proj.lora_a"),
-                a_bytes,
-                a_shape,
-            ));
+            tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_a"), a_bytes, a_shape));
 
             // LoRA B: [d_out, rank]
             let b_data = lora.lora_b().data();
             let b_bytes: Vec<u8> =
                 bytemuck::cast_slice(b_data.as_slice().expect("contiguous lora_b")).to_vec();
             let b_shape = vec![lora.d_out(), lora.rank()];
-            tensor_data.push((
-                format!("lora.{layer}.{proj}_proj.lora_b"),
-                b_bytes,
-                b_shape,
-            ));
+            tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_b"), b_bytes, b_shape));
         }
 
         let views: Vec<(&str, safetensors::tensor::TensorView<'_>)> = tensor_data
@@ -551,16 +504,10 @@ impl ClassifyTrainer {
         use aprender::serialization::apr::AprWriter;
 
         let mut writer = AprWriter::new();
-        writer.set_metadata(
-            "model_type".to_string(),
-            serde_json::json!("classify_pipeline"),
-        );
+        writer.set_metadata("model_type".to_string(), serde_json::json!("classify_pipeline"));
         writer.set_metadata("epoch".to_string(), serde_json::json!(epoch));
         writer.set_metadata("val_loss".to_string(), serde_json::json!(metrics.val_loss));
-        writer.set_metadata(
-            "val_accuracy".to_string(),
-            serde_json::json!(metrics.val_accuracy),
-        );
+        writer.set_metadata("val_accuracy".to_string(), serde_json::json!(metrics.val_accuracy));
 
         // Add classifier weight and bias tensors
         let weight = &self.pipeline.classifier.weight;
@@ -574,9 +521,9 @@ impl ClassifyTrainer {
         writer.add_tensor_f32("classifier.bias", vec![bias.len()], bias_slice);
 
         let apr_path = path.join("model.apr");
-        writer.write(&apr_path).map_err(|e| {
-            crate::Error::Serialization(format!("APR serialization failed: {e}"))
-        })?;
+        writer
+            .write(&apr_path)
+            .map_err(|e| crate::Error::Serialization(format!("APR serialization failed: {e}")))?;
 
         Ok(())
     }
@@ -693,10 +640,7 @@ mod tests {
         let val_inputs: HashSet<String> = val.iter().map(|s| s.input.clone()).collect();
 
         let overlap: HashSet<_> = train_inputs.intersection(&val_inputs).collect();
-        assert!(
-            overlap.is_empty(),
-            "F-LOOP-008: train/val overlap = {overlap:?}"
-        );
+        assert!(overlap.is_empty(), "F-LOOP-008: train/val overlap = {overlap:?}");
     }
 
     #[test]
@@ -705,11 +649,7 @@ mod tests {
         let (train, val) = ClassifyTrainer::split_dataset(&corpus, 0.2, 42);
 
         // Total must be preserved
-        assert_eq!(
-            train.len() + val.len(),
-            100,
-            "All samples must be accounted for"
-        );
+        assert_eq!(train.len() + val.len(), 100, "All samples must be accounted for");
 
         // Val should be ~20% (ceil(100 * 0.2) = 20)
         assert_eq!(val.len(), 20, "Val set should be 20% of 100");
@@ -762,10 +702,7 @@ mod tests {
 
         // The val set is established at construction and must not change
         let val_after: Vec<String> = trainer.val_data().iter().map(|s| s.input.clone()).collect();
-        assert_eq!(
-            val_before, val_after,
-            "F-LOOP-009: val set must be frozen"
-        );
+        assert_eq!(val_before, val_after, "F-LOOP-009: val set must be frozen");
     }
 
     // =========================================================================
@@ -813,30 +750,12 @@ mod tests {
         // Loss should decrease over epochs on a tiny overfit task
         let num_classes = 3;
         let corpus = vec![
-            SafetySample {
-                input: "echo hello world".into(),
-                label: 0,
-            },
-            SafetySample {
-                input: "rm -rf /tmp/danger".into(),
-                label: 1,
-            },
-            SafetySample {
-                input: "ls -la /home".into(),
-                label: 2,
-            },
-            SafetySample {
-                input: "echo safe output".into(),
-                label: 0,
-            },
-            SafetySample {
-                input: "eval dangerous code".into(),
-                label: 1,
-            },
-            SafetySample {
-                input: "cat /etc/passwd".into(),
-                label: 2,
-            },
+            SafetySample { input: "echo hello world".into(), label: 0 },
+            SafetySample { input: "rm -rf /tmp/danger".into(), label: 1 },
+            SafetySample { input: "ls -la /home".into(), label: 2 },
+            SafetySample { input: "echo safe output".into(), label: 0 },
+            SafetySample { input: "eval dangerous code".into(), label: 1 },
+            SafetySample { input: "cat /etc/passwd".into(), label: 2 },
         ];
 
         let pipeline = tiny_pipeline(num_classes);
@@ -852,10 +771,7 @@ mod tests {
         let mut trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
         let result = trainer.train();
 
-        assert!(
-            !result.epoch_metrics.is_empty(),
-            "Should have at least one epoch of metrics"
-        );
+        assert!(!result.epoch_metrics.is_empty(), "Should have at least one epoch of metrics");
 
         let first_loss = result.epoch_metrics.first().unwrap().train_loss;
         let last_loss = result.epoch_metrics.last().unwrap().train_loss;
@@ -983,10 +899,7 @@ mod tests {
         let config = TrainingConfig::default();
 
         let result = ClassifyTrainer::new(pipeline, vec![], config);
-        assert!(
-            result.is_err(),
-            "Empty corpus should return an error"
-        );
+        assert!(result.is_err(), "Empty corpus should return an error");
         let err = result.unwrap_err().to_string();
         assert!(
             err.contains("corpus must not be empty"),
@@ -998,32 +911,20 @@ mod tests {
     fn test_ssc026_invalid_val_split_zero() {
         let pipeline = tiny_pipeline(3);
         let corpus = make_corpus(10, 3);
-        let config = TrainingConfig {
-            val_split: 0.0,
-            ..TrainingConfig::default()
-        };
+        let config = TrainingConfig { val_split: 0.0, ..TrainingConfig::default() };
 
         let result = ClassifyTrainer::new(pipeline, corpus, config);
-        assert!(
-            result.is_err(),
-            "val_split=0.0 should return an error"
-        );
+        assert!(result.is_err(), "val_split=0.0 should return an error");
     }
 
     #[test]
     fn test_ssc026_invalid_val_split_too_large() {
         let pipeline = tiny_pipeline(3);
         let corpus = make_corpus(10, 3);
-        let config = TrainingConfig {
-            val_split: 0.8,
-            ..TrainingConfig::default()
-        };
+        let config = TrainingConfig { val_split: 0.8, ..TrainingConfig::default() };
 
         let result = ClassifyTrainer::new(pipeline, corpus, config);
-        assert!(
-            result.is_err(),
-            "val_split=0.8 should return an error"
-        );
+        assert!(result.is_err(), "val_split=0.8 should return an error");
     }
 
     #[test]

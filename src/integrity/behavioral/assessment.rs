@@ -67,10 +67,7 @@ mod tests {
 
     #[test]
     fn test_integrity_assessment_eq() {
-        assert_eq!(
-            IntegrityAssessment::Excellent,
-            IntegrityAssessment::Excellent
-        );
+        assert_eq!(IntegrityAssessment::Excellent, IntegrityAssessment::Excellent);
         assert_ne!(IntegrityAssessment::Excellent, IntegrityAssessment::Good);
         assert_ne!(IntegrityAssessment::Good, IntegrityAssessment::Fair);
         assert_ne!(IntegrityAssessment::Fair, IntegrityAssessment::Poor);

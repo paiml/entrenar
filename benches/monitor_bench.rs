@@ -57,7 +57,7 @@ fn bench_in_memory_store(c: &mut Criterion) {
             for i in 0..1000 {
                 collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
             }
-            store.write_batch(&collector.to_records()).unwrap();
+            store.write_batch(&collector.to_records()).expect("write_batch must succeed");
             black_box(store)
         });
     });
@@ -69,7 +69,7 @@ fn bench_in_memory_store(c: &mut Criterion) {
         collector.record(Metric::Loss, 1.0 / (f64::from(i) + 1.0));
         collector.record(Metric::Accuracy, 0.5 + 0.0001 * f64::from(i));
     }
-    store.write_batch(&collector.to_records()).unwrap();
+    store.write_batch(&collector.to_records()).expect("write_batch must succeed");
 
     group.bench_function("query_all_10k", |b| {
         b.iter(|| black_box(store.query_all(&Metric::Loss)));
@@ -122,10 +122,7 @@ fn bench_hansei_report(c: &mut Criterion) {
         let mut collector = MetricsCollector::new();
         for i in 0..*size {
             collector.record(Metric::Loss, 1.0 - (f64::from(i) / f64::from(*size)));
-            collector.record(
-                Metric::Accuracy,
-                0.5 + 0.5 * (f64::from(i) / f64::from(*size)),
-            );
+            collector.record(Metric::Accuracy, 0.5 + 0.5 * (f64::from(i) / f64::from(*size)));
             collector.record(Metric::GradientNorm, 1.0 + 0.01 * f64::from(i % 100));
         }
 

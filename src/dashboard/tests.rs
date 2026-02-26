@@ -129,9 +129,7 @@ fn test_resource_snapshot_with_values() {
 
 #[test]
 fn test_resource_snapshot_clamp() {
-    let snapshot = ResourceSnapshot::new()
-        .with_gpu_util(1.5)
-        .with_cpu_util(-0.5);
+    let snapshot = ResourceSnapshot::new().with_gpu_util(1.5).with_cpu_util(-0.5);
 
     assert!((snapshot.gpu_util - 1.0).abs() < f64::EPSILON);
     assert!((snapshot.cpu_util - 0.0).abs() < f64::EPSILON);

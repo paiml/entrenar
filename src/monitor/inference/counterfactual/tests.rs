@@ -95,26 +95,17 @@ fn test_counterfactual_no_changes() {
 
 #[test]
 fn test_counterfactual_error_display() {
-    let err = CounterfactualError::InsufficientData {
-        expected: 100,
-        actual: 50,
-    };
+    let err = CounterfactualError::InsufficientData { expected: 100, actual: 50 };
     assert!(err.to_string().contains("expected 100"));
 
-    let err = CounterfactualError::VersionMismatch {
-        expected: 1,
-        actual: 2,
-    };
+    let err = CounterfactualError::VersionMismatch { expected: 1, actual: 2 };
     assert!(err.to_string().contains("Version mismatch"));
 }
 
 #[test]
 fn test_counterfactual_insufficient_data() {
     let result = Counterfactual::from_bytes(&[0; 10]);
-    assert!(matches!(
-        result,
-        Err(CounterfactualError::InsufficientData { .. })
-    ));
+    assert!(matches!(result, Err(CounterfactualError::InsufficientData { .. })));
 }
 
 #[test]
@@ -127,8 +118,5 @@ fn test_counterfactual_version_mismatch() {
     bytes.extend_from_slice(&0u32.to_le_bytes());
 
     let result = Counterfactual::from_bytes(&bytes);
-    assert!(matches!(
-        result,
-        Err(CounterfactualError::VersionMismatch { .. })
-    ));
+    assert!(matches!(result, Err(CounterfactualError::VersionMismatch { .. })));
 }

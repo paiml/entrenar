@@ -7,40 +7,22 @@ use crate::cli::LogLevel;
 use crate::config::PublishArgs;
 
 pub fn run_publish(args: PublishArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Publishing to {}", args.repo),
-    );
+    log(level, LogLevel::Normal, &format!("Publishing to {}", args.repo));
 
     // Validate model directory
     if !args.model_dir.exists() {
-        return Err(format!(
-            "Model directory not found: {}",
-            args.model_dir.display()
-        ));
+        return Err(format!("Model directory not found: {}", args.model_dir.display()));
     }
 
     // Find model files to upload
     let files = collect_model_files(&args.model_dir).map_err(|e| format!("File scan: {e}"))?;
     if files.is_empty() {
-        return Err(format!(
-            "No model files found in {}",
-            args.model_dir.display()
-        ));
+        return Err(format!("No model files found in {}", args.model_dir.display()));
     }
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Found {} file(s) to upload", files.len()),
-    );
+    log(level, LogLevel::Normal, &format!("  Found {} file(s) to upload", files.len()));
     for (path, remote) in &files {
-        log(
-            level,
-            LogLevel::Verbose,
-            &format!("    {} -> {}", path.display(), remote),
-        );
+        log(level, LogLevel::Verbose, &format!("    {} -> {}", path.display(), remote));
     }
 
     if args.dry_run {
@@ -61,25 +43,16 @@ fn do_publish(
     use crate::hf_pipeline::publish::model_card::ModelCard;
     use crate::hf_pipeline::publish::publisher::HfPublisher;
 
-    let config = PublishConfig {
-        repo_id: args.repo.clone(),
-        private: args.private,
-        ..Default::default()
-    };
+    let config =
+        PublishConfig { repo_id: args.repo.clone(), private: args.private, ..Default::default() };
 
-    let model_card = if args.model_card {
-        Some(build_model_card(args))
-    } else {
-        None
-    };
+    let model_card = if args.model_card { Some(build_model_card(args)) } else { None };
 
     let publisher =
         HfPublisher::new(config).map_err(|e| format!("Publisher initialization: {e}"))?;
 
-    let file_refs: Vec<(&Path, &str)> = files
-        .iter()
-        .map(|(path, remote)| (path.as_path(), remote.as_str()))
-        .collect();
+    let file_refs: Vec<(&Path, &str)> =
+        files.iter().map(|(path, remote)| (path.as_path(), remote.as_str())).collect();
 
     let result = publisher
         .publish(&file_refs, model_card.as_ref())
@@ -121,9 +94,7 @@ fn collect_model_files(dir: &Path) -> Result<Vec<(std::path::PathBuf, String)>, 
         }
 
         // Include files with known extensions
-        let include = extensions
-            .iter()
-            .any(|ext| name.ends_with(&format!(".{ext}")));
+        let include = extensions.iter().any(|ext| name.ends_with(&format!(".{ext}")));
 
         if include {
             files.push((path, name));
@@ -141,12 +112,7 @@ fn collect_model_files(dir: &Path) -> Result<Vec<(std::path::PathBuf, String)>, 
 fn build_model_card(args: &PublishArgs) -> crate::hf_pipeline::publish::model_card::ModelCard {
     use crate::hf_pipeline::publish::model_card::ModelCard;
 
-    let model_name = args
-        .repo
-        .rsplit('/')
-        .next()
-        .unwrap_or(&args.repo)
-        .to_string();
+    let model_name = args.repo.rsplit('/').next().unwrap_or(&args.repo).to_string();
 
     let metadata_path = args.model_dir.join("final_model.json");
     let training_details = read_training_metadata(&metadata_path);
@@ -156,11 +122,7 @@ fn build_model_card(args: &PublishArgs) -> crate::hf_pipeline::publish::model_ca
         description: format!("Fine-tuned model published via entrenar from {}", args.repo),
         license: Some("apache-2.0".to_string()),
         language: Vec::new(),
-        tags: vec![
-            "entrenar".to_string(),
-            "fine-tuned".to_string(),
-            "rust".to_string(),
-        ],
+        tags: vec!["entrenar".to_string(), "fine-tuned".to_string(), "rust".to_string()],
         metrics: Vec::new(),
         training_details,
         base_model: args.base_model.clone(),

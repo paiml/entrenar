@@ -40,9 +40,7 @@ pub fn quantize_and_export(
     let filename = filename.as_ref();
 
     // Build exporter with quantization config
-    let exporter = Exporter::new()
-        .output_dir(output_dir)
-        .gguf_quantization(quantization);
+    let exporter = Exporter::new().output_dir(output_dir).gguf_quantization(quantization);
 
     let export = exporter.export(weights, ExportFormat::GGUF, filename)?;
 
@@ -55,11 +53,7 @@ pub fn quantize_and_export(
         message: format!("Failed to write README: {e}"),
     })?;
 
-    Ok(QuantExportResult {
-        export,
-        quantization,
-        readme: Some(readme),
-    })
+    Ok(QuantExportResult { export, quantization, readme: Some(readme) })
 }
 
 /// Generate a README with quantization metadata
@@ -74,17 +68,9 @@ fn generate_quant_readme(
         GgufQuantization::Q8_0 => "Q8_0 (8-bit)",
     };
 
-    let model_name = weights
-        .metadata
-        .model_name
-        .as_deref()
-        .unwrap_or("Unknown Model");
+    let model_name = weights.metadata.model_name.as_deref().unwrap_or("Unknown Model");
 
-    let arch = weights
-        .metadata
-        .architecture
-        .as_deref()
-        .unwrap_or("unknown");
+    let arch = weights.metadata.architecture.as_deref().unwrap_or("unknown");
 
     format!(
         "---\ntags:\n- entrenar\n- gguf\n- quantized\n---\n\n\
@@ -145,13 +131,9 @@ mod tests {
         let weights = make_test_weights();
         let tmp = TempDir::new().unwrap();
 
-        let result = quantize_and_export(
-            &weights,
-            GgufQuantization::Q4_0,
-            tmp.path(),
-            "model-q4.gguf",
-        )
-        .unwrap();
+        let result =
+            quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "model-q4.gguf")
+                .unwrap();
 
         assert_eq!(result.quantization, GgufQuantization::Q4_0);
         assert!(result.export.size_bytes > 0);
@@ -162,13 +144,9 @@ mod tests {
         let weights = make_test_weights();
         let tmp = TempDir::new().unwrap();
 
-        let result = quantize_and_export(
-            &weights,
-            GgufQuantization::Q8_0,
-            tmp.path(),
-            "model-q8.gguf",
-        )
-        .unwrap();
+        let result =
+            quantize_and_export(&weights, GgufQuantization::Q8_0, tmp.path(), "model-q8.gguf")
+                .unwrap();
 
         assert_eq!(result.quantization, GgufQuantization::Q8_0);
     }
@@ -195,20 +173,12 @@ mod tests {
         let tmp_f32 = TempDir::new().unwrap();
         let tmp_q4 = TempDir::new().unwrap();
 
-        let f32_result = quantize_and_export(
-            &weights,
-            GgufQuantization::None,
-            tmp_f32.path(),
-            "model.gguf",
-        )
-        .unwrap();
-        let q4_result = quantize_and_export(
-            &weights,
-            GgufQuantization::Q4_0,
-            tmp_q4.path(),
-            "model.gguf",
-        )
-        .unwrap();
+        let f32_result =
+            quantize_and_export(&weights, GgufQuantization::None, tmp_f32.path(), "model.gguf")
+                .unwrap();
+        let q4_result =
+            quantize_and_export(&weights, GgufQuantization::Q4_0, tmp_q4.path(), "model.gguf")
+                .unwrap();
 
         assert!(
             q4_result.export.size_bytes < f32_result.export.size_bytes,
@@ -288,20 +258,12 @@ mod tests {
         let tmp_f32 = TempDir::new().unwrap();
         let tmp_q8 = TempDir::new().unwrap();
 
-        let f32_result = quantize_and_export(
-            &weights,
-            GgufQuantization::None,
-            tmp_f32.path(),
-            "model.gguf",
-        )
-        .unwrap();
-        let q8_result = quantize_and_export(
-            &weights,
-            GgufQuantization::Q8_0,
-            tmp_q8.path(),
-            "model.gguf",
-        )
-        .unwrap();
+        let f32_result =
+            quantize_and_export(&weights, GgufQuantization::None, tmp_f32.path(), "model.gguf")
+                .unwrap();
+        let q8_result =
+            quantize_and_export(&weights, GgufQuantization::Q8_0, tmp_q8.path(), "model.gguf")
+                .unwrap();
 
         assert!(
             q8_result.export.size_bytes < f32_result.export.size_bytes,
@@ -317,20 +279,12 @@ mod tests {
         let tmp_q4 = TempDir::new().unwrap();
         let tmp_q8 = TempDir::new().unwrap();
 
-        let q4_result = quantize_and_export(
-            &weights,
-            GgufQuantization::Q4_0,
-            tmp_q4.path(),
-            "model.gguf",
-        )
-        .unwrap();
-        let q8_result = quantize_and_export(
-            &weights,
-            GgufQuantization::Q8_0,
-            tmp_q8.path(),
-            "model.gguf",
-        )
-        .unwrap();
+        let q4_result =
+            quantize_and_export(&weights, GgufQuantization::Q4_0, tmp_q4.path(), "model.gguf")
+                .unwrap();
+        let q8_result =
+            quantize_and_export(&weights, GgufQuantization::Q8_0, tmp_q8.path(), "model.gguf")
+                .unwrap();
 
         assert!(
             q4_result.export.size_bytes < q8_result.export.size_bytes,
@@ -413,10 +367,7 @@ mod tests {
                 f32::from_le_bytes(file_data[off..off + 4].try_into().unwrap())
             })
             .collect();
-        assert_eq!(
-            original, recovered,
-            "f32 data must survive pipeline exactly"
-        );
+        assert_eq!(original, recovered, "f32 data must survive pipeline exactly");
     }
 
     // =====================================================================
@@ -480,18 +431,16 @@ mod tests {
             weights.add_tensor("w", vec![0.5; n_elements], vec![n_elements]);
             weights.metadata.num_params = n_elements as u64;
 
-            let sizes: Vec<(GgufQuantization, u64)> = [
-                GgufQuantization::None,
-                GgufQuantization::Q8_0,
-                GgufQuantization::Q4_0,
-            ]
-            .iter()
-            .map(|&quant| {
-                let tmp = TempDir::new().unwrap();
-                let result = quantize_and_export(&weights, quant, tmp.path(), "m.gguf").unwrap();
-                (quant, result.export.size_bytes)
-            })
-            .collect();
+            let sizes: Vec<(GgufQuantization, u64)> =
+                [GgufQuantization::None, GgufQuantization::Q8_0, GgufQuantization::Q4_0]
+                    .iter()
+                    .map(|&quant| {
+                        let tmp = TempDir::new().unwrap();
+                        let result =
+                            quantize_and_export(&weights, quant, tmp.path(), "m.gguf").unwrap();
+                        (quant, result.export.size_bytes)
+                    })
+                    .collect();
 
             let (_, f32_size) = sizes[0];
             let (_, q8_size) = sizes[1];
@@ -511,19 +460,11 @@ mod tests {
     #[test]
     fn test_falsify_pipeline_magic_bytes_all_quant_modes() {
         let weights = make_test_weights();
-        for quant in [
-            GgufQuantization::None,
-            GgufQuantization::Q4_0,
-            GgufQuantization::Q8_0,
-        ] {
+        for quant in [GgufQuantization::None, GgufQuantization::Q4_0, GgufQuantization::Q8_0] {
             let tmp = TempDir::new().unwrap();
             quantize_and_export(&weights, quant, tmp.path(), "model.gguf").unwrap();
             let file_data = std::fs::read(tmp.path().join("model.gguf")).unwrap();
-            assert_eq!(
-                &file_data[0..4],
-                b"GGUF",
-                "magic bytes wrong for pipeline {quant:?}"
-            );
+            assert_eq!(&file_data[0..4], b"GGUF", "magic bytes wrong for pipeline {quant:?}");
         }
     }
 
@@ -566,21 +507,9 @@ mod tests {
             quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
                 .unwrap();
         let readme = result.readme.unwrap();
-        assert!(
-            readme.starts_with("---\n"),
-            "README must start with YAML frontmatter"
-        );
-        assert!(
-            readme.contains("tags:"),
-            "README must have tags in frontmatter"
-        );
-        assert!(
-            readme.contains("- gguf"),
-            "README frontmatter must tag 'gguf'"
-        );
-        assert!(
-            readme.contains("- entrenar"),
-            "README frontmatter must tag 'entrenar'"
-        );
+        assert!(readme.starts_with("---\n"), "README must start with YAML frontmatter");
+        assert!(readme.contains("tags:"), "README must have tags in frontmatter");
+        assert!(readme.contains("- gguf"), "README frontmatter must tag 'gguf'");
+        assert!(readme.contains("- entrenar"), "README frontmatter must tag 'entrenar'");
     }
 }

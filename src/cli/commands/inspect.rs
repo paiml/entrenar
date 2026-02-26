@@ -42,21 +42,9 @@ fn count_total_parameters(tensors: &safetensors::SafeTensors<'_>, names: &[Strin
 /// Log basic model information
 fn log_model_info(level: LogLevel, file_size: usize, total_params: u64, tensor_count: usize) {
     log(level, LogLevel::Normal, "Model Information:");
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  File size: {:.2} MB", file_size as f64 / 1_000_000.0),
-    );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Parameters: {:.2}B", total_params as f64 / 1e9),
-    );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Tensors: {tensor_count}"),
-    );
+    log(level, LogLevel::Normal, &format!("  File size: {:.2} MB", file_size as f64 / 1_000_000.0));
+    log(level, LogLevel::Normal, &format!("  Parameters: {:.2}B", total_params as f64 / 1e9));
+    log(level, LogLevel::Normal, &format!("  Tensors: {tensor_count}"));
 }
 
 /// Log detailed tensor information
@@ -72,11 +60,7 @@ fn log_tensor_details(level: LogLevel, tensors: &safetensors::SafeTensors<'_>, n
         }
     }
     if names.len() > 20 {
-        log(
-            level,
-            LogLevel::Verbose,
-            &format!("  ... and {} more tensors", names.len() - 20),
-        );
+        log(level, LogLevel::Verbose, &format!("  ... and {} more tensors", names.len() - 20));
     }
 }
 
@@ -90,16 +74,8 @@ fn inspect_gguf(path: &Path, level: LogLevel) -> Result<(), String> {
         LogLevel::Normal,
         &format!("  File size: {:.2} MB", metadata.len() as f64 / 1_000_000.0),
     );
-    log(
-        level,
-        LogLevel::Normal,
-        "  Format: GGUF (llama.cpp compatible)",
-    );
-    log(
-        level,
-        LogLevel::Normal,
-        "  (Use llama.cpp for detailed GGUF inspection)",
-    );
+    log(level, LogLevel::Normal, "  Format: GGUF (llama.cpp compatible)");
+    log(level, LogLevel::Normal, "  (Use llama.cpp for detailed GGUF inspection)");
 
     Ok(())
 }
@@ -130,19 +106,11 @@ fn inspect_data_file(
                 LogLevel::Normal,
                 &format!("Outlier Detection (z-threshold: {z_threshold}):"),
             );
-            log(
-                level,
-                LogLevel::Normal,
-                "  Load data with alimentar for outlier analysis",
-            );
+            log(level, LogLevel::Normal, "  Load data with alimentar for outlier analysis");
         }
         InspectMode::Distribution => {
             log(level, LogLevel::Normal, "Distribution Statistics:");
-            log(
-                level,
-                LogLevel::Normal,
-                "  Load data with alimentar for distribution analysis",
-            );
+            log(level, LogLevel::Normal, "  Load data with alimentar for distribution analysis");
         }
         InspectMode::Schema => {
             log(level, LogLevel::Normal, "Schema:");
@@ -159,11 +127,7 @@ fn get_extension(path: &Path) -> &str {
 }
 
 pub fn run_inspect(args: InspectArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Inspecting: {}", args.input.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Inspecting: {}", args.input.display()));
 
     if !args.input.exists() {
         return Err(format!("File not found: {}", args.input.display()));

@@ -41,10 +41,7 @@ struct TestStateSpace {
 impl StateSpace<TestState, TestAction> for TestStateSpace {
     fn apply(&self, state: &TestState, action: &TestAction) -> TestState {
         let new_value = state.value + action.delta;
-        TestState {
-            value: new_value,
-            terminal: new_value >= 10 || new_value <= -10,
-        }
+        TestState { value: new_value, terminal: new_value >= 10 || new_value <= -10 }
     }
 
     fn evaluate(&self, state: &TestState) -> Reward {
@@ -56,9 +53,7 @@ impl StateSpace<TestState, TestAction> for TestStateSpace {
     }
 
     fn clone_space(&self) -> Box<dyn StateSpace<TestState, TestAction> + Send + Sync> {
-        Box::new(TestStateSpace {
-            target: self.target,
-        })
+        Box::new(TestStateSpace { target: self.target })
     }
 }
 
@@ -70,11 +65,7 @@ impl ActionSpace<TestState, TestAction> for TestActionSpace {
         if state.terminal {
             vec![]
         } else {
-            vec![
-                TestAction { delta: 1 },
-                TestAction { delta: -1 },
-                TestAction { delta: 2 },
-            ]
+            vec![TestAction { delta: 1 }, TestAction { delta: -1 }, TestAction { delta: 2 }]
         }
     }
 }
@@ -85,14 +76,8 @@ impl ActionSpace<TestState, TestAction> for TestActionSpace {
 
 #[test]
 fn test_mcts_search_basic() {
-    let initial_state = TestState {
-        value: 0,
-        terminal: false,
-    };
-    let config = MctsConfig {
-        max_iterations: 100,
-        ..Default::default()
-    };
+    let initial_state = TestState { value: 0, terminal: false };
+    let config = MctsConfig { max_iterations: 100, ..Default::default() };
 
     let action_space = TestActionSpace;
     let mut mcts = MctsSearch::with_seed(initial_state, &action_space, config, 42);
@@ -107,10 +92,7 @@ fn test_mcts_search_basic() {
 
 #[test]
 fn test_mcts_finds_path_to_target() {
-    let initial_state = TestState {
-        value: 0,
-        terminal: false,
-    };
+    let initial_state = TestState { value: 0, terminal: false };
     let config = MctsConfig {
         max_iterations: 500,
         exploration_constant: 1.0,
@@ -135,14 +117,8 @@ fn test_mcts_finds_path_to_target() {
 
 #[test]
 fn test_mcts_terminal_state() {
-    let initial_state = TestState {
-        value: 10,
-        terminal: true,
-    };
-    let config = MctsConfig {
-        max_iterations: 10,
-        ..Default::default()
-    };
+    let initial_state = TestState { value: 10, terminal: true };
+    let config = MctsConfig { max_iterations: 10, ..Default::default() };
 
     let action_space = TestActionSpace;
     let mut mcts = MctsSearch::new(initial_state, &action_space, config);
@@ -156,14 +132,8 @@ fn test_mcts_terminal_state() {
 
 #[test]
 fn test_mcts_backpropagation() {
-    let initial_state = TestState {
-        value: 0,
-        terminal: false,
-    };
-    let config = MctsConfig {
-        max_iterations: 50,
-        ..Default::default()
-    };
+    let initial_state = TestState { value: 0, terminal: false };
+    let config = MctsConfig { max_iterations: 50, ..Default::default() };
 
     let action_space = TestActionSpace;
     let mut mcts = MctsSearch::new(initial_state, &action_space, config);
@@ -180,14 +150,8 @@ fn test_mcts_backpropagation() {
 
 #[test]
 fn test_mcts_reproducibility_with_seed() {
-    let initial_state = TestState {
-        value: 0,
-        terminal: false,
-    };
-    let config = MctsConfig {
-        max_iterations: 100,
-        ..Default::default()
-    };
+    let initial_state = TestState { value: 0, terminal: false };
+    let config = MctsConfig { max_iterations: 100, ..Default::default() };
 
     let action_space = TestActionSpace;
     let state_space = TestStateSpace { target: 5 };
@@ -204,14 +168,8 @@ fn test_mcts_reproducibility_with_seed() {
 
 #[test]
 fn test_mcts_result_structure() {
-    let initial_state = TestState {
-        value: 0,
-        terminal: false,
-    };
-    let config = MctsConfig {
-        max_iterations: 50,
-        ..Default::default()
-    };
+    let initial_state = TestState { value: 0, terminal: false };
+    let config = MctsConfig { max_iterations: 50, ..Default::default() };
 
     let action_space = TestActionSpace;
     let state_space = TestStateSpace { target: 5 };
@@ -226,10 +184,7 @@ fn test_mcts_result_structure() {
 #[test]
 fn test_state_space_apply() {
     let state_space = TestStateSpace { target: 5 };
-    let state = TestState {
-        value: 0,
-        terminal: false,
-    };
+    let state = TestState { value: 0, terminal: false };
     let action = TestAction { delta: 1 };
 
     let new_state = state_space.apply(&state, &action);
@@ -241,16 +196,10 @@ fn test_state_space_apply() {
 fn test_state_space_evaluate() {
     let state_space = TestStateSpace { target: 5 };
 
-    let state_on_target = TestState {
-        value: 5,
-        terminal: true,
-    };
+    let state_on_target = TestState { value: 5, terminal: true };
     assert_eq!(state_space.evaluate(&state_on_target), 1.0);
 
-    let state_off_target = TestState {
-        value: 3,
-        terminal: true,
-    };
+    let state_off_target = TestState { value: 3, terminal: true };
     assert_eq!(state_space.evaluate(&state_off_target), 0.0);
 }
 
@@ -258,17 +207,11 @@ fn test_state_space_evaluate() {
 fn test_action_space_legal_actions() {
     let action_space = TestActionSpace;
 
-    let non_terminal = TestState {
-        value: 0,
-        terminal: false,
-    };
+    let non_terminal = TestState { value: 0, terminal: false };
     let actions = action_space.legal_actions(&non_terminal);
     assert_eq!(actions.len(), 3);
 
-    let terminal = TestState {
-        value: 10,
-        terminal: true,
-    };
+    let terminal = TestState { value: 10, terminal: true };
     let actions = action_space.legal_actions(&terminal);
     assert!(actions.is_empty());
 }

@@ -16,9 +16,7 @@ pub enum EnsembleStrategy {
     IterativeSlerp { t: f32 },
 
     /// Hierarchical: merge in tree structure for balanced combination
-    Hierarchical {
-        leaf_strategy: Box<EnsembleStrategy>,
-    },
+    Hierarchical { leaf_strategy: Box<EnsembleStrategy> },
 }
 
 impl Default for EnsembleStrategy {

@@ -206,10 +206,8 @@ impl PreflightCheck {
                 }
 
                 // Assume last column is label
-                let labels: Vec<i64> = data
-                    .iter()
-                    .map(|row| *row.last().unwrap_or(&0.0) as i64)
-                    .collect();
+                let labels: Vec<i64> =
+                    data.iter().map(|row| *row.last().unwrap_or(&0.0) as i64).collect();
 
                 let mut counts: HashMap<i64, usize> = HashMap::new();
                 for label in &labels {

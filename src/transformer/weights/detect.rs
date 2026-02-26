@@ -38,11 +38,7 @@ pub(crate) fn find_safetensors_files(path: &std::path::Path) -> Result<Vec<std::
 
 /// Auto-detect model architecture from tensor names
 pub(crate) fn detect_architecture(tensors: &safetensors::SafeTensors<'_>) -> Architecture {
-    let names: Vec<String> = tensors
-        .names()
-        .iter()
-        .map(std::string::ToString::to_string)
-        .collect();
+    let names: Vec<String> = tensors.names().iter().map(std::string::ToString::to_string).collect();
 
     // Qwen2 uses "model.layers.X.self_attn.q_proj" with biases
     // LLaMA uses same pattern but no biases

@@ -18,12 +18,7 @@ pub struct DistillationConfig {
 
 impl Default for DistillationConfig {
     fn default() -> Self {
-        Self {
-            temperature: 4.0,
-            alpha: 0.7,
-            progressive: None,
-            attention_transfer: None,
-        }
+        Self { temperature: 4.0, alpha: 0.7, progressive: None, attention_transfer: None }
     }
 }
 
@@ -86,10 +81,8 @@ mod tests {
 
     #[test]
     fn test_progressive_config_layer_mapping() {
-        let config = ProgressiveConfig {
-            layer_mapping: vec![[0, 0], [1, 2], [2, 4]],
-            hidden_weight: 1.0,
-        };
+        let config =
+            ProgressiveConfig { layer_mapping: vec![[0, 0], [1, 2], [2, 4]], hidden_weight: 1.0 };
 
         assert_eq!(config.layer_mapping.len(), 3);
         assert_eq!(config.layer_mapping[0], [0, 0]);
@@ -181,10 +174,7 @@ mod tests {
 
     #[test]
     fn test_progressive_config_clone() {
-        let config = ProgressiveConfig {
-            layer_mapping: vec![[0, 0], [1, 2]],
-            hidden_weight: 0.5,
-        };
+        let config = ProgressiveConfig { layer_mapping: vec![[0, 0], [1, 2]], hidden_weight: 0.5 };
         let cloned = config.clone();
         assert_eq!(config.layer_mapping, cloned.layer_mapping);
         assert!((config.hidden_weight - cloned.hidden_weight).abs() < 1e-6);

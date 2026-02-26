@@ -174,11 +174,7 @@ impl MoeLayer {
             .map(|_| Expert::new(config.input_dim, config.hidden_dim))
             .collect();
 
-        Self {
-            config,
-            router,
-            experts,
-        }
+        Self { config, router, experts }
     }
 
     /// Forward pass: route each token to top-k experts and combine outputs.
@@ -249,13 +245,7 @@ impl MoeLayer {
         let total_dispatches: usize = dispatch_counts.iter().sum();
         let f: Vec<f32> = dispatch_counts
             .iter()
-            .map(|&c| {
-                if total_dispatches > 0 {
-                    c as f32 / total_dispatches as f32
-                } else {
-                    0.0
-                }
-            })
+            .map(|&c| if total_dispatches > 0 { c as f32 / total_dispatches as f32 } else { 0.0 })
             .collect();
 
         // P_i: mean routing probability for each expert across the batch

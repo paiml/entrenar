@@ -118,10 +118,7 @@ impl BenchmarkResults {
 
         for (lora, qlora) in self.lora_stats.iter().zip(self.qlora_stats.iter()) {
             report.push_str(&format!("\n{}:\n", lora.name));
-            report.push_str(&format!(
-                "  LoRA:  {:>8} KB total\n",
-                lora.total_bytes / 1024
-            ));
+            report.push_str(&format!("  LoRA:  {:>8} KB total\n", lora.total_bytes / 1024));
             report.push_str(&format!(
                 "  QLoRA: {:>8} KB total ({:.1}% savings)\n",
                 qlora.total_bytes / 1024,
@@ -135,14 +132,8 @@ impl BenchmarkResults {
 
         // Overall summary
         report.push_str(&format!("\n{:-<70}\n", ""));
-        report.push_str(&format!(
-            "Total LoRA memory:  {:>8} KB\n",
-            self.total_lora_bytes / 1024
-        ));
-        report.push_str(&format!(
-            "Total QLoRA memory: {:>8} KB\n",
-            self.total_qlora_bytes / 1024
-        ));
+        report.push_str(&format!("Total LoRA memory:  {:>8} KB\n", self.total_lora_bytes / 1024));
+        report.push_str(&format!("Total QLoRA memory: {:>8} KB\n", self.total_qlora_bytes / 1024));
         report.push_str(&format!(
             "Memory savings:     {:>8} KB ({:.1}%)\n",
             self.savings_bytes / 1024,
@@ -385,10 +376,7 @@ mod tests {
     fn test_benchmark_model_small() {
         let results = benchmark_model(
             "Test Small Model",
-            &[
-                ("layer_0", 256, 256, 8, 16.0),
-                ("layer_1", 256, 256, 8, 16.0),
-            ],
+            &[("layer_0", 256, 256, 8, 16.0), ("layer_1", 256, 256, 8, 16.0)],
         );
 
         assert_eq!(results.model_name, "Test Small Model");
@@ -488,10 +476,7 @@ mod tests {
         // Test realistic large model scenario
         let results = benchmark_model(
             "Large Model Test",
-            &[
-                ("layer_0_q", 4096, 4096, 64, 128.0),
-                ("layer_0_v", 4096, 4096, 64, 128.0),
-            ],
+            &[("layer_0_q", 4096, 4096, 64, 128.0), ("layer_0_v", 4096, 4096, 64, 128.0)],
         );
 
         // 4096x4096 = 16M values = 64MB per layer unquantized
@@ -503,9 +488,6 @@ mod tests {
 
         assert!(lora_mb > 100.0, "LoRA should use >100MB");
         assert!(qlora_mb < 50.0, "QLoRA should use <50MB");
-        assert!(
-            results.savings_percent > 60.0,
-            "Should save >60% memory on large models"
-        );
+        assert!(results.savings_percent > 60.0, "Should save >60% memory on large models");
     }
 }

@@ -20,21 +20,14 @@ pub fn load_training_batches(spec: &TrainSpec) -> Result<Vec<Batch>> {
 
     // Check if data file exists
     if !data_path.exists() {
-        eprintln!(
-            "Warning: Training data not found at '{}', using demo data",
-            data_path.display()
-        );
+        eprintln!("Warning: Training data not found at '{}', using demo data", data_path.display());
         return Ok(create_demo_batches(batch_size));
     }
 
     // Load data using alimentar (only on non-WASM)
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let ext = data_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
+        let ext = data_path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
         match ext.as_str() {
             #[cfg(feature = "parquet")]

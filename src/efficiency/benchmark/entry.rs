@@ -30,14 +30,7 @@ impl BenchmarkEntry {
         cost: CostMetrics,
         energy: EnergyMetrics,
     ) -> Self {
-        Self {
-            run_id: run_id.into(),
-            paradigm,
-            device,
-            quality_score,
-            cost,
-            energy,
-        }
+        Self { run_id: run_id.into(), paradigm, device, quality_score, cost, energy }
     }
 
     /// Get efficiency score (quality per dollar)

@@ -38,11 +38,7 @@ impl Q4_0 {
                 .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or(0.0);
 
-            let scale = if max_abs < 1e-10 {
-                1e-10
-            } else {
-                max_abs / 7.0
-            };
+            let scale = if max_abs < 1e-10 { 1e-10 } else { max_abs / 7.0 };
             scales.push(scale);
 
             // Quantize block (pad with zeros if incomplete)
@@ -81,18 +77,10 @@ impl Q4_0 {
                 let byte = self.data[byte_idx];
 
                 // Extract 4-bit value
-                let nibble = if i % 2 == 0 {
-                    byte & 0x0F
-                } else {
-                    (byte >> 4) & 0x0F
-                };
+                let nibble = if i % 2 == 0 { byte & 0x0F } else { (byte >> 4) & 0x0F };
 
                 // Sign extend from 4-bit
-                let q = if nibble & 0x08 != 0 {
-                    (nibble | 0xF0) as i8
-                } else {
-                    nibble as i8
-                };
+                let q = if nibble & 0x08 != 0 { (nibble | 0xF0) as i8 } else { nibble as i8 };
 
                 result.push(f32::from(q) * scale);
             }

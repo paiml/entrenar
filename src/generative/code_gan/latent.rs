@@ -39,12 +39,8 @@ impl LatentCode {
     #[must_use]
     pub fn lerp(&self, other: &Self, t: f32) -> Self {
         assert_eq!(self.dim(), other.dim(), "Latent dimensions must match");
-        let vector = self
-            .vector
-            .iter()
-            .zip(&other.vector)
-            .map(|(a, b)| a * (1.0 - t) + b * t)
-            .collect();
+        let vector =
+            self.vector.iter().zip(&other.vector).map(|(a, b)| a * (1.0 - t) + b * t).collect();
         Self { vector }
     }
 
@@ -61,12 +57,7 @@ impl LatentCode {
             return self.lerp(other, t);
         }
 
-        let dot: f32 = self
-            .vector
-            .iter()
-            .zip(&other.vector)
-            .map(|(a, b)| a * b)
-            .sum();
+        let dot: f32 = self.vector.iter().zip(&other.vector).map(|(a, b)| a * b).sum();
 
         let cos_omega = (dot / (norm_self * norm_other)).clamp(-1.0, 1.0);
         let omega = cos_omega.acos();

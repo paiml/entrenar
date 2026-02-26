@@ -41,11 +41,7 @@ pub fn merge_pair(
 ) -> Result<Model, MergeError> {
     match strategy {
         EnsembleStrategy::WeightedAverage { weights } => {
-            let w = if weights.len() == 2 {
-                weights.clone()
-            } else {
-                vec![0.5, 0.5]
-            };
+            let w = if weights.len() == 2 { weights.clone() } else { vec![0.5, 0.5] };
             weighted_average_merge(&[m1.clone(), m2.clone()], &w)
         }
         EnsembleStrategy::IterativeSlerp { t } => {

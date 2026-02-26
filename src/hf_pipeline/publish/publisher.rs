@@ -29,23 +29,15 @@ impl HfPublisher {
             .ok_or(PublishError::AuthRequired)?;
 
         if config.repo_id.is_empty() || !config.repo_id.contains('/') {
-            return Err(PublishError::InvalidRepoId {
-                repo_id: config.repo_id.clone(),
-            });
+            return Err(PublishError::InvalidRepoId { repo_id: config.repo_id.clone() });
         }
 
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("entrenar/0.5")
-            .build()
-            .map_err(|e| PublishError::Http {
-                message: format!("Failed to create HTTP client: {e}"),
-            })?;
+        let client =
+            reqwest::blocking::Client::builder().user_agent("entrenar/0.5").build().map_err(
+                |e| PublishError::Http { message: format!("Failed to create HTTP client: {e}") },
+            )?;
 
-        Ok(Self {
-            config,
-            client,
-            token,
-        })
+        Ok(Self { config, client, token })
     }
 
     /// Create the HuggingFace repository
@@ -65,14 +57,9 @@ impl HfPublisher {
             body["organization"] = serde_json::Value::String(org);
         }
 
-        let response = self
-            .client
-            .post(&url)
-            .bearer_auth(&self.token)
-            .json(&body)
-            .send()
-            .map_err(|e| PublishError::Http {
-                message: format!("Create repo request failed: {e}"),
+        let response =
+            self.client.post(&url).bearer_auth(&self.token).json(&body).send().map_err(|e| {
+                PublishError::Http { message: format!("Create repo request failed: {e}") }
             })?;
 
         if response.status().is_success() || response.status().as_u16() == 409 {
@@ -169,11 +156,7 @@ impl HfPublisher {
 
     /// Extract the repository name (part after the last '/')
     fn repo_name(&self) -> &str {
-        self.config
-            .repo_id
-            .rsplit('/')
-            .next()
-            .unwrap_or(&self.config.repo_id)
+        self.config.repo_id.rsplit('/').next().unwrap_or(&self.config.repo_id)
     }
 
     /// Extract the organization (part before '/')

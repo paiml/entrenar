@@ -18,11 +18,7 @@ pub struct Cli {
 
 impl Default for Cli {
     fn default() -> Self {
-        Self {
-            format: OutputFormat::Table,
-            verbosity: 1,
-            color: true,
-        }
+        Self { format: OutputFormat::Table, verbosity: 1, color: true }
     }
 }
 
@@ -81,9 +77,7 @@ impl FromStr for OutputFormat {
             "table" | "text" => Ok(Self::Table),
             "json" => Ok(Self::Json),
             "compact" | "line" => Ok(Self::Compact),
-            _ => Err(format!(
-                "Unknown output format '{s}'. Valid options: table, json, compact"
-            )),
+            _ => Err(format!("Unknown output format '{s}'. Valid options: table, json, compact")),
         }
     }
 }
@@ -129,11 +123,7 @@ impl CommonArgs {
             1
         };
 
-        Cli {
-            format: self.format.parse().unwrap_or_default(),
-            verbosity,
-            color: !self.no_color,
-        }
+        Cli { format: self.format.parse().unwrap_or_default(), verbosity, color: !self.no_color }
     }
 }
 
@@ -190,11 +180,7 @@ mod tests {
 
     #[test]
     fn test_output_format_roundtrip() {
-        for format in [
-            OutputFormat::Table,
-            OutputFormat::Json,
-            OutputFormat::Compact,
-        ] {
+        for format in [OutputFormat::Table, OutputFormat::Json, OutputFormat::Compact] {
             let s = format.to_string();
             let parsed: OutputFormat = s.parse().unwrap();
             assert_eq!(format, parsed);
@@ -204,14 +190,8 @@ mod tests {
     #[test]
     fn test_output_format_case_insensitive() {
         assert_eq!("JSON".parse::<OutputFormat>().unwrap(), OutputFormat::Json);
-        assert_eq!(
-            "Table".parse::<OutputFormat>().unwrap(),
-            OutputFormat::Table
-        );
-        assert_eq!(
-            "COMPACT".parse::<OutputFormat>().unwrap(),
-            OutputFormat::Compact
-        );
+        assert_eq!("Table".parse::<OutputFormat>().unwrap(), OutputFormat::Table);
+        assert_eq!("COMPACT".parse::<OutputFormat>().unwrap(), OutputFormat::Compact);
     }
 
     #[test]
@@ -239,12 +219,8 @@ mod tests {
 
     #[test]
     fn test_common_args_to_cli() {
-        let args = CommonArgs {
-            format: "json".to_string(),
-            quiet: false,
-            verbose: true,
-            no_color: true,
-        };
+        let args =
+            CommonArgs { format: "json".to_string(), quiet: false, verbose: true, no_color: true };
         let cli = args.to_cli();
 
         assert_eq!(cli.format, OutputFormat::Json);
@@ -257,10 +233,7 @@ mod tests {
         // "text" is alias for Table
         assert_eq!("text".parse::<OutputFormat>().unwrap(), OutputFormat::Table);
         // "line" is alias for Compact
-        assert_eq!(
-            "line".parse::<OutputFormat>().unwrap(),
-            OutputFormat::Compact
-        );
+        assert_eq!("line".parse::<OutputFormat>().unwrap(), OutputFormat::Compact);
     }
 
     #[test]
@@ -284,10 +257,7 @@ mod tests {
 
     #[test]
     fn test_cli_builder_pattern() {
-        let cli = Cli::new()
-            .with_format(OutputFormat::Json)
-            .with_verbosity(2)
-            .with_color(false);
+        let cli = Cli::new().with_format(OutputFormat::Json).with_verbosity(2).with_color(false);
 
         assert_eq!(cli.format, OutputFormat::Json);
         assert_eq!(cli.verbosity, 2);

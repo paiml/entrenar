@@ -66,9 +66,7 @@ impl FormatConverter {
     ) -> Result<ConversionResult> {
         // Verify input exists
         if !input.exists() {
-            return Err(EntrenarError::ModelNotFound {
-                path: input.to_path_buf(),
-            });
+            return Err(EntrenarError::ModelNotFound { path: input.to_path_buf() });
         }
 
         let start = std::time::Instant::now();
@@ -167,9 +165,7 @@ mod tests {
         let output = temp_dir.path().join("out.gguf");
 
         let converter = FormatConverter::new().with_quantization(Quantization::Q4_0);
-        let result = converter
-            .convert(input.path(), &output, OutputFormat::Gguf)
-            .unwrap();
+        let result = converter.convert(input.path(), &output, OutputFormat::Gguf).unwrap();
 
         // Q4_0 should reduce size by ~4x
         assert!(result.output_size < result.input_size);
@@ -269,9 +265,7 @@ mod tests {
         let output = temp_dir.path().join("out.gguf");
 
         let converter = FormatConverter::new().with_quantization(Quantization::Q8_0);
-        let result = converter
-            .convert(input.path(), &output, OutputFormat::Gguf)
-            .unwrap();
+        let result = converter.convert(input.path(), &output, OutputFormat::Gguf).unwrap();
 
         // Q8_0 should reduce size by ~2x
         assert!(result.output_size < result.input_size);

@@ -97,16 +97,10 @@ mod tests {
 
     #[test]
     fn test_state_trait_implementation() {
-        let state = TestState {
-            value: 5,
-            terminal: false,
-        };
+        let state = TestState { value: 5, terminal: false };
         assert!(!state.is_terminal());
 
-        let terminal = TestState {
-            value: 10,
-            terminal: true,
-        };
+        let terminal = TestState { value: 10, terminal: true };
         assert!(terminal.is_terminal());
     }
 

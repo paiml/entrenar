@@ -89,9 +89,7 @@ mod tests {
     fn test_gradient_accumulation() {
         let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
         let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::new()
-            .with_log_interval(100)
-            .with_gradient_accumulation(2);
+        let config = TrainConfig::new().with_log_interval(100).with_gradient_accumulation(2);
 
         let mut trainer = Trainer::new(params, Box::new(optimizer), config);
         trainer.set_loss(Box::new(MSELoss));
@@ -130,9 +128,7 @@ mod tests {
     fn test_gradient_accumulation_partial_window() {
         let params = vec![Tensor::from_vec(vec![1.0], true)];
         let optimizer = Adam::new(0.01, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::new()
-            .with_log_interval(100)
-            .with_gradient_accumulation(3);
+        let config = TrainConfig::new().with_log_interval(100).with_gradient_accumulation(3);
 
         let mut trainer = Trainer::new(params, Box::new(optimizer), config);
         trainer.set_loss(Box::new(MSELoss));
@@ -140,26 +136,11 @@ mod tests {
         // Create 5 batches with accum_steps=3
         // Optimizer steps at: batch 2 (0,1,2), batch 4 (3,4 - partial)
         let batches = vec![
-            Batch::new(
-                Tensor::from_vec(vec![1.0], false),
-                Tensor::from_vec(vec![2.0], false),
-            ),
-            Batch::new(
-                Tensor::from_vec(vec![1.0], false),
-                Tensor::from_vec(vec![2.0], false),
-            ),
-            Batch::new(
-                Tensor::from_vec(vec![1.0], false),
-                Tensor::from_vec(vec![2.0], false),
-            ),
-            Batch::new(
-                Tensor::from_vec(vec![1.0], false),
-                Tensor::from_vec(vec![2.0], false),
-            ),
-            Batch::new(
-                Tensor::from_vec(vec![1.0], false),
-                Tensor::from_vec(vec![2.0], false),
-            ),
+            Batch::new(Tensor::from_vec(vec![1.0], false), Tensor::from_vec(vec![2.0], false)),
+            Batch::new(Tensor::from_vec(vec![1.0], false), Tensor::from_vec(vec![2.0], false)),
+            Batch::new(Tensor::from_vec(vec![1.0], false), Tensor::from_vec(vec![2.0], false)),
+            Batch::new(Tensor::from_vec(vec![1.0], false), Tensor::from_vec(vec![2.0], false)),
+            Batch::new(Tensor::from_vec(vec![1.0], false), Tensor::from_vec(vec![2.0], false)),
         ];
 
         let result = trainer.train(1, || batches.clone(), std::clone::Clone::clone);
@@ -346,9 +327,7 @@ mod tests {
 
         let mut trainer = Trainer::new(params, Box::new(optimizer), config);
         trainer.set_loss(Box::new(MSELoss));
-        trainer.add_callback(SkipFirstEpochCallback {
-            skipped: skipped.clone(),
-        });
+        trainer.add_callback(SkipFirstEpochCallback { skipped: skipped.clone() });
 
         let batches = vec![Batch::new(
             Tensor::from_vec(vec![1.0], false),
@@ -385,14 +364,8 @@ mod tests {
         trainer.add_callback(StopAtStepBeginCallback);
 
         let batches = vec![
-            Batch::new(
-                Tensor::from_vec(vec![1.0], false),
-                Tensor::from_vec(vec![2.0], false),
-            ),
-            Batch::new(
-                Tensor::from_vec(vec![1.0], false),
-                Tensor::from_vec(vec![2.0], false),
-            ),
+            Batch::new(Tensor::from_vec(vec![1.0], false), Tensor::from_vec(vec![2.0], false)),
+            Batch::new(Tensor::from_vec(vec![1.0], false), Tensor::from_vec(vec![2.0], false)),
         ];
 
         let result = trainer.train(10, || batches.clone(), std::clone::Clone::clone);
@@ -434,9 +407,7 @@ mod tests {
     fn test_train_with_grad_clipping() {
         let params = vec![Tensor::from_vec(vec![1.0, 2.0], true)];
         let optimizer = Adam::new(0.1, 0.9, 0.999, 1e-8);
-        let config = TrainConfig::new()
-            .with_log_interval(100)
-            .with_grad_clip(1.0);
+        let config = TrainConfig::new().with_log_interval(100).with_grad_clip(1.0);
 
         let mut trainer = Trainer::new(params, Box::new(optimizer), config);
         trainer.set_loss(Box::new(MSELoss));

@@ -45,11 +45,7 @@ fn pattern_store_example() {
     println!("DecisionPatternStore with hybrid BM25 + dense retrieval\n");
 
     // Create store with custom config
-    let config = PatternStoreConfig {
-        chunk_size: 256,
-        embedding_dim: 384,
-        rrf_k: 60.0,
-    };
+    let config = PatternStoreConfig { chunk_size: 256, embedding_dim: 384, rrf_k: 60.0 };
     let mut store = DecisionPatternStore::with_config(config).unwrap();
 
     println!("Configuration:");
@@ -59,21 +55,15 @@ fn pattern_store_example() {
 
     // Index some fix patterns
     let patterns = vec![
-        FixPattern::new(
-            "E0308",
-            "- let x: i32 = \"hello\";\n+ let x: &str = \"hello\";",
-        )
-        .with_decision("type_inference")
-        .with_decision("type_mismatch_detected"),
+        FixPattern::new("E0308", "- let x: i32 = \"hello\";\n+ let x: &str = \"hello\";")
+            .with_decision("type_inference")
+            .with_decision("type_mismatch_detected"),
         FixPattern::new("E0308", "- let x: String = 42;\n+ let x: i32 = 42;")
             .with_decision("type_inference")
             .with_decision("integer_literal"),
-        FixPattern::new(
-            "E0382",
-            "- let y = x;\n- let z = x;\n+ let y = x.clone();\n+ let z = x;",
-        )
-        .with_decision("borrow_check")
-        .with_decision("move_tracking"),
+        FixPattern::new("E0382", "- let y = x;\n- let z = x;\n+ let y = x.clone();\n+ let z = x;")
+            .with_decision("borrow_check")
+            .with_decision("move_tracking"),
     ];
 
     for mut pattern in patterns {
@@ -150,10 +140,7 @@ fn decision_tracing_example() {
 
     println!("Decision chain:");
     for trace in &traces {
-        println!(
-            "  {} [{}]: {}",
-            trace.id, trace.decision_type, trace.description
-        );
+        println!("  {} [{}]: {}", trace.id, trace.decision_type, trace.description);
         if let Some(ref span) = trace.span {
             println!("    at {span}");
         }
@@ -170,10 +157,7 @@ fn decision_tracing_example() {
     for trace in &traces {
         if let Some(ref span) = trace.span {
             if span.overlaps(&error_span) {
-                println!(
-                    "  Overlapping decision: {} - {}",
-                    trace.id, trace.decision_type
-                );
+                println!("  Overlapping decision: {} - {}", trace.id, trace.decision_type);
             }
         }
     }
@@ -190,11 +174,7 @@ fn tarantula_example() {
     for i in 0..8 {
         trainer
             .ingest_session(
-                vec![DecisionTrace::new(
-                    format!("fail_{i}"),
-                    "type_inference",
-                    "Bad inference",
-                )],
+                vec![DecisionTrace::new(format!("fail_{i}"), "type_inference", "Bad inference")],
                 CompilationOutcome::failure(vec!["E0308".to_string()], vec![], vec![]),
                 None,
             )
@@ -276,10 +256,8 @@ fn complete_workflow_example() {
     let ci_history = vec![
         // Build 1: Failed - type mismatch
         (
-            vec![
-                DecisionTrace::new("b1_t1", "type_inference", "Inferred i32")
-                    .with_span(SourceSpan::line("src/lib.rs", 42)),
-            ],
+            vec![DecisionTrace::new("b1_t1", "type_inference", "Inferred i32")
+                .with_span(SourceSpan::line("src/lib.rs", 42))],
             CompilationOutcome::failure(
                 vec!["E0308".to_string()],
                 vec![SourceSpan::line("src/lib.rs", 42)],
@@ -289,19 +267,15 @@ fn complete_workflow_example() {
         ),
         // Build 2: Success
         (
-            vec![
-                DecisionTrace::new("b2_t1", "type_inference", "Correct type")
-                    .with_span(SourceSpan::line("src/lib.rs", 42)),
-            ],
+            vec![DecisionTrace::new("b2_t1", "type_inference", "Correct type")
+                .with_span(SourceSpan::line("src/lib.rs", 42))],
             CompilationOutcome::success(),
             None,
         ),
         // Build 3: Failed - similar issue
         (
-            vec![
-                DecisionTrace::new("b3_t1", "type_inference", "Inferred wrong")
-                    .with_span(SourceSpan::line("src/main.rs", 15)),
-            ],
+            vec![DecisionTrace::new("b3_t1", "type_inference", "Inferred wrong")
+                .with_span(SourceSpan::line("src/main.rs", 15))],
             CompilationOutcome::failure(
                 vec!["E0308".to_string()],
                 vec![SourceSpan::line("src/main.rs", 15)],
@@ -349,9 +323,7 @@ fn complete_workflow_example() {
 
     println!("  Error: {new_error_code} at {new_error_span}");
 
-    let correlation = trainer
-        .correlate_error(new_error_code, &new_error_span)
-        .unwrap();
+    let correlation = trainer.correlate_error(new_error_code, &new_error_span).unwrap();
 
     println!("\nPhase 3: Analysis results...");
 
@@ -397,11 +369,7 @@ fn complete_workflow_example() {
     // Phase 5: Export for sharing
     println!("\nPhase 5: Exporting learned patterns...");
     let json = trainer.pattern_store().export_json().unwrap();
-    println!(
-        "  Exported {} patterns ({} bytes)",
-        trainer.pattern_store().len(),
-        json.len()
-    );
+    println!("  Exported {} patterns ({} bytes)", trainer.pattern_store().len(), json.len());
     println!("  Ready for: artifact storage, cross-team sharing, etc.");
 }
 
@@ -455,13 +423,8 @@ fn apr_persistence_example() {
     println!("  Loaded {} patterns", loaded.len());
 
     // Verify RAG index is rebuilt
-    let suggestions = loaded
-        .suggest_fix("E0308", &["type_inference".into()], 5)
-        .unwrap();
-    println!(
-        "  RAG index rebuilt: {} suggestions for E0308",
-        suggestions.len()
-    );
+    let suggestions = loaded.suggest_fix("E0308", &["type_inference".into()], 5).unwrap();
+    println!("  RAG index rebuilt: {} suggestions for E0308", suggestions.len());
 
     // Verify config preserved
     println!("\n--- Config Preserved ---");

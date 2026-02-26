@@ -34,11 +34,7 @@ impl ProgressiveDistillation {
     /// Create new progressive distillation config
     #[must_use]
     pub fn new(layer_mapping: Vec<(usize, usize)>) -> Self {
-        Self {
-            layer_mapping,
-            hidden_weight: 1.0,
-            projection: None,
-        }
+        Self { layer_mapping, hidden_weight: 1.0, projection: None }
     }
 
     /// Set projection layer for dimension alignment
@@ -58,9 +54,8 @@ impl ProgressiveDistillation {
         let scale = (6.0 / (student_dim + teacher_dim) as f32).sqrt();
         let mut rng = rand::rng();
 
-        let projection = Array2::from_shape_fn((student_dim, teacher_dim), |_| {
-            rng.random_range(-scale..scale)
-        });
+        let projection =
+            Array2::from_shape_fn((student_dim, teacher_dim), |_| rng.random_range(-scale..scale));
 
         self.projection = Some(projection);
         self

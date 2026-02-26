@@ -100,9 +100,8 @@ impl DeviceInfo {
     /// Get CPU info
     #[must_use]
     pub fn cpu_info() -> Self {
-        let num_cores = std::thread::available_parallelism()
-            .map(std::num::NonZero::get)
-            .unwrap_or(1);
+        let num_cores =
+            std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(1);
 
         Self {
             name: format!("CPU ({num_cores} cores)"),

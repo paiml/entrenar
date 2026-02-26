@@ -101,10 +101,7 @@ fn f001_falsify_epoch_overflow() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
     let contains_overflow = frame.contains("100/10") || frame.contains("1000%");
 
-    assert!(
-        !contains_overflow,
-        "F001 FALSIFIED: Epoch overflow displayed without clamping"
-    );
+    assert!(!contains_overflow, "F001 FALSIFIED: Epoch overflow displayed without clamping");
 }
 
 /// F002: Step overflow must be detected
@@ -119,10 +116,7 @@ fn f002_falsify_step_overflow() {
 
     // FALSIFICATION: Should not show 50/16 or >100%
     let has_overflow = frame.contains("50/16") || frame.contains("312%");
-    assert!(
-        !has_overflow,
-        "F002 FALSIFIED: Step overflow displayed without clamping"
-    );
+    assert!(!has_overflow, "F002 FALSIFIED: Step overflow displayed without clamping");
 }
 
 /// F003: NaN loss must be handled
@@ -136,10 +130,7 @@ fn f003_falsify_nan_loss() {
 
     // FALSIFICATION: Should not display "NaN" or crash
     let has_nan = frame.contains("NaN") || frame.contains("nan");
-    assert!(
-        !has_nan,
-        "F003 FALSIFIED: NaN loss displayed without sanitization"
-    );
+    assert!(!has_nan, "F003 FALSIFIED: NaN loss displayed without sanitization");
 }
 
 /// F004: Infinite loss must be handled
@@ -153,10 +144,7 @@ fn f004_falsify_inf_loss() {
 
     // FALSIFICATION: Should not display "inf" or crash
     let has_inf = frame.contains("inf") || frame.contains("Inf");
-    assert!(
-        !has_inf,
-        "F004 FALSIFIED: Infinite loss displayed without sanitization"
-    );
+    assert!(!has_inf, "F004 FALSIFIED: Infinite loss displayed without sanitization");
 }
 
 /// F005: Negative learning rate must be rejected
@@ -170,10 +158,7 @@ fn f005_falsify_negative_lr() {
 
     // FALSIFICATION: Should show warning or clamp to 0
     let has_negative = frame.contains("-0.001");
-    assert!(
-        !has_negative,
-        "F005 FALSIFIED: Negative learning rate displayed"
-    );
+    assert!(!has_negative, "F005 FALSIFIED: Negative learning rate displayed");
 }
 
 /// F006: VRAM > total must be caught
@@ -190,10 +175,7 @@ fn f006_falsify_vram_overflow() {
 
     // FALSIFICATION: Should not show >100% VRAM or 30/24
     let has_overflow = frame.contains("125%") || frame.contains("30.0G/24");
-    assert!(
-        !has_overflow,
-        "F006 FALSIFIED: VRAM overflow displayed without clamping"
-    );
+    assert!(!has_overflow, "F006 FALSIFIED: VRAM overflow displayed without clamping");
 }
 
 /// F007: GPU temperature >100°C must show warning
@@ -209,10 +191,7 @@ fn f007_falsify_extreme_temp() {
 
     // FALSIFICATION: Should show thermal warning indicator
     let has_warning = frame.contains("●") || frame.contains("WARN") || frame.contains("🔥");
-    assert!(
-        has_warning,
-        "F007 FALSIFIED: Extreme temperature displayed without warning"
-    );
+    assert!(has_warning, "F007 FALSIFIED: Extreme temperature displayed without warning");
 }
 
 /// F008: Empty process list must show meaningful message
@@ -244,10 +223,7 @@ fn f009_falsify_missing_gpu() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // Should render successfully with placeholder
-    assert!(
-        frame.height() > 0,
-        "F009 FALSIFIED: Missing GPU caused empty render"
-    );
+    assert!(frame.height() > 0, "F009 FALSIFIED: Missing GPU caused empty render");
     assert!(
         frame.contains("N/A") || frame.contains("unavailable"),
         "F009: Missing GPU should show N/A or unavailable"
@@ -266,10 +242,7 @@ fn f010_falsify_missing_sample() {
     // FALSIFICATION: Should show descriptive message
     // This is acceptable if we can't do better
     // But we should at least render
-    assert!(
-        frame.height() > 0,
-        "F010 FALSIFIED: Missing sample caused render failure"
-    );
+    assert!(frame.height() > 0, "F010 FALSIFIED: Missing sample caused render failure");
 }
 
 /// F011: Empty model name must show N/A
@@ -282,10 +255,7 @@ fn f011_falsify_empty_model_name() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Empty model name should show N/A
-    assert!(
-        frame.height() > 0,
-        "F011 FALSIFIED: Empty model name caused render failure"
-    );
+    assert!(frame.height() > 0, "F011 FALSIFIED: Empty model name caused render failure");
     assert!(
         frame.contains("N/A") || frame.contains("Model:"),
         "F011: Empty model name should show N/A or Model label"
@@ -302,10 +272,7 @@ fn f012_falsify_empty_optimizer() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Empty optimizer should show N/A
-    assert!(
-        frame.height() > 0,
-        "F012 FALSIFIED: Empty optimizer caused render failure"
-    );
+    assert!(frame.height() > 0, "F012 FALSIFIED: Empty optimizer caused render failure");
 }
 
 /// F013: Zero batch size must show N/A
@@ -318,10 +285,7 @@ fn f013_falsify_zero_batch_size() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Zero batch size should show N/A
-    assert!(
-        frame.height() > 0,
-        "F013 FALSIFIED: Zero batch size caused render failure"
-    );
+    assert!(frame.height() > 0, "F013 FALSIFIED: Zero batch size caused render failure");
 }
 
 /// F014: Empty executable path must fall back gracefully
@@ -334,10 +298,7 @@ fn f014_falsify_empty_executable_path() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Empty executable should not crash
-    assert!(
-        frame.height() > 0,
-        "F014 FALSIFIED: Empty executable path caused render failure"
-    );
+    assert!(frame.height() > 0, "F014 FALSIFIED: Empty executable path caused render failure");
 }
 
 /// F015: Empty lr_history must use current learning_rate
@@ -353,10 +314,7 @@ fn f015_falsify_empty_lr_history() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Empty lr_history should not crash
-    assert!(
-        frame.height() > 0,
-        "F015 FALSIFIED: Empty lr_history caused render failure"
-    );
+    assert!(frame.height() > 0, "F015 FALSIFIED: Empty lr_history caused render failure");
     // Should still render history table
     assert!(
         frame.contains("EPOCH HISTORY") || frame.contains("Epoch"),
@@ -376,10 +334,7 @@ fn f016_falsify_nan_in_loss_history() {
 
     // FALSIFICATION: NaN in history should not appear in output
     let has_nan = frame.contains("NaN") || frame.contains("nan");
-    assert!(
-        !has_nan,
-        "F016 FALSIFIED: NaN in loss_history displayed without filtering"
-    );
+    assert!(!has_nan, "F016 FALSIFIED: NaN in loss_history displayed without filtering");
     // Should still render
     assert!(frame.height() > 0, "F016: Render should not crash");
 }
@@ -395,10 +350,7 @@ fn f017_falsify_negative_gradient_norm() {
 
     // FALSIFICATION: Negative gradient should be clamped or shown as absolute
     let has_negative_grad = frame.contains("-5.0") || frame.contains("-5.");
-    assert!(
-        !has_negative_grad,
-        "F017 FALSIFIED: Negative gradient norm displayed"
-    );
+    assert!(!has_negative_grad, "F017 FALSIFIED: Negative gradient norm displayed");
 }
 
 /// F018: Zero steps_per_epoch must not cause division by zero
@@ -412,15 +364,9 @@ fn f018_falsify_zero_steps_per_epoch() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Zero steps should not crash or show inf/nan
-    assert!(
-        frame.height() > 0,
-        "F018 FALSIFIED: Zero steps caused crash"
-    );
+    assert!(frame.height() > 0, "F018 FALSIFIED: Zero steps caused crash");
     let has_bad_value = frame.contains("inf") || frame.contains("NaN") || frame.contains("nan");
-    assert!(
-        !has_bad_value,
-        "F018 FALSIFIED: Zero steps caused inf/NaN display"
-    );
+    assert!(!has_bad_value, "F018 FALSIFIED: Zero steps caused inf/NaN display");
 }
 
 /// F019: Extremely long model name must be truncated
@@ -435,10 +381,7 @@ fn f019_falsify_long_model_name() {
     // FALSIFICATION: Long name should not break layout
     assert!(frame.height() > 0, "F019 FALSIFIED: Long name caused crash");
     // Should not have 200 A's in a row
-    assert!(
-        !frame.contains(&"A".repeat(100)),
-        "F019 FALSIFIED: Long model name not truncated"
-    );
+    assert!(!frame.contains(&"A".repeat(100)), "F019 FALSIFIED: Long model name not truncated");
 }
 
 /// F020: Extremely long executable path must be truncated
@@ -465,10 +408,7 @@ fn f021_falsify_negative_tokens_per_second() {
 
     // FALSIFICATION: Negative throughput should be clamped to 0
     let has_negative = frame.contains("-100") || frame.contains("-100.0");
-    assert!(
-        !has_negative,
-        "F021 FALSIFIED: Negative tokens_per_second displayed"
-    );
+    assert!(!has_negative, "F021 FALSIFIED: Negative tokens_per_second displayed");
 }
 
 /// F022: Inf in loss_history must be filtered
@@ -483,10 +423,7 @@ fn f022_falsify_inf_in_loss_history() {
 
     // FALSIFICATION: Inf in history should not appear
     let has_inf = frame.contains("inf") || frame.contains("Inf");
-    assert!(
-        !has_inf,
-        "F022 FALSIFIED: Inf in loss_history displayed without filtering"
-    );
+    assert!(!has_inf, "F022 FALSIFIED: Inf in loss_history displayed without filtering");
 }
 
 /// F023: Zero total_epochs must not cause division by zero
@@ -500,15 +437,9 @@ fn f023_falsify_zero_total_epochs() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Zero epochs should not crash
-    assert!(
-        frame.height() > 0,
-        "F023 FALSIFIED: Zero total_epochs caused crash"
-    );
+    assert!(frame.height() > 0, "F023 FALSIFIED: Zero total_epochs caused crash");
     let has_bad_value = frame.contains("inf") || frame.contains("NaN");
-    assert!(
-        !has_bad_value,
-        "F023 FALSIFIED: Zero total_epochs caused inf/NaN"
-    );
+    assert!(!has_bad_value, "F023 FALSIFIED: Zero total_epochs caused inf/NaN");
 }
 
 /// F024: Extremely large loss value must not overflow display
@@ -521,10 +452,7 @@ fn f024_falsify_extreme_loss_value() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Should display without breaking layout
-    assert!(
-        frame.height() > 0,
-        "F024 FALSIFIED: Extreme loss caused crash"
-    );
+    assert!(frame.height() > 0, "F024 FALSIFIED: Extreme loss caused crash");
 }
 
 /// F025: Empty loss_history with valid epoch count
@@ -539,10 +467,7 @@ fn f025_falsify_empty_loss_history() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // FALSIFICATION: Empty history should show waiting message
-    assert!(
-        frame.height() > 0,
-        "F025 FALSIFIED: Empty loss_history caused crash"
-    );
+    assert!(frame.height() > 0, "F025 FALSIFIED: Empty loss_history caused crash");
     assert!(
         frame.contains("waiting") || frame.contains("EPOCH"),
         "F025: Should show waiting message or epoch header"
@@ -563,24 +488,13 @@ fn test_pixel_coverage_metrics() {
 
     // Calculate pixel coverage (non-space characters / total characters)
     let total_chars: usize = frame.lines().iter().map(|l| l.len()).sum();
-    let non_space_chars: usize = frame
-        .lines()
-        .iter()
-        .map(|l| l.chars().filter(|c| !c.is_whitespace()).count())
-        .sum();
+    let non_space_chars: usize =
+        frame.lines().iter().map(|l| l.chars().filter(|c| !c.is_whitespace()).count()).sum();
 
-    let coverage = if total_chars > 0 {
-        non_space_chars as f64 / total_chars as f64
-    } else {
-        0.0
-    };
+    let coverage = if total_chars > 0 { non_space_chars as f64 / total_chars as f64 } else { 0.0 };
 
     // TUI should have reasonable content density (>20% non-whitespace)
-    assert!(
-        coverage > 0.20,
-        "Pixel coverage too low: {:.1}% (expected >20%)",
-        coverage * 100.0
-    );
+    assert!(coverage > 0.20, "Pixel coverage too low: {:.1}% (expected >20%)", coverage * 100.0);
 
     println!(
         "PIXEL COVERAGE: {:.1}% ({}/{} chars)",
@@ -625,10 +539,7 @@ fn test_ux_coverage_tracking() {
     println!("UX COVERAGE REPORT:");
     println!("  Total elements: {}", report.total_elements);
     println!("  Covered elements: {}", report.covered_elements);
-    println!(
-        "  Overall coverage: {:.1}%",
-        report.overall_coverage * 100.0
-    );
+    println!("  Overall coverage: {:.1}%", report.overall_coverage * 100.0);
 
     // 4/5 elements covered = 80%
     assert_eq!(report.total_elements, 5);
@@ -654,14 +565,8 @@ fn test_frame_assertions() {
     assert!(frame.contains("GPU"), "Frame should contain 'GPU'");
 
     // Regex matching for patterns
-    assert!(
-        frame.matches(r"Epoch.*\d+/\d+").unwrap_or(false),
-        "Frame should match epoch pattern"
-    );
-    assert!(
-        frame.matches(r"Step.*\d+/\d+").unwrap_or(false),
-        "Frame should match step pattern"
-    );
+    assert!(frame.matches(r"Epoch.*\d+/\d+").unwrap_or(false), "Frame should match epoch pattern");
+    assert!(frame.matches(r"Step.*\d+/\d+").unwrap_or(false), "Frame should match step pattern");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -721,10 +626,7 @@ fn test_tui_large_history_performance() {
     let rendered = render_layout(&snapshot, 80);
 
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
-    assert!(
-        frame.height() > 0,
-        "Large history render produced no output"
-    );
+    assert!(frame.height() > 0, "Large history render produced no output");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -766,11 +668,7 @@ fn test_training_state_machine() {
 
     for (from, to) in &invalid_transitions {
         let is_valid_transition = transitions.iter().any(|(f, t)| f == from && t == to);
-        assert!(
-            !is_valid_transition,
-            "Should be invalid transition: {} -> {}",
-            from, to
-        );
+        assert!(!is_valid_transition, "Should be invalid transition: {} -> {}", from, to);
     }
 }
 
@@ -787,16 +685,10 @@ fn test_print_metrics_summary() {
 
     // Pixel metrics
     let total_chars: usize = frame.lines().iter().map(|l| l.len()).sum();
-    let non_space: usize = frame
-        .lines()
-        .iter()
-        .map(|l| l.chars().filter(|c| !c.is_whitespace()).count())
-        .sum();
-    let unicode_chars: usize = frame
-        .lines()
-        .iter()
-        .map(|l| l.chars().filter(|c| !c.is_ascii()).count())
-        .sum();
+    let non_space: usize =
+        frame.lines().iter().map(|l| l.chars().filter(|c| !c.is_whitespace()).count()).sum();
+    let unicode_chars: usize =
+        frame.lines().iter().map(|l| l.chars().filter(|c| !c.is_ascii()).count()).sum();
 
     // Frame metrics
     let width = frame.width();
@@ -814,14 +706,8 @@ fn test_print_metrics_summary() {
     println!("════════════════════════════════════════════════════════════");
     println!();
     println!("PIXEL COVERAGE:");
-    println!(
-        "  Content density: {:.1}%",
-        (non_space as f64 / total_chars as f64) * 100.0
-    );
-    println!(
-        "  Unicode richness: {:.1}%",
-        (unicode_chars as f64 / total_chars as f64) * 100.0
-    );
+    println!("  Content density: {:.1}%", (non_space as f64 / total_chars as f64) * 100.0);
+    println!("  Unicode richness: {:.1}%", (unicode_chars as f64 / total_chars as f64) * 100.0);
     println!("  Total characters: {}", total_chars);
     println!();
     println!("FRAME DIMENSIONS:");
@@ -836,15 +722,9 @@ fn test_print_metrics_summary() {
     println!("  GPU panel:      {}", if has_gpu { "✓" } else { "✗" });
     println!("  Sample preview: {}", if has_sample { "✓" } else { "✗" });
     println!();
-    let panel_score = [has_epoch, has_step, has_loss, has_gpu, has_sample]
-        .iter()
-        .filter(|&&x| x)
-        .count();
-    println!(
-        "OVERALL PANEL SCORE: {}/5 ({:.0}%)",
-        panel_score,
-        panel_score as f64 * 20.0
-    );
+    let panel_score =
+        [has_epoch, has_step, has_loss, has_gpu, has_sample].iter().filter(|&&x| x).count();
+    println!("OVERALL PANEL SCORE: {}/5 ({:.0}%)", panel_score, panel_score as f64 * 20.0);
     println!("════════════════════════════════════════════════════════════\n");
 
     // Assertions

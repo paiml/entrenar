@@ -33,29 +33,19 @@ fn test_terminal_capabilities_detect() {
 
 #[test]
 fn test_recommended_mode_no_tty() {
-    let caps = TerminalCapabilities {
-        is_tty: false,
-        ..Default::default()
-    };
+    let caps = TerminalCapabilities { is_tty: false, ..Default::default() };
     assert_eq!(caps.recommended_mode(), TerminalMode::Ascii);
 }
 
 #[test]
 fn test_recommended_mode_true_color() {
-    let caps = TerminalCapabilities {
-        true_color: true,
-        ..Default::default()
-    };
+    let caps = TerminalCapabilities { true_color: true, ..Default::default() };
     assert_eq!(caps.recommended_mode(), TerminalMode::Ansi);
 }
 
 #[test]
 fn test_recommended_mode_unicode() {
-    let caps = TerminalCapabilities {
-        unicode: true,
-        true_color: false,
-        ..Default::default()
-    };
+    let caps = TerminalCapabilities { unicode: true, true_color: false, ..Default::default() };
     assert_eq!(caps.recommended_mode(), TerminalMode::Unicode);
 }
 
@@ -252,10 +242,7 @@ fn test_detect_with_truecolor() {
     std::env::set_var("COLORTERM", "truecolor");
 
     let caps = TerminalCapabilities::detect();
-    assert!(
-        caps.true_color,
-        "truecolor COLORTERM should enable true_color"
-    );
+    assert!(caps.true_color, "truecolor COLORTERM should enable true_color");
 
     // Restore
     if let Some(v) = orig_colorterm {

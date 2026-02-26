@@ -24,12 +24,7 @@ pub struct CalibrationCollector {
 impl CalibrationCollector {
     /// Create a new calibration collector.
     pub fn new(config: CalibrationConfig) -> Self {
-        Self {
-            config,
-            layer_stats: HashMap::new(),
-            samples_processed: 0,
-            complete: false,
-        }
+        Self { config, layer_stats: HashMap::new(), samples_processed: 0, complete: false }
     }
 
     /// Register a layer for calibration.
@@ -40,9 +35,7 @@ impl CalibrationCollector {
     /// * `input_dim` - Input feature dimension
     pub fn register_layer(&mut self, name: impl Into<String>, input_dim: usize) {
         let name = name.into();
-        self.layer_stats
-            .entry(name)
-            .or_insert_with(|| LayerActivationStats::new(input_dim));
+        self.layer_stats.entry(name).or_insert_with(|| LayerActivationStats::new(input_dim));
     }
 
     /// Record activations for a layer.

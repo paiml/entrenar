@@ -152,10 +152,8 @@ pub enum TrainingStatus {
 
 impl Default for TrainingSnapshot {
     fn default() -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+        let now =
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
 
         Self {
             timestamp_ms: now,
@@ -323,11 +321,7 @@ impl TrainingState {
     /// * `experiment_dir` - Path to the experiment directory
     pub fn new<P: AsRef<Path>>(experiment_dir: P) -> Self {
         let state_path = experiment_dir.as_ref().join("training_state.json");
-        Self {
-            state_path,
-            last_snapshot: None,
-            last_modified: None,
-        }
+        Self { state_path, last_snapshot: None, last_modified: None }
     }
 
     /// Write a training snapshot atomically
@@ -435,11 +429,7 @@ mod tests {
 
     #[test]
     fn test_gpu_telemetry_vram_percent() {
-        let gpu = GpuTelemetry {
-            vram_used_gb: 4.0,
-            vram_total_gb: 24.0,
-            ..Default::default()
-        };
+        let gpu = GpuTelemetry { vram_used_gb: 4.0, vram_total_gb: 24.0, ..Default::default() };
         assert!((gpu.vram_percent() - 16.67).abs() < 0.1);
     }
 
@@ -469,10 +459,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let mut state = TrainingState::new(temp_dir.path());
 
-        let snapshot = TrainingSnapshot {
-            epoch: 1,
-            ..Default::default()
-        };
+        let snapshot = TrainingSnapshot { epoch: 1, ..Default::default() };
 
         state.write(&snapshot).unwrap();
 

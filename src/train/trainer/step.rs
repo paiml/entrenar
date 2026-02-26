@@ -33,10 +33,7 @@ impl Trainer {
     where
         F: FnOnce(&Tensor) -> Tensor,
     {
-        assert!(
-            self.loss_fn.is_some(),
-            "Loss function must be set before training"
-        );
+        assert!(self.loss_fn.is_some(), "Loss function must be set before training");
 
         // Zero gradients
         self.optimizer.zero_grad(&mut self.params);
@@ -48,7 +45,7 @@ impl Trainer {
         let loss = self
             .loss_fn
             .as_ref()
-            .unwrap()
+            .expect("loss function must be set before training")
             .forward(&predictions, &batch.targets);
 
         let loss_val = loss.data()[0];
@@ -80,10 +77,7 @@ impl Trainer {
     where
         F: FnOnce(&Tensor) -> Tensor,
     {
-        assert!(
-            self.loss_fn.is_some(),
-            "Loss function must be set before training"
-        );
+        assert!(self.loss_fn.is_some(), "Loss function must be set before training");
 
         // Forward pass
         let predictions = forward_fn(&batch.inputs);
@@ -92,7 +86,7 @@ impl Trainer {
         let loss = self
             .loss_fn
             .as_ref()
-            .unwrap()
+            .expect("loss function must be set before training")
             .forward(&predictions, &batch.targets);
 
         let loss_val = loss.data()[0];

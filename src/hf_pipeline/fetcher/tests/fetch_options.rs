@@ -49,10 +49,8 @@ fn test_fetch_options_multiple_files() {
 
 #[test]
 fn test_fetch_options_debug_and_clone() {
-    let opts = FetchOptions::new()
-        .revision("v2.0")
-        .files(&["model.gguf"])
-        .verify_sha256("deadbeef");
+    let opts =
+        FetchOptions::new().revision("v2.0").files(&["model.gguf"]).verify_sha256("deadbeef");
     let debug = format!("{:?}", opts);
     assert!(debug.contains("v2.0"));
 

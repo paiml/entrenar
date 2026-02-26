@@ -24,10 +24,8 @@ pub fn bleu_score(references: &[&str], hypothesis: &str, max_n: usize) -> f64 {
         return 0.0;
     }
 
-    let ref_token_lists: Vec<Vec<&str>> = references
-        .iter()
-        .map(|r| r.split_whitespace().collect())
-        .collect();
+    let ref_token_lists: Vec<Vec<&str>> =
+        references.iter().map(|r| r.split_whitespace().collect()).collect();
 
     // Compute modified precision for each n-gram order
     let mut log_precisions = Vec::new();

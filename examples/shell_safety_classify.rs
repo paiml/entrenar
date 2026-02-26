@@ -94,10 +94,7 @@ fn demo_corpus() -> Vec<SafetySample> {
 
     entries
         .iter()
-        .map(|(input, label)| SafetySample {
-            input: input.to_string(),
-            label: *label,
-        })
+        .map(|(input, label)| SafetySample { input: input.to_string(), label: *label })
         .collect()
 }
 
@@ -113,13 +110,8 @@ fn softmax(logits: &[f32]) -> Vec<f32> {
     logits.iter().map(|&v| (v - max).exp() / exp_sum).collect()
 }
 
-const LABELS: [&str; 5] = [
-    "safe",
-    "needs-quoting",
-    "non-deterministic",
-    "non-idempotent",
-    "unsafe",
-];
+const LABELS: [&str; 5] =
+    ["safe", "needs-quoting", "non-deterministic", "non-idempotent", "unsafe"];
 
 fn main() {
     println!("======================================================");
@@ -179,11 +171,7 @@ fn main() {
         let token_ids = tokenize(&sample.input, 64);
         let hidden = pipeline.model.forward_hidden(&token_ids);
         let logits_tensor = pipeline.classifier.forward(&hidden, token_ids.len());
-        let logits: Vec<f32> = logits_tensor
-            .data()
-            .as_slice()
-            .expect("contiguous")
-            .to_vec();
+        let logits: Vec<f32> = logits_tensor.data().as_slice().expect("contiguous").to_vec();
         let probs = softmax(&logits);
 
         let predicted = probs
@@ -194,12 +182,7 @@ fn main() {
             .unwrap_or(0);
         let confidence = probs[predicted] * 100.0;
 
-        let snippet: String = sample
-            .input
-            .chars()
-            .filter(|c| *c != '\n')
-            .take(30)
-            .collect();
+        let snippet: String = sample.input.chars().filter(|c| *c != '\n').take(30).collect();
         let marker = if predicted == sample.label {
             correct += 1;
             " "
@@ -214,10 +197,7 @@ fn main() {
         total += 1;
     }
 
-    println!(
-        "\n  Accuracy: {correct}/{total} ({:.0}%)",
-        correct as f32 / total as f32 * 100.0
-    );
+    println!("\n  Accuracy: {correct}/{total} ({:.0}%)", correct as f32 / total as f32 * 100.0);
     println!("  (Random init — accuracy improves with training)\n");
 
     // ── 4. Training loop demo ───────────────────────────────────────
@@ -239,10 +219,7 @@ fn main() {
         if epoch == 0 || epoch == epochs - 1 || (epoch + 1) % 2 == 0 {
             let bar_len = ((avg_loss / losses[0]) * 30.0).min(30.0) as usize;
             let bar: String = "#".repeat(bar_len);
-            println!(
-                "  Epoch {:>2}/{epochs}  loss={avg_loss:.4}  {bar}",
-                epoch + 1
-            );
+            println!("  Epoch {:>2}/{epochs}  loss={avg_loss:.4}  {bar}", epoch + 1);
         }
     }
 
@@ -255,22 +232,11 @@ fn main() {
 
     // ── 5. Merge adapters ───────────────────────────────────────────
     println!("─── LoRA Adapter Merge ───\n");
-    let adapters_before = pipeline
-        .lora_layers
-        .iter()
-        .filter(|l| !l.is_merged())
-        .count();
+    let adapters_before = pipeline.lora_layers.iter().filter(|l| !l.is_merged()).count();
     pipeline.merge_adapters();
-    let adapters_after = pipeline
-        .lora_layers
-        .iter()
-        .filter(|l| l.is_merged())
-        .count();
+    let adapters_after = pipeline.lora_layers.iter().filter(|l| l.is_merged()).count();
     println!("  Merged {adapters_before} adapters into base weights");
-    println!(
-        "  Merged status: {adapters_after}/{} adapters\n",
-        pipeline.lora_layers.len()
-    );
+    println!("  Merged status: {adapters_after}/{} adapters\n", pipeline.lora_layers.len());
 
     // ── 6. Qwen2-0.5B plan ─────────────────────────────────────────
     println!("─── Production Config (Qwen2.5-Coder-0.5B) ───\n");

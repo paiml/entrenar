@@ -64,10 +64,7 @@ impl From<&Run> for RunRecord {
                     (
                         k.clone(),
                         v.iter()
-                            .map(|(val, step)| MetricEntry {
-                                value: *val,
-                                step: *step,
-                            })
+                            .map(|(val, step)| MetricEntry { value: *val, step: *step })
                             .collect(),
                     )
                 })
@@ -140,9 +137,7 @@ pub struct JsonFileBackend {
 impl JsonFileBackend {
     /// Create a new JSON file backend, creating the directory if it does not exist
     pub fn new(dir: impl AsRef<Path>) -> Self {
-        Self {
-            dir: dir.as_ref().to_path_buf(),
-        }
+        Self { dir: dir.as_ref().to_path_buf() }
     }
 
     fn run_path(&self, run_id: &str) -> PathBuf {

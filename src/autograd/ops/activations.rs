@@ -14,10 +14,7 @@ pub fn relu(a: &Tensor) -> Tensor {
 
     if requires_grad {
         let a_clone = a.clone();
-        let backward_op = Rc::new(ReluBackward {
-            a: a_clone,
-            result_grad: result.grad_cell(),
-        });
+        let backward_op = Rc::new(ReluBackward { a: a_clone, result_grad: result.grad_cell() });
         result.set_backward_op(backward_op);
     }
 
@@ -58,10 +55,7 @@ pub fn gelu(a: &Tensor) -> Tensor {
 
     if requires_grad {
         let a_clone = a.clone();
-        let backward_op = Rc::new(GeluBackward {
-            a: a_clone,
-            result_grad: result.grad_cell(),
-        });
+        let backward_op = Rc::new(GeluBackward { a: a_clone, result_grad: result.grad_cell() });
         result.set_backward_op(backward_op);
     }
 
@@ -243,24 +237,17 @@ mod silu_contract_tests {
     #[test]
     fn falsify_si_001_zero_preservation() {
         let y = trueno::silu_scalar(0.0);
-        assert!(
-            y.abs() < 1e-7,
-            "FALSIFIED SI-001: SiLU(0) = {y}, expected 0"
-        );
+        assert!(y.abs() < 1e-7, "FALSIFIED SI-001: SiLU(0) = {y}, expected 0");
     }
 
     /// FALSIFY-SI-002: Global lower bound — SiLU(x) > -0.279 for all x
     #[test]
     fn falsify_si_002_global_lower_bound() {
-        let test_values: Vec<f32> = vec![
-            -100.0, -50.0, -10.0, -5.0, -2.0, -1.278, -1.0, -0.5, 0.0, 0.5, 1.0, 5.0, 100.0,
-        ];
+        let test_values: Vec<f32> =
+            vec![-100.0, -50.0, -10.0, -5.0, -2.0, -1.278, -1.0, -0.5, 0.0, 0.5, 1.0, 5.0, 100.0];
         for &x in &test_values {
             let y = trueno::silu_scalar(x);
-            assert!(
-                y > -0.28,
-                "FALSIFIED SI-002: SiLU({x}) = {y}, expected > -0.279"
-            );
+            assert!(y > -0.28, "FALSIFIED SI-002: SiLU({x}) = {y}, expected > -0.279");
         }
     }
 
@@ -298,10 +285,7 @@ mod silu_contract_tests {
     fn falsify_si_006_large_negative_vanishes() {
         for &x in &[-10.0f32, -20.0, -50.0, -100.0] {
             let y = trueno::silu_scalar(x);
-            assert!(
-                y.abs() < 0.01,
-                "FALSIFIED SI-006: SiLU({x}) = {y}, expected ≈ 0"
-            );
+            assert!(y.abs() < 0.01, "FALSIFIED SI-006: SiLU({x}) = {y}, expected ≈ 0");
         }
     }
 
@@ -386,13 +370,8 @@ mod swiglu_contract_tests {
     /// FALSIFY-SG-002: Fused equivalence — SwiGLU(x, gate) = x * SiLU(gate)
     #[test]
     fn falsify_sg_002_fused_equivalence() {
-        let cases: Vec<(f32, f32)> = vec![
-            (1.0, 1.0),
-            (-2.0, 3.0),
-            (5.0, -1.0),
-            (0.5, 0.5),
-            (100.0, 0.0),
-        ];
+        let cases: Vec<(f32, f32)> =
+            vec![(1.0, 1.0), (-2.0, 3.0), (5.0, -1.0), (0.5, 0.5), (100.0, 0.0)];
         for &(x, g) in &cases {
             let fused = swiglu_scalar(x, g);
             let decomposed = x * trueno::silu_scalar(g);
@@ -428,15 +407,9 @@ mod swiglu_contract_tests {
     #[test]
     fn falsify_sg_005_empty_input() {
         let empty: Vec<f32> = vec![];
-        let result: Vec<f32> = empty
-            .iter()
-            .zip(empty.iter())
-            .map(|(&x, &g)| swiglu_scalar(x, g))
-            .collect();
-        assert!(
-            result.is_empty(),
-            "FALSIFIED SG-005: empty SwiGLU produced non-empty output"
-        );
+        let result: Vec<f32> =
+            empty.iter().zip(empty.iter()).map(|(&x, &g)| swiglu_scalar(x, g)).collect();
+        assert!(result.is_empty(), "FALSIFIED SG-005: empty SwiGLU produced non-empty output");
     }
 
     mod sg_proptest_falsify {
@@ -502,10 +475,7 @@ mod gelu_contract_tests {
         let x = Tensor::new(Array1::from(vec![0.001, 0.1, 1.0, 5.0, 10.0, 100.0]), false);
         let y = gelu(&x);
         for (i, &val) in y.data().iter().enumerate() {
-            assert!(
-                val >= 0.0,
-                "FALSIFIED GE-001: gelu(positive)[{i}] = {val} < 0"
-            );
+            assert!(val >= 0.0, "FALSIFIED GE-001: gelu(positive)[{i}] = {val} < 0");
         }
     }
 
@@ -531,11 +501,7 @@ mod gelu_contract_tests {
     fn falsify_ge_003_zero_preservation() {
         let x = Tensor::new(Array1::from(vec![0.0]), false);
         let y = gelu(&x);
-        assert!(
-            y.data()[0].abs() < 1e-7,
-            "FALSIFIED GE-003: gelu(0) = {}",
-            y.data()[0]
-        );
+        assert!(y.data()[0].abs() < 1e-7, "FALSIFIED GE-003: gelu(0) = {}", y.data()[0]);
     }
 
     /// FALSIFY-GE-006: Large input stability
@@ -544,16 +510,8 @@ mod gelu_contract_tests {
         let x = Tensor::new(Array1::from(vec![10.0, 50.0, -10.0, -50.0]), false);
         let y = gelu(&x);
         let d = y.data();
-        assert!(
-            (d[0] - 10.0).abs() < 0.01,
-            "FALSIFIED GE-006: gelu(10) = {}",
-            d[0]
-        );
-        assert!(
-            (d[1] - 50.0).abs() < 0.01,
-            "FALSIFIED GE-006: gelu(50) = {}",
-            d[1]
-        );
+        assert!((d[0] - 10.0).abs() < 0.01, "FALSIFIED GE-006: gelu(10) = {}", d[0]);
+        assert!((d[1] - 50.0).abs() < 0.01, "FALSIFIED GE-006: gelu(50) = {}", d[1]);
         assert!(d[2].abs() < 0.01, "FALSIFIED GE-006: gelu(-10) = {}", d[2]);
         assert!(d[3].abs() < 0.01, "FALSIFIED GE-006: gelu(-50) = {}", d[3]);
     }

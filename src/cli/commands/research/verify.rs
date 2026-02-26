@@ -33,11 +33,7 @@ pub fn log_git_proof(level: LogLevel, proof: &TimestampProof) {
             log(level, LogLevel::Verbose, &format!("  Commit: {commit}"));
         }
     } else {
-        log(
-            level,
-            LogLevel::Normal,
-            "Timestamp proof is not a git commit",
-        );
+        log(level, LogLevel::Normal, "Timestamp proof is not a git commit");
     }
 }
 
@@ -68,30 +64,18 @@ pub fn verify_signed_content(
         }
     }
 
-    log(
-        level,
-        LogLevel::Normal,
-        "Pre-registration verified successfully",
-    );
+    log(level, LogLevel::Normal, "Pre-registration verified successfully");
     Ok(())
 }
 
 /// Compute and log commitment from pre-registration
 pub fn compute_commitment(prereg: &PreRegistration, level: LogLevel) {
     let commitment = prereg.commit();
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Computed commitment: {}...", &commitment.hash[..32]),
-    );
+    log(level, LogLevel::Normal, &format!("Computed commitment: {}...", &commitment.hash[..32]));
 }
 
 pub fn run_research_verify(args: VerifyArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Verifying: {}", args.file.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Verifying: {}", args.file.display()));
 
     let content =
         std::fs::read_to_string(&args.file).map_err(|e| format!("Failed to read file: {e}"))?;
@@ -100,11 +84,7 @@ pub fn run_research_verify(args: VerifyArgs, level: LogLevel) -> Result<(), Stri
         return verify_signed_content(&signed, args.verify_git, level);
     }
 
-    log(
-        level,
-        LogLevel::Normal,
-        "File does not contain a signed pre-registration",
-    );
+    log(level, LogLevel::Normal, "File does not contain a signed pre-registration");
 
     if let Some(original_path) = &args.original {
         let original_content = std::fs::read_to_string(original_path)
@@ -174,12 +154,8 @@ mod tests {
 
     #[test]
     fn test_compute_commitment() {
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         // Should not panic
         compute_commitment(&prereg, LogLevel::Quiet);
     }
@@ -187,12 +163,8 @@ mod tests {
     #[test]
     fn test_verify_signature_with_valid_signed() {
         use ed25519_dalek::SigningKey;
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let signing_key = SigningKey::from_bytes(&[1u8; 32]);
         let signed = SignedPreRegistration::sign(&prereg, &signing_key);
         assert_eq!(verify_signature(&signed), SignatureStatus::Valid);
@@ -200,12 +172,8 @@ mod tests {
 
     #[test]
     fn test_verify_signature_with_invalid_signature() {
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let commitment = prereg.commit();
         // Create signed with invalid signature
         let signed = SignedPreRegistration {
@@ -217,20 +185,13 @@ mod tests {
         };
         // This should be Invalid or Error
         let status = verify_signature(&signed);
-        assert!(matches!(
-            status,
-            SignatureStatus::Invalid | SignatureStatus::Error(_)
-        ));
+        assert!(matches!(status, SignatureStatus::Invalid | SignatureStatus::Error(_)));
     }
 
     #[test]
     fn test_verify_signature_with_malformed_key() {
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let commitment = prereg.commit();
         // Create signed with malformed key (not valid hex)
         let signed = SignedPreRegistration {
@@ -247,12 +208,8 @@ mod tests {
     #[test]
     fn test_verify_signed_content_valid() {
         use ed25519_dalek::SigningKey;
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let signing_key = SigningKey::from_bytes(&[2u8; 32]);
         let signed = SignedPreRegistration::sign(&prereg, &signing_key);
         let result = verify_signed_content(&signed, false, LogLevel::Quiet);
@@ -261,12 +218,8 @@ mod tests {
 
     #[test]
     fn test_verify_signed_content_invalid() {
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let commitment = prereg.commit();
         let signed = SignedPreRegistration {
             registration: prereg,
@@ -282,12 +235,8 @@ mod tests {
     #[test]
     fn test_verify_signed_content_with_git_proof() {
         use ed25519_dalek::SigningKey;
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let signing_key = SigningKey::from_bytes(&[3u8; 32]);
         let mut signed = SignedPreRegistration::sign(&prereg, &signing_key);
         signed.timestamp_proof = Some(TimestampProof::GitCommit("abc123".to_string()));
@@ -298,12 +247,8 @@ mod tests {
     #[test]
     fn test_verify_signed_content_no_git_proof() {
         use ed25519_dalek::SigningKey;
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let signing_key = SigningKey::from_bytes(&[4u8; 32]);
         let signed = SignedPreRegistration::sign(&prereg, &signing_key);
         // signed has no timestamp_proof by default
@@ -313,12 +258,8 @@ mod tests {
 
     #[test]
     fn test_verify_signed_content_error_propagation() {
-        let prereg = PreRegistration::new(
-            "Test Title",
-            "Test Hypothesis",
-            "Test Methods",
-            "Test Analysis",
-        );
+        let prereg =
+            PreRegistration::new("Test Title", "Test Hypothesis", "Test Methods", "Test Analysis");
         let commitment = prereg.commit();
         let signed = SignedPreRegistration {
             registration: prereg,

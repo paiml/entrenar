@@ -27,12 +27,8 @@ fn test_run_status_clone() {
 
 #[test]
 fn test_run_status_serde_roundtrip() {
-    for status in [
-        RunStatus::Active,
-        RunStatus::Completed,
-        RunStatus::Failed,
-        RunStatus::Cancelled,
-    ] {
+    for status in [RunStatus::Active, RunStatus::Completed, RunStatus::Failed, RunStatus::Cancelled]
+    {
         let json = serde_json::to_string(&status).unwrap();
         let deserialized: RunStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(status, deserialized);
@@ -400,9 +396,7 @@ fn test_list_runs_mixed() {
 
     // One completed run
     let completed_id = tracker.start_run(Some("done")).unwrap();
-    tracker
-        .end_run(&completed_id, RunStatus::Completed)
-        .unwrap();
+    tracker.end_run(&completed_id, RunStatus::Completed).unwrap();
 
     let runs = tracker.list_runs().unwrap();
     assert_eq!(runs.len(), 2);
@@ -453,12 +447,8 @@ fn test_in_memory_backend_load_not_found() {
 fn test_in_memory_backend_list() {
     let mut backend = InMemoryBackend::new();
 
-    backend
-        .save_run(&Run::new("r-2".into(), None, "exp".into()))
-        .unwrap();
-    backend
-        .save_run(&Run::new("r-1".into(), None, "exp".into()))
-        .unwrap();
+    backend.save_run(&Run::new("r-2".into(), None, "exp".into())).unwrap();
+    backend.save_run(&Run::new("r-1".into(), None, "exp".into())).unwrap();
 
     let runs = backend.list_runs().unwrap();
     assert_eq!(runs.len(), 2);
@@ -477,9 +467,7 @@ fn test_in_memory_backend_list_empty() {
 #[test]
 fn test_in_memory_backend_delete() {
     let mut backend = InMemoryBackend::new();
-    backend
-        .save_run(&Run::new("r-1".into(), None, "exp".into()))
-        .unwrap();
+    backend.save_run(&Run::new("r-1".into(), None, "exp".into())).unwrap();
 
     backend.delete_run("r-1").unwrap();
     assert!(backend.load_run("r-1").is_err());
@@ -542,12 +530,8 @@ fn test_json_file_backend_list() {
     let dir = tempfile::tempdir().unwrap();
     let mut backend = JsonFileBackend::new(dir.path());
 
-    backend
-        .save_run(&Run::new("r-2".into(), None, "exp".into()))
-        .unwrap();
-    backend
-        .save_run(&Run::new("r-1".into(), None, "exp".into()))
-        .unwrap();
+    backend.save_run(&Run::new("r-2".into(), None, "exp".into())).unwrap();
+    backend.save_run(&Run::new("r-1".into(), None, "exp".into())).unwrap();
 
     let runs = backend.list_runs().unwrap();
     assert_eq!(runs.len(), 2);
@@ -568,9 +552,7 @@ fn test_json_file_backend_delete() {
     let dir = tempfile::tempdir().unwrap();
     let mut backend = JsonFileBackend::new(dir.path());
 
-    backend
-        .save_run(&Run::new("r-1".into(), None, "exp".into()))
-        .unwrap();
+    backend.save_run(&Run::new("r-1".into(), None, "exp".into())).unwrap();
     backend.delete_run("r-1").unwrap();
     assert!(backend.load_run("r-1").is_err());
 }
@@ -589,9 +571,7 @@ fn test_json_file_backend_creates_dir() {
     let nested = dir.path().join("a").join("b").join("c");
     let mut backend = JsonFileBackend::new(&nested);
 
-    backend
-        .save_run(&Run::new("r-1".into(), None, "exp".into()))
-        .unwrap();
+    backend.save_run(&Run::new("r-1".into(), None, "exp".into())).unwrap();
     assert!(nested.exists());
 
     let loaded = backend.load_run("r-1").unwrap();
@@ -624,14 +604,10 @@ fn test_full_tracking_workflow() {
     for step in 1u64..=5 {
         let loss = 1.0 / step as f64;
         tracker.log_metric(&run1, "loss", loss, step).unwrap();
-        tracker
-            .log_metric(&run1, "accuracy", 0.5 + step as f64 * 0.1, step)
-            .unwrap();
+        tracker.log_metric(&run1, "accuracy", 0.5 + step as f64 * 0.1, step).unwrap();
     }
 
-    tracker
-        .log_artifact(&run1, "checkpoints/epoch_3.safetensors")
-        .unwrap();
+    tracker.log_artifact(&run1, "checkpoints/epoch_3.safetensors").unwrap();
     tracker.end_run(&run1, RunStatus::Completed).unwrap();
 
     // Run 2: failed early

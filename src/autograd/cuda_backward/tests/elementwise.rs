@@ -67,11 +67,7 @@ fn test_relu_backward_not_hardcoded() {
     grad_input.copy_to_host(&mut result).unwrap();
 
     // Kill mutant: result should NOT be all zeros for positive inputs
-    assert_ne!(
-        result,
-        vec![0.0, 0.0, 0.0],
-        "mutant: ReLU backward returned all zeros"
-    );
+    assert_ne!(result, vec![0.0, 0.0, 0.0], "mutant: ReLU backward returned all zeros");
     // Verify correct values
     assert!((result[0] - 1.0).abs() < 1e-5);
     assert!((result[1] - 2.0).abs() < 1e-5);
@@ -148,10 +144,7 @@ fn test_gelu_backward_not_hardcoded() {
         "mutant: GELU backward returned identical values"
     );
     // All values should be positive for positive inputs
-    assert!(
-        result.iter().all(|&x| x > 0.0),
-        "GELU gradient should be positive for x > 0"
-    );
+    assert!(result.iter().all(|&x| x > 0.0), "GELU gradient should be positive for x > 0");
 }
 
 #[test]
@@ -220,14 +213,8 @@ fn test_silu_backward_not_hardcoded() {
 
     // Kill mutant: verify gradient at x=0 is ~0.5 (sigma(0) = 0.5)
     let grad_at_zero = silu_backward_cpu(&[0.0], &[1.0])[0];
-    assert!(
-        (grad_at_zero - 0.5).abs() < 1e-3,
-        "SiLU gradient at 0 should be ~0.5"
-    );
+    assert!((grad_at_zero - 0.5).abs() < 1e-3, "SiLU gradient at 0 should be ~0.5");
 
     // All gradients should be positive for positive inputs
-    assert!(
-        result.iter().all(|&x| x > 0.0),
-        "SiLU gradient should be positive for x > 0"
-    );
+    assert!(result.iter().all(|&x| x > 0.0), "SiLU gradient should be positive for x > 0");
 }

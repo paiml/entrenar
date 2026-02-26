@@ -5,29 +5,17 @@ use crate::cli::LogLevel;
 use crate::config::{MonitorArgs, OutputFormat};
 
 pub fn run_monitor(args: MonitorArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Monitoring: {}", args.input.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Monitoring: {}", args.input.display()));
 
     // Check if file exists
     if !args.input.exists() {
         return Err(format!("File not found: {}", args.input.display()));
     }
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Drift threshold (PSI): {}", args.threshold),
-    );
+    log(level, LogLevel::Normal, &format!("  Drift threshold (PSI): {}", args.threshold));
 
     if let Some(baseline) = &args.baseline {
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("  Baseline: {}", baseline.display()),
-        );
+        log(level, LogLevel::Normal, &format!("  Baseline: {}", baseline.display()));
     }
 
     // Calculate Population Stability Index (PSI)
@@ -64,11 +52,7 @@ pub fn run_monitor(args: MonitorArgs, level: LogLevel) -> Result<(), String> {
 
     log(level, LogLevel::Normal, "Drift Monitoring Results:");
     log(level, LogLevel::Normal, &format!("  PSI score: {psi:.4}"));
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Threshold: {:.4}", args.threshold),
-    );
+    log(level, LogLevel::Normal, &format!("  Threshold: {:.4}", args.threshold));
     log(level, LogLevel::Normal, &format!("  Severity: {severity}"));
     log(level, LogLevel::Normal, &format!("  Status: {status}"));
 

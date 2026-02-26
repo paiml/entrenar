@@ -18,7 +18,7 @@
 //! collector.record(Metric::Accuracy, 0.85);
 //!
 //! let summary = collector.summary();
-//! let loss_stats = summary.get(&Metric::Loss).unwrap();
+//! let loss_stats = summary.get(&Metric::Loss).expect("loss metric must exist");
 //! println!("Mean loss: {}", loss_stats.mean);
 //! ```
 //!
@@ -141,17 +141,10 @@ pub struct MetricRecord {
 impl MetricRecord {
     /// Create a new metric record with current timestamp
     pub fn new(metric: Metric, value: f64) -> Self {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+        let timestamp =
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
 
-        Self {
-            timestamp,
-            metric,
-            value,
-            tags: HashMap::new(),
-        }
+        Self { timestamp, metric, value, tags: HashMap::new() }
     }
 
     /// Add a tag to this record
@@ -325,10 +318,7 @@ impl RunningStats {
 impl MetricsCollector {
     /// Create a new metrics collector
     pub fn new() -> Self {
-        Self {
-            records: Vec::new(),
-            running_stats: HashMap::new(),
-        }
+        Self { records: Vec::new(), running_stats: HashMap::new() }
     }
 
     /// Record a single metric value

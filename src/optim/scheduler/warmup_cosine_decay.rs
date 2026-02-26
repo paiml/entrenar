@@ -26,13 +26,7 @@ impl WarmupCosineDecayLR {
     /// * `warmup_steps` - Number of warmup steps
     /// * `total_steps` - Total training steps (including warmup)
     pub fn new(lr_max: f32, lr_min: f32, warmup_steps: usize, total_steps: usize) -> Self {
-        Self {
-            lr_max,
-            lr_min,
-            warmup_steps,
-            total_steps,
-            current_step: 0,
-        }
+        Self { lr_max, lr_min, warmup_steps, total_steps, current_step: 0 }
     }
 
     /// Apply the current learning rate to an optimizer

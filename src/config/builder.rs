@@ -17,53 +17,37 @@ const PARAM_WEIGHT_DECAY: &str = "weight_decay";
 pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
     match spec.name.to_lowercase().as_str() {
         "sgd" => {
-            let momentum = spec
-                .params
-                .get(PARAM_MOMENTUM)
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.0) as f32;
+            let momentum =
+                spec.params.get(PARAM_MOMENTUM).and_then(serde_json::Value::as_f64).unwrap_or(0.0)
+                    as f32;
 
             Ok(Box::new(SGD::new(spec.lr, momentum)))
         }
         "adam" => {
-            let beta1 = spec
-                .params
-                .get(PARAM_BETA1)
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.9) as f32;
+            let beta1 =
+                spec.params.get(PARAM_BETA1).and_then(serde_json::Value::as_f64).unwrap_or(0.9)
+                    as f32;
 
-            let beta2 = spec
-                .params
-                .get(PARAM_BETA2)
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.999) as f32;
+            let beta2 =
+                spec.params.get(PARAM_BETA2).and_then(serde_json::Value::as_f64).unwrap_or(0.999)
+                    as f32;
 
-            let eps = spec
-                .params
-                .get(PARAM_EPS)
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(1e-8) as f32;
+            let eps = spec.params.get(PARAM_EPS).and_then(serde_json::Value::as_f64).unwrap_or(1e-8)
+                as f32;
 
             Ok(Box::new(Adam::new(spec.lr, beta1, beta2, eps)))
         }
         "adamw" => {
-            let beta1 = spec
-                .params
-                .get(PARAM_BETA1)
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.9) as f32;
+            let beta1 =
+                spec.params.get(PARAM_BETA1).and_then(serde_json::Value::as_f64).unwrap_or(0.9)
+                    as f32;
 
-            let beta2 = spec
-                .params
-                .get(PARAM_BETA2)
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(0.999) as f32;
+            let beta2 =
+                spec.params.get(PARAM_BETA2).and_then(serde_json::Value::as_f64).unwrap_or(0.999)
+                    as f32;
 
-            let eps = spec
-                .params
-                .get(PARAM_EPS)
-                .and_then(serde_json::Value::as_f64)
-                .unwrap_or(1e-8) as f32;
+            let eps = spec.params.get(PARAM_EPS).and_then(serde_json::Value::as_f64).unwrap_or(1e-8)
+                as f32;
 
             let weight_decay = spec
                 .params
@@ -71,13 +55,7 @@ pub fn build_optimizer(spec: &OptimSpec) -> Result<Box<dyn Optimizer>> {
                 .and_then(serde_json::Value::as_f64)
                 .unwrap_or(0.01) as f32;
 
-            Ok(Box::new(AdamW::new(
-                spec.lr,
-                beta1,
-                beta2,
-                eps,
-                weight_decay,
-            )))
+            Ok(Box::new(AdamW::new(spec.lr, beta1, beta2, eps, weight_decay)))
         }
         name => Err(Error::ConfigError(format!(
             "Unknown optimizer: {name}. Supported: sgd, adam, adamw"
@@ -131,30 +109,19 @@ pub fn build_model(spec: &TrainSpec) -> Result<Model> {
     );
 
     let params = vec![
-        (
-            "layer1.weight".to_string(),
-            Tensor::from_vec(vec![0.1, 0.2, 0.3, 0.4], true),
-        ),
-        (
-            "layer1.bias".to_string(),
-            Tensor::from_vec(vec![0.01, 0.02], true),
-        ),
-        (
-            "layer2.weight".to_string(),
-            Tensor::from_vec(vec![0.5, 0.6], true),
-        ),
+        ("layer1.weight".to_string(), Tensor::from_vec(vec![0.1, 0.2, 0.3, 0.4], true)),
+        ("layer1.bias".to_string(), Tensor::from_vec(vec![0.01, 0.02], true)),
+        ("layer2.weight".to_string(), Tensor::from_vec(vec![0.5, 0.6], true)),
         ("layer2.bias".to_string(), Tensor::from_vec(vec![0.1], true)),
     ];
 
-    let metadata = ModelMetadata::new(
-        format!("demo-model-from-{}", model_path.display()),
-        "simple-mlp",
-    )
-    .with_custom("demo_mode", serde_json::json!(true))
-    .with_custom("config_path", serde_json::json!(model_path))
-    .with_custom("optimizer", serde_json::json!(spec.optimizer.name))
-    .with_custom("learning_rate", serde_json::json!(spec.optimizer.lr))
-    .with_custom("batch_size", serde_json::json!(spec.data.batch_size));
+    let metadata =
+        ModelMetadata::new(format!("demo-model-from-{}", model_path.display()), "simple-mlp")
+            .with_custom("demo_mode", serde_json::json!(true))
+            .with_custom("config_path", serde_json::json!(model_path))
+            .with_custom("optimizer", serde_json::json!(spec.optimizer.name))
+            .with_custom("learning_rate", serde_json::json!(spec.optimizer.lr))
+            .with_custom("batch_size", serde_json::json!(spec.data.batch_size));
 
     Ok(Model::new(metadata, params))
 }
@@ -170,11 +137,7 @@ mod tests {
         params.insert("beta1".to_string(), serde_json::json!(0.9));
         params.insert("beta2".to_string(), serde_json::json!(0.999));
 
-        let spec = OptimSpec {
-            name: "adam".to_string(),
-            lr: 0.001,
-            params,
-        };
+        let spec = OptimSpec { name: "adam".to_string(), lr: 0.001, params };
 
         let optimizer = build_optimizer(&spec).unwrap();
         assert_eq!(optimizer.lr(), 0.001);
@@ -185,11 +148,7 @@ mod tests {
         let mut params = std::collections::HashMap::new();
         params.insert("momentum".to_string(), serde_json::json!(0.9));
 
-        let spec = OptimSpec {
-            name: "sgd".to_string(),
-            lr: 0.01,
-            params,
-        };
+        let spec = OptimSpec { name: "sgd".to_string(), lr: 0.01, params };
 
         let optimizer = build_optimizer(&spec).unwrap();
         assert_eq!(optimizer.lr(), 0.01);
@@ -200,11 +159,7 @@ mod tests {
         let mut params = std::collections::HashMap::new();
         params.insert("weight_decay".to_string(), serde_json::json!(0.01));
 
-        let spec = OptimSpec {
-            name: "adamw".to_string(),
-            lr: 0.001,
-            params,
-        };
+        let spec = OptimSpec { name: "adamw".to_string(), lr: 0.001, params };
 
         let optimizer = build_optimizer(&spec).unwrap();
         assert_eq!(optimizer.lr(), 0.001);
@@ -228,10 +183,7 @@ mod tests {
 
         // When model file doesn't exist, should fall back to demo mode
         let spec = TrainSpec {
-            model: ModelRef {
-                path: PathBuf::from("nonexistent.gguf"),
-                ..Default::default()
-            },
+            model: ModelRef { path: PathBuf::from("nonexistent.gguf"), ..Default::default() },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
                 batch_size: 8,
@@ -265,23 +217,11 @@ mod tests {
 
         // Create a real model file
         let params = vec![
-            (
-                "embed.weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], false),
-            ),
-            (
-                "attn.q".to_string(),
-                Tensor::from_vec(vec![0.1, 0.2], false),
-            ),
-            (
-                "attn.k".to_string(),
-                Tensor::from_vec(vec![0.3, 0.4], false),
-            ),
+            ("embed.weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], false)),
+            ("attn.q".to_string(), Tensor::from_vec(vec![0.1, 0.2], false)),
+            ("attn.k".to_string(), Tensor::from_vec(vec![0.3, 0.4], false)),
         ];
-        let original = Model::new(
-            ModelMetadata::new("test-transformer", "transformer"),
-            params,
-        );
+        let original = Model::new(ModelMetadata::new("test-transformer", "transformer"), params);
 
         let temp_file = NamedTempFile::new().unwrap();
         let temp_path = temp_file.path().with_extension("safetensors");
@@ -291,10 +231,7 @@ mod tests {
 
         // Build model from the real file
         let spec = TrainSpec {
-            model: ModelRef {
-                path: temp_path.clone(),
-                ..Default::default()
-            },
+            model: ModelRef { path: temp_path.clone(), ..Default::default() },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
                 batch_size: 8,
@@ -353,10 +290,7 @@ mod tests {
         save_model(&original, &temp_path, &config).unwrap();
 
         let spec = TrainSpec {
-            model: ModelRef {
-                path: temp_path.clone(),
-                ..Default::default()
-            },
+            model: ModelRef { path: temp_path.clone(), ..Default::default() },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
                 batch_size: 32,

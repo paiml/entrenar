@@ -160,9 +160,7 @@ mod tests {
 
     #[test]
     fn test_llm_metrics_with_latency() {
-        let metrics = LLMMetrics::new("gpt-4")
-            .with_tokens(100, 100)
-            .with_latency(1000.0);
+        let metrics = LLMMetrics::new("gpt-4").with_tokens(100, 100).with_latency(1000.0);
         assert!((metrics.latency_ms - 1000.0).abs() < 1e-9);
         // tokens_per_second = 100 / 1.0 = 100
         assert!((metrics.tokens_per_second - 100.0).abs() < 1e-6);
@@ -170,9 +168,7 @@ mod tests {
 
     #[test]
     fn test_llm_metrics_with_latency_zero() {
-        let metrics = LLMMetrics::new("gpt-4")
-            .with_tokens(100, 100)
-            .with_latency(0.0);
+        let metrics = LLMMetrics::new("gpt-4").with_tokens(100, 100).with_latency(0.0);
         assert!((metrics.latency_ms - 0.0).abs() < 1e-9);
         // Should not calculate tokens_per_second for zero latency
         assert!((metrics.tokens_per_second - 0.0).abs() < 1e-9);
@@ -201,10 +197,7 @@ mod tests {
         let metrics = LLMMetrics::new("gpt-4")
             .with_tag("environment", "production")
             .with_tag("user_id", "user123");
-        assert_eq!(
-            metrics.tags.get("environment"),
-            Some(&"production".to_string())
-        );
+        assert_eq!(metrics.tags.get("environment"), Some(&"production".to_string()));
         assert_eq!(metrics.tags.get("user_id"), Some(&"user123".to_string()));
     }
 
@@ -266,9 +259,7 @@ mod tests {
 
     #[test]
     fn test_llm_metrics_clone() {
-        let metrics = LLMMetrics::new("gpt-4")
-            .with_tokens(100, 50)
-            .with_latency(500.0);
+        let metrics = LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(500.0);
         let cloned = metrics.clone();
         assert_eq!(metrics.model_name, cloned.model_name);
         assert_eq!(metrics.prompt_tokens, cloned.prompt_tokens);
@@ -276,10 +267,8 @@ mod tests {
 
     #[test]
     fn test_llm_metrics_serde() {
-        let metrics = LLMMetrics::new("gpt-4")
-            .with_tokens(100, 50)
-            .with_latency(500.0)
-            .with_cost(0.01);
+        let metrics =
+            LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(500.0).with_cost(0.01);
 
         let json = serde_json::to_string(&metrics).unwrap();
         let deserialized: LLMMetrics = serde_json::from_str(&json).unwrap();
@@ -312,10 +301,7 @@ mod tests {
         assert!((metrics.time_to_first_token_ms - 100.0).abs() < 1e-9);
         assert_eq!(metrics.cost_usd, Some(0.05));
         assert_eq!(metrics.request_id, Some("req-abc".to_string()));
-        assert_eq!(
-            metrics.tags.get("feature"),
-            Some(&"summarization".to_string())
-        );
+        assert_eq!(metrics.tags.get("feature"), Some(&"summarization".to_string()));
     }
 
     // =========================================================================
@@ -361,10 +347,7 @@ mod tests {
 
         assert!(cost > 0.0, "Unknown model cost must be > 0, got {cost}");
         // Conservative default: $0.001 prompt + $0.002 completion = $0.003 per 1K
-        assert!(
-            (cost - 0.003).abs() < 1e-6,
-            "Expected conservative default ~$0.003, got {cost}"
-        );
+        assert!((cost - 0.003).abs() < 1e-6, "Expected conservative default ~$0.003, got {cost}");
     }
 
     #[test]

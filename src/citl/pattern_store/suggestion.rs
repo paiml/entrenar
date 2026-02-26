@@ -17,11 +17,7 @@ impl FixSuggestion {
     /// Create a new fix suggestion
     #[must_use]
     pub fn new(pattern: FixPattern, score: f32, rank: usize) -> Self {
-        Self {
-            pattern,
-            score,
-            rank,
-        }
+        Self { pattern, score, rank }
     }
 
     /// Get the weighted score (retrieval score * success rate)

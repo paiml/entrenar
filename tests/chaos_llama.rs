@@ -32,9 +32,8 @@ fn chaos_extreme_vocab_size() {
         let intermediate_size: usize = 512;
 
         // Parameter calculation with overflow checks
-        let embed_params = vocab_size
-            .checked_mul(hidden_size)
-            .and_then(|v: usize| v.checked_mul(2));
+        let embed_params =
+            vocab_size.checked_mul(hidden_size).and_then(|v: usize| v.checked_mul(2));
         let layer_params = (4 * hidden_size * hidden_size + 3 * hidden_size * intermediate_size)
             .checked_mul(num_layers);
 
@@ -85,10 +84,7 @@ fn chaos_non_divisible_hidden_size() {
         let remainder = hidden_size % num_heads;
 
         // Should have remainder
-        assert!(
-            remainder > 0,
-            "Expected non-zero remainder for {hidden_size}/{num_heads}"
-        );
+        assert!(remainder > 0, "Expected non-zero remainder for {hidden_size}/{num_heads}");
 
         // Reconstruction loses information
         assert_ne!(head_dim * num_heads, hidden_size);
@@ -216,16 +212,9 @@ fn chaos_quantization_extremes() {
     ];
 
     for (bits, expected_bytes) in bit_widths {
-        let actual_bytes = if bits >= 8 {
-            params * (bits / 8)
-        } else {
-            params / (8 / bits)
-        };
+        let actual_bytes = if bits >= 8 { params * (bits / 8) } else { params / (8 / bits) };
 
-        assert_eq!(
-            actual_bytes, expected_bytes,
-            "Mismatch for {bits}-bit quantization"
-        );
+        assert_eq!(actual_bytes, expected_bytes, "Mismatch for {bits}-bit quantization");
 
         // Bytes should increase with bit width
         let bytes_per_param = f64::from(actual_bytes) / f64::from(params);
@@ -271,10 +260,7 @@ fn chaos_rope_theta_extremes() {
 
         // Larger theta = smaller frequencies (except at position 0)
         if theta > 10000.0 {
-            assert!(
-                freq_mid < 0.01,
-                "Large theta should produce small frequencies"
-            );
+            assert!(freq_mid < 0.01, "Large theta should produce small frequencies");
         }
     }
 }
@@ -294,15 +280,9 @@ fn chaos_configuration_explosion() {
     let vocab_size: usize = 32000;
 
     for (hidden_size, num_layers, intermediate_size, desc) in configs {
-        let embed = vocab_size
-            .checked_mul(hidden_size)
-            .and_then(|v| v.checked_mul(2));
-        let attn = hidden_size
-            .checked_mul(hidden_size)
-            .and_then(|v| v.checked_mul(4));
-        let ffn = hidden_size
-            .checked_mul(intermediate_size)
-            .and_then(|v| v.checked_mul(3));
+        let embed = vocab_size.checked_mul(hidden_size).and_then(|v| v.checked_mul(2));
+        let attn = hidden_size.checked_mul(hidden_size).and_then(|v| v.checked_mul(4));
+        let ffn = hidden_size.checked_mul(intermediate_size).and_then(|v| v.checked_mul(3));
 
         if let (Some(e), Some(a), Some(f)) = (embed, attn, ffn) {
             if let Some(layer_params) = a.checked_add(f) {
@@ -317,10 +297,7 @@ fn chaos_configuration_explosion() {
 
                         // For large models, attention should scale quadratically
                         if hidden_size >= 4096 {
-                            assert!(
-                                a > 16_000_000,
-                                "Attention params should be large for {desc}"
-                            );
+                            assert!(a > 16_000_000, "Attention params should be large for {desc}");
                         }
                     }
                 }
@@ -359,10 +336,7 @@ fn chaos_batch_size_stress() {
 
         // For large batches, should have many tokens
         if batch_size >= 512 {
-            assert!(
-                total_tokens > 1_000_000,
-                "Large batch should have >1M tokens"
-            );
+            assert!(total_tokens > 1_000_000, "Large batch should have >1M tokens");
         }
 
         // Each token should be within vocab range (if we had actual data)
@@ -427,10 +401,7 @@ fn chaos_adapter_memory_scaling() {
 
         // Adapter memory should increase with rank
         if let Some(prev_mem) = prev_adapter_mem {
-            assert!(
-                adapter_mem_fp32 > prev_mem,
-                "Adapter memory should increase with rank"
-            );
+            assert!(adapter_mem_fp32 > prev_mem, "Adapter memory should increase with rank");
         }
         prev_adapter_mem = Some(adapter_mem_fp32);
 
@@ -466,10 +437,7 @@ fn chaos_head_count_constraints() {
         let is_divisible = hidden_size % num_heads == 0;
 
         if expected_valid {
-            assert!(
-                is_divisible,
-                "{hidden_size} must be divisible by {num_heads}"
-            );
+            assert!(is_divisible, "{hidden_size} must be divisible by {num_heads}");
 
             let head_dim = hidden_size / num_heads;
             assert!(head_dim > 0);
@@ -490,29 +458,20 @@ fn chaos_overflow_detection() {
     assert!(large_value.checked_mul(2).is_some());
 
     // This should overflow
-    assert!(
-        large_value.checked_mul(3).is_none(),
-        "Should detect overflow"
-    );
+    assert!(large_value.checked_mul(3).is_none(), "Should detect overflow");
 
     // Practical model sizes should never overflow
     let vocab_size: usize = 100_000;
     let hidden_size: usize = 16_384; // Very large
     let _num_layers: usize = 100; // Very deep
 
-    let embed = vocab_size
-        .checked_mul(hidden_size)
-        .and_then(|v: usize| v.checked_mul(2));
+    let embed = vocab_size.checked_mul(hidden_size).and_then(|v: usize| v.checked_mul(2));
     assert!(embed.is_some(), "Embedding params should not overflow");
 
-    let attn = hidden_size
-        .checked_mul(hidden_size)
-        .and_then(|v: usize| v.checked_mul(4));
+    let attn = hidden_size.checked_mul(hidden_size).and_then(|v: usize| v.checked_mul(4));
     assert!(attn.is_some(), "Attention params should not overflow");
 
-    let ffn = hidden_size
-        .checked_mul(hidden_size * 4)
-        .and_then(|v: usize| v.checked_mul(3));
+    let ffn = hidden_size.checked_mul(hidden_size * 4).and_then(|v: usize| v.checked_mul(3));
     assert!(ffn.is_some(), "FFN params should not overflow");
 }
 

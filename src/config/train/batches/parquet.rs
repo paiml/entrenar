@@ -37,10 +37,7 @@ fn detect_target_column<'a>(column_names: &[&'a str]) -> Option<&'a str> {
 fn detect_columns<'a>(column_names: &[&'a str]) -> Option<ColumnPair<'a>> {
     let input_name = detect_input_column(column_names)?;
     let target_name = detect_target_column(column_names)?;
-    Some(ColumnPair {
-        input_name,
-        target_name,
-    })
+    Some(ColumnPair { input_name, target_name })
 }
 
 /// Log column detection warning and return demo batches
@@ -70,10 +67,7 @@ fn record_batch_to_training_batch(
     let input_data = arrow_array_to_f32(input_array)?;
     let target_data = arrow_array_to_f32(target_array)?;
 
-    Ok(Batch::new(
-        Tensor::from_vec(input_data, false),
-        Tensor::from_vec(target_data, false),
-    ))
+    Ok(Batch::new(Tensor::from_vec(input_data, false), Tensor::from_vec(target_data, false)))
 }
 
 /// Process all record batches from dataset
@@ -112,10 +106,7 @@ pub fn load_parquet_batches(path: &Path, batch_size: usize) -> Result<Vec<Batch>
         None => return Ok(handle_missing_columns(&column_names, batch_size)),
     };
 
-    println!(
-        "  Using columns: input='{}', target='{}'",
-        columns.input_name, columns.target_name
-    );
+    println!("  Using columns: input='{}', target='{}'", columns.input_name, columns.target_name);
 
     let mut batches = process_record_batches(&dataset, &columns)?;
 
@@ -297,10 +288,7 @@ mod tests {
 
     #[test]
     fn test_column_pair_fields() {
-        let pair = ColumnPair {
-            input_name: "input",
-            target_name: "target",
-        };
+        let pair = ColumnPair { input_name: "input", target_name: "target" };
         assert_eq!(pair.input_name, "input");
         assert_eq!(pair.target_name, "target");
     }

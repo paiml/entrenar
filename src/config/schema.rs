@@ -24,9 +24,9 @@ where
         BoolOrString::Str(s) => match s.to_lowercase().as_str() {
             "true" => Ok(true),
             "false" => Ok(false),
-            other => Err(serde::de::Error::custom(format!(
-                "expected 'true' or 'false', got '{other}'"
-            ))),
+            other => {
+                Err(serde::de::Error::custom(format!("expected 'true' or 'false', got '{other}'")))
+            }
         },
     }
 }
@@ -209,10 +209,7 @@ pub struct DataConfig {
     pub batch_size: usize,
 
     /// Auto-infer feature types from data
-    #[serde(
-        default = "default_true",
-        deserialize_with = "deserialize_bool_lenient"
-    )]
+    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
     pub auto_infer_types: bool,
 
     /// Sequence length (for transformers)
@@ -295,17 +292,11 @@ pub struct QuantSpec {
     pub bits: u8,
 
     /// Symmetric quantization
-    #[serde(
-        default = "default_true",
-        deserialize_with = "deserialize_bool_lenient"
-    )]
+    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
     pub symmetric: bool,
 
     /// Per-channel quantization
-    #[serde(
-        default = "default_true",
-        deserialize_with = "deserialize_bool_lenient"
-    )]
+    #[serde(default = "default_true", deserialize_with = "deserialize_bool_lenient")]
     pub per_channel: bool,
 }
 
@@ -699,16 +690,11 @@ quantize:
 
     #[test]
     fn test_model_ref_is_hf_repo_id() {
-        let model = ModelRef {
-            path: PathBuf::from("Qwen/Qwen2.5-Coder-0.5B"),
-            ..Default::default()
-        };
+        let model =
+            ModelRef { path: PathBuf::from("Qwen/Qwen2.5-Coder-0.5B"), ..Default::default() };
         assert!(model.is_hf_repo_id());
 
-        let model = ModelRef {
-            path: PathBuf::from("model.gguf"),
-            ..Default::default()
-        };
+        let model = ModelRef { path: PathBuf::from("model.gguf"), ..Default::default() };
         assert!(!model.is_hf_repo_id());
     }
 

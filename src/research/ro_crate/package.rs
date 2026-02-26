@@ -26,17 +26,11 @@ impl RoCrate {
         let mut descriptor = RoCrateDescriptor::new();
 
         // Add root dataset
-        let root_entity = RoCrateEntity::root_dataset().with_property(
-            "datePublished",
-            chrono::Utc::now().format("%Y-%m-%d").to_string(),
-        );
+        let root_entity = RoCrateEntity::root_dataset()
+            .with_property("datePublished", chrono::Utc::now().format("%Y-%m-%d").to_string());
         descriptor.add_entity(root_entity);
 
-        Self {
-            root: root.into(),
-            descriptor,
-            data_files: HashMap::new(),
-        }
+        Self { root: root.into(), descriptor, data_files: HashMap::new() }
     }
 
     /// Create from a research artifact
@@ -45,25 +39,17 @@ impl RoCrate {
 
         // Update root dataset with artifact metadata
         if let Some(root_entity) = crate_pkg.descriptor.root_dataset_mut() {
-            root_entity
-                .properties
-                .insert("name".to_string(), json!(artifact.title));
+            root_entity.properties.insert("name".to_string(), json!(artifact.title));
             if let Some(desc) = &artifact.description {
-                root_entity
-                    .properties
-                    .insert("description".to_string(), json!(desc));
+                root_entity.properties.insert("description".to_string(), json!(desc));
             }
-            root_entity
-                .properties
-                .insert("version".to_string(), json!(artifact.version));
+            root_entity.properties.insert("version".to_string(), json!(artifact.version));
             root_entity
                 .properties
                 .insert("license".to_string(), json!(artifact.license.to_string()));
 
             if let Some(doi) = &artifact.doi {
-                root_entity
-                    .properties
-                    .insert("identifier".to_string(), json!(doi));
+                root_entity.properties.insert("identifier".to_string(), json!(doi));
             }
 
             if !artifact.keywords.is_empty() {
@@ -102,9 +88,7 @@ impl RoCrate {
             if let Some(root_entity) = crate_pkg.descriptor.root_dataset_mut() {
                 let author_refs: Vec<serde_json::Value> =
                     author_ids.iter().map(|id| json!({ "@id": id })).collect();
-                root_entity
-                    .properties
-                    .insert("author".to_string(), json!(author_refs));
+                root_entity.properties.insert("author".to_string(), json!(author_refs));
             }
         }
 
@@ -189,10 +173,7 @@ impl RoCrate {
 
 /// Guess MIME type from file extension
 pub fn guess_mime_type(path: &str) -> &'static str {
-    let ext = Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
 
     match ext.to_lowercase().as_str() {
         "json" => "application/json",
@@ -244,10 +225,7 @@ mod tests {
             let result = guess_mime_type(path);
 
             // Syntactic match covering all arms from guess_mime_type
-            let ext = Path::new(path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
 
             let matched = match ext.to_lowercase().as_str() {
                 "json" => "application/json",

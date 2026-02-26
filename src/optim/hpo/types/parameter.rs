@@ -43,11 +43,7 @@ impl ParameterValue {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParameterDomain {
     /// Continuous range [low, high], optionally log-scaled
-    Continuous {
-        low: f64,
-        high: f64,
-        log_scale: bool,
-    },
+    Continuous { low: f64, high: f64, log_scale: bool },
     /// Discrete integer range [low, high]
     Discrete { low: i64, high: i64 },
     /// Categorical choices
@@ -58,11 +54,7 @@ impl ParameterDomain {
     /// Sample a random value from this domain
     pub fn sample<R: Rng>(&self, rng: &mut R) -> ParameterValue {
         match self {
-            ParameterDomain::Continuous {
-                low,
-                high,
-                log_scale,
-            } => {
+            ParameterDomain::Continuous { low, high, log_scale } => {
                 let value = if *log_scale {
                     let log_low = low.max(f64::MIN_POSITIVE).ln();
                     let log_high = high.max(f64::MIN_POSITIVE).ln();

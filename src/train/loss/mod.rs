@@ -37,10 +37,7 @@ mod tests {
         assert_eq!(HuberLoss::new(1.0).name(), "Huber");
         assert_eq!(L1Loss.name(), "L1");
         assert_eq!(WeightedLoss::new(Box::new(MSELoss), 1.0).name(), "Weighted");
-        assert_eq!(
-            SampleWeightedLoss::new(Box::new(MSELoss)).name(),
-            "SampleWeighted"
-        );
+        assert_eq!(SampleWeightedLoss::new(Box::new(MSELoss)).name(), "SampleWeighted");
         assert_eq!(CausalLMLoss::new(10).name(), "CausalLM");
     }
 }

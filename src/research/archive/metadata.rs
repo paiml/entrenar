@@ -90,9 +90,7 @@ impl DepositMetadata {
     pub fn from_citation(citation: &CitationMetadata) -> Self {
         let mut metadata = Self::from_artifact(&citation.artifact);
         if let Some(url) = &citation.url {
-            metadata
-                .related_identifiers
-                .push(RelatedIdentifier::is_supplement_to(url));
+            metadata.related_identifiers.push(RelatedIdentifier::is_supplement_to(url));
         }
         metadata
     }

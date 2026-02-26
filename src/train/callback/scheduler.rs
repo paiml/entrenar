@@ -26,20 +26,12 @@ pub struct LRSchedulerCallback<S: LRScheduler + Send> {
 impl<S: LRScheduler + Send> LRSchedulerCallback<S> {
     /// Create callback that steps scheduler per epoch
     pub fn per_epoch(scheduler: S) -> Self {
-        Self {
-            scheduler,
-            per_step: false,
-            initial_lr: None,
-        }
+        Self { scheduler, per_step: false, initial_lr: None }
     }
 
     /// Create callback that steps scheduler per step
     pub fn per_step(scheduler: S) -> Self {
-        Self {
-            scheduler,
-            per_step: true,
-            initial_lr: None,
-        }
+        Self { scheduler, per_step: true, initial_lr: None }
     }
 
     /// Get current learning rate from scheduler
@@ -82,10 +74,7 @@ mod tests {
     fn test_lr_scheduler_callback_per_epoch() {
         let scheduler = StepDecayLR::new(0.1, 10, 0.5);
         let mut cb = LRSchedulerCallback::per_epoch(scheduler);
-        let ctx = CallbackContext {
-            lr: 0.1,
-            ..Default::default()
-        };
+        let ctx = CallbackContext { lr: 0.1, ..Default::default() };
         cb.on_train_begin(&ctx);
         assert_eq!(cb.initial_lr, Some(0.1));
         cb.on_epoch_end(&ctx);

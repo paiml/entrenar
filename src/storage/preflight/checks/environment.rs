@@ -2,6 +2,40 @@
 
 use super::{CheckResult, CheckType, PreflightCheck};
 
+/// Compare available MB against a required threshold, returning a pass/fail `CheckResult`.
+fn check_mb_threshold(avail_mb: u64, required: u64, resource: &str) -> CheckResult {
+    if avail_mb >= required {
+        CheckResult::passed(format!("{avail_mb} MB {resource} available (minimum: {required} MB)"))
+    } else {
+        CheckResult::failed(format!(
+            "Only {avail_mb} MB {resource} available (minimum: {required} MB)"
+        ))
+    }
+}
+
+/// Parse the available disk space (MB) from `df -m .` output.
+#[cfg(unix)]
+fn parse_df_available_mb(stdout: &str) -> Option<u64> {
+    stdout
+        .lines()
+        .nth(1)
+        .and_then(|line| line.split_whitespace().nth(3))
+        .and_then(|s| s.parse::<u64>().ok())
+}
+
+/// Parse available memory (MB) from `free -m` output.
+#[cfg(unix)]
+fn parse_free_available_mb(stdout: &str) -> Option<u64> {
+    stdout.lines().nth(1).and_then(|line| {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 7 {
+            parts[6].parse::<u64>().ok()
+        } else {
+            None
+        }
+    })
+}
+
 impl PreflightCheck {
     // =========================================================================
     // Built-in Environment Checks
@@ -16,36 +50,19 @@ impl PreflightCheck {
             move |_data, ctx| {
                 let required = ctx.min_disk_space_mb.unwrap_or(min_mb);
 
-                // Get available disk space (platform-specific)
                 #[cfg(unix)]
                 {
                     use std::process::Command;
-                    let output = Command::new("df").args(["-m", "."]).output().ok();
-
-                    if let Some(output) = output {
+                    if let Ok(output) = Command::new("df").args(["-m", "."]).output() {
                         let stdout = String::from_utf8_lossy(&output.stdout);
-                        // Parse df output (second line, fourth column is available)
-                        if let Some(line) = stdout.lines().nth(1) {
-                            if let Some(available) = line.split_whitespace().nth(3) {
-                                if let Ok(avail_mb) = available.parse::<u64>() {
-                                    if avail_mb >= required {
-                                        return CheckResult::passed(format!(
-                                            "{avail_mb} MB available (minimum: {required} MB)"
-                                        ));
-                                    }
-                                    return CheckResult::failed(format!(
-                                        "Only {avail_mb} MB available (minimum: {required} MB)"
-                                    ));
-                                }
-                            }
+                        if let Some(avail_mb) = parse_df_available_mb(&stdout) {
+                            return check_mb_threshold(avail_mb, required, "disk");
                         }
                     }
                 }
 
                 // Fallback: assume sufficient space
-                CheckResult::passed(format!(
-                    "Disk space check passed (assumed >= {required} MB)"
-                ))
+                CheckResult::passed(format!("Disk space check passed (assumed >= {required} MB)"))
             },
         )
     }
@@ -59,30 +76,13 @@ impl PreflightCheck {
             move |_data, ctx| {
                 let required = ctx.min_memory_mb.unwrap_or(min_mb);
 
-                // Check available memory (platform-specific)
                 #[cfg(unix)]
                 {
                     use std::process::Command;
-                    let output = Command::new("free").args(["-m"]).output().ok();
-
-                    if let Some(output) = output {
+                    if let Ok(output) = Command::new("free").args(["-m"]).output() {
                         let stdout = String::from_utf8_lossy(&output.stdout);
-                        // Parse free output (second line, "available" column)
-                        if let Some(line) = stdout.lines().nth(1) {
-                            // Mem: line format varies, try to find available
-                            let parts: Vec<&str> = line.split_whitespace().collect();
-                            if parts.len() >= 7 {
-                                if let Ok(avail_mb) = parts[6].parse::<u64>() {
-                                    if avail_mb >= required {
-                                        return CheckResult::passed(format!(
-                                            "{avail_mb} MB available (minimum: {required} MB)"
-                                        ));
-                                    }
-                                    return CheckResult::failed(format!(
-                                        "Only {avail_mb} MB available (minimum: {required} MB)"
-                                    ));
-                                }
-                            }
+                        if let Some(avail_mb) = parse_free_available_mb(&stdout) {
+                            return check_mb_threshold(avail_mb, required, "memory");
                         }
                     }
                 }
@@ -189,10 +189,7 @@ mod tests {
     #[test]
     fn test_disk_space_with_context_override() {
         let check = PreflightCheck::disk_space_mb(1000);
-        let ctx = PreflightContext {
-            min_disk_space_mb: Some(1),
-            ..Default::default()
-        };
+        let ctx = PreflightContext { min_disk_space_mb: Some(1), ..Default::default() };
         let data: &[Vec<f64>] = &[];
         let result = check.run(data, &ctx);
         // With low threshold, should likely pass
@@ -202,10 +199,7 @@ mod tests {
     #[test]
     fn test_memory_with_context_override() {
         let check = PreflightCheck::memory_mb(1000);
-        let ctx = PreflightContext {
-            min_memory_mb: Some(1),
-            ..Default::default()
-        };
+        let ctx = PreflightContext { min_memory_mb: Some(1), ..Default::default() };
         let data: &[Vec<f64>] = &[];
         let result = check.run(data, &ctx);
         // With low threshold, should likely pass

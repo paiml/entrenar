@@ -216,9 +216,10 @@ impl ClassifyPipeline {
         // Load tokenizer if tokenizer.json exists (optional — falls back to byte-level)
         let tokenizer_path = model_dir.join("tokenizer.json");
         let tokenizer = if tokenizer_path.exists() {
-            Some(HfTokenizer::from_file(&tokenizer_path).map_err(|e| {
-                crate::Error::Io(format!("Failed to load tokenizer: {e}"))
-            })?)
+            Some(
+                HfTokenizer::from_file(&tokenizer_path)
+                    .map_err(|e| crate::Error::Io(format!("Failed to load tokenizer: {e}")))?,
+            )
         } else {
             None
         };
@@ -227,7 +228,8 @@ impl ClassifyPipeline {
 
         // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
         #[cfg(feature = "cuda")]
-        let (cuda_trainer, cuda_blocks) = Self::try_init_cuda(&model, &model_config, &classify_config);
+        let (cuda_trainer, cuda_blocks) =
+            Self::try_init_cuda(&model, &model_config, &classify_config);
 
         Ok(Self {
             model,
@@ -418,12 +420,7 @@ impl ClassifyPipeline {
             if let (Some(ref trainer), Some(ref mut blocks)) =
                 (&self.cuda_trainer, &mut self.cuda_blocks)
             {
-                match Self::forward_hidden_cuda_impl(
-                    &self.model,
-                    token_ids,
-                    trainer,
-                    blocks,
-                ) {
+                match Self::forward_hidden_cuda_impl(&self.model, token_ids, trainer, blocks) {
                     Some(tensor) => return tensor,
                     None => {
                         // GPU produced NaN/Inf for this sample — use CPU fallback
@@ -578,13 +575,8 @@ impl ClassifyPipeline {
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
         // matmul builds autograd backward ops (connects classifier.weight to loss)
-        let logits = matmul(
-            &pooled,
-            &self.classifier.weight,
-            1,
-            self.classifier.hidden_size(),
-            num_classes,
-        );
+        let logits =
+            matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);
 
         // Add bias (element-wise, preserving grad tracking)
         let logits_with_bias: Vec<f32> = logits
@@ -592,37 +584,20 @@ impl ClassifyPipeline {
             .as_slice()
             .expect("contiguous logits")
             .iter()
-            .zip(
-                self.classifier
-                    .bias
-                    .data()
-                    .as_slice()
-                    .expect("contiguous bias")
-                    .iter(),
-            )
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
         // ── 3. Cross-entropy loss + manual gradient ───────────────────
         // Compute softmax probabilities
-        let max_val = logits_with_bias
-            .iter()
-            .copied()
-            .fold(f32::NEG_INFINITY, f32::max);
-        let exp_vals: Vec<f32> = logits_with_bias
-            .iter()
-            .map(|&v| (v - max_val).exp())
-            .collect();
+        let max_val = logits_with_bias.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
         let sum_exp: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
 
         // Loss = -log(prob[target])
         let loss_val = -(probs[label].max(1e-10).ln());
-        let loss_val = if loss_val.is_finite() {
-            loss_val
-        } else {
-            100.0
-        };
+        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
 
         // ∂L/∂logits = probs - one_hot(target)
         // This is the well-known cross-entropy gradient
@@ -638,9 +613,7 @@ impl ClassifyPipeline {
         }
 
         // Manually set bias gradient (∂L/∂bias = ∂L/∂logits)
-        self.classifier
-            .bias
-            .set_grad(ndarray::Array1::from(grad_logits));
+        self.classifier.bias.set_grad(ndarray::Array1::from(grad_logits));
 
         // ── 5. Optimizer step ─────────────────────────────────────────
         // Collect trainable params without borrowing through self (avoids borrow conflict with optimizer)
@@ -679,12 +652,7 @@ impl ClassifyPipeline {
     /// [`BatchResult`] with average loss, correct predictions, and total count
     pub fn train_batch(&mut self, samples: &[SafetySample]) -> BatchResult {
         if samples.is_empty() {
-            return BatchResult {
-                avg_loss: 0.0,
-                correct: 0,
-                total: 0,
-                grad_norm: 0.0,
-            };
+            return BatchResult { avg_loss: 0.0, correct: 0, total: 0, grad_norm: 0.0 };
         }
 
         let batch_size = samples.len();
@@ -759,12 +727,7 @@ impl ClassifyPipeline {
     /// [`BatchResult`] for this micro-batch (loss/accuracy before optimizer step)
     pub fn accumulate_gradients(&mut self, micro_batch: &[SafetySample]) -> BatchResult {
         if micro_batch.is_empty() {
-            return BatchResult {
-                avg_loss: 0.0,
-                correct: 0,
-                total: 0,
-                grad_norm: 0.0,
-            };
+            return BatchResult { avg_loss: 0.0, correct: 0, total: 0, grad_norm: 0.0 };
         }
 
         let mut total_loss = 0.0f32;
@@ -843,27 +806,15 @@ impl ClassifyPipeline {
         let hidden = self.forward_hidden_dispatch(token_ids);
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
-        let logits = matmul(
-            &pooled,
-            &self.classifier.weight,
-            1,
-            self.classifier.hidden_size(),
-            num_classes,
-        );
+        let logits =
+            matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);
 
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
             .expect("contiguous logits")
             .iter()
-            .zip(
-                self.classifier
-                    .bias
-                    .data()
-                    .as_slice()
-                    .expect("contiguous bias")
-                    .iter(),
-            )
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -885,27 +836,16 @@ impl ClassifyPipeline {
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(idx, _)| idx)
-            .unwrap_or(0);
+            .map_or(0, |(idx, _)| idx);
 
         // ── Cross-entropy loss ──────────────────────────────────────────
-        let max_val = logits_with_bias
-            .iter()
-            .copied()
-            .fold(f32::NEG_INFINITY, f32::max);
-        let exp_vals: Vec<f32> = logits_with_bias
-            .iter()
-            .map(|&v| (v - max_val).exp())
-            .collect();
+        let max_val = logits_with_bias.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
         let sum_exp: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
 
         let loss_val = -(probs[label].max(1e-10).ln());
-        let loss_val = if loss_val.is_finite() {
-            loss_val
-        } else {
-            100.0
-        };
+        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
 
         // ── Contract postcondition (F-CLASS-005): loss finite & non-negative
         debug_assert!(loss_val.is_finite(), "F-CLASS-005: loss is not finite");
@@ -922,9 +862,7 @@ impl ClassifyPipeline {
         }
 
         // Accumulate bias gradient (not set — accumulate)
-        self.classifier
-            .bias
-            .accumulate_grad(ndarray::Array1::from(grad_logits));
+        self.classifier.bias.accumulate_grad(ndarray::Array1::from(grad_logits));
 
         (loss_val, predicted)
     }
@@ -956,7 +894,6 @@ impl ClassifyPipeline {
             }
         }
     }
-
 
     /// Compute the global L2 norm of all trainable gradients.
     ///
@@ -996,27 +933,15 @@ impl ClassifyPipeline {
         let hidden = self.forward_hidden_dispatch(token_ids);
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
-        let logits = matmul(
-            &pooled,
-            &self.classifier.weight,
-            1,
-            self.classifier.hidden_size(),
-            num_classes,
-        );
+        let logits =
+            matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);
 
         let logits_with_bias: Vec<f32> = logits
             .data()
             .as_slice()
             .expect("contiguous logits")
             .iter()
-            .zip(
-                self.classifier
-                    .bias
-                    .data()
-                    .as_slice()
-                    .expect("contiguous bias")
-                    .iter(),
-            )
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -1028,23 +953,13 @@ impl ClassifyPipeline {
             .map_or(0, |(idx, _)| idx);
 
         // Cross-entropy loss
-        let max_val = logits_with_bias
-            .iter()
-            .copied()
-            .fold(f32::NEG_INFINITY, f32::max);
-        let exp_vals: Vec<f32> = logits_with_bias
-            .iter()
-            .map(|&v| (v - max_val).exp())
-            .collect();
+        let max_val = logits_with_bias.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
         let sum_exp: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
 
         let loss_val = -(probs[label].max(1e-10).ln());
-        let loss_val = if loss_val.is_finite() {
-            loss_val
-        } else {
-            100.0
-        };
+        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
 
         (loss_val, predicted)
     }
@@ -1063,11 +978,7 @@ impl ClassifyPipeline {
     pub fn multi_label_train_step(&mut self, token_ids: &[u32], targets: &[f32]) -> f32 {
         let seq_len = token_ids.len();
         let num_classes = self.config.num_classes;
-        assert_eq!(
-            targets.len(),
-            num_classes,
-            "F-CLASS-001: target length must match num_classes"
-        );
+        assert_eq!(targets.len(), num_classes, "F-CLASS-001: target length must match num_classes");
 
         // ── 1. Zero gradients ─────────────────────────────────────────
         self.classifier.weight.zero_grad();
@@ -1081,13 +992,8 @@ impl ClassifyPipeline {
         let hidden = self.forward_hidden_dispatch(token_ids);
         let pooled = self.classifier.mean_pool(&hidden, seq_len);
 
-        let logits = matmul(
-            &pooled,
-            &self.classifier.weight,
-            1,
-            self.classifier.hidden_size(),
-            num_classes,
-        );
+        let logits =
+            matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);
 
         // Add bias
         let logits_with_bias: Vec<f32> = logits
@@ -1095,14 +1001,7 @@ impl ClassifyPipeline {
             .as_slice()
             .expect("contiguous logits")
             .iter()
-            .zip(
-                self.classifier
-                    .bias
-                    .data()
-                    .as_slice()
-                    .expect("contiguous bias")
-                    .iter(),
-            )
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -1118,11 +1017,7 @@ impl ClassifyPipeline {
             .sum::<f32>()
             / num_classes as f32;
 
-        let loss_val = if loss_val.is_finite() {
-            loss_val
-        } else {
-            100.0
-        };
+        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
 
         // ∂L/∂logits = (σ(x) - targets) / N
         let grad_logits: Vec<f32> = logits_with_bias
@@ -1147,9 +1042,7 @@ impl ClassifyPipeline {
         }
 
         // Manually set bias gradient
-        self.classifier
-            .bias
-            .set_grad(ndarray::Array1::from(grad_logits));
+        self.classifier.bias.set_grad(ndarray::Array1::from(grad_logits));
 
         // ── 5. Optimizer step ─────────────────────────────────────────
         let mut params: Vec<&mut Tensor> = Vec::new();
@@ -1189,11 +1082,8 @@ impl ClassifyPipeline {
     /// Count total trainable parameters.
     #[must_use]
     pub fn num_trainable_parameters(&self) -> usize {
-        let lora_params: usize = self
-            .lora_layers
-            .iter()
-            .map(|l: &LoRALayer| l.rank() * (l.d_in() + l.d_out()))
-            .sum();
+        let lora_params: usize =
+            self.lora_layers.iter().map(|l: &LoRALayer| l.rank() * (l.d_in() + l.d_out())).sum();
         lora_params + self.classifier.num_parameters()
     }
 
@@ -1306,11 +1196,7 @@ mod tests {
         let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
 
         // Train on 3 samples for 20 epochs
-        let samples = [
-            (vec![1u32, 2, 3], 0usize),
-            (vec![4, 5, 6], 1),
-            (vec![7, 8, 9], 2),
-        ];
+        let samples = [(vec![1u32, 2, 3], 0usize), (vec![4, 5, 6], 1), (vec![7, 8, 9], 2)];
 
         let mut first_epoch_loss = 0.0f32;
         let mut last_epoch_loss = 0.0f32;
@@ -1346,10 +1232,7 @@ mod tests {
         let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
         let params = pipeline.trainable_parameters_mut();
         // LoRA A + B per adapter + classifier weight + bias
-        assert!(
-            params.len() >= 3,
-            "Should have at least classifier + 1 LoRA adapter params"
-        );
+        assert!(params.len() >= 3, "Should have at least classifier + 1 LoRA adapter params");
     }
 
     #[test]
@@ -1463,51 +1346,27 @@ mod tests {
 
     fn make_samples() -> Vec<SafetySample> {
         vec![
-            SafetySample {
-                input: "echo hello".into(),
-                label: 0,
-            },
-            SafetySample {
-                input: "rm -rf /".into(),
-                label: 1,
-            },
-            SafetySample {
-                input: "ls -la".into(),
-                label: 2,
-            },
+            SafetySample { input: "echo hello".into(), label: 0 },
+            SafetySample { input: "rm -rf /".into(), label: 1 },
+            SafetySample { input: "ls -la".into(), label: 2 },
         ]
     }
 
     #[test]
     fn test_ssc025_batch_result_accuracy() {
-        let r = BatchResult {
-            avg_loss: 1.0,
-            correct: 3,
-            total: 4,
-            grad_norm: 0.0,
-        };
+        let r = BatchResult { avg_loss: 1.0, correct: 3, total: 4, grad_norm: 0.0 };
         assert!((r.accuracy() - 0.75).abs() < 1e-6);
     }
 
     #[test]
     fn test_ssc025_batch_result_accuracy_empty() {
-        let r = BatchResult {
-            avg_loss: 0.0,
-            correct: 0,
-            total: 0,
-            grad_norm: 0.0,
-        };
+        let r = BatchResult { avg_loss: 0.0, correct: 0, total: 0, grad_norm: 0.0 };
         assert!((r.accuracy() - 0.0).abs() < 1e-6);
     }
 
     #[test]
     fn test_ssc025_batch_result_accuracy_perfect() {
-        let r = BatchResult {
-            avg_loss: 0.1,
-            correct: 10,
-            total: 10,
-            grad_norm: 0.0,
-        };
+        let r = BatchResult { avg_loss: 0.1, correct: 10, total: 10, grad_norm: 0.0 };
         assert!((r.accuracy() - 1.0).abs() < 1e-6);
     }
 
@@ -1622,10 +1481,7 @@ mod tests {
         // Run one batch — the internal clip should have bounded the norm
         // We verify indirectly: the pipeline should not diverge with aggressive clipping
         let result = pipeline.train_batch(&samples);
-        assert!(
-            result.avg_loss.is_finite(),
-            "SSC-025: clipped batch loss must be finite"
-        );
+        assert!(result.avg_loss.is_finite(), "SSC-025: clipped batch loss must be finite");
     }
 
     #[test]
@@ -1642,10 +1498,7 @@ mod tests {
         let samples = make_samples();
 
         let result = pipeline.train_batch(&samples);
-        assert!(
-            result.avg_loss.is_finite(),
-            "SSC-025: unclipped batch loss must be finite"
-        );
+        assert!(result.avg_loss.is_finite(), "SSC-025: unclipped batch loss must be finite");
     }
 
     #[test]
@@ -1744,31 +1597,20 @@ mod tests {
 
     #[test]
     fn test_ssc025_safety_sample_input_ids() {
-        let sample = SafetySample {
-            input: "echo".into(),
-            label: 0,
-        };
+        let sample = SafetySample { input: "echo".into(), label: 0 };
         let ids = sample.input_ids();
         assert_eq!(ids, vec![b'e' as u32, b'c' as u32, b'h' as u32, b'o' as u32]);
     }
 
     #[test]
     fn test_ssc025_safety_sample_input_ids_empty() {
-        let sample = SafetySample {
-            input: String::new(),
-            label: 0,
-        };
+        let sample = SafetySample { input: String::new(), label: 0 };
         assert!(sample.input_ids().is_empty());
     }
 
     #[test]
     fn test_ssc025_batch_result_debug() {
-        let r = BatchResult {
-            avg_loss: 1.5,
-            correct: 2,
-            total: 3,
-            grad_norm: 0.0,
-        };
+        let r = BatchResult { avg_loss: 1.5, correct: 2, total: 3, grad_norm: 0.0 };
         let debug = format!("{r:?}");
         assert!(debug.contains("BatchResult"));
         assert!(debug.contains("1.5"));
@@ -1786,10 +1628,7 @@ mod tests {
             ..ClassifyConfig::default()
         };
         let mut pipeline = ClassifyPipeline::new(&model_config, classify_config);
-        let samples = vec![SafetySample {
-            input: "echo hello".into(),
-            label: 0,
-        }];
+        let samples = vec![SafetySample { input: "echo hello".into(), label: 0 }];
 
         let result = pipeline.train_batch(&samples);
         assert_eq!(result.total, 1);

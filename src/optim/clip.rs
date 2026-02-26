@@ -99,10 +99,8 @@ mod tests {
     #[test]
     fn test_clip_grad_norm_no_clipping() {
         // Gradients with norm below threshold shouldn't be clipped
-        let mut params = vec![
-            Tensor::from_vec(vec![1.0, 2.0], true),
-            Tensor::from_vec(vec![3.0], true),
-        ];
+        let mut params =
+            vec![Tensor::from_vec(vec![1.0, 2.0], true), Tensor::from_vec(vec![3.0], true)];
 
         // Set small gradients
         params[0].set_grad(ndarray::arr1(&[0.1, 0.2]));
@@ -122,10 +120,8 @@ mod tests {
     #[test]
     fn test_clip_grad_norm_with_clipping() {
         // Gradients with norm above threshold should be scaled
-        let mut params = vec![
-            Tensor::from_vec(vec![1.0, 2.0], true),
-            Tensor::from_vec(vec![3.0], true),
-        ];
+        let mut params =
+            vec![Tensor::from_vec(vec![1.0, 2.0], true), Tensor::from_vec(vec![3.0], true)];
 
         // Set large gradients
         params[0].set_grad(ndarray::arr1(&[3.0, 4.0]));
@@ -160,10 +156,7 @@ mod tests {
 
     #[test]
     fn test_clip_grad_norm_preserves_relative_magnitudes() {
-        let mut params = vec![
-            Tensor::from_vec(vec![1.0], true),
-            Tensor::from_vec(vec![1.0], true),
-        ];
+        let mut params = vec![Tensor::from_vec(vec![1.0], true), Tensor::from_vec(vec![1.0], true)];
 
         // Set gradients with different magnitudes
         params[0].set_grad(ndarray::arr1(&[10.0]));
@@ -196,10 +189,7 @@ mod tests {
     #[test]
     fn test_clip_grad_norm_mixed_gradients() {
         // Some params have gradients, others don't
-        let mut params = vec![
-            Tensor::from_vec(vec![1.0], true),
-            Tensor::from_vec(vec![1.0], true),
-        ];
+        let mut params = vec![Tensor::from_vec(vec![1.0], true), Tensor::from_vec(vec![1.0], true)];
 
         params[0].set_grad(ndarray::arr1(&[3.0]));
         // params[1] has no gradient set

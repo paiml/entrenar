@@ -28,9 +28,7 @@ pub fn softmax_backward(
     seq_len: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -63,11 +61,9 @@ pub fn softmax_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "softmax_backward", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("Softmax backward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "softmax_backward", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Softmax backward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -88,9 +84,7 @@ pub fn rms_norm_backward(
     eps: f32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -127,11 +121,9 @@ pub fn rms_norm_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "rms_norm_backward", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("RMSNorm backward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "rms_norm_backward", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("RMSNorm backward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -152,9 +144,7 @@ pub fn layer_norm_backward(
     hidden_size: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -192,11 +182,9 @@ pub fn layer_norm_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "layer_norm_backward", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("LayerNorm backward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "layer_norm_backward", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("LayerNorm backward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())

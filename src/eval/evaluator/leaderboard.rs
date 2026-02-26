@@ -16,10 +16,7 @@ pub struct Leaderboard {
 impl Leaderboard {
     /// Create a new leaderboard
     pub fn new(primary_metric: Metric) -> Self {
-        Self {
-            results: Vec::new(),
-            primary_metric,
-        }
+        Self { results: Vec::new(), primary_metric }
     }
 
     /// Add evaluation result
@@ -35,22 +32,14 @@ impl Leaderboard {
     /// `INFINITY` for "lower is better" ensure worst-possible semantics.
     pub fn sort(&mut self) {
         let higher_is_better = self.primary_metric.higher_is_better();
-        let missing = if higher_is_better {
-            f64::NEG_INFINITY
-        } else {
-            f64::INFINITY
-        };
+        let missing = if higher_is_better { f64::NEG_INFINITY } else { f64::INFINITY };
         self.results.sort_by(|a, b| {
             let score_a = a.get_score(self.primary_metric).unwrap_or(missing);
             let score_b = b.get_score(self.primary_metric).unwrap_or(missing);
             if higher_is_better {
-                score_b
-                    .partial_cmp(&score_a)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
             } else {
-                score_a
-                    .partial_cmp(&score_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
             }
         });
     }
@@ -58,22 +47,14 @@ impl Leaderboard {
     /// Sort by a specific metric
     pub fn sort_by(&mut self, metric: Metric) {
         let higher_is_better = metric.higher_is_better();
-        let missing = if higher_is_better {
-            f64::NEG_INFINITY
-        } else {
-            f64::INFINITY
-        };
+        let missing = if higher_is_better { f64::NEG_INFINITY } else { f64::INFINITY };
         self.results.sort_by(|a, b| {
             let score_a = a.get_score(metric).unwrap_or(missing);
             let score_b = b.get_score(metric).unwrap_or(missing);
             if higher_is_better {
-                score_b
-                    .partial_cmp(&score_a)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
             } else {
-                score_a
-                    .partial_cmp(&score_b)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
             }
         });
     }
@@ -144,13 +125,7 @@ impl fmt::Display for Leaderboard {
         };
 
         // Calculate column widths
-        let model_width = self
-            .results
-            .iter()
-            .map(|r| r.model_name.len())
-            .max()
-            .unwrap_or(5)
-            .max(5);
+        let model_width = self.results.iter().map(|r| r.model_name.len()).max().unwrap_or(5).max(5);
 
         // Header
         write!(f, "┌{:─<width$}┬", "", width = model_width + 2)?;
@@ -277,15 +252,9 @@ mod tests {
 
         lb.sort_by(secondary);
 
-        assert_eq!(
-            lb.results[0].model_name, "model_a",
-            "lowest perplexity first"
-        );
+        assert_eq!(lb.results[0].model_name, "model_a", "lowest perplexity first");
         assert_eq!(lb.results[1].model_name, "model_c");
-        assert_eq!(
-            lb.results[2].model_name, "model_b",
-            "Missing perplexity score must sort last"
-        );
+        assert_eq!(lb.results[2].model_name, "model_b", "Missing perplexity score must sort last");
     }
 
     #[test]
@@ -294,21 +263,14 @@ mod tests {
         // A zero score is a valid measurement; a missing score is not.
         let metric = Metric::Accuracy;
         let mut lb = Leaderboard::new(metric);
-        lb.results
-            .push(make_result("has_score", metric, Some(0.95)));
+        lb.results.push(make_result("has_score", metric, Some(0.95)));
         lb.results.push(make_result("no_score", metric, None));
 
         let md = lb.to_markdown();
         // Model with score should show numeric value
-        assert!(
-            md.contains("0.95"),
-            "scored model must show numeric value in markdown"
-        );
+        assert!(md.contains("0.95"), "scored model must show numeric value in markdown");
         // Model without score must show dash, NOT "0.0000"
-        assert!(
-            md.contains('—'),
-            "missing score must show '—' in markdown, got:\n{md}"
-        );
+        assert!(md.contains('—'), "missing score must show '—' in markdown, got:\n{md}");
         assert!(
             !md.contains("0.0000") || md.contains("0.9500"),
             "markdown must not contain '0.0000' for missing scores"
@@ -316,10 +278,7 @@ mod tests {
 
         // Also test Display trait
         let display = format!("{lb}");
-        assert!(
-            display.contains('—'),
-            "missing score must show '—' in display output"
-        );
+        assert!(display.contains('—'), "missing score must show '—' in display output");
     }
 
     #[test]

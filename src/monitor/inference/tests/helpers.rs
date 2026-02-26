@@ -13,15 +13,13 @@ pub fn arb_linear_path() -> impl Strategy<Value = LinearPath> {
         -10.0f32..10.0,                               // prediction
         prop::option::of(-1.0f32..1.0),               // probability
     )
-        .prop_map(
-            |(contributions, intercept, logit, prediction, probability)| {
-                let mut path = LinearPath::new(contributions, intercept, logit, prediction);
-                if let Some(prob) = probability {
-                    path = path.with_probability(prob.abs().min(1.0));
-                }
-                path
-            },
-        )
+        .prop_map(|(contributions, intercept, logit, prediction, probability)| {
+            let mut path = LinearPath::new(contributions, intercept, logit, prediction);
+            if let Some(prob) = probability {
+                path = path.with_probability(prob.abs().min(1.0));
+            }
+            path
+        })
 }
 
 pub fn arb_tree_split() -> impl Strategy<Value = TreeSplit> {
@@ -47,11 +45,7 @@ pub fn arb_tree_path() -> impl Strategy<Value = TreePath> {
         prop::option::of(prop::collection::vec(0.0f32..1.0, 2..10)), // class_dist
     )
         .prop_map(|(splits, prediction, n_samples, class_distribution)| {
-            let leaf = LeafInfo {
-                prediction,
-                n_samples,
-                class_distribution,
-            };
+            let leaf = LeafInfo { prediction, n_samples, class_distribution };
             TreePath::new(splits, leaf)
         })
 }
@@ -65,9 +59,7 @@ pub fn arb_decision_trace() -> impl Strategy<Value = DecisionTrace<LinearPath>> 
         -10.0f32..10.0,  // output
         0..1_000_000u64, // latency_ns
     )
-        .prop_map(
-            |(path, timestamp_ns, sequence, input_hash, output, latency_ns)| {
-                DecisionTrace::new(timestamp_ns, sequence, input_hash, path, output, latency_ns)
-            },
-        )
+        .prop_map(|(path, timestamp_ns, sequence, input_hash, output, latency_ns)| {
+            DecisionTrace::new(timestamp_ns, sequence, input_hash, path, output, latency_ns)
+        })
 }

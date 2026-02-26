@@ -19,11 +19,7 @@ pub struct RegistryManifest {
 impl RegistryManifest {
     /// Create a new empty manifest
     pub fn new() -> Self {
-        Self {
-            models: Vec::new(),
-            last_sync: None,
-            version: "1.0".to_string(),
-        }
+        Self { models: Vec::new(), last_sync: None, version: "1.0".to_string() }
     }
 
     /// Add a model entry

@@ -10,10 +10,7 @@ use std::io::Write;
 use tempfile::NamedTempFile;
 
 fn make_batch(input: Vec<f32>, target: Vec<f32>) -> Batch {
-    Batch::new(
-        Tensor::from_vec(input, false),
-        Tensor::from_vec(target, false),
-    )
+    Batch::new(Tensor::from_vec(input, false), Tensor::from_vec(target, false))
 }
 
 #[test]
@@ -56,10 +53,7 @@ fn test_rebatch_batch_size_one() {
 
 #[test]
 fn test_rebatch_large_batch_size() {
-    let batches = vec![
-        make_batch(vec![1.0], vec![0.1]),
-        make_batch(vec![2.0], vec![0.2]),
-    ];
+    let batches = vec![make_batch(vec![1.0], vec![0.1]), make_batch(vec![2.0], vec![0.2])];
     let result = rebatch(batches, 100);
     assert_eq!(result.len(), 1); // All fit in one batch
 }
@@ -277,20 +271,16 @@ fn test_load_training_batches_json_file() {
 #[test]
 fn test_rebatch_preserves_data() {
     // 2 batches, each with input_dim=2, total 4 inputs = 2 examples
-    let batches = vec![
-        make_batch(vec![1.0, 2.0], vec![10.0]),
-        make_batch(vec![3.0, 4.0], vec![20.0]),
-    ];
+    let batches =
+        vec![make_batch(vec![1.0, 2.0], vec![10.0]), make_batch(vec![3.0, 4.0], vec![20.0])];
 
     // batch_size=1, 2 examples -> 2 batches
     let result = rebatch(batches, 1);
     assert_eq!(result.len(), 2);
 
     // Check data is preserved
-    let all_inputs: Vec<f32> = result
-        .iter()
-        .flat_map(|b| b.inputs.data().iter().copied())
-        .collect();
+    let all_inputs: Vec<f32> =
+        result.iter().flat_map(|b| b.inputs.data().iter().copied()).collect();
     assert_eq!(all_inputs, vec![1.0, 2.0, 3.0, 4.0]);
 }
 

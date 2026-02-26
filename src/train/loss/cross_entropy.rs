@@ -272,10 +272,7 @@ mod ce_contract_tests {
             let probs = CrossEntropyLoss::softmax(&x);
             for (j, &p) in probs.iter().enumerate() {
                 let log_p = p.ln();
-                assert!(
-                    log_p <= 1e-6,
-                    "FALSIFIED CE-002 case {i}[{j}]: log_softmax = {log_p} > 0"
-                );
+                assert!(log_p <= 1e-6, "FALSIFIED CE-002 case {i}[{j}]: log_softmax = {log_p} > 0");
             }
         }
     }
@@ -299,10 +296,7 @@ mod ce_contract_tests {
             let tgt = Tensor::from_vec(targets.clone(), false);
             let loss = ce.forward(&pred, &tgt);
             let val = loss.data()[0];
-            assert!(
-                val.is_finite(),
-                "FALSIFIED CE-003 case {i}: CE = {val} (not finite)"
-            );
+            assert!(val.is_finite(), "FALSIFIED CE-003 case {i}: CE = {val} (not finite)");
         }
     }
 

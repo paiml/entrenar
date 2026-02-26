@@ -8,27 +8,19 @@ use std::path::Path;
 
 /// Helper to validate that a YAML file can be loaded by the binary
 fn validate_yaml_file(filename: &str) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("examples/yaml")
-        .join(filename);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/yaml").join(filename);
 
     let spec = load_config(&path).unwrap_or_else(|e| panic!("Failed to load {filename}: {e}"));
 
     validate_config(&spec).unwrap_or_else(|e| panic!("Failed to validate {filename}: {e}"));
 
     // Basic QA checks
-    assert!(
-        !spec.model.path.as_os_str().is_empty(),
-        "{filename}: model path must be specified"
-    );
+    assert!(!spec.model.path.as_os_str().is_empty(), "{filename}: model path must be specified");
     assert!(
         !spec.data.train.as_os_str().is_empty(),
         "{filename}: data train path must be specified"
     );
-    assert!(
-        spec.data.batch_size > 0,
-        "{filename}: batch_size must be > 0"
-    );
+    assert!(spec.data.batch_size > 0, "{filename}: batch_size must be > 0");
     assert!(spec.training.epochs > 0, "{filename}: epochs must be > 0");
 }
 
@@ -289,9 +281,6 @@ mod validation {
             }
         }
 
-        assert!(
-            count >= 25,
-            "Expected at least 25 YAML files, found {count}"
-        );
+        assert!(count >= 25, "Expected at least 25 YAML files, found {count}");
     }
 }

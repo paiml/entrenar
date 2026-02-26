@@ -32,10 +32,7 @@ pub enum FineTuneMethod {
 impl FineTuneMethod {
     /// Create LoRA with default alpha = rank
     pub fn lora(rank: u32) -> Self {
-        Self::LoRA {
-            rank,
-            alpha: rank as f32,
-        }
+        Self::LoRA { rank, alpha: rank as f32 }
     }
 
     /// Create QLoRA with 4-bit quantization

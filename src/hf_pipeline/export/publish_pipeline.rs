@@ -48,9 +48,7 @@ pub fn quantize_export_publish(
     let files: Vec<(&Path, &str)> = vec![(&gguf_path, filename)];
 
     // Publish files (no ModelCard — we upload the README separately)
-    let mut publish_result = publisher
-        .publish(&files, None)
-        .map_err(QuantPublishError::Publish)?;
+    let mut publish_result = publisher.publish(&files, None).map_err(QuantPublishError::Publish)?;
 
     // Upload generated README if available
     if let Some(readme) = &export_result.readme {
@@ -60,10 +58,7 @@ pub fn quantize_export_publish(
         publish_result.model_card_generated = true;
     }
 
-    Ok(QuantPublishResult {
-        export: export_result,
-        publish: publish_result,
-    })
+    Ok(QuantPublishResult { export: export_result, publish: publish_result })
 }
 
 /// Errors from the quantize-export-publish pipeline

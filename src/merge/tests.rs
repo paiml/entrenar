@@ -13,10 +13,7 @@ fn create_model(name: &str, values: Vec<f32>) -> Model {
 
 /// Helper to create multiple models
 fn create_models(values_per_model: Vec<Vec<f32>>) -> Vec<Model> {
-    values_per_model
-        .into_iter()
-        .map(|values| create_model("w", values))
-        .collect()
+    values_per_model.into_iter().map(|values| create_model("w", values)).collect()
 }
 
 #[cfg(test)]
@@ -46,10 +43,7 @@ mod ties_properties {
         let r1_data = result1["w"].data();
         let r2_data = result2["w"].data();
         for (a, b) in r1_data.iter().zip(r2_data.iter()) {
-            assert!(
-                (a - b).abs() < 1e-5,
-                "TIES should be permutation-invariant: {a} != {b}"
-            );
+            assert!((a - b).abs() < 1e-5, "TIES should be permutation-invariant: {a} != {b}");
         }
     }
 
@@ -304,10 +298,7 @@ mod mod_coverage_tests {
         model.insert("other".to_string(), Tensor::from_vec(vec![1.0], false));
 
         let result = compute_deltas(&[model], &base);
-        assert!(matches!(
-            result,
-            Err(MergeError::IncompatibleArchitectures(_))
-        ));
+        assert!(matches!(result, Err(MergeError::IncompatibleArchitectures(_))));
     }
 
     #[test]
@@ -348,10 +339,7 @@ mod mod_coverage_tests {
     fn test_validate_models_empty() {
         let models: Vec<Model> = vec![];
         let result = validate_models(&models);
-        assert!(matches!(
-            result,
-            Err(MergeError::InsufficientModels { min: 1, got: 0 })
-        ));
+        assert!(matches!(result, Err(MergeError::InsufficientModels { min: 1, got: 0 })));
     }
 
     #[test]
@@ -361,10 +349,7 @@ mod mod_coverage_tests {
 
         let models = vec![model1, model2];
         let result = validate_models(&models);
-        assert!(matches!(
-            result,
-            Err(MergeError::IncompatibleArchitectures(_))
-        ));
+        assert!(matches!(result, Err(MergeError::IncompatibleArchitectures(_))));
     }
 
     #[test]

@@ -54,11 +54,8 @@ impl SystemMetrics {
         let Some(cpu_line) = stat.lines().next() else {
             return;
         };
-        let parts: Vec<u64> = cpu_line
-            .split_whitespace()
-            .skip(1)
-            .filter_map(|s| s.parse().ok())
-            .collect();
+        let parts: Vec<u64> =
+            cpu_line.split_whitespace().skip(1).filter_map(|s| s.parse().ok()).collect();
         if parts.len() < 4 {
             return;
         }
@@ -82,12 +79,8 @@ impl SystemMetrics {
         let mut total = 0u64;
         let mut available = 0u64;
         for line in meminfo.lines() {
-            let val = || {
-                line.split_whitespace()
-                    .nth(1)
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0u64)
-            };
+            let val =
+                || line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0u64);
             if line.starts_with("MemTotal:") {
                 total = val();
             } else if line.starts_with("MemAvailable:") {
@@ -137,13 +130,9 @@ impl MnistModel {
         let scale2 = (2.0 / 64.0_f32).sqrt();
 
         Self {
-            w1: (0..784 * 64)
-                .map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0)
-                .collect(),
+            w1: (0..784 * 64).map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0).collect(),
             b1: vec![0.0; 64],
-            w2: (0..64 * 10)
-                .map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0)
-                .collect(),
+            w2: (0..64 * 10).map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0).collect(),
             b2: vec![0.0; 10],
         }
     }
@@ -173,10 +162,7 @@ impl MnistModel {
         // Softmax
         let max_val = output.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = output.iter().map(|x| (x - max_val).exp()).sum();
-        output
-            .iter()
-            .map(|x| (x - max_val).exp() / exp_sum)
-            .collect()
+        output.iter().map(|x| (x - max_val).exp() / exp_sum).collect()
     }
 
     /// Compute cross-entropy loss and gradients
@@ -454,12 +440,10 @@ fn evaluate_and_save(
     let model_path = "/tmp/mnist_model.apr";
     println!("Saving model to {model_path}...");
 
-    let save_opts = SaveOptions::default()
-        .with_name("MNIST Classifier")
-        .with_description(format!(
-            "2-layer neural network (784->64->10) trained on MNIST digits. \
+    let save_opts = SaveOptions::default().with_name("MNIST Classifier").with_description(format!(
+        "2-layer neural network (784->64->10) trained on MNIST digits. \
              Learning rate: {lr}, Epochs: {epoch}, Final accuracy: {final_accuracy:.1}%"
-        ));
+    ));
 
     match save(model, ModelType::NeuralSequential, model_path, save_opts) {
         Ok(()) => println!("  Model saved successfully!"),
@@ -599,11 +583,8 @@ fn extract_data(dataset: &alimentar::ArrowDataset) -> (Vec<Vec<f32>>, Vec<usize>
         images.push(pixels);
 
         // Extract label
-        let label_arr = batch
-            .column(784)
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .expect("Expected Int32Array");
+        let label_arr =
+            batch.column(784).as_any().downcast_ref::<Int32Array>().expect("Expected Int32Array");
         labels.push(label_arr.value(row) as usize);
     }
 

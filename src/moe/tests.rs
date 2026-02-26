@@ -54,10 +54,7 @@ fn test_expert_relu_activation() {
     let input = ndarray::Array1::ones(4);
     let output = expert.forward(&input);
     for &v in output.iter() {
-        assert!(
-            (v - 42.0).abs() < 1e-5,
-            "Output should equal b2 when ReLU zeros hidden layer"
-        );
+        assert!((v - 42.0).abs() < 1e-5, "Output should equal b2 when ReLU zeros hidden layer");
     }
 }
 
@@ -80,10 +77,7 @@ fn test_softmax_rows_sum_to_one() {
     let probs = softmax_rows(&logits);
     for row in probs.rows() {
         let sum: f32 = row.iter().sum();
-        assert!(
-            (sum - 1.0).abs() < 1e-5,
-            "Softmax row sum should be 1.0, got {sum}"
-        );
+        assert!((sum - 1.0).abs() < 1e-5, "Softmax row sum should be 1.0, got {sum}");
     }
 }
 
@@ -102,12 +96,7 @@ fn test_softmax_max_gets_highest_prob() {
     logits[[0, 2]] = 10.0; // Expert 2 has much higher logit
     let probs = softmax_rows(&logits);
     let row = probs.row(0);
-    let max_idx = row
-        .iter()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-        .unwrap()
-        .0;
+    let max_idx = row.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0;
     assert_eq!(max_idx, 2, "Highest logit should get highest probability");
 }
 
@@ -164,43 +153,26 @@ fn test_top_k_router_selects_k_experts() {
 
     assert_eq!(result.expert_indices.len(), 4, "One assignment per token");
     for indices in &result.expert_indices {
-        assert_eq!(
-            indices.len(),
-            2,
-            "Each token must be routed to top_k=2 experts"
-        );
+        assert_eq!(indices.len(), 2, "Each token must be routed to top_k=2 experts");
     }
 }
 
 #[test]
 fn test_top_k_router_weights_sum_to_one() {
-    let config = RouterConfig {
-        input_dim: 16,
-        num_experts: 4,
-        top_k: 2,
-        capacity_factor: 2.0,
-    };
+    let config = RouterConfig { input_dim: 16, num_experts: 4, top_k: 2, capacity_factor: 2.0 };
     let router = TopKRouter::new(&config);
     let input = Array2::ones((8, 16));
     let result = router.route(&input);
 
     for weights in &result.expert_weights {
         let sum: f32 = weights.iter().sum();
-        assert!(
-            (sum - 1.0).abs() < 1e-4,
-            "Routing weights must sum to 1.0, got {sum}"
-        );
+        assert!((sum - 1.0).abs() < 1e-4, "Routing weights must sum to 1.0, got {sum}");
     }
 }
 
 #[test]
 fn test_top_k_router_deterministic() {
-    let config = RouterConfig {
-        input_dim: 8,
-        num_experts: 4,
-        top_k: 2,
-        capacity_factor: 2.0,
-    };
+    let config = RouterConfig { input_dim: 8, num_experts: 4, top_k: 2, capacity_factor: 2.0 };
     let router = TopKRouter::new(&config);
     let input = Array2::from_shape_fn((4, 8), |(i, j)| (i + j) as f32 * 0.1);
 
@@ -215,12 +187,7 @@ fn test_top_k_router_deterministic() {
 
 #[test]
 fn test_top_k_router_routing_probs_shape() {
-    let config = RouterConfig {
-        input_dim: 8,
-        num_experts: 6,
-        top_k: 2,
-        capacity_factor: 2.0,
-    };
+    let config = RouterConfig { input_dim: 8, num_experts: 6, top_k: 2, capacity_factor: 2.0 };
     let router = TopKRouter::new(&config);
     let input = Array2::ones((5, 8));
     let result = router.route(&input);
@@ -239,12 +206,7 @@ fn test_capacity_enforcement_limits_expert_usage() {
     // capacity = ceil(1.0 * 8 * 1 / 4) = 2
     // So each expert can handle at most 2 tokens.
     // Use varied input so tokens naturally want different experts.
-    let config = RouterConfig {
-        input_dim: 8,
-        num_experts: 4,
-        top_k: 1,
-        capacity_factor: 1.0,
-    };
+    let config = RouterConfig { input_dim: 8, num_experts: 4, top_k: 1, capacity_factor: 1.0 };
     let router = TopKRouter::new(&config);
     let input = Array2::from_shape_fn((8, 8), |(i, j)| ((i * 8 + j) as f32 * 1.23).sin());
     let result = router.route(&input);
@@ -274,12 +236,7 @@ fn test_capacity_enforcement_limits_expert_usage() {
 
 #[test]
 fn test_noisy_router_returns_valid_results() {
-    let config = RouterConfig {
-        input_dim: 8,
-        num_experts: 4,
-        top_k: 2,
-        capacity_factor: 2.0,
-    };
+    let config = RouterConfig { input_dim: 8, num_experts: 4, top_k: 2, capacity_factor: 2.0 };
     let router = NoisyTopKRouter::new(&config, 0.1);
     let input = Array2::ones((4, 8));
     let result = router.route(&input);
@@ -295,22 +252,14 @@ fn test_noisy_router_returns_valid_results() {
 
 #[test]
 fn test_noisy_router_weights_sum_to_one() {
-    let config = RouterConfig {
-        input_dim: 8,
-        num_experts: 4,
-        top_k: 2,
-        capacity_factor: 2.0,
-    };
+    let config = RouterConfig { input_dim: 8, num_experts: 4, top_k: 2, capacity_factor: 2.0 };
     let router = NoisyTopKRouter::new(&config, 0.5);
     let input = Array2::from_shape_fn((10, 8), |(i, j)| (i + j) as f32);
     let result = router.route(&input);
 
     for weights in &result.expert_weights {
         let sum: f32 = weights.iter().sum();
-        assert!(
-            (sum - 1.0).abs() < 1e-4,
-            "Noisy router weights must sum to 1.0, got {sum}"
-        );
+        assert!((sum - 1.0).abs() < 1e-4, "Noisy router weights must sum to 1.0, got {sum}");
     }
 }
 
@@ -327,10 +276,7 @@ fn test_expert_load_fractions_uniform() {
     let fractions = expert_load_fractions(&probs);
 
     for &f in fractions.iter() {
-        assert!(
-            (f - 0.25).abs() < 1e-5,
-            "Uniform probs should give equal load fractions"
-        );
+        assert!((f - 0.25).abs() < 1e-5, "Uniform probs should give equal load fractions");
     }
 }
 
@@ -342,15 +288,9 @@ fn test_expert_load_fractions_skewed() {
         probs[[i, 0]] = 1.0;
     }
     let fractions = expert_load_fractions(&probs);
-    assert!(
-        (fractions[0] - 1.0).abs() < 1e-5,
-        "Expert 0 should have all the load"
-    );
+    assert!((fractions[0] - 1.0).abs() < 1e-5, "Expert 0 should have all the load");
     for i in 1..4 {
-        assert!(
-            fractions[i].abs() < 1e-5,
-            "Expert {i} should have zero load"
-        );
+        assert!(fractions[i].abs() < 1e-5, "Expert {i} should have zero load");
     }
 }
 
@@ -422,10 +362,7 @@ fn test_moe_layer_forward_deterministic() {
     let (out1, _) = layer.forward(&input);
     let (out2, _) = layer.forward(&input);
 
-    assert_eq!(
-        out1, out2,
-        "Deterministic MoE should produce identical outputs"
-    );
+    assert_eq!(out1, out2, "Deterministic MoE should produce identical outputs");
 }
 
 #[test]
@@ -520,10 +457,7 @@ fn test_balance_loss_skewed_exceeds_one() {
 
     let loss = layer.balance_loss(&routing);
     // f = [1, 0, 0, 0], P = [1, 0, 0, 0], loss = 4 * (1*1) = 4.0
-    assert!(
-        loss > 1.0,
-        "Skewed routing should produce loss > 1.0, got {loss}"
-    );
+    assert!(loss > 1.0, "Skewed routing should produce loss > 1.0, got {loss}");
     assert!(
         (loss - 4.0).abs() < 1e-4,
         "All-on-one routing with 4 experts should give loss = 4.0, got {loss}"
@@ -549,10 +483,7 @@ fn test_balance_loss_empty_batch() {
     };
 
     let loss = layer.balance_loss(&routing);
-    assert!(
-        (loss - 0.0).abs() < 1e-6,
-        "Empty batch should give zero loss, got {loss}"
-    );
+    assert!((loss - 0.0).abs() < 1e-6, "Empty batch should give zero loss, got {loss}");
 }
 
 #[test]
@@ -603,12 +534,7 @@ fn test_moe_layer_noisy_router() {
 
 #[test]
 fn test_router_enum_deterministic() {
-    let config = RouterConfig {
-        input_dim: 8,
-        num_experts: 4,
-        top_k: 2,
-        capacity_factor: 2.0,
-    };
+    let config = RouterConfig { input_dim: 8, num_experts: 4, top_k: 2, capacity_factor: 2.0 };
     let router = Router::Deterministic(TopKRouter::new(&config));
     let input = Array2::ones((4, 8));
     let result = router.route(&input);
@@ -617,12 +543,7 @@ fn test_router_enum_deterministic() {
 
 #[test]
 fn test_router_enum_noisy() {
-    let config = RouterConfig {
-        input_dim: 8,
-        num_experts: 4,
-        top_k: 2,
-        capacity_factor: 2.0,
-    };
+    let config = RouterConfig { input_dim: 8, num_experts: 4, top_k: 2, capacity_factor: 2.0 };
     let router = Router::Noisy(NoisyTopKRouter::new(&config, 0.5));
     let input = Array2::ones((4, 8));
     let result = router.route(&input);

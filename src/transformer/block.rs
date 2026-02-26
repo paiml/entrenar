@@ -73,14 +73,7 @@ impl TransformerBlock {
 
         let ffn = FeedForward::from_params(config, params, &format!("{prefix}.mlp"))?;
 
-        Some(Self {
-            config: config.clone(),
-            layer_idx,
-            input_norm,
-            self_attn,
-            post_attn_norm,
-            ffn,
-        })
+        Some(Self { config: config.clone(), layer_idx, input_norm, self_attn, post_attn_norm, ffn })
     }
 
     /// Forward pass
@@ -100,9 +93,7 @@ impl TransformerBlock {
         let residual1 = add(x, &attn_out);
 
         // Pre-norm + FFN + residual
-        let norm2 = self
-            .post_attn_norm
-            .forward_batched(&residual1, seq_len, hidden_size);
+        let norm2 = self.post_attn_norm.forward_batched(&residual1, seq_len, hidden_size);
         let ffn_out = self.ffn.forward(&norm2, seq_len);
         add(&residual1, &ffn_out)
     }

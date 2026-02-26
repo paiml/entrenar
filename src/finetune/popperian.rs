@@ -216,11 +216,7 @@ impl PopperianQA {
             (self.d2_comments_present, 2),
             (self.d3_proptest_strategies_clear, 1),
         ];
-        weighted
-            .iter()
-            .filter(|(passed, _)| *passed)
-            .map(|(_, pts)| pts)
-            .sum()
+        weighted.iter().filter(|(passed, _)| *passed).map(|(_, pts)| pts).sum()
     }
 
     /// Get quality grade
@@ -301,37 +297,13 @@ impl PopperianQA {
     pub fn report(&self) -> String {
         let mut out = String::new();
         report_header(&mut out, self);
-        report_section(
-            &mut out,
-            "## Reproducibility (20 pts)\n",
-            &self.reproducibility_items(),
-        );
-        report_section(
-            &mut out,
-            "\n## Compilation (20 pts)\n",
-            &self.compilation_items(),
-        );
-        report_section(
-            &mut out,
-            "\n## Correctness (20 pts)\n",
-            &self.correctness_items(),
-        );
+        report_section(&mut out, "## Reproducibility (20 pts)\n", &self.reproducibility_items());
+        report_section(&mut out, "\n## Compilation (20 pts)\n", &self.compilation_items());
+        report_section(&mut out, "\n## Correctness (20 pts)\n", &self.correctness_items());
         report_section(&mut out, "\n## Coverage (15 pts)\n", &self.coverage_items());
-        report_section(
-            &mut out,
-            "\n## Efficiency (10 pts)\n",
-            &self.efficiency_items(),
-        );
-        report_section(
-            &mut out,
-            "\n## Edge Cases (10 pts)\n",
-            &self.edge_case_items(),
-        );
-        report_section(
-            &mut out,
-            "\n## Documentation (5 pts)\n",
-            &self.documentation_items(),
-        );
+        report_section(&mut out, "\n## Efficiency (10 pts)\n", &self.efficiency_items());
+        report_section(&mut out, "\n## Edge Cases (10 pts)\n", &self.edge_case_items());
+        report_section(&mut out, "\n## Documentation (5 pts)\n", &self.documentation_items());
         out
     }
 
@@ -392,10 +364,7 @@ impl PopperianQA {
         vec![
             (self.d1_test_names_descriptive, "D1: Descriptive test names"),
             (self.d2_comments_present, "D2: Comments present"),
-            (
-                self.d3_proptest_strategies_clear,
-                "D3: Clear proptest strategies",
-            ),
+            (self.d3_proptest_strategies_clear, "D3: Clear proptest strategies"),
         ]
     }
 }
@@ -405,11 +374,7 @@ fn report_header(out: &mut String, qa: &PopperianQA) {
     out.push_str("# Popperian Falsification QA Report\n\n");
     out.push_str(&format!("**Score:** {}/100\n", qa.score()));
     out.push_str(&format!("**Grade:** {}\n", qa.grade()));
-    out.push_str(&format!(
-        "**Items Passed:** {}/{}\n\n",
-        qa.passed_count(),
-        qa.total_items()
-    ));
+    out.push_str(&format!("**Items Passed:** {}/{}\n\n", qa.passed_count(), qa.total_items()));
 }
 
 /// Write a report section with heading and checklist items.

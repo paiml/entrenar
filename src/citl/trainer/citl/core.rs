@@ -55,10 +55,7 @@ impl DecisionCITL {
         // Update decision statistics
         let is_success = outcome.is_success();
         for trace in &traces {
-            let stats = self
-                .decision_stats
-                .entry(trace.decision_type.clone())
-                .or_default();
+            let stats = self.decision_stats.entry(trace.decision_type.clone()).or_default();
             if is_success {
                 stats.success_count += 1;
             } else {
@@ -137,9 +134,7 @@ impl DecisionCITL {
 
         // Sort by suspiciousness
         suspicious.sort_by(|a, b| {
-            b.suspiciousness
-                .partial_cmp(&a.suspiciousness)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            b.suspiciousness.partial_cmp(&a.suspiciousness).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Build dependency chain if enabled
@@ -148,10 +143,8 @@ impl DecisionCITL {
         }
 
         // Get fix suggestions from pattern store
-        let decision_context: Vec<String> = suspicious
-            .iter()
-            .map(|s| s.decision.decision_type.clone())
-            .collect();
+        let decision_context: Vec<String> =
+            suspicious.iter().map(|s| s.decision.decision_type.clone()).collect();
 
         let fix_suggestions = self.pattern_store.suggest_fix(
             error_code,

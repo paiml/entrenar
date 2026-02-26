@@ -15,8 +15,8 @@
 //! let mv = registry.register_model("llama-7b", "1.0.0", "/models/llama-7b-v1");
 //! assert_eq!(mv.stage, Stage::Dev);
 //!
-//! registry.promote("llama-7b", "1.0.0", Stage::Staging).unwrap();
-//! registry.promote("llama-7b", "1.0.0", Stage::Production).unwrap();
+//! registry.promote("llama-7b", "1.0.0", Stage::Staging).expect("promote to staging");
+//! registry.promote("llama-7b", "1.0.0", Stage::Production).expect("promote to production");
 //! ```
 
 #[cfg(test)]
@@ -97,12 +97,7 @@ pub enum StagingError {
     /// The requested stage transition is not allowed.
     /// Only single-step transitions (adjacent stages) are permitted.
     #[error("invalid transition from {from} to {to} for {name} v{version}")]
-    InvalidTransition {
-        name: String,
-        version: String,
-        from: Stage,
-        to: Stage,
-    },
+    InvalidTransition { name: String, version: String, from: Stage, to: Stage },
 
     /// A model with this name and version already exists.
     #[error("model already exists: {name} v{version}")]
@@ -126,9 +121,7 @@ pub struct StagingRegistry {
 impl StagingRegistry {
     /// Create an empty staging registry.
     pub fn new() -> Self {
-        Self {
-            models: HashMap::new(),
-        }
+        Self { models: HashMap::new() }
     }
 
     /// Register a new model version at the Dev stage.
@@ -160,13 +153,10 @@ impl StagingRegistry {
     /// Skipping stages (e.g., Dev -> Production) is rejected.
     pub fn promote(&mut self, name: &str, version: &str, target: Stage) -> Result<ModelVersion> {
         let key = (name.to_string(), version.to_string());
-        let mv = self
-            .models
-            .get_mut(&key)
-            .ok_or_else(|| StagingError::NotFound {
-                name: name.to_string(),
-                version: version.to_string(),
-            })?;
+        let mv = self.models.get_mut(&key).ok_or_else(|| StagingError::NotFound {
+            name: name.to_string(),
+            version: version.to_string(),
+        })?;
 
         let current_ord = mv.stage.ordinal();
         let target_ord = target.ordinal();
@@ -195,13 +185,10 @@ impl StagingRegistry {
     /// Skipping stages (e.g., Production -> Dev) is rejected.
     pub fn demote(&mut self, name: &str, version: &str, target: Stage) -> Result<ModelVersion> {
         let key = (name.to_string(), version.to_string());
-        let mv = self
-            .models
-            .get_mut(&key)
-            .ok_or_else(|| StagingError::NotFound {
-                name: name.to_string(),
-                version: version.to_string(),
-            })?;
+        let mv = self.models.get_mut(&key).ok_or_else(|| StagingError::NotFound {
+            name: name.to_string(),
+            version: version.to_string(),
+        })?;
 
         let current_ord = mv.stage.ordinal();
         let target_ord = target.ordinal();

@@ -6,11 +6,7 @@ use crate::config::BundleArgs;
 use crate::research::{ResearchArtifact, RoCrate};
 
 pub fn run_research_bundle(args: BundleArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Bundling RO-Crate: {}", args.output.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Bundling RO-Crate: {}", args.output.display()));
 
     // Load artifact
     let yaml = std::fs::read_to_string(&args.artifact)
@@ -42,16 +38,10 @@ pub fn run_research_bundle(args: BundleArgs, level: LogLevel) -> Result<(), Stri
         log(
             level,
             LogLevel::Normal,
-            &format!(
-                "RO-Crate ZIP created: {} ({} bytes)",
-                zip_path.display(),
-                zip_data.len()
-            ),
+            &format!("RO-Crate ZIP created: {} ({} bytes)", zip_path.display(), zip_data.len()),
         );
     } else {
-        crate_pkg
-            .to_directory()
-            .map_err(|e| format!("Failed to create directory: {e}"))?;
+        crate_pkg.to_directory().map_err(|e| format!("Failed to create directory: {e}"))?;
 
         log(
             level,

@@ -202,12 +202,7 @@ impl QwenWithQLoRA {
             })
             .collect();
 
-        Self {
-            base_model,
-            qlora_adapters: adapters,
-            rank,
-            alpha,
-        }
+        Self { base_model, qlora_adapters: adapters, rank, alpha }
     }
 
     pub fn trainable_parameters(&mut self) -> Vec<&mut Tensor> {
@@ -298,11 +293,7 @@ impl PopperianQA {
             (self.d2_comments_present, 2),
             (self.d3_proptest_strategies_clear, 1),
         ];
-        weighted
-            .iter()
-            .filter(|(passed, _)| *passed)
-            .map(|(_, pts)| pts)
-            .sum()
+        weighted.iter().filter(|(passed, _)| *passed).map(|(_, pts)| pts).sum()
     }
 
     pub fn print_report(&self) {
@@ -313,10 +304,7 @@ impl PopperianQA {
         if self.score() >= 90 {
             println!("✅ PASSED: Specification met ({}/100).", self.score());
         } else {
-            println!(
-                "❌ FAILED: Specification NOT met ({}/100, need 90+).",
-                self.score()
-            );
+            println!("❌ FAILED: Specification NOT met ({}/100, need 90+).", self.score());
         }
     }
 }
@@ -512,10 +500,7 @@ fn run_verification(qa: &mut PopperianQA, args: &Args, state_writer: &TrainingSt
 
     qa.print_report();
 
-    println!(
-        "\n📺 Training state saved to: {}",
-        state_writer.state_path().display()
-    );
+    println!("\n📺 Training state saved to: {}", state_writer.state_path().display());
 }
 
 /// Full training pipeline: initialize model, optimizer, run training loop,
@@ -525,10 +510,7 @@ fn run_training(args: &Args) {
     println!("========================================");
     println!("Configuration:");
     println!("  Model: {}", args.model);
-    println!(
-        "  Dataset: {} (Specialized Corpus - Option B)",
-        args.dataset
-    );
+    println!("  Dataset: {} (Specialized Corpus - Option B)", args.dataset);
     println!("  Rank: {}", args.lora_rank);
     println!("  Seed: {}", args.seed);
     println!("  Proptest Ratio: 25%");
@@ -559,10 +541,7 @@ fn run_training(args: &Args) {
 
     // 2. Apply QLoRA
     let mut model = QwenWithQLoRA::from_base_model(base_model, args.lora_rank, 32.0);
-    println!(
-        "🔗 Applied QLoRA adapters (rank={}, alpha=32.0)",
-        args.lora_rank
-    );
+    println!("🔗 Applied QLoRA adapters (rank={}, alpha=32.0)", args.lora_rank);
     println!("   - Note: Training 0.5B model per Popperian 'Simplest Theory' Advice");
 
     // 3. Optimizer

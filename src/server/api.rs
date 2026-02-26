@@ -53,10 +53,7 @@ impl TrackingServer {
 
         // Add CORS if enabled
         if self.config.cors_enabled {
-            let cors = CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any);
+            let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any);
             app = app.layer(cors);
         }
 
@@ -72,9 +69,7 @@ impl TrackingServer {
 
         println!("🚀 Entrenar tracking server running on http://{addr}");
 
-        axum::serve(listener, self.router())
-            .await
-            .map_err(ServerError::Io)?;
+        axum::serve(listener, self.router()).await.map_err(ServerError::Io)?;
 
         Ok(())
     }
@@ -117,12 +112,7 @@ mod tests {
         let app = server.router();
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -156,12 +146,7 @@ mod tests {
         let app = server.router();
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/v1/experiments")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/api/v1/experiments").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -191,11 +176,7 @@ mod tests {
         let server = test_server();
 
         // First create an experiment
-        let exp = server
-            .state
-            .storage
-            .create_experiment("test", None, None)
-            .unwrap();
+        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
 
         let app = server.router();
         let body = format!(r#"{{"experiment_id": "{}"}}"#, exp.id);
@@ -220,16 +201,8 @@ mod tests {
         let server = test_server();
 
         // Create experiment and run
-        let exp = server
-            .state
-            .storage
-            .create_experiment("test", None, None)
-            .unwrap();
-        let run = server
-            .state
-            .storage
-            .create_run(&exp.id, None, None)
-            .unwrap();
+        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
+        let run = server.state.storage.create_run(&exp.id, None, None).unwrap();
 
         let app = server.router();
         let body = r#"{"params": {"lr": 0.001, "batch_size": 32}}"#;
@@ -254,16 +227,8 @@ mod tests {
         let server = test_server();
 
         // Create experiment and run
-        let exp = server
-            .state
-            .storage
-            .create_experiment("test", None, None)
-            .unwrap();
-        let run = server
-            .state
-            .storage
-            .create_run(&exp.id, None, None)
-            .unwrap();
+        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
+        let run = server.state.storage.create_run(&exp.id, None, None).unwrap();
 
         let app = server.router();
         let body = r#"{"metrics": {"loss": 0.5, "accuracy": 0.9}, "step": 100}"#;
@@ -288,16 +253,8 @@ mod tests {
         let server = test_server();
 
         // Create experiment and run
-        let exp = server
-            .state
-            .storage
-            .create_experiment("test", None, None)
-            .unwrap();
-        let run = server
-            .state
-            .storage
-            .create_run(&exp.id, None, None)
-            .unwrap();
+        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
+        let run = server.state.storage.create_run(&exp.id, None, None).unwrap();
 
         let app = server.router();
         let body = r#"{"status": "completed"}"#;

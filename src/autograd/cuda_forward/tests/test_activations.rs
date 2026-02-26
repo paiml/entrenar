@@ -62,10 +62,7 @@ fn test_softmax_forward_basic() {
     output.copy_to_host(&mut result).unwrap();
     // Softmax sums to 1
     let sum: f32 = result.iter().sum();
-    assert!(
-        (sum - 1.0).abs() < 1e-4,
-        "Softmax should sum to 1, got {sum}"
-    );
+    assert!((sum - 1.0).abs() < 1e-4, "Softmax should sum to 1, got {sum}");
     // Last element should be largest (exp(4) > exp(3) > ...)
     assert!(result[3] > result[2] && result[2] > result[1] && result[1] > result[0]);
 }
@@ -98,23 +95,11 @@ fn test_gelu_forward_basic() {
     let mut result = vec![0.0f32; n as usize];
     output.copy_to_host(&mut result).unwrap();
     // GELU(0) = 0
-    assert!(
-        (result[1]).abs() < 1e-4,
-        "GELU(0) should be 0, got {}",
-        result[1]
-    );
+    assert!((result[1]).abs() < 1e-4, "GELU(0) should be 0, got {}", result[1]);
     // GELU(-1) ≈ -0.159
-    assert!(
-        result[0] < 0.0 && result[0] > -0.2,
-        "GELU(-1) should be ~-0.159, got {}",
-        result[0]
-    );
+    assert!(result[0] < 0.0 && result[0] > -0.2, "GELU(-1) should be ~-0.159, got {}", result[0]);
     // GELU(1) ≈ 0.841
-    assert!(
-        result[2] > 0.8 && result[2] < 0.9,
-        "GELU(1) should be ~0.841, got {}",
-        result[2]
-    );
+    assert!(result[2] > 0.8 && result[2] < 0.9, "GELU(1) should be ~0.841, got {}", result[2]);
 }
 
 #[test]
@@ -145,24 +130,12 @@ fn test_silu_forward_basic() {
     let mut result = vec![0.0f32; n as usize];
     output.copy_to_host(&mut result).unwrap();
     // SiLU(0) = 0
-    assert!(
-        (result[1]).abs() < 1e-4,
-        "SiLU(0) should be 0, got {}",
-        result[1]
-    );
+    assert!((result[1]).abs() < 1e-4, "SiLU(0) should be 0, got {}", result[1]);
     // SiLU(x) = x * sigmoid(x)
     // SiLU(-1) ≈ -0.269
-    assert!(
-        result[0] < 0.0 && result[0] > -0.3,
-        "SiLU(-1) should be ~-0.269, got {}",
-        result[0]
-    );
+    assert!(result[0] < 0.0 && result[0] > -0.3, "SiLU(-1) should be ~-0.269, got {}", result[0]);
     // SiLU(1) ≈ 0.731
-    assert!(
-        result[2] > 0.7 && result[2] < 0.8,
-        "SiLU(1) should be ~0.731, got {}",
-        result[2]
-    );
+    assert!(result[2] > 0.7 && result[2] < 0.8, "SiLU(1) should be ~0.731, got {}", result[2]);
 }
 
 #[test]
@@ -229,11 +202,7 @@ fn test_gelu_forward_mutation_killing() {
 
     // GELU(x) ≈ x for large positive x, but not exactly
     // GELU(1) ≈ 0.841, not 1.0
-    assert!(
-        (result[0] - 0.841).abs() < 0.01,
-        "GELU(1) should be ~0.841, got {}",
-        result[0]
-    );
+    assert!((result[0] - 0.841).abs() < 0.01, "GELU(1) should be ~0.841, got {}", result[0]);
 }
 
 #[test]
@@ -267,9 +236,5 @@ fn test_silu_forward_mutation_killing() {
 
     // SiLU(x) = x * sigmoid(x)
     // SiLU(1) = 1 * sigmoid(1) ≈ 1 * 0.731 ≈ 0.731
-    assert!(
-        (result[0] - 0.731).abs() < 0.01,
-        "SiLU(1) should be ~0.731, got {}",
-        result[0]
-    );
+    assert!((result[0] - 0.731).abs() < 0.01, "SiLU(1) should be ~0.731, got {}", result[0]);
 }

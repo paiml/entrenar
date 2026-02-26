@@ -143,14 +143,8 @@ fn test_metric_higher_is_better_all_variants() {
 
 #[test]
 fn test_metric_display_all_variants() {
-    assert_eq!(
-        format!("{}", Metric::Precision(Average::Macro)),
-        "Precision(Macro)"
-    );
-    assert_eq!(
-        format!("{}", Metric::Recall(Average::Micro)),
-        "Recall(Micro)"
-    );
+    assert_eq!(format!("{}", Metric::Precision(Average::Macro)), "Precision(Macro)");
+    assert_eq!(format!("{}", Metric::Recall(Average::Micro)), "Recall(Micro)");
     assert_eq!(format!("{}", Metric::MSE), "MSE");
     assert_eq!(format!("{}", Metric::R2), "R²");
     assert_eq!(format!("{}", Metric::Silhouette), "Silhouette");
@@ -189,18 +183,9 @@ fn test_metric_display_generative() {
     assert_eq!(format!("{}", Metric::WER), "WER");
     assert_eq!(format!("{}", Metric::RTFx), "RTFx");
     assert_eq!(format!("{}", Metric::BLEU), "BLEU");
-    assert_eq!(
-        format!("{}", Metric::ROUGE(RougeVariant::Rouge1)),
-        "ROUGE-1"
-    );
-    assert_eq!(
-        format!("{}", Metric::ROUGE(RougeVariant::Rouge2)),
-        "ROUGE-2"
-    );
-    assert_eq!(
-        format!("{}", Metric::ROUGE(RougeVariant::RougeL)),
-        "ROUGE-L"
-    );
+    assert_eq!(format!("{}", Metric::ROUGE(RougeVariant::Rouge1)), "ROUGE-1");
+    assert_eq!(format!("{}", Metric::ROUGE(RougeVariant::Rouge2)), "ROUGE-2");
+    assert_eq!(format!("{}", Metric::ROUGE(RougeVariant::RougeL)), "ROUGE-L");
     assert_eq!(format!("{}", Metric::Perplexity), "Perplexity");
     assert_eq!(format!("{}", Metric::MMLUAccuracy), "MMLU");
     assert_eq!(format!("{}", Metric::PassAtK(1)), "pass@1");
@@ -238,14 +223,8 @@ fn test_metric_generative_equality() {
     assert_ne!(Metric::PassAtK(1), Metric::PassAtK(10));
     assert_eq!(Metric::NDCGAtK(5), Metric::NDCGAtK(5));
     assert_ne!(Metric::NDCGAtK(5), Metric::NDCGAtK(10));
-    assert_eq!(
-        Metric::ROUGE(RougeVariant::Rouge1),
-        Metric::ROUGE(RougeVariant::Rouge1)
-    );
-    assert_ne!(
-        Metric::ROUGE(RougeVariant::Rouge1),
-        Metric::ROUGE(RougeVariant::Rouge2)
-    );
+    assert_eq!(Metric::ROUGE(RougeVariant::Rouge1), Metric::ROUGE(RougeVariant::Rouge1));
+    assert_ne!(Metric::ROUGE(RougeVariant::Rouge1), Metric::ROUGE(RougeVariant::Rouge2));
 }
 
 #[test]

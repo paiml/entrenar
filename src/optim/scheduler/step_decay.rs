@@ -23,12 +23,7 @@ impl StepDecayLR {
     /// * `step_size` - Decay LR every step_size epochs
     /// * `gamma` - Multiplicative factor (e.g., 0.1 for 10x reduction)
     pub fn new(lr_initial: f32, step_size: usize, gamma: f32) -> Self {
-        Self {
-            lr_initial,
-            gamma,
-            step_size,
-            current_epoch: 0,
-        }
+        Self { lr_initial, gamma, step_size, current_epoch: 0 }
     }
 
     /// Apply the current learning rate to an optimizer

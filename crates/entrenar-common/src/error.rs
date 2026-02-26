@@ -25,11 +25,7 @@ pub enum EntrenarError {
 
     /// Configuration value is invalid.
     #[error("Invalid configuration value for '{field}': {message}\n  → {suggestion}")]
-    ConfigValue {
-        field: String,
-        message: String,
-        suggestion: String,
-    },
+    ConfigValue { field: String, message: String, suggestion: String },
 
     /// Model file not found.
     #[error("Model file not found: {path}\n  → Download the model or check the path")]
@@ -49,10 +45,7 @@ pub enum EntrenarError {
 
     /// Invalid tensor shape.
     #[error("Tensor shape mismatch: expected {expected:?}, got {actual:?}\n  → Check model architecture compatibility")]
-    ShapeMismatch {
-        expected: Vec<usize>,
-        actual: Vec<usize>,
-    },
+    ShapeMismatch { expected: Vec<usize>, actual: Vec<usize> },
 
     /// IO error with context.
     #[error("IO error: {context}\n  Cause: {source}")]
@@ -78,10 +71,7 @@ pub enum EntrenarError {
 impl EntrenarError {
     /// Create an IO error with context.
     pub fn io(context: impl Into<String>, source: std::io::Error) -> Self {
-        Self::Io {
-            context: context.into(),
-            source,
-        }
+        Self::Io { context: context.into(), source }
     }
 
     /// Check if this error is user-recoverable.
@@ -126,10 +116,7 @@ mod tests {
     fn test_error_codes_are_unique() {
         let errors = vec![
             EntrenarError::ConfigNotFound { path: "".into() },
-            EntrenarError::ConfigParsing {
-                path: "".into(),
-                message: "".into(),
-            },
+            EntrenarError::ConfigParsing { path: "".into(), message: "".into() },
             EntrenarError::ConfigValue {
                 field: "".into(),
                 message: "".into(),
@@ -138,14 +125,8 @@ mod tests {
             EntrenarError::ModelNotFound { path: "".into() },
             EntrenarError::UnsupportedFormat { format: "".into() },
             EntrenarError::HuggingFace { message: "".into() },
-            EntrenarError::InsufficientMemory {
-                required: 0.0,
-                available: 0.0,
-            },
-            EntrenarError::ShapeMismatch {
-                expected: vec![],
-                actual: vec![],
-            },
+            EntrenarError::InsufficientMemory { required: 0.0, available: 0.0 },
+            EntrenarError::ShapeMismatch { expected: vec![], actual: vec![] },
             EntrenarError::Serialization { message: "".into() },
             EntrenarError::Cancelled,
             EntrenarError::Internal { message: "".into() },
@@ -168,10 +149,7 @@ mod tests {
 
     #[test]
     fn test_error_messages_are_actionable() {
-        let err = EntrenarError::InsufficientMemory {
-            required: 32.0,
-            available: 16.0,
-        };
+        let err = EntrenarError::InsufficientMemory { required: 32.0, available: 16.0 };
         let msg = err.to_string();
 
         // Must mention the problem
@@ -194,18 +172,13 @@ mod tests {
 
     #[test]
     fn test_shape_mismatch_not_user_error() {
-        let err = EntrenarError::ShapeMismatch {
-            expected: vec![1, 2, 3],
-            actual: vec![1, 2, 4],
-        };
+        let err = EntrenarError::ShapeMismatch { expected: vec![1, 2, 3], actual: vec![1, 2, 4] };
         assert!(!err.is_user_error());
     }
 
     #[test]
     fn test_serialization_error_display() {
-        let err = EntrenarError::Serialization {
-            message: "invalid JSON".into(),
-        };
+        let err = EntrenarError::Serialization { message: "invalid JSON".into() };
         let msg = err.to_string();
         assert!(msg.contains("invalid JSON"));
     }
@@ -225,9 +198,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_format_lists_alternatives() {
-        let err = EntrenarError::UnsupportedFormat {
-            format: "pickle".into(),
-        };
+        let err = EntrenarError::UnsupportedFormat { format: "pickle".into() };
         let msg = err.to_string();
         assert!(msg.contains("pickle"));
         assert!(msg.contains("SafeTensors"));
@@ -235,18 +206,14 @@ mod tests {
 
     #[test]
     fn test_huggingface_error_mentions_token() {
-        let err = EntrenarError::HuggingFace {
-            message: "rate limited".into(),
-        };
+        let err = EntrenarError::HuggingFace { message: "rate limited".into() };
         let msg = err.to_string();
         assert!(msg.contains("HF_TOKEN"));
     }
 
     #[test]
     fn test_internal_error_mentions_bug_report() {
-        let err = EntrenarError::Internal {
-            message: "unexpected state".into(),
-        };
+        let err = EntrenarError::Internal { message: "unexpected state".into() };
         let msg = err.to_string();
         assert!(msg.contains("github.com"));
         assert!(msg.contains("issues"));

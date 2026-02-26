@@ -92,10 +92,8 @@ pub struct Run {
 
 impl Run {
     fn new(run_id: String, run_name: Option<String>, experiment_name: String) -> Self {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let now_ms =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
 
         Self {
             run_id,
@@ -178,11 +176,8 @@ impl<B: TrackingBackend> ExperimentTracker<B> {
         let run_id = format!("run-{}", self.next_run_id);
         self.next_run_id += 1;
 
-        let mut run = Run::new(
-            run_id.clone(),
-            run_name.map(String::from),
-            self.experiment_name.clone(),
-        );
+        let mut run =
+            Run::new(run_id.clone(), run_name.map(String::from), self.experiment_name.clone());
         // Inherit experiment-level tags
         for (k, v) in &self.tags {
             run.tags.insert(k.clone(), v.clone());
@@ -199,10 +194,8 @@ impl<B: TrackingBackend> ExperimentTracker<B> {
             .remove(run_id)
             .ok_or_else(|| TrackingError::RunNotFound(run_id.to_string()))?;
 
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let now_ms =
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
 
         run.status = status;
         run.end_time_ms = Some(now_ms);
@@ -242,10 +235,7 @@ impl<B: TrackingBackend> ExperimentTracker<B> {
             .get_mut(run_id)
             .ok_or_else(|| TrackingError::RunNotActive(run_id.to_string()))?;
 
-        run.metrics
-            .entry(key.to_string())
-            .or_default()
-            .push((value, step));
+        run.metrics.entry(key.to_string()).or_default().push((value, step));
         Ok(())
     }
 

@@ -25,12 +25,7 @@ impl GpuAndonSystem {
 
     /// Create with custom thresholds
     pub fn with_thresholds(thresholds: AndonThresholds) -> Self {
-        Self {
-            thresholds,
-            alerts: Vec::new(),
-            idle_samples: Vec::new(),
-            sample_interval_secs: 1,
-        }
+        Self { thresholds, alerts: Vec::new(), idle_samples: Vec::new(), sample_interval_secs: 1 }
     }
 
     /// Set sample interval for idle calculation

@@ -27,13 +27,7 @@ impl SourceSpan {
         end_line: u32,
         end_col: u32,
     ) -> Self {
-        Self {
-            file: file.into(),
-            start_line,
-            start_col,
-            end_line,
-            end_col,
-        }
+        Self { file: file.into(), start_line, start_col, end_line, end_col }
     }
 
     /// Create a single-line span

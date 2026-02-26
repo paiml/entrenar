@@ -34,11 +34,7 @@ impl MultiClassMetrics {
 
             let p = if tp + fp > 0.0 { tp / (tp + fp) } else { 0.0 };
             let r = if tp + fn_ > 0.0 { tp / (tp + fn_) } else { 0.0 };
-            let f = if p + r > 0.0 {
-                2.0 * p * r / (p + r)
-            } else {
-                0.0
-            };
+            let f = if p + r > 0.0 { 2.0 * p * r / (p + r) } else { 0.0 };
 
             precision.push(p);
             recall.push(r);
@@ -46,13 +42,7 @@ impl MultiClassMetrics {
             support.push(cm.support(class));
         }
 
-        Self {
-            precision,
-            recall,
-            f1,
-            support,
-            n_classes,
-        }
+        Self { precision, recall, f1, support, n_classes }
     }
 
     /// Compute from predictions and ground truth
@@ -95,11 +85,7 @@ impl MultiClassMetrics {
                 if total_support == 0 {
                     return 0.0;
                 }
-                values
-                    .iter()
-                    .zip(self.support.iter())
-                    .map(|(&v, &s)| v * s as f64)
-                    .sum::<f64>()
+                values.iter().zip(self.support.iter()).map(|(&v, &s)| v * s as f64).sum::<f64>()
                     / total_support as f64
             }
             Average::None => {

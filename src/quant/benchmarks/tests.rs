@@ -17,13 +17,8 @@ use proptest::prelude::*;
 #[test]
 fn test_run_benchmark() {
     let values = generate_gaussian_weights(1000, 0.0, 1.0, 42);
-    let result = run_benchmark(
-        "test",
-        &values,
-        8,
-        QuantGranularity::PerTensor,
-        QuantMode::Symmetric,
-    );
+    let result =
+        run_benchmark("test", &values, 8, QuantGranularity::PerTensor, QuantMode::Symmetric);
 
     assert_eq!(result.name, "test");
     assert_eq!(result.num_elements, 1000);
@@ -97,10 +92,7 @@ fn test_generate_gaussian_weights() {
     let variance: f32 =
         weights.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / weights.len() as f32;
     let std_dev = variance.sqrt();
-    assert!(
-        (std_dev - 1.0).abs() < 0.3,
-        "Std dev {std_dev} should be close to 1"
-    );
+    assert!((std_dev - 1.0).abs() < 0.3, "Std dev {std_dev} should be close to 1");
 }
 
 #[test]
@@ -157,10 +149,7 @@ fn test_bit_width_comparison() {
     let (_, mse_4bit, _) = results.iter().find(|(b, _, _)| *b == 4).unwrap();
     let (_, mse_8bit, _) = results.iter().find(|(b, _, _)| *b == 8).unwrap();
 
-    assert!(
-        mse_8bit <= mse_4bit,
-        "8-bit MSE ({mse_8bit}) should be <= 4-bit MSE ({mse_4bit})"
-    );
+    assert!(mse_8bit <= mse_4bit, "8-bit MSE ({mse_8bit}) should be <= 4-bit MSE ({mse_4bit})");
 }
 
 #[test]

@@ -180,20 +180,13 @@ fn demo_anonymization(artifact: &ResearchArtifact) {
 
     println!("Original artifact:");
     println!("  ID: {}", artifact.id);
-    println!(
-        "  Authors: {:?}",
-        artifact.authors.iter().map(|a| &a.name).collect::<Vec<_>>()
-    );
+    println!("  Authors: {:?}", artifact.authors.iter().map(|a| &a.name).collect::<Vec<_>>());
 
     println!("Anonymized artifact:");
     println!("  Anonymous ID: {}", anon_artifact.anonymous_id);
     println!(
         "  Authors: {:?}",
-        anon_artifact
-            .authors
-            .iter()
-            .map(|a| &a.placeholder)
-            .collect::<Vec<_>>()
+        anon_artifact.authors.iter().map(|a| &a.placeholder).collect::<Vec<_>>()
     );
 
     // Verify original ID
@@ -211,10 +204,7 @@ fn demo_notebook(doc: &LiterateDocument) {
     let notebook = NotebookExporter::from_literate(doc);
 
     println!("Generated notebook:");
-    println!(
-        "  Kernel: {} ({})",
-        notebook.kernel.display_name, notebook.kernel.language
-    );
+    println!("  Kernel: {} ({})", notebook.kernel.display_name, notebook.kernel.language);
     println!("  Cells: {} total", notebook.cell_count());
     println!("    Code cells: {}", notebook.code_cells().len());
     println!("    Markdown cells: {}", notebook.markdown_cells().len());
@@ -224,10 +214,7 @@ fn demo_notebook(doc: &LiterateDocument) {
     rust_notebook.add_markdown("# Rust ML Analysis\n\nUsing entrenar for machine learning.");
     rust_notebook.add_code("let x = vec![1.0, 2.0, 3.0];\nprintln!(\"{:?}\", x);");
 
-    println!(
-        "  Manual Rust notebook: {} cells",
-        rust_notebook.cell_count()
-    );
+    println!("  Manual Rust notebook: {} cells", rust_notebook.cell_count());
     println!();
 }
 
@@ -270,14 +257,8 @@ fn demo_citation_graph(citation: &CitationMetadata) {
     println!("Citation graph:");
     println!("  Nodes: {}", graph.node_count());
     println!("  Edges: {}", graph.edge_count());
-    println!(
-        "  Upstream from 'our-paper': {}",
-        graph.cite_upstream("our-paper").len()
-    );
-    println!(
-        "  All citations (transitive): {}",
-        graph.aggregate_all_citations("our-paper").len()
-    );
+    println!("  Upstream from 'our-paper': {}", graph.cite_upstream("our-paper").len());
+    println!("  All citations (transitive): {}", graph.aggregate_all_citations("our-paper").len());
     println!();
 }
 

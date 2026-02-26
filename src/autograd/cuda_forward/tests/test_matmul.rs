@@ -32,26 +32,10 @@ fn test_gemm_forward_basic() {
 
     let mut result = vec![0.0f32; 4];
     c.copy_to_host(&mut result).unwrap();
-    assert!(
-        (result[0] - 19.0).abs() < 1e-3,
-        "C[0,0] should be 19, got {}",
-        result[0]
-    );
-    assert!(
-        (result[1] - 22.0).abs() < 1e-3,
-        "C[0,1] should be 22, got {}",
-        result[1]
-    );
-    assert!(
-        (result[2] - 43.0).abs() < 1e-3,
-        "C[1,0] should be 43, got {}",
-        result[2]
-    );
-    assert!(
-        (result[3] - 50.0).abs() < 1e-3,
-        "C[1,1] should be 50, got {}",
-        result[3]
-    );
+    assert!((result[0] - 19.0).abs() < 1e-3, "C[0,0] should be 19, got {}", result[0]);
+    assert!((result[1] - 22.0).abs() < 1e-3, "C[0,1] should be 22, got {}", result[1]);
+    assert!((result[2] - 43.0).abs() < 1e-3, "C[1,0] should be 43, got {}", result[2]);
+    assert!((result[3] - 50.0).abs() < 1e-3, "C[1,1] should be 50, got {}", result[3]);
 }
 
 #[test]
@@ -88,10 +72,7 @@ fn test_fused_swiglu_forward_basic() {
     // With up=1, output should equal SiLU(gate)
     // SiLU(x) = x * sigmoid(x) > 0 for x > 0
     for (i, &r) in result.iter().enumerate() {
-        assert!(
-            r > 0.0,
-            "SwiGLU output should be positive for positive gate, got {r} at {i}"
-        );
+        assert!(r > 0.0, "SwiGLU output should be positive for positive gate, got {r} at {i}");
     }
     // Output should increase with gate (monotonic for positive inputs)
     assert!(result[3] > result[2]);
@@ -134,10 +115,7 @@ fn test_gemm_forward_2x2() {
 
     // C should equal A (since B is identity)
     for (i, (&r, &expected)) in result.iter().zip(a_data.iter()).enumerate() {
-        assert!(
-            (r - expected).abs() < 1e-4,
-            "GEMM mismatch at {i}: got {r}, expected {expected}"
-        );
+        assert!((r - expected).abs() < 1e-4, "GEMM mismatch at {i}: got {r}, expected {expected}");
     }
 }
 
@@ -356,16 +334,8 @@ fn test_full_forward_0_5b_dims() {
     let mut ffn_out = GpuBuffer::new(&ctx, (seq_len * hidden) as usize).unwrap();
 
     eprintln!("Step 6: Down-GEMM {seq_len}x{intermediate} @ {intermediate}x{hidden}");
-    gemm_forward(
-        &swiglu_out,
-        &w_down,
-        &mut ffn_out,
-        seq_len,
-        intermediate,
-        hidden,
-        &stream,
-    )
-    .unwrap();
+    gemm_forward(&swiglu_out, &w_down, &mut ffn_out, seq_len, intermediate, hidden, &stream)
+        .unwrap();
     stream.synchronize().unwrap();
     eprintln!("  OK");
 

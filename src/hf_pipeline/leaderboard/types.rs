@@ -87,11 +87,7 @@ impl LeaderboardEntry {
     /// Create a new leaderboard entry
     #[must_use]
     pub fn new(model_id: impl Into<String>) -> Self {
-        Self {
-            model_id: model_id.into(),
-            scores: HashMap::new(),
-            metadata: HashMap::new(),
-        }
+        Self { model_id: model_id.into(), scores: HashMap::new(), metadata: HashMap::new() }
     }
 
     /// Get a score by column name
@@ -116,11 +112,7 @@ impl HfLeaderboard {
     /// Create a new leaderboard container
     #[must_use]
     pub fn new(kind: LeaderboardKind) -> Self {
-        Self {
-            kind,
-            entries: Vec::new(),
-            total_count: 0,
-        }
+        Self { kind, entries: Vec::new(), total_count: 0 }
     }
 
     /// Find an entry by model ID

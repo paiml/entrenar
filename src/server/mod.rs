@@ -15,7 +15,7 @@
 //!
 //! let config = ServerConfig::default();
 //! let server = TrackingServer::new(config);
-//! server.run("127.0.0.1:5000".parse().unwrap()).await?;
+//! server.run("127.0.0.1:5000".parse().expect("valid address")).await?;
 //! ```
 
 #[cfg(feature = "server")]
@@ -81,7 +81,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            address: "127.0.0.1:5000".parse().unwrap(),
+            address: "127.0.0.1:5000".parse().expect("default server address must be valid"),
             cors_enabled: true,
             cors_origins: vec!["*".to_string()],
             api_key: None,
@@ -133,12 +133,7 @@ pub struct ApiResponse<T> {
 impl<T> ApiResponse<T> {
     /// Create success response
     pub fn success(data: T, request_id: &str) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-            request_id: request_id.to_string(),
-        }
+        Self { success: true, data: Some(data), error: None, request_id: request_id.to_string() }
     }
 
     /// Create error response

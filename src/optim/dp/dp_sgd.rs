@@ -30,11 +30,7 @@ impl DpSgd {
     /// Create a new DP-SGD optimizer
     pub fn new(learning_rate: f64, config: DpSgdConfig) -> Result<Self> {
         config.validate()?;
-        Ok(Self {
-            config,
-            accountant: RdpAccountant::new(),
-            learning_rate,
-        })
+        Ok(Self { config, accountant: RdpAccountant::new(), learning_rate })
     }
 
     /// Get current privacy spent
@@ -87,10 +83,8 @@ impl DpSgd {
         let grad_dim = per_sample_grads[0].len();
 
         // Step 1: Clip each per-sample gradient
-        let clipped: Vec<Vec<f64>> = per_sample_grads
-            .iter()
-            .map(|g| clip_gradient(g, self.config.max_grad_norm))
-            .collect();
+        let clipped: Vec<Vec<f64>> =
+            per_sample_grads.iter().map(|g| clip_gradient(g, self.config.max_grad_norm)).collect();
 
         // Step 2: Average clipped gradients
         let mut averaged = vec![0.0; grad_dim];
@@ -106,8 +100,7 @@ impl DpSgd {
         let noised = add_gaussian_noise(&averaged, noise_std, &mut rng);
 
         // Step 4: Update privacy accounting
-        self.accountant
-            .step(self.config.noise_multiplier, self.config.sample_rate);
+        self.accountant.step(self.config.noise_multiplier, self.config.sample_rate);
 
         Ok(noised)
     }

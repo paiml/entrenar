@@ -61,11 +61,8 @@ impl GradientFlowHeatmap {
             output.push_str(&format!("{name:>8} "));
 
             for &v in row {
-                let normalized = if range > f32::EPSILON {
-                    ((v - min) / range).clamp(0.0, 1.0)
-                } else {
-                    0.5
-                };
+                let normalized =
+                    if range > f32::EPSILON { ((v - min) / range).clamp(0.0, 1.0) } else { 0.5 };
                 let idx = (normalized * 3.0).round() as usize;
                 let c = heatmap_chars[idx.min(3)];
                 output.push_str(&format!("{c}{c}{c}{c} "));

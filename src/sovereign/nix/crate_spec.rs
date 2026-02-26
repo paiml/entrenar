@@ -21,24 +21,12 @@ pub struct CrateSpec {
 impl CrateSpec {
     /// Create a crate spec for a local path
     pub fn local(name: impl Into<String>, path: impl Into<PathBuf>) -> Self {
-        Self {
-            name: name.into(),
-            path: Some(path.into()),
-            version: None,
-            git: None,
-            rev: None,
-        }
+        Self { name: name.into(), path: Some(path.into()), version: None, git: None, rev: None }
     }
 
     /// Create a crate spec for crates.io version
     pub fn crates_io(name: impl Into<String>, version: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            path: None,
-            version: Some(version.into()),
-            git: None,
-            rev: None,
-        }
+        Self { name: name.into(), path: None, version: Some(version.into()), git: None, rev: None }
     }
 
     /// Create a crate spec for git source

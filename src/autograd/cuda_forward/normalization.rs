@@ -26,9 +26,7 @@ pub fn layer_norm_forward(
     hidden_size: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -63,11 +61,9 @@ pub fn layer_norm_forward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, kernel_name, &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("LayerNorm forward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, kernel_name, &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("LayerNorm forward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -88,9 +84,7 @@ pub fn rms_norm_forward(
     hidden_size: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -103,11 +97,7 @@ pub fn rms_norm_forward(
     let module = cache.get_or_compile(&key, &ptx)?;
 
     // Kernel uses warp shuffle and expects exactly 32 threads (one warp)
-    let config = LaunchConfig {
-        grid: (1, 1, 1),
-        block: (32, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (1, 1, 1), block: (32, 1, 1), shared_mem: 0 };
 
     // Process each batch row sequentially (kernel handles single row)
     for batch_idx in 0..batch_size {
@@ -129,11 +119,9 @@ pub fn rms_norm_forward(
         // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
         // matching sizes, and the kernel parameters match the expected PTX signature.
         unsafe {
-            stream
-                .launch_kernel(module, kernel_name, &config, &mut args)
-                .map_err(|e| {
-                    CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
-                })?;
+            stream.launch_kernel(module, kernel_name, &config, &mut args).map_err(|e| {
+                CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
+            })?;
         }
     }
 

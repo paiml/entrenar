@@ -46,10 +46,7 @@ fn test_verify_with_tensors() {
 
 #[test]
 fn test_roundtrip_f32() {
-    let metadata = vec![(
-        "general.architecture".into(),
-        GgufValue::String("llama".into()),
-    )];
+    let metadata = vec![("general.architecture".into(), GgufValue::String("llama".into()))];
     let tensors = vec![GgufTensor {
         name: "layer.0.weight".into(),
         shape: vec![8, 16],
@@ -68,12 +65,8 @@ fn test_roundtrip_f32() {
 #[test]
 fn test_roundtrip_q4_0() {
     let (bytes, dtype) = quantize_to_gguf_bytes(&[0.5; 64], GgufQuantization::Q4_0);
-    let tensors = vec![GgufTensor {
-        name: "quantized".into(),
-        shape: vec![64],
-        dtype,
-        data: bytes,
-    }];
+    let tensors =
+        vec![GgufTensor { name: "quantized".into(), shape: vec![64], dtype, data: bytes }];
     let data = write_gguf(&tensors, &[]);
 
     let summary = verify_gguf(&data).unwrap();
@@ -83,12 +76,8 @@ fn test_roundtrip_q4_0() {
 #[test]
 fn test_roundtrip_q8_0() {
     let (bytes, dtype) = quantize_to_gguf_bytes(&[0.5; 32], GgufQuantization::Q8_0);
-    let tensors = vec![GgufTensor {
-        name: "quantized".into(),
-        shape: vec![32],
-        dtype,
-        data: bytes,
-    }];
+    let tensors =
+        vec![GgufTensor { name: "quantized".into(), shape: vec![32], dtype, data: bytes }];
     let data = write_gguf(&tensors, &[]);
 
     let summary = verify_gguf(&data).unwrap();
@@ -146,12 +135,7 @@ fn test_verify_truncated_metadata() {
 fn test_verify_u32_metadata() {
     let metadata = vec![("layers".into(), GgufValue::Uint32(32))];
     let (bytes, dtype) = quantize_to_gguf_bytes(&[1.0], GgufQuantization::None);
-    let tensors = vec![GgufTensor {
-        name: "w".into(),
-        shape: vec![1],
-        dtype,
-        data: bytes,
-    }];
+    let tensors = vec![GgufTensor { name: "w".into(), shape: vec![1], dtype, data: bytes }];
     let data = write_gguf(&tensors, &metadata);
 
     let summary = verify_gguf(&data).unwrap();

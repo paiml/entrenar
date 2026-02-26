@@ -111,10 +111,8 @@ impl DependencyAudit {
             };
 
             // Extract severity
-            let severity_str = fields
-                .get(FIELD_SEVERITY)
-                .and_then(|s| s.as_str())
-                .unwrap_or("none");
+            let severity_str =
+                fields.get(FIELD_SEVERITY).and_then(|s| s.as_str()).unwrap_or("none");
 
             let is_vulnerability = severity_str == "error"
                 && fields
@@ -179,10 +177,6 @@ impl DependencyAudit {
 
     /// Returns the highest severity advisory
     pub fn max_severity(&self) -> Severity {
-        self.advisories
-            .iter()
-            .map(|a| a.severity)
-            .max()
-            .unwrap_or(Severity::None)
+        self.advisories.iter().map(|a| a.severity).max().unwrap_or(Severity::None)
     }
 }

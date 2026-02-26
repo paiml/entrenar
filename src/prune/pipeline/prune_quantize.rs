@@ -58,19 +58,13 @@ fn magnitude_prune(
     }
 
     // Collect all magnitudes to determine threshold
-    let mut all_magnitudes: Vec<f32> = weights
-        .values()
-        .flat_map(|data| data.iter().map(|v| v.abs()))
-        .collect();
+    let mut all_magnitudes: Vec<f32> =
+        weights.values().flat_map(|data| data.iter().map(|v| v.abs())).collect();
     all_magnitudes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let total = all_magnitudes.len();
     let prune_count = ((total as f32 * target_sparsity) as usize).min(total);
-    let threshold = if prune_count < total {
-        all_magnitudes[prune_count]
-    } else {
-        f32::MAX
-    };
+    let threshold = if prune_count < total { all_magnitudes[prune_count] } else { f32::MAX };
 
     // Apply pruning
     let mut pruned = 0;
@@ -109,11 +103,8 @@ fn prune_and_quantize(
 
     // Step 1: Prune
     let (pruned_count, total_count) = magnitude_prune(&mut pruned_weights, config.target_sparsity);
-    let achieved_sparsity = if total_count > 0 {
-        pruned_count as f32 / total_count as f32
-    } else {
-        0.0
-    };
+    let achieved_sparsity =
+        if total_count > 0 { pruned_count as f32 / total_count as f32 } else { 0.0 };
 
     // Step 2: Quantize then dequantize (applies quantization rounding)
     let quantized_weights: HashMap<String, Vec<f32>> = pruned_weights
@@ -138,10 +129,7 @@ fn prune_and_quantize(
         .map(|name| {
             let data = &quantized_weights[*name];
             let bytes: Vec<u8> = bytemuck::cast_slice(data).to_vec();
-            let shape = shapes
-                .get(*name)
-                .cloned()
-                .unwrap_or_else(|| vec![data.len()]);
+            let shape = shapes.get(*name).cloned().unwrap_or_else(|| vec![data.len()]);
             ((*name).clone(), bytes, shape)
         })
         .collect();
@@ -149,7 +137,8 @@ fn prune_and_quantize(
     let views: Vec<(&str, TensorView<'_>)> = tensor_data
         .iter()
         .map(|(name, bytes, shape)| {
-            let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+            let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+                .expect("TensorView construction must not fail for valid F32 data");
             (name.as_str(), view)
         })
         .collect();
@@ -198,10 +187,8 @@ mod tests {
     #[test]
     fn test_prune_and_quantize_q4() {
         let (weights, shapes) = make_test_weights();
-        let config = PruneQuantConfig {
-            target_sparsity: 0.5,
-            quant_format: PruneQuantFormat::Q4_0,
-        };
+        let config =
+            PruneQuantConfig { target_sparsity: 0.5, quant_format: PruneQuantFormat::Q4_0 };
         let tmp = TempDir::new().unwrap();
 
         let result =
@@ -217,20 +204,13 @@ mod tests {
     #[test]
     fn test_prune_and_quantize_q8() {
         let (weights, shapes) = make_test_weights();
-        let config = PruneQuantConfig {
-            target_sparsity: 0.3,
-            quant_format: PruneQuantFormat::Q8_0,
-        };
+        let config =
+            PruneQuantConfig { target_sparsity: 0.3, quant_format: PruneQuantFormat::Q8_0 };
         let tmp = TempDir::new().unwrap();
 
-        let result = prune_and_quantize(
-            &weights,
-            &shapes,
-            &config,
-            tmp.path(),
-            "pruned-q8.safetensors",
-        )
-        .unwrap();
+        let result =
+            prune_and_quantize(&weights, &shapes, &config, tmp.path(), "pruned-q8.safetensors")
+                .unwrap();
 
         assert_eq!(result.quant_format, PruneQuantFormat::Q8_0);
         assert!(result.file_size > 0);
@@ -239,20 +219,13 @@ mod tests {
     #[test]
     fn test_prune_and_quantize_no_sparsity() {
         let (weights, shapes) = make_test_weights();
-        let config = PruneQuantConfig {
-            target_sparsity: 0.0,
-            quant_format: PruneQuantFormat::Q4_0,
-        };
+        let config =
+            PruneQuantConfig { target_sparsity: 0.0, quant_format: PruneQuantFormat::Q4_0 };
         let tmp = TempDir::new().unwrap();
 
-        let result = prune_and_quantize(
-            &weights,
-            &shapes,
-            &config,
-            tmp.path(),
-            "unpruned.safetensors",
-        )
-        .unwrap();
+        let result =
+            prune_and_quantize(&weights, &shapes, &config, tmp.path(), "unpruned.safetensors")
+                .unwrap();
 
         assert_eq!(result.achieved_sparsity, 0.0);
     }
@@ -274,10 +247,8 @@ mod tests {
     #[test]
     fn test_output_safetensors_valid() {
         let (weights, shapes) = make_test_weights();
-        let config = PruneQuantConfig {
-            target_sparsity: 0.5,
-            quant_format: PruneQuantFormat::Q4_0,
-        };
+        let config =
+            PruneQuantConfig { target_sparsity: 0.5, quant_format: PruneQuantFormat::Q4_0 };
         let tmp = TempDir::new().unwrap();
 
         let result =

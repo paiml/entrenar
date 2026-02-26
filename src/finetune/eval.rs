@@ -187,10 +187,7 @@ impl TestEvaluator {
         }
 
         // Try to parse with rustfmt
-        let output = Command::new("rustfmt")
-            .arg("--check")
-            .arg(&test_file)
-            .output();
+        let output = Command::new("rustfmt").arg("--check").arg(&test_file).output();
 
         // Clean up
         let _ = std::fs::remove_file(&test_file);
@@ -227,10 +224,8 @@ impl TestEvaluator {
             return EvalMetrics::default();
         }
 
-        let results: Vec<EvalResult> = samples
-            .iter()
-            .map(|(func, tests)| self.evaluate(func, tests))
-            .collect();
+        let results: Vec<EvalResult> =
+            samples.iter().map(|(func, tests)| self.evaluate(func, tests)).collect();
 
         let total = results.len() as f32;
         let compiles = results.iter().filter(|r| r.compiles).count() as f32;
@@ -272,12 +267,8 @@ impl Default for TestEvaluator {
 #[must_use]
 pub fn contains_tautology(code: &str) -> bool {
     // Check for common tautologies
-    let tautology_patterns = [
-        "assert!(true)",
-        "assert_eq!(x, x)",
-        "assert_eq!(0, 0)",
-        "assert!(1 == 1)",
-    ];
+    let tautology_patterns =
+        ["assert!(true)", "assert_eq!(x, x)", "assert_eq!(0, 0)", "assert!(1 == 1)"];
 
     for pattern in tautology_patterns {
         if code.contains(pattern) {
@@ -334,9 +325,7 @@ pub fn has_edge_case_tests(code: &str) -> bool {
         "None",
     ];
 
-    edge_patterns
-        .iter()
-        .any(|p| code.to_lowercase().contains(&p.to_lowercase()))
+    edge_patterns.iter().any(|p| code.to_lowercase().contains(&p.to_lowercase()))
 }
 
 #[cfg(test)]

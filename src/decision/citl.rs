@@ -25,11 +25,7 @@ impl ErrorFixPair {
     /// Create a new error-fix pair.
     #[must_use]
     pub fn new(error_features: Vec<f32>, fix_features: Vec<f32>, correlation_score: f32) -> Self {
-        Self {
-            error_features,
-            fix_features,
-            correlation_score: correlation_score.clamp(0.0, 1.0),
-        }
+        Self { error_features, fix_features, correlation_score: correlation_score.clamp(0.0, 1.0) }
     }
 }
 
@@ -49,7 +45,7 @@ impl ErrorFixPair {
 ///     ErrorFixPair::new(vec![0.0, 1.0], vec![1.0, 0.0], 0.8),
 /// ];
 ///
-/// let trainer = CitlTrainer::train(&pairs).unwrap();
+/// let trainer = CitlTrainer::train(&pairs).expect("training must succeed");
 /// let prediction = trainer.predict_fix(&[1.0, 0.0]);
 /// assert_eq!(prediction.len(), 2);
 /// ```
@@ -172,11 +168,7 @@ impl CitlTrainer {
         // W = (W^T)^T  (fix_dim x error_dim)
         let weights = w_t.t().to_owned();
 
-        Ok(Self {
-            weights,
-            error_dim,
-            fix_dim,
-        })
+        Ok(Self { weights, error_dim, fix_dim })
     }
 
     /// Predict fix features from error features.
@@ -409,11 +401,7 @@ mod tests {
         for i in 0..3 {
             for j in 0..3 {
                 let expected = if i == j { 1.0 } else { 0.0 };
-                assert!(
-                    (inv[[i, j]] - expected).abs() < 1e-6,
-                    "inv[{i},{j}]={}",
-                    inv[[i, j]]
-                );
+                assert!((inv[[i, j]] - expected).abs() < 1e-6, "inv[{i},{j}]={}", inv[[i, j]]);
             }
         }
     }
@@ -439,9 +427,6 @@ mod tests {
         let trainer = CitlTrainer::train(&pairs).unwrap();
         let pred = trainer.predict_fix(&[1.0, 0.0]);
         // High-weight sample's fix direction should dominate
-        assert!(
-            pred[0] > pred[1],
-            "High-weight sample should dominate: pred={pred:?}"
-        );
+        assert!(pred[0] > pred[1], "High-weight sample should dominate: pred={pred:?}");
     }
 }

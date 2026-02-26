@@ -35,12 +35,8 @@ fn test_crate_spec_git() {
 #[test]
 fn test_crate_spec_nix_source() {
     assert!(CrateSpec::local("a", "path").nix_source().contains("path"));
-    assert!(CrateSpec::crates_io("b", "1.0")
-        .nix_source()
-        .contains("1.0"));
-    assert!(CrateSpec::git("c", "url", "rev")
-        .nix_source()
-        .contains("rev"));
+    assert!(CrateSpec::crates_io("b", "1.0").nix_source().contains("1.0"));
+    assert!(CrateSpec::git("c", "url", "rev").nix_source().contains("rev"));
 }
 
 #[test]

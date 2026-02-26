@@ -46,10 +46,7 @@ fn test_layer_norm_forward_basic() {
     let mean: f32 = result.iter().sum::<f32>() / hidden_size as f32;
     assert!(mean.abs() < 1e-3, "Mean should be ~0, got {mean}");
     // Check values are normalized (not NaN/Inf)
-    assert!(
-        !result.iter().any(|x| x.is_nan()),
-        "Output should not contain NaN"
-    );
+    assert!(!result.iter().any(|x| x.is_nan()), "Output should not contain NaN");
 }
 
 #[test]
@@ -77,28 +74,14 @@ fn test_rms_norm_forward_basic() {
     let weight_buf = GpuBuffer::from_host(&ctx, &weight).unwrap();
     let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
 
-    rms_norm_forward(
-        &input,
-        &weight_buf,
-        &mut output,
-        batch_size,
-        hidden_size,
-        &stream,
-    )
-    .unwrap();
+    rms_norm_forward(&input, &weight_buf, &mut output, batch_size, hidden_size, &stream).unwrap();
     stream.synchronize().unwrap();
 
     let mut result = vec![0.0f32; (batch_size * hidden_size) as usize];
     output.copy_to_host(&mut result).unwrap();
     // RMS normalized values should be reasonable
-    assert!(
-        !result.iter().any(|x| x.is_nan()),
-        "Output should not contain NaN"
-    );
-    assert!(
-        !result.iter().any(|x| x.is_infinite()),
-        "Output should not contain Inf"
-    );
+    assert!(!result.iter().any(|x| x.is_nan()), "Output should not contain NaN");
+    assert!(!result.iter().any(|x| x.is_infinite()), "Output should not contain Inf");
 }
 
 #[test]
@@ -130,16 +113,8 @@ fn test_layer_norm_forward_mutation_killing() {
     let output_data = vec![0.0f32; (batch_size * hidden_size) as usize];
     let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
 
-    layer_norm_forward(
-        &input,
-        &gamma,
-        &beta,
-        &mut output,
-        batch_size,
-        hidden_size,
-        &stream,
-    )
-    .unwrap();
+    layer_norm_forward(&input, &gamma, &beta, &mut output, batch_size, hidden_size, &stream)
+        .unwrap();
     stream.synchronize().unwrap();
 
     let mut result = vec![0.0f32; (batch_size * hidden_size) as usize];
@@ -147,10 +122,7 @@ fn test_layer_norm_forward_mutation_killing() {
 
     // After layer norm with gamma=1, beta=0, mean should be ~0
     let mean: f32 = result.iter().sum::<f32>() / result.len() as f32;
-    assert!(
-        mean.abs() < 0.1,
-        "LayerNorm output mean should be ~0, got {mean}"
-    );
+    assert!(mean.abs() < 0.1, "LayerNorm output mean should be ~0, got {mean}");
 }
 
 #[test]
@@ -180,15 +152,7 @@ fn test_rms_norm_forward_scaling() {
     let output_data = vec![0.0f32; (batch_size * hidden_size) as usize];
     let mut output = GpuBuffer::from_host(&ctx, &output_data).unwrap();
 
-    rms_norm_forward(
-        &input,
-        &gamma,
-        &mut output,
-        batch_size,
-        hidden_size,
-        &stream,
-    )
-    .unwrap();
+    rms_norm_forward(&input, &gamma, &mut output, batch_size, hidden_size, &stream).unwrap();
     stream.synchronize().unwrap();
 
     let mut result = vec![0.0f32; (batch_size * hidden_size) as usize];
@@ -196,9 +160,6 @@ fn test_rms_norm_forward_scaling() {
 
     // For constant input x, RMS = x, so output = gamma * x / RMS = gamma = 1
     for (i, &r) in result.iter().enumerate() {
-        assert!(
-            (r - 1.0).abs() < 0.1,
-            "RMSNorm of constant input should give ~1, got {r} at {i}"
-        );
+        assert!((r - 1.0).abs() < 0.1, "RMSNorm of constant input should give ~1, got {r} at {i}");
     }
 }

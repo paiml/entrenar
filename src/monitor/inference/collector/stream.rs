@@ -48,13 +48,7 @@ pub struct StreamCollector<P: DecisionPath, W: Write + Send> {
 impl<P: DecisionPath + Serialize, W: Write + Send + Sync> StreamCollector<P, W> {
     /// Create a new stream collector
     pub fn new(writer: W, format: StreamFormat) -> Self {
-        Self {
-            writer,
-            format,
-            buffer: Vec::with_capacity(100),
-            flush_threshold: 100,
-            count: 0,
-        }
+        Self { writer, format, buffer: Vec::with_capacity(100), flush_threshold: 100, count: 0 }
     }
 
     /// Set the flush threshold (number of traces before auto-flush)

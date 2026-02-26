@@ -55,10 +55,7 @@ fn main() -> entrenar::Result<()> {
 
     // Show default location
     let default_registry = OfflineModelRegistry::default_location();
-    println!(
-        "Default registry location: {}",
-        default_registry.root().display()
-    );
+    println!("Default registry location: {}", default_registry.root().display());
     println!();
 
     // 3. Nix Flake Configuration (ENT-018)
@@ -105,11 +102,7 @@ fn main() -> entrenar::Result<()> {
     // 5. Distribution Tiers Summary
     println!("=== Distribution Tiers ===");
     println!();
-    for tier in [
-        DistributionTier::Core,
-        DistributionTier::Standard,
-        DistributionTier::Full,
-    ] {
+    for tier in [DistributionTier::Core, DistributionTier::Standard, DistributionTier::Full] {
         let dist = match tier {
             DistributionTier::Core => SovereignDistribution::core(),
             DistributionTier::Standard => SovereignDistribution::standard(),

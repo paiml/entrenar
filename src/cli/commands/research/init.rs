@@ -38,9 +38,7 @@ fn build_author(args: &ResearchInitArgs) -> Result<Option<Author>, String> {
     let mut author = Author::new(author_name);
 
     if let Some(orcid) = &args.orcid {
-        author = author
-            .with_orcid(orcid)
-            .map_err(|e| format!("Invalid ORCID: {e}"))?;
+        author = author.with_orcid(orcid).map_err(|e| format!("Invalid ORCID: {e}"))?;
     }
     if let Some(affiliation) = &args.affiliation {
         author = author.with_affiliation(Affiliation::new(affiliation));
@@ -49,11 +47,7 @@ fn build_author(args: &ResearchInitArgs) -> Result<Option<Author>, String> {
 }
 
 pub fn run_research_init(args: ResearchInitArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Initializing research artifact: {}", args.id),
-    );
+    log(level, LogLevel::Normal, &format!("Initializing research artifact: {}", args.id));
 
     let artifact_type = convert_artifact_type(&args.artifact_type);
     let license = convert_license(&args.license);
@@ -77,11 +71,7 @@ pub fn run_research_init(args: ResearchInitArgs, level: LogLevel) -> Result<(), 
     let yaml = serde_yaml::to_string(&artifact).map_err(|e| format!("Serialization error: {e}"))?;
     std::fs::write(&args.output, &yaml).map_err(|e| format!("Failed to write file: {e}"))?;
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Artifact saved to: {}", args.output.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Artifact saved to: {}", args.output.display()));
 
     Ok(())
 }

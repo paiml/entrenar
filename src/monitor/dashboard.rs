@@ -20,12 +20,7 @@ pub struct DashboardConfig {
 
 impl Default for DashboardConfig {
     fn default() -> Self {
-        Self {
-            width: 80,
-            height: 24,
-            refresh_ms: 1000,
-            ascii_mode: true,
-        }
+        Self { width: 80, height: 24, refresh_ms: 1000, ascii_mode: true }
     }
 }
 
@@ -44,11 +39,7 @@ impl Dashboard {
 
     /// Create with custom config
     pub fn with_config(config: DashboardConfig) -> Self {
-        Self {
-            config,
-            history: Vec::new(),
-            max_history: 100,
-        }
+        Self { config, history: Vec::new(), max_history: 100 }
     }
 
     /// Update with new metrics
@@ -91,11 +82,8 @@ impl Dashboard {
     /// Render simple sparkline for a metric
     pub fn sparkline(&self, metric: &super::Metric) -> String {
         let chars = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-        let values: Vec<f64> = self
-            .history
-            .iter()
-            .filter_map(|s| s.get(metric).map(|st| st.mean))
-            .collect();
+        let values: Vec<f64> =
+            self.history.iter().filter_map(|s| s.get(metric).map(|st| st.mean)).collect();
 
         if values.is_empty() {
             return String::new();
@@ -226,12 +214,7 @@ mod tests {
 
     #[test]
     fn test_dashboard_with_config() {
-        let config = DashboardConfig {
-            width: 100,
-            height: 30,
-            refresh_ms: 500,
-            ascii_mode: false,
-        };
+        let config = DashboardConfig { width: 100, height: 30, refresh_ms: 500, ascii_mode: false };
         let dashboard = Dashboard::with_config(config.clone());
         assert_eq!(dashboard.config.width, 100);
     }

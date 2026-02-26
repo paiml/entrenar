@@ -22,9 +22,9 @@ where
         BoolOrString::Str(s) => match s.to_lowercase().as_str() {
             "true" => Ok(true),
             "false" => Ok(false),
-            other => Err(serde::de::Error::custom(format!(
-                "expected 'true' or 'false', got '{other}'"
-            ))),
+            other => {
+                Err(serde::de::Error::custom(format!("expected 'true' or 'false', got '{other}'")))
+            }
         },
     }
 }
@@ -109,26 +109,17 @@ pub struct Model {
 impl Model {
     /// Create a new model
     pub fn new(metadata: ModelMetadata, parameters: Vec<(String, Tensor)>) -> Self {
-        Self {
-            metadata,
-            parameters,
-        }
+        Self { metadata, parameters }
     }
 
     /// Get parameter by name
     pub fn get_parameter(&self, name: &str) -> Option<&Tensor> {
-        self.parameters
-            .iter()
-            .find(|(n, _)| n == name)
-            .map(|(_, t)| t)
+        self.parameters.iter().find(|(n, _)| n == name).map(|(_, t)| t)
     }
 
     /// Get mutable parameter by name
     pub fn get_parameter_mut(&mut self, name: &str) -> Option<&mut Tensor> {
-        self.parameters
-            .iter_mut()
-            .find(|(n, _)| n == name)
-            .map(|(_, t)| t)
+        self.parameters.iter_mut().find(|(n, _)| n == name).map(|(_, t)| t)
     }
 
     /// Convert model to serializable state
@@ -140,7 +131,9 @@ impl Model {
             .map(|(name, tensor)| {
                 let shape = vec![tensor.len()];
                 let param_data = tensor.data();
-                data.extend_from_slice(param_data.as_slice().unwrap());
+                data.extend_from_slice(
+                    param_data.as_slice().expect("tensor data must be contiguous"),
+                );
 
                 ParameterInfo {
                     name: name.clone(),
@@ -151,11 +144,7 @@ impl Model {
             })
             .collect();
 
-        ModelState {
-            metadata: self.metadata.clone(),
-            parameters,
-            data,
-        }
+        ModelState { metadata: self.metadata.clone(), parameters, data }
     }
 
     /// Create model from serializable state
@@ -174,10 +163,7 @@ impl Model {
             })
             .collect();
 
-        Self {
-            metadata: state.metadata,
-            parameters,
-        }
+        Self { metadata: state.metadata, parameters }
     }
 }
 
@@ -206,10 +192,7 @@ mod tests {
     #[test]
     fn test_model_parameter_access() {
         let params = vec![
-            (
-                "weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
-            ),
+            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 
@@ -223,10 +206,7 @@ mod tests {
     #[test]
     fn test_model_state_round_trip() {
         let params = vec![
-            (
-                "weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
-            ),
+            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 

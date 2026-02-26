@@ -21,11 +21,7 @@ pub struct DistillationTrainer<T: TeacherModel> {
 impl<T: TeacherModel> DistillationTrainer<T> {
     /// Create new trainer with teacher model
     pub fn new(config: TrainerConfig, teacher: T) -> Self {
-        Self {
-            config,
-            teacher,
-            state: TrainingState::new(),
-        }
+        Self { config, teacher, state: TrainingState::new() }
     }
 
     /// Get current training state
@@ -57,9 +53,7 @@ impl<T: TeacherModel> DistillationTrainer<T> {
     ) -> f32 {
         // Base distillation loss
         let mut total_loss =
-            self.config
-                .distillation_loss
-                .forward(student_logits, teacher_logits, targets);
+            self.config.distillation_loss.forward(student_logits, teacher_logits, targets);
 
         // Progressive distillation (hidden state matching)
         if let (Some(prog), Some(sh), Some(th)) =
@@ -69,11 +63,9 @@ impl<T: TeacherModel> DistillationTrainer<T> {
         }
 
         // Attention transfer
-        if let (Some(at), Some(sa), Some(ta)) = (
-            &self.config.attention_transfer,
-            student_attention,
-            teacher_attention,
-        ) {
+        if let (Some(at), Some(sa), Some(ta)) =
+            (&self.config.attention_transfer, student_attention, teacher_attention)
+        {
             total_loss += at.loss(sa, ta);
         }
 
@@ -98,10 +90,7 @@ impl<T: TeacherModel> DistillationTrainer<T> {
             self.config.fine_tune.batch_size,
             self.config.fine_tune.max_seq_length,
         );
-        let student_mem = self
-            .config
-            .fine_tune
-            .estimate_memory(self.teacher.param_count() / 4); // Assume 4x smaller student
+        let student_mem = self.config.fine_tune.estimate_memory(self.teacher.param_count() / 4); // Assume 4x smaller student
 
         teacher_mem.total() + student_mem.total()
     }

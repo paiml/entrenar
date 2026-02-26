@@ -24,10 +24,7 @@ impl HfDatasetFetcher {
             .join("huggingface")
             .join("datasets");
 
-        Ok(Self {
-            token: std::env::var("HF_TOKEN").ok(),
-            cache_dir,
-        })
+        Ok(Self { token: std::env::var("HF_TOKEN").ok(), cache_dir })
     }
 
     /// Set cache directory
@@ -46,9 +43,7 @@ impl HfDatasetFetcher {
     pub fn fetch(&self, dataset_id: &str, options: DatasetOptions) -> Result<Dataset> {
         // Validate dataset ID
         if dataset_id.is_empty() {
-            return Err(FetchError::InvalidRepoId {
-                repo_id: dataset_id.into(),
-            });
+            return Err(FetchError::InvalidRepoId { repo_id: dataset_id.into() });
         }
 
         // For now, create mock dataset (actual HF API integration later)
@@ -69,11 +64,7 @@ impl HfDatasetFetcher {
         if !path.exists() {
             return Err(FetchError::FileNotFound {
                 repo: path.parent().unwrap_or(path).display().to_string(),
-                file: path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into(),
+                file: path.file_name().unwrap_or_default().to_string_lossy().into(),
             });
         }
 

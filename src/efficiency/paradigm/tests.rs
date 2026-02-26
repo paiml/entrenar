@@ -51,10 +51,7 @@ fn test_fine_tune_method_trainable_params() {
 #[test]
 fn test_fine_tune_method_display() {
     assert_eq!(format!("{}", FineTuneMethod::lora(64)), "LoRA(r=64, α=64)");
-    assert_eq!(
-        format!("{}", FineTuneMethod::qlora(32)),
-        "QLoRA(r=32, 4-bit)"
-    );
+    assert_eq!(format!("{}", FineTuneMethod::qlora(32)), "QLoRA(r=32, 4-bit)");
     assert_eq!(format!("{}", FineTuneMethod::IA3), "IA³");
 }
 
@@ -141,10 +138,7 @@ fn test_model_paradigm_default() {
 
 #[test]
 fn test_model_paradigm_display() {
-    assert_eq!(
-        format!("{}", ModelParadigm::TraditionalMl),
-        "Traditional ML"
-    );
+    assert_eq!(format!("{}", ModelParadigm::TraditionalMl), "Traditional ML");
     assert_eq!(format!("{}", ModelParadigm::DeepLearning), "Deep Learning");
     assert_eq!(format!("{}", ModelParadigm::MoE), "Mixture of Experts");
     assert!(format!("{}", ModelParadigm::lora(64, 64.0)).contains("LoRA"));
@@ -194,10 +188,7 @@ fn test_fine_tune_method_qlora_memory_with_different_bits() {
 #[test]
 fn test_fine_tune_method_lora_rank_zero() {
     // Edge case: rank 0 uses max(1.0) to avoid division by zero
-    let lora = FineTuneMethod::LoRA {
-        rank: 0,
-        alpha: 0.0,
-    };
+    let lora = FineTuneMethod::LoRA { rank: 0, alpha: 0.0 };
     let reduction = lora.memory_reduction_factor();
     assert!((reduction - 100.0).abs() < 0.01); // 100 / max(0, 1) = 100
 }
@@ -205,14 +196,8 @@ fn test_fine_tune_method_lora_rank_zero() {
 #[test]
 fn test_fine_tune_method_high_rank_trainable_params() {
     // High rank caps at 0.2% (min(2.0) * 0.1)
-    let lora_high = FineTuneMethod::LoRA {
-        rank: 256,
-        alpha: 256.0,
-    };
-    let lora_low = FineTuneMethod::LoRA {
-        rank: 8,
-        alpha: 8.0,
-    };
+    let lora_high = FineTuneMethod::LoRA { rank: 256, alpha: 256.0 };
+    let lora_low = FineTuneMethod::LoRA { rank: 8, alpha: 8.0 };
     assert!((lora_high.trainable_params_percent() - 0.2).abs() < 0.01);
     assert!((lora_low.trainable_params_percent() - 0.1).abs() < 0.01);
 }
@@ -336,10 +321,7 @@ fn test_model_paradigm_traditional_ml_characteristics() {
 
 #[test]
 fn test_model_paradigm_display_all_variants() {
-    assert_eq!(
-        format!("{}", ModelParadigm::Distillation),
-        "Knowledge Distillation"
-    );
+    assert_eq!(format!("{}", ModelParadigm::Distillation), "Knowledge Distillation");
     assert_eq!(format!("{}", ModelParadigm::Ensemble), "Ensemble");
 
     let prefix = ModelParadigm::FineTuning(FineTuneMethod::Prefix);

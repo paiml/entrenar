@@ -33,11 +33,7 @@ impl CompilationOutcome {
         error_spans: Vec<SourceSpan>,
         messages: Vec<String>,
     ) -> Self {
-        Self::Failure {
-            error_codes,
-            error_spans,
-            messages,
-        }
+        Self::Failure { error_codes, error_spans, messages }
     }
 
     /// Check if the outcome is success

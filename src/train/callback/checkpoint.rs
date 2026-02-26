@@ -47,8 +47,7 @@ impl CheckpointCallback {
 
     /// Get checkpoint path for epoch
     pub fn checkpoint_path(&self, epoch: usize) -> PathBuf {
-        self.checkpoint_dir
-            .join(format!("checkpoint_epoch_{epoch}.json"))
+        self.checkpoint_dir.join(format!("checkpoint_epoch_{epoch}.json"))
     }
 
     /// Get best checkpoint path
@@ -62,11 +61,7 @@ impl CheckpointCallback {
         std::fs::create_dir_all(&self.checkpoint_dir).ok();
 
         // Placeholder: In real implementation, would serialize model state
-        let path = if is_best {
-            self.best_checkpoint_path()
-        } else {
-            self.checkpoint_path(epoch)
-        };
+        let path = if is_best { self.best_checkpoint_path() } else { self.checkpoint_path(epoch) };
 
         // Write a marker file (real implementation would save model weights)
         let timestamp = std::time::SystemTime::now()
@@ -165,10 +160,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let mut cb = CheckpointCallback::new(temp_dir.path());
 
-        let ctx = CallbackContext {
-            epoch: 5,
-            ..Default::default()
-        };
+        let ctx = CallbackContext { epoch: 5, ..Default::default() };
 
         cb.on_train_end(&ctx);
         assert_eq!(cb.last_saved_epoch, Some(5));

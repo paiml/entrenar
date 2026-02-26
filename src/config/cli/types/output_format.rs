@@ -17,9 +17,7 @@ impl std::str::FromStr for OutputFormat {
             "text" => Ok(OutputFormat::Text),
             "json" => Ok(OutputFormat::Json),
             "yaml" => Ok(OutputFormat::Yaml),
-            _ => Err(format!(
-                "Unknown output format: {s}. Valid formats: text, json, yaml"
-            )),
+            _ => Err(format!("Unknown output format: {s}. Valid formats: text, json, yaml")),
         }
     }
 }

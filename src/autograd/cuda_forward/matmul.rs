@@ -25,9 +25,7 @@ pub fn fused_swiglu_forward(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -38,11 +36,7 @@ pub fn fused_swiglu_forward(
     let key = format!("fused_swiglu_forward_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
-    let config = LaunchConfig {
-        grid: (n.div_ceil(256), 1, 1),
-        block: (256, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
     let gate_ptr = gate.as_ptr();
     let up_ptr = up.as_ptr();
@@ -58,11 +52,9 @@ pub fn fused_swiglu_forward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "fused_swiglu", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("Fused SwiGLU forward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "fused_swiglu", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Fused SwiGLU forward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -81,9 +73,7 @@ pub fn gemm_forward(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -121,11 +111,9 @@ pub fn gemm_forward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "gemm_naive", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("GEMM forward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "gemm_naive", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("GEMM forward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())

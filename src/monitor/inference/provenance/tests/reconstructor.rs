@@ -116,11 +116,8 @@ fn test_calculate_duration_with_timestamps() {
 fn test_reconstruct_path_max_depth_exceeded() {
     let mut graph = ProvenanceGraph::new();
 
-    let id1 = graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    let id1 =
+        graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
     let id2 = graph.add_node(ProvenanceNode::Transform {
         operation: "op1".to_string(),
         input_refs: vec![id1],
@@ -184,9 +181,7 @@ fn test_identify_anomalies_fusion_many_inputs() {
     let path = reconstructor.reconstruct_path(fusion_id, 10);
     let anomalies = reconstructor.identify_anomalies(&path, 0.7);
 
-    assert!(anomalies
-        .iter()
-        .any(|a| a.description.contains("many fusion inputs")));
+    assert!(anomalies.iter().any(|a| a.description.contains("many fusion inputs")));
 }
 
 #[test]
@@ -203,7 +198,5 @@ fn test_identify_anomalies_no_predecessors() {
     let path = reconstructor.reconstruct_path(id, 10);
     let anomalies = reconstructor.identify_anomalies(&path, 0.7);
 
-    assert!(anomalies
-        .iter()
-        .any(|a| a.description.contains("no predecessors")));
+    assert!(anomalies.iter().any(|a| a.description.contains("no predecessors")));
 }

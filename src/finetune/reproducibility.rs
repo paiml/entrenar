@@ -183,14 +183,10 @@ impl ExperimentLock {
 
     /// Get Rust version
     fn get_rust_version() -> String {
-        std::process::Command::new("rustc")
-            .arg("--version")
-            .output()
-            .ok()
-            .map_or_else(
-                || "unknown".into(),
-                |o| String::from_utf8_lossy(&o.stdout).trim().to_string(),
-            )
+        std::process::Command::new("rustc").arg("--version").output().ok().map_or_else(
+            || "unknown".into(),
+            |o| String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        )
     }
 
     /// Get CUDA version
@@ -202,10 +198,7 @@ impl ExperimentLock {
             .filter(|o| o.status.success())
             .and_then(|o| {
                 let stdout = String::from_utf8_lossy(&o.stdout);
-                stdout
-                    .lines()
-                    .find(|l| l.contains("release"))
-                    .map(|l| l.trim().to_string())
+                stdout.lines().find(|l| l.contains("release")).map(|l| l.trim().to_string())
             })
     }
 
@@ -239,10 +232,7 @@ impl ExperimentLock {
                         .and_then(|s| s.strip_suffix('"'))
                         .unwrap_or("")
                         .to_string();
-                    deps.push(DependencyVersion {
-                        name: current_name.clone(),
-                        version,
-                    });
+                    deps.push(DependencyVersion { name: current_name.clone(), version });
                 }
             }
         }
@@ -315,15 +305,11 @@ impl VerificationResult {
         }
 
         if let Some((expected, actual)) = &self.rust_mismatch {
-            warnings.push(format!(
-                "Rust version mismatch: expected {expected}, got {actual}"
-            ));
+            warnings.push(format!("Rust version mismatch: expected {expected}, got {actual}"));
         }
 
         if let Some((expected, actual)) = &self.cuda_mismatch {
-            warnings.push(format!(
-                "CUDA version mismatch: expected {expected}, got {actual}"
-            ));
+            warnings.push(format!("CUDA version mismatch: expected {expected}, got {actual}"));
         }
 
         warnings
@@ -414,10 +400,7 @@ mod tests {
 
     #[test]
     fn test_dependency_version() {
-        let dep = DependencyVersion {
-            name: "entrenar".into(),
-            version: "0.5.6".into(),
-        };
+        let dep = DependencyVersion { name: "entrenar".into(), version: "0.5.6".into() };
 
         let json = serde_json::to_string(&dep).unwrap();
         assert!(json.contains("entrenar"));

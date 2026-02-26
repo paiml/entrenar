@@ -205,9 +205,7 @@ fn test_simd_adam_update() {
     let lr_t = 0.001;
     let epsilon = 1e-8;
 
-    simd_adam_update(
-        &grad, &mut m, &mut v, &mut param, beta1, beta2, lr_t, epsilon,
-    );
+    simd_adam_update(&grad, &mut m, &mut v, &mut param, beta1, beta2, lr_t, epsilon);
 
     // First moment should be (1 - 0.9) * grad = 0.1 * grad
     assert_abs_diff_eq!(m[0], 0.1, epsilon = 1e-6);
@@ -218,14 +216,8 @@ fn test_simd_adam_update() {
     assert_abs_diff_eq!(v[1], 0.001, epsilon = 1e-6);
 
     // Parameters should have moved (exact values depend on the computation)
-    assert!(
-        param[0] < 5.0,
-        "Parameter should decrease for positive gradient"
-    );
-    assert!(
-        param[1] > -3.0,
-        "Parameter should increase for negative gradient"
-    );
+    assert!(param[0] < 5.0, "Parameter should decrease for positive gradient");
+    assert!(param[1] > -3.0, "Parameter should increase for negative gradient");
 }
 
 #[test]
@@ -345,9 +337,7 @@ fn test_simd_adam_multiple_steps() {
 
     // Run 10 steps
     for _ in 0..10 {
-        simd_adam_update(
-            &grad, &mut m, &mut v, &mut param, beta1, beta2, lr_t, epsilon,
-        );
+        simd_adam_update(&grad, &mut m, &mut v, &mut param, beta1, beta2, lr_t, epsilon);
     }
 
     // Momentum should have accumulated

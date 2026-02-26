@@ -58,10 +58,7 @@ pub fn ties_merge(
     config: &TiesConfig,
 ) -> Result<Model, MergeError> {
     if models.len() < 2 {
-        return Err(MergeError::InsufficientModels {
-            min: 2,
-            got: models.len(),
-        });
+        return Err(MergeError::InsufficientModels { min: 2, got: models.len() });
     }
 
     validate_models(models)?;
@@ -100,11 +97,8 @@ fn trim_tensor(tensor: &Tensor, density: f32) -> Tensor {
     let k = ((n as f32 * density).ceil() as usize).max(1).min(n);
 
     // Get magnitude-sorted indices
-    let mut indices_and_magnitudes: Vec<(usize, f32)> = data
-        .iter()
-        .enumerate()
-        .map(|(i, &val)| (i, val.abs()))
-        .collect();
+    let mut indices_and_magnitudes: Vec<(usize, f32)> =
+        data.iter().enumerate().map(|(i, &val)| (i, val.abs())).collect();
 
     indices_and_magnitudes.sort_by(|a, b| b.1.total_cmp(&a.1));
 
@@ -128,10 +122,8 @@ fn elect_and_merge(trimmed_deltas: &[Model]) -> Model {
 
     for name in reference.keys() {
         // Collect all delta values for this parameter
-        let all_values: Vec<&Array1<f32>> = trimmed_deltas
-            .iter()
-            .map(|delta| delta[name].data())
-            .collect();
+        let all_values: Vec<&Array1<f32>> =
+            trimmed_deltas.iter().map(|delta| delta[name].data()).collect();
 
         let merged_tensor = elect_and_merge_parameter(&all_values);
         merged.insert(name.clone(), merged_tensor);
@@ -247,10 +239,7 @@ mod tests {
         let config = TiesConfig::default();
 
         let result = ties_merge(&models, &base, &config);
-        assert!(matches!(
-            result,
-            Err(MergeError::InsufficientModels { min: 2, got: 1 })
-        ));
+        assert!(matches!(result, Err(MergeError::InsufficientModels { min: 2, got: 1 })));
     }
 
     #[test]
@@ -301,22 +290,13 @@ mod tests {
     #[test]
     fn test_ties_merge_two_models() {
         let mut base = HashMap::new();
-        base.insert(
-            "w".to_string(),
-            Tensor::from_vec(vec![0.0, 0.0, 0.0], false),
-        );
+        base.insert("w".to_string(), Tensor::from_vec(vec![0.0, 0.0, 0.0], false));
 
         let mut model1 = HashMap::new();
-        model1.insert(
-            "w".to_string(),
-            Tensor::from_vec(vec![1.0, 2.0, 3.0], false),
-        );
+        model1.insert("w".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], false));
 
         let mut model2 = HashMap::new();
-        model2.insert(
-            "w".to_string(),
-            Tensor::from_vec(vec![2.0, -1.0, 4.0], false),
-        );
+        model2.insert("w".to_string(), Tensor::from_vec(vec![2.0, -1.0, 4.0], false));
 
         let config = TiesConfig::new(1.0).unwrap(); // Keep all
         let result = ties_merge(&[model1, model2], &base, &config).unwrap();

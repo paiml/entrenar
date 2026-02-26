@@ -33,11 +33,7 @@ pub enum FetchError {
 
     /// Downloaded file is corrupt (checksum mismatch)
     #[error("Corrupt file at {path}: expected SHA256 {expected_hash}, got {actual_hash}")]
-    CorruptFile {
-        path: PathBuf,
-        expected_hash: String,
-        actual_hash: String,
-    },
+    CorruptFile { path: PathBuf, expected_hash: String, actual_hash: String },
 
     /// Insufficient disk space
     #[error("Insufficient disk space: need {required} bytes, have {available} bytes")]
@@ -73,11 +69,7 @@ pub enum FetchError {
 
     /// Tensor shape mismatch
     #[error("Tensor shape mismatch for {tensor}: expected {expected:?}, got {actual:?}")]
-    ShapeMismatch {
-        tensor: String,
-        expected: Vec<usize>,
-        actual: Vec<usize>,
-    },
+    ShapeMismatch { tensor: String, expected: Vec<usize>, actual: Vec<usize> },
 
     /// IO error
     #[error("IO error: {0}")]
@@ -148,18 +140,14 @@ mod tests {
 
     #[test]
     fn test_rate_limited_is_retryable() {
-        let err = FetchError::RateLimited {
-            retry_after: Duration::from_secs(60),
-        };
+        let err = FetchError::RateLimited { retry_after: Duration::from_secs(60) };
         assert!(err.is_retryable());
         assert_eq!(err.retry_after(), Some(Duration::from_secs(60)));
     }
 
     #[test]
     fn test_model_not_found_not_retryable() {
-        let err = FetchError::ModelNotFound {
-            repo: "test/model".into(),
-        };
+        let err = FetchError::ModelNotFound { repo: "test/model".into() };
         assert!(!err.is_retryable());
         assert!(err.retry_after().is_none());
     }
@@ -190,9 +178,7 @@ mod tests {
 
     #[test]
     fn test_invalid_repo_id_display() {
-        let err = FetchError::InvalidRepoId {
-            repo_id: "invalid".into(),
-        };
+        let err = FetchError::InvalidRepoId { repo_id: "invalid".into() };
         let msg = err.to_string();
         assert!(msg.contains("org/name"));
     }
@@ -201,68 +187,37 @@ mod tests {
     fn test_all_error_variants_display() {
         // Ensure all variants have proper Display
         let errors: Vec<FetchError> = vec![
-            FetchError::NetworkTimeout {
-                repo: "r".into(),
-                elapsed: Duration::from_secs(1),
-            },
-            FetchError::RateLimited {
-                retry_after: Duration::from_secs(1),
-            },
+            FetchError::NetworkTimeout { repo: "r".into(), elapsed: Duration::from_secs(1) },
+            FetchError::RateLimited { retry_after: Duration::from_secs(1) },
             FetchError::ModelNotFound { repo: "r".into() },
-            FetchError::FileNotFound {
-                repo: "r".into(),
-                file: "f".into(),
-            },
+            FetchError::FileNotFound { repo: "r".into(), file: "f".into() },
             FetchError::CorruptFile {
                 path: PathBuf::from("p"),
                 expected_hash: "e".into(),
                 actual_hash: "a".into(),
             },
-            FetchError::InsufficientDisk {
-                required: 100,
-                available: 50,
-            },
-            FetchError::OutOfMemory {
-                required: 100,
-                available: 50,
-            },
-            FetchError::AuthenticationFailed {
-                message: "m".into(),
-            },
+            FetchError::InsufficientDisk { required: 100, available: 50 },
+            FetchError::OutOfMemory { required: 100, available: 50 },
+            FetchError::AuthenticationFailed { message: "m".into() },
             FetchError::MissingToken,
-            FetchError::InvalidRepoId {
-                repo_id: "r".into(),
-            },
+            FetchError::InvalidRepoId { repo_id: "r".into() },
             FetchError::UnsupportedFormat { format: "f".into() },
             FetchError::PickleSecurityRisk,
-            FetchError::ConfigParseError {
-                message: "m".into(),
-            },
+            FetchError::ConfigParseError { message: "m".into() },
             FetchError::ShapeMismatch {
                 tensor: "t".into(),
                 expected: vec![1, 2],
                 actual: vec![3, 4],
             },
-            FetchError::LeaderboardNotFound {
-                kind: "OpenASR".into(),
-            },
-            FetchError::LeaderboardParseError {
-                message: "missing field".into(),
-            },
-            FetchError::HttpError {
-                message: "connection refused".into(),
-            },
-            FetchError::GgufWriteError {
-                message: "alignment error".into(),
-            },
+            FetchError::LeaderboardNotFound { kind: "OpenASR".into() },
+            FetchError::LeaderboardParseError { message: "missing field".into() },
+            FetchError::HttpError { message: "connection refused".into() },
+            FetchError::GgufWriteError { message: "alignment error".into() },
         ];
 
         for err in errors {
             let msg = err.to_string();
-            assert!(
-                !msg.is_empty(),
-                "Error display should not be empty: {err:?}"
-            );
+            assert!(!msg.is_empty(), "Error display should not be empty: {err:?}");
         }
     }
 

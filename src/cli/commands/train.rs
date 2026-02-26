@@ -5,11 +5,7 @@ use crate::cli::LogLevel;
 use crate::config::{apply_overrides, load_config, train_from_yaml, TrainArgs, TrainSpec};
 
 pub fn run_train(args: TrainArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Entrenar: Training from {}", args.config.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Entrenar: Training from {}", args.config.display()));
 
     // Load and validate config
     let mut spec = load_config(&args.config).map_err(|e| format!("Config error: {e}"))?;
@@ -31,55 +27,28 @@ pub fn run_train(args: TrainArgs, level: LogLevel) -> Result<(), String> {
 
 /// Log a summary of the training configuration for dry-run mode
 fn log_dry_run_summary(spec: &TrainSpec, level: LogLevel) {
-    log(
-        level,
-        LogLevel::Normal,
-        "Dry run - config validated successfully",
-    );
+    log(level, LogLevel::Normal, "Dry run - config validated successfully");
 
     let mode_str = format!("{:?}", spec.model.mode).to_lowercase();
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Model: {} ({})", spec.model.path.display(), mode_str),
-    );
+    log(level, LogLevel::Normal, &format!("  Model: {} ({})", spec.model.path.display(), mode_str));
 
     let training_mode = format!("{:?}", spec.training.mode).to_lowercase();
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Training mode: {training_mode}"),
-    );
+    log(level, LogLevel::Normal, &format!("  Training mode: {training_mode}"));
 
     log(
         level,
         LogLevel::Normal,
-        &format!(
-            "  Optimizer: {} (lr={})",
-            spec.optimizer.name, spec.optimizer.lr
-        ),
+        &format!("  Optimizer: {} (lr={})", spec.optimizer.name, spec.optimizer.lr),
     );
 
     log_scheduler_info(spec, level);
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Epochs: {}", spec.training.epochs),
-    );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Batch size: {}", spec.data.batch_size),
-    );
+    log(level, LogLevel::Normal, &format!("  Epochs: {}", spec.training.epochs));
+    log(level, LogLevel::Normal, &format!("  Batch size: {}", spec.data.batch_size));
 
     log_optional_features(spec, level);
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Output: {}", spec.training.output_dir.display()),
-    );
+    log(level, LogLevel::Normal, &format!("  Output: {}", spec.training.output_dir.display()));
 }
 
 /// Log scheduler information if present
@@ -90,11 +59,7 @@ fn log_scheduler_info(spec: &TrainSpec, level: LogLevel) {
         } else {
             String::new()
         };
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("  Scheduler: {sched}{warmup}"),
-        );
+        log(level, LogLevel::Normal, &format!("  Scheduler: {sched}{warmup}"));
     }
 }
 
@@ -125,16 +90,8 @@ fn log_optional_features(spec: &TrainSpec, level: LogLevel) {
     }
 
     if let Some(ref quant) = spec.quantize {
-        let scheme = if quant.symmetric {
-            "symmetric"
-        } else {
-            "asymmetric"
-        };
-        let gran = if quant.per_channel {
-            "per-channel"
-        } else {
-            "per-tensor"
-        };
+        let scheme = if quant.symmetric { "symmetric" } else { "asymmetric" };
+        let gran = if quant.per_channel { "per-channel" } else { "per-tensor" };
         log(
             level,
             LogLevel::Normal,

@@ -40,9 +40,7 @@ fn infer_numeric_type(stats: &ColumnStats, config: &InferenceConfig) -> FeatureT
 
 /// Check if sample values contain token sequences
 fn has_token_sequences(sample_values: &[String]) -> bool {
-    sample_values
-        .iter()
-        .any(|s| s.split_whitespace().count() > 5)
+    sample_values.iter().any(|s| s.split_whitespace().count() > 5)
 }
 
 /// Infer type for a string column

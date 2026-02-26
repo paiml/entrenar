@@ -19,11 +19,7 @@ impl SqliteBackend {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        state
-            .params
-            .entry(run_id.to_string())
-            .or_default()
-            .insert(key.to_string(), value);
+        state.params.entry(run_id.to_string()).or_default().insert(key.to_string(), value);
 
         Ok(())
     }
@@ -240,11 +236,7 @@ impl SqliteBackend {
             .read()
             .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
 
-        state
-            .runs
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))
+        state.runs.get(run_id).cloned().ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))
     }
 
     /// List all experiments
@@ -268,12 +260,7 @@ impl SqliteBackend {
             return Err(StorageError::ExperimentNotFound(experiment_id.to_string()));
         }
 
-        Ok(state
-            .runs
-            .values()
-            .filter(|r| r.experiment_id == experiment_id)
-            .cloned()
-            .collect())
+        Ok(state.runs.values().filter(|r| r.experiment_id == experiment_id).cloned().collect())
     }
 }
 
@@ -320,19 +307,11 @@ mod tests {
                 FilterOp::Contains => {
                     // Unsupported for Float, but supported for String
                     assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
-                    assert!(SqliteBackend::param_matches(
-                        &string_val,
-                        op,
-                        &string_filter
-                    ));
+                    assert!(SqliteBackend::param_matches(&string_val, op, &string_filter));
                 }
                 FilterOp::StartsWith => {
                     assert!(!SqliteBackend::param_matches(&float_val, op, &float_filter));
-                    assert!(SqliteBackend::param_matches(
-                        &string_val,
-                        op,
-                        &string_filter
-                    ));
+                    assert!(SqliteBackend::param_matches(&string_val, op, &string_filter));
                 }
             }
         }
@@ -343,26 +322,10 @@ mod tests {
         let float_val = ParameterValue::Float(42.0);
         let int_filter = ParameterValue::Int(42);
         // Cross-type comparisons always return false
-        assert!(!SqliteBackend::param_matches(
-            &float_val,
-            &FilterOp::Eq,
-            &int_filter
-        ));
-        assert!(!SqliteBackend::param_matches(
-            &float_val,
-            &FilterOp::Ne,
-            &int_filter
-        ));
-        assert!(!SqliteBackend::param_matches(
-            &float_val,
-            &FilterOp::Gt,
-            &int_filter
-        ));
-        assert!(!SqliteBackend::param_matches(
-            &float_val,
-            &FilterOp::Lt,
-            &int_filter
-        ));
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Eq, &int_filter));
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Ne, &int_filter));
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Gt, &int_filter));
+        assert!(!SqliteBackend::param_matches(&float_val, &FilterOp::Lt, &int_filter));
     }
 
     #[test]

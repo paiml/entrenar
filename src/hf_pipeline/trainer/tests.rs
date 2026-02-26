@@ -178,15 +178,8 @@ fn test_trainer_compute_loss() {
     let teacher_logits = Array2::from_shape_vec((2, 10), vec![1.1; 20]).unwrap();
     let targets = vec![5, 3];
 
-    let loss = trainer.compute_loss(
-        &student_logits,
-        &teacher_logits,
-        &targets,
-        None,
-        None,
-        None,
-        None,
-    );
+    let loss =
+        trainer.compute_loss(&student_logits, &teacher_logits, &targets, None, None, None, None);
     assert!(loss >= 0.0);
     assert!(loss.is_finite());
 }
@@ -370,8 +363,5 @@ fn test_trainer_config_clone() {
 
     let cloned = config.clone();
     assert_eq!(config.epochs, cloned.epochs);
-    assert_eq!(
-        config.distillation_loss.temperature,
-        cloned.distillation_loss.temperature
-    );
+    assert_eq!(config.distillation_loss.temperature, cloned.distillation_loss.temperature);
 }

@@ -46,10 +46,7 @@ proptest! {
 #[test]
 fn test_fnv1a_hash_empty() {
     let hash = fnv1a_hash(&[]);
-    assert_eq!(
-        hash, 0xcbf29ce484222325,
-        "Empty input should return FNV offset basis"
-    );
+    assert_eq!(hash, 0xcbf29ce484222325, "Empty input should return FNV offset basis");
 }
 
 #[test]
@@ -64,10 +61,7 @@ fn test_fnv1a_hash_deterministic() {
 fn test_fnv1a_hash_different_inputs() {
     let hash1 = fnv1a_hash(b"hello");
     let hash2 = fnv1a_hash(b"world");
-    assert_ne!(
-        hash1, hash2,
-        "Different inputs should produce different hashes"
-    );
+    assert_ne!(hash1, hash2, "Different inputs should produce different hashes");
 }
 
 #[test]
@@ -90,18 +84,12 @@ fn test_hash_features_different_inputs() {
     let features2 = [1.0f32, 2.0, 4.0];
     let hash1 = hash_features(&features1);
     let hash2 = hash_features(&features2);
-    assert_ne!(
-        hash1, hash2,
-        "Different features should produce different hashes"
-    );
+    assert_ne!(hash1, hash2, "Different features should produce different hashes");
 }
 
 #[test]
 fn test_hash_features_empty() {
     let features: [f32; 0] = [];
     let hash = hash_features(&features);
-    assert_eq!(
-        hash, 0xcbf29ce484222325,
-        "Empty features should return FNV offset basis"
-    );
+    assert_eq!(hash, 0xcbf29ce484222325, "Empty features should return FNV offset basis");
 }

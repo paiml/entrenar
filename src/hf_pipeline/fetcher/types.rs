@@ -25,9 +25,7 @@ impl WeightFormat {
         if filename.ends_with(".safetensors") {
             Some(Self::SafeTensors)
         } else if filename.ends_with(".gguf") {
-            Some(Self::GGUF {
-                quant_type: "unknown".into(),
-            })
+            Some(Self::GGUF { quant_type: "unknown".into() })
         } else if filename.ends_with(".bin") {
             Some(Self::PyTorchBin)
         } else if filename.ends_with(".onnx") {
@@ -50,17 +48,9 @@ impl WeightFormat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Architecture {
     /// BERT-style encoder
-    BERT {
-        num_layers: usize,
-        hidden_size: usize,
-        num_attention_heads: usize,
-    },
+    BERT { num_layers: usize, hidden_size: usize, num_attention_heads: usize },
     /// GPT-style decoder
-    GPT2 {
-        num_layers: usize,
-        hidden_size: usize,
-        num_attention_heads: usize,
-    },
+    GPT2 { num_layers: usize, hidden_size: usize, num_attention_heads: usize },
     /// Llama architecture
     Llama {
         num_layers: usize,
@@ -69,11 +59,7 @@ pub enum Architecture {
         intermediate_size: usize,
     },
     /// T5 encoder-decoder
-    T5 {
-        encoder_layers: usize,
-        decoder_layers: usize,
-        hidden_size: usize,
-    },
+    T5 { encoder_layers: usize, decoder_layers: usize, hidden_size: usize },
     /// Custom/unknown architecture
     Custom { config: serde_json::Value },
 }
@@ -83,38 +69,21 @@ impl Architecture {
     #[must_use]
     pub fn param_count(&self) -> u64 {
         match self {
-            Self::BERT {
-                num_layers,
-                hidden_size,
-                num_attention_heads: _,
-            } => {
+            Self::BERT { num_layers, hidden_size, num_attention_heads: _ } => {
                 // Rough estimate: 4 * hidden^2 per layer (Q, K, V, O projections + FFN)
                 let per_layer = 4 * (*hidden_size as u64).pow(2) + 4 * (*hidden_size as u64).pow(2);
                 per_layer * (*num_layers as u64)
             }
-            Self::GPT2 {
-                num_layers,
-                hidden_size,
-                ..
-            } => {
+            Self::GPT2 { num_layers, hidden_size, .. } => {
                 let per_layer = 4 * (*hidden_size as u64).pow(2) + 4 * (*hidden_size as u64).pow(2);
                 per_layer * (*num_layers as u64)
             }
-            Self::Llama {
-                num_layers,
-                hidden_size,
-                intermediate_size,
-                ..
-            } => {
+            Self::Llama { num_layers, hidden_size, intermediate_size, .. } => {
                 let attn = 4 * (*hidden_size as u64).pow(2);
                 let ffn = 2 * (*hidden_size as u64) * (*intermediate_size as u64);
                 (attn + ffn) * (*num_layers as u64)
             }
-            Self::T5 {
-                encoder_layers,
-                decoder_layers,
-                hidden_size,
-            } => {
+            Self::T5 { encoder_layers, decoder_layers, hidden_size } => {
                 let per_layer = 8 * (*hidden_size as u64).pow(2);
                 per_layer * ((*encoder_layers + *decoder_layers) as u64)
             }

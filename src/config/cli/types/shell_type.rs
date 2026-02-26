@@ -19,9 +19,7 @@ impl std::str::FromStr for ShellType {
             "zsh" => Ok(ShellType::Zsh),
             "fish" => Ok(ShellType::Fish),
             "powershell" | "ps" => Ok(ShellType::PowerShell),
-            _ => Err(format!(
-                "Unknown shell: {s}. Valid shells: bash, zsh, fish, powershell"
-            )),
+            _ => Err(format!("Unknown shell: {s}. Valid shells: bash, zsh, fish, powershell")),
         }
     }
 }

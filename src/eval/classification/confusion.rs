@@ -27,18 +27,10 @@ impl ConfusionMatrix {
 
     /// Create from predictions and ground truth
     pub fn from_predictions(y_pred: &[usize], y_true: &[usize]) -> Self {
-        assert_eq!(
-            y_pred.len(),
-            y_true.len(),
-            "Predictions and targets must have same length"
-        );
+        assert_eq!(y_pred.len(), y_true.len(), "Predictions and targets must have same length");
 
         // Determine number of classes
-        let n_classes = y_pred
-            .iter()
-            .chain(y_true.iter())
-            .max()
-            .map_or(0, |&m| m + 1);
+        let n_classes = y_pred.iter().chain(y_true.iter()).max().map_or(0, |&m| m + 1);
 
         let mut cm = Self::new(n_classes);
 
@@ -78,18 +70,12 @@ impl ConfusionMatrix {
 
     /// Calculate false positives for a class (predicted as class but wasn't)
     pub fn false_positives(&self, class: usize) -> usize {
-        (0..self.n_classes)
-            .filter(|&i| i != class)
-            .map(|i| self.matrix[i][class])
-            .sum()
+        (0..self.n_classes).filter(|&i| i != class).map(|i| self.matrix[i][class]).sum()
     }
 
     /// Calculate false negatives for a class (was class but predicted differently)
     pub fn false_negatives(&self, class: usize) -> usize {
-        (0..self.n_classes)
-            .filter(|&j| j != class)
-            .map(|j| self.matrix[class][j])
-            .sum()
+        (0..self.n_classes).filter(|&j| j != class).map(|j| self.matrix[class][j]).sum()
     }
 
     /// Calculate true negatives for a class

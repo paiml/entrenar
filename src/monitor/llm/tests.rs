@@ -31,9 +31,7 @@ mod tests {
 
     #[test]
     fn test_llm_metrics_with_latency() {
-        let metrics = LLMMetrics::new("gpt-4")
-            .with_tokens(100, 50)
-            .with_latency(1000.0);
+        let metrics = LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(1000.0);
         assert_eq!(metrics.latency_ms, 1000.0);
         assert!((metrics.tokens_per_second - 50.0).abs() < 0.01);
     }
@@ -50,10 +48,7 @@ mod tests {
     #[test]
     fn test_llm_metrics_with_tag() {
         let metrics = LLMMetrics::new("gpt-4").with_tag("purpose", "summarization");
-        assert_eq!(
-            metrics.tags.get("purpose"),
-            Some(&"summarization".to_string())
-        );
+        assert_eq!(metrics.tags.get("purpose"), Some(&"summarization".to_string()));
     }
 
     // -------------------------------------------------------------------------
@@ -175,9 +170,7 @@ mod tests {
 
     #[test]
     fn test_llm_stats_single() {
-        let metrics = vec![LLMMetrics::new("gpt-4")
-            .with_tokens(100, 50)
-            .with_latency(1000.0)];
+        let metrics = vec![LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(1000.0)];
         let stats = LLMStats::from_metrics(&metrics);
         assert_eq!(stats.n_calls, 1);
         assert_eq!(stats.total_tokens, 150);
@@ -187,12 +180,8 @@ mod tests {
     #[test]
     fn test_llm_stats_multiple() {
         let metrics = vec![
-            LLMMetrics::new("gpt-4")
-                .with_tokens(100, 50)
-                .with_latency(1000.0),
-            LLMMetrics::new("gpt-4")
-                .with_tokens(200, 100)
-                .with_latency(2000.0),
+            LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(1000.0),
+            LLMMetrics::new("gpt-4").with_tokens(200, 100).with_latency(2000.0),
         ];
         let stats = LLMStats::from_metrics(&metrics);
         assert_eq!(stats.n_calls, 2);
@@ -260,17 +249,13 @@ mod tests {
         evaluator
             .log_llm_call(
                 "run-1",
-                LLMMetrics::new("gpt-4")
-                    .with_tokens(100, 50)
-                    .with_latency(500.0),
+                LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(500.0),
             )
             .unwrap();
         evaluator
             .log_llm_call(
                 "run-1",
-                LLMMetrics::new("gpt-4")
-                    .with_tokens(200, 100)
-                    .with_latency(1500.0),
+                LLMMetrics::new("gpt-4").with_tokens(200, 100).with_latency(1500.0),
             )
             .unwrap();
 

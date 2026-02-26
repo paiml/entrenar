@@ -42,11 +42,7 @@ mod tests {
 
     #[test]
     fn test_domain_continuous_sample() {
-        let domain = ParameterDomain::Continuous {
-            low: 0.0,
-            high: 1.0,
-            log_scale: false,
-        };
+        let domain = ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false };
         let mut rng = rand::rng();
         for _ in 0..100 {
             let value = domain.sample(&mut rng);
@@ -56,11 +52,7 @@ mod tests {
 
     #[test]
     fn test_domain_continuous_log_scale() {
-        let domain = ParameterDomain::Continuous {
-            low: 1e-5,
-            high: 1e-1,
-            log_scale: true,
-        };
+        let domain = ParameterDomain::Continuous { low: 1e-5, high: 1e-1, log_scale: true };
         let mut rng = rand::rng();
         for _ in 0..100 {
             let value = domain.sample(&mut rng);
@@ -92,11 +84,7 @@ mod tests {
 
     #[test]
     fn test_domain_is_valid() {
-        let domain = ParameterDomain::Continuous {
-            low: 0.0,
-            high: 1.0,
-            log_scale: false,
-        };
+        let domain = ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false };
 
         assert!(domain.is_valid(&ParameterValue::Float(0.5)));
         assert!(!domain.is_valid(&ParameterValue::Float(1.5)));
@@ -117,14 +105,7 @@ mod tests {
     #[test]
     fn test_space_add_and_get() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 1e-5,
-                high: 1e-1,
-                log_scale: true,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 1e-5, high: 1e-1, log_scale: true });
 
         assert!(!space.is_empty());
         assert_eq!(space.len(), 1);
@@ -135,14 +116,7 @@ mod tests {
     #[test]
     fn test_space_sample_random() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 1e-5,
-                high: 1e-1,
-                log_scale: true,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 1e-5, high: 1e-1, log_scale: true });
         space.add("batch_size", ParameterDomain::Discrete { low: 8, high: 64 });
 
         let mut rng = rand::rng();
@@ -156,14 +130,7 @@ mod tests {
     #[test]
     fn test_space_validate() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
         let mut valid_config = HashMap::new();
         valid_config.insert("lr".to_string(), ParameterValue::Float(0.5));
@@ -213,14 +180,7 @@ mod tests {
     #[test]
     fn test_space_iter() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
         space.add("batch_size", ParameterDomain::Discrete { low: 8, high: 32 });
 
         let param_names: Vec<_> = space.iter().map(|(name, _)| name.clone()).collect();
@@ -239,9 +199,7 @@ mod tests {
         // Float value for discrete domain
         assert!(!domain.is_valid(&ParameterValue::Float(5.0)));
 
-        let domain = ParameterDomain::Categorical {
-            choices: vec!["a".to_string()],
-        };
+        let domain = ParameterDomain::Categorical { choices: vec!["a".to_string()] };
         // Int value for categorical domain
         assert!(!domain.is_valid(&ParameterValue::Int(0)));
     }
@@ -270,11 +228,7 @@ mod tests {
 
     #[test]
     fn test_parameter_domain_serde() {
-        let domain = ParameterDomain::Continuous {
-            low: 0.0,
-            high: 1.0,
-            log_scale: true,
-        };
+        let domain = ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: true };
         let json = serde_json::to_string(&domain).unwrap();
         let parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
         match parsed {
@@ -286,9 +240,8 @@ mod tests {
         let json = serde_json::to_string(&domain).unwrap();
         let _parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
 
-        let domain = ParameterDomain::Categorical {
-            choices: vec!["a".to_string(), "b".to_string()],
-        };
+        let domain =
+            ParameterDomain::Categorical { choices: vec!["a".to_string(), "b".to_string()] };
         let json = serde_json::to_string(&domain).unwrap();
         let _parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
     }
@@ -296,14 +249,7 @@ mod tests {
     #[test]
     fn test_hyperparameter_space_serde() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
         let json = serde_json::to_string(&space).unwrap();
         let parsed: HyperparameterSpace = serde_json::from_str(&json).unwrap();
@@ -357,10 +303,7 @@ mod tests {
         let json = serde_json::to_string(&strategy).unwrap();
         let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
 
-        let strategy = SearchStrategy::Hyperband {
-            max_iter: 81,
-            eta: 3.0,
-        };
+        let strategy = SearchStrategy::Hyperband { max_iter: 81, eta: 3.0 };
         let json = serde_json::to_string(&strategy).unwrap();
         let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
     }

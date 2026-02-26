@@ -39,10 +39,7 @@ fn test_auto_retrainer_no_drift() {
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
     detector.set_baseline(&baseline);
 
-    let config = RetrainConfig {
-        cooldown_batches: 0,
-        ..Default::default()
-    };
+    let config = RetrainConfig { cooldown_batches: 0, ..Default::default() };
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     // Same distribution should not trigger
@@ -59,10 +56,7 @@ fn test_auto_retrainer_with_drift() {
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
     detector.set_baseline(&baseline);
 
-    let config = RetrainConfig {
-        cooldown_batches: 0,
-        ..Default::default()
-    };
+    let config = RetrainConfig { cooldown_batches: 0, ..Default::default() };
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     let retrain_count = Arc::new(AtomicUsize::new(0));
@@ -114,11 +108,7 @@ fn test_max_retrains_limit() {
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
     detector.set_baseline(&baseline);
 
-    let config = RetrainConfig {
-        cooldown_batches: 0,
-        max_retrains: 2,
-        ..Default::default()
-    };
+    let config = RetrainConfig { cooldown_batches: 0, max_retrains: 2, ..Default::default() };
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     retrainer.on_retrain(|_| Ok("job".to_string()));
@@ -126,28 +116,18 @@ fn test_max_retrains_limit() {
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
 
     // First two should trigger
-    assert!(matches!(
-        retrainer.process_batch(&shifted).unwrap(),
-        Action::RetrainTriggered(_)
-    ));
-    assert!(matches!(
-        retrainer.process_batch(&shifted).unwrap(),
-        Action::RetrainTriggered(_)
-    ));
+    assert!(matches!(retrainer.process_batch(&shifted).unwrap(), Action::RetrainTriggered(_)));
+    assert!(matches!(retrainer.process_batch(&shifted).unwrap(), Action::RetrainTriggered(_)));
 
     // Third should be blocked
-    assert_eq!(
-        retrainer.process_batch(&shifted).unwrap(),
-        Action::WarningLogged
-    );
+    assert_eq!(retrainer.process_batch(&shifted).unwrap(), Action::WarningLogged);
 }
 
 #[test]
 fn test_feature_count_policy() {
     let mut detector = DriftDetector::new(vec![DriftTest::KS { threshold: 0.05 }]);
-    let baseline: Vec<Vec<f64>> = (0..100)
-        .map(|i| vec![f64::from(i), f64::from(i) * 2.0])
-        .collect();
+    let baseline: Vec<Vec<f64>> =
+        (0..100).map(|i| vec![f64::from(i), f64::from(i) * 2.0]).collect();
     detector.set_baseline(&baseline);
 
     let config = RetrainConfig {
@@ -160,9 +140,8 @@ fn test_feature_count_policy() {
     retrainer.on_retrain(|_| Ok("job".to_string()));
 
     // Both features shifted - should trigger
-    let shifted: Vec<Vec<f64>> = (100..200)
-        .map(|i| vec![f64::from(i), f64::from(i) * 2.0])
-        .collect();
+    let shifted: Vec<Vec<f64>> =
+        (100..200).map(|i| vec![f64::from(i), f64::from(i) * 2.0]).collect();
     let action = retrainer.process_batch(&shifted).unwrap();
     assert!(matches!(action, Action::RetrainTriggered(_)));
 }
@@ -199,10 +178,7 @@ fn test_callback_latency() {
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
     detector.set_baseline(&baseline);
 
-    let config = RetrainConfig {
-        cooldown_batches: 0,
-        ..Default::default()
-    };
+    let config = RetrainConfig { cooldown_batches: 0, ..Default::default() };
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     let callback_fired = Arc::new(AtomicBool::new(false));
@@ -230,9 +206,7 @@ fn test_critical_feature_policy() {
     detector.set_baseline(&baseline);
 
     let config = RetrainConfig {
-        policy: RetrainPolicy::CriticalFeature {
-            names: vec!["feature_0".to_string()],
-        },
+        policy: RetrainPolicy::CriticalFeature { names: vec!["feature_0".to_string()] },
         cooldown_batches: 0,
         ..Default::default()
     };
@@ -294,10 +268,7 @@ fn test_retrain_config_clone() {
 
 #[test]
 fn test_retrainer_stats_clone() {
-    let stats = RetrainerStats {
-        total_retrains: 3,
-        batches_since_retrain: 42,
-    };
+    let stats = RetrainerStats { total_retrains: 3, batches_since_retrain: 42 };
     let cloned = stats.clone();
     assert_eq!(cloned.total_retrains, 3);
     assert_eq!(cloned.batches_since_retrain, 42);
@@ -323,10 +294,7 @@ fn test_no_callback_set_with_drift() {
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
     detector.set_baseline(&baseline);
 
-    let config = RetrainConfig {
-        cooldown_batches: 0,
-        ..Default::default()
-    };
+    let config = RetrainConfig { cooldown_batches: 0, ..Default::default() };
     let mut retrainer = AutoRetrainer::new(detector, config);
     // No callback set
 
@@ -343,11 +311,7 @@ fn test_no_drift_during_cooldown() {
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
     detector.set_baseline(&baseline);
 
-    let config = RetrainConfig {
-        cooldown_batches: 10,
-        log_warnings: true,
-        ..Default::default()
-    };
+    let config = RetrainConfig { cooldown_batches: 10, log_warnings: true, ..Default::default() };
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     // Same distribution - no drift during cooldown
@@ -374,10 +338,7 @@ fn test_max_retrains_with_warnings_disabled() {
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
 
     // First should trigger
-    assert!(matches!(
-        retrainer.process_batch(&shifted).unwrap(),
-        Action::RetrainTriggered(_)
-    ));
+    assert!(matches!(retrainer.process_batch(&shifted).unwrap(), Action::RetrainTriggered(_)));
 
     // Second should be blocked, and since log_warnings is false, returns None
     assert_eq!(retrainer.process_batch(&shifted).unwrap(), Action::None);
@@ -389,9 +350,7 @@ fn test_retrain_policy_clone() {
     let cloned = policy1.clone();
     assert!(matches!(cloned, RetrainPolicy::FeatureCount { count: 5 }));
 
-    let policy2 = RetrainPolicy::CriticalFeature {
-        names: vec!["a".to_string()],
-    };
+    let policy2 = RetrainPolicy::CriticalFeature { names: vec!["a".to_string()] };
     let cloned2 = policy2.clone();
     if let RetrainPolicy::CriticalFeature { names } = cloned2 {
         assert_eq!(names, vec!["a".to_string()]);
@@ -418,11 +377,7 @@ fn test_warnings_with_no_drift_but_in_cooldown() {
     let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i)]).collect();
     detector.set_baseline(&baseline);
 
-    let config = RetrainConfig {
-        cooldown_batches: 10,
-        log_warnings: true,
-        ..Default::default()
-    };
+    let config = RetrainConfig { cooldown_batches: 10, log_warnings: true, ..Default::default() };
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     retrainer.on_retrain(|_| Ok("job".to_string()));

@@ -75,10 +75,7 @@ lora:
 "#;
     let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
     let result = validate_manifest(&manifest);
-    assert!(
-        result.is_ok(),
-        "Disabled LoRA should not require target_modules"
-    );
+    assert!(result.is_ok(), "Disabled LoRA should not require target_modules");
 }
 
 #[test]
@@ -290,8 +287,5 @@ quantize:
 "#;
     let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
     let result = validate_manifest(&manifest);
-    assert!(
-        result.is_ok(),
-        "Disabled quantize should skip bit validation"
-    );
+    assert!(result.is_ok(), "Disabled quantize should skip bit validation");
 }

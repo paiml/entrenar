@@ -8,20 +8,13 @@ use std::path::PathBuf;
 
 fn create_valid_spec() -> TrainSpec {
     TrainSpec {
-        model: ModelRef {
-            path: PathBuf::from("model.gguf"),
-            ..Default::default()
-        },
+        model: ModelRef { path: PathBuf::from("model.gguf"), ..Default::default() },
         data: DataConfig {
             train: PathBuf::from("train.parquet"),
             batch_size: 8,
             ..Default::default()
         },
-        optimizer: OptimSpec {
-            name: "adam".to_string(),
-            lr: 0.001,
-            params: HashMap::new(),
-        },
+        optimizer: OptimSpec { name: "adam".to_string(), lr: 0.001, params: HashMap::new() },
         lora: None,
         quantize: None,
         merge: None,
@@ -88,11 +81,7 @@ fn test_invalid_lora_rank() {
 #[test]
 fn test_invalid_quant_bits() {
     let mut spec = create_valid_spec();
-    spec.quantize = Some(QuantSpec {
-        bits: 16,
-        symmetric: true,
-        per_channel: true,
-    });
+    spec.quantize = Some(QuantSpec { bits: 16, symmetric: true, per_channel: true });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidQuantBits(16)));
 }
@@ -100,10 +89,7 @@ fn test_invalid_quant_bits() {
 #[test]
 fn test_invalid_merge_method() {
     let mut spec = create_valid_spec();
-    spec.merge = Some(MergeSpec {
-        method: "invalid".to_string(),
-        params: HashMap::new(),
-    });
+    spec.merge = Some(MergeSpec { method: "invalid".to_string(), params: HashMap::new() });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidMergeMethod(_)));
 }
@@ -157,12 +143,7 @@ fn test_invalid_lora_dropout() {
 #[test]
 fn test_empty_lora_targets() {
     let mut spec = create_valid_spec();
-    spec.lora = Some(LoRASpec {
-        rank: 64,
-        alpha: 16.0,
-        target_modules: vec![],
-        dropout: 0.0,
-    });
+    spec.lora = Some(LoRASpec { rank: 64, alpha: 16.0, target_modules: vec![], dropout: 0.0 });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::EmptyLoRATargets));
 }
@@ -198,21 +179,11 @@ fn test_invalid_lr_scheduler() {
 
 #[test]
 fn test_valid_lr_schedulers() {
-    for scheduler in [
-        "cosine",
-        "linear",
-        "constant",
-        "step",
-        "exponential",
-        "one_cycle",
-        "plateau",
-    ] {
+    for scheduler in ["cosine", "linear", "constant", "step", "exponential", "one_cycle", "plateau"]
+    {
         let mut spec = create_valid_spec();
         spec.training.lr_scheduler = Some(scheduler.to_string());
-        assert!(
-            validate_config(&spec).is_ok(),
-            "scheduler '{scheduler}' should be valid"
-        );
+        assert!(validate_config(&spec).is_ok(), "scheduler '{scheduler}' should be valid");
     }
 }
 
@@ -233,10 +204,7 @@ fn test_valid_optimizers() {
     for opt in ["adam", "adamw", "sgd", "rmsprop", "adagrad", "lamb"] {
         let mut spec = create_valid_spec();
         spec.optimizer.name = opt.to_string();
-        assert!(
-            validate_config(&spec).is_ok(),
-            "optimizer '{opt}' should be valid"
-        );
+        assert!(validate_config(&spec).is_ok(), "optimizer '{opt}' should be valid");
     }
 }
 
@@ -244,11 +212,7 @@ fn test_valid_optimizers() {
 fn test_valid_quant_bits_4_and_8() {
     for bits in [4u8, 8u8] {
         let mut spec = create_valid_spec();
-        spec.quantize = Some(QuantSpec {
-            bits,
-            symmetric: true,
-            per_channel: false,
-        });
+        spec.quantize = Some(QuantSpec { bits, symmetric: true, per_channel: false });
         assert!(validate_config(&spec).is_ok());
     }
 }
@@ -257,10 +221,7 @@ fn test_valid_quant_bits_4_and_8() {
 fn test_valid_merge_methods() {
     for method in ["ties", "dare", "slerp"] {
         let mut spec = create_valid_spec();
-        spec.merge = Some(MergeSpec {
-            method: method.to_string(),
-            params: HashMap::new(),
-        });
+        spec.merge = Some(MergeSpec { method: method.to_string(), params: HashMap::new() });
         assert!(validate_config(&spec).is_ok());
     }
 }
@@ -345,15 +306,8 @@ fn test_valid_config_with_all_optional_fields() {
         target_modules: vec!["q_proj".to_string(), "v_proj".to_string()],
         dropout: 0.1,
     });
-    spec.quantize = Some(QuantSpec {
-        bits: 4,
-        symmetric: true,
-        per_channel: true,
-    });
-    spec.merge = Some(MergeSpec {
-        method: "ties".to_string(),
-        params: HashMap::new(),
-    });
+    spec.quantize = Some(QuantSpec { bits: 4, symmetric: true, per_channel: true });
+    spec.merge = Some(MergeSpec { method: "ties".to_string(), params: HashMap::new() });
     assert!(validate_config(&spec).is_ok());
 }
 

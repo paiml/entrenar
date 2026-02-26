@@ -86,9 +86,8 @@ impl PromotionPolicy {
         if let Some(min_coverage) = self.min_test_coverage {
             if let Some(&coverage) = model.metrics.get("test_coverage") {
                 if coverage < min_coverage {
-                    failed_requirements.push(format!(
-                        "Test coverage {coverage} < required {min_coverage}"
-                    ));
+                    failed_requirements
+                        .push(format!("Test coverage {coverage} < required {min_coverage}"));
                 }
             } else {
                 failed_requirements.push("Missing test_coverage metric".to_string());
@@ -97,16 +96,11 @@ impl PromotionPolicy {
 
         // Check approvals
         if approvals < self.required_approvals {
-            failed_requirements.push(format!(
-                "Approvals {} < required {}",
-                approvals, self.required_approvals
-            ));
+            failed_requirements
+                .push(format!("Approvals {} < required {}", approvals, self.required_approvals));
         }
 
-        PolicyCheckResult {
-            passed: failed_requirements.is_empty(),
-            failed_requirements,
-        }
+        PolicyCheckResult { passed: failed_requirements.is_empty(), failed_requirements }
     }
 }
 

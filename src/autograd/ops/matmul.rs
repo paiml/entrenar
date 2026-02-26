@@ -115,9 +115,7 @@ fn cuda_matmul(
     TRACER.end(TraceStep::Alloc, format!("{m}x{n}"));
 
     TRACER.start(TraceStep::Matmul);
-    executor
-        .gemm(a, b, &mut c, m as u32, n as u32, k as u32)
-        .map_err(|e| format!("{e:?}"))?;
+    executor.gemm(a, b, &mut c, m as u32, n as u32, k as u32).map_err(|e| format!("{e:?}"))?;
     TRACER.end(TraceStep::Matmul, format!("{m}x{k}x{n}"));
     Ok(c)
 }
@@ -169,8 +167,8 @@ pub fn matmul(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor {
 
     // Compute C = A @ B using GPU if available
     let result_data = matmul_compute(
-        a.data().as_slice().unwrap(),
-        b.data().as_slice().unwrap(),
+        a.data().as_slice().expect("matrix A must be contiguous"),
+        b.data().as_slice().expect("matrix B must be contiguous"),
         m,
         k,
         n,
@@ -211,11 +209,11 @@ impl BackwardOp for MatmulBackward {
             // ∂L/∂A = ∂L/∂C @ B^T  (m×n) @ (n×k) = (m×k)
             // ∂L/∂B = A^T @ ∂L/∂C  (k×m) @ (m×n) = (k×n)
 
-            let grad_c = grad_output.as_slice().unwrap();
+            let grad_c = grad_output.as_slice().expect("gradient output must be contiguous");
             let a_data = self.a.data();
             let b_data = self.b.data();
-            let a_slice = a_data.as_slice().unwrap();
-            let b_slice = b_data.as_slice().unwrap();
+            let a_slice = a_data.as_slice().expect("matrix A must be contiguous");
+            let b_slice = b_data.as_slice().expect("matrix B must be contiguous");
 
             if self.a.requires_grad() {
                 // grad_A = grad_C @ B^T

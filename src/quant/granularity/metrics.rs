@@ -11,11 +11,7 @@ pub fn quantization_mse(original: &[f32], dequantized: &[f32]) -> f32 {
         return f32::MAX;
     }
 
-    let sum_sq: f32 = original
-        .iter()
-        .zip(dequantized.iter())
-        .map(|(a, b)| (a - b).powi(2))
-        .sum();
+    let sum_sq: f32 = original.iter().zip(dequantized.iter()).map(|(a, b)| (a - b).powi(2)).sum();
 
     sum_sq / original.len().max(1) as f32
 }

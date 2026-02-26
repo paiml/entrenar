@@ -28,13 +28,7 @@ impl PruneFinetunePipeline {
     /// Create a new pipeline with the given configuration.
     pub fn new(config: PruningConfig) -> Self {
         let metrics = PruningMetrics::new(config.target_sparsity());
-        Self {
-            config,
-            stage: PruningStage::Idle,
-            metrics,
-            calibration: None,
-            error: None,
-        }
+        Self { config, stage: PruningStage::Idle, metrics, calibration: None, error: None }
     }
 
     /// Get the current stage.
@@ -113,10 +107,7 @@ impl PruneFinetunePipeline {
         filename: &str,
     ) -> Result<super::sparse_export::SparseExportResult, String> {
         if self.stage != PruningStage::Exporting {
-            return Err(format!(
-                "Cannot export in stage {:?}, expected Exporting",
-                self.stage
-            ));
+            return Err(format!("Cannot export in stage {:?}, expected Exporting", self.stage));
         }
 
         match super::sparse_export::export_sparse_model(
@@ -167,9 +158,7 @@ impl PruneFinetunePipeline {
 
     /// Get calibration progress (0.0 to 1.0).
     pub fn calibration_progress(&self) -> f32 {
-        self.calibration
-            .as_ref()
-            .map_or(0.0, CalibrationCollector::progress)
+        self.calibration.as_ref().map_or(0.0, CalibrationCollector::progress)
     }
 
     /// Get overall pipeline progress (0.0 to 1.0).

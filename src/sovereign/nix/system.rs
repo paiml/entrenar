@@ -28,12 +28,7 @@ impl NixSystem {
 
     /// Get all supported systems
     pub fn all() -> Vec<Self> {
-        vec![
-            Self::X86_64Linux,
-            Self::Aarch64Linux,
-            Self::X86_64Darwin,
-            Self::Aarch64Darwin,
-        ]
+        vec![Self::X86_64Linux, Self::Aarch64Linux, Self::X86_64Darwin, Self::Aarch64Darwin]
     }
 
     /// Get Linux systems only

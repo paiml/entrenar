@@ -40,19 +40,12 @@ impl LLMEvaluator for InMemoryLLMEvaluator {
         };
         let harmfulness = compute_harmfulness(response);
 
-        Ok(EvalResult::new(
-            relevance,
-            coherence,
-            groundedness,
-            harmfulness,
-        ))
+        Ok(EvalResult::new(relevance, coherence, groundedness, harmfulness))
     }
 
     fn log_llm_call(&mut self, run_id: &str, metrics: LLMMetrics) -> Result<()> {
-        let mut store = self
-            .metrics
-            .write()
-            .map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
+        let mut store =
+            self.metrics.write().map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
 
         store.entry(run_id.to_string()).or_default().push(metrics);
 
@@ -60,41 +53,26 @@ impl LLMEvaluator for InMemoryLLMEvaluator {
     }
 
     fn track_prompt(&mut self, run_id: &str, prompt: &PromptVersion) -> Result<()> {
-        let mut store = self
-            .prompts
-            .write()
-            .map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
+        let mut store =
+            self.prompts.write().map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
 
-        store
-            .entry(run_id.to_string())
-            .or_default()
-            .push(prompt.clone());
+        store.entry(run_id.to_string()).or_default().push(prompt.clone());
 
         Ok(())
     }
 
     fn get_metrics(&self, run_id: &str) -> Result<Vec<LLMMetrics>> {
-        let store = self
-            .metrics
-            .read()
-            .map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
+        let store =
+            self.metrics.read().map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
 
-        store
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| LLMError::RunNotFound(run_id.to_string()))
+        store.get(run_id).cloned().ok_or_else(|| LLMError::RunNotFound(run_id.to_string()))
     }
 
     fn get_prompts(&self, run_id: &str) -> Result<Vec<PromptVersion>> {
-        let store = self
-            .prompts
-            .read()
-            .map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
+        let store =
+            self.prompts.read().map_err(|e| LLMError::Internal(format!("Lock error: {e}")))?;
 
-        store
-            .get(run_id)
-            .cloned()
-            .ok_or_else(|| LLMError::RunNotFound(run_id.to_string()))
+        store.get(run_id).cloned().ok_or_else(|| LLMError::RunNotFound(run_id.to_string()))
     }
 
     fn get_stats(&self, run_id: &str) -> Result<LLMStats> {

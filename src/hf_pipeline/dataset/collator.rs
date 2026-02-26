@@ -18,11 +18,7 @@ pub struct DistillationCollator {
 
 impl Default for DistillationCollator {
     fn default() -> Self {
-        Self {
-            pad_token_id: 0,
-            max_length: 512,
-            pad_left: false,
-        }
+        Self { pad_token_id: 0, max_length: 512, pad_left: false }
     }
 }
 
@@ -30,10 +26,7 @@ impl DistillationCollator {
     /// Create new collator
     #[must_use]
     pub fn new(pad_token_id: u32) -> Self {
-        Self {
-            pad_token_id,
-            ..Default::default()
-        }
+        Self { pad_token_id, ..Default::default() }
     }
 
     /// Set maximum length
@@ -63,11 +56,7 @@ impl DistillationCollator {
         }
 
         // Find max length in batch (capped at max_length)
-        let max_len = examples
-            .iter()
-            .map(|e| e.len().min(self.max_length))
-            .max()
-            .unwrap_or(0);
+        let max_len = examples.iter().map(|e| e.len().min(self.max_length)).max().unwrap_or(0);
 
         let batch_size = examples.len();
         let mut input_ids = Array2::from_elem((batch_size, max_len), self.pad_token_id);
@@ -85,11 +74,8 @@ impl DistillationCollator {
             let seq_len = example.len().min(self.max_length);
             lengths.push(seq_len);
 
-            let (start, end) = if self.pad_left {
-                (max_len - seq_len, max_len)
-            } else {
-                (0, seq_len)
-            };
+            let (start, end) =
+                if self.pad_left { (max_len - seq_len, max_len) } else { (0, seq_len) };
 
             // Copy input IDs
             for (j, &token) in example.input_ids.iter().take(seq_len).enumerate() {
@@ -109,20 +95,11 @@ impl DistillationCollator {
             }
         }
 
-        Batch {
-            input_ids,
-            attention_mask,
-            labels,
-            lengths,
-        }
+        Batch { input_ids, attention_mask, labels, lengths }
     }
 
     /// Create batches from dataset
     pub fn batch_dataset(&self, dataset: &Dataset, batch_size: usize) -> Vec<Batch> {
-        dataset
-            .examples()
-            .chunks(batch_size)
-            .map(|chunk| self.collate(chunk))
-            .collect()
+        dataset.examples().chunks(batch_size).map(|chunk| self.collate(chunk)).collect()
     }
 }

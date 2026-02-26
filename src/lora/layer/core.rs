@@ -46,11 +46,7 @@ impl LoRALayer {
     /// # Returns
     /// LoRA layer with randomly initialized A (Gaussian) and zero-initialized B
     pub fn new(base_weight: Tensor, d_out: usize, d_in: usize, rank: usize, alpha: f32) -> Self {
-        assert_eq!(
-            base_weight.len(),
-            d_out * d_in,
-            "Base weight size must match d_out * d_in"
-        );
+        assert_eq!(base_weight.len(), d_out * d_in, "Base weight size must match d_out * d_in");
 
         // Initialize A with small Gaussian noise, B with zeros (standard LoRA init)
         // This ensures that initially ΔW = B·A = 0
@@ -67,16 +63,7 @@ impl LoRALayer {
 
         let scale = alpha / rank as f32;
 
-        Self {
-            base_weight,
-            lora_a,
-            lora_b,
-            d_out,
-            d_in,
-            rank,
-            scale,
-            merged: false,
-        }
+        Self { base_weight, lora_a, lora_b, d_out, d_in, rank, scale, merged: false }
     }
 
     /// Forward pass: y = W@x + scale * (B @ (A @ x))

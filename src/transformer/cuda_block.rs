@@ -54,10 +54,11 @@ fn gpu_to_vec(buf: &GpuBuffer<f32>, stream: &CudaStream) -> Result<Vec<f32>> {
     let mut data = vec![0.0f32; buf.len()];
     // SAFETY: data lives until stream sync below; buf is a valid GPU allocation
     unsafe {
-        buf.copy_to_host_async(&mut data, stream)
-            .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                format!("Async D2H failed: {e}"),
-            ))?;
+        buf.copy_to_host_async(&mut data, stream).map_err(|e| {
+            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                "Async D2H failed: {e}"
+            ))
+        })?;
     }
     // Block until copy completes so `data` is valid for CPU access
     sync_stream(stream)?;
@@ -73,12 +74,13 @@ fn vec_to_gpu(buf: &mut GpuBuffer<f32>, data: &[f32], stream: &CudaStream) -> Re
     if data.len() == buf.len() {
         // SAFETY: data lives until sync_stream below completes
         unsafe {
-            buf.copy_from_host_async(data, stream)
-                .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                    format!("Async H2D failed: {e}"),
-                ))?;
+            buf.copy_from_host_async(data, stream).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "Async H2D failed: {e}"
+                ))
+            })?;
         }
-        // Must sync before data (which is typically a temporary Vec) goes out of scope
+        // Stream synchronization ensures H2D transfer completes before Vec deallocation
         sync_stream(stream)?;
     } else if data.len() < buf.len() {
         // Pad with zeros — scratch buffers are allocated for max_seq_len
@@ -87,21 +89,20 @@ fn vec_to_gpu(buf: &mut GpuBuffer<f32>, data: &[f32], stream: &CudaStream) -> Re
         padded[..data.len()].copy_from_slice(data);
         // SAFETY: padded lives until sync_stream below
         unsafe {
-            buf.copy_from_host_async(&padded, stream)
-                .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                    format!("Async H2D failed: {e}"),
-                ))?;
+            buf.copy_from_host_async(&padded, stream).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "Async H2D failed: {e}"
+                ))
+            })?;
         }
         // Must sync before padded goes out of scope
         sync_stream(stream)?;
     } else {
-        return Err(crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-            format!(
-                "Data too large for GPU buffer: {} > {}",
-                data.len(),
-                buf.len()
-            ),
-        ));
+        return Err(crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+            "Data too large for GPU buffer: {} > {}",
+            data.len(),
+            buf.len()
+        )));
     }
     Ok(())
 }
@@ -681,11 +682,11 @@ impl CudaTransformerBlock {
 /// be visible to subsequent CPU reads, producing stale/NaN data.
 #[cfg(feature = "cuda")]
 fn sync_stream(stream: &CudaStream) -> Result<()> {
-    stream
-        .synchronize()
-        .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-            format!("Stream sync failed: {e}"),
+    stream.synchronize().map_err(|e| {
+        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+            "Stream sync failed: {e}"
         ))
+    })
 }
 
 /// CUDA element-wise addition (standalone to avoid borrow issues)
@@ -699,12 +700,7 @@ fn cuda_add(
 ) -> Result<()> {
     let a_data = gpu_to_vec(a, stream)?;
     let b_data = gpu_to_vec(b, stream)?;
-    let result: Vec<f32> = a_data
-        .iter()
-        .zip(b_data.iter())
-        .take(n)
-        .map(|(x, y)| x + y)
-        .collect();
+    let result: Vec<f32> = a_data.iter().zip(b_data.iter()).take(n).map(|(x, y)| x + y).collect();
     vec_to_gpu(output, &result, stream)?;
     Ok(())
 }
@@ -720,12 +716,7 @@ fn cuda_mul(
 ) -> Result<()> {
     let a_data = gpu_to_vec(a, stream)?;
     let b_data = gpu_to_vec(b, stream)?;
-    let result: Vec<f32> = a_data
-        .iter()
-        .zip(b_data.iter())
-        .take(n)
-        .map(|(x, y)| x * y)
-        .collect();
+    let result: Vec<f32> = a_data.iter().zip(b_data.iter()).take(n).map(|(x, y)| x * y).collect();
     vec_to_gpu(output, &result, stream)?;
     Ok(())
 }

@@ -267,9 +267,7 @@ impl TransformerTrainer {
         // Each layer has: input_norm, post_attn_norm, 4 attention weights, 3 FFN weights = 9 params
         for layer in 0..num_layers {
             names.push(format!("model.layers.{layer}.input_layernorm.weight"));
-            names.push(format!(
-                "model.layers.{layer}.post_attention_layernorm.weight"
-            ));
+            names.push(format!("model.layers.{layer}.post_attention_layernorm.weight"));
             names.push(format!("model.layers.{layer}.self_attn.q_proj.weight"));
             names.push(format!("model.layers.{layer}.self_attn.k_proj.weight"));
             names.push(format!("model.layers.{layer}.self_attn.v_proj.weight"));

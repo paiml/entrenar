@@ -29,15 +29,8 @@ mod tests {
     }
 
     fn arb_model_ref() -> impl Strategy<Value = ModelRef> {
-        (
-            arb_path(),
-            proptest::collection::vec(arb_layer_name(), 0..5),
-        )
-            .prop_map(|(path, layers)| ModelRef {
-                path,
-                layers,
-                ..Default::default()
-            })
+        (arb_path(), proptest::collection::vec(arb_layer_name(), 0..5))
+            .prop_map(|(path, layers)| ModelRef { path, layers, ..Default::default() })
     }
 
     fn arb_data_config() -> impl Strategy<Value = DataConfig> {
@@ -67,12 +60,7 @@ mod tests {
     }
 
     fn arb_lora_spec() -> impl Strategy<Value = LoRASpec> {
-        (
-            1usize..128,
-            1.0f32..64.0,
-            proptest::collection::vec(arb_layer_name(), 1..5),
-            0.0f32..0.5,
-        )
+        (1usize..128, 1.0f32..64.0, proptest::collection::vec(arb_layer_name(), 1..5), 0.0f32..0.5)
             .prop_map(|(rank, alpha, target_modules, dropout)| LoRASpec {
                 rank,
                 alpha,
@@ -82,23 +70,13 @@ mod tests {
     }
 
     fn arb_quant_spec() -> impl Strategy<Value = QuantSpec> {
-        (
-            prop_oneof![Just(4u8), Just(8u8)],
-            any::<bool>(),
-            any::<bool>(),
-        )
-            .prop_map(|(bits, symmetric, per_channel)| QuantSpec {
-                bits,
-                symmetric,
-                per_channel,
-            })
+        (prop_oneof![Just(4u8), Just(8u8)], any::<bool>(), any::<bool>())
+            .prop_map(|(bits, symmetric, per_channel)| QuantSpec { bits, symmetric, per_channel })
     }
 
     fn arb_merge_spec() -> impl Strategy<Value = MergeSpec> {
-        prop_oneof!["ties", "dare", "slerp"].prop_map(|method| MergeSpec {
-            method: method.clone(),
-            params: HashMap::new(),
-        })
+        prop_oneof!["ties", "dare", "slerp"]
+            .prop_map(|method| MergeSpec { method: method.clone(), params: HashMap::new() })
     }
 
     fn arb_training_params() -> impl Strategy<Value = TrainingParams> {
@@ -132,18 +110,9 @@ mod tests {
             proptest::option::of(arb_merge_spec()),
             arb_training_params(),
         )
-            .prop_map(
-                |(model, data, optimizer, lora, quantize, merge, training)| TrainSpec {
-                    model,
-                    data,
-                    optimizer,
-                    lora,
-                    quantize,
-                    merge,
-                    training,
-                    publish: None,
-                },
-            )
+            .prop_map(|(model, data, optimizer, lora, quantize, merge, training)| {
+                TrainSpec { model, data, optimizer, lora, quantize, merge, training, publish: None }
+            })
     }
 
     // ============================================================
@@ -392,10 +361,7 @@ mod tests {
 
     #[test]
     fn test_empty_layers_serializes() {
-        let model = ModelRef {
-            path: PathBuf::from("model.gguf"),
-            ..Default::default()
-        };
+        let model = ModelRef { path: PathBuf::from("model.gguf"), ..Default::default() };
         let yaml = serde_yaml::to_string(&model).unwrap();
         let parsed: ModelRef = serde_yaml::from_str(&yaml).unwrap();
         assert!(parsed.layers.is_empty());
@@ -415,11 +381,7 @@ mod tests {
 
     #[test]
     fn test_very_small_lr() {
-        let optim = OptimSpec {
-            name: "adam".to_string(),
-            lr: 1e-10,
-            params: HashMap::new(),
-        };
+        let optim = OptimSpec { name: "adam".to_string(), lr: 1e-10, params: HashMap::new() };
         let yaml = serde_yaml::to_string(&optim).unwrap();
         let parsed: OptimSpec = serde_yaml::from_str(&yaml).unwrap();
         assert!((parsed.lr - 1e-10).abs() < 1e-15);
@@ -440,20 +402,13 @@ mod tests {
     #[test]
     fn test_all_optional_fields_none() {
         let spec = TrainSpec {
-            model: ModelRef {
-                path: PathBuf::from("m.gguf"),
-                ..Default::default()
-            },
+            model: ModelRef { path: PathBuf::from("m.gguf"), ..Default::default() },
             data: DataConfig {
                 train: PathBuf::from("d.parquet"),
                 batch_size: 1,
                 ..Default::default()
             },
-            optimizer: OptimSpec {
-                name: "sgd".to_string(),
-                lr: 0.01,
-                params: HashMap::new(),
-            },
+            optimizer: OptimSpec { name: "sgd".to_string(), lr: 0.01, params: HashMap::new() },
             lora: None,
             quantize: None,
             merge: None,

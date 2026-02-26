@@ -204,18 +204,9 @@ mod tests {
     #[test]
     fn test_relation_type_display() {
         assert_eq!(MetamorphicRelationType::Additive.to_string(), "additive");
-        assert_eq!(
-            MetamorphicRelationType::Multiplicative.to_string(),
-            "multiplicative"
-        );
-        assert_eq!(
-            MetamorphicRelationType::Permutation.to_string(),
-            "permutation"
-        );
-        assert_eq!(
-            MetamorphicRelationType::Composition.to_string(),
-            "composition"
-        );
+        assert_eq!(MetamorphicRelationType::Multiplicative.to_string(), "multiplicative");
+        assert_eq!(MetamorphicRelationType::Permutation.to_string(), "permutation");
+        assert_eq!(MetamorphicRelationType::Composition.to_string(), "composition");
         assert_eq!(MetamorphicRelationType::Negation.to_string(), "negation");
         assert_eq!(MetamorphicRelationType::Inclusion.to_string(), "inclusion");
         assert_eq!(MetamorphicRelationType::Identity.to_string(), "identity");
@@ -224,14 +215,8 @@ mod tests {
 
     #[test]
     fn test_relation_type_eq() {
-        assert_eq!(
-            MetamorphicRelationType::Additive,
-            MetamorphicRelationType::Additive
-        );
-        assert_ne!(
-            MetamorphicRelationType::Additive,
-            MetamorphicRelationType::Multiplicative
-        );
+        assert_eq!(MetamorphicRelationType::Additive, MetamorphicRelationType::Additive);
+        assert_ne!(MetamorphicRelationType::Additive, MetamorphicRelationType::Multiplicative);
     }
 
     #[test]

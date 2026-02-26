@@ -38,21 +38,14 @@ pub async fn create_experiment(
 ) -> (StatusCode, Json<ApiResponse<ExperimentResponse>>) {
     let req_id = request_id();
 
-    match state
-        .storage
-        .create_experiment(&payload.name, payload.description, payload.tags)
-    {
+    match state.storage.create_experiment(&payload.name, payload.description, payload.tags) {
         Ok(exp) => {
             let response: ExperimentResponse = exp.into();
-            (
-                StatusCode::CREATED,
-                Json(ApiResponse::success(response, &req_id)),
-            )
+            (StatusCode::CREATED, Json(ApiResponse::success(response, &req_id)))
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::error(&e.to_string(), &req_id)),
-        ),
+        Err(e) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::error(&e.to_string(), &req_id)))
+        }
     }
 }
 
@@ -66,15 +59,9 @@ pub async fn get_experiment(
     match state.storage.get_experiment(&id) {
         Ok(exp) => {
             let response: ExperimentResponse = exp.into();
-            (
-                StatusCode::OK,
-                Json(ApiResponse::success(response, &req_id)),
-            )
+            (StatusCode::OK, Json(ApiResponse::success(response, &req_id)))
         }
-        Err(e) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiResponse::error(&e.to_string(), &req_id)),
-        ),
+        Err(e) => (StatusCode::NOT_FOUND, Json(ApiResponse::error(&e.to_string(), &req_id))),
     }
 }
 
@@ -87,15 +74,11 @@ pub async fn list_experiments(
     match state.storage.list_experiments() {
         Ok(exps) => {
             let responses: Vec<ExperimentResponse> = exps.into_iter().map(Into::into).collect();
-            (
-                StatusCode::OK,
-                Json(ApiResponse::success(responses, &req_id)),
-            )
+            (StatusCode::OK, Json(ApiResponse::success(responses, &req_id)))
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiResponse::error(&e.to_string(), &req_id)),
-        ),
+        Err(e) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiResponse::error(&e.to_string(), &req_id)))
+        }
     }
 }
 
@@ -106,16 +89,10 @@ pub async fn create_run(
 ) -> (StatusCode, Json<ApiResponse<RunResponse>>) {
     let req_id = request_id();
 
-    match state
-        .storage
-        .create_run(&payload.experiment_id, payload.name, payload.tags)
-    {
+    match state.storage.create_run(&payload.experiment_id, payload.name, payload.tags) {
         Ok(run) => {
             let response: RunResponse = run.into();
-            (
-                StatusCode::CREATED,
-                Json(ApiResponse::success(response, &req_id)),
-            )
+            (StatusCode::CREATED, Json(ApiResponse::success(response, &req_id)))
         }
         Err(e) => {
             let status = if e.to_string().contains("not found") {
@@ -138,15 +115,9 @@ pub async fn get_run(
     match state.storage.get_run(&id) {
         Ok(run) => {
             let response: RunResponse = run.into();
-            (
-                StatusCode::OK,
-                Json(ApiResponse::success(response, &req_id)),
-            )
+            (StatusCode::OK, Json(ApiResponse::success(response, &req_id)))
         }
-        Err(e) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiResponse::error(&e.to_string(), &req_id)),
-        ),
+        Err(e) => (StatusCode::NOT_FOUND, Json(ApiResponse::error(&e.to_string(), &req_id))),
     }
 }
 
@@ -158,24 +129,16 @@ pub async fn update_run(
 ) -> (StatusCode, Json<ApiResponse<RunResponse>>) {
     let req_id = request_id();
 
-    let status = payload
-        .status
-        .as_ref()
-        .and_then(|s| s.parse::<RunStatus>().ok());
+    let status = payload.status.as_ref().and_then(|s| s.parse::<RunStatus>().ok());
 
     let end_time = payload.end_time.as_ref().and_then(|t| {
-        chrono::DateTime::parse_from_rfc3339(t)
-            .ok()
-            .map(|dt| dt.with_timezone(&chrono::Utc))
+        chrono::DateTime::parse_from_rfc3339(t).ok().map(|dt| dt.with_timezone(&chrono::Utc))
     });
 
     match state.storage.update_run(&id, status, end_time) {
         Ok(run) => {
             let response: RunResponse = run.into();
-            (
-                StatusCode::OK,
-                Json(ApiResponse::success(response, &req_id)),
-            )
+            (StatusCode::OK, Json(ApiResponse::success(response, &req_id)))
         }
         Err(e) => {
             let status_code = if e.to_string().contains("not found") {
@@ -183,10 +146,7 @@ pub async fn update_run(
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
             };
-            (
-                status_code,
-                Json(ApiResponse::error(&e.to_string(), &req_id)),
-            )
+            (status_code, Json(ApiResponse::error(&e.to_string(), &req_id)))
         }
     }
 }
@@ -200,10 +160,7 @@ pub async fn log_params(
     let req_id = request_id();
 
     match state.storage.log_params(&id, payload.params) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(ApiResponse::success("Parameters logged", &req_id)),
-        ),
+        Ok(()) => (StatusCode::OK, Json(ApiResponse::success("Parameters logged", &req_id))),
         Err(e) => {
             let status = if e.to_string().contains("not found") {
                 StatusCode::NOT_FOUND
@@ -224,10 +181,7 @@ pub async fn log_metrics(
     let req_id = request_id();
 
     match state.storage.log_metrics(&id, payload.metrics) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(ApiResponse::success("Metrics logged", &req_id)),
-        ),
+        Ok(()) => (StatusCode::OK, Json(ApiResponse::success("Metrics logged", &req_id))),
         Err(e) => {
             let status = if e.to_string().contains("not found") {
                 StatusCode::NOT_FOUND
@@ -263,11 +217,8 @@ mod tests {
     #[tokio::test]
     async fn test_create_experiment() {
         let state = test_state();
-        let req = CreateExperimentRequest {
-            name: "test".to_string(),
-            description: None,
-            tags: None,
-        };
+        let req =
+            CreateExperimentRequest { name: "test".to_string(), description: None, tags: None };
 
         let (status, _) = create_experiment(State(state), Json(req)).await;
         assert_eq!(status, StatusCode::CREATED);
@@ -305,11 +256,8 @@ mod tests {
         let state = test_state();
         let exp = state.storage.create_experiment("test", None, None).unwrap();
 
-        let req = CreateRunRequest {
-            experiment_id: exp.id,
-            name: Some("run-1".to_string()),
-            tags: None,
-        };
+        let req =
+            CreateRunRequest { experiment_id: exp.id, name: Some("run-1".to_string()), tags: None };
 
         let (status, _) = create_run(State(state), Json(req)).await;
         assert_eq!(status, StatusCode::CREATED);
@@ -319,11 +267,8 @@ mod tests {
     async fn test_create_run_invalid_experiment() {
         let state = test_state();
 
-        let req = CreateRunRequest {
-            experiment_id: "nonexistent".to_string(),
-            name: None,
-            tags: None,
-        };
+        let req =
+            CreateRunRequest { experiment_id: "nonexistent".to_string(), name: None, tags: None };
 
         let (status, _) = create_run(State(state), Json(req)).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -345,10 +290,7 @@ mod tests {
         let exp = state.storage.create_experiment("test", None, None).unwrap();
         let run = state.storage.create_run(&exp.id, None, None).unwrap();
 
-        let req = UpdateRunRequest {
-            status: Some("completed".to_string()),
-            end_time: None,
-        };
+        let req = UpdateRunRequest { status: Some("completed".to_string()), end_time: None };
 
         let (status, _) = update_run(State(state), Path(run.id), Json(req)).await;
         assert_eq!(status, StatusCode::OK);
@@ -376,10 +318,7 @@ mod tests {
 
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("loss".to_string(), 0.5);
-        let req = LogMetricsRequest {
-            metrics,
-            step: None,
-        };
+        let req = LogMetricsRequest { metrics, step: None };
 
         let (status, _) = log_metrics(State(state), Path(run.id), Json(req)).await;
         assert_eq!(status, StatusCode::OK);
@@ -389,9 +328,7 @@ mod tests {
     async fn test_log_params_not_found() {
         let state = test_state();
 
-        let req = LogParamsRequest {
-            params: std::collections::HashMap::new(),
-        };
+        let req = LogParamsRequest { params: std::collections::HashMap::new() };
 
         let (status, _) =
             log_params(State(state), Path("nonexistent".to_string()), Json(req)).await;

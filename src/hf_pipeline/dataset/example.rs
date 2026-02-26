@@ -18,12 +18,7 @@ impl Example {
     #[must_use]
     pub fn from_tokens(input_ids: Vec<u32>) -> Self {
         let len = input_ids.len();
-        Self {
-            input_ids,
-            attention_mask: vec![1; len],
-            labels: None,
-            text: None,
-        }
+        Self { input_ids, attention_mask: vec![1; len], labels: None, text: None }
     }
 
     /// Set labels

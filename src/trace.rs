@@ -78,10 +78,7 @@ impl Tracer {
         if !self.is_enabled() {
             return;
         }
-        let mut spans = self
-            .active_spans
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut spans = self.active_spans.lock().unwrap_or_else(PoisonError::into_inner);
         spans.insert(step, Instant::now());
     }
 
@@ -90,21 +87,11 @@ impl Tracer {
         if !self.is_enabled() {
             return;
         }
-        let mut spans = self
-            .active_spans
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut spans = self.active_spans.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(start) = spans.remove(&step) {
             let duration = start.elapsed();
-            let mut measurements = self
-                .measurements
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            measurements.push(TraceMeasurement {
-                step,
-                duration,
-                metadata: metadata.into(),
-            });
+            let mut measurements = self.measurements.lock().unwrap_or_else(PoisonError::into_inner);
+            measurements.push(TraceMeasurement { step, duration, metadata: metadata.into() });
         }
     }
 
@@ -125,22 +112,13 @@ impl Tracer {
 
     /// Clear all measurements.
     pub fn clear(&self) {
-        self.measurements
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clear();
-        self.active_spans
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clear();
+        self.measurements.lock().unwrap_or_else(PoisonError::into_inner).clear();
+        self.active_spans.lock().unwrap_or_else(PoisonError::into_inner).clear();
     }
 
     /// Generate a report with Dr. Popper analysis.
     pub fn report(&self) -> String {
-        let measurements = self
-            .measurements
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let measurements = self.measurements.lock().unwrap_or_else(PoisonError::into_inner);
         if measurements.is_empty() {
             return "No measurements recorded. Enable tracing with TRACER.enable()".to_string();
         }
@@ -191,10 +169,7 @@ impl Tracer {
 
         // Dr. Popper Analysis
         let matmul_time = totals.get(&TraceStep::Matmul).copied().unwrap_or_default();
-        let transpose_time = totals
-            .get(&TraceStep::Transpose)
-            .copied()
-            .unwrap_or_default();
+        let transpose_time = totals.get(&TraceStep::Transpose).copied().unwrap_or_default();
         let alloc_time = totals.get(&TraceStep::Alloc).copied().unwrap_or_default();
         let compute_time = matmul_time;
         let overhead_time = transpose_time + alloc_time;
@@ -206,9 +181,7 @@ impl Tracer {
 
             output.push_str("\n[Dr. Popper Analysis]\n");
             output.push_str(&format!("CUDA Compute:   {compute_time:.2?}\n"));
-            output.push_str(&format!(
-                "CPU Overhead:   {overhead_time:.2?} ({overhead_pct:.2}%)\n"
-            ));
+            output.push_str(&format!("CPU Overhead:   {overhead_time:.2?} ({overhead_pct:.2}%)\n"));
 
             if overhead_pct > 50.0 {
                 output.push_str("\n🔴 FALSIFICATION: Overhead > 50%. Kernel fusion required.\n");

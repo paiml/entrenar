@@ -11,22 +11,10 @@ fn main() {
     // Create a simple model
     println!("Creating model...");
     let params = vec![
-        (
-            "layer1.weight".to_string(),
-            Tensor::from_vec(vec![0.1, 0.2, 0.3, 0.4], true),
-        ),
-        (
-            "layer1.bias".to_string(),
-            Tensor::from_vec(vec![0.01, 0.02], true),
-        ),
-        (
-            "layer2.weight".to_string(),
-            Tensor::from_vec(vec![0.5, 0.6], true),
-        ),
-        (
-            "layer2.bias".to_string(),
-            Tensor::from_vec(vec![0.1], false),
-        ),
+        ("layer1.weight".to_string(), Tensor::from_vec(vec![0.1, 0.2, 0.3, 0.4], true)),
+        ("layer1.bias".to_string(), Tensor::from_vec(vec![0.01, 0.02], true)),
+        ("layer2.weight".to_string(), Tensor::from_vec(vec![0.5, 0.6], true)),
+        ("layer2.bias".to_string(), Tensor::from_vec(vec![0.1], false)),
     ];
 
     let metadata = ModelMetadata::new("example-model", "simple-mlp")
@@ -65,10 +53,7 @@ fn main() {
     // Verify parameters match
     let orig_weight = model.get_parameter("layer1.weight").unwrap();
     let loaded_weight = loaded_json.get_parameter("layer1.weight").unwrap();
-    println!(
-        "  ✓ Data integrity check: {}",
-        orig_weight.data() == loaded_weight.data()
-    );
+    println!("  ✓ Data integrity check: {}", orig_weight.data() == loaded_weight.data());
     println!();
 
     // Load from YAML
@@ -92,12 +77,7 @@ fn main() {
     // Show parameter details
     println!("Parameters:");
     for (name, tensor) in &loaded_json.parameters {
-        println!(
-            "  {} (size={}, requires_grad={})",
-            name,
-            tensor.len(),
-            tensor.requires_grad()
-        );
+        println!("  {} (size={}, requires_grad={})", name, tensor.len(), tensor.requires_grad());
     }
     println!();
 

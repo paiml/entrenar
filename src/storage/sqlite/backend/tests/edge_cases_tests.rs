@@ -16,18 +16,10 @@ fn test_filter_op_string_starts_with() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(
-            &run1,
-            "model",
-            ParameterValue::String("llama-7b".to_string()),
-        )
-        .unwrap();
+    backend.log_param(&run1, "model", ParameterValue::String("llama-7b".to_string())).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "model", ParameterValue::String("gpt-3".to_string()))
-        .unwrap();
+    backend.log_param(&run2, "model", ParameterValue::String("gpt-3".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "model".to_string(),
@@ -50,14 +42,10 @@ fn test_filter_op_bool_eq() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "use_cuda", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run1, "use_cuda", ParameterValue::Bool(true)).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "use_cuda", ParameterValue::Bool(false))
-        .unwrap();
+    backend.log_param(&run2, "use_cuda", ParameterValue::Bool(false)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "use_cuda".to_string(),
@@ -76,14 +64,10 @@ fn test_filter_op_bool_ne() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "use_cuda", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run1, "use_cuda", ParameterValue::Bool(true)).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "use_cuda", ParameterValue::Bool(false))
-        .unwrap();
+    backend.log_param(&run2, "use_cuda", ParameterValue::Bool(false)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "use_cuda".to_string(),
@@ -106,9 +90,7 @@ fn test_filter_type_mismatch() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "value", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run1, "value", ParameterValue::Int(100)).unwrap();
 
     // Try to filter int with float - should not match
     let filters = vec![ParamFilter {
@@ -127,9 +109,7 @@ fn test_filter_missing_key() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "lr", ParameterValue::Float(0.001))
-        .unwrap();
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.001)).unwrap();
 
     // Filter by key that doesn't exist
     let filters = vec![ParamFilter {

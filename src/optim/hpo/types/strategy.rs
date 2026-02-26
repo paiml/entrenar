@@ -10,11 +10,7 @@ pub enum SearchStrategy {
     /// Random search
     Random { n_samples: usize },
     /// Bayesian optimization
-    Bayesian {
-        n_initial: usize,
-        acquisition: AcquisitionFunction,
-        surrogate: SurrogateModel,
-    },
+    Bayesian { n_initial: usize, acquisition: AcquisitionFunction, surrogate: SurrogateModel },
     /// Hyperband (successive halving)
     Hyperband {
         max_iter: usize,

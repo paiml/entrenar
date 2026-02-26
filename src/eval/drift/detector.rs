@@ -384,20 +384,9 @@ impl DriftDetector {
     pub fn summary(results: &[DriftResult]) -> DriftSummary {
         let total = results.len();
         let drifted = results.iter().filter(|r| r.drifted).count();
-        let warnings = results
-            .iter()
-            .filter(|r| r.severity == Severity::Warning)
-            .count();
-        let critical = results
-            .iter()
-            .filter(|r| r.severity == Severity::Critical)
-            .count();
+        let warnings = results.iter().filter(|r| r.severity == Severity::Warning).count();
+        let critical = results.iter().filter(|r| r.severity == Severity::Critical).count();
 
-        DriftSummary {
-            total_features: total,
-            drifted_features: drifted,
-            warnings,
-            critical,
-        }
+        DriftSummary { total_features: total, drifted_features: drifted, warnings, critical }
     }
 }

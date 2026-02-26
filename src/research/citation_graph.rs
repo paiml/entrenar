@@ -21,11 +21,7 @@ pub struct CitationNode {
 impl CitationNode {
     /// Create a new citation node
     pub fn new(metadata: CitationMetadata, is_upstream: bool) -> Self {
-        Self {
-            metadata,
-            is_upstream,
-            depth: 0,
-        }
+        Self { metadata, is_upstream, depth: 0 }
     }
 
     /// Set the depth
@@ -49,11 +45,7 @@ pub struct CitationEdge {
 impl CitationEdge {
     /// Create a new citation edge
     pub fn new(from: impl Into<String>, to: impl Into<String>) -> Self {
-        Self {
-            from: from.into(),
-            to: to.into(),
-            edge_type: EdgeType::Cites,
-        }
+        Self { from: from.into(), to: to.into(), edge_type: EdgeType::Cites }
     }
 
     /// Set the edge type
@@ -88,10 +80,7 @@ pub struct CitationGraph {
 impl CitationGraph {
     /// Create a new empty citation graph
     pub fn new() -> Self {
-        Self {
-            nodes: HashMap::new(),
-            edges: Vec::new(),
-        }
+        Self { nodes: HashMap::new(), edges: Vec::new() }
     }
 
     /// Add a citation node
@@ -122,10 +111,7 @@ impl CitationGraph {
 
     /// Get all citations from a specific artifact
     pub fn citations_from(&self, artifact_id: &str) -> Vec<&CitationEdge> {
-        self.edges
-            .iter()
-            .filter(|e| e.from == artifact_id)
-            .collect()
+        self.edges.iter().filter(|e| e.from == artifact_id).collect()
     }
 
     /// Get all citations to a specific artifact
@@ -202,11 +188,7 @@ impl CitationGraph {
 
     /// Export all citations to BibTeX
     pub fn to_bibtex_all(&self) -> String {
-        self.nodes
-            .values()
-            .map(|node| node.metadata.to_bibtex())
-            .collect::<Vec<_>>()
-            .join("\n\n")
+        self.nodes.values().map(|node| node.metadata.to_bibtex()).collect::<Vec<_>>().join("\n\n")
     }
 
     /// Get the number of nodes

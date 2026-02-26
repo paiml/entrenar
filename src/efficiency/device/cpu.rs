@@ -22,13 +22,7 @@ pub struct CpuInfo {
 impl CpuInfo {
     /// Create new CPU info
     pub fn new(cores: u32, threads: u32, simd: SimdCapability, model: impl Into<String>) -> Self {
-        Self {
-            cores,
-            threads,
-            simd,
-            model: model.into(),
-            cache_bytes: 0,
-        }
+        Self { cores, threads, simd, model: model.into(), cache_bytes: 0 }
     }
 
     /// Set cache size
@@ -40,9 +34,7 @@ impl CpuInfo {
     /// Detect current CPU information
     pub fn detect() -> Self {
         // Get logical CPU count using standard library
-        let threads = std::thread::available_parallelism()
-            .map(|n| n.get() as u32)
-            .unwrap_or(1);
+        let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1);
 
         // Estimate physical cores (assumes hyperthreading with 2 threads per core)
         // This is a heuristic - for accurate counts would need platform-specific APIs
@@ -71,26 +63,18 @@ impl CpuInfo {
 
             for line in info.lines() {
                 if line.starts_with("physical id") {
-                    current_physical_id = line
-                        .split(':')
-                        .nth(1)
-                        .map(|s| s.trim().to_string())
-                        .unwrap_or_default();
+                    current_physical_id =
+                        line.split(':').nth(1).map(|s| s.trim().to_string()).unwrap_or_default();
                 } else if line.starts_with("core id") {
-                    let core_id = line
-                        .split(':')
-                        .nth(1)
-                        .map(|s| s.trim().to_string())
-                        .unwrap_or_default();
+                    let core_id =
+                        line.split(':').nth(1).map(|s| s.trim().to_string()).unwrap_or_default();
                     core_ids.insert(format!("{current_physical_id}-{core_id}"));
                 }
             }
 
             if core_ids.is_empty() {
                 // Fallback: count processor entries
-                info.lines()
-                    .filter(|line| line.starts_with("processor"))
-                    .count() as u32
+                info.lines().filter(|line| line.starts_with("processor")).count() as u32
             } else {
                 core_ids.len() as u32
             }

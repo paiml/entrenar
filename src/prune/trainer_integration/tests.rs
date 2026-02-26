@@ -53,10 +53,7 @@ fn test_config_validate_valid() {
 fn test_config_validate_invalid_lr() {
     // TEST_ID: TI-004
     let config = PruneTrainerConfig::new().with_finetune_lr(0.0);
-    assert!(
-        config.validate().is_err(),
-        "TI-004 FALSIFIED: Zero LR should be invalid"
-    );
+    assert!(config.validate().is_err(), "TI-004 FALSIFIED: Zero LR should be invalid");
 }
 
 #[test]
@@ -90,10 +87,7 @@ fn test_trainer_initialize() {
     let mut trainer = PruneTrainer::new(config);
 
     let result = trainer.initialize();
-    assert!(
-        result.is_ok(),
-        "TI-011 FALSIFIED: Initialize should succeed"
-    );
+    assert!(result.is_ok(), "TI-011 FALSIFIED: Initialize should succeed");
 }
 
 #[test]
@@ -141,11 +135,8 @@ fn test_trainer_finetune() {
 #[test]
 fn test_trainer_evaluate() {
     // TEST_ID: TI-015
-    let config = default_config().with_pruning(
-        PruningConfig::default()
-            .with_target_sparsity(0.5)
-            .with_fine_tune(false),
-    );
+    let config = default_config()
+        .with_pruning(PruningConfig::default().with_target_sparsity(0.5).with_fine_tune(false));
     let mut trainer = PruneTrainer::new(config);
 
     trainer.initialize().unwrap();
@@ -173,11 +164,8 @@ fn test_trainer_full_run() {
 #[test]
 fn test_trainer_skip_finetune() {
     // TEST_ID: TI-017
-    let config = default_config().with_pruning(
-        PruningConfig::default()
-            .with_target_sparsity(0.5)
-            .with_fine_tune(false),
-    );
+    let config = default_config()
+        .with_pruning(PruningConfig::default().with_target_sparsity(0.5).with_fine_tune(false));
     let mut trainer = PruneTrainer::new(config);
 
     let result = trainer.run();
@@ -249,10 +237,7 @@ fn test_trainer_prune_wrong_stage() {
 
     // Try to prune without initialization
     let result = trainer.prune();
-    assert!(
-        result.is_err(),
-        "TI-030 FALSIFIED: Should fail when pruning in wrong stage"
-    );
+    assert!(result.is_err(), "TI-030 FALSIFIED: Should fail when pruning in wrong stage");
 }
 
 #[test]
@@ -263,10 +248,7 @@ fn test_trainer_finetune_wrong_stage() {
 
     // Try to finetune without pruning
     let result = trainer.finetune();
-    assert!(
-        result.is_err(),
-        "TI-031 FALSIFIED: Should fail when finetuning in wrong stage"
-    );
+    assert!(result.is_err(), "TI-031 FALSIFIED: Should fail when finetuning in wrong stage");
 }
 
 #[test]
@@ -276,10 +258,7 @@ fn test_trainer_evaluate_wrong_stage() {
     let mut trainer = PruneTrainer::new(config);
 
     let result = trainer.evaluate();
-    assert!(
-        result.is_err(),
-        "TI-032 FALSIFIED: Should fail when evaluating in wrong stage"
-    );
+    assert!(result.is_err(), "TI-032 FALSIFIED: Should fail when evaluating in wrong stage");
 }
 
 #[test]
@@ -289,10 +268,7 @@ fn test_trainer_export_wrong_stage() {
     let mut trainer = PruneTrainer::new(config);
 
     let result = trainer.export();
-    assert!(
-        result.is_err(),
-        "TI-033 FALSIFIED: Should fail when exporting in wrong stage"
-    );
+    assert!(result.is_err(), "TI-033 FALSIFIED: Should fail when exporting in wrong stage");
 }
 
 // =============================================================================
@@ -303,26 +279,19 @@ fn test_trainer_export_wrong_stage() {
 fn test_trainer_calibration_required_for_wanda() {
     // TEST_ID: TI-040
     let config = default_config().with_pruning(
-        PruningConfig::default()
-            .with_method(PruneMethod::Wanda)
-            .with_target_sparsity(0.5),
+        PruningConfig::default().with_method(PruneMethod::Wanda).with_target_sparsity(0.5),
     );
     let mut trainer = PruneTrainer::new(config);
 
     trainer.initialize().unwrap();
-    assert!(
-        trainer.calibration.is_some(),
-        "TI-040 FALSIFIED: Wanda should require calibration"
-    );
+    assert!(trainer.calibration.is_some(), "TI-040 FALSIFIED: Wanda should require calibration");
 }
 
 #[test]
 fn test_trainer_no_calibration_for_magnitude() {
     // TEST_ID: TI-041
     let config = default_config().with_pruning(
-        PruningConfig::default()
-            .with_method(PruneMethod::Magnitude)
-            .with_target_sparsity(0.5),
+        PruningConfig::default().with_method(PruneMethod::Magnitude).with_target_sparsity(0.5),
     );
     let mut trainer = PruneTrainer::new(config);
 

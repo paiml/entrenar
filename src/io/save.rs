@@ -29,7 +29,7 @@ use std::path::Path;
 /// let model = Model::new(ModelMetadata::new("my-model", "linear"), params);
 /// let config = SaveConfig::new(ModelFormat::Json);
 ///
-/// save_model(&model, "model.json", &config).unwrap();
+/// save_model(&model, "model.json", &config).expect("failed to save model");
 /// ```
 pub fn save_model(model: &Model, path: impl AsRef<Path>, config: &SaveConfig) -> Result<()> {
     let path = path.as_ref();
@@ -79,7 +79,9 @@ fn save_safetensors(model: &Model, path: &Path) -> Result<()> {
         .iter()
         .map(|(name, tensor)| {
             let data = tensor.data();
-            let bytes: Vec<u8> = bytemuck::cast_slice(data.as_slice().unwrap()).to_vec();
+            let bytes: Vec<u8> =
+                bytemuck::cast_slice(data.as_slice().expect("tensor data must be contiguous"))
+                    .to_vec();
             let shape = vec![tensor.len()];
             (name.clone(), bytes, shape)
         })
@@ -89,7 +91,8 @@ fn save_safetensors(model: &Model, path: &Path) -> Result<()> {
     let views: Vec<(&str, TensorView<'_>)> = tensor_data
         .iter()
         .map(|(name, bytes, shape)| {
-            let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+            let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+                .expect("TensorView construction must not fail for valid F32 data");
             (name.as_str(), view)
         })
         .collect();
@@ -97,10 +100,7 @@ fn save_safetensors(model: &Model, path: &Path) -> Result<()> {
     // Create metadata with model info
     let mut metadata = HashMap::new();
     metadata.insert("name".to_string(), model.metadata.name.clone());
-    metadata.insert(
-        "architecture".to_string(),
-        model.metadata.architecture.clone(),
-    );
+    metadata.insert("architecture".to_string(), model.metadata.architecture.clone());
     metadata.insert("version".to_string(), model.metadata.version.clone());
 
     // Serialize to SafeTensors format
@@ -123,10 +123,7 @@ mod tests {
     #[test]
     fn test_save_model_json() {
         let params = vec![
-            (
-                "weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
-            ),
+            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 
@@ -237,15 +234,9 @@ mod tests {
     #[test]
     fn test_save_model_multiple_tensors() {
         let params = vec![
-            (
-                "layer1.weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0], true),
-            ),
+            ("layer1.weight".to_string(), Tensor::from_vec(vec![1.0, 2.0], true)),
             ("layer1.bias".to_string(), Tensor::from_vec(vec![0.1], true)),
-            (
-                "layer2.weight".to_string(),
-                Tensor::from_vec(vec![3.0, 4.0], false),
-            ),
+            ("layer2.weight".to_string(), Tensor::from_vec(vec![3.0, 4.0], false)),
         ];
         let model = Model::new(ModelMetadata::new("multi", "deep"), params);
         let config = SaveConfig::new(ModelFormat::Yaml);
@@ -296,10 +287,7 @@ mod tests {
     #[test]
     fn test_save_model_safetensors() {
         let params = vec![
-            (
-                "weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
-            ),
+            ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
             ("bias".to_string(), Tensor::from_vec(vec![0.1], false)),
         ];
 
@@ -319,14 +307,8 @@ mod tests {
     #[test]
     fn test_save_model_safetensors_can_be_loaded() {
         let params = vec![
-            (
-                "layer1.weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true),
-            ),
-            (
-                "layer1.bias".to_string(),
-                Tensor::from_vec(vec![0.5], false),
-            ),
+            ("layer1.weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true)),
+            ("layer1.bias".to_string(), Tensor::from_vec(vec![0.5], false)),
         ];
 
         let model = Model::new(ModelMetadata::new("roundtrip-test", "mlp"), params);
@@ -374,10 +356,8 @@ mod tests {
     #[test]
     fn test_save_safetensors_large_tensor() {
         let large_data: Vec<f32> = (0..10000).map(|i| i as f32 * 0.001).collect();
-        let params = vec![(
-            "large_weights".to_string(),
-            Tensor::from_vec(large_data.clone(), false),
-        )];
+        let params =
+            vec![("large_weights".to_string(), Tensor::from_vec(large_data.clone(), false))];
         let model = Model::new(ModelMetadata::new("large", "test"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
@@ -421,22 +401,10 @@ mod tests {
     #[test]
     fn test_save_safetensors_multiple_tensors() {
         let params = vec![
-            (
-                "encoder.layer1.weight".to_string(),
-                Tensor::from_vec(vec![1.0, 2.0], true),
-            ),
-            (
-                "encoder.layer1.bias".to_string(),
-                Tensor::from_vec(vec![0.1], true),
-            ),
-            (
-                "encoder.layer2.weight".to_string(),
-                Tensor::from_vec(vec![3.0, 4.0, 5.0], false),
-            ),
-            (
-                "decoder.layer1.weight".to_string(),
-                Tensor::from_vec(vec![6.0, 7.0], false),
-            ),
+            ("encoder.layer1.weight".to_string(), Tensor::from_vec(vec![1.0, 2.0], true)),
+            ("encoder.layer1.bias".to_string(), Tensor::from_vec(vec![0.1], true)),
+            ("encoder.layer2.weight".to_string(), Tensor::from_vec(vec![3.0, 4.0, 5.0], false)),
+            ("decoder.layer1.weight".to_string(), Tensor::from_vec(vec![6.0, 7.0], false)),
         ];
         let model = Model::new(ModelMetadata::new("encoder-decoder", "transformer"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);

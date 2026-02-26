@@ -66,10 +66,7 @@ impl LayerActivationStats {
             return vec![0.0; self.input_dim];
         }
 
-        self.squared_sum
-            .iter()
-            .map(|&sum| (sum / self.count as f32).sqrt())
-            .collect()
+        self.squared_sum.iter().map(|&sum| (sum / self.count as f32).sqrt()).collect()
     }
 
     /// Get the mean absolute value for each input channel.
@@ -78,10 +75,7 @@ impl LayerActivationStats {
             return vec![0.0; self.input_dim];
         }
 
-        self.input_norm_sum
-            .iter()
-            .map(|&sum| sum / self.count as f32)
-            .collect()
+        self.input_norm_sum.iter().map(|&sum| sum / self.count as f32).collect()
     }
 
     /// Get the number of samples processed.

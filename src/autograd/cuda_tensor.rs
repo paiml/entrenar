@@ -64,12 +64,9 @@ pub enum CudaTensorError {
 impl From<GpuError> for CudaTensorError {
     fn from(e: GpuError) -> Self {
         match e {
-            GpuError::OutOfMemory {
-                requested,
-                available,
-            } => CudaTensorError::AllocationFailed(format!(
-                "Out of GPU memory: requested {requested} bytes, {available} available"
-            )),
+            GpuError::OutOfMemory { requested, available } => CudaTensorError::AllocationFailed(
+                format!("Out of GPU memory: requested {requested} bytes, {available} available"),
+            ),
             GpuError::Transfer(msg) => CudaTensorError::TransferFailed(msg),
             GpuError::CudaNotAvailable(msg) => CudaTensorError::CudaNotAvailable(msg),
             other => CudaTensorError::KernelError(format!("{other:?}")),
@@ -92,9 +89,7 @@ impl CudaDevice {
     /// Create a new CUDA device handle for the given device ID
     pub fn new(device_id: i32) -> Result<Self> {
         if !cuda_available() {
-            return Err(CudaTensorError::CudaNotAvailable(
-                "No CUDA driver found".into(),
-            ));
+            return Err(CudaTensorError::CudaNotAvailable("No CUDA driver found".into()));
         }
 
         let ctx = CudaContext::new(device_id)
@@ -102,10 +97,7 @@ impl CudaDevice {
         let stream = CudaStream::new(&ctx)
             .map_err(|e| CudaTensorError::AllocationFailed(format!("{e:?}")))?;
 
-        Ok(Self {
-            ctx: Arc::new(ctx),
-            stream,
-        })
+        Ok(Self { ctx: Arc::new(ctx), stream })
     }
 
     /// Create device handle for default GPU (device 0)
@@ -125,9 +117,7 @@ impl CudaDevice {
 
     /// Synchronize the stream (wait for all operations to complete)
     pub fn synchronize(&self) -> Result<()> {
-        self.stream
-            .synchronize()
-            .map_err(|e| CudaTensorError::KernelError(format!("{e:?}")))
+        self.stream.synchronize().map_err(|e| CudaTensorError::KernelError(format!("{e:?}")))
     }
 }
 
@@ -163,13 +153,7 @@ impl CudaTensor {
             None
         };
 
-        Ok(Self {
-            data: gpu_data,
-            grad,
-            device: device.ctx.clone(),
-            requires_grad,
-            len,
-        })
+        Ok(Self { data: gpu_data, grad, device: device.ctx.clone(), requires_grad, len })
     }
 
     /// Create a tensor filled with zeros
@@ -206,10 +190,7 @@ impl CudaTensor {
     /// Update data from CPU vector
     pub fn copy_from_vec(&mut self, data: &[f32]) -> Result<()> {
         if data.len() != self.len {
-            return Err(CudaTensorError::ShapeMismatch {
-                expected: self.len,
-                actual: data.len(),
-            });
+            return Err(CudaTensorError::ShapeMismatch { expected: self.len, actual: data.len() });
         }
         self.data.copy_from_host(data)?;
         Ok(())
@@ -218,10 +199,7 @@ impl CudaTensor {
     /// Set gradient from CPU vector
     pub fn set_grad_from_vec(&mut self, grad: &[f32]) -> Result<()> {
         if grad.len() != self.len {
-            return Err(CudaTensorError::ShapeMismatch {
-                expected: self.len,
-                actual: grad.len(),
-            });
+            return Err(CudaTensorError::ShapeMismatch { expected: self.len, actual: grad.len() });
         }
 
         match &mut self.grad {
@@ -309,15 +287,11 @@ pub struct CudaDevice;
 #[cfg(not(feature = "cuda"))]
 impl CudaDevice {
     pub fn new(_device_id: i32) -> Result<Self> {
-        Err(CudaTensorError::CudaNotAvailable(
-            "Compiled without CUDA support".into(),
-        ))
+        Err(CudaTensorError::CudaNotAvailable("Compiled without CUDA support".into()))
     }
 
     pub fn default_device() -> Result<Self> {
-        Err(CudaTensorError::CudaNotAvailable(
-            "Compiled without CUDA support".into(),
-        ))
+        Err(CudaTensorError::CudaNotAvailable("Compiled without CUDA support".into()))
     }
 }
 
@@ -333,10 +307,7 @@ mod tests {
         let err = CudaTensorError::CudaNotAvailable("test".into());
         assert!(err.to_string().contains("CUDA not available"));
 
-        let err = CudaTensorError::ShapeMismatch {
-            expected: 10,
-            actual: 5,
-        };
+        let err = CudaTensorError::ShapeMismatch { expected: 10, actual: 5 };
         assert!(err.to_string().contains("10"));
         assert!(err.to_string().contains("5"));
     }

@@ -54,9 +54,7 @@ impl std::str::FromStr for TrainingMethod {
             "full" => Ok(TrainingMethod::Full),
             "lora" => Ok(TrainingMethod::Lora),
             "qlora" => Ok(TrainingMethod::Qlora),
-            _ => Err(format!(
-                "Unknown method: {s}. Valid methods: full, lora, qlora"
-            )),
+            _ => Err(format!("Unknown method: {s}. Valid methods: full, lora, qlora")),
         }
     }
 }
@@ -94,9 +92,7 @@ impl std::str::FromStr for InitTemplate {
             "lora" => Ok(InitTemplate::Lora),
             "qlora" => Ok(InitTemplate::Qlora),
             "full" | "complete" => Ok(InitTemplate::Full),
-            _ => Err(format!(
-                "Unknown template: {s}. Valid templates: minimal, lora, qlora, full"
-            )),
+            _ => Err(format!("Unknown template: {s}. Valid templates: minimal, lora, qlora, full")),
         }
     }
 }
@@ -118,24 +114,12 @@ mod tests {
 
     #[test]
     fn test_init_template_from_str() {
-        assert_eq!(
-            "minimal".parse::<InitTemplate>().unwrap(),
-            InitTemplate::Minimal
-        );
-        assert_eq!(
-            "min".parse::<InitTemplate>().unwrap(),
-            InitTemplate::Minimal
-        );
+        assert_eq!("minimal".parse::<InitTemplate>().unwrap(), InitTemplate::Minimal);
+        assert_eq!("min".parse::<InitTemplate>().unwrap(), InitTemplate::Minimal);
         assert_eq!("lora".parse::<InitTemplate>().unwrap(), InitTemplate::Lora);
-        assert_eq!(
-            "qlora".parse::<InitTemplate>().unwrap(),
-            InitTemplate::Qlora
-        );
+        assert_eq!("qlora".parse::<InitTemplate>().unwrap(), InitTemplate::Qlora);
         assert_eq!("full".parse::<InitTemplate>().unwrap(), InitTemplate::Full);
-        assert_eq!(
-            "complete".parse::<InitTemplate>().unwrap(),
-            InitTemplate::Full
-        );
+        assert_eq!("complete".parse::<InitTemplate>().unwrap(), InitTemplate::Full);
         assert!("invalid".parse::<InitTemplate>().is_err());
     }
 
@@ -154,22 +138,10 @@ mod tests {
 
     #[test]
     fn test_training_method_from_str() {
-        assert_eq!(
-            "full".parse::<TrainingMethod>().unwrap(),
-            TrainingMethod::Full
-        );
-        assert_eq!(
-            "lora".parse::<TrainingMethod>().unwrap(),
-            TrainingMethod::Lora
-        );
-        assert_eq!(
-            "qlora".parse::<TrainingMethod>().unwrap(),
-            TrainingMethod::Qlora
-        );
-        assert_eq!(
-            "LORA".parse::<TrainingMethod>().unwrap(),
-            TrainingMethod::Lora
-        );
+        assert_eq!("full".parse::<TrainingMethod>().unwrap(), TrainingMethod::Full);
+        assert_eq!("lora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
+        assert_eq!("qlora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Qlora);
+        assert_eq!("LORA".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
         assert!("invalid".parse::<TrainingMethod>().is_err());
     }
 

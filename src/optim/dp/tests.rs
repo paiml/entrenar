@@ -157,11 +157,7 @@ mod tests {
         assert_eq!(noised.len(), 3);
 
         // Should be different from original (with high probability)
-        let diff: f64 = grad
-            .iter()
-            .zip(noised.iter())
-            .map(|(a, b)| (a - b).abs())
-            .sum();
+        let diff: f64 = grad.iter().zip(noised.iter()).map(|(a, b)| (a - b).abs()).sum();
         assert!(diff > 0.0);
     }
 
@@ -210,9 +206,7 @@ mod tests {
 
     #[test]
     fn test_dp_config_noise_std() {
-        let config = DpSgdConfig::new()
-            .with_max_grad_norm(2.0)
-            .with_noise_multiplier(1.5);
+        let config = DpSgdConfig::new().with_max_grad_norm(2.0).with_noise_multiplier(1.5);
         assert!((config.noise_std() - 3.0).abs() < 1e-10);
     }
 
@@ -230,16 +224,10 @@ mod tests {
 
     #[test]
     fn test_dp_sgd_privatize_gradients() {
-        let config = DpSgdConfig::new()
-            .with_max_grad_norm(1.0)
-            .with_noise_multiplier(0.1);
+        let config = DpSgdConfig::new().with_max_grad_norm(1.0).with_noise_multiplier(0.1);
         let mut dp_sgd = DpSgd::new(0.01, config).unwrap();
 
-        let grads = vec![
-            vec![0.1, 0.2, 0.3],
-            vec![0.2, 0.3, 0.1],
-            vec![0.3, 0.1, 0.2],
-        ];
+        let grads = vec![vec![0.1, 0.2, 0.3], vec![0.2, 0.3, 0.1], vec![0.3, 0.1, 0.2]];
 
         let result = dp_sgd.privatize_gradients(&grads);
         assert!(result.is_ok());
@@ -251,9 +239,7 @@ mod tests {
 
     #[test]
     fn test_dp_sgd_step() {
-        let config = DpSgdConfig::new()
-            .with_max_grad_norm(1.0)
-            .with_noise_multiplier(0.1);
+        let config = DpSgdConfig::new().with_max_grad_norm(1.0).with_noise_multiplier(0.1);
         let mut dp_sgd = DpSgd::new(0.1, config).unwrap();
 
         let mut params = vec![1.0, 2.0, 3.0];
@@ -263,11 +249,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Params should have changed
-        let diff: f64 = params
-            .iter()
-            .zip(&[1.0, 2.0, 3.0])
-            .map(|(a, b)| (a - b).abs())
-            .sum();
+        let diff: f64 = params.iter().zip(&[1.0, 2.0, 3.0]).map(|(a, b)| (a - b).abs()).sum();
         assert!(diff > 0.0);
     }
 

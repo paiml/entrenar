@@ -158,9 +158,7 @@ pub struct ParamLogger {
 impl ParamLogger {
     /// Create a new, empty parameter logger.
     pub fn new() -> Self {
-        Self {
-            params: HashMap::new(),
-        }
+        Self { params: HashMap::new() }
     }
 
     /// Log a single parameter. Overwrites any existing value for the key.
@@ -235,11 +233,7 @@ impl ParamLogger {
             }
         }
 
-        ParamDiff {
-            changed,
-            added,
-            removed,
-        }
+        ParamDiff { changed, added, removed }
     }
 }
 
@@ -268,10 +262,7 @@ mod tests {
     fn test_log_param_string() {
         let mut logger = ParamLogger::new();
         logger.log_param("model", "llama-7b");
-        assert_eq!(
-            logger.get_param("model"),
-            Some(&ParamValue::String("llama-7b".to_string()))
-        );
+        assert_eq!(logger.get_param("model"), Some(&ParamValue::String("llama-7b".to_string())));
     }
 
     #[test]
@@ -285,10 +276,7 @@ mod tests {
     fn test_log_param_f32_converts_to_f64() {
         let mut logger = ParamLogger::new();
         logger.log_param("weight_decay", 0.01_f32);
-        assert_eq!(
-            logger.get_param("weight_decay"),
-            Some(&ParamValue::Float(f64::from(0.01_f32)))
-        );
+        assert_eq!(logger.get_param("weight_decay"), Some(&ParamValue::Float(f64::from(0.01_f32))));
     }
 
     #[test]
@@ -316,10 +304,7 @@ mod tests {
     fn test_log_param_owned_string() {
         let mut logger = ParamLogger::new();
         logger.log_param("optimizer", String::from("adamw"));
-        assert_eq!(
-            logger.get_param("optimizer"),
-            Some(&ParamValue::String("adamw".to_string()))
-        );
+        assert_eq!(logger.get_param("optimizer"), Some(&ParamValue::String("adamw".to_string())));
     }
 
     #[test]
@@ -414,10 +399,7 @@ mod tests {
         assert_eq!(deserialized.len(), 4);
         assert_eq!(deserialized.get("lr"), Some(&ParamValue::Float(1e-4)));
         assert_eq!(deserialized.get("epochs"), Some(&ParamValue::Int(10)));
-        assert_eq!(
-            deserialized.get("model"),
-            Some(&ParamValue::String("llama".to_string()))
-        );
+        assert_eq!(deserialized.get("model"), Some(&ParamValue::String("llama".to_string())));
         assert_eq!(deserialized.get("lora"), Some(&ParamValue::Bool(true)));
     }
 
@@ -577,19 +559,13 @@ mod tests {
 
     #[test]
     fn test_param_diff_is_empty_and_len() {
-        let diff = ParamDiff {
-            changed: HashMap::new(),
-            added: HashMap::new(),
-            removed: HashMap::new(),
-        };
+        let diff =
+            ParamDiff { changed: HashMap::new(), added: HashMap::new(), removed: HashMap::new() };
         assert!(diff.is_empty());
         assert_eq!(diff.len(), 0);
 
-        let mut diff2 = ParamDiff {
-            changed: HashMap::new(),
-            added: HashMap::new(),
-            removed: HashMap::new(),
-        };
+        let mut diff2 =
+            ParamDiff { changed: HashMap::new(), added: HashMap::new(), removed: HashMap::new() };
         diff2.added.insert("x".to_string(), ParamValue::Int(1));
         assert!(!diff2.is_empty());
         assert_eq!(diff2.len(), 1);

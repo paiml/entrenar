@@ -11,11 +11,7 @@ fn test_pattern_store_new() {
 
 #[test]
 fn test_pattern_store_with_config() {
-    let config = PatternStoreConfig {
-        chunk_size: 512,
-        embedding_dim: 768,
-        rrf_k: 30.0,
-    };
+    let config = PatternStoreConfig { chunk_size: 512, embedding_dim: 768, rrf_k: 30.0 };
     let store = DecisionPatternStore::with_config(config.clone()).unwrap();
     assert_eq!(store.config().chunk_size, 512);
     assert_eq!(store.config().embedding_dim, 768);
@@ -112,12 +108,9 @@ fn test_pattern_store_patterns_for_error() {
 fn test_pattern_store_suggest_fix() {
     let mut store = DecisionPatternStore::new().unwrap();
 
-    let pattern = FixPattern::new(
-        "E0308",
-        "- let x: i32 = \"hello\";\n+ let x: &str = \"hello\";",
-    )
-    .with_decision("type_mismatch_detected")
-    .with_decision("infer_correct_type");
+    let pattern = FixPattern::new("E0308", "- let x: i32 = \"hello\";\n+ let x: &str = \"hello\";")
+        .with_decision("type_mismatch_detected")
+        .with_decision("infer_correct_type");
 
     store.index_fix(pattern).unwrap();
 

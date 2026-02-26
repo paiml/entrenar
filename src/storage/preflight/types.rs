@@ -14,10 +14,7 @@ pub enum PreflightError {
     Environment(String),
 
     #[error("Validation failed: {checks_failed} of {total_checks} checks failed")]
-    ValidationFailed {
-        checks_failed: usize,
-        total_checks: usize,
-    },
+    ValidationFailed { checks_failed: usize, total_checks: usize },
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

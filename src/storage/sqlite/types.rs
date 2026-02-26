@@ -109,10 +109,7 @@ mod tests {
 
     #[test]
     fn test_parameter_value_type_name() {
-        assert_eq!(
-            ParameterValue::String("test".to_string()).type_name(),
-            "string"
-        );
+        assert_eq!(ParameterValue::String("test".to_string()).type_name(), "string");
         assert_eq!(ParameterValue::Int(42).type_name(), "int");
         assert_eq!(ParameterValue::Float(3.14).type_name(), "float");
         assert_eq!(ParameterValue::Bool(true).type_name(), "bool");

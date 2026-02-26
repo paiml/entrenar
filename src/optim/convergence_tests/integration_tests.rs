@@ -25,18 +25,8 @@ mod tests {
         }
 
         // Adam typically converges faster on this problem
-        let adam_norm: f32 = params_adam[0]
-            .data()
-            .iter()
-            .map(|&x| x * x)
-            .sum::<f32>()
-            .sqrt();
-        let sgd_norm: f32 = params_sgd[0]
-            .data()
-            .iter()
-            .map(|&x| x * x)
-            .sum::<f32>()
-            .sqrt();
+        let adam_norm: f32 = params_adam[0].data().iter().map(|&x| x * x).sum::<f32>().sqrt();
+        let sgd_norm: f32 = params_sgd[0].data().iter().map(|&x| x * x).sum::<f32>().sqrt();
 
         assert!(adam_norm < sgd_norm);
     }

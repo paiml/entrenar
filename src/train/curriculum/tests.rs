@@ -177,10 +177,7 @@ fn test_include_sample() {
 
 #[test]
 fn test_curriculum_names() {
-    assert_eq!(
-        LinearCurriculum::new(0.0, 1.0, 10).name(),
-        "LinearCurriculum"
-    );
+    assert_eq!(LinearCurriculum::new(0.0, 1.0, 10).name(), "LinearCurriculum");
     assert_eq!(TieredCurriculum::citl_default().name(), "TieredCurriculum");
     assert_eq!(AdaptiveCurriculum::new().name(), "AdaptiveCurriculum");
 }

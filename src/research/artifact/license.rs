@@ -47,10 +47,7 @@ mod tests {
         assert_eq!(License::Gpl3.to_string(), "GPL-3.0");
         assert_eq!(License::CcBy4.to_string(), "CC-BY-4.0");
         assert_eq!(License::Cc0.to_string(), "CC0-1.0");
-        assert_eq!(
-            License::Custom("LGPL-2.1".to_string()).to_string(),
-            "LGPL-2.1"
-        );
+        assert_eq!(License::Custom("LGPL-2.1".to_string()).to_string(), "LGPL-2.1");
     }
 
     #[test]
@@ -68,14 +65,8 @@ mod tests {
     fn test_license_eq() {
         assert_eq!(License::Mit, License::Mit);
         assert_ne!(License::Mit, License::Apache2);
-        assert_eq!(
-            License::Custom("ISC".to_string()),
-            License::Custom("ISC".to_string())
-        );
-        assert_ne!(
-            License::Custom("ISC".to_string()),
-            License::Custom("MPL-2.0".to_string())
-        );
+        assert_eq!(License::Custom("ISC".to_string()), License::Custom("ISC".to_string()));
+        assert_ne!(License::Custom("ISC".to_string()), License::Custom("MPL-2.0".to_string()));
     }
 
     #[test]
@@ -105,9 +96,6 @@ mod tests {
     #[test]
     fn test_license_debug() {
         assert_eq!(format!("{:?}", License::Mit), "Mit");
-        assert_eq!(
-            format!("{:?}", License::Custom("ISC".to_string())),
-            "Custom(\"ISC\")"
-        );
+        assert_eq!(format!("{:?}", License::Custom("ISC".to_string())), "Custom(\"ISC\")");
     }
 }

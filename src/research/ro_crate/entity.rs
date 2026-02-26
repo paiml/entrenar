@@ -57,11 +57,7 @@ pub struct RoCrateEntity {
 impl RoCrateEntity {
     /// Create a new entity
     pub fn new(id: impl Into<String>, entity_type: EntityType) -> Self {
-        Self {
-            id: id.into(),
-            type_field: entity_type.to_string(),
-            properties: HashMap::new(),
-        }
+        Self { id: id.into(), type_field: entity_type.to_string(), properties: HashMap::new() }
     }
 
     /// Add a property
@@ -95,10 +91,8 @@ impl RoCrateEntity {
         key: impl Into<String>,
         ref_ids: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        let refs: Vec<serde_json::Value> = ref_ids
-            .into_iter()
-            .map(|id| json!({ "@id": id.into() }))
-            .collect();
+        let refs: Vec<serde_json::Value> =
+            ref_ids.into_iter().map(|id| json!({ "@id": id.into() })).collect();
         self.with_property(key, refs)
     }
 
@@ -144,10 +138,7 @@ mod tests {
 
     #[test]
     fn test_entity_type_display_software_application() {
-        assert_eq!(
-            EntityType::SoftwareApplication.to_string(),
-            "SoftwareApplication"
-        );
+        assert_eq!(EntityType::SoftwareApplication.to_string(), "SoftwareApplication");
     }
 
     #[test]
@@ -203,10 +194,7 @@ mod tests {
     fn test_ro_crate_entity_with_description() {
         let entity =
             RoCrateEntity::new("test", EntityType::Dataset).with_description("A test dataset");
-        assert_eq!(
-            entity.properties.get("description"),
-            Some(&json!("A test dataset"))
-        );
+        assert_eq!(entity.properties.get("description"), Some(&json!("A test dataset")));
     }
 
     #[test]
@@ -280,10 +268,7 @@ mod tests {
     #[test]
     fn test_entity_type_debug() {
         assert_eq!(format!("{:?}", EntityType::Dataset), "Dataset");
-        assert_eq!(
-            format!("{:?}", EntityType::Custom("Foo".to_string())),
-            "Custom(\"Foo\")"
-        );
+        assert_eq!(format!("{:?}", EntityType::Custom("Foo".to_string())), "Custom(\"Foo\")");
     }
 
     #[test]
@@ -295,9 +280,6 @@ mod tests {
             .with_property("datePublished", "2024-01-15");
 
         assert_eq!(entity.properties.len(), 4);
-        assert_eq!(
-            entity.properties.get("name"),
-            Some(&json!("My Research Crate"))
-        );
+        assert_eq!(entity.properties.get("name"), Some(&json!("My Research Crate")));
     }
 }

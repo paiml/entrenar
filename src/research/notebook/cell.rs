@@ -116,11 +116,7 @@ impl CellOutput {
 
     /// Create an execute result output
     pub fn execute_result(data: serde_json::Value) -> Self {
-        Self {
-            output_type: "execute_result".to_string(),
-            data: Some(data),
-            text: None,
-        }
+        Self { output_type: "execute_result".to_string(), data: Some(data), text: None }
     }
 }
 

@@ -31,14 +31,7 @@ impl PreflightResults {
         warning_count: usize,
         skipped_count: usize,
     ) -> Self {
-        Self {
-            results,
-            passed,
-            passed_count,
-            failed_count,
-            warning_count,
-            skipped_count,
-        }
+        Self { results, passed, passed_count, failed_count, warning_count, skipped_count }
     }
 
     /// Check if all required checks passed
@@ -82,21 +75,14 @@ impl PreflightResults {
 
     /// Get warnings only
     pub fn warnings(&self) -> Vec<(&CheckMetadata, &CheckResult)> {
-        self.results
-            .iter()
-            .filter(|(_, result)| result.is_warning())
-            .map(|(c, r)| (c, r))
-            .collect()
+        self.results.iter().filter(|(_, result)| result.is_warning()).map(|(c, r)| (c, r)).collect()
     }
 
     /// Format results as a report
     pub fn report(&self) -> String {
         let mut lines = Vec::new();
         lines.push("=== Preflight Check Results ===".to_string());
-        lines.push(format!(
-            "Status: {}",
-            if self.passed { "PASSED" } else { "FAILED" }
-        ));
+        lines.push(format!("Status: {}", if self.passed { "PASSED" } else { "FAILED" }));
         lines.push(format!(
             "Passed: {}, Failed: {}, Warnings: {}, Skipped: {}",
             self.passed_count, self.failed_count, self.warning_count, self.skipped_count
@@ -170,9 +156,7 @@ mod tests {
     #[test]
     fn test_preflight_results_results_accessor() {
         let check = make_check("test", true);
-        let result = CheckResult::Passed {
-            message: "ok".to_string(),
-        };
+        let result = CheckResult::Passed { message: "ok".to_string() };
         let results = PreflightResults::new(vec![(check, result)], true, 1, 0, 0, 0);
         assert_eq!(results.results().len(), 1);
     }
@@ -180,19 +164,11 @@ mod tests {
     #[test]
     fn test_preflight_results_failed_checks() {
         let check1 = make_check("pass", true);
-        let result1 = CheckResult::Passed {
-            message: "ok".to_string(),
-        };
+        let result1 = CheckResult::Passed { message: "ok".to_string() };
         let check2 = make_check("fail", true);
-        let result2 = CheckResult::Failed {
-            message: "error".to_string(),
-            details: None,
-        };
+        let result2 = CheckResult::Failed { message: "error".to_string(), details: None };
         let check3 = make_check("optional_fail", false);
-        let result3 = CheckResult::Failed {
-            message: "not required".to_string(),
-            details: None,
-        };
+        let result3 = CheckResult::Failed { message: "not required".to_string(), details: None };
 
         let results = PreflightResults::new(
             vec![(check1, result1), (check2, result2), (check3, result3)],
@@ -212,13 +188,9 @@ mod tests {
     #[test]
     fn test_preflight_results_warnings() {
         let check1 = make_check("pass", true);
-        let result1 = CheckResult::Passed {
-            message: "ok".to_string(),
-        };
+        let result1 = CheckResult::Passed { message: "ok".to_string() };
         let check2 = make_check("warn", false);
-        let result2 = CheckResult::Warning {
-            message: "heads up".to_string(),
-        };
+        let result2 = CheckResult::Warning { message: "heads up".to_string() };
 
         let results =
             PreflightResults::new(vec![(check1, result1), (check2, result2)], true, 1, 0, 1, 0);
@@ -231,9 +203,7 @@ mod tests {
     #[test]
     fn test_preflight_results_report_passed() {
         let check = make_check("test_check", true);
-        let result = CheckResult::Passed {
-            message: "All good".to_string(),
-        };
+        let result = CheckResult::Passed { message: "All good".to_string() };
         let results = PreflightResults::new(vec![(check, result)], true, 1, 0, 0, 0);
 
         let report = results.report();
@@ -263,9 +233,7 @@ mod tests {
     #[test]
     fn test_preflight_results_report_warning() {
         let check = make_check("warn_check", false);
-        let result = CheckResult::Warning {
-            message: "Be careful".to_string(),
-        };
+        let result = CheckResult::Warning { message: "Be careful".to_string() };
         let results = PreflightResults::new(vec![(check, result)], true, 0, 0, 1, 0);
 
         let report = results.report();
@@ -277,9 +245,7 @@ mod tests {
     #[test]
     fn test_preflight_results_report_skipped() {
         let check = make_check("skipped_check", false);
-        let result = CheckResult::Skipped {
-            reason: "Not applicable".to_string(),
-        };
+        let result = CheckResult::Skipped { reason: "Not applicable".to_string() };
         let results = PreflightResults::new(vec![(check, result)], true, 0, 0, 0, 1);
 
         let report = results.report();

@@ -18,15 +18,7 @@ pub struct Adam {
 impl Adam {
     /// Create a new Adam optimizer
     pub fn new(lr: f32, beta1: f32, beta2: f32, epsilon: f32) -> Self {
-        Self {
-            lr,
-            beta1,
-            beta2,
-            epsilon,
-            t: 0,
-            m: Vec::new(),
-            v: Vec::new(),
-        }
+        Self { lr, beta1, beta2, epsilon, t: 0, m: Vec::new(), v: Vec::new() }
     }
 
     /// Create Adam with default parameters
@@ -63,21 +55,15 @@ impl Optimizer for Adam {
                         self.v[i] = Some(Array1::zeros(grad.len()));
                     }
 
-                    let m = self.m[i]
-                        .as_mut()
-                        .expect("momentum buffer initialized above");
-                    let v = self.v[i]
-                        .as_mut()
-                        .expect("velocity buffer initialized above");
+                    let m = self.m[i].as_mut().expect("momentum buffer initialized above");
+                    let v = self.v[i].as_mut().expect("velocity buffer initialized above");
 
                     // Get mutable slices (arrays are always contiguous)
                     let grad_slice = grad.as_slice().expect("grad array is contiguous");
                     let m_slice = m.as_slice_mut().expect("momentum array is contiguous");
                     let v_slice = v.as_slice_mut().expect("velocity array is contiguous");
-                    let param_slice = param
-                        .data_mut()
-                        .as_slice_mut()
-                        .expect("param array is contiguous");
+                    let param_slice =
+                        param.data_mut().as_slice_mut().expect("param array is contiguous");
 
                     // Use SIMD-accelerated update
                     super::simd::simd_adam_update(

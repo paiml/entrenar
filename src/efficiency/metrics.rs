@@ -21,18 +21,9 @@ pub struct EnergyMetrics {
 impl EnergyMetrics {
     /// Create new energy metrics
     pub fn new(watts_avg: f64, joules_total: f64, samples: u64) -> Self {
-        let efficiency = if joules_total > 0.0 {
-            samples as f64 / joules_total
-        } else {
-            0.0
-        };
+        let efficiency = if joules_total > 0.0 { samples as f64 / joules_total } else { 0.0 };
 
-        Self {
-            watts_avg,
-            joules_total,
-            carbon_kg: 0.0,
-            efficiency_samples_per_joule: efficiency,
-        }
+        Self { watts_avg, joules_total, carbon_kg: 0.0, efficiency_samples_per_joule: efficiency }
     }
 
     /// Create energy metrics from power readings over time
@@ -175,16 +166,8 @@ impl CostMetrics {
     /// * `epochs` - Number of training epochs
     pub fn new(device_hours: f64, rate_per_hour_usd: f64, samples: u64, epochs: u32) -> Self {
         let total_cost = device_hours * rate_per_hour_usd;
-        let cost_per_sample = if samples > 0 {
-            total_cost / samples as f64
-        } else {
-            0.0
-        };
-        let cost_per_epoch = if epochs > 0 {
-            total_cost / f64::from(epochs)
-        } else {
-            0.0
-        };
+        let cost_per_sample = if samples > 0 { total_cost / samples as f64 } else { 0.0 };
+        let cost_per_epoch = if epochs > 0 { total_cost / f64::from(epochs) } else { 0.0 };
 
         Self {
             cost_per_sample_usd: cost_per_sample,
@@ -272,11 +255,7 @@ pub struct EfficiencyMetrics {
 impl EfficiencyMetrics {
     /// Create new efficiency metrics
     pub fn new(energy: EnergyMetrics, cost: CostMetrics, quality_score: f64) -> Self {
-        Self {
-            energy,
-            cost,
-            quality_score,
-        }
+        Self { energy, cost, quality_score }
     }
 
     /// Calculate quality per dollar

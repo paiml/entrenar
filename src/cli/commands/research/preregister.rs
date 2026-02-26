@@ -6,18 +6,10 @@ use crate::config::PreregisterArgs;
 use crate::research::{PreRegistration, SignedPreRegistration, TimestampProof};
 
 pub fn run_research_preregister(args: PreregisterArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Creating pre-registration: {}", args.title),
-    );
+    log(level, LogLevel::Normal, &format!("Creating pre-registration: {}", args.title));
 
-    let mut prereg = PreRegistration::new(
-        &args.title,
-        &args.hypothesis,
-        &args.methodology,
-        &args.analysis_plan,
-    );
+    let mut prereg =
+        PreRegistration::new(&args.title, &args.hypothesis, &args.methodology, &args.analysis_plan);
 
     if let Some(notes) = &args.notes {
         prereg = prereg.with_notes(notes);
@@ -25,11 +17,7 @@ pub fn run_research_preregister(args: PreregisterArgs, level: LogLevel) -> Resul
 
     // Create commitment
     let commitment = prereg.commit();
-    log(
-        level,
-        LogLevel::Verbose,
-        &format!("  Commitment hash: {}...", &commitment.hash[..32]),
-    );
+    log(level, LogLevel::Verbose, &format!("  Commitment hash: {}...", &commitment.hash[..32]));
 
     // Sign if key provided
     let output = if let Some(key_path) = &args.sign_key {
@@ -57,11 +45,7 @@ pub fn run_research_preregister(args: PreregisterArgs, level: LogLevel) -> Resul
 
             let commit_hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
             signed = signed.with_timestamp_proof(TimestampProof::git(&commit_hash));
-            log(
-                level,
-                LogLevel::Verbose,
-                &format!("  Git timestamp: {commit_hash}"),
-            );
+            log(level, LogLevel::Verbose, &format!("  Git timestamp: {commit_hash}"));
         }
 
         serde_yaml::to_string(&signed).map_err(|e| format!("Serialization error: {e}"))?
@@ -72,11 +56,7 @@ pub fn run_research_preregister(args: PreregisterArgs, level: LogLevel) -> Resul
 
     std::fs::write(&args.output, &output).map_err(|e| format!("Failed to write file: {e}"))?;
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Pre-registration saved to: {}", args.output.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Pre-registration saved to: {}", args.output.display()));
 
     Ok(())
 }

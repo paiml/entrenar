@@ -22,11 +22,7 @@ impl fmt::Display for PublishResult {
             "Published to {} ({} files{})",
             self.repo_url,
             self.files_uploaded,
-            if self.model_card_generated {
-                " + model card"
-            } else {
-                ""
-            }
+            if self.model_card_generated { " + model card" } else { "" }
         )
     }
 }

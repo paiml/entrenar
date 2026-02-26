@@ -81,11 +81,7 @@ impl EarlyStopping {
 impl TrainerCallback for EarlyStopping {
     fn on_epoch_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
         // Use val_loss if monitoring validation (with fallback), otherwise use training loss
-        let loss = if self.monitor_val {
-            ctx.val_loss.unwrap_or(ctx.loss)
-        } else {
-            ctx.loss
-        };
+        let loss = if self.monitor_val { ctx.val_loss.unwrap_or(ctx.loss) } else { ctx.loss };
         self.check_improvement(loss);
 
         if self.epochs_without_improvement >= self.patience {

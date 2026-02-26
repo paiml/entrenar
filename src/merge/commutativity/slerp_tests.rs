@@ -30,10 +30,7 @@ fn slerp_self_merge_identity() {
     for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
         let config = SlerpConfig::new(t).unwrap();
         let result = slerp_merge(&m, &m, &config).unwrap();
-        assert!(
-            models_approx_equal(&result, &m, 1e-5),
-            "slerp(A, A, {t}) should equal A"
-        );
+        assert!(models_approx_equal(&result, &m, 1e-5), "slerp(A, A, {t}) should equal A");
     }
 }
 
@@ -48,8 +45,5 @@ fn slerp_midpoint_symmetry() {
     let r1 = slerp_merge(&m1, &m2, &config).unwrap();
     let r2 = slerp_merge(&m2, &m1, &config).unwrap();
 
-    assert!(
-        models_approx_equal(&r1, &r2, 1e-5),
-        "SLERP at t=0.5 should be symmetric"
-    );
+    assert!(models_approx_equal(&r1, &r2, 1e-5), "SLERP at t=0.5 should be symmetric");
 }

@@ -50,14 +50,8 @@ impl DistillationLoss {
     ///
     /// Panics if temperature <= 0 or alpha not in [0, 1]
     pub fn new(temperature: f32, alpha: f32) -> Self {
-        assert!(
-            temperature > 0.0,
-            "Temperature must be positive, got {temperature}"
-        );
-        assert!(
-            (0.0..=1.0).contains(&alpha),
-            "Alpha must be in [0, 1], got {alpha}"
-        );
+        assert!(temperature > 0.0, "Temperature must be positive, got {temperature}");
+        assert!((0.0..=1.0).contains(&alpha), "Alpha must be in [0, 1], got {alpha}");
 
         Self { temperature, alpha }
     }
@@ -84,11 +78,7 @@ impl DistillationLoss {
             teacher_logits.shape(),
             "Student and teacher logits must have same shape"
         );
-        assert_eq!(
-            student_logits.nrows(),
-            labels.len(),
-            "Batch size must match number of labels"
-        );
+        assert_eq!(student_logits.nrows(), labels.len(), "Batch size must match number of labels");
 
         // Soft targets: KL divergence with temperature scaling
         let kl_loss = self.kl_divergence_loss(student_logits, teacher_logits);
@@ -309,11 +299,7 @@ mod tests {
 
         // Compute Shannon entropy: -Σ p_i * log(p_i)
         let entropy = |probs: &Array2<f32>| -> f32 {
-            probs
-                .iter()
-                .filter(|&&p| p > 1e-10)
-                .map(|&p| -p * p.ln())
-                .sum()
+            probs.iter().filter(|&&p| p > 1e-10).map(|&p| -p * p.ln()).sum()
         };
 
         let h_low = entropy(&probs_low);
@@ -356,10 +342,7 @@ mod tests {
         let probs = softmax_2d(&x);
 
         for &p in probs.iter() {
-            assert!(
-                p > 0.0,
-                "FALSIFIED SM-002: softmax output {p} not strictly positive"
-            );
+            assert!(p > 0.0, "FALSIFIED SM-002: softmax output {p} not strictly positive");
         }
     }
 
@@ -403,10 +386,7 @@ mod tests {
         let probs = softmax_2d(&x);
 
         for &p in probs.iter() {
-            assert!(
-                (0.0..=1.0).contains(&p),
-                "FALSIFIED SM-004: softmax output {p} not in [0, 1]"
-            );
+            assert!((0.0..=1.0).contains(&p), "FALSIFIED SM-004: softmax output {p} not in [0, 1]");
         }
 
         // For moderate inputs, outputs ARE strictly in (0, 1) — no underflow

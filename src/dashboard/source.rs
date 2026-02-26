@@ -79,10 +79,7 @@ impl<S: ExperimentStorage> DashboardSource for Run<S> {
     fn resource_usage(&self) -> ResourceSnapshot {
         // Return simulated resource usage
         // In production, this would query actual system metrics
-        ResourceSnapshot::new()
-            .with_cpu_util(0.0)
-            .with_gpu_util(0.0)
-            .with_memory(0, 0)
+        ResourceSnapshot::new().with_cpu_util(0.0).with_gpu_util(0.0).with_memory(0, 0)
     }
 }
 

@@ -34,14 +34,7 @@ impl<P: DecisionPath> DecisionTrace<P> {
         output: f32,
         latency_ns: u64,
     ) -> Self {
-        Self {
-            timestamp_ns,
-            sequence,
-            input_hash,
-            path,
-            output,
-            latency_ns,
-        }
+        Self { timestamp_ns, sequence, input_hash, path, output, latency_ns }
     }
 
     /// Get confidence from the underlying path
@@ -137,14 +130,7 @@ impl<P: DecisionPath> DecisionTrace<P> {
 
         let path = P::from_bytes(&bytes[36..36 + path_length])?;
 
-        Ok(Self {
-            timestamp_ns,
-            sequence,
-            input_hash,
-            path,
-            output,
-            latency_ns,
-        })
+        Ok(Self { timestamp_ns, sequence, input_hash, path, output, latency_ns })
     }
 }
 

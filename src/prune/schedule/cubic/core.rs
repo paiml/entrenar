@@ -53,9 +53,7 @@ impl PruningSchedule {
             ));
         }
         if !(0.0..=1.0).contains(&final_sparsity) {
-            return Err(format!(
-                "final_sparsity ({final_sparsity}) must be between 0.0 and 1.0"
-            ));
+            return Err(format!("final_sparsity ({final_sparsity}) must be between 0.0 and 1.0"));
         }
         Ok(())
     }

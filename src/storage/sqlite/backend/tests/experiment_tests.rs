@@ -14,9 +14,7 @@ fn test_create_experiment() {
 fn test_create_experiment_with_config() {
     let mut backend = SqliteBackend::open_in_memory().unwrap();
     let config = serde_json::json!({"lr": 0.001, "epochs": 10});
-    let exp_id = backend
-        .create_experiment("test-exp", Some(config.clone()))
-        .unwrap();
+    let exp_id = backend.create_experiment("test-exp", Some(config.clone())).unwrap();
 
     let exp = backend.get_experiment(&exp_id).unwrap();
     assert_eq!(exp.name, "test-exp");

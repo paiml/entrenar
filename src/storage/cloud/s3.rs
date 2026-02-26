@@ -75,10 +75,7 @@ pub struct MockS3Backend {
 impl MockS3Backend {
     /// Create a new mock S3 backend
     pub fn new(config: S3Config) -> Self {
-        Self {
-            config,
-            inner: InMemoryBackend::new(),
-        }
+        Self { config, inner: InMemoryBackend::new() }
     }
 
     /// Get the configuration

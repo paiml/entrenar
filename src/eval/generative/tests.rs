@@ -85,10 +85,7 @@ fn test_rtfx_negative_processing() {
 #[test]
 fn test_bleu_identical() {
     let score = bleu_score(&["the cat sat on the mat"], "the cat sat on the mat", 4);
-    assert!(
-        score > 0.99,
-        "BLEU of identical strings should be ~1.0, got {score}"
-    );
+    assert!(score > 0.99, "BLEU of identical strings should be ~1.0, got {score}");
 }
 
 #[test]
@@ -115,10 +112,7 @@ fn test_bleu_partial_match() {
         "the cat sat on the mat by the window",
         4,
     );
-    assert!(
-        score > 0.0 && score < 1.0,
-        "Expected BLEU in (0, 1), got {score}"
-    );
+    assert!(score > 0.0 && score < 1.0, "Expected BLEU in (0, 1), got {score}");
 }
 
 proptest! {

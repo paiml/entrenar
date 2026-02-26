@@ -46,26 +46,11 @@ fn test_ror_id_validation() {
 
 #[test]
 fn test_contributor_role_display() {
-    assert_eq!(
-        format!("{}", ContributorRole::Conceptualization),
-        "Conceptualization"
-    );
-    assert_eq!(
-        format!("{}", ContributorRole::DataCuration),
-        "Data curation"
-    );
-    assert_eq!(
-        format!("{}", ContributorRole::FormalAnalysis),
-        "Formal analysis"
-    );
-    assert_eq!(
-        format!("{}", ContributorRole::WritingOriginal),
-        "Writing – original draft"
-    );
-    assert_eq!(
-        format!("{}", ContributorRole::WritingReview),
-        "Writing – review & editing"
-    );
+    assert_eq!(format!("{}", ContributorRole::Conceptualization), "Conceptualization");
+    assert_eq!(format!("{}", ContributorRole::DataCuration), "Data curation");
+    assert_eq!(format!("{}", ContributorRole::FormalAnalysis), "Formal analysis");
+    assert_eq!(format!("{}", ContributorRole::WritingOriginal), "Writing – original draft");
+    assert_eq!(format!("{}", ContributorRole::WritingReview), "Writing – review & editing");
 }
 
 #[test]
@@ -92,10 +77,7 @@ fn test_artifact_with_multiple_authors() {
 
     assert_eq!(artifact.authors.len(), 2);
     assert_eq!(artifact.authors[0].name, "Alice Smith");
-    assert_eq!(
-        artifact.authors[0].orcid,
-        Some("0000-0002-1825-0097".to_string())
-    );
+    assert_eq!(artifact.authors[0].orcid, Some("0000-0002-1825-0097".to_string()));
     assert_eq!(artifact.authors[0].roles.len(), 2);
     assert_eq!(artifact.authors[1].name, "Bob Jones");
     assert_eq!(artifact.authors[1].orcid, None);
@@ -123,10 +105,7 @@ fn test_affiliation_with_ror() {
         .with_country("US");
 
     assert_eq!(affiliation.name, "MIT");
-    assert_eq!(
-        affiliation.ror_id,
-        Some("https://ror.org/03yrm5c26".to_string())
-    );
+    assert_eq!(affiliation.ror_id, Some("https://ror.org/03yrm5c26".to_string()));
     assert_eq!(affiliation.country, Some("US".to_string()));
 }
 
@@ -157,10 +136,7 @@ fn test_license_display() {
     assert_eq!(format!("{}", License::Mit), "MIT");
     assert_eq!(format!("{}", License::Apache2), "Apache-2.0");
     assert_eq!(format!("{}", License::CcBy4), "CC-BY-4.0");
-    assert_eq!(
-        format!("{}", License::Custom("LGPL-2.1".to_string())),
-        "LGPL-2.1"
-    );
+    assert_eq!(format!("{}", License::Custom("LGPL-2.1".to_string())), "LGPL-2.1");
 }
 
 #[test]

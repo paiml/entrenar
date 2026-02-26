@@ -25,27 +25,16 @@ impl RelatedIdentifier {
             IdentifierScheme::Other
         };
 
-        Self {
-            identifier: id,
-            relation: RelationType::IsIdenticalTo,
-            scheme,
-        }
+        Self { identifier: id, relation: RelationType::IsIdenticalTo, scheme }
     }
 
     /// Create a "is supplement to" relation
     pub fn is_supplement_to(identifier: impl Into<String>) -> Self {
         let id = identifier.into();
-        let scheme = if id.starts_with("10.") {
-            IdentifierScheme::Doi
-        } else {
-            IdentifierScheme::Url
-        };
+        let scheme =
+            if id.starts_with("10.") { IdentifierScheme::Doi } else { IdentifierScheme::Url };
 
-        Self {
-            identifier: id,
-            relation: RelationType::IsSupplementTo,
-            scheme,
-        }
+        Self { identifier: id, relation: RelationType::IsSupplementTo, scheme }
     }
 
     /// Create a "cites" relation

@@ -12,19 +12,10 @@ fn test_log_param_string() {
     let exp_id = backend.create_experiment("test-exp", None).unwrap();
     let run_id = backend.create_run(&exp_id).unwrap();
 
-    backend
-        .log_param(
-            &run_id,
-            "optimizer",
-            ParameterValue::String("adam".to_string()),
-        )
-        .unwrap();
+    backend.log_param(&run_id, "optimizer", ParameterValue::String("adam".to_string())).unwrap();
 
     let params = backend.get_params(&run_id).unwrap();
-    assert_eq!(
-        params.get("optimizer"),
-        Some(&ParameterValue::String("adam".to_string()))
-    );
+    assert_eq!(params.get("optimizer"), Some(&ParameterValue::String("adam".to_string())));
 }
 
 #[test]
@@ -33,9 +24,7 @@ fn test_log_param_float() {
     let exp_id = backend.create_experiment("test-exp", None).unwrap();
     let run_id = backend.create_run(&exp_id).unwrap();
 
-    backend
-        .log_param(&run_id, "lr", ParameterValue::Float(0.001))
-        .unwrap();
+    backend.log_param(&run_id, "lr", ParameterValue::Float(0.001)).unwrap();
 
     let params = backend.get_params(&run_id).unwrap();
     assert_eq!(params.get("lr"), Some(&ParameterValue::Float(0.001)));
@@ -47,9 +36,7 @@ fn test_log_param_int() {
     let exp_id = backend.create_experiment("test-exp", None).unwrap();
     let run_id = backend.create_run(&exp_id).unwrap();
 
-    backend
-        .log_param(&run_id, "epochs", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run_id, "epochs", ParameterValue::Int(100)).unwrap();
 
     let params = backend.get_params(&run_id).unwrap();
     assert_eq!(params.get("epochs"), Some(&ParameterValue::Int(100)));
@@ -61,9 +48,7 @@ fn test_log_param_bool() {
     let exp_id = backend.create_experiment("test-exp", None).unwrap();
     let run_id = backend.create_run(&exp_id).unwrap();
 
-    backend
-        .log_param(&run_id, "use_cuda", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run_id, "use_cuda", ParameterValue::Bool(true)).unwrap();
 
     let params = backend.get_params(&run_id).unwrap();
     assert_eq!(params.get("use_cuda"), Some(&ParameterValue::Bool(true)));
@@ -78,10 +63,7 @@ fn test_log_params_batch() {
     let mut params = HashMap::new();
     params.insert("lr".to_string(), ParameterValue::Float(0.001));
     params.insert("epochs".to_string(), ParameterValue::Int(100));
-    params.insert(
-        "optimizer".to_string(),
-        ParameterValue::String("adam".to_string()),
-    );
+    params.insert("optimizer".to_string(), ParameterValue::String("adam".to_string()));
 
     backend.log_params(&run_id, params).unwrap();
 

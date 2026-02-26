@@ -26,16 +26,7 @@ pub struct AdamW {
 impl AdamW {
     /// Create a new AdamW optimizer
     pub fn new(lr: f32, beta1: f32, beta2: f32, epsilon: f32, weight_decay: f32) -> Self {
-        Self {
-            lr,
-            beta1,
-            beta2,
-            epsilon,
-            weight_decay,
-            t: 0,
-            m: Vec::new(),
-            v: Vec::new(),
-        }
+        Self { lr, beta1, beta2, epsilon, weight_decay, t: 0, m: Vec::new(), v: Vec::new() }
     }
 
     /// Create AdamW with default parameters (weight_decay = 0.01)
@@ -72,21 +63,15 @@ impl Optimizer for AdamW {
                         self.v[i] = Some(Array1::zeros(grad.len()));
                     }
 
-                    let m = self.m[i]
-                        .as_mut()
-                        .expect("momentum buffer initialized above");
-                    let v = self.v[i]
-                        .as_mut()
-                        .expect("velocity buffer initialized above");
+                    let m = self.m[i].as_mut().expect("momentum buffer initialized above");
+                    let v = self.v[i].as_mut().expect("velocity buffer initialized above");
 
                     // Get mutable slices (arrays are always contiguous)
                     let grad_slice = grad.as_slice().expect("grad array is contiguous");
                     let m_slice = m.as_slice_mut().expect("momentum array is contiguous");
                     let v_slice = v.as_slice_mut().expect("velocity array is contiguous");
-                    let param_slice = param
-                        .data_mut()
-                        .as_slice_mut()
-                        .expect("param array is contiguous");
+                    let param_slice =
+                        param.data_mut().as_slice_mut().expect("param array is contiguous");
 
                     // Use SIMD-accelerated update
                     super::simd::simd_adamw_update(
@@ -156,21 +141,15 @@ impl Optimizer for AdamW {
                         self.v[i] = Some(Array1::zeros(grad.len()));
                     }
 
-                    let m = self.m[i]
-                        .as_mut()
-                        .expect("momentum buffer initialized above");
-                    let v = self.v[i]
-                        .as_mut()
-                        .expect("velocity buffer initialized above");
+                    let m = self.m[i].as_mut().expect("momentum buffer initialized above");
+                    let v = self.v[i].as_mut().expect("velocity buffer initialized above");
 
                     // Get mutable slices (arrays are always contiguous)
                     let grad_slice = grad.as_slice().expect("grad array is contiguous");
                     let m_slice = m.as_slice_mut().expect("momentum array is contiguous");
                     let v_slice = v.as_slice_mut().expect("velocity array is contiguous");
-                    let param_slice = param
-                        .data_mut()
-                        .as_slice_mut()
-                        .expect("param array is contiguous");
+                    let param_slice =
+                        param.data_mut().as_slice_mut().expect("param array is contiguous");
 
                     // Use SIMD-accelerated update
                     super::simd::simd_adamw_update(
@@ -329,10 +308,7 @@ mod tests {
 
         // Should make progress toward 0
         let final_mean: f32 = params[0].data().iter().map(|x| x.abs()).sum::<f32>() / 32.0;
-        assert!(
-            final_mean < initial_mean,
-            "Mean {final_mean} did not improve from {initial_mean}"
-        );
+        assert!(final_mean < initial_mean, "Mean {final_mean} did not improve from {initial_mean}");
     }
 
     #[test]
@@ -346,10 +322,8 @@ mod tests {
 
     #[test]
     fn test_adamw_multiple_params() {
-        let mut params = vec![
-            Tensor::from_vec(vec![1.0, 2.0], true),
-            Tensor::from_vec(vec![3.0, 4.0], true),
-        ];
+        let mut params =
+            vec![Tensor::from_vec(vec![1.0, 2.0], true), Tensor::from_vec(vec![3.0, 4.0], true)];
         let mut optimizer = AdamW::default_params(0.1);
 
         // Set gradients for both
@@ -462,9 +436,7 @@ mod tests {
         let mut optimizer = AdamW::default_params(0.01);
 
         for step in 0..50 {
-            let grad = params[0]
-                .data()
-                .mapv(|x| ((x + step as f32) * 0.37).sin() * 5.0);
+            let grad = params[0].data().mapv(|x| ((x + step as f32) * 0.37).sin() * 5.0);
             params[0].set_grad(grad);
             optimizer.step(&mut params);
         }
@@ -473,10 +445,7 @@ mod tests {
         for v_opt in &optimizer.v {
             if let Some(v_arr) = v_opt {
                 for (j, &v_val) in v_arr.iter().enumerate() {
-                    assert!(
-                        v_val >= 0.0,
-                        "FALSIFIED AW-002e: v[{j}] = {v_val} < 0 after 50 steps"
-                    );
+                    assert!(v_val >= 0.0, "FALSIFIED AW-002e: v[{j}] = {v_val} < 0 after 50 steps");
                 }
             }
         }
@@ -507,10 +476,7 @@ mod tests {
         optimizer.step(&mut params);
 
         for (i, &val) in params[0].data().iter().enumerate() {
-            assert!(
-                val.is_finite(),
-                "FALSIFIED AW-004e: param[{i}] = {val} (not finite)"
-            );
+            assert!(val.is_finite(), "FALSIFIED AW-004e: param[{i}] = {val} (not finite)");
         }
     }
 

@@ -39,10 +39,8 @@ impl LLMStats {
         let total_tokens: u64 = metrics.iter().map(|m| u64::from(m.total_tokens)).sum();
         let total_prompt: u64 = metrics.iter().map(|m| u64::from(m.prompt_tokens)).sum();
         let total_completion: u64 = metrics.iter().map(|m| u64::from(m.completion_tokens)).sum();
-        let total_cost: f64 = metrics
-            .iter()
-            .map(|m| m.cost_usd.unwrap_or_else(|| m.estimate_cost()))
-            .sum();
+        let total_cost: f64 =
+            metrics.iter().map(|m| m.cost_usd.unwrap_or_else(|| m.estimate_cost())).sum();
 
         let avg_latency: f64 = metrics.iter().map(|m| m.latency_ms).sum::<f64>() / n as f64;
         let avg_tps: f64 = metrics.iter().map(|m| m.tokens_per_second).sum::<f64>() / n as f64;

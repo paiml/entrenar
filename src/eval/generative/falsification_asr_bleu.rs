@@ -12,30 +12,21 @@ use super::*;
 fn falsify_wer_known_substitution() {
     // "a b c" → "a x c" = 1 substitution / 3 words
     let wer = word_error_rate("a b c", "a x c");
-    assert!(
-        (wer - 1.0 / 3.0).abs() < 1e-10,
-        "1 substitution in 3 words → WER = 1/3, got {wer}"
-    );
+    assert!((wer - 1.0 / 3.0).abs() < 1e-10, "1 substitution in 3 words → WER = 1/3, got {wer}");
 }
 
 #[test]
 fn falsify_wer_known_two_insertions() {
     // "a" → "x a y" = 2 operations (insert x before, insert y after) / 1 word
     let wer = word_error_rate("a", "x a y");
-    assert!(
-        (wer - 2.0).abs() < 1e-10,
-        "2 insertions in 1-word ref → WER = 2.0, got {wer}"
-    );
+    assert!((wer - 2.0).abs() < 1e-10, "2 insertions in 1-word ref → WER = 2.0, got {wer}");
 }
 
 #[test]
 fn falsify_wer_exceeds_one() {
     // WER CAN exceed 1.0 — spec says "Can exceed 1.0 when hypothesis is much longer"
     let wer = word_error_rate("a", "b c d e f");
-    assert!(
-        wer > 1.0,
-        "WER should exceed 1.0 for heavily inserted hyp, got {wer}"
-    );
+    assert!(wer > 1.0, "WER should exceed 1.0 for heavily inserted hyp, got {wer}");
 }
 
 #[test]
@@ -73,20 +64,14 @@ fn falsify_wer_triangle_inequality() {
 fn falsify_wer_whitespace_only_reference() {
     // A reference of only whitespace → 0 words → same as empty reference
     let wer = word_error_rate("   ", "hello");
-    assert!(
-        wer.is_infinite(),
-        "Whitespace-only ref has 0 words → WER should be inf, got {wer}"
-    );
+    assert!(wer.is_infinite(), "Whitespace-only ref has 0 words → WER should be inf, got {wer}");
 }
 
 #[test]
 fn falsify_wer_whitespace_only_hypothesis() {
     // All words deleted
     let wer = word_error_rate("hello world", "   ");
-    assert!(
-        (wer - 1.0).abs() < 1e-10,
-        "Whitespace-only hyp → all deletions → WER=1.0, got {wer}"
-    );
+    assert!((wer - 1.0).abs() < 1e-10, "Whitespace-only hyp → all deletions → WER=1.0, got {wer}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -111,14 +96,8 @@ fn falsify_bleu_clipped_precision() {
     let score = bleu_score(&["the cat"], "the the the the", 1);
     // precision = 1/4, BP = exp(1 - 2/4) = exp(-0.5) ≈ 0.6065
     // BLEU = 0.6065 * 0.25 = 0.1516
-    assert!(
-        score < 0.3,
-        "Clipped precision should limit repeated words, got {score}"
-    );
-    assert!(
-        score > 0.0,
-        "Some unigrams match, should be > 0, got {score}"
-    );
+    assert!(score < 0.3, "Clipped precision should limit repeated words, got {score}");
+    assert!(score > 0.0, "Some unigrams match, should be > 0, got {score}");
 }
 
 #[test]
@@ -137,10 +116,7 @@ fn falsify_bleu_max_n_1_equals_unigram() {
     // max_n=1 should only use unigram precision
     let score = bleu_score(&["a b c d"], "a b x d", 1);
     // unigram precision = 3/4 (a,b,d match), BP=1 (equal length)
-    assert!(
-        (score - 0.75).abs() < 1e-10,
-        "BLEU-1 should be unigram precision = 3/4, got {score}"
-    );
+    assert!((score - 0.75).abs() < 1e-10, "BLEU-1 should be unigram precision = 3/4, got {score}");
 }
 
 #[test]
@@ -148,8 +124,5 @@ fn falsify_bleu_zero_for_no_bigram_match() {
     // Even with perfect unigram match, zero bigram overlap → BLEU-4 = 0
     // "a b" vs "b a" — unigrams: both have {a, b}, bigrams: "a b" vs "b a" → 0
     let score = bleu_score(&["a b"], "b a", 4);
-    assert_eq!(
-        score, 0.0,
-        "No bigram overlap should make BLEU-4 = 0, got {score}"
-    );
+    assert_eq!(score, 0.0, "No bigram overlap should make BLEU-4 = 0, got {score}");
 }

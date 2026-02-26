@@ -127,11 +127,7 @@ pub struct HeadlessWriter<W: Write> {
 impl<W: Write> HeadlessWriter<W> {
     /// Create a new headless writer
     pub fn new(writer: W, format: OutputFormat) -> Self {
-        Self {
-            writer,
-            format,
-            line_count: 0,
-        }
+        Self { writer, format, line_count: 0 }
     }
 
     /// Write a training snapshot
@@ -238,20 +234,12 @@ pub struct HeadlessMonitor {
 impl HeadlessMonitor {
     /// Create a new headless monitor
     pub fn new(format: OutputFormat, refresh_ms: u64) -> Self {
-        Self {
-            format,
-            refresh_ms,
-            output_file: None,
-        }
+        Self { format, refresh_ms, output_file: None }
     }
 
     /// Create a new headless monitor with output file
     pub fn with_output_file(format: OutputFormat, refresh_ms: u64, output_file: String) -> Self {
-        Self {
-            format,
-            refresh_ms,
-            output_file: Some(output_file),
-        }
+        Self { format, refresh_ms, output_file: Some(output_file) }
     }
 
     /// Run the headless monitor loop
@@ -262,10 +250,7 @@ impl HeadlessMonitor {
         let mut state = TrainingState::new(experiment_dir);
 
         // Wait for state file
-        eprintln!(
-            "Waiting for training state file at {}...",
-            state.path().display()
-        );
+        eprintln!("Waiting for training state file at {}...", state.path().display());
 
         if !state.wait_for_state(std::time::Duration::from_secs(60))? {
             eprintln!("Timeout waiting for training state file.");
@@ -295,10 +280,8 @@ impl HeadlessMonitor {
                 writer.write(&snapshot)?;
 
                 // Check for completion
-                if matches!(
-                    snapshot.status,
-                    TrainingStatus::Completed | TrainingStatus::Failed(_)
-                ) {
+                if matches!(snapshot.status, TrainingStatus::Completed | TrainingStatus::Failed(_))
+                {
                     // Write final status
                     match &snapshot.status {
                         TrainingStatus::Completed => {

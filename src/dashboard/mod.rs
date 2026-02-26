@@ -19,13 +19,13 @@
 //! use entrenar::dashboard::{DashboardSource, Trend};
 //!
 //! let mut storage = InMemoryStorage::new();
-//! let exp_id = storage.create_experiment("my-exp", None).unwrap();
+//! let exp_id = storage.create_experiment("my-exp", None).expect("create experiment");
 //! let storage = Arc::new(Mutex::new(storage));
 //!
-//! let mut run = Run::new(&exp_id, storage.clone(), TracingConfig::disabled()).unwrap();
-//! run.log_metric("loss", 0.5).unwrap();
-//! run.log_metric("loss", 0.4).unwrap();
-//! run.log_metric("loss", 0.3).unwrap();
+//! let mut run = Run::new(&exp_id, storage.clone(), TracingConfig::disabled()).expect("create run");
+//! run.log_metric("loss", 0.5).expect("log metric");
+//! run.log_metric("loss", 0.4).expect("log metric");
+//! run.log_metric("loss", 0.3).expect("log metric");
 //!
 //! // Get dashboard data
 //! let status = run.status();

@@ -125,9 +125,7 @@ mod cuda_benchmark {
         let stream = CudaStream::new(&ctx)?;
 
         // Query device properties
-        let device_name = ctx
-            .device_name()
-            .unwrap_or_else(|_| "Unknown GPU".to_string());
+        let device_name = ctx.device_name().unwrap_or_else(|_| "Unknown GPU".to_string());
         let total_memory = ctx.total_memory().unwrap_or(0);
 
         println!("   Device: {}", device_name);
@@ -155,15 +153,12 @@ mod cuda_benchmark {
         println!("\n[5/6] Allocating GPU buffers...");
 
         // Input hidden states: (batch * seq, hidden)
-        let hidden_data: Vec<f32> = (0..m * k)
-            .map(|i| ((i as f32 * 0.01).sin() * 0.1))
-            .collect();
+        let hidden_data: Vec<f32> = (0..m * k).map(|i| ((i as f32 * 0.01).sin() * 0.1)).collect();
         let hidden = GpuBuffer::from_host(ctx, &hidden_data)?;
 
         // LM head weights: (hidden, vocab)
-        let weights_data: Vec<f32> = (0..k * n)
-            .map(|i| ((i as f32 * 0.001).cos() * 0.02))
-            .collect();
+        let weights_data: Vec<f32> =
+            (0..k * n).map(|i| ((i as f32 * 0.001).cos() * 0.02)).collect();
         let weights = GpuBuffer::from_host(ctx, &weights_data)?;
 
         // Output logits: (batch * seq, vocab)
@@ -302,11 +297,7 @@ mod cuda_benchmark {
             }
 
             let epoch_duration = epoch_start.elapsed();
-            println!(
-                "\n   Epoch {} complete in {:.2}s",
-                epoch + 1,
-                epoch_duration.as_secs_f32()
-            );
+            println!("\n   Epoch {} complete in {:.2}s", epoch + 1, epoch_duration.as_secs_f32());
         }
 
         metrics.total_time = total_start.elapsed();
@@ -347,11 +338,7 @@ mod cuda_benchmark {
                     break;
                 }
                 Err(e) if attempt < 2 => {
-                    eprintln!(
-                        "   Warmup attempt {} failed: {}. Retrying...",
-                        attempt + 1,
-                        e
-                    );
+                    eprintln!("   Warmup attempt {} failed: {}. Retrying...", attempt + 1, e);
                     std::thread::sleep(std::time::Duration::from_millis(500));
                 }
                 Err(e) => return Err(e),
@@ -405,14 +392,8 @@ mod cuda_benchmark {
             metrics.num_optimizer_steps,
             metrics.optimizer_time.as_millis() as f32 / metrics.num_optimizer_steps as f32
         );
-        println!(
-            "   Total kernel time: {:.3}s",
-            metrics.total_kernel_time().as_secs_f32()
-        );
-        println!(
-            "   Total wall time:   {:.3}s",
-            metrics.total_time.as_secs_f32()
-        );
+        println!("   Total kernel time: {:.3}s", metrics.total_kernel_time().as_secs_f32());
+        println!("   Total wall time:   {:.3}s", metrics.total_time.as_secs_f32());
 
         println!("\nPerformance Metrics:");
         let gpu_util = metrics.gpu_utilization();

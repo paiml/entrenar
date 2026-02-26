@@ -202,10 +202,8 @@ mod tests {
 
     #[test]
     fn test_train_config_builder() {
-        let config = TrainConfig::new()
-            .with_grad_clip(0.5)
-            .with_log_interval(20)
-            .without_grad_clip();
+        let config =
+            TrainConfig::new().with_grad_clip(0.5).with_log_interval(20).without_grad_clip();
 
         assert_eq!(config.max_grad_norm, None);
         assert_eq!(config.log_interval, 20);
@@ -304,10 +302,7 @@ mod tests {
     fn test_with_checkpoints() {
         let config = TrainConfig::new().with_checkpoints(5, PathBuf::from("/tmp/checkpoints"));
         assert_eq!(config.save_interval, Some(5));
-        assert_eq!(
-            config.checkpoint_dir,
-            Some(PathBuf::from("/tmp/checkpoints"))
-        );
+        assert_eq!(config.checkpoint_dir, Some(PathBuf::from("/tmp/checkpoints")));
     }
 
     #[test]

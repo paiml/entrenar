@@ -44,21 +44,13 @@ impl DatasetOptions {
     /// Create new options for validation split
     #[must_use]
     pub fn validation() -> Self {
-        Self {
-            split: Split::Validation,
-            shuffle: false,
-            ..Default::default()
-        }
+        Self { split: Split::Validation, shuffle: false, ..Default::default() }
     }
 
     /// Create new options for test split
     #[must_use]
     pub fn test() -> Self {
-        Self {
-            split: Split::Test,
-            shuffle: false,
-            ..Default::default()
-        }
+        Self { split: Split::Test, shuffle: false, ..Default::default() }
     }
 
     /// Set maximum examples

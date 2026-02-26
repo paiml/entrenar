@@ -28,8 +28,7 @@ impl InMemoryRegistry {
 
     /// Enable auto-rollback for a model
     pub fn enable_auto_rollback(&mut self, model: &str, metric: &str, threshold: f64) {
-        self.rollback_enabled
-            .insert(model.to_string(), (metric.to_string(), threshold));
+        self.rollback_enabled.insert(model.to_string(), (metric.to_string(), threshold));
     }
 
     /// Check if rollback is needed based on metrics
@@ -43,8 +42,6 @@ impl InMemoryRegistry {
 
     /// Get next version number for a model
     pub(crate) fn next_version(&self, name: &str) -> u32 {
-        self.models.get(name).map_or(1, |versions| {
-            versions.keys().max().copied().unwrap_or(0) + 1
-        })
+        self.models.get(name).map_or(1, |versions| versions.keys().max().copied().unwrap_or(0) + 1)
     }
 }

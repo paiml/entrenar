@@ -126,13 +126,7 @@ impl CodeQualityMetrics {
         timestamp: DateTime<Utc>,
     ) -> Self {
         let pmat_grade = PmatGrade::from_scores(coverage_percent, mutation_score);
-        Self {
-            coverage_percent,
-            mutation_score,
-            clippy_warnings,
-            pmat_grade,
-            timestamp,
-        }
+        Self { coverage_percent, mutation_score, clippy_warnings, pmat_grade, timestamp }
     }
 
     /// Parse metrics from cargo-llvm-cov and cargo-mutants output
@@ -182,10 +176,8 @@ impl CodeQualityMetrics {
         let value: serde_json::Value = serde_json::from_str(json)
             .map_err(|e| QualityError::MutationParseError(e.to_string()))?;
 
-        let total = value
-            .get("total_mutants")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| {
+        let total =
+            value.get("total_mutants").and_then(serde_json::Value::as_u64).ok_or_else(|| {
                 QualityError::MutationParseError("Missing total_mutants field".to_string())
             })?;
 

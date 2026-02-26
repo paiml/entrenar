@@ -23,11 +23,7 @@ impl Repl {
 
         let history_path = dirs::data_dir().map(|p| p.join("entrenar").join("shell_history"));
 
-        let mut repl = Self {
-            editor,
-            state: SessionState::new(),
-            history_path,
-        };
+        let mut repl = Self { editor, state: SessionState::new(), history_path };
 
         // Load history if available
         if let Some(ref path) = repl.history_path {

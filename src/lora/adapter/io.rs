@@ -75,13 +75,7 @@ pub fn save_adapter_peft<P: AsRef<Path>>(
 /// and returns the adapter configuration along with tensor name → weight data.
 pub fn load_adapter_peft<P: AsRef<Path>>(
     dir: P,
-) -> Result<
-    (
-        super::peft_config::PeftAdapterConfig,
-        Vec<(String, Vec<f32>)>,
-    ),
-    AdapterError,
-> {
+) -> Result<(super::peft_config::PeftAdapterConfig, Vec<(String, Vec<f32>)>), AdapterError> {
     let dir = dir.as_ref();
 
     // Read adapter_config.json

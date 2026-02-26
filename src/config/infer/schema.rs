@@ -63,27 +63,13 @@ mod tests {
 
     fn make_schema() -> InferredSchema {
         let mut schema = InferredSchema::default();
-        schema
-            .features
-            .insert("age".to_string(), FeatureType::Numeric);
-        schema
-            .features
-            .insert("income".to_string(), FeatureType::Numeric);
-        schema
-            .features
-            .insert("category".to_string(), FeatureType::Categorical);
-        schema
-            .features
-            .insert("text".to_string(), FeatureType::Text);
-        schema
-            .features
-            .insert("is_spam".to_string(), FeatureType::BinaryTarget);
-        schema
-            .features
-            .insert("label".to_string(), FeatureType::MultiClassTarget);
-        schema
-            .features
-            .insert("price".to_string(), FeatureType::RegressionTarget);
+        schema.features.insert("age".to_string(), FeatureType::Numeric);
+        schema.features.insert("income".to_string(), FeatureType::Numeric);
+        schema.features.insert("category".to_string(), FeatureType::Categorical);
+        schema.features.insert("text".to_string(), FeatureType::Text);
+        schema.features.insert("is_spam".to_string(), FeatureType::BinaryTarget);
+        schema.features.insert("label".to_string(), FeatureType::MultiClassTarget);
+        schema.features.insert("price".to_string(), FeatureType::RegressionTarget);
         schema
     }
 

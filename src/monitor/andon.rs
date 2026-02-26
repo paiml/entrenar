@@ -64,13 +64,7 @@ impl Alert {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        Self {
-            level,
-            message: message.into(),
-            source: String::new(),
-            timestamp,
-            value: None,
-        }
+        Self { level, message: message.into(), source: String::new(), timestamp, value: None }
     }
 
     /// Set the source
@@ -119,11 +113,7 @@ pub struct AndonConfig {
 
 impl Default for AndonConfig {
     fn default() -> Self {
-        Self {
-            stop_on_error: true,
-            stop_on_critical: true,
-            log_alerts: true,
-        }
+        Self { stop_on_error: true, stop_on_critical: true, log_alerts: true }
     }
 }
 
@@ -145,11 +135,7 @@ impl AndonSystem {
 
     /// Create with custom config
     pub fn with_config(config: AndonConfig) -> Self {
-        Self {
-            config,
-            stop_flag: Arc::new(AtomicBool::new(false)),
-            alert_history: Vec::new(),
-        }
+        Self { config, stop_flag: Arc::new(AtomicBool::new(false)), alert_history: Vec::new() }
     }
 
     /// Get a clone of the stop flag for checking in training loop
@@ -185,10 +171,7 @@ impl AndonSystem {
         if should_stop {
             self.stop_flag.store(true, Ordering::SeqCst);
             if self.config.log_alerts {
-                eprintln!(
-                    "🛑 ANDON: Training stopped due to {} alert",
-                    alert.level.as_str()
-                );
+                eprintln!("🛑 ANDON: Training stopped due to {} alert", alert.level.as_str());
             }
         }
 
@@ -223,10 +206,7 @@ impl AndonSystem {
 
     /// Get alerts of a specific level
     pub fn alerts_by_level(&self, level: AlertLevel) -> Vec<&Alert> {
-        self.alert_history
-            .iter()
-            .filter(|a| a.level == level)
-            .collect()
+        self.alert_history.iter().filter(|a| a.level == level).collect()
     }
 
     /// Clear stop flag (for retry)
@@ -254,9 +234,7 @@ mod tests {
 
     #[test]
     fn test_alert_creation() {
-        let alert = Alert::critical("Test failure")
-            .with_source("test")
-            .with_value(42.0);
+        let alert = Alert::critical("Test failure").with_source("test").with_value(42.0);
 
         assert_eq!(alert.level, AlertLevel::Critical);
         assert_eq!(alert.message, "Test failure");
@@ -311,11 +289,8 @@ mod tests {
 
     #[test]
     fn test_andon_configurable() {
-        let config = AndonConfig {
-            stop_on_error: false,
-            stop_on_critical: true,
-            log_alerts: false,
-        };
+        let config =
+            AndonConfig { stop_on_error: false, stop_on_critical: true, log_alerts: false };
         let mut andon = AndonSystem::with_config(config);
 
         andon.error("This should not stop");
@@ -391,12 +366,8 @@ mod tests {
 
     #[test]
     fn test_trigger_should_stop_all_alert_level_variants() {
-        let levels = [
-            AlertLevel::Info,
-            AlertLevel::Warning,
-            AlertLevel::Error,
-            AlertLevel::Critical,
-        ];
+        let levels =
+            [AlertLevel::Info, AlertLevel::Warning, AlertLevel::Error, AlertLevel::Critical];
 
         for level in &levels {
             // Syntactic match covering all arms from trigger() method
@@ -406,11 +377,8 @@ mod tests {
                 AlertLevel::Info | AlertLevel::Warning => false,
             };
 
-            let config = AndonConfig {
-                stop_on_error: true,
-                stop_on_critical: true,
-                log_alerts: false,
-            };
+            let config =
+                AndonConfig { stop_on_error: true, stop_on_critical: true, log_alerts: false };
             let mut andon = AndonSystem::with_config(config);
             andon.trigger(Alert::new(*level, "test"));
 

@@ -80,10 +80,7 @@ fn test_failure_category_from_error_message_unknown() {
 
 #[test]
 fn test_failure_category_description() {
-    assert_eq!(
-        FailureCategory::ModelConvergence.description(),
-        "Model convergence failure"
-    );
+    assert_eq!(FailureCategory::ModelConvergence.description(), "Model convergence failure");
     assert_eq!(FailureCategory::Unknown.description(), "Unknown failure");
 }
 
@@ -114,10 +111,7 @@ fn test_failure_context_builders() {
         .with_suggested_fix("Try this fix")
         .with_related_runs(vec!["run-1".to_string(), "run-2".to_string()]);
 
-    assert_eq!(
-        ctx.stack_trace,
-        Some("at line 100\nat line 200".to_string())
-    );
+    assert_eq!(ctx.stack_trace, Some("at line 100\nat line 200".to_string()));
     assert_eq!(ctx.suggested_fix, Some("Try this fix".to_string()));
     assert_eq!(ctx.related_runs, vec!["run-1", "run-2"]);
 }
@@ -237,11 +231,7 @@ fn test_pareto_analysis_vital_few() {
         "Config",
         FailureCategory::ConfigurationError,
     ));
-    failures.push(FailureContext::with_category(
-        "E009",
-        "Data",
-        FailureCategory::DataQuality,
-    ));
+    failures.push(FailureContext::with_category("E009", "Data", FailureCategory::DataQuality));
 
     let analysis = ParetoAnalysis::from_failures(&failures);
     let vital = analysis.vital_few();

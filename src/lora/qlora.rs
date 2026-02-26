@@ -505,10 +505,7 @@ mod tests {
 
         // Base is all zeros (within quant error), adapter should contribute non-zero values
         let adapter_contribution: f32 = merged.iter().map(|v| v.abs()).sum();
-        assert!(
-            adapter_contribution > 0.0,
-            "Merged weights should include adapter contribution"
-        );
+        assert!(adapter_contribution > 0.0, "Merged weights should include adapter contribution");
     }
 
     #[test]
@@ -566,9 +563,6 @@ mod tests {
         let savings_percent =
             (1.0 - stats.base_quantized_bytes as f32 / stats.base_unquantized_bytes as f32) * 100.0;
 
-        assert!(
-            savings_percent > 70.0,
-            "Should save > 70% memory, got {savings_percent}%"
-        );
+        assert!(savings_percent > 70.0, "Should save > 70% memory, got {savings_percent}%");
     }
 }

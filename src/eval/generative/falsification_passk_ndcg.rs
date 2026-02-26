@@ -16,20 +16,14 @@ fn falsify_pass_at_k_known_value() {
     // C(7,2)/C(10,2) = 21/45 = 7/15
     // pass@2 = 1 - 7/15 = 8/15 ≈ 0.5333...
     let p = pass_at_k(10, 3, 2);
-    assert!(
-        (p - 8.0 / 15.0).abs() < 1e-10,
-        "pass@2(n=10,c=3) should be 8/15, got {p}"
-    );
+    assert!((p - 8.0 / 15.0).abs() < 1e-10, "pass@2(n=10,c=3) should be 8/15, got {p}");
 }
 
 #[test]
 fn falsify_pass_at_k_c_equals_1_k_equals_1() {
     // n=10, c=1, k=1 → 1 - C(9,1)/C(10,1) = 1 - 9/10 = 0.1
     let p = pass_at_k(10, 1, 1);
-    assert!(
-        (p - 0.1).abs() < 1e-10,
-        "pass@1(n=10,c=1) should be 0.1, got {p}"
-    );
+    assert!((p - 0.1).abs() < 1e-10, "pass@1(n=10,c=1) should be 0.1, got {p}");
 }
 
 #[test]
@@ -37,20 +31,14 @@ fn falsify_pass_at_k_large_n() {
     // Test numerical stability with large values
     // n=1000, c=100, k=10
     let p = pass_at_k(1000, 100, 10);
-    assert!(
-        p > 0.0 && p < 1.0,
-        "pass@10(n=1000,c=100) should be in (0,1), got {p}"
-    );
+    assert!(p > 0.0 && p < 1.0, "pass@10(n=1000,c=100) should be in (0,1), got {p}");
     // Manual: C(900,10)/C(1000,10) = prod_{i=0..9} (900-i)/(1000-i)
     let mut manual_ratio = 1.0f64;
     for i in 0..10 {
         manual_ratio *= (900 - i) as f64 / (1000 - i) as f64;
     }
     let expected = 1.0 - manual_ratio;
-    assert!(
-        (p - expected).abs() < 1e-10,
-        "Numerical stability: expected {expected}, got {p}"
-    );
+    assert!((p - expected).abs() < 1e-10, "Numerical stability: expected {expected}, got {p}");
 }
 
 #[test]
@@ -59,14 +47,8 @@ fn falsify_pass_at_k_monotonic_in_c() {
     let p1 = pass_at_k(20, 1, 5);
     let p5 = pass_at_k(20, 5, 5);
     let p10 = pass_at_k(20, 10, 5);
-    assert!(
-        p1 < p5,
-        "pass@5 should increase with c: p(c=1)={p1} < p(c=5)={p5}"
-    );
-    assert!(
-        p5 < p10,
-        "pass@5 should increase with c: p(c=5)={p5} < p(c=10)={p10}"
-    );
+    assert!(p1 < p5, "pass@5 should increase with c: p(c=1)={p1} < p(c=5)={p5}");
+    assert!(p5 < p10, "pass@5 should increase with c: p(c=5)={p5} < p(c=10)={p10}");
 }
 
 #[test]
@@ -75,10 +57,7 @@ fn falsify_pass_at_k_edge_k_equals_n() {
     // Actually: pass@n = 1 - C(n-c,n)/C(n,n). C(n,n) = 1, C(n-c,n) = 0 if c > 0
     // So pass@n = 1.0 when c > 0
     let p = pass_at_k(10, 1, 10);
-    assert!(
-        (p - 1.0).abs() < 1e-10,
-        "pass@n with c>0 should be 1.0, got {p}"
-    );
+    assert!((p - 1.0).abs() < 1e-10, "pass@n with c>0 should be 1.0, got {p}");
 }
 
 #[test]
@@ -99,20 +78,14 @@ fn falsify_ndcg_known_value() {
     let idcg_manual = 7.0 / (2.0_f64).log2() + 3.0 / (3.0_f64).log2() + 1.0 / (4.0_f64).log2();
     let expected = dcg_manual / idcg_manual;
 
-    assert!(
-        (ndcg - expected).abs() < 1e-6,
-        "NDCG@3 for [3,1,2]: expected {expected}, got {ndcg}"
-    );
+    assert!((ndcg - expected).abs() < 1e-6, "NDCG@3 for [3,1,2]: expected {expected}, got {ndcg}");
 }
 
 #[test]
 fn falsify_ndcg_single_element() {
     // Single relevant doc → NDCG = 1.0 regardless of score value
     let ndcg = ndcg_at_k(&[5.0], 1);
-    assert!(
-        (ndcg - 1.0).abs() < 1e-10,
-        "Single element NDCG should be 1.0, got {ndcg}"
-    );
+    assert!((ndcg - 1.0).abs() < 1e-10, "Single element NDCG should be 1.0, got {ndcg}");
 }
 
 #[test]
@@ -136,10 +109,7 @@ fn falsify_ndcg_k_truncation() {
     let ndcg1 = ndcg_at_k(&scores, 1);
     // DCG@1 = (2^0 - 1)/log2(2) = 0/1 = 0, IDCG@1 = (2^3-1)/1 = 7
     // NDCG@1 = 0/7 = 0
-    assert!(
-        ndcg1.abs() < 1e-10,
-        "NDCG@1 with irrelevant top result should be 0, got {ndcg1}"
-    );
+    assert!(ndcg1.abs() < 1e-10, "NDCG@1 with irrelevant top result should be 0, got {ndcg1}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -165,37 +135,25 @@ fn falsify_generative_metrics_always_available() {
 #[test]
 fn falsify_wer_lower_is_better() {
     use crate::eval::evaluator::Metric;
-    assert!(
-        !Metric::WER.higher_is_better(),
-        "WER should be lower-is-better"
-    );
+    assert!(!Metric::WER.higher_is_better(), "WER should be lower-is-better");
 }
 
 #[test]
 fn falsify_perplexity_lower_is_better() {
     use crate::eval::evaluator::Metric;
-    assert!(
-        !Metric::Perplexity.higher_is_better(),
-        "Perplexity should be lower-is-better"
-    );
+    assert!(!Metric::Perplexity.higher_is_better(), "Perplexity should be lower-is-better");
 }
 
 #[test]
 fn falsify_bleu_higher_is_better() {
     use crate::eval::evaluator::Metric;
-    assert!(
-        Metric::BLEU.higher_is_better(),
-        "BLEU should be higher-is-better"
-    );
+    assert!(Metric::BLEU.higher_is_better(), "BLEU should be higher-is-better");
 }
 
 #[test]
 fn falsify_pass_at_k_higher_is_better() {
     use crate::eval::evaluator::Metric;
-    assert!(
-        Metric::PassAtK(1).higher_is_better(),
-        "pass@k should be higher-is-better"
-    );
+    assert!(Metric::PassAtK(1).higher_is_better(), "pass@k should be higher-is-better");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -207,10 +165,7 @@ fn falsify_perplexity_near_zero_prob() {
     // Very small probabilities: log(1e-300)
     let log_probs = vec![(1e-300f64).ln(); 5];
     let ppl = perplexity(&log_probs);
-    assert!(
-        ppl.is_finite() && ppl > 0.0,
-        "PPL should handle tiny probs, got {ppl}"
-    );
+    assert!(ppl.is_finite() && ppl > 0.0, "PPL should handle tiny probs, got {ppl}");
 }
 
 #[test]
@@ -218,10 +173,7 @@ fn falsify_bleu_single_word_ref_and_hyp() {
     // Single word: only unigram possible
     let score = bleu_score(&["hello"], "hello", 4);
     // 1-gram precision = 1.0, but 2,3,4-gram precision → total=0 → returns 0
-    assert_eq!(
-        score, 0.0,
-        "Single word can't have 2-gram, BLEU-4 should be 0"
-    );
+    assert_eq!(score, 0.0, "Single word can't have 2-gram, BLEU-4 should be 0");
 }
 
 #[test]

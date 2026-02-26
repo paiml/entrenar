@@ -75,11 +75,7 @@ impl<'a> Pipeline<'a> {
         // Stage 3: Export student checkpoint
         let output_path = self.export(&student_weights, &student_shapes, &metrics)?;
 
-        Ok(PipelineResult {
-            output_path,
-            metrics,
-            duration_seconds: start.elapsed().as_secs_f64(),
-        })
+        Ok(PipelineResult { output_path, metrics, duration_seconds: start.elapsed().as_secs_f64() })
     }
 
     /// Estimate memory requirements for this configuration.
@@ -124,11 +120,7 @@ impl<'a> Pipeline<'a> {
         &self,
         teacher_path: &Path,
         student_path: &Path,
-    ) -> Result<(
-        TrainingMetrics,
-        HashMap<String, Vec<f32>>,
-        HashMap<String, Vec<usize>>,
-    )> {
+    ) -> Result<(TrainingMetrics, HashMap<String, Vec<f32>>, HashMap<String, Vec<usize>>)> {
         // Load weights from both models
         let (teacher_weights, _teacher_shapes) = load_safetensors_weights(teacher_path)?;
         let (mut student_weights, student_shapes) = load_safetensors_weights(student_path)?;
@@ -173,13 +165,8 @@ impl<'a> Pipeline<'a> {
                 best_loss = best_loss.min(loss);
 
                 // Compute KD gradient: d(loss)/d(student_logits)
-                let grad = kd_gradient(
-                    &student_logits,
-                    &teacher_logits,
-                    &labels,
-                    temperature,
-                    alpha,
-                );
+                let grad =
+                    kd_gradient(&student_logits, &teacher_logits, &labels, temperature, alpha);
 
                 // SGD update in logit space
                 student_logits = &student_logits - &(grad * lr);
@@ -199,12 +186,7 @@ impl<'a> Pipeline<'a> {
         metrics.throughput = (step as f32 * batch_size as f32) / elapsed;
 
         // Write trained logits back into student weight tensor
-        write_logits_to_weights(
-            &mut student_weights,
-            &student_logits,
-            batch_size,
-            num_classes,
-        );
+        write_logits_to_weights(&mut student_weights, &student_logits, batch_size, num_classes);
 
         Ok((metrics, student_weights, student_shapes))
     }
@@ -217,10 +199,7 @@ impl<'a> Pipeline<'a> {
         metrics: &TrainingMetrics,
     ) -> Result<PathBuf> {
         std::fs::create_dir_all(&self.config.output.dir).map_err(|e| EntrenarError::Io {
-            context: format!(
-                "creating output directory: {}",
-                self.config.output.dir.display()
-            ),
+            context: format!("creating output directory: {}", self.config.output.dir.display()),
             source: e,
         })?;
 
@@ -259,11 +238,9 @@ impl<'a> Pipeline<'a> {
             let exporter = entrenar::hf_pipeline::Exporter::new()
                 .output_dir(&self.config.output.dir)
                 .gguf_quantization(entrenar::hf_pipeline::GgufQuantization::Q8_0);
-            exporter
-                .export(&mw, entrenar::hf_pipeline::ExportFormat::GGUF, filename)
-                .map_err(|e| EntrenarError::Internal {
-                    message: format!("GGUF export failed: {e}"),
-                })?;
+            exporter.export(&mw, entrenar::hf_pipeline::ExportFormat::GGUF, filename).map_err(
+                |e| EntrenarError::Internal { message: format!("GGUF export failed: {e}") },
+            )?;
         }
 
         Ok(output_path)
@@ -291,18 +268,14 @@ fn resolve_model_path(model_id: &str) -> Result<PathBuf> {
         || model_id.ends_with(".safetensors")
         || model_id.ends_with(".gguf")
     {
-        return Err(EntrenarError::ModelNotFound {
-            path: path.to_path_buf(),
-        });
+        return Err(EntrenarError::ModelNotFound { path: path.to_path_buf() });
     }
 
     // Looks like a HuggingFace model ID (org/model)
     #[cfg(feature = "hub")]
     {
         let fetcher = entrenar::hf_pipeline::HfModelFetcher::new().map_err(|e| {
-            EntrenarError::HuggingFace {
-                message: format!("failed to initialize HF fetcher: {e}"),
-            }
+            EntrenarError::HuggingFace { message: format!("failed to initialize HF fetcher: {e}") }
         })?;
 
         let artifact = fetcher
@@ -325,9 +298,7 @@ fn resolve_model_path(model_id: &str) -> Result<PathBuf> {
             });
         }
 
-        Err(EntrenarError::ModelNotFound {
-            path: path.to_path_buf(),
-        })
+        Err(EntrenarError::ModelNotFound { path: path.to_path_buf() })
     }
 }
 
@@ -432,31 +403,33 @@ fn write_logits_to_weights(
     }
 }
 
+/// Known model size patterns: (substring, parameter count).
+/// Ordered largest-first so "70b" matches before "7b".
+const MODEL_SIZE_PATTERNS: &[(&str, u64)] = &[
+    ("70b", 70_000_000_000),
+    ("65b", 65_000_000_000),
+    ("33b", 30_000_000_000),
+    ("30b", 30_000_000_000),
+    ("13b", 13_000_000_000),
+    ("8b", 7_000_000_000),
+    ("7b", 7_000_000_000),
+    ("3b", 3_000_000_000),
+    ("1.1b", 1_100_000_000),
+    ("1b", 1_100_000_000),
+    ("350m", 350_000_000),
+    ("base", 350_000_000),
+    ("125m", 125_000_000),
+    ("small", 125_000_000),
+];
+
 /// Estimate parameter count from model ID.
 fn estimate_params_from_model_id(model_id: &str) -> u64 {
     let lower = model_id.to_lowercase();
 
-    if lower.contains("70b") {
-        70_000_000_000
-    } else if lower.contains("65b") {
-        65_000_000_000
-    } else if lower.contains("30b") || lower.contains("33b") {
-        30_000_000_000
-    } else if lower.contains("13b") {
-        13_000_000_000
-    } else if lower.contains("7b") || lower.contains("8b") {
-        7_000_000_000
-    } else if lower.contains("3b") {
-        3_000_000_000
-    } else if lower.contains("1.1b") || lower.contains("1b") {
-        1_100_000_000
-    } else if lower.contains("350m") || lower.contains("base") {
-        350_000_000
-    } else if lower.contains("125m") || lower.contains("small") {
-        125_000_000
-    } else {
-        1_000_000_000
-    }
+    MODEL_SIZE_PATTERNS
+        .iter()
+        .find(|(pattern, _)| lower.contains(pattern))
+        .map_or(1_000_000_000, |&(_, count)| count)
 }
 
 #[cfg(test)]
@@ -466,18 +439,9 @@ mod tests {
 
     #[test]
     fn test_estimate_params_from_model_id() {
-        assert_eq!(
-            estimate_params_from_model_id("meta-llama/Llama-2-7b"),
-            7_000_000_000
-        );
-        assert_eq!(
-            estimate_params_from_model_id("TinyLlama/TinyLlama-1.1B"),
-            1_100_000_000
-        );
-        assert_eq!(
-            estimate_params_from_model_id("microsoft/codebert-base"),
-            350_000_000
-        );
+        assert_eq!(estimate_params_from_model_id("meta-llama/Llama-2-7b"), 7_000_000_000);
+        assert_eq!(estimate_params_from_model_id("TinyLlama/TinyLlama-1.1B"), 1_100_000_000);
+        assert_eq!(estimate_params_from_model_id("microsoft/codebert-base"), 350_000_000);
     }
 
     #[test]
@@ -593,11 +557,8 @@ mod tests {
             TensorView::new(Dtype::F32, vec![16, 16], &teacher_bytes).unwrap(),
         )];
         let teacher_path = tmp.path().join("teacher.safetensors");
-        std::fs::write(
-            &teacher_path,
-            safetensors::serialize(teacher_views, None).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&teacher_path, safetensors::serialize(teacher_views, None).unwrap())
+            .unwrap();
 
         // Create student SafeTensors
         let student_data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.005).collect();
@@ -607,18 +568,13 @@ mod tests {
             TensorView::new(Dtype::F32, vec![16, 16], &student_bytes).unwrap(),
         )];
         let student_path = tmp.path().join("student.safetensors");
-        std::fs::write(
-            &student_path,
-            safetensors::serialize(student_views, None).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&student_path, safetensors::serialize(student_views, None).unwrap())
+            .unwrap();
 
         // Create config pointing to local files
         let output_dir = tmp.path().join("output");
-        let mut config = DistillConfig::minimal(
-            teacher_path.to_str().unwrap(),
-            student_path.to_str().unwrap(),
-        );
+        let mut config =
+            DistillConfig::minimal(teacher_path.to_str().unwrap(), student_path.to_str().unwrap());
         config.output.dir = output_dir.clone();
         config.training.epochs = 2;
         config.training.batch_size = 4;
@@ -650,11 +606,8 @@ mod tests {
             TensorView::new(Dtype::F32, vec![16, 16], &teacher_bytes).unwrap(),
         )];
         let teacher_path = tmp.path().join("teacher.safetensors");
-        std::fs::write(
-            &teacher_path,
-            safetensors::serialize(teacher_views, None).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&teacher_path, safetensors::serialize(teacher_views, None).unwrap())
+            .unwrap();
 
         // Student: different initialization
         let student_data: Vec<f32> = (0..256).map(|i| (i as f32) * -0.01 + 1.0).collect();
@@ -664,17 +617,12 @@ mod tests {
             TensorView::new(Dtype::F32, vec![16, 16], &student_bytes).unwrap(),
         )];
         let student_path = tmp.path().join("student.safetensors");
-        std::fs::write(
-            &student_path,
-            safetensors::serialize(student_views, None).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&student_path, safetensors::serialize(student_views, None).unwrap())
+            .unwrap();
 
         let output_dir = tmp.path().join("output");
-        let mut config = DistillConfig::minimal(
-            teacher_path.to_str().unwrap(),
-            student_path.to_str().unwrap(),
-        );
+        let mut config =
+            DistillConfig::minimal(teacher_path.to_str().unwrap(), student_path.to_str().unwrap());
         config.output.dir = output_dir;
         config.training.epochs = 5;
         config.training.batch_size = 4;
@@ -710,10 +658,8 @@ mod tests {
         // Create identical teacher/student so training doesn't matter
         let data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.01).collect();
         let data_bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
-        let views = vec![(
-            "layer.weight",
-            TensorView::new(Dtype::F32, vec![16, 16], &data_bytes).unwrap(),
-        )];
+        let views =
+            vec![("layer.weight", TensorView::new(Dtype::F32, vec![16, 16], &data_bytes).unwrap())];
         let model_path = tmp.path().join("model.safetensors");
         std::fs::write(&model_path, safetensors::serialize(views, None).unwrap()).unwrap();
 
@@ -762,34 +708,22 @@ mod tests {
         // Teacher has "encoder.weight"
         let data: Vec<f32> = vec![1.0; 256];
         let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
-        let teacher_views = vec![(
-            "encoder.weight",
-            TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap(),
-        )];
+        let teacher_views =
+            vec![("encoder.weight", TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap())];
         let teacher_path = tmp.path().join("teacher.safetensors");
-        std::fs::write(
-            &teacher_path,
-            safetensors::serialize(teacher_views, None).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&teacher_path, safetensors::serialize(teacher_views, None).unwrap())
+            .unwrap();
 
         // Student has "decoder.weight" (completely different name)
-        let student_views = vec![(
-            "decoder.weight",
-            TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap(),
-        )];
+        let student_views =
+            vec![("decoder.weight", TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap())];
         let student_path = tmp.path().join("student.safetensors");
-        std::fs::write(
-            &student_path,
-            safetensors::serialize(student_views, None).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(&student_path, safetensors::serialize(student_views, None).unwrap())
+            .unwrap();
 
         let output_dir = tmp.path().join("output");
-        let mut config = DistillConfig::minimal(
-            teacher_path.to_str().unwrap(),
-            student_path.to_str().unwrap(),
-        );
+        let mut config =
+            DistillConfig::minimal(teacher_path.to_str().unwrap(), student_path.to_str().unwrap());
         config.output.dir = output_dir;
         config.training.epochs = 1;
         config.training.batch_size = 4;
@@ -798,10 +732,7 @@ mod tests {
         let pipeline = Pipeline::new(&config);
         let result = pipeline.execute();
         // This should succeed - gradient step just won't match any names
-        assert!(
-            result.is_ok(),
-            "Pipeline panicked on mismatched tensors: {result:?}"
-        );
+        assert!(result.is_ok(), "Pipeline panicked on mismatched tensors: {result:?}");
     }
 
     /// Falsification: single-element tensor edge case
@@ -827,9 +758,6 @@ mod tests {
         let pipeline = Pipeline::new(&config);
         // Should NOT panic - should fall back to synthetic logits
         let result = pipeline.execute();
-        assert!(
-            result.is_ok(),
-            "Pipeline panicked on tiny tensor: {result:?}"
-        );
+        assert!(result.is_ok(), "Pipeline panicked on tiny tensor: {result:?}");
     }
 }

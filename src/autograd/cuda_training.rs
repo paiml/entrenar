@@ -58,9 +58,7 @@ impl CudaTrainer {
     /// Create a new CUDA trainer on the specified GPU
     pub fn with_device(device_id: i32) -> Result<Self> {
         if !cuda_available() {
-            return Err(CudaTensorError::CudaNotAvailable(
-                "No CUDA driver found".into(),
-            ));
+            return Err(CudaTensorError::CudaNotAvailable("No CUDA driver found".into()));
         }
 
         let ctx = Arc::new(
@@ -75,11 +73,7 @@ impl CudaTrainer {
         init_kernel_cache(ctx.clone())?;
         init_optim_kernel_cache(ctx.clone())?;
 
-        Ok(Self {
-            ctx,
-            stream,
-            step: 0,
-        })
+        Ok(Self { ctx, stream, step: 0 })
     }
 
     /// Get the CUDA context
@@ -94,9 +88,7 @@ impl CudaTrainer {
 
     /// Synchronize the stream (wait for all operations to complete)
     pub fn synchronize(&self) -> Result<()> {
-        self.stream
-            .synchronize()
-            .map_err(|e| CudaTensorError::KernelError(format!("{e:?}")))
+        self.stream.synchronize().map_err(|e| CudaTensorError::KernelError(format!("{e:?}")))
     }
 
     /// Allocate a GPU buffer from host data
@@ -200,11 +192,7 @@ impl CudaTrainer {
         let grad_norm: f32 = grad_data.iter().map(|x| x * x).sum::<f32>().sqrt();
 
         // Compute scale factor
-        let scale = if grad_norm > max_norm {
-            max_norm / grad_norm
-        } else {
-            1.0
-        };
+        let scale = if grad_norm > max_norm { max_norm / grad_norm } else { 1.0 };
 
         // Apply clipping on GPU
         gradient_clip_cuda(grads, scale, grads.len() as u32, &self.stream)
@@ -222,9 +210,7 @@ impl CudaTrainer {
 
     /// Get device name
     pub fn device_name(&self) -> String {
-        self.ctx
-            .device_name()
-            .unwrap_or_else(|_err| "Unknown GPU".to_string())
+        self.ctx.device_name().unwrap_or_else(|_err| "Unknown GPU".to_string())
     }
 
     /// Get total GPU memory in bytes
@@ -252,9 +238,7 @@ pub struct CudaTrainer;
 #[cfg(not(feature = "cuda"))]
 impl CudaTrainer {
     pub fn new() -> Result<Self> {
-        Err(CudaTensorError::CudaNotAvailable(
-            "Compiled without CUDA support".into(),
-        ))
+        Err(CudaTensorError::CudaNotAvailable("Compiled without CUDA support".into()))
     }
 }
 
@@ -433,10 +417,7 @@ mod tests {
         let result = trainer.download(&grads).unwrap();
         // Gradients should be scaled down
         let norm: f32 = result.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!(
-            norm <= 1.1,
-            "Gradient norm should be clipped to ~1.0, got {norm}"
-        );
+        assert!(norm <= 1.1, "Gradient norm should be clipped to ~1.0, got {norm}");
     }
 
     #[test]

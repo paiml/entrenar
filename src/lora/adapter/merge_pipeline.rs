@@ -37,22 +37,15 @@ pub fn merge_export_publish(
     let export_path = output_dir.join(filename);
     std::fs::create_dir_all(output_dir)
         .map_err(|e| MergePublishError::Merge(AdapterError::Io(e)))?;
-    merged
-        .save_safetensors(&export_path)
-        .map_err(MergePublishError::Merge)?;
+    merged.save_safetensors(&export_path).map_err(MergePublishError::Merge)?;
 
     // Step 3: Publish
     let publisher = HfPublisher::new(publish_config).map_err(MergePublishError::Publish)?;
     let files: Vec<(&Path, &str)> = vec![(&export_path, filename)];
 
-    let publish = publisher
-        .publish(&files, None)
-        .map_err(MergePublishError::Publish)?;
+    let publish = publisher.publish(&files, None).map_err(MergePublishError::Publish)?;
 
-    Ok(MergePublishResult {
-        layers_merged,
-        publish,
-    })
+    Ok(MergePublishResult { layers_merged, publish })
 }
 
 /// Merge QLoRA adapters, export as SafeTensors, and publish to HuggingFace Hub
@@ -70,21 +63,14 @@ pub fn merge_qlora_export_publish(
     let export_path = output_dir.join(filename);
     std::fs::create_dir_all(output_dir)
         .map_err(|e| MergePublishError::Merge(AdapterError::Io(e)))?;
-    merged
-        .save_safetensors(&export_path)
-        .map_err(MergePublishError::Merge)?;
+    merged.save_safetensors(&export_path).map_err(MergePublishError::Merge)?;
 
     let publisher = HfPublisher::new(publish_config).map_err(MergePublishError::Publish)?;
     let files: Vec<(&Path, &str)> = vec![(&export_path, filename)];
 
-    let publish = publisher
-        .publish(&files, None)
-        .map_err(MergePublishError::Publish)?;
+    let publish = publisher.publish(&files, None).map_err(MergePublishError::Publish)?;
 
-    Ok(MergePublishResult {
-        layers_merged,
-        publish,
-    })
+    Ok(MergePublishResult { layers_merged, publish })
 }
 
 /// Errors from the merge-export-publish pipeline

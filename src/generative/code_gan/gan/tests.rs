@@ -72,9 +72,7 @@ fn test_code_gan_sample_latent() {
 
     let latents = gan.sample_latent(10);
     assert_eq!(latents.len(), 10);
-    assert!(latents
-        .iter()
-        .all(|z| z.dim() == config.generator.latent_dim));
+    assert!(latents.iter().all(|z| z.dim() == config.generator.latent_dim));
 }
 
 #[test]
@@ -119,9 +117,8 @@ fn test_code_gan_discriminator_loss() {
     };
     let mut gan = CodeGan::with_seed(config, 42);
 
-    let real_samples: Vec<Vec<u32>> = (0..5)
-        .map(|i| (0..8).map(|j| ((i + j) % 50) as u32).collect())
-        .collect();
+    let real_samples: Vec<Vec<u32>> =
+        (0..5).map(|i| (0..8).map(|j| ((i + j) % 50) as u32).collect()).collect();
 
     let latents = gan.sample_latent(5);
     let fake_samples = gan.generate(&latents);

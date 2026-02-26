@@ -4,14 +4,8 @@ use super::*;
 
 #[test]
 fn test_drift_test_name() {
-    assert_eq!(
-        DriftTest::KS { threshold: 0.05 }.name(),
-        "Kolmogorov-Smirnov"
-    );
-    assert_eq!(
-        DriftTest::ChiSquare { threshold: 0.05 }.name(),
-        "Chi-Square"
-    );
+    assert_eq!(DriftTest::KS { threshold: 0.05 }.name(), "Kolmogorov-Smirnov");
+    assert_eq!(DriftTest::ChiSquare { threshold: 0.05 }.name(), "Chi-Square");
     assert_eq!(DriftTest::PSI { threshold: 0.1 }.name(), "PSI");
 }
 
@@ -192,9 +186,7 @@ fn test_multiple_features() {
     let mut detector = DriftDetector::new(vec![DriftTest::KS { threshold: 0.05 }]);
 
     // 2 features
-    let baseline: Vec<Vec<f64>> = (0..100)
-        .map(|i| vec![f64::from(i), f64::from(i * 2)])
-        .collect();
+    let baseline: Vec<Vec<f64>> = (0..100).map(|i| vec![f64::from(i), f64::from(i * 2)]).collect();
     detector.set_baseline(&baseline);
 
     let results = detector.check(&baseline);

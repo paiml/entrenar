@@ -64,24 +64,15 @@ impl HfTokenizer {
         })?;
 
         // Detect special tokens from vocab
-        let pad_id = inner
-            .token_to_id("<pad>")
-            .or_else(|| inner.token_to_id("<|endoftext|>"))
-            .unwrap_or(0);
+        let pad_id =
+            inner.token_to_id("<pad>").or_else(|| inner.token_to_id("<|endoftext|>")).unwrap_or(0);
         let eos_id = inner
             .token_to_id("</s>")
             .or_else(|| inner.token_to_id("<|im_end|>"))
             .or_else(|| inner.token_to_id("<|endoftext|>"));
-        let bos_id = inner
-            .token_to_id("<s>")
-            .or_else(|| inner.token_to_id("<|im_start|>"));
+        let bos_id = inner.token_to_id("<s>").or_else(|| inner.token_to_id("<|im_start|>"));
 
-        Ok(Self {
-            inner,
-            pad_id,
-            eos_id,
-            bos_id,
-        })
+        Ok(Self { inner, pad_id, eos_id, bos_id })
     }
 
     /// Get vocabulary size
@@ -176,16 +167,10 @@ impl HfTokenizer {
                 let input_tokens = self.batch_encode(&inputs, max_len);
                 let target_tokens = self.batch_encode(&targets, max_len);
 
-                let input_data: Vec<f32> = input_tokens
-                    .into_iter()
-                    .flatten()
-                    .map(|t| t as f32)
-                    .collect();
-                let target_data: Vec<f32> = target_tokens
-                    .into_iter()
-                    .flatten()
-                    .map(|t| t as f32)
-                    .collect();
+                let input_data: Vec<f32> =
+                    input_tokens.into_iter().flatten().map(|t| t as f32).collect();
+                let target_data: Vec<f32> =
+                    target_tokens.into_iter().flatten().map(|t| t as f32).collect();
 
                 crate::train::Batch::new(
                     Tensor::from_vec(input_data, false),

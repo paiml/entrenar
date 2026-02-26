@@ -16,11 +16,7 @@ pub fn build_block_bar(percent: f32, width: usize) -> String {
     let filled_f = ((pct / 100.0) * width as f32).clamp(0.0, width as f32);
     let filled = filled_f as usize;
     let empty = width.saturating_sub(filled);
-    format!(
-        "{}{}",
-        BLOCK_FULL.to_string().repeat(filled),
-        BLOCK_LIGHT.to_string().repeat(empty)
-    )
+    format!("{}{}", BLOCK_FULL.to_string().repeat(filled), BLOCK_LIGHT.to_string().repeat(empty))
 }
 
 #[allow(clippy::cast_precision_loss)]
@@ -63,18 +59,10 @@ pub fn pct_color(pct: f32) -> (u8, u8, u8) {
         (255, f32_to_u8(220.0 - t * 40.0), 64)
     } else if p >= 25.0 {
         let t = (p - 25.0) / 25.0;
-        (
-            f32_to_u8(100.0 + t * 155.0),
-            220,
-            f32_to_u8(100.0 - t * 36.0),
-        )
+        (f32_to_u8(100.0 + t * 155.0), 220, f32_to_u8(100.0 - t * 36.0))
     } else {
         let t = p / 25.0;
-        (
-            f32_to_u8(64.0 + t * 36.0),
-            f32_to_u8(180.0 + t * 40.0),
-            f32_to_u8(220.0 - t * 120.0),
-        )
+        (f32_to_u8(64.0 + t * 36.0), f32_to_u8(180.0 + t * 40.0), f32_to_u8(220.0 - t * 120.0))
     }
 }
 
@@ -84,16 +72,8 @@ pub fn render_sparkline(data: &[f32], width: usize, color_mode: ColorMode) -> St
         return " ".repeat(width);
     }
 
-    let min = data
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .fold(f32::INFINITY, f32::min);
-    let max = data
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .fold(f32::NEG_INFINITY, f32::max);
+    let min = data.iter().copied().filter(|v| v.is_finite()).fold(f32::INFINITY, f32::min);
+    let max = data.iter().copied().filter(|v| v.is_finite()).fold(f32::NEG_INFINITY, f32::max);
     let range = (max - min).max(0.001);
 
     let mut result = String::new();
@@ -104,16 +84,10 @@ pub fn render_sparkline(data: &[f32], width: usize, color_mode: ColorMode) -> St
         let v1 = data.get(idx).copied().unwrap_or(min);
         let v2 = data.get(idx2).copied().unwrap_or(v1);
 
-        let h1 = if v1.is_finite() {
-            (((v1 - min) / range) * 3.99).clamp(0.0, 3.0) as usize
-        } else {
-            0
-        };
-        let h2 = if v2.is_finite() {
-            (((v2 - min) / range) * 3.99).clamp(0.0, 3.0) as usize
-        } else {
-            0
-        };
+        let h1 =
+            if v1.is_finite() { (((v1 - min) / range) * 3.99).clamp(0.0, 3.0) as usize } else { 0 };
+        let h2 =
+            if v2.is_finite() { (((v2 - min) / range) * 3.99).clamp(0.0, 3.0) as usize } else { 0 };
 
         let mut code: u32 = 0;
         for y in 0..=h1.min(3) {

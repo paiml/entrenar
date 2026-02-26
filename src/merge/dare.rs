@@ -23,10 +23,7 @@ pub struct DareConfig {
 
 impl Default for DareConfig {
     fn default() -> Self {
-        Self {
-            drop_prob: 0.5,
-            seed: None,
-        }
+        Self { drop_prob: 0.5, seed: None }
     }
 }
 
@@ -37,10 +34,7 @@ impl DareConfig {
                 "Drop probability must be in [0.0, 1.0], got {drop_prob}"
             )));
         }
-        Ok(Self {
-            drop_prob,
-            seed: None,
-        })
+        Ok(Self { drop_prob, seed: None })
     }
 
     pub fn with_seed(mut self, seed: u64) -> Self {
@@ -101,21 +95,14 @@ pub fn dare_merge(
 /// Drop parameters with probability p and rescale by 1/(1-p)
 fn drop_and_rescale_deltas<R: Rng>(deltas: &[Model], drop_prob: f32, rng: &mut R) -> Vec<Model> {
     let keep_prob = 1.0 - drop_prob;
-    let scale = if keep_prob > 0.0 {
-        1.0 / keep_prob
-    } else {
-        1.0
-    };
+    let scale = if keep_prob > 0.0 { 1.0 / keep_prob } else { 1.0 };
 
     deltas
         .iter()
         .map(|delta| {
             let mut masked = HashMap::new();
             for (name, tensor) in delta {
-                masked.insert(
-                    name.clone(),
-                    drop_and_rescale_tensor(tensor, drop_prob, scale, rng),
-                );
+                masked.insert(name.clone(), drop_and_rescale_tensor(tensor, drop_prob, scale, rng));
             }
             masked
         })
@@ -158,9 +145,7 @@ fn average_deltas(deltas: &[Model]) -> Model {
         let sum_data: Array1<f32> = deltas
             .iter()
             .map(|delta| delta[name].data())
-            .fold(Array1::zeros(reference[name].len()), |acc, data| {
-                &acc + data
-            });
+            .fold(Array1::zeros(reference[name].len()), |acc, data| &acc + data);
 
         let avg_data = sum_data / n;
         averaged.insert(name.clone(), Tensor::new(avg_data, false));
@@ -278,10 +263,7 @@ mod tests {
         let config = DareConfig::default();
 
         let result = dare_merge(&models, &base, &config);
-        assert!(matches!(
-            result,
-            Err(MergeError::InsufficientModels { min: 1, got: 0 })
-        ));
+        assert!(matches!(result, Err(MergeError::InsufficientModels { min: 1, got: 0 })));
     }
 
     #[test]

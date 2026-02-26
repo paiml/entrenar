@@ -22,11 +22,7 @@ impl LinearWarmupLR {
     /// * `lr_target` - Target learning rate after warmup
     /// * `warmup_steps` - Number of steps for warmup
     pub fn new(lr_target: f32, warmup_steps: usize) -> Self {
-        Self {
-            lr_target,
-            warmup_steps,
-            current_step: 0,
-        }
+        Self { lr_target, warmup_steps, current_step: 0 }
     }
 
     /// Apply the current learning rate to an optimizer

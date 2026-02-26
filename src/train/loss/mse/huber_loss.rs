@@ -66,12 +66,8 @@ impl LossFn for HuberLoss {
         );
 
         // Delegate forward scalar to aprender
-        let pred_vec = Vector::from_slice(
-            predictions
-                .data()
-                .as_slice()
-                .expect("contiguous tensor data"),
-        );
+        let pred_vec =
+            Vector::from_slice(predictions.data().as_slice().expect("contiguous tensor data"));
         let tgt_vec =
             Vector::from_slice(targets.data().as_slice().expect("contiguous tensor data"));
         let mean_loss = aprender::loss::huber_loss(&pred_vec, &tgt_vec, self.delta);

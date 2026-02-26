@@ -43,11 +43,7 @@ fn test_dataset_options_builders() {
 
 #[test]
 fn test_dataset_options_chaining() {
-    let opts = DatasetOptions::train()
-        .max_examples(100)
-        .streaming(true)
-        .shuffle(false)
-        .seed(123);
+    let opts = DatasetOptions::train().max_examples(100).streaming(true).shuffle(false).seed(123);
 
     assert_eq!(opts.max_examples, Some(100));
     assert!(opts.streaming);
@@ -160,10 +156,7 @@ fn test_fetcher_load_nonexistent_parquet() {
 
 #[test]
 fn test_batch_dimensions() {
-    let examples = vec![
-        Example::from_tokens(vec![1, 2, 3]),
-        Example::from_tokens(vec![4, 5]),
-    ];
+    let examples = vec![Example::from_tokens(vec![1, 2, 3]), Example::from_tokens(vec![4, 5])];
     let collator = DistillationCollator::default();
     let batch = collator.collate(&examples);
 
@@ -200,10 +193,7 @@ fn test_collator_empty_batch() {
 
 #[test]
 fn test_collator_right_padding() {
-    let examples = vec![
-        Example::from_tokens(vec![1, 2, 3]),
-        Example::from_tokens(vec![4, 5]),
-    ];
+    let examples = vec![Example::from_tokens(vec![1, 2, 3]), Example::from_tokens(vec![4, 5])];
     let collator = DistillationCollator::new(0);
     let batch = collator.collate(&examples);
 
@@ -224,10 +214,7 @@ fn test_collator_right_padding() {
 
 #[test]
 fn test_collator_left_padding() {
-    let examples = vec![
-        Example::from_tokens(vec![1, 2, 3]),
-        Example::from_tokens(vec![4, 5]),
-    ];
+    let examples = vec![Example::from_tokens(vec![1, 2, 3]), Example::from_tokens(vec![4, 5])];
     let collator = DistillationCollator::new(0).pad_left(true);
     let batch = collator.collate(&examples);
 

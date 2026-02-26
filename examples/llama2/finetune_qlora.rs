@@ -101,12 +101,7 @@ impl LLaMAWithQLoRA {
 
         println!("      ✓ Quantization complete\n");
 
-        Self {
-            base_model,
-            qlora_adapters,
-            rank,
-            alpha,
-        }
+        Self { base_model, qlora_adapters, rank, alpha }
     }
 
     /// Estimate memory usage
@@ -253,10 +248,7 @@ fn main() {
     let llama_config = LLaMAConfig::toy_124m();
     let base_model = LLaMAModel::new(llama_config.clone());
     let base_params = base_model.count_parameters();
-    println!(
-        "   - Base parameters: {:.1}M\n",
-        base_params as f32 / 1_000_000.0
-    );
+    println!("   - Base parameters: {:.1}M\n", base_params as f32 / 1_000_000.0);
 
     // Apply QLoRA with quantization
     println!("🔗 Applying QLoRA adapters...");
@@ -278,19 +270,11 @@ fn main() {
         trainable_params as f32 / 1_000_000.0,
         (trainable_params as f32 / base_params as f32) * 100.0
     );
-    println!(
-        "   - Frozen (quantized): {:.1}M\n",
-        base_params as f32 / 1_000_000.0
-    );
+    println!("   - Frozen (quantized): {:.1}M\n", base_params as f32 / 1_000_000.0);
 
     // Create optimizer (only for QLoRA parameters)
-    let mut optimizer = AdamW::new(
-        qlora_config.learning_rate,
-        0.9,
-        0.95,
-        1e-8,
-        qlora_config.weight_decay,
-    );
+    let mut optimizer =
+        AdamW::new(qlora_config.learning_rate, 0.9, 0.95, 1e-8, qlora_config.weight_decay);
 
     // Learning rate scheduler
     let total_steps = qlora_config.num_epochs * 100; // Estimate
@@ -336,12 +320,7 @@ fn main() {
             optimizer.set_lr(new_lr);
 
             if step % 10 == 0 {
-                println!(
-                    "  Step {}: loss={:.4}, lr={:.2e}",
-                    step,
-                    loss,
-                    optimizer.lr()
-                );
+                println!("  Step {}: loss={:.4}, lr={:.2e}", step, loss, optimizer.lr());
             }
         }
 

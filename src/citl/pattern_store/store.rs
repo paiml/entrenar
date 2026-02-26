@@ -51,22 +51,14 @@ impl DecisionPatternStore {
     /// Create a new pattern store with custom configuration
     pub fn with_config(config: PatternStoreConfig) -> Result<Self, crate::Error> {
         let pipeline = RagPipelineBuilder::new()
-            .chunker(FixedSizeChunker::new(
-                config.chunk_size,
-                config.chunk_size / 8,
-            ))
+            .chunker(FixedSizeChunker::new(config.chunk_size, config.chunk_size / 8))
             .embedder(MockEmbedder::new(config.embedding_dim))
             .reranker(NoOpReranker::new())
             .fusion(FusionStrategy::RRF { k: config.rrf_k })
             .build()
             .map_err(|e| crate::Error::ConfigError(format!("RAG pipeline error: {e}")))?;
 
-        Ok(Self {
-            pipeline,
-            patterns: HashMap::new(),
-            error_index: HashMap::new(),
-            config,
-        })
+        Ok(Self { pipeline, patterns: HashMap::new(), error_index: HashMap::new(), config })
     }
 
     /// Index a fix pattern for later retrieval
@@ -84,10 +76,7 @@ impl DecisionPatternStore {
             .map_err(|e| crate::Error::ConfigError(format!("Indexing error: {e}")))?;
 
         // Update error index
-        self.error_index
-            .entry(error_code)
-            .or_default()
-            .push(chunk_id);
+        self.error_index.entry(error_code).or_default().push(chunk_id);
 
         // Store pattern
         self.patterns.insert(chunk_id, pattern);
@@ -125,10 +114,7 @@ impl DecisionPatternStore {
         // Filter by error code if we have patterns for it
         let relevant_patterns: Vec<_> = if let Some(pattern_ids) = self.error_index.get(error_code)
         {
-            pattern_ids
-                .iter()
-                .filter_map(|id| self.patterns.get(id))
-                .collect()
+            pattern_ids.iter().filter_map(|id| self.patterns.get(id)).collect()
         } else {
             // Return any patterns if no exact error code match
             self.patterns.values().collect()
@@ -167,9 +153,7 @@ impl DecisionPatternStore {
 
         // Sort by weighted score and limit
         suggestions.sort_by(|a, b| {
-            b.weighted_score()
-                .partial_cmp(&a.weighted_score())
-                .unwrap_or(std::cmp::Ordering::Equal)
+            b.weighted_score().partial_cmp(&a.weighted_score()).unwrap_or(std::cmp::Ordering::Equal)
         });
         suggestions.truncate(k);
 
@@ -272,11 +256,7 @@ impl DecisionPatternStore {
 
         // Collect patterns into serializable wrapper
         let patterns: Vec<FixPattern> = self.patterns.values().cloned().collect();
-        let wrapper = PatternStoreData {
-            version: 1,
-            config: self.config.clone(),
-            patterns,
-        };
+        let wrapper = PatternStoreData { version: 1, config: self.config.clone(), patterns };
 
         save(
             &wrapper,

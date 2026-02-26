@@ -97,10 +97,7 @@ fn test_metamorphic_violation_is_warning() {
 #[test]
 fn test_metamorphic_relation_type_display() {
     assert_eq!(format!("{}", MetamorphicRelationType::Additive), "additive");
-    assert_eq!(
-        format!("{}", MetamorphicRelationType::Permutation),
-        "permutation"
-    );
+    assert_eq!(format!("{}", MetamorphicRelationType::Permutation), "permutation");
     assert_eq!(format!("{}", MetamorphicRelationType::Identity), "identity");
 }
 
@@ -272,20 +269,8 @@ fn test_behavioral_integrity_violations_by_type() {
     ));
 
     let by_type = integrity.violations_by_type();
-    assert_eq!(
-        by_type
-            .get(&MetamorphicRelationType::Identity)
-            .unwrap()
-            .len(),
-        2
-    );
-    assert_eq!(
-        by_type
-            .get(&MetamorphicRelationType::Additive)
-            .unwrap()
-            .len(),
-        1
-    );
+    assert_eq!(by_type.get(&MetamorphicRelationType::Identity).unwrap().len(), 2);
+    assert_eq!(by_type.get(&MetamorphicRelationType::Additive).unwrap().len(), 1);
 }
 
 #[test]

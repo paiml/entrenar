@@ -243,9 +243,8 @@ mod tests {
     #[test]
     fn test_preflight_with_context() {
         let ctx = PreflightContext::new().with_min_samples(5);
-        let preflight = Preflight::new()
-            .add_check(PreflightCheck::min_samples(1))
-            .with_context(ctx);
+        let preflight =
+            Preflight::new().add_check(PreflightCheck::min_samples(1)).with_context(ctx);
 
         let data = vec![vec![1.0], vec![2.0], vec![3.0]];
         let results = preflight.run(&data);

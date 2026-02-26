@@ -20,9 +20,7 @@ impl WasmMetricsCollector {
     /// Create a new metrics collector.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(constructor))]
     pub fn new() -> Self {
-        Self {
-            inner: MetricsCollector::new(),
-        }
+        Self { inner: MetricsCollector::new() }
     }
 
     /// Record a loss value.
@@ -87,19 +85,13 @@ impl WasmMetricsCollector {
     /// Get loss statistics.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn loss_mean(&self) -> f64 {
-        self.inner
-            .summary()
-            .get(&Metric::Loss)
-            .map_or(f64::NAN, |s| s.mean)
+        self.inner.summary().get(&Metric::Loss).map_or(f64::NAN, |s| s.mean)
     }
 
     /// Get accuracy statistics.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn accuracy_mean(&self) -> f64 {
-        self.inner
-            .summary()
-            .get(&Metric::Accuracy)
-            .map_or(f64::NAN, |s| s.mean)
+        self.inner.summary().get(&Metric::Accuracy).map_or(f64::NAN, |s| s.mean)
     }
 
     /// Get loss values as a Vec for JavaScript Float64Array conversion.
@@ -124,47 +116,31 @@ impl WasmMetricsCollector {
 
     /// Get all timestamps as milliseconds since epoch.
     pub fn timestamps(&self) -> Vec<u64> {
-        self.inner
-            .to_records()
-            .iter()
-            .map(|r| r.timestamp)
-            .collect()
+        self.inner.to_records().iter().map(|r| r.timestamp).collect()
     }
 
     /// Get loss standard deviation.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn loss_std(&self) -> f64 {
-        self.inner
-            .summary()
-            .get(&Metric::Loss)
-            .map_or(f64::NAN, |s| s.std)
+        self.inner.summary().get(&Metric::Loss).map_or(f64::NAN, |s| s.std)
     }
 
     /// Get accuracy standard deviation.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn accuracy_std(&self) -> f64 {
-        self.inner
-            .summary()
-            .get(&Metric::Accuracy)
-            .map_or(f64::NAN, |s| s.std)
+        self.inner.summary().get(&Metric::Accuracy).map_or(f64::NAN, |s| s.std)
     }
 
     /// Check if NaN was detected in loss.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn loss_has_nan(&self) -> bool {
-        self.inner
-            .summary()
-            .get(&Metric::Loss)
-            .is_some_and(|s| s.has_nan)
+        self.inner.summary().get(&Metric::Loss).is_some_and(|s| s.has_nan)
     }
 
     /// Check if Inf was detected in loss.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
     pub fn loss_has_inf(&self) -> bool {
-        self.inner
-            .summary()
-            .get(&Metric::Loss)
-            .is_some_and(|s| s.has_inf)
+        self.inner.summary().get(&Metric::Loss).is_some_and(|s| s.has_inf)
     }
 }
 

@@ -10,11 +10,7 @@ pub fn run_research_export(args: ExportArgs, level: LogLevel) -> Result<(), Stri
     log(
         level,
         LogLevel::Normal,
-        &format!(
-            "Exporting: {} -> {}",
-            args.input.display(),
-            args.output.display()
-        ),
+        &format!("Exporting: {} -> {}", args.input.display(), args.output.display()),
     );
 
     match args.format {
@@ -38,11 +34,7 @@ fn export_notebook(input: &Path, output: &Path, level: LogLevel) -> Result<(), S
     let ipynb = notebook.to_ipynb();
     std::fs::write(output, &ipynb).map_err(|e| format!("Failed to write notebook: {e}"))?;
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Notebook exported: {} cells", notebook.cell_count()),
-    );
+    log(level, LogLevel::Normal, &format!("Notebook exported: {} cells", notebook.cell_count()));
     Ok(())
 }
 
@@ -66,10 +58,7 @@ fn export_anonymized_json(args: &ExportArgs, level: LogLevel) -> Result<(), Stri
         return Err("--anonymize flag required for anonymized export".to_string());
     }
 
-    let salt = args
-        .anon_salt
-        .as_ref()
-        .ok_or("--anon-salt required for anonymization")?;
+    let salt = args.anon_salt.as_ref().ok_or("--anon-salt required for anonymization")?;
 
     let yaml = std::fs::read_to_string(&args.input)
         .map_err(|e| format!("Failed to read artifact: {e}"))?;
@@ -84,10 +73,6 @@ fn export_anonymized_json(args: &ExportArgs, level: LogLevel) -> Result<(), Stri
 
     std::fs::write(&args.output, &json).map_err(|e| format!("Failed to write JSON: {e}"))?;
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Anonymized artifact: {}", anon.anonymous_id),
-    );
+    log(level, LogLevel::Normal, &format!("Anonymized artifact: {}", anon.anonymous_id));
     Ok(())
 }

@@ -27,9 +27,7 @@ pub fn gemm_backward_a(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -67,11 +65,9 @@ pub fn gemm_backward_a(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "gemm_backward_a", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("GEMM backward A launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "gemm_backward_a", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("GEMM backward A launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -90,9 +86,7 @@ pub fn gemm_backward_b(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -130,11 +124,9 @@ pub fn gemm_backward_b(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "gemm_backward_b", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("GEMM backward B launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "gemm_backward_b", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("GEMM backward B launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())

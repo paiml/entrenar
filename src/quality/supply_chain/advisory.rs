@@ -20,10 +20,6 @@ pub struct Advisory {
 impl Advisory {
     /// Create a new advisory
     pub fn new(id: impl Into<String>, severity: Severity, title: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            severity,
-            title: title.into(),
-        }
+        Self { id: id.into(), severity, title: title.into() }
     }
 }

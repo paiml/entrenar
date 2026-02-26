@@ -318,9 +318,8 @@ fn test_tpu_info_serde() {
 
 #[test]
 fn test_apple_silicon_info_serde() {
-    let apple = AppleSiliconInfo::new("M3 Max")
-        .with_cores(12, 4, 40)
-        .with_memory(64 * 1024 * 1024 * 1024);
+    let apple =
+        AppleSiliconInfo::new("M3 Max").with_cores(12, 4, 40).with_memory(64 * 1024 * 1024 * 1024);
     let json = serde_json::to_string(&apple).unwrap();
     let parsed: AppleSiliconInfo = serde_json::from_str(&json).unwrap();
     assert_eq!(apple.chip, parsed.chip);
@@ -471,9 +470,8 @@ fn test_tpu_info_clone() {
 
 #[test]
 fn test_apple_silicon_clone() {
-    let original = AppleSiliconInfo::new("M2 Pro")
-        .with_cores(8, 4, 19)
-        .with_memory(32 * 1024 * 1024 * 1024);
+    let original =
+        AppleSiliconInfo::new("M2 Pro").with_cores(8, 4, 19).with_memory(32 * 1024 * 1024 * 1024);
     let cloned = original.clone();
     assert_eq!(original.chip, cloned.chip);
     assert_eq!(original.gpu_cores, cloned.gpu_cores);

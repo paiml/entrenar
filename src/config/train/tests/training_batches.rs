@@ -8,20 +8,13 @@ use tempfile::NamedTempFile;
 #[test]
 fn test_load_training_batches_missing_file() {
     let spec = TrainSpec {
-        model: ModelRef {
-            path: std::path::PathBuf::from("model.gguf"),
-            ..Default::default()
-        },
+        model: ModelRef { path: std::path::PathBuf::from("model.gguf"), ..Default::default() },
         data: DataConfig {
             train: std::path::PathBuf::from("/nonexistent/data.parquet"),
             batch_size: 4,
             ..Default::default()
         },
-        optimizer: OptimSpec {
-            name: "adam".to_string(),
-            lr: 0.001,
-            params: HashMap::new(),
-        },
+        optimizer: OptimSpec { name: "adam".to_string(), lr: 0.001, params: HashMap::new() },
         lora: None,
         quantize: None,
         merge: None,
@@ -42,20 +35,13 @@ fn test_load_training_batches_unsupported_extension() {
     std::fs::write(temp_file.path(), "test data").unwrap();
 
     let spec = TrainSpec {
-        model: ModelRef {
-            path: std::path::PathBuf::from("model.gguf"),
-            ..Default::default()
-        },
+        model: ModelRef { path: std::path::PathBuf::from("model.gguf"), ..Default::default() },
         data: DataConfig {
             train: temp_file.path().to_path_buf(),
             batch_size: 4,
             ..Default::default()
         },
-        optimizer: OptimSpec {
-            name: "adam".to_string(),
-            lr: 0.001,
-            params: HashMap::new(),
-        },
+        optimizer: OptimSpec { name: "adam".to_string(), lr: 0.001, params: HashMap::new() },
         lora: None,
         quantize: None,
         merge: None,
@@ -78,20 +64,13 @@ fn test_load_training_batches_json() {
     std::fs::write(temp_file.path(), json).unwrap();
 
     let spec = TrainSpec {
-        model: ModelRef {
-            path: std::path::PathBuf::from("model.gguf"),
-            ..Default::default()
-        },
+        model: ModelRef { path: std::path::PathBuf::from("model.gguf"), ..Default::default() },
         data: DataConfig {
             train: temp_file.path().to_path_buf(),
             batch_size: 1,
             ..Default::default()
         },
-        optimizer: OptimSpec {
-            name: "adam".to_string(),
-            lr: 0.001,
-            params: HashMap::new(),
-        },
+        optimizer: OptimSpec { name: "adam".to_string(), lr: 0.001, params: HashMap::new() },
         lora: None,
         quantize: None,
         merge: None,

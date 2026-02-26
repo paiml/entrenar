@@ -124,10 +124,7 @@ mod tests {
         let lora = LoRALayer::new(base_weight, 2, 2, 1, 1.0);
 
         // Base weight should be frozen
-        assert!(
-            !lora.base_weight().requires_grad(),
-            "Base weight should be frozen"
-        );
+        assert!(!lora.base_weight().requires_grad(), "Base weight should be frozen");
     }
 
     #[test]
@@ -165,14 +162,8 @@ mod tests {
         lora.lora_b_mut().set_grad(ndarray::arr1(&[0.1, 0.1]));
 
         // Verify gradients are set
-        assert!(
-            lora.lora_a().grad().is_some(),
-            "LoRA A should have gradient"
-        );
-        assert!(
-            lora.lora_b().grad().is_some(),
-            "LoRA B should have gradient"
-        );
+        assert!(lora.lora_a().grad().is_some(), "LoRA A should have gradient");
+        assert!(lora.lora_b().grad().is_some(), "LoRA B should have gradient");
     }
 
     #[test]
@@ -184,10 +175,7 @@ mod tests {
 
         // All trainable params should require gradients
         for param in params {
-            assert!(
-                param.requires_grad(),
-                "Trainable parameter should require gradients"
-            );
+            assert!(param.requires_grad(), "Trainable parameter should require gradients");
         }
     }
 
@@ -245,8 +233,7 @@ mod tests {
         lora.lora_a_mut().set_grad(ndarray::arr1(&[1.0, 2.0]));
 
         // Accumulate more gradient
-        lora.lora_a_mut()
-            .accumulate_grad(ndarray::arr1(&[0.5, 0.5]));
+        lora.lora_a_mut().accumulate_grad(ndarray::arr1(&[0.5, 0.5]));
 
         let grad = lora.lora_a().grad().unwrap();
         assert_abs_diff_eq!(grad[0], 1.5, epsilon = 1e-6); // 1.0 + 0.5

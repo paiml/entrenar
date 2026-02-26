@@ -124,12 +124,7 @@ fn main() {
         total_processing_secs += proc_dur;
 
         if wer > 0.0 {
-            println!(
-                "  [{:>2}] WER={:.1}%  RTFx={:.0}x  ← error",
-                i + 1,
-                wer * 100.0,
-                rtfx
-            );
+            println!("  [{:>2}] WER={:.1}%  RTFx={:.0}x  ← error", i + 1, wer * 100.0, rtfx);
         } else {
             println!("  [{:>2}] WER=0.0%   RTFx={:.0}x  ✓", i + 1, rtfx);
         }
@@ -153,14 +148,8 @@ fn main() {
     my_result.add_score(Metric::RTFx, overall_rtfx);
 
     println!("  Model:  {}", my_result.model_name);
-    println!(
-        "  WER:    {:.2}%",
-        my_result.get_score(Metric::WER).unwrap_or(0.0) * 100.0
-    );
-    println!(
-        "  RTFx:   {:.1}x",
-        my_result.get_score(Metric::RTFx).unwrap_or(0.0)
-    );
+    println!("  WER:    {:.2}%", my_result.get_score(Metric::WER).unwrap_or(0.0) * 100.0);
+    println!("  RTFx:   {:.1}x", my_result.get_score(Metric::RTFx).unwrap_or(0.0));
     println!();
 
     // ── Step 3: Compare against leaderboard ───────────────────────────
@@ -287,11 +276,8 @@ fn mock_leaderboard_comparison(my_result: &EvalResult) {
     for (i, result) in leaderboard.results.iter().enumerate() {
         let wer = result.get_score(Metric::WER).unwrap_or(0.0);
         let rtfx = result.get_score(Metric::RTFx).unwrap_or(0.0);
-        let marker = if result.model_name == "paiml/whisper-small-medical-v1" {
-            " ◄ YOU"
-        } else {
-            ""
-        };
+        let marker =
+            if result.model_name == "paiml/whisper-small-medical-v1" { " ◄ YOU" } else { "" };
         println!(
             "  {:>4}  {:<34}  {:>5.2}%  {:>5.0}x{}",
             i + 1,
@@ -330,11 +316,7 @@ fn live_leaderboard_comparison(my_result: &EvalResult) {
     match LeaderboardClient::new() {
         Ok(client) => match client.fetch(LeaderboardKind::OpenASR) {
             Ok(hf) => {
-                println!(
-                    "  Fetched {} entries (total: {})",
-                    hf.entries.len(),
-                    hf.total_count
-                );
+                println!("  Fetched {} entries (total: {})", hf.entries.len(), hf.total_count);
                 println!();
 
                 let ranked = compare_with_leaderboard(my_result, &hf);
@@ -367,12 +349,7 @@ fn live_publish(my_result: &EvalResult) {
         private: false,
         token: None, // resolved from HF_TOKEN env var
         license: Some("apache-2.0".into()),
-        tags: vec![
-            "whisper".into(),
-            "asr".into(),
-            "medical".into(),
-            "entrenar".into(),
-        ],
+        tags: vec!["whisper".into(), "asr".into(), "medical".into(), "entrenar".into()],
     };
 
     let card = ModelCard::from_eval_result(my_result);

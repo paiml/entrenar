@@ -58,11 +58,7 @@ pub(super) fn parse_header(data: &[u8]) -> Result<GgufHeader, FetchError> {
     let tensor_count = read_u64_le(data, 8)?;
     let metadata_count = read_u64_le(data, 16)?;
 
-    Ok(GgufHeader {
-        version,
-        tensor_count,
-        metadata_count,
-    })
+    Ok(GgufHeader { version, tensor_count, metadata_count })
 }
 
 /// Skip over all metadata key-value pairs, returning the position after them
@@ -107,15 +103,7 @@ pub(super) fn parse_tensor_info(
     let offset = read_u64_le(data, pos)?;
     pos += 8;
 
-    Ok((
-        GgufTensorInfo {
-            name,
-            shape,
-            dtype,
-            offset,
-        },
-        pos,
-    ))
+    Ok((GgufTensorInfo { name, shape, dtype, offset }, pos))
 }
 
 /// Parse all tensor info entries
@@ -184,9 +172,7 @@ pub(super) fn skip_gguf_array(data: &[u8], pos: usize) -> Result<usize, FetchErr
 
 /// Create a truncation error
 pub(super) fn truncation_error(pos: usize) -> FetchError {
-    FetchError::ConfigParseError {
-        message: format!("GGUF file truncated at byte offset {pos}"),
-    }
+    FetchError::ConfigParseError { message: format!("GGUF file truncated at byte offset {pos}") }
 }
 
 #[cfg(test)]

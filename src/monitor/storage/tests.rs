@@ -12,10 +12,8 @@ fn test_in_memory_store_new() {
 #[test]
 fn test_in_memory_write_batch() {
     let mut store = InMemoryStore::new();
-    let records = vec![
-        MetricRecord::new(Metric::Loss, 0.5),
-        MetricRecord::new(Metric::Accuracy, 0.85),
-    ];
+    let records =
+        vec![MetricRecord::new(Metric::Loss, 0.5), MetricRecord::new(Metric::Accuracy, 0.85)];
     store.write_batch(&records).unwrap();
     assert_eq!(store.count().unwrap(), 2);
 }
@@ -76,9 +74,7 @@ fn test_json_file_store_write_and_flush() {
 
     {
         let mut store = JsonFileStore::open(&path).unwrap();
-        store
-            .write_batch(&[MetricRecord::new(Metric::Loss, 0.5)])
-            .unwrap();
+        store.write_batch(&[MetricRecord::new(Metric::Loss, 0.5)]).unwrap();
         store.flush().unwrap();
     }
 
@@ -108,9 +104,7 @@ fn test_json_file_store_persistence() {
     {
         let mut store = JsonFileStore::open(&path).unwrap();
         assert_eq!(store.count().unwrap(), 2);
-        store
-            .write_batch(&[MetricRecord::new(Metric::Loss, 0.4)])
-            .unwrap();
+        store.write_batch(&[MetricRecord::new(Metric::Loss, 0.4)]).unwrap();
     }
 
     // Verify final count
@@ -132,9 +126,7 @@ fn test_in_memory_store_default() {
 #[test]
 fn test_in_memory_store_all_records() {
     let mut store = InMemoryStore::new();
-    store
-        .write_batch(&[MetricRecord::new(Metric::Loss, 0.5)])
-        .unwrap();
+    store.write_batch(&[MetricRecord::new(Metric::Loss, 0.5)]).unwrap();
     assert_eq!(store.all_records().len(), 1);
 }
 
@@ -170,9 +162,7 @@ fn test_in_memory_query_range_empty() {
 #[test]
 fn test_in_memory_query_stats_single_value() {
     let mut store = InMemoryStore::new();
-    store
-        .write_batch(&[MetricRecord::new(Metric::Loss, 5.0)])
-        .unwrap();
+    store.write_batch(&[MetricRecord::new(Metric::Loss, 5.0)]).unwrap();
 
     let stats = store.query_stats(&Metric::Loss).unwrap().unwrap();
     assert_eq!(stats.count, 1);
@@ -256,10 +246,7 @@ fn test_json_file_store_query_stats() {
 
     let mut store = JsonFileStore::open(&path).unwrap();
     store
-        .write_batch(&[
-            MetricRecord::new(Metric::Loss, 1.0),
-            MetricRecord::new(Metric::Loss, 2.0),
-        ])
+        .write_batch(&[MetricRecord::new(Metric::Loss, 1.0), MetricRecord::new(Metric::Loss, 2.0)])
         .unwrap();
 
     let stats = store.query_stats(&Metric::Loss).unwrap().unwrap();

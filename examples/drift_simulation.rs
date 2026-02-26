@@ -53,10 +53,7 @@ fn main() {
     if drifted.is_empty() {
         println!("Result: No drift detected (as expected)");
     } else {
-        println!(
-            "Result: Unexpected drift detected in {} features",
-            drifted.len()
-        );
+        println!("Result: Unexpected drift detected in {} features", drifted.len());
     }
     println!();
 
@@ -105,10 +102,7 @@ fn main() {
 
     // 7. Report callback invocations
     println!("=== Summary ===");
-    println!(
-        "Andon callback was triggered {} time(s)",
-        drift_count.load(Ordering::SeqCst)
-    );
+    println!("Andon callback was triggered {} time(s)", drift_count.load(Ordering::SeqCst));
 }
 
 /// Generate synthetic data with 2 features

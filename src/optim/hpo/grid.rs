@@ -12,13 +12,42 @@ pub struct GridSearch {
     pub(crate) n_points: usize,
 }
 
+/// Generate grid values for a single parameter domain.
+fn domain_grid_values(domain: &ParameterDomain, n_points: usize) -> Vec<ParameterValue> {
+    match domain {
+        ParameterDomain::Continuous { low, high, log_scale } => {
+            let divisor = (n_points - 1) as f64;
+            if *log_scale {
+                let log_low = low.max(f64::MIN_POSITIVE).ln();
+                let log_high = high.max(f64::MIN_POSITIVE).ln();
+                (0..n_points)
+                    .map(|i| {
+                        let t = i as f64 / divisor;
+                        ParameterValue::Float((log_low + t * (log_high - log_low)).exp())
+                    })
+                    .collect()
+            } else {
+                (0..n_points)
+                    .map(|i| {
+                        let t = i as f64 / divisor;
+                        ParameterValue::Float(low + t * (high - low))
+                    })
+                    .collect()
+            }
+        }
+        ParameterDomain::Discrete { low, high } => {
+            (*low..=*high).map(ParameterValue::Int).collect()
+        }
+        ParameterDomain::Categorical { choices } => {
+            choices.iter().map(|c| ParameterValue::Categorical(c.clone())).collect()
+        }
+    }
+}
+
 impl GridSearch {
     /// Create new grid search
     pub fn new(space: HyperparameterSpace, n_points: usize) -> Self {
-        Self {
-            space,
-            n_points: n_points.max(2),
-        }
+        Self { space, n_points: n_points.max(2) }
     }
 
     /// Generate all grid configurations
@@ -26,42 +55,7 @@ impl GridSearch {
         let param_values: Vec<(String, Vec<ParameterValue>)> = self
             .space
             .iter()
-            .map(|(name, domain)| {
-                let values = match domain {
-                    ParameterDomain::Continuous {
-                        low,
-                        high,
-                        log_scale,
-                    } => {
-                        if *log_scale {
-                            let log_low = low.max(f64::MIN_POSITIVE).ln();
-                            let log_high = high.max(f64::MIN_POSITIVE).ln();
-                            (0..self.n_points)
-                                .map(|i| {
-                                    let t = i as f64 / (self.n_points - 1) as f64;
-                                    let log_val = log_low + t * (log_high - log_low);
-                                    ParameterValue::Float(log_val.exp())
-                                })
-                                .collect()
-                        } else {
-                            (0..self.n_points)
-                                .map(|i| {
-                                    let t = i as f64 / (self.n_points - 1) as f64;
-                                    ParameterValue::Float(low + t * (high - low))
-                                })
-                                .collect()
-                        }
-                    }
-                    ParameterDomain::Discrete { low, high } => {
-                        (*low..=*high).map(ParameterValue::Int).collect()
-                    }
-                    ParameterDomain::Categorical { choices } => choices
-                        .iter()
-                        .map(|c| ParameterValue::Categorical(c.clone()))
-                        .collect(),
-                };
-                (name.clone(), values)
-            })
+            .map(|(name, domain)| (name.clone(), domain_grid_values(domain, self.n_points)))
             .collect();
 
         // Generate cartesian product
@@ -114,24 +108,15 @@ mod tests {
     #[test]
     fn test_grid_search_single_param() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
         let grid = GridSearch::new(space, 5);
         let configs = grid.configurations();
         assert_eq!(configs.len(), 5);
 
         // Check values are evenly spaced
-        let values: Vec<f64> = configs
-            .iter()
-            .map(|c| c.get("lr").unwrap().as_float().unwrap())
-            .collect();
+        let values: Vec<f64> =
+            configs.iter().map(|c| c.get("lr").unwrap().as_float().unwrap()).collect();
         assert!((values[0] - 0.0).abs() < 1e-10);
         assert!((values[4] - 1.0).abs() < 1e-10);
     }
@@ -139,19 +124,10 @@ mod tests {
     #[test]
     fn test_grid_search_multiple_params() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
         space.add(
             "act",
-            ParameterDomain::Categorical {
-                choices: vec!["relu".to_string(), "gelu".to_string()],
-            },
+            ParameterDomain::Categorical { choices: vec!["relu".to_string(), "gelu".to_string()] },
         );
 
         let grid = GridSearch::new(space, 3);
@@ -174,22 +150,13 @@ mod tests {
     #[test]
     fn test_grid_search_log_scale() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 1e-4,
-                high: 1e-1,
-                log_scale: true,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 1e-4, high: 1e-1, log_scale: true });
 
         let grid = GridSearch::new(space, 4);
         let configs = grid.configurations();
 
-        let values: Vec<f64> = configs
-            .iter()
-            .map(|c| c.get("lr").unwrap().as_float().unwrap())
-            .collect();
+        let values: Vec<f64> =
+            configs.iter().map(|c| c.get("lr").unwrap().as_float().unwrap()).collect();
 
         // Log scale should give approximately: 1e-4, 1e-3, 1e-2, 1e-1
         assert!(values[0] < 1e-3);

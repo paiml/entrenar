@@ -56,11 +56,7 @@ impl ModelWeights {
     /// Create new empty weights container
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            tensors: HashMap::new(),
-            shapes: HashMap::new(),
-            metadata: ModelMetadata::default(),
-        }
+        Self { tensors: HashMap::new(), shapes: HashMap::new(), metadata: ModelMetadata::default() }
     }
 
     /// Add a tensor

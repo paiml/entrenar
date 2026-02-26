@@ -88,11 +88,7 @@ fn test_research_init_with_author() {
         Some("10.1000/test".to_string()),
     );
 
-    assert!(
-        result.is_ok(),
-        "Research init with author failed: {:?}",
-        result
-    );
+    assert!(result.is_ok(), "Research init with author failed: {:?}", result);
     assert!(output.exists());
 }
 
@@ -129,12 +125,7 @@ fn test_research_init_all_artifact_types() {
             None,
         );
 
-        assert!(
-            result.is_ok(),
-            "Research init failed for {:?}: {:?}",
-            artifact_type,
-            result
-        );
+        assert!(result.is_ok(), "Research init failed for {:?}: {:?}", artifact_type, result);
     }
 }
 
@@ -172,12 +163,7 @@ fn test_research_init_all_licenses() {
             None,
         );
 
-        assert!(
-            result.is_ok(),
-            "Research init failed for {:?}: {:?}",
-            license,
-            result
-        );
+        assert!(result.is_ok(), "Research init failed for {:?}: {:?}", license, result);
     }
 }
 
@@ -426,11 +412,7 @@ fn test_research_preregister_with_notes() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(
-        result.is_ok(),
-        "Preregister with notes failed: {:?}",
-        result
-    );
+    assert!(result.is_ok(), "Preregister with notes failed: {:?}", result);
     assert!(output.exists());
 }
 
@@ -638,12 +620,7 @@ fn test_research_deposit_all_providers() {
         };
 
         let result = research::run_research(args, LogLevel::Quiet);
-        assert!(
-            result.is_ok(),
-            "Deposit failed for {:?}: {:?}",
-            provider,
-            result
-        );
+        assert!(result.is_ok(), "Deposit failed for {:?}: {:?}", provider, result);
     }
 }
 
@@ -656,11 +633,7 @@ fn test_research_export_notebook() {
     let output = dir.path().join("notebook.ipynb");
 
     // Create a literate document
-    std::fs::write(
-        &input,
-        "# Title\n\nSome text.\n\n```python\nprint('hello')\n```\n",
-    )
-    .unwrap();
+    std::fs::write(&input, "# Title\n\nSome text.\n\n```python\nprint('hello')\n```\n").unwrap();
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -812,9 +785,7 @@ fn test_research_export_rocrate_error() {
 
     let result = research::run_research(args, LogLevel::Quiet);
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("Use 'entrenar research bundle'"));
+    assert!(result.unwrap_err().contains("Use 'entrenar research bundle'"));
 }
 
 // Test info command with different formats
@@ -823,10 +794,7 @@ fn test_info_command_json() {
     let dir = TempDir::new().unwrap();
     let config_path = create_test_config(&dir);
 
-    let args = InfoArgs {
-        config: config_path,
-        format: OutputFormat::Json,
-    };
+    let args = InfoArgs { config: config_path, format: OutputFormat::Json };
 
     let result = info::run_info(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -837,10 +805,7 @@ fn test_info_command_yaml() {
     let dir = TempDir::new().unwrap();
     let config_path = create_test_config(&dir);
 
-    let args = InfoArgs {
-        config: config_path,
-        format: OutputFormat::Yaml,
-    };
+    let args = InfoArgs { config: config_path, format: OutputFormat::Yaml };
 
     let result = info::run_info(args, LogLevel::Quiet);
     assert!(result.is_ok());
@@ -937,10 +902,7 @@ fn test_info_command_verbose() {
     let dir = TempDir::new().unwrap();
     let config_path = create_test_config(&dir);
 
-    let args = InfoArgs {
-        config: config_path,
-        format: OutputFormat::Text,
-    };
+    let args = InfoArgs { config: config_path, format: OutputFormat::Text };
 
     let result = info::run_info(args, LogLevel::Verbose);
     assert!(result.is_ok());
@@ -952,10 +914,7 @@ fn test_validate_command_verbose() {
     let dir = TempDir::new().unwrap();
     let config_path = create_test_config(&dir);
 
-    let args = ValidateArgs {
-        config: config_path,
-        detailed: true,
-    };
+    let args = ValidateArgs { config: config_path, detailed: true };
 
     let result = validate::run_validate(args, LogLevel::Verbose);
     assert!(result.is_ok());
@@ -1178,10 +1137,7 @@ fn test_validate_command_invalid_yaml() {
     let config_path = dir.path().join("invalid.yaml");
     std::fs::write(&config_path, "invalid: [yaml: content").unwrap();
 
-    let args = ValidateArgs {
-        config: config_path,
-        detailed: false,
-    };
+    let args = ValidateArgs { config: config_path, detailed: false };
 
     let result = validate::run_validate(args, LogLevel::Quiet);
     assert!(result.is_err());
@@ -1247,10 +1203,8 @@ fn test_quantize_command_missing_model() {
 // Test info command missing config
 #[test]
 fn test_info_command_missing_config() {
-    let args = InfoArgs {
-        config: PathBuf::from("/nonexistent/config.yaml"),
-        format: OutputFormat::Text,
-    };
+    let args =
+        InfoArgs { config: PathBuf::from("/nonexistent/config.yaml"), format: OutputFormat::Text };
 
     let result = info::run_info(args, LogLevel::Quiet);
     assert!(result.is_err());

@@ -18,18 +18,12 @@ pub struct LamportTimestamp {
 impl LamportTimestamp {
     /// Create a new timestamp for a node
     pub fn new(node_id: &str) -> Self {
-        Self {
-            counter: 0,
-            node_id: node_id.to_string(),
-        }
+        Self { counter: 0, node_id: node_id.to_string() }
     }
 
     /// Create a timestamp with specific counter value
     pub fn with_counter(node_id: &str, counter: u64) -> Self {
-        Self {
-            counter,
-            node_id: node_id.to_string(),
-        }
+        Self { counter, node_id: node_id.to_string() }
     }
 
     /// Increment the timestamp for a local event

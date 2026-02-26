@@ -33,11 +33,7 @@ impl<S: State + Send + Sync, A: Action + Send + Sync> MctsSearch<S, A> {
         use rand::SeedableRng;
         let actions = action_space.legal_actions(&initial_state);
         let tree = SearchTree::new(initial_state, actions);
-        Self {
-            tree,
-            config,
-            rng: rand::rngs::StdRng::from_os_rng(),
-        }
+        Self { tree, config, rng: rand::rngs::StdRng::from_os_rng() }
     }
 
     /// Create a new MCTS search with a seed for reproducibility
@@ -50,11 +46,7 @@ impl<S: State + Send + Sync, A: Action + Send + Sync> MctsSearch<S, A> {
         use rand::SeedableRng;
         let actions = action_space.legal_actions(&initial_state);
         let tree = SearchTree::new(initial_state, actions);
-        Self {
-            tree,
-            config,
-            rng: rand::rngs::StdRng::seed_from_u64(seed),
-        }
+        Self { tree, config, rng: rand::rngs::StdRng::seed_from_u64(seed) }
     }
 
     /// Run the MCTS search
@@ -121,18 +113,11 @@ impl<S: State + Send + Sync, A: Action + Send + Sync> MctsSearch<S, A> {
             .collect();
 
         // Select best action based on visits (robust child selection)
-        let best_child = self
-            .tree
-            .children(self.tree.root_id)
-            .into_iter()
-            .max_by_key(|n| n.stats.visits);
+        let best_child =
+            self.tree.children(self.tree.root_id).into_iter().max_by_key(|n| n.stats.visits);
 
         let (best_action, expected_reward, resulting_state) = if let Some(child) = best_child {
-            (
-                child.action.clone(),
-                child.stats.mean_reward,
-                Some(child.state.clone()),
-            )
+            (child.action.clone(), child.stats.mean_reward, Some(child.state.clone()))
         } else {
             (None, 0.0, None)
         };
@@ -181,28 +166,19 @@ impl<S: State + Send + Sync, A: Action + Send + Sync> MctsSearch<S, A> {
 
             // Select best child using UCB1/PUCT
             let parent_visits = node.stats.visits;
-            let best_child = node
-                .children
-                .iter()
-                .filter_map(|&cid| self.tree.get(cid))
-                .max_by(|a, b| {
+            let best_child =
+                node.children.iter().filter_map(|&cid| self.tree.get(cid)).max_by(|a, b| {
                     let score_a = if self.config.use_policy_priors {
-                        a.stats
-                            .puct(parent_visits, self.config.exploration_constant)
+                        a.stats.puct(parent_visits, self.config.exploration_constant)
                     } else {
-                        a.stats
-                            .ucb1(parent_visits, self.config.exploration_constant)
+                        a.stats.ucb1(parent_visits, self.config.exploration_constant)
                     };
                     let score_b = if self.config.use_policy_priors {
-                        b.stats
-                            .puct(parent_visits, self.config.exploration_constant)
+                        b.stats.puct(parent_visits, self.config.exploration_constant)
                     } else {
-                        b.stats
-                            .ucb1(parent_visits, self.config.exploration_constant)
+                        b.stats.ucb1(parent_visits, self.config.exploration_constant)
                     };
-                    score_a
-                        .partial_cmp(&score_b)
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                    score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
                 });
 
             match best_child {
@@ -243,17 +219,12 @@ impl<S: State + Send + Sync, A: Action + Send + Sync> MctsSearch<S, A> {
         // Get prior from policy network
         let prior = policy
             .and_then(|p| {
-                p.predict(&parent_state)
-                    .iter()
-                    .find(|(a, _)| a == &action)
-                    .map(|(_, p)| *p)
+                p.predict(&parent_state).iter().find(|(a, _)| a == &action).map(|(_, p)| *p)
             })
             .unwrap_or(1.0 / (new_actions.len().max(1) as f64));
 
         // Add child
-        let child_id = self
-            .tree
-            .add_child(node_id, new_state, action, new_actions, prior);
+        let child_id = self.tree.add_child(node_id, new_state, action, new_actions, prior);
         Some(child_id)
     }
 

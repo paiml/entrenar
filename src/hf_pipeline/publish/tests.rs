@@ -40,15 +40,10 @@ fn test_publish_error_display() {
     let err = PublishError::AuthRequired;
     assert!(err.to_string().contains("HF_TOKEN"));
 
-    let err = PublishError::InvalidRepoId {
-        repo_id: "bad".into(),
-    };
+    let err = PublishError::InvalidRepoId { repo_id: "bad".into() };
     assert!(err.to_string().contains("bad"));
 
-    let err = PublishError::RepoCreationFailed {
-        repo_id: "a/b".into(),
-        message: "403".into(),
-    };
+    let err = PublishError::RepoCreationFailed { repo_id: "a/b".into(), message: "403".into() };
     assert!(err.to_string().contains("a/b"));
 }
 
@@ -57,10 +52,7 @@ fn test_publish_error_display() {
 #[test]
 fn test_publisher_requires_auth() {
     // Without token, should fail with AuthRequired
-    let config = PublishConfig {
-        repo_id: "test/model".to_string(),
-        ..Default::default()
-    };
+    let config = PublishConfig { repo_id: "test/model".to_string(), ..Default::default() };
     let result = super::publisher::HfPublisher::new(config);
     // Will either fail with AuthRequired or succeed if HF_TOKEN is set
     if std::env::var("HF_TOKEN").is_err() {

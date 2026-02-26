@@ -14,14 +14,10 @@ fn test_filter_op_float_ne() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "lr", ParameterValue::Float(0.001))
-        .unwrap();
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.001)).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "lr", ParameterValue::Float(0.01))
-        .unwrap();
+    backend.log_param(&run2, "lr", ParameterValue::Float(0.01)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -40,14 +36,10 @@ fn test_filter_op_float_lt() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "lr", ParameterValue::Float(0.001))
-        .unwrap();
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.001)).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "lr", ParameterValue::Float(0.01))
-        .unwrap();
+    backend.log_param(&run2, "lr", ParameterValue::Float(0.01)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -66,9 +58,7 @@ fn test_filter_op_float_gte() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "lr", ParameterValue::Float(0.01))
-        .unwrap();
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.01)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -86,9 +76,7 @@ fn test_filter_op_float_lte() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "lr", ParameterValue::Float(0.01))
-        .unwrap();
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.01)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -110,9 +98,7 @@ fn test_filter_op_int_eq() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "epochs", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -130,14 +116,10 @@ fn test_filter_op_int_ne() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "epochs", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "epochs", ParameterValue::Int(200))
-        .unwrap();
+    backend.log_param(&run2, "epochs", ParameterValue::Int(200)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -156,14 +138,10 @@ fn test_filter_op_int_gt() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "epochs", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "epochs", ParameterValue::Int(200))
-        .unwrap();
+    backend.log_param(&run2, "epochs", ParameterValue::Int(200)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -182,9 +160,7 @@ fn test_filter_op_int_lt() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "epochs", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -202,9 +178,7 @@ fn test_filter_op_int_gte() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "epochs", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -222,9 +196,7 @@ fn test_filter_op_int_lte() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "epochs", ParameterValue::Int(100))
-        .unwrap();
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -246,9 +218,7 @@ fn test_filter_op_string_eq() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "model", ParameterValue::String("llama".to_string()))
-        .unwrap();
+    backend.log_param(&run1, "model", ParameterValue::String("llama".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "model".to_string(),
@@ -266,14 +236,10 @@ fn test_filter_op_string_ne() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run1 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run1, "model", ParameterValue::String("llama".to_string()))
-        .unwrap();
+    backend.log_param(&run1, "model", ParameterValue::String("llama".to_string())).unwrap();
 
     let run2 = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run2, "model", ParameterValue::String("gpt".to_string()))
-        .unwrap();
+    backend.log_param(&run2, "model", ParameterValue::String("gpt".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "model".to_string(),

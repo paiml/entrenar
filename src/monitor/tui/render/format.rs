@@ -4,12 +4,7 @@ use std::time::Duration;
 
 pub fn format_duration(d: Duration) -> String {
     let secs = d.as_secs();
-    format!(
-        "{:02}:{:02}:{:02}",
-        secs / 3600,
-        (secs % 3600) / 60,
-        secs % 60
-    )
+    format!("{:02}:{:02}:{:02}", secs / 3600, (secs % 3600) / 60, secs % 60)
 }
 
 #[allow(clippy::cast_precision_loss)]

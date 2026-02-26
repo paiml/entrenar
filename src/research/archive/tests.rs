@@ -75,9 +75,8 @@ mod tests {
 
     #[test]
     fn test_zenodo_config() {
-        let config = ZenodoConfig::new("test-token")
-            .with_sandbox(true)
-            .with_community("ml-research");
+        let config =
+            ZenodoConfig::new("test-token").with_sandbox(true).with_community("ml-research");
 
         assert_eq!(config.token, "test-token");
         assert!(config.sandbox);
@@ -106,14 +105,8 @@ mod tests {
 
     #[test]
     fn test_resource_type_conversion() {
-        assert_eq!(
-            ResourceType::from_artifact_type(ArtifactType::Dataset),
-            ResourceType::Dataset
-        );
-        assert_eq!(
-            ResourceType::from_artifact_type(ArtifactType::Code),
-            ResourceType::Software
-        );
+        assert_eq!(ResourceType::from_artifact_type(ArtifactType::Dataset), ResourceType::Dataset);
+        assert_eq!(ResourceType::from_artifact_type(ArtifactType::Code), ResourceType::Software);
         assert_eq!(
             ResourceType::from_artifact_type(ArtifactType::Paper),
             ResourceType::Publication
@@ -192,10 +185,7 @@ mod tests {
 
     #[test]
     fn test_provider_sandbox_url_all() {
-        assert_eq!(
-            ArchiveProvider::Zenodo.sandbox_url(),
-            Some("https://sandbox.zenodo.org")
-        );
+        assert_eq!(ArchiveProvider::Zenodo.sandbox_url(), Some("https://sandbox.zenodo.org"));
         assert!(ArchiveProvider::Dryad.sandbox_url().is_none());
         assert!(ArchiveProvider::Dataverse.sandbox_url().is_none());
     }
@@ -203,22 +193,15 @@ mod tests {
     #[test]
     fn test_provider_api_endpoints() {
         assert!(ArchiveProvider::Zenodo.api_endpoint().contains("zenodo"));
-        assert!(ArchiveProvider::Figshare
-            .api_endpoint()
-            .contains("figshare"));
+        assert!(ArchiveProvider::Figshare.api_endpoint().contains("figshare"));
         assert!(ArchiveProvider::Dryad.api_endpoint().contains("dryad"));
-        assert!(ArchiveProvider::Dataverse
-            .api_endpoint()
-            .contains("dataverse"));
+        assert!(ArchiveProvider::Dataverse.api_endpoint().contains("dataverse"));
     }
 
     #[test]
     fn test_provider_base_urls() {
         assert_eq!(ArchiveProvider::Dryad.base_url(), "https://datadryad.org");
-        assert_eq!(
-            ArchiveProvider::Dataverse.base_url(),
-            "https://dataverse.harvard.edu"
-        );
+        assert_eq!(ArchiveProvider::Dataverse.base_url(), "https://dataverse.harvard.edu");
     }
 
     #[test]
@@ -238,23 +221,14 @@ mod tests {
 
     #[test]
     fn test_resource_type_from_model_artifact() {
-        assert_eq!(
-            ResourceType::from_artifact_type(ArtifactType::Model),
-            ResourceType::Software
-        );
+        assert_eq!(ResourceType::from_artifact_type(ArtifactType::Model), ResourceType::Software);
     }
 
     #[test]
     fn test_resource_type_from_notebook_artifact() {
         use crate::research::artifact::ArtifactType;
-        assert_eq!(
-            ResourceType::from_artifact_type(ArtifactType::Notebook),
-            ResourceType::Other
-        );
-        assert_eq!(
-            ResourceType::from_artifact_type(ArtifactType::Workflow),
-            ResourceType::Other
-        );
+        assert_eq!(ResourceType::from_artifact_type(ArtifactType::Notebook), ResourceType::Other);
+        assert_eq!(ResourceType::from_artifact_type(ArtifactType::Workflow), ResourceType::Other);
     }
 
     #[test]
@@ -325,9 +299,8 @@ mod tests {
 
     #[test]
     fn test_zenodo_config_serde_roundtrip() {
-        let config = ZenodoConfig::new("secret-token")
-            .with_sandbox(true)
-            .with_community("ml-research");
+        let config =
+            ZenodoConfig::new("secret-token").with_sandbox(true).with_community("ml-research");
         let json = serde_json::to_string(&config).unwrap();
         let parsed: ZenodoConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.token, "secret-token");
@@ -388,9 +361,7 @@ mod tests {
         // No description set
         let metadata = DepositMetadata::from_artifact(&artifact);
         // Should generate a default description
-        assert!(metadata
-            .description
-            .contains("Artifact Without Description"));
+        assert!(metadata.description.contains("Artifact Without Description"));
     }
 
     #[test]

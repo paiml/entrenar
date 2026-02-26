@@ -55,11 +55,8 @@ pub fn analyze_error(
     let quantized = quantize_with_params(original, params);
     let dequantized = dequantize_with_params(&quantized, params);
 
-    let errors: Vec<f32> = original
-        .iter()
-        .zip(dequantized.iter())
-        .map(|(o, d)| (o - d).abs())
-        .collect();
+    let errors: Vec<f32> =
+        original.iter().zip(dequantized.iter()).map(|(o, d)| (o - d).abs()).collect();
 
     let mse = quantization_mse(original, &dequantized);
     let mae = errors.iter().sum::<f32>() / errors.len().max(1) as f32;
@@ -78,14 +75,7 @@ pub fn analyze_error(
         f32::INFINITY
     };
 
-    QuantErrorStats {
-        mse,
-        mae,
-        max_error,
-        sqnr_db,
-        outlier_rate,
-        num_samples: original.len(),
-    }
+    QuantErrorStats { mse, mae, max_error, sqnr_db, outlier_rate, num_samples: original.len() }
 }
 
 /// Calculate theoretical maximum error for given quantization parameters
@@ -125,11 +115,8 @@ pub fn scale_sensitivity(
     let original_mse = quantization_mse(values, &dequantized);
 
     // Perturbed scales
-    let perturbed_scales: Vec<f32> = params
-        .scales
-        .iter()
-        .map(|s| s * (1.0 + perturbation))
-        .collect();
+    let perturbed_scales: Vec<f32> =
+        params.scales.iter().map(|s| s * (1.0 + perturbation)).collect();
 
     let perturbed_params = QuantParams {
         scales: perturbed_scales,
@@ -198,10 +185,8 @@ pub fn analyze_outlier_impact(values: &[f32], percentile: f32) -> (f32, f32, f32
     let upper_threshold = threshold;
 
     // Clipped values
-    let clipped: Vec<f32> = values
-        .iter()
-        .map(|&v| v.clamp(lower_threshold, upper_threshold))
-        .collect();
+    let clipped: Vec<f32> =
+        values.iter().map(|&v| v.clamp(lower_threshold, upper_threshold)).collect();
 
     // Quantize both
     let params_original = calibrate_per_tensor(values, 8, QuantMode::Symmetric);
@@ -249,10 +234,7 @@ mod tests {
 
     #[test]
     fn test_rmse_calculation() {
-        let stats = QuantErrorStats {
-            mse: 4.0,
-            ..Default::default()
-        };
+        let stats = QuantErrorStats { mse: 4.0, ..Default::default() };
         assert_abs_diff_eq!(stats.rmse(), 2.0, epsilon = 1e-6);
     }
 

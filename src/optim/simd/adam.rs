@@ -27,21 +27,9 @@ pub fn simd_adam_update(
     lr_t: f32,
     epsilon: f32,
 ) {
-    assert_eq!(
-        grad.len(),
-        m.len(),
-        "Gradient and momentum lengths must match"
-    );
-    assert_eq!(
-        grad.len(),
-        v.len(),
-        "Gradient and variance lengths must match"
-    );
-    assert_eq!(
-        grad.len(),
-        param.len(),
-        "Gradient and parameter lengths must match"
-    );
+    assert_eq!(grad.len(), m.len(), "Gradient and momentum lengths must match");
+    assert_eq!(grad.len(), v.len(), "Gradient and variance lengths must match");
+    assert_eq!(grad.len(), param.len(), "Gradient and parameter lengths must match");
 
     // Convert to Trueno vectors
     let grad_vec = Vector::from_slice(grad);

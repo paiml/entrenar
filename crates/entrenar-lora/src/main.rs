@@ -77,18 +77,11 @@ fn main() {
     let config = cli.common.to_cli();
 
     let result = match cli.command {
-        Commands::Plan {
-            model,
-            vram,
-            method,
-        } => plan_command(&model, vram, &method, &config),
+        Commands::Plan { model, vram, method } => plan_command(&model, vram, &method, &config),
         Commands::Compare { model, vram } => compare_command(&model, vram, &config),
-        Commands::Merge {
-            base,
-            adapter,
-            output,
-            scale,
-        } => merge_command(&base, &adapter, &output, scale, &config),
+        Commands::Merge { base, adapter, output, scale } => {
+            merge_command(&base, &adapter, &output, scale, &config)
+        }
         Commands::Inspect { path } => inspect_command(&path, &config),
     };
 
@@ -121,13 +114,11 @@ fn plan_command(
 ) -> entrenar_common::Result<()> {
     let model_params = parse_model_size(model);
     let method: Method =
-        method
-            .parse()
-            .map_err(|e| entrenar_common::EntrenarError::ConfigValue {
-                field: "method".into(),
-                message: e,
-                suggestion: "Use: full, lora, qlora, auto".into(),
-            })?;
+        method.parse().map_err(|e| entrenar_common::EntrenarError::ConfigValue {
+            field: "method".into(),
+            message: e,
+            suggestion: "Use: full, lora, qlora, auto".into(),
+        })?;
 
     let config = plan(model_params, vram, method)?;
 
@@ -150,10 +141,7 @@ fn plan_command(
         if !cli.is_quiet() {
             println!(
                 "{}",
-                styles::header(&format!(
-                    "Optimal Configuration for {} VRAM",
-                    format_vram(vram)
-                ))
+                styles::header(&format!("Optimal Configuration for {} VRAM", format_vram(vram)))
             );
         }
 
@@ -178,10 +166,7 @@ fn plan_command(
                     config.memory_gb, config.utilization_percent
                 ),
             ])
-            .row(vec![
-                "Training Speedup",
-                &format!("{:.1}x vs full fine-tuning", config.speedup),
-            ])
+            .row(vec!["Training Speedup", &format!("{:.1}x vs full fine-tuning", config.speedup)])
             .build();
 
         println!("{}", table.render());
@@ -220,9 +205,8 @@ fn compare_command(
             println!("{}", styles::header("Method Comparison"));
         }
 
-        let mut builder = TableBuilder::new().headers(vec![
-            "Method", "Fits", "Memory", "Params", "Speedup", "Rank",
-        ]);
+        let mut builder = TableBuilder::new()
+            .headers(vec!["Method", "Fits", "Memory", "Params", "Speedup", "Rank"]);
 
         for c in &comparisons {
             let fits = if c.fits { "✓" } else { "✗" };
@@ -239,11 +223,11 @@ fn compare_command(
         println!("{}", builder.build().render());
 
         // Recommendation
-        if let Some(best) = comparisons.iter().filter(|c| c.fits).max_by(|a, b| {
-            a.speedup
-                .partial_cmp(&b.speedup)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }) {
+        if let Some(best) = comparisons
+            .iter()
+            .filter(|c| c.fits)
+            .max_by(|a, b| a.speedup.partial_cmp(&b.speedup).unwrap_or(std::cmp::Ordering::Equal))
+        {
             println!(
                 "\n{}",
                 styles::success(&format!(
@@ -286,17 +270,12 @@ fn inspect_command(
     cli: &entrenar_common::Cli,
 ) -> entrenar_common::Result<()> {
     if !path.exists() {
-        return Err(entrenar_common::EntrenarError::ModelNotFound {
-            path: path.to_path_buf(),
-        });
+        return Err(entrenar_common::EntrenarError::ModelNotFound { path: path.to_path_buf() });
     }
 
     // In real implementation, would load and analyze the adapter
     if !cli.is_quiet() {
-        println!(
-            "{}",
-            styles::header(&format!("Adapter Analysis: {}", path.display()))
-        );
+        println!("{}", styles::header(&format!("Adapter Analysis: {}", path.display())));
         println!("  (Detailed analysis requires loading adapter file)");
     }
 

@@ -12,10 +12,7 @@ pub fn run_info(args: InfoArgs, level: LogLevel) -> Result<(), String> {
             log(level, LogLevel::Normal, "Configuration Info:");
             println!();
             println!("Model: {}", spec.model.path.display());
-            println!(
-                "Optimizer: {} (lr={})",
-                spec.optimizer.name, spec.optimizer.lr
-            );
+            println!("Optimizer: {} (lr={})", spec.optimizer.name, spec.optimizer.lr);
             println!("Epochs: {}", spec.training.epochs);
             println!("Batch size: {}", spec.data.batch_size);
 

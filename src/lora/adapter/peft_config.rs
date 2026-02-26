@@ -115,10 +115,7 @@ mod tests {
         assert!(peft.target_modules.contains(&"v_proj".to_string()));
         assert!(peft.target_modules.contains(&"o_proj".to_string()));
         assert_eq!(peft.bias, "none");
-        assert_eq!(
-            peft.base_model_name_or_path,
-            Some("meta-llama/Llama-2-7b".to_string())
-        );
+        assert_eq!(peft.base_model_name_or_path, Some("meta-llama/Llama-2-7b".to_string()));
     }
 
     #[test]

@@ -46,18 +46,8 @@ mod tests {
         }
 
         // AdamW should have smaller weights due to weight decay
-        let adamw_norm: f32 = params_adamw[0]
-            .data()
-            .iter()
-            .map(|&x| x * x)
-            .sum::<f32>()
-            .sqrt();
-        let adam_norm: f32 = params_adam[0]
-            .data()
-            .iter()
-            .map(|&x| x * x)
-            .sum::<f32>()
-            .sqrt();
+        let adamw_norm: f32 = params_adamw[0].data().iter().map(|&x| x * x).sum::<f32>().sqrt();
+        let adam_norm: f32 = params_adam[0].data().iter().map(|&x| x * x).sum::<f32>().sqrt();
 
         assert!(adamw_norm < adam_norm);
     }

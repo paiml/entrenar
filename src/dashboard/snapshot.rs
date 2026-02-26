@@ -20,11 +20,7 @@ impl MetricSnapshot {
     /// Create a new metric snapshot.
     pub fn new(key: impl Into<String>, values: Vec<(u64, f64)>) -> Self {
         let trend = Trend::from_values(&values.iter().map(|(_, v)| *v).collect::<Vec<_>>());
-        Self {
-            key: key.into(),
-            values,
-            trend,
-        }
+        Self { key: key.into(), values, trend }
     }
 
     /// Create from metric points.

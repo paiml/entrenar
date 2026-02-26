@@ -18,10 +18,6 @@ pub struct PatternStoreConfig {
 
 impl Default for PatternStoreConfig {
     fn default() -> Self {
-        Self {
-            chunk_size: 256,
-            embedding_dim: DEFAULT_EMBEDDING_DIM,
-            rrf_k: 60.0,
-        }
+        Self { chunk_size: 256, embedding_dim: DEFAULT_EMBEDDING_DIM, rrf_k: 60.0 }
     }
 }

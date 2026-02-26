@@ -201,10 +201,8 @@ fn test_exporter_export_multiple_values() {
     let output = exporter.export();
 
     // Should only have latest value in export (gauges show current value)
-    let loss_lines: Vec<&str> = output
-        .lines()
-        .filter(|l| l.starts_with("entrenar_epoch_loss{"))
-        .collect();
+    let loss_lines: Vec<&str> =
+        output.lines().filter(|l| l.starts_with("entrenar_epoch_loss{")).collect();
     assert_eq!(loss_lines.len(), 1);
 }
 
@@ -271,12 +269,8 @@ fn test_exporter_default_metrics_registered() {
     // Check that default metrics are registered
     assert!(exporter.definitions.contains_key("entrenar_epoch_loss"));
     assert!(exporter.definitions.contains_key("entrenar_learning_rate"));
-    assert!(exporter
-        .definitions
-        .contains_key("entrenar_gpu_utilization"));
-    assert!(exporter
-        .definitions
-        .contains_key("entrenar_validation_accuracy"));
+    assert!(exporter.definitions.contains_key("entrenar_gpu_utilization"));
+    assert!(exporter.definitions.contains_key("entrenar_validation_accuracy"));
 }
 
 // =============================================================================

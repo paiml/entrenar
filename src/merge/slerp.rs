@@ -106,11 +106,8 @@ fn slerp_tensor(tensor1: &Tensor, tensor2: &Tensor, t: f32) -> Tensor {
     let coef1 = ((1.0 - t) * theta).sin() / sin_theta;
     let coef2 = (t * theta).sin() / sin_theta;
 
-    let interpolated: Array1<f32> = w1
-        .iter()
-        .zip(w2.iter())
-        .map(|(a, b)| coef1 * a + coef2 * b)
-        .collect();
+    let interpolated: Array1<f32> =
+        w1.iter().zip(w2.iter()).map(|(a, b)| coef1 * a + coef2 * b).collect();
 
     Tensor::new(interpolated, false)
 }
@@ -120,11 +117,8 @@ fn linear_interp_tensor(tensor1: &Tensor, tensor2: &Tensor, t: f32) -> Tensor {
     let w1 = tensor1.data();
     let w2 = tensor2.data();
 
-    let interpolated: Array1<f32> = w1
-        .iter()
-        .zip(w2.iter())
-        .map(|(a, b)| (1.0 - t) * a + t * b)
-        .collect();
+    let interpolated: Array1<f32> =
+        w1.iter().zip(w2.iter()).map(|(a, b)| (1.0 - t) * a + t * b).collect();
 
     Tensor::new(interpolated, false)
 }

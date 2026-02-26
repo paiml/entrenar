@@ -16,11 +16,7 @@ pub struct ZenodoConfig {
 impl ZenodoConfig {
     /// Create a new Zenodo configuration
     pub fn new(token: impl Into<String>) -> Self {
-        Self {
-            token: token.into(),
-            sandbox: false,
-            community: None,
-        }
+        Self { token: token.into(), sandbox: false, community: None }
     }
 
     /// Use sandbox environment
@@ -57,10 +53,7 @@ pub struct FigshareConfig {
 impl FigshareConfig {
     /// Create a new Figshare configuration
     pub fn new(token: impl Into<String>) -> Self {
-        Self {
-            token: token.into(),
-            project_id: None,
-        }
+        Self { token: token.into(), project_id: None }
     }
 
     /// Set project ID

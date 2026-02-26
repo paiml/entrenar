@@ -86,10 +86,7 @@ fn detect_cuda_devices() {
 
             // Try to get actual GPU info from nvidia-smi
             if let Ok(output) = std::process::Command::new("nvidia-smi")
-                .args([
-                    "--query-gpu=name,memory.total,compute_cap",
-                    "--format=csv,noheader",
-                ])
+                .args(["--query-gpu=name,memory.total,compute_cap", "--format=csv,noheader"])
                 .output()
             {
                 if output.status.success() {
@@ -182,10 +179,7 @@ fn show_trueno_integration() {
     let cpu_time = start.elapsed();
 
     println!("│ Vector dot product ({size} elements): {cpu_time:?}");
-    println!(
-        "│ Throughput: {:.2} GFLOPS",
-        (2.0 * f64::from(size)) / cpu_time.as_secs_f64() / 1e9
-    );
+    println!("│ Throughput: {:.2} GFLOPS", (2.0 * f64::from(size)) / cpu_time.as_secs_f64() / 1e9);
     println!("│");
     println!("│ With CUDA, expect 10-100x improvement on large workloads    │");
     println!("└──────────────────────────────────────────────────────────────┘\n");

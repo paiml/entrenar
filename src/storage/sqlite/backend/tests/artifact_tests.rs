@@ -49,12 +49,8 @@ fn test_list_artifacts() {
     let exp_id = backend.create_experiment("test-exp", None).unwrap();
     let run_id = backend.create_run(&exp_id).unwrap();
 
-    backend
-        .log_artifact(&run_id, "model.bin", b"model")
-        .unwrap();
-    backend
-        .log_artifact(&run_id, "config.json", b"config")
-        .unwrap();
+    backend.log_artifact(&run_id, "model.bin", b"model").unwrap();
+    backend.log_artifact(&run_id, "config.json", b"config").unwrap();
 
     let artifacts = backend.list_artifacts(&run_id).unwrap();
     assert_eq!(artifacts.len(), 2);

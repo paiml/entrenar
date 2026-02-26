@@ -100,9 +100,7 @@ pub fn inspect_model(path: impl AsRef<Path>) -> Result<ModelInfo> {
     let path = path.as_ref();
 
     if !path.exists() {
-        return Err(EntrenarError::ModelNotFound {
-            path: path.to_path_buf(),
-        });
+        return Err(EntrenarError::ModelNotFound { path: path.to_path_buf() });
     }
 
     let metadata = std::fs::metadata(path).map_err(|e| EntrenarError::Io {
@@ -119,10 +117,8 @@ pub fn inspect_model(path: impl AsRef<Path>) -> Result<ModelInfo> {
     let tensors = generate_mock_tensors(estimated_params);
     let tensor_names: Vec<String> = tensors.iter().map(|t| t.name.clone()).collect();
 
-    let shapes: HashMap<String, Vec<usize>> = tensors
-        .iter()
-        .map(|t| (t.name.clone(), t.shape.clone()))
-        .collect();
+    let shapes: HashMap<String, Vec<usize>> =
+        tensors.iter().map(|t| (t.name.clone(), t.shape.clone())).collect();
 
     let detector = ArchitectureDetector::new().with_tensors(tensor_names);
     let architecture = detector.detect_from_shapes(&shapes);
@@ -280,16 +276,10 @@ mod tests {
 
     #[test]
     fn test_detect_format() {
-        assert_eq!(
-            detect_format(Path::new("model.safetensors")),
-            ModelFormat::SafeTensors
-        );
+        assert_eq!(detect_format(Path::new("model.safetensors")), ModelFormat::SafeTensors);
         assert_eq!(detect_format(Path::new("model.gguf")), ModelFormat::Gguf);
         assert_eq!(detect_format(Path::new("model.pt")), ModelFormat::PyTorch);
-        assert_eq!(
-            detect_format(Path::new("model.unknown")),
-            ModelFormat::Unknown
-        );
+        assert_eq!(detect_format(Path::new("model.unknown")), ModelFormat::Unknown);
     }
 
     #[test]
@@ -316,10 +306,7 @@ mod tests {
 
     #[test]
     fn test_extract_layer_number() {
-        assert_eq!(
-            extract_layer_number("model.layers.5.self_attn.q_proj.weight"),
-            Some(5)
-        );
+        assert_eq!(extract_layer_number("model.layers.5.self_attn.q_proj.weight"), Some(5));
         assert_eq!(extract_layer_number("model.embed_tokens.weight"), None);
     }
 

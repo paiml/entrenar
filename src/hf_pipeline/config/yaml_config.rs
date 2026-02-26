@@ -37,10 +37,9 @@ pub struct DistillationYamlConfig {
 impl DistillationYamlConfig {
     /// Load configuration from YAML file
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content =
-            std::fs::read_to_string(path.as_ref()).map_err(|e| FetchError::ConfigParseError {
-                message: format!("Failed to read config file: {e}"),
-            })?;
+        let content = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+            FetchError::ConfigParseError { message: format!("Failed to read config file: {e}") }
+        })?;
 
         Self::from_yaml(&content)
     }

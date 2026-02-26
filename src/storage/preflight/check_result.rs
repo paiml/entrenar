@@ -8,10 +8,7 @@ pub enum CheckResult {
     /// Check passed
     Passed { message: String },
     /// Check failed
-    Failed {
-        message: String,
-        details: Option<String>,
-    },
+    Failed { message: String, details: Option<String> },
     /// Check was skipped
     Skipped { reason: String },
     /// Check produced a warning (non-fatal)
@@ -21,39 +18,27 @@ pub enum CheckResult {
 impl CheckResult {
     /// Create a passed result
     pub fn passed(message: impl Into<String>) -> Self {
-        Self::Passed {
-            message: message.into(),
-        }
+        Self::Passed { message: message.into() }
     }
 
     /// Create a failed result
     pub fn failed(message: impl Into<String>) -> Self {
-        Self::Failed {
-            message: message.into(),
-            details: None,
-        }
+        Self::Failed { message: message.into(), details: None }
     }
 
     /// Create a failed result with details
     pub fn failed_with_details(message: impl Into<String>, details: impl Into<String>) -> Self {
-        Self::Failed {
-            message: message.into(),
-            details: Some(details.into()),
-        }
+        Self::Failed { message: message.into(), details: Some(details.into()) }
     }
 
     /// Create a skipped result
     pub fn skipped(reason: impl Into<String>) -> Self {
-        Self::Skipped {
-            reason: reason.into(),
-        }
+        Self::Skipped { reason: reason.into() }
     }
 
     /// Create a warning result
     pub fn warning(message: impl Into<String>) -> Self {
-        Self::Warning {
-            message: message.into(),
-        }
+        Self::Warning { message: message.into() }
     }
 
     /// Check if the result is passed

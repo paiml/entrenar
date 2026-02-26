@@ -81,12 +81,8 @@ fn all_methods_handle_single_element() {
     assert!(slerp_r["w"].data()[0].is_finite());
 
     // DARE
-    let dare_r = dare_merge(
-        &[m1.clone(), m2.clone()],
-        &base,
-        &DareConfig::new(0.0).unwrap(),
-    )
-    .unwrap();
+    let dare_r =
+        dare_merge(&[m1.clone(), m2.clone()], &base, &DareConfig::new(0.0).unwrap()).unwrap();
     assert!((dare_r["w"].data()[0] - 7.5).abs() < 1e-5); // (5+10)/2
 
     // TIES

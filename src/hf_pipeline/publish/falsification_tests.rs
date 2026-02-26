@@ -85,8 +85,7 @@ fn falsify_metric_yaml_keys() {
     // Check that all metric keys are lowercase, no special chars except underscore
     for (key, _) in &card.metrics {
         assert!(
-            key.chars()
-                .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit()),
+            key.chars().all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit()),
             "Metric key should be lowercase+underscore+digits: got '{key}'"
         );
     }
@@ -96,10 +95,7 @@ fn falsify_metric_yaml_keys() {
     assert!(keys.contains(&"wer"), "Should have 'wer' key");
     assert!(keys.contains(&"bleu"), "Should have 'bleu' key");
     assert!(keys.contains(&"perplexity"), "Should have 'perplexity' key");
-    assert!(
-        keys.contains(&"mmlu_accuracy"),
-        "Should have 'mmlu_accuracy' key"
-    );
+    assert!(keys.contains(&"mmlu_accuracy"), "Should have 'mmlu_accuracy' key");
     assert!(keys.contains(&"pass_at_1"), "Should have 'pass_at_1' key");
     assert!(keys.contains(&"ndcg_at_10"), "Should have 'ndcg_at_10' key");
 }
@@ -146,10 +142,7 @@ fn falsify_jsonl_no_inference_time_when_zero() {
 
     let jsonl = format_submission_jsonl(&result);
     let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
-    assert!(
-        parsed.get("inference_time_ms").is_none(),
-        "Should omit inference_time_ms when 0.0"
-    );
+    assert!(parsed.get("inference_time_ms").is_none(), "Should omit inference_time_ms when 0.0");
 }
 
 #[test]
@@ -162,14 +155,8 @@ fn falsify_jsonl_metric_key_format() {
     let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
 
     // Submission uses pass@1 format (not pass_at_1)
-    assert!(
-        parsed.get("pass@1").is_some(),
-        "Submission should use 'pass@1' key, got: {jsonl}"
-    );
-    assert!(
-        parsed.get("ndcg@10").is_some(),
-        "Submission should use 'ndcg@10' key, got: {jsonl}"
-    );
+    assert!(parsed.get("pass@1").is_some(), "Submission should use 'pass@1' key, got: {jsonl}");
+    assert!(parsed.get("ndcg@10").is_some(), "Submission should use 'ndcg@10' key, got: {jsonl}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -238,12 +225,7 @@ fn falsify_model_card_captures_all_metrics() {
     result.add_score(Metric::BLEU, 0.45);
 
     let card = ModelCard::from_eval_result(&result);
-    assert_eq!(
-        card.metrics.len(),
-        3,
-        "Card should have all 3 metrics, got {}",
-        card.metrics.len()
-    );
+    assert_eq!(card.metrics.len(), 3, "Card should have all 3 metrics, got {}", card.metrics.len());
 }
 
 // ═══════════════════════════════════════════════════════════════════════

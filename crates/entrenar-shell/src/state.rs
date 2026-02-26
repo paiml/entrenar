@@ -388,11 +388,8 @@ mod tests {
 
     #[test]
     fn test_session_metrics_fields() {
-        let metrics = SessionMetrics {
-            total_commands: 10,
-            successful_commands: 8,
-            total_duration_ms: 1000,
-        };
+        let metrics =
+            SessionMetrics { total_commands: 10, successful_commands: 8, total_duration_ms: 1000 };
         assert_eq!(metrics.success_rate(), 80.0);
         assert_eq!(metrics.avg_duration_ms(), 100.0);
     }

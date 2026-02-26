@@ -115,14 +115,8 @@ fn test_percentile_calibration() {
     // Percentile should ignore outliers
     // 1% of 102 ≈ 1, 99% ≈ 100
     // So bounds should be close to 0.1 and 9.9 (not -1000 and 1000)
-    assert!(
-        result.observed_min > -100.0,
-        "Should ignore negative outlier"
-    );
-    assert!(
-        result.observed_max < 100.0,
-        "Should ignore positive outlier"
-    );
+    assert!(result.observed_min > -100.0, "Should ignore negative outlier");
+    assert!(result.observed_max < 100.0, "Should ignore positive outlier");
 }
 
 #[test]
@@ -222,13 +216,7 @@ fn test_4bit_calibration() {
 #[test]
 fn test_calibrator_percentile_constructor() {
     let cal = Calibrator::percentile(8, true, 0.01, 99.99, 1000);
-    assert!(
-        cal.method()
-            == &CalibrationMethod::Percentile {
-                lower: 0.01,
-                upper: 99.99
-            }
-    );
+    assert!(cal.method() == &CalibrationMethod::Percentile { lower: 0.01, upper: 99.99 });
 }
 
 #[test]
@@ -289,10 +277,7 @@ fn test_calibration_result_clone() {
 
 #[test]
 fn test_calibration_method_percentile_variant() {
-    let method = CalibrationMethod::Percentile {
-        lower: 0.1,
-        upper: 99.9,
-    };
+    let method = CalibrationMethod::Percentile { lower: 0.1, upper: 99.9 };
     let cloned = method.clone();
     assert_eq!(method, cloned);
 }

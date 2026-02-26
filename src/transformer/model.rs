@@ -31,9 +31,8 @@ pub struct Transformer {
 impl Transformer {
     /// Create new transformer with initialized weights
     pub fn new(config: &TransformerConfig) -> Self {
-        let layers: Vec<TransformerBlock> = (0..config.num_hidden_layers)
-            .map(|i| TransformerBlock::new(config, i))
-            .collect();
+        let layers: Vec<TransformerBlock> =
+            (0..config.num_hidden_layers).map(|i| TransformerBlock::new(config, i)).collect();
 
         Self {
             config: config.clone(),
@@ -67,12 +66,8 @@ impl Transformer {
             .collect();
         let layers = layers?;
 
-        let norm = RMSNorm::from_params(
-            params,
-            "model.norm",
-            config.rms_norm_eps,
-            config.hidden_size,
-        )?;
+        let norm =
+            RMSNorm::from_params(params, "model.norm", config.rms_norm_eps, config.hidden_size)?;
 
         // PMAT-329: Validate lm_head shape if present
         let lm_head = if let Some(tensor) = params.get("lm_head.weight") {
@@ -91,13 +86,7 @@ impl Transformer {
             None
         };
 
-        Some(Self {
-            config: config.clone(),
-            embed_tokens,
-            layers,
-            norm,
-            lm_head,
-        })
+        Some(Self { config: config.clone(), embed_tokens, layers, norm, lm_head })
     }
 
     /// Load transformer from SafeTensors file(s)
@@ -195,15 +184,9 @@ impl Transformer {
             check(&format!("{p}.self_attn.o_proj.weight"), hidden * hidden)?;
 
             // MLP projections
-            check(
-                &format!("{p}.mlp.gate_proj.weight"),
-                hidden * intermediate,
-            )?;
+            check(&format!("{p}.mlp.gate_proj.weight"), hidden * intermediate)?;
             check(&format!("{p}.mlp.up_proj.weight"), hidden * intermediate)?;
-            check(
-                &format!("{p}.mlp.down_proj.weight"),
-                intermediate * hidden,
-            )?;
+            check(&format!("{p}.mlp.down_proj.weight"), intermediate * hidden)?;
         }
 
         Ok(())
@@ -257,13 +240,7 @@ impl Transformer {
         // (seq_len, hidden_size) @ (hidden_size, vocab_size) = (seq_len, vocab_size)
         // Note: If embedding is (vocab_size, hidden_size), we need to transpose
         // For tied weights, we use embedding.T effectively
-        matmul(
-            &normalized,
-            lm_weight,
-            seq_len,
-            hidden_size,
-            self.config.vocab_size,
-        )
+        matmul(&normalized, lm_weight, seq_len, hidden_size, self.config.vocab_size)
     }
 
     /// Forward pass returning hidden states (before lm_head)
@@ -298,7 +275,8 @@ impl Transformer {
         // Extract last position
         let start = (seq_len - 1) * vocab_size;
         let end = start + vocab_size;
-        let last_logits: Vec<f32> = logits.data().as_slice().unwrap()[start..end].to_vec();
+        let last_logits: Vec<f32> =
+            logits.data().as_slice().expect("logits must be contiguous")[start..end].to_vec();
 
         Tensor::from_vec(last_logits, logits.requires_grad())
     }
@@ -565,10 +543,8 @@ mod tests {
         let mut transformer = Transformer::new(&config);
 
         // Add a separate lm_head
-        transformer.lm_head = Some(Tensor::from_vec(
-            vec![0.1; config.hidden_size * config.vocab_size],
-            true,
-        ));
+        transformer.lm_head =
+            Some(Tensor::from_vec(vec![0.1; config.hidden_size * config.vocab_size], true));
 
         let params = transformer.parameters();
         // embed_tokens + norm + (layers * 9) + lm_head
@@ -582,10 +558,8 @@ mod tests {
         let mut transformer = Transformer::new(&config);
 
         // Add a separate lm_head
-        transformer.lm_head = Some(Tensor::from_vec(
-            vec![0.1; config.hidden_size * config.vocab_size],
-            true,
-        ));
+        transformer.lm_head =
+            Some(Tensor::from_vec(vec![0.1; config.hidden_size * config.vocab_size], true));
 
         let tokens = vec![1, 2, 3];
         let logits = transformer.forward(&tokens);
@@ -675,10 +649,7 @@ mod tests {
         );
 
         // WRONG-SHAPE lm_head: 50 elements for hidden*vocab expected
-        params.insert(
-            "lm_head.weight".to_string(),
-            Tensor::from_vec(vec![0.1; 50], true),
-        );
+        params.insert("lm_head.weight".to_string(), Tensor::from_vec(vec![0.1; 50], true));
 
         let transformer = Transformer::from_params(&config, &params);
         // FIXED (PMAT-329): now rejected
@@ -696,10 +667,7 @@ mod tests {
     fn falsify_l2e_tied_embeddings_produce_correct_logit_dims() {
         let config = TransformerConfig::tiny();
         let transformer = Transformer::new(&config);
-        assert!(
-            transformer.lm_head.is_none(),
-            "Default should use tied embeddings"
-        );
+        assert!(transformer.lm_head.is_none(), "Default should use tied embeddings");
 
         let tokens = vec![1, 2, 3];
         let logits = transformer.forward(&tokens);
@@ -713,14 +681,8 @@ mod tests {
         let data = logits.data();
         let nan_count = data.iter().filter(|v| v.is_nan()).count();
         let inf_count = data.iter().filter(|v| v.is_infinite()).count();
-        assert_eq!(
-            nan_count, 0,
-            "FALSIFY-L2e: Tied logits must not contain NaN"
-        );
-        assert_eq!(
-            inf_count, 0,
-            "FALSIFY-L2e: Tied logits must not contain Inf"
-        );
+        assert_eq!(nan_count, 0, "FALSIFY-L2e: Tied logits must not contain NaN");
+        assert_eq!(inf_count, 0, "FALSIFY-L2e: Tied logits must not contain Inf");
     }
 
     /// FALSIFY-L3e: Separate lm_head produces valid logit dimensions
@@ -728,10 +690,8 @@ mod tests {
     fn falsify_l3e_separate_lm_head_produces_correct_logit_dims() {
         let config = TransformerConfig::tiny();
         let mut transformer = Transformer::new(&config);
-        transformer.lm_head = Some(Tensor::from_vec(
-            vec![0.1; config.hidden_size * config.vocab_size],
-            true,
-        ));
+        transformer.lm_head =
+            Some(Tensor::from_vec(vec![0.1; config.hidden_size * config.vocab_size], true));
 
         let tokens = vec![1, 2, 3];
         let logits = transformer.forward(&tokens);
@@ -760,10 +720,8 @@ mod tests {
         let n_without = transformer.parameters().len();
 
         // With lm_head: N+1 params
-        transformer.lm_head = Some(Tensor::from_vec(
-            vec![0.1; config.hidden_size * config.vocab_size],
-            true,
-        ));
+        transformer.lm_head =
+            Some(Tensor::from_vec(vec![0.1; config.hidden_size * config.vocab_size], true));
         let n_with = transformer.parameters().len();
         assert_eq!(
             n_with,
@@ -813,9 +771,7 @@ mod tests {
 
         // Create some logits
         let logits = Tensor::from_vec(
-            (0..seq_len * vocab_size)
-                .map(|i| (i as f32 * 0.01).sin())
-                .collect(),
+            (0..seq_len * vocab_size).map(|i| (i as f32 * 0.01).sin()).collect(),
             true,
         );
 
@@ -866,10 +822,7 @@ mod tests {
         assert!(transformer.lm_head.is_none());
 
         // The weight used for lm_head projection IS embed_tokens.weight
-        let lm_weight = transformer
-            .lm_head
-            .as_ref()
-            .unwrap_or(&transformer.embed_tokens.weight);
+        let lm_weight = transformer.lm_head.as_ref().unwrap_or(&transformer.embed_tokens.weight);
         let embed_weight = &transformer.embed_tokens.weight;
 
         // They must be the same Tensor (same data pointer, not just equal values)
@@ -914,13 +867,8 @@ mod tests {
         // Explicit path: clone embed weight, run hidden states, matmul manually
         let hidden = transformer.forward_hidden(&tokens);
         let w_clone = transformer.embed_tokens.weight.clone();
-        let explicit_logits = matmul(
-            &hidden,
-            &w_clone,
-            tokens.len(),
-            config.hidden_size,
-            config.vocab_size,
-        );
+        let explicit_logits =
+            matmul(&hidden, &w_clone, tokens.len(), config.hidden_size, config.vocab_size);
 
         let tied_data = tied_logits.data();
         let explicit_data = explicit_logits.data();
@@ -951,10 +899,8 @@ mod tests {
         let tied_count = tied.parameters().len();
 
         let mut untied = Transformer::new(&config);
-        untied.lm_head = Some(Tensor::from_vec(
-            vec![0.1; config.hidden_size * config.vocab_size],
-            true,
-        ));
+        untied.lm_head =
+            Some(Tensor::from_vec(vec![0.1; config.hidden_size * config.vocab_size], true));
         let untied_count = untied.parameters().len();
 
         assert_eq!(
@@ -1124,10 +1070,7 @@ mod tests {
 
         // TE-004: all logits finite
         for (i, &l) in logits_data.iter().enumerate() {
-            assert!(
-                l.is_finite(),
-                "FALSIFIED PIPE-001/TE-004: logits[{i}] = {l} not finite"
-            );
+            assert!(l.is_finite(), "FALSIFIED PIPE-001/TE-004: logits[{i}] = {l} not finite");
         }
 
         // Stage 2: Apply softmax per row (the sampling step)
@@ -1152,10 +1095,7 @@ mod tests {
 
             // SM-002: all positive
             for (i, &p) in probs.iter().enumerate() {
-                assert!(
-                    p >= 0.0,
-                    "FALSIFIED PIPE-001/SM-002: row {row} prob[{i}]={p} negative"
-                );
+                assert!(p >= 0.0, "FALSIFIED PIPE-001/SM-002: row {row} prob[{i}]={p} negative");
             }
 
             // SM-003: argmax preserved
@@ -1206,9 +1146,7 @@ mod tests {
 
             // Helper to create f32 bytes
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n)
-                    .flat_map(|v| v.to_le_bytes())
-                    .collect()
+                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
             };
 
             // Embedding
@@ -1285,8 +1223,7 @@ mod tests {
             let views: Vec<TensorView<'_>> = tensors_data
                 .iter()
                 .map(|(_, bytes, shape)| {
-                    TensorView::new(Dtype::F32, shape.clone(), bytes)
-                        .expect("valid tensor view")
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).expect("valid tensor view")
                 })
                 .collect();
 
@@ -1389,8 +1326,7 @@ mod tests {
             let views: Vec<TensorView<'_>> = tensors_data
                 .iter()
                 .map(|(_, bytes, shape)| {
-                    TensorView::new(Dtype::BF16, shape.clone(), bytes)
-                        .expect("valid tensor view")
+                    TensorView::new(Dtype::BF16, shape.clone(), bytes).expect("valid tensor view")
                 })
                 .collect();
 
@@ -1419,7 +1355,11 @@ mod tests {
             let config = TransformerConfig::tiny();
 
             let result = Transformer::from_safetensors(dir.path(), &config);
-            assert!(result.is_ok(), "from_safetensors should succeed: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string()));
+            assert!(
+                result.is_ok(),
+                "from_safetensors should succeed: {}",
+                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+            );
 
             let transformer = result.expect("validated above");
             assert_eq!(transformer.layers.len(), config.num_hidden_layers);
@@ -1435,7 +1375,8 @@ mod tests {
             let result = Transformer::from_safetensors(dir.path(), &config);
             assert!(
                 result.is_ok(),
-                "BF16 loading should succeed: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string())
+                "BF16 loading should succeed: {}",
+                result.as_ref().err().map_or(String::new(), |e| e.to_string())
             );
 
             let transformer = result.expect("validated above");
@@ -1461,7 +1402,8 @@ mod tests {
             let result = Transformer::from_safetensors(&file_path, &config);
             assert!(
                 result.is_ok(),
-                "Direct file path should work: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string())
+                "Direct file path should work: {}",
+                result.as_ref().err().map_or(String::new(), |e| e.to_string())
             );
         }
 
@@ -1471,8 +1413,8 @@ mod tests {
             create_tiny_safetensors(dir.path());
             let config = TransformerConfig::tiny();
 
-            let transformer = Transformer::from_safetensors(dir.path(), &config)
-                .expect("loading should succeed");
+            let transformer =
+                Transformer::from_safetensors(dir.path(), &config).expect("loading should succeed");
 
             // Run forward pass
             let tokens = vec![0u32, 5, 42, 99];
@@ -1497,7 +1439,10 @@ mod tests {
 
             let result = Transformer::from_safetensors(dir.path(), &config);
             assert!(result.is_err());
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
             assert!(
                 err_msg.contains("No SafeTensors files"),
                 "Error should mention missing files: {err_msg}"
@@ -1515,9 +1460,8 @@ mod tests {
             let hidden = config.hidden_size;
 
             // Create a file with wrong embedding shape
-            let wrong_embed_bytes: Vec<u8> = std::iter::repeat_n(0.01_f32, 42)
-                .flat_map(|v| v.to_le_bytes())
-                .collect();
+            let wrong_embed_bytes: Vec<u8> =
+                std::iter::repeat_n(0.01_f32, 42).flat_map(|v| v.to_le_bytes()).collect();
 
             // We need at least embedding + norm + 2 layers to pass validate_weights.
             // But the embedding shape is wrong, so validate_weight_shapes should catch it.
@@ -1529,53 +1473,82 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n)
-                    .flat_map(|v| v.to_le_bytes())
-                    .collect()
+                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
             };
 
             // WRONG: embedding has 42 elements instead of vocab * hidden
-            td.push((
-                "model.embed_tokens.weight".to_string(),
-                wrong_embed_bytes,
-                vec![42],
-            ));
-            td.push((
-                "model.norm.weight".to_string(),
-                make_f32(hidden, 1.0),
-                vec![hidden],
-            ));
+            td.push(("model.embed_tokens.weight".to_string(), wrong_embed_bytes, vec![42]));
+            td.push(("model.norm.weight".to_string(), make_f32(hidden, 1.0), vec![hidden]));
 
             for i in 0..config.num_hidden_layers {
                 let p = format!("model.layers.{i}");
-                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+                td.push((
+                    format!("{p}.input_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.post_attention_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.q_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.k_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.v_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.o_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.gate_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.up_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.down_proj.weight"),
+                    make_f32(intermediate * hidden, 0.01),
+                    vec![hidden, intermediate],
+                ));
             }
 
             let views: Vec<TensorView<'_>> = td
                 .iter()
-                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .map(|(_, bytes, shape)| {
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view")
+                })
                 .collect();
-            let named: Vec<(&str, &TensorView<'_>)> = td
-                .iter()
-                .zip(views.iter())
-                .map(|((n, _, _), v)| (n.as_str(), v))
-                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> =
+                td.iter().zip(views.iter()).map(|((n, _, _), v)| (n.as_str(), v)).collect();
 
             let file_path = dir.path().join("model.safetensors");
-            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            let serialized =
+                serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
             std::fs::write(&file_path, serialized).expect("write");
 
             let result = Transformer::from_safetensors(dir.path(), &config);
             assert!(result.is_err(), "Wrong embedding shape should fail");
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
             assert!(
                 err_msg.contains("Shape mismatch") || err_msg.contains("embed_tokens"),
                 "Error should indicate shape issue: {err_msg}"
@@ -1598,9 +1571,7 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n)
-                    .flat_map(|v| v.to_le_bytes())
-                    .collect()
+                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
             };
 
             // Embedding with NaN injected
@@ -1608,51 +1579,79 @@ mod tests {
             embed_vals[42] = f32::NAN;
             let embed_bytes: Vec<u8> = embed_vals.iter().flat_map(|v| v.to_le_bytes()).collect();
 
-            td.push((
-                "model.embed_tokens.weight".to_string(),
-                embed_bytes,
-                vec![vocab, hidden],
-            ));
-            td.push((
-                "model.norm.weight".to_string(),
-                make_f32(hidden, 1.0),
-                vec![hidden],
-            ));
+            td.push(("model.embed_tokens.weight".to_string(), embed_bytes, vec![vocab, hidden]));
+            td.push(("model.norm.weight".to_string(), make_f32(hidden, 1.0), vec![hidden]));
 
             for i in 0..config.num_hidden_layers {
                 let p = format!("model.layers.{i}");
-                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+                td.push((
+                    format!("{p}.input_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.post_attention_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.q_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.k_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.v_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.o_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.gate_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.up_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.down_proj.weight"),
+                    make_f32(intermediate * hidden, 0.01),
+                    vec![hidden, intermediate],
+                ));
             }
 
             let views: Vec<TensorView<'_>> = td
                 .iter()
-                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .map(|(_, bytes, shape)| {
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view")
+                })
                 .collect();
-            let named: Vec<(&str, &TensorView<'_>)> = td
-                .iter()
-                .zip(views.iter())
-                .map(|((n, _, _), v)| (n.as_str(), v))
-                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> =
+                td.iter().zip(views.iter()).map(|((n, _, _), v)| (n.as_str(), v)).collect();
 
             let file_path = dir.path().join("model.safetensors");
-            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            let serialized =
+                serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
             std::fs::write(&file_path, serialized).expect("write");
 
             let result = Transformer::from_safetensors(dir.path(), &config);
             assert!(result.is_err(), "NaN in weights should fail");
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
-            assert!(
-                err_msg.contains("NaN"),
-                "Error should mention NaN: {err_msg}"
-            );
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
+            assert!(err_msg.contains("NaN"), "Error should mention NaN: {err_msg}");
         }
 
         // -----------------------------------------------------------------
@@ -1671,9 +1670,7 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n)
-                    .flat_map(|v| v.to_le_bytes())
-                    .collect()
+                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
             };
 
             // norm with Inf injected
@@ -1686,46 +1683,78 @@ mod tests {
                 make_f32(vocab * hidden, 0.01),
                 vec![vocab, hidden],
             ));
-            td.push((
-                "model.norm.weight".to_string(),
-                norm_bytes,
-                vec![hidden],
-            ));
+            td.push(("model.norm.weight".to_string(), norm_bytes, vec![hidden]));
 
             for i in 0..config.num_hidden_layers {
                 let p = format!("model.layers.{i}");
-                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+                td.push((
+                    format!("{p}.input_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.post_attention_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.q_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.k_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.v_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.o_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.gate_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.up_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.down_proj.weight"),
+                    make_f32(intermediate * hidden, 0.01),
+                    vec![hidden, intermediate],
+                ));
             }
 
             let views: Vec<TensorView<'_>> = td
                 .iter()
-                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .map(|(_, bytes, shape)| {
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view")
+                })
                 .collect();
-            let named: Vec<(&str, &TensorView<'_>)> = td
-                .iter()
-                .zip(views.iter())
-                .map(|((n, _, _), v)| (n.as_str(), v))
-                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> =
+                td.iter().zip(views.iter()).map(|((n, _, _), v)| (n.as_str(), v)).collect();
 
             let file_path = dir.path().join("model.safetensors");
-            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            let serialized =
+                serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
             std::fs::write(&file_path, serialized).expect("write");
 
             let result = Transformer::from_safetensors(dir.path(), &config);
             assert!(result.is_err(), "Inf in weights should fail");
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
-            assert!(
-                err_msg.contains("Inf"),
-                "Error should mention Inf: {err_msg}"
-            );
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
+            assert!(err_msg.contains("Inf"), "Error should mention Inf: {err_msg}");
         }
 
         // -----------------------------------------------------------------
@@ -1744,7 +1773,10 @@ mod tests {
 
             let result = Transformer::from_safetensors(dir.path(), &config);
             assert!(result.is_err(), "Missing layer 2 should fail");
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
             assert!(
                 err_msg.contains("Missing") || err_msg.contains("layers.2"),
                 "Error should mention missing layer: {err_msg}"
@@ -1767,50 +1799,91 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n)
-                    .flat_map(|v| v.to_le_bytes())
-                    .collect()
+                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
             };
 
-            td.push(("model.embed_tokens.weight".to_string(), make_f32(vocab * hidden, 0.01), vec![vocab, hidden]));
+            td.push((
+                "model.embed_tokens.weight".to_string(),
+                make_f32(vocab * hidden, 0.01),
+                vec![vocab, hidden],
+            ));
             td.push(("model.norm.weight".to_string(), make_f32(hidden, 1.0), vec![hidden]));
 
             for i in 0..config.num_hidden_layers {
                 let p = format!("model.layers.{i}");
-                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
+                td.push((
+                    format!("{p}.input_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.post_attention_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
 
                 // WRONG: q_proj has 7 elements instead of hidden*hidden
                 if i == 0 {
                     td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(7, 0.01), vec![7]));
                 } else {
-                    td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
+                    td.push((
+                        format!("{p}.self_attn.q_proj.weight"),
+                        make_f32(hidden * hidden, 0.01),
+                        vec![hidden, hidden],
+                    ));
                 }
-                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+                td.push((
+                    format!("{p}.self_attn.k_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.v_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.o_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.gate_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.up_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.down_proj.weight"),
+                    make_f32(intermediate * hidden, 0.01),
+                    vec![hidden, intermediate],
+                ));
             }
 
             let views: Vec<TensorView<'_>> = td
                 .iter()
-                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .map(|(_, bytes, shape)| {
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view")
+                })
                 .collect();
-            let named: Vec<(&str, &TensorView<'_>)> = td
-                .iter()
-                .zip(views.iter())
-                .map(|((n, _, _), v)| (n.as_str(), v))
-                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> =
+                td.iter().zip(views.iter()).map(|((n, _, _), v)| (n.as_str(), v)).collect();
 
             let file_path = dir.path().join("model.safetensors");
-            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            let serialized =
+                serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
             std::fs::write(&file_path, serialized).expect("write");
 
             let result = Transformer::from_safetensors(dir.path(), &config);
             assert!(result.is_err(), "Wrong q_proj shape should fail");
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
             assert!(
                 err_msg.contains("Shape mismatch") && err_msg.contains("q_proj"),
                 "Error should mention q_proj shape mismatch: {err_msg}"
@@ -1830,24 +1903,59 @@ mod tests {
             let vocab = config.vocab_size;
 
             let mut weights = HashMap::new();
-            weights.insert("model.embed_tokens.weight".to_string(), Tensor::from_vec(vec![0.1; vocab * hidden], true));
-            weights.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden], true));
+            weights.insert(
+                "model.embed_tokens.weight".to_string(),
+                Tensor::from_vec(vec![0.1; vocab * hidden], true),
+            );
+            weights
+                .insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden], true));
 
             for i in 0..config.num_hidden_layers {
                 let p = format!("model.layers.{i}");
-                weights.insert(format!("{p}.input_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden], true));
-                weights.insert(format!("{p}.post_attention_layernorm.weight"), Tensor::from_vec(vec![1.0; hidden], true));
-                weights.insert(format!("{p}.self_attn.q_proj.weight"), Tensor::from_vec(vec![0.1; hidden * hidden], true));
-                weights.insert(format!("{p}.self_attn.k_proj.weight"), Tensor::from_vec(vec![0.1; hidden * kv_hidden], true));
-                weights.insert(format!("{p}.self_attn.v_proj.weight"), Tensor::from_vec(vec![0.1; hidden * kv_hidden], true));
-                weights.insert(format!("{p}.self_attn.o_proj.weight"), Tensor::from_vec(vec![0.1; hidden * hidden], true));
-                weights.insert(format!("{p}.mlp.gate_proj.weight"), Tensor::from_vec(vec![0.1; hidden * intermediate], true));
-                weights.insert(format!("{p}.mlp.up_proj.weight"), Tensor::from_vec(vec![0.1; hidden * intermediate], true));
-                weights.insert(format!("{p}.mlp.down_proj.weight"), Tensor::from_vec(vec![0.1; intermediate * hidden], true));
+                weights.insert(
+                    format!("{p}.input_layernorm.weight"),
+                    Tensor::from_vec(vec![1.0; hidden], true),
+                );
+                weights.insert(
+                    format!("{p}.post_attention_layernorm.weight"),
+                    Tensor::from_vec(vec![1.0; hidden], true),
+                );
+                weights.insert(
+                    format!("{p}.self_attn.q_proj.weight"),
+                    Tensor::from_vec(vec![0.1; hidden * hidden], true),
+                );
+                weights.insert(
+                    format!("{p}.self_attn.k_proj.weight"),
+                    Tensor::from_vec(vec![0.1; hidden * kv_hidden], true),
+                );
+                weights.insert(
+                    format!("{p}.self_attn.v_proj.weight"),
+                    Tensor::from_vec(vec![0.1; hidden * kv_hidden], true),
+                );
+                weights.insert(
+                    format!("{p}.self_attn.o_proj.weight"),
+                    Tensor::from_vec(vec![0.1; hidden * hidden], true),
+                );
+                weights.insert(
+                    format!("{p}.mlp.gate_proj.weight"),
+                    Tensor::from_vec(vec![0.1; hidden * intermediate], true),
+                );
+                weights.insert(
+                    format!("{p}.mlp.up_proj.weight"),
+                    Tensor::from_vec(vec![0.1; hidden * intermediate], true),
+                );
+                weights.insert(
+                    format!("{p}.mlp.down_proj.weight"),
+                    Tensor::from_vec(vec![0.1; intermediate * hidden], true),
+                );
             }
 
             let result = Transformer::validate_weight_shapes(&weights, &config);
-            assert!(result.is_ok(), "Valid shapes should pass: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string()));
+            assert!(
+                result.is_ok(),
+                "Valid shapes should pass: {}",
+                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+            );
         }
 
         #[test]
@@ -1857,13 +1965,19 @@ mod tests {
             let vocab = config.vocab_size;
 
             let mut weights = HashMap::new();
-            weights.insert("model.embed_tokens.weight".to_string(), Tensor::from_vec(vec![0.1; vocab * hidden], true));
+            weights.insert(
+                "model.embed_tokens.weight".to_string(),
+                Tensor::from_vec(vec![0.1; vocab * hidden], true),
+            );
             // Wrong norm size: 3 instead of hidden
             weights.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; 3], true));
 
             let result = Transformer::validate_weight_shapes(&weights, &config);
             assert!(result.is_err());
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
             assert!(err_msg.contains("model.norm.weight"));
         }
 
@@ -1885,11 +1999,15 @@ mod tests {
         fn test_ssc024_validate_weight_values_nan() {
             let mut weights = HashMap::new();
             weights.insert("clean".to_string(), Tensor::from_vec(vec![0.1, 0.2], true));
-            weights.insert("poisoned".to_string(), Tensor::from_vec(vec![0.1, f32::NAN, 0.3], true));
+            weights
+                .insert("poisoned".to_string(), Tensor::from_vec(vec![0.1, f32::NAN, 0.3], true));
 
             let result = Transformer::validate_weight_values(&weights);
             assert!(result.is_err());
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
             assert!(err_msg.contains("NaN"));
             assert!(err_msg.contains("poisoned"));
         }
@@ -1901,7 +2019,10 @@ mod tests {
 
             let result = Transformer::validate_weight_values(&weights);
             assert!(result.is_err());
-            let err_msg = match result { Err(e) => e.to_string(), Ok(_) => panic!("expected error") };
+            let err_msg = match result {
+                Err(e) => e.to_string(),
+                Ok(_) => panic!("expected error"),
+            };
             assert!(err_msg.contains("Inf"));
         }
 
@@ -1924,49 +2045,103 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n)
-                    .flat_map(|v| v.to_le_bytes())
-                    .collect()
+                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
             };
 
-            td.push(("model.embed_tokens.weight".to_string(), make_f32(vocab * hidden, 0.01), vec![vocab, hidden]));
+            td.push((
+                "model.embed_tokens.weight".to_string(),
+                make_f32(vocab * hidden, 0.01),
+                vec![vocab, hidden],
+            ));
             td.push(("model.norm.weight".to_string(), make_f32(hidden, 1.0), vec![hidden]));
 
             for i in 0..config.num_hidden_layers {
                 let p = format!("model.layers.{i}");
-                td.push((format!("{p}.input_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.post_attention_layernorm.weight"), make_f32(hidden, 1.0), vec![hidden]));
-                td.push((format!("{p}.self_attn.q_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.self_attn.k_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.v_proj.weight"), make_f32(hidden * kv_hidden, 0.01), vec![kv_hidden, hidden]));
-                td.push((format!("{p}.self_attn.o_proj.weight"), make_f32(hidden * hidden, 0.01), vec![hidden, hidden]));
-                td.push((format!("{p}.mlp.gate_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.up_proj.weight"), make_f32(hidden * intermediate, 0.01), vec![intermediate, hidden]));
-                td.push((format!("{p}.mlp.down_proj.weight"), make_f32(intermediate * hidden, 0.01), vec![hidden, intermediate]));
+                td.push((
+                    format!("{p}.input_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.post_attention_layernorm.weight"),
+                    make_f32(hidden, 1.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.q_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.k_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.v_proj.weight"),
+                    make_f32(hidden * kv_hidden, 0.01),
+                    vec![kv_hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.o_proj.weight"),
+                    make_f32(hidden * hidden, 0.01),
+                    vec![hidden, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.gate_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.up_proj.weight"),
+                    make_f32(hidden * intermediate, 0.01),
+                    vec![intermediate, hidden],
+                ));
+                td.push((
+                    format!("{p}.mlp.down_proj.weight"),
+                    make_f32(intermediate * hidden, 0.01),
+                    vec![hidden, intermediate],
+                ));
 
                 // Qwen2-style bias tensors
-                td.push((format!("{p}.self_attn.q_proj.bias"), make_f32(hidden, 0.0), vec![hidden]));
-                td.push((format!("{p}.self_attn.k_proj.bias"), make_f32(kv_hidden, 0.0), vec![kv_hidden]));
-                td.push((format!("{p}.self_attn.v_proj.bias"), make_f32(kv_hidden, 0.0), vec![kv_hidden]));
+                td.push((
+                    format!("{p}.self_attn.q_proj.bias"),
+                    make_f32(hidden, 0.0),
+                    vec![hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.k_proj.bias"),
+                    make_f32(kv_hidden, 0.0),
+                    vec![kv_hidden],
+                ));
+                td.push((
+                    format!("{p}.self_attn.v_proj.bias"),
+                    make_f32(kv_hidden, 0.0),
+                    vec![kv_hidden],
+                ));
             }
 
             let views: Vec<TensorView<'_>> = td
                 .iter()
-                .map(|(_, bytes, shape)| TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view"))
+                .map(|(_, bytes, shape)| {
+                    TensorView::new(Dtype::F32, shape.clone(), bytes).expect("view")
+                })
                 .collect();
-            let named: Vec<(&str, &TensorView<'_>)> = td
-                .iter()
-                .zip(views.iter())
-                .map(|((n, _, _), v)| (n.as_str(), v))
-                .collect();
+            let named: Vec<(&str, &TensorView<'_>)> =
+                td.iter().zip(views.iter()).map(|((n, _, _), v)| (n.as_str(), v)).collect();
 
             let file_path = dir.path().join("model.safetensors");
-            let serialized = serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
+            let serialized =
+                serialize(named, None::<std::collections::HashMap<String, String>>).expect("ser");
             std::fs::write(&file_path, serialized).expect("write");
 
             // Should succeed even with extra bias tensors
             let result = Transformer::from_safetensors(dir.path(), &config);
-            assert!(result.is_ok(), "Extra bias tensors should not cause failure: {}", result.as_ref().err().map_or(String::new(), |e| e.to_string()));
+            assert!(
+                result.is_ok(),
+                "Extra bias tensors should not cause failure: {}",
+                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+            );
         }
     }
 }

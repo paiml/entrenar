@@ -35,11 +35,7 @@ impl MergedModel {
             .iter()
             .map(|(name, data)| {
                 let bytes: Vec<u8> = bytemuck::cast_slice(data).to_vec();
-                let shape = self
-                    .shapes
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| vec![data.len()]);
+                let shape = self.shapes.get(name).cloned().unwrap_or_else(|| vec![data.len()]);
                 (name.clone(), bytes, shape)
             })
             .collect();
@@ -47,7 +43,8 @@ impl MergedModel {
         let views: Vec<(&str, TensorView<'_>)> = tensor_data
             .iter()
             .map(|(name, bytes, shape)| {
-                let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+                let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+                    .expect("TensorView construction must not fail for valid F32 data");
                 (name.as_str(), view)
             })
             .collect();
@@ -79,11 +76,7 @@ pub fn merge_and_collect(layers: &[(&str, &LoRALayer)]) -> MergedModel {
         tensors.insert(name.to_string(), data);
     }
 
-    MergedModel {
-        layers_merged: layers.len(),
-        tensors,
-        shapes,
-    }
+    MergedModel { layers_merged: layers.len(), tensors, shapes }
 }
 
 /// Merge QLoRA layers into f32 weights and collect as merged model
@@ -99,11 +92,7 @@ pub fn merge_qlora_and_collect(layers: &[(&str, &QLoRALayer)]) -> MergedModel {
         tensors.insert(name.to_string(), data);
     }
 
-    MergedModel {
-        layers_merged: layers.len(),
-        tensors,
-        shapes,
-    }
+    MergedModel { layers_merged: layers.len(), tensors, shapes }
 }
 
 #[cfg(test)]

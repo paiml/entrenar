@@ -7,14 +7,10 @@ use crate::Tensor;
 #[allow(dead_code)]
 pub fn rebatch(batches: Vec<Batch>, batch_size: usize) -> Vec<Batch> {
     // Flatten all data
-    let all_inputs: Vec<f32> = batches
-        .iter()
-        .flat_map(|b| b.inputs.data().iter().copied())
-        .collect();
-    let all_targets: Vec<f32> = batches
-        .iter()
-        .flat_map(|b| b.targets.data().iter().copied())
-        .collect();
+    let all_inputs: Vec<f32> =
+        batches.iter().flat_map(|b| b.inputs.data().iter().copied()).collect();
+    let all_targets: Vec<f32> =
+        batches.iter().flat_map(|b| b.targets.data().iter().copied()).collect();
 
     if all_inputs.is_empty() {
         return Vec::new();

@@ -80,11 +80,7 @@ pub fn export_sparse_model(
 
         tensor_infos.push(TensorSparsityInfo {
             name: (*name).clone(),
-            sparsity: if total > 0 {
-                zero_count as f32 / total as f32
-            } else {
-                0.0
-            },
+            sparsity: if total > 0 { zero_count as f32 / total as f32 } else { 0.0 },
             zero_count,
             total_count: total,
         });
@@ -93,11 +89,8 @@ pub fn export_sparse_model(
         total_elements += total;
     }
 
-    let global_sparsity = if total_elements > 0 {
-        total_zeros as f32 / total_elements as f32
-    } else {
-        0.0
-    };
+    let global_sparsity =
+        if total_elements > 0 { total_zeros as f32 / total_elements as f32 } else { 0.0 };
 
     // Build metadata
     let metadata = SparsityMetadata {
@@ -118,10 +111,7 @@ pub fn export_sparse_model(
             .map(|name| {
                 let data = &weights[*name];
                 let bytes: Vec<u8> = bytemuck::cast_slice(data).to_vec();
-                let shape = shapes
-                    .get(*name)
-                    .cloned()
-                    .unwrap_or_else(|| vec![data.len()]);
+                let shape = shapes.get(*name).cloned().unwrap_or_else(|| vec![data.len()]);
                 ((*name).clone(), bytes, shape)
             })
             .collect();
@@ -129,7 +119,8 @@ pub fn export_sparse_model(
         let views: Vec<(&str, TensorView<'_>)> = tensor_data
             .iter()
             .map(|(name, bytes, shape)| {
-                let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+                let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+                    .expect("TensorView construction must not fail for valid F32 data");
                 (name.as_str(), view)
             })
             .collect();
@@ -181,14 +172,9 @@ mod tests {
         let metrics = PruningMetrics::new(0.5);
         let tmp = TempDir::new().unwrap();
 
-        let result = export_sparse_model(
-            &weights,
-            &shapes,
-            &metrics,
-            tmp.path(),
-            "sparse.safetensors",
-        )
-        .unwrap();
+        let result =
+            export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors")
+                .unwrap();
 
         assert!(result.weights_path.exists());
         assert!(result.metadata_path.exists());
@@ -202,14 +188,7 @@ mod tests {
         metrics.update_sparsity(5, 10);
         let tmp = TempDir::new().unwrap();
 
-        export_sparse_model(
-            &weights,
-            &shapes,
-            &metrics,
-            tmp.path(),
-            "sparse.safetensors",
-        )
-        .unwrap();
+        export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors").unwrap();
 
         let json = std::fs::read_to_string(tmp.path().join("sparsity_metadata.json")).unwrap();
         let meta: SparsityMetadata = serde_json::from_str(&json).unwrap();
@@ -226,33 +205,18 @@ mod tests {
         let metrics = PruningMetrics::new(0.5);
         let tmp = TempDir::new().unwrap();
 
-        export_sparse_model(
-            &weights,
-            &shapes,
-            &metrics,
-            tmp.path(),
-            "sparse.safetensors",
-        )
-        .unwrap();
+        export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors").unwrap();
 
         let json = std::fs::read_to_string(tmp.path().join("sparsity_metadata.json")).unwrap();
         let meta: SparsityMetadata = serde_json::from_str(&json).unwrap();
 
         // layer.0.bias should have 0% sparsity
-        let bias_info = meta
-            .tensors
-            .iter()
-            .find(|t| t.name == "layer.0.bias")
-            .unwrap();
+        let bias_info = meta.tensors.iter().find(|t| t.name == "layer.0.bias").unwrap();
         assert_eq!(bias_info.sparsity, 0.0);
         assert_eq!(bias_info.zero_count, 0);
 
         // layer.0.weight should have 5/8 = 62.5% sparsity
-        let weight_info = meta
-            .tensors
-            .iter()
-            .find(|t| t.name == "layer.0.weight")
-            .unwrap();
+        let weight_info = meta.tensors.iter().find(|t| t.name == "layer.0.weight").unwrap();
         assert!(weight_info.sparsity > 0.5);
         assert_eq!(weight_info.zero_count, 5);
     }
@@ -263,14 +227,9 @@ mod tests {
         let metrics = PruningMetrics::new(0.5);
         let tmp = TempDir::new().unwrap();
 
-        let result = export_sparse_model(
-            &weights,
-            &shapes,
-            &metrics,
-            tmp.path(),
-            "sparse.safetensors",
-        )
-        .unwrap();
+        let result =
+            export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors")
+                .unwrap();
 
         // Verify safetensors is valid
         let data = std::fs::read(&result.weights_path).unwrap();

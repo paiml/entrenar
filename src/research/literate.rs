@@ -30,11 +30,7 @@ pub struct CodeBlock {
 impl CodeBlock {
     /// Create a new code block
     pub fn new(content: impl Into<String>, line_number: usize) -> Self {
-        Self {
-            language: None,
-            content: content.into(),
-            line_number,
-        }
+        Self { language: None, content: content.into(), line_number }
     }
 
     /// Set the language
@@ -176,19 +172,12 @@ fn extract_blocks_with_regex(content: &str, pattern: &Regex) -> Vec<CodeBlock> {
     let mut blocks = Vec::new();
 
     for cap in pattern.captures_iter(content) {
-        let full_match = cap.get(0).unwrap();
+        let full_match = cap.get(0).expect("capture group 0 always exists in a regex match");
         let lang = cap.get(1).map(|m| m.as_str().to_string());
-        let code = cap
-            .get(2)
-            .map(|m| m.as_str().to_string())
-            .unwrap_or_default();
+        let code = cap.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
 
         // Calculate line number
-        let line_number = content[..full_match.start()]
-            .chars()
-            .filter(|&c| c == '\n')
-            .count()
-            + 1;
+        let line_number = content[..full_match.start()].chars().filter(|&c| c == '\n').count() + 1;
 
         let mut block = CodeBlock::new(code.trim_end(), line_number);
         if let Some(l) = lang {

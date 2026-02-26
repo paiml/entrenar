@@ -91,12 +91,7 @@ impl FeedForward {
             }
         }
 
-        Some(Self {
-            config: config.clone(),
-            w_gate,
-            w_up,
-            w_down,
-        })
+        Some(Self { config: config.clone(), w_gate, w_up, w_down })
     }
 
     /// Forward pass with SwiGLU activation
@@ -124,13 +119,7 @@ impl FeedForward {
         let hidden = crate::autograd::mul(&gate_activated, &up);
 
         // Down projection: (seq_len, intermediate) @ (intermediate, hidden) = (seq_len, hidden)
-        matmul(
-            &hidden,
-            &self.w_down,
-            seq_len,
-            intermediate_size,
-            hidden_size,
-        )
+        matmul(&hidden, &self.w_down, seq_len, intermediate_size, hidden_size)
     }
 
     /// Get all parameters as a vector
@@ -178,18 +167,9 @@ mod tests {
     fn test_ffn_weight_sizes() {
         let config = TransformerConfig::tiny();
         let ffn = FeedForward::new(&config);
-        assert_eq!(
-            ffn.w_gate.len(),
-            config.hidden_size * config.intermediate_size
-        );
-        assert_eq!(
-            ffn.w_up.len(),
-            config.hidden_size * config.intermediate_size
-        );
-        assert_eq!(
-            ffn.w_down.len(),
-            config.intermediate_size * config.hidden_size
-        );
+        assert_eq!(ffn.w_gate.len(), config.hidden_size * config.intermediate_size);
+        assert_eq!(ffn.w_up.len(), config.hidden_size * config.intermediate_size);
+        assert_eq!(ffn.w_down.len(), config.intermediate_size * config.hidden_size);
     }
 
     #[test]
@@ -266,10 +246,7 @@ mod tests {
 
         let mut params = HashMap::new();
         // WRONG: gate_proj has 42 elements instead of hidden*intermediate
-        params.insert(
-            "ffn.gate_proj.weight".to_string(),
-            Tensor::from_vec(vec![0.1; 42], true),
-        );
+        params.insert("ffn.gate_proj.weight".to_string(), Tensor::from_vec(vec![0.1; 42], true));
         params.insert(
             "ffn.up_proj.weight".to_string(),
             Tensor::from_vec(vec![0.1; hidden_size * intermediate_size], true),
@@ -402,9 +379,7 @@ mod tests {
         for scale in [0.1, 1.0, 2.0] {
             let ffn = FeedForward::new(&config);
             let x = Tensor::from_vec(
-                (0..2 * config.hidden_size)
-                    .map(|i| (i as f32 * 0.01).sin() * scale)
-                    .collect(),
+                (0..2 * config.hidden_size).map(|i| (i as f32 * 0.01).sin() * scale).collect(),
                 true,
             );
             let mut output = ffn.forward(&x, 2);
@@ -477,10 +452,7 @@ mod tests {
 
         // Gradients should have accumulated (different from first)
         assert!(
-            grad2
-                .iter()
-                .zip(grad1.iter())
-                .any(|(g2, g1)| g2.abs() != g1.abs()),
+            grad2.iter().zip(grad1.iter()).any(|(g2, g1)| g2.abs() != g1.abs()),
             "Gradients should accumulate across backward passes"
         );
     }

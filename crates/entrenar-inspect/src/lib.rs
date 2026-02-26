@@ -73,24 +73,15 @@ mod tests {
 
     #[test]
     fn test_output_format_parsing() {
-        assert_eq!(
-            "safetensors".parse::<OutputFormat>().unwrap(),
-            OutputFormat::SafeTensors
-        );
+        assert_eq!("safetensors".parse::<OutputFormat>().unwrap(), OutputFormat::SafeTensors);
         assert_eq!("GGUF".parse::<OutputFormat>().unwrap(), OutputFormat::Gguf);
         assert_eq!("apr".parse::<OutputFormat>().unwrap(), OutputFormat::Apr);
     }
 
     #[test]
     fn test_output_format_st_alias() {
-        assert_eq!(
-            "st".parse::<OutputFormat>().unwrap(),
-            OutputFormat::SafeTensors
-        );
-        assert_eq!(
-            "ST".parse::<OutputFormat>().unwrap(),
-            OutputFormat::SafeTensors
-        );
+        assert_eq!("st".parse::<OutputFormat>().unwrap(), OutputFormat::SafeTensors);
+        assert_eq!("ST".parse::<OutputFormat>().unwrap(), OutputFormat::SafeTensors);
     }
 
     #[test]

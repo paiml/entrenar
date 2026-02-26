@@ -173,10 +173,7 @@ mod tests {
         let targets = Tensor::from_vec(vec![1.0, 0.0, 1.0, 0.0, 1.0], false);
 
         let loss = loss_fn.forward(&logits, &targets);
-        assert!(
-            loss.data()[0] < 0.01,
-            "Perfect prediction should have near-zero loss"
-        );
+        assert!(loss.data()[0] < 0.01, "Perfect prediction should have near-zero loss");
     }
 
     #[test]
@@ -187,10 +184,7 @@ mod tests {
         let targets = Tensor::from_vec(vec![1.0, 0.0, 1.0], false);
 
         let loss = loss_fn.forward(&logits, &targets);
-        assert!(
-            loss.data()[0] > 10.0,
-            "Wrong prediction should have high loss"
-        );
+        assert!(loss.data()[0] > 10.0, "Wrong prediction should have high loss");
     }
 
     #[test]
@@ -206,15 +200,9 @@ mod tests {
 
         let grad = logits.grad().unwrap();
         // For target=1 with positive logit: grad should be negative (push logit higher)
-        assert!(
-            grad[0] < 0.0,
-            "grad[0] should be negative (target=1, logit=2.0)"
-        );
+        assert!(grad[0] < 0.0, "grad[0] should be negative (target=1, logit=2.0)");
         // For target=0 with negative logit: grad should be positive (push logit lower)
-        assert!(
-            grad[1] > 0.0,
-            "grad[1] should be positive (target=0, logit=-1.0)"
-        );
+        assert!(grad[1] > 0.0, "grad[1] should be positive (target=0, logit=-1.0)");
         // All gradients finite
         for g in &grad {
             assert!(g.is_finite());
@@ -267,14 +255,8 @@ mod tests {
         let targets = Tensor::from_vec(vec![1.0, 1.0, 1.0], false);
 
         let loss = loss_fn.forward(&logits, &targets);
-        assert!(
-            loss.data()[0].is_finite(),
-            "Must be stable for large positive logits"
-        );
-        assert!(
-            loss.data()[0] < 0.01,
-            "Loss should be near-zero for correct large logits"
-        );
+        assert!(loss.data()[0].is_finite(), "Must be stable for large positive logits");
+        assert!(loss.data()[0] < 0.01, "Loss should be near-zero for correct large logits");
     }
 
     #[test]
@@ -284,14 +266,8 @@ mod tests {
         let targets = Tensor::from_vec(vec![0.0, 0.0, 0.0], false);
 
         let loss = loss_fn.forward(&logits, &targets);
-        assert!(
-            loss.data()[0].is_finite(),
-            "Must be stable for large negative logits"
-        );
-        assert!(
-            loss.data()[0] < 0.01,
-            "Loss should be near-zero for correct large logits"
-        );
+        assert!(loss.data()[0].is_finite(), "Must be stable for large negative logits");
+        assert!(loss.data()[0] < 0.01, "Loss should be near-zero for correct large logits");
     }
 
     #[test]

@@ -122,13 +122,8 @@ mod tests {
         let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let shape = vec![2, 3];
 
-        let quantized = quantize_tensor(
-            &values,
-            &shape,
-            QuantGranularity::PerChannel,
-            QuantMode::Symmetric,
-            8,
-        );
+        let quantized =
+            quantize_tensor(&values, &shape, QuantGranularity::PerChannel, QuantMode::Symmetric, 8);
 
         assert_eq!(quantized.shape, vec![2, 3]);
         assert_eq!(quantized.params.scales.len(), 2);
@@ -143,13 +138,8 @@ mod tests {
         let values = vec![1.0; 100];
         let shape = vec![100];
 
-        let quantized = quantize_tensor(
-            &values,
-            &shape,
-            QuantGranularity::PerTensor,
-            QuantMode::Symmetric,
-            8,
-        );
+        let quantized =
+            quantize_tensor(&values, &shape, QuantGranularity::PerTensor, QuantMode::Symmetric, 8);
 
         // 100 bytes data + 4 bytes scale = 104 bytes
         assert_eq!(quantized.memory_bytes(), 104);
@@ -405,13 +395,8 @@ mod tests {
         let values = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let shape = vec![2, 3];
 
-        let quantized = quantize_tensor(
-            &values,
-            &shape,
-            QuantGranularity::PerChannel,
-            QuantMode::Symmetric,
-            8,
-        );
+        let quantized =
+            quantize_tensor(&values, &shape, QuantGranularity::PerChannel, QuantMode::Symmetric, 8);
 
         let dequantized = dequantize_tensor(&quantized);
         assert_eq!(dequantized.len(), 6);
@@ -445,13 +430,8 @@ mod tests {
         let values = vec![1.0; 100];
         let shape = vec![100];
 
-        let quantized = quantize_tensor(
-            &values,
-            &shape,
-            QuantGranularity::PerTensor,
-            QuantMode::Asymmetric,
-            8,
-        );
+        let quantized =
+            quantize_tensor(&values, &shape, QuantGranularity::PerTensor, QuantMode::Asymmetric, 8);
 
         // 100 bytes data + 4 bytes scale + 4 bytes zero_point = 108 bytes
         assert_eq!(quantized.memory_bytes(), 108);

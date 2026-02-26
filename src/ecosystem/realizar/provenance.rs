@@ -87,15 +87,9 @@ impl ExperimentProvenance {
     /// Convert to GGUF metadata key-value pairs.
     pub fn to_metadata_pairs(&self) -> Vec<(String, String)> {
         let mut pairs = vec![
-            (
-                "entrenar.experiment_id".to_string(),
-                self.experiment_id.clone(),
-            ),
+            ("entrenar.experiment_id".to_string(), self.experiment_id.clone()),
             ("entrenar.run_id".to_string(), self.run_id.clone()),
-            (
-                "entrenar.timestamp".to_string(),
-                self.timestamp.to_rfc3339(),
-            ),
+            ("entrenar.timestamp".to_string(), self.timestamp.to_rfc3339()),
         ];
 
         if !self.config_hash.is_empty() {

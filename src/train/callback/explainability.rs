@@ -54,13 +54,7 @@ impl ExplainabilityCallback {
     ///
     /// * `method` - Attribution method to use
     pub fn new(method: ExplainMethod) -> Self {
-        Self {
-            method,
-            top_k: 10,
-            eval_samples: 50,
-            results: Vec::new(),
-            feature_names: None,
-        }
+        Self { method, top_k: 10, eval_samples: 50, results: Vec::new(), feature_names: None }
     }
 
     /// Set number of top features to track
@@ -111,11 +105,8 @@ impl ExplainabilityCallback {
     /// Call this during on_epoch_end with computed importances
     pub fn record_importances(&mut self, epoch: usize, importances: Vec<(usize, f32)>) {
         let mut sorted = importances;
-        sorted.sort_by(|a, b| {
-            b.1.abs()
-                .partial_cmp(&a.1.abs())
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        sorted
+            .sort_by(|a, b| b.1.abs().partial_cmp(&a.1.abs()).unwrap_or(std::cmp::Ordering::Equal));
         sorted.truncate(self.top_k);
 
         self.results.push(FeatureImportanceResult {
@@ -148,13 +139,7 @@ impl ExplainabilityCallback {
             |pred, true_val| (pred - true_val).powi(2), // MSE
         );
 
-        importance
-            .scores()
-            .as_slice()
-            .iter()
-            .enumerate()
-            .map(|(i, &v)| (i, v))
-            .collect()
+        importance.scores().as_slice().iter().enumerate().map(|(i, &v)| (i, v)).collect()
     }
 
     /// Compute integrated gradients using aprender
@@ -176,12 +161,7 @@ impl ExplainabilityCallback {
         let ig = aprender::interpret::IntegratedGradients::default();
         let attributions = ig.attribute(model_fn, sample, baseline);
 
-        attributions
-            .as_slice()
-            .iter()
-            .enumerate()
-            .map(|(i, &v)| (i, v))
-            .collect()
+        attributions.as_slice().iter().enumerate().map(|(i, &v)| (i, v)).collect()
     }
 
     /// Compute saliency map using aprender
@@ -201,12 +181,7 @@ impl ExplainabilityCallback {
         let sm = aprender::interpret::SaliencyMap::default();
         let saliency = sm.compute(model_fn, sample);
 
-        saliency
-            .as_slice()
-            .iter()
-            .enumerate()
-            .map(|(i, &v)| (i, v))
-            .collect()
+        saliency.as_slice().iter().enumerate().map(|(i, &v)| (i, v)).collect()
     }
 
     /// Get top features that have been consistently important across epochs
@@ -234,15 +209,10 @@ impl ExplainabilityCallback {
             .collect();
 
         features.sort_by(|a, b| {
-            b.2.cmp(&a.2)
-                .then_with(|| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
+            b.2.cmp(&a.2).then_with(|| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal))
         });
 
-        features
-            .into_iter()
-            .take(self.top_k)
-            .map(|(idx, avg_score, _)| (idx, avg_score))
-            .collect()
+        features.into_iter().take(self.top_k).map(|(idx, avg_score, _)| (idx, avg_score)).collect()
     }
 }
 
@@ -283,10 +253,7 @@ mod tests {
         assert_eq!(cb.method(), ExplainMethod::IntegratedGradients);
         assert_eq!(cb.top_k(), 5);
         assert_eq!(cb.eval_samples(), 100);
-        assert_eq!(
-            cb.feature_names(),
-            Some(&["f1".to_string(), "f2".to_string()][..])
-        );
+        assert_eq!(cb.feature_names(), Some(&["f1".to_string(), "f2".to_string()][..]));
     }
 
     #[test]
@@ -340,15 +307,9 @@ mod tests {
     #[test]
     fn test_explain_method_enum() {
         // Test all variants are distinct
-        assert_ne!(
-            ExplainMethod::PermutationImportance,
-            ExplainMethod::IntegratedGradients
-        );
+        assert_ne!(ExplainMethod::PermutationImportance, ExplainMethod::IntegratedGradients);
         assert_ne!(ExplainMethod::IntegratedGradients, ExplainMethod::Saliency);
-        assert_ne!(
-            ExplainMethod::Saliency,
-            ExplainMethod::PermutationImportance
-        );
+        assert_ne!(ExplainMethod::Saliency, ExplainMethod::PermutationImportance);
 
         // Test Clone and Copy
         let method = ExplainMethod::Saliency;

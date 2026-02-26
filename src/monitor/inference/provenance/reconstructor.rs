@@ -50,12 +50,7 @@ impl<'a> IncidentReconstructor<'a> {
         // Calculate duration
         let duration_ns = self.calculate_duration(&nodes);
 
-        AttackPath {
-            nodes,
-            edges,
-            duration_ns,
-            anomaly_indices: Vec::new(),
-        }
+        AttackPath { nodes, edges, duration_ns, anomaly_indices: Vec::new() }
     }
 
     /// Calculate duration from timestamps

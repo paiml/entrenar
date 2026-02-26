@@ -67,11 +67,7 @@ impl TrainerConfig {
     /// Create new trainer config with teacher and student models
     #[must_use]
     pub fn new(teacher: impl Into<String>, student: impl Into<String>) -> Self {
-        Self {
-            teacher_model: teacher.into(),
-            student_model: student.into(),
-            ..Default::default()
-        }
+        Self { teacher_model: teacher.into(), student_model: student.into(), ..Default::default() }
     }
 
     /// Set temperature for distillation

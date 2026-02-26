@@ -18,22 +18,13 @@ fn ties_permutation_invariance() {
     let r1 = ties_merge(&models, &base, &config).unwrap();
 
     // All permutations should yield same result
-    let perms = [
-        vec![0, 1, 2],
-        vec![0, 2, 1],
-        vec![1, 0, 2],
-        vec![1, 2, 0],
-        vec![2, 0, 1],
-        vec![2, 1, 0],
-    ];
+    let perms =
+        [vec![0, 1, 2], vec![0, 2, 1], vec![1, 0, 2], vec![1, 2, 0], vec![2, 0, 1], vec![2, 1, 0]];
 
     for perm in perms {
         let permuted: Vec<Model> = perm.iter().map(|&i| models[i].clone()).collect();
         let r = ties_merge(&permuted, &base, &config).unwrap();
-        assert!(
-            models_approx_equal(&r1, &r, 1e-5),
-            "TIES should be permutation-invariant"
-        );
+        assert!(models_approx_equal(&r1, &r, 1e-5), "TIES should be permutation-invariant");
     }
 }
 

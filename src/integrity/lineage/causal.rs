@@ -34,10 +34,7 @@ impl CausalLineage {
 
     /// Get events of a specific type
     pub fn events_of_type(&self, event_type: LineageEventType) -> Vec<&LineageEvent> {
-        self.events
-            .iter()
-            .filter(|e| e.event_type == event_type)
-            .collect()
+        self.events.iter().filter(|e| e.event_type == event_type).collect()
     }
 
     /// Find the latest event for a run
@@ -55,12 +52,8 @@ impl CausalLineage {
         }
 
         // A precedes B if all of A's events happen before B's first event
-        let b_first = b_events
-            .first()
-            .expect("b_events is non-empty (checked above)");
-        a_events
-            .iter()
-            .all(|a| a.timestamp.happens_before(&b_first.timestamp))
+        let b_first = b_events.first().expect("b_events is non-empty (checked above)");
+        a_events.iter().all(|a| a.timestamp.happens_before(&b_first.timestamp))
     }
 
     /// Get the total number of events

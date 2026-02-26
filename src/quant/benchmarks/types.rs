@@ -53,9 +53,7 @@ impl BenchmarkSuite {
 
     /// Get best result by SQNR
     pub fn best_by_sqnr(&self) -> Option<&QuantBenchmarkResult> {
-        self.results
-            .iter()
-            .max_by(|a, b| a.sqnr_db.total_cmp(&b.sqnr_db))
+        self.results.iter().max_by(|a, b| a.sqnr_db.total_cmp(&b.sqnr_db))
     }
 
     /// Get best result by MSE (lowest)

@@ -4,11 +4,7 @@ use crate::monitor::inference::provenance::*;
 
 #[test]
 fn test_node_type_name() {
-    let node = ProvenanceNode::Input {
-        source: "test".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    };
+    let node = ProvenanceNode::Input { source: "test".to_string(), timestamp_ns: 0, hash: 0 };
     assert_eq!(node.type_name(), "Input");
 
     let node = ProvenanceNode::Inference {
@@ -22,10 +18,7 @@ fn test_node_type_name() {
 
 #[test]
 fn test_provenance_node_timestamp_non_input() {
-    let node = ProvenanceNode::Transform {
-        operation: "op".to_string(),
-        input_refs: vec![],
-    };
+    let node = ProvenanceNode::Transform { operation: "op".to_string(), input_refs: vec![] };
     assert!(node.timestamp_ns().is_none());
 
     let node = ProvenanceNode::Inference {
@@ -36,10 +29,7 @@ fn test_provenance_node_timestamp_non_input() {
     };
     assert!(node.timestamp_ns().is_none());
 
-    let node = ProvenanceNode::Fusion {
-        strategy: "avg".to_string(),
-        input_refs: vec![],
-    };
+    let node = ProvenanceNode::Fusion { strategy: "avg".to_string(), input_refs: vec![] };
     assert!(node.timestamp_ns().is_none());
 
     let node = ProvenanceNode::Action {
@@ -53,19 +43,11 @@ fn test_provenance_node_timestamp_non_input() {
 #[test]
 fn test_provenance_node_all_type_names() {
     assert_eq!(
-        ProvenanceNode::Transform {
-            operation: "x".to_string(),
-            input_refs: vec![]
-        }
-        .type_name(),
+        ProvenanceNode::Transform { operation: "x".to_string(), input_refs: vec![] }.type_name(),
         "Transform"
     );
     assert_eq!(
-        ProvenanceNode::Fusion {
-            strategy: "x".to_string(),
-            input_refs: vec![]
-        }
-        .type_name(),
+        ProvenanceNode::Fusion { strategy: "x".to_string(), input_refs: vec![] }.type_name(),
         "Fusion"
     );
     assert_eq!(

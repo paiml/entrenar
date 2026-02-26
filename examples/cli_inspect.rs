@@ -57,11 +57,8 @@ fn inspect_safetensors(path: &Path) {
         }
     };
 
-    let tensor_names: Vec<String> = tensors
-        .names()
-        .iter()
-        .map(std::string::ToString::to_string)
-        .collect();
+    let tensor_names: Vec<String> =
+        tensors.names().iter().map(std::string::ToString::to_string).collect();
     let mut total_params: u64 = 0;
 
     for name in &tensor_names {

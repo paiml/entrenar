@@ -36,10 +36,7 @@ fn mutation_resistant_parameter_count_exact() {
     let expected = embed_params + lm_head_params + total_layer_params;
 
     // These specific values should catch mutations:
-    assert_eq!(
-        expected,
-        1_000 * 128 + 1_000 * 128 + 3 * (4 * 128 * 128 + 3 * 128 * 512)
-    );
+    assert_eq!(expected, 1_000 * 128 + 1_000 * 128 + 3 * (4 * 128 * 128 + 3 * 128 * 512));
     assert_eq!(expected, 256_000 + 3 * (65_536 + 196_608));
     assert_eq!(expected, 256_000 + 3 * 262_144);
     assert_eq!(expected, 1_042_432);
@@ -317,11 +314,7 @@ fn mutation_resistant_quantization_bits() {
     ];
 
     for (bits, expected_bytes) in test_cases {
-        let bytes = if bits >= 8 {
-            params * (bits / 8)
-        } else {
-            params / (8 / bits)
-        };
+        let bytes = if bits >= 8 { params * (bits / 8) } else { params / (8 / bits) };
 
         assert_eq!(bytes, expected_bytes);
 

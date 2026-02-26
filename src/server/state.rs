@@ -110,7 +110,7 @@ impl InMemoryStorage {
 
     /// Generate a unique ID
     pub fn generate_id(&self, prefix: &str) -> String {
-        let mut counter = self.counter.write().unwrap();
+        let mut counter = self.counter.write().expect("counter RwLock must not be poisoned");
         *counter += 1;
         format!("{}-{:08x}", prefix, *counter)
     }
@@ -186,10 +186,8 @@ impl InMemoryStorage {
             tags: tags.unwrap_or_default(),
         };
 
-        let mut runs = self
-            .runs
-            .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
+        let mut runs =
+            self.runs.write().map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
         runs.insert(id, run.clone());
 
         Ok(run)
@@ -197,14 +195,10 @@ impl InMemoryStorage {
 
     /// Get a run by ID
     pub fn get_run(&self, id: &str) -> Result<Run> {
-        let runs = self
-            .runs
-            .read()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
+        let runs =
+            self.runs.read().map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
-        runs.get(id)
-            .cloned()
-            .ok_or_else(|| ServerError::NotFound(format!("Run not found: {id}")))
+        runs.get(id).cloned().ok_or_else(|| ServerError::NotFound(format!("Run not found: {id}")))
     }
 
     /// Update run status
@@ -214,10 +208,8 @@ impl InMemoryStorage {
         status: Option<RunStatus>,
         end_time: Option<DateTime<Utc>>,
     ) -> Result<Run> {
-        let mut runs = self
-            .runs
-            .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
+        let mut runs =
+            self.runs.write().map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         let run = runs
             .get_mut(id)
@@ -239,10 +231,8 @@ impl InMemoryStorage {
         run_id: &str,
         params: HashMap<String, serde_json::Value>,
     ) -> Result<()> {
-        let mut runs = self
-            .runs
-            .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
+        let mut runs =
+            self.runs.write().map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         let run = runs
             .get_mut(run_id)
@@ -254,10 +244,8 @@ impl InMemoryStorage {
 
     /// Log metrics for a run
     pub fn log_metrics(&self, run_id: &str, metrics: HashMap<String, f64>) -> Result<()> {
-        let mut runs = self
-            .runs
-            .write()
-            .map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
+        let mut runs =
+            self.runs.write().map_err(|e| ServerError::Internal(format!("Lock error: {e}")))?;
 
         let run = runs
             .get_mut(run_id)
@@ -288,11 +276,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: ServerConfig) -> Self {
-        Self {
-            storage: Arc::new(InMemoryStorage::new()),
-            config,
-            start_time: Instant::now(),
-        }
+        Self { storage: Arc::new(InMemoryStorage::new()), config, start_time: Instant::now() }
     }
 
     /// Get uptime in seconds
@@ -303,11 +287,7 @@ impl AppState {
     /// Create with an explicit start time (for deterministic testing)
     #[cfg(test)]
     pub fn with_start_time(config: ServerConfig, start_time: Instant) -> Self {
-        Self {
-            storage: Arc::new(InMemoryStorage::new()),
-            config,
-            start_time,
-        }
+        Self { storage: Arc::new(InMemoryStorage::new()), config, start_time }
     }
 }
 
@@ -339,9 +319,7 @@ mod tests {
     #[test]
     fn test_create_experiment() {
         let storage = InMemoryStorage::new();
-        let exp = storage
-            .create_experiment("my-exp", Some("desc".into()), None)
-            .unwrap();
+        let exp = storage.create_experiment("my-exp", Some("desc".into()), None).unwrap();
         assert!(exp.id.starts_with("exp-"));
         assert_eq!(exp.name, "my-exp");
         assert_eq!(storage.experiments_count(), 1);
@@ -375,9 +353,7 @@ mod tests {
     fn test_create_run() {
         let storage = InMemoryStorage::new();
         let exp = storage.create_experiment("test", None, None).unwrap();
-        let run = storage
-            .create_run(&exp.id, Some("run-1".into()), None)
-            .unwrap();
+        let run = storage.create_run(&exp.id, Some("run-1".into()), None).unwrap();
         assert!(run.id.starts_with("run-"));
         assert_eq!(run.experiment_id, exp.id);
         assert_eq!(run.status, RunStatus::Running);
@@ -396,9 +372,7 @@ mod tests {
         let exp = storage.create_experiment("test", None, None).unwrap();
         let run = storage.create_run(&exp.id, None, None).unwrap();
 
-        let updated = storage
-            .update_run(&run.id, Some(RunStatus::Completed), None)
-            .unwrap();
+        let updated = storage.update_run(&run.id, Some(RunStatus::Completed), None).unwrap();
         assert_eq!(updated.status, RunStatus::Completed);
     }
 
@@ -433,10 +407,7 @@ mod tests {
     #[test]
     fn test_run_status_from_str() {
         assert_eq!("running".parse::<RunStatus>().unwrap(), RunStatus::Running);
-        assert_eq!(
-            "completed".parse::<RunStatus>().unwrap(),
-            RunStatus::Completed
-        );
+        assert_eq!("completed".parse::<RunStatus>().unwrap(), RunStatus::Completed);
         assert_eq!("failed".parse::<RunStatus>().unwrap(), RunStatus::Failed);
         assert_eq!("killed".parse::<RunStatus>().unwrap(), RunStatus::Killed);
         assert!("invalid".parse::<RunStatus>().is_err());

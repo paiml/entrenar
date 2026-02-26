@@ -6,11 +6,7 @@ use crate::config::{CitationFormat, CiteArgs};
 use crate::research::{CitationMetadata, ResearchArtifact};
 
 pub fn run_research_cite(args: CiteArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Generating citation from: {}", args.artifact.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Generating citation from: {}", args.artifact.display()));
 
     // Load artifact
     let yaml = std::fs::read_to_string(&args.artifact)
@@ -47,11 +43,7 @@ pub fn run_research_cite(args: CiteArgs, level: LogLevel) -> Result<(), String> 
     // Write or print
     if let Some(output_path) = &args.output {
         std::fs::write(output_path, &output).map_err(|e| format!("Failed to write file: {e}"))?;
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("Citation saved to: {}", output_path.display()),
-        );
+        log(level, LogLevel::Normal, &format!("Citation saved to: {}", output_path.display()));
     } else {
         println!("{output}");
     }

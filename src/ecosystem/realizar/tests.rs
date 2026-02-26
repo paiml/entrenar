@@ -38,14 +38,8 @@ fn test_quantization_type_estimate_size() {
 
 #[test]
 fn test_quantization_type_parse() {
-    assert_eq!(
-        QuantizationType::parse("Q4_K_M"),
-        Some(QuantizationType::Q4KM)
-    );
-    assert_eq!(
-        QuantizationType::parse("q4km"),
-        Some(QuantizationType::Q4KM)
-    );
+    assert_eq!(QuantizationType::parse("Q4_K_M"), Some(QuantizationType::Q4KM));
+    assert_eq!(QuantizationType::parse("q4km"), Some(QuantizationType::Q4KM));
     assert_eq!(QuantizationType::parse("F16"), Some(QuantizationType::F16));
     assert_eq!(QuantizationType::parse("fp16"), Some(QuantizationType::F16));
     assert_eq!(QuantizationType::parse("invalid"), None);
@@ -79,12 +73,8 @@ fn test_experiment_provenance_to_metadata() {
 
     let pairs = prov.to_metadata_pairs();
 
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "entrenar.experiment_id" && v == "exp-001"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "entrenar.run_id" && v == "run-123"));
+    assert!(pairs.iter().any(|(k, v)| k == "entrenar.experiment_id" && v == "exp-001"));
+    assert!(pairs.iter().any(|(k, v)| k == "entrenar.run_id" && v == "run-123"));
     assert!(pairs.iter().any(|(k, _)| k == "entrenar.timestamp"));
     assert!(pairs.iter().any(|(k, _)| k == "entrenar.metric.loss"));
 }
@@ -99,18 +89,13 @@ fn test_general_metadata_creation() {
     assert_eq!(general.architecture, "llama");
     assert_eq!(general.name, "my-model");
     assert_eq!(general.author, Some("PAIML".to_string()));
-    assert_eq!(
-        general.description,
-        Some("Fine-tuned LLaMA model".to_string())
-    );
+    assert_eq!(general.description, Some("Fine-tuned LLaMA model".to_string()));
     assert_eq!(general.license, Some("MIT".to_string()));
 }
 
 #[test]
 fn test_gguf_exporter_creation() {
-    let exporter = GgufExporter::new(QuantizationType::Q5KM)
-        .with_threads(8)
-        .without_validation();
+    let exporter = GgufExporter::new(QuantizationType::Q5KM).with_threads(8).without_validation();
 
     assert_eq!(exporter.quantization(), QuantizationType::Q5KM);
 }
@@ -120,9 +105,8 @@ fn test_gguf_exporter_with_provenance() {
     let prov = ExperimentProvenance::new("exp-001", "run-123");
     let general = GeneralMetadata::new("llama", "test-model");
 
-    let exporter = GgufExporter::new(QuantizationType::Q4KM)
-        .with_general(general)
-        .with_provenance(prov);
+    let exporter =
+        GgufExporter::new(QuantizationType::Q4KM).with_general(general).with_provenance(prov);
 
     assert!(exporter.metadata().provenance.is_some());
     assert_eq!(exporter.metadata().general.architecture, "llama");
@@ -133,24 +117,15 @@ fn test_gguf_exporter_collect_metadata() {
     let prov = ExperimentProvenance::new("exp-001", "run-123").with_metric("loss", 0.1);
     let general = GeneralMetadata::new("llama", "test-model").with_author("PAIML");
 
-    let exporter = GgufExporter::new(QuantizationType::Q4KM)
-        .with_general(general)
-        .with_provenance(prov);
+    let exporter =
+        GgufExporter::new(QuantizationType::Q4KM).with_general(general).with_provenance(prov);
 
     let pairs = exporter.collect_metadata();
 
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "general.architecture" && v == "llama"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "general.name" && v == "test-model"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "general.author" && v == "PAIML"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "general.file_type" && v == "Q4_K_M"));
+    assert!(pairs.iter().any(|(k, v)| k == "general.architecture" && v == "llama"));
+    assert!(pairs.iter().any(|(k, v)| k == "general.name" && v == "test-model"));
+    assert!(pairs.iter().any(|(k, v)| k == "general.author" && v == "PAIML"));
+    assert!(pairs.iter().any(|(k, v)| k == "general.file_type" && v == "Q4_K_M"));
     assert!(pairs.iter().any(|(k, _)| k == "entrenar.experiment_id"));
 }
 
@@ -204,15 +179,9 @@ fn test_quantization_type_all_quality() {
 fn test_quantization_type_parse_all_variants() {
     assert_eq!(QuantizationType::parse("Q2K"), Some(QuantizationType::Q2K));
     assert_eq!(QuantizationType::parse("Q2"), Some(QuantizationType::Q2K));
-    assert_eq!(
-        QuantizationType::parse("Q3KM"),
-        Some(QuantizationType::Q3KM)
-    );
+    assert_eq!(QuantizationType::parse("Q3KM"), Some(QuantizationType::Q3KM));
     assert_eq!(QuantizationType::parse("Q3K"), Some(QuantizationType::Q3KM));
-    assert_eq!(
-        QuantizationType::parse("Q5KM"),
-        Some(QuantizationType::Q5KM)
-    );
+    assert_eq!(QuantizationType::parse("Q5KM"), Some(QuantizationType::Q5KM));
     assert_eq!(QuantizationType::parse("Q5K"), Some(QuantizationType::Q5KM));
     assert_eq!(QuantizationType::parse("Q6K"), Some(QuantizationType::Q6K));
     assert_eq!(QuantizationType::parse("Q6"), Some(QuantizationType::Q6K));
@@ -268,22 +237,12 @@ fn test_experiment_provenance_to_metadata_with_all_fields() {
 
     let pairs = prov.to_metadata_pairs();
 
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "entrenar.config_hash" && v == "abc123"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "entrenar.dataset_id" && v == "dataset-id"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "entrenar.base_model_id" && v == "base-model"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "entrenar.git_commit" && v == "deadbeef"));
+    assert!(pairs.iter().any(|(k, v)| k == "entrenar.config_hash" && v == "abc123"));
+    assert!(pairs.iter().any(|(k, v)| k == "entrenar.dataset_id" && v == "dataset-id"));
+    assert!(pairs.iter().any(|(k, v)| k == "entrenar.base_model_id" && v == "base-model"));
+    assert!(pairs.iter().any(|(k, v)| k == "entrenar.git_commit" && v == "deadbeef"));
     assert!(pairs.iter().any(|(k, _)| k == "entrenar.metric.loss"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "entrenar.custom.key" && v == "value"));
+    assert!(pairs.iter().any(|(k, v)| k == "entrenar.custom.key" && v == "value"));
 }
 
 #[test]
@@ -295,16 +254,11 @@ fn test_gguf_exporter_default() {
 #[test]
 fn test_gguf_exporter_with_metadata() {
     let mut metadata = GgufMetadata::default();
-    metadata
-        .custom
-        .insert("key".to_string(), "value".to_string());
+    metadata.custom.insert("key".to_string(), "value".to_string());
 
     let exporter = GgufExporter::new(QuantizationType::F16).with_metadata(metadata);
 
-    assert_eq!(
-        exporter.metadata().custom.get("key"),
-        Some(&"value".to_string())
-    );
+    assert_eq!(exporter.metadata().custom.get("key"), Some(&"value".to_string()));
 }
 
 #[test]
@@ -346,26 +300,16 @@ fn test_gguf_exporter_collect_metadata_with_all_fields() {
     metadata.general = general;
     metadata.general.url = Some("https://example.com".to_string());
     metadata.provenance = Some(prov);
-    metadata
-        .custom
-        .insert("custom_key".to_string(), "custom_value".to_string());
+    metadata.custom.insert("custom_key".to_string(), "custom_value".to_string());
 
     let exporter = GgufExporter::new(QuantizationType::Q4KM).with_metadata(metadata);
 
     let pairs = exporter.collect_metadata();
 
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "general.description" && v == "Test description"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "general.license" && v == "MIT"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "general.url" && v == "https://example.com"));
-    assert!(pairs
-        .iter()
-        .any(|(k, v)| k == "custom.custom_key" && v == "custom_value"));
+    assert!(pairs.iter().any(|(k, v)| k == "general.description" && v == "Test description"));
+    assert!(pairs.iter().any(|(k, v)| k == "general.license" && v == "MIT"));
+    assert!(pairs.iter().any(|(k, v)| k == "general.url" && v == "https://example.com"));
+    assert!(pairs.iter().any(|(k, v)| k == "custom.custom_key" && v == "custom_value"));
 }
 
 #[test]
@@ -394,9 +338,7 @@ fn test_experiment_provenance_serde() {
 fn test_gguf_metadata_serde() {
     let mut metadata = GgufMetadata::default();
     metadata.general = GeneralMetadata::new("llama", "test");
-    metadata
-        .custom
-        .insert("key".to_string(), "value".to_string());
+    metadata.custom.insert("key".to_string(), "value".to_string());
 
     let json = serde_json::to_string(&metadata).unwrap();
     let parsed: GgufMetadata = serde_json::from_str(&json).unwrap();

@@ -21,13 +21,7 @@ pub struct QueueState {
 impl QueueState {
     /// Create a new queue state.
     pub fn new(queue_depth: u32, available_gpus: u32, total_gpus: u32) -> Self {
-        Self {
-            queue_depth,
-            avg_wait_seconds: 0,
-            available_gpus,
-            total_gpus,
-            eta_seconds: None,
-        }
+        Self { queue_depth, avg_wait_seconds: 0, available_gpus, total_gpus, eta_seconds: None }
     }
 
     /// Set average wait time.
