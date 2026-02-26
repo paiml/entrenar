@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     ".",
     "crates/entrenar-common",
@@ -8,6 +9,9 @@ members = [
     "crates/entrenar-inspect",
     "crates/entrenar-bench",
 ]
+
+[workspace.package]
+edition = "2021"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
@@ -380,3 +384,10 @@ rustdoc-args = ["--generate-link-to-definition"]
 
 [package.metadata.release]
 shared-version = true
+
+[[package.metadata.release.pre-release-replacements]]
+file = "CHANGELOG.md"
+search = "## \\[Unreleased\\]"
+replace = "## [{{version}}] - {{date}}"
+
+[workspace.dependencies]
