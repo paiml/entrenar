@@ -13,6 +13,11 @@
 //! - ENT-152: CudaTransformer wrapper ✅
 
 #![allow(dead_code)]
+// SAFETY: This module performs GPU memory transfers via CUDA driver FFI.
+// The unsafe blocks are limited to copy_from_host_async / copy_to_host_async
+// where we guarantee the host buffer outlives the async operation by syncing
+// the stream before the buffer goes out of scope.
+#![allow(unsafe_code)]
 
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
@@ -38,18 +43,66 @@ use crate::autograd::cuda_tensor::Result;
 #[cfg(feature = "cuda")]
 use super::config::TransformerConfig;
 
-/// Helper to copy GPU buffer to Vec
+/// Download GPU buffer to Vec using stream-ordered async copy.
+///
+/// Issues `cuMemcpyDtoHAsync` on the given stream and synchronizes before returning,
+/// ensuring proper ordering with kernel launches on the same stream.
+/// This avoids the default-stream vs non-blocking-stream race that occurs with
+/// synchronous `cuMemcpyDtoH`.
 #[cfg(feature = "cuda")]
-fn gpu_to_vec(buf: &GpuBuffer<f32>) -> Result<Vec<f32>> {
+fn gpu_to_vec(buf: &GpuBuffer<f32>, stream: &CudaStream) -> Result<Vec<f32>> {
     let mut data = vec![0.0f32; buf.len()];
-    buf.copy_to_host(&mut data)?;
+    // SAFETY: data lives until stream sync below; buf is a valid GPU allocation
+    unsafe {
+        buf.copy_to_host_async(&mut data, stream)
+            .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                format!("Async D2H failed: {e}"),
+            ))?;
+    }
+    // Block until copy completes so `data` is valid for CPU access
+    sync_stream(stream)?;
     Ok(data)
 }
 
-/// Helper to copy Vec to GPU buffer
+/// Upload Vec to GPU buffer using stream-ordered async copy (pads with zeros if needed).
+///
+/// Issues `cuMemcpyHtoDAsync` on the given stream and synchronizes to ensure
+/// the host data is no longer needed before this function returns.
 #[cfg(feature = "cuda")]
-fn vec_to_gpu(buf: &mut GpuBuffer<f32>, data: &[f32]) -> Result<()> {
-    buf.copy_from_host(data)?;
+fn vec_to_gpu(buf: &mut GpuBuffer<f32>, data: &[f32], stream: &CudaStream) -> Result<()> {
+    if data.len() == buf.len() {
+        // SAFETY: data lives until sync_stream below completes
+        unsafe {
+            buf.copy_from_host_async(data, stream)
+                .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                    format!("Async H2D failed: {e}"),
+                ))?;
+        }
+        // Must sync before data (which is typically a temporary Vec) goes out of scope
+        sync_stream(stream)?;
+    } else if data.len() < buf.len() {
+        // Pad with zeros — scratch buffers are allocated for max_seq_len
+        // but actual data may be shorter for the current sequence
+        let mut padded = vec![0.0f32; buf.len()];
+        padded[..data.len()].copy_from_slice(data);
+        // SAFETY: padded lives until sync_stream below
+        unsafe {
+            buf.copy_from_host_async(&padded, stream)
+                .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                    format!("Async H2D failed: {e}"),
+                ))?;
+        }
+        // Must sync before padded goes out of scope
+        sync_stream(stream)?;
+    } else {
+        return Err(crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+            format!(
+                "Data too large for GPU buffer: {} > {}",
+                data.len(),
+                buf.len()
+            ),
+        ));
+    }
     Ok(())
 }
 
@@ -269,8 +322,10 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
+        // Sync before CPU attention (needs Q, K, V on host)
+        sync_stream(stream)?;
+
         // === Multi-Head Attention (ENT-148) ===
-        // Compute attention with CUDA softmax
         self.compute_attention_cuda(seq_len, stream)?;
 
         // === Output Projection ===
@@ -290,6 +345,7 @@ impl CudaTransformerBlock {
             &self.scratch.o_proj_out,
             &mut self.scratch.residual1,
             seq_len * hidden_size,
+            stream,
         )?;
 
         // === Post-attention RMSNorm ===
@@ -344,18 +400,20 @@ impl CudaTransformerBlock {
         )?;
 
         // === Final Residual Add (residual1 + ffn_output) ===
+        // gpu_to_vec syncs stream internally, so GEMM output is visible to CPU.
         cuda_add(
             &self.scratch.residual1,
             &self.scratch.ffn_out,
             output,
             seq_len * hidden_size,
+            stream,
         )?;
 
         Ok(())
     }
 
     /// Compute multi-head attention on GPU with CUDA softmax
-    fn compute_attention_cuda(&mut self, seq_len: usize, _stream: &CudaStream) -> Result<()> {
+    fn compute_attention_cuda(&mut self, seq_len: usize, stream: &CudaStream) -> Result<()> {
         let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;
@@ -366,9 +424,9 @@ impl CudaTransformerBlock {
 
         // Copy Q, K, V to host for per-head processing
         // (Full CUDA implementation would use batched attention kernels)
-        let q_data = gpu_to_vec(&self.scratch.q)?;
-        let k_data = gpu_to_vec(&self.scratch.k)?;
-        let v_data = gpu_to_vec(&self.scratch.v)?;
+        let q_data = gpu_to_vec(&self.scratch.q, stream)?;
+        let k_data = gpu_to_vec(&self.scratch.k, stream)?;
+        let v_data = gpu_to_vec(&self.scratch.v, stream)?;
 
         let mut attn_out = vec![0.0f32; seq_len * hidden_size];
 
@@ -415,8 +473,8 @@ impl CudaTransformerBlock {
             }
         }
 
-        // Copy result back to GPU
-        vec_to_gpu(&mut self.scratch.attn_out, &attn_out)?;
+        // Copy result back to GPU (async on our stream for proper ordering)
+        vec_to_gpu(&mut self.scratch.attn_out, &attn_out, stream)?;
 
         Ok(())
     }
@@ -519,7 +577,8 @@ impl CudaTransformerBlock {
         )?;
 
         // Clone grad_hidden to separate buffer preventing mutable borrow conflict
-        let grad_hidden_data = gpu_to_vec(&self.scratch.grad_hidden)?;
+        // gpu_to_vec syncs stream internally
+        let grad_hidden_data = gpu_to_vec(&self.scratch.grad_hidden, stream)?;
 
         // grad_w_gate = norm2_out^T @ grad_gate_out
         gemm_backward_b(
@@ -533,7 +592,7 @@ impl CudaTransformerBlock {
         )?;
 
         // Write back and compute grad_norm2
-        vec_to_gpu(&mut self.scratch.grad_hidden, &grad_hidden_data)?;
+        vec_to_gpu(&mut self.scratch.grad_hidden, &grad_hidden_data, stream)?;
         gemm_backward_a(
             &self.scratch.grad_hidden,
             &self.w_gate,
@@ -556,8 +615,9 @@ impl CudaTransformerBlock {
         eps: f32,
         stream: &CudaStream,
     ) -> Result<()> {
-        let grad_norm2_data = gpu_to_vec(&self.scratch.norm2_out)?;
-        vec_to_gpu(&mut self.scratch.grad_hidden, &grad_norm2_data)?;
+        // gpu_to_vec syncs stream internally before returning CPU-readable data
+        let grad_norm2_data = gpu_to_vec(&self.scratch.norm2_out, stream)?;
+        vec_to_gpu(&mut self.scratch.grad_hidden, &grad_norm2_data, stream)?;
 
         rms_norm_backward(
             &self.scratch.residual1,
@@ -584,18 +644,19 @@ impl CudaTransformerBlock {
         stream: &CudaStream,
     ) -> Result<()> {
         // residual1 = input + o_proj_out; grad_input += grad_residual1
-        let grad_in_data = gpu_to_vec(grad_input)?;
-        let grad_out_data = gpu_to_vec(grad_output)?;
+        // gpu_to_vec syncs stream internally
+        let grad_in_data = gpu_to_vec(grad_input, stream)?;
+        let grad_out_data = gpu_to_vec(grad_output, stream)?;
         let sum: Vec<f32> = grad_in_data
             .iter()
             .zip(grad_out_data.iter())
             .take(seq_len * hidden_size)
             .map(|(a, b)| a + b)
             .collect();
-        vec_to_gpu(grad_input, &sum)?;
+        vec_to_gpu(grad_input, &sum, stream)?;
 
         // Copy grad_input to grad_hidden to avoid aliasing
-        vec_to_gpu(&mut self.scratch.grad_hidden, &sum)?;
+        vec_to_gpu(&mut self.scratch.grad_hidden, &sum, stream)?;
 
         rms_norm_backward(
             input,
@@ -611,6 +672,22 @@ impl CudaTransformerBlock {
     }
 }
 
+/// Synchronize CUDA stream — ensures all prior kernel launches have completed
+/// before CPU reads GPU buffers via `copy_to_host`.
+///
+/// CRITICAL: The stream is created with `CU_STREAM_NON_BLOCKING`, which means
+/// `cuMemcpyDtoH` (used by `GpuBuffer::copy_to_host`) does NOT implicitly
+/// synchronize with this stream. Without explicit sync, kernel output may not
+/// be visible to subsequent CPU reads, producing stale/NaN data.
+#[cfg(feature = "cuda")]
+fn sync_stream(stream: &CudaStream) -> Result<()> {
+    stream
+        .synchronize()
+        .map_err(|e| crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+            format!("Stream sync failed: {e}"),
+        ))
+}
+
 /// CUDA element-wise addition (standalone to avoid borrow issues)
 #[cfg(feature = "cuda")]
 fn cuda_add(
@@ -618,16 +695,17 @@ fn cuda_add(
     b: &GpuBuffer<f32>,
     output: &mut GpuBuffer<f32>,
     n: usize,
+    stream: &CudaStream,
 ) -> Result<()> {
-    let a_data = gpu_to_vec(a)?;
-    let b_data = gpu_to_vec(b)?;
+    let a_data = gpu_to_vec(a, stream)?;
+    let b_data = gpu_to_vec(b, stream)?;
     let result: Vec<f32> = a_data
         .iter()
         .zip(b_data.iter())
         .take(n)
         .map(|(x, y)| x + y)
         .collect();
-    vec_to_gpu(output, &result)?;
+    vec_to_gpu(output, &result, stream)?;
     Ok(())
 }
 
@@ -638,16 +716,17 @@ fn cuda_mul(
     b: &GpuBuffer<f32>,
     output: &mut GpuBuffer<f32>,
     n: usize,
+    stream: &CudaStream,
 ) -> Result<()> {
-    let a_data = gpu_to_vec(a)?;
-    let b_data = gpu_to_vec(b)?;
+    let a_data = gpu_to_vec(a, stream)?;
+    let b_data = gpu_to_vec(b, stream)?;
     let result: Vec<f32> = a_data
         .iter()
         .zip(b_data.iter())
         .take(n)
         .map(|(x, y)| x * y)
         .collect();
-    vec_to_gpu(output, &result)?;
+    vec_to_gpu(output, &result, stream)?;
     Ok(())
 }
 

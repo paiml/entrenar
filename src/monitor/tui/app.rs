@@ -318,6 +318,18 @@ impl TrainingStateWriter {
         }
     }
 
+    /// Set GPU device info for the training snapshot.
+    ///
+    /// When CUDA is active, populates the `gpu` field with device name and
+    /// total VRAM. Updated dynamically by the training loop.
+    pub fn set_gpu(&mut self, device_name: &str, vram_total_gb: f32) {
+        self.snapshot.gpu = Some(super::state::GpuTelemetry {
+            device_name: device_name.to_string(),
+            vram_total_gb,
+            ..Default::default()
+        });
+    }
+
     /// Mark training as started
     pub fn start(&mut self) -> io::Result<()> {
         self.snapshot.status = TrainingStatus::Running;

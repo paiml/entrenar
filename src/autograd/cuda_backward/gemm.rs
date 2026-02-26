@@ -27,9 +27,6 @@ pub fn gemm_backward_a(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = GemmBackwardAKernel::new(m, k, n);
-    let ptx = kernel.emit_ptx();
-
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
@@ -37,12 +34,17 @@ pub fn gemm_backward_a(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    let kernel = GemmBackwardAKernel::new(m, k, n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+
     let key = format!("gemm_backward_a_{m}_{k}_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
     // Use 16x16 thread blocks for GEMM
+    // Kernel: col = ctaid.x, row = ctaid.y; output is grad_a[M,K]
+    // So grid.x = ceil(K/16) for columns, grid.y = ceil(M/16) for rows
     let config = LaunchConfig {
-        grid: (m.div_ceil(16), k.div_ceil(16), 1),
+        grid: (k.div_ceil(16), m.div_ceil(16), 1),
         block: (16, 16, 1),
         shared_mem: 0,
     };
@@ -51,13 +53,15 @@ pub fn gemm_backward_a(
     let b_ptr = b.as_ptr();
     let grad_a_ptr = grad_a.as_ptr();
 
+    // PTX kernel signature: (grad_c_ptr, b_ptr, grad_a_ptr, m, n, k)
+    // CRITICAL: must match param declaration order in GemmBackwardAKernel::build_ptx()
     let mut args: [*mut std::ffi::c_void; 6] = [
         &grad_out_ptr as *const _ as *mut _,
         &b_ptr as *const _ as *mut _,
         &grad_a_ptr as *const _ as *mut _,
         &m as *const _ as *mut _,
-        &k as *const _ as *mut _,
         &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
     ];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
@@ -86,9 +90,6 @@ pub fn gemm_backward_b(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = GemmBackwardBKernel::new(m, k, n);
-    let ptx = kernel.emit_ptx();
-
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
@@ -96,12 +97,17 @@ pub fn gemm_backward_b(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    let kernel = GemmBackwardBKernel::new(m, k, n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+
     let key = format!("gemm_backward_b_{m}_{k}_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
     // Use 16x16 thread blocks for GEMM
+    // Kernel: col = ctaid.x, row = ctaid.y; output is grad_b[K,N]
+    // So grid.x = ceil(N/16) for columns, grid.y = ceil(K/16) for rows
     let config = LaunchConfig {
-        grid: (k.div_ceil(16), n.div_ceil(16), 1),
+        grid: (n.div_ceil(16), k.div_ceil(16), 1),
         block: (16, 16, 1),
         shared_mem: 0,
     };
@@ -110,13 +116,15 @@ pub fn gemm_backward_b(
     let grad_out_ptr = grad_output.as_ptr();
     let grad_b_ptr = grad_b.as_ptr();
 
+    // PTX kernel signature: (a_ptr, grad_c_ptr, grad_b_ptr, m, n, k)
+    // CRITICAL: must match param declaration order in GemmBackwardBKernel::build_ptx()
     let mut args: [*mut std::ffi::c_void; 6] = [
         &a_ptr as *const _ as *mut _,
         &grad_out_ptr as *const _ as *mut _,
         &grad_b_ptr as *const _ as *mut _,
         &m as *const _ as *mut _,
-        &k as *const _ as *mut _,
         &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
     ];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with

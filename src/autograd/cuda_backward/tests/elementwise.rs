@@ -194,6 +194,8 @@ fn test_silu_backward_basic() {
 #[test]
 #[cfg(feature = "cuda")]
 fn test_silu_backward_not_hardcoded() {
+    use trueno_gpu::driver::{CudaStream, GpuBuffer};
+
     // Mutation-killing test
     let ctx = match super::get_test_gpu_context() {
         Some(c) => c,

@@ -31,8 +31,6 @@ pub fn relu_backward(
     stream: &CudaStream,
 ) -> Result<()> {
     let n = input.len() as u32;
-    let kernel = ReluBackwardKernel::new(n);
-    let ptx = kernel.emit_ptx();
 
     let cache = KERNEL_CACHE
         .get()
@@ -41,6 +39,8 @@ pub fn relu_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    let kernel = ReluBackwardKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
     let module = cache.get_or_compile("relu_backward", &ptx)?;
 
     let config = LaunchConfig {
@@ -84,8 +84,6 @@ pub fn gelu_backward(
     stream: &CudaStream,
 ) -> Result<()> {
     let n = input.len() as u32;
-    let kernel = GeluBackwardKernel::new(n);
-    let ptx = kernel.emit_ptx();
 
     let cache = KERNEL_CACHE
         .get()
@@ -94,6 +92,8 @@ pub fn gelu_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    let kernel = GeluBackwardKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
     let module = cache.get_or_compile("gelu_backward", &ptx)?;
 
     let config = LaunchConfig {
@@ -137,8 +137,6 @@ pub fn silu_backward(
     stream: &CudaStream,
 ) -> Result<()> {
     let n = input.len() as u32;
-    let kernel = SiluBackwardKernel::new(n);
-    let ptx = kernel.emit_ptx();
 
     let cache = KERNEL_CACHE
         .get()
@@ -147,6 +145,8 @@ pub fn silu_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    let kernel = SiluBackwardKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
     let module = cache.get_or_compile("silu_backward", &ptx)?;
 
     let config = LaunchConfig {

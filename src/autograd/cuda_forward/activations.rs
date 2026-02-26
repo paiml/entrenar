@@ -23,15 +23,15 @@ pub fn relu_forward(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = ReluKernel::new(n);
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = ReluKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("relu_forward_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -76,16 +76,16 @@ pub fn softmax_forward(
     length: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = SoftmaxKernel::new(length);
-    let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = SoftmaxKernel::new(length);
+    let kernel_name = kernel.name();
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("softmax_forward_{length}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -128,15 +128,15 @@ pub fn gelu_forward(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = GeluKernel::new(n);
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = GeluKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("gelu_forward_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -179,15 +179,15 @@ pub fn silu_forward(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = SiluKernel::new(n);
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = SiluKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("silu_forward_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;

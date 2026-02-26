@@ -26,16 +26,16 @@ pub fn layer_norm_forward(
     hidden_size: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = LayerNormKernel::new(hidden_size);
-    let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = LayerNormKernel::new(hidden_size);
+    let kernel_name = kernel.name();
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("layer_norm_forward_{hidden_size}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -88,16 +88,16 @@ pub fn rms_norm_forward(
     hidden_size: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = RmsNormKernel::new(hidden_size);
-    let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = RmsNormKernel::new(hidden_size);
+    let kernel_name = kernel.name();
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("rms_norm_forward_{hidden_size}");
     let module = cache.get_or_compile(&key, &ptx)?;

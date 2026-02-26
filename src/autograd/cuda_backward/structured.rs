@@ -28,15 +28,15 @@ pub fn softmax_backward(
     seq_len: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = SoftmaxBackwardKernel::new(batch_size, seq_len);
-    let ptx = kernel.emit_ptx();
-
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = SoftmaxBackwardKernel::new(batch_size, seq_len);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("softmax_backward_{batch_size}_{seq_len}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -88,15 +88,15 @@ pub fn rms_norm_backward(
     eps: f32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = RmsNormBackwardKernel::new(batch_size, hidden_size, eps);
-    let ptx = kernel.emit_ptx();
-
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = RmsNormBackwardKernel::new(batch_size, hidden_size, eps);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("rms_norm_backward_{batch_size}_{hidden_size}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -152,15 +152,15 @@ pub fn layer_norm_backward(
     hidden_size: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = LayerNormBackwardKernel::new(batch_size, hidden_size);
-    let ptx = kernel.emit_ptx();
-
     let cache = KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = LayerNormBackwardKernel::new(batch_size, hidden_size);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("layer_norm_backward_{batch_size}_{hidden_size}");
     let module = cache.get_or_compile(&key, &ptx)?;
