@@ -1,5 +1,6 @@
 //! Tests for LLM evaluation module.
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::monitor::llm::{

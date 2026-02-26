@@ -178,7 +178,7 @@ mod tests {
     fn test_average_enum_clone_copy() {
         let avg = Average::Weighted;
         let copied = avg;
-        let cloned = avg.clone();
+        let cloned = avg;
         assert_eq!(avg, copied);
         assert_eq!(avg, cloned);
     }

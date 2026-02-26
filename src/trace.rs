@@ -385,7 +385,7 @@ mod tests {
             duration: Duration::from_micros(50),
             metadata: "grad".to_string(),
         };
-        let debug_str = format!("{:?}", measurement);
+        let debug_str = format!("{measurement:?}");
         assert!(debug_str.contains("TraceMeasurement"));
         assert!(debug_str.contains("Backward"));
     }

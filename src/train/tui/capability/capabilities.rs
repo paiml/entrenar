@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn test_terminal_capabilities_debug() {
         let caps = TerminalCapabilities::default();
-        let debug = format!("{:?}", caps);
+        let debug = format!("{caps:?}");
         assert!(debug.contains("TerminalCapabilities"));
         assert!(debug.contains("width: 80"));
     }

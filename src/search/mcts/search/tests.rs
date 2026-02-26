@@ -1,7 +1,5 @@
 //! Tests for MCTS search algorithm.
 
-#![cfg(test)]
-
 use super::*;
 use crate::search::mcts::config::MctsConfig;
 use crate::search::mcts::traits::{Action, ActionSpace, State, StateSpace};

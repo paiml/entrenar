@@ -1,5 +1,6 @@
 //! Tests for HPO types
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;

@@ -117,7 +117,7 @@ mod tests {
         // rms(x) = sqrt(mean(x^2)) = sqrt(4) = 2
         // so output = [2/2, 2/2, 2/2, 2/2] = [1, 1, 1, 1]
         let data = output.data();
-        for &val in data.iter() {
+        for &val in data {
             assert!((val - 1.0).abs() < 1e-5, "Expected ~1.0, got {val}");
         }
     }

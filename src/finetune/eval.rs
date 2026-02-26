@@ -428,13 +428,13 @@ mod tests {
 
     #[test]
     fn test_count_test_functions() {
-        let code = r#"
+        let code = r"
             #[test]
             fn test_one() {}
 
             #[test]
             fn test_two() {}
-        "#;
+        ";
         assert_eq!(count_test_functions(code), 2);
     }
 
@@ -472,12 +472,12 @@ mod tests {
     fn test_evaluate_valid_rust() {
         let eval = TestEvaluator::default().without_mutation();
         let func = "pub fn add(a: i32, b: i32) -> i32 { a + b }";
-        let tests = r#"
+        let tests = r"
 #[test]
 fn test_add() {
     assert_eq!(add(1, 2), 3);
 }
-"#;
+";
         let result = eval.evaluate(func, tests);
         assert!(!result.function.is_empty());
         assert!(!result.generated_tests.is_empty());

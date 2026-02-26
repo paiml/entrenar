@@ -1,4 +1,5 @@
 //! Tests for terminal capability detection.
+#![allow(clippy::disallowed_methods)]
 
 use super::*;
 

@@ -63,7 +63,7 @@ fn test_research_init_basic() {
         None,
     );
 
-    assert!(result.is_ok(), "Research init failed: {:?}", result);
+    assert!(result.is_ok(), "Research init failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -88,7 +88,7 @@ fn test_research_init_with_author() {
         Some("10.1000/test".to_string()),
     );
 
-    assert!(result.is_ok(), "Research init with author failed: {:?}", result);
+    assert!(result.is_ok(), "Research init with author failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -114,7 +114,7 @@ fn test_research_init_all_artifact_types() {
         let result = run_research_init_helper(
             &format!("test-{i}"),
             &format!("Test {i}"),
-            artifact_type.clone(),
+            *artifact_type,
             LicenseArg::CcBy4,
             output.clone(),
             None,
@@ -125,7 +125,7 @@ fn test_research_init_all_artifact_types() {
             None,
         );
 
-        assert!(result.is_ok(), "Research init failed for {:?}: {:?}", artifact_type, result);
+        assert!(result.is_ok(), "Research init failed for {artifact_type:?}: {result:?}");
     }
 }
 
@@ -153,7 +153,7 @@ fn test_research_init_all_licenses() {
             &format!("license-test-{i}"),
             &format!("License Test {i}"),
             ArtifactTypeArg::Dataset,
-            license.clone(),
+            *license,
             output.clone(),
             None,
             None,
@@ -163,7 +163,7 @@ fn test_research_init_all_licenses() {
             None,
         );
 
-        assert!(result.is_ok(), "Research init failed for {:?}: {:?}", license, result);
+        assert!(result.is_ok(), "Research init failed for {license:?}: {result:?}");
     }
 }
 
@@ -213,7 +213,7 @@ fn test_research_cite_bibtex() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Bibtex citation failed: {:?}", result);
+    assert!(result.is_ok(), "Bibtex citation failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -239,7 +239,7 @@ fn test_research_cite_cff() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "CFF citation failed: {:?}", result);
+    assert!(result.is_ok(), "CFF citation failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -265,7 +265,7 @@ fn test_research_cite_json() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "JSON citation failed: {:?}", result);
+    assert!(result.is_ok(), "JSON citation failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -387,7 +387,7 @@ fn test_research_preregister_basic() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Preregister failed: {:?}", result);
+    assert!(result.is_ok(), "Preregister failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -412,7 +412,7 @@ fn test_research_preregister_with_notes() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Preregister with notes failed: {:?}", result);
+    assert!(result.is_ok(), "Preregister with notes failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -451,7 +451,7 @@ fn test_research_bundle_directory() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Bundle directory failed: {:?}", result);
+    assert!(result.is_ok(), "Bundle directory failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -490,7 +490,7 @@ fn test_research_bundle_zip() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Bundle ZIP failed: {:?}", result);
+    assert!(result.is_ok(), "Bundle ZIP failed: {result:?}");
 }
 
 #[test]
@@ -530,7 +530,7 @@ fn test_research_bundle_with_files() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Bundle with files failed: {:?}", result);
+    assert!(result.is_ok(), "Bundle with files failed: {result:?}");
 }
 
 #[test]
@@ -571,7 +571,7 @@ fn test_research_deposit_dry_run() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Deposit dry run failed: {:?}", result);
+    assert!(result.is_ok(), "Deposit dry run failed: {result:?}");
 }
 
 #[test]
@@ -610,7 +610,7 @@ fn test_research_deposit_all_providers() {
         let args = ResearchArgs {
             command: ResearchCommand::Deposit(DepositArgs {
                 artifact: artifact_path.clone(),
-                provider: provider.clone(),
+                provider: provider,
                 token: None,
                 sandbox: false,
                 community: None,
@@ -620,7 +620,7 @@ fn test_research_deposit_all_providers() {
         };
 
         let result = research::run_research(args, LogLevel::Quiet);
-        assert!(result.is_ok(), "Deposit failed for {:?}: {:?}", provider, result);
+        assert!(result.is_ok(), "Deposit failed for {provider:?}: {result:?}");
     }
 }
 
@@ -647,7 +647,7 @@ fn test_research_export_notebook() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Export notebook failed: {:?}", result);
+    assert!(result.is_ok(), "Export notebook failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -674,7 +674,7 @@ fn test_research_export_html() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Export HTML failed: {:?}", result);
+    assert!(result.is_ok(), "Export HTML failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -716,7 +716,7 @@ fn test_research_export_anonymized() {
     };
 
     let result = research::run_research(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "Export anonymized failed: {:?}", result);
+    assert!(result.is_ok(), "Export anonymized failed: {result:?}");
     assert!(output.exists());
 }
 

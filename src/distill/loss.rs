@@ -341,7 +341,7 @@ mod tests {
         let x = array![[-10.0, -5.0, 0.0, 5.0, 10.0]];
         let probs = softmax_2d(&x);
 
-        for &p in probs.iter() {
+        for &p in &probs {
             assert!(p > 0.0, "FALSIFIED SM-002: softmax output {p} not strictly positive");
         }
     }
@@ -385,14 +385,14 @@ mod tests {
         let x = array![[-100.0, -10.0, 0.0, 10.0, 100.0]];
         let probs = softmax_2d(&x);
 
-        for &p in probs.iter() {
+        for &p in &probs {
             assert!((0.0..=1.0).contains(&p), "FALSIFIED SM-004: softmax output {p} not in [0, 1]");
         }
 
         // For moderate inputs, outputs ARE strictly in (0, 1) — no underflow
         let moderate = array![[1.0, 2.0, 3.0]];
         let probs_mod = softmax_2d(&moderate);
-        for &p in probs_mod.iter() {
+        for &p in &probs_mod {
             assert!(
                 p > 0.0 && p < 1.0,
                 "FALSIFIED SM-004: moderate softmax output {p} not in (0, 1)"
@@ -408,7 +408,7 @@ mod tests {
         let x = array![[1000.0, 999.0, 998.0]];
         let probs = softmax_2d(&x);
 
-        for &p in probs.iter() {
+        for &p in &probs {
             assert!(
                 p.is_finite(),
                 "FALSIFIED SM-005: softmax output {p} not finite for extreme inputs"

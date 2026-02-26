@@ -1,5 +1,6 @@
 //! Tests for calibration data loader.
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::prune::data_loader::{CalibrationDataConfig, CalibrationDataLoader};

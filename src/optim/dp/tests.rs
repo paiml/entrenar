@@ -1,5 +1,6 @@
 //! Tests for the Differential Privacy module.
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::optim::dp::{

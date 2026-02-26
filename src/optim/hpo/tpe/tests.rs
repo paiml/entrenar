@@ -1,5 +1,6 @@
 //! Tests for TPE optimizer
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::optim::hpo::error::HPOError;

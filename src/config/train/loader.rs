@@ -1112,7 +1112,7 @@ training:
     #[test]
     fn test_load_config_legacy_format() {
         use std::io::Write;
-        let legacy_yaml = r#"
+        let legacy_yaml = r"
 model:
   path: model.gguf
   layers: []
@@ -1124,7 +1124,7 @@ data:
 optimizer:
   name: adam
   lr: 0.001
-"#;
+";
         let dir = std::env::temp_dir().join("entrenar_bridge_test");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("legacy_test.yaml");

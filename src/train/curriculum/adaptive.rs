@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn test_adaptive_curriculum_debug() {
         let curriculum = AdaptiveCurriculum::new();
-        let debug = format!("{:?}", curriculum);
+        let debug = format!("{curriculum:?}");
         assert!(debug.contains("AdaptiveCurriculum"));
     }
 }

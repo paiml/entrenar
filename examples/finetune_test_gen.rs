@@ -157,6 +157,7 @@ struct LayerQLoRAAdapters {
     // For brevity in this example, we stick to attention, but acknowledge the requirement.
 }
 
+#[allow(dead_code)]
 pub struct QwenWithQLoRA {
     base_model: QwenModel,
     qlora_adapters: Vec<LayerQLoRAAdapters>,

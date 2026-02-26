@@ -389,13 +389,11 @@ mod tests {
 
         assert_eq!(
             nan_count, 0,
-            "FALSIFIED EM-004: forward output contains {} NaN values",
-            nan_count
+            "FALSIFIED EM-004: forward output contains {nan_count} NaN values"
         );
         assert_eq!(
             inf_count, 0,
-            "FALSIFIED EM-004: forward output contains {} Inf values",
-            inf_count
+            "FALSIFIED EM-004: forward output contains {inf_count} Inf values"
         );
     }
 
@@ -522,8 +520,7 @@ mod tests {
         let oob_norm: f32 = oob_output.data().iter().map(|v| v * v).sum();
         assert!(
             oob_norm == 0.0,
-            "FALSIFIED EMB-004: OOB token {} produced non-zero (norm={oob_norm})",
-            vocab
+            "FALSIFIED EMB-004: OOB token {vocab} produced non-zero (norm={oob_norm})"
         );
     }
 

@@ -35,7 +35,7 @@ fn falsify_pass_at_k_large_n() {
     // Manual: C(900,10)/C(1000,10) = prod_{i=0..9} (900-i)/(1000-i)
     let mut manual_ratio = 1.0f64;
     for i in 0..10 {
-        manual_ratio *= (900 - i) as f64 / (1000 - i) as f64;
+        manual_ratio *= f64::from(900 - i) / f64::from(1000 - i);
     }
     let expected = 1.0 - manual_ratio;
     assert!((p - expected).abs() < 1e-10, "Numerical stability: expected {expected}, got {p}");
@@ -219,7 +219,7 @@ proptest! {
     ) {
         let ndcg = ndcg_at_k(&scores, k);
         prop_assert!(
-            ndcg >= -1e-10 && ndcg <= 1.0 + 1e-10,
+            (-1e-10..=1.0 + 1e-10).contains(&ndcg),
             "NDCG must be in [0,1], got {}", ndcg
         );
     }

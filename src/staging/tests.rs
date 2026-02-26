@@ -326,7 +326,7 @@ fn test_list_versions_only_for_named_model() {
 #[test]
 fn test_error_display_not_found() {
     let err = StagingError::NotFound { name: "m".to_string(), version: "1.0.0".to_string() };
-    assert!(err.to_string().contains("m"));
+    assert!(err.to_string().contains('m'));
     assert!(err.to_string().contains("1.0.0"));
 }
 

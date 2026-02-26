@@ -384,11 +384,11 @@ mod tests {
 
             match level {
                 AlertLevel::Critical | AlertLevel::Error => {
-                    assert!(andon.should_stop(), "Expected stop for {:?}", level);
+                    assert!(andon.should_stop(), "Expected stop for {level:?}");
                     assert!(should_stop);
                 }
                 AlertLevel::Info | AlertLevel::Warning => {
-                    assert!(!andon.should_stop(), "Expected no stop for {:?}", level);
+                    assert!(!andon.should_stop(), "Expected no stop for {level:?}");
                     assert!(!should_stop);
                 }
             }

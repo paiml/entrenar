@@ -325,7 +325,7 @@ fn test_model_paradigm_display_all_variants() {
     assert_eq!(format!("{}", ModelParadigm::Ensemble), "Ensemble");
 
     let prefix = ModelParadigm::FineTuning(FineTuneMethod::Prefix);
-    assert!(format!("{}", prefix).contains("Prefix"));
+    assert!(format!("{prefix}").contains("Prefix"));
 }
 
 #[test]

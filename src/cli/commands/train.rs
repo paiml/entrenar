@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn test_train_dry_run_valid_config() {
         // Create a minimal valid config file
-        let config_content = r#"
+        let config_content = r"
 model:
   path: /tmp/test_model.gguf
 data:
@@ -134,13 +134,13 @@ optimizer:
   lr: 0.001
 training:
   epochs: 1
-"#;
+";
         let config_path = "/tmp/test_train_config.yaml";
         std::fs::write(config_path, config_content).unwrap();
 
         let args = make_args(config_path, true);
         let result = run_train(args, LogLevel::Quiet);
-        assert!(result.is_ok(), "Dry run should succeed: {:?}", result);
+        assert!(result.is_ok(), "Dry run should succeed: {result:?}");
 
         std::fs::remove_file(config_path).ok();
     }
@@ -154,7 +154,7 @@ training:
 
     #[test]
     fn test_train_dry_run_logs_correctly() {
-        let config_content = r#"
+        let config_content = r"
 model:
   path: /tmp/test_model.gguf
 data:
@@ -165,7 +165,7 @@ optimizer:
   lr: 0.01
 training:
   epochs: 5
-"#;
+";
         let config_path = "/tmp/test_train_config_logs.yaml";
         std::fs::write(config_path, config_content).unwrap();
 

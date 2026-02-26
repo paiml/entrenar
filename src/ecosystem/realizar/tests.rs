@@ -193,20 +193,20 @@ fn test_quantization_type_parse_all_variants() {
 #[test]
 fn test_gguf_export_error_display() {
     let err = GgufExportError::InvalidQuantization("bad config".to_string());
-    assert!(format!("{}", err).contains("Invalid quantization"));
-    assert!(format!("{}", err).contains("bad config"));
+    assert!(format!("{err}").contains("Invalid quantization"));
+    assert!(format!("{err}").contains("bad config"));
 
     let err = GgufExportError::ValidationFailed("model check failed".to_string());
-    assert!(format!("{}", err).contains("validation failed"));
+    assert!(format!("{err}").contains("validation failed"));
 
     let err = GgufExportError::IoError("write error".to_string());
-    assert!(format!("{}", err).contains("I/O error"));
+    assert!(format!("{err}").contains("I/O error"));
 
     let err = GgufExportError::UnsupportedArchitecture("unknown_arch".to_string());
-    assert!(format!("{}", err).contains("Unsupported architecture"));
+    assert!(format!("{err}").contains("Unsupported architecture"));
 
     let err = GgufExportError::MetadataError("serialization failed".to_string());
-    assert!(format!("{}", err).contains("Metadata error"));
+    assert!(format!("{err}").contains("Metadata error"));
 }
 
 #[test]

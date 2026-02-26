@@ -424,7 +424,7 @@ mod lf_proptest_falsify {
     use super::*;
     use proptest::prelude::*;
 
-    /// FALSIFY-LF-001e-prop: MSE non-negative for random inputs
+    // FALSIFY-LF-001e-prop: MSE non-negative for random inputs
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(100))]
 
@@ -451,7 +451,7 @@ mod lf_proptest_falsify {
         }
     }
 
-    /// FALSIFY-LF-005e-prop: L1 symmetry for random inputs
+    // FALSIFY-LF-005e-prop: L1 symmetry for random inputs
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(100))]
 

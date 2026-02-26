@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn test_preflight_results_debug() {
         let results = PreflightResults::new(vec![], true, 1, 0, 0, 0);
-        let debug = format!("{:?}", results);
+        let debug = format!("{results:?}");
         assert!(debug.contains("PreflightResults"));
     }
 }

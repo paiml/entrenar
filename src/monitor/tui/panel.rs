@@ -585,7 +585,7 @@ mod tests {
         let snapshot = make_snapshot();
         let verifications = verify_layout(&snapshot);
         assert_eq!(verifications.len(), 5);
-        assert!(verifications.iter().all(|v| v.is_valid()));
+        assert!(verifications.iter().all(super::PanelVerification::is_valid));
     }
 
     #[test]

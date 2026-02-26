@@ -136,10 +136,10 @@ fn read_training_metadata(path: &Path) -> Option<String> {
     let json: serde_json::Value = serde_json::from_str(&content).ok()?;
 
     let mut details = String::new();
-    if let Some(epochs) = json.get("epochs_completed").and_then(|v| v.as_u64()) {
+    if let Some(epochs) = json.get("epochs_completed").and_then(serde_json::Value::as_u64) {
         details.push_str(&format!("- **Epochs:** {epochs}\n"));
     }
-    if let Some(loss) = json.get("final_loss").and_then(|v| v.as_f64()) {
+    if let Some(loss) = json.get("final_loss").and_then(serde_json::Value::as_f64) {
         details.push_str(&format!("- **Final loss:** {loss:.6}\n"));
     }
     if let Some(mode) = json.get("training_mode").and_then(|v| v.as_str()) {
@@ -312,7 +312,7 @@ mod tests {
 
         let details = read_training_metadata(&path).unwrap();
         assert!(details.contains("Epochs"));
-        assert!(details.contains("5"));
+        assert!(details.contains('5'));
     }
 
     #[test]

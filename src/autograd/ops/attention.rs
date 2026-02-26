@@ -368,7 +368,7 @@ mod tests {
         use super::*;
         use proptest::prelude::*;
 
-        /// FALSIFY-ATT-002-prop: Output convexity for random V
+        // FALSIFY-ATT-002-prop: Output convexity for random V
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(100))]
 
@@ -412,7 +412,7 @@ mod tests {
             }
         }
 
-        /// FALSIFY-ATT-001-prop: Uniform V → output equals V (weights sum to 1)
+        // FALSIFY-ATT-001-prop: Uniform V -> output equals V (weights sum to 1)
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(100))]
 

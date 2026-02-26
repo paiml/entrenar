@@ -17,18 +17,9 @@ use entrenar::monitor::tui::{
 };
 use jugar_probar::{
     // Brick Architecture
-    brick::{Brick, BrickAssertion, BrickBudget, BrickVerification},
-    // Playbook state machine
-    playbook::{Playbook, StateMachine, Transition as PlaybookTransition},
-    // TUI Testing
-    tui::{FrameAssertion, TuiFrame, TuiSnapshot, TuiTestBackend},
-    // TUI Load Testing
-    tui_load::{TuiLoadConfig, TuiLoadTest},
+    tui::{TuiFrame, TuiSnapshot},
     // UX Coverage
     ux_coverage::{ElementId, InteractionType, UxCoverageTracker},
-    // Assertions
-    Assertion,
-    AssertionResult,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -487,7 +478,7 @@ fn test_pixel_coverage_metrics() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // Calculate pixel coverage (non-space characters / total characters)
-    let total_chars: usize = frame.lines().iter().map(|l| l.len()).sum();
+    let total_chars: usize = frame.lines().iter().map(std::string::String::len).sum();
     let non_space_chars: usize =
         frame.lines().iter().map(|l| l.chars().filter(|c| !c.is_whitespace()).count()).sum();
 
@@ -651,12 +642,7 @@ fn test_training_state_machine() {
 
     // Test all transitions are valid
     for (from, to) in &transitions {
-        assert!(
-            states.contains(from) && states.contains(to),
-            "Invalid transition: {} -> {}",
-            from,
-            to
-        );
+        assert!(states.contains(from) && states.contains(to), "Invalid transition: {from} -> {to}");
     }
 
     // Test invalid transitions are caught
@@ -668,7 +654,7 @@ fn test_training_state_machine() {
 
     for (from, to) in &invalid_transitions {
         let is_valid_transition = transitions.iter().any(|(f, t)| f == from && t == to);
-        assert!(!is_valid_transition, "Should be invalid transition: {} -> {}", from, to);
+        assert!(!is_valid_transition, "Should be invalid transition: {from} -> {to}");
     }
 }
 
@@ -684,7 +670,7 @@ fn test_print_metrics_summary() {
     let frame = TuiFrame::from_lines(&rendered.lines().collect::<Vec<_>>());
 
     // Pixel metrics
-    let total_chars: usize = frame.lines().iter().map(|l| l.len()).sum();
+    let total_chars: usize = frame.lines().iter().map(std::string::String::len).sum();
     let non_space: usize =
         frame.lines().iter().map(|l| l.chars().filter(|c| !c.is_whitespace()).count()).sum();
     let unicode_chars: usize =
@@ -708,11 +694,11 @@ fn test_print_metrics_summary() {
     println!("PIXEL COVERAGE:");
     println!("  Content density: {:.1}%", (non_space as f64 / total_chars as f64) * 100.0);
     println!("  Unicode richness: {:.1}%", (unicode_chars as f64 / total_chars as f64) * 100.0);
-    println!("  Total characters: {}", total_chars);
+    println!("  Total characters: {total_chars}");
     println!();
     println!("FRAME DIMENSIONS:");
-    println!("  Width: {} chars", width);
-    println!("  Height: {} lines", height);
+    println!("  Width: {width} chars");
+    println!("  Height: {height} lines");
     println!("  Total area: {} cells", width as usize * height as usize);
     println!();
     println!("PANEL COVERAGE:");
@@ -728,5 +714,5 @@ fn test_print_metrics_summary() {
     println!("════════════════════════════════════════════════════════════\n");
 
     // Assertions
-    assert!(panel_score >= 4, "Panel score too low: {}/5", panel_score);
+    assert!(panel_score >= 4, "Panel score too low: {panel_score}/5");
 }

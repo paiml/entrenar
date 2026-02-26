@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn test_stage_clone() {
         let stage = ModelStage::Development;
-        let cloned = stage.clone();
+        let cloned = stage;
         assert_eq!(stage, cloned);
     }
 
@@ -222,7 +222,7 @@ mod tests {
     #[test]
     fn test_stage_debug() {
         let stage = ModelStage::Staging;
-        let debug = format!("{:?}", stage);
+        let debug = format!("{stage:?}");
         assert!(debug.contains("Staging"));
     }
 
