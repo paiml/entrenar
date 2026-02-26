@@ -2,7 +2,14 @@
 
 use trueno_viz::output::{TerminalEncoder, TerminalMode as TruenoTerminalMode};
 use trueno_viz::plots::{LossCurve, MetricSeries};
-use trueno_viz::prelude::{Rgba, WithDimensions};
+use trueno_viz::prelude::Rgba;
+
+/// Helper to set dimensions on a LossCurve builder (compatible across trueno-viz 0.1/0.2).
+fn with_dimensions(mut curve: LossCurve, width: u32, height: u32) -> LossCurve {
+    use trueno_viz::prelude::WithDimensions;
+    curve.set_dimensions(width, height);
+    curve
+}
 
 use crate::train::tui::capability::TerminalMode;
 
@@ -37,10 +44,13 @@ pub struct LossCurveDisplay {
 impl LossCurveDisplay {
     /// Create a new loss curve display.
     pub fn new(width: u32, height: u32) -> Self {
-        let loss_curve = LossCurve::new()
-            .add_series(MetricSeries::new("Train", Rgba::rgb(66, 133, 244)))
-            .add_series(MetricSeries::new("Val", Rgba::rgb(255, 128, 0)))
-            .dimensions(width, height)
+        let loss_curve = with_dimensions(
+            LossCurve::new()
+                .add_series(MetricSeries::new("Train", Rgba::rgb(66, 133, 244)))
+                .add_series(MetricSeries::new("Val", Rgba::rgb(255, 128, 0))),
+            width,
+            height,
+        )
             .margin(2)
             .best_markers(true)
             .lower_is_better(true)
@@ -58,10 +68,13 @@ impl LossCurveDisplay {
     /// Set smoothing factor (0.0 = none, 0.99 = heavy).
     pub fn smoothing(mut self, factor: f32) -> Self {
         // Re-create with smoothing applied
-        self.loss_curve = LossCurve::new()
-            .add_series(MetricSeries::new("Train", Rgba::rgb(66, 133, 244)).smoothing(factor))
-            .add_series(MetricSeries::new("Val", Rgba::rgb(255, 128, 0)).smoothing(factor))
-            .dimensions(self.width, self.height)
+        self.loss_curve = with_dimensions(
+            LossCurve::new()
+                .add_series(MetricSeries::new("Train", Rgba::rgb(66, 133, 244)).smoothing(factor))
+                .add_series(MetricSeries::new("Val", Rgba::rgb(255, 128, 0)).smoothing(factor)),
+            self.width,
+            self.height,
+        )
             .margin(2)
             .best_markers(true)
             .lower_is_better(true)
