@@ -25,15 +25,15 @@ pub fn fused_swiglu_forward(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = FusedSwigluKernel::new(n);
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = FusedSwigluKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("fused_swiglu_forward_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -81,9 +81,6 @@ pub fn gemm_forward(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = GemmKernel::naive(m, n, k);
-    let ptx = kernel.emit_ptx();
-
     let cache = FORWARD_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
@@ -91,12 +88,17 @@ pub fn gemm_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    let kernel = GemmKernel::naive(m, n, k);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+
     let key = format!("gemm_forward_{m}_{k}_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
     // Use 16x16 thread blocks for GEMM
+    // Kernel: col = ctaid.x * 16 + tid.x, row = ctaid.y * 16 + tid.y
+    // So grid.x = ceil(N/16) for columns, grid.y = ceil(M/16) for rows
     let config = LaunchConfig {
-        grid: (m.div_ceil(16), n.div_ceil(16), 1),
+        grid: (n.div_ceil(16), m.div_ceil(16), 1),
         block: (16, 16, 1),
         shared_mem: 0,
     };
@@ -105,13 +107,15 @@ pub fn gemm_forward(
     let b_ptr = b.as_ptr();
     let c_ptr = c.as_ptr();
 
+    // PTX kernel signature: (a_ptr, b_ptr, c_ptr, m, n, k)
+    // CRITICAL: must match param declaration order in GemmKernel::build_naive()
     let mut args: [*mut std::ffi::c_void; 6] = [
         &a_ptr as *const _ as *mut _,
         &b_ptr as *const _ as *mut _,
         &c_ptr as *const _ as *mut _,
         &m as *const _ as *mut _,
-        &k as *const _ as *mut _,
         &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
     ];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with

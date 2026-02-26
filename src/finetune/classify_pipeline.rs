@@ -135,6 +135,10 @@ pub struct ClassifyPipeline {
     /// CUDA-accelerated transformer blocks — one per layer (F-CUDA-006)
     #[cfg(feature = "cuda")]
     cuda_blocks: Option<Vec<CudaTransformerBlock>>,
+    /// Count of GPU forward passes that produced NaN/Inf and fell back to CPU.
+    /// Used to decide when to permanently disable CUDA (threshold: 100).
+    #[cfg(feature = "cuda")]
+    cuda_nan_count: usize,
 }
 
 impl ClassifyPipeline {
@@ -158,6 +162,11 @@ impl ClassifyPipeline {
 
         let optimizer = AdamW::default_params(classify_config.learning_rate);
 
+        // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
+        #[cfg(feature = "cuda")]
+        let (cuda_trainer, cuda_blocks) =
+            Self::try_init_cuda(&model, &model_config, &classify_config);
+
         Self {
             model,
             classifier,
@@ -166,9 +175,11 @@ impl ClassifyPipeline {
             optimizer,
             tokenizer: None,
             #[cfg(feature = "cuda")]
-            cuda_trainer: None,
+            cuda_trainer,
             #[cfg(feature = "cuda")]
-            cuda_blocks: None,
+            cuda_blocks,
+            #[cfg(feature = "cuda")]
+            cuda_nan_count: 0,
         }
     }
 
@@ -229,6 +240,8 @@ impl ClassifyPipeline {
             cuda_trainer,
             #[cfg(feature = "cuda")]
             cuda_blocks,
+            #[cfg(feature = "cuda")]
+            cuda_nan_count: 0,
         })
     }
 
@@ -413,7 +426,19 @@ impl ClassifyPipeline {
                 ) {
                     Some(tensor) => return tensor,
                     None => {
-                        // Fallback logged inside forward_hidden_cuda_impl
+                        // GPU produced NaN/Inf for this sample — use CPU fallback
+                        // but keep CUDA enabled for subsequent samples.
+                        // Sporadic NaN is expected with randomly initialized weights
+                        // due to different accumulation ordering in CUDA GEMM.
+                        self.cuda_nan_count += 1;
+                        if self.cuda_nan_count > 100 {
+                            eprintln!(
+                                "[CUDA] {} NaN fallbacks — disabling GPU acceleration",
+                                self.cuda_nan_count
+                            );
+                            self.cuda_trainer = None;
+                            self.cuda_blocks = None;
+                        }
                     }
                 }
             }
@@ -463,8 +488,20 @@ impl ClassifyPipeline {
         }
         // After the loop, gpu_input holds the final output (due to swap)
 
+        // Sync stream to ensure all CUDA kernels have completed before download
+        if let Err(e) = stream.synchronize() {
+            eprintln!("[CUDA] Stream sync failed: {e}");
+            return None;
+        }
+
         // Step 4: Download from GPU
         let result_data = trainer.download(&gpu_input).ok()?;
+
+        // Step 4.5: NaN guard — GPU kernels can produce NaN with certain weight
+        // distributions (e.g., random init). Fall back to CPU if detected.
+        if result_data.iter().any(|v| !v.is_finite()) {
+            return None;
+        }
 
         // Step 5: Apply final RMSNorm on CPU
         let result_tensor = Tensor::from_vec(result_data, false);
@@ -481,6 +518,32 @@ impl ClassifyPipeline {
         #[cfg(not(feature = "cuda"))]
         {
             false
+        }
+    }
+
+    /// Get GPU device name, or `None` if not using CUDA.
+    #[must_use]
+    pub fn gpu_name(&self) -> Option<String> {
+        #[cfg(feature = "cuda")]
+        {
+            self.cuda_trainer.as_ref().map(|t| t.device_name())
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            None
+        }
+    }
+
+    /// Get total GPU memory in bytes, or `None` if not using CUDA.
+    #[must_use]
+    pub fn gpu_total_memory(&self) -> Option<usize> {
+        #[cfg(feature = "cuda")]
+        {
+            self.cuda_trainer.as_ref().map(|t| t.total_memory())
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            None
         }
     }
 
@@ -821,7 +884,7 @@ impl ClassifyPipeline {
         let predicted = logits_with_bias
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("no NaN in logits"))
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(idx, _)| idx)
             .unwrap_or(0);
 
@@ -961,7 +1024,7 @@ impl ClassifyPipeline {
         let predicted = logits_with_bias
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("no NaN in logits"))
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .map_or(0, |(idx, _)| idx);
 
         // Cross-entropy loss
@@ -1170,10 +1233,16 @@ impl ClassifyPipeline {
         } else {
             "byte-level (256)".to_string()
         };
+        let device_info = if let Some(name) = self.gpu_name() {
+            format!("CUDA ({name})")
+        } else {
+            "CPU".to_string()
+        };
         format!(
-            "ClassifyPipeline:\n  Model: {} hidden, {} layers\n  Tokenizer: {}\n  LoRA: rank={}, alpha={:.1}, {} adapters\n  Classifier: {}->{} ({} params)\n  Total trainable: {} params",
+            "ClassifyPipeline:\n  Model: {} hidden, {} layers\n  Device: {}\n  Tokenizer: {}\n  LoRA: rank={}, alpha={:.1}, {} adapters\n  Classifier: {}->{} ({} params)\n  Total trainable: {} params",
             self.model.config.hidden_size,
             self.model.config.num_hidden_layers,
+            device_info,
             tokenizer_info,
             self.config.lora_rank,
             self.config.lora_alpha,

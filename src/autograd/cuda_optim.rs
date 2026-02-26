@@ -44,15 +44,22 @@ static OPTIM_KERNEL_CACHE: OnceLock<Mutex<OptimKernelCache>> = OnceLock::new();
 struct OptimKernelCache {
     ctx: std::sync::Arc<CudaContext>,
     modules: HashMap<String, CudaModule>,
+    sm_target: String,
 }
 
 #[cfg(feature = "cuda")]
 impl OptimKernelCache {
     fn new(ctx: std::sync::Arc<CudaContext>) -> Self {
+        let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
         Self {
             ctx,
             modules: HashMap::new(),
+            sm_target,
         }
+    }
+
+    fn sm_target(&self) -> &str {
+        &self.sm_target
     }
 
     fn get_or_compile(&mut self, name: &str, ptx: &str) -> Result<&mut CudaModule> {
@@ -105,15 +112,15 @@ pub fn adamw_step_cuda(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = AdamWStepKernel::new(n);
-    let ptx = kernel.emit_ptx();
-
     let cache = OPTIM_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = AdamWStepKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("adamw_step_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -178,15 +185,15 @@ pub fn adam_step_cuda(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let kernel = AdamStepKernel::new(n);
-    let ptx = kernel.emit_ptx();
-
     let cache = OPTIM_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = AdamStepKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("adam_step_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
@@ -262,15 +269,15 @@ pub fn gradient_clip_cuda(
         return Ok(());
     }
 
-    let kernel = GradientClipKernel::new(n);
-    let ptx = kernel.emit_ptx();
-
     let cache = OPTIM_KERNEL_CACHE
         .get()
         .ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    let kernel = GradientClipKernel::new(n);
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("gradient_clip_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
