@@ -114,12 +114,30 @@ mod tests {
 
     #[test]
     fn test_init_template_from_str() {
-        assert_eq!("minimal".parse::<InitTemplate>().unwrap(), InitTemplate::Minimal);
-        assert_eq!("min".parse::<InitTemplate>().unwrap(), InitTemplate::Minimal);
-        assert_eq!("lora".parse::<InitTemplate>().unwrap(), InitTemplate::Lora);
-        assert_eq!("qlora".parse::<InitTemplate>().unwrap(), InitTemplate::Qlora);
-        assert_eq!("full".parse::<InitTemplate>().unwrap(), InitTemplate::Full);
-        assert_eq!("complete".parse::<InitTemplate>().unwrap(), InitTemplate::Full);
+        assert_eq!(
+            "minimal".parse::<InitTemplate>().expect("parsing should succeed"),
+            InitTemplate::Minimal
+        );
+        assert_eq!(
+            "min".parse::<InitTemplate>().expect("parsing should succeed"),
+            InitTemplate::Minimal
+        );
+        assert_eq!(
+            "lora".parse::<InitTemplate>().expect("parsing should succeed"),
+            InitTemplate::Lora
+        );
+        assert_eq!(
+            "qlora".parse::<InitTemplate>().expect("parsing should succeed"),
+            InitTemplate::Qlora
+        );
+        assert_eq!(
+            "full".parse::<InitTemplate>().expect("parsing should succeed"),
+            InitTemplate::Full
+        );
+        assert_eq!(
+            "complete".parse::<InitTemplate>().expect("parsing should succeed"),
+            InitTemplate::Full
+        );
         assert!("invalid".parse::<InitTemplate>().is_err());
     }
 
@@ -138,10 +156,22 @@ mod tests {
 
     #[test]
     fn test_training_method_from_str() {
-        assert_eq!("full".parse::<TrainingMethod>().unwrap(), TrainingMethod::Full);
-        assert_eq!("lora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
-        assert_eq!("qlora".parse::<TrainingMethod>().unwrap(), TrainingMethod::Qlora);
-        assert_eq!("LORA".parse::<TrainingMethod>().unwrap(), TrainingMethod::Lora);
+        assert_eq!(
+            "full".parse::<TrainingMethod>().expect("parsing should succeed"),
+            TrainingMethod::Full
+        );
+        assert_eq!(
+            "lora".parse::<TrainingMethod>().expect("parsing should succeed"),
+            TrainingMethod::Lora
+        );
+        assert_eq!(
+            "qlora".parse::<TrainingMethod>().expect("parsing should succeed"),
+            TrainingMethod::Qlora
+        );
+        assert_eq!(
+            "LORA".parse::<TrainingMethod>().expect("parsing should succeed"),
+            TrainingMethod::Lora
+        );
         assert!("invalid".parse::<TrainingMethod>().is_err());
     }
 

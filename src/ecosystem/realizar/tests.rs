@@ -283,7 +283,7 @@ fn test_gguf_exporter_export_success() {
     let result = exporter.export("input.gguf", "./output.gguf");
     assert!(result.is_ok());
 
-    let res = result.unwrap();
+    let res = result.expect("operation should succeed");
     assert_eq!(res.quantization, QuantizationType::Q4KM);
     assert!(res.metadata_keys > 0);
 }
@@ -315,8 +315,9 @@ fn test_gguf_exporter_collect_metadata_with_all_fields() {
 #[test]
 fn test_quantization_type_serde() {
     let q = QuantizationType::Q4KM;
-    let json = serde_json::to_string(&q).unwrap();
-    let parsed: QuantizationType = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&q).expect("JSON serialization should succeed");
+    let parsed: QuantizationType =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(q, parsed);
 }
 
@@ -326,8 +327,9 @@ fn test_experiment_provenance_serde() {
         .with_metric("loss", 0.1)
         .with_custom("key", "value");
 
-    let json = serde_json::to_string(&prov).unwrap();
-    let parsed: ExperimentProvenance = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&prov).expect("JSON serialization should succeed");
+    let parsed: ExperimentProvenance =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(prov.experiment_id, parsed.experiment_id);
     assert_eq!(prov.run_id, parsed.run_id);
@@ -340,8 +342,9 @@ fn test_gguf_metadata_serde() {
     metadata.general = GeneralMetadata::new("llama", "test");
     metadata.custom.insert("key".to_string(), "value".to_string());
 
-    let json = serde_json::to_string(&metadata).unwrap();
-    let parsed: GgufMetadata = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&metadata).expect("JSON serialization should succeed");
+    let parsed: GgufMetadata =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(metadata.general.architecture, parsed.general.architecture);
     assert_eq!(metadata.custom.get("key"), parsed.custom.get("key"));

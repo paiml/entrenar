@@ -20,10 +20,10 @@ optimizer:
   lr: 0.001
 ";
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
-    let spec = load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).expect("load should succeed");
     assert_eq!(spec.optimizer.name, "adam");
     assert_eq!(spec.data.batch_size, 8);
 }
@@ -43,8 +43,8 @@ optimizer:
   lr: 0.001
 ";
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = load_config(temp_file.path());
     assert!(result.is_err());
@@ -54,8 +54,8 @@ optimizer:
 fn test_load_malformed_yaml() {
     let yaml = "this is not valid yaml: [}";
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = load_config(temp_file.path());
     assert!(result.is_err());
@@ -87,12 +87,12 @@ lora:
   alpha: 32
   target_modules: [q_proj, v_proj]
 ";
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
-    let spec = load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).expect("load should succeed");
     assert!(spec.lora.is_some());
-    let lora = spec.lora.unwrap();
+    let lora = spec.lora.expect("operation should succeed");
     assert_eq!(lora.rank, 16);
     assert_eq!(lora.alpha, 32.0);
 }
@@ -116,12 +116,12 @@ quantize:
   bits: 4
   symmetric: true
 ";
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
-    let spec = load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).expect("load should succeed");
     assert!(spec.quantize.is_some());
-    let quant = spec.quantize.unwrap();
+    let quant = spec.quantize.expect("operation should succeed");
     assert_eq!(quant.bits, 4);
 }
 
@@ -144,10 +144,10 @@ training:
   epochs: 5
   grad_clip: 1.0
 ";
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
-    let spec = load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).expect("load should succeed");
     assert_eq!(spec.training.epochs, 5);
     assert_eq!(spec.training.grad_clip, Some(1.0));
 }

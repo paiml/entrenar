@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn test_create_experiment() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
 
         assert!(exp_id.starts_with("exp-"));
         assert_eq!(storage.experiment_count(), 1);
@@ -244,7 +244,8 @@ mod tests {
     fn test_create_experiment_with_config() {
         let mut storage = InMemoryStorage::new();
         let config = serde_json::json!({"learning_rate": 0.001});
-        let exp_id = storage.create_experiment("test-exp", Some(config)).unwrap();
+        let exp_id =
+            storage.create_experiment("test-exp", Some(config)).expect("config should be valid");
 
         assert!(exp_id.starts_with("exp-"));
     }
@@ -252,12 +253,15 @@ mod tests {
     #[test]
     fn test_create_run() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
         assert!(run_id.starts_with("run-"));
         assert_eq!(storage.run_count(), 1);
-        assert_eq!(storage.get_run_status(&run_id).unwrap(), RunStatus::Pending);
+        assert_eq!(
+            storage.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Pending
+        );
     }
 
     #[test]
@@ -275,20 +279,23 @@ mod tests {
     #[test]
     fn test_start_run() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
-        storage.start_run(&run_id).unwrap();
-        assert_eq!(storage.get_run_status(&run_id).unwrap(), RunStatus::Running);
+        storage.start_run(&run_id).expect("operation should succeed");
+        assert_eq!(
+            storage.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Running
+        );
     }
 
     #[test]
     fn test_start_run_invalid_state() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
-        storage.start_run(&run_id).unwrap();
+        storage.start_run(&run_id).expect("operation should succeed");
         let result = storage.start_run(&run_id); // Already started
 
         assert!(result.is_err());
@@ -301,32 +308,38 @@ mod tests {
     #[test]
     fn test_complete_run() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
-        storage.start_run(&run_id).unwrap();
-        storage.complete_run(&run_id, RunStatus::Success).unwrap();
+        storage.start_run(&run_id).expect("operation should succeed");
+        storage.complete_run(&run_id, RunStatus::Success).expect("operation should succeed");
 
-        assert_eq!(storage.get_run_status(&run_id).unwrap(), RunStatus::Success);
+        assert_eq!(
+            storage.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Success
+        );
     }
 
     #[test]
     fn test_complete_run_failed() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
-        storage.start_run(&run_id).unwrap();
-        storage.complete_run(&run_id, RunStatus::Failed).unwrap();
+        storage.start_run(&run_id).expect("operation should succeed");
+        storage.complete_run(&run_id, RunStatus::Failed).expect("operation should succeed");
 
-        assert_eq!(storage.get_run_status(&run_id).unwrap(), RunStatus::Failed);
+        assert_eq!(
+            storage.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Failed
+        );
     }
 
     #[test]
     fn test_complete_run_invalid_state() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
         // Try to complete without starting
         let result = storage.complete_run(&run_id, RunStatus::Success);
@@ -341,13 +354,13 @@ mod tests {
     #[test]
     fn test_log_metric() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
-        storage.log_metric(&run_id, "loss", 0, 0.5).unwrap();
-        storage.log_metric(&run_id, "loss", 1, 0.4).unwrap();
+        storage.log_metric(&run_id, "loss", 0, 0.5).expect("operation should succeed");
+        storage.log_metric(&run_id, "loss", 1, 0.4).expect("operation should succeed");
 
-        let metrics = storage.get_metrics(&run_id, "loss").unwrap();
+        let metrics = storage.get_metrics(&run_id, "loss").expect("operation should succeed");
         assert_eq!(metrics.len(), 2);
         assert_eq!(metrics[0].step, 0);
         assert!((metrics[0].value - 0.5).abs() < f64::EPSILON);
@@ -370,15 +383,15 @@ mod tests {
     #[test]
     fn test_get_metrics_ordering() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
         // Log out of order
-        storage.log_metric(&run_id, "loss", 2, 0.3).unwrap();
-        storage.log_metric(&run_id, "loss", 0, 0.5).unwrap();
-        storage.log_metric(&run_id, "loss", 1, 0.4).unwrap();
+        storage.log_metric(&run_id, "loss", 2, 0.3).expect("operation should succeed");
+        storage.log_metric(&run_id, "loss", 0, 0.5).expect("operation should succeed");
+        storage.log_metric(&run_id, "loss", 1, 0.4).expect("operation should succeed");
 
-        let metrics = storage.get_metrics(&run_id, "loss").unwrap();
+        let metrics = storage.get_metrics(&run_id, "loss").expect("operation should succeed");
         assert_eq!(metrics[0].step, 0);
         assert_eq!(metrics[1].step, 1);
         assert_eq!(metrics[2].step, 2);
@@ -387,21 +400,22 @@ mod tests {
     #[test]
     fn test_get_metrics_empty() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
-        let metrics = storage.get_metrics(&run_id, "loss").unwrap();
+        let metrics = storage.get_metrics(&run_id, "loss").expect("operation should succeed");
         assert!(metrics.is_empty());
     }
 
     #[test]
     fn test_log_artifact() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
         let data = b"model weights data";
-        let hash = storage.log_artifact(&run_id, "model.bin", data).unwrap();
+        let hash =
+            storage.log_artifact(&run_id, "model.bin", data).expect("operation should succeed");
 
         assert!(hash.starts_with("sha256-"));
         assert_eq!(storage.artifact_count(), 1);
@@ -418,36 +432,48 @@ mod tests {
     #[test]
     fn test_set_and_get_span_id() {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
-        let run_id = storage.create_run(&exp_id).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = storage.create_run(&exp_id).expect("operation should succeed");
 
-        assert!(storage.get_span_id(&run_id).unwrap().is_none());
+        assert!(storage.get_span_id(&run_id).expect("operation should succeed").is_none());
 
-        storage.set_span_id(&run_id, "span-12345").unwrap();
+        storage.set_span_id(&run_id, "span-12345").expect("operation should succeed");
 
-        assert_eq!(storage.get_span_id(&run_id).unwrap(), Some("span-12345".to_string()));
+        assert_eq!(
+            storage.get_span_id(&run_id).expect("operation should succeed"),
+            Some("span-12345".to_string())
+        );
     }
 
     #[test]
     fn test_multiple_experiments_and_runs() {
         let mut storage = InMemoryStorage::new();
 
-        let exp1 = storage.create_experiment("exp-1", None).unwrap();
-        let exp2 = storage.create_experiment("exp-2", None).unwrap();
+        let exp1 = storage.create_experiment("exp-1", None).expect("operation should succeed");
+        let exp2 = storage.create_experiment("exp-2", None).expect("operation should succeed");
 
-        let run1 = storage.create_run(&exp1).unwrap();
-        let run2 = storage.create_run(&exp1).unwrap();
-        let run3 = storage.create_run(&exp2).unwrap();
+        let run1 = storage.create_run(&exp1).expect("operation should succeed");
+        let run2 = storage.create_run(&exp1).expect("operation should succeed");
+        let run3 = storage.create_run(&exp2).expect("operation should succeed");
 
         assert_eq!(storage.experiment_count(), 2);
         assert_eq!(storage.run_count(), 3);
 
         // Each run is independent
-        storage.start_run(&run1).unwrap();
-        storage.start_run(&run2).unwrap();
+        storage.start_run(&run1).expect("operation should succeed");
+        storage.start_run(&run2).expect("operation should succeed");
 
-        assert_eq!(storage.get_run_status(&run1).unwrap(), RunStatus::Running);
-        assert_eq!(storage.get_run_status(&run2).unwrap(), RunStatus::Running);
-        assert_eq!(storage.get_run_status(&run3).unwrap(), RunStatus::Pending);
+        assert_eq!(
+            storage.get_run_status(&run1).expect("operation should succeed"),
+            RunStatus::Running
+        );
+        assert_eq!(
+            storage.get_run_status(&run2).expect("operation should succeed"),
+            RunStatus::Running
+        );
+        assert_eq!(
+            storage.get_run_status(&run3).expect("operation should succeed"),
+            RunStatus::Pending
+        );
     }
 }

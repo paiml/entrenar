@@ -157,7 +157,7 @@ mod tests {
         let mut state = SessionState::new();
         state.preferences_mut().default_batch_size = 64;
 
-        let repl = Repl::with_state(state).unwrap();
+        let repl = Repl::with_state(state).expect("operation should succeed");
         assert_eq!(repl.state.preferences().default_batch_size, 64);
     }
 }

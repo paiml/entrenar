@@ -206,7 +206,7 @@ mod tests {
 
         let block = TransformerBlock::from_params(&config, &params, 0);
         assert!(block.is_some());
-        let block = block.unwrap();
+        let block = block.expect("operation should succeed");
         assert_eq!(block.layer_idx(), 0);
     }
 

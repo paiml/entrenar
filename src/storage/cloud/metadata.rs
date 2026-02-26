@@ -83,8 +83,9 @@ mod tests {
             .with_content_type("application/octet-stream")
             .with_metadata("key", "value");
 
-        let json = serde_json::to_string(&meta).unwrap();
-        let parsed: ArtifactMetadata = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&meta).expect("JSON serialization should succeed");
+        let parsed: ArtifactMetadata =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(meta.name, parsed.name);
         assert_eq!(meta.hash, parsed.hash);

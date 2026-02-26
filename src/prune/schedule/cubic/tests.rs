@@ -302,9 +302,10 @@ fn test_validate_cubic_exactly_one() {
 fn test_serialize_cubic() {
     // TEST_ID: SCHED-052
     let schedule = PruningSchedule::Cubic { start_step: 0, end_step: 100, final_sparsity: 0.5 };
-    let json = serde_json::to_string(&schedule).unwrap();
+    let json = serde_json::to_string(&schedule).expect("JSON serialization should succeed");
     assert!(json.contains("cubic"), "SCHED-052 FALSIFIED: Cubic should serialize with type=cubic");
-    let deserialized: PruningSchedule = serde_json::from_str(&json).unwrap();
+    let deserialized: PruningSchedule =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(schedule, deserialized, "SCHED-052 FALSIFIED: Deserialized should match original");
 }
 
@@ -317,7 +318,7 @@ start_step: 0
 end_step: 100
 final_sparsity: 0.5
 ";
-    let schedule: PruningSchedule = serde_yaml::from_str(yaml).unwrap();
+    let schedule: PruningSchedule = serde_yaml::from_str(yaml).expect("operation should succeed");
     match schedule {
         PruningSchedule::Cubic { start_step, end_step, final_sparsity } => {
             assert_eq!(start_step, 0);

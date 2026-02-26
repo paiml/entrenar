@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn test_minimal_manifest_converts() {
         let manifest = minimal_manifest();
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.model.path, PathBuf::from("./models/base.safetensors"));
         assert_eq!(result.spec.model.mode, ModelMode::Tabular);
         assert_eq!(result.spec.data.train, PathBuf::from("./data/train.parquet"));
@@ -509,24 +509,27 @@ mod tests {
     #[test]
     fn test_explicit_train_path_preferred_over_source() {
         let mut manifest = minimal_manifest();
-        manifest.data.as_mut().unwrap().source = Some("./source.parquet".into());
-        manifest.data.as_mut().unwrap().train = Some("./explicit_train.parquet".into());
-        let result = manifest_to_spec(&manifest).unwrap();
+        manifest.data.as_mut().expect("operation should succeed").source =
+            Some("./source.parquet".into());
+        manifest.data.as_mut().expect("operation should succeed").train =
+            Some("./explicit_train.parquet".into());
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.data.train, PathBuf::from("./explicit_train.parquet"));
     }
 
     #[test]
     fn test_val_path_converted() {
         let mut manifest = minimal_manifest();
-        manifest.data.as_mut().unwrap().val = Some("./val.parquet".into());
-        let result = manifest_to_spec(&manifest).unwrap();
+        manifest.data.as_mut().expect("operation should succeed").val =
+            Some("./val.parquet".into());
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.data.val, Some(PathBuf::from("./val.parquet")));
     }
 
     #[test]
     fn test_batch_size_from_loader() {
         let mut manifest = minimal_manifest();
-        manifest.data.as_mut().unwrap().loader = Some(DataLoader {
+        manifest.data.as_mut().expect("load should succeed").loader = Some(DataLoader {
             batch_size: 32,
             shuffle: true,
             num_workers: None,
@@ -534,44 +537,45 @@ mod tests {
             drop_last: None,
             prefetch_factor: None,
         });
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.data.batch_size, 32);
     }
 
     #[test]
     fn test_batch_size_default_without_loader() {
         let manifest = minimal_manifest();
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.data.batch_size, 8);
     }
 
     #[test]
     fn test_transformer_mode_from_architecture() {
         let mut manifest = minimal_manifest();
-        manifest.model.as_mut().unwrap().architecture = Some(ArchitectureConfig {
-            arch_type: "transformer".into(),
-            hidden_size: None,
-            num_layers: None,
-            num_heads: None,
-            vocab_size: None,
-            max_seq_length: None,
-            layers: None,
-        });
-        let result = manifest_to_spec(&manifest).unwrap();
+        manifest.model.as_mut().expect("config should be valid").architecture =
+            Some(ArchitectureConfig {
+                arch_type: "transformer".into(),
+                hidden_size: None,
+                num_layers: None,
+                num_heads: None,
+                vocab_size: None,
+                max_seq_length: None,
+                layers: None,
+            });
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.model.mode, ModelMode::Transformer);
     }
 
     #[test]
     fn test_optimizer_params_converted() {
         let mut manifest = minimal_manifest();
-        let opt = manifest.optimizer.as_mut().unwrap();
+        let opt = manifest.optimizer.as_mut().expect("operation should succeed");
         opt.name = "adamw".into();
         opt.lr = 3e-4;
         opt.betas = Some(vec![0.9, 0.999]);
         opt.eps = Some(1e-8);
         opt.weight_decay = Some(0.01);
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.optimizer.name, "adamw");
         assert!((result.spec.optimizer.lr - 3e-4).abs() < 1e-6);
         assert_eq!(result.spec.optimizer.params["beta1"], serde_json::json!(0.9));
@@ -611,7 +615,7 @@ mod tests {
             benchmark: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.training.epochs, 5);
         assert_eq!(result.spec.training.grad_clip, Some(1.0));
         assert_eq!(result.spec.training.gradient_accumulation, Some(4));
@@ -640,7 +644,7 @@ mod tests {
             final_div_factor: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.training.lr_scheduler, Some("cosine".into()));
         assert_eq!(result.spec.training.warmup_steps, 100);
     }
@@ -656,7 +660,7 @@ mod tests {
             registry: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.training.output_dir, PathBuf::from("./outputs/my-model"));
     }
 
@@ -678,8 +682,8 @@ mod tests {
             quant_type: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
-        let lora = result.spec.lora.unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let lora = result.spec.lora.expect("operation should succeed");
         assert_eq!(lora.rank, 64);
         assert!((lora.alpha - 16.0).abs() < 1e-6);
         assert!((lora.dropout - 0.1).abs() < 1e-6);
@@ -706,7 +710,7 @@ mod tests {
             quant_type: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert!(result.spec.lora.is_none());
     }
 
@@ -724,8 +728,8 @@ mod tests {
             exclude: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
-        let quant = result.spec.quantize.unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let quant = result.spec.quantize.expect("operation should succeed");
         assert_eq!(quant.bits, 4);
         assert!(quant.symmetric);
         assert!(quant.per_channel);
@@ -745,7 +749,7 @@ mod tests {
             exclude: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert!(result.spec.quantize.is_none());
     }
 
@@ -763,8 +767,8 @@ mod tests {
             exclude: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
-        let quant = result.spec.quantize.unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let quant = result.spec.quantize.expect("operation should succeed");
         assert!(!quant.symmetric);
         assert!(!quant.per_channel);
     }
@@ -780,7 +784,7 @@ mod tests {
             drift_detection: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert!(!result.warnings.is_empty());
         assert!(result.warnings.iter().any(|w| w.contains("monitoring")));
     }
@@ -788,7 +792,7 @@ mod tests {
     #[test]
     fn test_training_defaults_without_config() {
         let manifest = minimal_manifest();
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.training.epochs, 10);
         assert!(result.spec.training.grad_clip.is_none());
         assert!(result.spec.training.lr_scheduler.is_none());
@@ -874,8 +878,9 @@ output:
   dir: "./outputs/full-test"
 "#;
 
-        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-        let result = manifest_to_spec(&manifest).unwrap();
+        let manifest: TrainingManifest =
+            serde_yaml::from_str(yaml).expect("operation should succeed");
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
 
         assert_eq!(result.spec.model.mode, ModelMode::Transformer);
         assert_eq!(result.spec.model.path, PathBuf::from("./models/llama.safetensors"));
@@ -906,14 +911,15 @@ output:
         // Seed
         assert_eq!(result.spec.training.seed, Some(42));
         // Scheduler params
-        let sched_params = result.spec.training.scheduler_params.as_ref().unwrap();
+        let sched_params =
+            result.spec.training.scheduler_params.as_ref().expect("operation should succeed");
         assert_eq!(sched_params["t_max"], serde_json::json!(1000));
         assert_eq!(sched_params["eta_min"], serde_json::json!(0.000001));
 
-        let lora = result.spec.lora.unwrap();
+        let lora = result.spec.lora.expect("operation should succeed");
         assert_eq!(lora.rank, 32);
 
-        let quant = result.spec.quantize.unwrap();
+        let quant = result.spec.quantize.expect("operation should succeed");
         assert_eq!(quant.bits, 4);
         assert!(quant.symmetric);
         assert!(quant.per_channel);
@@ -924,23 +930,24 @@ output:
     #[test]
     fn test_transformer_gets_causal_lm_mode() {
         let mut manifest = minimal_manifest();
-        manifest.model.as_mut().unwrap().architecture = Some(ArchitectureConfig {
-            arch_type: "transformer".into(),
-            hidden_size: None,
-            num_layers: None,
-            num_heads: None,
-            vocab_size: None,
-            max_seq_length: None,
-            layers: None,
-        });
-        let result = manifest_to_spec(&manifest).unwrap();
+        manifest.model.as_mut().expect("config should be valid").architecture =
+            Some(ArchitectureConfig {
+                arch_type: "transformer".into(),
+                hidden_size: None,
+                num_layers: None,
+                num_heads: None,
+                vocab_size: None,
+                max_seq_length: None,
+                layers: None,
+            });
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.training.mode, TrainingMode::CausalLm);
     }
 
     #[test]
     fn test_tabular_gets_regression_mode() {
         let manifest = minimal_manifest();
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.model.mode, ModelMode::Tabular);
         assert_eq!(result.spec.training.mode, TrainingMode::Regression);
     }
@@ -948,14 +955,14 @@ output:
     #[test]
     fn test_data_llm_fields_converted() {
         let mut manifest = minimal_manifest();
-        let data = manifest.data.as_mut().unwrap();
+        let data = manifest.data.as_mut().expect("operation should succeed");
         data.tokenizer = Some("./tokenizer.json".into());
         data.seq_len = Some(2048);
         data.input_column = Some("text".into());
         data.output_column = Some("label".into());
         data.max_length = Some(512);
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.data.tokenizer, Some(PathBuf::from("./tokenizer.json")));
         assert_eq!(result.spec.data.seq_len, Some(2048));
         assert_eq!(result.spec.data.input_column, Some("text".into()));
@@ -968,7 +975,7 @@ output:
         use crate::yaml_mode::manifest::data::{PreprocessingStep, TokenizeConfig};
 
         let mut manifest = minimal_manifest();
-        let data = manifest.data.as_mut().unwrap();
+        let data = manifest.data.as_mut().expect("operation should succeed");
         // No top-level tokenizer, but set preprocessing
         data.preprocessing = Some(vec![PreprocessingStep::Tokenize {
             tokenize: TokenizeConfig {
@@ -979,7 +986,7 @@ output:
             },
         }]);
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.data.tokenizer, Some(PathBuf::from("./fallback-tokenizer.json")));
         assert_eq!(result.spec.data.max_length, Some(256));
     }
@@ -989,7 +996,7 @@ output:
         use crate::yaml_mode::manifest::data::{PreprocessingStep, TokenizeConfig};
 
         let mut manifest = minimal_manifest();
-        let data = manifest.data.as_mut().unwrap();
+        let data = manifest.data.as_mut().expect("operation should succeed");
         data.tokenizer = Some("./primary.json".into());
         data.max_length = Some(1024);
         data.preprocessing = Some(vec![PreprocessingStep::Tokenize {
@@ -1001,7 +1008,7 @@ output:
             },
         }]);
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         // Top-level takes precedence over preprocessing fallback
         assert_eq!(result.spec.data.tokenizer, Some(PathBuf::from("./primary.json")));
         assert_eq!(result.spec.data.max_length, Some(1024));
@@ -1028,8 +1035,8 @@ output:
             final_div_factor: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
-        let params = result.spec.training.scheduler_params.unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let params = result.spec.training.scheduler_params.expect("operation should succeed");
         assert_eq!(params["t_max"], serde_json::json!(500));
         assert_eq!(params["eta_min"], serde_json::json!(1e-6));
         assert_eq!(params.len(), 2);
@@ -1056,8 +1063,8 @@ output:
             final_div_factor: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
-        let params = result.spec.training.scheduler_params.unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let params = result.spec.training.scheduler_params.expect("operation should succeed");
         assert_eq!(params["step_size"], serde_json::json!(30));
         assert_eq!(params["gamma"], serde_json::json!(0.1));
         assert_eq!(params.len(), 2);
@@ -1084,8 +1091,8 @@ output:
             final_div_factor: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
-        let params = result.spec.training.scheduler_params.unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let params = result.spec.training.scheduler_params.expect("operation should succeed");
         assert_eq!(params["mode"], serde_json::json!("min"));
         assert_eq!(params["factor"], serde_json::json!(0.1));
         assert_eq!(params["patience"], serde_json::json!(10));
@@ -1114,8 +1121,8 @@ output:
             final_div_factor: Some(1e4),
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
-        let params = result.spec.training.scheduler_params.unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let params = result.spec.training.scheduler_params.expect("operation should succeed");
         assert_eq!(params["max_lr"], serde_json::json!(0.01));
         assert_eq!(params["pct_start"], serde_json::json!(0.3));
         assert_eq!(params["anneal_strategy"], serde_json::json!("cos"));
@@ -1145,7 +1152,7 @@ output:
             final_div_factor: None,
         });
 
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         // Only warmup set, no scheduler-specific params → None
         assert!(result.spec.training.scheduler_params.is_none());
     }
@@ -1154,14 +1161,14 @@ output:
     fn test_seed_passed_through() {
         let mut manifest = minimal_manifest();
         manifest.seed = Some(12345);
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert_eq!(result.spec.training.seed, Some(12345));
     }
 
     #[test]
     fn test_seed_none_when_not_set() {
         let manifest = minimal_manifest();
-        let result = manifest_to_spec(&manifest).unwrap();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert!(result.spec.training.seed.is_none());
     }
 }

@@ -183,7 +183,7 @@ mod tests {
     fn test_adapter_to_layer_valid() {
         let adapter = make_test_adapter();
         let base_weight = Tensor::zeros(8 * 16, false);
-        let layer = adapter.to_layer(base_weight).unwrap();
+        let layer = adapter.to_layer(base_weight).expect("operation should succeed");
         assert_eq!(layer.d_out(), 8);
         assert_eq!(layer.d_in(), 16);
     }
@@ -233,10 +233,10 @@ mod tests {
     #[test]
     fn test_adapter_save_load_roundtrip() {
         let adapter = make_test_adapter();
-        let file = NamedTempFile::new().unwrap();
+        let file = NamedTempFile::new().expect("temp file creation should succeed");
 
-        adapter.save(file.path()).unwrap();
-        let loaded = LoRAAdapter::load(file.path()).unwrap();
+        adapter.save(file.path()).expect("save should succeed");
+        let loaded = LoRAAdapter::load(file.path()).expect("load should succeed");
 
         assert_eq!(adapter.rank, loaded.rank);
         assert_eq!(adapter.alpha, loaded.alpha);
@@ -250,8 +250,8 @@ mod tests {
     fn test_adapter_load_invalid_version() {
         let mut adapter = make_test_adapter();
         adapter.version = "0.0".to_string();
-        let file = NamedTempFile::new().unwrap();
-        adapter.save(file.path()).unwrap();
+        let file = NamedTempFile::new().expect("temp file creation should succeed");
+        adapter.save(file.path()).expect("save should succeed");
 
         let result = LoRAAdapter::load(file.path());
         assert!(result.is_err());

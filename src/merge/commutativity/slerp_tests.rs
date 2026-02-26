@@ -10,11 +10,11 @@ fn slerp_commutativity_basic() {
     let m2 = make_model(vec![4.0, 5.0, 6.0]);
 
     let t = 0.3;
-    let c1 = SlerpConfig::new(t).unwrap();
-    let c2 = SlerpConfig::new(1.0 - t).unwrap();
+    let c1 = SlerpConfig::new(t).expect("slerp config creation should succeed");
+    let c2 = SlerpConfig::new(1.0 - t).expect("slerp config creation should succeed");
 
-    let r1 = slerp_merge(&m1, &m2, &c1).unwrap();
-    let r2 = slerp_merge(&m2, &m1, &c2).unwrap();
+    let r1 = slerp_merge(&m1, &m2, &c1).expect("operation should succeed");
+    let r2 = slerp_merge(&m2, &m1, &c2).expect("operation should succeed");
 
     assert!(
         models_approx_equal(&r1, &r2, 1e-4),
@@ -28,8 +28,8 @@ fn slerp_self_merge_identity() {
     let m = make_model(vec![1.0, 2.0, 3.0, 4.0]);
 
     for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
-        let config = SlerpConfig::new(t).unwrap();
-        let result = slerp_merge(&m, &m, &config).unwrap();
+        let config = SlerpConfig::new(t).expect("slerp config creation should succeed");
+        let result = slerp_merge(&m, &m, &config).expect("config should be valid");
         assert!(models_approx_equal(&result, &m, 1e-5), "slerp(A, A, {t}) should equal A");
     }
 }
@@ -40,10 +40,10 @@ fn slerp_midpoint_symmetry() {
     let m1 = make_model(vec![1.0, 0.0, 0.0]);
     let m2 = make_model(vec![0.0, 1.0, 0.0]);
 
-    let config = SlerpConfig::new(0.5).unwrap();
+    let config = SlerpConfig::new(0.5).expect("slerp config creation should succeed");
 
-    let r1 = slerp_merge(&m1, &m2, &config).unwrap();
-    let r2 = slerp_merge(&m2, &m1, &config).unwrap();
+    let r1 = slerp_merge(&m1, &m2, &config).expect("config should be valid");
+    let r2 = slerp_merge(&m2, &m1, &config).expect("config should be valid");
 
     assert!(models_approx_equal(&r1, &r2, 1e-5), "SLERP at t=0.5 should be symmetric");
 }

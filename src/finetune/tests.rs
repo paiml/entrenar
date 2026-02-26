@@ -78,8 +78,9 @@ fn test_reproducibility_round_trip() {
         .with_config_checksum("sha256:abc");
 
     // Serialize and deserialize
-    let yaml = serde_yaml::to_string(&lock).unwrap();
-    let restored: ExperimentLock = serde_yaml::from_str(&yaml).unwrap();
+    let yaml = serde_yaml::to_string(&lock).expect("operation should succeed");
+    let restored: ExperimentLock =
+        serde_yaml::from_str(&yaml).expect("lock acquisition should succeed");
 
     assert_eq!(restored.experiment_id, "test-exp");
     assert_eq!(restored.reproducibility.seed, 42);

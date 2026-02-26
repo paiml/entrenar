@@ -240,7 +240,7 @@ mod tests {
         lineage.add_model(make_model("v2", "2.0.0", 0.87));
         lineage.add_derivation("v1", "v2", ChangeType::AddData, "More data");
 
-        let parent = lineage.get_parent("v2").unwrap();
+        let parent = lineage.get_parent("v2").expect("operation should succeed");
         assert_eq!(parent.model_id, "v1");
     }
 
@@ -263,7 +263,7 @@ mod tests {
         lineage.add_model(make_model("v1", "1.0.0", 0.85));
         lineage.add_model(make_model("v2", "2.0.0", 0.87));
 
-        let cmp = lineage.compare("v1", "v2").unwrap();
+        let cmp = lineage.compare("v1", "v2").expect("operation should succeed");
         assert!(cmp.is_improvement);
         assert!((cmp.accuracy_delta - 0.02).abs() < 1e-6);
     }
@@ -274,7 +274,7 @@ mod tests {
         lineage.add_model(make_model("v1", "1.0.0", 0.87));
         lineage.add_model(make_model("v2", "2.0.0", 0.82));
 
-        let cmp = lineage.compare("v1", "v2").unwrap();
+        let cmp = lineage.compare("v1", "v2").expect("operation should succeed");
         assert!(!cmp.is_improvement);
     }
 
@@ -285,7 +285,7 @@ mod tests {
         lineage.add_model(make_model("v2", "2.0.0", 0.82));
         lineage.add_derivation("v1", "v2", ChangeType::Hyperparams, "Changed LR");
 
-        let source = lineage.find_regression_source("v2").unwrap();
+        let source = lineage.find_regression_source("v2").expect("operation should succeed");
         assert_eq!(source.change_type, ChangeType::Hyperparams);
     }
 
@@ -307,8 +307,8 @@ mod tests {
         let mut lineage = ModelLineage::new();
         lineage.add_model(make_model("v1", "1.0.0", 0.85));
 
-        let json = lineage.to_json().unwrap();
-        let loaded = ModelLineage::from_json(&json).unwrap();
+        let json = lineage.to_json().expect("operation should succeed");
+        let loaded = ModelLineage::from_json(&json).expect("load should succeed");
         assert!(loaded.get_model("v1").is_some());
     }
 

@@ -186,7 +186,7 @@ mod tests {
             .with_custom("hidden_size", serde_json::json!(768));
 
         assert_eq!(meta.custom.len(), 2);
-        assert_eq!(meta.custom.get("layers").unwrap(), &serde_json::json!(12));
+        assert_eq!(meta.custom.get("layers").expect("key should exist"), &serde_json::json!(12));
     }
 
     #[test]
@@ -218,8 +218,8 @@ mod tests {
         assert_eq!(original.parameters.len(), restored.parameters.len());
 
         // Check parameter data
-        let orig_weight = original.get_parameter("weight").unwrap();
-        let rest_weight = restored.get_parameter("weight").unwrap();
+        let orig_weight = original.get_parameter("weight").expect("parameter should exist");
+        let rest_weight = restored.get_parameter("weight").expect("parameter should exist");
         assert_eq!(orig_weight.data(), rest_weight.data());
     }
 
@@ -228,7 +228,7 @@ mod tests {
         let params = vec![("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0], true))];
         let mut model = Model::new(ModelMetadata::new("test", "linear"), params);
 
-        let tensor = model.get_parameter_mut("weight").unwrap();
+        let tensor = model.get_parameter_mut("weight").expect("parameter should exist");
         assert!(tensor.requires_grad());
 
         assert!(model.get_parameter_mut("nonexistent").is_none());

@@ -152,9 +152,9 @@ mod tests {
         let backend = MockS3Backend::new(config);
 
         let data = b"s3 test data";
-        let hash = backend.put("file.bin", data).unwrap();
+        let hash = backend.put("file.bin", data).expect("operation should succeed");
 
-        let retrieved = backend.get(&hash).unwrap();
+        let retrieved = backend.get(&hash).expect("key should exist");
         assert_eq!(retrieved, data);
     }
 
@@ -183,9 +183,9 @@ mod tests {
         let config = S3Config::new("bucket", "prefix");
         let backend = MockS3Backend::new(config);
 
-        let hash = backend.put("file.bin", b"data").unwrap();
-        assert!(backend.exists(&hash).unwrap());
-        assert!(!backend.exists("nonexistent").unwrap());
+        let hash = backend.put("file.bin", b"data").expect("operation should succeed");
+        assert!(backend.exists(&hash).expect("operation should succeed"));
+        assert!(!backend.exists("nonexistent").expect("operation should succeed"));
     }
 
     #[test]
@@ -193,9 +193,9 @@ mod tests {
         let config = S3Config::new("bucket", "prefix");
         let backend = MockS3Backend::new(config);
 
-        let hash = backend.put("file.bin", b"data").unwrap();
-        backend.delete(&hash).unwrap();
-        assert!(!backend.exists(&hash).unwrap());
+        let hash = backend.put("file.bin", b"data").expect("operation should succeed");
+        backend.delete(&hash).expect("operation should succeed");
+        assert!(!backend.exists(&hash).expect("operation should succeed"));
     }
 
     #[test]
@@ -203,8 +203,8 @@ mod tests {
         let config = S3Config::new("bucket", "prefix");
         let backend = MockS3Backend::new(config);
 
-        let hash = backend.put("model.bin", b"model data").unwrap();
-        let meta = backend.get_metadata(&hash).unwrap();
+        let hash = backend.put("model.bin", b"model data").expect("operation should succeed");
+        let meta = backend.get_metadata(&hash).expect("operation should succeed");
         assert_eq!(meta.name, "model.bin");
     }
 
@@ -213,10 +213,10 @@ mod tests {
         let config = S3Config::new("bucket", "prefix");
         let backend = MockS3Backend::new(config);
 
-        backend.put("file1.bin", b"data1").unwrap();
-        backend.put("file2.bin", b"data2").unwrap();
+        backend.put("file1.bin", b"data1").expect("operation should succeed");
+        backend.put("file2.bin", b"data2").expect("operation should succeed");
 
-        let list = backend.list().unwrap();
+        let list = backend.list().expect("operation should succeed");
         assert_eq!(list.len(), 2);
     }
 
@@ -237,8 +237,9 @@ mod tests {
             .with_endpoint("http://localhost:9000")
             .with_credentials("key", "secret");
 
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: S3Config = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let parsed: S3Config =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(config.bucket, parsed.bucket);
         assert_eq!(config.region, parsed.region);

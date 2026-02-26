@@ -144,7 +144,8 @@ fn test_format_submission_jsonl() {
     result.inference_time_ms = 10.5;
 
     let jsonl = format_submission_jsonl(&result);
-    let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&jsonl).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed["model"], "my-model");
     assert_eq!(parsed["wer"], 0.05);
@@ -163,8 +164,10 @@ fn test_format_submissions_jsonl() {
     let lines: Vec<&str> = jsonl.lines().collect();
     assert_eq!(lines.len(), 2);
 
-    let p1: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
-    let p2: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+    let p1: serde_json::Value =
+        serde_json::from_str(lines[0]).expect("JSON deserialization should succeed");
+    let p2: serde_json::Value =
+        serde_json::from_str(lines[1]).expect("JSON deserialization should succeed");
     assert_eq!(p1["model"], "model-a");
     assert_eq!(p2["model"], "model-b");
 }
@@ -175,7 +178,8 @@ fn test_format_submission_no_inference_time() {
     result.add_score(Metric::BLEU, 0.45);
 
     let jsonl = format_submission_jsonl(&result);
-    let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&jsonl).expect("JSON deserialization should succeed");
     assert!(parsed.get("inference_time_ms").is_none());
 }
 

@@ -204,16 +204,18 @@ fn test_gpu_alert_messages() {
 #[test]
 fn test_gpu_alert_serde() {
     let alert = GpuAlert::ThermalThrottling { device: 0, temp: 85, threshold: 80 };
-    let json = serde_json::to_string(&alert).unwrap();
-    let parsed: GpuAlert = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&alert).expect("JSON serialization should succeed");
+    let parsed: GpuAlert =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(alert, parsed);
 }
 
 #[test]
 fn test_andon_thresholds_serde() {
     let thresholds = AndonThresholds::default();
-    let json = serde_json::to_string(&thresholds).unwrap();
-    let parsed: AndonThresholds = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&thresholds).expect("JSON serialization should succeed");
+    let parsed: AndonThresholds =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(thresholds.thermal_warning, parsed.thermal_warning);
 }
 

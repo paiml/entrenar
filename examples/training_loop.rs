@@ -72,7 +72,7 @@ fn main() {
     println!("Training Metrics:");
     println!("  Total epochs: {}", trainer.metrics.epoch);
     println!("  Total steps: {}", trainer.metrics.steps);
-    println!("  Best loss: {:.4}", trainer.metrics.best_loss().unwrap());
+    println!("  Best loss: {:.4}", trainer.metrics.best_loss().expect("operation should succeed"));
     println!("  Avg loss (last 3 epochs): {:.4}", trainer.metrics.avg_loss(3));
 
     // Check if training improved

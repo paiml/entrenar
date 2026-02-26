@@ -96,7 +96,12 @@ fn test_softmax_max_gets_highest_prob() {
     logits[[0, 2]] = 10.0; // Expert 2 has much higher logit
     let probs = softmax_rows(&logits);
     let row = probs.row(0);
-    let max_idx = row.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0;
+    let max_idx = row
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).expect("operation should succeed"))
+        .expect("operation should succeed")
+        .0;
     assert_eq!(max_idx, 2, "Highest logit should get highest probability");
 }
 

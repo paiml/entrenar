@@ -41,7 +41,7 @@ fn main() {
         }
 
         // Sort for percentile calculation
-        latencies.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        latencies.sort_by(|a, b| a.partial_cmp(b).expect("operation should succeed"));
 
         let p50 = latencies[latencies.len() * 50 / 100];
         let p95 = latencies[latencies.len() * 95 / 100];

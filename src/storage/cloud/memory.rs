@@ -93,28 +93,28 @@ mod tests {
     fn test_in_memory_backend_put_get() {
         let backend = InMemoryBackend::new();
         let data = b"test data";
-        let hash = backend.put("test.bin", data).unwrap();
+        let hash = backend.put("test.bin", data).expect("operation should succeed");
 
-        let retrieved = backend.get(&hash).unwrap();
+        let retrieved = backend.get(&hash).expect("key should exist");
         assert_eq!(retrieved, data);
     }
 
     #[test]
     fn test_in_memory_backend_exists() {
         let backend = InMemoryBackend::new();
-        let hash = backend.put("test.bin", b"data").unwrap();
+        let hash = backend.put("test.bin", b"data").expect("operation should succeed");
 
-        assert!(backend.exists(&hash).unwrap());
-        assert!(!backend.exists("nonexistent").unwrap());
+        assert!(backend.exists(&hash).expect("operation should succeed"));
+        assert!(!backend.exists("nonexistent").expect("operation should succeed"));
     }
 
     #[test]
     fn test_in_memory_backend_delete() {
         let backend = InMemoryBackend::new();
-        let hash = backend.put("test.bin", b"data").unwrap();
+        let hash = backend.put("test.bin", b"data").expect("operation should succeed");
 
-        backend.delete(&hash).unwrap();
-        assert!(!backend.exists(&hash).unwrap());
+        backend.delete(&hash).expect("operation should succeed");
+        assert!(!backend.exists(&hash).expect("operation should succeed"));
     }
 
     #[test]
@@ -128,9 +128,9 @@ mod tests {
     fn test_in_memory_backend_get_metadata() {
         let backend = InMemoryBackend::new();
         let data = b"test data 123";
-        let hash = backend.put("model.bin", data).unwrap();
+        let hash = backend.put("model.bin", data).expect("operation should succeed");
 
-        let meta = backend.get_metadata(&hash).unwrap();
+        let meta = backend.get_metadata(&hash).expect("operation should succeed");
         assert_eq!(meta.name, "model.bin");
         assert_eq!(meta.size, data.len() as u64);
     }
@@ -138,10 +138,10 @@ mod tests {
     #[test]
     fn test_in_memory_backend_list() {
         let backend = InMemoryBackend::new();
-        backend.put("file1.bin", b"data1").unwrap();
-        backend.put("file2.bin", b"data2").unwrap();
+        backend.put("file1.bin", b"data1").expect("operation should succeed");
+        backend.put("file2.bin", b"data2").expect("operation should succeed");
 
-        let list = backend.list().unwrap();
+        let list = backend.list().expect("operation should succeed");
         assert_eq!(list.len(), 2);
     }
 
@@ -186,8 +186,8 @@ mod property_tests {
             data in prop::collection::vec(any::<u8>(), 1..1000)
         ) {
             let backend = InMemoryBackend::new();
-            let hash = backend.put(&name, &data).unwrap();
-            let retrieved = backend.get(&hash).unwrap();
+            let hash = backend.put(&name, &data).expect("operation should succeed");
+            let retrieved = backend.get(&hash).expect("key should exist");
             prop_assert_eq!(retrieved, data);
         }
     }

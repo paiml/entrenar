@@ -264,8 +264,9 @@ mod tests {
         state.add_to_history(HistoryEntry::new("test", 100, true));
         state.preferences_mut().default_batch_size = 64;
 
-        let json = serde_json::to_string(&state).unwrap();
-        let restored: SessionState = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&state).expect("JSON serialization should succeed");
+        let restored: SessionState =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(state, restored);
     }
@@ -338,15 +339,15 @@ mod tests {
     fn test_session_state_save_load() {
         use tempfile::TempDir;
 
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let state_path = temp_dir.path().join("state.json");
 
         let mut state = SessionState::new();
         state.add_to_history(HistoryEntry::new("test", 100, true));
         state.preferences_mut().default_batch_size = 128;
 
-        state.save(&state_path).unwrap();
-        let loaded = SessionState::load(&state_path).unwrap();
+        state.save(&state_path).expect("save should succeed");
+        let loaded = SessionState::load(&state_path).expect("load should succeed");
 
         assert_eq!(state, loaded);
     }
@@ -356,8 +357,8 @@ mod tests {
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        let mut file = NamedTempFile::new().unwrap();
-        file.write_all(b"not valid json").unwrap();
+        let mut file = NamedTempFile::new().expect("temp file creation should succeed");
+        file.write_all(b"not valid json").expect("file write should succeed");
 
         let result = SessionState::load(&file.path().to_path_buf());
         assert!(result.is_err());

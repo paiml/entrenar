@@ -39,7 +39,7 @@ fn test_end_to_end_real_fetch() {
     let _ = std::fs::remove_dir_all(&temp_dir);
 
     // Create fetcher (uses HF_TOKEN env var if available)
-    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+    let fetcher = HfModelFetcher::new().expect("operation should succeed").cache_dir(&temp_dir);
 
     // Download a small, known model
     let artifact = fetcher

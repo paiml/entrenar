@@ -214,7 +214,7 @@ mod tests {
             .evaluate_cv("Test", &y_true, |_, test_idx| {
                 test_idx.iter().map(|&i| y_true[i]).collect()
             })
-            .unwrap();
+            .expect("operation should succeed");
         assert!(result.cv_mean.is_some());
     }
 
@@ -236,7 +236,7 @@ mod tests {
             .evaluate_cv("Test", &y_true, |_, test_idx| {
                 test_idx.iter().map(|&i| y_true[i]).collect()
             })
-            .unwrap();
+            .expect("operation should succeed");
         assert!(result.cv_mean.is_some());
     }
 
@@ -258,7 +258,7 @@ mod tests {
             .evaluate_cv("Test", &y_true, |_, test_idx| {
                 test_idx.iter().map(|&i| y_true[i]).collect()
             })
-            .unwrap();
+            .expect("operation should succeed");
         assert!(result.cv_mean.is_some());
     }
 
@@ -290,7 +290,7 @@ mod tests {
                 .evaluate_cv("Test", &y_true, |_, test_idx| {
                     test_idx.iter().map(|&i| y_true[i]).collect()
                 })
-                .unwrap();
+                .expect("operation should succeed");
             assert!(result.cv_mean.is_some(), "CV should succeed with metric {metric:?}");
         }
     }
@@ -307,7 +307,9 @@ mod tests {
         }
         let config = EvalConfig { metrics: vec![metric], ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .expect("operation should succeed");
         assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
     }
 
@@ -323,7 +325,9 @@ mod tests {
         }
         let config = EvalConfig { metrics: vec![metric], ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .expect("operation should succeed");
         assert!(result.get_score(Metric::Recall(Average::Micro)).is_some());
     }
 
@@ -339,7 +343,9 @@ mod tests {
         }
         let config = EvalConfig { metrics: vec![metric], ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .expect("operation should succeed");
         assert!(result.get_score(Metric::F1(Average::Weighted)).is_some());
     }
 
@@ -367,7 +373,9 @@ mod tests {
             ..Default::default()
         };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
+        let result = evaluator
+            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
+            .expect("operation should succeed");
         assert!(result.get_score(Metric::Accuracy).is_some());
         assert!(result.get_score(Metric::R2).is_none());
         assert!(result.get_score(Metric::MSE).is_none());

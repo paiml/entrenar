@@ -252,7 +252,7 @@ mod tests {
         let b = Tensor::new(Array1::from(vec![4.0, 5.0, 6.0]), false);
         let result = add(&a, &b);
 
-        assert_eq!(result.data().as_slice().unwrap(), &[5.0, 7.0, 9.0]);
+        assert_eq!(result.data().as_slice().expect("operation should succeed"), &[5.0, 7.0, 9.0]);
         assert!(!result.requires_grad());
     }
 
@@ -273,10 +273,10 @@ mod tests {
         }
 
         // Both inputs should receive gradient of 1.0 (since d(a+b)/da = 1 and d(a+b)/db = 1)
-        let a_grad = a.grad().unwrap();
-        let b_grad = b.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[1.0, 1.0, 1.0]);
-        assert_eq!(b_grad.as_slice().unwrap(), &[1.0, 1.0, 1.0]);
+        let a_grad = a.grad().expect("gradient should be available");
+        let b_grad = b.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[1.0, 1.0, 1.0]);
+        assert_eq!(b_grad.as_slice().expect("operation should succeed"), &[1.0, 1.0, 1.0]);
     }
 
     #[test]
@@ -291,8 +291,8 @@ mod tests {
             op.backward();
         }
 
-        let a_grad = a.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 3.0]);
+        let a_grad = a.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[2.0, 3.0]);
         assert!(b.grad().is_none());
     }
 
@@ -302,7 +302,10 @@ mod tests {
         let b = Tensor::new(Array1::from(vec![5.0, 6.0, 7.0]), false);
         let result = mul(&a, &b);
 
-        assert_eq!(result.data().as_slice().unwrap(), &[10.0, 18.0, 28.0]);
+        assert_eq!(
+            result.data().as_slice().expect("operation should succeed"),
+            &[10.0, 18.0, 28.0]
+        );
         assert!(!result.requires_grad());
     }
 
@@ -320,10 +323,11 @@ mod tests {
         }
 
         // d(a*b)/da = b, d(a*b)/db = a
-        let a_grad = a.grad().unwrap();
-        let b_grad = b.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[4.0, 5.0]); // grad = b
-        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 3.0]); // grad = a
+        let a_grad = a.grad().expect("gradient should be available");
+        let b_grad = b.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[4.0, 5.0]); // grad = b
+        assert_eq!(b_grad.as_slice().expect("operation should succeed"), &[2.0, 3.0]);
+        // grad = a
     }
 
     #[test]
@@ -338,8 +342,8 @@ mod tests {
         }
 
         assert!(a.grad().is_none());
-        let b_grad = b.grad().unwrap();
-        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 3.0]);
+        let b_grad = b.grad().expect("gradient should be available");
+        assert_eq!(b_grad.as_slice().expect("operation should succeed"), &[2.0, 3.0]);
     }
 
     #[test]
@@ -347,7 +351,7 @@ mod tests {
         let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0]), false);
         let result = scale(&a, 2.5);
 
-        assert_eq!(result.data().as_slice().unwrap(), &[2.5, 5.0, 7.5]);
+        assert_eq!(result.data().as_slice().expect("operation should succeed"), &[2.5, 5.0, 7.5]);
         assert!(!result.requires_grad());
     }
 
@@ -364,8 +368,8 @@ mod tests {
         }
 
         // d(scale*a)/da = scale
-        let a_grad = a.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[3.0, 3.0, 3.0]);
+        let a_grad = a.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[3.0, 3.0, 3.0]);
     }
 
     #[test]
@@ -385,7 +389,7 @@ mod tests {
 
         // result = a + 0.5 * b = [1+2, 2+2.5, 3+3] = [3, 4.5, 6]
         let expected = vec![3.0, 4.5, 6.0];
-        let actual = result.data().as_slice().unwrap();
+        let actual = result.data().as_slice().expect("operation should succeed");
         for (e, a) in expected.iter().zip(actual.iter()) {
             assert!((e - a).abs() < 1e-6);
         }
@@ -403,10 +407,11 @@ mod tests {
         }
 
         // d(a + scale*b)/da = 1, d(a + scale*b)/db = scale
-        let a_grad = a.grad().unwrap();
-        let b_grad = b.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[1.0, 1.0]);
-        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 2.0]); // scale = 2.0
+        let a_grad = a.grad().expect("gradient should be available");
+        let b_grad = b.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[1.0, 1.0]);
+        assert_eq!(b_grad.as_slice().expect("operation should succeed"), &[2.0, 2.0]);
+        // scale = 2.0
     }
 
     #[test]
@@ -420,8 +425,8 @@ mod tests {
             op.backward();
         }
 
-        let a_grad = a.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 3.0]);
+        let a_grad = a.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[2.0, 3.0]);
         assert!(b.grad().is_none());
     }
 
@@ -438,7 +443,7 @@ mod tests {
         let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0, 4.0]), false);
         let result = sum(&a);
 
-        assert_eq!(result.data().as_slice().unwrap(), &[10.0]);
+        assert_eq!(result.data().as_slice().expect("operation should succeed"), &[10.0]);
         assert!(!result.requires_grad());
     }
 
@@ -455,8 +460,8 @@ mod tests {
         }
 
         // d(sum(a))/da = [1, 1, 1], scaled by incoming grad
-        let a_grad = a.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 2.0, 2.0]);
+        let a_grad = a.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[2.0, 2.0, 2.0]);
     }
 
     #[test]
@@ -492,13 +497,13 @@ mod tests {
         // d(abc)/dc = ab = [4, 6]
         // d(ab)/da = [1, 1], d(ab)/db = [1, 1]
         // So: d/da = [2, 3], d/db = [2, 3], d/dc = [4, 6]
-        let a_grad = a.grad().unwrap();
-        let b_grad = b.grad().unwrap();
-        let c_grad = c.grad().unwrap();
+        let a_grad = a.grad().expect("gradient should be available");
+        let b_grad = b.grad().expect("gradient should be available");
+        let c_grad = c.grad().expect("gradient should be available");
 
-        assert_eq!(a_grad.as_slice().unwrap(), &[2.0, 3.0]);
-        assert_eq!(b_grad.as_slice().unwrap(), &[2.0, 3.0]);
-        assert_eq!(c_grad.as_slice().unwrap(), &[4.0, 6.0]);
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[2.0, 3.0]);
+        assert_eq!(b_grad.as_slice().expect("operation should succeed"), &[2.0, 3.0]);
+        assert_eq!(c_grad.as_slice().expect("operation should succeed"), &[4.0, 6.0]);
     }
 
     #[test]
@@ -513,7 +518,7 @@ mod tests {
         }
 
         // d(sum(3*a))/da = 3 * [1, 1] = [3, 3]
-        let a_grad = a.grad().unwrap();
-        assert_eq!(a_grad.as_slice().unwrap(), &[3.0, 3.0]);
+        let a_grad = a.grad().expect("gradient should be available");
+        assert_eq!(a_grad.as_slice().expect("operation should succeed"), &[3.0, 3.0]);
     }
 }

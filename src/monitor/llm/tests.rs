@@ -91,7 +91,7 @@ mod tests {
         vars.insert("name".to_string(), "Alice".to_string());
         vars.insert("age".to_string(), "30".to_string());
 
-        let rendered = prompt.render(&vars).unwrap();
+        let rendered = prompt.render(&vars).expect("rendering should succeed");
         assert_eq!(rendered, "Hello Alice! You are 30 years old.");
     }
 
@@ -206,9 +206,9 @@ mod tests {
         let mut evaluator = InMemoryLLMEvaluator::new();
         let metrics = LLMMetrics::new("gpt-4").with_tokens(100, 50);
 
-        evaluator.log_llm_call("run-1", metrics).unwrap();
+        evaluator.log_llm_call("run-1", metrics).expect("operation should succeed");
 
-        let retrieved = evaluator.get_metrics("run-1").unwrap();
+        let retrieved = evaluator.get_metrics("run-1").expect("operation should succeed");
         assert_eq!(retrieved.len(), 1);
         assert_eq!(retrieved[0].total_tokens, 150);
     }
@@ -218,9 +218,9 @@ mod tests {
         let mut evaluator = InMemoryLLMEvaluator::new();
         let prompt = PromptVersion::new("Test prompt", vec![]);
 
-        evaluator.track_prompt("run-1", &prompt).unwrap();
+        evaluator.track_prompt("run-1", &prompt).expect("operation should succeed");
 
-        let retrieved = evaluator.get_prompts("run-1").unwrap();
+        let retrieved = evaluator.get_prompts("run-1").expect("operation should succeed");
         assert_eq!(retrieved.len(), 1);
         assert_eq!(retrieved[0].template, "Test prompt");
     }
@@ -235,7 +235,7 @@ mod tests {
                 "The capital of France is Paris.",
                 Some("Paris is the capital of France"),
             )
-            .unwrap();
+            .expect("operation should succeed");
 
         assert!(result.relevance > 0.3);
         assert!(result.coherence > 0.5);
@@ -252,15 +252,15 @@ mod tests {
                 "run-1",
                 LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(500.0),
             )
-            .unwrap();
+            .expect("operation should succeed");
         evaluator
             .log_llm_call(
                 "run-1",
                 LLMMetrics::new("gpt-4").with_tokens(200, 100).with_latency(1500.0),
             )
-            .unwrap();
+            .expect("operation should succeed");
 
-        let stats = evaluator.get_stats("run-1").unwrap();
+        let stats = evaluator.get_stats("run-1").expect("operation should succeed");
         assert_eq!(stats.n_calls, 2);
         assert_eq!(stats.total_tokens, 450);
     }
@@ -359,8 +359,8 @@ mod property_tests {
             sorted.sort_by(f64::total_cmp);
 
             let p50 = percentile(&sorted, 50.0);
-            let min = sorted.first().unwrap();
-            let max = sorted.last().unwrap();
+            let min = sorted.first().expect("collection should not be empty");
+            let max = sorted.last().expect("collection should not be empty");
 
             prop_assert!(p50 >= *min);
             prop_assert!(p50 <= *max);

@@ -158,14 +158,17 @@ mod tests {
 
     #[test]
     fn test_converter_with_quantization() {
-        let mut input = NamedTempFile::with_suffix(".safetensors").unwrap();
-        input.write_all(&[0u8; 100_000]).unwrap();
+        let mut input =
+            NamedTempFile::with_suffix(".safetensors").expect("temp file creation should succeed");
+        input.write_all(&[0u8; 100_000]).expect("file write should succeed");
 
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let output = temp_dir.path().join("out.gguf");
 
         let converter = FormatConverter::new().with_quantization(Quantization::Q4_0);
-        let result = converter.convert(input.path(), &output, OutputFormat::Gguf).unwrap();
+        let result = converter
+            .convert(input.path(), &output, OutputFormat::Gguf)
+            .expect("conversion should succeed");
 
         // Q4_0 should reduce size by ~4x
         assert!(result.output_size < result.input_size);
@@ -187,17 +190,38 @@ mod tests {
 
     #[test]
     fn test_quantization_parsing() {
-        assert_eq!("q4_0".parse::<Quantization>().unwrap(), Quantization::Q4_0);
-        assert_eq!("Q8".parse::<Quantization>().unwrap(), Quantization::Q8_0);
-        assert_eq!("fp16".parse::<Quantization>().unwrap(), Quantization::F16);
+        assert_eq!(
+            "q4_0".parse::<Quantization>().expect("parsing should succeed"),
+            Quantization::Q4_0
+        );
+        assert_eq!(
+            "Q8".parse::<Quantization>().expect("parsing should succeed"),
+            Quantization::Q8_0
+        );
+        assert_eq!(
+            "fp16".parse::<Quantization>().expect("parsing should succeed"),
+            Quantization::F16
+        );
     }
 
     #[test]
     fn test_quantization_parsing_aliases() {
-        assert_eq!("q4".parse::<Quantization>().unwrap(), Quantization::Q4_0);
-        assert_eq!("4bit".parse::<Quantization>().unwrap(), Quantization::Q4_0);
-        assert_eq!("8bit".parse::<Quantization>().unwrap(), Quantization::Q8_0);
-        assert_eq!("half".parse::<Quantization>().unwrap(), Quantization::F16);
+        assert_eq!(
+            "q4".parse::<Quantization>().expect("parsing should succeed"),
+            Quantization::Q4_0
+        );
+        assert_eq!(
+            "4bit".parse::<Quantization>().expect("parsing should succeed"),
+            Quantization::Q4_0
+        );
+        assert_eq!(
+            "8bit".parse::<Quantization>().expect("parsing should succeed"),
+            Quantization::Q8_0
+        );
+        assert_eq!(
+            "half".parse::<Quantization>().expect("parsing should succeed"),
+            Quantization::F16
+        );
     }
 
     #[test]
@@ -258,14 +282,17 @@ mod tests {
 
     #[test]
     fn test_converter_q8_quantization() {
-        let mut input = NamedTempFile::with_suffix(".safetensors").unwrap();
-        input.write_all(&[0u8; 100_000]).unwrap();
+        let mut input =
+            NamedTempFile::with_suffix(".safetensors").expect("temp file creation should succeed");
+        input.write_all(&[0u8; 100_000]).expect("file write should succeed");
 
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let output = temp_dir.path().join("out.gguf");
 
         let converter = FormatConverter::new().with_quantization(Quantization::Q8_0);
-        let result = converter.convert(input.path(), &output, OutputFormat::Gguf).unwrap();
+        let result = converter
+            .convert(input.path(), &output, OutputFormat::Gguf)
+            .expect("conversion should succeed");
 
         // Q8_0 should reduce size by ~2x
         assert!(result.output_size < result.input_size);
@@ -274,15 +301,16 @@ mod tests {
 
     #[test]
     fn test_converter_no_quantization() {
-        let mut input = NamedTempFile::with_suffix(".safetensors").unwrap();
-        input.write_all(&[0u8; 100_000]).unwrap();
+        let mut input =
+            NamedTempFile::with_suffix(".safetensors").expect("temp file creation should succeed");
+        input.write_all(&[0u8; 100_000]).expect("file write should succeed");
 
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let output = temp_dir.path().join("out.safetensors");
 
         let result = FormatConverter::new()
             .convert(input.path(), &output, OutputFormat::SafeTensors)
-            .unwrap();
+            .expect("operation should succeed");
 
         // No quantization should preserve size
         assert_eq!(result.output_size, result.input_size);

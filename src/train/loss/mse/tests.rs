@@ -42,7 +42,7 @@ fn test_mse_gradient() {
     }
 
     // Check gradient: d(MSE)/d(pred) = 2*(pred - target)/n
-    let grad = pred.grad().unwrap();
+    let grad = pred.grad().expect("gradient should be available");
     assert_relative_eq!(grad[0], 2.0 / 3.0, epsilon = 1e-5);
     assert_relative_eq!(grad[1], 4.0 / 3.0, epsilon = 1e-5);
     assert_relative_eq!(grad[2], 6.0 / 3.0, epsilon = 1e-5);
@@ -85,7 +85,7 @@ fn test_gradient_accumulation_mse() {
     }
 
     // Gradient should be 2x the single pass
-    let grad = pred.grad().unwrap();
+    let grad = pred.grad().expect("gradient should be available");
     assert!(grad[0].abs() > 0.0);
     assert!(grad[1].abs() > 0.0);
 }
@@ -124,7 +124,7 @@ fn test_l1_loss_gradient() {
         backward_op.backward();
     }
 
-    let grad = pred.grad().unwrap();
+    let grad = pred.grad().expect("gradient should be available");
     // Gradient: sign(error) / n
     // First: sign(2) / 2 = 0.5
     // Second: sign(-2) / 2 = -0.5
@@ -183,7 +183,7 @@ fn test_gradient_accumulation_l1() {
         op.backward();
     }
 
-    let grad = pred.grad().unwrap();
+    let grad = pred.grad().expect("gradient should be available");
     assert!(grad[0].is_finite());
     assert!(grad[1].is_finite());
 }
@@ -241,7 +241,7 @@ fn test_huber_loss_gradient() {
         backward_op.backward();
     }
 
-    let grad = pred.grad().unwrap();
+    let grad = pred.grad().expect("gradient should be available");
     // Small error: grad = error / n = -0.5 / 2 = -0.25
     // Large error: grad = delta * sign(error) / n = 1 * (-1) / 2 = -0.5
     assert_relative_eq!(grad[0], -0.25, epsilon = 1e-5);
@@ -317,7 +317,7 @@ fn test_gradient_accumulation_huber() {
         op.backward();
     }
 
-    let grad = pred.grad().unwrap();
+    let grad = pred.grad().expect("gradient should be available");
     assert!(grad[0].is_finite());
     assert!(grad[1].is_finite());
 }

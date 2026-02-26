@@ -76,10 +76,10 @@ fn test_ring_collector_last() {
     assert!(collector.last().is_none());
 
     collector.record(make_test_trace(42));
-    assert_eq!(collector.last().unwrap().sequence, 42);
+    assert_eq!(collector.last().expect("collection should not be empty").sequence, 42);
 
     collector.record(make_test_trace(43));
-    assert_eq!(collector.last().unwrap().sequence, 43);
+    assert_eq!(collector.last().expect("collection should not be empty").sequence, 43);
 }
 
 #[test]
@@ -115,10 +115,10 @@ fn test_stream_collector_json_lines() {
 
         collector.record(make_test_trace(0));
         collector.record(make_test_trace(1));
-        collector.flush().unwrap();
+        collector.flush().expect("operation should succeed");
     }
 
-    let output = String::from_utf8(buffer).unwrap();
+    let output = String::from_utf8(buffer).expect("operation should succeed");
     let lines: Vec<&str> = output.lines().collect();
     assert_eq!(lines.len(), 2);
 
@@ -136,7 +136,7 @@ fn test_stream_collector_binary() {
             StreamCollector::<LinearPath, _>::new(&mut buffer, StreamFormat::Binary);
 
         collector.record(make_test_trace(0));
-        collector.flush().unwrap();
+        collector.flush().expect("operation should succeed");
     }
 
     // Should have length prefix + trace bytes
@@ -215,7 +215,7 @@ fn test_hash_chain_record() {
     assert_eq!(collector.len(), 1);
     assert_ne!(collector.latest_hash(), [0u8; 32]);
 
-    let entry = collector.get(0).unwrap();
+    let entry = collector.get(0).expect("key should exist");
     assert_eq!(entry.sequence, 0);
     assert_eq!(entry.prev_hash, [0u8; 32]); // Genesis
 }
@@ -229,7 +229,7 @@ fn test_hash_chain_linking() {
 
     collector.record(make_test_trace(1));
 
-    let second_entry = collector.get(1).unwrap();
+    let second_entry = collector.get(1).expect("key should exist");
     assert_eq!(second_entry.prev_hash, first_hash);
 }
 
@@ -297,7 +297,7 @@ fn test_hash_chain_to_json() {
     let mut collector = HashChainCollector::<LinearPath>::new();
     collector.record(make_test_trace(0));
 
-    let json = collector.to_json().unwrap();
+    let json = collector.to_json().expect("operation should succeed");
     assert!(json.contains("sequence"));
     assert!(json.contains("prev_hash"));
     assert!(json.contains("hash"));

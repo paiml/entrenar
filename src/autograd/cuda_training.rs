@@ -274,7 +274,7 @@ mod tests {
         let trainer = CudaTrainer::new();
         assert!(trainer.is_ok());
 
-        let trainer = trainer.unwrap();
+        let trainer = trainer.expect("operation should succeed");
         assert!(!trainer.device_name().is_empty());
         assert!(trainer.total_memory() > 0);
     }
@@ -286,11 +286,11 @@ mod tests {
             return;
         }
 
-        let trainer = CudaTrainer::new().unwrap();
+        let trainer = CudaTrainer::new().expect("operation should succeed");
         let data = vec![1.0, 2.0, 3.0, 4.0];
 
-        let gpu_buffer = trainer.upload(&data).unwrap();
-        let result = trainer.download(&gpu_buffer).unwrap();
+        let gpu_buffer = trainer.upload(&data).expect("load should succeed");
+        let result = trainer.download(&gpu_buffer).expect("load should succeed");
 
         assert_eq!(data, result);
     }
@@ -302,9 +302,9 @@ mod tests {
             return;
         }
 
-        let trainer = CudaTrainer::new().unwrap();
-        let gpu_buffer = trainer.zeros(100).unwrap();
-        let result = trainer.download(&gpu_buffer).unwrap();
+        let trainer = CudaTrainer::new().expect("operation should succeed");
+        let gpu_buffer = trainer.zeros(100).expect("operation should succeed");
+        let result = trainer.download(&gpu_buffer).expect("load should succeed");
 
         assert_eq!(result.len(), 100);
         assert!(result.iter().all(|&x| x == 0.0));
@@ -317,7 +317,7 @@ mod tests {
             return;
         }
 
-        let trainer = CudaTrainer::new().unwrap();
+        let trainer = CudaTrainer::new().expect("operation should succeed");
         // Synchronize should succeed
         assert!(trainer.synchronize().is_ok());
     }
@@ -329,7 +329,7 @@ mod tests {
             return;
         }
 
-        let trainer = CudaTrainer::new().unwrap();
+        let trainer = CudaTrainer::new().expect("operation should succeed");
         // Accessing context and stream should not panic
         let _ctx = trainer.context();
         let _stream = trainer.stream();
@@ -342,14 +342,14 @@ mod tests {
             return;
         }
 
-        let mut trainer = CudaTrainer::new().unwrap();
+        let mut trainer = CudaTrainer::new().expect("operation should succeed");
         assert_eq!(trainer.step_count(), 0);
 
         // Simulate an optimizer step by calling adamw_step
-        let mut params = trainer.upload(&[1.0, 2.0, 3.0]).unwrap();
-        let grads = trainer.upload(&[0.1, 0.1, 0.1]).unwrap();
-        let mut m_state = trainer.zeros(3).unwrap();
-        let mut v_state = trainer.zeros(3).unwrap();
+        let mut params = trainer.upload(&[1.0, 2.0, 3.0]).expect("load should succeed");
+        let grads = trainer.upload(&[0.1, 0.1, 0.1]).expect("load should succeed");
+        let mut m_state = trainer.zeros(3).expect("operation should succeed");
+        let mut v_state = trainer.zeros(3).expect("operation should succeed");
 
         trainer
             .adamw_step(
@@ -363,7 +363,7 @@ mod tests {
                 1e-8,
                 0.0,
             )
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(trainer.step_count(), 1);
 
@@ -378,21 +378,21 @@ mod tests {
             return;
         }
 
-        let trainer = CudaTrainer::new().unwrap();
+        let trainer = CudaTrainer::new().expect("operation should succeed");
 
         // 2x3 @ 3x2 = 2x2
         let a_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2x3
         let b_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 3x2
         let c_data: Vec<f32> = vec![0.0; 4]; // 2x2
 
-        let a = trainer.upload(&a_data).unwrap();
-        let b = trainer.upload(&b_data).unwrap();
-        let mut c = trainer.upload(&c_data).unwrap();
+        let a = trainer.upload(&a_data).expect("load should succeed");
+        let b = trainer.upload(&b_data).expect("load should succeed");
+        let mut c = trainer.upload(&c_data).expect("load should succeed");
 
-        trainer.matmul_forward(&a, &b, &mut c, 2, 3, 2).unwrap();
-        trainer.synchronize().unwrap();
+        trainer.matmul_forward(&a, &b, &mut c, 2, 3, 2).expect("operation should succeed");
+        trainer.synchronize().expect("operation should succeed");
 
-        let result = trainer.download(&c).unwrap();
+        let result = trainer.download(&c).expect("load should succeed");
         // Verify result is not all zeros (matmul should produce non-zero output)
         assert!(!result.iter().all(|&x| x == 0.0));
     }
@@ -404,17 +404,17 @@ mod tests {
             return;
         }
 
-        let trainer = CudaTrainer::new().unwrap();
+        let trainer = CudaTrainer::new().expect("operation should succeed");
 
         // Create large gradients that should be clipped
         let grad_data: Vec<f32> = vec![10.0, 10.0, 10.0, 10.0]; // norm = 20
-        let mut grads = trainer.upload(&grad_data).unwrap();
+        let mut grads = trainer.upload(&grad_data).expect("load should succeed");
 
         // Clip to max_norm = 1.0
-        trainer.clip_gradients(&mut grads, 1.0).unwrap();
-        trainer.synchronize().unwrap();
+        trainer.clip_gradients(&mut grads, 1.0).expect("operation should succeed");
+        trainer.synchronize().expect("operation should succeed");
 
-        let result = trainer.download(&grads).unwrap();
+        let result = trainer.download(&grads).expect("load should succeed");
         // Gradients should be scaled down
         let norm: f32 = result.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!(norm <= 1.1, "Gradient norm should be clipped to ~1.0, got {norm}");
@@ -427,7 +427,7 @@ mod tests {
             return;
         }
 
-        let trainer = CudaTrainer::new().unwrap();
+        let trainer = CudaTrainer::new().expect("operation should succeed");
         let debug_str = format!("{:?}", trainer);
         assert!(debug_str.contains("CudaTrainer"));
         assert!(debug_str.contains("device"));

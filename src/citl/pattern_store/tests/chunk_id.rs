@@ -21,8 +21,9 @@ fn test_chunk_id_display() {
 #[test]
 fn test_chunk_id_serialization() {
     let id = ChunkId::new();
-    let json = serde_json::to_string(&id).unwrap();
-    let deserialized: ChunkId = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&id).expect("JSON serialization should succeed");
+    let deserialized: ChunkId =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(id, deserialized);
 }
 

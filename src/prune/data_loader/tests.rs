@@ -60,15 +60,19 @@ mod tests {
     fn test_config_cache_dir() {
         // TEST_ID: DL-005
         let config = CalibrationDataConfig::new().with_cache_dir("/tmp/cache");
-        assert_eq!(config.cache_dir().map(|p| p.to_str().unwrap()), Some("/tmp/cache"));
+        assert_eq!(
+            config.cache_dir().map(|p| p.to_str().expect("config should be valid")),
+            Some("/tmp/cache")
+        );
     }
 
     #[test]
     fn test_config_serialize_json() {
         // TEST_ID: DL-006
         let config = CalibrationDataConfig::new().with_num_samples(64);
-        let json = serde_json::to_string(&config).unwrap();
-        let deserialized: CalibrationDataConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let deserialized: CalibrationDataConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(config.num_samples(), deserialized.num_samples());
     }
 
@@ -102,7 +106,7 @@ mod tests {
         let mut loader = CalibrationDataLoader::new(config);
 
         assert!(!loader.is_loaded());
-        loader.load().unwrap();
+        loader.load().expect("load should succeed");
         assert!(loader.is_loaded());
     }
 
@@ -155,8 +159,8 @@ mod tests {
         let loader1 = CalibrationDataLoader::with_synthetic_data(config.clone());
         let loader2 = CalibrationDataLoader::with_synthetic_data(config);
 
-        let batch1 = loader1.get_batch(0).unwrap();
-        let batch2 = loader2.get_batch(0).unwrap();
+        let batch1 = loader1.get_batch(0).expect("load should succeed");
+        let batch2 = loader2.get_batch(0).expect("load should succeed");
 
         // Same seed should produce same data
         let data1: Vec<f32> = batch1.inputs.data().to_vec();
@@ -173,8 +177,8 @@ mod tests {
         let loader1 = CalibrationDataLoader::with_synthetic_data(config1);
         let loader2 = CalibrationDataLoader::with_synthetic_data(config2);
 
-        let batch1 = loader1.get_batch(0).unwrap();
-        let batch2 = loader2.get_batch(0).unwrap();
+        let batch1 = loader1.get_batch(0).expect("load should succeed");
+        let batch2 = loader2.get_batch(0).expect("load should succeed");
 
         let data1: Vec<f32> = batch1.inputs.data().to_vec();
         let data2: Vec<f32> = batch2.inputs.data().to_vec();
@@ -192,9 +196,9 @@ mod tests {
 
         // First two batches should have 4 samples each (4 * 128 = 512 elements)
         // Last batch should have 2 samples (2 * 128 = 256 elements)
-        let batch0 = loader.get_batch(0).unwrap();
-        let batch1 = loader.get_batch(1).unwrap();
-        let batch2 = loader.get_batch(2).unwrap();
+        let batch0 = loader.get_batch(0).expect("load should succeed");
+        let batch1 = loader.get_batch(1).expect("load should succeed");
+        let batch2 = loader.get_batch(2).expect("load should succeed");
 
         assert_eq!(batch0.inputs.len(), 4 * 128);
         assert_eq!(batch1.inputs.len(), 4 * 128);
@@ -234,7 +238,7 @@ mod tests {
             1,
             "DL-031 FALSIFIED: Should have 1 batch when batch_size > num_samples"
         );
-        let batch = loader.get_batch(0).unwrap();
+        let batch = loader.get_batch(0).expect("load should succeed");
         // Should have only 3 samples worth of data
         assert_eq!(batch.inputs.len(), 3 * 2048); // 3 samples * default seq len
     }

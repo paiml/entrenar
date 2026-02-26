@@ -256,7 +256,7 @@ mod tests {
         let reveal = reg.reveal(&commitment);
 
         assert!(reveal.is_ok());
-        let reveal = reveal.unwrap();
+        let reveal = reveal.expect("operation should succeed");
         assert_eq!(reveal.protocol, reg);
     }
 
@@ -316,8 +316,8 @@ mod tests {
         let signing_key = SigningKey::from_bytes(&[42u8; 32]);
         let signed = SignedPreRegistration::sign(&reg, &signing_key);
 
-        assert!(signed.verify().unwrap());
-        assert!(signed.verify_full().unwrap());
+        assert!(signed.verify().expect("operation should succeed"));
+        assert!(signed.verify_full().expect("operation should succeed"));
     }
 
     #[test]
@@ -330,7 +330,7 @@ mod tests {
         signed.commitment.hash = "0".repeat(64);
 
         // Signature verification should fail
-        assert!(!signed.verify().unwrap());
+        assert!(!signed.verify().expect("operation should succeed"));
     }
 
     #[test]
@@ -342,7 +342,7 @@ mod tests {
             .with_timestamp_proof(TimestampProof::git("deadbeef"));
 
         assert!(signed.timestamp_proof.is_some());
-        assert!(signed.timestamp_proof.as_ref().unwrap().is_git());
+        assert!(signed.timestamp_proof.as_ref().expect("operation should succeed").is_git());
     }
 
     #[test]

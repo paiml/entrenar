@@ -61,7 +61,7 @@ output:
 fn test_parse_minimal_config() {
     let config = DistillationYamlConfig::from_yaml(MINIMAL_CONFIG);
     assert!(config.is_ok());
-    let config = config.unwrap();
+    let config = config.expect("config should be valid");
     assert_eq!(config.teacher.model_id, "microsoft/codebert-base");
     assert_eq!(config.student.model_id, "distilbert-base-uncased");
 }
@@ -70,7 +70,7 @@ fn test_parse_minimal_config() {
 fn test_parse_full_config() {
     let config = DistillationYamlConfig::from_yaml(FULL_CONFIG);
     assert!(config.is_ok());
-    let config = config.unwrap();
+    let config = config.expect("config should be valid");
 
     // Teacher
     assert_eq!(config.teacher.model_id, "microsoft/codebert-base");
@@ -78,7 +78,7 @@ fn test_parse_full_config() {
 
     // Student
     assert!(config.student.lora.is_some());
-    let lora = config.student.lora.as_ref().unwrap();
+    let lora = config.student.lora.as_ref().expect("config should be valid");
     assert_eq!(lora.rank, 16);
     assert_eq!(lora.alpha, 32.0);
     assert!(config.student.load_in_4bit);
@@ -97,7 +97,7 @@ fn test_parse_full_config() {
 
 #[test]
 fn test_defaults() {
-    let config = DistillationYamlConfig::from_yaml(MINIMAL_CONFIG).unwrap();
+    let config = DistillationYamlConfig::from_yaml(MINIMAL_CONFIG).expect("config should be valid");
 
     // Check defaults
     assert_eq!(config.distillation.temperature, 4.0);
@@ -113,7 +113,7 @@ fn test_defaults() {
 
 #[test]
 fn test_validate_minimal() {
-    let config = DistillationYamlConfig::from_yaml(MINIMAL_CONFIG).unwrap();
+    let config = DistillationYamlConfig::from_yaml(MINIMAL_CONFIG).expect("config should be valid");
     assert!(config.validate().is_ok());
 }
 
@@ -127,7 +127,7 @@ student:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_err());
 }
 
@@ -143,7 +143,7 @@ distillation:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_err());
 }
 
@@ -159,7 +159,7 @@ distillation:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_err());
 }
 
@@ -169,11 +169,11 @@ dataset:
 
 #[test]
 fn test_to_trainer_config() {
-    let config = DistillationYamlConfig::from_yaml(FULL_CONFIG).unwrap();
+    let config = DistillationYamlConfig::from_yaml(FULL_CONFIG).expect("config should be valid");
     let trainer_config = config.to_trainer_config();
     assert!(trainer_config.is_ok());
 
-    let trainer = trainer_config.unwrap();
+    let trainer = trainer_config.expect("config should be valid");
     assert_eq!(trainer.teacher_model, "microsoft/codebert-base");
     assert_eq!(trainer.epochs, 5);
     assert!(trainer.progressive.is_some());
@@ -199,9 +199,9 @@ fn test_lora_config_conversion() {
 
 #[test]
 fn test_roundtrip() {
-    let config = DistillationYamlConfig::from_yaml(FULL_CONFIG).unwrap();
-    let yaml = config.to_yaml().unwrap();
-    let config2 = DistillationYamlConfig::from_yaml(&yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(FULL_CONFIG).expect("config should be valid");
+    let yaml = config.to_yaml().expect("config should be valid");
+    let config2 = DistillationYamlConfig::from_yaml(&yaml).expect("config should be valid");
 
     assert_eq!(config.teacher.model_id, config2.teacher.model_id);
     assert_eq!(config.training.epochs, config2.training.epochs);
@@ -209,11 +209,11 @@ fn test_roundtrip() {
 
 #[test]
 fn test_save_load() {
-    let config = DistillationYamlConfig::from_yaml(MINIMAL_CONFIG).unwrap();
+    let config = DistillationYamlConfig::from_yaml(MINIMAL_CONFIG).expect("config should be valid");
     let path = "/tmp/test_distill_config.yaml";
 
-    config.save(path).unwrap();
-    let loaded = DistillationYamlConfig::load(path).unwrap();
+    config.save(path).expect("save should succeed");
+    let loaded = DistillationYamlConfig::load(path).expect("load should succeed");
 
     assert_eq!(config.teacher.model_id, loaded.teacher.model_id);
     std::fs::remove_file(path).ok();
@@ -236,8 +236,8 @@ distillation:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
-    let prog = config.distillation.progressive.unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
+    let prog = config.distillation.progressive.expect("config should be valid");
     assert_eq!(prog.layer_mapping.len(), 3);
     assert_eq!(prog.layer_mapping[0], [0, 2]);
 }
@@ -256,7 +256,7 @@ student:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_err());
 }
 
@@ -272,7 +272,7 @@ training:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_err());
 }
 
@@ -288,7 +288,7 @@ training:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_err());
 }
 
@@ -302,7 +302,7 @@ student:
 dataset:
   path: ""
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_err());
 }
 
@@ -319,8 +319,8 @@ distillation:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
-    let at = config.distillation.attention_transfer.unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
+    let at = config.distillation.attention_transfer.expect("config should be valid");
     assert_eq!(at.weight, 0.3);
 }
 
@@ -336,7 +336,7 @@ training:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert_eq!(config.training.mixed_precision, Some("fp16".to_string()));
 }
 
@@ -352,7 +352,7 @@ training:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert_eq!(config.training.mixed_precision, Some("bf16".to_string()));
 }
 
@@ -367,8 +367,8 @@ student:
 dataset:
   path: "data"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
-    let trainer_config = config.to_trainer_config().unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
+    let trainer_config = config.to_trainer_config().expect("config should be valid");
     // Should have fine_tune set for full fine-tuning
     assert!(!trainer_config.fine_tune.model_id.is_empty());
 }
@@ -384,7 +384,7 @@ student:
 dataset:
   path: "test"
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert_eq!(config.teacher.revision, "v1.0.0");
 }
 
@@ -402,7 +402,7 @@ output:
   save_steps: 500
   eval_steps: 250
 "#;
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert_eq!(config.output.dir, "/custom/output");
     assert_eq!(config.output.save_steps, 500);
     assert_eq!(config.output.eval_steps, 250);
@@ -416,7 +416,7 @@ fn test_lora_with_layers() {
         target_modules: vec!["q_proj".to_string()],
         layers: Some(vec![0, 1, 2, 3]),
     };
-    assert_eq!(yaml.layers.as_ref().unwrap().len(), 4);
+    assert_eq!(yaml.layers.as_ref().expect("operation should succeed").len(), 4);
 }
 
 #[test]

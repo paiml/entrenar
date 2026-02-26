@@ -28,7 +28,7 @@ fn falsify_wer_leaderboard_ranks_lower_first() {
 
     let lb = to_leaderboard(&hf);
     assert_eq!(
-        lb.best().unwrap().model_name,
+        lb.best().expect("operation should succeed").model_name,
         "good-model",
         "WER leaderboard should rank lower WER first"
     );
@@ -47,7 +47,7 @@ fn falsify_bleu_leaderboard_ranks_higher_first() {
     lb.add(high);
 
     assert_eq!(
-        lb.best().unwrap().model_name,
+        lb.best().expect("operation should succeed").model_name,
         "high-bleu",
         "BLEU leaderboard should rank higher BLEU first"
     );
@@ -66,7 +66,7 @@ fn falsify_perplexity_leaderboard_ranks_lower_first() {
     lb.add(low_ppl);
 
     assert_eq!(
-        lb.best().unwrap().model_name,
+        lb.best().expect("operation should succeed").model_name,
         "low-ppl",
         "Perplexity leaderboard should rank lower PPL first"
     );
@@ -91,7 +91,7 @@ fn falsify_compare_preserves_all_entries() {
     let lb = compare_with_leaderboard(&my, &hf);
     assert_eq!(lb.results.len(), 6, "Should have 5 HF entries + 1 user entry");
     assert_eq!(
-        lb.best().unwrap().model_name,
+        lb.best().expect("operation should succeed").model_name,
         "my-model",
         "User model with WER=0.07 should be best"
     );
@@ -108,9 +108,16 @@ fn falsify_compare_user_model_worse_than_all() {
     my.add_score(Metric::WER, 0.50);
 
     let lb = compare_with_leaderboard(&my, &hf);
-    assert_eq!(lb.best().unwrap().model_name, "sota-model", "SOTA model should remain best");
+    assert_eq!(
+        lb.best().expect("operation should succeed").model_name,
+        "sota-model",
+        "SOTA model should remain best"
+    );
     // User model should be last
-    assert_eq!(lb.results.last().unwrap().model_name, "my-bad-model");
+    assert_eq!(
+        lb.results.last().expect("collection should not be empty").model_name,
+        "my-bad-model"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -177,7 +184,7 @@ fn falsify_find_model_exact_match() {
 
     let found = lb.find_model("openai/whisper-large-v3");
     assert!(found.is_some());
-    assert_eq!(found.unwrap().get_score("wer"), Some(0.05));
+    assert_eq!(found.expect("operation should succeed").get_score("wer"), Some(0.05));
 }
 
 #[test]

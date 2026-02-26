@@ -139,7 +139,7 @@ mod tests {
 
         let spec = OptimSpec { name: "adam".to_string(), lr: 0.001, params };
 
-        let optimizer = build_optimizer(&spec).unwrap();
+        let optimizer = build_optimizer(&spec).expect("operation should succeed");
         assert_eq!(optimizer.lr(), 0.001);
     }
 
@@ -150,7 +150,7 @@ mod tests {
 
         let spec = OptimSpec { name: "sgd".to_string(), lr: 0.01, params };
 
-        let optimizer = build_optimizer(&spec).unwrap();
+        let optimizer = build_optimizer(&spec).expect("operation should succeed");
         assert_eq!(optimizer.lr(), 0.01);
     }
 
@@ -161,7 +161,7 @@ mod tests {
 
         let spec = OptimSpec { name: "adamw".to_string(), lr: 0.001, params };
 
-        let optimizer = build_optimizer(&spec).unwrap();
+        let optimizer = build_optimizer(&spec).expect("operation should succeed");
         assert_eq!(optimizer.lr(), 0.001);
     }
 
@@ -201,7 +201,7 @@ mod tests {
             publish: None,
         };
 
-        let model = build_model(&spec).unwrap();
+        let model = build_model(&spec).expect("operation should succeed");
         assert_eq!(model.parameters.len(), 4);
         assert!(model.get_parameter("layer1.weight").is_some());
         // Verify demo mode indicator
@@ -223,11 +223,11 @@ mod tests {
         ];
         let original = Model::new(ModelMetadata::new("test-transformer", "transformer"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("safetensors");
 
         let config = SaveConfig::new(ModelFormat::SafeTensors);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
         // Build model from the real file
         let spec = TrainSpec {
@@ -249,7 +249,7 @@ mod tests {
             publish: None,
         };
 
-        let loaded = build_model(&spec).unwrap();
+        let loaded = build_model(&spec).expect("load should succeed");
 
         // Verify it loaded the real model, not demo mode
         assert_eq!(loaded.parameters.len(), 3);
@@ -283,11 +283,11 @@ mod tests {
         let params = vec![("w".to_string(), Tensor::from_vec(vec![1.0], false))];
         let original = Model::new(ModelMetadata::new("meta-test", "linear"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("json");
 
         let config = SaveConfig::new(ModelFormat::Json);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
         let spec = TrainSpec {
             model: ModelRef { path: temp_path.clone(), ..Default::default() },
@@ -308,7 +308,7 @@ mod tests {
             publish: None,
         };
 
-        let loaded = build_model(&spec).unwrap();
+        let loaded = build_model(&spec).expect("load should succeed");
 
         // Verify training metadata was added
         assert!(loaded.metadata.custom.contains_key("optimizer"));

@@ -355,9 +355,12 @@ mod tests {
         assert_eq!(stats.name, "test_layer");
         assert_eq!(stats.base_unquantized_bytes, 256 * 256 * 4);
         assert!(stats.base_quantized_bytes.is_some());
-        assert!(stats.base_quantized_bytes.unwrap() < stats.base_unquantized_bytes);
+        assert!(
+            stats.base_quantized_bytes.expect("operation should succeed")
+                < stats.base_unquantized_bytes
+        );
         assert!(stats.compression_ratio.is_some());
-        assert!(stats.compression_ratio.unwrap() > 6.0);
+        assert!(stats.compression_ratio.expect("operation should succeed") > 6.0);
     }
 
     #[test]

@@ -281,7 +281,7 @@ fn test_causal_lineage_latest_event_for_run() {
         "run-001",
     ));
 
-    let latest = lineage.latest_event_for_run("run-001").unwrap();
+    let latest = lineage.latest_event_for_run("run-001").expect("operation should succeed");
     assert_eq!(latest.event_type, LineageEventType::RunCompleted);
     assert_eq!(latest.timestamp.counter, 5);
 }
@@ -348,8 +348,9 @@ fn test_causal_lineage_run_precedes_overlapping() {
 #[test]
 fn test_lamport_timestamp_serialization() {
     let ts = LamportTimestamp::with_counter("node-1", 42);
-    let json = serde_json::to_string(&ts).unwrap();
-    let parsed: LamportTimestamp = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&ts).expect("JSON serialization should succeed");
+    let parsed: LamportTimestamp =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed.counter, 42);
     assert_eq!(parsed.node_id, "node-1");
@@ -361,8 +362,9 @@ fn test_lineage_event_serialization() {
     let event = LineageEvent::new(ts, LineageEventType::ModelPromoted, "run-001")
         .with_context("version=1.0");
 
-    let json = serde_json::to_string(&event).unwrap();
-    let parsed: LineageEvent = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&event).expect("JSON serialization should succeed");
+    let parsed: LineageEvent =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed.event_type, LineageEventType::ModelPromoted);
     assert_eq!(parsed.context, Some("version=1.0".to_string()));

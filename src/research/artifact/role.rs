@@ -111,8 +111,9 @@ mod tests {
     #[test]
     fn test_contributor_role_serde() {
         let role = ContributorRole::Software;
-        let json = serde_json::to_string(&role).unwrap();
-        let deserialized: ContributorRole = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&role).expect("JSON serialization should succeed");
+        let deserialized: ContributorRole =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(role, deserialized);
     }
 }

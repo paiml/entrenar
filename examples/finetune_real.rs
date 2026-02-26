@@ -370,13 +370,15 @@ impl AttentionLoRAAdapters {
             // We need A transposed, but A is stored as (r × h), so A^T is (h × r)
             // Actually matmul(x, A, seq, h, r) treats A as (h × r) in row-major
             // But A is stored as (r × h), so we need to transpose
-            let a_t = transpose_matrix(a.data().as_slice().unwrap(), r, h); // (r × h) -> (h × r)
+            let a_t =
+                transpose_matrix(a.data().as_slice().expect("operation should succeed"), r, h); // (r × h) -> (h × r)
             let a_t_tensor = Tensor::from_vec(a_t, false);
             let intermediate = matmul(hidden, &a_t_tensor, seq_len, h, r);
 
             // intermediate @ B^T: (seq × r) @ (r × h) = (seq × h)
             // B is (h × r), so B^T is (r × h)
-            let b_t = transpose_matrix(b.data().as_slice().unwrap(), h, r); // (h × r) -> (r × h)
+            let b_t =
+                transpose_matrix(b.data().as_slice().expect("operation should succeed"), h, r); // (h × r) -> (r × h)
             let b_t_tensor = Tensor::from_vec(b_t, false);
             let lora_out = matmul(&intermediate, &b_t_tensor, seq_len, r, h);
 
@@ -457,7 +459,7 @@ fn generate_tests(
         let next_token = logits_vec[last_pos_start..last_pos_end]
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed"))
             .map(|(idx, _)| idx as u32)
             .unwrap_or(eos_token);
 
@@ -1545,13 +1547,13 @@ fn cuda_training_step(
 
     cuda.backward(&hidden_data, &grad_logits, seq_len).expect("CUDA backward failed");
 
-    let weights_before = cuda.download_weights().unwrap();
+    let weights_before = cuda.download_weights().expect("operation should succeed");
     let sum_before: f32 = weights_before.iter().sum();
 
     let current_lr = scheduler.get_lr();
     cuda.adamw_step(current_lr, 0.9, 0.999, 1e-8, 0.01).expect("CUDA optimizer step failed");
 
-    let weights_after = cuda.download_weights().unwrap();
+    let weights_after = cuda.download_weights().expect("operation should succeed");
     let sum_after: f32 = weights_after.iter().sum();
     if step == 0 && epoch == 0 {
         println!(

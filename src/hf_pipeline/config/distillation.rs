@@ -108,8 +108,9 @@ mod tests {
             attention_transfer: None,
         };
 
-        let json = serde_json::to_string(&config).unwrap();
-        let deserialized: DistillationConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let deserialized: DistillationConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert!((config.temperature - deserialized.temperature).abs() < 1e-6);
         assert!((config.alpha - deserialized.alpha).abs() < 1e-6);
     }
@@ -126,16 +127,17 @@ mod tests {
             attention_transfer: Some(AttentionTransferConfig { weight: 0.15 }),
         };
 
-        let json = serde_json::to_string(&config).unwrap();
-        let deserialized: DistillationConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let deserialized: DistillationConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert!(deserialized.progressive.is_some());
-        let prog = deserialized.progressive.unwrap();
+        let prog = deserialized.progressive.expect("deserialization should succeed");
         assert_eq!(prog.layer_mapping.len(), 1);
         assert!((prog.hidden_weight - 0.8).abs() < 1e-6);
 
         assert!(deserialized.attention_transfer.is_some());
-        let attn = deserialized.attention_transfer.unwrap();
+        let attn = deserialized.attention_transfer.expect("deserialization should succeed");
         assert!((attn.weight - 0.15).abs() < 1e-6);
     }
 
@@ -143,7 +145,8 @@ mod tests {
     fn test_distillation_config_from_partial_json() {
         // Test that defaults are used when fields are missing
         let json = r#"{"temperature": 5.0}"#;
-        let config: DistillationConfig = serde_json::from_str(json).unwrap();
+        let config: DistillationConfig =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert!((config.temperature - 5.0).abs() < 1e-6);
         assert!((config.alpha - 0.7).abs() < 1e-6); // default
     }
@@ -152,7 +155,8 @@ mod tests {
     fn test_progressive_config_serde_default_weight() {
         // Test that hidden_weight defaults to 1.0 when not specified
         let json = r#"{"layer_mapping": [[0, 0]]}"#;
-        let config: ProgressiveConfig = serde_json::from_str(json).unwrap();
+        let config: ProgressiveConfig =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert!((config.hidden_weight - 1.0).abs() < 1e-6);
     }
 
@@ -160,7 +164,8 @@ mod tests {
     fn test_attention_transfer_config_serde_default_weight() {
         // Test that weight defaults to 0.1 when not specified
         let json = r#"{}"#;
-        let config: AttentionTransferConfig = serde_json::from_str(json).unwrap();
+        let config: AttentionTransferConfig =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert!((config.weight - 0.1).abs() < 1e-6);
     }
 

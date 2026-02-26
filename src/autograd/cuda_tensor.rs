@@ -331,15 +331,16 @@ mod tests {
             return;
         }
 
-        let device = CudaDevice::default_device().unwrap();
+        let device = CudaDevice::default_device().expect("operation should succeed");
         let data = vec![1.0, 2.0, 3.0, 4.0];
-        let tensor = CudaTensor::from_vec(&device, data.clone(), true).unwrap();
+        let tensor =
+            CudaTensor::from_vec(&device, data.clone(), true).expect("operation should succeed");
 
         assert_eq!(tensor.len(), 4);
         assert!(tensor.requires_grad());
 
         // Verify round-trip
-        let result = tensor.to_vec().unwrap();
+        let result = tensor.to_vec().expect("operation should succeed");
         assert_eq!(result, data);
     }
 
@@ -350,13 +351,13 @@ mod tests {
             return;
         }
 
-        let device = CudaDevice::default_device().unwrap();
-        let tensor = CudaTensor::zeros(&device, 100, false).unwrap();
+        let device = CudaDevice::default_device().expect("operation should succeed");
+        let tensor = CudaTensor::zeros(&device, 100, false).expect("operation should succeed");
 
         assert_eq!(tensor.len(), 100);
         assert!(!tensor.requires_grad());
 
-        let data = tensor.to_vec().unwrap();
+        let data = tensor.to_vec().expect("operation should succeed");
         assert!(data.iter().all(|&x| x == 0.0));
     }
 
@@ -367,11 +368,11 @@ mod tests {
             return;
         }
 
-        let device = CudaDevice::default_device().unwrap();
-        let tensor = CudaTensor::ones(&device, 50, true).unwrap();
+        let device = CudaDevice::default_device().expect("operation should succeed");
+        let tensor = CudaTensor::ones(&device, 50, true).expect("operation should succeed");
 
         assert_eq!(tensor.len(), 50);
-        let data = tensor.to_vec().unwrap();
+        let data = tensor.to_vec().expect("operation should succeed");
         assert!(data.iter().all(|&x| x == 1.0));
     }
 
@@ -382,23 +383,33 @@ mod tests {
             return;
         }
 
-        let device = CudaDevice::default_device().unwrap();
-        let mut tensor = CudaTensor::from_vec(&device, vec![1.0, 2.0, 3.0], true).unwrap();
+        let device = CudaDevice::default_device().expect("operation should succeed");
+        let mut tensor = CudaTensor::from_vec(&device, vec![1.0, 2.0, 3.0], true)
+            .expect("operation should succeed");
 
         // Initially gradient should be zeros
-        let grad = tensor.grad_to_vec().unwrap().unwrap();
+        let grad = tensor
+            .grad_to_vec()
+            .expect("operation should succeed")
+            .expect("operation should succeed");
         assert!(grad.iter().all(|&x| x == 0.0));
 
         // Set gradient
-        tensor.set_grad_from_vec(&[0.1, 0.2, 0.3]).unwrap();
-        let grad = tensor.grad_to_vec().unwrap().unwrap();
+        tensor.set_grad_from_vec(&[0.1, 0.2, 0.3]).expect("operation should succeed");
+        let grad = tensor
+            .grad_to_vec()
+            .expect("operation should succeed")
+            .expect("operation should succeed");
         assert!((grad[0] - 0.1).abs() < 1e-6);
         assert!((grad[1] - 0.2).abs() < 1e-6);
         assert!((grad[2] - 0.3).abs() < 1e-6);
 
         // Zero gradient
-        tensor.zero_grad().unwrap();
-        let grad = tensor.grad_to_vec().unwrap().unwrap();
+        tensor.zero_grad().expect("gradient should be available");
+        let grad = tensor
+            .grad_to_vec()
+            .expect("operation should succeed")
+            .expect("operation should succeed");
         assert!(grad.iter().all(|&x| x == 0.0));
     }
 
@@ -409,11 +420,11 @@ mod tests {
             return;
         }
 
-        let device = CudaDevice::default_device().unwrap();
-        let mut tensor = CudaTensor::zeros(&device, 4, false).unwrap();
+        let device = CudaDevice::default_device().expect("operation should succeed");
+        let mut tensor = CudaTensor::zeros(&device, 4, false).expect("operation should succeed");
 
-        tensor.copy_from_vec(&[5.0, 6.0, 7.0, 8.0]).unwrap();
-        let data = tensor.to_vec().unwrap();
+        tensor.copy_from_vec(&[5.0, 6.0, 7.0, 8.0]).expect("operation should succeed");
+        let data = tensor.to_vec().expect("operation should succeed");
         assert_eq!(data, vec![5.0, 6.0, 7.0, 8.0]);
     }
 
@@ -424,8 +435,8 @@ mod tests {
             return;
         }
 
-        let device = CudaDevice::default_device().unwrap();
-        let mut tensor = CudaTensor::zeros(&device, 4, false).unwrap();
+        let device = CudaDevice::default_device().expect("operation should succeed");
+        let mut tensor = CudaTensor::zeros(&device, 4, false).expect("operation should succeed");
 
         let result = tensor.copy_from_vec(&[1.0, 2.0]); // Wrong size
         assert!(result.is_err());

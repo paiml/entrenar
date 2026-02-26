@@ -251,7 +251,7 @@ proptest! {
         };
 
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator.evaluate_classification("test", &y_pred, &y_true).unwrap();
+        let result = evaluator.evaluate_classification("test", &y_pred, &y_true).expect("operation should succeed");
 
         for (metric, &score) in &result.scores {
             prop_assert!(

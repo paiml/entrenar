@@ -20,7 +20,7 @@ proptest! {
         let c_len = c.len();
         backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
-        let analytical_a = a.grad().unwrap();
+        let analytical_a = a.grad().expect("gradient should be available");
 
         // Numerical gradient for a
         let numerical_a = finite_difference(
@@ -55,7 +55,7 @@ proptest! {
         let c_len = c.len();
         backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
-        let analytical_a = a.grad().unwrap();
+        let analytical_a = a.grad().expect("gradient should be available");
 
         let numerical_a = finite_difference(
             |x_val| {
@@ -89,7 +89,7 @@ proptest! {
         let c_len = c.len();
         backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
-        let analytical = a.grad().unwrap();
+        let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |x_val| {
                 let t = Tensor::from_vec(x_val.to_vec(), false);
@@ -119,7 +119,7 @@ proptest! {
         let c_len = c.len();
         backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
-        let analytical = a.grad().unwrap();
+        let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |x_val| {
                 let t = Tensor::from_vec(x_val.to_vec(), false);
@@ -148,7 +148,7 @@ proptest! {
         let c_len = c.len();
         backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
-        let analytical = a.grad().unwrap();
+        let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |x_val| {
                 let t = Tensor::from_vec(x_val.to_vec(), false);

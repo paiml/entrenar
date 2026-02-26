@@ -6,8 +6,8 @@
 /// Configuration validation invariants
 ///
 /// #[requires(max_size > 0)]
-/// #[ensures(result.is_ok() ==> result.unwrap().max_size == max_size)]
-/// #[ensures(result.is_ok() ==> result.unwrap().max_size > 0)]
+/// #[ensures(result.is_ok() ==> result.expect("ok").max_size == max_size)]
+/// #[ensures(result.is_ok() ==> result.expect("ok").max_size > 0)]
 /// #[ensures(max_size == 0 ==> result.is_err())]
 /// #[invariant(self.max_size > 0)]
 /// #[decreases(remaining)]
@@ -53,9 +53,9 @@ pub mod numeric_contracts {
     /// Safe addition with overflow check
     ///
     /// #[requires(a >= 0 && b >= 0)]
-    /// #[ensures(result.is_some() ==> result.unwrap() == a + b)]
-    /// #[ensures(result.is_some() ==> result.unwrap() >= a)]
-    /// #[ensures(result.is_some() ==> result.unwrap() >= b)]
+    /// #[ensures(result.is_some() ==> result.expect("some") == a + b)]
+    /// #[ensures(result.is_some() ==> result.expect("some") >= a)]
+    /// #[ensures(result.is_some() ==> result.expect("some") >= b)]
     pub fn checked_add(a: u64, b: u64) -> Option<u64> {
         a.checked_add(b)
     }

@@ -178,14 +178,15 @@ mod tests {
     #[test]
     fn test_stage_serialization() {
         let stage = ModelStage::Production;
-        let json = serde_json::to_string(&stage).unwrap();
+        let json = serde_json::to_string(&stage).expect("JSON serialization should succeed");
         assert!(json.contains("Production"));
     }
 
     #[test]
     fn test_stage_deserialization() {
         let json = "\"Staging\"";
-        let stage: ModelStage = serde_json::from_str(json).unwrap();
+        let stage: ModelStage =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert_eq!(stage, ModelStage::Staging);
     }
 
@@ -199,8 +200,9 @@ mod tests {
             ModelStage::Archived,
         ];
         for stage in stages {
-            let json = serde_json::to_string(&stage).unwrap();
-            let deserialized: ModelStage = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&stage).expect("JSON serialization should succeed");
+            let deserialized: ModelStage =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(stage, deserialized);
         }
     }

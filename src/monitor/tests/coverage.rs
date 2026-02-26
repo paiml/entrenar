@@ -70,7 +70,7 @@ fn test_metrics_collector_to_json() {
     let mut collector = MetricsCollector::new();
     collector.record(Metric::Loss, 0.5);
 
-    let json = collector.to_json().unwrap();
+    let json = collector.to_json().expect("operation should succeed");
     assert!(json.contains("Loss") || json.contains("loss") || json.contains("metric"));
 }
 
@@ -80,7 +80,7 @@ fn test_metrics_collector_summary_to_json() {
     collector.record(Metric::Loss, 0.5);
     collector.record(Metric::Loss, 0.4);
 
-    let json = collector.summary_to_json().unwrap();
+    let json = collector.summary_to_json().expect("operation should succeed");
     assert!(json.contains("mean"));
 }
 
@@ -99,7 +99,7 @@ fn test_running_stats_std_with_one_value() {
     collector.record(Metric::Loss, 5.0);
 
     let summary = collector.summary();
-    let stats = summary.get(&Metric::Loss).unwrap();
+    let stats = summary.get(&Metric::Loss).expect("key should exist");
     assert_eq!(stats.std, 0.0); // Single value has 0 std
 }
 
@@ -109,7 +109,7 @@ fn test_running_stats_negative_inf() {
     collector.record(Metric::Loss, f64::NEG_INFINITY);
 
     let summary = collector.summary();
-    let stats = summary.get(&Metric::Loss).unwrap();
+    let stats = summary.get(&Metric::Loss).expect("key should exist");
     assert!(stats.has_inf);
     assert_eq!(stats.min, f64::NEG_INFINITY);
 }

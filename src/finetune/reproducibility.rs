@@ -369,11 +369,12 @@ mod tests {
         let lock =
             ExperimentLock::new("test").with_reproducibility(ReproducibilityConfig::with_seed(100));
 
-        let yaml = serde_yaml::to_string(&lock).unwrap();
+        let yaml = serde_yaml::to_string(&lock).expect("operation should succeed");
         assert!(yaml.contains("experiment_id: test"));
         assert!(yaml.contains("seed: 100"));
 
-        let restored: ExperimentLock = serde_yaml::from_str(&yaml).unwrap();
+        let restored: ExperimentLock =
+            serde_yaml::from_str(&yaml).expect("lock acquisition should succeed");
         assert_eq!(restored.experiment_id, "test");
         assert_eq!(restored.reproducibility.seed, 100);
     }
@@ -402,7 +403,7 @@ mod tests {
     fn test_dependency_version() {
         let dep = DependencyVersion { name: "entrenar".into(), version: "0.5.6".into() };
 
-        let json = serde_json::to_string(&dep).unwrap();
+        let json = serde_json::to_string(&dep).expect("JSON serialization should succeed");
         assert!(json.contains("entrenar"));
         assert!(json.contains("0.5.6"));
     }
@@ -413,8 +414,11 @@ mod tests {
         config.apply();
 
         // Verify environment variables were set
-        assert_eq!(std::env::var("PYTHONHASHSEED").unwrap(), "12345");
-        assert_eq!(std::env::var("CUBLAS_WORKSPACE_CONFIG").unwrap(), ":4096:8");
+        assert_eq!(std::env::var("PYTHONHASHSEED").expect("operation should succeed"), "12345");
+        assert_eq!(
+            std::env::var("CUBLAS_WORKSPACE_CONFIG").expect("config should be valid"),
+            ":4096:8"
+        );
     }
 
     #[test]
@@ -427,10 +431,10 @@ mod tests {
         let path = temp_dir.join("test_lock.yaml");
 
         // Save
-        lock.save(&path).unwrap();
+        lock.save(&path).expect("save should succeed");
 
         // Load
-        let loaded = ExperimentLock::load(&path).unwrap();
+        let loaded = ExperimentLock::load(&path).expect("lock acquisition should succeed");
         assert_eq!(loaded.experiment_id, "save-load-test");
         assert_eq!(loaded.reproducibility.seed, 999);
         assert_eq!(loaded.config_checksum, "sha256:test");
@@ -481,7 +485,7 @@ mod tests {
         let lock =
             ExperimentLock::new("yaml-test").with_reproducibility(ReproducibilityConfig::default());
 
-        let yaml = serde_yaml::to_string(&lock).unwrap();
+        let yaml = serde_yaml::to_string(&lock).expect("operation should succeed");
         assert!(yaml.contains("experiment_id"));
         assert!(yaml.contains("timestamp"));
         assert!(yaml.contains("reproducibility"));

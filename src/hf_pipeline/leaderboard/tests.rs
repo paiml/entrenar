@@ -120,7 +120,7 @@ fn test_to_leaderboard_conversion() {
     let leaderboard = to_leaderboard(&hf);
     assert_eq!(leaderboard.results.len(), 2);
     // WER is lower-is-better, so model-b (0.08) should be best
-    assert_eq!(leaderboard.best().unwrap().model_name, "model-b");
+    assert_eq!(leaderboard.best().expect("operation should succeed").model_name, "model-b");
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn test_compare_with_leaderboard() {
     let leaderboard = compare_with_leaderboard(&my_result, &hf);
     assert_eq!(leaderboard.results.len(), 2);
     // my-model has better WER (0.05 < 0.10)
-    assert_eq!(leaderboard.best().unwrap().model_name, "my-model");
+    assert_eq!(leaderboard.best().expect("operation should succeed").model_name, "my-model");
 }
 
 #[test]

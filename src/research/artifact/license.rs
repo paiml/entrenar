@@ -83,13 +83,16 @@ mod tests {
     #[test]
     fn test_license_serde() {
         let license = License::Mit;
-        let json = serde_json::to_string(&license).unwrap();
-        let deserialized: License = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&license).expect("JSON serialization should succeed");
+        let deserialized: License =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(license, deserialized);
 
         let custom = License::Custom("Unlicense".to_string());
-        let custom_json = serde_json::to_string(&custom).unwrap();
-        let custom_deserialized: License = serde_json::from_str(&custom_json).unwrap();
+        let custom_json =
+            serde_json::to_string(&custom).expect("JSON serialization should succeed");
+        let custom_deserialized: License =
+            serde_json::from_str(&custom_json).expect("JSON deserialization should succeed");
         assert_eq!(custom, custom_deserialized);
     }
 

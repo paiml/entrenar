@@ -275,10 +275,11 @@ fn test_config_serialize_json() {
     // TEST_ID: CFG-040
     let config = PruningConfig::new().with_method(PruneMethod::Wanda).with_target_sparsity(0.5);
 
-    let json = serde_json::to_string(&config).unwrap();
+    let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
     assert!(json.contains("wanda"), "CFG-040 FALSIFIED: JSON should contain method name");
 
-    let deserialized: PruningConfig = serde_json::from_str(&json).unwrap();
+    let deserialized: PruningConfig =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(
         deserialized.method(),
         PruneMethod::Wanda,
@@ -293,7 +294,7 @@ fn test_config_serialize_yaml() {
         .with_method(PruneMethod::SparseGpt)
         .with_pattern(SparsityPatternConfig::nm_2_4());
 
-    let yaml = serde_yaml::to_string(&config).unwrap();
+    let yaml = serde_yaml::to_string(&config).expect("config should be valid");
     assert!(yaml.contains("sparse_gpt"), "CFG-041 FALSIFIED: YAML should contain method name");
 }
 
@@ -315,7 +316,7 @@ fine_tune_steps: 500
 fine_tune_lr: 0.00001
 skip_embed_layers: true
 ";
-    let config: PruningConfig = serde_yaml::from_str(yaml).unwrap();
+    let config: PruningConfig = serde_yaml::from_str(yaml).expect("config should be valid");
     assert_eq!(config.method(), PruneMethod::Wanda);
     assert!((config.target_sparsity() - 0.5).abs() < 1e-6);
     match config.pattern() {

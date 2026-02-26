@@ -117,8 +117,8 @@ fn test_adaptive_curriculum_class_tracking() {
     curriculum.update_class("E0425", false);
 
     // E0308 should have higher accuracy
-    let e0308_acc = *curriculum.class_accuracy.get("E0308").unwrap();
-    let e0425_acc = *curriculum.class_accuracy.get("E0425").unwrap();
+    let e0308_acc = *curriculum.class_accuracy.get("E0308").expect("key should exist");
+    let e0425_acc = *curriculum.class_accuracy.get("E0425").expect("key should exist");
     assert!(e0308_acc > e0425_acc);
 
     // E0425 (low accuracy) should have higher weight
@@ -145,7 +145,7 @@ fn test_select_optimal_tier() {
         (4, 0.77, 100000), // E = 0.77 / ln(100000) ~ 0.067
     ];
 
-    let (best_tier, _) = select_optimal_tier(&results).unwrap();
+    let (best_tier, _) = select_optimal_tier(&results).expect("operation should succeed");
     // Tier 1 or 2 should win due to smaller corpus
     assert!(best_tier <= 2);
 }
@@ -247,7 +247,7 @@ fn test_select_optimal_tier_empty() {
 #[test]
 fn test_select_optimal_tier_single() {
     let results = vec![(2, 0.75, 5000)];
-    let (tier, _) = select_optimal_tier(&results).unwrap();
+    let (tier, _) = select_optimal_tier(&results).expect("operation should succeed");
     assert_eq!(tier, 2);
 }
 

@@ -87,7 +87,7 @@ fn test_teacher_forward() {
     let input = Array2::<f32>::zeros((4, 768));
     let output = teacher.forward(&input);
     assert!(output.is_ok());
-    assert_eq!(output.unwrap().dim(), (4, 768));
+    assert_eq!(output.expect("operation should succeed").dim(), (4, 768));
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn test_teacher_hidden_states() {
     let input = Array2::<f32>::zeros((4, 768));
     let hidden = teacher.hidden_states(&input);
     assert!(hidden.is_ok());
-    let hidden = hidden.unwrap();
+    let hidden = hidden.expect("operation should succeed");
     assert_eq!(hidden.len(), 12); // One per layer
 }
 
@@ -106,7 +106,7 @@ fn test_teacher_attention_weights() {
     let input = Array2::<f32>::zeros((4, 768));
     let attn = teacher.attention_weights(&input);
     assert!(attn.is_ok());
-    let attn = attn.unwrap();
+    let attn = attn.expect("operation should succeed");
     assert_eq!(attn.len(), 12);
 }
 
@@ -134,17 +134,17 @@ fn test_load_valid_safetensors_file() {
     use tempfile::TempDir;
 
     // Create a minimal valid safetensors file
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = temp_dir.path().join("model.safetensors");
 
     // Create minimal safetensors with one tensor
     let data = create_test_safetensors(&[("weight", &[2, 3])]);
-    std::fs::write(&model_path, data).unwrap();
+    std::fs::write(&model_path, data).expect("file write should succeed");
 
     let teacher = SafeTensorsTeacher::load(temp_dir.path());
     assert!(teacher.is_ok(), "Should load valid safetensors file");
 
-    let teacher = teacher.unwrap();
+    let teacher = teacher.expect("operation should succeed");
     assert!(teacher.param_count() > 0, "Should have non-zero params");
 }
 
@@ -152,7 +152,7 @@ fn test_load_valid_safetensors_file() {
 fn test_safetensors_extracts_tensor_names() {
     use tempfile::TempDir;
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = temp_dir.path().join("model.safetensors");
 
     // Create safetensors with named tensors
@@ -160,9 +160,9 @@ fn test_safetensors_extracts_tensor_names() {
         ("encoder.layer.0.attention.query.weight", &[768, 768]),
         ("encoder.layer.0.attention.key.weight", &[768, 768]),
     ]);
-    std::fs::write(&model_path, data).unwrap();
+    std::fs::write(&model_path, data).expect("file write should succeed");
 
-    let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+    let teacher = SafeTensorsTeacher::load(temp_dir.path()).expect("load should succeed");
     assert!(teacher.tensor_names().contains(&"encoder.layer.0.attention.query.weight".to_string()));
 }
 
@@ -170,7 +170,7 @@ fn test_safetensors_extracts_tensor_names() {
 fn test_safetensors_param_count_matches_tensors() {
     use tempfile::TempDir;
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = temp_dir.path().join("model.safetensors");
 
     // Create safetensors with known parameter count
@@ -179,9 +179,9 @@ fn test_safetensors_param_count_matches_tensors() {
         ("layer.0.weight", &[768, 768]),
         ("layer.1.weight", &[768, 768]),
     ]);
-    std::fs::write(&model_path, data).unwrap();
+    std::fs::write(&model_path, data).expect("file write should succeed");
 
-    let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+    let teacher = SafeTensorsTeacher::load(temp_dir.path()).expect("load should succeed");
     assert_eq!(teacher.param_count(), 768 * 768 * 2);
 }
 
@@ -189,7 +189,7 @@ fn test_safetensors_param_count_matches_tensors() {
 fn test_safetensors_detects_layer_count() {
     use tempfile::TempDir;
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = temp_dir.path().join("model.safetensors");
 
     // Create safetensors with 12 layers
@@ -202,9 +202,9 @@ fn test_safetensors_detects_layer_count() {
     }
 
     let data = create_test_safetensors_from_names(&tensors);
-    std::fs::write(&model_path, data).unwrap();
+    std::fs::write(&model_path, data).expect("file write should succeed");
 
-    let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+    let teacher = SafeTensorsTeacher::load(temp_dir.path()).expect("load should succeed");
     assert_eq!(teacher.num_layers(), 12);
 }
 
@@ -212,15 +212,15 @@ fn test_safetensors_detects_layer_count() {
 fn test_safetensors_detects_hidden_size() {
     use tempfile::TempDir;
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = temp_dir.path().join("model.safetensors");
 
     // Create safetensors with 1024 hidden size
     let data =
         create_test_safetensors(&[("encoder.layer.0.attention.query.weight", &[1024, 1024])]);
-    std::fs::write(&model_path, data).unwrap();
+    std::fs::write(&model_path, data).expect("file write should succeed");
 
-    let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
+    let teacher = SafeTensorsTeacher::load(temp_dir.path()).expect("load should succeed");
     assert_eq!(teacher.hidden_size(), 1024);
 }
 
@@ -228,11 +228,12 @@ fn test_safetensors_detects_hidden_size() {
 fn test_safetensors_corrupt_file_error() {
     use tempfile::TempDir;
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = temp_dir.path().join("model.safetensors");
 
     // Write garbage data
-    std::fs::write(&model_path, b"not a valid safetensors file").unwrap();
+    std::fs::write(&model_path, b"not a valid safetensors file")
+        .expect("file write should succeed");
 
     let result = SafeTensorsTeacher::load(temp_dir.path());
     assert!(result.is_err(), "Should fail on corrupt file");
@@ -253,13 +254,14 @@ fn create_test_safetensors(tensors: &[(&str, &[usize])]) -> Vec<u8> {
     let views: Vec<(&str, TensorView<'_>)> = tensor_data
         .iter()
         .map(|(name, data, shape)| {
-            let view =
-                TensorView::new(Dtype::F32, shape.clone(), bytemuck::cast_slice(data)).unwrap();
+            let view = TensorView::new(Dtype::F32, shape.clone(), bytemuck::cast_slice(data))
+                .expect("operation should succeed");
             (name.as_str(), view)
         })
         .collect();
 
-    ::safetensors::serialize(views, None::<std::collections::HashMap<String, String>>).unwrap()
+    ::safetensors::serialize(views, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed")
 }
 
 fn create_test_safetensors_from_names(tensors: &[(&str, &[usize])]) -> Vec<u8> {

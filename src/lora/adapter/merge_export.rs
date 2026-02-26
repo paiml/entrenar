@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(merged.layers_merged, 1);
         assert_eq!(merged.tensors.len(), 1);
 
-        let data = merged.tensors.get("model.layers.0.q_proj.weight").unwrap();
+        let data = merged.tensors.get("model.layers.0.q_proj.weight").expect("key should exist");
         assert_eq!(data.len(), 8 * 16);
     }
 
@@ -145,13 +145,13 @@ mod tests {
         let layers: Vec<(&str, &LoRALayer)> = vec![("weight", &layer)];
         let merged = merge_and_collect(&layers);
 
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let path = tmp.path().join("merged.safetensors");
-        merged.save_safetensors(&path).unwrap();
+        merged.save_safetensors(&path).expect("save should succeed");
 
         // Verify file exists and is valid safetensors
-        let data = std::fs::read(&path).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(&path).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
         assert_eq!(loaded.len(), 1);
         let names = loaded.names();
         assert!(names.contains(&"weight"));
@@ -171,6 +171,6 @@ mod tests {
         let layers: Vec<(&str, &LoRALayer)> = vec![("w", &layer)];
         let merged = merge_and_collect(&layers);
 
-        assert_eq!(merged.shapes.get("w").unwrap(), &vec![8, 16]);
+        assert_eq!(merged.shapes.get("w").expect("key should exist"), &vec![8, 16]);
     }
 }

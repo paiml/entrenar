@@ -806,7 +806,7 @@ mod tests {
     fn test_traced_value_constant() {
         let val = TracedValue::Constant(Array1::from(vec![1.0, 2.0]));
         assert!(val.is_constant());
-        assert_eq!(val.as_constant().unwrap().len(), 2);
+        assert_eq!(val.as_constant().expect("operation should succeed").len(), 2);
         assert_eq!(val.node_id(), None);
     }
 
@@ -845,12 +845,12 @@ mod tests {
         // x + 0 = x
         let result = try_identity_fold(&x, &zero, OpType::Add);
         assert!(result.is_some());
-        assert!(!result.unwrap().is_constant()); // Should return x (dynamic)
+        assert!(!result.expect("operation should succeed").is_constant()); // Should return x (dynamic)
 
         // 0 + x = x
         let result = try_identity_fold(&zero, &x, OpType::Add);
         assert!(result.is_some());
-        assert!(!result.unwrap().is_constant()); // Should return x (dynamic)
+        assert!(!result.expect("operation should succeed").is_constant()); // Should return x (dynamic)
     }
 
     #[test]
@@ -861,12 +861,12 @@ mod tests {
         // x * 1 = x
         let result = try_identity_fold(&x, &one, OpType::Mul);
         assert!(result.is_some());
-        assert!(!result.unwrap().is_constant());
+        assert!(!result.expect("operation should succeed").is_constant());
 
         // 1 * x = x
         let result = try_identity_fold(&one, &x, OpType::Mul);
         assert!(result.is_some());
-        assert!(!result.unwrap().is_constant());
+        assert!(!result.expect("operation should succeed").is_constant());
     }
 
     #[test]
@@ -877,16 +877,16 @@ mod tests {
         // x * 0 = 0
         let result = try_identity_fold(&x, &zero, OpType::Mul);
         assert!(result.is_some());
-        let t = result.unwrap();
+        let t = result.expect("operation should succeed");
         assert!(t.is_constant());
-        assert!(is_zeros(t.value().as_constant().unwrap()));
+        assert!(is_zeros(t.value().as_constant().expect("operation should succeed")));
 
         // 0 * x = 0
         let result = try_identity_fold(&zero, &x, OpType::Mul);
         assert!(result.is_some());
-        let t = result.unwrap();
+        let t = result.expect("operation should succeed");
         assert!(t.is_constant());
-        assert!(is_zeros(t.value().as_constant().unwrap()));
+        assert!(is_zeros(t.value().as_constant().expect("operation should succeed")));
     }
 
     #[test]
@@ -908,8 +908,8 @@ mod tests {
 
         let result = traced_binary_op(&a, &b, |x, y| x + y, OpType::Add, &mut graph);
         assert!(result.is_constant());
-        let data = result.value().as_constant().unwrap();
-        assert_eq!(data.as_slice().unwrap(), &[5.0, 7.0, 9.0]);
+        let data = result.value().as_constant().expect("operation should succeed");
+        assert_eq!(data.as_slice().expect("operation should succeed"), &[5.0, 7.0, 9.0]);
         // No graph nodes created
         assert_eq!(graph.len(), 0);
     }
@@ -971,9 +971,9 @@ mod tests {
 
         let order = graph.topological_order();
         // c1 and c2 should come before add
-        let add_pos = order.iter().position(|&x| x == add).unwrap();
-        let c1_pos = order.iter().position(|&x| x == c1).unwrap();
-        let c2_pos = order.iter().position(|&x| x == c2).unwrap();
+        let add_pos = order.iter().position(|&x| x == add).expect("operation should succeed");
+        let c1_pos = order.iter().position(|&x| x == c1).expect("operation should succeed");
+        let c2_pos = order.iter().position(|&x| x == c2).expect("operation should succeed");
         assert!(c1_pos < add_pos);
         assert!(c2_pos < add_pos);
     }
@@ -1008,8 +1008,8 @@ mod tests {
 
         assert_eq!(changes, 1);
         assert!(graph.node(add).is_constant());
-        let result = graph.node(add).constant_value.as_ref().unwrap();
-        assert_eq!(result.as_slice().unwrap(), &[4.0, 6.0]);
+        let result = graph.node(add).constant_value.as_ref().expect("operation should succeed");
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[4.0, 6.0]);
     }
 
     #[test]
@@ -1024,8 +1024,8 @@ mod tests {
         let changes = pass.run(&mut graph);
 
         assert_eq!(changes, 1);
-        let result = graph.node(mul).constant_value.as_ref().unwrap();
-        assert_eq!(result.as_slice().unwrap(), &[8.0, 15.0]);
+        let result = graph.node(mul).constant_value.as_ref().expect("operation should succeed");
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[8.0, 15.0]);
     }
 
     #[test]
@@ -1039,8 +1039,8 @@ mod tests {
         let changes = pass.run(&mut graph);
 
         assert_eq!(changes, 1);
-        let result = graph.node(sum).constant_value.as_ref().unwrap();
-        assert_eq!(result.as_slice().unwrap(), &[6.0]);
+        let result = graph.node(sum).constant_value.as_ref().expect("operation should succeed");
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[6.0]);
     }
 
     #[test]
@@ -1059,8 +1059,8 @@ mod tests {
         // Both add and mul should be folded
         assert!(report.total_changes >= 2);
         assert!(graph.node(mul).is_constant());
-        let result = graph.node(mul).constant_value.as_ref().unwrap();
-        assert_eq!(result.as_slice().unwrap(), &[8.0, 12.0]);
+        let result = graph.node(mul).constant_value.as_ref().expect("operation should succeed");
+        assert_eq!(result.as_slice().expect("operation should succeed"), &[8.0, 12.0]);
     }
 
     #[test]
@@ -1227,7 +1227,7 @@ mod tests {
 
         let result = tracker.infer_elementwise(2, 0, 1);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), vec![5]);
+        assert_eq!(result.expect("operation should succeed"), vec![5]);
         assert_eq!(tracker.get(2), Some(&[5][..]));
     }
 
@@ -1253,7 +1253,7 @@ mod tests {
 
         let result = tracker.infer_matmul(2, 0, 1);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), vec![3, 5]);
+        assert_eq!(result.expect("operation should succeed"), vec![3, 5]);
     }
 
     #[test]
@@ -1287,7 +1287,7 @@ mod tests {
 
         let result = tracker.infer_sum(1, 0);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), vec![1]);
+        assert_eq!(result.expect("operation should succeed"), vec![1]);
     }
 
     #[test]

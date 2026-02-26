@@ -171,7 +171,8 @@ fn test_exporter_export_with_timestamp() {
     assert!(metric_line.is_some());
 
     // Line format: metric{labels} value timestamp
-    let parts: Vec<&str> = metric_line.unwrap().split_whitespace().collect();
+    let parts: Vec<&str> =
+        metric_line.expect("operation should succeed").split_whitespace().collect();
     assert!(parts.len() >= 2); // metric+labels, value, optional timestamp
 }
 
@@ -183,11 +184,12 @@ fn test_exporter_export_json() {
     let json = exporter.export_json();
 
     // Should be valid JSON
-    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert!(parsed.is_object());
 
     // Should have the metric
-    let obj = parsed.as_object().unwrap();
+    let obj = parsed.as_object().expect("parsing should succeed");
     assert!(obj.contains_key("entrenar_epoch_loss"));
 }
 

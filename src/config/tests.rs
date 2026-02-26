@@ -37,17 +37,17 @@ training:
   warmup_steps: 100
 ";
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     // Should parse and validate successfully
-    let spec = load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).expect("load should succeed");
 
     assert_eq!(spec.model.layers.len(), 2);
     assert_eq!(spec.data.batch_size, 16);
     assert_eq!(spec.optimizer.name, "adamw");
     assert!(spec.lora.is_some());
-    assert_eq!(spec.lora.as_ref().unwrap().rank, 64);
+    assert_eq!(spec.lora.as_ref().expect("operation should succeed").rank, 64);
     assert_eq!(spec.training.epochs, 3);
 }
 
@@ -66,10 +66,10 @@ optimizer:
   lr: 0.001
 ";
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
-    let spec = load_config(temp_file.path()).unwrap();
+    let spec = load_config(temp_file.path()).expect("load should succeed");
 
     // Check defaults are applied
     assert_eq!(spec.training.epochs, 10); // Default

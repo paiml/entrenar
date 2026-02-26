@@ -130,11 +130,11 @@ mod tests {
         let model = Model::new(ModelMetadata::new("test-model", "linear"), params);
         let config = SaveConfig::new(ModelFormat::Json);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
         // Verify file was created and has content
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         assert!(!content.is_empty());
         assert!(content.contains("test-model"));
         assert!(content.contains("linear"));
@@ -147,10 +147,10 @@ mod tests {
         let model = Model::new(ModelMetadata::new("test", "simple"), params);
         let config = SaveConfig::new(ModelFormat::Yaml);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         assert!(content.contains("test"));
         assert!(content.contains("simple"));
     }
@@ -161,10 +161,10 @@ mod tests {
         let model = Model::new(ModelMetadata::new("pretty-test", "test"), params);
         let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         // Pretty JSON should have newlines
         assert!(content.contains('\n'));
     }
@@ -175,10 +175,10 @@ mod tests {
         let model = Model::new(ModelMetadata::new("compact-test", "test"), params);
         let config = SaveConfig::new(ModelFormat::Json).with_pretty(false);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         // Compact JSON should be single line (minus trailing)
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 1);
@@ -189,10 +189,10 @@ mod tests {
         let model = Model::new(ModelMetadata::new("empty", "test"), vec![]);
         let config = SaveConfig::new(ModelFormat::Json);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         assert!(content.contains("empty"));
     }
 
@@ -203,10 +203,10 @@ mod tests {
         let model = Model::new(ModelMetadata::new("large", "test"), params);
         let config = SaveConfig::new(ModelFormat::Json);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         assert!(content.len() > 1000);
     }
 
@@ -223,11 +223,11 @@ mod tests {
         let model = Model::new(ModelMetadata::new("compress-test", "test"), params);
         let config = SaveConfig::new(ModelFormat::Json).with_compress(true);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         // Currently compress is not implemented, but we can still save
-        save_model(&model, temp_file.path(), &config).unwrap();
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         assert!(content.contains("compress-test"));
     }
 
@@ -241,10 +241,10 @@ mod tests {
         let model = Model::new(ModelMetadata::new("multi", "deep"), params);
         let config = SaveConfig::new(ModelFormat::Yaml);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         assert!(content.contains("layer1.weight"));
         assert!(content.contains("layer2.weight"));
     }
@@ -258,10 +258,10 @@ mod tests {
         let model = Model::new(meta, params);
         let config = SaveConfig::new(ModelFormat::Json);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        let content = std::fs::read_to_string(temp_file.path()).expect("file read should succeed");
         assert!(content.contains("version"));
     }
 
@@ -294,11 +294,11 @@ mod tests {
         let model = Model::new(ModelMetadata::new("safetensor-test", "linear"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
         // Verify file was created and is binary (starts with safetensors magic)
-        let content = std::fs::read(temp_file.path()).unwrap();
+        let content = std::fs::read(temp_file.path()).expect("file read should succeed");
         assert!(!content.is_empty());
         // SafeTensors files start with a header length (8 bytes)
         assert!(content.len() > 8);
@@ -314,12 +314,12 @@ mod tests {
         let model = Model::new(ModelMetadata::new("roundtrip-test", "mlp"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
         // Verify we can load it back with safetensors crate
-        let data = std::fs::read(temp_file.path()).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(temp_file.path()).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
 
         // Check tensor names exist - names() returns Vec<&str>
         let names = loaded.names();
@@ -327,7 +327,7 @@ mod tests {
         assert!(names.contains(&"layer1.bias"));
 
         // Check tensor data
-        let weight = loaded.tensor("layer1.weight").unwrap();
+        let weight = loaded.tensor("layer1.weight").expect("load should succeed");
         assert_eq!(weight.shape(), &[4]);
         let weight_data: &[f32] = bytemuck::cast_slice(weight.data());
         assert_eq!(weight_data, &[1.0, 2.0, 3.0, 4.0]);
@@ -339,18 +339,19 @@ mod tests {
         let model = Model::new(ModelMetadata::new("meta-model", "transformer"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
         // Load and check metadata using read_metadata
-        let data = std::fs::read(temp_file.path()).unwrap();
-        let (_, st_metadata) = safetensors::SafeTensors::read_metadata(&data).unwrap();
+        let data = std::fs::read(temp_file.path()).expect("file read should succeed");
+        let (_, st_metadata) =
+            safetensors::SafeTensors::read_metadata(&data).expect("deserialization should succeed");
 
         let metadata = st_metadata.metadata();
         assert!(metadata.is_some());
-        let meta = metadata.as_ref().unwrap();
-        assert_eq!(meta.get("name").unwrap(), "meta-model");
-        assert_eq!(meta.get("architecture").unwrap(), "transformer");
+        let meta = metadata.as_ref().expect("operation should succeed");
+        assert_eq!(meta.get("name").expect("key should exist"), "meta-model");
+        assert_eq!(meta.get("architecture").expect("key should exist"), "transformer");
     }
 
     #[test]
@@ -361,13 +362,13 @@ mod tests {
         let model = Model::new(ModelMetadata::new("large", "test"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
         // Verify data integrity
-        let data = std::fs::read(temp_file.path()).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
-        let tensor = loaded.tensor("large_weights").unwrap();
+        let data = std::fs::read(temp_file.path()).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
+        let tensor = loaded.tensor("large_weights").expect("load should succeed");
         let tensor_data: &[f32] = bytemuck::cast_slice(tensor.data());
         assert_eq!(tensor_data.len(), 10000);
         assert!((tensor_data[0] - 0.0).abs() < 1e-6);
@@ -389,12 +390,12 @@ mod tests {
         let model = Model::new(ModelMetadata::new("empty", "test"), vec![]);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
         // Should still create valid file with metadata
-        let data = std::fs::read(temp_file.path()).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(temp_file.path()).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
         assert_eq!(loaded.len(), 0);
     }
 
@@ -409,11 +410,11 @@ mod tests {
         let model = Model::new(ModelMetadata::new("encoder-decoder", "transformer"), params);
         let config = SaveConfig::new(ModelFormat::SafeTensors);
 
-        let temp_file = NamedTempFile::new().unwrap();
-        save_model(&model, temp_file.path(), &config).unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        save_model(&model, temp_file.path(), &config).expect("save should succeed");
 
-        let data = std::fs::read(temp_file.path()).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(temp_file.path()).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
         assert_eq!(loaded.len(), 4);
 
         // names() returns Vec<&str> directly

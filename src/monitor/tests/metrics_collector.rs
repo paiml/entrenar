@@ -40,7 +40,7 @@ fn test_summary_single_value() {
     collector.record(Metric::Loss, 0.5);
 
     let summary = collector.summary();
-    let loss_stats = summary.get(&Metric::Loss).unwrap();
+    let loss_stats = summary.get(&Metric::Loss).expect("key should exist");
 
     assert!((loss_stats.mean - 0.5).abs() < 1e-6);
     assert!((loss_stats.min - 0.5).abs() < 1e-6);
@@ -56,7 +56,7 @@ fn test_summary_multiple_values() {
     collector.record(Metric::Loss, 3.0);
 
     let summary = collector.summary();
-    let loss_stats = summary.get(&Metric::Loss).unwrap();
+    let loss_stats = summary.get(&Metric::Loss).expect("key should exist");
 
     assert!((loss_stats.mean - 2.0).abs() < 1e-6);
     assert!((loss_stats.min - 1.0).abs() < 1e-6);
@@ -73,7 +73,7 @@ fn test_summary_std_dev() {
     }
 
     let summary = collector.summary();
-    let loss_stats = summary.get(&Metric::Loss).unwrap();
+    let loss_stats = summary.get(&Metric::Loss).expect("key should exist");
 
     assert!((loss_stats.mean - 5.0).abs() < 1e-6);
     // Sample std = sqrt(32/7) ≈ 2.138
@@ -127,7 +127,7 @@ fn test_json_export() {
     let mut collector = MetricsCollector::new();
     collector.record(Metric::Loss, 0.5);
 
-    let json = collector.to_json().unwrap();
+    let json = collector.to_json().expect("operation should succeed");
     // Check for "Loss" (enum variant) or value
     assert!(json.contains("Loss") || json.contains("loss"));
     assert!(json.contains("0.5"));

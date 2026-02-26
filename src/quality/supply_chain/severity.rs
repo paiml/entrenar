@@ -115,8 +115,9 @@ mod tests {
     #[test]
     fn test_severity_serde() {
         let sev = Severity::High;
-        let json = serde_json::to_string(&sev).unwrap();
-        let deserialized: Severity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&sev).expect("JSON serialization should succeed");
+        let deserialized: Severity =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(sev, deserialized);
     }
 

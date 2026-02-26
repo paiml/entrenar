@@ -370,9 +370,9 @@ mod tests {
 
         let mut buffer = Vec::new();
         let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Json);
-        writer.write(&snapshot).unwrap();
+        writer.write(&snapshot).expect("file write should succeed");
 
-        let output = String::from_utf8(buffer).unwrap();
+        let output = String::from_utf8(buffer).expect("operation should succeed");
         assert!(output.contains("\"epoch\":1"));
         assert!(output.contains("\"loss\":3.0"));
     }
@@ -395,9 +395,9 @@ mod tests {
 
         let mut buffer = Vec::new();
         let mut writer = HeadlessWriter::new(&mut buffer, OutputFormat::Text);
-        writer.write(&snapshot).unwrap();
+        writer.write(&snapshot).expect("file write should succeed");
 
-        let output = String::from_utf8(buffer).unwrap();
+        let output = String::from_utf8(buffer).expect("operation should succeed");
         assert!(output.contains("Epoch 2/10"));
         assert!(output.contains("Loss: 2.500"));
         assert!(output.contains("500.0 tok/s"));

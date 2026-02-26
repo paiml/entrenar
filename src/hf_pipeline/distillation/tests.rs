@@ -118,8 +118,10 @@ fn test_distillation_loss_high_temp() {
 #[test]
 fn test_distillation_loss_batch() {
     let loss = DistillationLoss::new(4.0, 0.5);
-    let student = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 2.0, 1.0, 3.0]).unwrap();
-    let teacher = Array2::from_shape_vec((2, 3), vec![1.5, 2.5, 2.5, 2.5, 1.5, 2.5]).unwrap();
+    let student = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 2.0, 1.0, 3.0])
+        .expect("operation should succeed");
+    let teacher = Array2::from_shape_vec((2, 3), vec![1.5, 2.5, 2.5, 2.5, 1.5, 2.5])
+        .expect("operation should succeed");
     let targets = vec![2, 0];
 
     let l = loss.forward(&student, &teacher, &targets);
@@ -170,7 +172,7 @@ fn test_progressive_projection_layer_creation() {
     // Student dim 512, teacher dim 768
     let prog = ProgressiveDistillation::new(vec![(0, 0)]).with_projection(512, 768);
     assert!(prog.projection.is_some());
-    let proj = prog.projection.as_ref().unwrap();
+    let proj = prog.projection.as_ref().expect("operation should succeed");
     assert_eq!(proj.dim(), (512, 768));
 }
 
@@ -261,7 +263,8 @@ fn test_attention_transfer_positive_for_diff() {
 
 #[test]
 fn test_l2_normalize_unit_norm() {
-    let arr = Array2::from_shape_vec((2, 2), vec![3.0, 4.0, 0.0, 0.0]).unwrap();
+    let arr =
+        Array2::from_shape_vec((2, 2), vec![3.0, 4.0, 0.0, 0.0]).expect("operation should succeed");
     let norm = l2_normalize(&arr);
     let l2 = norm.mapv(|x| x * x).sum().sqrt();
     assert!((l2 - 1.0).abs() < 1e-5);

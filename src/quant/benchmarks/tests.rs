@@ -57,8 +57,8 @@ fn test_benchmark_suite() {
     });
 
     assert_eq!(suite.results.len(), 2);
-    assert_eq!(suite.best_by_sqnr().unwrap().name, "a");
-    assert_eq!(suite.best_by_mse().unwrap().name, "a");
+    assert_eq!(suite.best_by_sqnr().expect("operation should succeed").name, "a");
+    assert_eq!(suite.best_by_mse().expect("operation should succeed").name, "a");
 }
 
 #[test]
@@ -146,8 +146,10 @@ fn test_bit_width_comparison() {
     assert_eq!(results.len(), 2);
 
     // 8-bit should have lower MSE than 4-bit
-    let (_, mse_4bit, _) = results.iter().find(|(b, _, _)| *b == 4).unwrap();
-    let (_, mse_8bit, _) = results.iter().find(|(b, _, _)| *b == 8).unwrap();
+    let (_, mse_4bit, _) =
+        results.iter().find(|(b, _, _)| *b == 4).expect("operation should succeed");
+    let (_, mse_8bit, _) =
+        results.iter().find(|(b, _, _)| *b == 8).expect("operation should succeed");
 
     assert!(mse_8bit <= mse_4bit, "8-bit MSE ({mse_8bit}) should be <= 4-bit MSE ({mse_4bit})");
 }

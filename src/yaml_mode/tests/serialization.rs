@@ -9,9 +9,10 @@ entrenar: "1.0"
 name: "roundtrip-test"
 version: "1.0.0"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let serialized = serde_yaml::to_string(&manifest).unwrap();
-    let deserialized: TrainingManifest = serde_yaml::from_str(&serialized).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let serialized = serde_yaml::to_string(&manifest).expect("operation should succeed");
+    let deserialized: TrainingManifest =
+        serde_yaml::from_str(&serialized).expect("deserialization should succeed");
 
     assert_eq!(manifest.entrenar, deserialized.entrenar);
     assert_eq!(manifest.name, deserialized.name);
@@ -58,10 +59,14 @@ lora:
 output:
   dir: "./output"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let serialized = serde_yaml::to_string(&manifest).unwrap();
-    let deserialized: TrainingManifest = serde_yaml::from_str(&serialized).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let serialized = serde_yaml::to_string(&manifest).expect("operation should succeed");
+    let deserialized: TrainingManifest =
+        serde_yaml::from_str(&serialized).expect("deserialization should succeed");
 
     assert_eq!(manifest.seed, deserialized.seed);
-    assert_eq!(manifest.lora.as_ref().unwrap().rank, deserialized.lora.as_ref().unwrap().rank);
+    assert_eq!(
+        manifest.lora.as_ref().expect("deserialization should succeed").rank,
+        deserialized.lora.as_ref().expect("deserialization should succeed").rank
+    );
 }

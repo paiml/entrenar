@@ -140,7 +140,8 @@ fn test_notebook_json_structure() {
     exporter.add_code("x = 1");
 
     let ipynb = exporter.to_ipynb();
-    let parsed: serde_json::Value = serde_json::from_str(&ipynb).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&ipynb).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed["nbformat"], 4);
     assert_eq!(parsed["nbformat_minor"], 5);
@@ -153,6 +154,7 @@ fn test_empty_notebook() {
     let exporter = NotebookExporter::new();
     let ipynb = exporter.to_ipynb();
 
-    let parsed: serde_json::Value = serde_json::from_str(&ipynb).unwrap();
-    assert!(parsed["cells"].as_array().unwrap().is_empty());
+    let parsed: serde_json::Value =
+        serde_json::from_str(&ipynb).expect("JSON deserialization should succeed");
+    assert!(parsed["cells"].as_array().expect("parsing should succeed").is_empty());
 }

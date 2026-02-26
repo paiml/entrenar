@@ -303,13 +303,13 @@ impl BenchmarkSuite {
             let min_mem = config_profiles
                 .iter()
                 .map(|p| p.memory_4bit_mb)
-                .min_by(|a, b| a.partial_cmp(b).unwrap())
+                .min_by(|a, b| a.partial_cmp(b).expect("operation should succeed"))
                 .unwrap_or(0.0);
 
             let max_mem = config_profiles
                 .iter()
                 .map(|p| p.memory_fp32_mb)
-                .max_by(|a, b| a.partial_cmp(b).unwrap())
+                .max_by(|a, b| a.partial_cmp(b).expect("operation should succeed"))
                 .unwrap_or(0.0);
 
             for profile in config_profiles {

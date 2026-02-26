@@ -442,8 +442,9 @@ mod tests {
     #[test]
     fn test_failure_category_serialization() {
         let cat = FailureCategory::DataQuality;
-        let json = serde_json::to_string(&cat).unwrap();
-        let deserialized: FailureCategory = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&cat).expect("JSON serialization should succeed");
+        let deserialized: FailureCategory =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(cat, deserialized);
     }
 
@@ -452,8 +453,9 @@ mod tests {
         let ctx = FailureContext::new("E001", "test error")
             .with_stack_trace("trace")
             .with_suggested_fix("fix it");
-        let json = serde_json::to_string(&ctx).unwrap();
-        let deserialized: FailureContext = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&ctx).expect("JSON serialization should succeed");
+        let deserialized: FailureContext =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(ctx.error_code, deserialized.error_code);
         assert_eq!(ctx.stack_trace, deserialized.stack_trace);
     }

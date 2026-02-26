@@ -163,8 +163,9 @@ mod tests {
     #[test]
     fn test_simd_capability_serde() {
         let cap = SimdCapability::Avx512;
-        let json = serde_json::to_string(&cap).unwrap();
-        let deserialized: SimdCapability = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&cap).expect("JSON serialization should succeed");
+        let deserialized: SimdCapability =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(cap, deserialized);
     }
 

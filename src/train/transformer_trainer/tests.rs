@@ -73,7 +73,7 @@ fn test_lm_batch_single() {
 fn test_lm_batch_get_input() {
     let batch = LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]);
 
-    let input = batch.get_input(0).unwrap();
+    let input = batch.get_input(0).expect("operation should succeed");
     assert_eq!(input, &[1, 2, 3]);
 
     assert!(batch.get_input(1).is_none());
@@ -83,7 +83,7 @@ fn test_lm_batch_get_input() {
 fn test_lm_batch_get_target() {
     let batch = LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]);
 
-    let target = batch.get_target(0).unwrap();
+    let target = batch.get_target(0).expect("operation should succeed");
     assert_eq!(target, &[2, 3, 4]);
 }
 
@@ -233,8 +233,8 @@ fn test_lm_batch_shift_correctness() {
     let sequences = vec![vec![100, 1, 2, 3, 200]]; // BOS, tokens, EOS
     let batch = LMBatch::from_sequences(&sequences, 0, 200);
 
-    let input = batch.get_input(0).unwrap();
-    let target = batch.get_target(0).unwrap();
+    let input = batch.get_input(0).expect("operation should succeed");
+    let target = batch.get_target(0).expect("operation should succeed");
 
     // Input should be [BOS, 1, 2, 3]
     assert_eq!(input[0], 100); // BOS

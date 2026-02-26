@@ -273,8 +273,9 @@ fn test_failure_context_serialization() {
         .with_suggested_fix("Try this")
         .with_related_runs(vec!["run-1".to_string()]);
 
-    let json = serde_json::to_string(&ctx).unwrap();
-    let parsed: FailureContext = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&ctx).expect("JSON serialization should succeed");
+    let parsed: FailureContext =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed.error_code, ctx.error_code);
     assert_eq!(parsed.category, ctx.category);

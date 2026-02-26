@@ -194,7 +194,7 @@ mod tests {
 
         let ffn = FeedForward::from_params(&config, &params, "ffn");
         assert!(ffn.is_some());
-        let ffn = ffn.unwrap();
+        let ffn = ffn.expect("operation should succeed");
         assert_eq!(ffn.w_gate.len(), hidden_size * intermediate_size);
     }
 
@@ -361,9 +361,9 @@ mod tests {
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All gradients should be finite
-        let grad_gate = ffn.w_gate.grad().unwrap();
-        let grad_up = ffn.w_up.grad().unwrap();
-        let grad_down = ffn.w_down.grad().unwrap();
+        let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
+        let grad_up = ffn.w_up.grad().expect("gradient should be available");
+        let grad_down = ffn.w_down.grad().expect("gradient should be available");
 
         assert!(grad_gate.iter().all(|&v| v.is_finite()));
         assert!(grad_up.iter().all(|&v| v.is_finite()));
@@ -387,7 +387,7 @@ mod tests {
             let grad_out = ndarray::Array1::ones(2 * config.hidden_size);
             crate::autograd::backward(&mut output, Some(grad_out));
 
-            let grad_gate = ffn.w_gate.grad().unwrap();
+            let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
             assert!(
                 grad_gate.iter().all(|&v| v.is_finite()),
                 "Gradients not finite for scale {scale}"
@@ -406,7 +406,7 @@ mod tests {
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Gradients should not be all zero
-        let grad_gate = ffn.w_gate.grad().unwrap();
+        let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
         let sum: f32 = grad_gate.iter().map(|v| v.abs()).sum();
         assert!(sum > 0.0, "FFN gate gradients should not be all zero");
     }
@@ -423,7 +423,7 @@ mod tests {
             let grad_out = ndarray::Array1::ones(seq_len * config.hidden_size);
             crate::autograd::backward(&mut output, Some(grad_out));
 
-            let grad_gate = ffn.w_gate.grad().unwrap();
+            let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
             assert!(
                 grad_gate.iter().all(|&v| v.is_finite()),
                 "Non-finite gradient for seq_len {seq_len}"
@@ -441,14 +441,14 @@ mod tests {
         let mut output1 = ffn.forward(&x1, 2);
         let grad_out1 = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output1, Some(grad_out1));
-        let grad1 = ffn.w_gate.grad().unwrap().to_vec();
+        let grad1 = ffn.w_gate.grad().expect("gradient should be available").to_vec();
 
         // Second forward-backward should accumulate
         let x2 = Tensor::from_vec(vec![0.2; 2 * config.hidden_size], true);
         let mut output2 = ffn.forward(&x2, 2);
         let grad_out2 = ndarray::Array1::ones(2 * config.hidden_size);
         crate::autograd::backward(&mut output2, Some(grad_out2));
-        let grad2 = ffn.w_gate.grad().unwrap().to_vec();
+        let grad2 = ffn.w_gate.grad().expect("gradient should be available").to_vec();
 
         // Gradients should have accumulated (different from first)
         assert!(
@@ -468,7 +468,7 @@ mod tests {
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Should still produce finite gradients
-        let grad_gate = ffn.w_gate.grad().unwrap();
+        let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
         assert!(grad_gate.iter().all(|&v| v.is_finite()));
     }
 
@@ -483,7 +483,7 @@ mod tests {
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // Should still produce finite gradients
-        let grad_gate = ffn.w_gate.grad().unwrap();
+        let grad_gate = ffn.w_gate.grad().expect("gradient should be available");
         assert!(grad_gate.iter().all(|&v| v.is_finite()));
     }
 }

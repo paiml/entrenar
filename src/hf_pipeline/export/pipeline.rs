@@ -113,11 +113,11 @@ mod tests {
     #[test]
     fn test_quantize_export_f32() {
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert_eq!(result.quantization, GgufQuantization::None);
         assert!(result.export.size_bytes > 0);
@@ -129,11 +129,11 @@ mod tests {
     #[test]
     fn test_quantize_export_q4_0() {
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "model-q4.gguf")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert_eq!(result.quantization, GgufQuantization::Q4_0);
         assert!(result.export.size_bytes > 0);
@@ -142,11 +142,11 @@ mod tests {
     #[test]
     fn test_quantize_export_q8_0() {
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             quantize_and_export(&weights, GgufQuantization::Q8_0, tmp.path(), "model-q8.gguf")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert_eq!(result.quantization, GgufQuantization::Q8_0);
     }
@@ -154,13 +154,13 @@ mod tests {
     #[test]
     fn test_quantize_export_readme_content() {
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
 
-        let readme = result.readme.unwrap();
+        let readme = result.readme.expect("operation should succeed");
         assert!(readme.contains("test-model"));
         assert!(readme.contains("Q4_0"));
         assert!(readme.contains("llama"));
@@ -170,15 +170,15 @@ mod tests {
     #[test]
     fn test_quantize_export_q4_smaller_than_f32() {
         let weights = make_test_weights();
-        let tmp_f32 = TempDir::new().unwrap();
-        let tmp_q4 = TempDir::new().unwrap();
+        let tmp_f32 = TempDir::new().expect("temp file creation should succeed");
+        let tmp_q4 = TempDir::new().expect("temp file creation should succeed");
 
         let f32_result =
             quantize_and_export(&weights, GgufQuantization::None, tmp_f32.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
         let q4_result =
             quantize_and_export(&weights, GgufQuantization::Q4_0, tmp_q4.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert!(
             q4_result.export.size_bytes < f32_result.export.size_bytes,
@@ -197,11 +197,13 @@ mod tests {
         use crate::hf_pipeline::export::gguf_verify::verify_gguf;
 
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
-        quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "f32.gguf").unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "f32.gguf")
+            .expect("operation should succeed");
 
-        let file_data = std::fs::read(tmp.path().join("f32.gguf")).unwrap();
-        let summary = verify_gguf(&file_data).unwrap();
+        let file_data =
+            std::fs::read(tmp.path().join("f32.gguf")).expect("file read should succeed");
+        let summary = verify_gguf(&file_data).expect("operation should succeed");
 
         assert_eq!(summary.version, 3);
         assert_eq!(summary.tensor_count, 2);
@@ -223,11 +225,13 @@ mod tests {
         use crate::hf_pipeline::export::gguf_verify::verify_gguf;
 
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
-        quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "q4.gguf").unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "q4.gguf")
+            .expect("operation should succeed");
 
-        let file_data = std::fs::read(tmp.path().join("q4.gguf")).unwrap();
-        let summary = verify_gguf(&file_data).unwrap();
+        let file_data =
+            std::fs::read(tmp.path().join("q4.gguf")).expect("file read should succeed");
+        let summary = verify_gguf(&file_data).expect("operation should succeed");
 
         assert_eq!(summary.tensor_count, 2);
         // Both Q4_0
@@ -240,11 +244,13 @@ mod tests {
         use crate::hf_pipeline::export::gguf_verify::verify_gguf;
 
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
-        quantize_and_export(&weights, GgufQuantization::Q8_0, tmp.path(), "q8.gguf").unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        quantize_and_export(&weights, GgufQuantization::Q8_0, tmp.path(), "q8.gguf")
+            .expect("operation should succeed");
 
-        let file_data = std::fs::read(tmp.path().join("q8.gguf")).unwrap();
-        let summary = verify_gguf(&file_data).unwrap();
+        let file_data =
+            std::fs::read(tmp.path().join("q8.gguf")).expect("file read should succeed");
+        let summary = verify_gguf(&file_data).expect("operation should succeed");
 
         assert_eq!(summary.tensor_count, 2);
         // Both Q8_0
@@ -255,15 +261,15 @@ mod tests {
     #[test]
     fn test_falsify_pipeline_q8_smaller_than_f32() {
         let weights = make_test_weights();
-        let tmp_f32 = TempDir::new().unwrap();
-        let tmp_q8 = TempDir::new().unwrap();
+        let tmp_f32 = TempDir::new().expect("temp file creation should succeed");
+        let tmp_q8 = TempDir::new().expect("temp file creation should succeed");
 
         let f32_result =
             quantize_and_export(&weights, GgufQuantization::None, tmp_f32.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
         let q8_result =
             quantize_and_export(&weights, GgufQuantization::Q8_0, tmp_q8.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert!(
             q8_result.export.size_bytes < f32_result.export.size_bytes,
@@ -276,15 +282,15 @@ mod tests {
     #[test]
     fn test_falsify_pipeline_q4_smaller_than_q8() {
         let weights = make_test_weights();
-        let tmp_q4 = TempDir::new().unwrap();
-        let tmp_q8 = TempDir::new().unwrap();
+        let tmp_q4 = TempDir::new().expect("temp file creation should succeed");
+        let tmp_q8 = TempDir::new().expect("temp file creation should succeed");
 
         let q4_result =
             quantize_and_export(&weights, GgufQuantization::Q4_0, tmp_q4.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
         let q8_result =
             quantize_and_export(&weights, GgufQuantization::Q8_0, tmp_q8.path(), "model.gguf")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert!(
             q4_result.export.size_bytes < q8_result.export.size_bytes,
@@ -303,9 +309,10 @@ mod tests {
             (GgufQuantization::Q4_0, "Q4_0 (4-bit)"),
             (GgufQuantization::Q8_0, "Q8_0 (8-bit)"),
         ] {
-            let tmp = TempDir::new().unwrap();
-            let result = quantize_and_export(&weights, quant, tmp.path(), "model.gguf").unwrap();
-            let readme = result.readme.unwrap();
+            let tmp = TempDir::new().expect("temp file creation should succeed");
+            let result = quantize_and_export(&weights, quant, tmp.path(), "model.gguf")
+                .expect("operation should succeed");
+            let readme = result.readme.expect("operation should succeed");
             assert!(
                 readme.contains(expected_str),
                 "README for {quant:?} should contain '{expected_str}', got:\n{readme}"
@@ -323,11 +330,13 @@ mod tests {
         weights.add_tensor("test_data", original.clone(), vec![8, 8]);
         weights.metadata.num_params = 64;
 
-        let tmp = TempDir::new().unwrap();
-        quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "data.gguf").unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "data.gguf")
+            .expect("operation should succeed");
 
-        let file_data = std::fs::read(tmp.path().join("data.gguf")).unwrap();
-        let summary = verify_gguf(&file_data).unwrap();
+        let file_data =
+            std::fs::read(tmp.path().join("data.gguf")).expect("file read should succeed");
+        let summary = verify_gguf(&file_data).expect("operation should succeed");
         assert_eq!(summary.tensors[0].name, "test_data");
         assert_eq!(summary.tensors[0].shape, vec![8, 8]);
         assert_eq!(summary.tensors[0].dtype, 0); // F32
@@ -338,15 +347,20 @@ mod tests {
         // Skip metadata
         for _ in 0..summary.metadata_count {
             // Skip key string
-            let key_len = u64::from_le_bytes(file_data[pos..pos + 8].try_into().unwrap()) as usize;
+            let key_len = u64::from_le_bytes(
+                file_data[pos..pos + 8].try_into().expect("conversion should succeed"),
+            ) as usize;
             pos += 8 + key_len;
-            let value_type = u32::from_le_bytes(file_data[pos..pos + 4].try_into().unwrap());
+            let value_type = u32::from_le_bytes(
+                file_data[pos..pos + 4].try_into().expect("conversion should succeed"),
+            );
             pos += 4;
             match value_type {
                 4..=6 => pos += 4, // U32/I32/F32
                 8 => {
-                    let len =
-                        u64::from_le_bytes(file_data[pos..pos + 8].try_into().unwrap()) as usize;
+                    let len = u64::from_le_bytes(
+                        file_data[pos..pos + 8].try_into().expect("conversion should succeed"),
+                    ) as usize;
                     pos += 8 + len;
                 }
                 10..=12 => pos += 8, // U64/I64/F64
@@ -354,9 +368,13 @@ mod tests {
             }
         }
         // Skip tensor info
-        let name_len = u64::from_le_bytes(file_data[pos..pos + 8].try_into().unwrap()) as usize;
+        let name_len = u64::from_le_bytes(
+            file_data[pos..pos + 8].try_into().expect("conversion should succeed"),
+        ) as usize;
         pos += 8 + name_len;
-        let n_dims = u32::from_le_bytes(file_data[pos..pos + 4].try_into().unwrap()) as usize;
+        let n_dims = u32::from_le_bytes(
+            file_data[pos..pos + 4].try_into().expect("conversion should succeed"),
+        ) as usize;
         pos += 4 + n_dims * 8 + 4 + 8; // dims + dtype + offset
 
         // Now pos is at the start of tensor data
@@ -364,7 +382,9 @@ mod tests {
         let recovered: Vec<f32> = (0..64)
             .map(|i| {
                 let off = data_start + i * 4;
-                f32::from_le_bytes(file_data[off..off + 4].try_into().unwrap())
+                f32::from_le_bytes(
+                    file_data[off..off + 4].try_into().expect("conversion should succeed"),
+                )
             })
             .collect();
         assert_eq!(original, recovered, "f32 data must survive pipeline exactly");
@@ -385,10 +405,10 @@ mod tests {
             }
             weights.metadata.num_params = n as u64 * 64;
 
-            let tmp = TempDir::new().unwrap();
+            let tmp = TempDir::new().expect("temp file creation should succeed");
             let result =
                 quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
-                    .unwrap();
+                    .expect("operation should succeed");
 
             assert!(
                 result.export.size_bytes > prev_size,
@@ -409,10 +429,10 @@ mod tests {
             }
             weights.metadata.num_params = n as u64 * 64;
 
-            let tmp = TempDir::new().unwrap();
+            let tmp = TempDir::new().expect("temp file creation should succeed");
             let result =
                 quantize_and_export(&weights, GgufQuantization::Q4_0, tmp.path(), "model.gguf")
-                    .unwrap();
+                    .expect("operation should succeed");
 
             assert!(
                 result.export.size_bytes > prev_size,
@@ -435,9 +455,9 @@ mod tests {
                 [GgufQuantization::None, GgufQuantization::Q8_0, GgufQuantization::Q4_0]
                     .iter()
                     .map(|&quant| {
-                        let tmp = TempDir::new().unwrap();
-                        let result =
-                            quantize_and_export(&weights, quant, tmp.path(), "m.gguf").unwrap();
+                        let tmp = TempDir::new().expect("temp file creation should succeed");
+                        let result = quantize_and_export(&weights, quant, tmp.path(), "m.gguf")
+                            .expect("operation should succeed");
                         (quant, result.export.size_bytes)
                     })
                     .collect();
@@ -461,9 +481,11 @@ mod tests {
     fn test_falsify_pipeline_magic_bytes_all_quant_modes() {
         let weights = make_test_weights();
         for quant in [GgufQuantization::None, GgufQuantization::Q4_0, GgufQuantization::Q8_0] {
-            let tmp = TempDir::new().unwrap();
-            quantize_and_export(&weights, quant, tmp.path(), "model.gguf").unwrap();
-            let file_data = std::fs::read(tmp.path().join("model.gguf")).unwrap();
+            let tmp = TempDir::new().expect("temp file creation should succeed");
+            quantize_and_export(&weights, quant, tmp.path(), "model.gguf")
+                .expect("operation should succeed");
+            let file_data =
+                std::fs::read(tmp.path().join("model.gguf")).expect("file read should succeed");
             assert_eq!(&file_data[0..4], b"GGUF", "magic bytes wrong for pipeline {quant:?}");
         }
     }
@@ -471,11 +493,11 @@ mod tests {
     #[test]
     fn test_falsify_pipeline_readme_file_size_field() {
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let result =
             quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
-                .unwrap();
-        let readme = result.readme.unwrap();
+                .expect("operation should succeed");
+        let readme = result.readme.expect("operation should succeed");
         // README should contain the human-readable size string
         let size_str = result.export.size_human();
         assert!(
@@ -487,11 +509,11 @@ mod tests {
     #[test]
     fn test_falsify_pipeline_readme_tensor_count() {
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let result =
             quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
-                .unwrap();
-        let readme = result.readme.unwrap();
+                .expect("operation should succeed");
+        let readme = result.readme.expect("operation should succeed");
         assert!(
             readme.contains(&format!("{}", result.export.num_tensors)),
             "README should contain tensor count {}",
@@ -502,11 +524,11 @@ mod tests {
     #[test]
     fn test_falsify_pipeline_readme_has_yaml_frontmatter() {
         let weights = make_test_weights();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let result =
             quantize_and_export(&weights, GgufQuantization::None, tmp.path(), "model.gguf")
-                .unwrap();
-        let readme = result.readme.unwrap();
+                .expect("operation should succeed");
+        let readme = result.readme.expect("operation should succeed");
         assert!(readme.starts_with("---\n"), "README must start with YAML frontmatter");
         assert!(readme.contains("tags:"), "README must have tags in frontmatter");
         assert!(readme.contains("- gguf"), "README frontmatter must tag 'gguf'");

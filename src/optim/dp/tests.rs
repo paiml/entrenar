@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn test_dp_sgd_new() {
         let config = DpSgdConfig::new();
-        let dp_sgd = DpSgd::new(0.01, config).unwrap();
+        let dp_sgd = DpSgd::new(0.01, config).expect("config should be valid");
         assert_eq!(dp_sgd.n_steps(), 0);
         assert!(!dp_sgd.is_budget_exhausted());
     }
@@ -226,14 +226,14 @@ mod tests {
     #[test]
     fn test_dp_sgd_privatize_gradients() {
         let config = DpSgdConfig::new().with_max_grad_norm(1.0).with_noise_multiplier(0.1);
-        let mut dp_sgd = DpSgd::new(0.01, config).unwrap();
+        let mut dp_sgd = DpSgd::new(0.01, config).expect("config should be valid");
 
         let grads = vec![vec![0.1, 0.2, 0.3], vec![0.2, 0.3, 0.1], vec![0.3, 0.1, 0.2]];
 
         let result = dp_sgd.privatize_gradients(&grads);
         assert!(result.is_ok());
 
-        let private_grad = result.unwrap();
+        let private_grad = result.expect("operation should succeed");
         assert_eq!(private_grad.len(), 3);
         assert_eq!(dp_sgd.n_steps(), 1);
     }
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_dp_sgd_step() {
         let config = DpSgdConfig::new().with_max_grad_norm(1.0).with_noise_multiplier(0.1);
-        let mut dp_sgd = DpSgd::new(0.1, config).unwrap();
+        let mut dp_sgd = DpSgd::new(0.1, config).expect("config should be valid");
 
         let mut params = vec![1.0, 2.0, 3.0];
         let grads = vec![vec![0.1, 0.1, 0.1], vec![0.1, 0.1, 0.1]];
@@ -257,16 +257,16 @@ mod tests {
     #[test]
     fn test_dp_sgd_privacy_accumulates() {
         let config = DpSgdConfig::new();
-        let mut dp_sgd = DpSgd::new(0.01, config).unwrap();
+        let mut dp_sgd = DpSgd::new(0.01, config).expect("config should be valid");
 
         let grads = vec![vec![0.1, 0.2, 0.3]];
 
         let (e1, _) = dp_sgd.privacy_spent();
 
-        dp_sgd.privatize_gradients(&grads).unwrap();
+        dp_sgd.privatize_gradients(&grads).expect("operation should succeed");
         let (e2, _) = dp_sgd.privacy_spent();
 
-        dp_sgd.privatize_gradients(&grads).unwrap();
+        dp_sgd.privatize_gradients(&grads).expect("operation should succeed");
         let (e3, _) = dp_sgd.privacy_spent();
 
         // Privacy loss should increase monotonically
@@ -281,7 +281,7 @@ mod tests {
             .with_budget(PrivacyBudget::new(0.1, 1e-5))
             .with_noise_multiplier(0.1)
             .with_strict_budget(true);
-        let mut dp_sgd = DpSgd::new(0.01, config).unwrap();
+        let mut dp_sgd = DpSgd::new(0.01, config).expect("config should be valid");
 
         let grads = vec![vec![0.1, 0.2, 0.3]];
 
@@ -304,11 +304,11 @@ mod tests {
     #[test]
     fn test_dp_sgd_reset() {
         let config = DpSgdConfig::new();
-        let mut dp_sgd = DpSgd::new(0.01, config).unwrap();
+        let mut dp_sgd = DpSgd::new(0.01, config).expect("config should be valid");
 
         let grads = vec![vec![0.1, 0.2, 0.3]];
-        dp_sgd.privatize_gradients(&grads).unwrap();
-        dp_sgd.privatize_gradients(&grads).unwrap();
+        dp_sgd.privatize_gradients(&grads).expect("operation should succeed");
+        dp_sgd.privatize_gradients(&grads).expect("operation should succeed");
 
         assert!(dp_sgd.n_steps() > 0);
 
@@ -421,13 +421,13 @@ mod property_tests {
             let config = DpSgdConfig::new()
                 .with_noise_multiplier(0.1)
                 .with_strict_budget(false);
-            let mut dp_sgd = DpSgd::new(0.01, config).unwrap();
+            let mut dp_sgd = DpSgd::new(0.01, config).expect("config should be valid");
 
             let grads: Vec<Vec<f64>> = (0..n_samples)
                 .map(|_| vec![0.1; dim])
                 .collect();
 
-            let result = dp_sgd.privatize_gradients(&grads).unwrap();
+            let result = dp_sgd.privatize_gradients(&grads).expect("operation should succeed");
             prop_assert_eq!(result.len(), dim);
         }
     }

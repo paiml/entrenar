@@ -165,7 +165,7 @@ mod tests {
 
         t.set_grad(Array1::from(vec![0.1, 0.2]));
         assert!(t.grad().is_some());
-        assert_eq!(t.grad().unwrap()[0], 0.1);
+        assert_eq!(t.grad().expect("gradient should be available")[0], 0.1);
 
         t.zero_grad();
         assert!(t.grad().is_none());
@@ -177,11 +177,11 @@ mod tests {
 
         // First accumulation - should set grad
         t.accumulate_grad(Array1::from(vec![0.1, 0.2]));
-        assert_eq!(t.grad().unwrap()[0], 0.1);
+        assert_eq!(t.grad().expect("gradient should be available")[0], 0.1);
 
         // Second accumulation - should add
         t.accumulate_grad(Array1::from(vec![0.3, 0.4]));
-        let grad = t.grad().unwrap();
+        let grad = t.grad().expect("gradient should be available");
         assert!((grad[0] - 0.4).abs() < 1e-6);
         assert!((grad[1] - 0.6).abs() < 1e-6);
     }

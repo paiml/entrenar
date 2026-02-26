@@ -48,7 +48,7 @@ fn test_citl_trainer_learns_permutation() {
         })
         .collect();
 
-    let trainer = CitlTrainer::train(&pairs).unwrap();
+    let trainer = CitlTrainer::train(&pairs).expect("operation should succeed");
 
     // Test prediction
     let pred = trainer.predict_fix(&[0.3, 0.7]);
@@ -83,7 +83,7 @@ fn test_end_to_end_store_train_predict() {
         .collect();
 
     // 3. Train CITL model
-    let trainer = CitlTrainer::train(&pairs).unwrap();
+    let trainer = CitlTrainer::train(&pairs).expect("operation should succeed");
 
     // 4. For a new error, search for similar pattern and predict fix
     let error_features = vec![0.9, 0.1, 0.0];
@@ -107,16 +107,16 @@ fn test_pattern_store_crud_operations() {
     assert_eq!(store.len(), 3);
 
     // Read
-    let a = store.get_pattern("a").unwrap();
+    let a = store.get_pattern("a").expect("operation should succeed");
     assert_eq!(a.description, "first");
 
     // Update (replace)
     store.add_pattern(DecisionPattern::new("a", "updated", vec![1.5], 0.9, "cat"));
-    assert_eq!(store.get_pattern("a").unwrap().description, "updated");
+    assert_eq!(store.get_pattern("a").expect("operation should succeed").description, "updated");
     assert_eq!(store.len(), 3); // Still 3, not 4
 
     // Delete
-    let removed = store.remove_pattern("b").unwrap();
+    let removed = store.remove_pattern("b").expect("operation should succeed");
     assert_eq!(removed.description, "second");
     assert_eq!(store.len(), 2);
     assert!(store.get_pattern("b").is_none());

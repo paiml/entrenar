@@ -95,10 +95,10 @@ fn test_benchmark_best_for_budget() {
     benchmark.add(test_entry("mid", 0.92, 15.0, 1500.0));
     benchmark.add(test_entry("expensive", 0.98, 50.0, 5000.0));
 
-    let best = benchmark.best_for_budget(20.0).unwrap();
+    let best = benchmark.best_for_budget(20.0).expect("operation should succeed");
     assert_eq!(best.run_id, "mid");
 
-    let best = benchmark.best_for_budget(10.0).unwrap();
+    let best = benchmark.best_for_budget(10.0).expect("operation should succeed");
     assert_eq!(best.run_id, "cheap");
 
     let best = benchmark.best_for_budget(1.0);
@@ -112,10 +112,10 @@ fn test_benchmark_cheapest_for_quality() {
     benchmark.add(test_entry("b", 0.92, 15.0, 1500.0));
     benchmark.add(test_entry("c", 0.90, 10.0, 1000.0));
 
-    let cheapest = benchmark.cheapest_for_quality(0.90).unwrap();
+    let cheapest = benchmark.cheapest_for_quality(0.90).expect("operation should succeed");
     assert_eq!(cheapest.run_id, "c");
 
-    let cheapest = benchmark.cheapest_for_quality(0.93).unwrap();
+    let cheapest = benchmark.cheapest_for_quality(0.93).expect("operation should succeed");
     assert_eq!(cheapest.run_id, "a");
 
     let cheapest = benchmark.cheapest_for_quality(0.99);
@@ -128,7 +128,7 @@ fn test_benchmark_most_efficient() {
     benchmark.add(test_entry("low_eff", 0.50, 50.0, 5000.0)); // 0.01
     benchmark.add(test_entry("high_eff", 0.90, 10.0, 1000.0)); // 0.09
 
-    let most = benchmark.most_efficient().unwrap();
+    let most = benchmark.most_efficient().expect("operation should succeed");
     assert_eq!(most.run_id, "high_eff");
 }
 
@@ -139,7 +139,7 @@ fn test_benchmark_best_quality() {
     benchmark.add(test_entry("b", 0.98, 50.0, 5000.0));
     benchmark.add(test_entry("c", 0.92, 20.0, 2000.0));
 
-    let best = benchmark.best_quality().unwrap();
+    let best = benchmark.best_quality().expect("operation should succeed");
     assert_eq!(best.run_id, "b");
 }
 
@@ -150,7 +150,7 @@ fn test_benchmark_cheapest() {
     benchmark.add(test_entry("b", 0.98, 50.0, 5000.0));
     benchmark.add(test_entry("c", 0.92, 5.0, 500.0));
 
-    let cheapest = benchmark.cheapest().unwrap();
+    let cheapest = benchmark.cheapest().expect("operation should succeed");
     assert_eq!(cheapest.run_id, "c");
 }
 
@@ -229,8 +229,9 @@ fn test_benchmark_serialization() {
     let mut benchmark = CostPerformanceBenchmark::new();
     benchmark.add(test_entry("run-001", 0.90, 10.0, 1000.0));
 
-    let json = serde_json::to_string(&benchmark).unwrap();
-    let parsed: CostPerformanceBenchmark = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&benchmark).expect("JSON serialization should succeed");
+    let parsed: CostPerformanceBenchmark =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed.len(), 1);
     assert_eq!(parsed.entries[0].run_id, "run-001");

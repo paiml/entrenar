@@ -293,21 +293,21 @@ mod tests {
     #[test]
     fn test_falsify_builder_order_independence() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
 
         let result1 = Exporter::new()
             .output_dir(dir.path())
             .gguf_quantization(GgufQuantization::Q4_0)
             .include_metadata(false)
             .export(&weights, ExportFormat::GGUF, "a.gguf")
-            .unwrap();
+            .expect("operation should succeed");
 
         let result2 = Exporter::new()
             .include_metadata(false)
             .gguf_quantization(GgufQuantization::Q4_0)
             .output_dir(dir.path())
             .export(&weights, ExportFormat::GGUF, "b.gguf")
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(result1.size_bytes, result2.size_bytes);
         assert_eq!(result1.num_tensors, result2.num_tensors);
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn test_falsify_builder_setter_override() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
 
         // Set Q8_0 then override to Q4_0
         let result = Exporter::new()
@@ -325,10 +325,12 @@ mod tests {
             .gguf_quantization(GgufQuantization::Q4_0)
             .include_metadata(false)
             .export(&weights, ExportFormat::GGUF, "override.gguf")
-            .unwrap();
+            .expect("operation should succeed");
 
-        let file_data = std::fs::read(dir.path().join("override.gguf")).unwrap();
-        let summary = crate::hf_pipeline::export::gguf_verify::verify_gguf(&file_data).unwrap();
+        let file_data =
+            std::fs::read(dir.path().join("override.gguf")).expect("file read should succeed");
+        let summary = crate::hf_pipeline::export::gguf_verify::verify_gguf(&file_data)
+            .expect("operation should succeed");
         // Should be Q4_0 (dtype=2), not Q8_0 (dtype=8)
         assert_eq!(summary.tensors[0].dtype, 2, "override should use Q4_0");
     }
@@ -340,7 +342,7 @@ mod tests {
     #[test]
     fn test_falsify_pytorch_format_rejected() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = Exporter::new().output_dir(dir.path());
         let result = exporter.export(&weights, ExportFormat::PyTorch, "model.pt");
         assert!(result.is_err(), "PyTorch export must be rejected");
@@ -354,10 +356,11 @@ mod tests {
     #[test]
     fn test_falsify_safetensors_export_works() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = Exporter::new().output_dir(dir.path());
-        let result =
-            exporter.export(&weights, ExportFormat::SafeTensors, "model.safetensors").unwrap();
+        let result = exporter
+            .export(&weights, ExportFormat::SafeTensors, "model.safetensors")
+            .expect("deserialization should succeed");
         assert_eq!(result.format, ExportFormat::SafeTensors);
         assert!(result.size_bytes > 0);
         assert!(dir.path().join("model.safetensors").exists());
@@ -366,9 +369,11 @@ mod tests {
     #[test]
     fn test_falsify_apr_export_works() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = Exporter::new().output_dir(dir.path());
-        let result = exporter.export(&weights, ExportFormat::APR, "model.apr.json").unwrap();
+        let result = exporter
+            .export(&weights, ExportFormat::APR, "model.apr.json")
+            .expect("operation should succeed");
         assert_eq!(result.format, ExportFormat::APR);
         assert!(result.size_bytes > 0);
         assert!(dir.path().join("model.apr.json").exists());
@@ -377,12 +382,13 @@ mod tests {
     #[test]
     fn test_falsify_safetensors_ignores_quantization_setting() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         // Set Q4_0 quant — should be silently ignored for SafeTensors
         let exporter =
             Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::Q4_0);
-        let result =
-            exporter.export(&weights, ExportFormat::SafeTensors, "model.safetensors").unwrap();
+        let result = exporter
+            .export(&weights, ExportFormat::SafeTensors, "model.safetensors")
+            .expect("deserialization should succeed");
         assert_eq!(result.format, ExportFormat::SafeTensors);
         assert!(result.size_bytes > 0);
     }
@@ -394,36 +400,40 @@ mod tests {
     #[test]
     fn test_falsify_export_auto_detects_gguf() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::APR);
-        let result = exporter.export_auto(&weights, "model.gguf").unwrap();
+        let result =
+            exporter.export_auto(&weights, "model.gguf").expect("operation should succeed");
         assert_eq!(result.format, ExportFormat::GGUF);
     }
 
     #[test]
     fn test_falsify_export_auto_detects_safetensors() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::GGUF);
-        let result = exporter.export_auto(&weights, "model.safetensors").unwrap();
+        let result =
+            exporter.export_auto(&weights, "model.safetensors").expect("operation should succeed");
         assert_eq!(result.format, ExportFormat::SafeTensors);
     }
 
     #[test]
     fn test_falsify_export_auto_detects_apr() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::GGUF);
-        let result = exporter.export_auto(&weights, "model.apr.json").unwrap();
+        let result =
+            exporter.export_auto(&weights, "model.apr.json").expect("operation should succeed");
         assert_eq!(result.format, ExportFormat::APR);
     }
 
     #[test]
     fn test_falsify_export_auto_unknown_extension_uses_default() {
         let weights = make_test_weights();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::GGUF);
-        let result = exporter.export_auto(&weights, "model.unknown").unwrap();
+        let result =
+            exporter.export_auto(&weights, "model.unknown").expect("operation should succeed");
         assert_eq!(result.format, ExportFormat::GGUF);
     }
 
@@ -439,13 +449,17 @@ mod tests {
                 weights.add_tensor(format!("t.{i}"), vec![1.0], vec![1]);
             }
 
-            let dir = tempfile::tempdir().unwrap();
+            let dir = tempfile::tempdir().expect("temp file creation should succeed");
             let exporter = Exporter::new().output_dir(dir.path()).include_metadata(false);
-            let result = exporter.export(&weights, ExportFormat::GGUF, "count.gguf").unwrap();
+            let result = exporter
+                .export(&weights, ExportFormat::GGUF, "count.gguf")
+                .expect("operation should succeed");
             assert_eq!(result.num_tensors, n, "num_tensors mismatch for {n} input tensors");
 
-            let file_data = std::fs::read(dir.path().join("count.gguf")).unwrap();
-            let summary = crate::hf_pipeline::export::gguf_verify::verify_gguf(&file_data).unwrap();
+            let file_data =
+                std::fs::read(dir.path().join("count.gguf")).expect("file read should succeed");
+            let summary = crate::hf_pipeline::export::gguf_verify::verify_gguf(&file_data)
+                .expect("operation should succeed");
             assert_eq!(summary.tensor_count, n as u64, "GGUF header tensor_count mismatch for {n}");
         }
     }

@@ -38,7 +38,7 @@ proptest! {
         if !recent.is_empty() {
             prop_assert_eq!(
                 recent[0].sequence,
-                traces.last().unwrap().sequence,
+                traces.last().expect("collection should not be empty").sequence,
                 "Most recent trace mismatch"
             );
         }

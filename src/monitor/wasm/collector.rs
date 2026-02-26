@@ -233,7 +233,8 @@ mod tests {
         assert!(json.contains("mean"));
 
         // Parse and validate
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert!(parsed.get("loss").is_some());
     }
 

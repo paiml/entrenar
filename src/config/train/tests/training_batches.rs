@@ -25,14 +25,14 @@ fn test_load_training_batches_missing_file() {
     // Should fall back to demo batches
     let result = load_training_batches(&spec);
     assert!(result.is_ok());
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert!(!batches.is_empty());
 }
 
 #[test]
 fn test_load_training_batches_unsupported_extension() {
-    let temp_file = NamedTempFile::with_suffix(".txt").unwrap();
-    std::fs::write(temp_file.path(), "test data").unwrap();
+    let temp_file = NamedTempFile::with_suffix(".txt").expect("temp file creation should succeed");
+    std::fs::write(temp_file.path(), "test data").expect("file write should succeed");
 
     let spec = TrainSpec {
         model: ModelRef { path: std::path::PathBuf::from("model.gguf"), ..Default::default() },
@@ -60,8 +60,8 @@ fn test_load_training_batches_json() {
     {"input": [1.0, 2.0, 3.0, 4.0], "target": [5.0, 6.0, 7.0, 8.0]},
     {"input": [9.0, 10.0, 11.0, 12.0], "target": [13.0, 14.0, 15.0, 16.0]}
 ]"#;
-    let temp_file = NamedTempFile::with_suffix(".json").unwrap();
-    std::fs::write(temp_file.path(), json).unwrap();
+    let temp_file = NamedTempFile::with_suffix(".json").expect("temp file creation should succeed");
+    std::fs::write(temp_file.path(), json).expect("file write should succeed");
 
     let spec = TrainSpec {
         model: ModelRef { path: std::path::PathBuf::from("model.gguf"), ..Default::default() },
@@ -80,6 +80,6 @@ fn test_load_training_batches_json() {
 
     let result = load_training_batches(&spec);
     assert!(result.is_ok());
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert_eq!(batches.len(), 2);
 }

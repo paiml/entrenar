@@ -113,20 +113,47 @@ mod tests {
 
     #[test]
     fn test_quant_method_from_str() {
-        assert_eq!("symmetric".parse::<QuantMethod>().unwrap(), QuantMethod::Symmetric);
-        assert_eq!("sym".parse::<QuantMethod>().unwrap(), QuantMethod::Symmetric);
-        assert_eq!("asymmetric".parse::<QuantMethod>().unwrap(), QuantMethod::Asymmetric);
-        assert_eq!("asym".parse::<QuantMethod>().unwrap(), QuantMethod::Asymmetric);
+        assert_eq!(
+            "symmetric".parse::<QuantMethod>().expect("parsing should succeed"),
+            QuantMethod::Symmetric
+        );
+        assert_eq!(
+            "sym".parse::<QuantMethod>().expect("parsing should succeed"),
+            QuantMethod::Symmetric
+        );
+        assert_eq!(
+            "asymmetric".parse::<QuantMethod>().expect("parsing should succeed"),
+            QuantMethod::Asymmetric
+        );
+        assert_eq!(
+            "asym".parse::<QuantMethod>().expect("parsing should succeed"),
+            QuantMethod::Asymmetric
+        );
         assert!("invalid".parse::<QuantMethod>().is_err());
     }
 
     #[test]
     fn test_merge_method_from_str() {
-        assert_eq!("ties".parse::<MergeMethod>().unwrap(), MergeMethod::Ties);
-        assert_eq!("dare".parse::<MergeMethod>().unwrap(), MergeMethod::Dare);
-        assert_eq!("slerp".parse::<MergeMethod>().unwrap(), MergeMethod::Slerp);
-        assert_eq!("average".parse::<MergeMethod>().unwrap(), MergeMethod::Average);
-        assert_eq!("avg".parse::<MergeMethod>().unwrap(), MergeMethod::Average);
+        assert_eq!(
+            "ties".parse::<MergeMethod>().expect("parsing should succeed"),
+            MergeMethod::Ties
+        );
+        assert_eq!(
+            "dare".parse::<MergeMethod>().expect("parsing should succeed"),
+            MergeMethod::Dare
+        );
+        assert_eq!(
+            "slerp".parse::<MergeMethod>().expect("parsing should succeed"),
+            MergeMethod::Slerp
+        );
+        assert_eq!(
+            "average".parse::<MergeMethod>().expect("parsing should succeed"),
+            MergeMethod::Average
+        );
+        assert_eq!(
+            "avg".parse::<MergeMethod>().expect("parsing should succeed"),
+            MergeMethod::Average
+        );
         assert!("invalid".parse::<MergeMethod>().is_err());
     }
 

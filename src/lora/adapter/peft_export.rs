@@ -170,8 +170,8 @@ mod tests {
         let layer = make_test_layer(16, 16, 4);
         bundle.add_adapter("model.layers.0.self_attn.q_proj", &layer);
 
-        let tmp = TempDir::new().unwrap();
-        bundle.save_peft(tmp.path()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        bundle.save_peft(tmp.path()).expect("save should succeed");
 
         // Verify files exist
         assert!(tmp.path().join("adapter_config.json").exists());
@@ -183,11 +183,13 @@ mod tests {
         let config = LoRAConfig::new(16, 32.0).target_attention_projections();
         let bundle = PeftAdapterBundle::new(config).with_base_model("test/model");
 
-        let tmp = TempDir::new().unwrap();
-        bundle.save_peft(tmp.path()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        bundle.save_peft(tmp.path()).expect("save should succeed");
 
-        let json = std::fs::read_to_string(tmp.path().join("adapter_config.json")).unwrap();
-        let parsed: PeftAdapterConfig = serde_json::from_str(&json).unwrap();
+        let json = std::fs::read_to_string(tmp.path().join("adapter_config.json"))
+            .expect("file read should succeed");
+        let parsed: PeftAdapterConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(parsed.peft_type, "LORA");
         assert_eq!(parsed.r, 16);
@@ -203,12 +205,13 @@ mod tests {
         let layer = make_test_layer(8, 16, 4);
         bundle.add_adapter("model.layers.0.self_attn.q_proj", &layer);
 
-        let tmp = TempDir::new().unwrap();
-        bundle.save_peft(tmp.path()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        bundle.save_peft(tmp.path()).expect("save should succeed");
 
         // Load and verify safetensors
-        let data = std::fs::read(tmp.path().join("adapter_model.safetensors")).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(tmp.path().join("adapter_model.safetensors"))
+            .expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
 
         let names = loaded.names();
         assert!(names.contains(&"base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight"));
@@ -217,12 +220,12 @@ mod tests {
         // Check shapes
         let lora_a = loaded
             .tensor("base_model.model.model.layers.0.self_attn.q_proj.lora_A.weight")
-            .unwrap();
+            .expect("operation should succeed");
         assert_eq!(lora_a.shape(), &[4, 16]); // [rank, d_in]
 
         let lora_b = loaded
             .tensor("base_model.model.model.layers.0.self_attn.q_proj.lora_B.weight")
-            .unwrap();
+            .expect("operation should succeed");
         assert_eq!(lora_b.shape(), &[8, 4]); // [d_out, rank]
     }
 
@@ -237,11 +240,12 @@ mod tests {
         }
         assert_eq!(bundle.len(), 3);
 
-        let tmp = TempDir::new().unwrap();
-        bundle.save_peft(tmp.path()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        bundle.save_peft(tmp.path()).expect("save should succeed");
 
-        let data = std::fs::read(tmp.path().join("adapter_model.safetensors")).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(tmp.path().join("adapter_model.safetensors"))
+            .expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
         // 3 layers * 2 matrices (A + B) = 6 tensors
         assert_eq!(loaded.len(), 6);
     }
@@ -251,8 +255,8 @@ mod tests {
         let config = LoRAConfig::new(4, 8.0);
         let bundle = PeftAdapterBundle::new(config);
 
-        let tmp = TempDir::new().unwrap();
-        bundle.save_peft(tmp.path()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        bundle.save_peft(tmp.path()).expect("save should succeed");
 
         // Should still create both files
         assert!(tmp.path().join("adapter_config.json").exists());

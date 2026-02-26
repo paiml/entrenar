@@ -281,14 +281,14 @@ mod tests {
 
     #[test]
     fn test_trueno_backend_open() {
-        let backend = TruenoBackend::open("/tmp/test.trueno").unwrap();
+        let backend = TruenoBackend::open("/tmp/test.trueno").expect("operation should succeed");
         assert_eq!(backend.experiment_count(), 0);
     }
 
     #[test]
     fn test_trueno_create_experiment() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
 
         assert!(exp_id.starts_with("exp-"));
         assert_eq!(backend.experiment_count(), 1);
@@ -298,7 +298,8 @@ mod tests {
     fn test_trueno_create_experiment_with_config() {
         let mut backend = TruenoBackend::new();
         let config = serde_json::json!({"batch_size": 32});
-        let exp_id = backend.create_experiment("test-exp", Some(config)).unwrap();
+        let exp_id =
+            backend.create_experiment("test-exp", Some(config)).expect("config should be valid");
 
         assert!(exp_id.starts_with("exp-"));
     }
@@ -306,12 +307,15 @@ mod tests {
     #[test]
     fn test_trueno_create_run() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
         assert!(run_id.starts_with("run-"));
         assert_eq!(backend.run_count(), 1);
-        assert_eq!(backend.get_run_status(&run_id).unwrap(), RunStatus::Pending);
+        assert_eq!(
+            backend.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Pending
+        );
     }
 
     #[test]
@@ -325,35 +329,41 @@ mod tests {
     #[test]
     fn test_trueno_start_run() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
-        backend.start_run(&run_id).unwrap();
-        assert_eq!(backend.get_run_status(&run_id).unwrap(), RunStatus::Running);
+        backend.start_run(&run_id).expect("operation should succeed");
+        assert_eq!(
+            backend.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Running
+        );
     }
 
     #[test]
     fn test_trueno_complete_run() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
-        backend.start_run(&run_id).unwrap();
-        backend.complete_run(&run_id, RunStatus::Success).unwrap();
+        backend.start_run(&run_id).expect("operation should succeed");
+        backend.complete_run(&run_id, RunStatus::Success).expect("operation should succeed");
 
-        assert_eq!(backend.get_run_status(&run_id).unwrap(), RunStatus::Success);
+        assert_eq!(
+            backend.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Success
+        );
     }
 
     #[test]
     fn test_trueno_log_metric() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
-        backend.log_metric(&run_id, "loss", 0, 0.5).unwrap();
-        backend.log_metric(&run_id, "loss", 1, 0.4).unwrap();
+        backend.log_metric(&run_id, "loss", 0, 0.5).expect("operation should succeed");
+        backend.log_metric(&run_id, "loss", 1, 0.4).expect("operation should succeed");
 
-        let metrics = backend.get_metrics(&run_id, "loss").unwrap();
+        let metrics = backend.get_metrics(&run_id, "loss").expect("operation should succeed");
         assert_eq!(metrics.len(), 2);
         assert_eq!(metrics[0].step, 0);
         assert_eq!(metrics[1].step, 1);
@@ -370,10 +380,12 @@ mod tests {
     #[test]
     fn test_trueno_log_artifact() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
-        let hash = backend.log_artifact(&run_id, "model.safetensors", b"model data").unwrap();
+        let hash = backend
+            .log_artifact(&run_id, "model.safetensors", b"model data")
+            .expect("operation should succeed");
 
         assert!(hash.starts_with("sha256-"));
     }
@@ -389,35 +401,44 @@ mod tests {
     #[test]
     fn test_trueno_complete_run_failed() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
-        backend.start_run(&run_id).unwrap();
-        backend.complete_run(&run_id, RunStatus::Failed).unwrap();
+        backend.start_run(&run_id).expect("operation should succeed");
+        backend.complete_run(&run_id, RunStatus::Failed).expect("operation should succeed");
 
-        assert_eq!(backend.get_run_status(&run_id).unwrap(), RunStatus::Failed);
+        assert_eq!(
+            backend.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Failed
+        );
     }
 
     #[test]
     fn test_trueno_complete_run_cancelled() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
-        backend.start_run(&run_id).unwrap();
-        backend.complete_run(&run_id, RunStatus::Cancelled).unwrap();
+        backend.start_run(&run_id).expect("operation should succeed");
+        backend.complete_run(&run_id, RunStatus::Cancelled).expect("operation should succeed");
 
-        assert_eq!(backend.get_run_status(&run_id).unwrap(), RunStatus::Cancelled);
+        assert_eq!(
+            backend.get_run_status(&run_id).expect("operation should succeed"),
+            RunStatus::Cancelled
+        );
     }
 
     #[test]
     fn test_trueno_set_and_get_span_id() {
         let mut backend = TruenoBackend::new();
-        let exp_id = backend.create_experiment("test-exp", None).unwrap();
-        let run_id = backend.create_run(&exp_id).unwrap();
+        let exp_id = backend.create_experiment("test-exp", None).expect("operation should succeed");
+        let run_id = backend.create_run(&exp_id).expect("operation should succeed");
 
-        backend.set_span_id(&run_id, "span-abc123").unwrap();
+        backend.set_span_id(&run_id, "span-abc123").expect("operation should succeed");
 
-        assert_eq!(backend.get_span_id(&run_id).unwrap(), Some("span-abc123".to_string()));
+        assert_eq!(
+            backend.get_span_id(&run_id).expect("operation should succeed"),
+            Some("span-abc123".to_string())
+        );
     }
 }

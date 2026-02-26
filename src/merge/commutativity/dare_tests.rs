@@ -10,10 +10,10 @@ fn dare_zero_drop_is_commutative() {
     let m1 = make_model(vec![2.0, 4.0]);
     let m2 = make_model(vec![4.0, 6.0]);
 
-    let config = DareConfig::new(0.0).unwrap();
+    let config = DareConfig::new(0.0).expect("config should be valid");
 
-    let r1 = dare_merge(&[m1.clone(), m2.clone()], &base, &config).unwrap();
-    let r2 = dare_merge(&[m2, m1], &base, &config).unwrap();
+    let r1 = dare_merge(&[m1.clone(), m2.clone()], &base, &config).expect("config should be valid");
+    let r2 = dare_merge(&[m2, m1], &base, &config).expect("config should be valid");
 
     assert!(models_approx_equal(&r1, &r2, 1e-5), "DARE with drop_prob=0 should be commutative");
 }
@@ -24,8 +24,9 @@ fn dare_self_merge_identity() {
     let base = make_model(vec![0.0, 0.0, 0.0]);
     let m = make_model(vec![1.0, 2.0, 3.0]);
 
-    let config = DareConfig::new(0.0).unwrap();
-    let result = dare_merge(&[m.clone(), m.clone()], &base, &config).unwrap();
+    let config = DareConfig::new(0.0).expect("config should be valid");
+    let result =
+        dare_merge(&[m.clone(), m.clone()], &base, &config).expect("config should be valid");
 
     assert!(
         models_approx_equal(&result, &m, 1e-5),
@@ -43,13 +44,13 @@ fn dare_permutation_invariance_with_zero_drop() {
         make_model(vec![7.0, 8.0, 9.0]),
     ];
 
-    let config = DareConfig::new(0.0).unwrap();
+    let config = DareConfig::new(0.0).expect("config should be valid");
 
-    let r1 = dare_merge(&models, &base, &config).unwrap();
+    let r1 = dare_merge(&models, &base, &config).expect("config should be valid");
 
     // Permute: [2, 0, 1]
     let permuted: Vec<Model> = vec![models[2].clone(), models[0].clone(), models[1].clone()];
-    let r2 = dare_merge(&permuted, &base, &config).unwrap();
+    let r2 = dare_merge(&permuted, &base, &config).expect("config should be valid");
 
     assert!(
         models_approx_equal(&r1, &r2, 1e-5),

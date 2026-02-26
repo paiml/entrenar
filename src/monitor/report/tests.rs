@@ -148,7 +148,7 @@ fn test_trend_detection_improving_loss() {
     }
 
     let report = analyzer.analyze("improving", &collector, 10.0);
-    let loss_summary = report.metric_summaries.get(&Metric::Loss).unwrap();
+    let loss_summary = report.metric_summaries.get(&Metric::Loss).expect("key should exist");
 
     // Mean = 1.2, midpoint = 1.5, so mean < midpoint → Improving
     assert!(
@@ -172,7 +172,7 @@ fn test_trend_detection_oscillating() {
     }
 
     let report = analyzer.analyze("oscillating", &collector, 10.0);
-    let loss_summary = report.metric_summaries.get(&Metric::Loss).unwrap();
+    let loss_summary = report.metric_summaries.get(&Metric::Loss).expect("key should exist");
 
     assert_eq!(loss_summary.trend, Trend::Oscillating);
 }
@@ -258,7 +258,7 @@ fn test_trend_detection_degrading() {
     }
 
     let report = analyzer.analyze("degrading", &collector, 10.0);
-    let loss_summary = report.metric_summaries.get(&Metric::Loss).unwrap();
+    let loss_summary = report.metric_summaries.get(&Metric::Loss).expect("key should exist");
 
     // Mean = 1.8, midpoint = 1.5, so mean > midpoint → Degrading
     assert!(
@@ -280,7 +280,8 @@ fn test_trend_detection_stable() {
     }
 
     let report = analyzer.analyze("stable", &collector, 10.0);
-    let grad_summary = report.metric_summaries.get(&Metric::GradientNorm).unwrap();
+    let grad_summary =
+        report.metric_summaries.get(&Metric::GradientNorm).expect("key should exist");
 
     // With low CV, gradient norm should be stable
     assert!(grad_summary.trend == Trend::Stable, "Expected Stable, got {:?}", grad_summary.trend);

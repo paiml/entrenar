@@ -10,14 +10,14 @@ use crate::storage::ExperimentStorage;
 
 #[test]
 fn test_filter_op_float_ne() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "lr", ParameterValue::Float(0.001)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.001)).expect("operation should succeed");
 
-    let run2 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run2, "lr", ParameterValue::Float(0.01)).unwrap();
+    let run2 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run2, "lr", ParameterValue::Float(0.01)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -25,21 +25,21 @@ fn test_filter_op_float_ne() {
         value: ParameterValue::Float(0.001),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, run2);
 }
 
 #[test]
 fn test_filter_op_float_lt() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "lr", ParameterValue::Float(0.001)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.001)).expect("operation should succeed");
 
-    let run2 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run2, "lr", ParameterValue::Float(0.01)).unwrap();
+    let run2 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run2, "lr", ParameterValue::Float(0.01)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -47,18 +47,18 @@ fn test_filter_op_float_lt() {
         value: ParameterValue::Float(0.005),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, run1);
 }
 
 #[test]
 fn test_filter_op_float_gte() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "lr", ParameterValue::Float(0.01)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.01)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -66,17 +66,17 @@ fn test_filter_op_float_gte() {
         value: ParameterValue::Float(0.01),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
 }
 
 #[test]
 fn test_filter_op_float_lte() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "lr", ParameterValue::Float(0.01)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "lr", ParameterValue::Float(0.01)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "lr".to_string(),
@@ -84,7 +84,7 @@ fn test_filter_op_float_lte() {
         value: ParameterValue::Float(0.01),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
 }
 
@@ -94,11 +94,11 @@ fn test_filter_op_float_lte() {
 
 #[test]
 fn test_filter_op_int_eq() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -106,20 +106,20 @@ fn test_filter_op_int_eq() {
         value: ParameterValue::Int(100),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
 }
 
 #[test]
 fn test_filter_op_int_ne() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).expect("operation should succeed");
 
-    let run2 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run2, "epochs", ParameterValue::Int(200)).unwrap();
+    let run2 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run2, "epochs", ParameterValue::Int(200)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -127,21 +127,21 @@ fn test_filter_op_int_ne() {
         value: ParameterValue::Int(100),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, run2);
 }
 
 #[test]
 fn test_filter_op_int_gt() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).expect("operation should succeed");
 
-    let run2 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run2, "epochs", ParameterValue::Int(200)).unwrap();
+    let run2 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run2, "epochs", ParameterValue::Int(200)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -149,18 +149,18 @@ fn test_filter_op_int_gt() {
         value: ParameterValue::Int(150),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, run2);
 }
 
 #[test]
 fn test_filter_op_int_lt() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -168,17 +168,17 @@ fn test_filter_op_int_lt() {
         value: ParameterValue::Int(150),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
 }
 
 #[test]
 fn test_filter_op_int_gte() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -186,17 +186,17 @@ fn test_filter_op_int_gte() {
         value: ParameterValue::Int(100),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
 }
 
 #[test]
 fn test_filter_op_int_lte() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend.log_param(&run1, "epochs", ParameterValue::Int(100)).expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "epochs".to_string(),
@@ -204,7 +204,7 @@ fn test_filter_op_int_lte() {
         value: ParameterValue::Int(100),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
 }
 
@@ -214,11 +214,13 @@ fn test_filter_op_int_lte() {
 
 #[test]
 fn test_filter_op_string_eq() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "model", ParameterValue::String("llama".to_string())).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend
+        .log_param(&run1, "model", ParameterValue::String("llama".to_string()))
+        .expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "model".to_string(),
@@ -226,20 +228,24 @@ fn test_filter_op_string_eq() {
         value: ParameterValue::String("llama".to_string()),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
 }
 
 #[test]
 fn test_filter_op_string_ne() {
-    let mut backend = SqliteBackend::open_in_memory().unwrap();
-    let exp_id = backend.create_experiment("test", None).unwrap();
+    let mut backend = SqliteBackend::open_in_memory().expect("operation should succeed");
+    let exp_id = backend.create_experiment("test", None).expect("operation should succeed");
 
-    let run1 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run1, "model", ParameterValue::String("llama".to_string())).unwrap();
+    let run1 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend
+        .log_param(&run1, "model", ParameterValue::String("llama".to_string()))
+        .expect("operation should succeed");
 
-    let run2 = backend.create_run(&exp_id).unwrap();
-    backend.log_param(&run2, "model", ParameterValue::String("gpt".to_string())).unwrap();
+    let run2 = backend.create_run(&exp_id).expect("operation should succeed");
+    backend
+        .log_param(&run2, "model", ParameterValue::String("gpt".to_string()))
+        .expect("operation should succeed");
 
     let filters = vec![ParamFilter {
         key: "model".to_string(),
@@ -247,7 +253,7 @@ fn test_filter_op_string_ne() {
         value: ParameterValue::String("llama".to_string()),
     }];
 
-    let results = backend.search_runs_by_params(&filters).unwrap();
+    let results = backend.search_runs_by_params(&filters).expect("operation should succeed");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, run2);
 }

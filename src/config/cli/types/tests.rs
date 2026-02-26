@@ -4,10 +4,10 @@ use super::*;
 
 #[test]
 fn test_output_format_from_str() {
-    assert_eq!("text".parse::<OutputFormat>().unwrap(), OutputFormat::Text);
-    assert_eq!("json".parse::<OutputFormat>().unwrap(), OutputFormat::Json);
-    assert_eq!("yaml".parse::<OutputFormat>().unwrap(), OutputFormat::Yaml);
-    assert_eq!("JSON".parse::<OutputFormat>().unwrap(), OutputFormat::Json);
+    assert_eq!("text".parse::<OutputFormat>().expect("parsing should succeed"), OutputFormat::Text);
+    assert_eq!("json".parse::<OutputFormat>().expect("parsing should succeed"), OutputFormat::Json);
+    assert_eq!("yaml".parse::<OutputFormat>().expect("parsing should succeed"), OutputFormat::Yaml);
+    assert_eq!("JSON".parse::<OutputFormat>().expect("parsing should succeed"), OutputFormat::Json);
     assert!("invalid".parse::<OutputFormat>().is_err());
 }
 
@@ -18,12 +18,30 @@ fn test_output_format_default() {
 
 #[test]
 fn test_artifact_type_from_str() {
-    assert_eq!("dataset".parse::<ArtifactTypeArg>().unwrap(), ArtifactTypeArg::Dataset);
-    assert_eq!("paper".parse::<ArtifactTypeArg>().unwrap(), ArtifactTypeArg::Paper);
-    assert_eq!("model".parse::<ArtifactTypeArg>().unwrap(), ArtifactTypeArg::Model);
-    assert_eq!("code".parse::<ArtifactTypeArg>().unwrap(), ArtifactTypeArg::Code);
-    assert_eq!("notebook".parse::<ArtifactTypeArg>().unwrap(), ArtifactTypeArg::Notebook);
-    assert_eq!("workflow".parse::<ArtifactTypeArg>().unwrap(), ArtifactTypeArg::Workflow);
+    assert_eq!(
+        "dataset".parse::<ArtifactTypeArg>().expect("parsing should succeed"),
+        ArtifactTypeArg::Dataset
+    );
+    assert_eq!(
+        "paper".parse::<ArtifactTypeArg>().expect("parsing should succeed"),
+        ArtifactTypeArg::Paper
+    );
+    assert_eq!(
+        "model".parse::<ArtifactTypeArg>().expect("parsing should succeed"),
+        ArtifactTypeArg::Model
+    );
+    assert_eq!(
+        "code".parse::<ArtifactTypeArg>().expect("parsing should succeed"),
+        ArtifactTypeArg::Code
+    );
+    assert_eq!(
+        "notebook".parse::<ArtifactTypeArg>().expect("parsing should succeed"),
+        ArtifactTypeArg::Notebook
+    );
+    assert_eq!(
+        "workflow".parse::<ArtifactTypeArg>().expect("parsing should succeed"),
+        ArtifactTypeArg::Workflow
+    );
     assert!("invalid".parse::<ArtifactTypeArg>().is_err());
 }
 
@@ -44,14 +62,23 @@ fn test_artifact_type_default() {
 
 #[test]
 fn test_license_from_str() {
-    assert_eq!("cc-by-4.0".parse::<LicenseArg>().unwrap(), LicenseArg::CcBy4);
-    assert_eq!("cc-by-sa-4.0".parse::<LicenseArg>().unwrap(), LicenseArg::CcBySa4);
-    assert_eq!("cc0".parse::<LicenseArg>().unwrap(), LicenseArg::Cc0);
-    assert_eq!("mit".parse::<LicenseArg>().unwrap(), LicenseArg::Mit);
-    assert_eq!("apache-2.0".parse::<LicenseArg>().unwrap(), LicenseArg::Apache2);
-    assert_eq!("gpl3".parse::<LicenseArg>().unwrap(), LicenseArg::Gpl3);
-    assert_eq!("gplv3".parse::<LicenseArg>().unwrap(), LicenseArg::Gpl3);
-    assert_eq!("bsd3".parse::<LicenseArg>().unwrap(), LicenseArg::Bsd3);
+    assert_eq!(
+        "cc-by-4.0".parse::<LicenseArg>().expect("parsing should succeed"),
+        LicenseArg::CcBy4
+    );
+    assert_eq!(
+        "cc-by-sa-4.0".parse::<LicenseArg>().expect("parsing should succeed"),
+        LicenseArg::CcBySa4
+    );
+    assert_eq!("cc0".parse::<LicenseArg>().expect("parsing should succeed"), LicenseArg::Cc0);
+    assert_eq!("mit".parse::<LicenseArg>().expect("parsing should succeed"), LicenseArg::Mit);
+    assert_eq!(
+        "apache-2.0".parse::<LicenseArg>().expect("parsing should succeed"),
+        LicenseArg::Apache2
+    );
+    assert_eq!("gpl3".parse::<LicenseArg>().expect("parsing should succeed"), LicenseArg::Gpl3);
+    assert_eq!("gplv3".parse::<LicenseArg>().expect("parsing should succeed"), LicenseArg::Gpl3);
+    assert_eq!("bsd3".parse::<LicenseArg>().expect("parsing should succeed"), LicenseArg::Bsd3);
     assert!("invalid".parse::<LicenseArg>().is_err());
 }
 
@@ -73,10 +100,22 @@ fn test_license_default() {
 
 #[test]
 fn test_citation_format_from_str() {
-    assert_eq!("bibtex".parse::<CitationFormat>().unwrap(), CitationFormat::Bibtex);
-    assert_eq!("bib".parse::<CitationFormat>().unwrap(), CitationFormat::Bibtex);
-    assert_eq!("cff".parse::<CitationFormat>().unwrap(), CitationFormat::Cff);
-    assert_eq!("json".parse::<CitationFormat>().unwrap(), CitationFormat::Json);
+    assert_eq!(
+        "bibtex".parse::<CitationFormat>().expect("parsing should succeed"),
+        CitationFormat::Bibtex
+    );
+    assert_eq!(
+        "bib".parse::<CitationFormat>().expect("parsing should succeed"),
+        CitationFormat::Bibtex
+    );
+    assert_eq!(
+        "cff".parse::<CitationFormat>().expect("parsing should succeed"),
+        CitationFormat::Cff
+    );
+    assert_eq!(
+        "json".parse::<CitationFormat>().expect("parsing should succeed"),
+        CitationFormat::Json
+    );
     assert!("invalid".parse::<CitationFormat>().is_err());
 }
 
@@ -94,14 +133,35 @@ fn test_citation_format_default() {
 
 #[test]
 fn test_export_format_from_str() {
-    assert_eq!("notebook".parse::<ExportFormat>().unwrap(), ExportFormat::Notebook);
-    assert_eq!("ipynb".parse::<ExportFormat>().unwrap(), ExportFormat::Notebook);
-    assert_eq!("jupyter".parse::<ExportFormat>().unwrap(), ExportFormat::Notebook);
-    assert_eq!("html".parse::<ExportFormat>().unwrap(), ExportFormat::Html);
-    assert_eq!("anonymized".parse::<ExportFormat>().unwrap(), ExportFormat::AnonymizedJson);
-    assert_eq!("anon".parse::<ExportFormat>().unwrap(), ExportFormat::AnonymizedJson);
-    assert_eq!("ro-crate".parse::<ExportFormat>().unwrap(), ExportFormat::RoCrate);
-    assert_eq!("rocrate".parse::<ExportFormat>().unwrap(), ExportFormat::RoCrate);
+    assert_eq!(
+        "notebook".parse::<ExportFormat>().expect("parsing should succeed"),
+        ExportFormat::Notebook
+    );
+    assert_eq!(
+        "ipynb".parse::<ExportFormat>().expect("parsing should succeed"),
+        ExportFormat::Notebook
+    );
+    assert_eq!(
+        "jupyter".parse::<ExportFormat>().expect("parsing should succeed"),
+        ExportFormat::Notebook
+    );
+    assert_eq!("html".parse::<ExportFormat>().expect("parsing should succeed"), ExportFormat::Html);
+    assert_eq!(
+        "anonymized".parse::<ExportFormat>().expect("parsing should succeed"),
+        ExportFormat::AnonymizedJson
+    );
+    assert_eq!(
+        "anon".parse::<ExportFormat>().expect("parsing should succeed"),
+        ExportFormat::AnonymizedJson
+    );
+    assert_eq!(
+        "ro-crate".parse::<ExportFormat>().expect("parsing should succeed"),
+        ExportFormat::RoCrate
+    );
+    assert_eq!(
+        "rocrate".parse::<ExportFormat>().expect("parsing should succeed"),
+        ExportFormat::RoCrate
+    );
     assert!("invalid".parse::<ExportFormat>().is_err());
 }
 
@@ -115,10 +175,22 @@ fn test_export_format_display() {
 
 #[test]
 fn test_archive_provider_from_str() {
-    assert_eq!("zenodo".parse::<ArchiveProviderArg>().unwrap(), ArchiveProviderArg::Zenodo);
-    assert_eq!("figshare".parse::<ArchiveProviderArg>().unwrap(), ArchiveProviderArg::Figshare);
-    assert_eq!("dryad".parse::<ArchiveProviderArg>().unwrap(), ArchiveProviderArg::Dryad);
-    assert_eq!("dataverse".parse::<ArchiveProviderArg>().unwrap(), ArchiveProviderArg::Dataverse);
+    assert_eq!(
+        "zenodo".parse::<ArchiveProviderArg>().expect("parsing should succeed"),
+        ArchiveProviderArg::Zenodo
+    );
+    assert_eq!(
+        "figshare".parse::<ArchiveProviderArg>().expect("parsing should succeed"),
+        ArchiveProviderArg::Figshare
+    );
+    assert_eq!(
+        "dryad".parse::<ArchiveProviderArg>().expect("parsing should succeed"),
+        ArchiveProviderArg::Dryad
+    );
+    assert_eq!(
+        "dataverse".parse::<ArchiveProviderArg>().expect("parsing should succeed"),
+        ArchiveProviderArg::Dataverse
+    );
     assert!("invalid".parse::<ArchiveProviderArg>().is_err());
 }
 
@@ -137,11 +209,14 @@ fn test_archive_provider_default() {
 
 #[test]
 fn test_shell_type_from_str() {
-    assert_eq!("bash".parse::<ShellType>().unwrap(), ShellType::Bash);
-    assert_eq!("zsh".parse::<ShellType>().unwrap(), ShellType::Zsh);
-    assert_eq!("fish".parse::<ShellType>().unwrap(), ShellType::Fish);
-    assert_eq!("powershell".parse::<ShellType>().unwrap(), ShellType::PowerShell);
-    assert_eq!("ps".parse::<ShellType>().unwrap(), ShellType::PowerShell);
+    assert_eq!("bash".parse::<ShellType>().expect("parsing should succeed"), ShellType::Bash);
+    assert_eq!("zsh".parse::<ShellType>().expect("parsing should succeed"), ShellType::Zsh);
+    assert_eq!("fish".parse::<ShellType>().expect("parsing should succeed"), ShellType::Fish);
+    assert_eq!(
+        "powershell".parse::<ShellType>().expect("parsing should succeed"),
+        ShellType::PowerShell
+    );
+    assert_eq!("ps".parse::<ShellType>().expect("parsing should succeed"), ShellType::PowerShell);
     assert!("invalid".parse::<ShellType>().is_err());
 }
 
@@ -160,11 +235,26 @@ fn test_shell_type_default() {
 
 #[test]
 fn test_inspect_mode_from_str() {
-    assert_eq!("summary".parse::<InspectMode>().unwrap(), InspectMode::Summary);
-    assert_eq!("outliers".parse::<InspectMode>().unwrap(), InspectMode::Outliers);
-    assert_eq!("distribution".parse::<InspectMode>().unwrap(), InspectMode::Distribution);
-    assert_eq!("dist".parse::<InspectMode>().unwrap(), InspectMode::Distribution);
-    assert_eq!("schema".parse::<InspectMode>().unwrap(), InspectMode::Schema);
+    assert_eq!(
+        "summary".parse::<InspectMode>().expect("parsing should succeed"),
+        InspectMode::Summary
+    );
+    assert_eq!(
+        "outliers".parse::<InspectMode>().expect("parsing should succeed"),
+        InspectMode::Outliers
+    );
+    assert_eq!(
+        "distribution".parse::<InspectMode>().expect("parsing should succeed"),
+        InspectMode::Distribution
+    );
+    assert_eq!(
+        "dist".parse::<InspectMode>().expect("parsing should succeed"),
+        InspectMode::Distribution
+    );
+    assert_eq!(
+        "schema".parse::<InspectMode>().expect("parsing should succeed"),
+        InspectMode::Schema
+    );
     assert!("invalid".parse::<InspectMode>().is_err());
 }
 
@@ -183,10 +273,16 @@ fn test_inspect_mode_default() {
 
 #[test]
 fn test_audit_type_from_str() {
-    assert_eq!("bias".parse::<AuditType>().unwrap(), AuditType::Bias);
-    assert_eq!("fairness".parse::<AuditType>().unwrap(), AuditType::Fairness);
-    assert_eq!("privacy".parse::<AuditType>().unwrap(), AuditType::Privacy);
-    assert_eq!("security".parse::<AuditType>().unwrap(), AuditType::Security);
+    assert_eq!("bias".parse::<AuditType>().expect("parsing should succeed"), AuditType::Bias);
+    assert_eq!(
+        "fairness".parse::<AuditType>().expect("parsing should succeed"),
+        AuditType::Fairness
+    );
+    assert_eq!("privacy".parse::<AuditType>().expect("parsing should succeed"), AuditType::Privacy);
+    assert_eq!(
+        "security".parse::<AuditType>().expect("parsing should succeed"),
+        AuditType::Security
+    );
     assert!("invalid".parse::<AuditType>().is_err());
 }
 

@@ -23,7 +23,7 @@ proptest! {
         let m3 = make_model(v3.clone());
 
         let config = EnsembleConfig::uniform_average();
-        let result = ensemble_merge(&[m1, m2, m3], &config).unwrap();
+        let result = ensemble_merge(&[m1, m2, m3], &config).expect("config should be valid");
 
         for i in 0..len {
             let expected = (v1[i] + v2[i] + v3[i]) / 3.0;
@@ -50,7 +50,7 @@ proptest! {
         let m2 = make_model(v2.clone());
 
         let config = EnsembleConfig::weighted_average(vec![w1, w2]);
-        let result = ensemble_merge(&[m1, m2], &config).unwrap();
+        let result = ensemble_merge(&[m1, m2], &config).expect("config should be valid");
 
         let total = w1 + w2;
         for i in 0..len {
@@ -79,9 +79,9 @@ proptest! {
 
         let config = EnsembleConfig::uniform_average();
 
-        let r1 = ensemble_merge(&[m1.clone(), m2.clone(), m3.clone()], &config).unwrap();
-        let r2 = ensemble_merge(&[m2.clone(), m3.clone(), m1.clone()], &config).unwrap();
-        let r3 = ensemble_merge(&[m3, m1, m2], &config).unwrap();
+        let r1 = ensemble_merge(&[m1.clone(), m2.clone(), m3.clone()], &config).expect("config should be valid");
+        let r2 = ensemble_merge(&[m2.clone(), m3.clone(), m1.clone()], &config).expect("config should be valid");
+        let r3 = ensemble_merge(&[m3, m1, m2], &config).expect("config should be valid");
 
         prop_assert!(models_approx_equal(&r1, &r2, 1e-5));
         prop_assert!(models_approx_equal(&r2, &r3, 1e-5));
@@ -104,7 +104,7 @@ proptest! {
         let m3 = make_model(v3);
 
         let config = EnsembleConfig::iterative_slerp(t);
-        let result = ensemble_merge(&[m1, m2, m3], &config).unwrap();
+        let result = ensemble_merge(&[m1, m2, m3], &config).expect("config should be valid");
 
         for val in result["w"].data() {
             prop_assert!(val.is_finite(), "SLERP produced non-finite value");
@@ -127,7 +127,7 @@ proptest! {
         let config = EnsembleConfig::hierarchical(
             EnsembleStrategy::WeightedAverage { weights: vec![0.5, 0.5] }
         );
-        let result = ensemble_merge(&models, &config).unwrap();
+        let result = ensemble_merge(&models, &config).expect("config should be valid");
 
         for val in result["w"].data() {
             prop_assert!(val.is_finite());
@@ -143,7 +143,7 @@ proptest! {
 
         // Weight 1.0 for m1, 0.0 for m2 should return m1
         let config = EnsembleConfig::weighted_average(vec![1.0, 0.0]);
-        let result = ensemble_merge(&[m1.clone(), m2], &config).unwrap();
+        let result = ensemble_merge(&[m1.clone(), m2], &config).expect("config should be valid");
 
         prop_assert!(models_approx_equal(&result, &m1, 1e-5));
     }

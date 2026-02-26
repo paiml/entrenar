@@ -69,8 +69,9 @@ mod tests {
             .with_prefix("models/")
             .with_connection_string("conn");
 
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: AzureConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let parsed: AzureConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(config.account, parsed.account);
         assert_eq!(config.container, parsed.container);

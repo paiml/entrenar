@@ -24,7 +24,7 @@ proptest! {
             .collect();
 
         let gguf_bytes = write_gguf(&tensors, &[]);
-        let summary = verify_gguf(&gguf_bytes).unwrap();
+        let summary = verify_gguf(&gguf_bytes).expect("operation should succeed");
 
         prop_assert_eq!(summary.tensor_count, n_tensors as u64);
         prop_assert_eq!(summary.tensors.len(), n_tensors);
@@ -58,7 +58,7 @@ proptest! {
             .map(|i| (format!("key.{i}"), GgufValue::Uint32(i as u32)))
             .collect();
         let gguf_bytes = write_gguf(&[], &metadata);
-        let summary = verify_gguf(&gguf_bytes).unwrap();
+        let summary = verify_gguf(&gguf_bytes).expect("operation should succeed");
         prop_assert_eq!(summary.metadata_count, n_metadata as u64);
         prop_assert_eq!(summary.tensor_count, 0);
     }
@@ -76,7 +76,7 @@ proptest! {
             data: bytes,
         }];
         let gguf_bytes = write_gguf(&tensors, &[]);
-        let summary = verify_gguf(&gguf_bytes).unwrap();
+        let summary = verify_gguf(&gguf_bytes).expect("operation should succeed");
         prop_assert_eq!(summary.tensors[0].dtype, 2); // Q4_0
         prop_assert_eq!(&summary.tensors[0].shape, &vec![n_elements as u64]);
     }
@@ -94,7 +94,7 @@ proptest! {
             data: bytes,
         }];
         let gguf_bytes = write_gguf(&tensors, &[]);
-        let summary = verify_gguf(&gguf_bytes).unwrap();
+        let summary = verify_gguf(&gguf_bytes).expect("operation should succeed");
         prop_assert_eq!(summary.tensors[0].dtype, 8); // Q8_0
         prop_assert_eq!(&summary.tensors[0].shape, &vec![n_elements as u64]);
     }
@@ -122,20 +122,20 @@ proptest! {
         // Header must always be valid
         prop_assert_eq!(&gguf_bytes[0..4], b"GGUF");
         prop_assert_eq!(
-            u32::from_le_bytes(gguf_bytes[4..8].try_into().unwrap()),
+            u32::from_le_bytes(gguf_bytes[4..8].try_into().expect("conversion should succeed")),
             3
         );
         prop_assert_eq!(
-            u64::from_le_bytes(gguf_bytes[8..16].try_into().unwrap()),
+            u64::from_le_bytes(gguf_bytes[8..16].try_into().expect("conversion should succeed")),
             n_tensors as u64
         );
         prop_assert_eq!(
-            u64::from_le_bytes(gguf_bytes[16..24].try_into().unwrap()),
+            u64::from_le_bytes(gguf_bytes[16..24].try_into().expect("conversion should succeed")),
             n_metadata as u64
         );
 
         // Must verify cleanly
-        let summary = verify_gguf(&gguf_bytes).unwrap();
+        let summary = verify_gguf(&gguf_bytes).expect("operation should succeed");
         prop_assert_eq!(summary.version, 3);
         prop_assert_eq!(summary.tensor_count, n_tensors as u64);
         prop_assert_eq!(summary.metadata_count, n_metadata as u64);
@@ -160,7 +160,7 @@ proptest! {
             weights.add_tensor(name.clone(), vec![i as f32], vec![1]);
         }
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let exporter = crate::hf_pipeline::export::exporter::Exporter::new()
             .output_dir(dir.path())
             .include_metadata(false);
@@ -170,10 +170,10 @@ proptest! {
                 crate::hf_pipeline::export::format::ExportFormat::GGUF,
                 "sort.gguf",
             )
-            .unwrap();
+            .expect("operation should succeed");
 
-        let file_data = std::fs::read(dir.path().join("sort.gguf")).unwrap();
-        let summary = verify_gguf(&file_data).unwrap();
+        let file_data = std::fs::read(dir.path().join("sort.gguf")).expect("file read should succeed");
+        let summary = verify_gguf(&file_data).expect("operation should succeed");
 
         let mut sorted_names = names.clone();
         sorted_names.sort();

@@ -206,7 +206,7 @@ mod tests {
     fn test_to_json() {
         let exporter = MetricsExporter::new("test");
         let summary = sample_summary();
-        let json = exporter.to_json(&summary).unwrap();
+        let json = exporter.to_json(&summary).expect("operation should succeed");
 
         assert!(json.contains("\"prefix\": \"test\""));
         assert!(json.contains("\"loss\""));

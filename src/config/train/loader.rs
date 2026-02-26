@@ -863,7 +863,7 @@ mod tests {
 
     #[test]
     fn test_create_demo_lm_batches() {
-        let batches = create_demo_lm_batches(4, 32).unwrap();
+        let batches = create_demo_lm_batches(4, 32).expect("operation should succeed");
         assert_eq!(batches.len(), 4);
         // Each batch should have valid data
         for batch in &batches {
@@ -873,13 +873,13 @@ mod tests {
 
     #[test]
     fn test_create_demo_lm_batches_small() {
-        let batches = create_demo_lm_batches(1, 16).unwrap();
+        let batches = create_demo_lm_batches(1, 16).expect("operation should succeed");
         assert_eq!(batches.len(), 4);
     }
 
     #[test]
     fn test_create_demo_lm_batches_large_seq_len() {
-        let batches = create_demo_lm_batches(2, 512).unwrap();
+        let batches = create_demo_lm_batches(2, 512).expect("operation should succeed");
         assert_eq!(batches.len(), 4);
     }
 
@@ -887,21 +887,24 @@ mod tests {
     fn test_create_lm_batches_from_sequences() {
         let sequences =
             vec![vec![1u32, 2, 3, 4, 5], vec![6u32, 7, 8, 9, 10], vec![11u32, 12, 13, 14, 15]];
-        let batches = create_lm_batches_from_sequences(&sequences, 2, 32).unwrap();
+        let batches =
+            create_lm_batches_from_sequences(&sequences, 2, 32).expect("operation should succeed");
         assert_eq!(batches.len(), 2); // 3 sequences with batch_size 2 = 2 batches
     }
 
     #[test]
     fn test_create_lm_batches_from_sequences_single_batch() {
         let sequences = vec![vec![1u32, 2, 3], vec![4u32, 5, 6]];
-        let batches = create_lm_batches_from_sequences(&sequences, 4, 32).unwrap();
+        let batches =
+            create_lm_batches_from_sequences(&sequences, 4, 32).expect("operation should succeed");
         assert_eq!(batches.len(), 1);
     }
 
     #[test]
     fn test_create_lm_batches_from_sequences_empty() {
         let sequences: Vec<Vec<u32>> = vec![];
-        let batches = create_lm_batches_from_sequences(&sequences, 4, 32).unwrap();
+        let batches =
+            create_lm_batches_from_sequences(&sequences, 4, 32).expect("operation should succeed");
         assert!(batches.is_empty());
     }
 
@@ -911,7 +914,7 @@ mod tests {
             serde_json::json!({"input_ids": [1, 2, 3, 4, 5]}),
             serde_json::json!({"input_ids": [6, 7, 8, 9, 10]}),
         ];
-        let batches = load_pretokenized_json(&examples, 2, 32).unwrap();
+        let batches = load_pretokenized_json(&examples, 2, 32).expect("load should succeed");
         assert!(!batches.is_empty());
     }
 
@@ -919,7 +922,7 @@ mod tests {
     fn test_load_pretokenized_json_empty() {
         let examples: Vec<serde_json::Value> = vec![];
         // Falls back to demo batches
-        let batches = load_pretokenized_json(&examples, 2, 32).unwrap();
+        let batches = load_pretokenized_json(&examples, 2, 32).expect("load should succeed");
         assert!(!batches.is_empty()); // Demo batches
     }
 
@@ -928,21 +931,23 @@ mod tests {
         let examples: Vec<serde_json::Value> =
             vec![serde_json::json!({"text": "hello"}), serde_json::json!({"text": "world"})];
         // Falls back to demo batches
-        let batches = load_pretokenized_json(&examples, 2, 32).unwrap();
+        let batches = load_pretokenized_json(&examples, 2, 32).expect("load should succeed");
         assert!(!batches.is_empty());
     }
 
     #[test]
     fn test_load_lm_batches_from_json_pretokenized() {
         let json = r#"{"examples": [{"input_ids": [1, 2, 3]}, {"input_ids": [4, 5, 6]}]}"#;
-        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        let batches =
+            load_lm_batches_from_json(json, None, 2, 32, None).expect("load should succeed");
         assert!(!batches.is_empty());
     }
 
     #[test]
     fn test_load_lm_batches_from_json_array_pretokenized() {
         let json = r#"[{"input_ids": [1, 2, 3]}, {"input_ids": [4, 5, 6]}]"#;
-        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        let batches =
+            load_lm_batches_from_json(json, None, 2, 32, None).expect("load should succeed");
         assert!(!batches.is_empty());
     }
 
@@ -950,7 +955,8 @@ mod tests {
     fn test_load_lm_batches_from_json_invalid() {
         let json = "not valid json";
         // Falls back to demo batches
-        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        let batches =
+            load_lm_batches_from_json(json, None, 2, 32, None).expect("load should succeed");
         assert!(!batches.is_empty());
     }
 
@@ -958,7 +964,8 @@ mod tests {
     fn test_load_lm_batches_from_json_empty_examples() {
         let json = r#"{"examples": []}"#;
         // Falls back to demo batches
-        let batches = load_lm_batches_from_json(json, None, 2, 32, None).unwrap();
+        let batches =
+            load_lm_batches_from_json(json, None, 2, 32, None).expect("load should succeed");
         assert!(!batches.is_empty());
     }
 
@@ -991,7 +998,7 @@ mod tests {
             publish: None,
         };
 
-        let config = build_transformer_config_from_spec(&spec).unwrap();
+        let config = build_transformer_config_from_spec(&spec).expect("config should be valid");
         // Default Qwen2.5-like dimensions
         assert_eq!(config.hidden_size, 896);
         assert_eq!(config.num_attention_heads, 14);
@@ -1011,7 +1018,7 @@ mod tests {
             32,
             "text",
         )
-        .unwrap();
+        .expect("operation should succeed");
         assert!(!batches.is_empty());
     }
 
@@ -1020,7 +1027,8 @@ mod tests {
         let tokenizer = HfTokenizer::qwen2();
         let texts: Vec<String> = vec![];
         // Falls back to demo batches
-        let batches = tokenize_texts_to_batches(&texts, &tokenizer, 4, 32).unwrap();
+        let batches =
+            tokenize_texts_to_batches(&texts, &tokenizer, 4, 32).expect("operation should succeed");
         assert!(!batches.is_empty());
     }
 
@@ -1028,7 +1036,8 @@ mod tests {
     fn test_tokenize_texts_to_batches_valid() {
         let tokenizer = HfTokenizer::qwen2();
         let texts = vec!["Hello world".to_string(), "This is a test".to_string()];
-        let batches = tokenize_texts_to_batches(&texts, &tokenizer, 2, 64).unwrap();
+        let batches =
+            tokenize_texts_to_batches(&texts, &tokenizer, 2, 64).expect("operation should succeed");
         assert!(!batches.is_empty());
     }
 
@@ -1037,7 +1046,8 @@ mod tests {
         let tokenizer = HfTokenizer::qwen2();
         // Very short text that results in single token gets filtered
         let texts = vec!["a".to_string()];
-        let batches = tokenize_texts_to_batches(&texts, &tokenizer, 2, 64).unwrap();
+        let batches =
+            tokenize_texts_to_batches(&texts, &tokenizer, 2, 64).expect("operation should succeed");
         // May fall back to demo batches if single token is filtered
         assert!(!batches.is_empty());
     }
@@ -1093,12 +1103,12 @@ training:
   epochs: 5
 "#;
         let dir = std::env::temp_dir().join("entrenar_bridge_test");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("operation should succeed");
         let path = dir.join("manifest_test.yaml");
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(manifest_yaml.as_bytes()).unwrap();
+        let mut f = std::fs::File::create(&path).expect("file write should succeed");
+        f.write_all(manifest_yaml.as_bytes()).expect("file write should succeed");
 
-        let spec = load_config(&path).unwrap();
+        let spec = load_config(&path).expect("load should succeed");
         assert_eq!(spec.model.path, std::path::PathBuf::from("./models/test.safetensors"));
         assert_eq!(spec.data.train, std::path::PathBuf::from("./data/train.parquet"));
         assert_eq!(spec.data.batch_size, 16);
@@ -1126,12 +1136,12 @@ optimizer:
   lr: 0.001
 ";
         let dir = std::env::temp_dir().join("entrenar_bridge_test");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("operation should succeed");
         let path = dir.join("legacy_test.yaml");
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(legacy_yaml.as_bytes()).unwrap();
+        let mut f = std::fs::File::create(&path).expect("file write should succeed");
+        f.write_all(legacy_yaml.as_bytes()).expect("file write should succeed");
 
-        let spec = load_config(&path).unwrap();
+        let spec = load_config(&path).expect("load should succeed");
         assert_eq!(spec.optimizer.name, "adam");
         assert_eq!(spec.data.batch_size, 8);
 
@@ -1158,10 +1168,10 @@ optimizer:
             "attention_bias": true
         }"#;
         let dir = std::env::temp_dir().join("entrenar_falsify_c10");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("operation should succeed");
         let config_path = dir.join("config.json");
-        let mut f = std::fs::File::create(&config_path).unwrap();
-        f.write_all(config_json.as_bytes()).unwrap();
+        let mut f = std::fs::File::create(&config_path).expect("file write should succeed");
+        f.write_all(config_json.as_bytes()).expect("file write should succeed");
 
         let spec = TrainSpec {
             model: crate::config::schema::ModelRef {
@@ -1190,7 +1200,7 @@ optimizer:
             publish: None,
         };
 
-        let config = build_transformer_config_from_spec(&spec).unwrap();
+        let config = build_transformer_config_from_spec(&spec).expect("config should be valid");
         assert_eq!(config.hidden_size, 768);
         assert_eq!(config.num_attention_heads, 12);
         assert_eq!(config.num_hidden_layers, 6);
@@ -1213,10 +1223,10 @@ optimizer:
             "intermediate_size": 3072
         }"#;
         let dir = std::env::temp_dir().join("entrenar_falsify_c11");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("operation should succeed");
         let config_path = dir.join("config_no_hidden.json");
-        let mut f = std::fs::File::create(&config_path).unwrap();
-        f.write_all(config_json.as_bytes()).unwrap();
+        let mut f = std::fs::File::create(&config_path).expect("file write should succeed");
+        f.write_all(config_json.as_bytes()).expect("file write should succeed");
 
         let spec = TrainSpec {
             model: crate::config::schema::ModelRef {
@@ -1254,14 +1264,14 @@ optimizer:
     #[test]
     fn test_resolve_model_path_local_file() {
         let local_path = Path::new("model.safetensors");
-        let resolved = resolve_model_path(local_path).unwrap();
+        let resolved = resolve_model_path(local_path).expect("operation should succeed");
         assert_eq!(resolved, PathBuf::from("model.safetensors"));
     }
 
     #[test]
     fn test_resolve_model_path_local_dir() {
         let local_path = Path::new("./output/model.gguf");
-        let resolved = resolve_model_path(local_path).unwrap();
+        let resolved = resolve_model_path(local_path).expect("operation should succeed");
         assert_eq!(resolved, PathBuf::from("./output/model.gguf"));
     }
 

@@ -138,7 +138,7 @@ mod tests {
             backward_op.backward();
         }
 
-        let grad = logits.grad().unwrap();
+        let grad = logits.grad().expect("gradient should be available");
         // Gradient should exist and be finite
         for g in &grad {
             assert!(g.is_finite());
@@ -198,7 +198,7 @@ mod tests {
             op.backward();
         }
 
-        let grad = logits.grad().unwrap();
+        let grad = logits.grad().expect("gradient should be available");
         assert!(grad[0].is_finite());
         assert!(grad[1].is_finite());
     }

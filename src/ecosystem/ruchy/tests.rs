@@ -81,7 +81,7 @@ fn test_entrenar_session_duration() {
     // Simulate session end
     session.ended_at = Some(start + chrono::Duration::hours(2));
 
-    let duration = session.duration().unwrap();
+    let duration = session.duration().expect("operation should succeed");
     assert_eq!(duration.num_hours(), 2);
 }
 
@@ -153,7 +153,7 @@ fn test_session_to_artifact_success() {
     session.metrics.add_loss(0.3);
     session.metrics.add_loss(0.2);
 
-    let artifact = session_to_artifact(&session).unwrap();
+    let artifact = session_to_artifact(&session).expect("operation should succeed");
 
     assert_eq!(artifact.id, "sess-001");
     assert_eq!(artifact.title, "My Experiment");
@@ -182,7 +182,7 @@ fn test_session_to_artifact_with_code_only() {
         duration_ms: None,
     });
 
-    let artifact = session_to_artifact(&session).unwrap();
+    let artifact = session_to_artifact(&session).expect("operation should succeed");
     assert_eq!(artifact.id, "sess-001");
 }
 
@@ -210,14 +210,17 @@ fn test_export_json_basic() {
         .with_user("tester")
         .with_tag("export-test");
 
-    let json = session.export_json().unwrap();
+    let json = session.export_json().expect("operation should succeed");
 
     assert_eq!(json["session_id"], "export-001");
     assert_eq!(json["name"], "Export Test");
     assert_eq!(json["user"], "tester");
     assert_eq!(json["metrics"]["total_steps"], 0);
     assert_eq!(json["code_cells_count"], 0);
-    assert!(json["tags"].as_array().unwrap().contains(&"export-test".into()));
+    assert!(json["tags"]
+        .as_array()
+        .expect("operation should succeed")
+        .contains(&"export-test".into()));
 }
 
 #[test]
@@ -233,15 +236,21 @@ fn test_export_json_with_metrics() {
     session.metrics.add_accuracy(0.85);
     session.metrics.add_custom("f1", 0.78);
 
-    let json = session.export_json().unwrap();
+    let json = session.export_json().expect("operation should succeed");
 
     assert_eq!(json["metrics"]["total_steps"], 3);
     assert_eq!(json["metrics"]["final_loss"], 0.2);
     assert_eq!(json["metrics"]["best_loss"], 0.2);
     assert_eq!(json["metrics"]["final_accuracy"], 0.85);
     assert_eq!(json["metrics"]["best_accuracy"], 0.85);
-    assert_eq!(json["metrics"]["loss_history"].as_array().unwrap().len(), 3);
-    assert_eq!(json["metrics"]["accuracy_history"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        json["metrics"]["loss_history"].as_array().expect("operation should succeed").len(),
+        3
+    );
+    assert_eq!(
+        json["metrics"]["accuracy_history"].as_array().expect("operation should succeed").len(),
+        2
+    );
     assert!(json["metrics"]["custom_metrics"]["f1"].as_array().is_some());
 }
 
@@ -250,7 +259,7 @@ fn test_export_json_string() {
     let session =
         EntrenarSession::new("export-003", "String Export").with_config("batch_size", "32");
 
-    let json_str = session.export_json_string().unwrap();
+    let json_str = session.export_json_string().expect("operation should succeed");
 
     assert!(json_str.contains("\"session_id\": \"export-003\""));
     assert!(json_str.contains("\"batch_size\": \"32\""));
@@ -264,7 +273,7 @@ fn test_export_json_with_duration() {
     let start = session.created_at;
     session.ended_at = Some(start + chrono::Duration::hours(1) + chrono::Duration::minutes(30));
 
-    let json = session.export_json().unwrap();
+    let json = session.export_json().expect("operation should succeed");
 
     assert_eq!(json["duration_seconds"], 5400); // 1.5 hours = 5400 seconds
     assert!(json["ended_at"].as_str().is_some());
@@ -282,8 +291,9 @@ fn test_export_json_roundtrip() {
     session.metrics.add_loss(0.4);
     session.metrics.add_accuracy(0.9);
 
-    let json = session.export_json().unwrap();
-    let export: SessionExport = serde_json::from_value(json).unwrap();
+    let json = session.export_json().expect("operation should succeed");
+    let export: SessionExport =
+        serde_json::from_value(json).expect("JSON deserialization should succeed");
 
     assert_eq!(export.session_id, "export-005");
     assert_eq!(export.name, "Roundtrip Test");

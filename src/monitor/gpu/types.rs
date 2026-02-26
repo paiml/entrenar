@@ -179,8 +179,9 @@ mod tests {
     #[test]
     fn test_gpu_metrics_serde() {
         let metrics = GpuMetrics::mock(0);
-        let json = serde_json::to_string(&metrics).unwrap();
-        let parsed: GpuMetrics = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&metrics).expect("JSON serialization should succeed");
+        let parsed: GpuMetrics =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(metrics.device_id, parsed.device_id);
         assert_eq!(metrics.utilization_percent, parsed.utilization_percent);
     }

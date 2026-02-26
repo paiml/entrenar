@@ -461,7 +461,7 @@ mod tests {
     fn test_memory_estimation() {
         let config = DistillConfig::minimal("meta-llama/Llama-2-7b", "TinyLlama/TinyLlama-1.1B");
 
-        let estimate = Pipeline::estimate_memory(&config).unwrap();
+        let estimate = Pipeline::estimate_memory(&config).expect("config should be valid");
 
         assert!(estimate.total_bytes > 10_000_000_000);
         assert!(estimate.recommended_batch_size > 0);
@@ -496,10 +496,11 @@ mod tests {
 
     #[test]
     fn test_kd_gradient_reduces_loss() {
-        let teacher =
-            Array2::from_shape_vec((2, 4), vec![2.0, 1.0, 0.5, 0.1, 1.5, 1.2, 0.8, 0.3]).unwrap();
+        let teacher = Array2::from_shape_vec((2, 4), vec![2.0, 1.0, 0.5, 0.1, 1.5, 1.2, 0.8, 0.3])
+            .expect("operation should succeed");
         let mut student =
-            Array2::from_shape_vec((2, 4), vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2]).unwrap();
+            Array2::from_shape_vec((2, 4), vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.4, 0.3, 0.2])
+                .expect("operation should succeed");
         let labels = vec![0, 1];
         let loss_fn = DistillationLoss::new(4.0, 0.7);
 
@@ -526,11 +527,12 @@ mod tests {
 
     #[test]
     fn test_resolve_local_path_exists() {
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp file creation should succeed");
         let path = tmp.path().join("model.safetensors");
-        std::fs::write(&path, b"dummy").unwrap();
+        std::fs::write(&path, b"dummy").expect("file write should succeed");
 
-        let resolved = resolve_model_path(path.to_str().unwrap()).unwrap();
+        let resolved = resolve_model_path(path.to_str().expect("operation should succeed"))
+            .expect("operation should succeed");
         assert_eq!(resolved, path);
     }
 
@@ -547,40 +549,50 @@ mod tests {
     fn test_pipeline_execute_with_real_safetensors() {
         use safetensors::tensor::{Dtype, TensorView};
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp file creation should succeed");
 
         // Create teacher SafeTensors
         let teacher_data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.01).collect();
         let teacher_bytes: Vec<u8> = bytemuck::cast_slice(&teacher_data).to_vec();
         let teacher_views = vec![(
             "layer.weight",
-            TensorView::new(Dtype::F32, vec![16, 16], &teacher_bytes).unwrap(),
+            TensorView::new(Dtype::F32, vec![16, 16], &teacher_bytes)
+                .expect("operation should succeed"),
         )];
         let teacher_path = tmp.path().join("teacher.safetensors");
-        std::fs::write(&teacher_path, safetensors::serialize(teacher_views, None).unwrap())
-            .unwrap();
+        std::fs::write(
+            &teacher_path,
+            safetensors::serialize(teacher_views, None).expect("file write should succeed"),
+        )
+        .expect("operation should succeed");
 
         // Create student SafeTensors
         let student_data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.005).collect();
         let student_bytes: Vec<u8> = bytemuck::cast_slice(&student_data).to_vec();
         let student_views = vec![(
             "layer.weight",
-            TensorView::new(Dtype::F32, vec![16, 16], &student_bytes).unwrap(),
+            TensorView::new(Dtype::F32, vec![16, 16], &student_bytes)
+                .expect("operation should succeed"),
         )];
         let student_path = tmp.path().join("student.safetensors");
-        std::fs::write(&student_path, safetensors::serialize(student_views, None).unwrap())
-            .unwrap();
+        std::fs::write(
+            &student_path,
+            safetensors::serialize(student_views, None).expect("file write should succeed"),
+        )
+        .expect("operation should succeed");
 
         // Create config pointing to local files
         let output_dir = tmp.path().join("output");
-        let mut config =
-            DistillConfig::minimal(teacher_path.to_str().unwrap(), student_path.to_str().unwrap());
+        let mut config = DistillConfig::minimal(
+            teacher_path.to_str().expect("config should be valid"),
+            student_path.to_str().expect("config should be valid"),
+        );
         config.output.dir = output_dir.clone();
         config.training.epochs = 2;
         config.training.batch_size = 4;
 
         let pipeline = Pipeline::new(&config);
-        let result = pipeline.execute().unwrap();
+        let result = pipeline.execute().expect("operation should succeed");
 
         assert!(result.output_path.exists());
         assert!(result.metrics.steps_completed > 0);
@@ -596,40 +608,50 @@ mod tests {
     fn test_falsify_training_reduces_loss() {
         use safetensors::tensor::{Dtype, TensorView};
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp file creation should succeed");
 
         // Teacher: higher magnitude weights (stronger signal)
         let teacher_data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.02 - 2.0).collect();
         let teacher_bytes: Vec<u8> = bytemuck::cast_slice(&teacher_data).to_vec();
         let teacher_views = vec![(
             "layer.weight",
-            TensorView::new(Dtype::F32, vec![16, 16], &teacher_bytes).unwrap(),
+            TensorView::new(Dtype::F32, vec![16, 16], &teacher_bytes)
+                .expect("operation should succeed"),
         )];
         let teacher_path = tmp.path().join("teacher.safetensors");
-        std::fs::write(&teacher_path, safetensors::serialize(teacher_views, None).unwrap())
-            .unwrap();
+        std::fs::write(
+            &teacher_path,
+            safetensors::serialize(teacher_views, None).expect("file write should succeed"),
+        )
+        .expect("operation should succeed");
 
         // Student: different initialization
         let student_data: Vec<f32> = (0..256).map(|i| (i as f32) * -0.01 + 1.0).collect();
         let student_bytes: Vec<u8> = bytemuck::cast_slice(&student_data).to_vec();
         let student_views = vec![(
             "layer.weight",
-            TensorView::new(Dtype::F32, vec![16, 16], &student_bytes).unwrap(),
+            TensorView::new(Dtype::F32, vec![16, 16], &student_bytes)
+                .expect("operation should succeed"),
         )];
         let student_path = tmp.path().join("student.safetensors");
-        std::fs::write(&student_path, safetensors::serialize(student_views, None).unwrap())
-            .unwrap();
+        std::fs::write(
+            &student_path,
+            safetensors::serialize(student_views, None).expect("file write should succeed"),
+        )
+        .expect("operation should succeed");
 
         let output_dir = tmp.path().join("output");
-        let mut config =
-            DistillConfig::minimal(teacher_path.to_str().unwrap(), student_path.to_str().unwrap());
+        let mut config = DistillConfig::minimal(
+            teacher_path.to_str().expect("config should be valid"),
+            student_path.to_str().expect("config should be valid"),
+        );
         config.output.dir = output_dir;
         config.training.epochs = 5;
         config.training.batch_size = 4;
         config.training.learning_rate = 0.01;
 
         let pipeline = Pipeline::new(&config);
-        let result = pipeline.execute().unwrap();
+        let result = pipeline.execute().expect("operation should succeed");
 
         eprintln!(
             "initial_loss={}, final_loss={}, best_loss={}, steps={}",
@@ -653,28 +675,37 @@ mod tests {
     fn test_falsify_export_roundtrip() {
         use safetensors::tensor::{Dtype, TensorView};
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp file creation should succeed");
 
         // Create identical teacher/student so training doesn't matter
         let data: Vec<f32> = (0..256).map(|i| (i as f32) * 0.01).collect();
         let data_bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
-        let views =
-            vec![("layer.weight", TensorView::new(Dtype::F32, vec![16, 16], &data_bytes).unwrap())];
+        let views = vec![(
+            "layer.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &data_bytes)
+                .expect("operation should succeed"),
+        )];
         let model_path = tmp.path().join("model.safetensors");
-        std::fs::write(&model_path, safetensors::serialize(views, None).unwrap()).unwrap();
+        std::fs::write(
+            &model_path,
+            safetensors::serialize(views, None).expect("file write should succeed"),
+        )
+        .expect("file write should succeed");
 
         let output_dir = tmp.path().join("output");
-        let mut config =
-            DistillConfig::minimal(model_path.to_str().unwrap(), model_path.to_str().unwrap());
+        let mut config = DistillConfig::minimal(
+            model_path.to_str().expect("config should be valid"),
+            model_path.to_str().expect("config should be valid"),
+        );
         config.output.dir = output_dir.clone();
         config.training.epochs = 1;
         config.training.batch_size = 4;
 
         let pipeline = Pipeline::new(&config);
-        let result = pipeline.execute().unwrap();
+        let result = pipeline.execute().expect("operation should succeed");
 
         // FALSIFICATION: can we re-load the exported file?
-        let exported_data = std::fs::read(&result.output_path).unwrap();
+        let exported_data = std::fs::read(&result.output_path).expect("file read should succeed");
         let loaded = safetensors::SafeTensors::deserialize(&exported_data)
             .expect("exported SafeTensors file is not valid!");
 
@@ -686,13 +717,13 @@ mod tests {
         );
 
         // Check the data is f32 and has correct shape
-        let tensor = loaded.tensor("layer.weight").unwrap();
+        let tensor = loaded.tensor("layer.weight").expect("load should succeed");
         assert_eq!(tensor.dtype(), Dtype::F32);
         assert_eq!(tensor.shape(), &[16, 16]);
 
         // FALSIFICATION: metadata sidecar must parse as valid JSON
         let meta_path = output_dir.join("distillation_metadata.json");
-        let meta_str = std::fs::read_to_string(&meta_path).unwrap();
+        let meta_str = std::fs::read_to_string(&meta_path).expect("file read should succeed");
         let meta: entrenar::distill::DistillationCheckpoint =
             serde_json::from_str(&meta_str).expect("metadata sidecar is not valid JSON!");
         assert!(meta.temperature > 0.0);
@@ -703,27 +734,39 @@ mod tests {
     fn test_falsify_mismatched_tensor_names() {
         use safetensors::tensor::{Dtype, TensorView};
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp file creation should succeed");
 
         // Teacher has "encoder.weight"
         let data: Vec<f32> = vec![1.0; 256];
         let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
-        let teacher_views =
-            vec![("encoder.weight", TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap())];
+        let teacher_views = vec![(
+            "encoder.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &bytes).expect("encoding should succeed"),
+        )];
         let teacher_path = tmp.path().join("teacher.safetensors");
-        std::fs::write(&teacher_path, safetensors::serialize(teacher_views, None).unwrap())
-            .unwrap();
+        std::fs::write(
+            &teacher_path,
+            safetensors::serialize(teacher_views, None).expect("file write should succeed"),
+        )
+        .expect("operation should succeed");
 
         // Student has "decoder.weight" (completely different name)
-        let student_views =
-            vec![("decoder.weight", TensorView::new(Dtype::F32, vec![16, 16], &bytes).unwrap())];
+        let student_views = vec![(
+            "decoder.weight",
+            TensorView::new(Dtype::F32, vec![16, 16], &bytes).expect("operation should succeed"),
+        )];
         let student_path = tmp.path().join("student.safetensors");
-        std::fs::write(&student_path, safetensors::serialize(student_views, None).unwrap())
-            .unwrap();
+        std::fs::write(
+            &student_path,
+            safetensors::serialize(student_views, None).expect("file write should succeed"),
+        )
+        .expect("operation should succeed");
 
         let output_dir = tmp.path().join("output");
-        let mut config =
-            DistillConfig::minimal(teacher_path.to_str().unwrap(), student_path.to_str().unwrap());
+        let mut config = DistillConfig::minimal(
+            teacher_path.to_str().expect("config should be valid"),
+            student_path.to_str().expect("config should be valid"),
+        );
         config.output.dir = output_dir;
         config.training.epochs = 1;
         config.training.batch_size = 4;
@@ -740,17 +783,27 @@ mod tests {
     fn test_falsify_tiny_tensors() {
         use safetensors::tensor::{Dtype, TensorView};
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp file creation should succeed");
 
         // Single element tensor - too small for batch_size * num_classes
         let data: Vec<f32> = vec![0.5];
         let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
-        let views = vec![("w", TensorView::new(Dtype::F32, vec![1], &bytes).unwrap())];
+        let views = vec![(
+            "w",
+            TensorView::new(Dtype::F32, vec![1], &bytes).expect("operation should succeed"),
+        )];
         let path = tmp.path().join("tiny.safetensors");
-        std::fs::write(&path, safetensors::serialize(views, None).unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            safetensors::serialize(views, None).expect("file write should succeed"),
+        )
+        .expect("file write should succeed");
 
         let output_dir = tmp.path().join("output");
-        let mut config = DistillConfig::minimal(path.to_str().unwrap(), path.to_str().unwrap());
+        let mut config = DistillConfig::minimal(
+            path.to_str().expect("config should be valid"),
+            path.to_str().expect("config should be valid"),
+        );
         config.output.dir = output_dir;
         config.training.epochs = 1;
         config.training.batch_size = 2;

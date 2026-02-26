@@ -25,11 +25,11 @@ fn demo_artifact() -> (ResearchArtifact, Author) {
 
     let author1 = Author::new("Alice Smith")
         .with_orcid("0000-0002-1825-0097")
-        .unwrap()
+        .expect("operation should succeed")
         .with_affiliation(
             Affiliation::new("MIT")
                 .with_ror_id("https://ror.org/03yrm5c26")
-                .unwrap()
+                .expect("operation should succeed")
                 .with_country("US"),
         )
         .with_roles([
@@ -164,7 +164,7 @@ fn demo_preregistration() {
         .with_timestamp_proof(TimestampProof::git("abc123def456"));
 
     println!("  Signed: Yes (Ed25519)");
-    println!("  Signature valid: {}", signed.verify().unwrap());
+    println!("  Signature valid: {}", signed.verify().expect("operation should succeed"));
     println!();
 }
 
@@ -279,7 +279,7 @@ fn demo_rocrate(artifact: &ResearchArtifact) {
     println!("  Data files: {}", ro_crate.file_count());
 
     // Create ZIP
-    let zip_data = ro_crate.to_zip().unwrap();
+    let zip_data = ro_crate.to_zip().expect("operation should succeed");
     println!("  ZIP size: {} bytes", zip_data.len());
     println!();
 }

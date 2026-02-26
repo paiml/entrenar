@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn test_training_state_write_read() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let mut state = TrainingState::new(temp_dir.path());
 
         let snapshot = TrainingSnapshot {
@@ -446,28 +446,30 @@ mod tests {
             ..Default::default()
         };
 
-        state.write(&snapshot).unwrap();
+        state.write(&snapshot).expect("file write should succeed");
         assert!(state.exists());
 
-        let read_snapshot = state.read().unwrap().unwrap();
+        let read_snapshot =
+            state.read().expect("file read should succeed").expect("file read should succeed");
         assert_eq!(read_snapshot.epoch, 5);
         assert!((read_snapshot.loss - 0.42).abs() < 0.001);
     }
 
     #[test]
     fn test_training_state_caching() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let mut state = TrainingState::new(temp_dir.path());
 
         let snapshot = TrainingSnapshot { epoch: 1, ..Default::default() };
 
-        state.write(&snapshot).unwrap();
+        state.write(&snapshot).expect("file write should succeed");
 
         // First read
-        let _ = state.read().unwrap();
+        let _ = state.read().expect("file read should succeed");
 
         // Second read should return cached
-        let cached = state.read().unwrap().unwrap();
+        let cached =
+            state.read().expect("file read should succeed").expect("file read should succeed");
         assert_eq!(cached.epoch, 1);
     }
 
@@ -512,10 +514,10 @@ mod tests {
             };
 
             // Serialize
-            let json = serde_json::to_string(&snapshot).unwrap();
+            let json = serde_json::to_string(&snapshot).expect("JSON serialization should succeed");
 
             // Deserialize
-            let restored: TrainingSnapshot = serde_json::from_str(&json).unwrap();
+            let restored: TrainingSnapshot = serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
             // Verify all fields preserved
             prop_assert_eq!(restored.epoch, epoch);
@@ -605,7 +607,7 @@ mod tests {
             loss in 0.0f32..100.0,
             lr in 1e-6f32..0.1,
         ) {
-            let temp_dir = TempDir::new().unwrap();
+            let temp_dir = TempDir::new().expect("temp file creation should succeed");
             let mut state = TrainingState::new(temp_dir.path());
 
             let snapshot = TrainingSnapshot {
@@ -617,11 +619,11 @@ mod tests {
                 ..Default::default()
             };
 
-            state.write(&snapshot).unwrap();
+            state.write(&snapshot).expect("file write should succeed");
 
             // Clear cache and re-read
             state.last_modified = None;
-            let restored = state.read().unwrap().unwrap();
+            let restored = state.read().expect("file read should succeed").expect("file read should succeed");
 
             prop_assert_eq!(restored.epoch, epoch);
             prop_assert!((restored.loss - loss).abs() < 1e-5);

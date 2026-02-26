@@ -267,7 +267,7 @@ mod tests {
             DistillStrategy::combined(),
         ];
 
-        let comparison = compare(&strategies).unwrap();
+        let comparison = compare(&strategies).expect("operation should succeed");
 
         assert_eq!(comparison.results.len(), 3);
         assert!(comparison.best_by_loss.is_some());
@@ -278,7 +278,7 @@ mod tests {
     fn test_combined_is_best() {
         let strategies = vec![DistillStrategy::kd_only(), DistillStrategy::combined()];
 
-        let comparison = compare(&strategies).unwrap();
+        let comparison = compare(&strategies).expect("operation should succeed");
 
         // Combined should generally be best
         assert_eq!(comparison.best_by_accuracy.as_deref(), Some("Combined"));
@@ -288,7 +288,7 @@ mod tests {
     fn test_comparison_table() {
         let strategies = vec![DistillStrategy::kd_only(), DistillStrategy::progressive()];
 
-        let comparison = compare(&strategies).unwrap();
+        let comparison = compare(&strategies).expect("operation should succeed");
         let table = comparison.to_table();
 
         assert!(table.contains("KD-only"));
@@ -407,7 +407,7 @@ mod tests {
     fn test_comparison_significance_markers() {
         let strategies = vec![DistillStrategy::kd_only(), DistillStrategy::combined()];
 
-        let comparison = compare(&strategies).unwrap();
+        let comparison = compare(&strategies).expect("operation should succeed");
 
         // Should have one pairwise comparison
         assert_eq!(comparison.significance.len(), 1);
@@ -422,7 +422,7 @@ mod tests {
             DistillStrategy::combined(),
         ];
 
-        let comparison = compare(&strategies).unwrap();
+        let comparison = compare(&strategies).expect("operation should succeed");
 
         // 4 choose 2 = 6 pairwise comparisons
         assert_eq!(comparison.significance.len(), 6);
@@ -433,7 +433,7 @@ mod tests {
     fn test_comparison_table_star_markers() {
         let strategies = vec![DistillStrategy::kd_only(), DistillStrategy::combined()];
 
-        let comparison = compare(&strategies).unwrap();
+        let comparison = compare(&strategies).expect("operation should succeed");
         let table = comparison.to_table();
 
         // Should have star marker for best

@@ -438,7 +438,7 @@ fn test_collect_stats_text() {
 
     assert!(!stats.all_numeric);
     assert!(stats.avg_str_len.is_some());
-    assert!(stats.avg_str_len.unwrap() > 30.0);
+    assert!(stats.avg_str_len.expect("operation should succeed") > 30.0);
 }
 
 #[test]

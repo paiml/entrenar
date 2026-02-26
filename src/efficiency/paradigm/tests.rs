@@ -147,8 +147,9 @@ fn test_model_paradigm_display() {
 #[test]
 fn test_model_paradigm_serialization() {
     let paradigm = ModelParadigm::lora(32, 16.0);
-    let json = serde_json::to_string(&paradigm).unwrap();
-    let parsed: ModelParadigm = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&paradigm).expect("JSON serialization should succeed");
+    let parsed: ModelParadigm =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert!(parsed.is_parameter_efficient());
 }
@@ -343,8 +344,9 @@ fn test_model_paradigm_serialization_all_variants() {
     ];
 
     for paradigm in variants {
-        let json = serde_json::to_string(&paradigm).unwrap();
-        let parsed: ModelParadigm = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&paradigm).expect("JSON serialization should succeed");
+        let parsed: ModelParadigm =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(paradigm, parsed);
     }
 }
@@ -361,8 +363,9 @@ fn test_fine_tune_method_serde_roundtrip() {
     ];
 
     for method in methods {
-        let json = serde_json::to_string(&method).unwrap();
-        let parsed: FineTuneMethod = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&method).expect("JSON serialization should succeed");
+        let parsed: FineTuneMethod =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(method, parsed);
     }
 }

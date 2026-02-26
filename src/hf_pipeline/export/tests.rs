@@ -71,7 +71,7 @@ fn test_weights_add_tensor() {
     assert_eq!(weights.tensors.len(), 1);
     assert_eq!(weights.param_count(), 4);
 
-    let (data, shape) = weights.get_tensor("layer.0.weight").unwrap();
+    let (data, shape) = weights.get_tensor("layer.0.weight").expect("operation should succeed");
     assert_eq!(data.len(), 4);
     assert_eq!(shape, &vec![2, 2]);
 }
@@ -142,7 +142,7 @@ fn test_export_safetensors() {
     let result = exporter.export(&weights, ExportFormat::SafeTensors, "test_model.safetensors");
     assert!(result.is_ok());
 
-    let result = result.unwrap();
+    let result = result.expect("operation should succeed");
     assert_eq!(result.format, ExportFormat::SafeTensors);
     assert!(result.size_bytes > 0);
 
@@ -158,11 +158,11 @@ fn test_export_apr() {
     let result = exporter.export(&weights, ExportFormat::APR, "test_model.apr.json");
     assert!(result.is_ok());
 
-    let result = result.unwrap();
+    let result = result.expect("operation should succeed");
     assert_eq!(result.format, ExportFormat::APR);
 
     // Verify JSON is valid
-    let content = std::fs::read_to_string(&result.path).unwrap();
+    let content = std::fs::read_to_string(&result.path).expect("file read should succeed");
     assert!(content.contains("\"version\""));
     assert!(content.contains("\"tensors\""));
 
@@ -178,7 +178,7 @@ fn test_export_gguf() {
     let result = exporter.export(&weights, ExportFormat::GGUF, "test_model.gguf");
     assert!(result.is_ok());
 
-    let result = result.unwrap();
+    let result = result.expect("operation should succeed");
     assert_eq!(result.format, ExportFormat::GGUF);
 
     // Cleanup
@@ -202,7 +202,7 @@ fn test_export_auto() {
 
     let result = exporter.export_auto(&weights, "test_auto.safetensors");
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().format, ExportFormat::SafeTensors);
+    assert_eq!(result.expect("deserialization should succeed").format, ExportFormat::SafeTensors);
 
     // Cleanup
     std::fs::remove_file("/tmp/test_auto.safetensors").ok();

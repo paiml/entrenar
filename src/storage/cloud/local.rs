@@ -130,47 +130,52 @@ mod tests {
 
     #[test]
     fn test_local_backend_put_get() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
         let data = b"local test data";
-        let hash = backend.put("test.bin", data).unwrap();
+        let hash = backend.put("test.bin", data).expect("operation should succeed");
 
-        let retrieved = backend.get(&hash).unwrap();
+        let retrieved = backend.get(&hash).expect("key should exist");
         assert_eq!(retrieved, data);
     }
 
     #[test]
     fn test_local_backend_exists() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
-        let hash = backend.put("test.bin", b"data").unwrap();
-        assert!(backend.exists(&hash).unwrap());
-        assert!(!backend.exists("nonexistent").unwrap());
+        let hash = backend.put("test.bin", b"data").expect("operation should succeed");
+        assert!(backend.exists(&hash).expect("operation should succeed"));
+        assert!(!backend.exists("nonexistent").expect("operation should succeed"));
     }
 
     #[test]
     fn test_local_backend_delete() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
-        let hash = backend.put("test.bin", b"data").unwrap();
-        backend.delete(&hash).unwrap();
-        assert!(!backend.exists(&hash).unwrap());
+        let hash = backend.put("test.bin", b"data").expect("operation should succeed");
+        backend.delete(&hash).expect("operation should succeed");
+        assert!(!backend.exists(&hash).expect("operation should succeed"));
     }
 
     #[test]
     fn test_local_backend_type() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
         assert_eq!(backend.backend_type(), "local");
     }
 
     #[test]
     fn test_local_backend_get_not_found() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
         let result = backend.get("nonexistent_hash");
         assert!(result.is_err());
@@ -182,8 +187,9 @@ mod tests {
 
     #[test]
     fn test_local_backend_delete_not_found() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
         let result = backend.delete("nonexistent_hash");
         assert!(result.is_err());
@@ -191,21 +197,23 @@ mod tests {
 
     #[test]
     fn test_local_backend_get_metadata() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
         let data = b"test data for metadata";
-        let hash = backend.put("test_file.bin", data).unwrap();
+        let hash = backend.put("test_file.bin", data).expect("operation should succeed");
 
-        let meta = backend.get_metadata(&hash).unwrap();
+        let meta = backend.get_metadata(&hash).expect("operation should succeed");
         assert_eq!(meta.name, "test_file.bin");
         assert_eq!(meta.size, data.len() as u64);
     }
 
     #[test]
     fn test_local_backend_get_metadata_not_found() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
         let result = backend.get_metadata("nonexistent");
         assert!(result.is_err());
@@ -213,14 +221,15 @@ mod tests {
 
     #[test]
     fn test_local_backend_list() {
-        let tmp = TempDir::new().unwrap();
-        let backend = LocalBackend::new_and_init(tmp.path().to_path_buf()).unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
+        let backend =
+            LocalBackend::new_and_init(tmp.path().to_path_buf()).expect("operation should succeed");
 
-        backend.put("file1.bin", b"data1").unwrap();
-        backend.put("file2.bin", b"data2").unwrap();
-        backend.put("file3.bin", b"data3").unwrap();
+        backend.put("file1.bin", b"data1").expect("operation should succeed");
+        backend.put("file2.bin", b"data2").expect("operation should succeed");
+        backend.put("file3.bin", b"data3").expect("operation should succeed");
 
-        let list = backend.list().unwrap();
+        let list = backend.list().expect("operation should succeed");
         assert_eq!(list.len(), 3);
     }
 

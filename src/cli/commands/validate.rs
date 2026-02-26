@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn test_format_lora_info() {
         let spec = make_test_spec();
-        let info = format_lora_info(&spec).unwrap();
+        let info = format_lora_info(&spec).expect("operation should succeed");
         assert!(info.contains("16"));
         assert!(info.contains("32"));
         assert!(info.contains("0.1"));
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn test_format_quant_info() {
         let spec = make_test_spec();
-        let info = format_quant_info(&spec).unwrap();
+        let info = format_quant_info(&spec).expect("operation should succeed");
         assert!(info.contains('4'));
         assert!(info.contains("true"));
     }
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn test_format_merge_info() {
         let spec = make_test_spec();
-        let info = format_merge_info(&spec).unwrap();
+        let info = format_merge_info(&spec).expect("operation should succeed");
         assert!(info.contains("slerp"));
         assert!(info.contains("0.5"));
     }

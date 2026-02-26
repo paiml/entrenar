@@ -300,7 +300,7 @@ mod tests {
             return;
         }
 
-        let ctx = CudaContext::new(0).unwrap();
+        let ctx = CudaContext::new(0).expect("operation should succeed");
         let ctx = std::sync::Arc::new(ctx);
         let result = init_optim_kernel_cache(ctx);
         assert!(result.is_ok());
@@ -395,8 +395,8 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let lr = 0.001f32;
@@ -430,10 +430,11 @@ mod tests {
         );
 
         // GPU execution
-        let mut params = GpuBuffer::from_host(&ctx, &params_data).unwrap();
-        let grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
-        let mut m = GpuBuffer::from_host(&ctx, &m_data).unwrap();
-        let mut v = GpuBuffer::from_host(&ctx, &v_data).unwrap();
+        let mut params =
+            GpuBuffer::from_host(&ctx, &params_data).expect("operation should succeed");
+        let grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
+        let mut m = GpuBuffer::from_host(&ctx, &m_data).expect("operation should succeed");
+        let mut v = GpuBuffer::from_host(&ctx, &v_data).expect("operation should succeed");
 
         adamw_step_cuda(
             &mut params,
@@ -449,12 +450,12 @@ mod tests {
             n,
             &stream,
         )
-        .unwrap();
-        stream.synchronize().unwrap();
+        .expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
-        params.copy_to_host(&mut params_data).unwrap();
-        m.copy_to_host(&mut m_data).unwrap();
-        v.copy_to_host(&mut v_data).unwrap();
+        params.copy_to_host(&mut params_data).expect("operation should succeed");
+        m.copy_to_host(&mut m_data).expect("operation should succeed");
+        v.copy_to_host(&mut v_data).expect("operation should succeed");
 
         // Compare GPU vs CPU results
         for i in 0..n as usize {
@@ -487,8 +488,8 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let initial_params: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
@@ -496,10 +497,11 @@ mod tests {
         let m_data: Vec<f32> = vec![0.0; n as usize];
         let v_data: Vec<f32> = vec![0.0; n as usize];
 
-        let mut params = GpuBuffer::from_host(&ctx, &initial_params).unwrap();
-        let grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
-        let mut m = GpuBuffer::from_host(&ctx, &m_data).unwrap();
-        let mut v = GpuBuffer::from_host(&ctx, &v_data).unwrap();
+        let mut params =
+            GpuBuffer::from_host(&ctx, &initial_params).expect("operation should succeed");
+        let grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
+        let mut m = GpuBuffer::from_host(&ctx, &m_data).expect("operation should succeed");
+        let mut v = GpuBuffer::from_host(&ctx, &v_data).expect("operation should succeed");
 
         adamw_step_cuda(
             &mut params,
@@ -515,11 +517,11 @@ mod tests {
             n,
             &stream,
         )
-        .unwrap();
-        stream.synchronize().unwrap();
+        .expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
         let mut result_params = vec![0.0f32; n as usize];
-        params.copy_to_host(&mut result_params).unwrap();
+        params.copy_to_host(&mut result_params).expect("operation should succeed");
 
         // Kill mutant: params should have changed
         assert_ne!(result_params, initial_params, "mutant: AdamW params unchanged after step");
@@ -537,8 +539,8 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let params_data: Vec<f32> = vec![10.0, 10.0, 10.0, 10.0]; // Large weights
@@ -546,10 +548,11 @@ mod tests {
         let m_data: Vec<f32> = vec![0.0; n as usize];
         let v_data: Vec<f32> = vec![0.0; n as usize];
 
-        let mut params = GpuBuffer::from_host(&ctx, &params_data).unwrap();
-        let grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
-        let mut m = GpuBuffer::from_host(&ctx, &m_data).unwrap();
-        let mut v = GpuBuffer::from_host(&ctx, &v_data).unwrap();
+        let mut params =
+            GpuBuffer::from_host(&ctx, &params_data).expect("operation should succeed");
+        let grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
+        let mut m = GpuBuffer::from_host(&ctx, &m_data).expect("operation should succeed");
+        let mut v = GpuBuffer::from_host(&ctx, &v_data).expect("operation should succeed");
 
         // With zero gradients, only weight decay should affect params
         adamw_step_cuda(
@@ -566,11 +569,11 @@ mod tests {
             n,
             &stream,
         )
-        .unwrap();
-        stream.synchronize().unwrap();
+        .expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
         let mut result = vec![0.0f32; n as usize];
-        params.copy_to_host(&mut result).unwrap();
+        params.copy_to_host(&mut result).expect("operation should succeed");
 
         // With zero gradients, params should decay: p = p * (1 - lr * wd)
         let expected = 10.0 * (1.0 - 0.01 * 0.1);
@@ -589,8 +592,8 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let lr = 0.001f32;
@@ -622,10 +625,11 @@ mod tests {
         );
 
         // GPU execution
-        let mut params = GpuBuffer::from_host(&ctx, &params_data).unwrap();
-        let grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
-        let mut m = GpuBuffer::from_host(&ctx, &m_data).unwrap();
-        let mut v = GpuBuffer::from_host(&ctx, &v_data).unwrap();
+        let mut params =
+            GpuBuffer::from_host(&ctx, &params_data).expect("operation should succeed");
+        let grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
+        let mut m = GpuBuffer::from_host(&ctx, &m_data).expect("operation should succeed");
+        let mut v = GpuBuffer::from_host(&ctx, &v_data).expect("operation should succeed");
 
         adam_step_cuda(
             &mut params,
@@ -640,12 +644,12 @@ mod tests {
             n,
             &stream,
         )
-        .unwrap();
-        stream.synchronize().unwrap();
+        .expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
-        params.copy_to_host(&mut params_data).unwrap();
-        m.copy_to_host(&mut m_data).unwrap();
-        v.copy_to_host(&mut v_data).unwrap();
+        params.copy_to_host(&mut params_data).expect("operation should succeed");
+        m.copy_to_host(&mut m_data).expect("operation should succeed");
+        v.copy_to_host(&mut v_data).expect("operation should succeed");
 
         // Compare GPU vs CPU results
         for i in 0..n as usize {
@@ -665,8 +669,8 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let lr = 0.01f32;
@@ -679,10 +683,11 @@ mod tests {
         let m_data: Vec<f32> = vec![0.0; n as usize];
         let v_data: Vec<f32> = vec![0.0; n as usize];
 
-        let mut params = GpuBuffer::from_host(&ctx, &params_data).unwrap();
-        let grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
-        let mut m = GpuBuffer::from_host(&ctx, &m_data).unwrap();
-        let mut v = GpuBuffer::from_host(&ctx, &v_data).unwrap();
+        let mut params =
+            GpuBuffer::from_host(&ctx, &params_data).expect("operation should succeed");
+        let grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
+        let mut m = GpuBuffer::from_host(&ctx, &m_data).expect("operation should succeed");
+        let mut v = GpuBuffer::from_host(&ctx, &v_data).expect("operation should succeed");
 
         // Run 10 steps
         for step in 1..=10 {
@@ -699,11 +704,11 @@ mod tests {
                 n,
                 &stream,
             )
-            .unwrap();
+            .expect("operation should succeed");
         }
-        stream.synchronize().unwrap();
+        stream.synchronize().expect("operation should succeed");
 
-        params.copy_to_host(&mut params_data).unwrap();
+        params.copy_to_host(&mut params_data).expect("operation should succeed");
 
         // Params should have decreased significantly after 10 steps
         for &p in &params_data {
@@ -719,20 +724,20 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let grads_data: Vec<f32> = vec![2.0, 4.0, 6.0, 8.0];
         let scale = 0.5f32; // Scale down by half
 
-        let mut grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
+        let mut grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
 
-        gradient_clip_cuda(&mut grads, scale, n, &stream).unwrap();
-        stream.synchronize().unwrap();
+        gradient_clip_cuda(&mut grads, scale, n, &stream).expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
         let mut result = vec![0.0f32; n as usize];
-        grads.copy_to_host(&mut result).unwrap();
+        grads.copy_to_host(&mut result).expect("operation should succeed");
 
         // CPU reference
         let mut expected = grads_data.clone();
@@ -754,21 +759,21 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let grads_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
         let scale = 1.0f32; // No scaling
 
-        let mut grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
+        let mut grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
 
         // This should be a no-op (kernel not even launched)
-        gradient_clip_cuda(&mut grads, scale, n, &stream).unwrap();
-        stream.synchronize().unwrap();
+        gradient_clip_cuda(&mut grads, scale, n, &stream).expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
         let mut result = vec![0.0f32; n as usize];
-        grads.copy_to_host(&mut result).unwrap();
+        grads.copy_to_host(&mut result).expect("operation should succeed");
 
         // Gradients should be unchanged
         for (i, (&got, &exp)) in result.iter().zip(grads_data.iter()).enumerate() {
@@ -787,20 +792,20 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 4u32;
         let grads_data: Vec<f32> = vec![10.0, 20.0, 30.0, 40.0];
         let scale = 0.1f32;
 
-        let mut grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
+        let mut grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
 
-        gradient_clip_cuda(&mut grads, scale, n, &stream).unwrap();
-        stream.synchronize().unwrap();
+        gradient_clip_cuda(&mut grads, scale, n, &stream).expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
         let mut result = vec![0.0f32; n as usize];
-        grads.copy_to_host(&mut result).unwrap();
+        grads.copy_to_host(&mut result).expect("operation should succeed");
 
         // Kill mutant: result should NOT equal original
         assert_ne!(result, grads_data, "mutant: gradient clip had no effect");
@@ -820,8 +825,8 @@ mod tests {
             Some(c) => c,
             None => return,
         };
-        init_optim_kernel_cache(ctx.clone()).unwrap();
-        let stream = CudaStream::new(&ctx).unwrap();
+        init_optim_kernel_cache(ctx.clone()).expect("operation should succeed");
+        let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
         let n = 1024u32;
         let params_data: Vec<f32> = (0..n).map(|i| (i as f32) * 0.001).collect();
@@ -829,10 +834,11 @@ mod tests {
         let m_data: Vec<f32> = vec![0.0; n as usize];
         let v_data: Vec<f32> = vec![0.0; n as usize];
 
-        let mut params = GpuBuffer::from_host(&ctx, &params_data).unwrap();
-        let grads = GpuBuffer::from_host(&ctx, &grads_data).unwrap();
-        let mut m = GpuBuffer::from_host(&ctx, &m_data).unwrap();
-        let mut v = GpuBuffer::from_host(&ctx, &v_data).unwrap();
+        let mut params =
+            GpuBuffer::from_host(&ctx, &params_data).expect("operation should succeed");
+        let grads = GpuBuffer::from_host(&ctx, &grads_data).expect("operation should succeed");
+        let mut m = GpuBuffer::from_host(&ctx, &m_data).expect("operation should succeed");
+        let mut v = GpuBuffer::from_host(&ctx, &v_data).expect("operation should succeed");
 
         adamw_step_cuda(
             &mut params,
@@ -848,11 +854,11 @@ mod tests {
             n,
             &stream,
         )
-        .unwrap();
-        stream.synchronize().unwrap();
+        .expect("operation should succeed");
+        stream.synchronize().expect("operation should succeed");
 
         let mut result = vec![0.0f32; n as usize];
-        params.copy_to_host(&mut result).unwrap();
+        params.copy_to_host(&mut result).expect("operation should succeed");
 
         // Verify no NaN or Inf
         assert!(

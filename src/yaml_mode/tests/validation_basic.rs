@@ -9,7 +9,7 @@ entrenar: "1.0"
 name: "test"
 version: "1.0.0"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_ok(), "Minimal manifest should be valid");
 }
@@ -21,7 +21,7 @@ entrenar: "2.0"
 name: "test"
 version: "1.0.0"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -35,7 +35,7 @@ entrenar: "1.0"
 name: ""
 version: "1.0.0"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -49,7 +49,7 @@ entrenar: "1.0"
 name: "test"
 version: ""
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -69,7 +69,7 @@ data:
     batch_size: 0
     shuffle: true
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -87,7 +87,7 @@ training:
   epochs: 10
   max_steps: 5000
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -108,7 +108,7 @@ data:
     val: 0.3
     test: 0.3
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -125,7 +125,7 @@ version: "1.0.0"
 training:
   epochs: 0
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -144,7 +144,7 @@ training:
   gradient:
     accumulation_steps: 0
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -162,7 +162,7 @@ training:
   epochs: 10
   duration: "2h"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -180,7 +180,7 @@ training:
   max_steps: 1000
   duration: "2h"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -200,7 +200,7 @@ data:
     train: -0.5
     val: 1.5
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -219,7 +219,7 @@ optimizer:
   name: "adam"
   lr: -0.001
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();

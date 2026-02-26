@@ -121,7 +121,7 @@ fn falsify_jsonl_each_line_valid_json() {
         assert!(
             parsed.is_ok(),
             "Line {i} is not valid JSON: {line}\nError: {}",
-            parsed.err().unwrap()
+            parsed.err().expect("parsing should succeed")
         );
     }
 }
@@ -130,7 +130,8 @@ fn falsify_jsonl_each_line_valid_json() {
 fn falsify_jsonl_model_field_always_present() {
     let result = EvalResult::new("test-model");
     let jsonl = format_submission_jsonl(&result);
-    let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&jsonl).expect("JSON deserialization should succeed");
     assert_eq!(parsed["model"], "test-model");
 }
 
@@ -141,7 +142,8 @@ fn falsify_jsonl_no_inference_time_when_zero() {
     // inference_time_ms defaults to 0.0
 
     let jsonl = format_submission_jsonl(&result);
-    let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&jsonl).expect("JSON deserialization should succeed");
     assert!(parsed.get("inference_time_ms").is_none(), "Should omit inference_time_ms when 0.0");
 }
 
@@ -152,7 +154,8 @@ fn falsify_jsonl_metric_key_format() {
     result.add_score(Metric::NDCGAtK(10), 0.8);
 
     let jsonl = format_submission_jsonl(&result);
-    let parsed: serde_json::Value = serde_json::from_str(&jsonl).unwrap();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&jsonl).expect("JSON deserialization should succeed");
 
     // Submission uses pass@1 format (not pass_at_1)
     assert!(parsed.get("pass@1").is_some(), "Submission should use 'pass@1' key, got: {jsonl}");
@@ -174,8 +177,9 @@ fn falsify_publish_config_serde_roundtrip() {
         tags: vec!["nlp".to_string(), "transformer".to_string()],
     };
 
-    let json = serde_json::to_string(&config).unwrap();
-    let parsed: PublishConfig = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+    let parsed: PublishConfig =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed.repo_id, "org/model");
     assert_eq!(parsed.repo_type, RepoType::Model);
@@ -188,17 +192,19 @@ fn falsify_publish_config_serde_roundtrip() {
 #[test]
 fn falsify_repo_type_serde() {
     // RepoType should serialize as lowercase strings
-    let json = serde_json::to_string(&RepoType::Model).unwrap();
+    let json = serde_json::to_string(&RepoType::Model).expect("JSON serialization should succeed");
     assert_eq!(json, "\"model\"");
 
-    let json = serde_json::to_string(&RepoType::Dataset).unwrap();
+    let json =
+        serde_json::to_string(&RepoType::Dataset).expect("JSON serialization should succeed");
     assert_eq!(json, "\"dataset\"");
 
-    let json = serde_json::to_string(&RepoType::Space).unwrap();
+    let json = serde_json::to_string(&RepoType::Space).expect("JSON serialization should succeed");
     assert_eq!(json, "\"space\"");
 
     // And deserialize back
-    let rt: RepoType = serde_json::from_str("\"model\"").unwrap();
+    let rt: RepoType =
+        serde_json::from_str("\"model\"").expect("JSON deserialization should succeed");
     assert_eq!(rt, RepoType::Model);
 }
 

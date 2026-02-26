@@ -257,8 +257,8 @@ mod tests {
         }
         // History should be bounded to 100
         let json = c.state_json();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        let history = parsed["loss_history"].as_array().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("JSON deserialization should succeed");
+        let history = parsed["loss_history"].as_array().expect("parsing should succeed");
         assert_eq!(history.len(), 100);
     }
 
@@ -380,11 +380,11 @@ mod tests {
             c.record_loss(i as f64);
         }
         let json = c.state_json();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        let history = parsed["loss_history"].as_array().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("JSON deserialization should succeed");
+        let history = parsed["loss_history"].as_array().expect("parsing should succeed");
         assert_eq!(history.len(), 100);
         // First value should be 0.0 (no overflow yet)
-        assert_eq!(history[0].as_f64().unwrap(), 0.0);
+        assert_eq!(history[0].as_f64().expect("operation should succeed"), 0.0);
     }
 
     #[test]
@@ -394,11 +394,11 @@ mod tests {
             c.record_loss(i as f64);
         }
         let json = c.state_json();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        let history = parsed["loss_history"].as_array().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("JSON deserialization should succeed");
+        let history = parsed["loss_history"].as_array().expect("parsing should succeed");
         assert_eq!(history.len(), 100);
         // First value should be 1.0 (0.0 was removed)
-        assert_eq!(history[0].as_f64().unwrap(), 1.0);
+        assert_eq!(history[0].as_f64().expect("operation should succeed"), 1.0);
     }
 
     #[test]
@@ -408,8 +408,8 @@ mod tests {
             c.record_accuracy(i as f64 / 100.0);
         }
         let json = c.state_json();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        let history = parsed["accuracy_history"].as_array().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("JSON deserialization should succeed");
+        let history = parsed["accuracy_history"].as_array().expect("parsing should succeed");
         assert_eq!(history.len(), 100);
     }
 
@@ -544,8 +544,8 @@ mod proptests {
                 c.record_loss(i as f64);
             }
             let json = c.state_json();
-            let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-            let len = parsed["loss_history"].as_array().unwrap().len();
+            let parsed: serde_json::Value = serde_json::from_str(&json).expect("JSON deserialization should succeed");
+            let len = parsed["loss_history"].as_array().expect("parsing should succeed").len();
             prop_assert!(len <= 100);
         }
 

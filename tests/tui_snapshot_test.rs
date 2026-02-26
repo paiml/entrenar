@@ -268,8 +268,8 @@ fn test_probar_frame_sequence() {
     assert!(sequence.last().is_some());
 
     // Verify frames are different (progress is visible)
-    let first = sequence.first().unwrap();
-    let last = sequence.last().unwrap();
+    let first = sequence.first().expect("collection should not be empty");
+    let last = sequence.last().expect("collection should not be empty");
     assert!(!first.matches(last), "First and last frames should differ");
 
     // Verify intermediate frames exist
@@ -681,8 +681,14 @@ fn test_probar_frame_content_assertions() {
     assert!(frame.contains("Config"), "Should contain Config");
 
     // Test regex matching
-    assert!(frame.matches(r"Epoch.*\d+/\d+").unwrap(), "Should match epoch pattern");
-    assert!(frame.matches(r"Step.*\d+/\d+").unwrap(), "Should match step pattern");
+    assert!(
+        frame.matches(r"Epoch.*\d+/\d+").expect("operation should succeed"),
+        "Should match epoch pattern"
+    );
+    assert!(
+        frame.matches(r"Step.*\d+/\d+").expect("operation should succeed"),
+        "Should match step pattern"
+    );
 }
 
 /// Test TuiSnapshot hash consistency

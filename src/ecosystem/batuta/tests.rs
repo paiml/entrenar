@@ -77,9 +77,9 @@ fn test_fallback_pricing_set_rate() {
     let mut fallback = FallbackPricing::new();
 
     // Update existing
-    let old_rate = fallback.get_rate("t4").unwrap().hourly_rate;
+    let old_rate = fallback.get_rate("t4").expect("operation should succeed").hourly_rate;
     fallback.set_rate(GpuPricing::new("t4", 0.35, 16));
-    let new_rate = fallback.get_rate("t4").unwrap().hourly_rate;
+    let new_rate = fallback.get_rate("t4").expect("operation should succeed").hourly_rate;
     assert!((old_rate - 0.50).abs() < f64::EPSILON);
     assert!((new_rate - 0.35).abs() < f64::EPSILON);
 
@@ -93,7 +93,7 @@ fn test_batuta_client_new() {
     let client = BatutaClient::new();
     assert!(!client.is_connected());
 
-    let pricing = client.get_hourly_rate("a100-80gb").unwrap();
+    let pricing = client.get_hourly_rate("a100-80gb").expect("operation should succeed");
     assert!((pricing.hourly_rate - 3.00).abs() < f64::EPSILON);
 }
 
@@ -113,7 +113,7 @@ fn test_batuta_client_unknown_gpu() {
 #[test]
 fn test_batuta_client_get_queue_depth() {
     let client = BatutaClient::new();
-    let queue = client.get_queue_depth("a100-80gb").unwrap();
+    let queue = client.get_queue_depth("a100-80gb").expect("operation should succeed");
 
     // Default optimistic queue state
     assert_eq!(queue.queue_depth, 0);
@@ -123,7 +123,7 @@ fn test_batuta_client_get_queue_depth() {
 #[test]
 fn test_batuta_client_get_status() {
     let client = BatutaClient::new();
-    let (pricing, queue) = client.get_status("v100").unwrap();
+    let (pricing, queue) = client.get_status("v100").expect("operation should succeed");
 
     assert_eq!(pricing.gpu_type, "v100");
     assert!((pricing.hourly_rate - 2.00).abs() < f64::EPSILON);
@@ -133,7 +133,7 @@ fn test_batuta_client_get_status() {
 #[test]
 fn test_batuta_client_estimate_cost() {
     let client = BatutaClient::new();
-    let cost = client.estimate_cost("a100-80gb", 10.0).unwrap();
+    let cost = client.estimate_cost("a100-80gb", 10.0).expect("operation should succeed");
     assert!((cost - 30.0).abs() < f64::EPSILON);
 }
 
@@ -142,11 +142,11 @@ fn test_batuta_client_cheapest_gpu() {
     let client = BatutaClient::new();
 
     // Should return T4 (cheapest with 16GB)
-    let cheapest_16 = client.cheapest_gpu(16).unwrap();
+    let cheapest_16 = client.cheapest_gpu(16).expect("operation should succeed");
     assert_eq!(cheapest_16.gpu_type, "t4");
 
     // Should return something with 80GB
-    let cheapest_80 = client.cheapest_gpu(80).unwrap();
+    let cheapest_80 = client.cheapest_gpu(80).expect("operation should succeed");
     assert!(cheapest_80.memory_gb >= 80);
 
     // Should return None for impossible requirements

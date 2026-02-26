@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(dtype, GgmlType::F32);
         assert_eq!(bytes.len(), 16); // 4 floats * 4 bytes
                                      // Verify first float roundtrips
-        let val = f32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        let val = f32::from_le_bytes(bytes[0..4].try_into().expect("conversion should succeed"));
         assert!((val - 1.0).abs() < f32::EPSILON);
     }
 
@@ -314,7 +314,7 @@ mod tests {
             prop_assert_eq!(bytes.len(), n_elements * 4);
             // Verify every float
             for (i, &expected) in data.iter().enumerate() {
-                let actual = f32::from_le_bytes(bytes[i*4..(i+1)*4].try_into().unwrap());
+                let actual = f32::from_le_bytes(bytes[i*4..(i+1)*4].try_into().expect("conversion should succeed"));
                 prop_assert!(
                     (actual - expected).abs() < f32::EPSILON,
                     "element {i}: expected {expected}, got {actual}"

@@ -190,8 +190,8 @@ mod tests {
         let mut model2 = HashMap::new();
         model2.insert("w".to_string(), Tensor::from_vec(vec![0.0, 1.0], false));
 
-        let config = SlerpConfig::new(0.5).unwrap();
-        let merged = slerp_merge(&model1, &model2, &config).unwrap();
+        let config = SlerpConfig::new(0.5).expect("slerp config creation should succeed");
+        let merged = slerp_merge(&model1, &model2, &config).expect("config should be valid");
 
         // Midpoint of perpendicular unit vectors
         let expected_val = 1.0 / 2.0f32.sqrt();

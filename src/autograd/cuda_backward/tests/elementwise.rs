@@ -10,23 +10,26 @@ fn test_relu_backward_basic() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     // Test data: mix of positive and negative values
     let input_data: Vec<f32> = vec![-2.0, -1.0, 0.0, 1.0, 2.0, 3.0];
     let grad_output_data: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
     let grad_input_data: Vec<f32> = vec![0.0; 6];
 
-    let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
+    let input = GpuBuffer::from_host(&ctx, &input_data).expect("operation should succeed");
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let mut grad_input =
+        GpuBuffer::from_host(&ctx, &grad_input_data).expect("operation should succeed");
 
-    relu_backward(&input, &grad_output, &mut grad_input, &stream).unwrap();
-    stream.synchronize().unwrap();
+    relu_backward(&input, &grad_output, &mut grad_input, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; 6];
-    grad_input.copy_to_host(&mut result).unwrap();
+    grad_input.copy_to_host(&mut result).expect("operation should succeed");
 
     // CPU reference
     let expected = relu_backward_cpu(&input_data, &grad_output_data);
@@ -49,22 +52,25 @@ fn test_relu_backward_not_hardcoded() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     let input_data: Vec<f32> = vec![1.0, 2.0, 3.0]; // All positive
     let grad_output_data: Vec<f32> = vec![1.0, 2.0, 3.0];
     let grad_input_data: Vec<f32> = vec![0.0; 3];
 
-    let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
+    let input = GpuBuffer::from_host(&ctx, &input_data).expect("operation should succeed");
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let mut grad_input =
+        GpuBuffer::from_host(&ctx, &grad_input_data).expect("operation should succeed");
 
-    relu_backward(&input, &grad_output, &mut grad_input, &stream).unwrap();
-    stream.synchronize().unwrap();
+    relu_backward(&input, &grad_output, &mut grad_input, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; 3];
-    grad_input.copy_to_host(&mut result).unwrap();
+    grad_input.copy_to_host(&mut result).expect("operation should succeed");
 
     // Kill mutant: result should NOT be all zeros for positive inputs
     assert_ne!(result, vec![0.0, 0.0, 0.0], "mutant: ReLU backward returned all zeros");
@@ -83,22 +89,25 @@ fn test_gelu_backward_basic() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     let input_data: Vec<f32> = vec![-1.0, 0.0, 1.0, 2.0];
     let grad_output_data: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0];
     let grad_input_data: Vec<f32> = vec![0.0; 4];
 
-    let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
+    let input = GpuBuffer::from_host(&ctx, &input_data).expect("operation should succeed");
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let mut grad_input =
+        GpuBuffer::from_host(&ctx, &grad_input_data).expect("operation should succeed");
 
-    gelu_backward(&input, &grad_output, &mut grad_input, &stream).unwrap();
-    stream.synchronize().unwrap();
+    gelu_backward(&input, &grad_output, &mut grad_input, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; 4];
-    grad_input.copy_to_host(&mut result).unwrap();
+    grad_input.copy_to_host(&mut result).expect("operation should succeed");
 
     // CPU reference
     let expected = gelu_backward_cpu(&input_data, &grad_output_data);
@@ -121,22 +130,25 @@ fn test_gelu_backward_not_hardcoded() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     let input_data: Vec<f32> = vec![0.5, 1.0, 1.5];
     let grad_output_data: Vec<f32> = vec![1.0, 1.0, 1.0];
     let grad_input_data: Vec<f32> = vec![0.0; 3];
 
-    let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
+    let input = GpuBuffer::from_host(&ctx, &input_data).expect("operation should succeed");
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let mut grad_input =
+        GpuBuffer::from_host(&ctx, &grad_input_data).expect("operation should succeed");
 
-    gelu_backward(&input, &grad_output, &mut grad_input, &stream).unwrap();
-    stream.synchronize().unwrap();
+    gelu_backward(&input, &grad_output, &mut grad_input, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; 3];
-    grad_input.copy_to_host(&mut result).unwrap();
+    grad_input.copy_to_host(&mut result).expect("operation should succeed");
 
     // Kill mutant: verify results are different for different inputs
     assert!(
@@ -156,22 +168,25 @@ fn test_silu_backward_basic() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     let input_data: Vec<f32> = vec![-1.0, 0.0, 1.0, 2.0];
     let grad_output_data: Vec<f32> = vec![1.0, 1.0, 1.0, 1.0];
     let grad_input_data: Vec<f32> = vec![0.0; 4];
 
-    let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
+    let input = GpuBuffer::from_host(&ctx, &input_data).expect("operation should succeed");
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let mut grad_input =
+        GpuBuffer::from_host(&ctx, &grad_input_data).expect("operation should succeed");
 
-    silu_backward(&input, &grad_output, &mut grad_input, &stream).unwrap();
-    stream.synchronize().unwrap();
+    silu_backward(&input, &grad_output, &mut grad_input, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; 4];
-    grad_input.copy_to_host(&mut result).unwrap();
+    grad_input.copy_to_host(&mut result).expect("operation should succeed");
 
     // CPU reference
     let expected = silu_backward_cpu(&input_data, &grad_output_data);
@@ -194,22 +209,25 @@ fn test_silu_backward_not_hardcoded() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     let input_data: Vec<f32> = vec![0.5, 1.0, 2.0];
     let grad_output_data: Vec<f32> = vec![1.0, 1.0, 1.0];
     let grad_input_data: Vec<f32> = vec![0.0; 3];
 
-    let input = GpuBuffer::from_host(&ctx, &input_data).unwrap();
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
+    let input = GpuBuffer::from_host(&ctx, &input_data).expect("operation should succeed");
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let mut grad_input =
+        GpuBuffer::from_host(&ctx, &grad_input_data).expect("operation should succeed");
 
-    silu_backward(&input, &grad_output, &mut grad_input, &stream).unwrap();
-    stream.synchronize().unwrap();
+    silu_backward(&input, &grad_output, &mut grad_input, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; 3];
-    grad_input.copy_to_host(&mut result).unwrap();
+    grad_input.copy_to_host(&mut result).expect("operation should succeed");
 
     // Kill mutant: verify gradient at x=0 is ~0.5 (sigma(0) = 0.5)
     let grad_at_zero = silu_backward_cpu(&[0.0], &[1.0])[0];

@@ -24,11 +24,11 @@ proptest! {
         let m1 = make_model(v1);
         let m2 = make_model(v2);
 
-        let c1 = SlerpConfig::new(t).unwrap();
-        let c2 = SlerpConfig::new(1.0 - t).unwrap();
+        let c1 = SlerpConfig::new(t).expect("slerp config creation should succeed");
+        let c2 = SlerpConfig::new(1.0 - t).expect("slerp config creation should succeed");
 
-        let r1 = slerp_merge(&m1, &m2, &c1).unwrap();
-        let r2 = slerp_merge(&m2, &m1, &c2).unwrap();
+        let r1 = slerp_merge(&m1, &m2, &c1).expect("operation should succeed");
+        let r2 = slerp_merge(&m2, &m1, &c2).expect("operation should succeed");
 
         prop_assert!(
             models_approx_equal(&r1, &r2, 1e-3),
@@ -42,9 +42,9 @@ proptest! {
         t in 0.0f32..=1.0
     ) {
         let m = make_model(values);
-        let config = SlerpConfig::new(t).unwrap();
+        let config = SlerpConfig::new(t).expect("slerp config creation should succeed");
 
-        let result = slerp_merge(&m, &m, &config).unwrap();
+        let result = slerp_merge(&m, &m, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&result, &m, 1e-4),
@@ -63,9 +63,9 @@ proptest! {
 
         let m1 = make_model(v1);
         let m2 = make_model(v2);
-        let config = SlerpConfig::new(0.0).unwrap();
+        let config = SlerpConfig::new(0.0).expect("slerp config creation should succeed");
 
-        let result = slerp_merge(&m1, &m2, &config).unwrap();
+        let result = slerp_merge(&m1, &m2, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&result, &m1, 1e-5),
@@ -84,9 +84,9 @@ proptest! {
 
         let m1 = make_model(v1);
         let m2 = make_model(v2);
-        let config = SlerpConfig::new(1.0).unwrap();
+        let config = SlerpConfig::new(1.0).expect("slerp config creation should succeed");
 
-        let result = slerp_merge(&m1, &m2, &config).unwrap();
+        let result = slerp_merge(&m1, &m2, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&result, &m2, 1e-5),
@@ -105,10 +105,10 @@ proptest! {
 
         let m1 = make_model(v1);
         let m2 = make_model(v2);
-        let config = SlerpConfig::new(0.5).unwrap();
+        let config = SlerpConfig::new(0.5).expect("slerp config creation should succeed");
 
-        let r1 = slerp_merge(&m1, &m2, &config).unwrap();
-        let r2 = slerp_merge(&m2, &m1, &config).unwrap();
+        let r1 = slerp_merge(&m1, &m2, &config).expect("config should be valid");
+        let r2 = slerp_merge(&m2, &m1, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&r1, &r2, 1e-4),
@@ -133,10 +133,10 @@ proptest! {
         let m1 = make_model(v1);
         let m2 = make_model(v2);
 
-        let config = DareConfig::new(0.0).unwrap();
+        let config = DareConfig::new(0.0).expect("config should be valid");
 
-        let r1 = dare_merge(&[m1.clone(), m2.clone()], &base, &config).unwrap();
-        let r2 = dare_merge(&[m2, m1], &base, &config).unwrap();
+        let r1 = dare_merge(&[m1.clone(), m2.clone()], &base, &config).expect("config should be valid");
+        let r2 = dare_merge(&[m2, m1], &base, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&r1, &r2, 1e-5),
@@ -160,11 +160,11 @@ proptest! {
         let m2 = make_model(v2);
         let m3 = make_model(v3);
 
-        let config = DareConfig::new(0.0).unwrap();
+        let config = DareConfig::new(0.0).expect("config should be valid");
 
-        let r1 = dare_merge(&[m1.clone(), m2.clone(), m3.clone()], &base, &config).unwrap();
-        let r2 = dare_merge(&[m3.clone(), m1.clone(), m2.clone()], &base, &config).unwrap();
-        let r3 = dare_merge(&[m2, m3, m1], &base, &config).unwrap();
+        let r1 = dare_merge(&[m1.clone(), m2.clone(), m3.clone()], &base, &config).expect("config should be valid");
+        let r2 = dare_merge(&[m3.clone(), m1.clone(), m2.clone()], &base, &config).expect("config should be valid");
+        let r3 = dare_merge(&[m2, m3, m1], &base, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&r1, &r2, 1e-5) && models_approx_equal(&r2, &r3, 1e-5),
@@ -179,8 +179,8 @@ proptest! {
         let base = make_model(vec![0.0; values.len()]);
         let m = make_model(values);
 
-        let config = DareConfig::new(0.0).unwrap();
-        let result = dare_merge(&[m.clone(), m.clone()], &base, &config).unwrap();
+        let config = DareConfig::new(0.0).expect("config should be valid");
+        let result = dare_merge(&[m.clone(), m.clone()], &base, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&result, &m, 1e-5),
@@ -206,10 +206,10 @@ proptest! {
         let m1 = make_model(v1);
         let m2 = make_model(v2);
 
-        let config = TiesConfig::new(density).unwrap();
+        let config = TiesConfig::new(density).expect("config should be valid");
 
-        let r1 = ties_merge(&[m1.clone(), m2.clone()], &base, &config).unwrap();
-        let r2 = ties_merge(&[m2, m1], &base, &config).unwrap();
+        let r1 = ties_merge(&[m1.clone(), m2.clone()], &base, &config).expect("config should be valid");
+        let r2 = ties_merge(&[m2, m1], &base, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&r1, &r2, 1e-5),
@@ -234,11 +234,11 @@ proptest! {
         let m2 = make_model(v2);
         let m3 = make_model(v3);
 
-        let config = TiesConfig::new(density).unwrap();
+        let config = TiesConfig::new(density).expect("config should be valid");
 
-        let r1 = ties_merge(&[m1.clone(), m2.clone(), m3.clone()], &base, &config).unwrap();
-        let r2 = ties_merge(&[m2.clone(), m3.clone(), m1.clone()], &base, &config).unwrap();
-        let r3 = ties_merge(&[m3, m1, m2], &base, &config).unwrap();
+        let r1 = ties_merge(&[m1.clone(), m2.clone(), m3.clone()], &base, &config).expect("config should be valid");
+        let r2 = ties_merge(&[m2.clone(), m3.clone(), m1.clone()], &base, &config).expect("config should be valid");
+        let r3 = ties_merge(&[m3, m1, m2], &base, &config).expect("config should be valid");
 
         prop_assert!(
             models_approx_equal(&r1, &r2, 1e-5) && models_approx_equal(&r2, &r3, 1e-5),
@@ -255,8 +255,8 @@ proptest! {
         let base = make_model(vec![0.0; values.len()]);
         let m = make_model(values.clone());
 
-        let config = TiesConfig::new(density).unwrap();
-        let result = ties_merge(&[m.clone(), m.clone()], &base, &config).unwrap();
+        let config = TiesConfig::new(density).expect("config should be valid");
+        let result = ties_merge(&[m.clone(), m.clone()], &base, &config).expect("config should be valid");
 
         // Signs of non-zero results should match original
         let merged = result["w"].data();
@@ -294,11 +294,11 @@ proptest! {
         let m1 = make_multi_param_model(vec![("a", v1a), ("b", v1b)]);
         let m2 = make_multi_param_model(vec![("a", v2a), ("b", v2b)]);
 
-        let c1 = SlerpConfig::new(t).unwrap();
-        let c2 = SlerpConfig::new(1.0 - t).unwrap();
+        let c1 = SlerpConfig::new(t).expect("slerp config creation should succeed");
+        let c2 = SlerpConfig::new(1.0 - t).expect("slerp config creation should succeed");
 
-        let r1 = slerp_merge(&m1, &m2, &c1).unwrap();
-        let r2 = slerp_merge(&m2, &m1, &c2).unwrap();
+        let r1 = slerp_merge(&m1, &m2, &c1).expect("operation should succeed");
+        let r2 = slerp_merge(&m2, &m1, &c2).expect("operation should succeed");
 
         prop_assert!(
             models_approx_equal(&r1, &r2, 1e-3),

@@ -275,7 +275,11 @@ mod validation {
             let path = entry.path();
 
             if path.extension().is_some_and(|ext| ext == "yaml") {
-                let filename = path.file_name().unwrap().to_str().unwrap();
+                let filename = path
+                    .file_name()
+                    .expect("operation should succeed")
+                    .to_str()
+                    .expect("operation should succeed");
                 validate_yaml_file(filename);
                 count += 1;
             }

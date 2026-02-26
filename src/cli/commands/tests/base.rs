@@ -16,9 +16,9 @@ pub(super) fn create_test_config(dir: &TempDir) -> PathBuf {
     let output_path = dir.path().join("output");
 
     // Create dummy files
-    std::fs::write(&model_path, b"dummy").unwrap();
-    std::fs::write(&data_path, b"dummy").unwrap();
-    std::fs::create_dir_all(&output_path).unwrap();
+    std::fs::write(&model_path, b"dummy").expect("file write should succeed");
+    std::fs::write(&data_path, b"dummy").expect("file write should succeed");
+    std::fs::create_dir_all(&output_path).expect("operation should succeed");
 
     let config = format!(
         r"
@@ -44,13 +44,13 @@ training:
         output_path.display()
     );
 
-    std::fs::write(&config_path, config).unwrap();
+    std::fs::write(&config_path, config).expect("file write should succeed");
     config_path
 }
 
 #[test]
 fn test_validate_command_basic() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let args = ValidateArgs { config: config_path, detailed: false };
@@ -61,7 +61,7 @@ fn test_validate_command_basic() {
 
 #[test]
 fn test_validate_command_detailed() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let args = ValidateArgs { config: config_path, detailed: true };
@@ -80,7 +80,7 @@ fn test_validate_command_missing_file() {
 
 #[test]
 fn test_info_command() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let args = InfoArgs { config: config_path, format: OutputFormat::Text };
@@ -91,7 +91,7 @@ fn test_info_command() {
 
 #[test]
 fn test_init_command() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output_path = dir.path().join("new_config.yaml");
 
     let args = InitArgs {
@@ -111,7 +111,7 @@ fn test_init_command() {
 
 #[test]
 fn test_init_command_with_lora_template() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output_path = dir.path().join("lora_config.yaml");
 
     let args = InitArgs {
@@ -154,7 +154,7 @@ fn test_completion_command_fish() {
 
 #[test]
 fn test_run_command_quiet() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output_path = dir.path().join("quiet_test.yaml");
 
     let cli = Cli {
@@ -177,7 +177,7 @@ fn test_run_command_quiet() {
 
 #[test]
 fn test_run_command_verbose() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let cli = Cli {
@@ -201,10 +201,22 @@ fn test_log_levels() {
 fn test_init_template_from_str() {
     use std::str::FromStr;
 
-    assert_eq!(InitTemplate::from_str("minimal").unwrap(), InitTemplate::Minimal);
-    assert_eq!(InitTemplate::from_str("lora").unwrap(), InitTemplate::Lora);
-    assert_eq!(InitTemplate::from_str("qlora").unwrap(), InitTemplate::Qlora);
-    assert_eq!(InitTemplate::from_str("full").unwrap(), InitTemplate::Full);
+    assert_eq!(
+        InitTemplate::from_str("minimal").expect("operation should succeed"),
+        InitTemplate::Minimal
+    );
+    assert_eq!(
+        InitTemplate::from_str("lora").expect("operation should succeed"),
+        InitTemplate::Lora
+    );
+    assert_eq!(
+        InitTemplate::from_str("qlora").expect("operation should succeed"),
+        InitTemplate::Qlora
+    );
+    assert_eq!(
+        InitTemplate::from_str("full").expect("operation should succeed"),
+        InitTemplate::Full
+    );
     assert!(InitTemplate::from_str("invalid").is_err());
 }
 
@@ -212,9 +224,9 @@ fn test_init_template_from_str() {
 fn test_shell_type_from_str() {
     use std::str::FromStr;
 
-    assert_eq!(ShellType::from_str("bash").unwrap(), ShellType::Bash);
-    assert_eq!(ShellType::from_str("zsh").unwrap(), ShellType::Zsh);
-    assert_eq!(ShellType::from_str("fish").unwrap(), ShellType::Fish);
+    assert_eq!(ShellType::from_str("bash").expect("operation should succeed"), ShellType::Bash);
+    assert_eq!(ShellType::from_str("zsh").expect("operation should succeed"), ShellType::Zsh);
+    assert_eq!(ShellType::from_str("fish").expect("operation should succeed"), ShellType::Fish);
     assert!(ShellType::from_str("invalid").is_err());
 }
 
@@ -234,20 +246,21 @@ pub(super) fn create_safetensors_file(dir: &TempDir, name: &str) -> PathBuf {
     let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
     let shape = vec![2, 2];
 
-    let view = TensorView::new(Dtype::F32, shape, &bytes).unwrap();
+    let view = TensorView::new(Dtype::F32, shape, &bytes).expect("operation should succeed");
     let tensors: Vec<(&str, TensorView<'_>)> = vec![("test_tensor", view)];
 
     let mut metadata = HashMap::new();
     metadata.insert("format".to_string(), "test".to_string());
 
-    let safetensor_bytes = safetensors::serialize(tensors, Some(metadata)).unwrap();
-    std::fs::write(&path, safetensor_bytes).unwrap();
+    let safetensor_bytes =
+        safetensors::serialize(tensors, Some(metadata)).expect("operation should succeed");
+    std::fs::write(&path, safetensor_bytes).expect("file write should succeed");
     path
 }
 
 #[test]
 fn test_inspect_command_safetensors() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
 
     let args = InspectArgs {
@@ -263,7 +276,7 @@ fn test_inspect_command_safetensors() {
 
 #[test]
 fn test_inspect_command_safetensors_verbose() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
 
     let args = InspectArgs {
@@ -279,9 +292,9 @@ fn test_inspect_command_safetensors_verbose() {
 
 #[test]
 fn test_inspect_command_gguf() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let gguf_path = dir.path().join("model.gguf");
-    std::fs::write(&gguf_path, b"dummy gguf data").unwrap();
+    std::fs::write(&gguf_path, b"dummy gguf data").expect("file write should succeed");
 
     let args = InspectArgs {
         input: gguf_path,
@@ -296,9 +309,9 @@ fn test_inspect_command_gguf() {
 
 #[test]
 fn test_inspect_command_parquet() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let parquet_path = dir.path().join("data.parquet");
-    std::fs::write(&parquet_path, b"dummy parquet data").unwrap();
+    std::fs::write(&parquet_path, b"dummy parquet data").expect("file write should succeed");
 
     let args = InspectArgs {
         input: parquet_path,
@@ -313,9 +326,9 @@ fn test_inspect_command_parquet() {
 
 #[test]
 fn test_inspect_command_csv() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let csv_path = dir.path().join("data.csv");
-    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").unwrap();
+    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").expect("file write should succeed");
 
     let args = InspectArgs {
         input: csv_path,
@@ -330,9 +343,9 @@ fn test_inspect_command_csv() {
 
 #[test]
 fn test_inspect_command_outliers_mode() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let csv_path = dir.path().join("data.csv");
-    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").unwrap();
+    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").expect("file write should succeed");
 
     let args = InspectArgs {
         input: csv_path,
@@ -347,9 +360,9 @@ fn test_inspect_command_outliers_mode() {
 
 #[test]
 fn test_inspect_command_distribution_mode() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let csv_path = dir.path().join("data.csv");
-    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").unwrap();
+    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").expect("file write should succeed");
 
     let args = InspectArgs {
         input: csv_path,
@@ -364,9 +377,9 @@ fn test_inspect_command_distribution_mode() {
 
 #[test]
 fn test_inspect_command_schema_mode() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let csv_path = dir.path().join("data.csv");
-    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").unwrap();
+    std::fs::write(&csv_path, b"col1,col2\n1,2\n3,4").expect("file write should succeed");
 
     let args =
         InspectArgs { input: csv_path, mode: InspectMode::Schema, columns: None, z_threshold: 3.0 };
@@ -391,9 +404,9 @@ fn test_inspect_command_missing_file() {
 
 #[test]
 fn test_inspect_command_unsupported_format() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let txt_path = dir.path().join("data.txt");
-    std::fs::write(&txt_path, b"some text data").unwrap();
+    std::fs::write(&txt_path, b"some text data").expect("file write should succeed");
 
     let args = InspectArgs {
         input: txt_path,
@@ -413,9 +426,9 @@ fn test_inspect_command_unsupported_format() {
 
 #[test]
 fn test_bench_command_basic() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = BenchArgs {
         input: model_path,
@@ -431,9 +444,9 @@ fn test_bench_command_basic() {
 
 #[test]
 fn test_bench_command_json_output() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = BenchArgs {
         input: model_path,
@@ -449,9 +462,9 @@ fn test_bench_command_json_output() {
 
 #[test]
 fn test_bench_command_invalid_batch_sizes() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = BenchArgs {
         input: model_path,
@@ -472,9 +485,9 @@ fn test_bench_command_invalid_batch_sizes() {
 
 #[test]
 fn test_audit_command_bias() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = AuditArgs {
         input: model_path,
@@ -490,9 +503,9 @@ fn test_audit_command_bias() {
 
 #[test]
 fn test_audit_command_bias_with_protected_attr() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = AuditArgs {
         input: model_path,
@@ -508,9 +521,9 @@ fn test_audit_command_bias_with_protected_attr() {
 
 #[test]
 fn test_audit_command_bias_json_output() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = AuditArgs {
         input: model_path,
@@ -526,9 +539,9 @@ fn test_audit_command_bias_json_output() {
 
 #[test]
 fn test_audit_command_bias_fail_threshold() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = AuditArgs {
         input: model_path,
@@ -545,9 +558,9 @@ fn test_audit_command_bias_fail_threshold() {
 
 #[test]
 fn test_audit_command_fairness() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = AuditArgs {
         input: model_path,
@@ -563,9 +576,9 @@ fn test_audit_command_fairness() {
 
 #[test]
 fn test_audit_command_privacy() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = AuditArgs {
         input: model_path,
@@ -581,9 +594,9 @@ fn test_audit_command_privacy() {
 
 #[test]
 fn test_audit_command_security() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = AuditArgs {
         input: model_path,
@@ -618,9 +631,9 @@ fn test_audit_command_missing_file() {
 
 #[test]
 fn test_monitor_command_basic() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = MonitorArgs {
         input: model_path,
@@ -636,11 +649,11 @@ fn test_monitor_command_basic() {
 
 #[test]
 fn test_monitor_command_with_baseline() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
     let baseline_path = dir.path().join("baseline.json");
-    std::fs::write(&model_path, b"dummy model").unwrap();
-    std::fs::write(&baseline_path, b"{}").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
+    std::fs::write(&baseline_path, b"{}").expect("file write should succeed");
 
     let args = MonitorArgs {
         input: model_path,
@@ -656,9 +669,9 @@ fn test_monitor_command_with_baseline() {
 
 #[test]
 fn test_monitor_command_json_output() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = MonitorArgs {
         input: model_path,
@@ -674,9 +687,9 @@ fn test_monitor_command_json_output() {
 
 #[test]
 fn test_monitor_command_drift_detected() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let args = MonitorArgs {
         input: model_path,
@@ -712,7 +725,7 @@ fn test_monitor_command_missing_file() {
 
 #[test]
 fn test_merge_command_not_enough_models() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let output = dir.path().join("merged.json");
 
@@ -732,7 +745,7 @@ fn test_merge_command_not_enough_models() {
 
 #[test]
 fn test_merge_command_slerp_wrong_model_count() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let model3 = create_safetensors_file(&dir, "model3.safetensors");
@@ -754,7 +767,7 @@ fn test_merge_command_slerp_wrong_model_count() {
 
 #[test]
 fn test_merge_command_average_invalid_weights() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let output = dir.path().join("merged.json");
@@ -775,7 +788,7 @@ fn test_merge_command_average_invalid_weights() {
 
 #[test]
 fn test_merge_command_ties() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     // TIES requires at least 3 models: 1 base + 2 task-specific
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
@@ -798,7 +811,7 @@ fn test_merge_command_ties() {
 
 #[test]
 fn test_merge_command_dare() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     // DARE requires at least 3 models: 1 base + 2 task-specific
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
@@ -821,7 +834,7 @@ fn test_merge_command_dare() {
 
 #[test]
 fn test_merge_command_slerp() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let output = dir.path().join("merged.json");
@@ -842,7 +855,7 @@ fn test_merge_command_slerp() {
 
 #[test]
 fn test_merge_command_average_uniform() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let output = dir.path().join("merged.json");
@@ -863,7 +876,7 @@ fn test_merge_command_average_uniform() {
 
 #[test]
 fn test_merge_command_average_weighted() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let output = dir.path().join("merged.json");
@@ -884,7 +897,7 @@ fn test_merge_command_average_weighted() {
 
 #[test]
 fn test_merge_command_safetensors_output() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let output = dir.path().join("merged.safetensors");
@@ -909,7 +922,7 @@ fn test_merge_command_safetensors_output() {
 
 #[test]
 fn test_quantize_command_4bit() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
     let output = dir.path().join("quantized.json");
 
@@ -929,7 +942,7 @@ fn test_quantize_command_4bit() {
 
 #[test]
 fn test_quantize_command_8bit() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
     let output = dir.path().join("quantized.json");
 
@@ -949,7 +962,7 @@ fn test_quantize_command_8bit() {
 
 #[test]
 fn test_quantize_command_asymmetric() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
     let output = dir.path().join("quantized.json");
 
@@ -969,7 +982,7 @@ fn test_quantize_command_asymmetric() {
 
 #[test]
 fn test_quantize_command_per_channel() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
     let output = dir.path().join("quantized.json");
 
@@ -989,7 +1002,7 @@ fn test_quantize_command_per_channel() {
 
 #[test]
 fn test_quantize_command_invalid_bits() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
     let output = dir.path().join("quantized.json");
 
@@ -1013,7 +1026,7 @@ fn test_quantize_command_invalid_bits() {
 
 #[test]
 fn test_run_command_inspect() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
 
     let cli = Cli {
@@ -1033,9 +1046,9 @@ fn test_run_command_inspect() {
 
 #[test]
 fn test_run_command_bench() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let cli = Cli {
         verbose: false,
@@ -1055,9 +1068,9 @@ fn test_run_command_bench() {
 
 #[test]
 fn test_run_command_audit() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let cli = Cli {
         verbose: false,
@@ -1077,9 +1090,9 @@ fn test_run_command_audit() {
 
 #[test]
 fn test_run_command_monitor() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = dir.path().join("model.bin");
-    std::fs::write(&model_path, b"dummy model").unwrap();
+    std::fs::write(&model_path, b"dummy model").expect("file write should succeed");
 
     let cli = Cli {
         verbose: false,
@@ -1103,7 +1116,7 @@ fn test_run_command_monitor() {
 
 #[test]
 fn test_run_command_train() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let cli = Cli {
@@ -1129,7 +1142,7 @@ fn test_run_command_train() {
 
 #[test]
 fn test_run_command_info() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let cli = Cli {
@@ -1144,7 +1157,7 @@ fn test_run_command_info() {
 
 #[test]
 fn test_run_command_quantize() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
     let output = dir.path().join("quantized.json");
 
@@ -1167,7 +1180,7 @@ fn test_run_command_quantize() {
 
 #[test]
 fn test_run_command_merge() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let output = dir.path().join("merged.json");
@@ -1203,7 +1216,7 @@ fn test_run_command_completion() {
 
 #[test]
 fn test_run_command_normal_log_level() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output_path = dir.path().join("normal_test.yaml");
 
     let cli = Cli {

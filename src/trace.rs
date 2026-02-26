@@ -336,7 +336,8 @@ mod tests {
 
         // Inject deterministic measurements directly to avoid time-dependent sleeps
         {
-            let mut measurements = tracer.measurements.lock().unwrap();
+            let mut measurements =
+                tracer.measurements.lock().expect("lock acquisition should succeed");
             measurements.push(TraceMeasurement {
                 step: TraceStep::Matmul,
                 duration: Duration::from_millis(50),

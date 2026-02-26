@@ -112,9 +112,21 @@ mod tests {
         assert_abs_diff_eq!(global_norm, 0.245, epsilon = 1e-3);
 
         // Gradients should be unchanged
-        assert_abs_diff_eq!(params[0].grad().unwrap()[0], 0.1, epsilon = 1e-6);
-        assert_abs_diff_eq!(params[0].grad().unwrap()[1], 0.2, epsilon = 1e-6);
-        assert_abs_diff_eq!(params[1].grad().unwrap()[0], 0.1, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[0],
+            0.1,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[1],
+            0.2,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            params[1].grad().expect("gradient should be available")[0],
+            0.1,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
@@ -133,9 +145,21 @@ mod tests {
         assert_abs_diff_eq!(global_norm, 5.0, epsilon = 1e-6);
 
         // Gradients should be scaled by clip_coef = 1.0 / 5.0 = 0.2
-        assert_abs_diff_eq!(params[0].grad().unwrap()[0], 0.6, epsilon = 1e-6); // 3.0 * 0.2
-        assert_abs_diff_eq!(params[0].grad().unwrap()[1], 0.8, epsilon = 1e-6); // 4.0 * 0.2
-        assert_abs_diff_eq!(params[1].grad().unwrap()[0], 0.0, epsilon = 1e-6); // 0.0 * 0.2
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[0],
+            0.6,
+            epsilon = 1e-6
+        ); // 3.0 * 0.2
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[1],
+            0.8,
+            epsilon = 1e-6
+        ); // 4.0 * 0.2
+        assert_abs_diff_eq!(
+            params[1].grad().expect("gradient should be available")[0],
+            0.0,
+            epsilon = 1e-6
+        ); // 0.0 * 0.2
     }
 
     #[test]
@@ -150,8 +174,16 @@ mod tests {
         assert_abs_diff_eq!(global_norm, 5.0, epsilon = 1e-6);
 
         // Should not be clipped (norm == max_norm, not >)
-        assert_abs_diff_eq!(params[0].grad().unwrap()[0], 3.0, epsilon = 1e-6);
-        assert_abs_diff_eq!(params[0].grad().unwrap()[1], 4.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[0],
+            3.0,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[1],
+            4.0,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
@@ -165,8 +197,8 @@ mod tests {
         // Global norm = sqrt(10^2 + 5^2) = sqrt(125) ≈ 11.18
         let _global_norm = clip_grad_norm(&mut params, 1.0);
 
-        let grad0 = params[0].grad().unwrap()[0];
-        let grad1 = params[1].grad().unwrap()[0];
+        let grad0 = params[0].grad().expect("gradient should be available")[0];
+        let grad1 = params[1].grad().expect("gradient should be available")[0];
 
         // Relative magnitude should be preserved: grad0 / grad1 ≈ 10 / 5 = 2
         assert_abs_diff_eq!(grad0 / grad1, 2.0, epsilon = 1e-4);
@@ -200,7 +232,11 @@ mod tests {
         assert_abs_diff_eq!(global_norm, 3.0, epsilon = 1e-6);
 
         // Only params[0] should be clipped
-        assert_abs_diff_eq!(params[0].grad().unwrap()[0], 1.0, epsilon = 1e-6); // 3.0 * (1.0/3.0)
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[0],
+            1.0,
+            epsilon = 1e-6
+        ); // 3.0 * (1.0/3.0)
         assert!(params[1].grad().is_none()); // No gradient
     }
 
@@ -214,7 +250,11 @@ mod tests {
         assert_abs_diff_eq!(global_norm, 5.0, epsilon = 1e-6);
 
         // With max_norm = 0, gradients should be clipped to 0
-        assert_abs_diff_eq!(params[0].grad().unwrap()[0], 0.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[0],
+            0.0,
+            epsilon = 1e-6
+        );
     }
 
     // ── clip_grad_norm_refs tests (SSC-025) ──────────────────────────
@@ -229,9 +269,21 @@ mod tests {
         let global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
         assert_abs_diff_eq!(global_norm, 0.245, epsilon = 1e-3);
 
-        assert_abs_diff_eq!(p0.grad().unwrap()[0], 0.1, epsilon = 1e-6);
-        assert_abs_diff_eq!(p0.grad().unwrap()[1], 0.2, epsilon = 1e-6);
-        assert_abs_diff_eq!(p1.grad().unwrap()[0], 0.1, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            p0.grad().expect("gradient should be available")[0],
+            0.1,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            p0.grad().expect("gradient should be available")[1],
+            0.2,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            p1.grad().expect("gradient should be available")[0],
+            0.1,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
@@ -244,9 +296,21 @@ mod tests {
         let global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
         assert_abs_diff_eq!(global_norm, 5.0, epsilon = 1e-6);
 
-        assert_abs_diff_eq!(p0.grad().unwrap()[0], 0.6, epsilon = 1e-6);
-        assert_abs_diff_eq!(p0.grad().unwrap()[1], 0.8, epsilon = 1e-6);
-        assert_abs_diff_eq!(p1.grad().unwrap()[0], 0.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            p0.grad().expect("gradient should be available")[0],
+            0.6,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            p0.grad().expect("gradient should be available")[1],
+            0.8,
+            epsilon = 1e-6
+        );
+        assert_abs_diff_eq!(
+            p1.grad().expect("gradient should be available")[0],
+            0.0,
+            epsilon = 1e-6
+        );
     }
 
     #[test]
@@ -258,8 +322,8 @@ mod tests {
 
         let _global_norm = clip_grad_norm_refs(&mut [&mut p0, &mut p1], 1.0);
 
-        let grad0 = p0.grad().unwrap()[0];
-        let grad1 = p1.grad().unwrap()[0];
+        let grad0 = p0.grad().expect("gradient should be available")[0];
+        let grad1 = p1.grad().expect("gradient should be available")[0];
         assert_abs_diff_eq!(grad0 / grad1, 2.0, epsilon = 1e-4);
     }
 

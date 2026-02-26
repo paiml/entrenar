@@ -61,7 +61,11 @@ mod tests {
         let global_norm = clip_grad_norm(&mut params, 1.0);
 
         assert_abs_diff_eq!(global_norm, 100.0, epsilon = 1e-6);
-        assert_abs_diff_eq!(params[0].grad().unwrap()[0], 1.0, epsilon = 1e-6);
+        assert_abs_diff_eq!(
+            params[0].grad().expect("gradient should be available")[0],
+            1.0,
+            epsilon = 1e-6
+        );
 
         // Now optimizer step with clipped gradient
         let mut adam = Adam::default_params(0.1);

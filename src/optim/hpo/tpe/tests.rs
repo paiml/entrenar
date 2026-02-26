@@ -32,7 +32,7 @@ mod tests {
 
         // First suggestions should work (startup phase)
         for _i in 0..5 {
-            let trial = tpe.suggest().unwrap();
+            let trial = tpe.suggest().expect("operation should succeed");
             assert!(trial.config.contains_key("lr"));
         }
     }
@@ -44,14 +44,14 @@ mod tests {
 
         let mut tpe = TPEOptimizer::new(space);
 
-        let trial1 = tpe.suggest().unwrap();
+        let trial1 = tpe.suggest().expect("operation should succeed");
         tpe.record(trial1, 0.5, 10);
 
-        let trial2 = tpe.suggest().unwrap();
+        let trial2 = tpe.suggest().expect("operation should succeed");
         tpe.record(trial2, 0.3, 10);
 
         assert_eq!(tpe.n_trials(), 2);
-        let best = tpe.best_trial().unwrap();
+        let best = tpe.best_trial().expect("operation should succeed");
         assert_eq!(best.score, 0.3);
     }
 
@@ -71,9 +71,14 @@ mod tests {
 
         // Run startup phase
         for _i in 0..5 {
-            let trial = tpe.suggest().unwrap();
+            let trial = tpe.suggest().expect("operation should succeed");
             // Lower x values get better scores
-            let score = trial.config.get("x").unwrap().as_float().unwrap();
+            let score = trial
+                .config
+                .get("x")
+                .expect("key should exist")
+                .as_float()
+                .expect("key should exist");
             tpe.record(trial, score, 10);
         }
 
@@ -88,7 +93,7 @@ mod tests {
         space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
         let mut tpe = TPEOptimizer::new(space);
-        let trial = tpe.suggest().unwrap();
+        let trial = tpe.suggest().expect("operation should succeed");
         tpe.record_failed(trial);
 
         // Failed trials shouldn't count as completed
@@ -109,18 +114,28 @@ mod tests {
 
         // Run startup phase
         for _ in 0..3 {
-            let trial = tpe.suggest().unwrap();
-            let lr = trial.config.get("lr").unwrap().as_float().unwrap();
+            let trial = tpe.suggest().expect("operation should succeed");
+            let lr = trial
+                .config
+                .get("lr")
+                .expect("key should exist")
+                .as_float()
+                .expect("key should exist");
             tpe.record(trial, lr, 10); // Score equals lr
         }
 
         // Now TPE sampling kicks in
         for _ in 0..5 {
-            let trial = tpe.suggest().unwrap();
+            let trial = tpe.suggest().expect("operation should succeed");
             assert!(trial.config.contains_key("lr"));
             assert!(trial.config.contains_key("batch_size"));
             assert!(trial.config.contains_key("activation"));
-            let lr = trial.config.get("lr").unwrap().as_float().unwrap();
+            let lr = trial
+                .config
+                .get("lr")
+                .expect("key should exist")
+                .as_float()
+                .expect("key should exist");
             tpe.record(trial, lr, 10);
         }
 
@@ -218,7 +233,7 @@ mod property_tests {
 
             let mut tpe = TPEOptimizer::new(space);
             for i in 0..n_trials {
-                let trial = tpe.suggest().unwrap();
+                let trial = tpe.suggest().expect("operation should succeed");
                 let score = (i as f64) / 10.0;
                 tpe.record(trial, score, 10);
             }

@@ -135,8 +135,9 @@ mod tests {
     #[test]
     fn test_source_span_serialization() {
         let span = SourceSpan::line("main.rs", 5);
-        let json = serde_json::to_string(&span).unwrap();
-        let deserialized: SourceSpan = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&span).expect("JSON serialization should succeed");
+        let deserialized: SourceSpan =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(span, deserialized);
     }
 }

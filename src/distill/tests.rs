@@ -11,7 +11,8 @@ fn logits_strategy(batch_size: usize, num_classes: usize) -> impl Strategy<Value
     prop::collection::vec(prop::collection::vec(-10.0f32..10.0, num_classes), batch_size).prop_map(
         move |data| {
             let flat: Vec<f32> = data.into_iter().flatten().collect();
-            Array2::from_shape_vec((batch_size, num_classes), flat).unwrap()
+            Array2::from_shape_vec((batch_size, num_classes), flat)
+                .expect("operation should succeed")
         },
     )
 }
@@ -21,7 +22,8 @@ fn hiddens_strategy(batch_size: usize, hidden_dim: usize) -> impl Strategy<Value
     prop::collection::vec(prop::collection::vec(-5.0f32..5.0, hidden_dim), batch_size).prop_map(
         move |data| {
             let flat: Vec<f32> = data.into_iter().flatten().collect();
-            Array2::from_shape_vec((batch_size, hidden_dim), flat).unwrap()
+            Array2::from_shape_vec((batch_size, hidden_dim), flat)
+                .expect("operation should succeed")
         },
     )
 }

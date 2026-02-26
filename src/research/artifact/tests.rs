@@ -57,7 +57,7 @@ fn test_contributor_role_display() {
 fn test_artifact_with_multiple_authors() {
     let author1 = Author::new("Alice Smith")
         .with_orcid("0000-0002-1825-0097")
-        .unwrap()
+        .expect("operation should succeed")
         .with_role(ContributorRole::Conceptualization)
         .with_role(ContributorRole::WritingOriginal);
 
@@ -101,7 +101,7 @@ fn test_author_last_name() {
 fn test_affiliation_with_ror() {
     let affiliation = Affiliation::new("MIT")
         .with_ror_id("https://ror.org/03yrm5c26")
-        .unwrap()
+        .expect("operation should succeed")
         .with_country("US");
 
     assert_eq!(affiliation.name, "MIT");

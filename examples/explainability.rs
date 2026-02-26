@@ -60,7 +60,7 @@ fn main() {
         explainer.record_importances(epoch, importances);
 
         println!("Epoch {epoch}:");
-        let result = explainer.results().last().unwrap();
+        let result = explainer.results().last().expect("operation should succeed");
         for (idx, score) in &result.importances {
             let name = explainer.feature_names().map_or("unknown", |n| n[*idx].as_str());
             println!("  {name}: {score:.6}");

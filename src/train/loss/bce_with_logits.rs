@@ -198,7 +198,7 @@ mod tests {
             backward_op.backward();
         }
 
-        let grad = logits.grad().unwrap();
+        let grad = logits.grad().expect("gradient should be available");
         // For target=1 with positive logit: grad should be negative (push logit higher)
         assert!(grad[0] < 0.0, "grad[0] should be negative (target=1, logit=2.0)");
         // For target=0 with negative logit: grad should be positive (push logit lower)
@@ -221,7 +221,7 @@ mod tests {
             op.backward();
         }
 
-        let grad = logits.grad().unwrap();
+        let grad = logits.grad().expect("gradient should be available");
         // ∂L/∂x = (σ(0) - 1) / 1 = (0.5 - 1) / 1 = -0.5
         assert_relative_eq!(grad[0], -0.5, epsilon = 1e-5);
     }
@@ -303,7 +303,7 @@ mod tests {
             op.backward();
         }
 
-        let grad = logits.grad().unwrap();
+        let grad = logits.grad().expect("gradient should be available");
         assert!(grad[0].is_finite());
         assert!(grad[1].is_finite());
     }

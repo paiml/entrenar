@@ -133,8 +133,8 @@ mod tests {
             reference_curve: Some("golden.json".to_string()),
         };
 
-        let yaml = serde_yaml::to_string(&config).unwrap();
-        let parsed: MonitorConfig = serde_yaml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml::to_string(&config).expect("config should be valid");
+        let parsed: MonitorConfig = serde_yaml::from_str(&yaml).expect("parsing should succeed");
 
         assert_eq!(parsed.enabled, config.enabled);
         assert_eq!(parsed.layout, config.layout);
@@ -155,7 +155,7 @@ mod tests {
     fn test_monitor_config_from_yaml_defaults() {
         // YAML with only enabled field - tests serde defaults
         let yaml = "enabled: true\n";
-        let parsed: MonitorConfig = serde_yaml::from_str(yaml).unwrap();
+        let parsed: MonitorConfig = serde_yaml::from_str(yaml).expect("parsing should succeed");
 
         // default_true is called for show_eta
         assert!(parsed.show_eta);

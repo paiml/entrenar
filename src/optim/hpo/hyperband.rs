@@ -113,8 +113,8 @@ mod tests {
         assert!(!bracket.is_empty());
 
         // First rung should have more configs than last
-        let (n_first, r_first) = bracket.first().unwrap();
-        let (n_last, r_last) = bracket.last().unwrap();
+        let (n_first, r_first) = bracket.first().expect("collection should not be empty");
+        let (n_last, r_last) = bracket.last().expect("collection should not be empty");
         assert!(*n_first >= *n_last);
         assert!(*r_first <= *r_last);
     }

@@ -60,8 +60,9 @@ fn test_config_validate_invalid_lr() {
 fn test_config_serialize() {
     // TEST_ID: TI-005
     let config = default_config();
-    let json = serde_json::to_string(&config).unwrap();
-    let deserialized: PruneTrainerConfig = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+    let deserialized: PruneTrainerConfig =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(config.finetune_epochs, deserialized.finetune_epochs);
 }
 
@@ -96,7 +97,7 @@ fn test_trainer_calibrate() {
     let config = default_config();
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.initialize().unwrap();
+    trainer.initialize().expect("operation should succeed");
     let result = trainer.calibrate();
     assert!(result.is_ok(), "TI-012 FALSIFIED: Calibrate should succeed");
 }
@@ -107,8 +108,8 @@ fn test_trainer_prune() {
     let config = default_config();
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.initialize().unwrap();
-    trainer.calibrate().unwrap();
+    trainer.initialize().expect("operation should succeed");
+    trainer.calibrate().expect("operation should succeed");
     let result = trainer.prune();
     assert!(result.is_ok(), "TI-013 FALSIFIED: Prune should succeed");
 }
@@ -119,9 +120,9 @@ fn test_trainer_finetune() {
     let config = default_config().with_finetune_epochs(3);
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.initialize().unwrap();
-    trainer.calibrate().unwrap();
-    trainer.prune().unwrap();
+    trainer.initialize().expect("operation should succeed");
+    trainer.calibrate().expect("operation should succeed");
+    trainer.prune().expect("operation should succeed");
     let result = trainer.finetune();
     assert!(result.is_ok(), "TI-014 FALSIFIED: Finetune should succeed");
 
@@ -139,9 +140,9 @@ fn test_trainer_evaluate() {
         .with_pruning(PruningConfig::default().with_target_sparsity(0.5).with_fine_tune(false));
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.initialize().unwrap();
-    trainer.calibrate().unwrap();
-    trainer.prune().unwrap();
+    trainer.initialize().expect("operation should succeed");
+    trainer.calibrate().expect("operation should succeed");
+    trainer.prune().expect("operation should succeed");
     let result = trainer.evaluate();
     assert!(result.is_ok(), "TI-015 FALSIFIED: Evaluate should succeed");
 }
@@ -157,7 +158,7 @@ fn test_trainer_full_run() {
     assert!(trainer.is_complete());
     assert!(trainer.succeeded());
 
-    let metrics = result.unwrap();
+    let metrics = result.expect("operation should succeed");
     assert!((metrics.target_sparsity - 0.5).abs() < 1e-6);
 }
 
@@ -184,7 +185,7 @@ fn test_trainer_reset() {
     let config = default_config();
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.run().unwrap();
+    trainer.run().expect("operation should succeed");
     assert!(trainer.is_complete());
 
     trainer.reset();
@@ -199,7 +200,7 @@ fn test_trainer_metrics_access() {
     let config = default_config();
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.run().unwrap();
+    trainer.run().expect("operation should succeed");
     let metrics = trainer.metrics();
     assert!((metrics.target_sparsity - 0.5).abs() < 1e-6);
 }
@@ -210,7 +211,7 @@ fn test_trainer_pipeline_access() {
     let config = default_config();
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.run().unwrap();
+    trainer.run().expect("operation should succeed");
     assert_eq!(trainer.pipeline().stage(), PruningStage::Complete);
 }
 
@@ -283,7 +284,7 @@ fn test_trainer_calibration_required_for_wanda() {
     );
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.initialize().unwrap();
+    trainer.initialize().expect("operation should succeed");
     assert!(trainer.calibration.is_some(), "TI-040 FALSIFIED: Wanda should require calibration");
 }
 
@@ -295,7 +296,7 @@ fn test_trainer_no_calibration_for_magnitude() {
     );
     let mut trainer = PruneTrainer::new(config);
 
-    trainer.initialize().unwrap();
+    trainer.initialize().expect("operation should succeed");
     // Magnitude doesn't require calibration
     assert!(
         trainer.calibration.is_none(),
