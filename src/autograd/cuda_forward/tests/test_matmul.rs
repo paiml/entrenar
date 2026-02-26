@@ -371,3 +371,47 @@ fn test_full_forward_0_5b_dims() {
 
     eprintln!("=== Full forward simulation PASSED ===");
 }
+
+/// Test fused SwiGLU with production-sized n (seq_len * intermediate_size).
+/// Reproduces PTX JIT failure seen at n=510720.
+#[test]
+#[cfg(feature = "cuda")]
+fn test_fused_swiglu_large_n() {
+    use trueno_gpu::driver::{cuda_available, CudaContext, CudaStream, GpuBuffer};
+
+    if !cuda_available() {
+        return;
+    }
+
+    let ctx = CudaContext::new(0).unwrap();
+    let ctx = std::sync::Arc::new(ctx);
+    init_forward_kernel_cache(ctx.clone()).unwrap();
+
+    let stream = CudaStream::new(&ctx).unwrap();
+
+    // Production dimensions: seq_len=105 * intermediate=4864 = 510720
+    let n = 510_720u32;
+    eprintln!("FusedSwiGLU large n={n}...");
+
+    let gate_data = vec![0.5f32; n as usize];
+    let up_data = vec![1.0f32; n as usize];
+
+    let gate = GpuBuffer::from_host(&ctx, &gate_data).unwrap();
+    let up = GpuBuffer::from_host(&ctx, &up_data).unwrap();
+    let mut output = GpuBuffer::new(&ctx, n as usize).unwrap();
+
+    fused_swiglu_forward(&gate, &up, &mut output, n, &stream).unwrap();
+    stream.synchronize().unwrap();
+
+    let mut result = vec![0.0f32; n as usize];
+    output.copy_to_host(&mut result).unwrap();
+
+    // SiLU(0.5) * 1.0 = 0.5 * sigmoid(0.5) ≈ 0.5 * 0.6225 ≈ 0.3112
+    let expected = 0.5 * (1.0 / (1.0 + (-0.5f64).exp()));
+    assert!(
+        (f64::from(result[0]) - expected).abs() < 0.01,
+        "SwiGLU large n result[0] = {}, expected ~{expected}",
+        result[0]
+    );
+    eprintln!("FusedSwiGLU n={n} OK, result[0]={}", result[0]);
+}
