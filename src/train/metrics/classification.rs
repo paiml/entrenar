@@ -17,16 +17,9 @@ fn threshold_to_labels(
     targets: &Tensor,
     threshold: f32,
 ) -> (Vec<usize>, Vec<usize>) {
-    let y_pred: Vec<usize> = predictions
-        .data()
-        .iter()
-        .map(|&p| usize::from(p >= threshold))
-        .collect();
-    let y_true: Vec<usize> = targets
-        .data()
-        .iter()
-        .map(|&t| usize::from(t >= 0.5))
-        .collect();
+    let y_pred: Vec<usize> =
+        predictions.data().iter().map(|&p| usize::from(p >= threshold)).collect();
+    let y_true: Vec<usize> = targets.data().iter().map(|&t| usize::from(t >= 0.5)).collect();
     (y_pred, y_true)
 }
 
@@ -256,10 +249,7 @@ pub struct F1Score {
 
 impl F1Score {
     pub fn new(threshold: f32) -> Self {
-        Self {
-            precision: Precision::new(threshold),
-            recall: Recall::new(threshold),
-        }
+        Self { precision: Precision::new(threshold), recall: Recall::new(threshold) }
     }
 }
 

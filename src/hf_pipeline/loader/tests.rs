@@ -11,21 +11,13 @@ use std::path::Path;
 
 #[test]
 fn test_memory_estimate_total() {
-    let est = MemoryEstimate {
-        weights: 100,
-        activations: 50,
-        gradients: 25,
-    };
+    let est = MemoryEstimate { weights: 100, activations: 50, gradients: 25 };
     assert_eq!(est.total(), 175);
 }
 
 #[test]
 fn test_memory_estimate_fits_in() {
-    let est = MemoryEstimate {
-        weights: 100,
-        activations: 50,
-        gradients: 0,
-    };
+    let est = MemoryEstimate { weights: 100, activations: 50, gradients: 0 };
     assert!(est.fits_in(200));
     assert!(est.fits_in(150));
     assert!(!est.fits_in(100));
@@ -171,9 +163,7 @@ fn test_safetensors_extracts_tensor_names() {
     std::fs::write(&model_path, data).unwrap();
 
     let teacher = SafeTensorsTeacher::load(temp_dir.path()).unwrap();
-    assert!(teacher
-        .tensor_names()
-        .contains(&"encoder.layer.0.attention.query.weight".to_string()));
+    assert!(teacher.tensor_names().contains(&"encoder.layer.0.attention.query.weight".to_string()));
 }
 
 #[test]
@@ -204,9 +194,8 @@ fn test_safetensors_detects_layer_count() {
 
     // Create safetensors with 12 layers
     let mut tensors: Vec<(&str, &[usize])> = Vec::new();
-    let layer_names: Vec<String> = (0..12)
-        .map(|i| format!("encoder.layer.{i}.attention.weight"))
-        .collect();
+    let layer_names: Vec<String> =
+        (0..12).map(|i| format!("encoder.layer.{i}.attention.weight")).collect();
 
     for name in &layer_names {
         tensors.push((name, &[768, 768]));

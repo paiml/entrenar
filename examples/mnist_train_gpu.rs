@@ -55,11 +55,8 @@ impl SystemMetrics {
         let Some(cpu_line) = stat.lines().next() else {
             return;
         };
-        let parts: Vec<u64> = cpu_line
-            .split_whitespace()
-            .skip(1)
-            .filter_map(|s| s.parse().ok())
-            .collect();
+        let parts: Vec<u64> =
+            cpu_line.split_whitespace().skip(1).filter_map(|s| s.parse().ok()).collect();
         if parts.len() < 4 {
             return;
         }
@@ -83,12 +80,8 @@ impl SystemMetrics {
         let mut total = 0u64;
         let mut available = 0u64;
         for line in meminfo.lines() {
-            let val = || {
-                line.split_whitespace()
-                    .nth(1)
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0u64)
-            };
+            let val =
+                || line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0u64);
             if line.starts_with("MemTotal:") {
                 total = val();
             } else if line.starts_with("MemAvailable:") {
@@ -131,13 +124,9 @@ impl GpuMnistModel {
         let scale2 = (2.0 / 64.0_f32).sqrt();
 
         Self {
-            w1: (0..784 * 64)
-                .map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0)
-                .collect(),
+            w1: (0..784 * 64).map(|_| rng.random::<f32>() * scale1 - scale1 / 2.0).collect(),
             b1: vec![0.0; 64],
-            w2: (0..64 * 10)
-                .map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0)
-                .collect(),
+            w2: (0..64 * 10).map(|_| rng.random::<f32>() * scale2 - scale2 / 2.0).collect(),
             b2: vec![0.0; 10],
         }
     }
@@ -192,10 +181,7 @@ impl GpuMnistModel {
 
         let max_val = output.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = output.iter().map(|x| (x - max_val).exp()).sum();
-        output
-            .iter()
-            .map(|x| (x - max_val).exp() / exp_sum)
-            .collect()
+        output.iter().map(|x| (x - max_val).exp() / exp_sum).collect()
     }
 
     /// Backward pass with gradient update
@@ -290,11 +276,7 @@ fn load_mnist_data_gpu() -> (Vec<Vec<f32>>, Vec<usize>, Vec<Vec<f32>>, Vec<usize
     println!("Loading MNIST dataset from alimentar...");
     let dataset = mnist().expect("Failed to load MNIST");
     let split = dataset.split().expect("Failed to split dataset");
-    println!(
-        "  Train: {} | Test: {}\n",
-        split.train.len(),
-        split.test.len()
-    );
+    println!("  Train: {} | Test: {}\n", split.train.len(), split.test.len());
 
     let (train_images, train_labels) = extract_data(&split.train);
     let (test_images, test_labels) = extract_data(&split.test);
@@ -458,21 +440,13 @@ fn evaluate_and_save_gpu(
 
     println!("│ Epochs: {epoch}  │  Samples: {total_samples}  │  GPU ops: {gpu_ops_count}");
     println!("│ Final Accuracy: {final_accuracy:.1}%");
-    println!(
-        "│ Backend: {}",
-        if gpu_available {
-            "GPU (wgpu)"
-        } else {
-            "CPU (SIMD)"
-        }
-    );
+    println!("│ Backend: {}", if gpu_available { "GPU (wgpu)" } else { "CPU (SIMD)" });
     println!("└──────────────────────────────────────────────────────────────┘\n");
 
     let model_path = "/tmp/mnist_model_gpu.apr";
     println!("Saving to {model_path}...");
-    let save_opts = SaveOptions::default()
-        .with_name("MNIST Classifier (GPU)")
-        .with_description(format!(
+    let save_opts =
+        SaveOptions::default().with_name("MNIST Classifier (GPU)").with_description(format!(
             "GPU-trained 784->64->10 network. Accuracy: {:.1}%, Backend: {}",
             final_accuracy,
             if gpu_available { "GPU" } else { "CPU" }
@@ -498,14 +472,7 @@ async fn main() -> Result<(), String> {
     println!("Initializing GPU neural network...");
     let mut model = GpuMnistModel::new();
     println!("  Architecture: 784 -> 64 (ReLU) -> 10 (Softmax)");
-    println!(
-        "  Backend: {}\n",
-        if gpu_available {
-            "GPU (wgpu)"
-        } else {
-            "CPU (SIMD)"
-        }
-    );
+    println!("  Backend: {}\n", if gpu_available { "GPU (wgpu)" } else { "CPU (SIMD)" });
 
     // Training config
     let training_duration = Duration::from_secs(60);
@@ -515,9 +482,7 @@ async fn main() -> Result<(), String> {
     // Visualization
     let mut loss_display = LossCurveDisplay::new(60, 8).terminal_mode(TerminalMode::Unicode);
     let mut metrics_buffer = MetricsBuffer::new(100);
-    let mut andon = AndonSystem::new()
-        .with_sigma_threshold(5.0)
-        .with_stall_threshold(50);
+    let mut andon = AndonSystem::new().with_sigma_threshold(5.0).with_stall_threshold(50);
 
     // System metrics
     let mut sys_metrics = SystemMetrics::new();
@@ -618,21 +583,15 @@ fn extract_data(dataset: &alimentar::ArrowDataset) -> (Vec<Vec<f32>>, Vec<usize>
     for row in 0..num_rows {
         let mut pixels = Vec::with_capacity(784);
         for col in 0..784 {
-            let arr = batch
-                .column(col)
-                .as_any()
-                .downcast_ref::<Float32Array>()
-                .expect("Float32Array");
+            let arr =
+                batch.column(col).as_any().downcast_ref::<Float32Array>().expect("Float32Array");
             // alimentar already returns normalized 0-1 values
             pixels.push(arr.value(row));
         }
         images.push(pixels);
 
-        let label_arr = batch
-            .column(784)
-            .as_any()
-            .downcast_ref::<Int32Array>()
-            .expect("Int32Array");
+        let label_arr =
+            batch.column(784).as_any().downcast_ref::<Int32Array>().expect("Int32Array");
         labels.push(label_arr.value(row) as usize);
     }
 

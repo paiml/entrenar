@@ -36,10 +36,7 @@ fn test_gemm_backward_a_basic() {
     grad_a.copy_to_host(&mut result).unwrap();
 
     // Verify gradients are computed and not NaN
-    assert!(
-        !result.iter().any(|x| x.is_nan()),
-        "GEMM backward A should not produce NaN"
-    );
+    assert!(!result.iter().any(|x| x.is_nan()), "GEMM backward A should not produce NaN");
     // grad_A = [[1, 0], [0, 1]] @ [[1, 3], [2, 4]] = [[1, 3], [2, 4]]
     // Expected: [1, 3, 2, 4]
     let expected = vec![1.0, 3.0, 2.0, 4.0];
@@ -87,10 +84,7 @@ fn test_gemm_backward_b_basic() {
     grad_b.copy_to_host(&mut result).unwrap();
 
     // Verify gradients are computed and not NaN
-    assert!(
-        !result.iter().any(|x| x.is_nan()),
-        "GEMM backward B should not produce NaN"
-    );
+    assert!(!result.iter().any(|x| x.is_nan()), "GEMM backward B should not produce NaN");
     // grad_B = [[1, 3], [2, 4]] @ [[1, 0], [0, 1]] = [[1, 3], [2, 4]]
     // Expected: [1, 3, 2, 4]
     let expected = vec![1.0, 3.0, 2.0, 4.0];

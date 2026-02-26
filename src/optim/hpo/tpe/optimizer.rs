@@ -59,10 +59,7 @@ impl TPEOptimizer {
 
     /// Get number of completed trials
     pub fn n_trials(&self) -> usize {
-        self.trials
-            .iter()
-            .filter(|t| t.status == TrialStatus::Completed)
-            .count()
+        self.trials.iter().filter(|t| t.status == TrialStatus::Completed).count()
     }
 
     /// Get best trial so far
@@ -70,11 +67,7 @@ impl TPEOptimizer {
         self.trials
             .iter()
             .filter(|t| t.status == TrialStatus::Completed)
-            .min_by(|a, b| {
-                a.score
-                    .partial_cmp(&b.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+            .min_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     /// Suggest next configuration to try
@@ -111,11 +104,8 @@ impl TPEOptimizer {
 
     /// TPE sampling (internal)
     fn tpe_sample<R: Rng>(&self, rng: &mut R) -> HashMap<String, ParameterValue> {
-        let completed: Vec<_> = self
-            .trials
-            .iter()
-            .filter(|t| t.status == TrialStatus::Completed)
-            .collect();
+        let completed: Vec<_> =
+            self.trials.iter().filter(|t| t.status == TrialStatus::Completed).collect();
 
         if completed.is_empty() {
             return self.space.sample_random(rng);
@@ -126,11 +116,7 @@ impl TPEOptimizer {
         let n_good = n_good.max(1).min(completed.len() - 1);
 
         let mut sorted: Vec<_> = completed.clone();
-        sorted.sort_by(|a, b| {
-            a.score
-                .partial_cmp(&b.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        sorted.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal));
 
         let (good_trials, bad_trials) = sorted.split_at(n_good);
 
@@ -154,42 +140,23 @@ impl TPEOptimizer {
         rng: &mut R,
     ) -> ParameterValue {
         match domain {
-            ParameterDomain::Continuous {
-                low,
-                high,
-                log_scale,
-            } => {
+            ParameterDomain::Continuous { low, high, log_scale } => {
                 // Extract values from trials
                 let good_values: Vec<f64> = good_trials
                     .iter()
                     .filter_map(|t| t.config.get(name)?.as_float())
-                    .map(|v| {
-                        if *log_scale {
-                            v.max(f64::MIN_POSITIVE).ln()
-                        } else {
-                            v
-                        }
-                    })
+                    .map(|v| if *log_scale { v.max(f64::MIN_POSITIVE).ln() } else { v })
                     .collect();
 
                 let bad_values: Vec<f64> = bad_trials
                     .iter()
                     .filter_map(|t| t.config.get(name)?.as_float())
-                    .map(|v| {
-                        if *log_scale {
-                            v.max(f64::MIN_POSITIVE).ln()
-                        } else {
-                            v
-                        }
-                    })
+                    .map(|v| if *log_scale { v.max(f64::MIN_POSITIVE).ln() } else { v })
                     .collect();
 
                 // Sample from l(x) / g(x) using simple KDE approximation
                 let (effective_low, effective_high) = if *log_scale {
-                    (
-                        low.max(f64::MIN_POSITIVE).ln(),
-                        high.max(f64::MIN_POSITIVE).ln(),
-                    )
+                    (low.max(f64::MIN_POSITIVE).ln(), high.max(f64::MIN_POSITIVE).ln())
                 } else {
                     (*low, *high)
                 };
@@ -208,15 +175,11 @@ impl TPEOptimizer {
             }
             ParameterDomain::Discrete { low, high } => {
                 // Extract values
-                let good_values: Vec<i64> = good_trials
-                    .iter()
-                    .filter_map(|t| t.config.get(name)?.as_int())
-                    .collect();
+                let good_values: Vec<i64> =
+                    good_trials.iter().filter_map(|t| t.config.get(name)?.as_int()).collect();
 
-                let bad_values: Vec<i64> = bad_trials
-                    .iter()
-                    .filter_map(|t| t.config.get(name)?.as_int())
-                    .collect();
+                let bad_values: Vec<i64> =
+                    bad_trials.iter().filter_map(|t| t.config.get(name)?.as_int()).collect();
 
                 let value = sample_ei_ratio_discrete(&good_values, &bad_values, *low, *high, rng);
                 ParameterValue::Int(value)
@@ -254,10 +217,7 @@ impl TPEOptimizer {
                 }
 
                 ParameterValue::Categorical(
-                    choices
-                        .last()
-                        .expect("choices is non-empty per validate()")
-                        .clone(),
+                    choices.last().expect("choices is non-empty per validate()").clone(),
                 )
             }
         }

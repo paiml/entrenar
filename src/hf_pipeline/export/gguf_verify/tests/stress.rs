@@ -16,11 +16,7 @@ fn test_falsify_stress_100_tensors() {
         .output_dir(dir.path())
         .include_metadata(false);
     let result = exporter
-        .export(
-            &weights,
-            crate::hf_pipeline::export::format::ExportFormat::GGUF,
-            "stress100.gguf",
-        )
+        .export(&weights, crate::hf_pipeline::export::format::ExportFormat::GGUF, "stress100.gguf")
         .unwrap();
     assert_eq!(result.num_tensors, 100);
 
@@ -110,9 +106,7 @@ fn test_falsify_all_16_metadata_combinations() {
 
         let dir = tempfile::tempdir().unwrap();
         let exporter = Exporter::new().output_dir(dir.path());
-        exporter
-            .export(&weights, ExportFormat::GGUF, "meta.gguf")
-            .unwrap();
+        exporter.export(&weights, ExportFormat::GGUF, "meta.gguf").unwrap();
 
         let file_data = std::fs::read(dir.path().join("meta.gguf")).unwrap();
         let summary = verify_gguf(&file_data).unwrap();
@@ -135,22 +129,14 @@ fn test_falsify_all_16_metadata_combinations() {
 fn test_falsify_magic_bytes_survive_all_quant_modes() {
     use crate::hf_pipeline::export::{ExportFormat, Exporter, ModelWeights};
 
-    for quant in [
-        GgufQuantization::None,
-        GgufQuantization::Q4_0,
-        GgufQuantization::Q8_0,
-    ] {
+    for quant in [GgufQuantization::None, GgufQuantization::Q4_0, GgufQuantization::Q8_0] {
         let mut weights = ModelWeights::new();
         weights.add_tensor("w", vec![1.0; 64], vec![64]);
 
         let dir = tempfile::tempdir().unwrap();
-        let exporter = Exporter::new()
-            .output_dir(dir.path())
-            .gguf_quantization(quant)
-            .include_metadata(false);
-        exporter
-            .export(&weights, ExportFormat::GGUF, "magic.gguf")
-            .unwrap();
+        let exporter =
+            Exporter::new().output_dir(dir.path()).gguf_quantization(quant).include_metadata(false);
+        exporter.export(&weights, ExportFormat::GGUF, "magic.gguf").unwrap();
 
         let file_data = std::fs::read(dir.path().join("magic.gguf")).unwrap();
         assert_eq!(&file_data[0..4], b"GGUF", "magic bytes wrong for {quant:?}");
@@ -176,11 +162,7 @@ fn test_falsify_file_size_grows_with_tensor_count() {
             .output_dir(dir.path())
             .include_metadata(false);
         let result = exporter
-            .export(
-                &weights,
-                crate::hf_pipeline::export::format::ExportFormat::GGUF,
-                "grow.gguf",
-            )
+            .export(&weights, crate::hf_pipeline::export::format::ExportFormat::GGUF, "grow.gguf")
             .unwrap();
 
         assert!(
@@ -207,19 +189,12 @@ fn test_falsify_deterministic_output() {
     let dir2 = tempfile::tempdir().unwrap();
     let exporter1 = Exporter::new().output_dir(dir1.path());
     let exporter2 = Exporter::new().output_dir(dir2.path());
-    exporter1
-        .export(&weights, ExportFormat::GGUF, "det.gguf")
-        .unwrap();
-    exporter2
-        .export(&weights, ExportFormat::GGUF, "det.gguf")
-        .unwrap();
+    exporter1.export(&weights, ExportFormat::GGUF, "det.gguf").unwrap();
+    exporter2.export(&weights, ExportFormat::GGUF, "det.gguf").unwrap();
 
     let bytes1 = std::fs::read(dir1.path().join("det.gguf")).unwrap();
     let bytes2 = std::fs::read(dir2.path().join("det.gguf")).unwrap();
-    assert_eq!(
-        bytes1, bytes2,
-        "identical weights must produce identical GGUF files"
-    );
+    assert_eq!(bytes1, bytes2, "identical weights must produce identical GGUF files");
 }
 
 #[test]
@@ -274,9 +249,7 @@ fn test_falsify_exporter_partial_metadata_combinations() {
 
         let dir = tempfile::tempdir().unwrap();
         let exporter = Exporter::new().output_dir(dir.path());
-        exporter
-            .export(&weights, ExportFormat::GGUF, "meta.gguf")
-            .unwrap();
+        exporter.export(&weights, ExportFormat::GGUF, "meta.gguf").unwrap();
 
         let file_data = std::fs::read(dir.path().join("meta.gguf")).unwrap();
         let summary = verify_gguf(&file_data).unwrap();

@@ -171,21 +171,13 @@ fn test_collect_stats_datetime() {
 
 #[test]
 fn test_cardinality_ratio() {
-    let stats = ColumnStats {
-        count: 1000,
-        unique_count: 50,
-        ..Default::default()
-    };
+    let stats = ColumnStats { count: 1000, unique_count: 50, ..Default::default() };
     assert!((stats.cardinality_ratio() - 0.05).abs() < 1e-6);
 }
 
 #[test]
 fn test_null_ratio() {
-    let stats = ColumnStats {
-        count: 100,
-        null_count: 10,
-        ..Default::default()
-    };
+    let stats = ColumnStats { count: 100, null_count: 10, ..Default::default() };
     assert!((stats.null_ratio() - 0.1).abs() < 1e-6);
 }
 
@@ -366,14 +358,8 @@ fn test_feature_type_display_all() {
     assert_eq!(format!("{}", FeatureType::Text), "text");
     assert_eq!(format!("{}", FeatureType::DateTime), "datetime");
     assert_eq!(format!("{}", FeatureType::Embedding), "embedding");
-    assert_eq!(
-        format!("{}", FeatureType::MultiClassTarget),
-        "multiclass_target"
-    );
-    assert_eq!(
-        format!("{}", FeatureType::RegressionTarget),
-        "regression_target"
-    );
+    assert_eq!(format!("{}", FeatureType::MultiClassTarget), "multiclass_target");
+    assert_eq!(format!("{}", FeatureType::RegressionTarget), "regression_target");
     assert_eq!(format!("{}", FeatureType::TokenSequence), "token_sequence");
     assert_eq!(format!("{}", FeatureType::Unknown), "unknown");
 }
@@ -388,21 +374,13 @@ fn test_column_stats_new() {
 
 #[test]
 fn test_cardinality_ratio_zero_count() {
-    let stats = ColumnStats {
-        count: 0,
-        unique_count: 0,
-        ..Default::default()
-    };
+    let stats = ColumnStats { count: 0, unique_count: 0, ..Default::default() };
     assert_eq!(stats.cardinality_ratio(), 0.0);
 }
 
 #[test]
 fn test_null_ratio_zero_count() {
-    let stats = ColumnStats {
-        count: 0,
-        null_count: 0,
-        ..Default::default()
-    };
+    let stats = ColumnStats { count: 0, null_count: 0, ..Default::default() };
     assert_eq!(stats.null_ratio(), 0.0);
 }
 
@@ -427,10 +405,7 @@ fn test_infer_unknown_type() {
         all_integers: false,
         ..Default::default()
     };
-    let config = InferenceConfig {
-        target_columns: vec![],
-        ..Default::default()
-    };
+    let config = InferenceConfig { target_columns: vec![], ..Default::default() };
     // With count=0, it should fall through to Unknown
     assert_eq!(infer_type(&stats, &config), FeatureType::Unknown);
 }
@@ -446,10 +421,7 @@ fn test_infer_array_type() {
         all_numeric: true,
         ..Default::default()
     };
-    let config = InferenceConfig {
-        target_columns: vec![],
-        ..Default::default()
-    };
+    let config = InferenceConfig { target_columns: vec![], ..Default::default() };
     let result = infer_type(&stats, &config);
     // Numeric array with large dimension is embedding
     assert_eq!(result, FeatureType::Embedding);
@@ -480,10 +452,7 @@ fn test_collect_stats_all_nulls() {
 
 #[test]
 fn test_schema_get_feature_type() {
-    let stats = vec![
-        make_stats("x", 100, 50, true, false),
-        make_stats("y", 100, 2, true, true),
-    ];
+    let stats = vec![make_stats("x", 100, 50, true, false), make_stats("y", 100, 2, true, true)];
     let config = InferenceConfig::default();
     let schema = infer_schema(stats, &config);
 

@@ -23,9 +23,7 @@ fn test_serialize_binary() {
     let serializer = TraceSerializer::new(TraceFormat::Binary);
     let trace = make_test_trace();
 
-    let bytes = serializer
-        .serialize(&trace, PathType::Linear)
-        .expect("Serialization failed");
+    let bytes = serializer.serialize(&trace, PathType::Linear).expect("Serialization failed");
 
     // Check header
     assert_eq!(&bytes[0..4], &APRT_MAGIC);
@@ -38,13 +36,10 @@ fn test_binary_roundtrip() {
     let serializer = TraceSerializer::new(TraceFormat::Binary);
     let trace = make_test_trace();
 
-    let bytes = serializer
-        .serialize(&trace, PathType::Linear)
-        .expect("Serialization failed");
+    let bytes = serializer.serialize(&trace, PathType::Linear).expect("Serialization failed");
 
-    let restored: DecisionTrace<LinearPath> = serializer
-        .deserialize(&bytes)
-        .expect("Deserialization failed");
+    let restored: DecisionTrace<LinearPath> =
+        serializer.deserialize(&bytes).expect("Deserialization failed");
 
     assert_eq!(trace.timestamp_ns, restored.timestamp_ns);
     assert_eq!(trace.sequence, restored.sequence);
@@ -57,9 +52,7 @@ fn test_serialize_json() {
     let serializer = TraceSerializer::new(TraceFormat::Json);
     let trace = make_test_trace();
 
-    let bytes = serializer
-        .serialize(&trace, PathType::Linear)
-        .expect("Serialization failed");
+    let bytes = serializer.serialize(&trace, PathType::Linear).expect("Serialization failed");
 
     let json = String::from_utf8(bytes).expect("Invalid UTF-8");
     assert!(json.contains("timestamp_ns"));
@@ -72,13 +65,10 @@ fn test_json_roundtrip() {
     let serializer = TraceSerializer::new(TraceFormat::Json);
     let trace = make_test_trace();
 
-    let bytes = serializer
-        .serialize(&trace, PathType::Linear)
-        .expect("Serialization failed");
+    let bytes = serializer.serialize(&trace, PathType::Linear).expect("Serialization failed");
 
-    let restored: DecisionTrace<LinearPath> = serializer
-        .deserialize(&bytes)
-        .expect("Deserialization failed");
+    let restored: DecisionTrace<LinearPath> =
+        serializer.deserialize(&bytes).expect("Deserialization failed");
 
     assert_eq!(trace.sequence, restored.sequence);
 }
@@ -88,9 +78,7 @@ fn test_serialize_json_lines() {
     let serializer = TraceSerializer::new(TraceFormat::JsonLines);
     let trace = make_test_trace();
 
-    let bytes = serializer
-        .serialize(&trace, PathType::Linear)
-        .expect("Serialization failed");
+    let bytes = serializer.serialize(&trace, PathType::Linear).expect("Serialization failed");
 
     // Should end with newline
     assert_eq!(bytes.last(), Some(&b'\n'));
@@ -118,10 +106,7 @@ fn test_deserialize_version_mismatch() {
     bytes.extend_from_slice(&[0, 0, 0]);
 
     let result: Result<DecisionTrace<LinearPath>, _> = serializer.deserialize(&bytes);
-    assert!(matches!(
-        result,
-        Err(SerializationError::VersionMismatch { .. })
-    ));
+    assert!(matches!(result, Err(SerializationError::VersionMismatch { .. })));
 }
 
 #[test]
@@ -144,10 +129,7 @@ fn test_error_display() {
     let err = SerializationError::InvalidFormat("test".to_string());
     assert!(err.to_string().contains("Invalid format"));
 
-    let err = SerializationError::VersionMismatch {
-        expected: 1,
-        actual: 2,
-    };
+    let err = SerializationError::VersionMismatch { expected: 1, actual: 2 };
     assert!(err.to_string().contains("Version mismatch"));
 }
 
@@ -219,10 +201,7 @@ fn test_serialization_error_source_none() {
     let err = SerializationError::InvalidFormat("test".to_string());
     assert!(err.source().is_none());
 
-    let err = SerializationError::VersionMismatch {
-        expected: 1,
-        actual: 2,
-    };
+    let err = SerializationError::VersionMismatch { expected: 1, actual: 2 };
     assert!(err.source().is_none());
 }
 
@@ -259,13 +238,10 @@ fn test_json_lines_deserialize() {
     let serializer = TraceSerializer::new(TraceFormat::JsonLines);
     let trace = make_test_trace();
 
-    let bytes = serializer
-        .serialize(&trace, PathType::Linear)
-        .expect("Serialization failed");
+    let bytes = serializer.serialize(&trace, PathType::Linear).expect("Serialization failed");
 
-    let restored: DecisionTrace<LinearPath> = serializer
-        .deserialize(&bytes)
-        .expect("Deserialization failed");
+    let restored: DecisionTrace<LinearPath> =
+        serializer.deserialize(&bytes).expect("Deserialization failed");
 
     assert_eq!(trace.sequence, restored.sequence);
 }

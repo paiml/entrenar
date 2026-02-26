@@ -51,11 +51,9 @@ impl PruningSchedule {
                 *final_sparsity,
                 step,
             ),
-            PruningSchedule::Cubic {
-                start_step,
-                end_step,
-                final_sparsity,
-            } => Self::cubic_sparsity_at_step(*start_step, *end_step, *final_sparsity, step),
+            PruningSchedule::Cubic { start_step, end_step, final_sparsity } => {
+                Self::cubic_sparsity_at_step(*start_step, *end_step, *final_sparsity, step)
+            }
         }
     }
 
@@ -73,17 +71,12 @@ impl PruningSchedule {
             PruningSchedule::OneShot { step: prune_step } => {
                 Self::oneshot_should_prune_at_step(*prune_step, step)
             }
-            PruningSchedule::Gradual {
-                start_step,
-                end_step,
-                frequency,
-                ..
-            } => Self::gradual_should_prune_at_step(*start_step, *end_step, *frequency, step),
-            PruningSchedule::Cubic {
-                start_step,
-                end_step,
-                ..
-            } => Self::cubic_should_prune_at_step(*start_step, *end_step, step),
+            PruningSchedule::Gradual { start_step, end_step, frequency, .. } => {
+                Self::gradual_should_prune_at_step(*start_step, *end_step, *frequency, step)
+            }
+            PruningSchedule::Cubic { start_step, end_step, .. } => {
+                Self::cubic_should_prune_at_step(*start_step, *end_step, step)
+            }
         }
     }
 
@@ -95,17 +88,12 @@ impl PruningSchedule {
     pub fn num_pruning_steps(&self) -> usize {
         match self {
             PruningSchedule::OneShot { .. } => Self::oneshot_num_pruning_steps(),
-            PruningSchedule::Gradual {
-                start_step,
-                end_step,
-                frequency,
-                ..
-            } => Self::gradual_num_pruning_steps(*start_step, *end_step, *frequency),
-            PruningSchedule::Cubic {
-                start_step,
-                end_step,
-                ..
-            } => Self::cubic_num_pruning_steps(*start_step, *end_step),
+            PruningSchedule::Gradual { start_step, end_step, frequency, .. } => {
+                Self::gradual_num_pruning_steps(*start_step, *end_step, *frequency)
+            }
+            PruningSchedule::Cubic { start_step, end_step, .. } => {
+                Self::cubic_num_pruning_steps(*start_step, *end_step)
+            }
         }
     }
 
@@ -124,11 +112,9 @@ impl PruningSchedule {
                 final_sparsity,
                 ..
             } => Self::gradual_validate(*start_step, *end_step, *initial_sparsity, *final_sparsity),
-            PruningSchedule::Cubic {
-                start_step,
-                end_step,
-                final_sparsity,
-            } => Self::cubic_validate(*start_step, *end_step, *final_sparsity),
+            PruningSchedule::Cubic { start_step, end_step, final_sparsity } => {
+                Self::cubic_validate(*start_step, *end_step, *final_sparsity)
+            }
         }
     }
 
@@ -154,10 +140,7 @@ mod tests {
         let schedule = PruningSchedule::default();
         match schedule {
             PruningSchedule::OneShot { step } => {
-                assert_eq!(
-                    step, 0,
-                    "SCHED-045 FALSIFIED: Default should be OneShot at step 0"
-                );
+                assert_eq!(step, 0, "SCHED-045 FALSIFIED: Default should be OneShot at step 0");
             }
             _ => panic!("SCHED-045 FALSIFIED: Default should be OneShot variant"),
         }

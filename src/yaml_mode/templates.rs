@@ -186,11 +186,7 @@ fn default_optimizer_config() -> OptimizerConfig {
 fn default_scheduler_config() -> SchedulerConfig {
     SchedulerConfig {
         name: "cosine_annealing".to_string(),
-        warmup: Some(WarmupConfig {
-            steps: Some(100),
-            ratio: None,
-            start_lr: Some(1e-7),
-        }),
+        warmup: Some(WarmupConfig { steps: Some(100), ratio: None, start_lr: Some(1e-7) }),
         t_max: Some(DEFAULT_COSINE_ANNEALING_T_MAX),
         eta_min: Some(1e-6),
         step_size: None,
@@ -508,12 +504,8 @@ mod tests {
 
     #[test]
     fn test_generate_lora() {
-        let manifest = generate_manifest(
-            Template::Lora,
-            "lora-exp",
-            Some("hf://llama"),
-            Some("hf://data"),
-        );
+        let manifest =
+            generate_manifest(Template::Lora, "lora-exp", Some("hf://llama"), Some("hf://data"));
         assert!(manifest.lora.is_some());
         let lora = manifest.lora.unwrap();
         assert!(lora.enabled);
@@ -528,12 +520,7 @@ mod tests {
         let lora = manifest.lora.unwrap();
         assert!(lora.quantize_base.unwrap());
         assert_eq!(lora.quantize_bits, Some(4));
-        assert!(manifest
-            .training
-            .as_ref()
-            .unwrap()
-            .mixed_precision
-            .is_some());
+        assert!(manifest.training.as_ref().unwrap().mixed_precision.is_some());
     }
 
     #[test]
@@ -563,18 +550,10 @@ mod tests {
         use super::super::validation::validate_manifest;
 
         // All templates should produce valid manifests
-        for template in [
-            Template::Minimal,
-            Template::Lora,
-            Template::Qlora,
-            Template::Full,
-        ] {
+        for template in [Template::Minimal, Template::Lora, Template::Qlora, Template::Full] {
             let manifest = generate_manifest(template, "test", None, None);
             let result = validate_manifest(&manifest);
-            assert!(
-                result.is_ok(),
-                "Template {template:?} produced invalid manifest: {result:?}"
-            );
+            assert!(result.is_ok(), "Template {template:?} produced invalid manifest: {result:?}");
         }
     }
 

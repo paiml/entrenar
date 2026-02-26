@@ -64,9 +64,7 @@ impl DpSgdConfig {
     /// Validate configuration
     pub fn validate(&self) -> Result<()> {
         if self.max_grad_norm <= 0.0 {
-            return Err(DpError::InvalidConfig(
-                "max_grad_norm must be positive".to_string(),
-            ));
+            return Err(DpError::InvalidConfig("max_grad_norm must be positive".to_string()));
         }
         if self.noise_multiplier < 0.0 {
             return Err(DpError::InvalidConfig(
@@ -74,14 +72,10 @@ impl DpSgdConfig {
             ));
         }
         if self.budget.epsilon <= 0.0 {
-            return Err(DpError::InvalidConfig(
-                "epsilon must be positive".to_string(),
-            ));
+            return Err(DpError::InvalidConfig("epsilon must be positive".to_string()));
         }
         if self.budget.delta <= 0.0 || self.budget.delta >= 1.0 {
-            return Err(DpError::InvalidConfig(
-                "delta must be in (0, 1)".to_string(),
-            ));
+            return Err(DpError::InvalidConfig("delta must be in (0, 1)".to_string()));
         }
         Ok(())
     }

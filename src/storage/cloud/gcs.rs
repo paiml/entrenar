@@ -63,9 +63,7 @@ mod tests {
 
     #[test]
     fn test_gcs_config_serde() {
-        let config = GCSConfig::new("bucket")
-            .with_prefix("artifacts/")
-            .with_project("my-project");
+        let config = GCSConfig::new("bucket").with_prefix("artifacts/").with_project("my-project");
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: GCSConfig = serde_json::from_str(&json).unwrap();

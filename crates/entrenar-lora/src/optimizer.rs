@@ -80,11 +80,7 @@ impl LoraOptimizer {
 
     /// Find optimal configuration for the given method.
     pub fn optimize(&self, method: Method) -> Result<OptimalConfig> {
-        let method = if method == Method::Auto {
-            self.select_method()
-        } else {
-            method
-        };
+        let method = if method == Method::Auto { self.select_method() } else { method };
 
         let rank = self.find_optimal_rank(method)?;
         let planner = MemoryPlanner::new(self.model_params);
@@ -214,17 +210,14 @@ pub fn compare_methods(model_params: u64, available_vram_gb: f64) -> Vec<MethodC
     methods
         .iter()
         .filter_map(|&method| {
-            optimizer
-                .optimize(method)
-                .ok()
-                .map(|config| MethodComparison {
-                    method,
-                    fits: config.utilization_percent <= 100.0,
-                    memory_gb: config.memory_gb,
-                    trainable_params: config.trainable_params,
-                    speedup: config.speedup,
-                    rank: config.rank,
-                })
+            optimizer.optimize(method).ok().map(|config| MethodComparison {
+                method,
+                fits: config.utilization_percent <= 100.0,
+                memory_gb: config.memory_gb,
+                trainable_params: config.trainable_params,
+                speedup: config.speedup,
+                rank: config.rank,
+            })
         })
         .collect()
 }
@@ -259,10 +252,7 @@ mod tests {
         let config = optimizer.optimize(Method::Auto).unwrap();
 
         // With 24GB for 7B model, optimizer may select LoRA, QLoRA, or Full
-        assert!(matches!(
-            config.method,
-            Method::LoRA | Method::QLoRA | Method::Full
-        ));
+        assert!(matches!(config.method, Method::LoRA | Method::QLoRA | Method::Full));
     }
 
     #[test]

@@ -144,10 +144,7 @@ mod ln_contract_tests {
         let y = layer_norm(&x, &gamma, &beta, 1e-5);
 
         let mean: f32 = y.data().sum() / y.len() as f32;
-        assert!(
-            mean.abs() < 1e-5,
-            "FALSIFIED LN-001: mean(LN(x)) = {mean}, expected ≈ 0"
-        );
+        assert!(mean.abs() < 1e-5, "FALSIFIED LN-001: mean(LN(x)) = {mean}, expected ≈ 0");
     }
 
     /// FALSIFY-LN-002: Standardization — variance of LN output ≈ 1 (with gamma=1)
@@ -162,10 +159,7 @@ mod ln_contract_tests {
 
         let mean: f32 = y_data.sum() / n;
         let var: f32 = y_data.mapv(|v| (v - mean).powi(2)).sum() / n;
-        assert!(
-            (var - 1.0).abs() < 0.05,
-            "FALSIFIED LN-002: var(LN(x)) = {var}, expected ≈ 1.0"
-        );
+        assert!((var - 1.0).abs() < 0.05, "FALSIFIED LN-002: var(LN(x)) = {var}, expected ≈ 1.0");
     }
 
     /// FALSIFY-LN-003: Denominator safety — output finite for all finite input
@@ -223,12 +217,7 @@ mod ln_contract_tests {
             let x_shifted = Tensor::from_vec(shifted, false);
             let y_shifted = layer_norm(&x_shifted, &gamma, &beta, 1e-5);
 
-            for (i, (&a, &b)) in y_base
-                .data()
-                .iter()
-                .zip(y_shifted.data().iter())
-                .enumerate()
-            {
+            for (i, (&a, &b)) in y_base.data().iter().zip(y_shifted.data().iter()).enumerate() {
                 let tol = 1e-3 * a.abs().max(1.0);
                 assert!(
                     (a - b).abs() < tol,
@@ -247,10 +236,7 @@ mod ln_contract_tests {
             let y = layer_norm(&x, &gamma, &beta, 1e-5);
 
             for (i, &val) in y.data().iter().enumerate() {
-                assert!(
-                    val.is_finite(),
-                    "FALSIFIED LN-003 (via LN-007): NaN/Inf for constant {c}"
-                );
+                assert!(val.is_finite(), "FALSIFIED LN-003 (via LN-007): NaN/Inf for constant {c}");
                 assert!(
                     val.abs() < 1e-3,
                     "FALSIFIED LN-007: LN([{c};4])[{i}] = {val}, expected ≈ 0"

@@ -138,18 +138,12 @@ fn test_lamport_timestamp_scenario() {
 #[test]
 fn test_lineage_event_type_description() {
     assert_eq!(LineageEventType::RunStarted.description(), "Run started");
-    assert_eq!(
-        LineageEventType::ModelPromoted.description(),
-        "Model promoted"
-    );
+    assert_eq!(LineageEventType::ModelPromoted.description(), "Model promoted");
 }
 
 #[test]
 fn test_lineage_event_type_display() {
-    assert_eq!(
-        format!("{}", LineageEventType::RunCompleted),
-        "Run completed"
-    );
+    assert_eq!(format!("{}", LineageEventType::RunCompleted), "Run completed");
 }
 
 // ==========================================================================
@@ -216,16 +210,8 @@ fn test_causal_lineage_events_in_order() {
     let ts2 = LamportTimestamp::with_counter("node-1", 10);
     let ts1 = LamportTimestamp::with_counter("node-1", 5);
 
-    lineage.add_event(LineageEvent::new(
-        ts2,
-        LineageEventType::RunCompleted,
-        "run-001",
-    ));
-    lineage.add_event(LineageEvent::new(
-        ts1,
-        LineageEventType::RunStarted,
-        "run-001",
-    ));
+    lineage.add_event(LineageEvent::new(ts2, LineageEventType::RunCompleted, "run-001"));
+    lineage.add_event(LineageEvent::new(ts1, LineageEventType::RunStarted, "run-001"));
 
     let events = lineage.events_in_order();
     assert_eq!(events[0].timestamp.counter, 5);

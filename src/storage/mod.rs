@@ -14,11 +14,11 @@
 //! use entrenar::storage::{ExperimentStorage, InMemoryStorage, RunStatus};
 //!
 //! let mut storage = InMemoryStorage::new();
-//! let exp_id = storage.create_experiment("my-experiment", None).unwrap();
-//! let run_id = storage.create_run(&exp_id).unwrap();
-//! storage.start_run(&run_id).unwrap();
-//! storage.log_metric(&run_id, "loss", 0, 0.5).unwrap();
-//! storage.complete_run(&run_id, RunStatus::Success).unwrap();
+//! let exp_id = storage.create_experiment("my-experiment", None).expect("create experiment");
+//! let run_id = storage.create_run(&exp_id).expect("create run");
+//! storage.start_run(&run_id).expect("start run");
+//! storage.log_metric(&run_id, "loss", 0, 0.5).expect("log metric");
+//! storage.complete_run(&run_id, RunStatus::Success).expect("complete run");
 //! ```
 
 pub mod cloud;
@@ -103,20 +103,12 @@ pub struct MetricPoint {
 impl MetricPoint {
     /// Create a new metric point with current timestamp
     pub fn new(step: u64, value: f64) -> Self {
-        Self {
-            step,
-            value,
-            timestamp: Utc::now(),
-        }
+        Self { step, value, timestamp: Utc::now() }
     }
 
     /// Create a metric point with specific timestamp
     pub fn with_timestamp(step: u64, value: f64, timestamp: DateTime<Utc>) -> Self {
-        Self {
-            step,
-            value,
-            timestamp,
-        }
+        Self { step, value, timestamp }
     }
 }
 

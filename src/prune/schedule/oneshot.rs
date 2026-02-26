@@ -121,10 +121,7 @@ mod tests {
     fn test_validate_oneshot_always_valid() {
         // TEST_ID: SCHED-030
         let schedule = PruningSchedule::OneShot { step: 0 };
-        assert!(
-            schedule.validate().is_ok(),
-            "SCHED-030 FALSIFIED: OneShot should always be valid"
-        );
+        assert!(schedule.validate().is_ok(), "SCHED-030 FALSIFIED: OneShot should always be valid");
     }
 
     #[test]
@@ -176,10 +173,7 @@ mod tests {
             debug.contains("OneShot"),
             "SCHED-064 FALSIFIED: Debug should contain variant name"
         );
-        assert!(
-            debug.contains("100"),
-            "SCHED-064 FALSIFIED: Debug should contain step value"
-        );
+        assert!(debug.contains("100"), "SCHED-064 FALSIFIED: Debug should contain step value");
     }
 
     #[test]

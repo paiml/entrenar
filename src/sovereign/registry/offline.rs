@@ -31,11 +31,7 @@ impl OfflineModelRegistry {
             RegistryManifest::new()
         };
 
-        Self {
-            root_path: root,
-            manifest,
-            manifest_path,
-        }
+        Self { root_path: root, manifest, manifest_path }
     }
 
     /// Create registry at default location (~/.entrenar/models/)
@@ -93,10 +89,7 @@ impl OfflineModelRegistry {
     /// Register a local model file
     pub fn register_local(&mut self, name: &str, path: &Path) -> Result<ModelEntry> {
         if !path.exists() {
-            return Err(Error::ConfigError(format!(
-                "Model file not found: {}",
-                path.display()
-            )));
+            return Err(Error::ConfigError(format!("Model file not found: {}", path.display())));
         }
 
         let metadata = fs::metadata(path)?;
@@ -111,11 +104,7 @@ impl OfflineModelRegistry {
         let entry = ModelEntry::new(name, "local", sha256, size_bytes, ModelSource::local(path))
             .with_local_path(path);
 
-        let entry = if let Some(fmt) = format {
-            entry.with_format(fmt)
-        } else {
-            entry
-        };
+        let entry = if let Some(fmt) = format { entry.with_format(fmt) } else { entry };
 
         self.manifest.add(entry.clone());
         self.manifest.mark_synced();
@@ -154,10 +143,7 @@ impl OfflineModelRegistry {
             .ok_or_else(|| Error::ConfigError(format!("Model not available locally: {name}")))?;
 
         if !path.exists() {
-            return Err(Error::ConfigError(format!(
-                "Model file missing: {}",
-                path.display()
-            )));
+            return Err(Error::ConfigError(format!("Model file missing: {}", path.display())));
         }
 
         Ok(path.clone())

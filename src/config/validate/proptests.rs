@@ -15,28 +15,17 @@ fn arb_valid_spec() -> impl Strategy<Value = TrainSpec> {
         proptest::option::of(0.1f32..10.0), // grad_clip
     )
         .prop_map(|(batch_size, lr, epochs, grad_clip)| TrainSpec {
-            model: ModelRef {
-                path: PathBuf::from("model.gguf"),
-                ..Default::default()
-            },
+            model: ModelRef { path: PathBuf::from("model.gguf"), ..Default::default() },
             data: DataConfig {
                 train: PathBuf::from("train.parquet"),
                 batch_size,
                 ..Default::default()
             },
-            optimizer: OptimSpec {
-                name: "adam".to_string(),
-                lr,
-                params: HashMap::new(),
-            },
+            optimizer: OptimSpec { name: "adam".to_string(), lr, params: HashMap::new() },
             lora: None,
             quantize: None,
             merge: None,
-            training: TrainingParams {
-                epochs,
-                grad_clip,
-                ..Default::default()
-            },
+            training: TrainingParams { epochs, grad_clip, ..Default::default() },
             publish: None,
         })
 }

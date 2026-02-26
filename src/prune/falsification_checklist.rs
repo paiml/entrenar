@@ -212,16 +212,10 @@ pub fn checklist_summary() -> (usize, usize, usize) {
     let covered = checklist
         .iter()
         .filter(|i| {
-            matches!(
-                i.status,
-                ChecklistStatus::CoveredAprender | ChecklistStatus::CoveredEntrenar
-            )
+            matches!(i.status, ChecklistStatus::CoveredAprender | ChecklistStatus::CoveredEntrenar)
         })
         .count();
-    let partial = checklist
-        .iter()
-        .filter(|i| i.status == ChecklistStatus::Partial)
-        .count();
+    let partial = checklist.iter().filter(|i| i.status == ChecklistStatus::Partial).count();
     let total = checklist.len();
     (covered, partial, total)
 }
@@ -285,10 +279,7 @@ mod tests {
         // TEST_ID: FALS-011
         // Verify algorithm correctness items are covered
         let checklist = get_checklist();
-        let algo_items: Vec<_> = checklist
-            .iter()
-            .filter(|i| i.id >= 31 && i.id <= 50)
-            .collect();
+        let algo_items: Vec<_> = checklist.iter().filter(|i| i.id >= 31 && i.id <= 50).collect();
         assert!(
             algo_items.len() >= 5,
             "FALS-011 FALSIFIED: Should have at least 5 algorithm correctness items (31-50)"

@@ -45,12 +45,7 @@ impl GpuMonitor {
             }
             Err(e) => {
                 eprintln!("[GpuMonitor] NVML init failed: {e}, using mock mode");
-                Ok(Self {
-                    num_devices: 0,
-                    mock_mode: false,
-                    mock_metrics: Vec::new(),
-                    nvml: None,
-                })
+                Ok(Self { num_devices: 0, mock_mode: false, mock_metrics: Vec::new(), nvml: None })
             }
         }
     }
@@ -59,11 +54,7 @@ impl GpuMonitor {
     #[cfg(not(feature = "nvml"))]
     pub fn new() -> Result<Self, String> {
         // Without NVML feature, return empty (graceful degradation)
-        Ok(Self {
-            num_devices: 0,
-            mock_mode: false,
-            mock_metrics: Vec::new(),
-        })
+        Ok(Self { num_devices: 0, mock_mode: false, mock_metrics: Vec::new() })
     }
 
     /// Create a mock GPU monitor for testing
@@ -109,31 +100,28 @@ impl GpuMonitor {
             let name = device.name().unwrap_or_else(|_err| format!("GPU {i}"));
 
             // Utilization rates
-            let (utilization_percent, memory_utilization_percent) = device
-                .utilization_rates()
-                .map_or((0, 0), |rates| (rates.gpu, rates.memory));
+            let (utilization_percent, memory_utilization_percent) =
+                device.utilization_rates().map_or((0, 0), |rates| (rates.gpu, rates.memory));
 
             // Memory info
-            let (memory_used_mb, memory_total_mb) = device.memory_info().map_or((0, 0), |mem| {
-                (mem.used / (1024 * 1024), mem.total / (1024 * 1024))
-            });
+            let (memory_used_mb, memory_total_mb) = device
+                .memory_info()
+                .map_or((0, 0), |mem| (mem.used / (1024 * 1024), mem.total / (1024 * 1024)));
 
             // Temperature
             let temperature_celsius = device.temperature(TemperatureSensor::Gpu).unwrap_or(0);
 
             // Power
             let power_watts = device.power_usage().map_or(0.0, |mw| mw as f32 / 1000.0);
-            let power_limit_watts = device
-                .enforced_power_limit()
-                .map_or(0.0, |mw| mw as f32 / 1000.0);
+            let power_limit_watts =
+                device.enforced_power_limit().map_or(0.0, |mw| mw as f32 / 1000.0);
 
             // Clocks
             let clock_mhz = device
                 .clock_info(nvml_wrapper::enum_wrappers::device::Clock::Graphics)
                 .unwrap_or(0);
-            let memory_clock_mhz = device
-                .clock_info(nvml_wrapper::enum_wrappers::device::Clock::Memory)
-                .unwrap_or(0);
+            let memory_clock_mhz =
+                device.clock_info(nvml_wrapper::enum_wrappers::device::Clock::Memory).unwrap_or(0);
 
             // PCIe throughput
             let pcie_tx_kbps = u64::from(
@@ -235,21 +223,13 @@ impl GpuMonitor {
                 let gpu_memory_mb = extract_memory(proc.used_gpu_memory);
 
                 // Read /proc/PID/exe for full path
-                let exe_path = fs::read_link(format!("/proc/{pid}/exe")).map_or_else(
-                    |_| format!("[pid {pid}]"),
-                    |p| p.to_string_lossy().to_string(),
-                );
+                let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
+                    .map_or_else(|_| format!("[pid {pid}]"), |p| p.to_string_lossy().to_string());
 
                 // Read /proc/PID/stat for CPU and memory
                 let (cpu_percent, rss_mb) = Self::read_proc_stats(pid);
 
-                processes.push(GpuProcess {
-                    pid,
-                    exe_path,
-                    gpu_memory_mb,
-                    cpu_percent,
-                    rss_mb,
-                });
+                processes.push(GpuProcess { pid, exe_path, gpu_memory_mb, cpu_percent, rss_mb });
             }
         }
 
@@ -264,20 +244,12 @@ impl GpuMonitor {
                 let pid = proc.pid;
                 let gpu_memory_mb = extract_memory(proc.used_gpu_memory);
 
-                let exe_path = fs::read_link(format!("/proc/{pid}/exe")).map_or_else(
-                    |_| format!("[pid {pid}]"),
-                    |p| p.to_string_lossy().to_string(),
-                );
+                let exe_path = fs::read_link(format!("/proc/{pid}/exe"))
+                    .map_or_else(|_| format!("[pid {pid}]"), |p| p.to_string_lossy().to_string());
 
                 let (cpu_percent, rss_mb) = Self::read_proc_stats(pid);
 
-                processes.push(GpuProcess {
-                    pid,
-                    exe_path,
-                    gpu_memory_mb,
-                    cpu_percent,
-                    rss_mb,
-                });
+                processes.push(GpuProcess { pid, exe_path, gpu_memory_mb, cpu_percent, rss_mb });
             }
         }
 

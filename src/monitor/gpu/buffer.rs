@@ -16,9 +16,7 @@ pub struct GpuMetricsBuffer {
 impl GpuMetricsBuffer {
     /// Create a new buffer with given capacity
     pub fn new(capacity: usize, num_devices: usize) -> Self {
-        let buffers = (0..num_devices)
-            .map(|_| VecDeque::with_capacity(capacity))
-            .collect();
+        let buffers = (0..num_devices).map(|_| VecDeque::with_capacity(capacity)).collect();
         Self { capacity, buffers }
     }
 
@@ -27,8 +25,7 @@ impl GpuMetricsBuffer {
         for m in metrics {
             let device_idx = m.device_id as usize;
             if device_idx >= self.buffers.len() {
-                self.buffers
-                    .resize_with(device_idx + 1, || VecDeque::with_capacity(self.capacity));
+                self.buffers.resize_with(device_idx + 1, || VecDeque::with_capacity(self.capacity));
             }
 
             let buffer = &mut self.buffers[device_idx];
@@ -46,12 +43,7 @@ impl GpuMetricsBuffer {
             return Vec::new();
         }
 
-        self.buffers[device_idx]
-            .iter()
-            .rev()
-            .take(n)
-            .rev()
-            .collect()
+        self.buffers[device_idx].iter().rev().take(n).rev().collect()
     }
 
     /// Get utilization history for a device (for sparkline)
@@ -61,10 +53,7 @@ impl GpuMetricsBuffer {
             return Vec::new();
         }
 
-        self.buffers[device_idx]
-            .iter()
-            .map(|m| m.utilization_percent)
-            .collect()
+        self.buffers[device_idx].iter().map(|m| m.utilization_percent).collect()
     }
 
     /// Get temperature history for a device
@@ -74,10 +63,7 @@ impl GpuMetricsBuffer {
             return Vec::new();
         }
 
-        self.buffers[device_idx]
-            .iter()
-            .map(|m| m.temperature_celsius)
-            .collect()
+        self.buffers[device_idx].iter().map(|m| m.temperature_celsius).collect()
     }
 
     /// Get memory utilization history for a device
@@ -87,10 +73,7 @@ impl GpuMetricsBuffer {
             return Vec::new();
         }
 
-        self.buffers[device_idx]
-            .iter()
-            .map(GpuMetrics::memory_percent)
-            .collect()
+        self.buffers[device_idx].iter().map(GpuMetrics::memory_percent).collect()
     }
 
     /// Get number of samples for a device
@@ -186,16 +169,8 @@ mod tests {
         let mut buffer = GpuMetricsBuffer::new(10, 2);
 
         buffer.push(&[
-            GpuMetrics {
-                device_id: 0,
-                utilization_percent: 50,
-                ..Default::default()
-            },
-            GpuMetrics {
-                device_id: 1,
-                utilization_percent: 75,
-                ..Default::default()
-            },
+            GpuMetrics { device_id: 0, utilization_percent: 50, ..Default::default() },
+            GpuMetrics { device_id: 1, utilization_percent: 75, ..Default::default() },
         ]);
 
         assert_eq!(buffer.utilization_history(0), vec![50]);
@@ -235,11 +210,7 @@ mod tests {
     fn test_buffer_last_n_more_than_available() {
         let mut buffer = GpuMetricsBuffer::new(10, 1);
 
-        buffer.push(&[GpuMetrics {
-            device_id: 0,
-            utilization_percent: 50,
-            ..Default::default()
-        }]);
+        buffer.push(&[GpuMetrics { device_id: 0, utilization_percent: 50, ..Default::default() }]);
 
         // Request more than available
         let last5 = buffer.last_n(0, 5);

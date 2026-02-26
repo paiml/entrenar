@@ -72,10 +72,8 @@ fn test_parse_repo_id_invalid_too_many_parts() {
 fn test_download_rejects_pytorch_by_default() {
     use crate::hf_pipeline::error::FetchError;
     let fetcher = HfModelFetcher::with_token("test");
-    let result = fetcher.download_model(
-        "test/model",
-        FetchOptions::new().files(&["pytorch_model.bin"]),
-    );
+    let result =
+        fetcher.download_model("test/model", FetchOptions::new().files(&["pytorch_model.bin"]));
     assert!(matches!(result, Err(FetchError::PickleSecurityRisk)));
 }
 
@@ -87,9 +85,7 @@ fn test_download_nonexistent_repo_returns_error() {
     let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
     let result = fetcher.download_model(
         "nonexistent-org-xyz123/nonexistent-model-abc456",
-        FetchOptions::new()
-            .files(&["model.safetensors"])
-            .cache_dir(&temp_dir),
+        FetchOptions::new().files(&["model.safetensors"]).cache_dir(&temp_dir),
     );
 
     // Should fail with some error (network or not found)
@@ -130,16 +126,10 @@ fn test_download_real_model_integration() {
     let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
     let result = fetcher.download_model(
         "hf-internal-testing/tiny-random-bert",
-        FetchOptions::new()
-            .files(&["config.json"])
-            .cache_dir(&temp_dir),
+        FetchOptions::new().files(&["config.json"]).cache_dir(&temp_dir),
     );
 
-    assert!(
-        result.is_ok(),
-        "Should download from real repo: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Should download from real repo: {:?}", result.err());
     let artifact = result.unwrap();
     assert!(artifact.path.exists(), "Cache directory should exist");
 
@@ -273,9 +263,7 @@ fn test_download_uses_custom_cache_dir_from_options() {
     let fetcher = HfModelFetcher::new().unwrap();
     let result = fetcher.download_model(
         "nonexistent-org/nonexistent-model",
-        FetchOptions::new()
-            .files(&["model.safetensors"])
-            .cache_dir(&temp_dir), // Custom cache from options
+        FetchOptions::new().files(&["model.safetensors"]).cache_dir(&temp_dir), // Custom cache from options
     );
 
     // Should fail (repo doesn't exist)

@@ -123,37 +123,18 @@ fn model_fetching_example() {
 
     // Weight format detection
     println!("\nWeight format detection:");
-    println!(
-        "  'model.safetensors' -> {:?}",
-        WeightFormat::from_filename("model.safetensors")
-    );
-    println!(
-        "  'model.bin' -> {:?}",
-        WeightFormat::from_filename("model.bin")
-    );
-    println!(
-        "  'model.gguf' -> {:?}",
-        WeightFormat::from_filename("model.gguf")
-    );
+    println!("  'model.safetensors' -> {:?}", WeightFormat::from_filename("model.safetensors"));
+    println!("  'model.bin' -> {:?}", WeightFormat::from_filename("model.bin"));
+    println!("  'model.gguf' -> {:?}", WeightFormat::from_filename("model.gguf"));
 
     // Safety check
     println!("\nFormat safety:");
-    println!(
-        "  SafeTensors: safe = {}",
-        WeightFormat::SafeTensors.is_safe()
-    );
-    println!(
-        "  PyTorchBin: safe = {}",
-        WeightFormat::PyTorchBin.is_safe()
-    );
+    println!("  SafeTensors: safe = {}", WeightFormat::SafeTensors.is_safe());
+    println!("  PyTorchBin: safe = {}", WeightFormat::PyTorchBin.is_safe());
 
     // Architecture examples
     println!("\nArchitecture examples:");
-    let bert = Architecture::BERT {
-        num_layers: 12,
-        hidden_size: 768,
-        num_attention_heads: 12,
-    };
+    let bert = Architecture::BERT { num_layers: 12, hidden_size: 768, num_attention_heads: 12 };
     let llama = Architecture::Llama {
         num_layers: 32,
         hidden_size: 4096,
@@ -277,10 +258,7 @@ fn trainer_config_example() {
     println!("  Alpha: {}", config.distillation_loss.alpha);
     println!("  Epochs: {}", config.epochs);
     println!("  Progressive: {}", config.progressive.is_some());
-    println!(
-        "  Attention transfer: {}",
-        config.attention_transfer.is_some()
-    );
+    println!("  Attention transfer: {}", config.attention_transfer.is_some());
 
     println!("\nNote: DistillationTrainer requires a TeacherModel implementation.");
     println!("Use SafeTensorsTeacher::load(path) to load a real model.");
@@ -301,40 +279,27 @@ fn fine_tuning_example() {
     // LoRA fine-tuning
     let lora_config = LoRAConfig::new(64, 16.0).target_modules(&["q_proj", "v_proj"]);
 
-    let lora_ft = FineTuneConfig::new("model")
-        .with_lora(lora_config.clone())
-        .learning_rate(1e-4);
+    let lora_ft = FineTuneConfig::new("model").with_lora(lora_config.clone()).learning_rate(1e-4);
 
     let lora_mem = lora_ft.estimate_memory(params);
     println!("\nLoRA (rank=64):");
     println!("  Trainable params: ~0.1%");
     println!("  Memory: {:.1} GB", lora_mem.total() as f64 / 1e9);
-    println!(
-        "  Savings: {:.0}%",
-        lora_mem.savings_vs_full(params) * 100.0
-    );
+    println!("  Savings: {:.0}%", lora_mem.savings_vs_full(params) * 100.0);
 
     // QLoRA fine-tuning
-    let qlora_ft = FineTuneConfig::new("model")
-        .with_qlora(lora_config, 4)
-        .learning_rate(1e-4);
+    let qlora_ft = FineTuneConfig::new("model").with_qlora(lora_config, 4).learning_rate(1e-4);
 
     let qlora_mem = qlora_ft.estimate_memory(params);
     println!("\nQLoRA (4-bit + LoRA):");
     println!("  Base model: 4-bit quantized (frozen)");
     println!("  Adapters: FP16/BF16 (trainable)");
     println!("  Memory: {:.1} GB", qlora_mem.total() as f64 / 1e9);
-    println!(
-        "  Savings: {:.0}%",
-        qlora_mem.savings_vs_full(params) * 100.0
-    );
+    println!("  Savings: {:.0}%", qlora_mem.savings_vs_full(params) * 100.0);
 
     // Memory comparison
     println!("\nMemory Comparison (7B model):");
-    println!(
-        "  Full:  {:.1} GB (baseline)",
-        full_mem.total() as f64 / 1e9
-    );
+    println!("  Full:  {:.1} GB (baseline)", full_mem.total() as f64 / 1e9);
     println!(
         "  LoRA:  {:.1} GB ({:.1}x reduction)",
         lora_mem.total() as f64 / 1e9,
@@ -440,10 +405,7 @@ output:
             println!("\nParsed configuration:");
             println!("  Teacher: {}", trainer_config.teacher_model);
             println!("  Student: {}", trainer_config.student_model);
-            println!(
-                "  Temperature: {}",
-                trainer_config.distillation_loss.temperature
-            );
+            println!("  Temperature: {}", trainer_config.distillation_loss.temperature);
         }
         Err(e) => println!("Error: {e}"),
     }
@@ -473,11 +435,7 @@ fn export_example() {
 
     // Export formats
     println!("\nExport formats:");
-    for format in [
-        ExportFormat::SafeTensors,
-        ExportFormat::APR,
-        ExportFormat::GGUF,
-    ] {
+    for format in [ExportFormat::SafeTensors, ExportFormat::APR, ExportFormat::GGUF] {
         println!("  {format:?}:");
         println!("    Extension: {}", format.extension());
         println!("    Safe: {}", format.is_safe());

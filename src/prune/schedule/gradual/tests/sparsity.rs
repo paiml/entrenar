@@ -122,22 +122,13 @@ fn test_gradual_should_prune_at_frequency() {
         !schedule.should_prune_at_step(99),
         "SCHED-015 FALSIFIED: should not prune before start"
     );
-    assert!(
-        schedule.should_prune_at_step(100),
-        "SCHED-015 FALSIFIED: should prune at start"
-    );
+    assert!(schedule.should_prune_at_step(100), "SCHED-015 FALSIFIED: should prune at start");
     assert!(
         !schedule.should_prune_at_step(105),
         "SCHED-015 FALSIFIED: should not prune between frequencies"
     );
-    assert!(
-        schedule.should_prune_at_step(110),
-        "SCHED-015 FALSIFIED: should prune at frequency"
-    );
-    assert!(
-        !schedule.should_prune_at_step(201),
-        "SCHED-015 FALSIFIED: should not prune after end"
-    );
+    assert!(schedule.should_prune_at_step(110), "SCHED-015 FALSIFIED: should prune at frequency");
+    assert!(!schedule.should_prune_at_step(201), "SCHED-015 FALSIFIED: should not prune after end");
 }
 
 #[test]
@@ -269,10 +260,7 @@ fn test_clone_produces_equal_schedule() {
         frequency: 50,
     };
     let cloned = schedule.clone();
-    assert_eq!(
-        schedule, cloned,
-        "SCHED-063 FALSIFIED: Clone should equal original"
-    );
+    assert_eq!(schedule, cloned, "SCHED-063 FALSIFIED: Clone should equal original");
 }
 
 #[test]
@@ -286,10 +274,7 @@ fn test_gradual_at_start_step() {
         frequency: 10,
     };
     let sparsity = schedule.sparsity_at_step(100);
-    assert!(
-        (sparsity - 0.2).abs() < 1e-6,
-        "Should be initial_sparsity at start_step"
-    );
+    assert!((sparsity - 0.2).abs() < 1e-6, "Should be initial_sparsity at start_step");
 }
 
 #[test]
@@ -332,8 +317,5 @@ fn test_gradual_progress_at_75_percent() {
         frequency: 1,
     };
     let sparsity = schedule.sparsity_at_step(75);
-    assert!(
-        (sparsity - 0.75).abs() < 1e-6,
-        "Gradual at 75% should be 0.75"
-    );
+    assert!((sparsity - 0.75).abs() < 1e-6, "Gradual at 75% should be 0.75");
 }

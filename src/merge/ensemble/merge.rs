@@ -17,10 +17,7 @@ use super::{dare_merge, ties_merge, DareConfig, MergeError, Model, TiesConfig};
 /// Merged model combining all inputs
 pub fn ensemble_merge(models: &[Model], config: &EnsembleConfig) -> Result<Model, MergeError> {
     if models.len() < 2 {
-        return Err(MergeError::InsufficientModels {
-            min: 2,
-            got: models.len(),
-        });
+        return Err(MergeError::InsufficientModels { min: 2, got: models.len() });
     }
 
     match &config.strategy {

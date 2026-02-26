@@ -8,19 +8,10 @@ use crate::eval::evaluator::{EvalResult, Metric};
 
 #[test]
 fn test_kind_dataset_repo_ids() {
-    assert_eq!(
-        LeaderboardKind::OpenASR.dataset_repo_id(),
-        "hf-audio/open_asr_leaderboard"
-    );
-    assert_eq!(
-        LeaderboardKind::OpenLLMv2.dataset_repo_id(),
-        "open-llm-leaderboard/results"
-    );
+    assert_eq!(LeaderboardKind::OpenASR.dataset_repo_id(), "hf-audio/open_asr_leaderboard");
+    assert_eq!(LeaderboardKind::OpenLLMv2.dataset_repo_id(), "open-llm-leaderboard/results");
     assert_eq!(LeaderboardKind::MTEB.dataset_repo_id(), "mteb/leaderboard");
-    assert_eq!(
-        LeaderboardKind::BigCodeBench.dataset_repo_id(),
-        "bigcode/bigcodebench-results"
-    );
+    assert_eq!(LeaderboardKind::BigCodeBench.dataset_repo_id(), "bigcode/bigcodebench-results");
     assert_eq!(
         LeaderboardKind::Custom("my/leaderboard".into()).dataset_repo_id(),
         "my/leaderboard"
@@ -30,15 +21,9 @@ fn test_kind_dataset_repo_ids() {
 #[test]
 fn test_kind_primary_metric() {
     assert_eq!(LeaderboardKind::OpenASR.primary_metric(), Metric::WER);
-    assert_eq!(
-        LeaderboardKind::OpenLLMv2.primary_metric(),
-        Metric::MMLUAccuracy
-    );
+    assert_eq!(LeaderboardKind::OpenLLMv2.primary_metric(), Metric::MMLUAccuracy);
     assert_eq!(LeaderboardKind::MTEB.primary_metric(), Metric::NDCGAtK(10));
-    assert_eq!(
-        LeaderboardKind::BigCodeBench.primary_metric(),
-        Metric::PassAtK(1)
-    );
+    assert_eq!(LeaderboardKind::BigCodeBench.primary_metric(), Metric::PassAtK(1));
 }
 
 #[test]
@@ -54,14 +39,8 @@ fn test_kind_tracked_metrics() {
 
 #[test]
 fn test_kind_display() {
-    assert_eq!(
-        format!("{}", LeaderboardKind::OpenASR),
-        "Open ASR Leaderboard"
-    );
-    assert_eq!(
-        format!("{}", LeaderboardKind::Custom("foo/bar".into())),
-        "Custom (foo/bar)"
-    );
+    assert_eq!(format!("{}", LeaderboardKind::OpenASR), "Open ASR Leaderboard");
+    assert_eq!(format!("{}", LeaderboardKind::Custom("foo/bar".into())), "Custom (foo/bar)");
 }
 
 // ─── LeaderboardEntry tests ─────────────────────────────────────────
@@ -93,31 +72,16 @@ fn test_hf_leaderboard_find_model() {
 
 #[test]
 fn test_column_to_metric_open_asr() {
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenASR, "wer"),
-        Some(Metric::WER)
-    );
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenASR, "average_wer"),
-        Some(Metric::WER)
-    );
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenASR, "rtfx"),
-        Some(Metric::RTFx)
-    );
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenASR, "wer"), Some(Metric::WER));
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenASR, "average_wer"), Some(Metric::WER));
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenASR, "rtfx"), Some(Metric::RTFx));
     assert_eq!(column_to_metric(&LeaderboardKind::OpenASR, "unknown"), None);
 }
 
 #[test]
 fn test_column_to_metric_open_llm() {
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenLLMv2, "mmlu"),
-        Some(Metric::MMLUAccuracy)
-    );
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenLLMv2, "accuracy"),
-        Some(Metric::Accuracy)
-    );
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenLLMv2, "mmlu"), Some(Metric::MMLUAccuracy));
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenLLMv2, "accuracy"), Some(Metric::Accuracy));
 }
 
 #[test]
@@ -134,10 +98,7 @@ fn test_column_to_metric_bigcode() {
 
 #[test]
 fn test_column_to_metric_custom() {
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::Custom("x".into()), "bleu"),
-        Some(Metric::BLEU)
-    );
+    assert_eq!(column_to_metric(&LeaderboardKind::Custom("x".into()), "bleu"), Some(Metric::BLEU));
     assert_eq!(
         column_to_metric(&LeaderboardKind::Custom("x".into()), "perplexity"),
         Some(Metric::Perplexity)

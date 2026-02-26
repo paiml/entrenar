@@ -16,12 +16,7 @@ pub struct MetricsBuffer {
 impl MetricsBuffer {
     /// Create a new metrics buffer with given capacity.
     pub fn new(capacity: usize) -> Self {
-        Self {
-            data: vec![0.0; capacity],
-            capacity,
-            write_idx: 0,
-            len: 0,
-        }
+        Self { data: vec![0.0; capacity], capacity, write_idx: 0, len: 0 }
     }
 
     /// Push a new value, overwriting oldest if full.

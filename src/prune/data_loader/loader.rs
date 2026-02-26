@@ -22,11 +22,7 @@ pub struct CalibrationDataLoader {
 impl CalibrationDataLoader {
     /// Create a new calibration data loader.
     pub fn new(config: CalibrationDataConfig) -> Self {
-        Self {
-            config,
-            data: None,
-            position: 0,
-        }
+        Self { config, data: None, position: 0 }
     }
 
     /// Create a data loader with pre-loaded synthetic data for testing.

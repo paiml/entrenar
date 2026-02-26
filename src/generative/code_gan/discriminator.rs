@@ -26,12 +26,7 @@ impl Discriminator {
         use rand::SeedableRng;
         let mut rng = rand::rngs::StdRng::from_os_rng();
         let (embeddings, weights, biases) = Self::init_weights(&config, &mut rng);
-        Self {
-            config,
-            embeddings,
-            weights,
-            biases,
-        }
+        Self { config, embeddings, weights, biases }
     }
 
     /// Create a new discriminator with a seed for reproducibility
@@ -39,12 +34,7 @@ impl Discriminator {
         use rand::SeedableRng;
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
         let (embeddings, weights, biases) = Self::init_weights(&config, &mut rng);
-        Self {
-            config,
-            embeddings,
-            weights,
-            biases,
-        }
+        Self { config, embeddings, weights, biases }
     }
 
     fn init_weights<R: Rng>(config: &DiscriminatorConfig, rng: &mut R) -> DiscriminatorWeights {
@@ -59,11 +49,7 @@ impl Discriminator {
         // Initialize embeddings
         let embed_std = (1.0 / config.embed_dim as f64).sqrt();
         let embeddings: Vec<Vec<f32>> = (0..config.vocab_size)
-            .map(|_| {
-                (0..config.embed_dim)
-                    .map(|_| sample_normal(rng, embed_std))
-                    .collect()
-            })
+            .map(|_| (0..config.embed_dim).map(|_| sample_normal(rng, embed_std)).collect())
             .collect();
 
         // Initialize dense layers
@@ -111,10 +97,7 @@ impl Discriminator {
             x = Self::linear_forward(&x, w, b);
             // Leaky ReLU for all but last layer
             if i < self.weights.len() - 1 {
-                x = x
-                    .iter()
-                    .map(|&v| if v > 0.0 { v } else { 0.01 * v })
-                    .collect();
+                x = x.iter().map(|&v| if v > 0.0 { v } else { 0.01 * v }).collect();
             }
         }
 

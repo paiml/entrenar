@@ -106,10 +106,7 @@ fn falsify_class_ent_004_cross_entropy_finite() {
     let logits = Tensor::from_vec(vec![1.0, 2.0, -1.0, 0.5, 3.0], false);
     let loss = cross_entropy_loss(&logits, 2, 5);
     let loss_val = loss.data()[0];
-    assert!(
-        loss_val.is_finite(),
-        "F-CLASS-005: cross_entropy_loss must be finite, got {loss_val}"
-    );
+    assert!(loss_val.is_finite(), "F-CLASS-005: cross_entropy_loss must be finite, got {loss_val}");
     assert!(
         loss_val > 0.0,
         "Cross-entropy loss must be positive for non-dominant class, got {loss_val}"

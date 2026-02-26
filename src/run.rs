@@ -55,22 +55,14 @@ pub struct TracingConfig {
 
 impl Default for TracingConfig {
     fn default() -> Self {
-        Self {
-            tracing_enabled: true,
-            export_otlp: false,
-            golden_trace_path: None,
-        }
+        Self { tracing_enabled: true, export_otlp: false, golden_trace_path: None }
     }
 }
 
 impl TracingConfig {
     /// Create a disabled tracing configuration
     pub fn disabled() -> Self {
-        Self {
-            tracing_enabled: false,
-            export_otlp: false,
-            golden_trace_path: None,
-        }
+        Self { tracing_enabled: false, export_otlp: false, golden_trace_path: None }
     }
 
     /// Enable OTLP export
@@ -154,9 +146,7 @@ impl<S: ExperimentStorage> Run<S> {
 
     /// Create a Renacer span for this run
     fn create_span(run_id: &str) -> String {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
 
         format!("span-{}-{}", run_id, now.as_nanos())
     }
@@ -186,9 +176,7 @@ impl<S: ExperimentStorage> Run<S> {
     /// * `value` - Metric value
     pub fn log_metric_at(&mut self, key: &str, step: u64, value: f64) -> Result<()> {
         if self.finished {
-            return Err(StorageError::InvalidState(
-                "Cannot log to finished run".to_string(),
-            ));
+            return Err(StorageError::InvalidState("Cannot log to finished run".to_string()));
         }
 
         self.storage
@@ -310,9 +298,8 @@ mod tests {
 
     #[test]
     fn test_tracing_config_builder() {
-        let config = TracingConfig::default()
-            .with_otlp_export()
-            .with_golden_trace_path("/tmp/golden");
+        let config =
+            TracingConfig::default().with_otlp_export().with_golden_trace_path("/tmp/golden");
 
         assert!(config.tracing_enabled);
         assert!(config.export_otlp);
@@ -353,11 +340,7 @@ mod tests {
 
         assert_eq!(run.current_step("loss"), 3);
 
-        let metrics = storage
-            .lock()
-            .unwrap()
-            .get_metrics(&run.id, "loss")
-            .unwrap();
+        let metrics = storage.lock().unwrap().get_metrics(&run.id, "loss").unwrap();
         assert_eq!(metrics.len(), 3);
         assert_eq!(metrics[0].step, 0);
         assert_eq!(metrics[1].step, 1);
@@ -375,11 +358,7 @@ mod tests {
         run.log_metric_at("accuracy", 10, 0.8).unwrap();
         run.log_metric_at("accuracy", 20, 0.9).unwrap();
 
-        let metrics = storage
-            .lock()
-            .unwrap()
-            .get_metrics(&run.id, "accuracy")
-            .unwrap();
+        let metrics = storage.lock().unwrap().get_metrics(&run.id, "accuracy").unwrap();
         assert_eq!(metrics.len(), 3);
         assert_eq!(metrics[0].step, 0);
         assert_eq!(metrics[1].step, 10);
@@ -411,11 +390,8 @@ mod tests {
 
         run.finish(RunStatus::Success).unwrap();
 
-        let status = storage
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get_run_status(&run_id)
-            .unwrap();
+        let status =
+            storage.lock().unwrap_or_else(|e| e.into_inner()).get_run_status(&run_id).unwrap();
         assert_eq!(status, RunStatus::Success);
     }
 
@@ -429,11 +405,8 @@ mod tests {
 
         run.finish(RunStatus::Failed).unwrap();
 
-        let status = storage
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get_run_status(&run_id)
-            .unwrap();
+        let status =
+            storage.lock().unwrap_or_else(|e| e.into_inner()).get_run_status(&run_id).unwrap();
         assert_eq!(status, RunStatus::Failed);
     }
 
@@ -445,12 +418,7 @@ mod tests {
         let run = Run::new(&exp_id, storage.clone(), config).unwrap();
         let span_id = run.span_id().unwrap().to_string();
 
-        let stored_span = storage
-            .lock()
-            .unwrap()
-            .get_span_id(&run.id)
-            .unwrap()
-            .unwrap();
+        let stored_span = storage.lock().unwrap().get_span_id(&run.id).unwrap().unwrap();
         assert_eq!(stored_span, span_id);
     }
 

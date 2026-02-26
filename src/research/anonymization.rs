@@ -43,10 +43,7 @@ impl Default for AnonymizationConfig {
 impl AnonymizationConfig {
     /// Create a new anonymization config with a salt
     pub fn new(salt: impl Into<String>) -> Self {
-        Self {
-            salt: salt.into(),
-            ..Default::default()
-        }
+        Self { salt: salt.into(), ..Default::default() }
     }
 
     /// Set the author replacement text
@@ -72,8 +69,7 @@ impl AnonymizationConfig {
         mut self,
         patterns: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        self.redact_patterns
-            .extend(patterns.into_iter().map(Into::into));
+        self.redact_patterns.extend(patterns.into_iter().map(Into::into));
         self
     }
 
@@ -102,11 +98,7 @@ impl AnonymizationConfig {
             .collect();
 
         // Strip DOI if configured
-        let doi = if self.strip_doi {
-            None
-        } else {
-            artifact.doi.clone()
-        };
+        let doi = if self.strip_doi { None } else { artifact.doi.clone() };
 
         // Anonymize description if present
         let description = artifact
@@ -201,18 +193,12 @@ fn anonymize_text_internal(text: &str, authors: &[Author], config: &Anonymizatio
 
     for (i, author) in authors.iter().enumerate() {
         // Replace full name
-        result = result.replace(
-            &author.name,
-            &format!("{} {}", config.author_replacement, i + 1),
-        );
+        result = result.replace(&author.name, &format!("{} {}", config.author_replacement, i + 1));
 
         // Replace last name only
         let last_name = author.last_name();
         if last_name != author.name {
-            result = result.replace(
-                last_name,
-                &format!("{} {}", config.author_replacement, i + 1),
-            );
+            result = result.replace(last_name, &format!("{} {}", config.author_replacement, i + 1));
         }
 
         // Replace affiliations
@@ -235,9 +221,7 @@ mod tests {
             .unwrap()
             .with_role(ContributorRole::Conceptualization)
             .with_affiliation(
-                Affiliation::new("MIT")
-                    .with_ror_id("https://ror.org/03yrm5c26")
-                    .unwrap(),
+                Affiliation::new("MIT").with_ror_id("https://ror.org/03yrm5c26").unwrap(),
             );
 
         let author2 =
@@ -273,14 +257,8 @@ mod tests {
 
         let anon = config.anonymize(&artifact);
 
-        assert_eq!(
-            anon.authors[0].affiliation_placeholder,
-            "Anonymous Institution"
-        );
-        assert_eq!(
-            anon.authors[1].affiliation_placeholder,
-            "Anonymous Institution"
-        );
+        assert_eq!(anon.authors[0].affiliation_placeholder, "Anonymous Institution");
+        assert_eq!(anon.authors[1].affiliation_placeholder, "Anonymous Institution");
     }
 
     #[test]

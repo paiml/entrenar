@@ -45,14 +45,8 @@ fn test_parse_train_with_overrides() {
 
 #[test]
 fn test_parse_train_with_resume() {
-    let cli = parse_args([
-        "entrenar",
-        "train",
-        "config.yaml",
-        "--resume",
-        "checkpoint.json",
-    ])
-    .unwrap();
+    let cli =
+        parse_args(["entrenar", "train", "config.yaml", "--resume", "checkpoint.json"]).unwrap();
 
     match cli.command {
         Command::Train(args) => {
@@ -121,14 +115,8 @@ fn test_parse_info_json_format() {
 
 #[test]
 fn test_parse_quantize_command() {
-    let cli = parse_args([
-        "entrenar",
-        "quantize",
-        "model.gguf",
-        "--output",
-        "model_q4.gguf",
-    ])
-    .unwrap();
+    let cli =
+        parse_args(["entrenar", "quantize", "model.gguf", "--output", "model_q4.gguf"]).unwrap();
 
     match cli.command {
         Command::Quantize(args) => {
@@ -169,15 +157,9 @@ fn test_parse_quantize_with_options() {
 
 #[test]
 fn test_parse_merge_command() {
-    let cli = parse_args([
-        "entrenar",
-        "merge",
-        "model1.gguf",
-        "model2.gguf",
-        "--output",
-        "merged.gguf",
-    ])
-    .unwrap();
+    let cli =
+        parse_args(["entrenar", "merge", "model1.gguf", "model2.gguf", "--output", "merged.gguf"])
+            .unwrap();
 
     match cli.command {
         Command::Merge(args) => {
@@ -384,10 +366,7 @@ fn test_apply_overrides_all() {
 
 fn create_test_spec() -> crate::config::TrainSpec {
     crate::config::TrainSpec {
-        model: crate::config::ModelRef {
-            path: PathBuf::from("model.gguf"),
-            ..Default::default()
-        },
+        model: crate::config::ModelRef { path: PathBuf::from("model.gguf"), ..Default::default() },
         data: crate::config::DataConfig {
             train: PathBuf::from("train.parquet"),
             batch_size: 8,
@@ -442,15 +421,7 @@ fn test_parse_init_command() {
 
 #[test]
 fn test_parse_init_with_template() {
-    let cli = parse_args([
-        "entrenar",
-        "init",
-        "--template",
-        "lora",
-        "--name",
-        "test-exp",
-    ])
-    .unwrap();
+    let cli = parse_args(["entrenar", "init", "--template", "lora", "--name", "test-exp"]).unwrap();
     match cli.command {
         Command::Init(args) => {
             assert_eq!(args.template, InitTemplate::Lora);

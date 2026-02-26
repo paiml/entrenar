@@ -19,11 +19,7 @@ impl SweepConfig {
     /// Create a temperature sweep.
     pub fn temperature(range: std::ops::Range<f32>, step: f32) -> Self {
         Self {
-            parameter: SweepParameter::Temperature {
-                start: range.start,
-                end: range.end,
-                step,
-            },
+            parameter: SweepParameter::Temperature { start: range.start, end: range.end, step },
             runs_per_point: 1,
             early_stop: false,
             seed: Some(42),
@@ -33,11 +29,7 @@ impl SweepConfig {
     /// Create an alpha sweep.
     pub fn alpha(range: std::ops::Range<f32>, step: f32) -> Self {
         Self {
-            parameter: SweepParameter::Alpha {
-                start: range.start,
-                end: range.end,
-                step,
-            },
+            parameter: SweepParameter::Alpha { start: range.start, end: range.end, step },
             runs_per_point: 1,
             early_stop: false,
             seed: Some(42),
@@ -151,7 +143,9 @@ impl Sweeper {
         // Find optimal
         let optimal = data_points
             .iter()
-            .min_by(|a, b| a.mean_loss.partial_cmp(&b.mean_loss).unwrap())
+            .min_by(|a, b| {
+                a.mean_loss.partial_cmp(&b.mean_loss).unwrap_or(std::cmp::Ordering::Equal)
+            })
             .cloned();
 
         Ok(SweepResult {
@@ -395,9 +389,7 @@ mod tests {
 
     #[test]
     fn test_sweep_parameter_rank() {
-        let param = SweepParameter::Rank {
-            values: vec![8, 16, 32, 64],
-        };
+        let param = SweepParameter::Rank { values: vec![8, 16, 32, 64] };
         let values = param.values();
         assert_eq!(values, vec![8.0, 16.0, 32.0, 64.0]);
         assert_eq!(param.name(), "rank");
@@ -405,9 +397,7 @@ mod tests {
 
     #[test]
     fn test_sweep_parameter_learning_rate() {
-        let param = SweepParameter::LearningRate {
-            values: vec![1e-5, 1e-4, 1e-3],
-        };
+        let param = SweepParameter::LearningRate { values: vec![1e-5, 1e-4, 1e-3] };
         let values = param.values();
         assert_eq!(values, vec![1e-5, 1e-4, 1e-3]);
         assert_eq!(param.name(), "learning_rate");
@@ -474,10 +464,7 @@ mod tests {
         let result2 = sweeper2.run().unwrap();
 
         // Same seed should produce same results
-        assert_eq!(
-            result1.data_points[0].mean_loss,
-            result2.data_points[0].mean_loss
-        );
+        assert_eq!(result1.data_points[0].mean_loss, result2.data_points[0].mean_loss);
     }
 
     #[test]

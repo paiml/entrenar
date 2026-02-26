@@ -21,9 +21,7 @@ impl Embedding {
         let scale = (1.0 / hidden_size as f32).sqrt();
         Self {
             weight: Tensor::from_vec(
-                (0..vocab_size * hidden_size)
-                    .map(|i| ((i as f32 * 0.111).sin() * scale))
-                    .collect(),
+                (0..vocab_size * hidden_size).map(|i| ((i as f32 * 0.111).sin() * scale)).collect(),
                 true,
             ),
             vocab_size,
@@ -51,11 +49,7 @@ impl Embedding {
             );
             return None;
         }
-        Some(Self {
-            weight,
-            vocab_size,
-            hidden_size,
-        })
+        Some(Self { weight, vocab_size, hidden_size })
     }
 
     /// Forward pass - lookup embeddings for token IDs
@@ -80,7 +74,10 @@ impl Embedding {
             } else {
                 let start = idx * self.hidden_size;
                 let end = start + self.hidden_size;
-                output.extend_from_slice(&self.weight.data().as_slice().unwrap()[start..end]);
+                output.extend_from_slice(
+                    &self.weight.data().as_slice().expect("embedding weight must be contiguous")
+                        [start..end],
+                );
             }
         }
 
@@ -148,10 +145,7 @@ mod tests {
     #[test]
     fn test_embedding_from_params() {
         let mut params = HashMap::new();
-        params.insert(
-            "embed.weight".to_string(),
-            Tensor::from_vec(vec![0.1; 100 * 8], true),
-        );
+        params.insert("embed.weight".to_string(), Tensor::from_vec(vec![0.1; 100 * 8], true));
         let embed = Embedding::from_params(&params, "embed.weight", 100, 8);
         assert!(embed.is_some());
         let embed = embed.unwrap();
@@ -234,10 +228,7 @@ mod tests {
     fn falsify_e7c_from_params_rejects_wrong_shape() {
         let mut params = HashMap::new();
         // Intentionally wrong size: 50 elements for 100*8=800 expected
-        params.insert(
-            "embed.weight".to_string(),
-            Tensor::from_vec(vec![0.1; 50], true),
-        );
+        params.insert("embed.weight".to_string(), Tensor::from_vec(vec![0.1; 50], true));
         let embed = Embedding::from_params(&params, "embed.weight", 100, 8);
         // FIXED (PMAT-326): now rejected
         assert!(
@@ -317,11 +308,7 @@ mod tests {
     fn falsify_em_001b_forward_empty_input() {
         let embed = Embedding::new(100, 32);
         let output = embed.forward(&[]);
-        assert_eq!(
-            output.len(),
-            0,
-            "FALSIFIED EM-001b: empty input should produce 0 elements"
-        );
+        assert_eq!(output.len(), 0, "FALSIFIED EM-001b: empty input should produce 0 elements");
     }
 
     /// FALSIFY-EM-002: OOB token → zeros, no panic (N-09 escape)
@@ -338,10 +325,7 @@ mod tests {
         let oob_output = embed.forward(&[999, 50, 100]);
         let oob_data = oob_output.data();
         for (i, &v) in oob_data.iter().enumerate() {
-            assert!(
-                v.abs() < 1e-10,
-                "FALSIFIED EM-002: OOB output[{i}] = {v}, expected 0.0"
-            );
+            assert!(v.abs() < 1e-10, "FALSIFIED EM-002: OOB output[{i}] = {v}, expected 0.0");
         }
 
         // Mixed valid + OOB: valid tokens must still be correct
@@ -552,10 +536,7 @@ mod tests {
         let data = output.data();
 
         let l2_norm: f32 = data.iter().map(|v| v * v).sum::<f32>().sqrt();
-        assert!(
-            l2_norm > 1e-6,
-            "FALSIFIED EMB-005: forward output is all-zero (L2={l2_norm})"
-        );
+        assert!(l2_norm > 1e-6, "FALSIFIED EMB-005: forward output is all-zero (L2={l2_norm})");
     }
 
     // =========================================================================

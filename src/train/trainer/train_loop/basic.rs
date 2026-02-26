@@ -123,14 +123,8 @@ impl Trainer {
         loss: f32,
         val_loss: Option<f32>,
     ) -> bool {
-        let ctx = self.build_context(
-            epoch,
-            max_epochs,
-            steps_per_epoch,
-            steps_per_epoch,
-            loss,
-            val_loss,
-        );
+        let ctx =
+            self.build_context(epoch, max_epochs, steps_per_epoch, steps_per_epoch, loss, val_loss);
         self.callbacks.on_epoch_end(&ctx) == CallbackAction::Stop
     }
 
@@ -155,11 +149,7 @@ impl Trainer {
             let ctx =
                 self.build_context(epoch, max_epochs, step, steps_per_epoch, current_loss, None);
             if self.callbacks.on_step_begin(&ctx) == CallbackAction::Stop {
-                return EpochStepResult {
-                    total_loss,
-                    num_batches,
-                    stopped_early: true,
-                };
+                return EpochStepResult { total_loss, num_batches, stopped_early: true };
             }
 
             if step % accum_steps == 0 {
@@ -175,19 +165,11 @@ impl Trainer {
 
             let ctx = self.build_context(epoch, max_epochs, step, steps_per_epoch, loss, None);
             if self.callbacks.on_step_end(&ctx) == CallbackAction::Stop {
-                return EpochStepResult {
-                    total_loss,
-                    num_batches,
-                    stopped_early: true,
-                };
+                return EpochStepResult { total_loss, num_batches, stopped_early: true };
             }
         }
 
-        EpochStepResult {
-            total_loss,
-            num_batches,
-            stopped_early: false,
-        }
+        EpochStepResult { total_loss, num_batches, stopped_early: false }
     }
 
     /// Clip gradients and run optimizer step at accumulation boundaries

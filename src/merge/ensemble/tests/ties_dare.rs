@@ -37,10 +37,7 @@ fn test_ties_without_base() {
     let m1 = make_model(vec![1.0]);
     let m2 = make_model(vec![2.0]);
 
-    let config = EnsembleConfig {
-        base: None,
-        strategy: EnsembleStrategy::Ties { density: 0.5 },
-    };
+    let config = EnsembleConfig { base: None, strategy: EnsembleStrategy::Ties { density: 0.5 } };
 
     let result = ensemble_merge(&[m1, m2], &config);
     assert!(matches!(result, Err(MergeError::InvalidConfig(_))));
@@ -53,10 +50,7 @@ fn test_dare_without_base() {
 
     let config = EnsembleConfig {
         base: None,
-        strategy: EnsembleStrategy::Dare {
-            drop_prob: 0.5,
-            seed: None,
-        },
+        strategy: EnsembleStrategy::Dare { drop_prob: 0.5, seed: None },
     };
 
     let result = ensemble_merge(&[m1, m2], &config);

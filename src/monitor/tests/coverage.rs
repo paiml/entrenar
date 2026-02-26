@@ -17,14 +17,8 @@ fn test_metric_as_str() {
 fn test_metric_from_str_all_variants() {
     assert_eq!(Metric::from_str("loss"), Some(Metric::Loss));
     assert_eq!(Metric::from_str("accuracy"), Some(Metric::Accuracy));
-    assert_eq!(
-        Metric::from_str("learning_rate"),
-        Some(Metric::LearningRate)
-    );
-    assert_eq!(
-        Metric::from_str("gradient_norm"),
-        Some(Metric::GradientNorm)
-    );
+    assert_eq!(Metric::from_str("learning_rate"), Some(Metric::LearningRate));
+    assert_eq!(Metric::from_str("gradient_norm"), Some(Metric::GradientNorm));
     assert_eq!(Metric::from_str("epoch"), Some(Metric::Epoch));
     assert_eq!(Metric::from_str("batch"), Some(Metric::Batch));
     assert_eq!(Metric::from_str("unknown"), None);
@@ -32,9 +26,8 @@ fn test_metric_from_str_all_variants() {
 
 #[test]
 fn test_metric_record_with_tag() {
-    let record = MetricRecord::new(Metric::Loss, 0.5)
-        .with_tag("phase", "training")
-        .with_tag("epoch", "1");
+    let record =
+        MetricRecord::new(Metric::Loss, 0.5).with_tag("phase", "training").with_tag("epoch", "1");
 
     assert_eq!(record.tags.get("phase"), Some(&"training".to_string()));
     assert_eq!(record.tags.get("epoch"), Some(&"1".to_string()));

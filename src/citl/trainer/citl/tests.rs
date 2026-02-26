@@ -60,10 +60,8 @@ fn test_decision_citl_correlate_error() {
     let mut trainer = DecisionCITL::new().unwrap();
 
     // Ingest a failed session
-    let traces = vec![
-        DecisionTrace::new("d1", "type_inference", "Inferred wrong type")
-            .with_span(SourceSpan::line("main.rs", 5)),
-    ];
+    let traces = vec![DecisionTrace::new("d1", "type_inference", "Inferred wrong type")
+        .with_span(SourceSpan::line("main.rs", 5))];
     let outcome = CompilationOutcome::failure(
         vec!["E0308".to_string()],
         vec![SourceSpan::line("main.rs", 5)],

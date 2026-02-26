@@ -72,10 +72,7 @@ impl FineTuneConfig {
     /// Create new fine-tuning config for a model
     #[must_use]
     pub fn new(model_id: impl Into<String>) -> Self {
-        Self {
-            model_id: model_id.into(),
-            ..Default::default()
-        }
+        Self { model_id: model_id.into(), ..Default::default() }
     }
 
     /// Use LoRA fine-tuning
@@ -211,9 +208,7 @@ impl FineTuneConfig {
     /// Validate configuration
     pub fn validate(&self) -> Result<()> {
         if self.model_id.is_empty() {
-            return Err(FetchError::InvalidRepoId {
-                repo_id: String::new(),
-            });
+            return Err(FetchError::InvalidRepoId { repo_id: String::new() });
         }
 
         if self.learning_rate <= 0.0 {

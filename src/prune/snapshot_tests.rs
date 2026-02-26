@@ -43,11 +43,8 @@ mod tests {
     fn snapshot_cubic_schedule_serialization() {
         // TEST_ID: SNAP-003
         // Snapshot test for Cubic schedule JSON serialization
-        let schedule = PruningSchedule::Cubic {
-            start_step: 0,
-            end_step: 10000,
-            final_sparsity: 0.7,
-        };
+        let schedule =
+            PruningSchedule::Cubic { start_step: 0, end_step: 10000, final_sparsity: 0.7 };
         insta::assert_json_snapshot!("cubic_schedule", schedule);
     }
 
@@ -63,10 +60,8 @@ mod tests {
             frequency: 10,
         };
 
-        let progression: Vec<(usize, f32)> = (0..=100)
-            .step_by(10)
-            .map(|step| (step, schedule.sparsity_at_step(step)))
-            .collect();
+        let progression: Vec<(usize, f32)> =
+            (0..=100).step_by(10).map(|step| (step, schedule.sparsity_at_step(step))).collect();
 
         insta::assert_json_snapshot!("gradual_sparsity_progression", progression);
     }
@@ -75,16 +70,10 @@ mod tests {
     fn snapshot_cubic_sparsity_progression() {
         // TEST_ID: SNAP-005
         // Snapshot sparsity values at key points in a cubic schedule
-        let schedule = PruningSchedule::Cubic {
-            start_step: 0,
-            end_step: 100,
-            final_sparsity: 0.5,
-        };
+        let schedule = PruningSchedule::Cubic { start_step: 0, end_step: 100, final_sparsity: 0.5 };
 
-        let progression: Vec<(usize, f32)> = (0..=100)
-            .step_by(10)
-            .map(|step| (step, schedule.sparsity_at_step(step)))
-            .collect();
+        let progression: Vec<(usize, f32)> =
+            (0..=100).step_by(10).map(|step| (step, schedule.sparsity_at_step(step))).collect();
 
         insta::assert_json_snapshot!("cubic_sparsity_progression", progression);
     }
@@ -140,13 +129,7 @@ mod tests {
             ("unstructured", SparsityPatternConfig::Unstructured),
             ("nm_2_4", SparsityPatternConfig::nm_2_4()),
             ("nm_4_8", SparsityPatternConfig::nm_4_8()),
-            (
-                "block_4x4",
-                SparsityPatternConfig::Block {
-                    height: 4,
-                    width: 4,
-                },
-            ),
+            ("block_4x4", SparsityPatternConfig::Block { height: 4, width: 4 }),
             ("row", SparsityPatternConfig::Row),
             ("column", SparsityPatternConfig::Column),
         ];
@@ -299,19 +282,11 @@ mod tests {
             ),
             (
                 "cubic_end_before_start",
-                PruningSchedule::Cubic {
-                    start_step: 100,
-                    end_step: 50,
-                    final_sparsity: 0.5,
-                },
+                PruningSchedule::Cubic { start_step: 100, end_step: 50, final_sparsity: 0.5 },
             ),
             (
                 "cubic_negative_sparsity",
-                PruningSchedule::Cubic {
-                    start_step: 0,
-                    end_step: 100,
-                    final_sparsity: -0.1,
-                },
+                PruningSchedule::Cubic { start_step: 0, end_step: 100, final_sparsity: -0.1 },
             ),
         ];
 

@@ -11,10 +11,7 @@ pub enum Command {
     /// Inspect a loaded model
     Inspect { target: InspectTarget },
     /// Estimate memory requirements
-    Memory {
-        batch_size: Option<u32>,
-        seq_len: Option<usize>,
-    },
+    Memory { batch_size: Option<u32>, seq_len: Option<usize> },
     /// Set configuration values
     Set { key: String, value: String },
     /// Run distillation
@@ -50,9 +47,7 @@ pub enum InspectTarget {
 pub fn parse(input: &str) -> Result<Command> {
     let input = input.trim();
     if input.is_empty() {
-        return Ok(Command::Unknown {
-            input: String::new(),
-        });
+        return Ok(Command::Unknown { input: String::new() });
     }
 
     let parts: Vec<&str> = input.split_whitespace().collect();
@@ -70,9 +65,7 @@ pub fn parse(input: &str) -> Result<Command> {
         "help" | "?" => parse_help(args),
         "clear" | "cls" => Ok(Command::Clear),
         "quit" | "exit" | "q" => Ok(Command::Quit),
-        _ => Ok(Command::Unknown {
-            input: input.to_string(),
-        }),
+        _ => Ok(Command::Unknown { input: input.to_string() }),
     }
 }
 
@@ -131,10 +124,7 @@ fn parse_memory(args: &[&str]) -> Result<Command> {
         }
     }
 
-    Ok(Command::Memory {
-        batch_size,
-        seq_len,
-    })
+    Ok(Command::Memory { batch_size, seq_len })
 }
 
 fn parse_set(args: &[&str]) -> Result<Command> {
@@ -146,10 +136,7 @@ fn parse_set(args: &[&str]) -> Result<Command> {
         });
     }
 
-    Ok(Command::Set {
-        key: args[0].to_string(),
-        value: args[1..].join(" "),
-    })
+    Ok(Command::Set { key: args[0].to_string(), value: args[1..].join(" ") })
 }
 
 fn parse_distill(args: &[&str]) -> Result<Command> {
@@ -166,10 +153,7 @@ fn parse_export(args: &[&str]) -> Result<Command> {
         });
     }
 
-    Ok(Command::Export {
-        format: args[0].to_string(),
-        path: args[1].to_string(),
-    })
+    Ok(Command::Export { format: args[0].to_string(), path: args[1].to_string() })
 }
 
 fn parse_help(args: &[&str]) -> Result<Command> {
@@ -184,10 +168,7 @@ pub fn execute(cmd: &Command, state: &mut SessionState) -> Result<String> {
     let result = match cmd {
         Command::Fetch { model_id, role } => execute_fetch(model_id, *role, state),
         Command::Inspect { target } => execute_inspect(target, state),
-        Command::Memory {
-            batch_size,
-            seq_len,
-        } => execute_memory(*batch_size, *seq_len, state),
+        Command::Memory { batch_size, seq_len } => execute_memory(*batch_size, *seq_len, state),
         Command::Set { key, value } => execute_set(key, value, state),
         Command::Distill { dry_run } => execute_distill(*dry_run, state),
         Command::Export { format, path } => execute_export(format, path, state),
@@ -354,14 +335,8 @@ fn execute_set(key: &str, value: &str, state: &mut SessionState) -> Result<Strin
 }
 
 fn execute_distill(dry_run: bool, state: &SessionState) -> Result<String> {
-    let teacher = state
-        .loaded_models()
-        .values()
-        .find(|m| m.role == ModelRole::Teacher);
-    let student = state
-        .loaded_models()
-        .values()
-        .find(|m| m.role == ModelRole::Student);
+    let teacher = state.loaded_models().values().find(|m| m.role == ModelRole::Teacher);
+    let student = state.loaded_models().values().find(|m| m.role == ModelRole::Student);
 
     if teacher.is_none() {
         return Err(EntrenarError::ConfigValue {
@@ -380,10 +355,12 @@ fn execute_distill(dry_run: bool, state: &SessionState) -> Result<String> {
     }
 
     if dry_run {
+        let teacher = teacher.expect("teacher validated non-None above");
+        let student = student.expect("student validated non-None above");
         Ok(format!(
             "Dry run configuration:\n  Teacher: {} ({:.1}B)\n  Student: {} ({:.1}B)\n  Ready to train",
-            teacher.unwrap().id, teacher.unwrap().parameters as f64 / 1e9,
-            student.unwrap().id, student.unwrap().parameters as f64 / 1e9
+            teacher.id, teacher.parameters as f64 / 1e9,
+            student.id, student.parameters as f64 / 1e9
         ))
     } else {
         Ok("Training started... (simulated)".to_string())
@@ -415,10 +392,10 @@ fn execute_history(state: &SessionState) -> Result<String> {
 
 fn execute_help(topic: Option<&str>) -> Result<String> {
     match topic {
-        Some("fetch") => Ok(
-            "fetch <model_id> [--teacher|--student]\n  Download a model from HuggingFace"
-                .to_string(),
-        ),
+        Some("fetch") => {
+            Ok("fetch <model_id> [--teacher|--student]\n  Download a model from HuggingFace"
+                .to_string())
+        }
         Some("inspect") => {
             Ok("inspect [layers|memory|all|<model>]\n  Inspect loaded models".to_string())
         }
@@ -508,48 +485,28 @@ mod tests {
     #[test]
     fn test_parse_fetch() {
         let cmd = parse("fetch meta-llama/Llama-2-7b --teacher").unwrap();
-        assert!(matches!(
-            cmd,
-            Command::Fetch {
-                role: ModelRole::Teacher,
-                ..
-            }
-        ));
+        assert!(matches!(cmd, Command::Fetch { role: ModelRole::Teacher, .. }));
 
         let cmd = parse("fetch TinyLlama/TinyLlama-1.1B --student").unwrap();
-        assert!(matches!(
-            cmd,
-            Command::Fetch {
-                role: ModelRole::Student,
-                ..
-            }
-        ));
+        assert!(matches!(cmd, Command::Fetch { role: ModelRole::Student, .. }));
     }
 
     #[test]
     fn test_parse_inspect() {
         assert!(matches!(
             parse("inspect").unwrap(),
-            Command::Inspect {
-                target: InspectTarget::All
-            }
+            Command::Inspect { target: InspectTarget::All }
         ));
         assert!(matches!(
             parse("inspect layers").unwrap(),
-            Command::Inspect {
-                target: InspectTarget::Layers
-            }
+            Command::Inspect { target: InspectTarget::Layers }
         ));
     }
 
     #[test]
     fn test_parse_memory() {
         let cmd = parse("memory --batch 64 --seq 1024").unwrap();
-        if let Command::Memory {
-            batch_size,
-            seq_len,
-        } = cmd
-        {
+        if let Command::Memory { batch_size, seq_len } = cmd {
             assert_eq!(batch_size, Some(64));
             assert_eq!(seq_len, Some(1024));
         } else {
@@ -662,35 +619,21 @@ mod tests {
     #[test]
     fn test_parse_inspect_memory() {
         let cmd = parse("inspect memory").unwrap();
-        assert!(matches!(
-            cmd,
-            Command::Inspect {
-                target: InspectTarget::Memory
-            }
-        ));
+        assert!(matches!(cmd, Command::Inspect { target: InspectTarget::Memory }));
     }
 
     #[test]
     fn test_parse_command_aliases() {
         // download = fetch
-        assert!(matches!(
-            parse("download model").unwrap(),
-            Command::Fetch { .. }
-        ));
+        assert!(matches!(parse("download model").unwrap(), Command::Fetch { .. }));
         // show = inspect
-        assert!(matches!(
-            parse("show layers").unwrap(),
-            Command::Inspect { .. }
-        ));
+        assert!(matches!(parse("show layers").unwrap(), Command::Inspect { .. }));
         // mem = memory
         assert!(matches!(parse("mem").unwrap(), Command::Memory { .. }));
         // train = distill
         assert!(matches!(parse("train").unwrap(), Command::Distill { .. }));
         // save = export (needs args)
-        assert!(matches!(
-            parse("save gguf /tmp/out").unwrap(),
-            Command::Export { .. }
-        ));
+        assert!(matches!(parse("save gguf /tmp/out").unwrap(), Command::Export { .. }));
         // cls = clear
         assert!(matches!(parse("cls").unwrap(), Command::Clear));
         // ? = help

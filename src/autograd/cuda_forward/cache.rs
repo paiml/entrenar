@@ -42,11 +42,7 @@ impl ForwardKernelCache {
         // since we already have a valid CudaContext).
         let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
         eprintln!("[CUDA] Kernel cache initialized for target: {sm_target}");
-        Self {
-            ctx,
-            modules: HashMap::new(),
-            sm_target,
-        }
+        Self { ctx, modules: HashMap::new(), sm_target }
     }
 
     /// Get the device SM target for PTX emission.

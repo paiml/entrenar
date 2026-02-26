@@ -23,12 +23,7 @@ pub struct FakeQuantize {
 impl FakeQuantize {
     /// Create new fake quantization operation
     pub fn new(config: FakeQuantConfig) -> Self {
-        Self {
-            config,
-            scale: 1.0,
-            zero_point: 0,
-            initialized: false,
-        }
+        Self { config, scale: 1.0, zero_point: 0, initialized: false }
     }
 
     /// Create with 4-bit symmetric quantization
@@ -78,11 +73,7 @@ impl FakeQuantize {
     /// Simulates quantization effects while keeping values in floating point.
     /// Output = dequantize(quantize(input))
     pub fn forward(&self, input: &Tensor) -> Tensor {
-        let data: Vec<f32> = input
-            .data()
-            .iter()
-            .map(|&x| self.fake_quantize_value(x))
-            .collect();
+        let data: Vec<f32> = input.data().iter().map(|&x| self.fake_quantize_value(x)).collect();
 
         Tensor::new(ndarray::arr1(&data), input.requires_grad())
     }
@@ -138,9 +129,7 @@ impl FakeQuantize {
     fn fake_quantize_value(&self, x: f32) -> f32 {
         // Quantize
         let q = if self.config.symmetric {
-            (x / self.scale)
-                .round()
-                .clamp(self.config.qmin as f32, self.config.qmax as f32) as i32
+            (x / self.scale).round().clamp(self.config.qmin as f32, self.config.qmax as f32) as i32
         } else {
             ((x / self.scale) + self.zero_point as f32)
                 .round()

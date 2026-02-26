@@ -50,9 +50,7 @@ fn test_full_citl_workflow() {
         )
         .with_span(SourceSpan::line("main.rs", 10))];
 
-        trainer
-            .ingest_session(traces, CompilationOutcome::success(), None)
-            .unwrap();
+        trainer.ingest_session(traces, CompilationOutcome::success(), None).unwrap();
     }
 
     // Verify session counts
@@ -142,9 +140,7 @@ fn test_pattern_store_with_multiple_error_codes() {
     assert_eq!(store.patterns_for_error("E0382").len(), 1);
 
     // Query suggestions
-    let suggestions = store
-        .suggest_fix("E0308", &["type_inference".to_string()], 5)
-        .unwrap();
+    let suggestions = store.suggest_fix("E0308", &["type_inference".to_string()], 5).unwrap();
     assert!(!suggestions.is_empty());
 }
 
@@ -236,9 +232,8 @@ fn test_tarantula_suspiciousness_calculation() {
 fn test_json_export_import_preserves_data() {
     let mut store = DecisionPatternStore::new().unwrap();
 
-    let mut pattern = FixPattern::new("E0308", "- old\n+ new")
-        .with_decision("step1")
-        .with_decision("step2");
+    let mut pattern =
+        FixPattern::new("E0308", "- old\n+ new").with_decision("step1").with_decision("step2");
     pattern.record_success();
     pattern.record_success();
     pattern.record_failure();

@@ -28,10 +28,7 @@ pub struct MetricsExporter {
 impl MetricsExporter {
     /// Create a new exporter with prefix
     pub fn new(prefix: impl Into<String>) -> Self {
-        Self {
-            prefix: prefix.into(),
-            labels: HashMap::new(),
-        }
+        Self { prefix: prefix.into(), labels: HashMap::new() }
     }
 
     /// Add a label to all exported metrics
@@ -49,11 +46,7 @@ impl MetricsExporter {
             let labels = self.format_labels();
 
             // HELP and TYPE comments
-            output.push_str(&format!(
-                "# HELP {} Training metric: {}\n",
-                name,
-                metric.as_str()
-            ));
+            output.push_str(&format!("# HELP {} Training metric: {}\n", name, metric.as_str()));
             output.push_str(&format!("# TYPE {name} gauge\n"));
 
             // Main metric (mean)
@@ -126,11 +119,8 @@ impl MetricsExporter {
         if self.labels.is_empty() {
             String::new()
         } else {
-            let pairs: Vec<String> = self
-                .labels
-                .iter()
-                .map(|(k, v)| format!("{k}=\"{v}\""))
-                .collect();
+            let pairs: Vec<String> =
+                self.labels.iter().map(|(k, v)| format!("{k}=\"{v}\"")).collect();
             format!("{{{}}}", pairs.join(","))
         }
     }
@@ -186,9 +176,8 @@ mod tests {
 
     #[test]
     fn test_exporter_with_labels() {
-        let exporter = MetricsExporter::new("test")
-            .with_label("model", "v1")
-            .with_label("env", "prod");
+        let exporter =
+            MetricsExporter::new("test").with_label("model", "v1").with_label("env", "prod");
         assert_eq!(exporter.labels.len(), 2);
     }
 

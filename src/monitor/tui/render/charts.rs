@@ -21,12 +21,7 @@ pub struct BrailleChart {
 
 impl BrailleChart {
     pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            width,
-            height,
-            data: Vec::new(),
-            color_mode: ColorMode::detect(),
-        }
+        Self { width, height, data: Vec::new(), color_mode: ColorMode::detect() }
     }
 
     pub fn color_mode(mut self, mode: ColorMode) -> Self {
@@ -70,9 +65,7 @@ impl BrailleChart {
 }
 
 pub fn render_braille_chart(data: &[f32], width: usize, height: usize, _log_scale: bool) -> String {
-    BrailleChart::new(width, height)
-        .data(data.to_vec())
-        .render()
+    BrailleChart::new(width, height).data(data.to_vec()).render()
 }
 
 pub fn render_sample_panel(
@@ -90,23 +83,11 @@ pub fn render_config_panel(
 ) -> String {
     let mut lines = Vec::new();
 
-    let model_name = if snapshot.model_name.is_empty() {
-        "N/A"
-    } else {
-        &snapshot.model_name
-    };
+    let model_name = if snapshot.model_name.is_empty() { "N/A" } else { &snapshot.model_name };
     let model_display: String = model_name.chars().take(width - 8).collect();
-    lines.push(
-        Styled::new(&model_display, color_mode)
-            .fg((180, 180, 255))
-            .to_string(),
-    );
+    lines.push(Styled::new(&model_display, color_mode).fg((180, 180, 255)).to_string());
 
-    let opt = if snapshot.optimizer_name.is_empty() {
-        "N/A"
-    } else {
-        &snapshot.optimizer_name
-    };
+    let opt = if snapshot.optimizer_name.is_empty() { "N/A" } else { &snapshot.optimizer_name };
     let batch = if snapshot.batch_size > 0 {
         format!("batch:{}", snapshot.batch_size)
     } else {
@@ -129,11 +110,7 @@ pub fn render_history_table(
         "{:>5} {:>8} {:>8} {:>8} {:>10} {:>10} {:>5}",
         "Epoch", "Loss", "Min", "Max", "LR", "Tok/s", "Trend"
     );
-    lines.push(
-        Styled::new(&header, color_mode)
-            .fg((150, 150, 150))
-            .to_string(),
-    );
+    lines.push(Styled::new(&header, color_mode).fg((150, 150, 150)).to_string());
     lines.push("\u{2500}".repeat(width.min(70)));
 
     let summaries = compute_epoch_summaries(snapshot);
@@ -174,11 +151,7 @@ fn history_trend<'a>(
     _color_mode: ColorMode,
 ) -> (&'a str, (u8, u8, u8)) {
     if i > 0 || start_idx > 0 {
-        let prev_idx = if i > 0 {
-            start_idx + i - 1
-        } else {
-            start_idx.saturating_sub(1)
-        };
+        let prev_idx = if i > 0 { start_idx + i - 1 } else { start_idx.saturating_sub(1) };
         if let Some(prev) = summaries.get(prev_idx) {
             let change = (summary.avg_loss - prev.avg_loss) / prev.avg_loss.abs().max(0.001);
             if change < -0.02 {

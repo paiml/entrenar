@@ -319,9 +319,7 @@ mod tests {
 
     #[test]
     fn test_completion_args_debug_clone() {
-        let args = CompletionArgs {
-            shell: ShellType::Bash,
-        };
+        let args = CompletionArgs { shell: ShellType::Bash };
         let debug = format!("{args:?}");
         assert!(debug.contains("CompletionArgs"));
 

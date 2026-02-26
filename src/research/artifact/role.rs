@@ -62,38 +62,20 @@ mod tests {
 
     #[test]
     fn test_contributor_role_display() {
-        assert_eq!(
-            ContributorRole::Conceptualization.to_string(),
-            "Conceptualization"
-        );
+        assert_eq!(ContributorRole::Conceptualization.to_string(), "Conceptualization");
         assert_eq!(ContributorRole::DataCuration.to_string(), "Data curation");
-        assert_eq!(
-            ContributorRole::FormalAnalysis.to_string(),
-            "Formal analysis"
-        );
-        assert_eq!(
-            ContributorRole::FundingAcquisition.to_string(),
-            "Funding acquisition"
-        );
+        assert_eq!(ContributorRole::FormalAnalysis.to_string(), "Formal analysis");
+        assert_eq!(ContributorRole::FundingAcquisition.to_string(), "Funding acquisition");
         assert_eq!(ContributorRole::Investigation.to_string(), "Investigation");
         assert_eq!(ContributorRole::Methodology.to_string(), "Methodology");
-        assert_eq!(
-            ContributorRole::ProjectAdministration.to_string(),
-            "Project administration"
-        );
+        assert_eq!(ContributorRole::ProjectAdministration.to_string(), "Project administration");
         assert_eq!(ContributorRole::Resources.to_string(), "Resources");
         assert_eq!(ContributorRole::Software.to_string(), "Software");
         assert_eq!(ContributorRole::Supervision.to_string(), "Supervision");
         assert_eq!(ContributorRole::Validation.to_string(), "Validation");
         assert_eq!(ContributorRole::Visualization.to_string(), "Visualization");
-        assert_eq!(
-            ContributorRole::WritingOriginal.to_string(),
-            "Writing – original draft"
-        );
-        assert_eq!(
-            ContributorRole::WritingReview.to_string(),
-            "Writing – review & editing"
-        );
+        assert_eq!(ContributorRole::WritingOriginal.to_string(), "Writing – original draft");
+        assert_eq!(ContributorRole::WritingReview.to_string(), "Writing – review & editing");
     }
 
     #[test]

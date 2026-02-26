@@ -26,12 +26,7 @@ impl TeacherCache {
     /// Create new empty cache
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            logits: HashMap::new(),
-            hidden_states: HashMap::new(),
-            hits: 0,
-            misses: 0,
-        }
+        Self { logits: HashMap::new(), hidden_states: HashMap::new(), hits: 0, misses: 0 }
     }
 
     /// Get cached logits

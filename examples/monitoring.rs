@@ -59,9 +59,7 @@ fn demo_metrics_buffer() {
     let mut buffer = MetricsBuffer::new(10);
 
     // Simulate loss values
-    let losses = [
-        1.0, 0.8, 0.6, 0.5, 0.45, 0.4, 0.38, 0.35, 0.33, 0.31, 0.30, 0.29,
-    ];
+    let losses = [1.0, 0.8, 0.6, 0.5, 0.45, 0.4, 0.38, 0.35, 0.33, 0.31, 0.30, 0.29];
 
     for loss in &losses {
         buffer.push(*loss);
@@ -85,9 +83,8 @@ fn demo_sparklines() {
     println!("  Loss trend: {}", sparkline(&losses, 20));
 
     // Oscillating accuracy
-    let acc: Vec<f32> = (0..20)
-        .map(|i| 0.5 + 0.3 * (i as f32 * 0.5).sin() + 0.15 * (i as f32 / 20.0))
-        .collect();
+    let acc: Vec<f32> =
+        (0..20).map(|i| 0.5 + 0.3 * (i as f32 * 0.5).sin() + 0.15 * (i as f32 / 20.0)).collect();
     println!("  Accuracy:   {}", sparkline(&acc, 20));
 
     // Fixed range sparkline
@@ -164,10 +161,7 @@ fn demo_andon_system() {
     for loss in &normal_losses {
         andon.check_loss(*loss);
     }
-    println!(
-        "  After normal training: has_critical={}",
-        andon.has_critical()
-    );
+    println!("  After normal training: has_critical={}", andon.has_critical());
 
     // Stall (no improvement)
     for _ in 0..6 {
@@ -205,11 +199,7 @@ fn demo_reference_curve() {
     println!("\n  Per-epoch deviation from reference:");
     for (epoch, &value) in current.iter().enumerate() {
         if let Some(dev) = reference.check_deviation(epoch, value) {
-            println!(
-                "    Epoch {}: +{:.1}% (exceeds 10% tolerance)",
-                epoch,
-                dev * 100.0
-            );
+            println!("    Epoch {}: +{:.1}% (exceeds 10% tolerance)", epoch, dev * 100.0);
         } else {
             println!("    Epoch {epoch}: within tolerance");
         }

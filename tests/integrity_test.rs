@@ -75,12 +75,7 @@ fn test_causal_lineage_full_experiment_lifecycle() {
     // Verify lineage
     assert_eq!(lineage.events_for_run("run-001").len(), 5);
     assert_eq!(lineage.events_for_run("run-002").len(), 1);
-    assert_eq!(
-        lineage
-            .events_of_type(LineageEventType::ModelPromoted)
-            .len(),
-        1
-    );
+    assert_eq!(lineage.events_of_type(LineageEventType::ModelPromoted).len(), 1);
 
     // Verify ordering
     let events = lineage.events_in_order();
@@ -288,20 +283,8 @@ fn test_behavioral_integrity_violation_analysis() {
 
     // Analyze violations
     let by_type = integrity.violations_by_type();
-    assert_eq!(
-        by_type
-            .get(&MetamorphicRelationType::Additive)
-            .unwrap()
-            .len(),
-        2
-    );
-    assert_eq!(
-        by_type
-            .get(&MetamorphicRelationType::Permutation)
-            .unwrap()
-            .len(),
-        1
-    );
+    assert_eq!(by_type.get(&MetamorphicRelationType::Additive).unwrap().len(), 2);
+    assert_eq!(by_type.get(&MetamorphicRelationType::Permutation).unwrap().len(), 1);
 
     let counts = integrity.violation_counts();
     assert_eq!(counts.critical, 1);
@@ -373,11 +356,7 @@ fn test_integrity_with_lineage_tracking() {
 
     let promotion = promotions[0];
     assert!(promotion.context.is_some());
-    assert!(promotion
-        .context
-        .as_ref()
-        .unwrap()
-        .contains("integrity_score"));
+    assert!(promotion.context.as_ref().unwrap().contains("integrity_score"));
     assert!(promotion.context.as_ref().unwrap().contains("assessment"));
 }
 

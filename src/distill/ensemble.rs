@@ -46,10 +46,7 @@ impl EnsembleDistiller {
     /// Panics if weights are empty, all zero, or temperature <= 0
     pub fn new(weights: Vec<f32>, temperature: f32) -> Self {
         assert!(!weights.is_empty(), "Must have at least one teacher");
-        assert!(
-            temperature > 0.0,
-            "Temperature must be positive, got {temperature}"
-        );
+        assert!(temperature > 0.0, "Temperature must be positive, got {temperature}");
 
         let sum: f32 = weights.iter().sum();
         assert!(sum > 0.0, "Teacher weights must sum to positive value");
@@ -57,10 +54,7 @@ impl EnsembleDistiller {
         // Normalize weights
         let normalized_weights: Vec<f32> = weights.iter().map(|&w| w / sum).collect();
 
-        Self {
-            weights: normalized_weights,
-            temperature,
-        }
+        Self { weights: normalized_weights, temperature }
     }
 
     /// Create an ensemble with uniform weights
@@ -88,11 +82,7 @@ impl EnsembleDistiller {
         // Check all teachers have same shape
         let shape = teacher_logits[0].shape();
         for t in teacher_logits.iter().skip(1) {
-            assert_eq!(
-                t.shape(),
-                shape,
-                "All teacher logits must have the same shape"
-            );
+            assert_eq!(t.shape(), shape, "All teacher logits must have the same shape");
         }
 
         // Weighted average
@@ -120,10 +110,8 @@ impl EnsembleDistiller {
         let shape = teacher_logits[0].shape();
 
         // Convert each teacher to probabilities
-        let teacher_probs: Vec<Array2<f32>> = teacher_logits
-            .iter()
-            .map(|logits| softmax_2d(&(logits / self.temperature)))
-            .collect();
+        let teacher_probs: Vec<Array2<f32>> =
+            teacher_logits.iter().map(|logits| softmax_2d(&(logits / self.temperature))).collect();
 
         // Weighted average of probabilities
         let mut ensemble_probs = Array2::zeros((shape[0], shape[1]));

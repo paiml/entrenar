@@ -14,11 +14,7 @@ pub struct SGD {
 impl SGD {
     /// Create a new SGD optimizer
     pub fn new(lr: f32, momentum: f32) -> Self {
-        Self {
-            lr,
-            momentum,
-            velocities: Vec::new(),
-        }
+        Self { lr, momentum, velocities: Vec::new() }
     }
 
     /// Initialize velocities if needed
@@ -38,10 +34,8 @@ impl Optimizer for SGD {
                 // Use SIMD for large tensors (>= 16 elements for meaningful speedup)
                 if grad.len() >= 16 {
                     let grad_slice = grad.as_slice().expect("grad array is contiguous");
-                    let param_slice = param
-                        .data_mut()
-                        .as_slice_mut()
-                        .expect("param array is contiguous");
+                    let param_slice =
+                        param.data_mut().as_slice_mut().expect("param array is contiguous");
 
                     if self.momentum > 0.0 {
                         // Initialize velocity if needed
@@ -49,12 +43,10 @@ impl Optimizer for SGD {
                             self.velocities[i] = Some(Array1::zeros(grad.len()));
                         }
 
-                        let velocity = self.velocities[i]
-                            .as_mut()
-                            .expect("velocity buffer initialized above");
-                        let velocity_slice = velocity
-                            .as_slice_mut()
-                            .expect("velocity array is contiguous");
+                        let velocity =
+                            self.velocities[i].as_mut().expect("velocity buffer initialized above");
+                        let velocity_slice =
+                            velocity.as_slice_mut().expect("velocity array is contiguous");
 
                         // v = momentum * v - lr * grad (using SIMD)
                         // First scale velocity by momentum

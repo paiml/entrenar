@@ -68,14 +68,8 @@ fn test_distribution_format_extensions() {
 
 #[test]
 fn test_distribution_format_mime_types() {
-    assert_eq!(
-        DistributionFormat::Iso.mime_type(),
-        "application/x-iso9660-image"
-    );
-    assert_eq!(
-        DistributionFormat::Oci.mime_type(),
-        "application/vnd.oci.image.layer.v1.tar"
-    );
+    assert_eq!(DistributionFormat::Iso.mime_type(), "application/x-iso9660-image");
+    assert_eq!(DistributionFormat::Oci.mime_type(), "application/vnd.oci.image.layer.v1.tar");
 }
 
 #[test]

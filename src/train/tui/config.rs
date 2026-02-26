@@ -47,10 +47,7 @@ impl MonitorConfig {
             "full" => DashboardLayout::Full,
             "compact" => DashboardLayout::Compact,
             _ => {
-                eprintln!(
-                    "Warning: unknown layout '{}', defaulting to Compact",
-                    self.layout
-                );
+                eprintln!("Warning: unknown layout '{}', defaulting to Compact", self.layout);
                 DashboardLayout::Compact
             }
         };
@@ -102,37 +99,25 @@ mod tests {
 
     #[test]
     fn test_monitor_config_to_callback_minimal() {
-        let config = MonitorConfig {
-            layout: "minimal".to_string(),
-            ..Default::default()
-        };
+        let config = MonitorConfig { layout: "minimal".to_string(), ..Default::default() };
         let _callback = config.to_callback();
     }
 
     #[test]
     fn test_monitor_config_to_callback_full() {
-        let config = MonitorConfig {
-            layout: "full".to_string(),
-            ..Default::default()
-        };
+        let config = MonitorConfig { layout: "full".to_string(), ..Default::default() };
         let _callback = config.to_callback();
     }
 
     #[test]
     fn test_monitor_config_to_callback_ascii() {
-        let config = MonitorConfig {
-            terminal_mode: "ascii".to_string(),
-            ..Default::default()
-        };
+        let config = MonitorConfig { terminal_mode: "ascii".to_string(), ..Default::default() };
         let _callback = config.to_callback();
     }
 
     #[test]
     fn test_monitor_config_to_callback_ansi() {
-        let config = MonitorConfig {
-            terminal_mode: "ansi".to_string(),
-            ..Default::default()
-        };
+        let config = MonitorConfig { terminal_mode: "ansi".to_string(), ..Default::default() };
         let _callback = config.to_callback();
     }
 
@@ -162,10 +147,7 @@ mod tests {
 
     #[test]
     fn test_monitor_config_to_callback_unicode() {
-        let config = MonitorConfig {
-            terminal_mode: "unicode".to_string(),
-            ..Default::default()
-        };
+        let config = MonitorConfig { terminal_mode: "unicode".to_string(), ..Default::default() };
         let _callback = config.to_callback();
     }
 

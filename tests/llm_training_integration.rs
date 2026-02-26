@@ -103,11 +103,7 @@ training:
     temp_file.write_all(yaml.as_bytes()).unwrap();
 
     let result = train_from_yaml(temp_file.path());
-    assert!(
-        result.is_ok(),
-        "Training should succeed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Training should succeed: {:?}", result.err());
 
     // Verify output file was created
     let output_path = output_dir.path().join("final_model.json");
@@ -115,14 +111,8 @@ training:
 
     // Verify output contains expected metadata
     let content = fs::read_to_string(&output_path).unwrap();
-    assert!(
-        content.contains("transformer"),
-        "Should indicate transformer mode"
-    );
-    assert!(
-        content.contains("epochs_completed"),
-        "Should have epoch count"
-    );
+    assert!(content.contains("transformer"), "Should indicate transformer mode");
+    assert!(content.contains("epochs_completed"), "Should have epoch count");
     assert!(content.contains("final_loss"), "Should have final loss");
 }
 
@@ -222,11 +212,7 @@ training:
     temp_file.write_all(yaml.as_bytes()).unwrap();
 
     let result = train_from_yaml(temp_file.path());
-    assert!(
-        result.is_ok(),
-        "Training with mixed precision should succeed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Training with mixed precision should succeed: {:?}", result.err());
 }
 
 /// Test: Multiple epochs show loss progression
@@ -272,11 +258,7 @@ training:
     temp_file.write_all(yaml.as_bytes()).unwrap();
 
     let result = train_from_yaml(temp_file.path());
-    assert!(
-        result.is_ok(),
-        "Training should succeed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Training should succeed: {:?}", result.err());
 
     // Verify output metadata
     let output_path = output_dir.path().join("final_model.json");
@@ -287,14 +269,8 @@ training:
     assert_eq!(metadata["epochs_completed"].as_u64().unwrap(), 5);
 
     // Check that we have loss values
-    assert!(
-        metadata["final_loss"].as_f64().is_some(),
-        "Should have final_loss"
-    );
-    assert!(
-        metadata["best_loss"].as_f64().is_some(),
-        "Should have best_loss"
-    );
+    assert!(metadata["final_loss"].as_f64().is_some(), "Should have final_loss");
+    assert!(metadata["best_loss"].as_f64().is_some(), "Should have best_loss");
 }
 
 /// Test: Text data with tokenization
@@ -352,11 +328,7 @@ training:
     temp_file.write_all(yaml.as_bytes()).unwrap();
 
     let result = train_from_yaml(temp_file.path());
-    assert!(
-        result.is_ok(),
-        "Training with text tokenization should succeed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Training with text tokenization should succeed: {:?}", result.err());
 }
 
 /// Test: JSONL format support
@@ -411,11 +383,7 @@ training:
     temp_file.write_all(yaml.as_bytes()).unwrap();
 
     let result = train_from_yaml(temp_file.path());
-    assert!(
-        result.is_ok(),
-        "Training with JSONL format should succeed: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "Training with JSONL format should succeed: {:?}", result.err());
 }
 
 // Note: Tabular mode is tested in src/config/train/tests/train_yaml.rs

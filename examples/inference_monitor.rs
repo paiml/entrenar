@@ -51,12 +51,8 @@ impl Explainable for LinearModel {
             let start = i * features_per_sample;
             let sample = &x[start..start + features_per_sample];
 
-            let contributions: Vec<f32> = self
-                .weights
-                .iter()
-                .zip(sample)
-                .map(|(w, xi)| w * xi)
-                .collect();
+            let contributions: Vec<f32> =
+                self.weights.iter().zip(sample).map(|(w, xi)| w * xi).collect();
             let logit: f32 = contributions.iter().sum::<f32>() + self.intercept;
             let prediction = 1.0 / (1.0 + (-logit).exp()); // sigmoid
 
@@ -71,11 +67,7 @@ impl Explainable for LinearModel {
     }
 
     fn explain_one(&self, sample: &[f32]) -> Self::Path {
-        self.predict_explained(sample, 1)
-            .1
-            .into_iter()
-            .next()
-            .unwrap()
+        self.predict_explained(sample, 1).1.into_iter().next().unwrap()
     }
 }
 
@@ -105,18 +97,11 @@ impl Explainable for DecisionTreeModel {
             let sample = &x[start..start + features_per_sample];
             let went_left = sample[0] <= 0.5;
 
-            let splits = vec![TreeSplit {
-                feature_idx: 0,
-                threshold: 0.5,
-                went_left,
-                n_samples: 100,
-            }];
+            let splits =
+                vec![TreeSplit { feature_idx: 0, threshold: 0.5, went_left, n_samples: 100 }];
 
-            let (prediction, class_dist) = if went_left {
-                (0.2, vec![0.8, 0.2])
-            } else {
-                (0.9, vec![0.1, 0.9])
-            };
+            let (prediction, class_dist) =
+                if went_left { (0.2, vec![0.8, 0.2]) } else { (0.9, vec![0.1, 0.9]) };
 
             let leaf = LeafInfo {
                 prediction,
@@ -133,11 +118,7 @@ impl Explainable for DecisionTreeModel {
     }
 
     fn explain_one(&self, sample: &[f32]) -> Self::Path {
-        self.predict_explained(sample, 1)
-            .1
-            .into_iter()
-            .next()
-            .unwrap()
+        self.predict_explained(sample, 1).1.into_iter().next().unwrap()
     }
 }
 
@@ -164,11 +145,7 @@ fn demo_linear_ring_collector() {
         let traces = monitor.collector().recent(1);
         let trace = traces[0];
 
-        let decision = if outputs[0] > 0.5 {
-            "ATTACK"
-        } else {
-            "RETREAT"
-        };
+        let decision = if outputs[0] > 0.5 { "ATTACK" } else { "RETREAT" };
         println!("  Frame {i}: input={input:?}");
         println!("           output={:.3} -> {}", outputs[0], decision);
         println!("           confidence={:.1}%", trace.confidence() * 100.0);
@@ -234,14 +211,7 @@ fn demo_hash_chain_collector() {
 
     // Verify chain integrity
     let verification = av_monitor.collector().verify_chain();
-    println!(
-        "\n  Chain verification: {}",
-        if verification.valid {
-            "VALID"
-        } else {
-            "BROKEN"
-        }
-    );
+    println!("\n  Chain verification: {}", if verification.valid { "VALID" } else { "BROKEN" });
     println!("  Entries verified: {}", verification.entries_verified);
     println!(
         "  Latest hash: {:02x}{:02x}{:02x}{:02x}...",
@@ -259,14 +229,8 @@ fn demo_safety_andon() {
         .with_low_confidence_threshold(3);
 
     println!("Safety Integrity Level: {:?}", andon.sil());
-    println!(
-        "Min confidence threshold: {:.1}%",
-        andon.sil().min_confidence() * 100.0
-    );
-    println!(
-        "Max latency: {}ms\n",
-        andon.sil().max_latency_ns() / 1_000_000
-    );
+    println!("Min confidence threshold: {:.1}%", andon.sil().min_confidence() * 100.0);
+    println!("Max latency: {}ms\n", andon.sil().max_latency_ns() / 1_000_000);
 
     // Create traces with varying confidence
     let test_traces = vec![
@@ -295,11 +259,8 @@ fn demo_safety_andon() {
 
 /// Part 5: Counterfactual Explanations
 fn demo_counterfactual() {
-    let feature_names = vec![
-        "income".to_string(),
-        "debt_ratio".to_string(),
-        "credit_score".to_string(),
-    ];
+    let feature_names =
+        vec!["income".to_string(), "debt_ratio".to_string(), "credit_score".to_string()];
     let counterfactual = Counterfactual::new(
         vec![0.3, 0.8, 0.2], // Original: loan denied
         0,                   // Denied class
@@ -399,9 +360,7 @@ fn demo_serialization() {
 
     // Binary serialization
     let binary_serializer = TraceSerializer::new(TraceFormat::Binary);
-    let binary_bytes = binary_serializer
-        .serialize(&trace, PathType::Linear)
-        .unwrap();
+    let binary_bytes = binary_serializer.serialize(&trace, PathType::Linear).unwrap();
     println!("Binary (APRT format):");
     println!("  Size: {} bytes", binary_bytes.len());
     println!(
@@ -414,10 +373,7 @@ fn demo_serialization() {
     let json_bytes = json_serializer.serialize(&trace, PathType::Linear).unwrap();
     println!("\nJSON format:");
     println!("  Size: {} bytes", json_bytes.len());
-    println!(
-        "  Preview: {}...",
-        String::from_utf8_lossy(&json_bytes[..80.min(json_bytes.len())])
-    );
+    println!("  Preview: {}...", String::from_utf8_lossy(&json_bytes[..80.min(json_bytes.len())]));
 
     // Round-trip verification
     let restored: DecisionTrace<LinearPath> = binary_serializer.deserialize(&binary_bytes).unwrap();

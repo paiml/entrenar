@@ -22,15 +22,7 @@ fn test_softmax_backward_basic() {
     let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
     let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
 
-    softmax_backward(
-        &softmax_output,
-        &grad_output,
-        &mut grad_input,
-        1,
-        4,
-        &stream,
-    )
-    .unwrap();
+    softmax_backward(&softmax_output, &grad_output, &mut grad_input, 1, 4, &stream).unwrap();
     stream.synchronize().unwrap();
 
     let mut result = vec![0.0f32; 4];
@@ -68,25 +60,14 @@ fn test_softmax_backward_batch() {
     let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
     let mut grad_input = GpuBuffer::from_host(&ctx, &grad_input_data).unwrap();
 
-    softmax_backward(
-        &softmax_output,
-        &grad_output,
-        &mut grad_input,
-        2,
-        3,
-        &stream,
-    )
-    .unwrap();
+    softmax_backward(&softmax_output, &grad_output, &mut grad_input, 2, 3, &stream).unwrap();
     stream.synchronize().unwrap();
 
     let mut result = vec![0.0f32; 6];
     grad_input.copy_to_host(&mut result).unwrap();
 
     // Verify gradients are computed (not all zeros or NaN)
-    assert!(
-        !result.iter().any(|x| x.is_nan()),
-        "Softmax backward should not produce NaN"
-    );
+    assert!(!result.iter().any(|x| x.is_nan()), "Softmax backward should not produce NaN");
     assert!(
         result.iter().any(|&x| x.abs() > 1e-5),
         "Softmax backward should produce non-zero gradients"

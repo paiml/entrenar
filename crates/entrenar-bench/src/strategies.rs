@@ -9,24 +9,11 @@ pub enum DistillStrategy {
     /// Knowledge distillation only (soft targets)
     KDOnly { temperature: f32, alpha: f32 },
     /// Progressive distillation (hidden state matching)
-    Progressive {
-        temperature: f32,
-        alpha: f32,
-        layer_weight: f32,
-    },
+    Progressive { temperature: f32, alpha: f32, layer_weight: f32 },
     /// Attention transfer
-    Attention {
-        temperature: f32,
-        alpha: f32,
-        attention_weight: f32,
-    },
+    Attention { temperature: f32, alpha: f32, attention_weight: f32 },
     /// Combined approach
-    Combined {
-        temperature: f32,
-        alpha: f32,
-        layer_weight: f32,
-        attention_weight: f32,
-    },
+    Combined { temperature: f32, alpha: f32, layer_weight: f32, attention_weight: f32 },
 }
 
 impl DistillStrategy {
@@ -42,38 +29,22 @@ impl DistillStrategy {
 
     /// Default KD-only strategy.
     pub fn kd_only() -> Self {
-        Self::KDOnly {
-            temperature: 4.0,
-            alpha: 0.7,
-        }
+        Self::KDOnly { temperature: 4.0, alpha: 0.7 }
     }
 
     /// Default progressive strategy.
     pub fn progressive() -> Self {
-        Self::Progressive {
-            temperature: 4.0,
-            alpha: 0.7,
-            layer_weight: 0.3,
-        }
+        Self::Progressive { temperature: 4.0, alpha: 0.7, layer_weight: 0.3 }
     }
 
     /// Default attention strategy.
     pub fn attention() -> Self {
-        Self::Attention {
-            temperature: 4.0,
-            alpha: 0.7,
-            attention_weight: 0.1,
-        }
+        Self::Attention { temperature: 4.0, alpha: 0.7, attention_weight: 0.1 }
     }
 
     /// Default combined strategy.
     pub fn combined() -> Self {
-        Self::Combined {
-            temperature: 4.0,
-            alpha: 0.7,
-            layer_weight: 0.3,
-            attention_weight: 0.1,
-        }
+        Self::Combined { temperature: 4.0, alpha: 0.7, layer_weight: 0.3, attention_weight: 0.1 }
     }
 
     /// Simulate training with this strategy.
@@ -181,10 +152,7 @@ pub fn compare(strategies: &[DistillStrategy]) -> Result<StrategyComparison> {
 
         let std_loss =
             (losses.iter().map(|x| (x - mean_loss).powi(2)).sum::<f64>() / (n - 1.0)).sqrt();
-        let std_accuracy = (accuracies
-            .iter()
-            .map(|x| (x - mean_accuracy).powi(2))
-            .sum::<f64>()
+        let std_accuracy = (accuracies.iter().map(|x| (x - mean_accuracy).powi(2)).sum::<f64>()
             / (n - 1.0))
             .sqrt();
 
@@ -204,12 +172,14 @@ pub fn compare(strategies: &[DistillStrategy]) -> Result<StrategyComparison> {
     // Find best
     let best_by_loss = results
         .iter()
-        .min_by(|a, b| a.mean_loss.partial_cmp(&b.mean_loss).unwrap())
+        .min_by(|a, b| a.mean_loss.partial_cmp(&b.mean_loss).unwrap_or(std::cmp::Ordering::Equal))
         .map(|r| r.name.clone());
 
     let best_by_accuracy = results
         .iter()
-        .max_by(|a, b| a.mean_accuracy.partial_cmp(&b.mean_accuracy).unwrap())
+        .max_by(|a, b| {
+            a.mean_accuracy.partial_cmp(&b.mean_accuracy).unwrap_or(std::cmp::Ordering::Equal)
+        })
         .map(|r| r.name.clone());
 
     // Pairwise comparisons
@@ -231,12 +201,7 @@ pub fn compare(strategies: &[DistillStrategy]) -> Result<StrategyComparison> {
         }
     }
 
-    Ok(StrategyComparison {
-        results,
-        best_by_loss,
-        best_by_accuracy,
-        significance,
-    })
+    Ok(StrategyComparison { results, best_by_loss, best_by_accuracy, significance })
 }
 
 impl StrategyComparison {
@@ -248,16 +213,10 @@ impl StrategyComparison {
         output.push_str("├──────────────┼─────────────────┼─────────────────┼────────────┤\n");
 
         for result in &self.results {
-            let loss_marker = if self.best_by_loss.as_ref() == Some(&result.name) {
-                " ★"
-            } else {
-                ""
-            };
-            let acc_marker = if self.best_by_accuracy.as_ref() == Some(&result.name) {
-                " ★"
-            } else {
-                ""
-            };
+            let loss_marker =
+                if self.best_by_loss.as_ref() == Some(&result.name) { " ★" } else { "" };
+            let acc_marker =
+                if self.best_by_accuracy.as_ref() == Some(&result.name) { " ★" } else { "" };
 
             output.push_str(&format!(
                 "│ {:12} │ {:.3} ± {:.3}{:2} │ {:.1}% ± {:.1}%{:2} │ {:>10.1} │\n",
@@ -348,12 +307,7 @@ mod tests {
         }
 
         let prog = DistillStrategy::progressive();
-        if let DistillStrategy::Progressive {
-            temperature,
-            alpha,
-            layer_weight,
-        } = prog
-        {
+        if let DistillStrategy::Progressive { temperature, alpha, layer_weight } = prog {
             assert_eq!(temperature, 4.0);
             assert_eq!(alpha, 0.7);
             assert_eq!(layer_weight, 0.3);
@@ -362,12 +316,7 @@ mod tests {
         }
 
         let attn = DistillStrategy::attention();
-        if let DistillStrategy::Attention {
-            temperature,
-            alpha,
-            attention_weight,
-        } = attn
-        {
+        if let DistillStrategy::Attention { temperature, alpha, attention_weight } = attn {
             assert_eq!(temperature, 4.0);
             assert_eq!(alpha, 0.7);
             assert_eq!(attention_weight, 0.1);
@@ -376,12 +325,8 @@ mod tests {
         }
 
         let combined = DistillStrategy::combined();
-        if let DistillStrategy::Combined {
-            temperature,
-            alpha,
-            layer_weight,
-            attention_weight,
-        } = combined
+        if let DistillStrategy::Combined { temperature, alpha, layer_weight, attention_weight } =
+            combined
         {
             assert_eq!(temperature, 4.0);
             assert_eq!(alpha, 0.7);

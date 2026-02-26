@@ -28,14 +28,9 @@ impl DistributionTier {
     pub fn component_names(&self) -> Vec<&'static str> {
         match self {
             Self::Core => vec!["entrenar-core", "trueno", "aprender"],
-            Self::Standard => vec![
-                "entrenar-core",
-                "trueno",
-                "aprender",
-                "renacer",
-                "trueno-db",
-                "ruchy",
-            ],
+            Self::Standard => {
+                vec!["entrenar-core", "trueno", "aprender", "renacer", "trueno-db", "ruchy"]
+            }
             Self::Full => vec![
                 "entrenar-core",
                 "trueno",

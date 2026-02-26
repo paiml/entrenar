@@ -45,16 +45,13 @@ impl Default for MonitorCallback {
 impl TrainerCallback for MonitorCallback {
     fn on_step_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
         // Record loss at each step
-        self.collector
-            .record(crate::monitor::Metric::Loss, f64::from(ctx.loss));
-        self.collector
-            .record(crate::monitor::Metric::LearningRate, f64::from(ctx.lr));
+        self.collector.record(crate::monitor::Metric::Loss, f64::from(ctx.loss));
+        self.collector.record(crate::monitor::Metric::LearningRate, f64::from(ctx.lr));
         CallbackAction::Continue
     }
 
     fn on_epoch_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
-        self.collector
-            .record(crate::monitor::Metric::Epoch, ctx.epoch as f64);
+        self.collector.record(crate::monitor::Metric::Epoch, ctx.epoch as f64);
 
         // Check for NaN/Inf loss
         if ctx.loss.is_nan() {
@@ -83,13 +80,7 @@ mod tests {
     #[test]
     fn test_monitor_callback() {
         let mut monitor = MonitorCallback::new();
-        let ctx = CallbackContext {
-            epoch: 0,
-            step: 0,
-            loss: 0.5,
-            lr: 0.001,
-            ..Default::default()
-        };
+        let ctx = CallbackContext { epoch: 0, step: 0, loss: 0.5, lr: 0.001, ..Default::default() };
 
         assert_eq!(monitor.on_step_end(&ctx), CallbackAction::Continue);
         assert_eq!(monitor.on_epoch_end(&ctx), CallbackAction::Continue);
@@ -102,10 +93,7 @@ mod tests {
     #[test]
     fn test_monitor_callback_nan_detection() {
         let mut monitor = MonitorCallback::new();
-        let ctx = CallbackContext {
-            loss: f32::NAN,
-            ..Default::default()
-        };
+        let ctx = CallbackContext { loss: f32::NAN, ..Default::default() };
 
         // NaN should trigger stop via andon
         assert_eq!(monitor.on_epoch_end(&ctx), CallbackAction::Stop);
@@ -120,11 +108,7 @@ mod tests {
     #[test]
     fn test_monitor_callback_summary_json() {
         let mut mc = MonitorCallback::new();
-        let ctx = CallbackContext {
-            loss: 0.5,
-            lr: 0.001,
-            ..Default::default()
-        };
+        let ctx = CallbackContext { loss: 0.5, lr: 0.001, ..Default::default() };
         mc.on_step_end(&ctx);
 
         let json = mc.summary_json();
@@ -134,10 +118,7 @@ mod tests {
     #[test]
     fn test_monitor_callback_inf_detection() {
         let mut mc = MonitorCallback::new();
-        let ctx = CallbackContext {
-            loss: f32::INFINITY,
-            ..Default::default()
-        };
+        let ctx = CallbackContext { loss: f32::INFINITY, ..Default::default() };
         assert_eq!(mc.on_epoch_end(&ctx), CallbackAction::Stop);
     }
 

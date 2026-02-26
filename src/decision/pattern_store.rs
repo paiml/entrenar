@@ -72,9 +72,7 @@ impl PatternStore {
     /// Create an empty pattern store.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            patterns: HashMap::new(),
-        }
+        Self { patterns: HashMap::new() }
     }
 
     /// Add a pattern to the store.

@@ -54,16 +54,9 @@ fn render_compact(callback: &TerminalMonitorCallback, ctx: &CallbackContext) -> 
     let loss_spark = sparkline(&callback.loss_buffer.values(), callback.sparkline_width);
     let elapsed = callback.start_time.elapsed().as_secs_f64();
 
-    let val_info = ctx
-        .val_loss
-        .map(|v| format!(" val={v:.4}"))
-        .unwrap_or_default();
+    let val_info = ctx.val_loss.map(|v| format!(" val={v:.4}")).unwrap_or_default();
 
-    let best_info = callback
-        .loss_buffer
-        .min()
-        .map(|m| format!(" best={m:.4}"))
-        .unwrap_or_default();
+    let best_info = callback.loss_buffer.min().map(|m| format!(" best={m:.4}")).unwrap_or_default();
 
     format!(
         "\x1b[H\x1b[2J\

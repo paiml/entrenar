@@ -29,18 +29,9 @@ fn test_format_from_path() {
         ExportFormat::from_path(Path::new("model.safetensors")),
         Some(ExportFormat::SafeTensors)
     );
-    assert_eq!(
-        ExportFormat::from_path(Path::new("model.apr.json")),
-        Some(ExportFormat::APR)
-    );
-    assert_eq!(
-        ExportFormat::from_path(Path::new("model.gguf")),
-        Some(ExportFormat::GGUF)
-    );
-    assert_eq!(
-        ExportFormat::from_path(Path::new("model.pt")),
-        Some(ExportFormat::PyTorch)
-    );
+    assert_eq!(ExportFormat::from_path(Path::new("model.apr.json")), Some(ExportFormat::APR));
+    assert_eq!(ExportFormat::from_path(Path::new("model.gguf")), Some(ExportFormat::GGUF));
+    assert_eq!(ExportFormat::from_path(Path::new("model.pt")), Some(ExportFormat::PyTorch));
     assert_eq!(ExportFormat::from_path(Path::new("model.txt")), None);
 }
 
@@ -148,11 +139,7 @@ fn test_export_safetensors() {
     let weights = ModelWeights::mock(2, 64);
     let exporter = Exporter::new().output_dir("/tmp");
 
-    let result = exporter.export(
-        &weights,
-        ExportFormat::SafeTensors,
-        "test_model.safetensors",
-    );
+    let result = exporter.export(&weights, ExportFormat::SafeTensors, "test_model.safetensors");
     assert!(result.is_ok());
 
     let result = result.unwrap();
@@ -205,10 +192,7 @@ fn test_export_pytorch_rejected() {
 
     let result = exporter.export(&weights, ExportFormat::PyTorch, "test_model.pt");
     assert!(result.is_err());
-    assert!(matches!(
-        result,
-        Err(crate::hf_pipeline::error::FetchError::PickleSecurityRisk)
-    ));
+    assert!(matches!(result, Err(crate::hf_pipeline::error::FetchError::PickleSecurityRisk)));
 }
 
 #[test]
@@ -238,16 +222,10 @@ fn test_result_size_human() {
     };
     assert_eq!(result.size_human(), "500 B");
 
-    let result = ExportResult {
-        size_bytes: 1_500_000,
-        ..result
-    };
+    let result = ExportResult { size_bytes: 1_500_000, ..result };
     assert!(result.size_human().contains("MB"));
 
-    let result = ExportResult {
-        size_bytes: 2_500_000_000,
-        ..result
-    };
+    let result = ExportResult { size_bytes: 2_500_000_000, ..result };
     assert!(result.size_human().contains("GB"));
 }
 
@@ -285,19 +263,13 @@ fn test_dtype_bytes_all_types() {
 #[test]
 fn test_format_from_path_apr_short() {
     // Test .apr without .json
-    assert_eq!(
-        ExportFormat::from_path(Path::new("model.apr")),
-        Some(ExportFormat::APR)
-    );
+    assert_eq!(ExportFormat::from_path(Path::new("model.apr")), Some(ExportFormat::APR));
 }
 
 #[test]
 fn test_format_from_path_bin() {
     // Test .bin (PyTorch)
-    assert_eq!(
-        ExportFormat::from_path(Path::new("model.bin")),
-        Some(ExportFormat::PyTorch)
-    );
+    assert_eq!(ExportFormat::from_path(Path::new("model.bin")), Some(ExportFormat::PyTorch));
 }
 
 #[test]

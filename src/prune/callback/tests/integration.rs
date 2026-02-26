@@ -39,21 +39,12 @@ fn test_should_prune_respects_schedule() {
     // We test at step 200 where sparsity is > 0.
     let callback = PruningCallback::new(gradual_config());
     // Before start_step
-    assert!(
-        !callback.should_prune(50),
-        "CB-031 FALSIFIED: should not prune before start"
-    );
+    assert!(!callback.should_prune(50), "CB-031 FALSIFIED: should not prune before start");
     // At step 200: sparsity = 0.0 + (100/900) * 0.5 ≈ 0.056
     // schedule.should_prune_at_step(200) = true (at frequency)
-    assert!(
-        callback.should_prune(200),
-        "CB-031 FALSIFIED: should prune at frequency step"
-    );
+    assert!(callback.should_prune(200), "CB-031 FALSIFIED: should prune at frequency step");
     // At step 300
-    assert!(
-        callback.should_prune(300),
-        "CB-031 FALSIFIED: should prune at frequency step"
-    );
+    assert!(callback.should_prune(300), "CB-031 FALSIFIED: should prune at frequency step");
 }
 
 #[test]
@@ -197,20 +188,14 @@ fn test_is_complete_oneshot() {
     let config = PruningConfig::default().with_schedule(PruningSchedule::OneShot { step: 100 });
     let mut callback = PruningCallback::new(config);
 
-    assert!(
-        !callback.is_complete(),
-        "CB-050 FALSIFIED: Should not be complete before pruning"
-    );
+    assert!(!callback.is_complete(), "CB-050 FALSIFIED: Should not be complete before pruning");
 
     let mut ctx = CallbackContext::default();
     ctx.global_step = 100;
     callback.on_step_end(&ctx);
 
     // Still at prune step, not complete
-    assert!(
-        !callback.is_complete(),
-        "CB-050 FALSIFIED: Should not be complete at prune step"
-    );
+    assert!(!callback.is_complete(), "CB-050 FALSIFIED: Should not be complete at prune step");
 
     ctx.global_step = 101;
     callback.on_step_end(&ctx);
@@ -218,10 +203,7 @@ fn test_is_complete_oneshot() {
     // Now past prune step
     // Note: We need to update last_prune_step to a step past completion
     callback.last_prune_step = Some(101);
-    assert!(
-        callback.is_complete(),
-        "CB-050 FALSIFIED: Should be complete after prune step"
-    );
+    assert!(callback.is_complete(), "CB-050 FALSIFIED: Should be complete after prune step");
 }
 
 #[test]
@@ -242,17 +224,11 @@ fn test_is_complete_gradual() {
     callback.on_step_end(&ctx);
 
     // At end_step, not yet complete
-    assert!(
-        !callback.is_complete(),
-        "CB-051 FALSIFIED: Should not be complete at end_step"
-    );
+    assert!(!callback.is_complete(), "CB-051 FALSIFIED: Should not be complete at end_step");
 
     ctx.global_step = 101;
     callback.last_prune_step = Some(101);
-    assert!(
-        callback.is_complete(),
-        "CB-051 FALSIFIED: Should be complete after end_step"
-    );
+    assert!(callback.is_complete(), "CB-051 FALSIFIED: Should be complete after end_step");
 }
 
 // =============================================================================

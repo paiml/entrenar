@@ -221,10 +221,7 @@ fn test_progressive_no_projection_skips_mismatched() {
 
     // Should skip due to shape mismatch, loss = 0
     let loss = prog.hidden_state_loss(&student, &teacher);
-    assert_eq!(
-        loss, 0.0,
-        "Should skip mismatched shapes without projection"
-    );
+    assert_eq!(loss, 0.0, "Should skip mismatched shapes without projection");
 }
 
 // =========================================================================

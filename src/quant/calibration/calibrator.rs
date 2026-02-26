@@ -124,10 +124,9 @@ impl Calibrator {
     /// Compute calibration result
     pub fn compute(&self) -> CalibrationResult {
         let (observed_min, observed_max) = match &self.method {
-            CalibrationMethod::MinMax | CalibrationMethod::MovingAverage { .. } => (
-                self.running_min.unwrap_or(0.0),
-                self.running_max.unwrap_or(0.0),
-            ),
+            CalibrationMethod::MinMax | CalibrationMethod::MovingAverage { .. } => {
+                (self.running_min.unwrap_or(0.0), self.running_max.unwrap_or(0.0))
+            }
             CalibrationMethod::Percentile { lower, upper } => {
                 self.compute_percentile_bounds(*lower, *upper)
             }
@@ -202,21 +201,16 @@ impl Calibrator {
         let batch_max = data.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
         self.running_min = Some(
-            self.running_min
-                .map_or(batch_min, |m| m * (1.0 - momentum) + batch_min * momentum),
+            self.running_min.map_or(batch_min, |m| m * (1.0 - momentum) + batch_min * momentum),
         );
         self.running_max = Some(
-            self.running_max
-                .map_or(batch_max, |m| m * (1.0 - momentum) + batch_max * momentum),
+            self.running_max.map_or(batch_max, |m| m * (1.0 - momentum) + batch_max * momentum),
         );
     }
 
     fn compute_percentile_bounds(&self, lower: f32, upper: f32) -> (f32, f32) {
         if self.samples.is_empty() {
-            return (
-                self.running_min.unwrap_or(0.0),
-                self.running_max.unwrap_or(0.0),
-            );
+            return (self.running_min.unwrap_or(0.0), self.running_max.unwrap_or(0.0));
         }
 
         let mut sorted = self.samples.clone();
@@ -232,29 +226,17 @@ impl Calibrator {
     fn compute_scale_zero_point(&self, min_val: f32, max_val: f32) -> (f32, i32) {
         let qmax = (1 << (self.bits - 1)) - 1;
         let qmin = if self.symmetric { -qmax } else { 0 };
-        let qmax_full = if self.symmetric {
-            qmax
-        } else {
-            (1 << self.bits) - 1
-        };
+        let qmax_full = if self.symmetric { qmax } else { (1 << self.bits) - 1 };
 
         if self.symmetric {
             // Symmetric: scale from max absolute value
             let max_abs = min_val.abs().max(max_val.abs());
-            let scale = if max_abs < 1e-10 {
-                1e-10
-            } else {
-                max_abs / qmax as f32
-            };
+            let scale = if max_abs < 1e-10 { 1e-10 } else { max_abs / qmax as f32 };
             (scale, 0)
         } else {
             // Asymmetric: scale from range
             let range = max_val - min_val;
-            let scale = if range < 1e-10 {
-                1e-10
-            } else {
-                range / (qmax_full - qmin) as f32
-            };
+            let scale = if range < 1e-10 { 1e-10 } else { range / (qmax_full - qmin) as f32 };
             let zero_point = (qmin as f32 - min_val / scale).round() as i32;
             let zero_point = zero_point.clamp(qmin, qmax_full);
             (scale, zero_point)

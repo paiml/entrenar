@@ -11,11 +11,7 @@ pub struct KFold {
 impl KFold {
     /// Create a new KFold splitter
     pub fn new(n_splits: usize) -> Self {
-        Self {
-            n_splits,
-            shuffle: true,
-            seed: 42,
-        }
+        Self { n_splits, shuffle: true, seed: 42 }
     }
 
     /// Set random seed for shuffling
@@ -55,11 +51,8 @@ impl KFold {
             let end = start + fold_size + extra;
 
             let test_indices: Vec<usize> = indices[start..end].to_vec();
-            let train_indices: Vec<usize> = indices[..start]
-                .iter()
-                .chain(indices[end..].iter())
-                .copied()
-                .collect();
+            let train_indices: Vec<usize> =
+                indices[..start].iter().chain(indices[end..].iter()).copied().collect();
 
             folds.push((train_indices, test_indices));
             start = end;

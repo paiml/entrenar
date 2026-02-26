@@ -21,27 +21,19 @@ fn main() {
 
     // Run calibration checks for KS test
     println!("--- Kolmogorov-Smirnov Test Calibration ---");
-    let ks_rejection_rate = run_calibration_check(DriftTest::KS {
-        threshold: SIGNIFICANCE_LEVEL,
-    });
+    let ks_rejection_rate = run_calibration_check(DriftTest::KS { threshold: SIGNIFICANCE_LEVEL });
     println!(
         "KS Test: {:.1}% rejection rate (expected: ~{:.1}%)",
         ks_rejection_rate * 100.0,
         SIGNIFICANCE_LEVEL * 100.0
     );
     let ks_calibrated = is_calibrated(ks_rejection_rate, SIGNIFICANCE_LEVEL);
-    println!(
-        "Calibration: {}\n",
-        if ks_calibrated { "PASS" } else { "FAIL" }
-    );
+    println!("Calibration: {}\n", if ks_calibrated { "PASS" } else { "FAIL" });
 
     // Run calibration checks for PSI test
     println!("--- Population Stability Index Calibration ---");
     let psi_rejection_rate = run_calibration_check(DriftTest::PSI { threshold: 0.1 });
-    println!(
-        "PSI Test: {:.1}% rejection rate at threshold=0.1",
-        psi_rejection_rate * 100.0
-    );
+    println!("PSI Test: {:.1}% rejection rate at threshold=0.1", psi_rejection_rate * 100.0);
     // PSI should have low rejection rate under null (same distribution)
     let psi_calibrated = psi_rejection_rate < 0.15; // Allow up to 15% for PSI
     println!(
@@ -56,11 +48,7 @@ fn main() {
     let power_adequate = power > 0.80;
     println!(
         "Power: {} (>80%% required)\n",
-        if power_adequate {
-            "ADEQUATE"
-        } else {
-            "INSUFFICIENT"
-        }
+        if power_adequate { "ADEQUATE" } else { "INSUFFICIENT" }
     );
 
     // Summary

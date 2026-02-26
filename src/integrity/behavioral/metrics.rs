@@ -114,27 +114,17 @@ impl BehavioralIntegrity {
 
     /// Check if there are any critical violations
     pub fn has_critical_violations(&self) -> bool {
-        self.violations
-            .iter()
-            .any(MetamorphicViolation::is_critical)
+        self.violations.iter().any(MetamorphicViolation::is_critical)
     }
 
     /// Get count of violations by severity level
     pub fn violation_counts(&self) -> ViolationCounts {
         let critical = self.violations.iter().filter(|v| v.is_critical()).count() as u32;
-        let warnings = self
-            .violations
-            .iter()
-            .filter(|v| v.is_warning() && !v.is_critical())
-            .count() as u32;
+        let warnings =
+            self.violations.iter().filter(|v| v.is_warning() && !v.is_critical()).count() as u32;
         let minor = self.violations.iter().filter(|v| !v.is_warning()).count() as u32;
 
-        ViolationCounts {
-            critical,
-            warnings,
-            minor,
-            total: self.violations.len() as u32,
-        }
+        ViolationCounts { critical, warnings, minor, total: self.violations.len() as u32 }
     }
 
     /// Get violations grouped by relation type
@@ -150,11 +140,9 @@ impl BehavioralIntegrity {
 
     /// Get the most severe violation, if any
     pub fn most_severe_violation(&self) -> Option<&MetamorphicViolation> {
-        self.violations.iter().max_by(|a, b| {
-            a.severity
-                .partial_cmp(&b.severity)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        self.violations
+            .iter()
+            .max_by(|a, b| a.severity.partial_cmp(&b.severity).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     /// Get a human-readable assessment
@@ -192,11 +180,7 @@ impl BehavioralIntegrity {
             counts.warnings,
             counts.minor,
             self.test_count,
-            if self.passes_gate(0.9) {
-                "PASS"
-            } else {
-                "FAIL"
-            }
+            if self.passes_gate(0.9) { "PASS" } else { "FAIL" }
         )
     }
 }

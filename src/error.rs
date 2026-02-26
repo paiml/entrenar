@@ -5,10 +5,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Shape mismatch: expected {expected:?}, got {got:?}")]
-    ShapeMismatch {
-        expected: Vec<usize>,
-        got: Vec<usize>,
-    },
+    ShapeMismatch { expected: Vec<usize>, got: Vec<usize> },
 
     #[error("Invalid gradient: {0}")]
     InvalidGradient(String),

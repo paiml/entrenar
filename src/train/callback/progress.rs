@@ -24,20 +24,12 @@ impl Default for ProgressCallback {
 
 impl TrainerCallback for ProgressCallback {
     fn on_epoch_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
-        println!(
-            "Epoch {}/{} starting (lr: {:.2e})",
-            ctx.epoch + 1,
-            ctx.max_epochs,
-            ctx.lr
-        );
+        println!("Epoch {}/{} starting (lr: {:.2e})", ctx.epoch + 1, ctx.max_epochs, ctx.lr);
         CallbackAction::Continue
     }
 
     fn on_epoch_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
-        let val_str = ctx
-            .val_loss
-            .map(|v| format!(", val_loss: {v:.4}"))
-            .unwrap_or_default();
+        let val_str = ctx.val_loss.map(|v| format!(", val_loss: {v:.4}")).unwrap_or_default();
 
         println!(
             "Epoch {}/{}: loss: {:.4}{} ({:.1}s)",
@@ -52,10 +44,7 @@ impl TrainerCallback for ProgressCallback {
 
     fn on_step_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
         if ctx.step > 0 && ctx.step.is_multiple_of(self.log_interval) {
-            println!(
-                "  Step {}/{}: loss: {:.4}",
-                ctx.step, ctx.steps_per_epoch, ctx.loss
-            );
+            println!("  Step {}/{}: loss: {:.4}", ctx.step, ctx.steps_per_epoch, ctx.loss);
         }
         CallbackAction::Continue
     }

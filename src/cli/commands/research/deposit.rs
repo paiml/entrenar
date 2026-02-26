@@ -13,11 +13,7 @@ pub fn run_research_deposit(args: DepositArgs, level: LogLevel) -> Result<(), St
         ArchiveProviderArg::Dataverse => ArchiveProvider::Dataverse,
     };
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Preparing deposit to: {provider}"),
-    );
+    log(level, LogLevel::Normal, &format!("Preparing deposit to: {provider}"));
 
     // Load artifact
     let yaml = std::fs::read_to_string(&args.artifact)
@@ -43,26 +39,10 @@ pub fn run_research_deposit(args: DepositArgs, level: LogLevel) -> Result<(), St
 
     if args.dry_run {
         log(level, LogLevel::Normal, "Dry run - deposit validated:");
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("  Provider: {}", deposit.provider),
-        );
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("  Title: {}", deposit.metadata.title),
-        );
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("  Files: {}", deposit.files.len()),
-        );
-        log(
-            level,
-            LogLevel::Verbose,
-            &format!("  Base URL: {}", provider.base_url()),
-        );
+        log(level, LogLevel::Normal, &format!("  Provider: {}", deposit.provider));
+        log(level, LogLevel::Normal, &format!("  Title: {}", deposit.metadata.title));
+        log(level, LogLevel::Normal, &format!("  Files: {}", deposit.files.len()));
+        log(level, LogLevel::Verbose, &format!("  Base URL: {}", provider.base_url()));
     } else {
         // Note: Actual deposit would require async HTTP client
         // For now, we just validate the deposit structure
@@ -76,11 +56,7 @@ pub fn run_research_deposit(args: DepositArgs, level: LogLevel) -> Result<(), St
             LogLevel::Normal,
             &format!("  Provider: {} ({})", deposit.provider, provider.base_url()),
         );
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("  Files ready: {}", deposit.files.len()),
-        );
+        log(level, LogLevel::Normal, &format!("  Files ready: {}", deposit.files.len()));
     }
 
     Ok(())

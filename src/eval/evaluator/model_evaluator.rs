@@ -46,12 +46,7 @@ impl ModelEvaluator {
         let mut fold_scores: Vec<f64> = Vec::with_capacity(self.config.cv_folds);
 
         // Get primary metric for CV scoring
-        let primary_metric = self
-            .config
-            .metrics
-            .first()
-            .copied()
-            .unwrap_or(Metric::Accuracy);
+        let primary_metric = self.config.metrics.first().copied().unwrap_or(Metric::Accuracy);
 
         for (train_idx, test_idx) in &folds {
             // Get predictions for this fold
@@ -91,10 +86,7 @@ impl ModelEvaluator {
         // Compute mean and std
         let cv_mean = fold_scores.iter().sum::<f64>() / fold_scores.len().max(1) as f64;
         let cv_std = if fold_scores.len() > 1 {
-            let variance = fold_scores
-                .iter()
-                .map(|s| (s - cv_mean).powi(2))
-                .sum::<f64>()
+            let variance = fold_scores.iter().map(|s| (s - cv_mean).powi(2)).sum::<f64>()
                 / (fold_scores.len().saturating_sub(1)).max(1) as f64;
             variance.sqrt()
         } else {
@@ -181,12 +173,7 @@ impl ModelEvaluator {
         models: &[(&str, &[usize])],
         y_true: &[usize],
     ) -> Result<Leaderboard> {
-        let primary = self
-            .config
-            .metrics
-            .first()
-            .copied()
-            .unwrap_or(Metric::Accuracy);
+        let primary = self.config.metrics.first().copied().unwrap_or(Metric::Accuracy);
         let mut leaderboard = Leaderboard::new(primary);
 
         for (name, y_pred) in models {
@@ -219,12 +206,8 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        let config = EvalConfig {
-            metrics: vec![metric],
-            cv_folds: 2,
-            seed: 42,
-            ..Default::default()
-        };
+        let config =
+            EvalConfig { metrics: vec![metric], cv_folds: 2, seed: 42, ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
         let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
         let result = evaluator
@@ -245,12 +228,8 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        let config = EvalConfig {
-            metrics: vec![metric],
-            cv_folds: 2,
-            seed: 42,
-            ..Default::default()
-        };
+        let config =
+            EvalConfig { metrics: vec![metric], cv_folds: 2, seed: 42, ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
         let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
         let result = evaluator
@@ -271,12 +250,8 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        let config = EvalConfig {
-            metrics: vec![metric],
-            cv_folds: 2,
-            seed: 42,
-            ..Default::default()
-        };
+        let config =
+            EvalConfig { metrics: vec![metric], cv_folds: 2, seed: 42, ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
         let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
         let result = evaluator
@@ -307,12 +282,8 @@ mod tests {
             Metric::PassAtK(1),
             Metric::NDCGAtK(5),
         ] {
-            let config = EvalConfig {
-                metrics: vec![metric],
-                cv_folds: 2,
-                seed: 42,
-                ..Default::default()
-            };
+            let config =
+                EvalConfig { metrics: vec![metric], cv_folds: 2, seed: 42, ..Default::default() };
             let evaluator = ModelEvaluator::new(config);
             let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();
             let result = evaluator
@@ -320,10 +291,7 @@ mod tests {
                     test_idx.iter().map(|&i| y_true[i]).collect()
                 })
                 .unwrap();
-            assert!(
-                result.cv_mean.is_some(),
-                "CV should succeed with metric {metric:?}"
-            );
+            assert!(result.cv_mean.is_some(), "CV should succeed with metric {metric:?}");
         }
     }
 
@@ -337,17 +305,10 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        let config = EvalConfig {
-            metrics: vec![metric],
-            ..Default::default()
-        };
+        let config = EvalConfig { metrics: vec![metric], ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator
-            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
-            .unwrap();
-        assert!(result
-            .get_score(Metric::Precision(Average::Macro))
-            .is_some());
+        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
+        assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
     }
 
     #[test]
@@ -360,14 +321,9 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        let config = EvalConfig {
-            metrics: vec![metric],
-            ..Default::default()
-        };
+        let config = EvalConfig { metrics: vec![metric], ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator
-            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
-            .unwrap();
+        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
         assert!(result.get_score(Metric::Recall(Average::Micro)).is_some());
     }
 
@@ -381,14 +337,9 @@ mod tests {
             }
             _ => unreachable!(),
         }
-        let config = EvalConfig {
-            metrics: vec![metric],
-            ..Default::default()
-        };
+        let config = EvalConfig { metrics: vec![metric], ..Default::default() };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator
-            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
-            .unwrap();
+        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
         assert!(result.get_score(Metric::F1(Average::Weighted)).is_some());
     }
 
@@ -416,15 +367,11 @@ mod tests {
             ..Default::default()
         };
         let evaluator = ModelEvaluator::new(config);
-        let result = evaluator
-            .evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1])
-            .unwrap();
+        let result = evaluator.evaluate_classification("Test", &[0, 1, 0], &[0, 1, 1]).unwrap();
         assert!(result.get_score(Metric::Accuracy).is_some());
         assert!(result.get_score(Metric::R2).is_none());
         assert!(result.get_score(Metric::MSE).is_none());
-        assert!(result
-            .get_score(Metric::ROUGE(RougeVariant::RougeL))
-            .is_none());
+        assert!(result.get_score(Metric::ROUGE(RougeVariant::RougeL)).is_none());
         assert!(result.get_score(Metric::PassAtK(5)).is_none());
         assert!(result.get_score(Metric::NDCGAtK(10)).is_none());
     }

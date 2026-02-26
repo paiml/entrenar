@@ -39,9 +39,7 @@ fn test_safetensors_is_safe() {
 
 #[test]
 fn test_gguf_is_safe() {
-    let format = WeightFormat::GGUF {
-        quant_type: "Q4_K_M".into(),
-    };
+    let format = WeightFormat::GGUF { quant_type: "Q4_K_M".into() };
     assert!(format.is_safe());
 }
 
@@ -57,9 +55,7 @@ fn test_onnx_is_safe() {
 
 #[test]
 fn test_weight_format_gguf_quant_type() {
-    let format = WeightFormat::GGUF {
-        quant_type: "Q4_K_M".to_string(),
-    };
+    let format = WeightFormat::GGUF { quant_type: "Q4_K_M".to_string() };
     if let WeightFormat::GGUF { quant_type } = format {
         assert_eq!(quant_type, "Q4_K_M");
     } else {
@@ -74,12 +70,8 @@ fn test_weight_format_equality() {
     assert_eq!(WeightFormat::ONNX, WeightFormat::ONNX);
     assert_ne!(WeightFormat::SafeTensors, WeightFormat::ONNX);
 
-    let gguf1 = WeightFormat::GGUF {
-        quant_type: "Q4_K_M".into(),
-    };
-    let gguf2 = WeightFormat::GGUF {
-        quant_type: "Q4_K_M".into(),
-    };
+    let gguf1 = WeightFormat::GGUF { quant_type: "Q4_K_M".into() };
+    let gguf2 = WeightFormat::GGUF { quant_type: "Q4_K_M".into() };
     assert_eq!(gguf1, gguf2);
 }
 
@@ -89,18 +81,14 @@ fn test_weight_format_debug() {
     let debug = format!("{:?}", safetensors);
     assert!(debug.contains("SafeTensors"));
 
-    let gguf = WeightFormat::GGUF {
-        quant_type: "Q4_K_S".into(),
-    };
+    let gguf = WeightFormat::GGUF { quant_type: "Q4_K_S".into() };
     let debug_gguf = format!("{:?}", gguf);
     assert!(debug_gguf.contains("Q4_K_S"));
 }
 
 #[test]
 fn test_weight_format_clone() {
-    let original = WeightFormat::GGUF {
-        quant_type: "Q8_0".into(),
-    };
+    let original = WeightFormat::GGUF { quant_type: "Q8_0".into() };
     let cloned = original.clone();
     assert_eq!(original, cloned);
 }

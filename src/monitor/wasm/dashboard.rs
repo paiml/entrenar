@@ -34,12 +34,7 @@ impl WasmDashboard {
 
     /// Create a dashboard with custom options.
     pub fn with_options(options: WasmDashboardOptions) -> Self {
-        Self {
-            options,
-            loss_history: Vec::new(),
-            accuracy_history: Vec::new(),
-            max_history: 100,
-        }
+        Self { options, loss_history: Vec::new(), accuracy_history: Vec::new(), max_history: 100 }
     }
 
     /// Set maximum history length.

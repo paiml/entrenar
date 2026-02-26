@@ -10,30 +10,15 @@ use super::*;
 fn test_config_default_values() {
     // TEST_ID: CAL-001
     let config = CalibrationConfig::default();
-    assert_eq!(
-        config.num_samples(),
-        128,
-        "CAL-001 FALSIFIED: Default num_samples should be 128"
-    );
+    assert_eq!(config.num_samples(), 128, "CAL-001 FALSIFIED: Default num_samples should be 128");
     assert_eq!(
         config.sequence_length(),
         2048,
         "CAL-001 FALSIFIED: Default sequence_length should be 2048"
     );
-    assert_eq!(
-        config.dataset(),
-        "c4",
-        "CAL-001 FALSIFIED: Default dataset should be c4"
-    );
-    assert_eq!(
-        config.batch_size(),
-        1,
-        "CAL-001 FALSIFIED: Default batch_size should be 1"
-    );
-    assert!(
-        config.normalize(),
-        "CAL-001 FALSIFIED: Default normalize should be true"
-    );
+    assert_eq!(config.dataset(), "c4", "CAL-001 FALSIFIED: Default dataset should be c4");
+    assert_eq!(config.batch_size(), 1, "CAL-001 FALSIFIED: Default batch_size should be 1");
+    assert!(config.normalize(), "CAL-001 FALSIFIED: Default normalize should be true");
 }
 
 #[test]
@@ -74,20 +59,9 @@ fn test_config_serialize_json() {
 fn test_layer_stats_new() {
     // TEST_ID: CAL-010
     let stats = LayerActivationStats::new(512);
-    assert_eq!(
-        stats.input_dim(),
-        512,
-        "CAL-010 FALSIFIED: input_dim should be 512"
-    );
-    assert_eq!(
-        stats.count(),
-        0,
-        "CAL-010 FALSIFIED: initial count should be 0"
-    );
-    assert!(
-        stats.is_empty(),
-        "CAL-010 FALSIFIED: should be empty initially"
-    );
+    assert_eq!(stats.input_dim(), 512, "CAL-010 FALSIFIED: input_dim should be 512");
+    assert_eq!(stats.count(), 0, "CAL-010 FALSIFIED: initial count should be 0");
+    assert!(stats.is_empty(), "CAL-010 FALSIFIED: should be empty initially");
 }
 
 #[test]
@@ -97,15 +71,8 @@ fn test_layer_stats_update_single_sample() {
     let sample = vec![1.0, 2.0, 3.0, 4.0];
     stats.update(&[sample]);
 
-    assert_eq!(
-        stats.count(),
-        1,
-        "CAL-011 FALSIFIED: count should be 1 after one sample"
-    );
-    assert!(
-        !stats.is_empty(),
-        "CAL-011 FALSIFIED: should not be empty after update"
-    );
+    assert_eq!(stats.count(), 1, "CAL-011 FALSIFIED: count should be 1 after one sample");
+    assert!(!stats.is_empty(), "CAL-011 FALSIFIED: should not be empty after update");
 }
 
 #[test]
@@ -118,22 +85,10 @@ fn test_layer_stats_input_norms_single_sample() {
     stats.update(&[sample]);
 
     let norms = stats.input_norms();
-    assert!(
-        (norms[0] - 1.0).abs() < 1e-6,
-        "CAL-012 FALSIFIED: norm[0] should be 1.0"
-    );
-    assert!(
-        (norms[1] - 2.0).abs() < 1e-6,
-        "CAL-012 FALSIFIED: norm[1] should be 2.0"
-    );
-    assert!(
-        (norms[2] - 3.0).abs() < 1e-6,
-        "CAL-012 FALSIFIED: norm[2] should be 3.0"
-    );
-    assert!(
-        (norms[3] - 4.0).abs() < 1e-6,
-        "CAL-012 FALSIFIED: norm[3] should be 4.0"
-    );
+    assert!((norms[0] - 1.0).abs() < 1e-6, "CAL-012 FALSIFIED: norm[0] should be 1.0");
+    assert!((norms[1] - 2.0).abs() < 1e-6, "CAL-012 FALSIFIED: norm[1] should be 2.0");
+    assert!((norms[2] - 3.0).abs() < 1e-6, "CAL-012 FALSIFIED: norm[2] should be 3.0");
+    assert!((norms[3] - 4.0).abs() < 1e-6, "CAL-012 FALSIFIED: norm[3] should be 4.0");
 }
 
 #[test]
@@ -170,14 +125,8 @@ fn test_layer_stats_mean_abs() {
     let mean_abs = stats.mean_abs();
     // mean_abs[0] = (1 + 3) / 2 = 2.0
     // mean_abs[1] = (2 + 4) / 2 = 3.0
-    assert!(
-        (mean_abs[0] - 2.0).abs() < 1e-6,
-        "CAL-014 FALSIFIED: mean_abs[0] should be 2.0"
-    );
-    assert!(
-        (mean_abs[1] - 3.0).abs() < 1e-6,
-        "CAL-014 FALSIFIED: mean_abs[1] should be 3.0"
-    );
+    assert!((mean_abs[0] - 2.0).abs() < 1e-6, "CAL-014 FALSIFIED: mean_abs[0] should be 2.0");
+    assert!((mean_abs[1] - 3.0).abs() < 1e-6, "CAL-014 FALSIFIED: mean_abs[1] should be 3.0");
 }
 
 #[test]
@@ -185,10 +134,7 @@ fn test_layer_stats_empty_batch() {
     // TEST_ID: CAL-015
     let mut stats = LayerActivationStats::new(4);
     stats.update(&[]);
-    assert!(
-        stats.is_empty(),
-        "CAL-015 FALSIFIED: Empty batch should not update stats"
-    );
+    assert!(stats.is_empty(), "CAL-015 FALSIFIED: Empty batch should not update stats");
 }
 
 #[test]
@@ -199,15 +145,8 @@ fn test_layer_stats_reset() {
     assert!(!stats.is_empty());
 
     stats.reset();
-    assert!(
-        stats.is_empty(),
-        "CAL-016 FALSIFIED: Should be empty after reset"
-    );
-    assert_eq!(
-        stats.count(),
-        0,
-        "CAL-016 FALSIFIED: Count should be 0 after reset"
-    );
+    assert!(stats.is_empty(), "CAL-016 FALSIFIED: Should be empty after reset");
+    assert_eq!(stats.count(), 0, "CAL-016 FALSIFIED: Count should be 0 after reset");
 }
 
 #[test]
@@ -281,11 +220,7 @@ fn test_collector_record_activations() {
     collector.record_activations("layer.0", &activations);
 
     let stats = collector.get_layer_stats("layer.0").unwrap();
-    assert_eq!(
-        stats.count(),
-        2,
-        "CAL-023 FALSIFIED: Should have recorded 2 samples"
-    );
+    assert_eq!(stats.count(), 2, "CAL-023 FALSIFIED: Should have recorded 2 samples");
 }
 
 #[test]
@@ -323,10 +258,7 @@ fn test_collector_progress() {
     let config = CalibrationConfig::new().with_num_samples(100);
     let mut collector = CalibrationCollector::new(config);
 
-    assert!(
-        collector.progress().abs() < 1e-6,
-        "CAL-026 FALSIFIED: Initial progress should be 0"
-    );
+    assert!(collector.progress().abs() < 1e-6, "CAL-026 FALSIFIED: Initial progress should be 0");
 
     collector.batch_complete(25);
     assert!(
@@ -335,10 +267,7 @@ fn test_collector_progress() {
     );
 
     collector.batch_complete(75);
-    assert!(
-        (collector.progress() - 1.0).abs() < 1e-6,
-        "CAL-026 FALSIFIED: Progress should be 1.0"
-    );
+    assert!((collector.progress() - 1.0).abs() < 1e-6, "CAL-026 FALSIFIED: Progress should be 1.0");
 }
 
 #[test]
@@ -370,11 +299,7 @@ fn test_collector_stops_recording_when_complete() {
     collector.record_activations("layer.0", &[vec![5.0, 6.0]]);
 
     let stats = collector.get_layer_stats("layer.0").unwrap();
-    assert_eq!(
-        stats.count(),
-        2,
-        "CAL-028 FALSIFIED: Recording should stop when complete"
-    );
+    assert_eq!(stats.count(), 2, "CAL-028 FALSIFIED: Recording should stop when complete");
 }
 
 #[test]
@@ -392,10 +317,7 @@ fn test_collector_reset() {
     assert!(!collector.is_complete());
     assert_eq!(collector.samples_processed(), 0);
     let stats = collector.get_layer_stats("layer.0").unwrap();
-    assert!(
-        stats.is_empty(),
-        "CAL-029 FALSIFIED: Layer stats should be reset"
-    );
+    assert!(stats.is_empty(), "CAL-029 FALSIFIED: Layer stats should be reset");
 }
 
 #[test]
@@ -412,9 +334,7 @@ fn test_collector_zero_samples_config() {
 #[test]
 fn test_collector_config_access() {
     // TEST_ID: CAL-031
-    let config = CalibrationConfig::new()
-        .with_num_samples(256)
-        .with_dataset("custom");
+    let config = CalibrationConfig::new().with_num_samples(256).with_dataset("custom");
     let collector = CalibrationCollector::new(config);
 
     assert_eq!(collector.config().num_samples(), 256);
@@ -437,10 +357,7 @@ fn test_welford_large_values() {
 
     let norms = stats.input_norms();
     // Should not overflow or produce NaN/Inf
-    assert!(
-        norms[0].is_finite(),
-        "CAL-040 FALSIFIED: Large values should produce finite results"
-    );
+    assert!(norms[0].is_finite(), "CAL-040 FALSIFIED: Large values should produce finite results");
 }
 
 #[test]
@@ -453,10 +370,7 @@ fn test_welford_small_values() {
     stats.update(&[vec![1e-10, 1e-10]]);
 
     let norms = stats.input_norms();
-    assert!(
-        norms[0].is_finite(),
-        "CAL-041 FALSIFIED: Small values should produce finite results"
-    );
+    assert!(norms[0].is_finite(), "CAL-041 FALSIFIED: Small values should produce finite results");
     assert!(
         norms[0] > 0.0,
         "CAL-041 FALSIFIED: Small positive values should produce positive norms"
@@ -473,12 +387,6 @@ fn test_welford_mixed_sign() {
 
     let norms = stats.input_norms();
     // L2 norm should be positive regardless of sign
-    assert!(
-        norms[0] > 0.0,
-        "CAL-042 FALSIFIED: L2 norm should be positive"
-    );
-    assert!(
-        norms[1] > 0.0,
-        "CAL-042 FALSIFIED: L2 norm should be positive"
-    );
+    assert!(norms[0] > 0.0, "CAL-042 FALSIFIED: L2 norm should be positive");
+    assert!(norms[1] > 0.0, "CAL-042 FALSIFIED: L2 norm should be positive");
 }

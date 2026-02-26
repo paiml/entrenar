@@ -31,9 +31,6 @@ impl PrivacyBudget {
 impl Default for PrivacyBudget {
     fn default() -> Self {
         // Commonly used default: (8.0, 1e-5)
-        Self {
-            epsilon: 8.0,
-            delta: 1e-5,
-        }
+        Self { epsilon: 8.0, delta: 1e-5 }
     }
 }

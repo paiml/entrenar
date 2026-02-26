@@ -131,10 +131,7 @@ impl Panel for LossCurvePanel<'_> {
         if self.snapshot.gradient_norm.is_finite() {
             v.pass("grad_norm_finite");
         } else {
-            v.fail(
-                "grad_norm_finite",
-                format!("gradient_norm is {}", self.snapshot.gradient_norm),
-            );
+            v.fail("grad_norm_finite", format!("gradient_norm is {}", self.snapshot.gradient_norm));
         }
 
         v.duration = start.elapsed();
@@ -181,10 +178,7 @@ impl Panel for GpuPanel<'_> {
             } else {
                 v.fail(
                     "vram_valid",
-                    format!(
-                        "vram_used {}G > vram_total {}G",
-                        gpu.vram_used_gb, gpu.vram_total_gb
-                    ),
+                    format!("vram_used {}G > vram_total {}G", gpu.vram_used_gb, gpu.vram_total_gb),
                 );
             }
 
@@ -397,10 +391,7 @@ impl Panel for MetricsPanel<'_> {
         if self.snapshot.learning_rate.is_finite() && self.snapshot.learning_rate >= 0.0 {
             v.pass("lr_valid");
         } else {
-            v.fail(
-                "lr_valid",
-                format!("learning_rate {} invalid", self.snapshot.learning_rate),
-            );
+            v.fail("lr_valid", format!("learning_rate {} invalid", self.snapshot.learning_rate));
         }
 
         // Tokens per second non-negative
@@ -426,18 +417,9 @@ impl Panel for MetricsPanel<'_> {
 pub fn verify_layout(snapshot: &TrainingSnapshot) -> Vec<PanelVerification> {
     vec![
         LossCurvePanel { snapshot }.verify(),
-        GpuPanel {
-            gpu: snapshot.gpu.as_ref(),
-        }
-        .verify(),
-        ProcessPanel {
-            gpu: snapshot.gpu.as_ref(),
-        }
-        .verify(),
-        SamplePanel {
-            sample: snapshot.sample.as_ref(),
-        }
-        .verify(),
+        GpuPanel { gpu: snapshot.gpu.as_ref() }.verify(),
+        ProcessPanel { gpu: snapshot.gpu.as_ref() }.verify(),
+        SamplePanel { sample: snapshot.sample.as_ref() }.verify(),
         MetricsPanel { snapshot }.verify(),
     ]
 }
@@ -504,9 +486,7 @@ mod tests {
     #[test]
     fn test_loss_curve_panel_valid() {
         let snapshot = make_snapshot();
-        let panel = LossCurvePanel {
-            snapshot: &snapshot,
-        };
+        let panel = LossCurvePanel { snapshot: &snapshot };
         assert!(panel.can_render());
         let v = panel.verify();
         assert!(v.is_valid());
@@ -517,9 +497,7 @@ mod tests {
     fn test_loss_curve_panel_nan_loss() {
         let mut snapshot = make_snapshot();
         snapshot.loss = f32::NAN;
-        let panel = LossCurvePanel {
-            snapshot: &snapshot,
-        };
+        let panel = LossCurvePanel { snapshot: &snapshot };
         let v = panel.verify();
         assert!(!v.is_valid());
         assert!(v.failed.iter().any(|(a, _)| *a == "loss_finite"));
@@ -528,9 +506,7 @@ mod tests {
     #[test]
     fn test_gpu_panel_valid() {
         let snapshot = make_snapshot();
-        let panel = GpuPanel {
-            gpu: snapshot.gpu.as_ref(),
-        };
+        let panel = GpuPanel { gpu: snapshot.gpu.as_ref() };
         assert!(panel.can_render());
         let v = panel.verify();
         assert!(v.is_valid());
@@ -547,9 +523,7 @@ mod tests {
     #[test]
     fn test_process_panel_valid() {
         let snapshot = make_snapshot();
-        let panel = ProcessPanel {
-            gpu: snapshot.gpu.as_ref(),
-        };
+        let panel = ProcessPanel { gpu: snapshot.gpu.as_ref() };
         assert!(panel.can_render());
         assert!(panel.training_process().is_some());
         let v = panel.verify();
@@ -562,9 +536,7 @@ mod tests {
         if let Some(ref mut gpu) = snapshot.gpu {
             gpu.processes[0].exe_path = "/usr/bin/other".into();
         }
-        let panel = ProcessPanel {
-            gpu: snapshot.gpu.as_ref(),
-        };
+        let panel = ProcessPanel { gpu: snapshot.gpu.as_ref() };
         assert!(!panel.can_render());
         let v = panel.verify();
         assert!(!v.is_valid());
@@ -574,9 +546,7 @@ mod tests {
     #[test]
     fn test_sample_panel_valid() {
         let snapshot = make_snapshot();
-        let panel = SamplePanel {
-            sample: snapshot.sample.as_ref(),
-        };
+        let panel = SamplePanel { sample: snapshot.sample.as_ref() };
         assert!(panel.can_render());
         let v = panel.verify();
         assert!(v.is_valid());
@@ -593,9 +563,7 @@ mod tests {
     #[test]
     fn test_metrics_panel_valid() {
         let snapshot = make_snapshot();
-        let panel = MetricsPanel {
-            snapshot: &snapshot,
-        };
+        let panel = MetricsPanel { snapshot: &snapshot };
         assert!(panel.can_render());
         let v = panel.verify();
         assert!(v.is_valid());
@@ -606,9 +574,7 @@ mod tests {
         let mut snapshot = make_snapshot();
         snapshot.step = 100;
         snapshot.steps_per_epoch = 16;
-        let panel = MetricsPanel {
-            snapshot: &snapshot,
-        };
+        let panel = MetricsPanel { snapshot: &snapshot };
         let v = panel.verify();
         assert!(!v.is_valid());
         assert!(v.failed.iter().any(|(a, _)| *a == "step_valid"));

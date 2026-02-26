@@ -21,12 +21,7 @@ impl FakeQuantConfig {
     pub fn symmetric(bits: usize) -> Self {
         let qmax = (1 << (bits - 1)) - 1; // 2^(bits-1) - 1
         let qmin = -qmax;
-        Self {
-            bits,
-            symmetric: true,
-            qmin,
-            qmax,
-        }
+        Self { bits, symmetric: true, qmin, qmax }
     }
 
     /// Create asymmetric fake quantization config
@@ -35,12 +30,7 @@ impl FakeQuantConfig {
     /// * `bits` - Number of bits (4-bit: qmin=0, qmax=15; 8-bit: qmin=0, qmax=255)
     pub fn asymmetric(bits: usize) -> Self {
         let qmax = (1 << bits) - 1; // 2^bits - 1
-        Self {
-            bits,
-            symmetric: false,
-            qmin: 0,
-            qmax,
-        }
+        Self { bits, symmetric: false, qmin: 0, qmax }
     }
 
     /// 4-bit symmetric quantization

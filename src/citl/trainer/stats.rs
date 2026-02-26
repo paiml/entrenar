@@ -78,23 +78,15 @@ mod tests {
 
     #[test]
     fn test_decision_stats_tarantula_no_failures() {
-        let stats = DecisionStats {
-            success_count: 5,
-            fail_count: 0,
-            total_success: 5,
-            total_fail: 0,
-        };
+        let stats =
+            DecisionStats { success_count: 5, fail_count: 0, total_success: 5, total_fail: 0 };
         assert_eq!(stats.tarantula_score(), 0.0);
     }
 
     #[test]
     fn test_decision_stats_tarantula_only_failures() {
-        let stats = DecisionStats {
-            success_count: 0,
-            fail_count: 5,
-            total_success: 0,
-            total_fail: 5,
-        };
+        let stats =
+            DecisionStats { success_count: 0, fail_count: 5, total_success: 0, total_fail: 5 };
         // fail_freq = 1.0, success_freq = 0.0
         // suspiciousness = 1.0 / 1.0 = 1.0
         assert_eq!(stats.tarantula_score(), 1.0);

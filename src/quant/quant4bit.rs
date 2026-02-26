@@ -65,11 +65,7 @@ pub fn quantize_4bit(values: &[f32]) -> Quantized4Bit {
 
         // Compute scale factor for this block: max absolute value / 7
         // (7 is max representable in 4-bit signed: -7 to 7)
-        let max_abs = block
-            .iter()
-            .map(|v| v.abs())
-            .max_by(f32::total_cmp)
-            .unwrap_or(1e-8);
+        let max_abs = block.iter().map(|v| v.abs()).max_by(f32::total_cmp).unwrap_or(1e-8);
 
         let scale = max_abs / 7.0;
         scales.push(scale);
@@ -240,10 +236,7 @@ mod tests {
 
         // Should achieve significant compression (close to 8x for large arrays)
         let compression = original_bytes as f32 / compressed_bytes as f32;
-        assert!(
-            compression > 6.0,
-            "Compression ratio {compression} should be > 6.0"
-        );
+        assert!(compression > 6.0, "Compression ratio {compression} should be > 6.0");
     }
 
     #[test]

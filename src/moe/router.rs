@@ -47,11 +47,7 @@ impl TopKRouter {
                 ((i * config.num_experts + j) as f32 * 0.4567).sin() * scale
             });
 
-        Self {
-            gate_weight,
-            top_k: config.top_k,
-            capacity_factor: config.capacity_factor,
-        }
+        Self { gate_weight, top_k: config.top_k, capacity_factor: config.capacity_factor }
     }
 
     /// Route a batch of input tokens to the top-k experts.
@@ -78,11 +74,7 @@ impl TopKRouter {
         let (expert_indices, expert_weights) =
             select_top_k_with_capacity(&routing_probs, self.top_k, capacity);
 
-        RoutingResult {
-            expert_indices,
-            expert_weights,
-            routing_probs,
-        }
+        RoutingResult { expert_indices, expert_weights, routing_probs }
     }
 }
 
@@ -101,10 +93,7 @@ pub struct NoisyTopKRouter {
 impl NoisyTopKRouter {
     /// Create a new noisy top-k router.
     pub fn new(config: &RouterConfig, noise_std: f32) -> Self {
-        Self {
-            inner: TopKRouter::new(config),
-            noise_std,
-        }
+        Self { inner: TopKRouter::new(config), noise_std }
     }
 
     /// Route with added Gaussian noise for exploration.
@@ -123,20 +112,12 @@ impl NoisyTopKRouter {
         }
 
         let routing_probs = softmax_rows(&logits);
-        let capacity = capacity_limit(
-            batch_size,
-            self.inner.top_k,
-            num_experts,
-            self.inner.capacity_factor,
-        );
+        let capacity =
+            capacity_limit(batch_size, self.inner.top_k, num_experts, self.inner.capacity_factor);
         let (expert_indices, expert_weights) =
             select_top_k_with_capacity(&routing_probs, self.inner.top_k, capacity);
 
-        RoutingResult {
-            expert_indices,
-            expert_weights,
-            routing_probs,
-        }
+        RoutingResult { expert_indices, expert_weights, routing_probs }
     }
 }
 

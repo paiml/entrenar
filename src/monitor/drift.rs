@@ -38,13 +38,7 @@ pub struct SlidingWindowBaseline {
 impl SlidingWindowBaseline {
     /// Create a new baseline with given window size
     pub fn new(window_size: usize) -> Self {
-        Self {
-            window_size,
-            values: Vec::with_capacity(window_size),
-            mean: 0.0,
-            m2: 0.0,
-            count: 0,
-        }
+        Self { window_size, values: Vec::with_capacity(window_size), mean: 0.0, m2: 0.0, count: 0 }
     }
 
     /// Update baseline with new value
@@ -64,11 +58,7 @@ impl SlidingWindowBaseline {
         if self.count > 0 {
             self.mean = self.values.iter().sum::<f64>() / self.count as f64;
             if self.count > 1 {
-                self.m2 = self
-                    .values
-                    .iter()
-                    .map(|v| (v - self.mean).powi(2))
-                    .sum::<f64>();
+                self.m2 = self.values.iter().map(|v| (v - self.mean).powi(2)).sum::<f64>();
             }
         }
     }

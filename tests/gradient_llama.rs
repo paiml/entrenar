@@ -58,11 +58,7 @@ where
 
 /// Check gradient correctness with detailed error reporting
 fn check_gradient(analytical: &[f32], numerical: &[f32], threshold: f32, context: &str) {
-    assert_eq!(
-        analytical.len(),
-        numerical.len(),
-        "{context}: Gradient size mismatch"
-    );
+    assert_eq!(analytical.len(), numerical.len(), "{context}: Gradient size mismatch");
 
     let mut max_error = 0.0;
     let mut max_error_idx = 0;
@@ -109,9 +105,8 @@ fn gradient_check_matmul_q_projection() {
     let batch_seq = 2;
 
     let x_data = vec![1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5];
-    let w_q_data = vec![
-        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6,
-    ];
+    let w_q_data =
+        vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6];
 
     // Forward pass with autograd
     let x = Tensor::from_vec(x_data.clone(), true);
@@ -145,9 +140,8 @@ fn gradient_check_matmul_k_projection() {
     let batch_seq = 2;
 
     let x_data = vec![1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5];
-    let w_k_data = vec![
-        0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7,
-    ];
+    let w_k_data =
+        vec![0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7];
 
     let x = Tensor::from_vec(x_data.clone(), true);
     let w_k = Tensor::from_vec(w_k_data.clone(), false);
@@ -178,9 +172,8 @@ fn gradient_check_matmul_v_projection() {
     let batch_seq = 2;
 
     let x_data = vec![1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5];
-    let w_v_data = vec![
-        0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8,
-    ];
+    let w_v_data =
+        vec![0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8];
 
     let x = Tensor::from_vec(x_data.clone(), true);
     let w_v = Tensor::from_vec(w_v_data.clone(), false);
@@ -211,9 +204,8 @@ fn gradient_check_matmul_o_projection() {
     let batch_seq = 2;
 
     let attn_out_data = vec![1.2, 2.3, 3.4, 4.5, 0.8, 1.9, 2.1, 3.2];
-    let w_o_data = vec![
-        0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9,
-    ];
+    let w_o_data =
+        vec![0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9];
 
     let attn_out = Tensor::from_vec(attn_out_data.clone(), true);
     let w_o = Tensor::from_vec(w_o_data.clone(), false);
@@ -250,18 +242,14 @@ fn gradient_check_ffn_gate_projection() {
     let batch_seq = 2;
 
     let x_data = vec![1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5];
-    let w_gate_data: Vec<f32> = (0..hidden_size * intermediate_size)
-        .map(|i| (i as f32) * 0.1)
-        .collect();
+    let w_gate_data: Vec<f32> =
+        (0..hidden_size * intermediate_size).map(|i| (i as f32) * 0.1).collect();
 
     let x = Tensor::from_vec(x_data.clone(), true);
     let w_gate = Tensor::from_vec(w_gate_data.clone(), false);
     let mut gate = matmul(&x, &w_gate, batch_seq, hidden_size, intermediate_size);
 
-    backward(
-        &mut gate,
-        Some(ndarray::Array1::ones(batch_seq * intermediate_size)),
-    );
+    backward(&mut gate, Some(ndarray::Array1::ones(batch_seq * intermediate_size)));
     let analytical = x.grad().unwrap();
 
     let numerical = finite_difference(
@@ -275,12 +263,7 @@ fn gradient_check_ffn_gate_projection() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical.to_vec(),
-        &numerical,
-        THRESHOLD,
-        "FFN Gate Projection",
-    );
+    check_gradient(&analytical.to_vec(), &numerical, THRESHOLD, "FFN Gate Projection");
 }
 
 #[test]
@@ -292,18 +275,14 @@ fn gradient_check_ffn_up_projection() {
     let batch_seq = 2;
 
     let x_data = vec![1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5];
-    let w_up_data: Vec<f32> = (0..hidden_size * intermediate_size)
-        .map(|i| (i as f32) * 0.12 + 0.1)
-        .collect();
+    let w_up_data: Vec<f32> =
+        (0..hidden_size * intermediate_size).map(|i| (i as f32) * 0.12 + 0.1).collect();
 
     let x = Tensor::from_vec(x_data.clone(), true);
     let w_up = Tensor::from_vec(w_up_data.clone(), false);
     let mut up = matmul(&x, &w_up, batch_seq, hidden_size, intermediate_size);
 
-    backward(
-        &mut up,
-        Some(ndarray::Array1::ones(batch_seq * intermediate_size)),
-    );
+    backward(&mut up, Some(ndarray::Array1::ones(batch_seq * intermediate_size)));
     let analytical = x.grad().unwrap();
 
     let numerical = finite_difference(
@@ -317,12 +296,7 @@ fn gradient_check_ffn_up_projection() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical.to_vec(),
-        &numerical,
-        THRESHOLD,
-        "FFN Up Projection",
-    );
+    check_gradient(&analytical.to_vec(), &numerical, THRESHOLD, "FFN Up Projection");
 }
 
 #[test]
@@ -334,21 +308,16 @@ fn gradient_check_ffn_down_projection() {
     let intermediate_size = 8;
     let batch_seq = 2;
 
-    let ffn_out_data: Vec<f32> = (0..batch_seq * intermediate_size)
-        .map(|i| (i as f32) * 0.5)
-        .collect();
-    let w_down_data: Vec<f32> = (0..intermediate_size * hidden_size)
-        .map(|i| (i as f32) * 0.08)
-        .collect();
+    let ffn_out_data: Vec<f32> =
+        (0..batch_seq * intermediate_size).map(|i| (i as f32) * 0.5).collect();
+    let w_down_data: Vec<f32> =
+        (0..intermediate_size * hidden_size).map(|i| (i as f32) * 0.08).collect();
 
     let ffn_out = Tensor::from_vec(ffn_out_data.clone(), true);
     let w_down = Tensor::from_vec(w_down_data.clone(), false);
     let mut down = matmul(&ffn_out, &w_down, batch_seq, intermediate_size, hidden_size);
 
-    backward(
-        &mut down,
-        Some(ndarray::Array1::ones(batch_seq * hidden_size)),
-    );
+    backward(&mut down, Some(ndarray::Array1::ones(batch_seq * hidden_size)));
     let analytical = ffn_out.grad().unwrap();
 
     let numerical = finite_difference(
@@ -362,12 +331,7 @@ fn gradient_check_ffn_down_projection() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical.to_vec(),
-        &numerical,
-        THRESHOLD,
-        "FFN Down Projection",
-    );
+    check_gradient(&analytical.to_vec(), &numerical, THRESHOLD, "FFN Down Projection");
 }
 
 // =============================================================================
@@ -485,12 +449,7 @@ fn gradient_check_layer_norm_input() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical.to_vec(),
-        &numerical,
-        THRESHOLD,
-        "LayerNorm (input)",
-    );
+    check_gradient(&analytical.to_vec(), &numerical, THRESHOLD, "LayerNorm (input)");
 }
 
 #[test]
@@ -521,12 +480,7 @@ fn gradient_check_layer_norm_gamma() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical.to_vec(),
-        &numerical,
-        THRESHOLD,
-        "LayerNorm (gamma)",
-    );
+    check_gradient(&analytical.to_vec(), &numerical, THRESHOLD, "LayerNorm (gamma)");
 }
 
 #[test]
@@ -672,12 +626,8 @@ fn gradient_check_attention_full_pass() {
 
     // Larger test case to stress-test attention gradient
     let q_data: Vec<f32> = (0..seq_len * d_k).map(|i| (i as f32) * 0.1).collect();
-    let k_data: Vec<f32> = (0..seq_len * d_k)
-        .map(|i| (i as f32) * 0.12 + 0.1)
-        .collect();
-    let v_data: Vec<f32> = (0..seq_len * d_v)
-        .map(|i| (i as f32) * 0.15 + 0.2)
-        .collect();
+    let k_data: Vec<f32> = (0..seq_len * d_k).map(|i| (i as f32) * 0.12 + 0.1).collect();
+    let v_data: Vec<f32> = (0..seq_len * d_v).map(|i| (i as f32) * 0.15 + 0.2).collect();
 
     // Check Q gradient
     let q = Tensor::from_vec(q_data.clone(), true);
@@ -700,12 +650,7 @@ fn gradient_check_attention_full_pass() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical_q.to_vec(),
-        &numerical_q,
-        THRESHOLD,
-        "Full Attention Q",
-    );
+    check_gradient(&analytical_q.to_vec(), &numerical_q, THRESHOLD, "Full Attention Q");
 
     // Check K gradient
     let q2 = Tensor::from_vec(q_data.clone(), false);
@@ -728,12 +673,7 @@ fn gradient_check_attention_full_pass() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical_k.to_vec(),
-        &numerical_k,
-        THRESHOLD,
-        "Full Attention K",
-    );
+    check_gradient(&analytical_k.to_vec(), &numerical_k, THRESHOLD, "Full Attention K");
 
     // Check V gradient
     let q3 = Tensor::from_vec(q_data.clone(), false);
@@ -756,12 +696,7 @@ fn gradient_check_attention_full_pass() {
         EPSILON,
     );
 
-    check_gradient(
-        &analytical_v.to_vec(),
-        &numerical_v,
-        THRESHOLD,
-        "Full Attention V",
-    );
+    check_gradient(&analytical_v.to_vec(), &numerical_v, THRESHOLD, "Full Attention V");
 
     println!("  ✓ Full attention mechanism gradient check PASSED (all Q/K/V)");
 }

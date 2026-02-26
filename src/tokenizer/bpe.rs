@@ -137,11 +137,7 @@ impl Tokenizer for BPETokenizer {
         let mut tokenized: Vec<Vec<String>> = corpus
             .iter()
             .map(|text| {
-                let t = if self.config.lowercase {
-                    text.to_lowercase()
-                } else {
-                    text.to_string()
-                };
+                let t = if self.config.lowercase { text.to_lowercase() } else { text.to_string() };
                 self.to_bytes(&t)
             })
             .collect();
@@ -185,21 +181,18 @@ impl Tokenizer for BPETokenizer {
             return Err(TokenizerError::NotTrained);
         }
 
-        let processed = if self.config.lowercase {
-            text.to_lowercase()
-        } else {
-            text.to_string()
-        };
+        let processed = if self.config.lowercase { text.to_lowercase() } else { text.to_string() };
 
         let tokens = self.to_bytes(&processed);
         let tokens = self.apply_merges(tokens);
 
-        let unk_id = *self.vocab.get(&self.config.special_tokens.unk).unwrap();
+        let unk_id = *self
+            .vocab
+            .get(&self.config.special_tokens.unk)
+            .expect("UNK token must exist in trained vocabulary");
 
-        let ids: Vec<TokenId> = tokens
-            .iter()
-            .map(|t| *self.vocab.get(t).unwrap_or(&unk_id))
-            .collect();
+        let ids: Vec<TokenId> =
+            tokens.iter().map(|t| *self.vocab.get(t).unwrap_or(&unk_id)).collect();
 
         Ok(ids)
     }
@@ -266,9 +259,7 @@ mod tests {
 
     #[test]
     fn test_bpe_train() {
-        let config = TokenizerConfig::bpe()
-            .with_vocab_size(300)
-            .with_min_frequency(1);
+        let config = TokenizerConfig::bpe().with_vocab_size(300).with_min_frequency(1);
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["hello hello", "hello world", "world hello"];
@@ -289,9 +280,7 @@ mod tests {
 
     #[test]
     fn test_bpe_encode_decode() {
-        let config = TokenizerConfig::bpe()
-            .with_vocab_size(300)
-            .with_min_frequency(1);
+        let config = TokenizerConfig::bpe().with_vocab_size(300).with_min_frequency(1);
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["hello world", "hello there"];
@@ -306,10 +295,8 @@ mod tests {
 
     #[test]
     fn test_bpe_lowercase() {
-        let config = TokenizerConfig::bpe()
-            .with_vocab_size(300)
-            .with_min_frequency(1)
-            .with_lowercase(true);
+        let config =
+            TokenizerConfig::bpe().with_vocab_size(300).with_min_frequency(1).with_lowercase(true);
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["Hello World"];
@@ -323,9 +310,7 @@ mod tests {
 
     #[test]
     fn test_bpe_id_to_token() {
-        let config = TokenizerConfig::bpe()
-            .with_vocab_size(300)
-            .with_min_frequency(1);
+        let config = TokenizerConfig::bpe().with_vocab_size(300).with_min_frequency(1);
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["test"];
@@ -337,9 +322,7 @@ mod tests {
 
     #[test]
     fn test_bpe_token_to_id() {
-        let config = TokenizerConfig::bpe()
-            .with_vocab_size(300)
-            .with_min_frequency(1);
+        let config = TokenizerConfig::bpe().with_vocab_size(300).with_min_frequency(1);
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["test"];

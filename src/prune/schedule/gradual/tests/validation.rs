@@ -144,10 +144,7 @@ fn test_serialize_gradual() {
         "SCHED-051 FALSIFIED: Gradual should serialize with type=gradual"
     );
     let deserialized: PruningSchedule = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        schedule, deserialized,
-        "SCHED-051 FALSIFIED: Deserialized should match original"
-    );
+    assert_eq!(schedule, deserialized, "SCHED-051 FALSIFIED: Deserialized should match original");
 }
 
 #[test]

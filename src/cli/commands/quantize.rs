@@ -40,11 +40,8 @@ fn resolve_quant_params(args: &QuantizeArgs) -> Result<(QuantMode, QuantGranular
         QuantMethod::Asymmetric => QuantMode::Asymmetric,
     };
 
-    let granularity = if args.per_channel {
-        QuantGranularity::PerChannel
-    } else {
-        QuantGranularity::PerTensor
-    };
+    let granularity =
+        if args.per_channel { QuantGranularity::PerChannel } else { QuantGranularity::PerTensor };
 
     Ok((mode, granularity))
 }
@@ -57,10 +54,7 @@ struct ByteAccumulator {
 
 impl ByteAccumulator {
     fn new() -> Self {
-        Self {
-            original: 0,
-            quantized: 0,
-        }
+        Self { original: 0, quantized: 0 }
     }
 
     fn compression_ratio(&self) -> f64 {
@@ -95,21 +89,9 @@ fn quantize_single_tensor(
 
 /// Log verbose details about quantization arguments.
 fn log_quant_args(args: &QuantizeArgs, level: LogLevel) {
-    log(
-        level,
-        LogLevel::Verbose,
-        &format!("  Method: {:?}", args.method),
-    );
-    log(
-        level,
-        LogLevel::Verbose,
-        &format!("  Per-channel: {}", args.per_channel),
-    );
-    log(
-        level,
-        LogLevel::Verbose,
-        &format!("  Output: {}", args.output.display()),
-    );
+    log(level, LogLevel::Verbose, &format!("  Method: {:?}", args.method));
+    log(level, LogLevel::Verbose, &format!("  Per-channel: {}", args.per_channel));
+    log(level, LogLevel::Verbose, &format!("  Output: {}", args.output.display()));
 }
 
 pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
@@ -131,16 +113,11 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
     let mut bytes = ByteAccumulator::new();
 
     for name in tensors.names() {
-        let tensor = tensors
-            .tensor(name)
-            .map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
+        let tensor =
+            tensors.tensor(name).map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
 
         if tensor.dtype() != safetensors::tensor::Dtype::F32 {
-            log(
-                level,
-                LogLevel::Verbose,
-                &format!("  Skipping {name} (not F32)"),
-            );
+            log(level, LogLevel::Verbose, &format!("  Skipping {name} (not F32)"));
             continue;
         }
 
@@ -174,11 +151,7 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
             bytes.compression_ratio()
         ),
     );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Output: {}", args.output.display()),
-    );
+    log(level, LogLevel::Normal, &format!("  Output: {}", args.output.display()));
 
     Ok(())
 }

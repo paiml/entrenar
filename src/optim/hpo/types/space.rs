@@ -48,10 +48,7 @@ impl HyperparameterSpace {
 
     /// Sample a random configuration
     pub fn sample_random<R: Rng>(&self, rng: &mut R) -> HashMap<String, ParameterValue> {
-        self.params
-            .iter()
-            .map(|(name, domain)| (name.clone(), domain.sample(rng)))
-            .collect()
+        self.params.iter().map(|(name, domain)| (name.clone(), domain.sample(rng))).collect()
     }
 
     /// Validate a configuration

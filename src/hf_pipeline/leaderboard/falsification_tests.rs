@@ -89,11 +89,7 @@ fn falsify_compare_preserves_all_entries() {
     my.add_score(Metric::WER, 0.07);
 
     let lb = compare_with_leaderboard(&my, &hf);
-    assert_eq!(
-        lb.results.len(),
-        6,
-        "Should have 5 HF entries + 1 user entry"
-    );
+    assert_eq!(lb.results.len(), 6, "Should have 5 HF entries + 1 user entry");
     assert_eq!(
         lb.best().unwrap().model_name,
         "my-model",
@@ -112,11 +108,7 @@ fn falsify_compare_user_model_worse_than_all() {
     my.add_score(Metric::WER, 0.50);
 
     let lb = compare_with_leaderboard(&my, &hf);
-    assert_eq!(
-        lb.best().unwrap().model_name,
-        "sota-model",
-        "SOTA model should remain best"
-    );
+    assert_eq!(lb.best().unwrap().model_name, "sota-model", "SOTA model should remain best");
     // User model should be last
     assert_eq!(lb.results.last().unwrap().model_name, "my-bad-model");
 }
@@ -128,18 +120,9 @@ fn falsify_compare_user_model_worse_than_all() {
 #[test]
 fn falsify_column_mapping_case_insensitive() {
     // The spec says column names should be lowercased before matching
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenASR, "WER"),
-        Some(Metric::WER)
-    );
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenASR, "Wer"),
-        Some(Metric::WER)
-    );
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenLLMv2, "MMLU"),
-        Some(Metric::MMLUAccuracy)
-    );
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenASR, "WER"), Some(Metric::WER));
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenASR, "Wer"), Some(Metric::WER));
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenLLMv2, "MMLU"), Some(Metric::MMLUAccuracy));
     assert_eq!(
         column_to_metric(&LeaderboardKind::BigCodeBench, "Pass@1"),
         Some(Metric::PassAtK(1))
@@ -148,10 +131,7 @@ fn falsify_column_mapping_case_insensitive() {
 
 #[test]
 fn falsify_column_mapping_unknown_returns_none() {
-    assert_eq!(
-        column_to_metric(&LeaderboardKind::OpenASR, "completely_unknown_metric"),
-        None
-    );
+    assert_eq!(column_to_metric(&LeaderboardKind::OpenASR, "completely_unknown_metric"), None);
     assert_eq!(column_to_metric(&LeaderboardKind::OpenLLMv2, ""), None);
 }
 
@@ -174,25 +154,13 @@ fn falsify_custom_leaderboard_generic_mapping() {
     assert_eq!(column_to_metric(&kind, "accuracy"), Some(Metric::Accuracy));
     assert_eq!(column_to_metric(&kind, "wer"), Some(Metric::WER));
     assert_eq!(column_to_metric(&kind, "bleu"), Some(Metric::BLEU));
-    assert_eq!(
-        column_to_metric(&kind, "rouge1"),
-        Some(Metric::ROUGE(RougeVariant::Rouge1))
-    );
-    assert_eq!(
-        column_to_metric(&kind, "rougel"),
-        Some(Metric::ROUGE(RougeVariant::RougeL))
-    );
-    assert_eq!(
-        column_to_metric(&kind, "perplexity"),
-        Some(Metric::Perplexity)
-    );
+    assert_eq!(column_to_metric(&kind, "rouge1"), Some(Metric::ROUGE(RougeVariant::Rouge1)));
+    assert_eq!(column_to_metric(&kind, "rougel"), Some(Metric::ROUGE(RougeVariant::RougeL)));
+    assert_eq!(column_to_metric(&kind, "perplexity"), Some(Metric::Perplexity));
     assert_eq!(column_to_metric(&kind, "ppl"), Some(Metric::Perplexity));
     assert_eq!(column_to_metric(&kind, "mmlu"), Some(Metric::MMLUAccuracy));
     assert_eq!(column_to_metric(&kind, "pass@1"), Some(Metric::PassAtK(1)));
-    assert_eq!(
-        column_to_metric(&kind, "ndcg@10"),
-        Some(Metric::NDCGAtK(10))
-    );
+    assert_eq!(column_to_metric(&kind, "ndcg@10"), Some(Metric::NDCGAtK(10)));
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -215,8 +183,7 @@ fn falsify_find_model_exact_match() {
 #[test]
 fn falsify_find_model_no_partial_match() {
     let mut lb = HfLeaderboard::new(LeaderboardKind::OpenASR);
-    lb.entries
-        .push(LeaderboardEntry::new("openai/whisper-large-v3"));
+    lb.entries.push(LeaderboardEntry::new("openai/whisper-large-v3"));
 
     // Partial match should NOT work
     assert!(lb.find_model("openai/whisper").is_none());
@@ -244,9 +211,7 @@ fn falsify_unrecognized_columns_dropped() {
     let mut hf = HfLeaderboard::new(LeaderboardKind::OpenASR);
     let mut entry = LeaderboardEntry::new("model-a");
     entry.scores.insert("wer".into(), 0.1);
-    entry
-        .scores
-        .insert("completely_unknown_column".into(), 42.0);
+    entry.scores.insert("completely_unknown_column".into(), 42.0);
     entry.scores.insert("another_unknown".into(), 99.0);
     hf.entries.push(entry);
 

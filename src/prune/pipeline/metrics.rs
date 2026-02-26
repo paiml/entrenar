@@ -35,10 +35,7 @@ pub struct PruningMetrics {
 impl PruningMetrics {
     /// Create new metrics with target sparsity.
     pub fn new(target_sparsity: f32) -> Self {
-        Self {
-            target_sparsity,
-            ..Default::default()
-        }
+        Self { target_sparsity, ..Default::default() }
     }
 
     /// Update achieved sparsity and parameter counts.
@@ -46,11 +43,7 @@ impl PruningMetrics {
         self.total_parameters = total;
         self.parameters_pruned = pruned;
         self.parameters_remaining = total.saturating_sub(pruned);
-        self.achieved_sparsity = if total > 0 {
-            pruned as f32 / total as f32
-        } else {
-            0.0
-        };
+        self.achieved_sparsity = if total > 0 { pruned as f32 / total as f32 } else { 0.0 };
     }
 
     /// Add layer sparsity.
@@ -108,12 +101,9 @@ impl PruningMetrics {
             return 0.0;
         }
         let mean = self.mean_layer_sparsity();
-        let variance: f32 = self
-            .layer_sparsity
-            .iter()
-            .map(|(_, s)| (s - mean).powi(2))
-            .sum::<f32>()
-            / self.layer_sparsity.len().max(1) as f32;
+        let variance: f32 =
+            self.layer_sparsity.iter().map(|(_, s)| (s - mean).powi(2)).sum::<f32>()
+                / self.layer_sparsity.len().max(1) as f32;
         variance
     }
 

@@ -26,11 +26,7 @@ impl JsonFileStore {
             Vec::new()
         };
 
-        Ok(Self {
-            path,
-            records,
-            dirty: false,
-        })
+        Ok(Self { path, records, dirty: false })
     }
 
     /// Get the file path
@@ -61,19 +57,12 @@ impl MetricsStore for JsonFileStore {
     }
 
     fn query_all(&self, metric: &Metric) -> StorageResult<Vec<MetricRecord>> {
-        Ok(self
-            .records
-            .iter()
-            .filter(|r| &r.metric == metric)
-            .cloned()
-            .collect())
+        Ok(self.records.iter().filter(|r| &r.metric == metric).cloned().collect())
     }
 
     fn query_stats(&self, metric: &Metric) -> StorageResult<Option<MetricStats>> {
         // Reuse InMemoryStore logic
-        let mem_store = InMemoryStore {
-            records: self.records.clone(),
-        };
+        let mem_store = InMemoryStore { records: self.records.clone() };
         mem_store.query_stats(metric)
     }
 

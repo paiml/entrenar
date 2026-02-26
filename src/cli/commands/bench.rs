@@ -6,11 +6,7 @@ use crate::config::{BenchArgs, OutputFormat};
 use std::time::Instant;
 
 pub fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Running benchmark: {}", args.input.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Running benchmark: {}", args.input.display()));
 
     // Parse batch sizes
     let batch_sizes: Vec<usize> = args
@@ -20,29 +16,13 @@ pub fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Invalid batch sizes: {e}"))?;
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Warmup: {} iterations", args.warmup),
-    );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Iterations: {}", args.iterations),
-    );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Batch sizes: {batch_sizes:?}"),
-    );
+    log(level, LogLevel::Normal, &format!("  Warmup: {} iterations", args.warmup));
+    log(level, LogLevel::Normal, &format!("  Iterations: {}", args.iterations));
+    log(level, LogLevel::Normal, &format!("  Batch sizes: {batch_sizes:?}"));
 
     // Run benchmarks for each batch size
     for batch_size in &batch_sizes {
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("\nBatch size: {batch_size}"),
-        );
+        log(level, LogLevel::Normal, &format!("\nBatch size: {batch_size}"));
 
         // Warmup
         for _ in 0..args.warmup {
@@ -55,9 +35,7 @@ pub fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
         for _ in 0..args.iterations {
             let start = Instant::now();
             // Simulate inference - in real impl would run model forward pass
-            std::thread::sleep(std::time::Duration::from_micros(
-                50 + *batch_size as u64 * 10,
-            ));
+            std::thread::sleep(std::time::Duration::from_micros(50 + *batch_size as u64 * 10));
             let elapsed = start.elapsed().as_secs_f64() * 1000.0; // ms
             latencies.push(elapsed);
         }
@@ -91,11 +69,7 @@ pub fn run_bench(args: BenchArgs, level: LogLevel) -> Result<(), String> {
             log(level, LogLevel::Normal, &format!("  p95: {p95:.2}ms"));
             log(level, LogLevel::Normal, &format!("  p99: {p99:.2}ms"));
             log(level, LogLevel::Normal, &format!("  mean: {mean:.2}ms"));
-            log(
-                level,
-                LogLevel::Normal,
-                &format!("  throughput: {throughput:.1} samples/sec"),
-            );
+            log(level, LogLevel::Normal, &format!("  throughput: {throughput:.1} samples/sec"));
         }
     }
 

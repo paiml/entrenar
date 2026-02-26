@@ -29,25 +29,13 @@ fn log_merge_start(args: &MergeArgs, level: LogLevel) {
     log(
         level,
         LogLevel::Normal,
-        &format!(
-            "Merging {} models using {:?}",
-            args.models.len(),
-            args.method
-        ),
+        &format!("Merging {} models using {:?}", args.models.len(), args.method),
     );
 
     for (i, model) in args.models.iter().enumerate() {
-        log(
-            level,
-            LogLevel::Verbose,
-            &format!("  Model {}: {}", i + 1, model.display()),
-        );
+        log(level, LogLevel::Verbose, &format!("  Model {}: {}", i + 1, model.display()));
     }
-    log(
-        level,
-        LogLevel::Verbose,
-        &format!("  Output: {}", args.output.display()),
-    );
+    log(level, LogLevel::Verbose, &format!("  Output: {}", args.output.display()));
 }
 
 /// Validate we have enough models
@@ -94,9 +82,7 @@ fn load_single_model(path: &Path) -> Result<Model, String> {
 
 /// Extract a tensor as f32 values (returns None for non-F32 tensors)
 fn extract_f32_tensor(tensors: &SafeTensors<'_>, name: &str) -> Result<Option<Tensor>, String> {
-    let tensor = tensors
-        .tensor(name)
-        .map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
+    let tensor = tensors.tensor(name).map_err(|e| format!("Failed to get tensor {name}: {e}"))?;
 
     if tensor.dtype() != safetensors::tensor::Dtype::F32 {
         return Ok(None);
@@ -123,9 +109,7 @@ fn perform_merge(models: &[Model], args: &MergeArgs) -> Result<Model, String> {
 
 /// TIES merge: first model is base, rest are task-specific
 fn perform_ties_merge(models: &[Model], args: &MergeArgs) -> Result<Model, String> {
-    let config = TiesConfig {
-        density: args.density.unwrap_or(0.2),
-    };
+    let config = TiesConfig { density: args.density.unwrap_or(0.2) };
     let base = &models[0];
     ties_merge(models.get(1..).unwrap_or_default(), base, &config)
         .map_err(|e| format!("TIES merge failed: {e}"))
@@ -133,10 +117,7 @@ fn perform_ties_merge(models: &[Model], args: &MergeArgs) -> Result<Model, Strin
 
 /// DARE merge with dropout
 fn perform_dare_merge(models: &[Model], args: &MergeArgs) -> Result<Model, String> {
-    let config = DareConfig {
-        drop_prob: 1.0 - args.density.unwrap_or(0.5),
-        seed: None,
-    };
+    let config = DareConfig { drop_prob: 1.0 - args.density.unwrap_or(0.5), seed: None };
     let base = &models[0];
     dare_merge(models.get(1..).unwrap_or_default(), base, &config)
         .map_err(|e| format!("DARE merge failed: {e}"))
@@ -147,9 +128,7 @@ fn perform_slerp_merge(models: &[Model], args: &MergeArgs) -> Result<Model, Stri
     if models.len() != 2 {
         return Err("SLERP requires exactly 2 models".to_string());
     }
-    let config = SlerpConfig {
-        t: args.weight.unwrap_or(0.5),
-    };
+    let config = SlerpConfig { t: args.weight.unwrap_or(0.5) };
     slerp_merge(&models[0], &models[1], &config).map_err(|e| format!("SLERP merge failed: {e}"))
 }
 
@@ -175,11 +154,7 @@ fn build_ensemble_config(args: &MergeArgs) -> Result<EnsembleConfig, String> {
 
 /// Export merged model to file
 fn export_merged_model(merged: &Model, args: &MergeArgs) -> Result<(), String> {
-    let output_ext = args
-        .output
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("json");
+    let output_ext = args.output.extension().and_then(|s| s.to_str()).unwrap_or("json");
 
     if output_ext == "safetensors" {
         export_safetensors(merged, args)
@@ -205,9 +180,7 @@ fn export_safetensors(merged: &Model, args: &MergeArgs) -> Result<(), String> {
     let views: Vec<(&str, TensorView<'_>)> = tensor_data
         .iter()
         .filter_map(|(name, bytes, shape)| {
-            TensorView::new(Dtype::F32, shape.clone(), bytes)
-                .ok()
-                .map(|view| (name.as_str(), view))
+            TensorView::new(Dtype::F32, shape.clone(), bytes).ok().map(|view| (name.as_str(), view))
         })
         .collect();
 
@@ -230,10 +203,8 @@ fn build_safetensor_metadata(merged: &Model, args: &MergeArgs) -> HashMap<String
 
 /// Export to JSON format
 fn export_json(merged: &Model, args: &MergeArgs) -> Result<(), String> {
-    let output_data: HashMap<String, Vec<f32>> = merged
-        .iter()
-        .map(|(name, tensor)| (name.clone(), tensor.data().to_vec()))
-        .collect();
+    let output_data: HashMap<String, Vec<f32>> =
+        merged.iter().map(|(name, tensor)| (name.clone(), tensor.data().to_vec())).collect();
 
     let json_data =
         serde_json::to_vec_pretty(&output_data).map_err(|e| format!("Failed to serialize: {e}"))?;
@@ -246,10 +217,6 @@ fn log_merge_complete(merged: &Model, args: &MergeArgs, level: LogLevel) {
     log(
         level,
         LogLevel::Normal,
-        &format!(
-            "Merge complete: {} tensors written to {}",
-            merged.len(),
-            args.output.display()
-        ),
+        &format!("Merge complete: {} tensors written to {}", merged.len(), args.output.display()),
     );
 }

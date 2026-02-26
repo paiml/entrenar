@@ -147,13 +147,7 @@ fn test_tui_progress_sequence() {
 
     // Verify frames are different (progress is visible)
     for i in 1..frames.len() {
-        assert_ne!(
-            frames[i - 1],
-            frames[i],
-            "Frame {} should differ from frame {}",
-            i - 1,
-            i
-        );
+        assert_ne!(frames[i - 1], frames[i], "Frame {} should differ from frame {}", i - 1, i);
     }
 }
 
@@ -168,17 +162,10 @@ fn test_tui_color_modes() {
     let color256 = render_layout_colored(&snapshot, 80, ColorMode::Color256);
 
     // Color modes should produce different output
-    assert_ne!(
-        mono.len(),
-        color256.len(),
-        "Color output should have ANSI codes"
-    );
+    assert_ne!(mono.len(), color256.len(), "Color output should have ANSI codes");
 
     // Mono should have no ANSI escape sequences
-    assert!(
-        !mono.contains("\x1b["),
-        "Mono mode should not contain ANSI codes"
-    );
+    assert!(!mono.contains("\x1b["), "Mono mode should not contain ANSI codes");
 
     // Color modes should have ANSI escape sequences
     assert!(
@@ -605,10 +592,7 @@ fn test_edge_case_paused_status() {
     let frame = rendered_to_frame(&rendered);
 
     // Should show Paused status
-    assert!(
-        frame.as_text().contains("Paused"),
-        "Should show paused status"
-    );
+    assert!(frame.as_text().contains("Paused"), "Should show paused status");
 
     let tui_snap =
         TuiSnapshot::from_frame("paused", &frame).with_metadata("edge_case", "paused_status");
@@ -651,10 +635,7 @@ fn test_edge_case_perfect_token_match() {
     let frame = rendered_to_frame(&rendered);
 
     // Should show 100% match
-    assert!(
-        frame.as_text().contains("100%"),
-        "Should show 100% token match"
-    );
+    assert!(frame.as_text().contains("100%"), "Should show 100% token match");
 
     let tui_snap = TuiSnapshot::from_frame("perfect_match", &frame)
         .with_metadata("edge_case", "100_percent_match");
@@ -678,17 +659,11 @@ fn test_probar_frame_diff() {
     let frame2 = rendered_to_frame(&rendered2);
 
     // Frames should differ
-    assert!(
-        !frame1.is_identical(&frame2),
-        "Different snapshots should produce different frames"
-    );
+    assert!(!frame1.is_identical(&frame2), "Different snapshots should produce different frames");
 
     // Get the diff
     let diff = frame1.diff(&frame2);
-    assert!(
-        !diff.is_identical,
-        "Diff should indicate frames are different"
-    );
+    assert!(!diff.is_identical, "Diff should indicate frames are different");
     assert!(!diff.changed_lines.is_empty(), "Should have changed lines");
 }
 
@@ -706,14 +681,8 @@ fn test_probar_frame_content_assertions() {
     assert!(frame.contains("Config"), "Should contain Config");
 
     // Test regex matching
-    assert!(
-        frame.matches(r"Epoch.*\d+/\d+").unwrap(),
-        "Should match epoch pattern"
-    );
-    assert!(
-        frame.matches(r"Step.*\d+/\d+").unwrap(),
-        "Should match step pattern"
-    );
+    assert!(frame.matches(r"Epoch.*\d+/\d+").unwrap(), "Should match epoch pattern");
+    assert!(frame.matches(r"Step.*\d+/\d+").unwrap(), "Should match step pattern");
 }
 
 /// Test TuiSnapshot hash consistency
@@ -728,14 +697,8 @@ fn test_probar_snapshot_hash_consistency() {
     let tui_snap2 = TuiSnapshot::from_frame("test2", &frame);
 
     // Hashes should match (content is identical)
-    assert_eq!(
-        tui_snap1.hash, tui_snap2.hash,
-        "Same content should produce same hash"
-    );
-    assert!(
-        tui_snap1.matches(&tui_snap2),
-        "Snapshots with same content should match"
-    );
+    assert_eq!(tui_snap1.hash, tui_snap2.hash, "Same content should produce same hash");
+    assert!(tui_snap1.matches(&tui_snap2), "Snapshots with same content should match");
 }
 
 /// Test TuiSnapshot metadata
@@ -751,12 +714,6 @@ fn test_probar_snapshot_metadata() {
         .with_metadata("color_mode", "mono");
 
     assert_eq!(tui_snap.metadata.get("version"), Some(&"0.5.6".to_string()));
-    assert_eq!(
-        tui_snap.metadata.get("test_type"),
-        Some(&"unit".to_string())
-    );
-    assert_eq!(
-        tui_snap.metadata.get("color_mode"),
-        Some(&"mono".to_string())
-    );
+    assert_eq!(tui_snap.metadata.get("test_type"), Some(&"unit".to_string()));
+    assert_eq!(tui_snap.metadata.get("color_mode"), Some(&"mono".to_string()));
 }

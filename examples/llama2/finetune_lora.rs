@@ -66,12 +66,7 @@ impl LLaMAWithLoRA {
             })
             .collect();
 
-        Self {
-            base_model,
-            lora_adapters,
-            rank,
-            alpha,
-        }
+        Self { base_model, lora_adapters, rank, alpha }
     }
 
     /// Count trainable parameters (LoRA adapters only)
@@ -217,10 +212,7 @@ fn main() {
     let llama_config = LLaMAConfig::toy_124m();
     let base_model = LLaMAModel::new(llama_config.clone());
     let base_params = base_model.count_parameters();
-    println!(
-        "   - Base parameters: {:.1}M\n",
-        base_params as f32 / 1_000_000.0
-    );
+    println!("   - Base parameters: {:.1}M\n", base_params as f32 / 1_000_000.0);
 
     // Apply LoRA
     println!("🔗 Applying LoRA adapters...");
@@ -230,24 +222,13 @@ fn main() {
     let total_params = model.count_total_params();
     let reduction = (1.0 - (trainable_params as f32 / total_params as f32)) * 100.0;
 
-    println!(
-        "   - Trainable parameters: {:.1}M",
-        trainable_params as f32 / 1_000_000.0
-    );
-    println!(
-        "   - Total parameters: {:.1}M",
-        total_params as f32 / 1_000_000.0
-    );
+    println!("   - Trainable parameters: {:.1}M", trainable_params as f32 / 1_000_000.0);
+    println!("   - Total parameters: {:.1}M", total_params as f32 / 1_000_000.0);
     println!("   - Parameter reduction: {reduction:.1}%\n");
 
     // Create optimizer (only for LoRA parameters)
-    let mut optimizer = AdamW::new(
-        lora_config.learning_rate,
-        0.9,
-        0.95,
-        1e-8,
-        lora_config.weight_decay,
-    );
+    let mut optimizer =
+        AdamW::new(lora_config.learning_rate, 0.9, 0.95, 1e-8, lora_config.weight_decay);
 
     // Learning rate scheduler
     let total_steps = lora_config.num_epochs * 100; // Estimate
@@ -293,12 +274,7 @@ fn main() {
             optimizer.set_lr(new_lr);
 
             if step % 10 == 0 {
-                println!(
-                    "  Step {}: loss={:.4}, lr={:.2e}",
-                    step,
-                    loss,
-                    optimizer.lr()
-                );
+                println!("  Step {}: loss={:.4}, lr={:.2e}", step, loss, optimizer.lr());
             }
         }
 

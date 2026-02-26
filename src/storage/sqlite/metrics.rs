@@ -148,10 +148,7 @@ impl ExperimentStorage for SqliteBackend {
         let sha256 = format!("{:x}", hasher.finalize());
 
         // Store artifact data (deduplicated by hash)
-        state
-            .artifact_data
-            .entry(sha256.clone())
-            .or_insert_with(|| data.to_vec());
+        state.artifact_data.entry(sha256.clone()).or_insert_with(|| data.to_vec());
 
         // Create artifact reference
         let artifact = ArtifactRef {
@@ -163,11 +160,7 @@ impl ExperimentStorage for SqliteBackend {
             created_at: Utc::now(),
         };
 
-        state
-            .artifacts
-            .entry(run_id.to_string())
-            .or_default()
-            .push(artifact);
+        state.artifacts.entry(run_id.to_string()).or_default().push(artifact);
 
         Ok(sha256)
     }
@@ -182,12 +175,7 @@ impl ExperimentStorage for SqliteBackend {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        Ok(state
-            .metrics
-            .get(run_id)
-            .and_then(|m| m.get(key))
-            .cloned()
-            .unwrap_or_default())
+        Ok(state.metrics.get(run_id).and_then(|m| m.get(key)).cloned().unwrap_or_default())
     }
 
     fn get_run_status(&self, run_id: &str) -> Result<RunStatus> {
@@ -213,9 +201,7 @@ impl ExperimentStorage for SqliteBackend {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        state
-            .span_ids
-            .insert(run_id.to_string(), span_id.to_string());
+        state.span_ids.insert(run_id.to_string(), span_id.to_string());
         Ok(())
     }
 

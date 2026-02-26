@@ -147,21 +147,11 @@ fn test_adapter_serialization_round_trip() {
     let loaded_layer = loaded_adapter.to_layer(base_weight).unwrap();
 
     // Verify weights match
-    for (&orig, &loaded) in layer
-        .lora_a()
-        .data()
-        .iter()
-        .zip(loaded_layer.lora_a().data().iter())
-    {
+    for (&orig, &loaded) in layer.lora_a().data().iter().zip(loaded_layer.lora_a().data().iter()) {
         assert_abs_diff_eq!(orig, loaded, epsilon = 1e-6);
     }
 
-    for (&orig, &loaded) in layer
-        .lora_b()
-        .data()
-        .iter()
-        .zip(loaded_layer.lora_b().data().iter())
-    {
+    for (&orig, &loaded) in layer.lora_b().data().iter().zip(loaded_layer.lora_b().data().iter()) {
         assert_abs_diff_eq!(orig, loaded, epsilon = 1e-6);
     }
 
@@ -197,11 +187,7 @@ fn test_adapter_forward_consistency() {
     // Verify outputs match
     assert_eq!(output_original.len(), output_loaded.len());
     for i in 0..output_original.len() {
-        assert_abs_diff_eq!(
-            output_original.data()[i],
-            output_loaded.data()[i],
-            epsilon = 1e-5
-        );
+        assert_abs_diff_eq!(output_original.data()[i], output_loaded.data()[i], epsilon = 1e-5);
     }
 
     // Cleanup

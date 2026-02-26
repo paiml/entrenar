@@ -251,10 +251,7 @@ mod tests {
         assert_eq!(bytes.len(), 18);
         // Scale should be finite or infinity but not NaN
         let scale = half::f16::from_le_bytes([bytes[0], bytes[1]]);
-        assert!(
-            !scale.to_f32().is_nan(),
-            "scale must not be NaN for extreme values"
-        );
+        assert!(!scale.to_f32().is_nan(), "scale must not be NaN for extreme values");
     }
 
     #[test]
@@ -266,10 +263,7 @@ mod tests {
         assert_eq!(dtype, GgmlType::Q8_0);
         assert_eq!(bytes.len(), 34);
         let scale = half::f16::from_le_bytes([bytes[0], bytes[1]]);
-        assert!(
-            !scale.to_f32().is_nan(),
-            "scale must not be NaN for extreme values"
-        );
+        assert!(!scale.to_f32().is_nan(), "scale must not be NaN for extreme values");
     }
 
     #[test]

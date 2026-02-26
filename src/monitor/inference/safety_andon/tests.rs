@@ -103,15 +103,10 @@ fn test_safety_andon_reset() {
 
 #[test]
 fn test_emergency_condition_message() {
-    let cond = EmergencyCondition::CollisionImminent {
-        time_to_collision_ms: 50.0,
-    };
+    let cond = EmergencyCondition::CollisionImminent { time_to_collision_ms: 50.0 };
     assert!(cond.message().contains("50.0ms"));
 
-    let cond = EmergencyCondition::SensorDegraded {
-        sensor: "lidar".to_string(),
-        quality: 0.5,
-    };
+    let cond = EmergencyCondition::SensorDegraded { sensor: "lidar".to_string(), quality: 0.5 };
     assert!(cond.message().contains("lidar"));
     assert!(cond.message().contains("50.0%"));
 }
@@ -119,16 +114,10 @@ fn test_emergency_condition_message() {
 #[test]
 fn test_emergency_condition_alert_level() {
     assert_eq!(
-        EmergencyCondition::CollisionImminent {
-            time_to_collision_ms: 10.0
-        }
-        .alert_level(),
+        EmergencyCondition::CollisionImminent { time_to_collision_ms: 10.0 }.alert_level(),
         AlertLevel::Critical
     );
-    assert_eq!(
-        EmergencyCondition::AuditChainBroken.alert_level(),
-        AlertLevel::Critical
-    );
+    assert_eq!(EmergencyCondition::AuditChainBroken.alert_level(), AlertLevel::Critical);
     assert_eq!(
         EmergencyCondition::DecisionTimeout { max_ms: 10.0 }.alert_level(),
         AlertLevel::Error
@@ -199,10 +188,7 @@ fn test_emergency_condition_decision_timeout_message() {
 
 #[test]
 fn test_emergency_condition_consecutive_low_confidence_message() {
-    let cond = EmergencyCondition::ConsecutiveLowConfidence {
-        count: 7,
-        threshold: 0.65,
-    };
+    let cond = EmergencyCondition::ConsecutiveLowConfidence { count: 7, threshold: 0.65 };
     let msg = cond.message();
     assert!(msg.contains("7"));
     assert!(msg.contains("65.0%"));
@@ -225,29 +211,20 @@ fn test_emergency_condition_audit_chain_broken_message() {
 #[test]
 fn test_emergency_condition_sensor_degraded_critical() {
     // Quality < 0.3 should be Critical
-    let cond = EmergencyCondition::SensorDegraded {
-        sensor: "camera".to_string(),
-        quality: 0.1,
-    };
+    let cond = EmergencyCondition::SensorDegraded { sensor: "camera".to_string(), quality: 0.1 };
     assert_eq!(cond.alert_level(), AlertLevel::Critical);
 }
 
 #[test]
 fn test_emergency_condition_sensor_degraded_error() {
     // Quality >= 0.3 should be Error
-    let cond = EmergencyCondition::SensorDegraded {
-        sensor: "camera".to_string(),
-        quality: 0.5,
-    };
+    let cond = EmergencyCondition::SensorDegraded { sensor: "camera".to_string(), quality: 0.5 };
     assert_eq!(cond.alert_level(), AlertLevel::Error);
 }
 
 #[test]
 fn test_emergency_condition_consecutive_low_confidence_alert_level() {
-    let cond = EmergencyCondition::ConsecutiveLowConfidence {
-        count: 5,
-        threshold: 0.7,
-    };
+    let cond = EmergencyCondition::ConsecutiveLowConfidence { count: 5, threshold: 0.7 };
     assert_eq!(cond.alert_level(), AlertLevel::Warning);
 }
 
@@ -308,9 +285,7 @@ fn test_serde_safety_integrity_level() {
 
 #[test]
 fn test_serde_emergency_condition() {
-    let cond = EmergencyCondition::CollisionImminent {
-        time_to_collision_ms: 100.0,
-    };
+    let cond = EmergencyCondition::CollisionImminent { time_to_collision_ms: 100.0 };
     let json = serde_json::to_string(&cond).unwrap();
     let _: EmergencyCondition = serde_json::from_str(&json).unwrap();
 }

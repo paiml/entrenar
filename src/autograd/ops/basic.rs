@@ -15,11 +15,8 @@ pub fn add(a: &Tensor, b: &Tensor) -> Tensor {
     if requires_grad {
         let a_clone = a.clone();
         let b_clone = b.clone();
-        let backward_op = Rc::new(AddBackward {
-            a: a_clone,
-            b: b_clone,
-            result_grad: result.grad_cell(),
-        });
+        let backward_op =
+            Rc::new(AddBackward { a: a_clone, b: b_clone, result_grad: result.grad_cell() });
         result.set_backward_op(backward_op);
     }
 
@@ -63,11 +60,8 @@ pub fn mul(a: &Tensor, b: &Tensor) -> Tensor {
     if requires_grad {
         let a_clone = a.clone();
         let b_clone = b.clone();
-        let backward_op = Rc::new(MulBackward {
-            a: a_clone,
-            b: b_clone,
-            result_grad: result.grad_cell(),
-        });
+        let backward_op =
+            Rc::new(MulBackward { a: a_clone, b: b_clone, result_grad: result.grad_cell() });
         result.set_backward_op(backward_op);
     }
 
@@ -114,11 +108,8 @@ pub fn scale(a: &Tensor, factor: f32) -> Tensor {
 
     if requires_grad {
         let a_clone = a.clone();
-        let backward_op = Rc::new(ScaleBackward {
-            a: a_clone,
-            factor,
-            result_grad: result.grad_cell(),
-        });
+        let backward_op =
+            Rc::new(ScaleBackward { a: a_clone, factor, result_grad: result.grad_cell() });
         result.set_backward_op(backward_op);
     }
 
@@ -221,10 +212,7 @@ pub fn sum(a: &Tensor) -> Tensor {
 
     if requires_grad {
         let a_clone = a.clone();
-        let backward_op = Rc::new(SumBackward {
-            a: a_clone,
-            result_grad: result.grad_cell(),
-        });
+        let backward_op = Rc::new(SumBackward { a: a_clone, result_grad: result.grad_cell() });
         result.set_backward_op(backward_op);
     }
 

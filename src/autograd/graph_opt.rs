@@ -65,18 +65,12 @@ impl TracedTensor {
     /// Create a constant tensor (known at graph construction time)
     pub fn constant(data: Array1<f32>) -> Self {
         let shape = vec![data.len()];
-        Self {
-            value: TracedValue::Constant(data),
-            shape,
-        }
+        Self { value: TracedValue::Constant(data), shape }
     }
 
     /// Create a dynamic (placeholder) tensor
     pub fn placeholder(shape: Vec<usize>, node_id: NodeId) -> Self {
-        Self {
-            value: TracedValue::Dynamic(node_id),
-            shape,
-        }
+        Self { value: TracedValue::Dynamic(node_id), shape }
     }
 
     /// Check if this tensor is a compile-time constant
@@ -156,10 +150,7 @@ pub struct ComputeGraph {
 impl ComputeGraph {
     /// Create a new empty computation graph
     pub fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-            output_ids: Vec::new(),
-        }
+        Self { nodes: Vec::new(), output_ids: Vec::new() }
     }
 
     /// Add a constant node to the graph
@@ -263,11 +254,8 @@ impl ComputeGraph {
         mut in_degree: HashMap<NodeId, usize>,
         adjacency: &HashMap<NodeId, Vec<NodeId>>,
     ) -> Vec<NodeId> {
-        let mut queue: Vec<NodeId> = in_degree
-            .iter()
-            .filter(|(_, &deg)| deg == 0)
-            .map(|(&id, _)| id)
-            .collect();
+        let mut queue: Vec<NodeId> =
+            in_degree.iter().filter(|(_, &deg)| deg == 0).map(|(&id, _)| id).collect();
         queue.sort_unstable_by(|a, b| b.cmp(a)); // Descending so pop() yields smallest first
 
         let mut order = Vec::new();
@@ -451,9 +439,7 @@ impl std::error::Error for ShapeError {}
 impl ShapeTracker {
     /// Create a new shape tracker
     pub fn new() -> Self {
-        Self {
-            shapes: HashMap::new(),
-        }
+        Self { shapes: HashMap::new() }
     }
 
     /// Register a known shape for a node
@@ -468,19 +454,13 @@ impl ShapeTracker {
 
     /// Look up a node's shape, returning an error if not registered
     fn require_shape(&self, node_id: NodeId) -> Result<Vec<usize>, ShapeError> {
-        self.shapes
-            .get(&node_id)
-            .cloned()
-            .ok_or(ShapeError::UnknownInput(node_id))
+        self.shapes.get(&node_id).cloned().ok_or(ShapeError::UnknownInput(node_id))
     }
 
     /// Validate that a shape has at least `min` dimensions
     fn require_min_dims(shape: &[usize], min: usize) -> Result<(), ShapeError> {
         if shape.len() < min {
-            return Err(ShapeError::InsufficientDims {
-                required: min,
-                got: shape.len(),
-            });
+            return Err(ShapeError::InsufficientDims { required: min, got: shape.len() });
         }
         Ok(())
     }
@@ -528,10 +508,7 @@ impl ShapeTracker {
         let k2 = b_shape[b_shape.len() - 2];
 
         if k1 != k2 {
-            return Err(ShapeError::DimMismatch {
-                expected: k1,
-                got: k2,
-            });
+            return Err(ShapeError::DimMismatch { expected: k1, got: k2 });
         }
 
         let m = a_shape[a_shape.len() - 2];
@@ -600,10 +577,7 @@ impl ConstantFolding {
             return None;
         }
 
-        let all_const = node
-            .input_ids
-            .iter()
-            .all(|&id| graph.nodes[id].is_constant());
+        let all_const = node.input_ids.iter().all(|&id| graph.nodes[id].is_constant());
         if !all_const {
             return None;
         }
@@ -611,7 +585,12 @@ impl ConstantFolding {
         let inputs: Vec<&Array1<f32>> = node
             .input_ids
             .iter()
-            .map(|&id| graph.nodes[id].constant_value.as_ref().unwrap())
+            .map(|&id| {
+                graph.nodes[id]
+                    .constant_value
+                    .as_ref()
+                    .expect("all inputs verified as constants above")
+            })
             .collect();
 
         try_eval_constant_op(node.op_type, &inputs)
@@ -692,10 +671,7 @@ struct ExprKey {
 
 impl ExprKey {
     fn from_node(node: &GraphNode) -> Self {
-        Self {
-            op_type: node.op_type,
-            input_ids: node.input_ids.clone(),
-        }
+        Self { op_type: node.op_type, input_ids: node.input_ids.clone() }
     }
 }
 
@@ -743,10 +719,7 @@ pub struct GraphOptimizer {
 impl GraphOptimizer {
     /// Create a new optimizer with the default set of passes
     pub fn new() -> Self {
-        let mut opt = Self {
-            passes: Vec::new(),
-            max_iterations: 10,
-        };
+        let mut opt = Self { passes: Vec::new(), max_iterations: 10 };
         opt.passes.push(Box::new(ConstantFolding));
         opt.passes.push(Box::new(DeadCodeElimination));
         opt.passes.push(Box::new(CommonSubexprElimination));
@@ -1302,10 +1275,7 @@ mod tests {
         let result = tracker.infer_matmul(2, 0, 1);
         assert!(result.is_err());
         match result.unwrap_err() {
-            ShapeError::InsufficientDims {
-                required: 2,
-                got: 1,
-            } => {}
+            ShapeError::InsufficientDims { required: 2, got: 1 } => {}
             other => panic!("expected InsufficientDims, got {other:?}"),
         }
     }
@@ -1367,16 +1337,10 @@ mod tests {
         let err = ShapeError::UnknownInput(42);
         assert_eq!(format!("{err}"), "unknown input node 42");
 
-        let err = ShapeError::DimMismatch {
-            expected: 3,
-            got: 5,
-        };
+        let err = ShapeError::DimMismatch { expected: 3, got: 5 };
         assert_eq!(format!("{err}"), "dimension mismatch: expected 3, got 5");
 
-        let err = ShapeError::InsufficientDims {
-            required: 2,
-            got: 1,
-        };
+        let err = ShapeError::InsufficientDims { required: 2, got: 1 };
         assert_eq!(format!("{err}"), "insufficient dims: need 2, have 1");
     }
 

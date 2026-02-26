@@ -55,18 +55,12 @@ impl TruenoBackend {
 
     /// Get the number of experiments
     pub fn experiment_count(&self) -> usize {
-        self.store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .experiment_count()
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).experiment_count()
     }
 
     /// Get the number of runs
     pub fn run_count(&self) -> usize {
-        self.store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .run_count()
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).run_count()
     }
 
     /// Compute CAS hash for artifact data
@@ -74,10 +68,7 @@ impl TruenoBackend {
         let mut hasher = Sha256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        format!(
-            "sha256-{}",
-            hex::encode(result.get(..16).unwrap_or(&result))
-        )
+        format!("sha256-{}", hex::encode(result.get(..16).unwrap_or(&result)))
     }
 
     /// Convert our RunStatus to trueno-db's RunStatus
@@ -124,10 +115,7 @@ impl ExperimentStorage for TruenoBackend {
             ExperimentRecord::new(&exp_id, name)
         };
 
-        self.store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .add_experiment(record);
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_experiment(record);
 
         Ok(exp_id)
     }
@@ -144,19 +132,15 @@ impl ExperimentStorage for TruenoBackend {
 
         // Create run in Pending state
         let record = RunRecord::new(&run_id, experiment_id);
-        self.store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .add_run(record);
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_run(record);
 
         Ok(run_id)
     }
 
     fn start_run(&mut self, run_id: &str) -> Result<()> {
         let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let run = store
-            .get_run(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let run =
+            store.get_run(run_id).ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
 
         if run.status() != TruenoRunStatus::Pending {
             return Err(StorageError::InvalidState(format!(
@@ -176,9 +160,8 @@ impl ExperimentStorage for TruenoBackend {
 
     fn complete_run(&mut self, run_id: &str, status: RunStatus) -> Result<()> {
         let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let run = store
-            .get_run(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let run =
+            store.get_run(run_id).ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
 
         if run.status() != TruenoRunStatus::Running {
             return Err(StorageError::InvalidState(format!(
@@ -204,10 +187,7 @@ impl ExperimentStorage for TruenoBackend {
         drop(store);
 
         let metric = MetricRecord::new(run_id, key, step, value);
-        self.store
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .add_metric(metric);
+        self.store.lock().unwrap_or_else(|e| e.into_inner()).add_metric(metric);
 
         Ok(())
     }
@@ -242,26 +222,23 @@ impl ExperimentStorage for TruenoBackend {
 
     fn get_run_status(&self, run_id: &str) -> Result<RunStatus> {
         let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let run = store
-            .get_run(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let run =
+            store.get_run(run_id).ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
 
         Ok(Self::from_trueno_status(run.status()))
     }
 
     fn set_span_id(&mut self, run_id: &str, span_id: &str) -> Result<()> {
         let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let run = store
-            .get_run(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let run =
+            store.get_run(run_id).ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
 
         let current_status = run.status();
         let experiment_id = run.experiment_id().to_string();
 
         // Create new record with span_id, preserving status
-        let mut new_record = RunRecord::builder(run_id, &experiment_id)
-            .renacer_span_id(span_id)
-            .build();
+        let mut new_record =
+            RunRecord::builder(run_id, &experiment_id).renacer_span_id(span_id).build();
 
         // Preserve the run status
         match current_status {
@@ -284,9 +261,8 @@ impl ExperimentStorage for TruenoBackend {
 
     fn get_span_id(&self, run_id: &str) -> Result<Option<String>> {
         let store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let run = store
-            .get_run(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let run =
+            store.get_run(run_id).ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
 
         Ok(run.renacer_span_id().map(String::from))
     }
@@ -397,9 +373,7 @@ mod tests {
         let exp_id = backend.create_experiment("test-exp", None).unwrap();
         let run_id = backend.create_run(&exp_id).unwrap();
 
-        let hash = backend
-            .log_artifact(&run_id, "model.safetensors", b"model data")
-            .unwrap();
+        let hash = backend.log_artifact(&run_id, "model.safetensors", b"model data").unwrap();
 
         assert!(hash.starts_with("sha256-"));
     }
@@ -433,10 +407,7 @@ mod tests {
         backend.start_run(&run_id).unwrap();
         backend.complete_run(&run_id, RunStatus::Cancelled).unwrap();
 
-        assert_eq!(
-            backend.get_run_status(&run_id).unwrap(),
-            RunStatus::Cancelled
-        );
+        assert_eq!(backend.get_run_status(&run_id).unwrap(), RunStatus::Cancelled);
     }
 
     #[test]
@@ -447,9 +418,6 @@ mod tests {
 
         backend.set_span_id(&run_id, "span-abc123").unwrap();
 
-        assert_eq!(
-            backend.get_span_id(&run_id).unwrap(),
-            Some("span-abc123".to_string())
-        );
+        assert_eq!(backend.get_span_id(&run_id).unwrap(), Some("span-abc123".to_string()));
     }
 }

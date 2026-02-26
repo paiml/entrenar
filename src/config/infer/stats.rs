@@ -34,10 +34,7 @@ pub struct ColumnStats {
 impl ColumnStats {
     /// Create stats for a column
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            ..Default::default()
-        }
+        Self { name: name.into(), ..Default::default() }
     }
 
     /// Cardinality ratio: unique_count / count

@@ -31,11 +31,7 @@ impl SuspiciousDecision {
     /// Create a new suspicious decision
     #[must_use]
     pub fn new(decision: DecisionTrace, suspiciousness: f32, reason: impl Into<String>) -> Self {
-        Self {
-            decision,
-            suspiciousness: suspiciousness.clamp(0.0, 1.0),
-            reason: reason.into(),
-        }
+        Self { decision, suspiciousness: suspiciousness.clamp(0.0, 1.0), reason: reason.into() }
     }
 }
 

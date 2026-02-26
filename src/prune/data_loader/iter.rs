@@ -12,10 +12,7 @@ pub struct CalibrationDataIter<'a> {
 impl<'a> CalibrationDataIter<'a> {
     /// Create a new iterator over calibration batches.
     pub(crate) fn new(loader: &'a CalibrationDataLoader) -> Self {
-        Self {
-            loader,
-            position: 0,
-        }
+        Self { loader, position: 0 }
     }
 }
 

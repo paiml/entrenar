@@ -21,11 +21,7 @@ pub struct WasmBudget {
 impl WasmBudget {
     /// Create new WASM budget
     pub fn new(max_binary_size: u64, max_startup_ms: u64, max_memory_bytes: u64) -> Self {
-        Self {
-            max_binary_size,
-            max_startup_ms,
-            max_memory_bytes,
-        }
+        Self { max_binary_size, max_startup_ms, max_memory_bytes }
     }
 
     /// Create a strict budget for mobile web

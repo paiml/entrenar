@@ -108,10 +108,7 @@ impl CitationMetadata {
         bibtex.push_str(&format!("  author = {{{}}},\n", escape_bibtex(&authors)));
 
         // Title
-        bibtex.push_str(&format!(
-            "  title = {{{{{}}}}},\n",
-            escape_bibtex(&self.artifact.title)
-        ));
+        bibtex.push_str(&format!("  title = {{{{{}}}}},\n", escape_bibtex(&self.artifact.title)));
 
         // Year
         bibtex.push_str(&format!("  year = {{{}}},\n", self.year));
@@ -168,10 +165,7 @@ impl CitationMetadata {
         cff.push_str(&format!("type: {cff_type}\n"));
 
         // Title
-        cff.push_str(&format!(
-            "title: \"{}\"\n",
-            escape_yaml(&self.artifact.title)
-        ));
+        cff.push_str(&format!("title: \"{}\"\n", escape_yaml(&self.artifact.title)));
 
         // Version
         cff.push_str(&format!("version: \"{}\"\n", self.artifact.version));
@@ -225,7 +219,7 @@ fn format_bibtex_authors(authors: &[Author]) -> String {
         .map(|a| {
             let parts: Vec<&str> = a.name.split_whitespace().collect();
             if parts.len() >= 2 {
-                let last = parts.last().unwrap();
+                let last = parts.last().expect("parts guaranteed non-empty by len check");
                 let first = parts[..parts.len() - 1].join(" ");
                 format!("{last}, {first}")
             } else {
@@ -242,7 +236,7 @@ fn format_cff_author(author: &Author) -> String {
 
     let parts: Vec<&str> = author.name.split_whitespace().collect();
     if parts.len() >= 2 {
-        let family = parts.last().unwrap();
+        let family = parts.last().expect("parts guaranteed non-empty by len check");
         let given = parts[..parts.len() - 1].join(" ");
         cff.push_str(&format!("  - family-names: \"{family}\"\n"));
         cff.push_str(&format!("    given-names: \"{given}\"\n"));
@@ -438,13 +432,9 @@ mod tests {
 
     #[test]
     fn test_cff_single_name_author() {
-        let artifact = ResearchArtifact::new(
-            "test-005",
-            "Single Name Test",
-            ArtifactType::Code,
-            License::Mit,
-        )
-        .with_author(Author::new("Madonna"));
+        let artifact =
+            ResearchArtifact::new("test-005", "Single Name Test", ArtifactType::Code, License::Mit)
+                .with_author(Author::new("Madonna"));
 
         let citation = CitationMetadata::new(artifact, 2024);
         let cff = citation.to_cff();

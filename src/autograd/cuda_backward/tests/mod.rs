@@ -35,9 +35,7 @@ pub(super) fn get_test_gpu_context() -> Option<std::sync::Arc<trueno_gpu::driver
     use trueno_gpu::driver::cuda_available;
 
     if cuda_available() {
-        trueno_gpu::driver::CudaContext::new(0)
-            .ok()
-            .map(std::sync::Arc::new)
+        trueno_gpu::driver::CudaContext::new(0).ok().map(std::sync::Arc::new)
     } else {
         None
     }
@@ -45,11 +43,7 @@ pub(super) fn get_test_gpu_context() -> Option<std::sync::Arc<trueno_gpu::driver
 
 /// CPU reference implementation for ReLU backward
 pub(super) fn relu_backward_cpu(input: &[f32], grad_output: &[f32]) -> Vec<f32> {
-    input
-        .iter()
-        .zip(grad_output.iter())
-        .map(|(&x, &dy)| if x > 0.0 { dy } else { 0.0 })
-        .collect()
+    input.iter().zip(grad_output.iter()).map(|(&x, &dy)| if x > 0.0 { dy } else { 0.0 }).collect()
 }
 
 /// CPU reference implementation for GELU backward (tanh approximation)
@@ -85,14 +79,6 @@ pub(super) fn silu_backward_cpu(input: &[f32], grad_output: &[f32]) -> Vec<f32> 
 /// CPU reference implementation for softmax backward
 pub(super) fn softmax_backward_cpu(softmax_output: &[f32], grad_output: &[f32]) -> Vec<f32> {
     // grad_input = softmax_output * (grad_output - sum(grad_output * softmax_output))
-    let dot: f32 = softmax_output
-        .iter()
-        .zip(grad_output.iter())
-        .map(|(s, g)| s * g)
-        .sum();
-    softmax_output
-        .iter()
-        .zip(grad_output.iter())
-        .map(|(&s, &g)| s * (g - dot))
-        .collect()
+    let dot: f32 = softmax_output.iter().zip(grad_output.iter()).map(|(s, g)| s * g).sum();
+    softmax_output.iter().zip(grad_output.iter()).map(|(&s, &g)| s * (g - dot)).collect()
 }

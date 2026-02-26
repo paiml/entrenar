@@ -11,10 +11,7 @@ fn test_insufficient_models() {
     let config = EnsembleConfig::uniform_average();
 
     let result = ensemble_merge(&[m], &config);
-    assert!(matches!(
-        result,
-        Err(MergeError::InsufficientModels { min: 2, got: 1 })
-    ));
+    assert!(matches!(result, Err(MergeError::InsufficientModels { min: 2, got: 1 })));
 }
 
 #[test]
@@ -51,10 +48,7 @@ fn test_weighted_average_missing_param() {
     let config = EnsembleConfig::uniform_average();
     let result = ensemble_merge(&[m1, m2], &config);
 
-    assert!(matches!(
-        result,
-        Err(MergeError::IncompatibleArchitectures(_))
-    ));
+    assert!(matches!(result, Err(MergeError::IncompatibleArchitectures(_))));
 }
 
 #[test]

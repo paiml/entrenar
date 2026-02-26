@@ -90,11 +90,7 @@ fn main() {
         let config = SlerpConfig::new(t).unwrap();
         match slerp_merge(&model1, &model2, &config) {
             Ok(merged) => {
-                println!(
-                    "   t={:.2}: {:?}",
-                    t,
-                    merged["w"].data().as_slice().unwrap()
-                );
+                println!("   t={:.2}: {:?}", t, merged["w"].data().as_slice().unwrap());
             }
             Err(e) => println!("   t={t:.2}: Error - {e}"),
         }

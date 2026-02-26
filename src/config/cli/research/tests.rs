@@ -65,15 +65,8 @@ fn test_parse_research_preregister() {
 
 #[test]
 fn test_parse_research_cite() {
-    let cli = parse_args([
-        "entrenar",
-        "research",
-        "cite",
-        "artifact.yaml",
-        "--year",
-        "2024",
-    ])
-    .unwrap();
+    let cli =
+        parse_args(["entrenar", "research", "cite", "artifact.yaml", "--year", "2024"]).unwrap();
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -166,14 +159,9 @@ fn test_parse_research_bundle() {
 
 #[test]
 fn test_parse_research_verify() {
-    let cli = parse_args([
-        "entrenar",
-        "research",
-        "verify",
-        "preregistration.yaml",
-        "--verify-git",
-    ])
-    .unwrap();
+    let cli =
+        parse_args(["entrenar", "research", "verify", "preregistration.yaml", "--verify-git"])
+            .unwrap();
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -227,10 +215,7 @@ fn test_parse_research_init_all_options() {
                 assert_eq!(init_args.license, LicenseArg::Mit);
                 assert_eq!(init_args.author, Some("John Doe".to_string()));
                 assert_eq!(init_args.orcid, Some("0000-0002-1825-0097".to_string()));
-                assert_eq!(
-                    init_args.affiliation,
-                    Some("University of Test".to_string())
-                );
+                assert_eq!(init_args.affiliation, Some("University of Test".to_string()));
                 assert_eq!(init_args.description, Some("A test model".to_string()));
                 assert_eq!(init_args.keywords, Some("ml,ai,test".to_string()));
                 assert_eq!(init_args.doi, Some("10.5281/zenodo.12345".to_string()));

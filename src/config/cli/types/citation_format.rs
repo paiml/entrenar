@@ -17,9 +17,7 @@ impl std::str::FromStr for CitationFormat {
             "bibtex" | "bib" => Ok(CitationFormat::Bibtex),
             "cff" | "citation.cff" => Ok(CitationFormat::Cff),
             "json" => Ok(CitationFormat::Json),
-            _ => Err(format!(
-                "Unknown citation format: {s}. Valid formats: bibtex, cff, json"
-            )),
+            _ => Err(format!("Unknown citation format: {s}. Valid formats: bibtex, cff, json")),
         }
     }
 }

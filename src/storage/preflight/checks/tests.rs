@@ -163,12 +163,7 @@ fn test_no_constant_features_warns() {
 fn test_label_balance_passes() {
     let check = PreflightCheck::label_balance(2.0);
     // Last column is label: 2 samples of class 0, 2 of class 1
-    let data = vec![
-        vec![1.0, 0.0],
-        vec![2.0, 0.0],
-        vec![3.0, 1.0],
-        vec![4.0, 1.0],
-    ];
+    let data = vec![vec![1.0, 0.0], vec![2.0, 0.0], vec![3.0, 1.0], vec![4.0, 1.0]];
     let result = check.run(&data, &PreflightContext::default());
     assert!(result.is_passed());
 }

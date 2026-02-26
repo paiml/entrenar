@@ -20,9 +20,7 @@ fn test_param_filter_cross_type_float_vs_int_eq() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(42.0))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(42.0)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -31,11 +29,7 @@ fn test_param_filter_cross_type_float_vs_int_eq() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Float 42.0 should not match Int 42 with Eq"
-    );
+    assert_eq!(results.len(), 0, "Float 42.0 should not match Int 42 with Eq");
 }
 
 #[test]
@@ -44,9 +38,7 @@ fn test_param_filter_cross_type_int_vs_float_eq() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Int(42))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Int(42)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -55,11 +47,7 @@ fn test_param_filter_cross_type_int_vs_float_eq() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Int 42 should not match Float 42.0 with Eq"
-    );
+    assert_eq!(results.len(), 0, "Int 42 should not match Float 42.0 with Eq");
 }
 
 #[test]
@@ -68,9 +56,7 @@ fn test_param_filter_cross_type_float_vs_string() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(3.14))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(3.14)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -79,11 +65,7 @@ fn test_param_filter_cross_type_float_vs_string() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Float 3.14 should not match String '3.14' with Eq"
-    );
+    assert_eq!(results.len(), 0, "Float 3.14 should not match String '3.14' with Eq");
 }
 
 #[test]
@@ -92,9 +74,7 @@ fn test_param_filter_cross_type_float_vs_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(1.0))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(1.0)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -103,11 +83,7 @@ fn test_param_filter_cross_type_float_vs_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Float 1.0 should not match Bool true with Eq"
-    );
+    assert_eq!(results.len(), 0, "Float 1.0 should not match Bool true with Eq");
 }
 
 #[test]
@@ -116,9 +92,7 @@ fn test_param_filter_cross_type_int_vs_string() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Int(42))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Int(42)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -127,11 +101,7 @@ fn test_param_filter_cross_type_int_vs_string() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Int 42 should not match String '42' with Eq"
-    );
+    assert_eq!(results.len(), 0, "Int 42 should not match String '42' with Eq");
 }
 
 #[test]
@@ -140,9 +110,7 @@ fn test_param_filter_cross_type_int_vs_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Int(1))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Int(1)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -160,9 +128,7 @@ fn test_param_filter_cross_type_string_vs_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::String("true".to_string()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::String("true".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -171,11 +137,7 @@ fn test_param_filter_cross_type_string_vs_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "String 'true' should not match Bool true with Eq"
-    );
+    assert_eq!(results.len(), 0, "String 'true' should not match Bool true with Eq");
 }
 
 #[test]
@@ -184,9 +146,7 @@ fn test_param_filter_cross_type_float_vs_list() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(3.14))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(3.14)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -204,9 +164,7 @@ fn test_param_filter_cross_type_int_vs_list() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Int(42))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Int(42)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -224,9 +182,7 @@ fn test_param_filter_cross_type_string_vs_list() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::String("hello".to_string()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::String("hello".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -235,11 +191,7 @@ fn test_param_filter_cross_type_string_vs_list() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "String 'hello' should not match List with Eq"
-    );
+    assert_eq!(results.len(), 0, "String 'hello' should not match List with Eq");
 }
 
 #[test]
@@ -248,9 +200,7 @@ fn test_param_filter_cross_type_bool_vs_list() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -268,9 +218,7 @@ fn test_param_filter_cross_type_float_vs_dict() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(3.14))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(3.14)).unwrap();
 
     let mut dict = HashMap::new();
     dict.insert("pi".to_string(), ParameterValue::Float(3.14));
@@ -291,9 +239,7 @@ fn test_param_filter_cross_type_ne_float_vs_int() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(42.0))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(42.0)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -302,11 +248,7 @@ fn test_param_filter_cross_type_ne_float_vs_int() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Float 42.0 should not match Int 42 with Ne"
-    );
+    assert_eq!(results.len(), 0, "Float 42.0 should not match Int 42 with Ne");
 }
 
 #[test]
@@ -315,9 +257,7 @@ fn test_param_filter_cross_type_gt_float_vs_int() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(100.0))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(100.0)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -326,11 +266,7 @@ fn test_param_filter_cross_type_gt_float_vs_int() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Float 100.0 should not match Int 50 with Gt"
-    );
+    assert_eq!(results.len(), 0, "Float 100.0 should not match Int 50 with Gt");
 }
 
 #[test]
@@ -339,9 +275,7 @@ fn test_param_filter_cross_type_lt_int_vs_float() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Int(10))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Int(10)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -350,11 +284,7 @@ fn test_param_filter_cross_type_lt_int_vs_float() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Int 10 should not match Float 50.0 with Lt"
-    );
+    assert_eq!(results.len(), 0, "Int 10 should not match Float 50.0 with Lt");
 }
 
 #[test]
@@ -363,9 +293,7 @@ fn test_param_filter_cross_type_gte_string_vs_int() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::String("hello".to_string()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::String("hello".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -374,11 +302,7 @@ fn test_param_filter_cross_type_gte_string_vs_int() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "String 'hello' should not match Int 5 with Gte"
-    );
+    assert_eq!(results.len(), 0, "String 'hello' should not match Int 5 with Gte");
 }
 
 #[test]
@@ -387,9 +311,7 @@ fn test_param_filter_cross_type_lte_bool_vs_float() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -398,11 +320,7 @@ fn test_param_filter_cross_type_lte_bool_vs_float() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Bool true should not match Float 1.0 with Lte"
-    );
+    assert_eq!(results.len(), 0, "Bool true should not match Float 1.0 with Lte");
 }
 
 // -------------------------------------------------------------------------
@@ -415,9 +333,7 @@ fn test_param_filter_unsupported_contains_on_float() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(3.14159))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(3.14159)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -426,11 +342,7 @@ fn test_param_filter_unsupported_contains_on_float() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Contains operation should not work on Float type"
-    );
+    assert_eq!(results.len(), 0, "Contains operation should not work on Float type");
 }
 
 #[test]
@@ -439,9 +351,7 @@ fn test_param_filter_unsupported_startswith_on_float() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Float(3.14159))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Float(3.14159)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -450,11 +360,7 @@ fn test_param_filter_unsupported_startswith_on_float() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "StartsWith operation should not work on Float type"
-    );
+    assert_eq!(results.len(), 0, "StartsWith operation should not work on Float type");
 }
 
 #[test]
@@ -463,9 +369,7 @@ fn test_param_filter_unsupported_contains_on_int() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Int(12345))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Int(12345)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -474,11 +378,7 @@ fn test_param_filter_unsupported_contains_on_int() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Contains operation should not work on Int type"
-    );
+    assert_eq!(results.len(), 0, "Contains operation should not work on Int type");
 }
 
 #[test]
@@ -487,9 +387,7 @@ fn test_param_filter_unsupported_startswith_on_int() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Int(12345))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Int(12345)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -498,11 +396,7 @@ fn test_param_filter_unsupported_startswith_on_int() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "StartsWith operation should not work on Int type"
-    );
+    assert_eq!(results.len(), 0, "StartsWith operation should not work on Int type");
 }
 
 #[test]
@@ -511,9 +405,7 @@ fn test_param_filter_unsupported_gt_on_string() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::String("hello".to_string()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::String("hello".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -522,11 +414,7 @@ fn test_param_filter_unsupported_gt_on_string() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Gt operation should not work on String type"
-    );
+    assert_eq!(results.len(), 0, "Gt operation should not work on String type");
 }
 
 #[test]
@@ -535,9 +423,7 @@ fn test_param_filter_unsupported_lt_on_string() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::String("hello".to_string()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::String("hello".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -546,11 +432,7 @@ fn test_param_filter_unsupported_lt_on_string() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Lt operation should not work on String type"
-    );
+    assert_eq!(results.len(), 0, "Lt operation should not work on String type");
 }
 
 #[test]
@@ -559,9 +441,7 @@ fn test_param_filter_unsupported_gte_on_string() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::String("hello".to_string()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::String("hello".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -570,11 +450,7 @@ fn test_param_filter_unsupported_gte_on_string() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Gte operation should not work on String type"
-    );
+    assert_eq!(results.len(), 0, "Gte operation should not work on String type");
 }
 
 #[test]
@@ -583,9 +459,7 @@ fn test_param_filter_unsupported_lte_on_string() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::String("hello".to_string()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::String("hello".to_string())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -594,11 +468,7 @@ fn test_param_filter_unsupported_lte_on_string() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Lte operation should not work on String type"
-    );
+    assert_eq!(results.len(), 0, "Lte operation should not work on String type");
 }
 
 #[test]
@@ -607,9 +477,7 @@ fn test_param_filter_unsupported_gt_on_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -618,11 +486,7 @@ fn test_param_filter_unsupported_gt_on_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Gt operation should not work on Bool type"
-    );
+    assert_eq!(results.len(), 0, "Gt operation should not work on Bool type");
 }
 
 #[test]
@@ -631,9 +495,7 @@ fn test_param_filter_unsupported_lt_on_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -642,11 +504,7 @@ fn test_param_filter_unsupported_lt_on_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Lt operation should not work on Bool type"
-    );
+    assert_eq!(results.len(), 0, "Lt operation should not work on Bool type");
 }
 
 #[test]
@@ -655,9 +513,7 @@ fn test_param_filter_unsupported_gte_on_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -666,11 +522,7 @@ fn test_param_filter_unsupported_gte_on_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Gte operation should not work on Bool type"
-    );
+    assert_eq!(results.len(), 0, "Gte operation should not work on Bool type");
 }
 
 #[test]
@@ -679,9 +531,7 @@ fn test_param_filter_unsupported_lte_on_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -690,11 +540,7 @@ fn test_param_filter_unsupported_lte_on_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Lte operation should not work on Bool type"
-    );
+    assert_eq!(results.len(), 0, "Lte operation should not work on Bool type");
 }
 
 #[test]
@@ -703,9 +549,7 @@ fn test_param_filter_unsupported_contains_on_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -714,11 +558,7 @@ fn test_param_filter_unsupported_contains_on_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Contains operation should not work on Bool type"
-    );
+    assert_eq!(results.len(), 0, "Contains operation should not work on Bool type");
 }
 
 #[test]
@@ -727,9 +567,7 @@ fn test_param_filter_unsupported_startswith_on_bool() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "value", ParameterValue::Bool(true))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Bool(true)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -738,11 +576,7 @@ fn test_param_filter_unsupported_startswith_on_bool() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "StartsWith operation should not work on Bool type"
-    );
+    assert_eq!(results.len(), 0, "StartsWith operation should not work on Bool type");
 }
 
 // -------------------------------------------------------------------------
@@ -779,13 +613,7 @@ fn test_param_filter_list_ne_list() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(
-            &run,
-            "value",
-            ParameterValue::List(vec![ParameterValue::Int(1)]),
-        )
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::List(vec![ParameterValue::Int(1)])).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -803,13 +631,7 @@ fn test_param_filter_list_gt_list() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(
-            &run,
-            "value",
-            ParameterValue::List(vec![ParameterValue::Int(1)]),
-        )
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::List(vec![ParameterValue::Int(1)])).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -829,9 +651,7 @@ fn test_param_filter_dict_eq_dict() {
     let run = backend.create_run(&exp_id).unwrap();
     let mut dict = HashMap::new();
     dict.insert("key".to_string(), ParameterValue::Int(1));
-    backend
-        .log_param(&run, "value", ParameterValue::Dict(dict.clone()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Dict(dict.clone())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -851,9 +671,7 @@ fn test_param_filter_dict_ne_dict() {
     let run = backend.create_run(&exp_id).unwrap();
     let mut dict1 = HashMap::new();
     dict1.insert("key".to_string(), ParameterValue::Int(1));
-    backend
-        .log_param(&run, "value", ParameterValue::Dict(dict1))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Dict(dict1)).unwrap();
 
     let mut dict2 = HashMap::new();
     dict2.insert("key".to_string(), ParameterValue::Int(2));
@@ -876,9 +694,7 @@ fn test_param_filter_dict_contains_dict() {
     let run = backend.create_run(&exp_id).unwrap();
     let mut dict = HashMap::new();
     dict.insert("key".to_string(), ParameterValue::Int(1));
-    backend
-        .log_param(&run, "value", ParameterValue::Dict(dict.clone()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Dict(dict.clone())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -887,11 +703,7 @@ fn test_param_filter_dict_contains_dict() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Dict-to-dict Contains should not be supported"
-    );
+    assert_eq!(results.len(), 0, "Dict-to-dict Contains should not be supported");
 }
 
 #[test]
@@ -902,9 +714,7 @@ fn test_param_filter_dict_startswith_dict() {
     let run = backend.create_run(&exp_id).unwrap();
     let mut dict = HashMap::new();
     dict.insert("key".to_string(), ParameterValue::Int(1));
-    backend
-        .log_param(&run, "value", ParameterValue::Dict(dict.clone()))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Dict(dict.clone())).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -913,11 +723,7 @@ fn test_param_filter_dict_startswith_dict() {
     }];
 
     let results = backend.search_runs_by_params(&filters).unwrap();
-    assert_eq!(
-        results.len(),
-        0,
-        "Dict-to-dict StartsWith should not be supported"
-    );
+    assert_eq!(results.len(), 0, "Dict-to-dict StartsWith should not be supported");
 }
 
 // -------------------------------------------------------------------------
@@ -930,13 +736,7 @@ fn test_param_filter_list_vs_dict() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(
-            &run,
-            "value",
-            ParameterValue::List(vec![ParameterValue::Int(1)]),
-        )
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::List(vec![ParameterValue::Int(1)])).unwrap();
 
     let mut dict = HashMap::new();
     dict.insert("key".to_string(), ParameterValue::Int(1));
@@ -959,9 +759,7 @@ fn test_param_filter_dict_vs_list() {
     let run = backend.create_run(&exp_id).unwrap();
     let mut dict = HashMap::new();
     dict.insert("key".to_string(), ParameterValue::Int(1));
-    backend
-        .log_param(&run, "value", ParameterValue::Dict(dict))
-        .unwrap();
+    backend.log_param(&run, "value", ParameterValue::Dict(dict)).unwrap();
 
     let filters = vec![ParamFilter {
         key: "value".to_string(),
@@ -983,9 +781,7 @@ fn test_filter_op_variant_coverage() {
     let exp_id = backend.create_experiment("test", None).unwrap();
 
     let run = backend.create_run(&exp_id).unwrap();
-    backend
-        .log_param(&run, "x", ParameterValue::Float(5.0))
-        .unwrap();
+    backend.log_param(&run, "x", ParameterValue::Float(5.0)).unwrap();
 
     // Exercise every FilterOp variant through param_matches
     let ops = [
@@ -1019,9 +815,6 @@ fn test_filter_op_variant_coverage() {
 
         let results = backend.search_runs_by_params(&filters).unwrap();
         let matched = !results.is_empty();
-        assert_eq!(
-            matched, expected,
-            "FilterOp::{op:?} on Float(5.0) vs Float(5.0)"
-        );
+        assert_eq!(matched, expected, "FilterOp::{op:?} on Float(5.0) vs Float(5.0)");
     }
 }

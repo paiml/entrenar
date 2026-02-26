@@ -51,11 +51,7 @@ struct OptimKernelCache {
 impl OptimKernelCache {
     fn new(ctx: std::sync::Arc<CudaContext>) -> Self {
         let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
-        Self {
-            ctx,
-            modules: HashMap::new(),
-            sm_target,
-        }
+        Self { ctx, modules: HashMap::new(), sm_target }
     }
 
     fn sm_target(&self) -> &str {
@@ -69,7 +65,7 @@ impl OptimKernelCache {
             })?;
             self.modules.insert(name.to_string(), module);
         }
-        Ok(self.modules.get_mut(name).unwrap())
+        Ok(self.modules.get_mut(name).expect("module was just inserted above"))
     }
 }
 
@@ -112,9 +108,7 @@ pub fn adamw_step_cuda(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = OPTIM_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -125,11 +119,7 @@ pub fn adamw_step_cuda(
     let key = format!("adamw_step_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
-    let config = LaunchConfig {
-        grid: (n.div_ceil(256), 1, 1),
-        block: (256, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
     // Pre-compute bias correction factors
     let bias_correction1 = 1.0 / (1.0 - beta1.powi(step as i32));
@@ -158,11 +148,9 @@ pub fn adamw_step_cuda(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "adamw_step", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("AdamW step launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "adamw_step", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("AdamW step launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -185,9 +173,7 @@ pub fn adam_step_cuda(
     n: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = OPTIM_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -198,11 +184,7 @@ pub fn adam_step_cuda(
     let key = format!("adam_step_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
-    let config = LaunchConfig {
-        grid: (n.div_ceil(256), 1, 1),
-        block: (256, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
     // Pre-compute bias correction factors
     let bias_correction1 = 1.0 / (1.0 - beta1.powi(step as i32));
@@ -269,9 +251,7 @@ pub fn gradient_clip_cuda(
         return Ok(());
     }
 
-    let cache = OPTIM_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -282,28 +262,19 @@ pub fn gradient_clip_cuda(
     let key = format!("gradient_clip_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
-    let config = LaunchConfig {
-        grid: (n.div_ceil(256), 1, 1),
-        block: (256, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
     let grads_ptr = grads.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 3] = [
-        &grads_ptr as *const _ as *mut _,
-        &scale as *const _ as *mut _,
-        &n as *const _ as *mut _,
-    ];
+    let mut args: [*mut std::ffi::c_void; 3] =
+        [&grads_ptr as *const _ as *mut _, &scale as *const _ as *mut _, &n as *const _ as *mut _];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "gradient_clip", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("Gradient clip launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "gradient_clip", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Gradient clip launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -551,16 +522,10 @@ mod tests {
         params.copy_to_host(&mut result_params).unwrap();
 
         // Kill mutant: params should have changed
-        assert_ne!(
-            result_params, initial_params,
-            "mutant: AdamW params unchanged after step"
-        );
+        assert_ne!(result_params, initial_params, "mutant: AdamW params unchanged after step");
         // Verify params decreased (negative gradient update)
         for (i, (&new, &old)) in result_params.iter().zip(initial_params.iter()).enumerate() {
-            assert!(
-                new < old,
-                "AdamW params[{i}] should decrease with positive gradients"
-            );
+            assert!(new < old, "AdamW params[{i}] should decrease with positive gradients");
         }
     }
 

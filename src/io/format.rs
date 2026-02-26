@@ -60,11 +60,7 @@ pub struct SaveConfig {
 impl SaveConfig {
     /// Create new save config with format
     pub fn new(format: ModelFormat) -> Self {
-        Self {
-            format,
-            pretty: true,
-            compress: false,
-        }
+        Self { format, pretty: true, compress: false }
     }
 
     /// Enable/disable pretty printing
@@ -103,14 +99,8 @@ mod tests {
         assert_eq!(ModelFormat::from_extension("JSON"), Some(ModelFormat::Json));
         assert_eq!(ModelFormat::from_extension("yaml"), Some(ModelFormat::Yaml));
         assert_eq!(ModelFormat::from_extension("yml"), Some(ModelFormat::Yaml));
-        assert_eq!(
-            ModelFormat::from_extension("safetensors"),
-            Some(ModelFormat::SafeTensors)
-        );
-        assert_eq!(
-            ModelFormat::from_extension("SAFETENSORS"),
-            Some(ModelFormat::SafeTensors)
-        );
+        assert_eq!(ModelFormat::from_extension("safetensors"), Some(ModelFormat::SafeTensors));
+        assert_eq!(ModelFormat::from_extension("SAFETENSORS"), Some(ModelFormat::SafeTensors));
         assert_eq!(ModelFormat::from_extension("unknown"), None);
     }
 
@@ -132,9 +122,7 @@ mod tests {
 
     #[test]
     fn test_save_config_builder() {
-        let config = SaveConfig::new(ModelFormat::Json)
-            .with_pretty(false)
-            .with_compress(true);
+        let config = SaveConfig::new(ModelFormat::Json).with_pretty(false).with_compress(true);
 
         assert_eq!(config.format, ModelFormat::Json);
         assert!(!config.pretty);

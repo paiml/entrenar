@@ -10,9 +10,7 @@ pub struct CallbackManager {
 impl CallbackManager {
     /// Create new callback manager
     pub fn new() -> Self {
-        Self {
-            callbacks: Vec::new(),
-        }
+        Self { callbacks: Vec::new() }
     }
 
     /// Add a callback
@@ -145,10 +143,7 @@ mod tests {
 
         let mut manager = CallbackManager::new();
         manager.add(StopCallback);
-        assert_eq!(
-            manager.on_train_begin(&CallbackContext::default()),
-            CallbackAction::Stop
-        );
+        assert_eq!(manager.on_train_begin(&CallbackContext::default()), CallbackAction::Stop);
     }
 
     #[test]
@@ -172,9 +167,7 @@ mod tests {
 
         let called = Arc::new(AtomicBool::new(false));
         let mut manager = CallbackManager::new();
-        manager.add(EndCallback {
-            called: called.clone(),
-        });
+        manager.add(EndCallback { called: called.clone() });
         manager.on_train_end(&CallbackContext::default());
         assert!(called.load(Ordering::SeqCst));
     }
@@ -193,10 +186,7 @@ mod tests {
 
         let mut manager = CallbackManager::new();
         manager.add(SkipCallback);
-        assert_eq!(
-            manager.on_epoch_begin(&CallbackContext::default()),
-            CallbackAction::SkipEpoch
-        );
+        assert_eq!(manager.on_epoch_begin(&CallbackContext::default()), CallbackAction::SkipEpoch);
     }
 
     #[test]
@@ -213,10 +203,7 @@ mod tests {
 
         let mut manager = CallbackManager::new();
         manager.add(StopCallback);
-        assert_eq!(
-            manager.on_epoch_begin(&CallbackContext::default()),
-            CallbackAction::Stop
-        );
+        assert_eq!(manager.on_epoch_begin(&CallbackContext::default()), CallbackAction::Stop);
     }
 
     #[test]
@@ -233,10 +220,7 @@ mod tests {
 
         let mut manager = CallbackManager::new();
         manager.add(StopCallback);
-        assert_eq!(
-            manager.on_step_begin(&CallbackContext::default()),
-            CallbackAction::Stop
-        );
+        assert_eq!(manager.on_step_begin(&CallbackContext::default()), CallbackAction::Stop);
     }
 
     #[test]
@@ -282,10 +266,7 @@ mod tests {
 
         let mut manager = CallbackManager::new();
         manager.add(StopCallback);
-        assert_eq!(
-            manager.on_step_end(&CallbackContext::default()),
-            CallbackAction::Stop
-        );
+        assert_eq!(manager.on_step_end(&CallbackContext::default()), CallbackAction::Stop);
     }
 
     #[test]
@@ -347,15 +328,9 @@ mod tests {
 
         let count = Arc::new(AtomicUsize::new(0));
         let mut manager = CallbackManager::new();
-        manager.add(CountingEndCallback {
-            count: count.clone(),
-        });
-        manager.add(CountingEndCallback {
-            count: count.clone(),
-        });
-        manager.add(CountingEndCallback {
-            count: count.clone(),
-        });
+        manager.add(CountingEndCallback { count: count.clone() });
+        manager.add(CountingEndCallback { count: count.clone() });
+        manager.add(CountingEndCallback { count: count.clone() });
 
         manager.on_train_end(&CallbackContext::default());
         assert_eq!(count.load(Ordering::SeqCst), 3);
@@ -398,12 +373,8 @@ mod tests {
 
         let count = Arc::new(AtomicUsize::new(0));
         let mut manager = CallbackManager::new();
-        manager.add(CountingStopCallback {
-            count: count.clone(),
-        });
-        manager.add(CountingContinueCallback {
-            count: count.clone(),
-        });
+        manager.add(CountingStopCallback { count: count.clone() });
+        manager.add(CountingContinueCallback { count: count.clone() });
 
         // First callback stops, second should not be called
         let action = manager.on_train_begin(&CallbackContext::default());

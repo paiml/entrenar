@@ -66,12 +66,7 @@ impl LabelSet {
 
     /// Create label set from key-value pairs
     pub fn from_pairs(pairs: &[(&str, &str)]) -> Self {
-        Self {
-            values: pairs
-                .iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-                .collect(),
-        }
+        Self { values: pairs.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect() }
     }
 
     /// Add a label
@@ -104,9 +99,7 @@ impl Default for LabelSet {
 
 /// Escape label values for Prometheus format
 pub(crate) fn escape_label_value(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
+    s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n")
 }
 
 /// A metric value with optional labels

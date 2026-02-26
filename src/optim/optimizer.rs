@@ -182,10 +182,8 @@ mod tests {
     #[test]
     fn test_optimizer_zero_grad_multiple_params() {
         let mut opt = TestOptimizer::new(0.1);
-        let mut params = vec![
-            Tensor::from_vec(vec![1.0, 2.0], true),
-            Tensor::from_vec(vec![3.0, 4.0], true),
-        ];
+        let mut params =
+            vec![Tensor::from_vec(vec![1.0, 2.0], true), Tensor::from_vec(vec![3.0, 4.0], true)];
 
         for p in params.iter_mut() {
             p.set_grad(arr1(&[0.5, 1.0]));

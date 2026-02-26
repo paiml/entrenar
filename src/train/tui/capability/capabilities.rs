@@ -55,14 +55,7 @@ impl TerminalCapabilities {
         let colorterm = env::var("COLORTERM").unwrap_or_default();
         let true_color = colorterm == "truecolor" || colorterm == "24bit";
 
-        Self {
-            width,
-            height,
-            unicode,
-            ansi_color,
-            true_color,
-            is_tty,
-        }
+        Self { width, height, unicode, ansi_color, true_color, is_tty }
     }
 
     /// Get terminal size.
@@ -93,12 +86,7 @@ impl TerminalCapabilities {
                     fn ioctl(fd: i32, request: u64, ...) -> i32;
                 }
                 const TIOCGWINSZ: u64 = 0x5413; // Linux
-                let mut ws = WinSize {
-                    ws_row: 0,
-                    ws_col: 0,
-                    ws_xpixel: 0,
-                    ws_ypixel: 0,
-                };
+                let mut ws = WinSize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
                 // SAFETY: ioctl with TIOCGWINSZ is safe for reading terminal size
                 #[allow(unsafe_code)]
                 if unsafe { ioctl(1, TIOCGWINSZ, &mut ws) } == 0 && ws.ws_col > 0 {
@@ -154,10 +142,7 @@ mod tests {
         let caps2 = TerminalCapabilities::default();
         assert_eq!(caps1, caps2);
 
-        let caps3 = TerminalCapabilities {
-            width: 120,
-            ..Default::default()
-        };
+        let caps3 = TerminalCapabilities { width: 120, ..Default::default() };
         assert_ne!(caps1, caps3);
     }
 
@@ -171,10 +156,7 @@ mod tests {
 
     #[test]
     fn test_recommended_mode_not_tty() {
-        let caps = TerminalCapabilities {
-            is_tty: false,
-            ..Default::default()
-        };
+        let caps = TerminalCapabilities { is_tty: false, ..Default::default() };
         assert_eq!(caps.recommended_mode(), TerminalMode::Ascii);
     }
 

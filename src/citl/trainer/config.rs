@@ -13,11 +13,7 @@ pub struct CITLConfig {
 
 impl Default for CITLConfig {
     fn default() -> Self {
-        Self {
-            max_suggestions: 5,
-            min_suspiciousness: 0.3,
-            enable_dependency_graph: true,
-        }
+        Self { max_suggestions: 5, min_suspiciousness: 0.3, enable_dependency_graph: true }
     }
 }
 

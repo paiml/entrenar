@@ -158,9 +158,7 @@ struct BenchmarkSuite {
 
 impl BenchmarkSuite {
     fn new() -> Self {
-        Self {
-            profiles: Vec::new(),
-        }
+        Self { profiles: Vec::new() }
     }
 
     /// Add a memory profile to the suite
@@ -196,33 +194,18 @@ impl BenchmarkSuite {
 
     fn print_profile(&self, profile: &MemoryProfile) {
         println!("├─ {}", profile.approach);
-        println!(
-            "│  Total Parameters:     {:>12}",
-            Self::format_params(profile.total_params)
-        );
+        println!("│  Total Parameters:     {:>12}", Self::format_params(profile.total_params));
         println!(
             "│  Trainable Parameters: {:>12} ({:.2}% trainable)",
             Self::format_params(profile.trainable_params),
             (profile.trainable_params as f32 / profile.total_params as f32) * 100.0
         );
-        println!(
-            "│  Parameter Reduction:  {:>12.2}%",
-            profile.parameter_reduction_pct()
-        );
+        println!("│  Parameter Reduction:  {:>12.2}%", profile.parameter_reduction_pct());
         println!("│");
         println!("│  Memory Usage:");
-        println!(
-            "│    FP32 (4 bytes/param):  {:>8.1} MB",
-            profile.memory_fp32_mb
-        );
-        println!(
-            "│    FP16 (2 bytes/param):  {:>8.1} MB",
-            profile.memory_fp16_mb
-        );
-        println!(
-            "│    4-bit (0.5 bytes/param): {:>8.1} MB",
-            profile.memory_4bit_mb
-        );
+        println!("│    FP32 (4 bytes/param):  {:>8.1} MB", profile.memory_fp32_mb);
+        println!("│    FP16 (2 bytes/param):  {:>8.1} MB", profile.memory_fp16_mb);
+        println!("│    4-bit (0.5 bytes/param): {:>8.1} MB", profile.memory_4bit_mb);
         println!("│");
     }
 
@@ -248,11 +231,7 @@ impl BenchmarkSuite {
                 let reduction = profile.parameter_reduction_pct();
                 let target = 99.0; // Target: >99% reduction
 
-                let status = if reduction >= target {
-                    "✅ PASS"
-                } else {
-                    "❌ FAIL"
-                };
+                let status = if reduction >= target { "✅ PASS" } else { "❌ FAIL" };
 
                 println!(
                     "  {} (rank={}): {:.2}% reduction (target: >{:.0}%)",
@@ -269,10 +248,7 @@ impl BenchmarkSuite {
 
         // Find corresponding LoRA and QLoRA profiles
         for qlora_profile in &self.profiles {
-            if let TrainingApproach::QLoRA {
-                rank: qlora_rank, ..
-            } = qlora_profile.approach
-            {
+            if let TrainingApproach::QLoRA { rank: qlora_rank, .. } = qlora_profile.approach {
                 // Find matching LoRA profile
                 let lora_profile = self.profiles.iter().find(|p| {
                     p.config_name == qlora_profile.config_name
@@ -285,11 +261,7 @@ impl BenchmarkSuite {
                     let savings = ((lora_mem - qlora_mem) / lora_mem) * 100.0;
                     let target = 70.0; // Target: >70% savings
 
-                    let status = if savings >= target {
-                        "✅ PASS"
-                    } else {
-                        "❌ FAIL"
-                    };
+                    let status = if savings >= target { "✅ PASS" } else { "❌ FAIL" };
 
                     println!(
                         "  {} (rank={}): {:.1}% memory savings (target: >{:.0}%)",
@@ -318,11 +290,8 @@ impl BenchmarkSuite {
             .collect();
 
         for config_name in configs {
-            let config_profiles: Vec<&MemoryProfile> = self
-                .profiles
-                .iter()
-                .filter(|p| p.config_name == config_name)
-                .collect();
+            let config_profiles: Vec<&MemoryProfile> =
+                self.profiles.iter().filter(|p| p.config_name == config_name).collect();
 
             if config_profiles.is_empty() {
                 continue;
@@ -384,75 +353,29 @@ fn main() {
     println!("⚙️  Generating benchmarks for toy_124m model...");
     let config_124m = LLaMAConfig::toy_124m();
 
-    suite.add(MemoryProfile::full_finetuning(
-        "toy_124m".to_string(),
-        &config_124m,
-    ));
+    suite.add(MemoryProfile::full_finetuning("toy_124m".to_string(), &config_124m));
 
-    suite.add(MemoryProfile::lora(
-        "toy_124m".to_string(),
-        &config_124m,
-        16,
-        32.0,
-    ));
+    suite.add(MemoryProfile::lora("toy_124m".to_string(), &config_124m, 16, 32.0));
 
-    suite.add(MemoryProfile::lora(
-        "toy_124m".to_string(),
-        &config_124m,
-        64,
-        128.0,
-    ));
+    suite.add(MemoryProfile::lora("toy_124m".to_string(), &config_124m, 64, 128.0));
 
-    suite.add(MemoryProfile::qlora(
-        "toy_124m".to_string(),
-        &config_124m,
-        16,
-        32.0,
-    ));
+    suite.add(MemoryProfile::qlora("toy_124m".to_string(), &config_124m, 16, 32.0));
 
-    suite.add(MemoryProfile::qlora(
-        "toy_124m".to_string(),
-        &config_124m,
-        64,
-        128.0,
-    ));
+    suite.add(MemoryProfile::qlora("toy_124m".to_string(), &config_124m, 64, 128.0));
 
     // Benchmark 2: 7B Model
     println!("⚙️  Generating benchmarks for llama2_7b model...");
     let config_7b = LLaMAConfig::llama2_7b();
 
-    suite.add(MemoryProfile::full_finetuning(
-        "llama2_7b".to_string(),
-        &config_7b,
-    ));
+    suite.add(MemoryProfile::full_finetuning("llama2_7b".to_string(), &config_7b));
 
-    suite.add(MemoryProfile::lora(
-        "llama2_7b".to_string(),
-        &config_7b,
-        16,
-        32.0,
-    ));
+    suite.add(MemoryProfile::lora("llama2_7b".to_string(), &config_7b, 16, 32.0));
 
-    suite.add(MemoryProfile::lora(
-        "llama2_7b".to_string(),
-        &config_7b,
-        64,
-        128.0,
-    ));
+    suite.add(MemoryProfile::lora("llama2_7b".to_string(), &config_7b, 64, 128.0));
 
-    suite.add(MemoryProfile::qlora(
-        "llama2_7b".to_string(),
-        &config_7b,
-        16,
-        32.0,
-    ));
+    suite.add(MemoryProfile::qlora("llama2_7b".to_string(), &config_7b, 16, 32.0));
 
-    suite.add(MemoryProfile::qlora(
-        "llama2_7b".to_string(),
-        &config_7b,
-        64,
-        128.0,
-    ));
+    suite.add(MemoryProfile::qlora("llama2_7b".to_string(), &config_7b, 64, 128.0));
 
     // Generate report
     suite.report();
@@ -526,10 +449,7 @@ mod tests {
 
     #[test]
     fn test_memory_profile_display() {
-        let approach = TrainingApproach::LoRA {
-            rank: 16,
-            alpha: 32.0,
-        };
+        let approach = TrainingApproach::LoRA { rank: 16, alpha: 32.0 };
         let display = format!("{}", approach);
         assert_eq!(display, "LoRA (rank=16, alpha=32)");
     }

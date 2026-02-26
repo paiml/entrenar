@@ -40,11 +40,7 @@ fn test_pattern_store_save_load_apr() {
 
 #[test]
 fn test_pattern_store_apr_config_preserved() {
-    let config = PatternStoreConfig {
-        chunk_size: 512,
-        embedding_dim: 768,
-        rrf_k: 30.0,
-    };
+    let config = PatternStoreConfig { chunk_size: 512, embedding_dim: 768, rrf_k: 30.0 };
     let mut store = DecisionPatternStore::with_config(config).unwrap();
     store.index_fix(FixPattern::new("E0308", "fix")).unwrap();
 
@@ -86,9 +82,7 @@ fn test_pattern_store_apr_suggest_after_load() {
     let loaded = DecisionPatternStore::load_apr(&path).unwrap();
 
     // RAG index should be rebuilt and queryable
-    let suggestions = loaded
-        .suggest_fix("E0308", &["detect_mismatch".into()], 5)
-        .unwrap();
+    let suggestions = loaded.suggest_fix("E0308", &["detect_mismatch".into()], 5).unwrap();
     assert!(!suggestions.is_empty());
     assert_eq!(suggestions[0].pattern.error_code, "E0308");
 }

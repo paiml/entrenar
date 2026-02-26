@@ -25,10 +25,7 @@ description: "MNIST digit classification experiment"
 seed: 42
 "#;
     let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(
-        manifest.description,
-        Some("MNIST digit classification experiment".to_string())
-    );
+    assert_eq!(manifest.description, Some("MNIST digit classification experiment".to_string()));
     assert_eq!(manifest.seed, Some(42));
 }
 

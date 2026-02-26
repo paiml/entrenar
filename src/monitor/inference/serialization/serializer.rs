@@ -92,16 +92,12 @@ impl TraceSerializer {
         bytes: &[u8],
     ) -> Result<DecisionTrace<P>, SerializationError> {
         if bytes.len() < 8 {
-            return Err(SerializationError::InvalidFormat(
-                "Insufficient header bytes".to_string(),
-            ));
+            return Err(SerializationError::InvalidFormat("Insufficient header bytes".to_string()));
         }
 
         // Check magic
         if bytes[0..4] != APRT_MAGIC {
-            return Err(SerializationError::InvalidFormat(
-                "Invalid APRT magic bytes".to_string(),
-            ));
+            return Err(SerializationError::InvalidFormat("Invalid APRT magic bytes".to_string()));
         }
 
         // Check version

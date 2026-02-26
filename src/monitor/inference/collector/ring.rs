@@ -30,10 +30,7 @@ pub struct RingCollector<P: DecisionPath, const N: usize> {
 impl<P: DecisionPath, const N: usize> RingCollector<P, N> {
     /// Create a new ring collector
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::with_capacity(N),
-            head: 0,
-        }
+        Self { buffer: Vec::with_capacity(N), head: 0 }
     }
 
     /// Get the most recent n traces (or all if n > count)

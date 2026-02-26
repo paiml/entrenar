@@ -69,10 +69,7 @@ impl TuiMonitor {
     /// This is a blocking call that runs until training completes or user exits.
     pub fn run(&mut self) -> io::Result<()> {
         // Wait for state file to appear
-        eprintln!(
-            "Waiting for training state file at {}...",
-            self.state.path().display()
-        );
+        eprintln!("Waiting for training state file at {}...", self.state.path().display());
 
         if !self.state.wait_for_state(Duration::from_secs(60))? {
             eprintln!("Timeout waiting for training state file.");
@@ -153,25 +150,13 @@ impl TuiMonitor {
         let mut stdout = io::stdout();
 
         writeln!(stdout, "\n")?;
-        writeln!(
-            stdout,
-            "╔════════════════════════════════════════════════════════════╗"
-        )?;
-        writeln!(
-            stdout,
-            "║                    Training Complete                        ║"
-        )?;
-        writeln!(
-            stdout,
-            "╠════════════════════════════════════════════════════════════╣"
-        )?;
+        writeln!(stdout, "╔════════════════════════════════════════════════════════════╗")?;
+        writeln!(stdout, "║                    Training Complete                        ║")?;
+        writeln!(stdout, "╠════════════════════════════════════════════════════════════╣")?;
 
         match &snapshot.status {
             TrainingStatus::Completed => {
-                writeln!(
-                    stdout,
-                    "║  Status:    Completed Successfully                         ║"
-                )?;
+                writeln!(stdout, "║  Status:    Completed Successfully                         ║")?;
             }
             TrainingStatus::Failed(msg) => {
                 writeln!(stdout, "║  Status:    FAILED - {msg}                    ║")?;
@@ -179,11 +164,7 @@ impl TuiMonitor {
             TrainingStatus::Initializing | TrainingStatus::Running | TrainingStatus::Paused => {}
         }
 
-        writeln!(
-            stdout,
-            "║  Model:     {:.40}                           ║",
-            snapshot.model_name
-        )?;
+        writeln!(stdout, "║  Model:     {:.40}                           ║", snapshot.model_name)?;
         writeln!(
             stdout,
             "║  Duration:  {}                                    ║",
@@ -199,10 +180,7 @@ impl TuiMonitor {
             "║  Epochs:    {}/{}                                          ║",
             snapshot.epoch, snapshot.total_epochs
         )?;
-        writeln!(
-            stdout,
-            "╚════════════════════════════════════════════════════════════╝"
-        )?;
+        writeln!(stdout, "╚════════════════════════════════════════════════════════════╝")?;
 
         stdout.flush()
     }
@@ -281,11 +259,7 @@ impl TrainingStateWriter {
         snapshot.model_name = model_name.to_string();
         snapshot.status = TrainingStatus::Initializing;
 
-        Self {
-            state: TrainingState::new(experiment_dir),
-            snapshot,
-            history_max: LOSS_HISTORY_MAX,
-        }
+        Self { state: TrainingState::new(experiment_dir), snapshot, history_max: LOSS_HISTORY_MAX }
     }
 
     /// Set total epochs and steps for a training phase
@@ -496,9 +470,7 @@ mod state_writer_tests {
 
         // Add more than max history
         for i in 0..10 {
-            writer
-                .update_step(1, i, i as f32 * 0.1, 0.0002, 1.5, 1200.0)
-                .unwrap();
+            writer.update_step(1, i, i as f32 * 0.1, 0.0002, 1.5, 1200.0).unwrap();
         }
 
         let mut state = TrainingState::new(temp_dir.path());

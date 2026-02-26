@@ -4,11 +4,8 @@ use crate::monitor::inference::provenance::*;
 
 #[test]
 fn test_serde_provenance_node() {
-    let node = ProvenanceNode::Input {
-        source: "test".to_string(),
-        timestamp_ns: 12345,
-        hash: 0xdeadbeef,
-    };
+    let node =
+        ProvenanceNode::Input { source: "test".to_string(), timestamp_ns: 12345, hash: 0xdeadbeef };
     let json = serde_json::to_string(&node).unwrap();
     let deserialized: ProvenanceNode = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.type_name(), "Input");
@@ -16,12 +13,8 @@ fn test_serde_provenance_node() {
 
 #[test]
 fn test_serde_provenance_edge() {
-    let edge = ProvenanceEdge {
-        from: 1,
-        to: 2,
-        relation: CausalRelation::Triggered,
-        timestamp_ns: 5000,
-    };
+    let edge =
+        ProvenanceEdge { from: 1, to: 2, relation: CausalRelation::Triggered, timestamp_ns: 5000 };
     let json = serde_json::to_string(&edge).unwrap();
     let deserialized: ProvenanceEdge = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.from, 1);

@@ -193,12 +193,7 @@ impl LLaMAModel {
         // Initialize output head (language modeling head)
         let lm_head = LLaMALayer::init_weight(vocab_size * hidden_size, embed_scale);
 
-        Self {
-            config,
-            embedding,
-            layers,
-            lm_head,
-        }
+        Self { config, embedding, layers, lm_head }
     }
 
     /// Forward pass through the entire model (simplified reference)

@@ -35,14 +35,8 @@ fn main() {
             m.power_limit_watts,
             m.power_percent()
         );
-        println!(
-            "  Clocks: {} MHz GPU, {} MHz Memory",
-            m.clock_mhz, m.memory_clock_mhz
-        );
-        println!(
-            "  PCIe: {} KB/s TX, {} KB/s RX",
-            m.pcie_tx_kbps, m.pcie_rx_kbps
-        );
+        println!("  Clocks: {} MHz GPU, {} MHz Memory", m.clock_mhz, m.memory_clock_mhz);
+        println!("  PCIe: {} KB/s TX, {} KB/s RX", m.pcie_tx_kbps, m.pcie_rx_kbps);
         println!("  Fan: {}%", m.fan_speed_percent);
         println!();
     }

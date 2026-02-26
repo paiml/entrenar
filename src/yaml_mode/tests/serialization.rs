@@ -63,8 +63,5 @@ output:
     let deserialized: TrainingManifest = serde_yaml::from_str(&serialized).unwrap();
 
     assert_eq!(manifest.seed, deserialized.seed);
-    assert_eq!(
-        manifest.lora.as_ref().unwrap().rank,
-        deserialized.lora.as_ref().unwrap().rank
-    );
+    assert_eq!(manifest.lora.as_ref().unwrap().rank, deserialized.lora.as_ref().unwrap().rank);
 }

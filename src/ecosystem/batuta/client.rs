@@ -116,14 +116,8 @@ impl BatutaClient {
 
     /// Get the cheapest GPU that meets memory requirements.
     pub fn cheapest_gpu(&self, min_memory_gb: u32) -> Option<&GpuPricing> {
-        self.fallback
-            .all_pricing()
-            .iter()
-            .filter(|p| p.memory_gb >= min_memory_gb)
-            .min_by(|a, b| {
-                a.hourly_rate
-                    .partial_cmp(&b.hourly_rate)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.fallback.all_pricing().iter().filter(|p| p.memory_gb >= min_memory_gb).min_by(
+            |a, b| a.hourly_rate.partial_cmp(&b.hourly_rate).unwrap_or(std::cmp::Ordering::Equal),
+        )
     }
 }

@@ -65,10 +65,7 @@ mod tests {
     fn test_artifact_metadata_with_content_type() {
         let meta = ArtifactMetadata::new("model.safetensors", "abc", 100)
             .with_content_type("application/octet-stream");
-        assert_eq!(
-            meta.content_type,
-            Some("application/octet-stream".to_string())
-        );
+        assert_eq!(meta.content_type, Some("application/octet-stream".to_string()));
     }
 
     #[test]

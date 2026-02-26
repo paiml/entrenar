@@ -70,9 +70,7 @@ pub fn sparkline_range(values: &[f32], width: usize, min: f32, max: f32) -> Stri
 
     let values: Vec<f32> = if values.len() > width {
         let step = values.len() as f32 / width as f32;
-        (0..width)
-            .map(|i| values[(i as f32 * step) as usize])
-            .collect()
+        (0..width).map(|i| values[(i as f32 * step) as usize]).collect()
     } else {
         values.to_vec()
     };

@@ -57,16 +57,10 @@ fn test_add_edge() {
 fn test_incoming_outgoing_edges() {
     let mut graph = ProvenanceGraph::new();
 
-    let id1 = graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
-    let id2 = graph.add_node(ProvenanceNode::Input {
-        source: "b".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    let id1 =
+        graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
+    let id2 =
+        graph.add_node(ProvenanceNode::Input { source: "b".to_string(), timestamp_ns: 0, hash: 0 });
     let id3 = graph.add_node(ProvenanceNode::Fusion {
         strategy: "merge".to_string(),
         input_refs: vec![id1, id2],
@@ -99,16 +93,10 @@ fn test_provenance_graph_default() {
 #[test]
 fn test_edges_accessor() {
     let mut graph = ProvenanceGraph::new();
-    let id1 = graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
-    let id2 = graph.add_node(ProvenanceNode::Input {
-        source: "b".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    let id1 =
+        graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
+    let id2 =
+        graph.add_node(ProvenanceNode::Input { source: "b".to_string(), timestamp_ns: 0, hash: 0 });
 
     graph.add_edge(ProvenanceEdge {
         from: id1,
@@ -123,16 +111,8 @@ fn test_edges_accessor() {
 #[test]
 fn test_nodes_accessor() {
     let mut graph = ProvenanceGraph::new();
-    graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
-    graph.add_node(ProvenanceNode::Input {
-        source: "b".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
+    graph.add_node(ProvenanceNode::Input { source: "b".to_string(), timestamp_ns: 0, hash: 0 });
 
     assert_eq!(graph.nodes().len(), 2);
 }
@@ -140,44 +120,32 @@ fn test_nodes_accessor() {
 #[test]
 fn test_incoming_edges_no_edges() {
     let mut graph = ProvenanceGraph::new();
-    let id = graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    let id =
+        graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
     assert!(graph.incoming_edges(id).is_empty());
 }
 
 #[test]
 fn test_outgoing_edges_no_edges() {
     let mut graph = ProvenanceGraph::new();
-    let id = graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    let id =
+        graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
     assert!(graph.outgoing_edges(id).is_empty());
 }
 
 #[test]
 fn test_predecessors_empty() {
     let mut graph = ProvenanceGraph::new();
-    let id = graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    let id =
+        graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
     assert!(graph.predecessors(id).is_empty());
 }
 
 #[test]
 fn test_successors_empty() {
     let mut graph = ProvenanceGraph::new();
-    let id = graph.add_node(ProvenanceNode::Input {
-        source: "a".to_string(),
-        timestamp_ns: 0,
-        hash: 0,
-    });
+    let id =
+        graph.add_node(ProvenanceNode::Input { source: "a".to_string(), timestamp_ns: 0, hash: 0 });
     assert!(graph.successors(id).is_empty());
 }
 

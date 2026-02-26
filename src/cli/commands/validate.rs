@@ -86,10 +86,7 @@ pub fn format_training_info(spec: &TrainSpec) -> String {
     if let Some(seed) = spec.training.seed {
         lines.push(format!("  Seed: {seed}"));
     }
-    lines.push(format!(
-        "  Output dir: {}",
-        spec.training.output_dir.display()
-    ));
+    lines.push(format!("  Output dir: {}", spec.training.output_dir.display()));
     lines.join("\n")
 }
 
@@ -111,20 +108,14 @@ pub fn format_lora_info(spec: &TrainSpec) -> Option<String> {
 /// Format quantization configuration as a string
 pub fn format_quant_info(spec: &TrainSpec) -> Option<String> {
     spec.quantize.as_ref().map(|quant| {
-        format!(
-            "  Quantization:\n    Bits: {}\n    Symmetric: {}",
-            quant.bits, quant.symmetric
-        )
+        format!("  Quantization:\n    Bits: {}\n    Symmetric: {}", quant.bits, quant.symmetric)
     })
 }
 
 /// Format merge configuration as a string
 pub fn format_merge_info(spec: &TrainSpec) -> Option<String> {
     spec.merge.as_ref().map(|merge| {
-        let mut lines = vec![
-            "  Merge:".to_string(),
-            format!("    Method: {}", merge.method),
-        ];
+        let mut lines = vec!["  Merge:".to_string(), format!("    Method: {}", merge.method)];
         if let Some(weight) = merge.params.get("weight") {
             lines.push(format!("    Weight: {weight}"));
         }
@@ -161,11 +152,7 @@ pub fn print_detailed_summary(spec: &TrainSpec) {
 }
 
 pub fn run_validate(args: ValidateArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Validating config: {}", args.config.display()),
-    );
+    log(level, LogLevel::Normal, &format!("Validating config: {}", args.config.display()));
 
     let spec = load_config(&args.config).map_err(|e| format!("Config error: {e}"))?;
 
@@ -223,11 +210,7 @@ mod tests {
                 dropout: 0.1,
                 target_modules: vec!["q_proj".to_string()],
             }),
-            quantize: Some(QuantSpec {
-                bits: 4,
-                symmetric: true,
-                per_channel: true,
-            }),
+            quantize: Some(QuantSpec { bits: 4, symmetric: true, per_channel: true }),
             merge: Some(MergeSpec {
                 method: "slerp".to_string(),
                 params: {

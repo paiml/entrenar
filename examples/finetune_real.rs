@@ -138,15 +138,7 @@ impl CudaTrainingState {
         let m_state = trainer.zeros(weights.len()).ok()?;
         let v_state = trainer.zeros(weights.len()).ok()?;
 
-        Some(Self {
-            trainer,
-            weights_gpu,
-            grads_gpu,
-            m_state,
-            v_state,
-            hidden_size,
-            vocab_size,
-        })
+        Some(Self { trainer, weights_gpu, grads_gpu, m_state, v_state, hidden_size, vocab_size })
     }
 
     /// Forward pass: logits = hidden @ weights
@@ -395,12 +387,8 @@ impl AttentionLoRAAdapters {
         }
 
         // h' = h + total_lora
-        let result_data: Vec<f32> = hidden
-            .data()
-            .iter()
-            .zip(total_lora.iter())
-            .map(|(&h, &l)| h + l)
-            .collect();
+        let result_data: Vec<f32> =
+            hidden.data().iter().zip(total_lora.iter()).map(|(&h, &l)| h + l).collect();
 
         Tensor::from_vec(result_data, true)
     }
@@ -1026,23 +1014,12 @@ fn detect_compute_device() -> (ComputeDevice, DeviceInfo, bool) {
     };
     println!("   Device: {}", device_info.name);
     println!("   Memory: {:.1} GB", device_info.memory_gb);
-    println!(
-        "   QLoRA Ready: {}",
-        if device_info.sufficient_for_qlora() {
-            "✓"
-        } else {
-            "✗"
-        }
-    );
+    println!("   QLoRA Ready: {}", if device_info.sufficient_for_qlora() { "✓" } else { "✗" });
 
     let cuda_training = cuda_training_available();
     println!(
         "   CUDA Training: {}",
-        if cuda_training {
-            "✓ (CudaTrainer available)"
-        } else {
-            "✗ (CPU fallback)"
-        }
+        if cuda_training { "✓ (CudaTrainer available)" } else { "✗ (CPU fallback)" }
     );
 
     (device, device_info, cuda_training)
@@ -1062,11 +1039,8 @@ fn pretokenize_corpus(
         .map(|sample| {
             let mut token_ids = tokenizer.encode(&sample.function);
             token_ids.truncate(max_seq_len);
-            let targets: Vec<f32> = token_ids
-                .iter()
-                .skip(1)
-                .map(|&t| (t % demo_vocab as u32) as f32)
-                .collect();
+            let targets: Vec<f32> =
+                token_ids.iter().skip(1).map(|&t| (t % demo_vocab as u32) as f32).collect();
             let inputs: Vec<u32> = token_ids.iter().take(targets.len()).copied().collect();
             (inputs, targets)
         })
@@ -1083,10 +1057,7 @@ fn extract_pretrained_weights(
     demo_vocab: usize,
     full_vocab_size: usize,
 ) -> Vec<f32> {
-    let real_lm_head = transformer
-        .lm_head
-        .as_ref()
-        .unwrap_or(&transformer.embed_tokens.weight);
+    let real_lm_head = transformer.lm_head.as_ref().unwrap_or(&transformer.embed_tokens.weight);
 
     println!(
         "   Pre-trained LM head: {} × {} = {} params",
@@ -1117,16 +1088,10 @@ fn extract_pretrained_weights(
     );
 
     let weight_mean = pretrained_subset.iter().sum::<f32>() / pretrained_subset.len() as f32;
-    let weight_std = (pretrained_subset
-        .iter()
-        .map(|x| (x - weight_mean).powi(2))
-        .sum::<f32>()
+    let weight_std = (pretrained_subset.iter().map(|x| (x - weight_mean).powi(2)).sum::<f32>()
         / pretrained_subset.len() as f32)
         .sqrt();
-    println!(
-        "   Weight stats: mean={:.6}, std={:.6}",
-        weight_mean, weight_std
-    );
+    println!("   Weight stats: mean={:.6}, std={:.6}", weight_mean, weight_std);
 
     pretrained_subset
 }
@@ -1190,13 +1155,7 @@ fn cpu_training_step(
     causal_loss_fn: &CausalLMLoss,
     optimizer: &mut AdamW,
 ) -> (Tensor, f32, f32) {
-    let logits = matmul(
-        hidden_states,
-        &trainable_params[0],
-        seq_len,
-        hidden_size,
-        demo_vocab,
-    );
+    let logits = matmul(hidden_states, &trainable_params[0], seq_len, hidden_size, demo_vocab);
 
     let targets_tensor = Tensor::from_vec(targets_f32.to_vec(), false);
     let mut loss = causal_loss_fn.forward(&logits, &targets_tensor);
@@ -1281,10 +1240,7 @@ fn run_hypothesis_test_h9(
         lora_params,
         (lora_params as f32 / full_ft_params as f32) * 100.0
     );
-    println!(
-        "     • Memory: {:.4} MB ({:.1}% savings)",
-        lora_memory_mb, memory_savings
-    );
+    println!("     • Memory: {:.4} MB ({:.1}% savings)", lora_memory_mb, memory_savings);
     println!("     • Epochs: {}, LR: {} (3x)", epochs_lora, lr_lora);
     println!("     • CE Reduction: {:.2}%", exp2.reduction_percent);
     println!("     • Duration: {:.2}s", exp2.duration.as_secs_f32());
@@ -1302,14 +1258,8 @@ fn run_hypothesis_test_h9(
 
     let h9_passed = h9_quality && h9_memory;
     println!("\n     RESULTS:");
-    println!(
-        "       Quality (within 10%): {}",
-        if h9_quality { "✓ PASS" } else { "✗ FAIL" }
-    );
-    println!(
-        "       Memory (>90% savings): {}",
-        if h9_memory { "✓ PASS" } else { "✗ FAIL" }
-    );
+    println!("       Quality (within 10%): {}", if h9_quality { "✓ PASS" } else { "✗ FAIL" });
+    println!("       Memory (>90% savings): {}", if h9_memory { "✓ PASS" } else { "✗ FAIL" });
     println!(
         "       Overall: {}",
         if h9_passed {
@@ -1370,10 +1320,7 @@ fn run_quality_validation(
     // Generate and evaluate tests for each holdout sample
     for (idx, sample) in corpus.test.iter().enumerate() {
         println!("\n   Sample {}/{}:", idx + 1, corpus.test.len());
-        println!(
-            "     Function: {}...",
-            &sample.function.chars().take(50).collect::<String>()
-        );
+        println!("     Function: {}...", &sample.function.chars().take(50).collect::<String>());
 
         let generated = generate_tests(
             transformer,
@@ -1385,10 +1332,7 @@ fn run_quality_validation(
         );
 
         let generated_tests = extract_test_portion(&generated);
-        println!(
-            "     Generated {} chars of test code",
-            generated_tests.len()
-        );
+        println!("     Generated {} chars of test code", generated_tests.len());
 
         let result = evaluator.evaluate(&sample.function, generated_tests);
         if result.compiles {
@@ -1401,9 +1345,7 @@ fn run_quality_validation(
         metrics.total_mutants_killed += result.mutants_killed;
         metrics.total_mutants += result.mutants_total;
         metrics.total_tests += 1;
-        metrics
-            .generated_samples
-            .push((sample.function.clone(), generated_tests.to_string()));
+        metrics.generated_samples.push((sample.function.clone(), generated_tests.to_string()));
     }
 
     // Also evaluate on training samples (sanity check)
@@ -1466,14 +1408,8 @@ fn print_generation_results(metrics: &EvalMetrics) -> (f32, f32, bool) {
 
     let h10_passed = h10_compile && h10_mutation;
     println!("\n     RESULTS:");
-    println!(
-        "       Compilation (>90%): {}",
-        if h10_compile { "✓ PASS" } else { "✗ FAIL" }
-    );
-    println!(
-        "       Mutation (>70%): {}",
-        if h10_mutation { "✓ PASS" } else { "✗ FAIL" }
-    );
+    println!("       Compilation (>90%): {}", if h10_compile { "✓ PASS" } else { "✗ FAIL" });
+    println!("       Mutation (>70%): {}", if h10_mutation { "✓ PASS" } else { "✗ FAIL" });
     println!(
         "       Overall: {}",
         if h10_passed {
@@ -1600,24 +1536,20 @@ fn cuda_training_step(
     step: usize,
 ) -> (Tensor, f32, f32) {
     let hidden_data: Vec<f32> = hidden_states.data().to_vec();
-    let logits_data = cuda
-        .forward(&hidden_data, seq_len)
-        .expect("CUDA forward failed");
+    let logits_data = cuda.forward(&hidden_data, seq_len).expect("CUDA forward failed");
 
     let (total_loss, grad_logits) =
         compute_softmax_ce_grads(&logits_data, targets_f32, seq_len, demo_vocab);
     let loss_val = total_loss / seq_len as f32;
     let grad_norm: f32 = grad_logits.iter().map(|x| x * x).sum::<f32>().sqrt();
 
-    cuda.backward(&hidden_data, &grad_logits, seq_len)
-        .expect("CUDA backward failed");
+    cuda.backward(&hidden_data, &grad_logits, seq_len).expect("CUDA backward failed");
 
     let weights_before = cuda.download_weights().unwrap();
     let sum_before: f32 = weights_before.iter().sum();
 
     let current_lr = scheduler.get_lr();
-    cuda.adamw_step(current_lr, 0.9, 0.999, 1e-8, 0.01)
-        .expect("CUDA optimizer step failed");
+    cuda.adamw_step(current_lr, 0.9, 0.999, 1e-8, 0.01).expect("CUDA optimizer step failed");
 
     let weights_after = cuda.download_weights().unwrap();
     let sum_after: f32 = weights_after.iter().sum();
@@ -1812,19 +1744,10 @@ fn run_experiment_full_ft(
             );
 
             if step == train_len - 1 {
-                println!(
-                    "    Step {}: CE={:.4}, grad_norm={:.2}",
-                    step + 1,
-                    loss_val,
-                    grad_norm
-                );
+                println!("    Step {}: CE={:.4}, grad_norm={:.2}", step + 1, loss_val, grad_norm);
             }
         }
-        println!(
-            "  → Epoch {} avg CE: {:.4}",
-            epoch + 1,
-            epoch_loss / train_len as f32
-        );
+        println!("  → Epoch {} avg CE: {:.4}", epoch + 1, epoch_loss / train_len as f32);
     }
 
     #[cfg(feature = "cuda")]
@@ -1837,12 +1760,7 @@ fn run_experiment_full_ft(
     let results = ExperimentResults::from_loss_history(&loss_history, start_exp1.elapsed());
     print_full_ft_results(&results, full_ft_memory_mb);
 
-    FullFtOutput {
-        results,
-        loss_history,
-        full_ft_params,
-        full_ft_memory_mb,
-    }
+    FullFtOutput { results, loss_history, full_ft_params, full_ft_memory_mb }
 }
 
 /// Print backend label based on available CUDA state
@@ -1885,25 +1803,14 @@ fn run_experiment_lora(
     println!("═══════════════════════════════════════════════════════════════");
 
     let lm_head_base = Tensor::from_vec(pretrained_subset.to_vec(), false);
-    let mut lora_lm_head = LoRAProjection::new(
-        lm_head_base,
-        hp.hidden_size,
-        hp.demo_vocab,
-        hp.rank,
-        hp.alpha,
-    );
+    let mut lora_lm_head =
+        LoRAProjection::new(lm_head_base, hp.hidden_size, hp.demo_vocab, hp.rank, hp.alpha);
 
     let lora_params = hp.hidden_size * hp.rank + hp.rank * hp.demo_vocab;
     let lora_memory_mb = (lora_params * 4) as f32 / (1024.0 * 1024.0);
     let memory_savings = (1.0 - lora_memory_mb / full_ft_memory_mb) * 100.0;
 
-    print_lora_config(
-        hp,
-        full_ft_params,
-        lora_params,
-        lora_memory_mb,
-        memory_savings,
-    );
+    print_lora_config(hp, full_ft_params, lora_params, lora_memory_mb, memory_savings);
 
     let mut optimizer_2 = AdamW::new(hp.lr_lora, 0.9, 0.999, 1e-8, 0.01);
     let mut scheduler_2 = CosineAnnealingLR::new(hp.lr_lora, 200, 1e-5);
@@ -1974,11 +1881,7 @@ fn run_experiment_lora(
                 );
             }
         }
-        println!(
-            "  → Epoch {} avg CE: {:.4}",
-            epoch + 1,
-            epoch_loss / train_len as f32
-        );
+        println!("  → Epoch {} avg CE: {:.4}", epoch + 1, epoch_loss / train_len as f32);
     }
 
     let results = ExperimentResults::from_loss_history(&loss_history, start_exp2.elapsed());
@@ -1990,14 +1893,7 @@ fn run_experiment_lora(
     println!("   Duration: {:.2}s", results.duration.as_secs_f32());
     println!("   Memory (trainable): {lora_memory_mb:.4} MB");
 
-    LoraOutput {
-        results,
-        loss_history,
-        lora_lm_head,
-        lora_params,
-        lora_memory_mb,
-        memory_savings,
-    }
+    LoraOutput { results, loss_history, lora_lm_head, lora_params, lora_memory_mb, memory_savings }
 }
 
 /// Print LoRA experiment configuration summary
@@ -2011,22 +1907,9 @@ fn print_lora_config(
     println!("   Mode: LoRA Fine-Tuning (base frozen, adapters trainable)");
     println!("   LoRA Rank: {}", hp.rank);
     println!("   LoRA Alpha: {}", hp.alpha);
-    println!(
-        "   Base LM head: {} params (FROZEN, pre-trained)",
-        hp.hidden_size * hp.demo_vocab
-    );
-    println!(
-        "   LoRA A: {} × {} = {} params",
-        hp.hidden_size,
-        hp.rank,
-        hp.hidden_size * hp.rank
-    );
-    println!(
-        "   LoRA B: {} × {} = {} params",
-        hp.rank,
-        hp.demo_vocab,
-        hp.rank * hp.demo_vocab
-    );
+    println!("   Base LM head: {} params (FROZEN, pre-trained)", hp.hidden_size * hp.demo_vocab);
+    println!("   LoRA A: {} × {} = {} params", hp.hidden_size, hp.rank, hp.hidden_size * hp.rank);
+    println!("   LoRA B: {} × {} = {} params", hp.rank, hp.demo_vocab, hp.rank * hp.demo_vocab);
     println!(
         "   Total trainable: {} params ({:.2}% of full)",
         lora_params,
@@ -2043,10 +1926,7 @@ fn init_gpu_monitor() -> Option<GpuMonitor> {
     let gpu_monitor = GpuMonitor::new().ok();
     if let Some(ref monitor) = gpu_monitor {
         if monitor.num_devices() > 0 {
-            println!(
-                "\n📊 GPU Monitor: {} device(s) detected",
-                monitor.num_devices()
-            );
+            println!("\n📊 GPU Monitor: {} device(s) detected", monitor.num_devices());
         }
     }
     gpu_monitor
@@ -2069,10 +1949,7 @@ fn print_final_summary(
     println!("   ✅ SPEC-FT-001 Complete!");
     println!("═══════════════════════════════════════════════════════════════");
     println!("   Duration: {:.1}s", duration.as_secs_f32());
-    println!(
-        "   Final CE loss: {:.4}",
-        loss_history.last().unwrap_or(&0.0)
-    );
+    println!("   Final CE loss: {:.4}", loss_history.last().unwrap_or(&0.0));
     println!("   Compile rate: {:.1}%", compile_rate * 100.0);
     println!("   Mutation score: {:.1}%", mutation_score * 100.0);
     println!("   QA Grade: {grade:?} ({score}/100)");
@@ -2239,24 +2116,13 @@ fn main() {
     loss_history.extend(exp2.loss_history);
 
     // Phase 10: quality validation
-    let eval_metrics = run_quality_validation(
-        &transformer,
-        &exp2.lora_lm_head,
-        &tokenizer,
-        &corpus,
-        hidden_size,
-    );
+    let eval_metrics =
+        run_quality_validation(&transformer, &exp2.lora_lm_head, &tokenizer, &corpus, hidden_size);
     let (compile_rate, mutation_score, h10_passed) = print_generation_results(&eval_metrics);
 
     // Popperian QA
-    let (score, grade) = run_popperian_qa(
-        compile_rate,
-        mutation_score,
-        &device_info,
-        &device,
-        &start_time,
-        &corpus,
-    );
+    let (score, grade) =
+        run_popperian_qa(compile_rate, mutation_score, &device_info, &device, &start_time, &corpus);
 
     // Save artifacts
     save_artifacts(&loss_history, &eval_metrics.generated_samples);

@@ -54,10 +54,7 @@ fn kde_score(x: f64, values: &[f64], bandwidth: f64) -> f64 {
     if values.is_empty() {
         return 1.0;
     }
-    values
-        .iter()
-        .map(|&v| (-(x - v).powi(2) / (2.0 * bandwidth.powi(2))).exp())
-        .sum::<f64>()
+    values.iter().map(|&v| (-(x - v).powi(2) / (2.0 * bandwidth.powi(2))).exp()).sum::<f64>()
         / values.len() as f64
 }
 
@@ -88,11 +85,8 @@ pub fn sample_ei_ratio_discrete<R: Rng>(
     }
 
     // Compute weights (l/g)
-    let mut weights: Vec<f64> = good_counts
-        .iter()
-        .zip(bad_counts.iter())
-        .map(|(l, g)| l / g)
-        .collect();
+    let mut weights: Vec<f64> =
+        good_counts.iter().zip(bad_counts.iter()).map(|(l, g)| l / g).collect();
 
     // Normalize
     let total: f64 = weights.iter().sum();

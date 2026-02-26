@@ -190,61 +190,37 @@ mod tests {
 
     #[test]
     fn test_drift_summary_has_critical() {
-        let summary = DriftSummary {
-            total_features: 10,
-            drifted_features: 3,
-            warnings: 2,
-            critical: 1,
-        };
+        let summary =
+            DriftSummary { total_features: 10, drifted_features: 3, warnings: 2, critical: 1 };
         assert!(summary.has_critical());
 
-        let no_critical = DriftSummary {
-            total_features: 10,
-            drifted_features: 2,
-            warnings: 2,
-            critical: 0,
-        };
+        let no_critical =
+            DriftSummary { total_features: 10, drifted_features: 2, warnings: 2, critical: 0 };
         assert!(!no_critical.has_critical());
     }
 
     #[test]
     fn test_drift_summary_has_drift() {
-        let summary = DriftSummary {
-            total_features: 10,
-            drifted_features: 3,
-            warnings: 3,
-            critical: 0,
-        };
+        let summary =
+            DriftSummary { total_features: 10, drifted_features: 3, warnings: 3, critical: 0 };
         assert!(summary.has_drift());
 
-        let no_drift = DriftSummary {
-            total_features: 10,
-            drifted_features: 0,
-            warnings: 0,
-            critical: 0,
-        };
+        let no_drift =
+            DriftSummary { total_features: 10, drifted_features: 0, warnings: 0, critical: 0 };
         assert!(!no_drift.has_drift());
     }
 
     #[test]
     fn test_drift_summary_drift_percentage() {
-        let summary = DriftSummary {
-            total_features: 10,
-            drifted_features: 3,
-            warnings: 2,
-            critical: 1,
-        };
+        let summary =
+            DriftSummary { total_features: 10, drifted_features: 3, warnings: 2, critical: 1 };
         assert!((summary.drift_percentage() - 30.0).abs() < 1e-9);
     }
 
     #[test]
     fn test_drift_summary_drift_percentage_zero_features() {
-        let summary = DriftSummary {
-            total_features: 0,
-            drifted_features: 0,
-            warnings: 0,
-            critical: 0,
-        };
+        let summary =
+            DriftSummary { total_features: 0, drifted_features: 0, warnings: 0, critical: 0 };
         assert!((summary.drift_percentage() - 0.0).abs() < 1e-9);
     }
 
@@ -265,24 +241,16 @@ mod tests {
 
     #[test]
     fn test_drift_summary_clone() {
-        let summary = DriftSummary {
-            total_features: 10,
-            drifted_features: 3,
-            warnings: 2,
-            critical: 1,
-        };
+        let summary =
+            DriftSummary { total_features: 10, drifted_features: 3, warnings: 2, critical: 1 };
         let cloned = summary.clone();
         assert_eq!(summary.total_features, cloned.total_features);
     }
 
     #[test]
     fn test_drift_summary_debug() {
-        let summary = DriftSummary {
-            total_features: 10,
-            drifted_features: 3,
-            warnings: 2,
-            critical: 1,
-        };
+        let summary =
+            DriftSummary { total_features: 10, drifted_features: 3, warnings: 2, critical: 1 };
         let debug_str = format!("{:?}", summary);
         assert!(debug_str.contains("DriftSummary"));
         assert!(debug_str.contains("total_features"));

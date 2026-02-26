@@ -91,22 +91,8 @@ training:
     let minimal_spec: TrainSpec = serde_yaml::from_str(minimal_yaml)?;
     println!("✓ Minimal config parsed successfully");
     println!("  Epochs: {}", minimal_spec.training.epochs);
-    println!(
-        "  LoRA: {}",
-        if minimal_spec.lora.is_some() {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    println!(
-        "  Quantization: {}",
-        if minimal_spec.quantize.is_some() {
-            "yes"
-        } else {
-            "no"
-        }
-    );
+    println!("  LoRA: {}", if minimal_spec.lora.is_some() { "yes" } else { "no" });
+    println!("  Quantization: {}", if minimal_spec.quantize.is_some() { "yes" } else { "no" });
 
     println!("\n=== Example Complete ===\n");
 

@@ -57,12 +57,7 @@ pub struct LineageEvent {
 impl LineageEvent {
     /// Create a new lineage event
     pub fn new(timestamp: LamportTimestamp, event_type: LineageEventType, run_id: &str) -> Self {
-        Self {
-            timestamp,
-            event_type,
-            run_id: run_id.to_string(),
-            context: None,
-        }
+        Self { timestamp, event_type, run_id: run_id.to_string(), context: None }
     }
 
     /// Add context to the event
@@ -95,61 +90,37 @@ mod tests {
 
     #[test]
     fn test_lineage_event_type_description_metric_logged() {
-        assert_eq!(
-            LineageEventType::MetricLogged.description(),
-            "Metric logged"
-        );
+        assert_eq!(LineageEventType::MetricLogged.description(), "Metric logged");
     }
 
     #[test]
     fn test_lineage_event_type_description_artifact_saved() {
-        assert_eq!(
-            LineageEventType::ArtifactSaved.description(),
-            "Artifact saved"
-        );
+        assert_eq!(LineageEventType::ArtifactSaved.description(), "Artifact saved");
     }
 
     #[test]
     fn test_lineage_event_type_description_run_completed() {
-        assert_eq!(
-            LineageEventType::RunCompleted.description(),
-            "Run completed"
-        );
+        assert_eq!(LineageEventType::RunCompleted.description(), "Run completed");
     }
 
     #[test]
     fn test_lineage_event_type_description_model_promoted() {
-        assert_eq!(
-            LineageEventType::ModelPromoted.description(),
-            "Model promoted"
-        );
+        assert_eq!(LineageEventType::ModelPromoted.description(), "Model promoted");
     }
 
     #[test]
     fn test_lineage_event_type_description_model_rolled_back() {
-        assert_eq!(
-            LineageEventType::ModelRolledBack.description(),
-            "Model rolled back"
-        );
+        assert_eq!(LineageEventType::ModelRolledBack.description(), "Model rolled back");
     }
 
     #[test]
     fn test_lineage_event_type_display() {
         assert_eq!(LineageEventType::RunStarted.to_string(), "Run started");
         assert_eq!(LineageEventType::MetricLogged.to_string(), "Metric logged");
-        assert_eq!(
-            LineageEventType::ArtifactSaved.to_string(),
-            "Artifact saved"
-        );
+        assert_eq!(LineageEventType::ArtifactSaved.to_string(), "Artifact saved");
         assert_eq!(LineageEventType::RunCompleted.to_string(), "Run completed");
-        assert_eq!(
-            LineageEventType::ModelPromoted.to_string(),
-            "Model promoted"
-        );
-        assert_eq!(
-            LineageEventType::ModelRolledBack.to_string(),
-            "Model rolled back"
-        );
+        assert_eq!(LineageEventType::ModelPromoted.to_string(), "Model promoted");
+        assert_eq!(LineageEventType::ModelRolledBack.to_string(), "Model rolled back");
     }
 
     #[test]
@@ -254,25 +225,10 @@ mod tests {
     #[test]
     fn test_lineage_event_type_debug() {
         assert_eq!(format!("{:?}", LineageEventType::RunStarted), "RunStarted");
-        assert_eq!(
-            format!("{:?}", LineageEventType::MetricLogged),
-            "MetricLogged"
-        );
-        assert_eq!(
-            format!("{:?}", LineageEventType::ArtifactSaved),
-            "ArtifactSaved"
-        );
-        assert_eq!(
-            format!("{:?}", LineageEventType::RunCompleted),
-            "RunCompleted"
-        );
-        assert_eq!(
-            format!("{:?}", LineageEventType::ModelPromoted),
-            "ModelPromoted"
-        );
-        assert_eq!(
-            format!("{:?}", LineageEventType::ModelRolledBack),
-            "ModelRolledBack"
-        );
+        assert_eq!(format!("{:?}", LineageEventType::MetricLogged), "MetricLogged");
+        assert_eq!(format!("{:?}", LineageEventType::ArtifactSaved), "ArtifactSaved");
+        assert_eq!(format!("{:?}", LineageEventType::RunCompleted), "RunCompleted");
+        assert_eq!(format!("{:?}", LineageEventType::ModelPromoted), "ModelPromoted");
+        assert_eq!(format!("{:?}", LineageEventType::ModelRolledBack), "ModelRolledBack");
     }
 }

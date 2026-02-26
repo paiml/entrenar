@@ -105,11 +105,7 @@ pub fn quantize_tensor(
 
     let data = quantize_with_params(values, &params);
 
-    QuantizedTensor {
-        data,
-        params,
-        shape: shape.to_vec(),
-    }
+    QuantizedTensor { data, params, shape: shape.to_vec() }
 }
 
 /// Dequantize tensor

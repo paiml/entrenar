@@ -27,9 +27,7 @@ pub enum ModelSource {
 impl ModelSource {
     /// Create HuggingFace source
     pub fn huggingface(repo_id: impl Into<String>) -> Self {
-        Self::HuggingFace {
-            repo_id: repo_id.into(),
-        }
+        Self::HuggingFace { repo_id: repo_id.into() }
     }
 
     /// Create local file source

@@ -40,19 +40,9 @@ impl FailureCategory {
     /// Pattern table: each entry maps keywords to a failure category.
     /// Checked in priority order (first match wins).
     const CATEGORY_PATTERNS: &'static [(&'static [&'static str], FailureCategory)] = &[
+        (&["nan", "inf", "exploding", "diverge", "gradient"], FailureCategory::ModelConvergence),
         (
-            &["nan", "inf", "exploding", "diverge", "gradient"],
-            FailureCategory::ModelConvergence,
-        ),
-        (
-            &[
-                "out of memory",
-                "oom",
-                "memory",
-                "timeout",
-                "disk full",
-                "no space",
-            ],
+            &["out of memory", "oom", "memory", "timeout", "disk full", "no space"],
             FailureCategory::ResourceExhaustion,
         ),
         (
@@ -71,13 +61,7 @@ impl FailureCategory {
             FailureCategory::DependencyFailure,
         ),
         (
-            &[
-                "config",
-                "parameter",
-                "invalid value",
-                "missing field",
-                "required",
-            ],
+            &["config", "parameter", "invalid value", "missing field", "required"],
             FailureCategory::ConfigurationError,
         ),
     ];
@@ -240,35 +224,17 @@ mod tests {
 
     #[test]
     fn test_failure_category_description() {
-        assert_eq!(
-            FailureCategory::DataQuality.description(),
-            "Data quality issue"
-        );
-        assert_eq!(
-            FailureCategory::ModelConvergence.description(),
-            "Model convergence failure"
-        );
-        assert_eq!(
-            FailureCategory::ResourceExhaustion.description(),
-            "Resource exhaustion"
-        );
-        assert_eq!(
-            FailureCategory::DependencyFailure.description(),
-            "Dependency failure"
-        );
-        assert_eq!(
-            FailureCategory::ConfigurationError.description(),
-            "Configuration error"
-        );
+        assert_eq!(FailureCategory::DataQuality.description(), "Data quality issue");
+        assert_eq!(FailureCategory::ModelConvergence.description(), "Model convergence failure");
+        assert_eq!(FailureCategory::ResourceExhaustion.description(), "Resource exhaustion");
+        assert_eq!(FailureCategory::DependencyFailure.description(), "Dependency failure");
+        assert_eq!(FailureCategory::ConfigurationError.description(), "Configuration error");
         assert_eq!(FailureCategory::Unknown.description(), "Unknown failure");
     }
 
     #[test]
     fn test_failure_category_display() {
-        assert_eq!(
-            format!("{}", FailureCategory::DataQuality),
-            "Data quality issue"
-        );
+        assert_eq!(format!("{}", FailureCategory::DataQuality), "Data quality issue");
     }
 
     #[test]
@@ -405,10 +371,7 @@ mod tests {
             FailureCategory::from_error_message("something weird happened"),
             FailureCategory::Unknown
         );
-        assert_eq!(
-            FailureCategory::from_error_message(""),
-            FailureCategory::Unknown
-        );
+        assert_eq!(FailureCategory::from_error_message(""), FailureCategory::Unknown);
     }
 
     #[test]

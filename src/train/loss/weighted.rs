@@ -151,32 +151,21 @@ impl SampleWeightedLoss {
         targets: &Tensor,
         weights: &[f32],
     ) -> Tensor {
-        assert_eq!(
-            predictions.len(),
-            weights.len(),
-            "Weights must match predictions length"
-        );
+        assert_eq!(predictions.len(), weights.len(), "Weights must match predictions length");
 
         // Compute weighted loss manually for MSE-like losses
         let diff = predictions.data() - targets.data();
         let n = predictions.len() as f32;
 
         // Weighted squared error
-        let weighted_loss: f32 = diff
-            .iter()
-            .zip(weights.iter())
-            .map(|(&d, &w)| w * d * d)
-            .sum::<f32>()
-            / n;
+        let weighted_loss: f32 =
+            diff.iter().zip(weights.iter()).map(|(&d, &w)| w * d * d).sum::<f32>() / n;
 
         let mut loss = Tensor::from_vec(vec![weighted_loss], true);
 
         // Weighted gradient: 2 * w * (pred - target) / n
-        let grad: Array1<f32> = diff
-            .iter()
-            .zip(weights.iter())
-            .map(|(&d, &w)| 2.0 * w * d / n)
-            .collect();
+        let grad: Array1<f32> =
+            diff.iter().zip(weights.iter()).map(|(&d, &w)| 2.0 * w * d / n).collect();
 
         use crate::autograd::BackwardOp;
         use std::rc::Rc;

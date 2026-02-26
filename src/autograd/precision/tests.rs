@@ -70,9 +70,8 @@ mod tests {
 
     #[test]
     fn test_mixed_precision_config_builders() {
-        let config = MixedPrecisionConfig::fp16()
-            .with_initial_scale(1024.0)
-            .with_dynamic_scaling(false);
+        let config =
+            MixedPrecisionConfig::fp16().with_initial_scale(1024.0).with_dynamic_scaling(false);
         assert_eq!(config.initial_scale, 1024.0);
         assert!(!config.dynamic_scaling);
     }

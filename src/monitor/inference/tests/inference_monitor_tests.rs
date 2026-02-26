@@ -15,10 +15,7 @@ fn test_monotonic_ns_increasing() {
     let ts1 = monotonic_ns();
     std::thread::sleep(std::time::Duration::from_micros(100));
     let ts2 = monotonic_ns();
-    assert!(
-        ts2 > ts1,
-        "monotonic_ns should be strictly increasing over time"
-    );
+    assert!(ts2 > ts1, "monotonic_ns should be strictly increasing over time");
 }
 
 #[test]
@@ -29,10 +26,7 @@ fn test_monotonic_ns_non_zero() {
     // but subsequent calls should not be 0
     std::thread::sleep(std::time::Duration::from_micros(1));
     let ts = monotonic_ns();
-    assert!(
-        ts > 0,
-        "monotonic_ns should return a positive value after initialization"
-    );
+    assert!(ts > 0, "monotonic_ns should return a positive value after initialization");
 }
 
 // =============================================================================

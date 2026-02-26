@@ -175,12 +175,7 @@ pub struct Styled<'a> {
 
 impl<'a> Styled<'a> {
     pub fn new(text: &'a str, mode: ColorMode) -> Self {
-        Self {
-            text,
-            fg: None,
-            bold: false,
-            mode,
-        }
+        Self { text, fg: None, bold: false, mode }
     }
 
     pub fn fg(mut self, color: impl Into<Rgb>) -> Self {
@@ -248,9 +243,7 @@ pub struct TrainingPalette {
 
 impl Default for TrainingPalette {
     fn default() -> Self {
-        Self {
-            mode: ColorMode::detect(),
-        }
+        Self { mode: ColorMode::detect() }
     }
 }
 
@@ -479,10 +472,7 @@ mod tests {
         );
 
         // COLORTERM truecolor
-        assert_eq!(
-            ColorMode::detect_with_env(Some("truecolor"), None, None),
-            ColorMode::TrueColor
-        );
+        assert_eq!(ColorMode::detect_with_env(Some("truecolor"), None, None), ColorMode::TrueColor);
 
         // TERM 256color
         assert_eq!(
@@ -491,16 +481,10 @@ mod tests {
         );
 
         // TERM xterm
-        assert_eq!(
-            ColorMode::detect_with_env(None, Some("xterm"), None),
-            ColorMode::Color16
-        );
+        assert_eq!(ColorMode::detect_with_env(None, Some("xterm"), None), ColorMode::Color16);
 
         // TERM dumb
-        assert_eq!(
-            ColorMode::detect_with_env(None, Some("dumb"), None),
-            ColorMode::Mono
-        );
+        assert_eq!(ColorMode::detect_with_env(None, Some("dumb"), None), ColorMode::Mono);
     }
 
     #[test]
@@ -575,19 +559,10 @@ mod tests {
 
     #[test]
     fn test_gpu_util_color() {
-        assert_eq!(
-            TrainingPalette::gpu_util_color(20.0),
-            TrainingPalette::MUTED
-        );
-        assert_eq!(
-            TrainingPalette::gpu_util_color(50.0),
-            TrainingPalette::SUCCESS
-        );
+        assert_eq!(TrainingPalette::gpu_util_color(20.0), TrainingPalette::MUTED);
+        assert_eq!(TrainingPalette::gpu_util_color(50.0), TrainingPalette::SUCCESS);
         assert_eq!(TrainingPalette::gpu_util_color(80.0), TrainingPalette::INFO);
-        assert_eq!(
-            TrainingPalette::gpu_util_color(95.0),
-            TrainingPalette::PRIMARY
-        );
+        assert_eq!(TrainingPalette::gpu_util_color(95.0), TrainingPalette::PRIMARY);
     }
 
     #[test]
@@ -600,19 +575,10 @@ mod tests {
 
     #[test]
     fn test_grad_norm_color() {
-        assert_eq!(
-            TrainingPalette::grad_norm_color(0.5),
-            TrainingPalette::SUCCESS
-        );
+        assert_eq!(TrainingPalette::grad_norm_color(0.5), TrainingPalette::SUCCESS);
         assert_eq!(TrainingPalette::grad_norm_color(3.0), TrainingPalette::INFO);
-        assert_eq!(
-            TrainingPalette::grad_norm_color(8.0),
-            TrainingPalette::WARNING
-        );
-        assert_eq!(
-            TrainingPalette::grad_norm_color(20.0),
-            TrainingPalette::ERROR
-        );
+        assert_eq!(TrainingPalette::grad_norm_color(8.0), TrainingPalette::WARNING);
+        assert_eq!(TrainingPalette::grad_norm_color(20.0), TrainingPalette::ERROR);
     }
 
     #[test]
@@ -656,22 +622,18 @@ mod tests {
             TrainingStatus::Initializing,
         ] {
             match status {
-                TrainingStatus::Running => assert_eq!(
-                    TrainingPalette::status_color(status),
-                    TrainingPalette::SUCCESS
-                ),
-                TrainingStatus::Completed => assert_eq!(
-                    TrainingPalette::status_color(status),
-                    TrainingPalette::PRIMARY
-                ),
-                TrainingStatus::Paused => assert_eq!(
-                    TrainingPalette::status_color(status),
-                    TrainingPalette::WARNING
-                ),
-                TrainingStatus::Failed(_) => assert_eq!(
-                    TrainingPalette::status_color(status),
-                    TrainingPalette::ERROR
-                ),
+                TrainingStatus::Running => {
+                    assert_eq!(TrainingPalette::status_color(status), TrainingPalette::SUCCESS)
+                }
+                TrainingStatus::Completed => {
+                    assert_eq!(TrainingPalette::status_color(status), TrainingPalette::PRIMARY)
+                }
+                TrainingStatus::Paused => {
+                    assert_eq!(TrainingPalette::status_color(status), TrainingPalette::WARNING)
+                }
+                TrainingStatus::Failed(_) => {
+                    assert_eq!(TrainingPalette::status_color(status), TrainingPalette::ERROR)
+                }
                 TrainingStatus::Initializing => {
                     assert_eq!(TrainingPalette::status_color(status), TrainingPalette::INFO)
                 }

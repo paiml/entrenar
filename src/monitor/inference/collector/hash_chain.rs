@@ -164,12 +164,7 @@ impl<P: DecisionPath + Serialize> TraceCollector<P> for HashChainCollector<P> {
     fn record(&mut self, trace: DecisionTrace<P>) {
         let hash = Self::compute_hash(self.sequence, &self.prev_hash, &trace);
 
-        let entry = ChainEntry {
-            sequence: self.sequence,
-            prev_hash: self.prev_hash,
-            trace,
-            hash,
-        };
+        let entry = ChainEntry { sequence: self.sequence, prev_hash: self.prev_hash, trace, hash };
 
         self.prev_hash = hash;
         self.sequence += 1;

@@ -37,14 +37,8 @@ fn test_prune_method_display_names() {
     assert_eq!(PruneMethod::Magnitude.display_name(), "Magnitude");
     assert_eq!(PruneMethod::Wanda.display_name(), "Wanda");
     assert_eq!(PruneMethod::SparseGpt.display_name(), "SparseGPT");
-    assert_eq!(
-        PruneMethod::MinitronDepth.display_name(),
-        "Minitron (Depth)"
-    );
-    assert_eq!(
-        PruneMethod::MinitronWidth.display_name(),
-        "Minitron (Width)"
-    );
+    assert_eq!(PruneMethod::MinitronDepth.display_name(), "Minitron (Depth)");
+    assert_eq!(PruneMethod::MinitronWidth.display_name(), "Minitron (Width)");
 }
 
 #[test]
@@ -113,10 +107,7 @@ fn test_sparsity_pattern_theoretical_sparsity() {
 fn test_sparsity_pattern_block_theoretical_sparsity() {
     // TEST_ID: CFG-014
     // Block patterns have variable sparsity (returns 0 as placeholder)
-    let block = SparsityPatternConfig::Block {
-        height: 4,
-        width: 4,
-    };
+    let block = SparsityPatternConfig::Block { height: 4, width: 4 };
     assert_eq!(
         block.theoretical_sparsity(),
         0.0,
@@ -244,10 +235,7 @@ fn test_config_requires_calibration() {
 fn test_config_validate_valid() {
     // TEST_ID: CFG-030
     let config = PruningConfig::default();
-    assert!(
-        config.validate().is_ok(),
-        "CFG-030 FALSIFIED: Default config should be valid"
-    );
+    assert!(config.validate().is_ok(), "CFG-030 FALSIFIED: Default config should be valid");
 }
 
 #[test]
@@ -257,29 +245,21 @@ fn test_config_validate_invalid_nm() {
         n: 5, // Invalid: n >= m
         m: 4,
     });
-    assert!(
-        config.validate().is_err(),
-        "CFG-031 FALSIFIED: N >= M should be invalid"
-    );
+    assert!(config.validate().is_err(), "CFG-031 FALSIFIED: N >= M should be invalid");
 }
 
 #[test]
 fn test_config_validate_zero_m() {
     // TEST_ID: CFG-032
     let config = PruningConfig::new().with_pattern(SparsityPatternConfig::NM { n: 0, m: 0 });
-    assert!(
-        config.validate().is_err(),
-        "CFG-032 FALSIFIED: M=0 should be invalid"
-    );
+    assert!(config.validate().is_err(), "CFG-032 FALSIFIED: M=0 should be invalid");
 }
 
 #[test]
 fn test_config_validate_zero_block() {
     // TEST_ID: CFG-033
-    let config = PruningConfig::new().with_pattern(SparsityPatternConfig::Block {
-        height: 0,
-        width: 4,
-    });
+    let config =
+        PruningConfig::new().with_pattern(SparsityPatternConfig::Block { height: 0, width: 4 });
     assert!(
         config.validate().is_err(),
         "CFG-033 FALSIFIED: Zero block dimension should be invalid"
@@ -293,15 +273,10 @@ fn test_config_validate_zero_block() {
 #[test]
 fn test_config_serialize_json() {
     // TEST_ID: CFG-040
-    let config = PruningConfig::new()
-        .with_method(PruneMethod::Wanda)
-        .with_target_sparsity(0.5);
+    let config = PruningConfig::new().with_method(PruneMethod::Wanda).with_target_sparsity(0.5);
 
     let json = serde_json::to_string(&config).unwrap();
-    assert!(
-        json.contains("wanda"),
-        "CFG-040 FALSIFIED: JSON should contain method name"
-    );
+    assert!(json.contains("wanda"), "CFG-040 FALSIFIED: JSON should contain method name");
 
     let deserialized: PruningConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(
@@ -319,10 +294,7 @@ fn test_config_serialize_yaml() {
         .with_pattern(SparsityPatternConfig::nm_2_4());
 
     let yaml = serde_yaml::to_string(&config).unwrap();
-    assert!(
-        yaml.contains("sparse_gpt"),
-        "CFG-041 FALSIFIED: YAML should contain method name"
-    );
+    assert!(yaml.contains("sparse_gpt"), "CFG-041 FALSIFIED: YAML should contain method name");
 }
 
 #[test]
@@ -362,16 +334,10 @@ skip_embed_layers: true
 #[test]
 fn test_config_clone() {
     // TEST_ID: CFG-050
-    let config = PruningConfig::new()
-        .with_method(PruneMethod::Wanda)
-        .with_target_sparsity(0.7);
+    let config = PruningConfig::new().with_method(PruneMethod::Wanda).with_target_sparsity(0.7);
 
     let cloned = config.clone();
-    assert_eq!(
-        config.method(),
-        cloned.method(),
-        "CFG-050 FALSIFIED: Cloned method should match"
-    );
+    assert_eq!(config.method(), cloned.method(), "CFG-050 FALSIFIED: Cloned method should match");
     assert!(
         (config.target_sparsity() - cloned.target_sparsity()).abs() < 1e-6,
         "CFG-050 FALSIFIED: Cloned target_sparsity should match"
@@ -387,10 +353,7 @@ fn test_config_debug() {
     // TEST_ID: CFG-060
     let config = PruningConfig::new().with_method(PruneMethod::Wanda);
     let debug = format!("{config:?}");
-    assert!(
-        debug.contains("Wanda"),
-        "CFG-060 FALSIFIED: Debug should contain method name"
-    );
+    assert!(debug.contains("Wanda"), "CFG-060 FALSIFIED: Debug should contain method name");
 }
 
 #[test]
@@ -398,8 +361,5 @@ fn test_pattern_debug() {
     // TEST_ID: CFG-061
     let pattern = SparsityPatternConfig::nm_2_4();
     let debug = format!("{pattern:?}");
-    assert!(
-        debug.contains("NM"),
-        "CFG-061 FALSIFIED: Debug should contain pattern type"
-    );
+    assert!(debug.contains("NM"), "CFG-061 FALSIFIED: Debug should contain pattern type");
 }

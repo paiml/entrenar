@@ -101,13 +101,7 @@ impl MultiHeadAttention {
             }
         }
 
-        Some(Self {
-            config: config.clone(),
-            w_q,
-            w_k,
-            w_v,
-            w_o,
-        })
+        Some(Self { config: config.clone(), w_q, w_k, w_v, w_o })
     }
 
     /// Forward pass
@@ -180,10 +174,7 @@ impl MultiHeadAttention {
             );
 
             attn_outputs.extend_from_slice(
-                attn_out
-                    .data()
-                    .as_slice()
-                    .expect("contiguous attention output"),
+                attn_out.data().as_slice().expect("contiguous attention output"),
             );
         }
 
@@ -254,30 +245,18 @@ impl LoRAProjection {
 
         // Initialize A with small Gaussian-like noise
         let lora_a = Tensor::from_vec(
-            (0..d_in * rank)
-                .map(|i| ((i as f32 * 0.123).sin() * 0.01))
-                .collect(),
+            (0..d_in * rank).map(|i| ((i as f32 * 0.123).sin() * 0.01)).collect(),
             true, // requires_grad
         );
 
         // Initialize B with zeros (standard LoRA init ensures ΔW = 0 at start)
         // But for immediate effect in experiments, use small values
         let lora_b = Tensor::from_vec(
-            (0..rank * d_out)
-                .map(|i| ((i as f32 * 0.234).sin() * 0.005))
-                .collect(),
+            (0..rank * d_out).map(|i| ((i as f32 * 0.234).sin() * 0.005)).collect(),
             true, // requires_grad
         );
 
-        Self {
-            base_weight,
-            lora_a,
-            lora_b,
-            d_in,
-            d_out,
-            rank,
-            scale: alpha / rank as f32,
-        }
+        Self { base_weight, lora_a, lora_b, d_in, d_out, rank, scale: alpha / rank as f32 }
     }
 
     /// Forward pass with LoRA
@@ -299,13 +278,7 @@ impl LoRAProjection {
         let lora_intermediate = matmul(x, &self.lora_a, seq_len, self.d_in, self.rank);
 
         // Step 2: (x @ A) @ B, (seq × rank) @ (rank × d_out) = (seq × d_out)
-        let lora_out = matmul(
-            &lora_intermediate,
-            &self.lora_b,
-            seq_len,
-            self.rank,
-            self.d_out,
-        );
+        let lora_out = matmul(&lora_intermediate, &self.lora_b, seq_len, self.rank, self.d_out);
 
         // Combine: base + scale * lora
         // Use autograd-compatible addition
@@ -418,10 +391,7 @@ impl MultiHeadAttentionWithLoRA {
             );
 
             attn_outputs.extend_from_slice(
-                attn_out
-                    .data()
-                    .as_slice()
-                    .expect("contiguous attention output"),
+                attn_out.data().as_slice().expect("contiguous attention output"),
             );
         }
 
@@ -611,10 +581,7 @@ mod tests {
         let grad_o = attn.w_o.grad().unwrap();
         assert!(grad_o.iter().all(|&v| v.is_finite()));
         let sum: f32 = grad_o.iter().map(|v| v.abs()).sum();
-        assert!(
-            sum > 0.0,
-            "Output projection gradient should not be all zero"
-        );
+        assert!(sum > 0.0, "Output projection gradient should not be all zero");
     }
 
     // ============================================================================
@@ -826,10 +793,7 @@ mod tests {
 
         let mut params = HashMap::new();
         // WRONG-SHAPE q_proj: 50 elements instead of hidden*hidden
-        params.insert(
-            "attn.q_proj.weight".to_string(),
-            Tensor::from_vec(vec![0.1; 50], true),
-        );
+        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; 50], true));
         // Correct k, v, o
         params.insert(
             "attn.k_proj.weight".to_string(),
@@ -929,28 +893,19 @@ mod tests {
         let config = TransformerConfig::tiny();
         let attn = MultiHeadAttention::new(&config);
 
-        for (name, w) in [
-            ("w_q", &attn.w_q),
-            ("w_k", &attn.w_k),
-            ("w_v", &attn.w_v),
-            ("w_o", &attn.w_o),
-        ] {
+        for (name, w) in
+            [("w_q", &attn.w_q), ("w_k", &attn.w_k), ("w_v", &attn.w_v), ("w_o", &attn.w_o)]
+        {
             let data = w.data();
             let slice = data.as_slice().expect("data as slice");
 
             // No NaN
             let nan_count = slice.iter().filter(|v| v.is_nan()).count();
-            assert_eq!(
-                nan_count, 0,
-                "FALSIFY-A4e: {name} init must not contain NaN"
-            );
+            assert_eq!(nan_count, 0, "FALSIFY-A4e: {name} init must not contain NaN");
 
             // No Inf
             let inf_count = slice.iter().filter(|v| v.is_infinite()).count();
-            assert_eq!(
-                inf_count, 0,
-                "FALSIFY-A4e: {name} init must not contain Inf"
-            );
+            assert_eq!(inf_count, 0, "FALSIFY-A4e: {name} init must not contain Inf");
 
             // Values vary
             let min = slice.iter().copied().fold(f32::INFINITY, f32::min);
@@ -977,14 +932,8 @@ mod tests {
         let data = output.data();
         let nan_count = data.iter().filter(|v| v.is_nan()).count();
         let inf_count = data.iter().filter(|v| v.is_infinite()).count();
-        assert_eq!(
-            nan_count, 0,
-            "FALSIFY-A5e: Attention output must not contain NaN"
-        );
-        assert_eq!(
-            inf_count, 0,
-            "FALSIFY-A5e: Attention output must not contain Inf"
-        );
+        assert_eq!(nan_count, 0, "FALSIFY-A5e: Attention output must not contain NaN");
+        assert_eq!(inf_count, 0, "FALSIFY-A5e: Attention output must not contain Inf");
     }
 
     // =========================================================================
@@ -1032,19 +981,14 @@ mod tests {
         let attn = MultiHeadAttention::new(&config);
         let seq_len = 4;
         let x = Tensor::from_vec(
-            (0..seq_len * config.hidden_size)
-                .map(|i| (i as f32 * 0.37).sin())
-                .collect(),
+            (0..seq_len * config.hidden_size).map(|i| (i as f32 * 0.37).sin()).collect(),
             true,
         );
         let output = attn.forward(&x, seq_len);
 
         let data = output.data();
         for (i, v) in data.iter().enumerate() {
-            assert!(
-                v.is_finite(),
-                "FALSIFIED GQ-002e: MHA output[{i}] = {v} (not finite)"
-            );
+            assert!(v.is_finite(), "FALSIFIED GQ-002e: MHA output[{i}] = {v} (not finite)");
         }
     }
 
@@ -1056,11 +1000,7 @@ mod tests {
             let mut config = TransformerConfig::tiny();
             config.num_attention_heads = nh;
             config.num_kv_heads = nkv;
-            assert_eq!(
-                nh % nkv,
-                0,
-                "FALSIFIED GQ-004e: test config has invalid head ratio"
-            );
+            assert_eq!(nh % nkv, 0, "FALSIFIED GQ-004e: test config has invalid head ratio");
             // Should not panic during construction or forward
             let attn = MultiHeadAttention::new(&config);
             let x = Tensor::from_vec(vec![0.1; 2 * config.hidden_size], true);
@@ -1080,9 +1020,7 @@ mod tests {
         let attn = MultiHeadAttention::new(&config);
         let seq_len = 3;
         let x = Tensor::from_vec(
-            (0..seq_len * config.hidden_size)
-                .map(|i| (i as f32 * 0.73).cos())
-                .collect(),
+            (0..seq_len * config.hidden_size).map(|i| (i as f32 * 0.73).cos()).collect(),
             true,
         );
         let output = attn.forward(&x, seq_len);
@@ -1096,10 +1034,7 @@ mod tests {
         // All finite
         let data = output.data();
         for (i, v) in data.iter().enumerate() {
-            assert!(
-                v.is_finite(),
-                "FALSIFIED GQ-006e: MQA output[{i}] = {v} (not finite)"
-            );
+            assert!(v.is_finite(), "FALSIFIED GQ-006e: MQA output[{i}] = {v} (not finite)");
         }
     }
 

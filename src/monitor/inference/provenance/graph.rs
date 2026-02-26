@@ -86,10 +86,7 @@ impl ProvenanceGraph {
 
     /// Get predecessor nodes
     pub fn predecessors(&self, id: NodeId) -> Vec<NodeId> {
-        self.incoming_edges(id)
-            .into_iter()
-            .map(|e| e.from)
-            .collect()
+        self.incoming_edges(id).into_iter().map(|e| e.from).collect()
     }
 
     /// Get successor nodes

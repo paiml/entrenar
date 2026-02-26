@@ -16,11 +16,7 @@ impl Dataset {
     /// Create new dataset from examples
     #[must_use]
     pub fn new(name: impl Into<String>, examples: Vec<Example>) -> Self {
-        Self {
-            name: name.into(),
-            examples,
-            position: 0,
-        }
+        Self { name: name.into(), examples, position: 0 }
     }
 
     /// Create mock dataset for testing

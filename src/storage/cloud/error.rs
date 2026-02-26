@@ -33,10 +33,8 @@ mod tests {
 
     #[test]
     fn test_cloud_error_display() {
-        let io_err = CloudError::Io(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "file not found",
-        ));
+        let io_err =
+            CloudError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
         assert!(io_err.to_string().contains("IO error"));
 
         let not_found = CloudError::NotFound("abc123".to_string());

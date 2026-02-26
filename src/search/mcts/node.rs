@@ -39,12 +39,7 @@ pub struct NodeStats {
 
 impl Default for NodeStats {
     fn default() -> Self {
-        Self {
-            visits: 0,
-            total_reward: 0.0,
-            mean_reward: 0.0,
-            prior: 1.0,
-        }
+        Self { visits: 0, total_reward: 0.0, mean_reward: 0.0, prior: 1.0 }
     }
 }
 
@@ -130,10 +125,7 @@ impl<S: State, A: Action> Node<S, A> {
             action: Some(action),
             parent: Some(parent),
             children: Vec::new(),
-            stats: NodeStats {
-                prior,
-                ..Default::default()
-            },
+            stats: NodeStats { prior, ..Default::default() },
             expanded: false,
             untried_actions,
         }
@@ -217,10 +209,7 @@ mod tests {
 
     #[test]
     fn test_node_root_creation() {
-        let state = TestState {
-            value: 0,
-            terminal: false,
-        };
+        let state = TestState { value: 0, terminal: false };
         let actions = vec![TestAction { delta: 1 }];
         let node = Node::root(state.clone(), actions);
 
@@ -234,19 +223,10 @@ mod tests {
 
     #[test]
     fn test_node_child_creation() {
-        let state = TestState {
-            value: 1,
-            terminal: false,
-        };
+        let state = TestState { value: 1, terminal: false };
         let action = TestAction { delta: 1 };
-        let node = Node::child(
-            NodeId::new(1),
-            state.clone(),
-            action.clone(),
-            NodeId::new(0),
-            vec![],
-            0.5,
-        );
+        let node =
+            Node::child(NodeId::new(1), state.clone(), action.clone(), NodeId::new(0), vec![], 0.5);
 
         assert_eq!(node.id, NodeId::new(1));
         assert_eq!(node.state, state);
@@ -257,10 +237,7 @@ mod tests {
 
     #[test]
     fn test_node_is_leaf() {
-        let state = TestState {
-            value: 0,
-            terminal: false,
-        };
+        let state = TestState { value: 0, terminal: false };
         let node: Node<TestState, TestAction> = Node::root(state, vec![]);
         assert!(node.is_leaf());
     }

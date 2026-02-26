@@ -41,11 +41,7 @@ impl Trainer {
             }
         }
 
-        let avg_loss = if num_batches > 0 {
-            total_loss / num_batches as f32
-        } else {
-            0.0
-        };
+        let avg_loss = if num_batches > 0 { total_loss / num_batches as f32 } else { 0.0 };
 
         // Record epoch metrics
         self.metrics.record_epoch(avg_loss, self.lr());
@@ -79,10 +75,7 @@ impl Trainer {
         F: Fn(&Tensor) -> Tensor,
         I: IntoIterator<Item = Batch>,
     {
-        assert!(
-            self.loss_fn.is_some(),
-            "Loss function must be set before validation"
-        );
+        assert!(self.loss_fn.is_some(), "Loss function must be set before validation");
 
         let mut total_loss = 0.0;
         let mut num_batches = 0;
@@ -93,17 +86,13 @@ impl Trainer {
             let loss = self
                 .loss_fn
                 .as_ref()
-                .unwrap()
+                .expect("loss function must be set before validation")
                 .forward(&predictions, &batch.targets);
             total_loss += loss.data()[0];
             num_batches += 1;
         }
 
-        let avg_loss = if num_batches > 0 {
-            total_loss / num_batches as f32
-        } else {
-            0.0
-        };
+        let avg_loss = if num_batches > 0 { total_loss / num_batches as f32 } else { 0.0 };
 
         // Record validation loss
         self.metrics.record_val_loss(avg_loss);

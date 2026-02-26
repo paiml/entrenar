@@ -30,10 +30,7 @@ fn gradual_config() -> PruningConfig {
 fn test_callback_new_default() {
     // TEST_ID: CB-001
     let callback = PruningCallback::new(default_config());
-    assert!(
-        callback.is_enabled(),
-        "CB-001 FALSIFIED: Default should be enabled"
-    );
+    assert!(callback.is_enabled(), "CB-001 FALSIFIED: Default should be enabled");
     assert_eq!(
         callback.current_sparsity(),
         0.0,
@@ -52,15 +49,9 @@ fn test_callback_enabled_toggle() {
     let mut callback = PruningCallback::new(default_config());
     assert!(callback.is_enabled());
     callback.set_enabled(false);
-    assert!(
-        !callback.is_enabled(),
-        "CB-002 FALSIFIED: Should be disabled"
-    );
+    assert!(!callback.is_enabled(), "CB-002 FALSIFIED: Should be disabled");
     callback.set_enabled(true);
-    assert!(
-        callback.is_enabled(),
-        "CB-002 FALSIFIED: Should be enabled again"
-    );
+    assert!(callback.is_enabled(), "CB-002 FALSIFIED: Should be enabled again");
 }
 
 #[test]
@@ -82,11 +73,7 @@ fn test_callback_name() {
 fn test_current_sparsity_starts_at_zero() {
     // TEST_ID: CB-010
     let callback = PruningCallback::new(gradual_config());
-    assert_eq!(
-        callback.current_sparsity(),
-        0.0,
-        "CB-010 FALSIFIED: Initial sparsity must be 0.0"
-    );
+    assert_eq!(callback.current_sparsity(), 0.0, "CB-010 FALSIFIED: Initial sparsity must be 0.0");
 }
 
 #[test]
@@ -95,25 +82,13 @@ fn test_set_current_sparsity_clamps_to_bounds() {
     let mut callback = PruningCallback::new(default_config());
 
     callback.set_current_sparsity(0.5);
-    assert_eq!(
-        callback.current_sparsity(),
-        0.5,
-        "CB-011 FALSIFIED: Should set sparsity to 0.5"
-    );
+    assert_eq!(callback.current_sparsity(), 0.5, "CB-011 FALSIFIED: Should set sparsity to 0.5");
 
     callback.set_current_sparsity(-0.5);
-    assert_eq!(
-        callback.current_sparsity(),
-        0.0,
-        "CB-011 FALSIFIED: Should clamp negative to 0.0"
-    );
+    assert_eq!(callback.current_sparsity(), 0.0, "CB-011 FALSIFIED: Should clamp negative to 0.0");
 
     callback.set_current_sparsity(1.5);
-    assert_eq!(
-        callback.current_sparsity(),
-        1.0,
-        "CB-011 FALSIFIED: Should clamp >1.0 to 1.0"
-    );
+    assert_eq!(callback.current_sparsity(), 1.0, "CB-011 FALSIFIED: Should clamp >1.0 to 1.0");
 }
 
 #[test]
@@ -168,11 +143,7 @@ fn test_progress_clamped_to_one() {
     let config = PruningConfig::default().with_target_sparsity(0.5);
     let mut callback = PruningCallback::new(config);
     callback.set_current_sparsity(0.6); // Exceeds target
-    assert_eq!(
-        callback.progress(),
-        1.0,
-        "CB-022 FALSIFIED: Progress should be clamped to 1.0"
-    );
+    assert_eq!(callback.progress(), 1.0, "CB-022 FALSIFIED: Progress should be clamped to 1.0");
 }
 
 #[test]
@@ -234,10 +205,7 @@ fn test_schedule_access() {
     let callback = PruningCallback::new(gradual_config());
     match callback.schedule() {
         PruningSchedule::Gradual { end_step, .. } => {
-            assert_eq!(
-                *end_step, 1000,
-                "CB-071 FALSIFIED: Schedule should be accessible"
-            );
+            assert_eq!(*end_step, 1000, "CB-071 FALSIFIED: Schedule should be accessible");
         }
         _ => panic!("CB-071 FALSIFIED: Expected Gradual schedule"),
     }

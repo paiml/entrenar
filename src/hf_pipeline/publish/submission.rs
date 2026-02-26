@@ -9,10 +9,7 @@ use crate::eval::evaluator::{EvalResult, Metric};
 pub fn format_submission_jsonl(result: &EvalResult) -> String {
     let mut obj = serde_json::Map::new();
 
-    obj.insert(
-        "model".to_string(),
-        serde_json::Value::String(result.model_name.clone()),
-    );
+    obj.insert("model".to_string(), serde_json::Value::String(result.model_name.clone()));
 
     for (metric, &value) in &result.scores {
         let key = metric_to_submission_key(metric);
@@ -20,10 +17,7 @@ pub fn format_submission_jsonl(result: &EvalResult) -> String {
     }
 
     if result.inference_time_ms > 0.0 {
-        obj.insert(
-            "inference_time_ms".to_string(),
-            serde_json::json!(result.inference_time_ms),
-        );
+        obj.insert("inference_time_ms".to_string(), serde_json::json!(result.inference_time_ms));
     }
 
     serde_json::Value::Object(obj).to_string()
@@ -31,11 +25,7 @@ pub fn format_submission_jsonl(result: &EvalResult) -> String {
 
 /// Format multiple `EvalResult`s as JSONL
 pub fn format_submissions_jsonl(results: &[EvalResult]) -> String {
-    results
-        .iter()
-        .map(format_submission_jsonl)
-        .collect::<Vec<_>>()
-        .join("\n")
+    results.iter().map(format_submission_jsonl).collect::<Vec<_>>().join("\n")
 }
 
 /// Convert a `Metric` to a leaderboard-compatible key name

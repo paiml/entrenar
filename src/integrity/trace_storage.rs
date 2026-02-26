@@ -168,9 +168,8 @@ impl TraceStoragePolicy {
         }
 
         // Simple deterministic hash for consistent sampling
-        let hash = trace_id.bytes().fold(0u64, |acc, b| {
-            acc.wrapping_mul(31).wrapping_add(u64::from(b))
-        });
+        let hash =
+            trace_id.bytes().fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(u64::from(b)));
 
         let normalized = (hash % 10000) as f64 / 10000.0;
         normalized < self.sample_rate
@@ -273,30 +272,12 @@ mod tests {
 
     #[test]
     fn test_compression_algorithm_parse() {
-        assert_eq!(
-            CompressionAlgorithm::parse("none"),
-            Some(CompressionAlgorithm::None)
-        );
-        assert_eq!(
-            CompressionAlgorithm::parse("off"),
-            Some(CompressionAlgorithm::None)
-        );
-        assert_eq!(
-            CompressionAlgorithm::parse("rle"),
-            Some(CompressionAlgorithm::Rle)
-        );
-        assert_eq!(
-            CompressionAlgorithm::parse("zstd"),
-            Some(CompressionAlgorithm::Zstd)
-        );
-        assert_eq!(
-            CompressionAlgorithm::parse("ZSTANDARD"),
-            Some(CompressionAlgorithm::Zstd)
-        );
-        assert_eq!(
-            CompressionAlgorithm::parse("lz4"),
-            Some(CompressionAlgorithm::Lz4)
-        );
+        assert_eq!(CompressionAlgorithm::parse("none"), Some(CompressionAlgorithm::None));
+        assert_eq!(CompressionAlgorithm::parse("off"), Some(CompressionAlgorithm::None));
+        assert_eq!(CompressionAlgorithm::parse("rle"), Some(CompressionAlgorithm::Rle));
+        assert_eq!(CompressionAlgorithm::parse("zstd"), Some(CompressionAlgorithm::Zstd));
+        assert_eq!(CompressionAlgorithm::parse("ZSTANDARD"), Some(CompressionAlgorithm::Zstd));
+        assert_eq!(CompressionAlgorithm::parse("lz4"), Some(CompressionAlgorithm::Lz4));
         assert_eq!(CompressionAlgorithm::parse("invalid"), None);
     }
 
@@ -389,15 +370,11 @@ mod tests {
         let policy = TraceStoragePolicy::new(CompressionAlgorithm::None, 7, 1024, 0.5);
 
         // With enough samples, should be roughly 50%
-        let sampled: usize = (0..1000)
-            .filter(|i| policy.should_sample(&format!("trace-{i}")))
-            .count();
+        let sampled: usize =
+            (0..1000).filter(|i| policy.should_sample(&format!("trace-{i}"))).count();
 
         // Allow 10% tolerance
-        assert!(
-            sampled > 400 && sampled < 600,
-            "Expected ~500 samples, got {sampled}"
-        );
+        assert!(sampled > 400 && sampled < 600, "Expected ~500 samples, got {sampled}");
     }
 
     #[test]
@@ -469,10 +446,7 @@ mod tests {
     fn test_validate_invalid_sample_rate() {
         let mut policy = TraceStoragePolicy::default();
         policy.sample_rate = 1.5; // Invalid (bypassing new's clamp)
-        assert!(matches!(
-            policy.validate(),
-            Err(PolicyValidationError::InvalidSampleRate(_))
-        ));
+        assert!(matches!(policy.validate(), Err(PolicyValidationError::InvalidSampleRate(_))));
     }
 
     #[test]

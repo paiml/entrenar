@@ -47,12 +47,7 @@ impl TieredCurriculum {
     /// * `tier_thresholds` - Accuracy thresholds for each tier advancement
     /// * `patience` - Epochs at threshold before advancing
     pub fn new(tier_thresholds: Vec<f32>, patience: usize) -> Self {
-        Self {
-            tier_thresholds,
-            patience: patience.max(1),
-            current_tier: 1,
-            epochs_at_threshold: 0,
-        }
+        Self { tier_thresholds, patience: patience.max(1), current_tier: 1, epochs_at_threshold: 0 }
     }
 
     /// Create with default CITL thresholds

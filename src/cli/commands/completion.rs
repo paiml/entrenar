@@ -7,11 +7,7 @@ use clap::CommandFactory;
 use clap_complete::{generate, Shell};
 
 pub fn run_completion(args: CompletionArgs, level: LogLevel) -> Result<(), String> {
-    log(
-        level,
-        LogLevel::Verbose,
-        &format!("Generating completions for: {}", args.shell),
-    );
+    log(level, LogLevel::Verbose, &format!("Generating completions for: {}", args.shell));
 
     let mut cmd = Cli::command();
     let shell = match args.shell {

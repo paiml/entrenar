@@ -22,11 +22,7 @@ impl Generator {
         use rand::SeedableRng;
         let mut rng = rand::rngs::StdRng::from_os_rng();
         let (weights, biases) = Self::init_weights(&config, &mut rng);
-        Self {
-            config,
-            weights,
-            biases,
-        }
+        Self { config, weights, biases }
     }
 
     /// Create a new generator with a seed for reproducibility
@@ -34,11 +30,7 @@ impl Generator {
         use rand::SeedableRng;
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
         let (weights, biases) = Self::init_weights(&config, &mut rng);
-        Self {
-            config,
-            weights,
-            biases,
-        }
+        Self { config, weights, biases }
     }
 
     fn init_weights<R: Rng>(

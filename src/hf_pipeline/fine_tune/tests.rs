@@ -15,10 +15,7 @@ fn test_fine_tune_method_default() {
 
 #[test]
 fn test_fine_tune_method_qlora() {
-    let method = FineTuneMethod::QLoRA {
-        lora_config: LoRAConfig::default(),
-        bits: 4,
-    };
+    let method = FineTuneMethod::QLoRA { lora_config: LoRAConfig::default(), bits: 4 };
     if let FineTuneMethod::QLoRA { bits, .. } = method {
         assert_eq!(bits, 4);
     } else {
@@ -161,35 +158,20 @@ fn test_estimate_memory_qlora_vs_lora() {
 
 #[test]
 fn test_memory_requirement_total() {
-    let mem = MemoryRequirement {
-        model: 1000,
-        optimizer: 500,
-        gradients: 250,
-        activations: 100,
-    };
+    let mem = MemoryRequirement { model: 1000, optimizer: 500, gradients: 250, activations: 100 };
     assert_eq!(mem.total(), 1850);
 }
 
 #[test]
 fn test_memory_requirement_fits_in() {
-    let mem = MemoryRequirement {
-        model: 1000,
-        optimizer: 500,
-        gradients: 250,
-        activations: 100,
-    };
+    let mem = MemoryRequirement { model: 1000, optimizer: 500, gradients: 250, activations: 100 };
     assert!(mem.fits_in(2000));
     assert!(!mem.fits_in(1000));
 }
 
 #[test]
 fn test_memory_requirement_savings() {
-    let mem = MemoryRequirement {
-        model: 500,
-        optimizer: 100,
-        gradients: 50,
-        activations: 50,
-    };
+    let mem = MemoryRequirement { model: 500, optimizer: 100, gradients: 50, activations: 50 };
     // Full memory for 1000 params = 1000*4 + 1000*8 + 1000*4 = 16000
     let savings = mem.savings_vs_full(1000);
     assert!(savings > 0.0);
@@ -279,10 +261,7 @@ fn test_fine_tune_config_clone() {
 
 #[test]
 fn test_fine_tune_method_clone() {
-    let method = FineTuneMethod::QLoRA {
-        lora_config: LoRAConfig::default(),
-        bits: 4,
-    };
+    let method = FineTuneMethod::QLoRA { lora_config: LoRAConfig::default(), bits: 4 };
     let cloned = method.clone();
     if let FineTuneMethod::QLoRA { bits, .. } = cloned {
         assert_eq!(bits, 4);

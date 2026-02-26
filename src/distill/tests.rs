@@ -8,14 +8,12 @@ use proptest::prelude::*;
 
 // Helper to generate random logits
 fn logits_strategy(batch_size: usize, num_classes: usize) -> impl Strategy<Value = Array2<f32>> {
-    prop::collection::vec(
-        prop::collection::vec(-10.0f32..10.0, num_classes),
-        batch_size,
+    prop::collection::vec(prop::collection::vec(-10.0f32..10.0, num_classes), batch_size).prop_map(
+        move |data| {
+            let flat: Vec<f32> = data.into_iter().flatten().collect();
+            Array2::from_shape_vec((batch_size, num_classes), flat).unwrap()
+        },
     )
-    .prop_map(move |data| {
-        let flat: Vec<f32> = data.into_iter().flatten().collect();
-        Array2::from_shape_vec((batch_size, num_classes), flat).unwrap()
-    })
 }
 
 // Helper to generate random hidden states

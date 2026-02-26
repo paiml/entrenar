@@ -29,10 +29,7 @@ impl SqliteBackend {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path_str = path.as_ref().to_string_lossy().to_string();
 
-        Ok(Self {
-            path: path_str,
-            state: Arc::new(RwLock::new(SqliteState::default())),
-        })
+        Ok(Self { path: path_str, state: Arc::new(RwLock::new(SqliteState::default())) })
     }
 
     /// Open an in-memory database
@@ -50,7 +47,7 @@ impl SqliteBackend {
         use std::time::{SystemTime, UNIX_EPOCH};
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .expect("system clock must not be before UNIX epoch")
             .as_nanos();
         format!("{ts:x}")
     }

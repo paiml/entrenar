@@ -31,21 +31,9 @@ pub fn simd_adamw_update(
     weight_decay: f32,
     epsilon: f32,
 ) {
-    assert_eq!(
-        grad.len(),
-        m.len(),
-        "Gradient and momentum lengths must match"
-    );
-    assert_eq!(
-        grad.len(),
-        v.len(),
-        "Gradient and variance lengths must match"
-    );
-    assert_eq!(
-        grad.len(),
-        param.len(),
-        "Gradient and parameter lengths must match"
-    );
+    assert_eq!(grad.len(), m.len(), "Gradient and momentum lengths must match");
+    assert_eq!(grad.len(), v.len(), "Gradient and variance lengths must match");
+    assert_eq!(grad.len(), param.len(), "Gradient and parameter lengths must match");
 
     // Convert to Trueno vectors
     let grad_vec = Vector::from_slice(grad);
@@ -66,17 +54,14 @@ pub fn simd_adamw_update(
 
     // Compute adaptive update: lr_t * m_t / (√v_t + ε)
     let v_sqrt = v_new.sqrt().expect("Sqrt v failed");
-    let denominator = v_sqrt
-        .add(&Vector::from_slice(&vec![epsilon; grad.len()]))
-        .expect("Add epsilon failed");
+    let denominator =
+        v_sqrt.add(&Vector::from_slice(&vec![epsilon; grad.len()])).expect("Add epsilon failed");
     let numerator = m_new.scale(lr_t).expect("Scale m_new failed");
     let adaptive_update = numerator.div(&denominator).expect("Div failed");
 
     // Apply weight decay: θ = (1 - lr * λ) * θ - update
     let weight_decay_factor = 1.0 - lr * weight_decay;
-    let param_decayed = param_vec
-        .scale(weight_decay_factor)
-        .expect("Weight decay failed");
+    let param_decayed = param_vec.scale(weight_decay_factor).expect("Weight decay failed");
     let param_new = param_decayed.sub(&adaptive_update).expect("Sub failed");
 
     // Write back results

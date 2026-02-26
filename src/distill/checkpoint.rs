@@ -53,10 +53,7 @@ pub fn save_student_checkpoint(
         .map(|name| {
             let data = &weights[*name];
             let bytes: Vec<u8> = bytemuck::cast_slice(data).to_vec();
-            let shape = shapes
-                .get(*name)
-                .cloned()
-                .unwrap_or_else(|| vec![data.len()]);
+            let shape = shapes.get(*name).cloned().unwrap_or_else(|| vec![data.len()]);
             ((*name).clone(), bytes, shape)
         })
         .collect();
@@ -64,20 +61,15 @@ pub fn save_student_checkpoint(
     let views: Vec<(&str, TensorView<'_>)> = tensor_data
         .iter()
         .map(|(name, bytes, shape)| {
-            let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+            let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+                .expect("TensorView construction must not fail for valid F32 data");
             (name.as_str(), view)
         })
         .collect();
 
     let mut metadata = HashMap::new();
-    metadata.insert(
-        "teacher_model".to_string(),
-        checkpoint.teacher_model.clone(),
-    );
-    metadata.insert(
-        "temperature".to_string(),
-        format!("{}", checkpoint.temperature),
-    );
+    metadata.insert("teacher_model".to_string(), checkpoint.teacher_model.clone());
+    metadata.insert("temperature".to_string(), format!("{}", checkpoint.temperature));
     metadata.insert("alpha".to_string(), format!("{}", checkpoint.alpha));
     metadata.insert("epoch".to_string(), format!("{}", checkpoint.epoch));
     metadata.insert("step".to_string(), format!("{}", checkpoint.step));
@@ -104,11 +96,8 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn make_test_data() -> (
-        HashMap<String, Vec<f32>>,
-        HashMap<String, Vec<usize>>,
-        DistillationCheckpoint,
-    ) {
+    fn make_test_data(
+    ) -> (HashMap<String, Vec<f32>>, HashMap<String, Vec<usize>>, DistillationCheckpoint) {
         let mut weights = HashMap::new();
         let mut shapes = HashMap::new();
 
@@ -199,14 +188,8 @@ mod tests {
         let (weights, shapes, checkpoint) = make_test_data();
         let tmp = TempDir::new().unwrap();
 
-        save_student_checkpoint(
-            &weights,
-            &shapes,
-            &checkpoint,
-            tmp.path(),
-            "student.safetensors",
-        )
-        .unwrap();
+        save_student_checkpoint(&weights, &shapes, &checkpoint, tmp.path(), "student.safetensors")
+            .unwrap();
 
         let json = std::fs::read_to_string(tmp.path().join("distillation_metadata.json")).unwrap();
         let loaded: DistillationCheckpoint = serde_json::from_str(&json).unwrap();
@@ -236,14 +219,9 @@ mod tests {
         };
 
         let tmp = TempDir::new().unwrap();
-        let path = save_student_checkpoint(
-            &weights,
-            &shapes,
-            &checkpoint,
-            tmp.path(),
-            "ckpt.safetensors",
-        )
-        .unwrap();
+        let path =
+            save_student_checkpoint(&weights, &shapes, &checkpoint, tmp.path(), "ckpt.safetensors")
+                .unwrap();
         assert!(path.exists());
     }
 }

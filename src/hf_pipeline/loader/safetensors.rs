@@ -45,10 +45,8 @@ impl SafeTensorsTeacher {
         let data = std::fs::read(&model_path)?;
 
         // Parse SafeTensors
-        let tensors =
-            SafeTensors::deserialize(&data).map_err(|e| FetchError::SafeTensorsParseError {
-                message: e.to_string(),
-            })?;
+        let tensors = SafeTensors::deserialize(&data)
+            .map_err(|e| FetchError::SafeTensorsParseError { message: e.to_string() })?;
 
         // Extract tensor names and compute statistics
         let tensor_names: Vec<String> = tensors.names().iter().map(|s| (*s).to_string()).collect();
@@ -171,17 +169,12 @@ fn detect_from_query_weights(
     tensors: &safetensors::SafeTensors<'_>,
     names: &[String],
 ) -> Option<usize> {
-    const QUERY_PATTERNS: &[&str] = &[
-        ".query.weight",
-        ".q_proj.weight",
-        ".self_attn.q_proj.weight",
-    ];
+    const QUERY_PATTERNS: &[&str] =
+        &[".query.weight", ".q_proj.weight", ".self_attn.q_proj.weight"];
 
     names.iter().find_map(|name| {
         let matches_pattern = QUERY_PATTERNS.iter().any(|p| name.ends_with(p));
-        matches_pattern
-            .then(|| square_dim(tensors, name, 1))
-            .flatten()
+        matches_pattern.then(|| square_dim(tensors, name, 1)).flatten()
     })
 }
 

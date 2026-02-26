@@ -28,18 +28,9 @@ fn main() {
     println!("📋 Schedule 1: OneShot Pruning");
     let oneshot = PruningSchedule::OneShot { step: 1000 };
     println!("   Prune at step: 1000");
-    println!(
-        "   Sparsity before step 1000: {:.0}%",
-        oneshot.sparsity_at_step(999) * 100.0
-    );
-    println!(
-        "   Sparsity at step 1000: {:.0}%",
-        oneshot.sparsity_at_step(1000) * 100.0
-    );
-    println!(
-        "   Sparsity after step 1000: {:.0}%\n",
-        oneshot.sparsity_at_step(1001) * 100.0
-    );
+    println!("   Sparsity before step 1000: {:.0}%", oneshot.sparsity_at_step(999) * 100.0);
+    println!("   Sparsity at step 1000: {:.0}%", oneshot.sparsity_at_step(1000) * 100.0);
+    println!("   Sparsity after step 1000: {:.0}%\n", oneshot.sparsity_at_step(1001) * 100.0);
 
     // =========================================================================
     // 2. Gradual Pruning Schedule
@@ -57,11 +48,7 @@ fn main() {
     println!("   Pruning frequency: every 500 steps");
     println!("   Sparsity progression:");
     for step in [1000, 2000, 3000, 4000, 5000] {
-        println!(
-            "     Step {:>5}: {:.1}%",
-            step,
-            gradual.sparsity_at_step(step) * 100.0
-        );
+        println!("     Step {:>5}: {:.1}%", step, gradual.sparsity_at_step(step) * 100.0);
     }
     println!();
 
@@ -69,20 +56,12 @@ fn main() {
     // 3. Cubic Pruning Schedule (Zhu & Gupta 2017)
     // =========================================================================
     println!("📋 Schedule 3: Cubic Pruning (Zhu & Gupta)");
-    let cubic = PruningSchedule::Cubic {
-        start_step: 0,
-        end_step: 10000,
-        final_sparsity: 0.7,
-    };
+    let cubic = PruningSchedule::Cubic { start_step: 0, end_step: 10000, final_sparsity: 0.7 };
     println!("   Formula: s_t = s_f * (1 - (1 - t/T)^3)");
     println!("   Final sparsity: 70%");
     println!("   Sparsity progression:");
     for step in [0, 2500, 5000, 7500, 10000] {
-        println!(
-            "     Step {:>5}: {:.1}%",
-            step,
-            cubic.sparsity_at_step(step) * 100.0
-        );
+        println!("     Step {:>5}: {:.1}%", step, cubic.sparsity_at_step(step) * 100.0);
     }
     println!();
 
@@ -97,14 +76,8 @@ fn main() {
         .with_schedule(gradual.clone());
 
     println!("   Method: {}", magnitude_config.method().display_name());
-    println!(
-        "   Requires calibration: {}",
-        magnitude_config.requires_calibration()
-    );
-    println!(
-        "   Target sparsity: {:.0}%",
-        magnitude_config.target_sparsity() * 100.0
-    );
+    println!("   Requires calibration: {}", magnitude_config.requires_calibration());
+    println!("   Target sparsity: {:.0}%", magnitude_config.target_sparsity() * 100.0);
     println!("   Pattern: Unstructured\n");
 
     // =========================================================================
@@ -118,10 +91,7 @@ fn main() {
         .with_schedule(PruningSchedule::OneShot { step: 0 });
 
     println!("   Method: {}", wanda_config.method().display_name());
-    println!(
-        "   Requires calibration: {}",
-        wanda_config.requires_calibration()
-    );
+    println!("   Requires calibration: {}", wanda_config.requires_calibration());
     println!("   Pattern: 2:4 N:M Sparsity");
     println!("   Theoretical sparsity: 50%\n");
 
@@ -136,10 +106,7 @@ fn main() {
         .with_dataset("c4");
 
     println!("   Samples: {}", calibration_config.num_samples());
-    println!(
-        "   Sequence length: {}",
-        calibration_config.sequence_length()
-    );
+    println!("   Sequence length: {}", calibration_config.sequence_length());
     println!("   Batch size: {}", calibration_config.batch_size());
     println!("   Dataset: {}\n", calibration_config.dataset());
 

@@ -75,11 +75,7 @@ pub fn load_safetensors_weights(
         })?;
 
         let tensors = SafeTensors::deserialize(&data).map_err(|e| {
-            Error::ConfigError(format!(
-                "Failed to parse SafeTensors {}: {}",
-                st_path.display(),
-                e
-            ))
+            Error::ConfigError(format!("Failed to parse SafeTensors {}: {}", st_path.display(), e))
         })?;
 
         // Auto-detect architecture from first file
@@ -132,9 +128,7 @@ pub fn expected_weight_count(num_layers: usize, has_lm_head: bool) -> usize {
 pub fn validate_weights(weights: &HashMap<String, Tensor>, num_layers: usize) -> Result<()> {
     // Check embedding
     if !weights.contains_key("model.embed_tokens.weight") {
-        return Err(Error::ConfigError(
-            "Missing model.embed_tokens.weight".into(),
-        ));
+        return Err(Error::ConfigError("Missing model.embed_tokens.weight".into()));
     }
 
     // Check final norm

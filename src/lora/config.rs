@@ -27,13 +27,7 @@ impl LoRAConfig {
     /// * `rank` - LoRA rank (typically 4, 8, 16, 32, or 64)
     /// * `alpha` - LoRA alpha scaling parameter (often same as rank)
     pub fn new(rank: usize, alpha: f32) -> Self {
-        Self {
-            rank,
-            alpha,
-            target_modules: HashSet::new(),
-            layers: None,
-            all_linear: false,
-        }
+        Self { rank, alpha, target_modules: HashSet::new(), layers: None, all_linear: false }
     }
 
     /// Target specific modules by name
@@ -62,21 +56,17 @@ impl LoRAConfig {
 
     /// Target query and value projections only (common for efficient fine-tuning)
     pub fn target_qv_projections(mut self) -> Self {
-        self.target_modules = vec!["q_proj".to_string(), "v_proj".to_string()]
-            .into_iter()
-            .collect();
+        self.target_modules =
+            vec!["q_proj".to_string(), "v_proj".to_string()].into_iter().collect();
         self
     }
 
     /// Target all attention projections except output (q, k, v only)
     pub fn target_qkv_projections(mut self) -> Self {
-        self.target_modules = vec![
-            "q_proj".to_string(),
-            "k_proj".to_string(),
-            "v_proj".to_string(),
-        ]
-        .into_iter()
-        .collect();
+        self.target_modules =
+            vec!["q_proj".to_string(), "k_proj".to_string(), "v_proj".to_string()]
+                .into_iter()
+                .collect();
         self
     }
 
@@ -303,9 +293,7 @@ mod tests {
 
     #[test]
     fn test_target_layers() {
-        let config = LoRAConfig::new(8, 8.0)
-            .target_modules(&["q_proj"])
-            .target_layers(&[0, 2, 4]);
+        let config = LoRAConfig::new(8, 8.0).target_modules(&["q_proj"]).target_layers(&[0, 2, 4]);
 
         // Layer 0 - should apply
         assert!(config.should_apply("q_proj", Some(0)));
@@ -345,9 +333,7 @@ mod tests {
 
     #[test]
     fn test_layer_filtering_with_modules() {
-        let config = LoRAConfig::new(4, 4.0)
-            .target_attention_projections()
-            .target_layers(&[1, 3]);
+        let config = LoRAConfig::new(4, 4.0).target_attention_projections().target_layers(&[1, 3]);
 
         // Layer 0 - wrong layer
         assert!(!config.should_apply("q_proj", Some(0)));

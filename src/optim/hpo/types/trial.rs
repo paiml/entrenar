@@ -23,13 +23,7 @@ pub struct Trial {
 impl Trial {
     /// Create a new trial
     pub fn new(id: usize, config: HashMap<String, ParameterValue>) -> Self {
-        Self {
-            id,
-            config,
-            score: f64::INFINITY,
-            iterations: 0,
-            status: TrialStatus::Pending,
-        }
+        Self { id, config, score: f64::INFINITY, iterations: 0, status: TrialStatus::Pending }
     }
 
     /// Mark trial as complete with score

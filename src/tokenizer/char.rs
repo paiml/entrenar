@@ -20,12 +20,7 @@ pub struct CharTokenizer {
 impl CharTokenizer {
     /// Create a new character tokenizer
     pub fn new(config: TokenizerConfig) -> Self {
-        Self {
-            config,
-            vocab: HashMap::new(),
-            id_to_char: HashMap::new(),
-            trained: false,
-        }
+        Self { config, vocab: HashMap::new(), id_to_char: HashMap::new(), trained: false }
     }
 }
 
@@ -36,11 +31,8 @@ impl Tokenizer for CharTokenizer {
         // Count character frequencies
         let mut char_counts: HashMap<char, usize> = HashMap::new();
         for text in corpus {
-            let processed = if self.config.lowercase {
-                text.to_lowercase()
-            } else {
-                text.to_string()
-            };
+            let processed =
+                if self.config.lowercase { text.to_lowercase() } else { text.to_string() };
             for c in processed.chars() {
                 *char_counts.entry(c).or_insert(0) += 1;
             }
@@ -67,11 +59,7 @@ impl Tokenizer for CharTokenizer {
             return Err(TokenizerError::NotTrained);
         }
 
-        let processed = if self.config.lowercase {
-            text.to_lowercase()
-        } else {
-            text.to_string()
-        };
+        let processed = if self.config.lowercase { text.to_lowercase() } else { text.to_string() };
 
         let mut ids = Vec::new();
         for c in processed.chars() {
@@ -114,7 +102,9 @@ impl Tokenizer for CharTokenizer {
 
     fn token_to_id(&self, token: &str) -> Option<TokenId> {
         if token.len() == 1 {
-            self.vocab.get(&token.chars().next().unwrap()).copied()
+            self.vocab
+                .get(&token.chars().next().expect("single-char token must have a char"))
+                .copied()
         } else {
             None
         }
@@ -177,9 +167,7 @@ mod tests {
 
     #[test]
     fn test_char_lowercase() {
-        let config = TokenizerConfig::char()
-            .with_min_frequency(1)
-            .with_lowercase(true);
+        let config = TokenizerConfig::char().with_min_frequency(1).with_lowercase(true);
         let mut tokenizer = CharTokenizer::new(config);
 
         let corpus = vec!["Hello"];

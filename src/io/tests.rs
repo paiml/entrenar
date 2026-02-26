@@ -8,10 +8,7 @@ use tempfile::NamedTempFile;
 fn test_full_workflow_json() {
     // Create a model
     let params = vec![
-        (
-            "weight".to_string(),
-            Tensor::from_vec(vec![1.0, 2.0, 3.0], true),
-        ),
+        ("weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0], true)),
         ("bias".to_string(), Tensor::from_vec(vec![0.5], false)),
     ];
 
@@ -86,14 +83,8 @@ fn test_model_with_complex_metadata() {
 
     let loaded = load_model(&path).unwrap();
 
-    assert_eq!(
-        model.metadata.custom.get("num_layers"),
-        loaded.metadata.custom.get("num_layers")
-    );
-    assert_eq!(
-        model.metadata.custom.get("hidden_size"),
-        loaded.metadata.custom.get("hidden_size")
-    );
+    assert_eq!(model.metadata.custom.get("num_layers"), loaded.metadata.custom.get("num_layers"));
+    assert_eq!(model.metadata.custom.get("hidden_size"), loaded.metadata.custom.get("hidden_size"));
 
     std::fs::remove_file(path).ok();
 }
@@ -103,10 +94,7 @@ fn test_large_model_parameters() {
     // Test with a larger parameter set
     let large_data: Vec<f32> = (0..10000).map(|i| i as f32 * 0.001).collect();
 
-    let params = vec![(
-        "large_weight".to_string(),
-        Tensor::from_vec(large_data, true),
-    )];
+    let params = vec![("large_weight".to_string(), Tensor::from_vec(large_data, true))];
 
     let model = Model::new(ModelMetadata::new("large-test", "big"), params);
 

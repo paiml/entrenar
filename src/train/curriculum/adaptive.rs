@@ -62,16 +62,10 @@ impl AdaptiveCurriculum {
 
     /// Update accuracy for an error class
     pub fn update_class(&mut self, error_code: &str, correct: bool) {
-        let attempts = self
-            .class_attempts
-            .entry(error_code.to_string())
-            .or_insert(0);
+        let attempts = self.class_attempts.entry(error_code.to_string()).or_insert(0);
         *attempts += 1;
 
-        let acc = self
-            .class_accuracy
-            .entry(error_code.to_string())
-            .or_insert(0.0);
+        let acc = self.class_accuracy.entry(error_code.to_string()).or_insert(0.0);
         // Exponential moving average
         let alpha = 0.1;
         *acc = *acc * (1.0 - alpha) + if correct { alpha } else { 0.0 };

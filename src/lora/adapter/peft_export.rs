@@ -39,11 +39,7 @@ struct AdapterWeights {
 impl PeftAdapterBundle {
     /// Create a new bundle with the given LoRA config
     pub fn new(config: LoRAConfig) -> Self {
-        Self {
-            adapters: Vec::new(),
-            config,
-            base_model: None,
-        }
+        Self { adapters: Vec::new(), config, base_model: None }
     }
 
     /// Set the base model name
@@ -79,9 +75,7 @@ impl PeftAdapterBundle {
         // Write adapter_config.json
         let peft_config =
             PeftAdapterConfig::from_lora_config(&self.config, self.base_model.as_deref());
-        let config_json = peft_config
-            .to_json()
-            .map_err(|e| AdapterError::Serialization(e))?;
+        let config_json = peft_config.to_json().map_err(|e| AdapterError::Serialization(e))?;
         std::fs::write(output_dir.join("adapter_config.json"), config_json)?;
 
         // Build tensor data for safetensors
@@ -106,7 +100,8 @@ impl PeftAdapterBundle {
         let views: Vec<(&str, TensorView<'_>)> = tensor_data
             .iter()
             .map(|(name, bytes, shape)| {
-                let view = TensorView::new(Dtype::F32, shape.clone(), bytes).unwrap();
+                let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+                    .expect("TensorView construction must not fail for valid F32 data");
                 (name.as_str(), view)
             })
             .collect();
@@ -119,10 +114,7 @@ impl PeftAdapterBundle {
             AdapterError::SafeTensors(format!("SafeTensors serialization failed: {e}"))
         })?;
 
-        std::fs::write(
-            output_dir.join("adapter_model.safetensors"),
-            safetensor_bytes,
-        )?;
+        std::fs::write(output_dir.join("adapter_model.safetensors"), safetensor_bytes)?;
 
         Ok(())
     }
@@ -200,10 +192,7 @@ mod tests {
         assert_eq!(parsed.peft_type, "LORA");
         assert_eq!(parsed.r, 16);
         assert_eq!(parsed.lora_alpha, 32.0);
-        assert_eq!(
-            parsed.base_model_name_or_path,
-            Some("test/model".to_string())
-        );
+        assert_eq!(parsed.base_model_name_or_path, Some("test/model".to_string()));
     }
 
     #[test]

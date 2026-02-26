@@ -74,11 +74,8 @@ impl PrometheusExporter {
                 .with_labels(&["experiment", "run"]),
         );
         self.register(
-            MetricDef::counter(
-                "entrenar_training_steps_total",
-                "Total training steps completed",
-            )
-            .with_labels(&["experiment", "run"]),
+            MetricDef::counter("entrenar_training_steps_total", "Total training steps completed")
+                .with_labels(&["experiment", "run"]),
         );
 
         // GPU metrics
@@ -91,11 +88,8 @@ impl PrometheusExporter {
                 .with_labels(&["experiment", "run", "device"]),
         );
         self.register(
-            MetricDef::gauge(
-                "entrenar_gpu_temperature_celsius",
-                "GPU temperature in Celsius",
-            )
-            .with_labels(&["experiment", "run", "device"]),
+            MetricDef::gauge("entrenar_gpu_temperature_celsius", "GPU temperature in Celsius")
+                .with_labels(&["experiment", "run", "device"]),
         );
         self.register(
             MetricDef::gauge("entrenar_gpu_power_watts", "GPU power draw in watts").with_labels(&[
@@ -107,11 +101,8 @@ impl PrometheusExporter {
 
         // System metrics
         self.register(
-            MetricDef::gauge(
-                "entrenar_memory_used_bytes",
-                "Process memory usage in bytes",
-            )
-            .with_labels(&["experiment", "run"]),
+            MetricDef::gauge("entrenar_memory_used_bytes", "Process memory usage in bytes")
+                .with_labels(&["experiment", "run"]),
         );
     }
 
@@ -134,17 +125,10 @@ impl PrometheusExporter {
             }
         }
 
-        let metric_value = MetricValue {
-            labels,
-            value,
-            timestamp: Some(current_timestamp_ms()),
-        };
+        let metric_value = MetricValue { labels, value, timestamp: Some(current_timestamp_ms()) };
 
         if let Ok(mut values) = self.values.write() {
-            values
-                .entry(name.to_string())
-                .or_default()
-                .push(metric_value);
+            values.entry(name.to_string()).or_default().push(metric_value);
         }
 
         self.total_samples.fetch_add(1, Ordering::Relaxed);
@@ -177,17 +161,10 @@ impl PrometheusExporter {
         temp: f64,
         power: f64,
     ) {
-        let labels = self
-            .default_labels
-            .clone()
-            .add("device", &device_id.to_string());
+        let labels = self.default_labels.clone().add("device", &device_id.to_string());
 
         self.record_with_labels("entrenar_gpu_utilization", utilization, labels.clone());
-        self.record_with_labels(
-            "entrenar_gpu_memory_used_bytes",
-            memory_bytes,
-            labels.clone(),
-        );
+        self.record_with_labels("entrenar_gpu_memory_used_bytes", memory_bytes, labels.clone());
         self.record_with_labels("entrenar_gpu_temperature_celsius", temp, labels.clone());
         self.record_with_labels("entrenar_gpu_power_watts", power, labels);
     }
@@ -292,8 +269,5 @@ impl PrometheusExporter {
 
 /// Get current timestamp in milliseconds
 fn current_timestamp_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }

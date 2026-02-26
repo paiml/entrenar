@@ -73,27 +73,17 @@ impl Default for TokenizerConfig {
 impl TokenizerConfig {
     /// Create a BPE tokenizer config
     pub fn bpe() -> Self {
-        Self {
-            tokenizer_type: TokenizerType::BPE,
-            ..Default::default()
-        }
+        Self { tokenizer_type: TokenizerType::BPE, ..Default::default() }
     }
 
     /// Create a WordPiece tokenizer config
     pub fn wordpiece() -> Self {
-        Self {
-            tokenizer_type: TokenizerType::WordPiece,
-            ..Default::default()
-        }
+        Self { tokenizer_type: TokenizerType::WordPiece, ..Default::default() }
     }
 
     /// Create a character-level tokenizer config
     pub fn char() -> Self {
-        Self {
-            tokenizer_type: TokenizerType::Char,
-            vocab_size: 256,
-            ..Default::default()
-        }
+        Self { tokenizer_type: TokenizerType::Char, vocab_size: 256, ..Default::default() }
     }
 
     /// Set vocabulary size

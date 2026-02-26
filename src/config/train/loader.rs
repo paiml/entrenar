@@ -55,10 +55,7 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
 fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     println!("✓ Config loaded and validated (Transformer mode)");
     println!("  Model: {}", spec.model.path.display());
-    println!(
-        "  Optimizer: {} (lr={})",
-        spec.optimizer.name, spec.optimizer.lr
-    );
+    println!("  Optimizer: {} (lr={})", spec.optimizer.name, spec.optimizer.lr);
     println!("  Batch size: {}", spec.data.batch_size);
     println!("  Epochs: {}", spec.training.epochs);
     println!("  Training mode: {:?}", spec.training.mode);
@@ -151,14 +148,8 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 
     println!();
     println!("✓ Transformer training complete");
-    println!(
-        "  Final loss: {:.6}",
-        trainer.metrics.losses.last().copied().unwrap_or(0.0)
-    );
-    println!(
-        "  Best loss: {:.6}",
-        trainer.metrics.best_loss().unwrap_or(0.0)
-    );
+    println!("  Final loss: {:.6}", trainer.metrics.losses.last().copied().unwrap_or(0.0));
+    println!("  Best loss: {:.6}", trainer.metrics.best_loss().unwrap_or(0.0));
     println!("  Steps completed: {}", trainer.step());
     println!();
 
@@ -171,9 +162,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     trainer.save(&weights_path, "rust-cli-docs-model", "Qwen2ForCausalLM")?;
     println!(
         "✓ Model weights saved ({} bytes)",
-        std::fs::metadata(&weights_path)
-            .map(|m| m.len())
-            .unwrap_or(0)
+        std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
     );
 
     // Save training metadata
@@ -205,10 +194,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 fn train_tabular_from_spec(spec: &TrainSpec) -> Result<()> {
     println!("✓ Config loaded and validated (Tabular mode)");
     println!("  Model: {}", spec.model.path.display());
-    println!(
-        "  Optimizer: {} (lr={})",
-        spec.optimizer.name, spec.optimizer.lr
-    );
+    println!("  Optimizer: {} (lr={})", spec.optimizer.name, spec.optimizer.lr);
     println!("  Batch size: {}", spec.data.batch_size);
     println!("  Epochs: {}", spec.training.epochs);
 
@@ -257,24 +243,13 @@ fn train_tabular_from_spec(spec: &TrainSpec) -> Result<()> {
 
     for epoch in 0..spec.training.epochs {
         let avg_loss = trainer.train_epoch(batches.clone(), Clone::clone);
-        println!(
-            "Epoch {}/{}: loss={:.6}",
-            epoch + 1,
-            spec.training.epochs,
-            avg_loss
-        );
+        println!("Epoch {}/{}: loss={:.6}", epoch + 1, spec.training.epochs, avg_loss);
     }
 
     println!();
     println!("✓ Training complete");
-    println!(
-        "  Final loss: {:.6}",
-        trainer.metrics.losses.last().copied().unwrap_or(0.0)
-    );
-    println!(
-        "  Best loss: {:.6}",
-        trainer.metrics.best_loss().unwrap_or(0.0)
-    );
+    println!("  Final loss: {:.6}", trainer.metrics.losses.last().copied().unwrap_or(0.0));
+    println!("  Best loss: {:.6}", trainer.metrics.best_loss().unwrap_or(0.0));
     println!();
 
     // Save the trained model
@@ -379,11 +354,7 @@ fn load_transformer_model(
             Ok(None)
         }
         Err(e) => {
-            eprintln!(
-                "Warning: Could not load weights from {}: {}",
-                model_path.display(),
-                e
-            );
+            eprintln!("Warning: Could not load weights from {}: {}", model_path.display(), e);
             eprintln!("Using random initialization instead");
             Ok(None)
         }
@@ -459,9 +430,8 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
     // rms_norm_eps → 1e-6 is the most common default.
     // rope_theta → 10000 is the LLaMA/Mistral standard (WRONG for Qwen at 1M).
     // use_bias → false is correct for most modern architectures.
-    let num_kv_heads = hf_config["num_key_value_heads"]
-        .as_u64()
-        .unwrap_or(num_attention_heads as u64) as usize;
+    let num_kv_heads =
+        hf_config["num_key_value_heads"].as_u64().unwrap_or(num_attention_heads as u64) as usize;
 
     let max_position_embeddings = match hf_config["max_position_embeddings"].as_u64() {
         Some(v) => v as usize,
@@ -593,10 +563,7 @@ fn extract_texts_from_array(array: &[serde_json::Value], text_col: &str) -> Vec<
     array
         .iter()
         .filter_map(|e| {
-            e.get(text_col)
-                .or_else(|| e.get("content"))
-                .and_then(|v| v.as_str())
-                .map(String::from)
+            e.get(text_col).or_else(|| e.get("content")).and_then(|v| v.as_str()).map(String::from)
         })
         .collect()
 }
@@ -622,13 +589,8 @@ fn try_load_from_array(
         return None;
     }
 
-    println!(
-        "  Loaded {} text examples from {label}, tokenizing...",
-        texts.len()
-    );
-    Some(tokenize_texts_to_batches(
-        &texts, tokenizer, batch_size, seq_len,
-    ))
+    println!("  Loaded {} text examples from {label}, tokenizing...", texts.len());
+    Some(tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len))
 }
 
 /// Try loading from JSONL (newline-delimited JSON)
@@ -644,14 +606,12 @@ fn try_load_from_jsonl(
         .lines()
         .filter(|l| !l.trim().is_empty())
         .filter_map(|line| {
-            serde_json::from_str::<serde_json::Value>(line)
-                .ok()
-                .and_then(|obj| {
-                    obj.get(text_col)
-                        .or_else(|| obj.get("content"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from)
-                })
+            serde_json::from_str::<serde_json::Value>(line).ok().and_then(|obj| {
+                obj.get(text_col)
+                    .or_else(|| obj.get("content"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+            })
         })
         .collect();
 
@@ -659,13 +619,8 @@ fn try_load_from_jsonl(
         return None;
     }
 
-    println!(
-        "  Loaded {} text examples from JSONL, tokenizing...",
-        texts.len()
-    );
-    Some(tokenize_texts_to_batches(
-        &texts, tokenizer, batch_size, seq_len,
-    ))
+    println!("  Loaded {} text examples from JSONL, tokenizing...", texts.len());
+    Some(tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len))
 }
 
 /// Try to load LM batches from a parsed JSON value (object or array)
@@ -687,14 +642,9 @@ fn try_load_from_json_value(
 
     // Try top-level array format
     if let Some(array) = data.as_array() {
-        if let Some(result) = try_load_from_array(
-            array,
-            tokenizer,
-            batch_size,
-            seq_len,
-            text_col,
-            "JSON array",
-        ) {
+        if let Some(result) =
+            try_load_from_array(array, tokenizer, batch_size, seq_len, text_col, "JSON array")
+        {
             return Some(result);
         }
     }
@@ -746,10 +696,8 @@ fn load_pretokenized_json(
 
     for example in examples {
         if let Some(tokens) = example.get("input_ids").and_then(|t| t.as_array()) {
-            let seq: Vec<u32> = tokens
-                .iter()
-                .filter_map(|t| t.as_u64().map(|v| v as u32))
-                .collect();
+            let seq: Vec<u32> =
+                tokens.iter().filter_map(|t| t.as_u64().map(|v| v as u32)).collect();
             if !seq.is_empty() {
                 all_sequences.push(seq);
             }
@@ -757,10 +705,7 @@ fn load_pretokenized_json(
     }
 
     if !all_sequences.is_empty() {
-        println!(
-            "  Loaded {} pre-tokenized sequences from JSON",
-            all_sequences.len()
-        );
+        println!("  Loaded {} pre-tokenized sequences from JSON", all_sequences.len());
         return create_lm_batches_from_sequences(&all_sequences, batch_size, seq_len);
     }
 
@@ -864,8 +809,7 @@ fn create_demo_lm_batches(batch_size: usize, seq_len: usize) -> Result<Vec<LMBat
 /// Returns true if the content contains an `entrenar:` key at the start of a line,
 /// which is the discriminating field in the manifest schema.
 fn is_manifest_format(yaml: &str) -> bool {
-    yaml.lines()
-        .any(|line| line.starts_with("entrenar:") || line.starts_with("entrenar :"))
+    yaml.lines().any(|line| line.starts_with("entrenar:") || line.starts_with("entrenar :"))
 }
 
 /// Load training spec from YAML file (without running training)
@@ -941,11 +885,8 @@ mod tests {
 
     #[test]
     fn test_create_lm_batches_from_sequences() {
-        let sequences = vec![
-            vec![1u32, 2, 3, 4, 5],
-            vec![6u32, 7, 8, 9, 10],
-            vec![11u32, 12, 13, 14, 15],
-        ];
+        let sequences =
+            vec![vec![1u32, 2, 3, 4, 5], vec![6u32, 7, 8, 9, 10], vec![11u32, 12, 13, 14, 15]];
         let batches = create_lm_batches_from_sequences(&sequences, 2, 32).unwrap();
         assert_eq!(batches.len(), 2); // 3 sequences with batch_size 2 = 2 batches
     }
@@ -984,10 +925,8 @@ mod tests {
 
     #[test]
     fn test_load_pretokenized_json_no_input_ids() {
-        let examples: Vec<serde_json::Value> = vec![
-            serde_json::json!({"text": "hello"}),
-            serde_json::json!({"text": "world"}),
-        ];
+        let examples: Vec<serde_json::Value> =
+            vec![serde_json::json!({"text": "hello"}), serde_json::json!({"text": "world"})];
         // Falls back to demo batches
         let batches = load_pretokenized_json(&examples, 2, 32).unwrap();
         assert!(!batches.is_empty());
@@ -1040,11 +979,7 @@ mod tests {
                 batch_size: 4,
                 ..Default::default()
             },
-            optimizer: OptimSpec {
-                name: "adam".to_string(),
-                lr: 1e-4,
-                params: HashMap::new(),
-            },
+            optimizer: OptimSpec { name: "adam".to_string(), lr: 1e-4, params: HashMap::new() },
             training: TrainingParams {
                 epochs: 1,
                 output_dir: PathBuf::from("/tmp"),
@@ -1164,14 +1099,8 @@ training:
         f.write_all(manifest_yaml.as_bytes()).unwrap();
 
         let spec = load_config(&path).unwrap();
-        assert_eq!(
-            spec.model.path,
-            std::path::PathBuf::from("./models/test.safetensors")
-        );
-        assert_eq!(
-            spec.data.train,
-            std::path::PathBuf::from("./data/train.parquet")
-        );
+        assert_eq!(spec.model.path, std::path::PathBuf::from("./models/test.safetensors"));
+        assert_eq!(spec.data.train, std::path::PathBuf::from("./data/train.parquet"));
         assert_eq!(spec.data.batch_size, 16);
         assert_eq!(spec.optimizer.name, "adam");
         assert!((spec.optimizer.lr - 0.0001).abs() < 1e-6);
@@ -1317,10 +1246,7 @@ optimizer:
         };
 
         let err = build_transformer_config_from_spec(&spec).unwrap_err();
-        assert!(
-            err.to_string().contains("hidden_size"),
-            "Error must mention 'hidden_size': {err}"
-        );
+        assert!(err.to_string().contains("hidden_size"), "Error must mention 'hidden_size': {err}");
 
         std::fs::remove_file(&config_path).ok();
     }

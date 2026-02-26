@@ -23,9 +23,7 @@ fn test_end_to_end_fetch_error_handling() {
     // Attempt download - should fail with appropriate error
     let result = fetcher.download_model(
         "nonexistent-org-12345/nonexistent-model-67890",
-        FetchOptions::new()
-            .files(&["model.safetensors", "config.json"])
-            .cache_dir(&temp_dir),
+        FetchOptions::new().files(&["model.safetensors", "config.json"]).cache_dir(&temp_dir),
     );
 
     // Expect error for nonexistent model
@@ -47,9 +45,7 @@ fn test_end_to_end_real_fetch() {
     let artifact = fetcher
         .download_model(
             "hf-internal-testing/tiny-random-bert",
-            FetchOptions::new()
-                .files(&["model.safetensors", "config.json"])
-                .cache_dir(&temp_dir),
+            FetchOptions::new().files(&["model.safetensors", "config.json"]).cache_dir(&temp_dir),
         )
         .expect("Download should succeed for test model");
 
@@ -77,9 +73,7 @@ fn test_distillation_pipeline_mock() {
     assert_eq!(output.dim(), (4, 768));
 
     // Get hidden states
-    let hidden = teacher
-        .hidden_states(&input)
-        .expect("Hidden states should work");
+    let hidden = teacher.hidden_states(&input).expect("Hidden states should work");
     assert_eq!(hidden.len(), 12);
 
     // Memory estimation
@@ -150,10 +144,8 @@ fn test_security_pytorch_rejection() {
     let fetcher = HfModelFetcher::with_token("test");
 
     // Should reject PyTorch files by default
-    let result = fetcher.download_model(
-        "test/model",
-        FetchOptions::new().files(&["pytorch_model.bin"]),
-    );
+    let result =
+        fetcher.download_model("test/model", FetchOptions::new().files(&["pytorch_model.bin"]));
 
     assert!(matches!(result, Err(FetchError::PickleSecurityRisk)));
 }
@@ -168,22 +160,13 @@ fn test_error_retryability() {
             },
             true,
         ),
-        (
-            FetchError::RateLimited {
-                retry_after: std::time::Duration::from_secs(60),
-            },
-            true,
-        ),
+        (FetchError::RateLimited { retry_after: std::time::Duration::from_secs(60) }, true),
         (FetchError::ModelNotFound { repo: "r".into() }, false),
         (FetchError::MissingToken, false),
     ];
 
     for (err, expected_retryable) in errors {
-        assert_eq!(
-            err.is_retryable(),
-            expected_retryable,
-            "Retryability mismatch for {err:?}"
-        );
+        assert_eq!(err.is_retryable(), expected_retryable, "Retryability mismatch for {err:?}");
     }
 }
 

@@ -17,29 +17,22 @@ impl LeaderboardClient {
     /// Create a new leaderboard client with automatic token resolution
     pub fn new() -> Result<Self, FetchError> {
         let token = HfModelFetcher::resolve_token();
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("entrenar/0.5")
-            .build()
-            .map_err(|e| FetchError::HttpError {
-                message: format!("Failed to create HTTP client: {e}"),
-            })?;
+        let client =
+            reqwest::blocking::Client::builder().user_agent("entrenar/0.5").build().map_err(
+                |e| FetchError::HttpError { message: format!("Failed to create HTTP client: {e}") },
+            )?;
 
         Ok(Self { token, client })
     }
 
     /// Create a client with an explicit token
     pub fn with_token(token: impl Into<String>) -> Result<Self, FetchError> {
-        let client = reqwest::blocking::Client::builder()
-            .user_agent("entrenar/0.5")
-            .build()
-            .map_err(|e| FetchError::HttpError {
-                message: format!("Failed to create HTTP client: {e}"),
-            })?;
+        let client =
+            reqwest::blocking::Client::builder().user_agent("entrenar/0.5").build().map_err(
+                |e| FetchError::HttpError { message: format!("Failed to create HTTP client: {e}") },
+            )?;
 
-        Ok(Self {
-            token: Some(token.into()),
-            client,
-        })
+        Ok(Self { token: Some(token.into()), client })
     }
 
     /// Fetch leaderboard data (first page)
@@ -71,9 +64,7 @@ impl LeaderboardClient {
         if !response.status().is_success() {
             let status = response.status();
             if status.as_u16() == 404 {
-                return Err(FetchError::LeaderboardNotFound {
-                    kind: kind.to_string(),
-                });
+                return Err(FetchError::LeaderboardNotFound { kind: kind.to_string() });
             }
             return Err(FetchError::HttpError {
                 message: format!("Leaderboard API returned {status} for {repo_id}"),
@@ -107,10 +98,8 @@ fn parse_response(
     let mut leaderboard = HfLeaderboard::new(kind);
 
     // Extract total count from "num_rows_total"
-    leaderboard.total_count = body
-        .get("num_rows_total")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0) as usize;
+    leaderboard.total_count =
+        body.get("num_rows_total").and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
 
     // Extract rows
     let rows = body.get("rows").and_then(|v| v.as_array()).ok_or_else(|| {

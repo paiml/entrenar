@@ -79,10 +79,7 @@ impl InMemoryStorage {
         let mut hasher = Sha256::new();
         hasher.update(data);
         let result = hasher.finalize();
-        format!(
-            "sha256-{}",
-            hex::encode(result.get(..16).unwrap_or(&result))
-        ) // Use first 16 bytes
+        format!("sha256-{}", hex::encode(result.get(..16).unwrap_or(&result))) // Use first 16 bytes
     }
 }
 
@@ -95,13 +92,7 @@ impl ExperimentStorage for InMemoryStorage {
         let id = self.next_exp_id.fetch_add(1, Ordering::SeqCst);
         let exp_id = format!("exp-{id}");
 
-        self.experiments.insert(
-            exp_id.clone(),
-            ExperimentData {
-                name: name.to_string(),
-                config,
-            },
-        );
+        self.experiments.insert(exp_id.clone(), ExperimentData { name: name.to_string(), config });
 
         Ok(exp_id)
     }
@@ -166,11 +157,7 @@ impl ExperimentStorage for InMemoryStorage {
         let metric_key = format!("{run_id}:{key}");
         let metrics = self.metrics.entry(metric_key).or_default();
 
-        metrics.push(MetricData {
-            step,
-            value,
-            timestamp: Utc::now(),
-        });
+        metrics.push(MetricData { step, value, timestamp: Utc::now() });
 
         Ok(())
     }
@@ -438,10 +425,7 @@ mod tests {
 
         storage.set_span_id(&run_id, "span-12345").unwrap();
 
-        assert_eq!(
-            storage.get_span_id(&run_id).unwrap(),
-            Some("span-12345".to_string())
-        );
+        assert_eq!(storage.get_span_id(&run_id).unwrap(), Some("span-12345".to_string()));
     }
 
     #[test]

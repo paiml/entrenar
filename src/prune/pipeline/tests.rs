@@ -11,47 +11,26 @@ use crate::prune::config::PruningConfig;
 #[test]
 fn test_stage_is_active() {
     // TEST_ID: PL-001
-    assert!(
-        !PruningStage::Idle.is_active(),
-        "PL-001 FALSIFIED: Idle should not be active"
-    );
+    assert!(!PruningStage::Idle.is_active(), "PL-001 FALSIFIED: Idle should not be active");
     assert!(
         PruningStage::Calibrating.is_active(),
         "PL-001 FALSIFIED: Calibrating should be active"
     );
-    assert!(
-        PruningStage::Pruning.is_active(),
-        "PL-001 FALSIFIED: Pruning should be active"
-    );
-    assert!(
-        !PruningStage::Complete.is_active(),
-        "PL-001 FALSIFIED: Complete should not be active"
-    );
-    assert!(
-        !PruningStage::Failed.is_active(),
-        "PL-001 FALSIFIED: Failed should not be active"
-    );
+    assert!(PruningStage::Pruning.is_active(), "PL-001 FALSIFIED: Pruning should be active");
+    assert!(!PruningStage::Complete.is_active(), "PL-001 FALSIFIED: Complete should not be active");
+    assert!(!PruningStage::Failed.is_active(), "PL-001 FALSIFIED: Failed should not be active");
 }
 
 #[test]
 fn test_stage_is_terminal() {
     // TEST_ID: PL-002
-    assert!(
-        !PruningStage::Idle.is_terminal(),
-        "PL-002 FALSIFIED: Idle should not be terminal"
-    );
+    assert!(!PruningStage::Idle.is_terminal(), "PL-002 FALSIFIED: Idle should not be terminal");
     assert!(
         !PruningStage::Pruning.is_terminal(),
         "PL-002 FALSIFIED: Pruning should not be terminal"
     );
-    assert!(
-        PruningStage::Complete.is_terminal(),
-        "PL-002 FALSIFIED: Complete should be terminal"
-    );
-    assert!(
-        PruningStage::Failed.is_terminal(),
-        "PL-002 FALSIFIED: Failed should be terminal"
-    );
+    assert!(PruningStage::Complete.is_terminal(), "PL-002 FALSIFIED: Complete should be terminal");
+    assert!(PruningStage::Failed.is_terminal(), "PL-002 FALSIFIED: Failed should be terminal");
 }
 
 #[test]
@@ -173,10 +152,7 @@ fn test_metrics_sparsity_gap() {
     metrics.update_sparsity(300, 1000); // 30% achieved
 
     let gap = metrics.sparsity_gap();
-    assert!(
-        (gap - 0.2).abs() < 1e-6,
-        "PL-017 FALSIFIED: Gap should be 0.2"
-    );
+    assert!((gap - 0.2).abs() < 1e-6, "PL-017 FALSIFIED: Gap should be 0.2");
 }
 
 #[test]
@@ -184,16 +160,10 @@ fn test_metrics_target_achieved() {
     // TEST_ID: PL-018
     let mut metrics = PruningMetrics::new(0.5);
     metrics.update_sparsity(400, 1000);
-    assert!(
-        !metrics.target_achieved(),
-        "PL-018 FALSIFIED: 40% should not achieve 50% target"
-    );
+    assert!(!metrics.target_achieved(), "PL-018 FALSIFIED: 40% should not achieve 50% target");
 
     metrics.update_sparsity(500, 1000);
-    assert!(
-        metrics.target_achieved(),
-        "PL-018 FALSIFIED: 50% should achieve 50% target"
-    );
+    assert!(metrics.target_achieved(), "PL-018 FALSIFIED: 50% should achieve 50% target");
 }
 
 #[test]
@@ -205,10 +175,7 @@ fn test_metrics_mean_layer_sparsity() {
     metrics.add_layer_sparsity("c", 0.7);
 
     let mean = metrics.mean_layer_sparsity();
-    assert!(
-        (mean - 0.5).abs() < 1e-6,
-        "PL-019 FALSIFIED: Mean should be 0.5"
-    );
+    assert!((mean - 0.5).abs() < 1e-6, "PL-019 FALSIFIED: Mean should be 0.5");
 }
 
 #[test]
@@ -219,10 +186,7 @@ fn test_metrics_layer_sparsity_variance() {
     metrics.add_layer_sparsity("b", 0.5);
 
     let variance = metrics.layer_sparsity_variance();
-    assert!(
-        variance < 1e-6,
-        "PL-020 FALSIFIED: Variance should be ~0 for uniform sparsity"
-    );
+    assert!(variance < 1e-6, "PL-020 FALSIFIED: Variance should be ~0 for uniform sparsity");
 }
 
 // =============================================================================
@@ -421,11 +385,7 @@ fn test_pipeline_clone() {
     pipeline.advance();
 
     let cloned = pipeline.clone();
-    assert_eq!(
-        pipeline.stage(),
-        cloned.stage(),
-        "PL-040 FALSIFIED: Cloned stage should match"
-    );
+    assert_eq!(pipeline.stage(), cloned.stage(), "PL-040 FALSIFIED: Cloned stage should match");
 }
 
 #[test]

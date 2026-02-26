@@ -37,11 +37,7 @@ pub fn run_benchmark(
     let original_bytes = values.len() * 4; // f32 = 4 bytes
     let scale_bytes = params.scales.len() * 4;
     let zp_bytes = params.zero_points.len() * 4;
-    let data_bytes = if bits == 4 {
-        values.len().div_ceil(2)
-    } else {
-        values.len()
-    };
+    let data_bytes = if bits == 4 { values.len().div_ceil(2) } else { values.len() };
     let compressed_bytes = scale_bytes + zp_bytes + data_bytes;
     let compression_ratio = original_bytes as f32 / compressed_bytes.max(1) as f32;
 
@@ -81,13 +77,7 @@ pub fn run_full_benchmark_suite(size: usize) -> BenchmarkSuite {
                     QuantGranularity::PerGroup(_) => "group",
                 }
             );
-            suite.add(run_benchmark(
-                &name,
-                &gaussian,
-                bits,
-                granularity,
-                QuantMode::Symmetric,
-            ));
+            suite.add(run_benchmark(&name, &gaussian, bits, granularity, QuantMode::Symmetric));
         }
     }
 

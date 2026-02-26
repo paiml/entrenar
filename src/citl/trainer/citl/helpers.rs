@@ -23,6 +23,25 @@ impl DecisionCITL {
         result
     }
 
+    /// Search failed sessions for a decision by ID and return its suspiciousness score.
+    fn find_dependency_score(&self, dep_id: &str) -> Option<(DecisionTrace, f32)> {
+        for session in &self.failed_sessions {
+            for decision in &session.decisions {
+                if decision.id != dep_id {
+                    continue;
+                }
+                let score = self
+                    .decision_stats
+                    .get(&decision.decision_type)
+                    .map_or(0.0, DecisionStats::tarantula_score);
+                // Reduce suspiciousness for indirect dependencies
+                let adjusted = score * 0.8;
+                return Some((decision.clone(), adjusted));
+            }
+        }
+        None
+    }
+
     /// Expand suspicious decisions with their dependencies
     pub(crate) fn expand_with_dependencies(
         &self,
@@ -38,29 +57,14 @@ impl DecisionCITL {
                 if seen.contains(&dep_id) {
                     continue;
                 }
-
-                // Find the dependency in failed sessions
-                for session in &self.failed_sessions {
-                    for decision in &session.decisions {
-                        if decision.id == dep_id {
-                            let score = self
-                                .decision_stats
-                                .get(&decision.decision_type)
-                                .map_or(0.0, DecisionStats::tarantula_score);
-
-                            // Reduce suspiciousness for indirect dependencies
-                            let adjusted_score = score * 0.8;
-
-                            if adjusted_score >= self.config.min_suspiciousness {
-                                suspicious.push(SuspiciousDecision::new(
-                                    decision.clone(),
-                                    adjusted_score,
-                                    "Dependency of suspicious decision (indirect)",
-                                ));
-                                seen.insert(dep_id.clone());
-                            }
-                            break;
-                        }
+                if let Some((decision, adjusted_score)) = self.find_dependency_score(&dep_id) {
+                    if adjusted_score >= self.config.min_suspiciousness {
+                        suspicious.push(SuspiciousDecision::new(
+                            decision,
+                            adjusted_score,
+                            "Dependency of suspicious decision (indirect)",
+                        ));
+                        seen.insert(dep_id);
                     }
                 }
             }
@@ -70,9 +74,7 @@ impl DecisionCITL {
 
         // Re-sort after adding dependencies
         suspicious.sort_by(|a, b| {
-            b.suspiciousness
-                .partial_cmp(&a.suspiciousness)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            b.suspiciousness.partial_cmp(&a.suspiciousness).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         suspicious
@@ -122,11 +124,8 @@ impl DecisionCITL {
     /// Get top suspicious decision types (by Tarantula score)
     #[must_use]
     pub fn top_suspicious_types(&self, k: usize) -> Vec<(&str, f32)> {
-        let mut scores: Vec<_> = self
-            .decision_stats
-            .iter()
-            .map(|(t, s)| (t.as_str(), s.tarantula_score()))
-            .collect();
+        let mut scores: Vec<_> =
+            self.decision_stats.iter().map(|(t, s)| (t.as_str(), s.tarantula_score())).collect();
 
         scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scores.truncate(k);
@@ -138,11 +137,7 @@ impl DecisionCITL {
     pub fn decisions_by_file(&self) -> HashMap<String, Vec<&DecisionTrace>> {
         let mut by_file: HashMap<String, Vec<&DecisionTrace>> = HashMap::new();
 
-        for session in self
-            .failed_sessions
-            .iter()
-            .chain(self.success_sessions.iter())
-        {
+        for session in self.failed_sessions.iter().chain(self.success_sessions.iter()) {
             for decision in &session.decisions {
                 if let Some(span) = &decision.span {
                     by_file.entry(span.file.clone()).or_default().push(decision);
@@ -158,16 +153,9 @@ impl DecisionCITL {
     pub fn build_dependency_graph(&self) -> HashMap<String, Vec<String>> {
         let mut graph: HashMap<String, Vec<String>> = HashMap::new();
 
-        for session in self
-            .failed_sessions
-            .iter()
-            .chain(self.success_sessions.iter())
-        {
+        for session in self.failed_sessions.iter().chain(self.success_sessions.iter()) {
             for decision in &session.decisions {
-                graph
-                    .entry(decision.id.clone())
-                    .or_default()
-                    .extend(decision.depends_on.clone());
+                graph.entry(decision.id.clone()).or_default().extend(decision.depends_on.clone());
             }
         }
 

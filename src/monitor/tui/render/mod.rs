@@ -125,11 +125,8 @@ fn render_progress(
 }
 
 fn render_metrics(lines: &mut Vec<String>, snapshot: &TrainingSnapshot, color_mode: ColorMode) {
-    let loss_str = if snapshot.loss.is_finite() {
-        format!("{:.4}", snapshot.loss)
-    } else {
-        "???".to_string()
-    };
+    let loss_str =
+        if snapshot.loss.is_finite() { format!("{:.4}", snapshot.loss) } else { "???".to_string() };
     let loss_color = if snapshot.loss.is_finite() {
         pct_color((snapshot.loss * 10.0).min(100.0))
     } else {
@@ -142,16 +139,10 @@ fn render_metrics(lines: &mut Vec<String>, snapshot: &TrainingSnapshot, color_mo
         .copied()
         .filter(|v| v.is_finite())
         .fold(f32::INFINITY, f32::min);
-    let best_str = if best.is_finite() {
-        format!("{best:.4}")
-    } else {
-        "---".to_string()
-    };
+    let best_str = if best.is_finite() { format!("{best:.4}") } else { "---".to_string() };
 
     let grad = snapshot.gradient_norm.max(0.0);
-    let eta = snapshot
-        .estimated_remaining()
-        .map_or("--:--:--".to_string(), format_duration);
+    let eta = snapshot.estimated_remaining().map_or("--:--:--".to_string(), format_duration);
 
     lines.push(format!(
         "Loss {} {}  Best {}  LR {}  Grad {:.2}  ETA {}",
@@ -177,12 +168,7 @@ fn render_loss_sparkline(
     let spark_w = w.saturating_sub(20);
     let sparkline = render_sparkline(&snapshot.loss_history, spark_w, color_mode);
 
-    let valid: Vec<f32> = snapshot
-        .loss_history
-        .iter()
-        .copied()
-        .filter(|v| v.is_finite())
-        .collect();
+    let valid: Vec<f32> = snapshot.loss_history.iter().copied().filter(|v| v.is_finite()).collect();
     let (min_l, max_l) = if valid.is_empty() {
         (0.0, 0.0)
     } else {
@@ -193,9 +179,7 @@ fn render_loss_sparkline(
     };
 
     lines.push(format!("\u{2500}{:\u{2500}<w$}\u{2500}", "", w = w - 2));
-    lines.push(format!(
-        "Loss History: {sparkline} [{min_l:.2} - {max_l:.2}]"
-    ));
+    lines.push(format!("Loss History: {sparkline} [{min_l:.2} - {max_l:.2}]"));
 }
 
 fn render_gpu_section(
@@ -223,11 +207,8 @@ fn render_gpu_section(
             gpu.device_name.chars().take(20).collect::<String>(),
             util_bar,
             gpu.utilization_percent,
-            Styled::new(
-                &format!("{:.0}\u{00B0}C", gpu.temperature_celsius),
-                color_mode
-            )
-            .fg(temp_color),
+            Styled::new(&format!("{:.0}\u{00B0}C", gpu.temperature_celsius), color_mode)
+                .fg(temp_color),
             gpu.power_watts
         ));
 
@@ -301,26 +282,16 @@ fn epoch_trend_arrow(
     if i == 0 && start_idx == 0 {
         return " ".to_string();
     }
-    let prev_idx = if i > 0 {
-        start_idx + i - 1
-    } else {
-        start_idx.saturating_sub(1)
-    };
+    let prev_idx = if i > 0 { start_idx + i - 1 } else { start_idx.saturating_sub(1) };
     if let Some(prev) = summaries.get(prev_idx) {
         let current = &summaries[start_idx + i];
         let change = (current.avg_loss - prev.avg_loss) / prev.avg_loss.abs().max(0.001);
         if change < -0.02 {
-            Styled::new("\u{2193}", color_mode)
-                .fg((100, 255, 100))
-                .to_string()
+            Styled::new("\u{2193}", color_mode).fg((100, 255, 100)).to_string()
         } else if change > 0.02 {
-            Styled::new("\u{2191}", color_mode)
-                .fg((255, 100, 100))
-                .to_string()
+            Styled::new("\u{2191}", color_mode).fg((255, 100, 100)).to_string()
         } else {
-            Styled::new("\u{2192}", color_mode)
-                .fg((150, 150, 150))
-                .to_string()
+            Styled::new("\u{2192}", color_mode).fg((150, 150, 150)).to_string()
         }
     } else {
         " ".to_string()
@@ -335,11 +306,7 @@ fn render_config_footer(
 ) {
     lines.push(format!("\u{2500}{:\u{2500}<w$}\u{2500}", "", w = w - 2));
 
-    let opt = if snapshot.optimizer_name.is_empty() {
-        "N/A"
-    } else {
-        &snapshot.optimizer_name
-    };
+    let opt = if snapshot.optimizer_name.is_empty() { "N/A" } else { &snapshot.optimizer_name };
     let batch = if snapshot.batch_size > 0 {
         format!("{}", snapshot.batch_size)
     } else {
@@ -350,11 +317,7 @@ fn render_config_footer(
         "Config: {}  Batch: {}  Checkpoint: {}",
         Styled::new(opt, color_mode).fg((150, 255, 150)),
         batch,
-        if snapshot.checkpoint_path.is_empty() {
-            "N/A"
-        } else {
-            &snapshot.checkpoint_path
-        }
+        if snapshot.checkpoint_path.is_empty() { "N/A" } else { &snapshot.checkpoint_path }
     ));
 
     lines.push(format!("\u{2550}{:\u{2550}<w$}\u{2550}", "", w = w - 2));
@@ -444,11 +407,8 @@ mod tests {
             TrainingStatus::Failed(_) => {}
             _ => unreachable!(),
         }
-        let snapshot = TrainingSnapshot {
-            status,
-            model_name: "TestModel".to_string(),
-            ..Default::default()
-        };
+        let snapshot =
+            TrainingSnapshot { status, model_name: "TestModel".to_string(), ..Default::default() };
         let layout = render_layout_colored(&snapshot, 80, ColorMode::Mono);
         assert!(layout.contains("FAIL"));
     }

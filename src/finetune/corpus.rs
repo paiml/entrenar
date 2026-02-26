@@ -80,11 +80,7 @@ impl TestGenCorpus {
     /// Create empty corpus
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            train: Vec::new(),
-            validation: Vec::new(),
-            test: Vec::new(),
-        }
+        Self { train: Vec::new(), validation: Vec::new(), test: Vec::new() }
     }
 
     /// Load corpus from JSONL files
@@ -101,11 +97,7 @@ impl TestGenCorpus {
         let validation = Self::load_jsonl_file(validation_path)?;
         let test = Self::load_jsonl_file(test_path)?;
 
-        Ok(Self {
-            train,
-            validation,
-            test,
-        })
+        Ok(Self { train, validation, test })
     }
 
     /// Load samples from a single JSONL file
@@ -118,11 +110,9 @@ impl TestGenCorpus {
             if line.trim().is_empty() {
                 continue;
             }
-            let sample: TestGenSample =
-                serde_json::from_str(line).map_err(|e| CorpusError::ParseError {
-                    line: line_num + 1,
-                    message: e.to_string(),
-                })?;
+            let sample: TestGenSample = serde_json::from_str(line).map_err(|e| {
+                CorpusError::ParseError { line: line_num + 1, message: e.to_string() }
+            })?;
             samples.push(sample);
         }
 
@@ -169,12 +159,8 @@ impl TestGenCorpus {
     /// Get corpus statistics
     #[must_use]
     pub fn stats(&self) -> CorpusStats {
-        let all: Vec<&TestGenSample> = self
-            .train
-            .iter()
-            .chain(self.validation.iter())
-            .chain(self.test.iter())
-            .collect();
+        let all: Vec<&TestGenSample> =
+            self.train.iter().chain(self.validation.iter()).chain(self.test.iter()).collect();
 
         let total = all.len();
         if total == 0 {
@@ -438,10 +424,7 @@ mod tests {
         let io_err = CorpusError::IoError("file not found".into());
         assert!(io_err.to_string().contains("IO error"));
 
-        let parse_err = CorpusError::ParseError {
-            line: 5,
-            message: "invalid json".into(),
-        };
+        let parse_err = CorpusError::ParseError { line: 5, message: "invalid json".into() };
         assert!(parse_err.to_string().contains("line 5"));
     }
 

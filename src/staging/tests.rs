@@ -116,9 +116,7 @@ fn test_promote_full_lifecycle() {
 fn test_promote_skip_stage_rejected() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    let err = registry
-        .promote("m", "1.0.0", Stage::Production)
-        .unwrap_err();
+    let err = registry.promote("m", "1.0.0", Stage::Production).unwrap_err();
     match err {
         StagingError::InvalidTransition { from, to, .. } => {
             assert_eq!(from, Stage::Dev);
@@ -156,9 +154,7 @@ fn test_promote_beyond_production_rejected() {
 #[test]
 fn test_promote_nonexistent_model() {
     let mut registry = StagingRegistry::new();
-    let err = registry
-        .promote("ghost", "1.0.0", Stage::Staging)
-        .unwrap_err();
+    let err = registry.promote("ghost", "1.0.0", Stage::Staging).unwrap_err();
     match err {
         StagingError::NotFound { name, version } => {
             assert_eq!(name, "ghost");
@@ -329,10 +325,7 @@ fn test_list_versions_only_for_named_model() {
 
 #[test]
 fn test_error_display_not_found() {
-    let err = StagingError::NotFound {
-        name: "m".to_string(),
-        version: "1.0.0".to_string(),
-    };
+    let err = StagingError::NotFound { name: "m".to_string(), version: "1.0.0".to_string() };
     assert!(err.to_string().contains("m"));
     assert!(err.to_string().contains("1.0.0"));
 }
@@ -352,10 +345,7 @@ fn test_error_display_invalid_transition() {
 
 #[test]
 fn test_error_display_already_exists() {
-    let err = StagingError::AlreadyExists {
-        name: "m".to_string(),
-        version: "1.0.0".to_string(),
-    };
+    let err = StagingError::AlreadyExists { name: "m".to_string(), version: "1.0.0".to_string() };
     assert!(err.to_string().contains("already exists"));
 }
 
@@ -404,13 +394,7 @@ fn test_multiple_models_independent_stages() {
     registry.promote("alpha", "1.0.0", Stage::Staging).unwrap();
 
     // alpha is Staging, beta is still Dev
-    assert_eq!(
-        registry.get_latest("alpha", Stage::Staging).unwrap().stage,
-        Stage::Staging
-    );
-    assert_eq!(
-        registry.get_latest("beta", Stage::Dev).unwrap().stage,
-        Stage::Dev
-    );
+    assert_eq!(registry.get_latest("alpha", Stage::Staging).unwrap().stage, Stage::Staging);
+    assert_eq!(registry.get_latest("beta", Stage::Dev).unwrap().stage, Stage::Dev);
     assert!(registry.get_latest("beta", Stage::Staging).is_none());
 }

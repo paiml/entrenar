@@ -73,10 +73,7 @@ mod tests {
 
     #[test]
     fn test_falsify_from_path_gguf() {
-        assert_eq!(
-            ExportFormat::from_path(Path::new("model.gguf")),
-            Some(ExportFormat::GGUF)
-        );
+        assert_eq!(ExportFormat::from_path(Path::new("model.gguf")), Some(ExportFormat::GGUF));
     }
 
     #[test]
@@ -89,34 +86,22 @@ mod tests {
 
     #[test]
     fn test_falsify_from_path_apr_json() {
-        assert_eq!(
-            ExportFormat::from_path(Path::new("model.apr.json")),
-            Some(ExportFormat::APR)
-        );
+        assert_eq!(ExportFormat::from_path(Path::new("model.apr.json")), Some(ExportFormat::APR));
     }
 
     #[test]
     fn test_falsify_from_path_apr() {
-        assert_eq!(
-            ExportFormat::from_path(Path::new("model.apr")),
-            Some(ExportFormat::APR)
-        );
+        assert_eq!(ExportFormat::from_path(Path::new("model.apr")), Some(ExportFormat::APR));
     }
 
     #[test]
     fn test_falsify_from_path_pytorch_pt() {
-        assert_eq!(
-            ExportFormat::from_path(Path::new("model.pt")),
-            Some(ExportFormat::PyTorch)
-        );
+        assert_eq!(ExportFormat::from_path(Path::new("model.pt")), Some(ExportFormat::PyTorch));
     }
 
     #[test]
     fn test_falsify_from_path_pytorch_bin() {
-        assert_eq!(
-            ExportFormat::from_path(Path::new("model.bin")),
-            Some(ExportFormat::PyTorch)
-        );
+        assert_eq!(ExportFormat::from_path(Path::new("model.bin")), Some(ExportFormat::PyTorch));
     }
 
     #[test]

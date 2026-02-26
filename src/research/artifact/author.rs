@@ -20,12 +20,7 @@ pub struct Author {
 impl Author {
     /// Create a new author
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            orcid: None,
-            affiliations: Vec::new(),
-            roles: Vec::new(),
-        }
+        Self { name: name.into(), orcid: None, affiliations: Vec::new(), roles: Vec::new() }
     }
 
     /// Set the ORCID (validates format)
@@ -64,9 +59,6 @@ impl Author {
 
     /// Get the author's last name (for citation keys)
     pub fn last_name(&self) -> &str {
-        self.name
-            .split_whitespace()
-            .next_back()
-            .unwrap_or(&self.name)
+        self.name.split_whitespace().next_back().unwrap_or(&self.name)
     }
 }

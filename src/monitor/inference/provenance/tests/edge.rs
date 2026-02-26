@@ -19,12 +19,8 @@ fn test_causal_relation_all_variants() {
 
 #[test]
 fn test_provenance_edge_clone() {
-    let edge = ProvenanceEdge {
-        from: 1,
-        to: 2,
-        relation: CausalRelation::DataFlow,
-        timestamp_ns: 1000,
-    };
+    let edge =
+        ProvenanceEdge { from: 1, to: 2, relation: CausalRelation::DataFlow, timestamp_ns: 1000 };
     let cloned = edge.clone();
     assert_eq!(edge.from, cloned.from);
     assert_eq!(edge.to, cloned.to);

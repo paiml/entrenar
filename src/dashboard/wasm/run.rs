@@ -31,13 +31,10 @@ impl WasmRun {
             .create_experiment(experiment_name, None)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let run_id = storage
-            .create_run(&experiment_id)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let run_id =
+            storage.create_run(&experiment_id).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        storage
-            .start_run(&run_id)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        storage.start_run(&run_id).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         Ok(Self {
             run_id,
@@ -82,10 +79,7 @@ impl WasmRun {
 
     /// Get all metrics as a JSON string.
     pub fn get_metrics_json(&self) -> std::result::Result<String, JsValue> {
-        let storage = self
-            .storage
-            .lock()
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let storage = self.storage.lock().map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let keys = storage.list_metric_keys(&self.run_id);
         let mut metrics: HashMap<String, Vec<serde_json::Value>> = HashMap::new();

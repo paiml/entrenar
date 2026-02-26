@@ -34,9 +34,7 @@ fn validate_model_path(spec: &TrainSpec) -> Result<(), ValidationError> {
         return Ok(());
     }
     if !spec.model.path.exists() {
-        return Err(ValidationError::ModelPathNotFound(
-            spec.model.path.display().to_string(),
-        ));
+        return Err(ValidationError::ModelPathNotFound(spec.model.path.display().to_string()));
     }
     Ok(())
 }
@@ -50,16 +48,12 @@ fn validate_model_path(_spec: &TrainSpec) -> Result<(), ValidationError> {
 #[cfg(not(test))]
 fn validate_data_paths(spec: &TrainSpec) -> Result<(), ValidationError> {
     if !spec.data.train.exists() {
-        return Err(ValidationError::TrainDataNotFound(
-            spec.data.train.display().to_string(),
-        ));
+        return Err(ValidationError::TrainDataNotFound(spec.data.train.display().to_string()));
     }
 
     if let Some(val_path) = &spec.data.val {
         if !val_path.exists() {
-            return Err(ValidationError::ValDataNotFound(
-                val_path.display().to_string(),
-            ));
+            return Err(ValidationError::ValDataNotFound(val_path.display().to_string()));
         }
     }
     Ok(())
@@ -90,9 +84,7 @@ fn validate_learning_rate(spec: &TrainSpec) -> Result<(), ValidationError> {
 fn validate_optimizer(spec: &TrainSpec) -> Result<(), ValidationError> {
     const VALID_OPTIMIZERS: [&str; 6] = ["adam", "adamw", "sgd", "rmsprop", "adagrad", "lamb"];
     if !VALID_OPTIMIZERS.contains(&spec.optimizer.name.as_str()) {
-        return Err(ValidationError::InvalidOptimizer(
-            spec.optimizer.name.clone(),
-        ));
+        return Err(ValidationError::InvalidOptimizer(spec.optimizer.name.clone()));
     }
     Ok(())
 }
@@ -137,9 +129,7 @@ fn validate_seq_len(spec: &TrainSpec) -> Result<(), ValidationError> {
 /// Validate save interval
 fn validate_save_interval(spec: &TrainSpec) -> Result<(), ValidationError> {
     if spec.training.save_interval == 0 {
-        return Err(ValidationError::InvalidSaveInterval(
-            spec.training.save_interval,
-        ));
+        return Err(ValidationError::InvalidSaveInterval(spec.training.save_interval));
     }
     Ok(())
 }
@@ -147,15 +137,8 @@ fn validate_save_interval(spec: &TrainSpec) -> Result<(), ValidationError> {
 /// Validate LR scheduler if specified
 fn validate_lr_scheduler(spec: &TrainSpec) -> Result<(), ValidationError> {
     if let Some(scheduler) = &spec.training.lr_scheduler {
-        const VALID_SCHEDULERS: [&str; 7] = [
-            "cosine",
-            "linear",
-            "constant",
-            "step",
-            "exponential",
-            "one_cycle",
-            "plateau",
-        ];
+        const VALID_SCHEDULERS: [&str; 7] =
+            ["cosine", "linear", "constant", "step", "exponential", "one_cycle", "plateau"];
         if !VALID_SCHEDULERS.contains(&scheduler.as_str()) {
             return Err(ValidationError::InvalidLRScheduler(scheduler.clone()));
         }
@@ -247,9 +230,7 @@ fn validate_publish(spec: &TrainSpec) -> Result<(), ValidationError> {
 
     // Format must be safetensors or gguf
     if publish.format != "safetensors" && publish.format != "gguf" {
-        return Err(ValidationError::InvalidPublishFormat(
-            publish.format.clone(),
-        ));
+        return Err(ValidationError::InvalidPublishFormat(publish.format.clone()));
     }
 
     Ok(())

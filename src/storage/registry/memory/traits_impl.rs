@@ -17,10 +17,7 @@ impl ModelRegistry for InMemoryRegistry {
         let version = self.next_version(name);
         let model = ModelVersion::new(name, version, artifact_uri);
 
-        self.models
-            .entry(name.to_string())
-            .or_default()
-            .insert(version, model.clone());
+        self.models.entry(name.to_string()).or_default().insert(version, model.clone());
 
         Ok(model)
     }
@@ -46,11 +43,7 @@ impl ModelRegistry for InMemoryRegistry {
 
     fn get_latest_by_stage(&self, name: &str, stage: ModelStage) -> Option<ModelVersion> {
         self.models.get(name).and_then(|versions| {
-            versions
-                .values()
-                .filter(|m| m.stage == stage)
-                .max_by_key(|m| m.version)
-                .cloned()
+            versions.values().filter(|m| m.stage == stage).max_by_key(|m| m.version).cloned()
         })
     }
 
@@ -136,13 +129,7 @@ impl ModelRegistry for InMemoryRegistry {
             format!("Version {v2} is not definitively better than {v1}")
         };
 
-        Ok(VersionComparison {
-            v1,
-            v2,
-            metric_diffs,
-            v2_is_better,
-            summary,
-        })
+        Ok(VersionComparison { v1, v2, metric_diffs, v2_is_better, summary })
     }
 
     fn log_metrics(
@@ -162,12 +149,8 @@ impl ModelRegistry for InMemoryRegistry {
     }
 
     fn get_transition_history(&self, name: &str) -> Result<Vec<StageTransition>> {
-        let history: Vec<_> = self
-            .transitions
-            .iter()
-            .filter(|t| t.model_name == name)
-            .cloned()
-            .collect();
+        let history: Vec<_> =
+            self.transitions.iter().filter(|t| t.model_name == name).cloned().collect();
 
         if history.is_empty() && !self.models.contains_key(name) {
             return Err(RegistryError::ModelNotFound(name.to_string()));
@@ -209,10 +192,7 @@ impl ModelRegistry for InMemoryRegistry {
             Ok(policy.check(&model, approvals))
         } else {
             // No policy = always allowed
-            Ok(PolicyCheckResult {
-                passed: true,
-                failed_requirements: Vec::new(),
-            })
+            Ok(PolicyCheckResult { passed: true, failed_requirements: Vec::new() })
         }
     }
 }

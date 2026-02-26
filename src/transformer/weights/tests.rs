@@ -49,10 +49,7 @@ fn test_validate_weights_minimal() {
         "model.embed_tokens.weight".to_string(),
         Tensor::from_vec(vec![0.1; vocab * hidden], true),
     );
-    weights.insert(
-        "model.norm.weight".to_string(),
-        Tensor::from_vec(vec![1.0; hidden], true),
-    );
+    weights.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden], true));
 
     // Layer 0 weights
     weights.insert(
@@ -104,10 +101,7 @@ fn test_validate_weights_missing_embedding() {
     let weights: HashMap<String, Tensor> = HashMap::new();
     let result = validate_weights(&weights, 1);
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("embed_tokens.weight"));
+    assert!(result.unwrap_err().to_string().contains("embed_tokens.weight"));
 }
 
 #[test]
@@ -146,10 +140,8 @@ fn test_map_weight_name_auto() {
 #[test]
 fn test_validate_weights_missing_norm() {
     let mut weights = HashMap::new();
-    weights.insert(
-        "model.embed_tokens.weight".to_string(),
-        Tensor::from_vec(vec![0.1; 64000], true),
-    );
+    weights
+        .insert("model.embed_tokens.weight".to_string(), Tensor::from_vec(vec![0.1; 64000], true));
 
     let result = validate_weights(&weights, 1);
     assert!(result.is_err());
@@ -159,14 +151,9 @@ fn test_validate_weights_missing_norm() {
 #[test]
 fn test_validate_weights_missing_layer_weight() {
     let mut weights = HashMap::new();
-    weights.insert(
-        "model.embed_tokens.weight".to_string(),
-        Tensor::from_vec(vec![0.1; 64000], true),
-    );
-    weights.insert(
-        "model.norm.weight".to_string(),
-        Tensor::from_vec(vec![1.0; 64], true),
-    );
+    weights
+        .insert("model.embed_tokens.weight".to_string(), Tensor::from_vec(vec![0.1; 64000], true));
+    weights.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; 64], true));
     weights.insert(
         "model.layers.0.input_layernorm.weight".to_string(),
         Tensor::from_vec(vec![1.0; 64], true),
@@ -191,14 +178,8 @@ fn test_validate_weights_with_lm_head() {
         "model.embed_tokens.weight".to_string(),
         Tensor::from_vec(vec![0.1; vocab * hidden], true),
     );
-    weights.insert(
-        "model.norm.weight".to_string(),
-        Tensor::from_vec(vec![1.0; hidden], true),
-    );
-    weights.insert(
-        "lm_head.weight".to_string(),
-        Tensor::from_vec(vec![0.1; vocab * hidden], true),
-    );
+    weights.insert("model.norm.weight".to_string(), Tensor::from_vec(vec![1.0; hidden], true));
+    weights.insert("lm_head.weight".to_string(), Tensor::from_vec(vec![0.1; vocab * hidden], true));
 
     // Layer 0 weights
     weights.insert(
@@ -256,16 +237,8 @@ fn test_find_safetensors_single_file() {
 fn test_find_safetensors_sharded_files() {
     let dir = TempDir::new().unwrap();
     // Create sharded files
-    std::fs::write(
-        dir.path().join("model-00001-of-00002.safetensors"),
-        b"part1",
-    )
-    .unwrap();
-    std::fs::write(
-        dir.path().join("model-00002-of-00002.safetensors"),
-        b"part2",
-    )
-    .unwrap();
+    std::fs::write(dir.path().join("model-00001-of-00002.safetensors"), b"part1").unwrap();
+    std::fs::write(dir.path().join("model-00002-of-00002.safetensors"), b"part2").unwrap();
 
     let files = find_safetensors_files(dir.path()).unwrap();
     assert_eq!(files.len(), 2);
@@ -299,10 +272,7 @@ fn test_load_safetensors_no_files() {
     let dir = TempDir::new().unwrap();
     let result = load_safetensors_weights(dir.path(), Architecture::Auto);
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("No SafeTensors files found"));
+    assert!(result.unwrap_err().to_string().contains("No SafeTensors files found"));
 }
 
 #[test]
@@ -457,10 +427,7 @@ fn test_detect_architecture_qwen2() {
     let dir = TempDir::new().unwrap();
     let file_path = dir.path().join("model.safetensors");
 
-    let bias_bytes: Vec<u8> = vec![0.0f32; 4]
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect();
+    let bias_bytes: Vec<u8> = vec![0.0f32; 4].iter().flat_map(|f| f.to_le_bytes()).collect();
 
     // Qwen2 has attention biases
     let view1 = TensorView::new(Dtype::F32, vec![4], &bias_bytes).unwrap();
@@ -485,10 +452,7 @@ fn test_detect_architecture_llama() {
     let dir = TempDir::new().unwrap();
     let file_path = dir.path().join("model.safetensors");
 
-    let weight_bytes: Vec<u8> = vec![0.1f32; 4]
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect();
+    let weight_bytes: Vec<u8> = vec![0.1f32; 4].iter().flat_map(|f| f.to_le_bytes()).collect();
 
     // LLaMA has no attention biases
     let view = TensorView::new(Dtype::F32, vec![2, 2], &weight_bytes).unwrap();

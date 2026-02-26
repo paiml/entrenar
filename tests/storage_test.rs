@@ -39,9 +39,7 @@ fn test_full_experiment_lifecycle() {
 
     // Log artifact
     let artifact_data = b"model weights binary data";
-    let hash = storage
-        .log_artifact(&run_id, "model.bin", artifact_data)
-        .unwrap();
+    let hash = storage.log_artifact(&run_id, "model.bin", artifact_data).unwrap();
     assert!(hash.starts_with("sha256-"));
 
     // Complete run
@@ -104,10 +102,7 @@ fn test_span_id_tracking() {
     storage.set_span_id(&run_id, "renacer-span-123").unwrap();
 
     // Verify span ID
-    assert_eq!(
-        storage.get_span_id(&run_id).unwrap(),
-        Some("renacer-span-123".to_string())
-    );
+    assert_eq!(storage.get_span_id(&run_id).unwrap(), Some("renacer-span-123".to_string()));
 }
 
 #[cfg(feature = "monitor")]

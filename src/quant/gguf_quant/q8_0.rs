@@ -38,11 +38,7 @@ impl Q8_0 {
                 .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                 .unwrap_or(0.0);
 
-            let scale = if max_abs < 1e-10 {
-                1e-10
-            } else {
-                max_abs / 127.0
-            };
+            let scale = if max_abs < 1e-10 { 1e-10 } else { max_abs / 127.0 };
             scales.push(scale);
 
             // Quantize block

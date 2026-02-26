@@ -15,10 +15,7 @@ fn falsify_rouge1_known_value() {
     // precision = 2/4 = 0.5, recall = 2/4 = 0.5
     // F1 = 2 * 0.5 * 0.5 / (0.5 + 0.5) = 0.5
     let score = rouge_n("a b c d", "a b e f", 1);
-    assert!(
-        (score - 0.5).abs() < 1e-10,
-        "ROUGE-1 F1 should be 0.5, got {score}"
-    );
+    assert!((score - 0.5).abs() < 1e-10, "ROUGE-1 F1 should be 0.5, got {score}");
 }
 
 #[test]
@@ -39,10 +36,7 @@ fn falsify_rouge_n_is_symmetric() {
     // ROUGE F1 IS symmetric (unlike ROUGE precision or recall alone)
     let r1 = rouge_n("a b c", "a b d", 1);
     let r2 = rouge_n("a b d", "a b c", 1);
-    assert!(
-        (r1 - r2).abs() < 1e-10,
-        "ROUGE-1 F1 should be symmetric: {r1} vs {r2}"
-    );
+    assert!((r1 - r2).abs() < 1e-10, "ROUGE-1 F1 should be symmetric: {r1} vs {r2}");
 }
 
 #[test]
@@ -53,10 +47,7 @@ fn falsify_rouge2_known_value() {
     // precision = 2/3, recall = 2/3
     // F1 = 2 * (2/3) * (2/3) / (4/3) = (8/9) / (4/3) = 2/3
     let score = rouge_n("a b c d", "a b c e", 2);
-    assert!(
-        (score - 2.0 / 3.0).abs() < 1e-10,
-        "ROUGE-2 F1 should be 2/3, got {score}"
-    );
+    assert!((score - 2.0 / 3.0).abs() < 1e-10, "ROUGE-2 F1 should be 2/3, got {score}");
 }
 
 #[test]
@@ -66,10 +57,7 @@ fn falsify_rouge_l_known_value() {
     // precision = 3/5 = 0.6, recall = 3/5 = 0.6
     // F1 = 0.6
     let score = rouge_l("a b c d e", "a x b c y");
-    assert!(
-        (score - 0.6).abs() < 1e-10,
-        "ROUGE-L F1 should be 0.6, got {score}"
-    );
+    assert!((score - 0.6).abs() < 1e-10, "ROUGE-L F1 should be 0.6, got {score}");
 }
 
 #[test]
@@ -80,10 +68,7 @@ fn falsify_rouge_l_subsequence_not_substring() {
     // precision = 3/3 = 1.0, recall = 3/5 = 0.6
     // F1 = 2 * 1.0 * 0.6 / 1.6 = 0.75
     let score = rouge_l("a x b x c", "a b c");
-    assert!(
-        (score - 0.75).abs() < 1e-10,
-        "ROUGE-L should use subsequence, got {score}"
-    );
+    assert!((score - 0.75).abs() < 1e-10, "ROUGE-L should use subsequence, got {score}");
 }
 
 #[test]
@@ -99,10 +84,7 @@ fn falsify_rouge_l_geq_rouge2() {
         "the quick brown fox jumps over the lazy dog",
         "the quick brown cat jumps over the lazy dog",
     );
-    assert!(
-        rl >= r2 - 1e-10,
-        "ROUGE-L should be >= ROUGE-2 for long sequences: RL={rl}, R2={r2}"
-    );
+    assert!(rl >= r2 - 1e-10, "ROUGE-L should be >= ROUGE-2 for long sequences: RL={rl}, R2={r2}");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -115,20 +97,14 @@ fn falsify_perplexity_known_binary() {
     // PPL = exp(-mean(-ln(2))) = exp(ln(2)) = 2.0
     let log_probs = vec![(0.5f64).ln(); 100];
     let ppl = perplexity(&log_probs);
-    assert!(
-        (ppl - 2.0).abs() < 1e-10,
-        "Binary uniform → PPL=2.0, got {ppl}"
-    );
+    assert!((ppl - 2.0).abs() < 1e-10, "Binary uniform → PPL=2.0, got {ppl}");
 }
 
 #[test]
 fn falsify_perplexity_single_token() {
     // Single token with prob 0.01 → PPL = 100
     let ppl = perplexity(&[(0.01f64).ln()]);
-    assert!(
-        (ppl - 100.0).abs() < 1e-6,
-        "Single token p=0.01 → PPL=100, got {ppl}"
-    );
+    assert!((ppl - 100.0).abs() < 1e-6, "Single token p=0.01 → PPL=100, got {ppl}");
 }
 
 #[test]
@@ -136,10 +112,7 @@ fn falsify_perplexity_positive_log_probs() {
     // Positive log probs (invalid, but should not panic)
     // log_prob > 0 means prob > 1, which is invalid but PPL should still compute
     let ppl = perplexity(&[1.0, 2.0, 3.0]);
-    assert!(
-        ppl < 1.0,
-        "Positive log-probs → PPL < 1.0 (invalid but computable), got {ppl}"
-    );
+    assert!(ppl < 1.0, "Positive log-probs → PPL < 1.0 (invalid but computable), got {ppl}");
 }
 
 #[test]
@@ -149,8 +122,5 @@ fn falsify_perplexity_mixed_values() {
     let ppl = perplexity(&log_probs);
     // PPL = exp(-(ln(0.9) + ln(0.01)) / 2) = exp(-ln(0.009)/2) = (1/0.009)^0.5 ≈ 10.54
     let expected = (1.0 / (0.9 * 0.01f64)).sqrt();
-    assert!(
-        (ppl - expected).abs() < 1e-6,
-        "Mixed PPL: expected {expected}, got {ppl}"
-    );
+    assert!((ppl - expected).abs() < 1e-6, "Mixed PPL: expected {expected}, got {ppl}");
 }

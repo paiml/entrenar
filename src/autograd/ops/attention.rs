@@ -224,15 +224,11 @@ mod tests {
         let v_data: Vec<f32> = v_row.iter().copied().cycle().take(seq_len * d_v).collect();
 
         let q = Tensor::new(
-            Array1::from(vec![
-                1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9,
-            ]),
+            Array1::from(vec![1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9]),
             false,
         );
         let k = Tensor::new(
-            Array1::from(vec![
-                0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9,
-            ]),
+            Array1::from(vec![0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9]),
             false,
         );
         let v = Tensor::new(Array1::from(v_data), false);
@@ -262,20 +258,14 @@ mod tests {
         let seq_len = 3;
         let d_k = 4;
         let d_v = 4;
-        let v_data = vec![
-            2.0, -3.0, 5.0, 1.0, -1.0, 4.0, -2.0, 7.0, 3.0, 0.0, -4.0, 6.0,
-        ];
+        let v_data = vec![2.0, -3.0, 5.0, 1.0, -1.0, 4.0, -2.0, 7.0, 3.0, 0.0, -4.0, 6.0];
 
         let q = Tensor::new(
-            Array1::from(vec![
-                1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9,
-            ]),
+            Array1::from(vec![1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9]),
             false,
         );
         let k = Tensor::new(
-            Array1::from(vec![
-                0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9,
-            ]),
+            Array1::from(vec![0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9]),
             false,
         );
         let v = Tensor::new(Array1::from(v_data.clone()), false);
@@ -288,12 +278,10 @@ mod tests {
             for d in 0..d_v {
                 let out_val = out_slice[i * d_v + d];
 
-                let v_col_min = (0..seq_len)
-                    .map(|j| v_data[j * d_v + d])
-                    .fold(f32::INFINITY, f32::min);
-                let v_col_max = (0..seq_len)
-                    .map(|j| v_data[j * d_v + d])
-                    .fold(f32::NEG_INFINITY, f32::max);
+                let v_col_min =
+                    (0..seq_len).map(|j| v_data[j * d_v + d]).fold(f32::INFINITY, f32::min);
+                let v_col_max =
+                    (0..seq_len).map(|j| v_data[j * d_v + d]).fold(f32::NEG_INFINITY, f32::max);
 
                 assert!(
                     out_val >= v_col_min - 1e-4 && out_val <= v_col_max + 1e-4,

@@ -162,10 +162,8 @@ fn test_wasm_budget_sizes_mb() {
 
 #[test]
 fn test_budget_violation_display() {
-    let violation = BudgetViolation::BinarySize {
-        actual: 10 * 1024 * 1024,
-        limit: 5 * 1024 * 1024,
-    };
+    let violation =
+        BudgetViolation::BinarySize { actual: 10 * 1024 * 1024, limit: 5 * 1024 * 1024 };
     let msg = format!("{violation}");
     assert!(msg.contains("10"));
     assert!(msg.contains('5'));
@@ -248,10 +246,7 @@ fn test_edge_efficiency_zero_latency_max_throughput() {
 
 #[test]
 fn test_budget_violation_display_startup_latency() {
-    let violation = BudgetViolation::StartupLatency {
-        actual: 1000,
-        limit: 500,
-    };
+    let violation = BudgetViolation::StartupLatency { actual: 1000, limit: 500 };
     let msg = format!("{violation}");
     assert!(msg.contains("1000"));
     assert!(msg.contains("500"));
@@ -260,10 +255,8 @@ fn test_budget_violation_display_startup_latency() {
 
 #[test]
 fn test_budget_violation_display_memory_footprint() {
-    let violation = BudgetViolation::MemoryFootprint {
-        actual: 512 * 1024 * 1024,
-        limit: 256 * 1024 * 1024,
-    };
+    let violation =
+        BudgetViolation::MemoryFootprint { actual: 512 * 1024 * 1024, limit: 256 * 1024 * 1024 };
     let msg = format!("{violation}");
     assert!(msg.contains("512"));
     assert!(msg.contains("256"));
@@ -307,20 +300,11 @@ fn test_wasm_budget_serde() {
 
 #[test]
 fn test_budget_violation_equality() {
-    let v1 = BudgetViolation::BinarySize {
-        actual: 10,
-        limit: 5,
-    };
-    let v2 = BudgetViolation::BinarySize {
-        actual: 10,
-        limit: 5,
-    };
+    let v1 = BudgetViolation::BinarySize { actual: 10, limit: 5 };
+    let v2 = BudgetViolation::BinarySize { actual: 10, limit: 5 };
     assert_eq!(v1, v2);
 
-    let v3 = BudgetViolation::StartupLatency {
-        actual: 10,
-        limit: 5,
-    };
+    let v3 = BudgetViolation::StartupLatency { actual: 10, limit: 5 };
     assert_ne!(v1, v3);
 }
 
@@ -371,10 +355,7 @@ fn test_platform_efficiency_clone() {
 
 #[test]
 fn test_budget_violation_clone() {
-    let violation = BudgetViolation::BinarySize {
-        actual: 10,
-        limit: 5,
-    };
+    let violation = BudgetViolation::BinarySize { actual: 10, limit: 5 };
     let cloned = violation.clone();
     assert_eq!(violation, cloned);
 }

@@ -68,14 +68,10 @@ fn test_evaluate_classification() {
     let y_pred = vec![0, 1, 1, 2, 0, 1];
     let y_true = vec![0, 1, 0, 2, 0, 2];
 
-    let result = evaluator
-        .evaluate_classification("TestModel", &y_pred, &y_true)
-        .unwrap();
+    let result = evaluator.evaluate_classification("TestModel", &y_pred, &y_true).unwrap();
 
     assert!(result.get_score(Metric::Accuracy).is_some());
-    assert!(result
-        .get_score(Metric::Precision(Average::Macro))
-        .is_some());
+    assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
     assert!(result.get_score(Metric::Recall(Average::Macro)).is_some());
     assert!(result.get_score(Metric::F1(Average::Macro)).is_some());
 
@@ -86,10 +82,7 @@ fn test_evaluate_classification() {
 
 #[test]
 fn test_compare_classification() {
-    let config = EvalConfig {
-        metrics: vec![Metric::Accuracy],
-        ..Default::default()
-    };
+    let config = EvalConfig { metrics: vec![Metric::Accuracy], ..Default::default() };
 
     let evaluator = ModelEvaluator::new(config);
 
@@ -102,11 +95,8 @@ fn test_compare_classification() {
     // Model C: 3/6 correct
     let y_pred_c = vec![1, 0, 1, 1, 0, 0];
 
-    let models: Vec<(&str, &[usize])> = vec![
-        ("Model A", &y_pred_a),
-        ("Model B", &y_pred_b),
-        ("Model C", &y_pred_c),
-    ];
+    let models: Vec<(&str, &[usize])> =
+        vec![("Model A", &y_pred_a), ("Model B", &y_pred_b), ("Model C", &y_pred_c)];
 
     let leaderboard = evaluator.compare_classification(&models, &y_true).unwrap();
 
@@ -116,12 +106,8 @@ fn test_compare_classification() {
 
 #[test]
 fn test_evaluate_cv() {
-    let config = EvalConfig {
-        metrics: vec![Metric::Accuracy],
-        cv_folds: 5,
-        seed: 42,
-        ..Default::default()
-    };
+    let config =
+        EvalConfig { metrics: vec![Metric::Accuracy], cv_folds: 5, seed: 42, ..Default::default() };
 
     let evaluator = ModelEvaluator::new(config);
 
@@ -214,12 +200,8 @@ fn test_evaluate_cv_with_recall_metric() {
 
 #[test]
 fn test_evaluate_cv_single_fold_zero_std() {
-    let config = EvalConfig {
-        metrics: vec![Metric::Accuracy],
-        cv_folds: 1,
-        seed: 42,
-        ..Default::default()
-    };
+    let config =
+        EvalConfig { metrics: vec![Metric::Accuracy], cv_folds: 1, seed: 42, ..Default::default() };
 
     let evaluator = ModelEvaluator::new(config);
     let y_true: Vec<usize> = vec![0, 1, 0, 1];
@@ -268,15 +250,11 @@ fn test_evaluate_classification_skips_non_classification_metrics() {
     let y_pred = vec![0, 1, 1, 0];
     let y_true = vec![0, 1, 0, 0];
 
-    let result = evaluator
-        .evaluate_classification("Test", &y_pred, &y_true)
-        .unwrap();
+    let result = evaluator.evaluate_classification("Test", &y_pred, &y_true).unwrap();
 
     // Classification metrics should be present
     assert!(result.get_score(Metric::Accuracy).is_some());
-    assert!(result
-        .get_score(Metric::Precision(Average::Macro))
-        .is_some());
+    assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
     assert!(result.get_score(Metric::Recall(Average::Micro)).is_some());
     assert!(result.get_score(Metric::F1(Average::Weighted)).is_some());
     // All non-classification metrics should be skipped
@@ -289,9 +267,7 @@ fn test_evaluate_classification_skips_non_classification_metrics() {
     assert!(result.get_score(Metric::WER).is_none());
     assert!(result.get_score(Metric::RTFx).is_none());
     assert!(result.get_score(Metric::BLEU).is_none());
-    assert!(result
-        .get_score(Metric::ROUGE(RougeVariant::Rouge1))
-        .is_none());
+    assert!(result.get_score(Metric::ROUGE(RougeVariant::Rouge1)).is_none());
     assert!(result.get_score(Metric::Perplexity).is_none());
     assert!(result.get_score(Metric::MMLUAccuracy).is_none());
     assert!(result.get_score(Metric::PassAtK(5)).is_none());
@@ -319,12 +295,8 @@ fn test_cv_non_classification_metric_falls_back_to_accuracy() {
         Metric::PassAtK(1),
         Metric::NDCGAtK(5),
     ] {
-        let config = EvalConfig {
-            metrics: vec![metric],
-            cv_folds: 2,
-            seed: 42,
-            ..Default::default()
-        };
+        let config =
+            EvalConfig { metrics: vec![metric], cv_folds: 2, seed: 42, ..Default::default() };
 
         let evaluator = ModelEvaluator::new(config);
         let y_true: Vec<usize> = (0..20).map(|i| i % 2).collect();

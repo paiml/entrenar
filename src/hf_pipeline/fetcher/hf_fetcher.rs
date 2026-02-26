@@ -29,11 +29,7 @@ impl HfModelFetcher {
         let token = Self::resolve_token();
         let cache_dir = Self::default_cache_dir();
 
-        Ok(Self {
-            token,
-            cache_dir,
-            api_base: "https://huggingface.co".into(),
-        })
+        Ok(Self { token, cache_dir, api_base: "https://huggingface.co".into() })
     }
 
     /// Create fetcher with explicit token
@@ -83,10 +79,7 @@ impl HfModelFetcher {
 
     /// Get default cache directory
     pub(crate) fn default_cache_dir() -> PathBuf {
-        dirs::cache_dir()
-            .unwrap_or_else(|| PathBuf::from(".cache"))
-            .join("huggingface")
-            .join("hub")
+        dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".cache")).join("huggingface").join("hub")
     }
 
     /// Check if client has authentication
@@ -99,9 +92,7 @@ impl HfModelFetcher {
     pub(crate) fn parse_repo_id(repo_id: &str) -> Result<(&str, &str)> {
         let parts: Vec<&str> = repo_id.split('/').collect();
         if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
-            return Err(FetchError::InvalidRepoId {
-                repo_id: repo_id.to_string(),
-            });
+            return Err(FetchError::InvalidRepoId { repo_id: repo_id.to_string() });
         }
         Ok((parts[0], parts[1]))
     }
@@ -136,11 +127,9 @@ impl HfModelFetcher {
             api_builder = api_builder.with_token(Some(token.clone()));
         }
 
-        api_builder
-            .build()
-            .map_err(|e| FetchError::ConfigParseError {
-                message: format!("Failed to initialize HF API: {e}"),
-            })
+        api_builder.build().map_err(|e| FetchError::ConfigParseError {
+            message: format!("Failed to initialize HF API: {e}"),
+        })
     }
 
     /// Download a single file from a repo, copying it into the cache directory.
@@ -183,14 +172,12 @@ impl HfModelFetcher {
                         file: file.to_string(),
                     })
                 } else {
-                    Err(FetchError::ConfigParseError {
-                        message: format!("Download failed: {e}"),
-                    })
+                    Err(FetchError::ConfigParseError { message: format!("Download failed: {e}") })
                 }
             }
-            Err(e) => Err(FetchError::ConfigParseError {
-                message: format!("Download failed: {e}"),
-            }),
+            Err(e) => {
+                Err(FetchError::ConfigParseError { message: format!("Download failed: {e}") })
+            }
         }
     }
 

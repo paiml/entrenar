@@ -58,9 +58,7 @@ impl ClassificationHead {
         let weight_data: Vec<f32> = (0..hidden_size * num_classes)
             .map(|_| {
                 // Simple LCG for deterministic init
-                rng_state = rng_state
-                    .wrapping_mul(6_364_136_223_846_793_005)
-                    .wrapping_add(1);
+                rng_state = rng_state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
                 let u = (rng_state >> 33) as f32 / (1u64 << 31) as f32;
                 (2.0 * u - 1.0) * scale
             })
@@ -69,12 +67,7 @@ impl ClassificationHead {
         let weight = Tensor::from_vec(weight_data, true);
         let bias = Tensor::zeros(num_classes, true);
 
-        Self {
-            weight,
-            bias,
-            hidden_size,
-            num_classes,
-        }
+        Self { weight, bias, hidden_size, num_classes }
     }
 
     /// Forward pass: hidden_states → mean pool → linear → logits.
@@ -101,13 +94,7 @@ impl ClassificationHead {
             .as_slice()
             .expect("contiguous logits data")
             .iter()
-            .zip(
-                self.bias
-                    .data()
-                    .as_slice()
-                    .expect("contiguous bias data")
-                    .iter(),
-            )
+            .zip(self.bias.data().as_slice().expect("contiguous bias data").iter())
             .map(|(&l, &b)| l + b)
             .collect();
 
@@ -212,20 +199,12 @@ impl MultiLabelSafetySample {
         if sample.label < num_classes {
             labels[sample.label] = 1.0;
         }
-        Self {
-            input: sample.input.clone(),
-            labels,
-        }
+        Self { input: sample.input.clone(), labels }
     }
 
     /// Active class indices (where labels[i] > 0.5).
     pub fn active_classes(&self) -> Vec<usize> {
-        self.labels
-            .iter()
-            .enumerate()
-            .filter(|(_, &v)| v > 0.5)
-            .map(|(i, _)| i)
-            .collect()
+        self.labels.iter().enumerate().filter(|(_, &v)| v > 0.5).map(|(i, _)| i).collect()
     }
 }
 
@@ -293,11 +272,7 @@ pub fn corpus_stats(samples: &[SafetySample], num_classes: usize) -> SafetyCorpu
     SafetyCorpusStats {
         total: samples.len(),
         class_counts,
-        avg_input_len: if samples.is_empty() {
-            0
-        } else {
-            total_len / samples.len()
-        },
+        avg_input_len: if samples.is_empty() { 0 } else { total_len / samples.len() },
     }
 }
 
@@ -341,10 +316,7 @@ pub fn load_multi_label_corpus(
                     line_num + 1,
                 )));
             }
-            samples.push(MultiLabelSafetySample::from_single_label(
-                &single,
-                num_classes,
-            ));
+            samples.push(MultiLabelSafetySample::from_single_label(&single, num_classes));
         } else {
             return Err(crate::Error::ConfigError(format!(
                 "Invalid JSONL at line {}: unrecognized format",
@@ -366,16 +338,8 @@ pub fn load_multi_label_corpus(
 pub fn bce_with_logits_loss(logits: &Tensor, targets: &[f32], num_classes: usize) -> Tensor {
     let data = logits.data();
     let slice = data.as_slice().expect("contiguous logits");
-    assert_eq!(
-        slice.len(),
-        num_classes,
-        "F-CLASS-001: logit shape mismatch"
-    );
-    assert_eq!(
-        targets.len(),
-        num_classes,
-        "F-CLASS-001: target shape mismatch"
-    );
+    assert_eq!(slice.len(), num_classes, "F-CLASS-001: logit shape mismatch");
+    assert_eq!(targets.len(), num_classes, "F-CLASS-001: target shape mismatch");
 
     let total_loss: f32 = slice
         .iter()
@@ -388,11 +352,7 @@ pub fn bce_with_logits_loss(logits: &Tensor, targets: &[f32], num_classes: usize
         / num_classes as f32;
 
     // F-CLASS-005: finite check
-    let total_loss = if total_loss.is_finite() {
-        total_loss
-    } else {
-        100.0
-    };
+    let total_loss = if total_loss.is_finite() { total_loss } else { 100.0 };
 
     Tensor::from_vec(vec![total_loss], logits.requires_grad())
 }
@@ -412,11 +372,7 @@ pub fn bce_with_logits_loss(logits: &Tensor, targets: &[f32], num_classes: usize
 pub fn cross_entropy_loss(logits: &Tensor, target: usize, num_classes: usize) -> Tensor {
     let data = logits.data();
     let slice = data.as_slice().expect("contiguous logits");
-    assert_eq!(
-        slice.len(),
-        num_classes,
-        "F-CLASS-001: logit shape mismatch"
-    );
+    assert_eq!(slice.len(), num_classes, "F-CLASS-001: logit shape mismatch");
     assert!(target < num_classes, "F-CLASS-002: label out of range");
 
     // Numerically stable log-softmax: log(softmax(x_i)) = x_i - max - log(sum(exp(x_j - max)))
@@ -473,10 +429,7 @@ mod tests {
         let logits = Tensor::from_vec(vec![-100.0, -100.0, 100.0, -100.0, -100.0], false);
         let loss = cross_entropy_loss(&logits, 2, 5);
         let loss_val = loss.data()[0];
-        assert!(
-            loss_val < 0.01,
-            "Loss for correct high-confidence should be ~0"
-        );
+        assert!(loss_val < 0.01, "Loss for correct high-confidence should be ~0");
     }
 
     #[test]
@@ -513,30 +466,12 @@ mod tests {
     #[test]
     fn test_corpus_stats_distribution() {
         let samples = vec![
-            SafetySample {
-                input: "echo hello".into(),
-                label: 0,
-            },
-            SafetySample {
-                input: "echo $HOME".into(),
-                label: 1,
-            },
-            SafetySample {
-                input: "echo $RANDOM".into(),
-                label: 2,
-            },
-            SafetySample {
-                input: "mkdir /tmp/x".into(),
-                label: 3,
-            },
-            SafetySample {
-                input: "eval $x".into(),
-                label: 4,
-            },
-            SafetySample {
-                input: "ls".into(),
-                label: 0,
-            },
+            SafetySample { input: "echo hello".into(), label: 0 },
+            SafetySample { input: "echo $HOME".into(), label: 1 },
+            SafetySample { input: "echo $RANDOM".into(), label: 2 },
+            SafetySample { input: "mkdir /tmp/x".into(), label: 3 },
+            SafetySample { input: "eval $x".into(), label: 4 },
+            SafetySample { input: "ls".into(), label: 0 },
         ];
         let stats = corpus_stats(&samples, 5);
         assert_eq!(stats.total, 6);
@@ -561,10 +496,7 @@ mod tests {
 
     #[test]
     fn test_multi_label_from_single_label() {
-        let single = SafetySample {
-            input: "echo $RANDOM".into(),
-            label: 2,
-        };
+        let single = SafetySample { input: "echo $RANDOM".into(), label: 2 };
         let multi = MultiLabelSafetySample::from_single_label(&single, 5);
         assert_eq!(multi.labels, vec![0.0, 0.0, 1.0, 0.0, 0.0]);
         assert_eq!(multi.active_classes(), vec![2]);
@@ -581,10 +513,8 @@ mod tests {
 
     #[test]
     fn test_multi_label_no_active_classes() {
-        let sample = MultiLabelSafetySample {
-            input: "".into(),
-            labels: vec![0.0, 0.0, 0.0, 0.0, 0.0],
-        };
+        let sample =
+            MultiLabelSafetySample { input: "".into(), labels: vec![0.0, 0.0, 0.0, 0.0, 0.0] };
         assert!(sample.active_classes().is_empty());
     }
 
@@ -612,10 +542,7 @@ mod tests {
         let logits = Tensor::from_vec(vec![100.0, -100.0, 100.0, -100.0, -100.0], false);
         let targets = [1.0, 0.0, 1.0, 0.0, 0.0];
         let loss = bce_with_logits_loss(&logits, &targets, 5);
-        assert!(
-            loss.data()[0] < 0.01,
-            "Perfect prediction should have near-zero loss"
-        );
+        assert!(loss.data()[0] < 0.01, "Perfect prediction should have near-zero loss");
     }
 
     #[test]

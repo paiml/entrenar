@@ -56,16 +56,8 @@ pub fn manifest_to_spec(manifest: &TrainingManifest) -> Result<BridgeResult, Bri
         warnings.push("distillation config is not supported in legacy TrainSpec".into());
     }
 
-    let spec = TrainSpec {
-        model,
-        data,
-        optimizer,
-        training,
-        lora,
-        quantize,
-        merge: None,
-        publish: None,
-    };
+    let spec =
+        TrainSpec { model, data, optimizer, training, lora, quantize, merge: None, publish: None };
 
     Ok(BridgeResult { spec, warnings })
 }
@@ -75,10 +67,8 @@ fn convert_model(
     manifest: &TrainingManifest,
     warnings: &mut Vec<String>,
 ) -> Result<ModelRef, BridgeError> {
-    let model_cfg = manifest
-        .model
-        .as_ref()
-        .ok_or_else(|| BridgeError::MissingRequired("model".into()))?;
+    let model_cfg =
+        manifest.model.as_ref().ok_or_else(|| BridgeError::MissingRequired("model".into()))?;
 
     // Determine model mode from architecture
     let mode = if let Some(ref arch) = model_cfg.architecture {
@@ -92,11 +82,7 @@ fn convert_model(
     };
 
     // Use LoRA target_modules as model layers
-    let layers = manifest
-        .lora
-        .as_ref()
-        .map(|l| l.target_modules.clone())
-        .unwrap_or_default();
+    let layers = manifest.lora.as_ref().map(|l| l.target_modules.clone()).unwrap_or_default();
 
     if model_cfg.freeze.is_some() {
         warnings.push("model.freeze is not supported in legacy TrainSpec".into());
@@ -105,12 +91,7 @@ fn convert_model(
         warnings.push("model.device is not supported in legacy TrainSpec".into());
     }
 
-    Ok(ModelRef {
-        path: PathBuf::from(&model_cfg.source),
-        layers,
-        mode,
-        config: None,
-    })
+    Ok(ModelRef { path: PathBuf::from(&model_cfg.source), layers, mode, config: None })
 }
 
 /// Resolve the training data path from manifest data config.
@@ -135,10 +116,7 @@ fn extract_preprocessing_tokenizer(
 ) -> (Option<PathBuf>, Option<usize>) {
     for step in steps {
         if let crate::yaml_mode::manifest::data::PreprocessingStep::Tokenize { tokenize } = step {
-            return (
-                Some(PathBuf::from(&tokenize.tokenizer)),
-                tokenize.max_length,
-            );
+            return (Some(PathBuf::from(&tokenize.tokenizer)), tokenize.max_length);
         }
     }
     (None, None)
@@ -149,10 +127,8 @@ fn convert_data(
     manifest: &TrainingManifest,
     warnings: &mut Vec<String>,
 ) -> Result<SpecDataConfig, BridgeError> {
-    let data_cfg = manifest
-        .data
-        .as_ref()
-        .ok_or_else(|| BridgeError::MissingRequired("data".into()))?;
+    let data_cfg =
+        manifest.data.as_ref().ok_or_else(|| BridgeError::MissingRequired("data".into()))?;
 
     let train = resolve_train_path(data_cfg)?;
     let val = data_cfg.val.as_ref().map(PathBuf::from);
@@ -272,10 +248,7 @@ fn warn_unsupported_training_fields(
     training_cfg: Option<&crate::yaml_mode::manifest::training::TrainingConfig>,
     warnings: &mut Vec<String>,
 ) {
-    if training_cfg
-        .and_then(|t| t.early_stopping.as_ref())
-        .is_some()
-    {
+    if training_cfg.and_then(|t| t.early_stopping.as_ref()).is_some() {
         warnings.push("training.early_stopping is not supported in legacy TrainSpec".into());
     }
     if training_cfg.and_then(|t| t.distributed.as_ref()).is_some() {
@@ -295,30 +268,27 @@ fn convert_training(
 
     let epochs = training_cfg.and_then(|t| t.epochs).unwrap_or(10);
 
-    let grad_clip = training_cfg
-        .and_then(|t| t.gradient.as_ref())
-        .and_then(|g| g.clip_norm)
-        .map(|v| v as f32);
+    let grad_clip =
+        training_cfg.and_then(|t| t.gradient.as_ref()).and_then(|g| g.clip_norm).map(|v| v as f32);
 
-    let gradient_accumulation = training_cfg
-        .and_then(|t| t.gradient.as_ref())
-        .and_then(|g| g.accumulation_steps);
+    let gradient_accumulation =
+        training_cfg.and_then(|t| t.gradient.as_ref()).and_then(|g| g.accumulation_steps);
 
-    let mixed_precision = training_cfg
-        .and_then(|t| t.mixed_precision.as_ref())
-        .and_then(|mp| if mp.enabled { mp.dtype.clone() } else { None });
+    let mixed_precision = training_cfg.and_then(|t| t.mixed_precision.as_ref()).and_then(|mp| {
+        if mp.enabled {
+            mp.dtype.clone()
+        } else {
+            None
+        }
+    });
 
-    let save_interval = training_cfg
-        .and_then(|t| t.checkpoint.as_ref())
-        .and_then(|c| c.save_every)
-        .unwrap_or(1);
+    let save_interval =
+        training_cfg.and_then(|t| t.checkpoint.as_ref()).and_then(|c| c.save_every).unwrap_or(1);
 
     let lr_scheduler = scheduler_cfg.map(|s| s.name.to_lowercase());
 
-    let warmup_steps = scheduler_cfg
-        .and_then(|s| s.warmup.as_ref())
-        .and_then(|w| w.steps)
-        .unwrap_or(0);
+    let warmup_steps =
+        scheduler_cfg.and_then(|s| s.warmup.as_ref()).and_then(|w| w.steps).unwrap_or(0);
 
     let scheduler_params = scheduler_cfg.and_then(collect_scheduler_params);
 
@@ -382,16 +352,9 @@ fn convert_quantize(manifest: &TrainingManifest) -> Option<QuantSpec> {
 
     let symmetric = quant_cfg.scheme.as_deref().is_none_or(|s| s == "symmetric");
 
-    let per_channel = quant_cfg
-        .granularity
-        .as_deref()
-        .is_none_or(|g| g == "per_channel");
+    let per_channel = quant_cfg.granularity.as_deref().is_none_or(|g| g == "per_channel");
 
-    Some(QuantSpec {
-        bits: quant_cfg.bits,
-        symmetric,
-        per_channel,
-    })
+    Some(QuantSpec { bits: quant_cfg.bits, symmetric, per_channel })
 }
 
 #[cfg(test)]
@@ -487,15 +450,9 @@ mod tests {
     fn test_minimal_manifest_converts() {
         let manifest = minimal_manifest();
         let result = manifest_to_spec(&manifest).unwrap();
-        assert_eq!(
-            result.spec.model.path,
-            PathBuf::from("./models/base.safetensors")
-        );
+        assert_eq!(result.spec.model.path, PathBuf::from("./models/base.safetensors"));
         assert_eq!(result.spec.model.mode, ModelMode::Tabular);
-        assert_eq!(
-            result.spec.data.train,
-            PathBuf::from("./data/train.parquet")
-        );
+        assert_eq!(result.spec.data.train, PathBuf::from("./data/train.parquet"));
         assert_eq!(result.spec.optimizer.name, "adam");
         assert!((result.spec.optimizer.lr - 1e-4).abs() < 1e-6);
         assert_eq!(result.spec.training.epochs, 10);
@@ -555,10 +512,7 @@ mod tests {
         manifest.data.as_mut().unwrap().source = Some("./source.parquet".into());
         manifest.data.as_mut().unwrap().train = Some("./explicit_train.parquet".into());
         let result = manifest_to_spec(&manifest).unwrap();
-        assert_eq!(
-            result.spec.data.train,
-            PathBuf::from("./explicit_train.parquet")
-        );
+        assert_eq!(result.spec.data.train, PathBuf::from("./explicit_train.parquet"));
     }
 
     #[test]
@@ -620,14 +574,8 @@ mod tests {
         let result = manifest_to_spec(&manifest).unwrap();
         assert_eq!(result.spec.optimizer.name, "adamw");
         assert!((result.spec.optimizer.lr - 3e-4).abs() < 1e-6);
-        assert_eq!(
-            result.spec.optimizer.params["beta1"],
-            serde_json::json!(0.9)
-        );
-        assert_eq!(
-            result.spec.optimizer.params["beta2"],
-            serde_json::json!(0.999)
-        );
+        assert_eq!(result.spec.optimizer.params["beta1"], serde_json::json!(0.9));
+        assert_eq!(result.spec.optimizer.params["beta2"], serde_json::json!(0.999));
         assert!(result.spec.optimizer.params.contains_key("eps"));
         assert!(result.spec.optimizer.params.contains_key("weight_decay"));
     }
@@ -676,11 +624,7 @@ mod tests {
         let mut manifest = minimal_manifest();
         manifest.scheduler = Some(SchedulerConfig {
             name: "cosine".into(),
-            warmup: Some(WarmupConfig {
-                steps: Some(100),
-                ratio: None,
-                start_lr: None,
-            }),
+            warmup: Some(WarmupConfig { steps: Some(100), ratio: None, start_lr: None }),
             t_max: None,
             eta_min: None,
             step_size: None,
@@ -713,10 +657,7 @@ mod tests {
         });
 
         let result = manifest_to_spec(&manifest).unwrap();
-        assert_eq!(
-            result.spec.training.output_dir,
-            PathBuf::from("./outputs/my-model")
-        );
+        assert_eq!(result.spec.training.output_dir, PathBuf::from("./outputs/my-model"));
     }
 
     #[test]
@@ -853,10 +794,7 @@ mod tests {
         assert!(result.spec.training.lr_scheduler.is_none());
         assert_eq!(result.spec.training.warmup_steps, 0);
         assert_eq!(result.spec.training.save_interval, 1);
-        assert_eq!(
-            result.spec.training.output_dir,
-            PathBuf::from("./checkpoints")
-        );
+        assert_eq!(result.spec.training.output_dir, PathBuf::from("./checkpoints"));
     }
 
     #[test]
@@ -864,10 +802,7 @@ mod tests {
         let e = BridgeError::MissingRequired("model".into());
         assert!(e.to_string().contains("model"));
 
-        let e = BridgeError::InvalidValue {
-            field: "lr".into(),
-            reason: "must be positive".into(),
-        };
+        let e = BridgeError::InvalidValue { field: "lr".into(), reason: "must be positive".into() };
         assert!(e.to_string().contains("lr"));
         assert!(e.to_string().contains("must be positive"));
     }
@@ -943,25 +878,13 @@ output:
         let result = manifest_to_spec(&manifest).unwrap();
 
         assert_eq!(result.spec.model.mode, ModelMode::Transformer);
-        assert_eq!(
-            result.spec.model.path,
-            PathBuf::from("./models/llama.safetensors")
-        );
-        assert_eq!(
-            result.spec.model.layers,
-            vec!["q_proj", "k_proj", "v_proj", "o_proj"]
-        );
+        assert_eq!(result.spec.model.path, PathBuf::from("./models/llama.safetensors"));
+        assert_eq!(result.spec.model.layers, vec!["q_proj", "k_proj", "v_proj", "o_proj"]);
         assert_eq!(result.spec.data.train, PathBuf::from("./data/train.jsonl"));
-        assert_eq!(
-            result.spec.data.val,
-            Some(PathBuf::from("./data/val.jsonl"))
-        );
+        assert_eq!(result.spec.data.val, Some(PathBuf::from("./data/val.jsonl")));
         assert_eq!(result.spec.data.batch_size, 16);
         // LLM data fields
-        assert_eq!(
-            result.spec.data.tokenizer,
-            Some(PathBuf::from("./tokenizer.json"))
-        );
+        assert_eq!(result.spec.data.tokenizer, Some(PathBuf::from("./tokenizer.json")));
         assert_eq!(result.spec.data.seq_len, Some(2048));
         assert_eq!(result.spec.data.input_column, Some("text".into()));
         assert_eq!(result.spec.data.output_column, Some("target".into()));
@@ -977,10 +900,7 @@ output:
         assert_eq!(result.spec.training.lr_scheduler, Some("cosine".into()));
         assert_eq!(result.spec.training.warmup_steps, 200);
         assert_eq!(result.spec.training.save_interval, 1);
-        assert_eq!(
-            result.spec.training.output_dir,
-            PathBuf::from("./outputs/full-test")
-        );
+        assert_eq!(result.spec.training.output_dir, PathBuf::from("./outputs/full-test"));
         // Training mode: transformer → CausalLm
         assert_eq!(result.spec.training.mode, TrainingMode::CausalLm);
         // Seed
@@ -1036,10 +956,7 @@ output:
         data.max_length = Some(512);
 
         let result = manifest_to_spec(&manifest).unwrap();
-        assert_eq!(
-            result.spec.data.tokenizer,
-            Some(PathBuf::from("./tokenizer.json"))
-        );
+        assert_eq!(result.spec.data.tokenizer, Some(PathBuf::from("./tokenizer.json")));
         assert_eq!(result.spec.data.seq_len, Some(2048));
         assert_eq!(result.spec.data.input_column, Some("text".into()));
         assert_eq!(result.spec.data.output_column, Some("label".into()));
@@ -1063,10 +980,7 @@ output:
         }]);
 
         let result = manifest_to_spec(&manifest).unwrap();
-        assert_eq!(
-            result.spec.data.tokenizer,
-            Some(PathBuf::from("./fallback-tokenizer.json"))
-        );
+        assert_eq!(result.spec.data.tokenizer, Some(PathBuf::from("./fallback-tokenizer.json")));
         assert_eq!(result.spec.data.max_length, Some(256));
     }
 
@@ -1089,10 +1003,7 @@ output:
 
         let result = manifest_to_spec(&manifest).unwrap();
         // Top-level takes precedence over preprocessing fallback
-        assert_eq!(
-            result.spec.data.tokenizer,
-            Some(PathBuf::from("./primary.json"))
-        );
+        assert_eq!(result.spec.data.tokenizer, Some(PathBuf::from("./primary.json")));
         assert_eq!(result.spec.data.max_length, Some(1024));
     }
 
@@ -1218,11 +1129,7 @@ output:
         let mut manifest = minimal_manifest();
         manifest.scheduler = Some(SchedulerConfig {
             name: "cosine".into(),
-            warmup: Some(WarmupConfig {
-                steps: Some(100),
-                ratio: None,
-                start_lr: None,
-            }),
+            warmup: Some(WarmupConfig { steps: Some(100), ratio: None, start_lr: None }),
             t_max: None,
             eta_min: None,
             step_size: None,

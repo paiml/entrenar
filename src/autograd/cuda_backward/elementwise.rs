@@ -32,9 +32,7 @@ pub fn relu_backward(
 ) -> Result<()> {
     let n = input.len() as u32;
 
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -43,11 +41,7 @@ pub fn relu_backward(
     let ptx = kernel.emit_ptx_for_target(cache.sm_target());
     let module = cache.get_or_compile("relu_backward", &ptx)?;
 
-    let config = LaunchConfig {
-        grid: (n.div_ceil(256), 1, 1),
-        block: (256, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
     let input_ptr = input.as_ptr();
     let grad_out_ptr = grad_output.as_ptr();
@@ -63,11 +57,9 @@ pub fn relu_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "relu_backward", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("ReLU backward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "relu_backward", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("ReLU backward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -85,9 +77,7 @@ pub fn gelu_backward(
 ) -> Result<()> {
     let n = input.len() as u32;
 
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -96,11 +86,7 @@ pub fn gelu_backward(
     let ptx = kernel.emit_ptx_for_target(cache.sm_target());
     let module = cache.get_or_compile("gelu_backward", &ptx)?;
 
-    let config = LaunchConfig {
-        grid: (n.div_ceil(256), 1, 1),
-        block: (256, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
     let input_ptr = input.as_ptr();
     let grad_out_ptr = grad_output.as_ptr();
@@ -116,11 +102,9 @@ pub fn gelu_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "gelu_backward", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("GELU backward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "gelu_backward", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("GELU backward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())
@@ -138,9 +122,7 @@ pub fn silu_backward(
 ) -> Result<()> {
     let n = input.len() as u32;
 
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -149,11 +131,7 @@ pub fn silu_backward(
     let ptx = kernel.emit_ptx_for_target(cache.sm_target());
     let module = cache.get_or_compile("silu_backward", &ptx)?;
 
-    let config = LaunchConfig {
-        grid: (n.div_ceil(256), 1, 1),
-        block: (256, 1, 1),
-        shared_mem: 0,
-    };
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
     let input_ptr = input.as_ptr();
     let grad_out_ptr = grad_output.as_ptr();
@@ -169,11 +147,9 @@ pub fn silu_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "silu_backward", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("SiLU backward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "silu_backward", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("SiLU backward launch failed: {e:?}"))
+        })?;
     }
 
     Ok(())

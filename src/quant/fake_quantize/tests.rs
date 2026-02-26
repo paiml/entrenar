@@ -268,10 +268,7 @@ fn test_quantize_dequantize_round_trip() {
     // Output should be close to input (with quantization noise)
     for (i, (&orig, &out)) in input.data().iter().zip(output.data().iter()).enumerate() {
         let error = (orig - out).abs();
-        assert!(
-            error < 0.1,
-            "Error {error} at index {i} too large: {orig} vs {out}"
-        );
+        assert!(error < 0.1, "Error {error} at index {i} too large: {orig} vs {out}");
     }
 }
 

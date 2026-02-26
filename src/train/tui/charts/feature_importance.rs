@@ -16,22 +16,14 @@ pub struct FeatureImportanceChart {
 impl FeatureImportanceChart {
     /// Create a new feature importance chart.
     pub fn new(top_k: usize, bar_width: usize) -> Self {
-        Self {
-            names: Vec::new(),
-            scores: Vec::new(),
-            bar_width,
-            top_k,
-        }
+        Self { names: Vec::new(), scores: Vec::new(), bar_width, top_k }
     }
 
     /// Update with new importance scores.
     pub fn update(&mut self, importances: &[(usize, f32)], feature_names: Option<&[String]>) {
         let mut sorted: Vec<_> = importances.to_vec();
-        sorted.sort_by(|a, b| {
-            b.1.abs()
-                .partial_cmp(&a.1.abs())
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        sorted
+            .sort_by(|a, b| b.1.abs().partial_cmp(&a.1.abs()).unwrap_or(std::cmp::Ordering::Equal));
         sorted.truncate(self.top_k);
 
         self.names.clear();

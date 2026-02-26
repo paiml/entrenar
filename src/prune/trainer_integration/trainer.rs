@@ -45,13 +45,7 @@ impl PruneTrainer {
         let pipeline = PruneFinetunePipeline::new(config.pruning.clone());
         let data_loader = CalibrationDataLoader::new(config.calibration.clone());
 
-        Self {
-            config,
-            pipeline,
-            data_loader,
-            calibration: None,
-            current_epoch: 0,
-        }
+        Self { config, pipeline, data_loader, calibration: None, current_epoch: 0 }
     }
 
     /// Get the configuration.
@@ -203,10 +197,7 @@ impl PruneTrainer {
     /// 3. Track loss and metrics
     pub fn finetune(&mut self) -> Result<(), String> {
         if self.pipeline.stage() != PruningStage::FineTuning {
-            return Err(format!(
-                "Cannot finetune in stage {:?}",
-                self.pipeline.stage()
-            ));
+            return Err(format!("Cannot finetune in stage {:?}", self.pipeline.stage()));
         }
 
         for epoch in 0..self.config.finetune_epochs {
@@ -229,10 +220,7 @@ impl PruneTrainer {
     /// Run evaluation phase.
     pub fn evaluate(&mut self) -> Result<(), String> {
         if self.pipeline.stage() != PruningStage::Evaluating {
-            return Err(format!(
-                "Cannot evaluate in stage {:?}",
-                self.pipeline.stage()
-            ));
+            return Err(format!("Cannot evaluate in stage {:?}", self.pipeline.stage()));
         }
 
         // In real implementation:
@@ -247,10 +235,7 @@ impl PruneTrainer {
     /// Run export phase.
     pub fn export(&mut self) -> Result<(), String> {
         if self.pipeline.stage() != PruningStage::Exporting {
-            return Err(format!(
-                "Cannot export in stage {:?}",
-                self.pipeline.stage()
-            ));
+            return Err(format!("Cannot export in stage {:?}", self.pipeline.stage()));
         }
 
         // In real implementation:

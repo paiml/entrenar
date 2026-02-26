@@ -82,9 +82,7 @@ impl PromptVersion {
             if let Some(value) = vars.get(var) {
                 result = result.replace(&placeholder, value);
             } else {
-                return Err(LLMError::EvaluationFailed(format!(
-                    "Missing variable: {var}"
-                )));
+                return Err(LLMError::EvaluationFailed(format!("Missing variable: {var}")));
             }
         }
         Ok(result)

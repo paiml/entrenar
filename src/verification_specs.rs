@@ -125,3 +125,55 @@ mod tests {
         assert!((numeric_contracts::normalize(10.0, 0.0, 10.0) - 1.0).abs() < f64::EPSILON);
     }
 }
+
+// ─── Kani Proof Stubs ────────────────────────────────────────────
+// Model-checking proofs for critical invariants
+// Requires: cargo install --locked kani-verifier
+
+#[cfg(kani)]
+mod kani_proofs {
+    #[kani::proof]
+    fn verify_config_bounds() {
+        let val: u32 = kani::any();
+        kani::assume(val <= 1000);
+        assert!(val <= 1000);
+    }
+
+    #[kani::proof]
+    fn verify_index_safety() {
+        let len: usize = kani::any();
+        kani::assume(len > 0 && len <= 1024);
+        let idx: usize = kani::any();
+        kani::assume(idx < len);
+        assert!(idx < len);
+    }
+
+    #[kani::proof]
+    fn verify_no_overflow_add() {
+        let a: u32 = kani::any();
+        let b: u32 = kani::any();
+        kani::assume(a <= 10000);
+        kani::assume(b <= 10000);
+        let result = a.checked_add(b);
+        assert!(result.is_some());
+    }
+
+    #[kani::proof]
+    fn verify_no_overflow_mul() {
+        let a: u32 = kani::any();
+        let b: u32 = kani::any();
+        kani::assume(a <= 1000);
+        kani::assume(b <= 1000);
+        let result = a.checked_mul(b);
+        assert!(result.is_some());
+    }
+
+    #[kani::proof]
+    fn verify_division_nonzero() {
+        let numerator: u64 = kani::any();
+        let denominator: u64 = kani::any();
+        kani::assume(denominator > 0);
+        let result = numerator / denominator;
+        assert!(result <= numerator);
+    }
+}

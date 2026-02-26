@@ -77,18 +77,10 @@ impl FallbackPricing {
                 GpuPricing::new("a100-40gb", 2.50, 40)
                     .with_provider("generic")
                     .with_region("us-east-1"),
-                GpuPricing::new("v100", 2.00, 16)
-                    .with_provider("generic")
-                    .with_region("us-east-1"),
-                GpuPricing::new("t4", 0.50, 16)
-                    .with_provider("generic")
-                    .with_region("us-east-1"),
-                GpuPricing::new("l4", 0.75, 24)
-                    .with_provider("generic")
-                    .with_region("us-east-1"),
-                GpuPricing::new("a10g", 1.00, 24)
-                    .with_provider("generic")
-                    .with_region("us-east-1"),
+                GpuPricing::new("v100", 2.00, 16).with_provider("generic").with_region("us-east-1"),
+                GpuPricing::new("t4", 0.50, 16).with_provider("generic").with_region("us-east-1"),
+                GpuPricing::new("l4", 0.75, 24).with_provider("generic").with_region("us-east-1"),
+                GpuPricing::new("a10g", 1.00, 24).with_provider("generic").with_region("us-east-1"),
                 GpuPricing::new("h100-80gb", 4.50, 80)
                     .with_provider("generic")
                     .with_region("us-east-1"),

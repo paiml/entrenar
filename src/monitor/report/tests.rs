@@ -40,11 +40,8 @@ fn test_detect_nan_loss() {
 
     let report = analyzer.analyze("nan-test", &collector, 10.0);
 
-    let critical_issues: Vec<_> = report
-        .issues
-        .iter()
-        .filter(|i| i.severity == IssueSeverity::Critical)
-        .collect();
+    let critical_issues: Vec<_> =
+        report.issues.iter().filter(|i| i.severity == IssueSeverity::Critical).collect();
 
     assert!(!critical_issues.is_empty());
     assert!(critical_issues[0].description.contains("NaN"));
@@ -60,11 +57,8 @@ fn test_detect_inf_loss() {
 
     let report = analyzer.analyze("inf-test", &collector, 10.0);
 
-    let critical_issues: Vec<_> = report
-        .issues
-        .iter()
-        .filter(|i| i.severity == IssueSeverity::Critical)
-        .collect();
+    let critical_issues: Vec<_> =
+        report.issues.iter().filter(|i| i.severity == IssueSeverity::Critical).collect();
 
     assert!(!critical_issues.is_empty());
     assert!(critical_issues[0].description.contains("Infinity"));
@@ -80,11 +74,8 @@ fn test_detect_gradient_explosion() {
 
     let report = analyzer.analyze("grad-explosion", &collector, 10.0);
 
-    let gradient_issues: Vec<_> = report
-        .issues
-        .iter()
-        .filter(|i| i.category == "Gradient Health")
-        .collect();
+    let gradient_issues: Vec<_> =
+        report.issues.iter().filter(|i| i.category == "Gradient Health").collect();
 
     assert!(!gradient_issues.is_empty());
     assert!(gradient_issues[0].description.contains("explosion"));
@@ -102,11 +93,8 @@ fn test_detect_vanishing_gradients() {
 
     let report = analyzer.analyze("vanishing-grad", &collector, 10.0);
 
-    let gradient_issues: Vec<_> = report
-        .issues
-        .iter()
-        .filter(|i| i.description.contains("vanishing"))
-        .collect();
+    let gradient_issues: Vec<_> =
+        report.issues.iter().filter(|i| i.description.contains("vanishing")).collect();
 
     assert!(!gradient_issues.is_empty());
 }
@@ -121,11 +109,8 @@ fn test_missing_loss_metric() {
 
     let report = analyzer.analyze("no-loss", &collector, 10.0);
 
-    let observability_issues: Vec<_> = report
-        .issues
-        .iter()
-        .filter(|i| i.category == "Observability")
-        .collect();
+    let observability_issues: Vec<_> =
+        report.issues.iter().filter(|i| i.category == "Observability").collect();
 
     assert!(!observability_issues.is_empty());
 }
@@ -224,11 +209,8 @@ fn test_low_accuracy_warning() {
 
     let report = analyzer.analyze("low-acc", &collector, 100.0);
 
-    let perf_issues: Vec<_> = report
-        .issues
-        .iter()
-        .filter(|i| i.category == "Performance")
-        .collect();
+    let perf_issues: Vec<_> =
+        report.issues.iter().filter(|i| i.category == "Performance").collect();
 
     assert!(!perf_issues.is_empty());
 }
@@ -294,21 +276,14 @@ fn test_trend_detection_stable() {
     // GradientNorm with low coefficient of variation (cv < 0.2) is stable
     // cv = std / mean, so mean=1.0 with values 0.95-1.05 gives cv ≈ 0.03
     for i in 0..50 {
-        collector.record(
-            Metric::GradientNorm,
-            1.0 + (f64::from(i) % 10.0 - 5.0) * 0.01,
-        );
+        collector.record(Metric::GradientNorm, 1.0 + (f64::from(i) % 10.0 - 5.0) * 0.01);
     }
 
     let report = analyzer.analyze("stable", &collector, 10.0);
     let grad_summary = report.metric_summaries.get(&Metric::GradientNorm).unwrap();
 
     // With low CV, gradient norm should be stable
-    assert!(
-        grad_summary.trend == Trend::Stable,
-        "Expected Stable, got {:?}",
-        grad_summary.trend
-    );
+    assert!(grad_summary.trend == Trend::Stable, "Expected Stable, got {:?}", grad_summary.trend);
 }
 
 #[test]

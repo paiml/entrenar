@@ -122,14 +122,9 @@ impl GgufExporter {
         let mut pairs = Vec::new();
 
         // General metadata
-        pairs.push((
-            "general.architecture".to_string(),
-            self.metadata.general.architecture.clone(),
-        ));
-        pairs.push((
-            "general.name".to_string(),
-            self.metadata.general.name.clone(),
-        ));
+        pairs
+            .push(("general.architecture".to_string(), self.metadata.general.architecture.clone()));
+        pairs.push(("general.name".to_string(), self.metadata.general.name.clone()));
 
         if let Some(ref author) = self.metadata.general.author {
             pairs.push(("general.author".to_string(), author.clone()));
@@ -144,10 +139,7 @@ impl GgufExporter {
             pairs.push(("general.url".to_string(), url.clone()));
         }
 
-        pairs.push((
-            "general.file_type".to_string(),
-            self.quantization.as_str().to_string(),
-        ));
+        pairs.push(("general.file_type".to_string(), self.quantization.as_str().to_string()));
 
         // Provenance metadata
         if let Some(ref prov) = self.metadata.provenance {
@@ -178,7 +170,5 @@ pub struct GgufExportResult {
 
 /// Get number of CPUs (simplified).
 fn num_cpus() -> usize {
-    std::thread::available_parallelism()
-        .map(std::num::NonZero::get)
-        .unwrap_or(4)
+    std::thread::available_parallelism().map(std::num::NonZero::get).unwrap_or(4)
 }

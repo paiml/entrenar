@@ -5,13 +5,10 @@ use crate::merge::ensemble::{ensemble_merge, EnsembleConfig, EnsembleStrategy, M
 
 #[test]
 fn test_hierarchical_four_models() {
-    let models: Vec<_> = (0..4)
-        .map(|i| make_model(vec![i as f32 * 2.0, i as f32 * 3.0]))
-        .collect();
+    let models: Vec<_> = (0..4).map(|i| make_model(vec![i as f32 * 2.0, i as f32 * 3.0])).collect();
 
-    let config = EnsembleConfig::hierarchical(EnsembleStrategy::WeightedAverage {
-        weights: vec![0.5, 0.5],
-    });
+    let config =
+        EnsembleConfig::hierarchical(EnsembleStrategy::WeightedAverage { weights: vec![0.5, 0.5] });
     let result = ensemble_merge(&models, &config).unwrap();
 
     // ((0+2)/2 + (4+6)/2) / 2 = (1 + 5) / 2 = 3
@@ -61,11 +58,9 @@ fn test_hierarchical_with_dare() {
     let m3 = make_model(vec![9.0, 10.0, 11.0, 12.0]);
     let m4 = make_model(vec![13.0, 14.0, 15.0, 16.0]);
 
-    let config = EnsembleConfig::hierarchical(EnsembleStrategy::Dare {
-        drop_prob: 0.3,
-        seed: Some(42),
-    })
-    .with_base(base);
+    let config =
+        EnsembleConfig::hierarchical(EnsembleStrategy::Dare { drop_prob: 0.3, seed: Some(42) })
+            .with_base(base);
 
     let result = ensemble_merge(&[m1, m2, m3, m4], &config).unwrap();
     for val in result["w"].data() {
@@ -127,10 +122,8 @@ fn test_hierarchical_dare_without_base_error() {
     let m3 = make_model(vec![5.0, 6.0]);
     let m4 = make_model(vec![7.0, 8.0]);
 
-    let config = EnsembleConfig::hierarchical(EnsembleStrategy::Dare {
-        drop_prob: 0.3,
-        seed: None,
-    });
+    let config =
+        EnsembleConfig::hierarchical(EnsembleStrategy::Dare { drop_prob: 0.3, seed: None });
     // No base provided
 
     let result = ensemble_merge(&[m1, m2, m3, m4], &config);
@@ -143,9 +136,8 @@ fn test_merge_pair_with_weighted_avg_specific_weights() {
     let m2 = make_model(vec![10.0, 10.0]);
 
     // Using hierarchical will call merge_pair with specific weights
-    let config = EnsembleConfig::hierarchical(EnsembleStrategy::WeightedAverage {
-        weights: vec![0.3, 0.7],
-    });
+    let config =
+        EnsembleConfig::hierarchical(EnsembleStrategy::WeightedAverage { weights: vec![0.3, 0.7] });
 
     let result = ensemble_merge(&[m1, m2], &config).unwrap();
     // 0*0.3 + 10*0.7 = 7

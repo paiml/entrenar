@@ -25,11 +25,7 @@ pub struct HyperbandScheduler {
 impl HyperbandScheduler {
     /// Create a new Hyperband scheduler
     pub fn new(space: HyperparameterSpace, max_iter: usize) -> Self {
-        Self {
-            max_iter,
-            eta: 3.0,
-            space,
-        }
+        Self { max_iter, eta: 3.0, space }
     }
 
     /// Set reduction factor
@@ -126,14 +122,7 @@ mod tests {
     #[test]
     fn test_hyperband_generate_configs() {
         let mut space = HyperparameterSpace::new();
-        space.add(
-            "lr",
-            ParameterDomain::Continuous {
-                low: 0.0,
-                high: 1.0,
-                log_scale: false,
-            },
-        );
+        space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
         let hb = HyperbandScheduler::new(space, 81);
         let configs = hb.generate_configs(10);

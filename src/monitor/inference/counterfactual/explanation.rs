@@ -40,11 +40,7 @@ impl Counterfactual {
         alternative_decision: usize,
         alternative_confidence: f32,
     ) -> Self {
-        assert_eq!(
-            original_input.len(),
-            counterfactual_input.len(),
-            "Input dimensions must match"
-        );
+        assert_eq!(original_input.len(), counterfactual_input.len(), "Input dimensions must match");
 
         let mut changes = Vec::new();
         let mut l1 = 0.0f32;
@@ -53,11 +49,7 @@ impl Counterfactual {
         for i in 0..original_input.len() {
             let delta = counterfactual_input[i] - original_input[i];
             if delta.abs() > 1e-6 {
-                changes.push(FeatureChange::new(
-                    i,
-                    original_input[i],
-                    counterfactual_input[i],
-                ));
+                changes.push(FeatureChange::new(i, original_input[i], counterfactual_input[i]));
                 l1 += delta.abs();
                 l2 += delta * delta;
             }
@@ -96,9 +88,7 @@ impl Counterfactual {
         // Sort changes by absolute delta (most impactful first)
         let mut sorted_changes = self.changes.clone();
         sorted_changes.sort_by(|a, b| {
-            b.abs_delta()
-                .partial_cmp(&a.abs_delta())
-                .unwrap_or(std::cmp::Ordering::Equal)
+            b.abs_delta().partial_cmp(&a.abs_delta()).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         for change in sorted_changes.iter().take(5) {
@@ -112,10 +102,7 @@ impl Counterfactual {
         }
 
         if self.changes.len() > 5 {
-            explanation.push_str(&format!(
-                "  ... and {} more changes\n",
-                self.changes.len() - 5
-            ));
+            explanation.push_str(&format!("  ... and {} more changes\n", self.changes.len() - 5));
         }
 
         explanation.push_str(&format!("\nSparsity (L1): {:.4}\n", self.sparsity));
@@ -203,10 +190,7 @@ impl Counterfactual {
 
         let version = reader.read_u8()?;
         if version != 1 {
-            return Err(CounterfactualError::VersionMismatch {
-                expected: 1,
-                actual: version,
-            });
+            return Err(CounterfactualError::VersionMismatch { expected: 1, actual: version });
         }
 
         let original_decision = reader.read_u32_as_usize()?;
@@ -310,18 +294,8 @@ impl<'a> ByteReader<'a> {
         let counterfactual_value = self.read_f32()?;
         let delta = self.read_f32()?;
         let name_len = self.read_u32_as_usize()?;
-        let feature_name = if name_len > 0 {
-            Some(self.read_string(name_len)?)
-        } else {
-            None
-        };
-        Ok(FeatureChange {
-            feature_idx,
-            feature_name,
-            original_value,
-            counterfactual_value,
-            delta,
-        })
+        let feature_name = if name_len > 0 { Some(self.read_string(name_len)?) } else { None };
+        Ok(FeatureChange { feature_idx, feature_name, original_value, counterfactual_value, delta })
     }
 
     fn ensure_available(&self, needed: usize) -> Result<(), CounterfactualError> {

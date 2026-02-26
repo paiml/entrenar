@@ -15,9 +15,7 @@ pub struct CostPerformanceBenchmark {
 impl CostPerformanceBenchmark {
     /// Create a new empty benchmark
     pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+        Self { entries: Vec::new() }
     }
 
     /// Add a benchmark entry
@@ -58,9 +56,7 @@ impl CostPerformanceBenchmark {
 
         // Sort by quality (descending)
         frontier.sort_by(|a, b| {
-            b.quality_score
-                .partial_cmp(&a.quality_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            b.quality_score.partial_cmp(&a.quality_score).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         frontier
@@ -68,27 +64,19 @@ impl CostPerformanceBenchmark {
 
     /// Find best entry within a budget
     pub fn best_for_budget(&self, max_usd: f64) -> Option<&BenchmarkEntry> {
-        self.entries
-            .iter()
-            .filter(|e| e.cost.total_cost_usd <= max_usd)
-            .max_by(|a, b| {
-                a.quality_score
-                    .partial_cmp(&b.quality_score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.entries.iter().filter(|e| e.cost.total_cost_usd <= max_usd).max_by(|a, b| {
+            a.quality_score.partial_cmp(&b.quality_score).unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     /// Find cheapest entry that meets quality threshold
     pub fn cheapest_for_quality(&self, min_quality: f64) -> Option<&BenchmarkEntry> {
-        self.entries
-            .iter()
-            .filter(|e| e.quality_score >= min_quality)
-            .min_by(|a, b| {
-                a.cost
-                    .total_cost_usd
-                    .partial_cmp(&b.cost.total_cost_usd)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
+        self.entries.iter().filter(|e| e.quality_score >= min_quality).min_by(|a, b| {
+            a.cost
+                .total_cost_usd
+                .partial_cmp(&b.cost.total_cost_usd)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     }
 
     /// Calculate efficiency score for an entry
@@ -117,9 +105,7 @@ impl CostPerformanceBenchmark {
     /// Get best entry by quality
     pub fn best_quality(&self) -> Option<&BenchmarkEntry> {
         self.entries.iter().max_by(|a, b| {
-            a.quality_score
-                .partial_cmp(&b.quality_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            a.quality_score.partial_cmp(&b.quality_score).unwrap_or(std::cmp::Ordering::Equal)
         })
     }
 
@@ -146,10 +132,7 @@ impl CostPerformanceBenchmark {
     where
         F: Fn(&ComputeDevice) -> bool,
     {
-        self.entries
-            .iter()
-            .filter(|e| predicate(&e.device))
-            .collect()
+        self.entries.iter().filter(|e| predicate(&e.device)).collect()
     }
 
     /// Get statistics summary
@@ -183,10 +166,7 @@ impl CostPerformanceBenchmark {
         let frontier = self.pareto_frontier();
 
         let mut report = String::new();
-        report.push_str(&format!(
-            "=== Benchmark Report ({} entries) ===\n\n",
-            stats.count
-        ));
+        report.push_str(&format!("=== Benchmark Report ({} entries) ===\n\n", stats.count));
 
         report.push_str("Quality Scores:\n");
         report.push_str(&format!(

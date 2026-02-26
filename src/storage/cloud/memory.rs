@@ -48,26 +48,16 @@ impl ArtifactBackend for InMemoryBackend {
     }
 
     fn exists(&self, hash: &str) -> Result<bool> {
-        Ok(self
-            .data
-            .read()
-            .map_err(|e| CloudError::Backend(e.to_string()))?
-            .contains_key(hash))
+        Ok(self.data.read().map_err(|e| CloudError::Backend(e.to_string()))?.contains_key(hash))
     }
 
     fn delete(&self, hash: &str) -> Result<()> {
-        let removed = self
-            .data
-            .write()
-            .map_err(|e| CloudError::Backend(e.to_string()))?
-            .remove(hash);
+        let removed =
+            self.data.write().map_err(|e| CloudError::Backend(e.to_string()))?.remove(hash);
         if removed.is_none() {
             return Err(CloudError::NotFound(hash.to_string()));
         }
-        self.metadata
-            .write()
-            .map_err(|e| CloudError::Backend(e.to_string()))?
-            .remove(hash);
+        self.metadata.write().map_err(|e| CloudError::Backend(e.to_string()))?.remove(hash);
         Ok(())
     }
 

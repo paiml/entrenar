@@ -119,11 +119,7 @@ impl TextDataset {
             .map(|_| rand::random::<u32>() % vocab_size as u32)
             .collect();
 
-        Self {
-            tokens,
-            batch_size,
-            seq_len,
-        }
+        Self { tokens, batch_size, seq_len }
     }
 
     /// Number of batches in the dataset
@@ -255,10 +251,7 @@ fn main() {
 
     let mut model = LLaMAModel::new(llama_config.clone());
     let param_count = model.count_parameters();
-    println!(
-        "   - Parameters: {:.1}M\n",
-        param_count as f32 / 1_000_000.0
-    );
+    println!("   - Parameters: {:.1}M\n", param_count as f32 / 1_000_000.0);
 
     // Create optimizer
     let mut optimizer = AdamW::new(
@@ -334,12 +327,7 @@ fn main() {
 
             // Log progress
             if global_step % 10 == 0 {
-                println!(
-                    "  Step {}: loss={:.4}, lr={:.2e}",
-                    global_step,
-                    loss,
-                    optimizer.lr()
-                );
+                println!("  Step {}: loss={:.4}, lr={:.2e}", global_step, loss, optimizer.lr());
             }
 
             // Save checkpoint
@@ -426,15 +414,13 @@ mod tests {
         let batch_seq_len = 16;
 
         // Create random logits
-        let logits_data: Vec<f32> = (0..(batch_seq_len * vocab_size))
-            .map(|_| rand::random::<f32>() - 0.5)
-            .collect();
+        let logits_data: Vec<f32> =
+            (0..(batch_seq_len * vocab_size)).map(|_| rand::random::<f32>() - 0.5).collect();
         let logits = Tensor::from_vec(logits_data, true);
 
         // Random targets
-        let targets: Vec<u32> = (0..batch_seq_len)
-            .map(|_| (rand::random::<u32>() % vocab_size as u32))
-            .collect();
+        let targets: Vec<u32> =
+            (0..batch_seq_len).map(|_| (rand::random::<u32>() % vocab_size as u32)).collect();
 
         let loss = cross_entropy_loss(&logits, &targets, vocab_size);
 

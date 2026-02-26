@@ -60,10 +60,7 @@ impl CodeGan {
 
     /// Generate code from latent codes
     pub fn generate(&self, latent_codes: &[LatentCode]) -> Vec<Vec<u32>> {
-        latent_codes
-            .iter()
-            .map(|z| self.generator.generate(z))
-            .collect()
+        latent_codes.iter().map(|z| self.generator.generate(z)).collect()
     }
 
     /// Generate a single code sample
@@ -74,10 +71,7 @@ impl CodeGan {
 
     /// Discriminate a batch of code samples
     pub fn discriminate(&self, samples: &[Vec<u32>]) -> Vec<f32> {
-        samples
-            .iter()
-            .map(|tokens| self.discriminator.discriminate(tokens))
-            .collect()
+        samples.iter().map(|tokens| self.discriminator.discriminate(tokens)).collect()
     }
 
     /// Compute discriminator loss (binary cross-entropy)
@@ -89,16 +83,11 @@ impl CodeGan {
         // For real: y=1, for fake: y=0
         let smoothed_real = 1.0 - self.config.label_smoothing;
 
-        let real_loss: f32 = real_probs
-            .iter()
-            .map(|&p| -smoothed_real * p.max(1e-7).ln())
-            .sum::<f32>()
-            / real_probs.len().max(1) as f32;
+        let real_loss: f32 =
+            real_probs.iter().map(|&p| -smoothed_real * p.max(1e-7).ln()).sum::<f32>()
+                / real_probs.len().max(1) as f32;
 
-        let fake_loss: f32 = fake_probs
-            .iter()
-            .map(|&p| -(1.0 - p).max(1e-7).ln())
-            .sum::<f32>()
+        let fake_loss: f32 = fake_probs.iter().map(|&p| -(1.0 - p).max(1e-7).ln()).sum::<f32>()
             / fake_probs.len().max(1) as f32;
 
         real_loss + fake_loss
@@ -127,10 +116,8 @@ impl CodeGan {
         let diversity = unique_seqs.len() as f32 / num_samples as f32;
 
         // Also check token diversity
-        let all_tokens: HashSet<u32> = unique_seqs
-            .iter()
-            .flat_map(|seq| seq.iter().copied())
-            .collect();
+        let all_tokens: HashSet<u32> =
+            unique_seqs.iter().flat_map(|seq| seq.iter().copied()).collect();
 
         self.stats.unique_tokens = all_tokens.len();
 

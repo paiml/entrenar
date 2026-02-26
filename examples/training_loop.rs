@@ -57,12 +57,7 @@ fn main() {
             x.clone()
         });
 
-        println!(
-            "Epoch {}: loss={:.4}, lr={:.6}",
-            epoch + 1,
-            avg_loss,
-            trainer.lr()
-        );
+        println!("Epoch {}: loss={:.4}, lr={:.6}", epoch + 1, avg_loss, trainer.lr());
 
         // Optional: Learning rate schedule
         if epoch == 5 {
@@ -78,10 +73,7 @@ fn main() {
     println!("  Total epochs: {}", trainer.metrics.epoch);
     println!("  Total steps: {}", trainer.metrics.steps);
     println!("  Best loss: {:.4}", trainer.metrics.best_loss().unwrap());
-    println!(
-        "  Avg loss (last 3 epochs): {:.4}",
-        trainer.metrics.avg_loss(3)
-    );
+    println!("  Avg loss (last 3 epochs): {:.4}", trainer.metrics.avg_loss(3));
 
     // Check if training improved
     if trainer.metrics.is_improving(3) {

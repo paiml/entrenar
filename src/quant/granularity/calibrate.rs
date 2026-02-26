@@ -23,9 +23,8 @@ pub fn calibrate_per_tensor(values: &[f32], bits: u8, mode: QuantMode) -> QuantP
             (scale, 0)
         }
         QuantMode::Asymmetric => {
-            let (min_val, max_val) = values.iter().fold((f32::MAX, f32::MIN), |(min, max), &v| {
-                (min.min(v), max.max(v))
-            });
+            let (min_val, max_val) =
+                values.iter().fold((f32::MAX, f32::MIN), |(min, max), &v| (min.min(v), max.max(v)));
 
             let range = (max_val - min_val).max(1e-8);
             let qmax = ((1i32 << bits) - 1) as f32;
@@ -37,11 +36,7 @@ pub fn calibrate_per_tensor(values: &[f32], bits: u8, mode: QuantMode) -> QuantP
 
     QuantParams {
         scales: vec![scale],
-        zero_points: if mode == QuantMode::Asymmetric {
-            vec![zero_point]
-        } else {
-            vec![]
-        },
+        zero_points: if mode == QuantMode::Asymmetric { vec![zero_point] } else { vec![] },
         granularity: QuantGranularity::PerTensor,
         mode,
         bits,
@@ -64,11 +59,7 @@ pub fn calibrate_per_channel(
     if num_channels == 0 || values.is_empty() {
         return QuantParams {
             scales: vec![1.0],
-            zero_points: if mode == QuantMode::Asymmetric {
-                vec![0]
-            } else {
-                vec![]
-            },
+            zero_points: if mode == QuantMode::Asymmetric { vec![0] } else { vec![] },
             granularity: QuantGranularity::PerChannel,
             mode,
             bits,
@@ -101,9 +92,7 @@ pub fn calibrate_per_channel(
             QuantMode::Asymmetric => {
                 let (min_val, max_val) = channel_values
                     .iter()
-                    .fold((f32::MAX, f32::MIN), |(min, max), &v| {
-                        (min.min(v), max.max(v))
-                    });
+                    .fold((f32::MAX, f32::MIN), |(min, max), &v| (min.min(v), max.max(v)));
 
                 let range = (max_val - min_val).max(1e-8);
                 let scale = range / qmax_unsigned;
@@ -115,13 +104,7 @@ pub fn calibrate_per_channel(
         }
     }
 
-    QuantParams {
-        scales,
-        zero_points,
-        granularity: QuantGranularity::PerChannel,
-        mode,
-        bits,
-    }
+    QuantParams { scales, zero_points, granularity: QuantGranularity::PerChannel, mode, bits }
 }
 
 /// Calibrate quantization parameters for per-group quantization
@@ -164,9 +147,7 @@ pub fn calibrate_per_group(
             QuantMode::Asymmetric => {
                 let (min_val, max_val) = group_values
                     .iter()
-                    .fold((f32::MAX, f32::MIN), |(min, max), &v| {
-                        (min.min(v), max.max(v))
-                    });
+                    .fold((f32::MAX, f32::MIN), |(min, max), &v| (min.min(v), max.max(v)));
 
                 let range = (max_val - min_val).max(1e-8);
                 let scale = range / qmax_unsigned;

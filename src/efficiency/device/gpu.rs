@@ -18,12 +18,7 @@ pub struct GpuInfo {
 impl GpuInfo {
     /// Create new GPU info
     pub fn new(name: impl Into<String>, vram_bytes: u64) -> Self {
-        Self {
-            name: name.into(),
-            vram_bytes,
-            compute_capability: None,
-            index: 0,
-        }
+        Self { name: name.into(), vram_bytes, compute_capability: None, index: 0 }
     }
 
     /// Set CUDA compute capability
@@ -40,8 +35,7 @@ impl GpuInfo {
 
     /// Check if GPU supports specific CUDA compute capability
     pub fn supports_compute_capability(&self, major: u32, minor: u32) -> bool {
-        self.compute_capability
-            .is_some_and(|(m, n)| m > major || (m == major && n >= minor))
+        self.compute_capability.is_some_and(|(m, n)| m > major || (m == major && n >= minor))
     }
 
     /// Get VRAM in GB

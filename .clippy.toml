@@ -8,6 +8,9 @@ cognitive-complexity-threshold = 15
 too-many-arguments-threshold = 7
 type-complexity-threshold = 250
 
+# Allow unwrap() in test code only (production code uses expect() or ? operator)
+allow-unwrap-in-tests = true
+
 # CB-503: Disallowed methods for safety
 disallowed-methods = [
     { path = "std::env::set_var", reason = "Not thread-safe, use a config struct instead" },

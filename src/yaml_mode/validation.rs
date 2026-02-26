@@ -19,11 +19,7 @@ pub enum ManifestError {
     EmptyRequiredField(String),
 
     #[error("Invalid range for {field}: {value} (expected {constraint})")]
-    InvalidRange {
-        field: String,
-        value: String,
-        constraint: String,
-    },
+    InvalidRange { field: String, value: String, constraint: String },
 
     #[error("Mutually exclusive fields specified: {field1} and {field2}")]
     MutuallyExclusive { field1: String, field2: String },
@@ -51,15 +47,8 @@ const SUPPORTED_VERSIONS: &[&str] = &["1.0"];
 const VALID_OPTIMIZERS: &[&str] = &["sgd", "adam", "adamw", "rmsprop", "adagrad", "lamb"];
 
 /// Valid scheduler names
-const VALID_SCHEDULERS: &[&str] = &[
-    "step",
-    "cosine",
-    "cosine_annealing",
-    "linear",
-    "exponential",
-    "plateau",
-    "one_cycle",
-];
+const VALID_SCHEDULERS: &[&str] =
+    &["step", "cosine", "cosine_annealing", "linear", "exponential", "plateau", "one_cycle"];
 
 /// Valid quantization bit widths
 const VALID_QUANT_BITS: &[u8] = &[2, 4, 8];
@@ -314,10 +303,7 @@ fn validate_gradient_config(
     let Some(grad) = gradient else {
         return Ok(());
     };
-    validate_nonzero_usize(
-        grad.accumulation_steps,
-        "training.gradient.accumulation_steps",
-    )
+    validate_nonzero_usize(grad.accumulation_steps, "training.gradient.accumulation_steps")
 }
 
 // ---------------------------------------------------------------------------
@@ -392,9 +378,7 @@ fn validate_lora(lora: &super::manifest::LoraConfig) -> ValidationResult<()> {
 /// Validate that at least one of target_modules or target_modules_pattern is provided
 fn validate_lora_target_modules(lora: &super::manifest::LoraConfig) -> ValidationResult<()> {
     if lora.target_modules.is_empty() && lora.target_modules_pattern.is_none() {
-        return Err(ManifestError::EmptyRequiredField(
-            "lora.target_modules".to_string(),
-        ));
+        return Err(ManifestError::EmptyRequiredField("lora.target_modules".to_string()));
     }
     Ok(())
 }
@@ -457,10 +441,7 @@ mod tests {
                 centered: None,
                 param_groups: None,
             };
-            assert!(
-                validate_optimizer(&optim).is_ok(),
-                "Optimizer {opt} should be valid"
-            );
+            assert!(validate_optimizer(&optim).is_ok(), "Optimizer {opt} should be valid");
         }
     }
 
@@ -477,10 +458,7 @@ mod tests {
                 calibration: None,
                 exclude: None,
             };
-            assert!(
-                validate_quantize(&quant).is_ok(),
-                "Quant bits {bits} should be valid"
-            );
+            assert!(validate_quantize(&quant).is_ok(), "Quant bits {bits} should be valid");
         }
     }
 }

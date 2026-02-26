@@ -18,10 +18,7 @@ pub struct LocalBackend {
 impl LocalBackend {
     /// Create a new local backend
     pub fn new(base_path: PathBuf) -> Self {
-        Self {
-            base_path,
-            metadata: Arc::new(RwLock::new(HashMap::new())),
-        }
+        Self { base_path, metadata: Arc::new(RwLock::new(HashMap::new())) }
     }
 
     /// Create a new local backend and ensure directory exists
@@ -56,7 +53,7 @@ impl ArtifactBackend for LocalBackend {
         let metadata = ArtifactMetadata::new(name, &hash, data.len() as u64);
         self.metadata
             .write()
-            .unwrap()
+            .expect("metadata RwLock must not be poisoned")
             .insert(hash.clone(), metadata);
 
         Ok(hash)
@@ -97,7 +94,7 @@ impl ArtifactBackend for LocalBackend {
         }
 
         std::fs::remove_file(&path)?;
-        self.metadata.write().unwrap().remove(hash);
+        self.metadata.write().expect("metadata RwLock must not be poisoned").remove(hash);
 
         Ok(())
     }
@@ -105,14 +102,20 @@ impl ArtifactBackend for LocalBackend {
     fn get_metadata(&self, hash: &str) -> Result<ArtifactMetadata> {
         self.metadata
             .read()
-            .unwrap()
+            .expect("metadata RwLock must not be poisoned")
             .get(hash)
             .cloned()
             .ok_or_else(|| CloudError::NotFound(hash.to_string()))
     }
 
     fn list(&self) -> Result<Vec<ArtifactMetadata>> {
-        Ok(self.metadata.read().unwrap().values().cloned().collect())
+        Ok(self
+            .metadata
+            .read()
+            .expect("metadata RwLock must not be poisoned")
+            .values()
+            .cloned()
+            .collect())
     }
 
     fn backend_type(&self) -> &'static str {

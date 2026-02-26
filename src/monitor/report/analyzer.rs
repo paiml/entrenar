@@ -136,11 +136,7 @@ fn range_trend(stats: &MetricStats, lower_is_better: bool) -> Trend {
         return Trend::Stable;
     }
     let mid = f64::midpoint(stats.min, stats.max);
-    let improving = if lower_is_better {
-        stats.mean < mid
-    } else {
-        stats.mean > mid
-    };
+    let improving = if lower_is_better { stats.mean < mid } else { stats.mean > mid };
     if improving {
         Trend::Improving
     } else {
@@ -329,18 +325,10 @@ impl HanseiAnalyzer {
         let mut output = String::new();
 
         // Writing to String never fails, so we ignore the Result
-        let _ = writeln!(
-            output,
-            "═══════════════════════════════════════════════════════════════"
-        );
-        let _ = writeln!(
-            output,
-            "                    HANSEI POST-TRAINING REPORT                 "
-        );
-        let _ = writeln!(
-            output,
-            "═══════════════════════════════════════════════════════════════"
-        );
+        let _ = writeln!(output, "═══════════════════════════════════════════════════════════════");
+        let _ =
+            writeln!(output, "                    HANSEI POST-TRAINING REPORT                 ");
+        let _ = writeln!(output, "═══════════════════════════════════════════════════════════════");
         let _ = writeln!(output);
         let _ = writeln!(output, "Training ID: {}", report.training_id);
         let _ = writeln!(output, "Duration: {:.2}s", report.duration_secs);
@@ -348,22 +336,12 @@ impl HanseiAnalyzer {
         let _ = writeln!(output);
 
         // Metric summaries
-        let _ = writeln!(
-            output,
-            "─── Metric Summaries ───────────────────────────────────────────"
-        );
+        let _ =
+            writeln!(output, "─── Metric Summaries ───────────────────────────────────────────");
         for (metric_type, summary) in &report.metric_summaries {
             let _ = writeln!(output, "\n{metric_type:?}:");
-            let _ = writeln!(
-                output,
-                "  Mean: {:.6}  Std: {:.6}",
-                summary.mean, summary.std_dev
-            );
-            let _ = writeln!(
-                output,
-                "  Min: {:.6}   Max: {:.6}",
-                summary.min, summary.max
-            );
+            let _ = writeln!(output, "  Mean: {:.6}  Std: {:.6}", summary.mean, summary.std_dev);
+            let _ = writeln!(output, "  Min: {:.6}   Max: {:.6}", summary.min, summary.max);
             let _ = writeln!(output, "  Trend: {}", summary.trend);
         }
         let _ = writeln!(output);
@@ -383,19 +361,14 @@ impl HanseiAnalyzer {
         }
 
         // Recommendations
-        let _ = writeln!(
-            output,
-            "─── Recommendations ────────────────────────────────────────────"
-        );
+        let _ =
+            writeln!(output, "─── Recommendations ────────────────────────────────────────────");
         for (i, rec) in report.recommendations.iter().enumerate() {
             let _ = writeln!(output, "{}. {}", i + 1, rec);
         }
         let _ = writeln!(output);
 
-        let _ = writeln!(
-            output,
-            "═══════════════════════════════════════════════════════════════"
-        );
+        let _ = writeln!(output, "═══════════════════════════════════════════════════════════════");
 
         output
     }
@@ -512,10 +485,7 @@ mod tests {
                 }
                 Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
                     // No-op branch
-                    assert!(
-                        issues.is_empty(),
-                        "Epoch/Batch/Custom should produce no issues"
-                    );
+                    assert!(issues.is_empty(), "Epoch/Batch/Custom should produce no issues");
                 }
             }
         }

@@ -25,21 +25,13 @@ impl RdpAccountant {
         // Standard orders for RDP accounting
         let orders: Vec<f64> = (2..=256).map(f64::from).collect();
         let rdp = vec![0.0; orders.len()];
-        Self {
-            orders,
-            rdp,
-            steps: 0,
-        }
+        Self { orders, rdp, steps: 0 }
     }
 
     /// Create with custom orders
     pub fn with_orders(orders: Vec<f64>) -> Self {
         let rdp = vec![0.0; orders.len()];
-        Self {
-            orders,
-            rdp,
-            steps: 0,
-        }
+        Self { orders, rdp, steps: 0 }
     }
 
     /// Record a training step
@@ -101,10 +93,7 @@ pub fn compute_rdp_gaussian(noise_multiplier: f64, sample_rate: f64, alpha: f64)
         }
 
         // Approximate subsampled RDP
-        let log_a = (alpha - 1.0)
-            * ((alpha * q.powi(2)) / (2.0 * sigma.powi(2)))
-                .min(1.0)
-                .ln_1p();
+        let log_a = (alpha - 1.0) * ((alpha * q.powi(2)) / (2.0 * sigma.powi(2))).min(1.0).ln_1p();
         log_a / (alpha - 1.0)
     }
 }

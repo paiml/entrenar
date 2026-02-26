@@ -19,12 +19,7 @@ pub struct KalmanEta {
 
 impl Default for KalmanEta {
     fn default() -> Self {
-        Self {
-            estimate: 1.0,
-            error_cov: 1.0,
-            process_noise: 0.01,
-            measurement_noise: 0.1,
-        }
+        Self { estimate: 1.0, error_cov: 1.0, process_noise: 0.01, measurement_noise: 0.1 }
     }
 }
 

@@ -28,9 +28,7 @@ pub fn generate_sparkline(values: &[f64], max_len: usize) -> String {
     // Subsample if needed
     let subsampled: Vec<f64> = if values.len() > max_len {
         let step = values.len() as f64 / max_len as f64;
-        (0..max_len)
-            .map(|i| values[(i as f64 * step) as usize])
-            .collect()
+        (0..max_len).map(|i| values[(i as f64 * step) as usize]).collect()
     } else {
         values.to_vec()
     };

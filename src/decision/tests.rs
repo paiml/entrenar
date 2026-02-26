@@ -53,16 +53,8 @@ fn test_citl_trainer_learns_permutation() {
     // Test prediction
     let pred = trainer.predict_fix(&[0.3, 0.7]);
     // Should predict approximately [0.7, 0.3]
-    assert!(
-        (pred[0] - 0.7).abs() < 0.15,
-        "Expected ~0.7, got {}",
-        pred[0]
-    );
-    assert!(
-        (pred[1] - 0.3).abs() < 0.15,
-        "Expected ~0.3, got {}",
-        pred[1]
-    );
+    assert!((pred[0] - 0.7).abs() < 0.15, "Expected ~0.7, got {}", pred[0]);
+    assert!((pred[1] - 0.3).abs() < 0.15, "Expected ~0.3, got {}", pred[1]);
 }
 
 #[test]
@@ -101,11 +93,7 @@ fn test_end_to_end_store_train_predict() {
     let predicted_fix = trainer.predict_fix(&error_features);
     assert_eq!(predicted_fix.len(), 3);
     // For error close to [1,0,0], fix should be close to [0,1,1]
-    assert!(
-        predicted_fix[0] < 0.5,
-        "fix[0] should be low: {}",
-        predicted_fix[0]
-    );
+    assert!(predicted_fix[0] < 0.5, "fix[0] should be low: {}", predicted_fix[0]);
 }
 
 #[test]

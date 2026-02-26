@@ -41,20 +41,12 @@ pub struct CheckpointConfig {
 impl CheckpointConfig {
     /// Create new config with checkpointing enabled
     pub fn enabled(num_segments: usize) -> Self {
-        Self {
-            enabled: true,
-            num_segments,
-            selective: false,
-        }
+        Self { enabled: true, num_segments, selective: false }
     }
 
     /// Create config with checkpointing disabled
     pub fn disabled() -> Self {
-        Self {
-            enabled: false,
-            num_segments: 1,
-            selective: false,
-        }
+        Self { enabled: false, num_segments: 1, selective: false }
     }
 
     /// Enable selective checkpointing (only attention layers)
@@ -86,11 +78,7 @@ pub struct CheckpointedSegment {
 impl CheckpointedSegment {
     /// Create a new checkpointed segment
     pub fn new(input: Tensor, is_checkpointed: bool) -> Self {
-        Self {
-            input,
-            output: RefCell::new(None),
-            is_checkpointed,
-        }
+        Self { input, output: RefCell::new(None), is_checkpointed }
     }
 
     /// Get the input tensor
@@ -308,12 +296,7 @@ pub struct OperationInfo {
 impl OperationInfo {
     /// Create operation info for a given op type and output size
     pub fn new(op_type: OpType, output_bytes: usize) -> Self {
-        Self {
-            op_type,
-            output_bytes,
-            has_batch_dim: false,
-            layer_index: 0,
-        }
+        Self { op_type, output_bytes, has_batch_dim: false, layer_index: 0 }
     }
 
     /// Set whether this operation has batch dimensions
@@ -432,10 +415,7 @@ pub struct MemoryBudget {
 impl MemoryBudget {
     /// Create a new memory budget policy
     pub fn new(max_bytes: usize) -> Self {
-        Self {
-            max_bytes,
-            used_bytes: RefCell::new(0),
-        }
+        Self { max_bytes, used_bytes: RefCell::new(0) }
     }
 
     /// Get the current bytes used
@@ -493,11 +473,7 @@ pub struct PolicyCheckpointManager {
 impl PolicyCheckpointManager {
     /// Create a new policy checkpoint manager
     pub fn new(num_layers: usize) -> Self {
-        Self {
-            saved: vec![None; num_layers],
-            total_bytes_saved: 0,
-            num_layers,
-        }
+        Self { saved: vec![None; num_layers], total_bytes_saved: 0, num_layers }
     }
 
     /// Record a forward activation, saving it if the policy says so
@@ -785,9 +761,8 @@ mod tests {
 
     #[test]
     fn test_operation_info_builder() {
-        let info = OperationInfo::new(OpType::Matmul, 1024)
-            .with_batch_dim(true)
-            .with_layer_index(5);
+        let info =
+            OperationInfo::new(OpType::Matmul, 1024).with_batch_dim(true).with_layer_index(5);
         assert_eq!(info.op_type, OpType::Matmul);
         assert_eq!(info.output_bytes, 1024);
         assert!(info.has_batch_dim);

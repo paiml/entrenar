@@ -28,11 +28,7 @@ impl<S: State, A: Action> SearchTree<S, A> {
         let mut state_map = HashMap::new();
         state_map.insert(state_hash, NodeId::new(0));
 
-        Self {
-            nodes: vec![root],
-            state_map,
-            root_id: NodeId::new(0),
-        }
+        Self { nodes: vec![root], state_map, root_id: NodeId::new(0) }
     }
 
     /// Get the root node
@@ -135,10 +131,7 @@ mod tests {
 
     #[test]
     fn test_search_tree_creation() {
-        let state = TestState {
-            value: 0,
-            terminal: false,
-        };
+        let state = TestState { value: 0, terminal: false };
         let actions = vec![TestAction { delta: 1 }, TestAction { delta: -1 }];
         let tree = SearchTree::new(state.clone(), actions);
 
@@ -148,25 +141,14 @@ mod tests {
 
     #[test]
     fn test_search_tree_add_child() {
-        let state = TestState {
-            value: 0,
-            terminal: false,
-        };
+        let state = TestState { value: 0, terminal: false };
         let actions = vec![TestAction { delta: 1 }];
         let mut tree = SearchTree::new(state, actions);
 
-        let child_state = TestState {
-            value: 1,
-            terminal: false,
-        };
+        let child_state = TestState { value: 1, terminal: false };
         let child_action = TestAction { delta: 1 };
-        let child_id = tree.add_child(
-            NodeId::new(0),
-            child_state.clone(),
-            child_action,
-            vec![],
-            0.5,
-        );
+        let child_id =
+            tree.add_child(NodeId::new(0), child_state.clone(), child_action, vec![], 0.5);
 
         assert_eq!(tree.size(), 2);
         let child = tree.get(child_id).unwrap();
@@ -175,20 +157,11 @@ mod tests {
 
     #[test]
     fn test_tree_children() {
-        let state = TestState {
-            value: 0,
-            terminal: false,
-        };
+        let state = TestState { value: 0, terminal: false };
         let mut tree = SearchTree::new(state.clone(), vec![]);
 
-        let child1 = TestState {
-            value: 1,
-            terminal: false,
-        };
-        let child2 = TestState {
-            value: 2,
-            terminal: false,
-        };
+        let child1 = TestState { value: 1, terminal: false };
+        let child2 = TestState { value: 2, terminal: false };
 
         tree.add_child(NodeId::new(0), child1, TestAction { delta: 1 }, vec![], 0.5);
         tree.add_child(NodeId::new(0), child2, TestAction { delta: 2 }, vec![], 0.5);
@@ -199,17 +172,11 @@ mod tests {
 
     #[test]
     fn test_transposition_table() {
-        let state = TestState {
-            value: 0,
-            terminal: false,
-        };
+        let state = TestState { value: 0, terminal: false };
         let mut tree = SearchTree::new(state.clone(), vec![]);
 
         // Add same state via two different actions
-        let child_state = TestState {
-            value: 1,
-            terminal: false,
-        };
+        let child_state = TestState { value: 1, terminal: false };
 
         let id1 = tree.add_child(
             NodeId::new(0),
@@ -220,13 +187,7 @@ mod tests {
         );
 
         // Same state again
-        let id2 = tree.add_child(
-            NodeId::new(0),
-            child_state,
-            TestAction { delta: 1 },
-            vec![],
-            0.5,
-        );
+        let id2 = tree.add_child(NodeId::new(0), child_state, TestAction { delta: 1 }, vec![], 0.5);
 
         // Should return same node id (transposition)
         assert_eq!(id1, id2);

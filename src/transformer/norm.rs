@@ -17,10 +17,7 @@ pub struct RMSNorm {
 impl RMSNorm {
     /// Create new RMS normalization layer
     pub fn new(hidden_size: usize, eps: f32) -> Self {
-        Self {
-            weight: Tensor::ones(hidden_size, true),
-            eps,
-        }
+        Self { weight: Tensor::ones(hidden_size, true), eps }
     }
 
     /// Create from parameters
@@ -72,7 +69,7 @@ impl RMSNorm {
         for s in 0..seq_len {
             let start = s * hidden_size;
             let end = start + hidden_size;
-            let slice = &x.data().as_slice().unwrap()[start..end];
+            let slice = &x.data().as_slice().expect("norm input must be contiguous")[start..end];
 
             // Compute RMS for this position
             let sq_sum: f32 = slice.iter().map(|v| v * v).sum();
@@ -144,10 +141,7 @@ mod tests {
     #[test]
     fn test_rms_norm_from_params() {
         let mut params = HashMap::new();
-        params.insert(
-            "test.weight".to_string(),
-            Tensor::from_vec(vec![1.0, 1.0, 1.0, 1.0], true),
-        );
+        params.insert("test.weight".to_string(), Tensor::from_vec(vec![1.0, 1.0, 1.0, 1.0], true));
         let norm = RMSNorm::from_params(&params, "test", 1e-6, 4);
         assert!(norm.is_some());
         let norm = norm.unwrap();
@@ -202,10 +196,7 @@ mod tests {
     fn falsify_n1e_from_params_rejects_wrong_length_norm() {
         let mut params = HashMap::new();
         // WRONG: weight has 7 elements, should be hidden_size=4
-        params.insert(
-            "test.weight".to_string(),
-            Tensor::from_vec(vec![1.0; 7], true),
-        );
+        params.insert("test.weight".to_string(), Tensor::from_vec(vec![1.0; 7], true));
         let norm = RMSNorm::from_params(&params, "test", 1e-6, 4);
         // FIXED: from_params now rejects wrong-length weight
         assert!(
@@ -347,10 +338,7 @@ mod tests {
         let y = norm.forward(&x);
 
         for (i, &val) in y.data().iter().enumerate() {
-            assert!(
-                val.is_finite(),
-                "FALSIFIED RN-004: RMSNorm(0)[{i}] = {val} (expected finite)"
-            );
+            assert!(val.is_finite(), "FALSIFIED RN-004: RMSNorm(0)[{i}] = {val} (expected finite)");
         }
     }
 

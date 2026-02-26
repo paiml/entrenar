@@ -27,26 +27,14 @@ impl AuditSummary {
     /// Create a summary from a list of audits
     pub fn from_audits(audits: Vec<DependencyAudit>) -> Self {
         let total_dependencies = audits.len() as u32;
-        let clean_count = audits
-            .iter()
-            .filter(|a| a.audit_status == AuditStatus::Clean)
-            .count() as u32;
-        let warning_count = audits
-            .iter()
-            .filter(|a| a.audit_status == AuditStatus::Warning)
-            .count() as u32;
-        let vulnerable_count = audits
-            .iter()
-            .filter(|a| a.audit_status == AuditStatus::Vulnerable)
-            .count() as u32;
+        let clean_count =
+            audits.iter().filter(|a| a.audit_status == AuditStatus::Clean).count() as u32;
+        let warning_count =
+            audits.iter().filter(|a| a.audit_status == AuditStatus::Warning).count() as u32;
+        let vulnerable_count =
+            audits.iter().filter(|a| a.audit_status == AuditStatus::Vulnerable).count() as u32;
 
-        Self {
-            total_dependencies,
-            clean_count,
-            warning_count,
-            vulnerable_count,
-            audits,
-        }
+        Self { total_dependencies, clean_count, warning_count, vulnerable_count, audits }
     }
 
     /// Returns true if any vulnerabilities were found

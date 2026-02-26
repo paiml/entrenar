@@ -36,11 +36,7 @@ impl NotebookExporter {
 
     /// Create with a specific kernel
     pub fn with_kernel(kernel: KernelSpec) -> Self {
-        Self {
-            cells: Vec::new(),
-            kernel,
-            metadata: NotebookMetadata::default(),
-        }
+        Self { cells: Vec::new(), kernel, metadata: NotebookMetadata::default() }
     }
 
     /// Add a cell to the notebook
@@ -69,10 +65,7 @@ impl NotebookExporter {
             let blocks = doc.extract_code_blocks();
 
             // Detect primary language for kernel selection
-            let primary_lang = blocks
-                .iter()
-                .find_map(|b| b.language.as_ref())
-                .map(String::as_str);
+            let primary_lang = blocks.iter().find_map(|b| b.language.as_ref()).map(String::as_str);
 
             exporter.kernel = match primary_lang {
                 Some("rust") => KernelSpec::evcxr(),
@@ -189,18 +182,12 @@ impl NotebookExporter {
 
     /// Get code cells only
     pub fn code_cells(&self) -> Vec<&Cell> {
-        self.cells
-            .iter()
-            .filter(|c| c.cell_type == CellType::Code)
-            .collect()
+        self.cells.iter().filter(|c| c.cell_type == CellType::Code).collect()
     }
 
     /// Get markdown cells only
     pub fn markdown_cells(&self) -> Vec<&Cell> {
-        self.cells
-            .iter()
-            .filter(|c| c.cell_type == CellType::Markdown)
-            .collect()
+        self.cells.iter().filter(|c| c.cell_type == CellType::Markdown).collect()
     }
 }
 

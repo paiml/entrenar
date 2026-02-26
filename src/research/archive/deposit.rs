@@ -23,12 +23,7 @@ impl ArchiveDeposit {
     /// Create a new deposit
     pub fn new(provider: ArchiveProvider, artifact: ResearchArtifact) -> Self {
         let metadata = DepositMetadata::from_artifact(&artifact);
-        Self {
-            provider,
-            artifact,
-            metadata,
-            files: Vec::new(),
-        }
+        Self { provider, artifact, metadata, files: Vec::new() }
     }
 
     /// Add a file to upload
@@ -58,11 +53,6 @@ impl ArchiveDeposit {
 
         let url = format!("{}/record/{}", self.provider.base_url(), record_id);
 
-        Ok(DepositResult {
-            doi,
-            record_id,
-            url,
-            provider: self.provider,
-        })
+        Ok(DepositResult { doi, record_id, url, provider: self.provider })
     }
 }

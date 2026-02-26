@@ -14,10 +14,7 @@ fn test_falsify_f32_tensor_data_survives_roundtrip() {
     let summary = verify_gguf(&data).unwrap();
     let data_start = find_data_section_start(&data, &summary);
     let recovered = extract_f32_tensor_data(&data, data_start, &summary.tensors[0], 256);
-    assert_eq!(
-        original, recovered,
-        "f32 tensor data must survive roundtrip exactly"
-    );
+    assert_eq!(original, recovered, "f32 tensor data must survive roundtrip exactly");
 }
 
 #[test]
@@ -161,18 +158,8 @@ fn test_falsify_q4_0_q8_0_f32_mixed_in_single_file() {
             dtype: GgmlType::F32,
             data: bytemuck::cast_slice(&f32_data).to_vec(),
         },
-        GgufTensor {
-            name: "q4_tensor".into(),
-            shape: vec![64],
-            dtype: q4_dtype,
-            data: q4_bytes,
-        },
-        GgufTensor {
-            name: "q8_tensor".into(),
-            shape: vec![32],
-            dtype: q8_dtype,
-            data: q8_bytes,
-        },
+        GgufTensor { name: "q4_tensor".into(), shape: vec![64], dtype: q4_dtype, data: q4_bytes },
+        GgufTensor { name: "q8_tensor".into(), shape: vec![32], dtype: q8_dtype, data: q8_bytes },
     ];
     let data = write_gguf(&tensors, &[]);
     let summary = verify_gguf(&data).unwrap();
@@ -220,12 +207,8 @@ fn test_falsify_high_dimensional_shape() {
     assert_eq!(summary.tensors[0].shape, shape);
 
     let data_start = find_data_section_start(&data, &summary);
-    let recovered = extract_f32_tensor_data(
-        &data,
-        data_start,
-        &summary.tensors[0],
-        num_elements as usize,
-    );
+    let recovered =
+        extract_f32_tensor_data(&data, data_start, &summary.tensors[0], num_elements as usize);
     assert_eq!(values, recovered);
 }
 
@@ -246,12 +229,8 @@ fn test_falsify_exporter_gguf_roundtrip_via_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("falsify.gguf");
 
-    let exporter = Exporter::new()
-        .output_dir(dir.path())
-        .gguf_quantization(GgufQuantization::None);
-    let result = exporter
-        .export(&weights, ExportFormat::GGUF, "falsify.gguf")
-        .unwrap();
+    let exporter = Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::None);
+    let result = exporter.export(&weights, ExportFormat::GGUF, "falsify.gguf").unwrap();
 
     assert_eq!(result.num_tensors, 2);
     assert!(result.size_bytes > 0);
@@ -289,12 +268,8 @@ fn test_falsify_exporter_q4_0_roundtrip_via_file() {
     weights.add_tensor("quantized_layer", data, vec![64]);
 
     let dir = tempfile::tempdir().unwrap();
-    let exporter = Exporter::new()
-        .output_dir(dir.path())
-        .gguf_quantization(GgufQuantization::Q4_0);
-    let result = exporter
-        .export(&weights, ExportFormat::GGUF, "q4.gguf")
-        .unwrap();
+    let exporter = Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::Q4_0);
+    let result = exporter.export(&weights, ExportFormat::GGUF, "q4.gguf").unwrap();
     assert_eq!(result.num_tensors, 1);
 
     let file_data = std::fs::read(dir.path().join("q4.gguf")).unwrap();
@@ -312,12 +287,8 @@ fn test_falsify_exporter_q8_0_roundtrip_via_file() {
     weights.add_tensor("q8_layer", data, vec![128]);
 
     let dir = tempfile::tempdir().unwrap();
-    let exporter = Exporter::new()
-        .output_dir(dir.path())
-        .gguf_quantization(GgufQuantization::Q8_0);
-    let result = exporter
-        .export(&weights, ExportFormat::GGUF, "q8.gguf")
-        .unwrap();
+    let exporter = Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::Q8_0);
+    let result = exporter.export(&weights, ExportFormat::GGUF, "q8.gguf").unwrap();
     assert_eq!(result.num_tensors, 1);
 
     let file_data = std::fs::read(dir.path().join("q8.gguf")).unwrap();
@@ -337,12 +308,8 @@ fn test_falsify_no_metadata_mode() {
     weights.metadata.model_name = Some("should-not-appear".into());
 
     let dir = tempfile::tempdir().unwrap();
-    let exporter = Exporter::new()
-        .output_dir(dir.path())
-        .include_metadata(false);
-    exporter
-        .export(&weights, ExportFormat::GGUF, "nometa.gguf")
-        .unwrap();
+    let exporter = Exporter::new().output_dir(dir.path()).include_metadata(false);
+    exporter.export(&weights, ExportFormat::GGUF, "nometa.gguf").unwrap();
 
     let file_data = std::fs::read(dir.path().join("nometa.gguf")).unwrap();
     let summary = verify_gguf(&file_data).unwrap();
@@ -362,9 +329,7 @@ fn test_falsify_minimal_metadata_only_param_count() {
 
     let dir = tempfile::tempdir().unwrap();
     let exporter = Exporter::new().output_dir(dir.path());
-    exporter
-        .export(&weights, ExportFormat::GGUF, "minimal.gguf")
-        .unwrap();
+    exporter.export(&weights, ExportFormat::GGUF, "minimal.gguf").unwrap();
 
     let file_data = std::fs::read(dir.path().join("minimal.gguf")).unwrap();
     let summary = verify_gguf(&file_data).unwrap();
@@ -385,12 +350,8 @@ fn test_falsify_exporter_alphabetical_tensor_sort() {
     weights.add_tensor("a_layer", vec![1.0], vec![1]);
 
     let dir = tempfile::tempdir().unwrap();
-    let exporter = Exporter::new()
-        .output_dir(dir.path())
-        .include_metadata(false);
-    exporter
-        .export(&weights, ExportFormat::GGUF, "sorted.gguf")
-        .unwrap();
+    let exporter = Exporter::new().output_dir(dir.path()).include_metadata(false);
+    exporter.export(&weights, ExportFormat::GGUF, "sorted.gguf").unwrap();
 
     let file_data = std::fs::read(dir.path().join("sorted.gguf")).unwrap();
     let summary = verify_gguf(&file_data).unwrap();
@@ -404,18 +365,9 @@ fn test_falsify_exporter_alphabetical_tensor_sort() {
     let a_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[0], 1);
     let m_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[1], 1);
     let z_data = extract_f32_tensor_data(&file_data, data_start, &summary.tensors[2], 1);
-    assert!(
-        (a_data[0] - 1.0).abs() < f32::EPSILON,
-        "a_layer should be 1.0"
-    );
-    assert!(
-        (m_data[0] - 2.0).abs() < f32::EPSILON,
-        "m_layer should be 2.0"
-    );
-    assert!(
-        (z_data[0] - 3.0).abs() < f32::EPSILON,
-        "z_layer should be 3.0"
-    );
+    assert!((a_data[0] - 1.0).abs() < f32::EPSILON, "a_layer should be 1.0");
+    assert!((m_data[0] - 2.0).abs() < f32::EPSILON, "m_layer should be 2.0");
+    assert!((z_data[0] - 3.0).abs() < f32::EPSILON, "z_layer should be 3.0");
 }
 
 #[test]
@@ -439,10 +391,7 @@ fn test_falsify_utf8_tensor_names() {
     let summary = verify_gguf(&data).unwrap();
     assert_eq!(summary.tensor_count, 2);
     assert_eq!(summary.tensors[0].name, "layer.\u{706B}.weight");
-    assert_eq!(
-        summary.tensors[1].name,
-        "\u{43C}\u{43E}\u{434}\u{435}\u{43B}\u{44C}.bias"
-    );
+    assert_eq!(summary.tensors[1].name, "\u{43C}\u{43E}\u{434}\u{435}\u{43B}\u{44C}.bias");
 }
 
 #[test]

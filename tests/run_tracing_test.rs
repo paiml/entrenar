@@ -45,12 +45,7 @@ fn test_run_stores_span_in_storage() {
     let run_id = run.run_id().to_string();
 
     // Span ID should be persisted in storage
-    let stored_span = storage
-        .lock()
-        .unwrap()
-        .get_span_id(&run_id)
-        .unwrap()
-        .unwrap();
+    let stored_span = storage.lock().unwrap().get_span_id(&run_id).unwrap().unwrap();
     assert_eq!(stored_span, span_id);
 }
 
@@ -67,11 +62,7 @@ fn test_run_log_metric_auto_step() {
     run.log_metric("loss", 0.6).unwrap();
 
     // Steps should auto-increment: 0, 1, 2
-    let metrics = storage
-        .lock()
-        .unwrap()
-        .get_metrics(run.run_id(), "loss")
-        .unwrap();
+    let metrics = storage.lock().unwrap().get_metrics(run.run_id(), "loss").unwrap();
     assert_eq!(metrics.len(), 3);
     assert_eq!(metrics[0].step, 0);
     assert_eq!(metrics[1].step, 1);
@@ -90,11 +81,7 @@ fn test_run_log_metric_at_explicit_step() {
     run.log_metric_at("accuracy", 100, 0.75).unwrap();
     run.log_metric_at("accuracy", 200, 0.9).unwrap();
 
-    let metrics = storage
-        .lock()
-        .unwrap()
-        .get_metrics(run.run_id(), "accuracy")
-        .unwrap();
+    let metrics = storage.lock().unwrap().get_metrics(run.run_id(), "accuracy").unwrap();
     assert_eq!(metrics.len(), 3);
     assert_eq!(metrics[0].step, 0);
     assert_eq!(metrics[1].step, 100);
@@ -161,16 +148,11 @@ fn test_run_finish_cancelled() {
 
 #[test]
 fn test_tracing_config_builder() {
-    let config = TracingConfig::default()
-        .with_otlp_export()
-        .with_golden_trace_path("/tmp/golden");
+    let config = TracingConfig::default().with_otlp_export().with_golden_trace_path("/tmp/golden");
 
     assert!(config.tracing_enabled);
     assert!(config.export_otlp);
-    assert_eq!(
-        config.golden_trace_path,
-        Some(std::path::PathBuf::from("/tmp/golden"))
-    );
+    assert_eq!(config.golden_trace_path, Some(std::path::PathBuf::from("/tmp/golden")));
 }
 
 #[test]
@@ -225,18 +207,10 @@ fn test_full_training_lifecycle() {
     let status = storage.lock().unwrap().get_run_status(&run_id).unwrap();
     assert_eq!(status, RunStatus::Success);
 
-    let loss_metrics = storage
-        .lock()
-        .unwrap()
-        .get_metrics(&run_id, "train_loss")
-        .unwrap();
+    let loss_metrics = storage.lock().unwrap().get_metrics(&run_id, "train_loss").unwrap();
     assert_eq!(loss_metrics.len(), 3);
 
-    let acc_metrics = storage
-        .lock()
-        .unwrap()
-        .get_metrics(&run_id, "train_accuracy")
-        .unwrap();
+    let acc_metrics = storage.lock().unwrap().get_metrics(&run_id, "train_accuracy").unwrap();
     assert_eq!(acc_metrics.len(), 3);
 }
 

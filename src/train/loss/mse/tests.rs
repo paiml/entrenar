@@ -364,29 +364,17 @@ fn falsify_lf_002e_zero_at_perfect() {
     let target = Tensor::from_vec(data, false);
 
     let mse = MSELoss.forward(&pred, &target);
-    assert!(
-        mse.data()[0].abs() < 1e-6,
-        "FALSIFIED LF-002e: MSE(x,x) = {}",
-        mse.data()[0]
-    );
+    assert!(mse.data()[0].abs() < 1e-6, "FALSIFIED LF-002e: MSE(x,x) = {}", mse.data()[0]);
 
     let pred2 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], true);
     let target2 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], false);
     let l1 = L1Loss.forward(&pred2, &target2);
-    assert!(
-        l1.data()[0].abs() < 1e-6,
-        "FALSIFIED LF-002e: L1(x,x) = {}",
-        l1.data()[0]
-    );
+    assert!(l1.data()[0].abs() < 1e-6, "FALSIFIED LF-002e: L1(x,x) = {}", l1.data()[0]);
 
     let pred3 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], true);
     let target3 = Tensor::from_vec(vec![1.0, -2.0, 3.5, 0.0], false);
     let huber = HuberLoss::new(1.0).forward(&pred3, &target3);
-    assert!(
-        huber.data()[0].abs() < 1e-6,
-        "FALSIFIED LF-002e: Huber(x,x) = {}",
-        huber.data()[0]
-    );
+    assert!(huber.data()[0].abs() < 1e-6, "FALSIFIED LF-002e: Huber(x,x) = {}", huber.data()[0]);
 }
 
 /// FALSIFY-LF-004e: Huber continuity at transition point

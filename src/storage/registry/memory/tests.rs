@@ -59,15 +59,9 @@ fn test_registry_get_latest_by_stage() {
     registry.register_model("test-model", "/path/v1").unwrap();
     registry.register_model("test-model", "/path/v2").unwrap();
 
-    registry
-        .transition_stage("test-model", 1, ModelStage::Development, None)
-        .unwrap();
-    registry
-        .transition_stage("test-model", 2, ModelStage::Development, None)
-        .unwrap();
-    registry
-        .transition_stage("test-model", 2, ModelStage::Staging, None)
-        .unwrap();
+    registry.transition_stage("test-model", 1, ModelStage::Development, None).unwrap();
+    registry.transition_stage("test-model", 2, ModelStage::Development, None).unwrap();
+    registry.transition_stage("test-model", 2, ModelStage::Staging, None).unwrap();
 
     let latest_dev = registry.get_latest_by_stage("test-model", ModelStage::Development);
     let latest_staging = registry.get_latest_by_stage("test-model", ModelStage::Staging);
@@ -93,9 +87,7 @@ fn test_registry_transition_stage() {
     let mut registry = InMemoryRegistry::new();
     registry.register_model("test-model", "/path/v1").unwrap();
 
-    registry
-        .transition_stage("test-model", 1, ModelStage::Development, Some("alice"))
-        .unwrap();
+    registry.transition_stage("test-model", 1, ModelStage::Development, Some("alice")).unwrap();
 
     let model = registry.get_model("test-model", 1).unwrap();
     assert_eq!(model.stage, ModelStage::Development);
@@ -109,10 +101,7 @@ fn test_registry_transition_invalid() {
 
     // Try to go directly to Production from None
     let result = registry.transition_stage("test-model", 1, ModelStage::Production, None);
-    assert!(matches!(
-        result,
-        Err(RegistryError::InvalidTransition(_, _))
-    ));
+    assert!(matches!(result, Err(RegistryError::InvalidTransition(_, _))));
 }
 
 #[test]
@@ -154,12 +143,8 @@ fn test_registry_get_transition_history() {
     let mut registry = InMemoryRegistry::new();
     registry.register_model("test-model", "/path/v1").unwrap();
 
-    registry
-        .transition_stage("test-model", 1, ModelStage::Development, None)
-        .unwrap();
-    registry
-        .transition_stage("test-model", 1, ModelStage::Staging, None)
-        .unwrap();
+    registry.transition_stage("test-model", 1, ModelStage::Development, None).unwrap();
+    registry.transition_stage("test-model", 1, ModelStage::Staging, None).unwrap();
 
     let history = registry.get_transition_history("test-model").unwrap();
     assert_eq!(history.len(), 2);
@@ -189,12 +174,8 @@ fn test_registry_can_promote_with_policy() {
     let mut registry = InMemoryRegistry::new();
     registry.register_model("test-model", "/path/v1").unwrap();
 
-    registry
-        .transition_stage("test-model", 1, ModelStage::Development, None)
-        .unwrap();
-    registry
-        .transition_stage("test-model", 1, ModelStage::Staging, None)
-        .unwrap();
+    registry.transition_stage("test-model", 1, ModelStage::Development, None).unwrap();
+    registry.transition_stage("test-model", 1, ModelStage::Staging, None).unwrap();
 
     let policy = PromotionPolicy::new(ModelStage::Production).require_metric(
         "accuracy",
@@ -204,9 +185,7 @@ fn test_registry_can_promote_with_policy() {
     registry.set_policy(policy);
 
     // Without required metrics
-    let result = registry
-        .can_promote("test-model", 1, ModelStage::Production, 0)
-        .unwrap();
+    let result = registry.can_promote("test-model", 1, ModelStage::Production, 0).unwrap();
     assert!(!result.passed);
 
     // Add metrics
@@ -215,9 +194,7 @@ fn test_registry_can_promote_with_policy() {
     registry.log_metrics("test-model", 1, metrics).unwrap();
 
     // With required metrics
-    let result = registry
-        .can_promote("test-model", 1, ModelStage::Production, 0)
-        .unwrap();
+    let result = registry.can_promote("test-model", 1, ModelStage::Production, 0).unwrap();
     assert!(result.passed);
 }
 

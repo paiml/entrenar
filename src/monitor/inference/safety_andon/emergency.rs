@@ -60,9 +60,7 @@ impl EmergencyCondition {
     /// Generate alert message
     pub fn message(&self) -> String {
         match self {
-            EmergencyCondition::CollisionImminent {
-                time_to_collision_ms,
-            } => {
+            EmergencyCondition::CollisionImminent { time_to_collision_ms } => {
                 format!("Collision imminent in {time_to_collision_ms:.1}ms")
             }
             EmergencyCondition::SensorDegraded { sensor, quality } => {

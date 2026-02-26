@@ -67,7 +67,8 @@ impl LossFn for CausalLMLoss {
         for pos in 0..seq_len {
             let start = pos * vocab_size;
             let end = start + vocab_size;
-            let logits = &pred_data.as_slice().unwrap()[start..end];
+            let logits =
+                &pred_data.as_slice().expect("prediction data must be contiguous")[start..end];
 
             // Softmax
             let probs = Self::softmax(logits);

@@ -56,10 +56,7 @@ pub(crate) fn tensor_to_f32_vec(tensor: &safetensors::tensor::TensorView<'_>) ->
         }
         _ => {
             // Unsupported dtype
-            eprintln!(
-                "Warning: Unsupported tensor dtype {:?}, skipping",
-                tensor.dtype()
-            );
+            eprintln!("Warning: Unsupported tensor dtype {:?}, skipping", tensor.dtype());
             None
         }
     }

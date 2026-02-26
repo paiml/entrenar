@@ -30,16 +30,10 @@ impl RoCrateDescriptor {
         // Start with the metadata file entity pointing to root
         let metadata_entity =
             RoCrateEntity::new("ro-crate-metadata.json", EntityType::CreativeWork)
-                .with_property(
-                    "conformsTo",
-                    json!({ "@id": "https://w3id.org/ro/crate/1.1" }),
-                )
+                .with_property("conformsTo", json!({ "@id": "https://w3id.org/ro/crate/1.1" }))
                 .with_reference("about", "./");
 
-        Self {
-            context: RO_CRATE_CONTEXT.to_string(),
-            graph: vec![metadata_entity],
-        }
+        Self { context: RO_CRATE_CONTEXT.to_string(), graph: vec![metadata_entity] }
     }
 
     /// Add an entity to the graph

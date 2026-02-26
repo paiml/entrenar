@@ -185,10 +185,7 @@ pub fn run_init(args: InitArgs, level: LogLevel) -> Result<(), String> {
         log(
             level,
             LogLevel::Normal,
-            &format!(
-                "Detected size: {size}, suggested LoRA rank: {}",
-                lora_rank.unwrap_or(64)
-            ),
+            &format!("Detected size: {size}, suggested LoRA rank: {}", lora_rank.unwrap_or(64)),
         );
     }
     if let Some(fmt) = data_format {
@@ -197,30 +194,16 @@ pub fn run_init(args: InitArgs, level: LogLevel) -> Result<(), String> {
         }
     }
 
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("Generating {template:?} template for: {}", args.name),
-    );
+    log(level, LogLevel::Normal, &format!("Generating {template:?} template for: {}", args.name));
 
     // Generate YAML manifest with smart defaults
-    let yaml = generate_yaml(
-        template,
-        &args.name,
-        model_source,
-        args.data.as_deref(),
-        lora_rank,
-        lr,
-    );
+    let yaml =
+        generate_yaml(template, &args.name, model_source, args.data.as_deref(), lora_rank, lr);
 
     // Output to file or stdout
     if let Some(output_path) = &args.output {
         std::fs::write(output_path, &yaml).map_err(|e| format!("Failed to write file: {e}"))?;
-        log(
-            level,
-            LogLevel::Normal,
-            &format!("Manifest saved to: {}", output_path.display()),
-        );
+        log(level, LogLevel::Normal, &format!("Manifest saved to: {}", output_path.display()));
     } else {
         println!("{yaml}");
     }
@@ -236,50 +219,29 @@ mod tests {
 
     #[test]
     fn test_estimate_model_size_small() {
-        assert_eq!(
-            estimate_model_size("Qwen/Qwen2.5-Coder-0.5B"),
-            ModelSize::Small
-        );
-        assert_eq!(
-            estimate_model_size("microsoft/phi-2-0.3B"),
-            ModelSize::Small
-        );
+        assert_eq!(estimate_model_size("Qwen/Qwen2.5-Coder-0.5B"), ModelSize::Small);
+        assert_eq!(estimate_model_size("microsoft/phi-2-0.3B"), ModelSize::Small);
     }
 
     #[test]
     fn test_estimate_model_size_medium() {
-        assert_eq!(
-            estimate_model_size("meta-llama/Llama-3-7B"),
-            ModelSize::Medium
-        );
-        assert_eq!(
-            estimate_model_size("mistralai/Mistral-1.5B-Instruct"),
-            ModelSize::Medium
-        );
+        assert_eq!(estimate_model_size("meta-llama/Llama-3-7B"), ModelSize::Medium);
+        assert_eq!(estimate_model_size("mistralai/Mistral-1.5B-Instruct"), ModelSize::Medium);
     }
 
     #[test]
     fn test_estimate_model_size_large() {
-        assert_eq!(
-            estimate_model_size("meta-llama/Llama-3-13B"),
-            ModelSize::Large
-        );
+        assert_eq!(estimate_model_size("meta-llama/Llama-3-13B"), ModelSize::Large);
     }
 
     #[test]
     fn test_estimate_model_size_xlarge() {
-        assert_eq!(
-            estimate_model_size("meta-llama/Llama-3-70B"),
-            ModelSize::XLarge
-        );
+        assert_eq!(estimate_model_size("meta-llama/Llama-3-70B"), ModelSize::XLarge);
     }
 
     #[test]
     fn test_estimate_model_size_unknown_defaults_medium() {
-        assert_eq!(
-            estimate_model_size("some-org/some-model"),
-            ModelSize::Medium
-        );
+        assert_eq!(estimate_model_size("some-org/some-model"), ModelSize::Medium);
     }
 
     #[test]
@@ -303,10 +265,7 @@ mod tests {
     #[test]
     fn test_detect_data_format_jsonl() {
         assert_eq!(detect_data_format("train.jsonl"), DataFormat::Jsonl);
-        assert_eq!(
-            detect_data_format("data/train.jsonlines"),
-            DataFormat::Jsonl
-        );
+        assert_eq!(detect_data_format("data/train.jsonlines"), DataFormat::Jsonl);
     }
 
     #[test]

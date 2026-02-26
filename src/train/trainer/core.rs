@@ -155,7 +155,7 @@ impl Trainer {
     /// # let optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
     /// # let mut trainer = Trainer::new(params, Box::new(optimizer), TrainConfig::default());
     /// // After training...
-    /// trainer.save("model.safetensors", "my-model", "linear").unwrap();
+    /// trainer.save("model.safetensors", "my-model", "linear").expect("save failed");
     /// ```
     ///
     /// # Errors

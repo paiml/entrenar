@@ -82,11 +82,7 @@ description: "Test saving manifest"
 #[test]
 fn test_save_manifest_creates_parent_dir() {
     let temp_dir = TempDir::new().unwrap();
-    let nested_path = temp_dir
-        .path()
-        .join("nested")
-        .join("dir")
-        .join("train.yaml");
+    let nested_path = temp_dir.path().join("nested").join("dir").join("train.yaml");
 
     let yaml = r#"
 entrenar: "1.0"

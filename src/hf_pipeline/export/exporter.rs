@@ -106,10 +106,9 @@ impl Exporter {
                 "num_params": weights.param_count(),
             }
         });
-        let header_bytes =
-            serde_json::to_vec(&header).map_err(|e| FetchError::ConfigParseError {
-                message: format!("Failed to serialize header: {e}"),
-            })?;
+        let header_bytes = serde_json::to_vec(&header).map_err(|e| {
+            FetchError::ConfigParseError { message: format!("Failed to serialize header: {e}") }
+        })?;
 
         // Write header length (8 bytes, little-endian)
         output.extend_from_slice(&(header_bytes.len() as u64).to_le_bytes());
@@ -157,20 +156,15 @@ impl Exporter {
                     let shape = weights.shapes.get(name).cloned().unwrap_or_default();
                     (
                         name.clone(),
-                        AprTensor {
-                            shape,
-                            dtype: "f32".to_string(),
-                            data: data.clone(),
-                        },
+                        AprTensor { shape, dtype: "f32".to_string(), data: data.clone() },
                     )
                 })
                 .collect(),
         };
 
-        let json =
-            serde_json::to_string_pretty(&apr).map_err(|e| FetchError::ConfigParseError {
-                message: format!("Failed to serialize APR: {e}"),
-            })?;
+        let json = serde_json::to_string_pretty(&apr).map_err(|e| {
+            FetchError::ConfigParseError { message: format!("Failed to serialize APR: {e}") }
+        })?;
 
         std::fs::write(path, &json).map_err(|e| FetchError::ConfigParseError {
             message: format!("Failed to write file: {e}"),
@@ -192,10 +186,7 @@ impl Exporter {
         let mut metadata: Vec<(String, GgufValue)> = Vec::new();
         if self.include_metadata {
             if let Some(arch) = &weights.metadata.architecture {
-                metadata.push((
-                    "general.architecture".into(),
-                    GgufValue::String(arch.clone()),
-                ));
+                metadata.push(("general.architecture".into(), GgufValue::String(arch.clone())));
             }
             if let Some(name) = &weights.metadata.model_name {
                 metadata.push(("general.name".into(), GgufValue::String(name.clone())));
@@ -205,16 +196,10 @@ impl Exporter {
                 GgufValue::Uint64(weights.metadata.num_params),
             ));
             if let Some(hidden) = weights.metadata.hidden_size {
-                metadata.push((
-                    "general.hidden_size".into(),
-                    GgufValue::Uint32(hidden as u32),
-                ));
+                metadata.push(("general.hidden_size".into(), GgufValue::Uint32(hidden as u32)));
             }
             if let Some(layers) = weights.metadata.num_layers {
-                metadata.push((
-                    "general.num_layers".into(),
-                    GgufValue::Uint32(layers as u32),
-                ));
+                metadata.push(("general.num_layers".into(), GgufValue::Uint32(layers as u32)));
             }
         }
 
@@ -225,11 +210,7 @@ impl Exporter {
         let mut tensors: Vec<GgufTensor> = Vec::new();
         for name in &tensor_names {
             let data = &weights.tensors[*name];
-            let shape = weights
-                .shapes
-                .get(*name)
-                .cloned()
-                .unwrap_or_else(|| vec![data.len()]);
+            let shape = weights.shapes.get(*name).cloned().unwrap_or_else(|| vec![data.len()]);
             let (bytes, dtype) = quantize_to_gguf_bytes(data, self.gguf_quantization);
             tensors.push(GgufTensor {
                 name: (*name).clone(),
@@ -244,9 +225,7 @@ impl Exporter {
             message: format!("Failed to create GGUF file: {e}"),
         })?;
         export_tensors_to_gguf(&mut file, &tensors, &metadata).map_err(|e| {
-            FetchError::GgufWriteError {
-                message: format!("Failed to write GGUF data: {e}"),
-            }
+            FetchError::GgufWriteError { message: format!("Failed to write GGUF data: {e}") }
         })?;
 
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
@@ -377,9 +356,8 @@ mod tests {
         let weights = make_test_weights();
         let dir = tempfile::tempdir().unwrap();
         let exporter = Exporter::new().output_dir(dir.path());
-        let result = exporter
-            .export(&weights, ExportFormat::SafeTensors, "model.safetensors")
-            .unwrap();
+        let result =
+            exporter.export(&weights, ExportFormat::SafeTensors, "model.safetensors").unwrap();
         assert_eq!(result.format, ExportFormat::SafeTensors);
         assert!(result.size_bytes > 0);
         assert!(dir.path().join("model.safetensors").exists());
@@ -390,9 +368,7 @@ mod tests {
         let weights = make_test_weights();
         let dir = tempfile::tempdir().unwrap();
         let exporter = Exporter::new().output_dir(dir.path());
-        let result = exporter
-            .export(&weights, ExportFormat::APR, "model.apr.json")
-            .unwrap();
+        let result = exporter.export(&weights, ExportFormat::APR, "model.apr.json").unwrap();
         assert_eq!(result.format, ExportFormat::APR);
         assert!(result.size_bytes > 0);
         assert!(dir.path().join("model.apr.json").exists());
@@ -403,12 +379,10 @@ mod tests {
         let weights = make_test_weights();
         let dir = tempfile::tempdir().unwrap();
         // Set Q4_0 quant — should be silently ignored for SafeTensors
-        let exporter = Exporter::new()
-            .output_dir(dir.path())
-            .gguf_quantization(GgufQuantization::Q4_0);
-        let result = exporter
-            .export(&weights, ExportFormat::SafeTensors, "model.safetensors")
-            .unwrap();
+        let exporter =
+            Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::Q4_0);
+        let result =
+            exporter.export(&weights, ExportFormat::SafeTensors, "model.safetensors").unwrap();
         assert_eq!(result.format, ExportFormat::SafeTensors);
         assert!(result.size_bytes > 0);
     }
@@ -421,9 +395,7 @@ mod tests {
     fn test_falsify_export_auto_detects_gguf() {
         let weights = make_test_weights();
         let dir = tempfile::tempdir().unwrap();
-        let exporter = Exporter::new()
-            .output_dir(dir.path())
-            .default_format(ExportFormat::APR);
+        let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::APR);
         let result = exporter.export_auto(&weights, "model.gguf").unwrap();
         assert_eq!(result.format, ExportFormat::GGUF);
     }
@@ -432,9 +404,7 @@ mod tests {
     fn test_falsify_export_auto_detects_safetensors() {
         let weights = make_test_weights();
         let dir = tempfile::tempdir().unwrap();
-        let exporter = Exporter::new()
-            .output_dir(dir.path())
-            .default_format(ExportFormat::GGUF);
+        let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::GGUF);
         let result = exporter.export_auto(&weights, "model.safetensors").unwrap();
         assert_eq!(result.format, ExportFormat::SafeTensors);
     }
@@ -443,9 +413,7 @@ mod tests {
     fn test_falsify_export_auto_detects_apr() {
         let weights = make_test_weights();
         let dir = tempfile::tempdir().unwrap();
-        let exporter = Exporter::new()
-            .output_dir(dir.path())
-            .default_format(ExportFormat::GGUF);
+        let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::GGUF);
         let result = exporter.export_auto(&weights, "model.apr.json").unwrap();
         assert_eq!(result.format, ExportFormat::APR);
     }
@@ -454,9 +422,7 @@ mod tests {
     fn test_falsify_export_auto_unknown_extension_uses_default() {
         let weights = make_test_weights();
         let dir = tempfile::tempdir().unwrap();
-        let exporter = Exporter::new()
-            .output_dir(dir.path())
-            .default_format(ExportFormat::GGUF);
+        let exporter = Exporter::new().output_dir(dir.path()).default_format(ExportFormat::GGUF);
         let result = exporter.export_auto(&weights, "model.unknown").unwrap();
         assert_eq!(result.format, ExportFormat::GGUF);
     }
@@ -474,23 +440,13 @@ mod tests {
             }
 
             let dir = tempfile::tempdir().unwrap();
-            let exporter = Exporter::new()
-                .output_dir(dir.path())
-                .include_metadata(false);
-            let result = exporter
-                .export(&weights, ExportFormat::GGUF, "count.gguf")
-                .unwrap();
-            assert_eq!(
-                result.num_tensors, n,
-                "num_tensors mismatch for {n} input tensors"
-            );
+            let exporter = Exporter::new().output_dir(dir.path()).include_metadata(false);
+            let result = exporter.export(&weights, ExportFormat::GGUF, "count.gguf").unwrap();
+            assert_eq!(result.num_tensors, n, "num_tensors mismatch for {n} input tensors");
 
             let file_data = std::fs::read(dir.path().join("count.gguf")).unwrap();
             let summary = crate::hf_pipeline::export::gguf_verify::verify_gguf(&file_data).unwrap();
-            assert_eq!(
-                summary.tensor_count, n as u64,
-                "GGUF header tensor_count mismatch for {n}"
-            );
+            assert_eq!(summary.tensor_count, n as u64, "GGUF header tensor_count mismatch for {n}");
         }
     }
 }

@@ -45,10 +45,7 @@ mod tests {
         let data = b"hello world";
         let hash = compute_hash(data);
         assert_eq!(hash.len(), 64); // SHA-256 = 32 bytes = 64 hex chars
-        assert_eq!(
-            hash,
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-        );
+        assert_eq!(hash, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
     }
 
     #[test]

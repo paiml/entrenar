@@ -55,12 +55,8 @@ impl NixFlakeConfig {
         ];
 
         // Set features
-        config
-            .features
-            .insert("trueno".to_string(), vec!["simd".to_string()]);
-        config
-            .features
-            .insert("entrenar".to_string(), vec!["full".to_string()]);
+        config.features.insert("trueno".to_string(), vec!["simd".to_string()]);
+        config.features.insert("entrenar".to_string(), vec!["full".to_string()]);
 
         config.rust_version = "1.75.0".to_string();
         config.include_dev_shell = true;
@@ -81,10 +77,7 @@ impl NixFlakeConfig {
         crate_name: impl Into<String>,
         features: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
-        self.features.insert(
-            crate_name.into(),
-            features.into_iter().map(Into::into).collect(),
-        );
+        self.features.insert(crate_name.into(), features.into_iter().map(Into::into).collect());
         self
     }
 
@@ -109,11 +102,8 @@ impl NixFlakeConfig {
     /// Generate the flake.nix content
     pub fn generate_flake_nix(&self) -> String {
         let systems_list: Vec<&str> = self.systems.iter().map(NixSystem::as_str).collect();
-        let systems_str = systems_list
-            .iter()
-            .map(|s| format!("\"{s}\""))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let systems_str =
+            systems_list.iter().map(|s| format!("\"{s}\"")).collect::<Vec<_>>().join(" ");
 
         let crate_names: Vec<&str> = self.crates.iter().map(|c| c.name.as_str()).collect();
 

@@ -69,10 +69,7 @@ impl IndexedDbStorage {
 
     /// Get all metric keys for a run.
     pub fn list_metric_keys(&self, run_id: &str) -> Vec<String> {
-        self.metrics
-            .get(run_id)
-            .map(|m| m.keys().cloned().collect())
-            .unwrap_or_default()
+        self.metrics.get(run_id).map(|m| m.keys().cloned().collect()).unwrap_or_default()
     }
 }
 
@@ -191,10 +188,8 @@ impl ExperimentStorage for IndexedDbStorage {
     }
 
     fn get_run_status(&self, run_id: &str) -> Result<RunStatus> {
-        let run = self
-            .runs
-            .get(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let run =
+            self.runs.get(run_id).ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
 
         Ok(run.status)
     }
@@ -210,10 +205,8 @@ impl ExperimentStorage for IndexedDbStorage {
     }
 
     fn get_span_id(&self, run_id: &str) -> Result<Option<String>> {
-        let run = self
-            .runs
-            .get(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let run =
+            self.runs.get(run_id).ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
 
         Ok(run.span_id.clone())
     }

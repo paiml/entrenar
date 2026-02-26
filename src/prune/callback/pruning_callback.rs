@@ -78,10 +78,7 @@ impl PruningCallback {
 
     /// Create a pruning callback with custom calibration configuration.
     pub fn with_calibration(config: PruningConfig, cal_config: CalibrationConfig) -> Self {
-        Self {
-            calibration: Some(CalibrationCollector::new(cal_config)),
-            ..Self::new(config)
-        }
+        Self { calibration: Some(CalibrationCollector::new(cal_config)), ..Self::new(config) }
     }
 
     /// Enable or disable the callback.
@@ -116,8 +113,7 @@ impl PruningCallback {
 
     /// Check if pruning is complete.
     pub fn is_complete(&self) -> bool {
-        self.last_prune_step
-            .is_some_and(|step| self.config.schedule().is_complete(step))
+        self.last_prune_step.is_some_and(|step| self.config.schedule().is_complete(step))
     }
 
     /// Get the step at which pruning last occurred.

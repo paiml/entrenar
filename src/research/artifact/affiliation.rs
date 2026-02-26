@@ -18,11 +18,7 @@ pub struct Affiliation {
 impl Affiliation {
     /// Create a new affiliation
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            ror_id: None,
-            country: None,
-        }
+        Self { name: name.into(), ror_id: None, country: None }
     }
 
     /// Set the ROR ID (validates format)

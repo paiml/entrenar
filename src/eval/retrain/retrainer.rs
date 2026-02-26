@@ -98,9 +98,9 @@ impl AutoRetrainer {
         match &self.config.policy {
             RetrainPolicy::FeatureCount { count } => summary.drifted_features >= *count,
 
-            RetrainPolicy::CriticalFeature { names } => results
-                .iter()
-                .any(|r| r.drifted && names.contains(&r.feature)),
+            RetrainPolicy::CriticalFeature { names } => {
+                results.iter().any(|r| r.drifted && names.contains(&r.feature))
+            }
 
             RetrainPolicy::DriftPercentage { threshold } => {
                 summary.drift_percentage() >= *threshold

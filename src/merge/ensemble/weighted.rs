@@ -30,9 +30,7 @@ fn normalize_weights(weights: &[f32], n: usize) -> Result<Vec<f32>, MergeError> 
     }
     let sum: f32 = weights.iter().sum();
     if sum <= 0.0 {
-        return Err(MergeError::InvalidConfig(
-            "Weights must sum to positive value".to_string(),
-        ));
+        return Err(MergeError::InvalidConfig("Weights must sum to positive value".to_string()));
     }
     Ok(weights.iter().map(|w| w / sum).collect())
 }
