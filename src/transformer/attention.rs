@@ -518,7 +518,7 @@ mod tests {
 
         let attn = MultiHeadAttention::from_params(&config, &params, "attn");
         assert!(attn.is_some());
-        let attn = attn.unwrap();
+        let attn = attn.expect("operation should succeed");
         assert_eq!(attn.w_q.len(), hidden_size * hidden_size);
     }
 
@@ -555,7 +555,7 @@ mod tests {
         crate::autograd::backward(&mut q, Some(grad_out));
 
         assert!(attn.w_q.grad().is_some());
-        let grad_q = attn.w_q.grad().unwrap();
+        let grad_q = attn.w_q.grad().expect("gradient should be available");
         assert!(grad_q.iter().all(|&v| v.is_finite()));
     }
 
@@ -578,7 +578,7 @@ mod tests {
         crate::autograd::backward(&mut output, Some(grad_out));
 
         assert!(attn.w_o.grad().is_some());
-        let grad_o = attn.w_o.grad().unwrap();
+        let grad_o = attn.w_o.grad().expect("gradient should be available");
         assert!(grad_o.iter().all(|&v| v.is_finite()));
         let sum: f32 = grad_o.iter().map(|v| v.abs()).sum();
         assert!(sum > 0.0, "Output projection gradient should not be all zero");

@@ -17,7 +17,7 @@ fn create_model(name: &str, values: Vec<f32>) -> Model {
 
 fn print_model(name: &str, model: &Model) {
     println!("\n{name}");
-    println!("  w: {:?}", model["w"].data().as_slice().unwrap());
+    println!("  w: {:?}", model["w"].data().as_slice().expect("operation should succeed"));
 }
 
 fn main() {
@@ -39,7 +39,7 @@ fn main() {
     println!("\n\n1. TIES MERGE");
     println!("   Algorithm: Trim top-k%, elect sign by majority vote, merge same-sign values");
 
-    let ties_config = TiesConfig::new(0.6).unwrap(); // Keep top 60% magnitude
+    let ties_config = TiesConfig::new(0.6).expect("operation should succeed"); // Keep top 60% magnitude
     let models = vec![model1.clone(), model2.clone(), model3.clone()];
 
     match ties_merge(&models, &base, &ties_config) {
@@ -55,7 +55,7 @@ fn main() {
     println!("\n\n2. DARE MERGE");
     println!("   Algorithm: Randomly drop parameters, rescale remaining values");
 
-    let dare_config = DareConfig::new(0.4).unwrap().with_seed(42); // Drop 40% of params
+    let dare_config = DareConfig::new(0.4).expect("operation should succeed").with_seed(42); // Drop 40% of params
     let models = vec![model1.clone(), model2.clone(), model3.clone()];
 
     match dare_merge(&models, &base, &dare_config) {
@@ -72,7 +72,7 @@ fn main() {
     println!("\n\n3. SLERP MERGE (Two models only)");
     println!("   Algorithm: Spherical interpolation along the shortest arc");
 
-    let slerp_config = SlerpConfig::new(0.5).unwrap(); // 50/50 blend
+    let slerp_config = SlerpConfig::new(0.5).expect("operation should succeed"); // 50/50 blend
 
     match slerp_merge(&model1, &model2, &slerp_config) {
         Ok(merged) => {
@@ -87,10 +87,14 @@ fn main() {
     // Demonstrate SLERP at different interpolation points
     println!("\n\n4. SLERP AT DIFFERENT INTERPOLATION POINTS");
     for t in [0.0, 0.25, 0.5, 0.75, 1.0] {
-        let config = SlerpConfig::new(t).unwrap();
+        let config = SlerpConfig::new(t).expect("operation should succeed");
         match slerp_merge(&model1, &model2, &config) {
             Ok(merged) => {
-                println!("   t={:.2}: {:?}", t, merged["w"].data().as_slice().unwrap());
+                println!(
+                    "   t={:.2}: {:?}",
+                    t,
+                    merged["w"].data().as_slice().expect("operation should succeed")
+                );
             }
             Err(e) => println!("   t={t:.2}: Error - {e}"),
         }

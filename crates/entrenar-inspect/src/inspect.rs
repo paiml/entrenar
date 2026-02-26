@@ -422,7 +422,8 @@ mod tests {
         let tensors = generate_mock_tensors(100_000_000); // 100M params
         assert!(!tensors.is_empty());
         // Smaller model should have smaller hidden dim
-        let embed = tensors.iter().find(|t| t.name.contains("embed")).unwrap();
+        let embed =
+            tensors.iter().find(|t| t.name.contains("embed")).expect("operation should succeed");
         assert!(embed.shape[1] < 4096);
     }
 

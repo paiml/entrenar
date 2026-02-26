@@ -107,14 +107,14 @@ fn test_validate_weights_missing_embedding() {
 #[test]
 fn test_find_safetensors_files_nonexistent() {
     let path = Path::new("/nonexistent/path");
-    let files = find_safetensors_files(path).unwrap();
+    let files = find_safetensors_files(path).expect("operation should succeed");
     assert!(files.is_empty());
 }
 
 #[test]
 fn test_find_safetensors_files_empty_dir() {
-    let dir = TempDir::new().unwrap();
-    let files = find_safetensors_files(dir.path()).unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
+    let files = find_safetensors_files(dir.path()).expect("operation should succeed");
     assert!(files.is_empty());
 }
 
@@ -224,23 +224,25 @@ fn test_validate_weights_with_lm_head() {
 
 #[test]
 fn test_find_safetensors_single_file() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
-    std::fs::write(&file_path, b"dummy").unwrap();
+    std::fs::write(&file_path, b"dummy").expect("file write should succeed");
 
-    let files = find_safetensors_files(dir.path()).unwrap();
+    let files = find_safetensors_files(dir.path()).expect("operation should succeed");
     assert_eq!(files.len(), 1);
     assert_eq!(files[0], file_path);
 }
 
 #[test]
 fn test_find_safetensors_sharded_files() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     // Create sharded files
-    std::fs::write(dir.path().join("model-00001-of-00002.safetensors"), b"part1").unwrap();
-    std::fs::write(dir.path().join("model-00002-of-00002.safetensors"), b"part2").unwrap();
+    std::fs::write(dir.path().join("model-00001-of-00002.safetensors"), b"part1")
+        .expect("file write should succeed");
+    std::fs::write(dir.path().join("model-00002-of-00002.safetensors"), b"part2")
+        .expect("file write should succeed");
 
-    let files = find_safetensors_files(dir.path()).unwrap();
+    let files = find_safetensors_files(dir.path()).expect("operation should succeed");
     assert_eq!(files.len(), 2);
     // Files should be sorted
     assert!(files[0].to_string_lossy().contains("00001"));
@@ -249,27 +251,27 @@ fn test_find_safetensors_sharded_files() {
 
 #[test]
 fn test_find_safetensors_direct_file() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("weights.safetensors");
-    std::fs::write(&file_path, b"dummy").unwrap();
+    std::fs::write(&file_path, b"dummy").expect("file write should succeed");
 
-    let files = find_safetensors_files(&file_path).unwrap();
+    let files = find_safetensors_files(&file_path).expect("operation should succeed");
     assert_eq!(files.len(), 1);
 }
 
 #[test]
 fn test_find_safetensors_non_safetensors_file() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.bin");
-    std::fs::write(&file_path, b"dummy").unwrap();
+    std::fs::write(&file_path, b"dummy").expect("file write should succeed");
 
-    let files = find_safetensors_files(&file_path).unwrap();
+    let files = find_safetensors_files(&file_path).expect("operation should succeed");
     assert!(files.is_empty());
 }
 
 #[test]
 fn test_load_safetensors_no_files() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let result = load_safetensors_weights(dir.path(), Architecture::Auto);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("No SafeTensors files found"));
@@ -277,9 +279,9 @@ fn test_load_safetensors_no_files() {
 
 #[test]
 fn test_load_safetensors_invalid_file() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
-    std::fs::write(&file_path, b"not a valid safetensors file").unwrap();
+    std::fs::write(&file_path, b"not a valid safetensors file").expect("file write should succeed");
 
     let result = load_safetensors_weights(dir.path(), Architecture::Auto);
     assert!(result.is_err());
@@ -303,22 +305,24 @@ fn test_load_safetensors_real_file() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     // Create a minimal safetensors file with f32 data
     let embed_data: Vec<f32> = vec![0.1, 0.2, 0.3, 0.4];
     let embed_bytes: Vec<u8> = embed_data.iter().flat_map(|f| f.to_le_bytes()).collect();
 
-    let view = TensorView::new(Dtype::F32, vec![2, 2], &embed_bytes).unwrap();
+    let view =
+        TensorView::new(Dtype::F32, vec![2, 2], &embed_bytes).expect("operation should succeed");
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
     assert!(result.is_ok());
-    let weights = result.unwrap();
+    let weights = result.expect("operation should succeed");
     assert!(weights.contains_key("model.embed_tokens.weight"));
 }
 
@@ -327,7 +331,7 @@ fn test_load_safetensors_with_f16() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     // Create fp16 data
@@ -339,11 +343,13 @@ fn test_load_safetensors_with_f16() {
     ];
     let fp16_bytes: Vec<u8> = fp16_values.iter().flat_map(|f| f.to_le_bytes()).collect();
 
-    let view = TensorView::new(Dtype::F16, vec![2, 2], &fp16_bytes).unwrap();
+    let view =
+        TensorView::new(Dtype::F16, vec![2, 2], &fp16_bytes).expect("operation should succeed");
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
     assert!(result.is_ok());
@@ -354,7 +360,7 @@ fn test_load_safetensors_with_bf16() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     // Create bf16 data
@@ -366,11 +372,13 @@ fn test_load_safetensors_with_bf16() {
     ];
     let bf16_bytes: Vec<u8> = bf16_values.iter().flat_map(|f| f.to_le_bytes()).collect();
 
-    let view = TensorView::new(Dtype::BF16, vec![2, 2], &bf16_bytes).unwrap();
+    let view =
+        TensorView::new(Dtype::BF16, vec![2, 2], &bf16_bytes).expect("operation should succeed");
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
     assert!(result.is_ok());
@@ -381,18 +389,20 @@ fn test_load_safetensors_with_i32() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     // Create i32 data
     let i32_values: Vec<i32> = vec![1, 2, 3, 4];
     let i32_bytes: Vec<u8> = i32_values.iter().flat_map(|i| i.to_le_bytes()).collect();
 
-    let view = TensorView::new(Dtype::I32, vec![2, 2], &i32_bytes).unwrap();
+    let view =
+        TensorView::new(Dtype::I32, vec![2, 2], &i32_bytes).expect("operation should succeed");
     let data = vec![("model.embed_tokens.weight", &view)];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
     assert!(result.is_ok());
@@ -403,19 +413,21 @@ fn test_load_safetensors_empty_tensor() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     let empty_bytes: Vec<u8> = vec![];
-    let view = TensorView::new(Dtype::F32, vec![0], &empty_bytes).unwrap();
+    let view =
+        TensorView::new(Dtype::F32, vec![0], &empty_bytes).expect("operation should succeed");
     let data = vec![("empty_tensor", &view)];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
     assert!(result.is_ok());
-    let weights = result.unwrap();
+    let weights = result.expect("operation should succeed");
     assert!(weights.contains_key("empty_tensor"));
 }
 
@@ -424,21 +436,24 @@ fn test_detect_architecture_qwen2() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     let bias_bytes: Vec<u8> = vec![0.0f32; 4].iter().flat_map(|f| f.to_le_bytes()).collect();
 
     // Qwen2 has attention biases
-    let view1 = TensorView::new(Dtype::F32, vec![4], &bias_bytes).unwrap();
-    let view2 = TensorView::new(Dtype::F32, vec![4], &bias_bytes).unwrap();
+    let view1 =
+        TensorView::new(Dtype::F32, vec![4], &bias_bytes).expect("operation should succeed");
+    let view2 =
+        TensorView::new(Dtype::F32, vec![4], &bias_bytes).expect("operation should succeed");
     let data = vec![
         ("model.layers.0.self_attn.q_proj.bias", &view1),
         ("model.layers.0.self_attn.k_proj.bias", &view2),
     ];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     let result = load_safetensors_weights(&file_path, Architecture::Auto);
     assert!(result.is_ok());
@@ -449,17 +464,19 @@ fn test_detect_architecture_llama() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     let weight_bytes: Vec<u8> = vec![0.1f32; 4].iter().flat_map(|f| f.to_le_bytes()).collect();
 
     // LLaMA has no attention biases
-    let view = TensorView::new(Dtype::F32, vec![2, 2], &weight_bytes).unwrap();
+    let view =
+        TensorView::new(Dtype::F32, vec![2, 2], &weight_bytes).expect("operation should succeed");
     let data = vec![("model.layers.0.self_attn.q_proj.weight", &view)];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     let result = load_safetensors_weights(&file_path, Architecture::Auto);
     assert!(result.is_ok());
@@ -470,21 +487,22 @@ fn test_load_safetensors_with_unsupported_dtype() {
     use safetensors::serialize;
     use safetensors::tensor::{Dtype, TensorView};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("model.safetensors");
 
     // Create U8 data (unsupported for conversion)
     let u8_bytes: Vec<u8> = vec![1, 2, 3, 4];
-    let view = TensorView::new(Dtype::U8, vec![4], &u8_bytes).unwrap();
+    let view = TensorView::new(Dtype::U8, vec![4], &u8_bytes).expect("operation should succeed");
     let data = vec![("unsupported_tensor", &view)];
 
-    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>).unwrap();
-    std::fs::write(&file_path, serialized).unwrap();
+    let serialized = serialize(data, None::<std::collections::HashMap<String, String>>)
+        .expect("operation should succeed");
+    std::fs::write(&file_path, serialized).expect("file write should succeed");
 
     // Should succeed but skip the unsupported tensor
     let result = load_safetensors_weights(&file_path, Architecture::Llama);
     assert!(result.is_ok());
-    let weights = result.unwrap();
+    let weights = result.expect("operation should succeed");
     // Unsupported dtype tensors are skipped
     assert!(!weights.contains_key("unsupported_tensor"));
 }

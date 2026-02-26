@@ -90,22 +90,30 @@ mod tests {
         let bias_bytes: Vec<u8> = bytemuck::cast_slice(&bias_data).to_vec();
 
         let views = vec![
-            ("layer.weight", TensorView::new(Dtype::F32, vec![2, 3], &weight_bytes).unwrap()),
-            ("layer.bias", TensorView::new(Dtype::F32, vec![3], &bias_bytes).unwrap()),
+            (
+                "layer.weight",
+                TensorView::new(Dtype::F32, vec![2, 3], &weight_bytes)
+                    .expect("operation should succeed"),
+            ),
+            (
+                "layer.bias",
+                TensorView::new(Dtype::F32, vec![3], &bias_bytes)
+                    .expect("operation should succeed"),
+            ),
         ];
 
-        let bytes = safetensors::serialize(views, None).unwrap();
+        let bytes = safetensors::serialize(views, None).expect("operation should succeed");
         let path = dir.join("test.safetensors");
-        std::fs::write(&path, bytes).unwrap();
+        std::fs::write(&path, bytes).expect("file write should succeed");
         path
     }
 
     #[test]
     fn test_load_safetensors_weights_basic() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let path = create_test_safetensors(tmp.path());
 
-        let (weights, shapes) = load_safetensors_weights(&path).unwrap();
+        let (weights, shapes) = load_safetensors_weights(&path).expect("load should succeed");
 
         assert_eq!(weights.len(), 2);
         assert_eq!(shapes.len(), 2);
@@ -125,9 +133,9 @@ mod tests {
 
     #[test]
     fn test_load_safetensors_weights_invalid_data() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let path = tmp.path().join("bad.safetensors");
-        std::fs::write(&path, b"not a safetensors file").unwrap();
+        std::fs::write(&path, b"not a safetensors file").expect("file write should succeed");
 
         let result = load_safetensors_weights(&path);
         assert!(result.is_err());

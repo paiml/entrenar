@@ -107,8 +107,9 @@ mod tests {
     #[test]
     fn test_safetensors_format_serde() {
         let format = ModelFormat::SafeTensors;
-        let serialized = serde_json::to_string(&format).unwrap();
-        let deserialized: ModelFormat = serde_json::from_str(&serialized).unwrap();
+        let serialized = serde_json::to_string(&format).expect("JSON serialization should succeed");
+        let deserialized: ModelFormat =
+            serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
         assert_eq!(format, deserialized);
     }
 
@@ -141,13 +142,16 @@ mod tests {
     fn test_model_format_serde() {
         // Test serialization/deserialization
         let format = ModelFormat::Json;
-        let serialized = serde_json::to_string(&format).unwrap();
-        let deserialized: ModelFormat = serde_json::from_str(&serialized).unwrap();
+        let serialized = serde_json::to_string(&format).expect("JSON serialization should succeed");
+        let deserialized: ModelFormat =
+            serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
         assert_eq!(format, deserialized);
 
         let format_yaml = ModelFormat::Yaml;
-        let serialized = serde_json::to_string(&format_yaml).unwrap();
-        let deserialized: ModelFormat = serde_json::from_str(&serialized).unwrap();
+        let serialized =
+            serde_json::to_string(&format_yaml).expect("JSON serialization should succeed");
+        let deserialized: ModelFormat =
+            serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
         assert_eq!(format_yaml, deserialized);
     }
 

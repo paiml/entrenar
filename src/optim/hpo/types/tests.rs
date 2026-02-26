@@ -212,39 +212,45 @@ mod tests {
     #[test]
     fn test_parameter_value_serde() {
         let v = ParameterValue::Float(0.5);
-        let json = serde_json::to_string(&v).unwrap();
-        let parsed: ParameterValue = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&v).expect("JSON serialization should succeed");
+        let parsed: ParameterValue =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(v, parsed);
 
         let v = ParameterValue::Int(42);
-        let json = serde_json::to_string(&v).unwrap();
-        let parsed: ParameterValue = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&v).expect("JSON serialization should succeed");
+        let parsed: ParameterValue =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(v, parsed);
 
         let v = ParameterValue::Categorical("relu".to_string());
-        let json = serde_json::to_string(&v).unwrap();
-        let parsed: ParameterValue = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&v).expect("JSON serialization should succeed");
+        let parsed: ParameterValue =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(v, parsed);
     }
 
     #[test]
     fn test_parameter_domain_serde() {
         let domain = ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: true };
-        let json = serde_json::to_string(&domain).unwrap();
-        let parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&domain).expect("JSON serialization should succeed");
+        let parsed: ParameterDomain =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         match parsed {
             ParameterDomain::Continuous { log_scale, .. } => assert!(log_scale),
             _ => panic!("Wrong domain type"),
         }
 
         let domain = ParameterDomain::Discrete { low: 8, high: 128 };
-        let json = serde_json::to_string(&domain).unwrap();
-        let _parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&domain).expect("JSON serialization should succeed");
+        let _parsed: ParameterDomain =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         let domain =
             ParameterDomain::Categorical { choices: vec!["a".to_string(), "b".to_string()] };
-        let json = serde_json::to_string(&domain).unwrap();
-        let _parsed: ParameterDomain = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&domain).expect("JSON serialization should succeed");
+        let _parsed: ParameterDomain =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
     }
 
     #[test]
@@ -252,8 +258,9 @@ mod tests {
         let mut space = HyperparameterSpace::new();
         space.add("lr", ParameterDomain::Continuous { low: 0.0, high: 1.0, log_scale: false });
 
-        let json = serde_json::to_string(&space).unwrap();
-        let parsed: HyperparameterSpace = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&space).expect("JSON serialization should succeed");
+        let parsed: HyperparameterSpace =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(parsed.len(), 1);
     }
 
@@ -264,8 +271,9 @@ mod tests {
         let mut trial = Trial::new(0, config);
         trial.complete(0.5, 100);
 
-        let json = serde_json::to_string(&trial).unwrap();
-        let parsed: Trial = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&trial).expect("JSON serialization should succeed");
+        let parsed: Trial =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(parsed.id, 0);
         assert_eq!(parsed.score, 0.5);
         assert_eq!(parsed.status, TrialStatus::Completed);
@@ -280,8 +288,9 @@ mod tests {
             TrialStatus::Failed,
             TrialStatus::Pruned,
         ] {
-            let json = serde_json::to_string(&status).unwrap();
-            let parsed: TrialStatus = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&status).expect("JSON serialization should succeed");
+            let parsed: TrialStatus =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(status, parsed);
         }
     }
@@ -289,24 +298,28 @@ mod tests {
     #[test]
     fn test_search_strategy_serde() {
         let strategy = SearchStrategy::Grid;
-        let json = serde_json::to_string(&strategy).unwrap();
-        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&strategy).expect("JSON serialization should succeed");
+        let _parsed: SearchStrategy =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         let strategy = SearchStrategy::Random { n_samples: 100 };
-        let json = serde_json::to_string(&strategy).unwrap();
-        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&strategy).expect("JSON serialization should succeed");
+        let _parsed: SearchStrategy =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         let strategy = SearchStrategy::Bayesian {
             n_initial: 10,
             acquisition: AcquisitionFunction::ExpectedImprovement,
             surrogate: SurrogateModel::TPE,
         };
-        let json = serde_json::to_string(&strategy).unwrap();
-        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&strategy).expect("JSON serialization should succeed");
+        let _parsed: SearchStrategy =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         let strategy = SearchStrategy::Hyperband { max_iter: 81, eta: 3.0 };
-        let json = serde_json::to_string(&strategy).unwrap();
-        let _parsed: SearchStrategy = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&strategy).expect("JSON serialization should succeed");
+        let _parsed: SearchStrategy =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
     }
 
     #[test]
@@ -316,8 +329,9 @@ mod tests {
             AcquisitionFunction::UpperConfidenceBound { kappa: 2.576 },
             AcquisitionFunction::ProbabilityOfImprovement,
         ] {
-            let json = serde_json::to_string(&acq).unwrap();
-            let _parsed: AcquisitionFunction = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&acq).expect("JSON serialization should succeed");
+            let _parsed: AcquisitionFunction =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
         }
     }
 
@@ -328,8 +342,10 @@ mod tests {
             SurrogateModel::GaussianProcess,
             SurrogateModel::RandomForest { n_trees: 100 },
         ] {
-            let json = serde_json::to_string(&surrogate).unwrap();
-            let _parsed: SurrogateModel = serde_json::from_str(&json).unwrap();
+            let json =
+                serde_json::to_string(&surrogate).expect("JSON serialization should succeed");
+            let _parsed: SurrogateModel =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
         }
     }
 }

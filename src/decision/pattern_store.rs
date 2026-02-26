@@ -179,8 +179,8 @@ mod tests {
 
         let retrieved = store.get_pattern("p1");
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().pattern_id, "p1");
-        assert_eq!(retrieved.unwrap().category, "cat_a");
+        assert_eq!(retrieved.expect("operation should succeed").pattern_id, "p1");
+        assert_eq!(retrieved.expect("operation should succeed").category, "cat_a");
     }
 
     #[test]
@@ -196,7 +196,7 @@ mod tests {
         store.add_pattern(make_pattern("p1", vec![2.0], "new"));
 
         assert_eq!(store.len(), 1);
-        assert_eq!(store.get_pattern("p1").unwrap().category, "new");
+        assert_eq!(store.get_pattern("p1").expect("operation should succeed").category, "new");
     }
 
     #[test]
@@ -207,7 +207,7 @@ mod tests {
 
         let removed = store.remove_pattern("p1");
         assert!(removed.is_some());
-        assert_eq!(removed.unwrap().pattern_id, "p1");
+        assert_eq!(removed.expect("operation should succeed").pattern_id, "p1");
         assert_eq!(store.len(), 1);
         assert!(store.get_pattern("p1").is_none());
     }

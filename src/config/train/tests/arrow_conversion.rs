@@ -7,7 +7,7 @@ fn test_arrow_array_to_f32_float32() {
     use ::arrow::array::Float32Array;
     let array: ::arrow::array::ArrayRef =
         std::sync::Arc::new(Float32Array::from(vec![1.0f32, 2.0, 3.0]));
-    let result = arrow_array_to_f32(&array).unwrap();
+    let result = arrow_array_to_f32(&array).expect("operation should succeed");
     assert_eq!(result, vec![1.0, 2.0, 3.0]);
 }
 
@@ -16,7 +16,7 @@ fn test_arrow_array_to_f32_float64() {
     use ::arrow::array::Float64Array;
     let array: ::arrow::array::ArrayRef =
         std::sync::Arc::new(Float64Array::from(vec![1.0f64, 2.0, 3.0]));
-    let result = arrow_array_to_f32(&array).unwrap();
+    let result = arrow_array_to_f32(&array).expect("operation should succeed");
     assert_eq!(result, vec![1.0, 2.0, 3.0]);
 }
 
@@ -24,7 +24,7 @@ fn test_arrow_array_to_f32_float64() {
 fn test_arrow_array_to_f32_int32() {
     use ::arrow::array::Int32Array;
     let array: ::arrow::array::ArrayRef = std::sync::Arc::new(Int32Array::from(vec![1i32, 2, 3]));
-    let result = arrow_array_to_f32(&array).unwrap();
+    let result = arrow_array_to_f32(&array).expect("operation should succeed");
     assert_eq!(result, vec![1.0, 2.0, 3.0]);
 }
 
@@ -32,7 +32,7 @@ fn test_arrow_array_to_f32_int32() {
 fn test_arrow_array_to_f32_int64() {
     use ::arrow::array::Int64Array;
     let array: ::arrow::array::ArrayRef = std::sync::Arc::new(Int64Array::from(vec![1i64, 2, 3]));
-    let result = arrow_array_to_f32(&array).unwrap();
+    let result = arrow_array_to_f32(&array).expect("operation should succeed");
     assert_eq!(result, vec![1.0, 2.0, 3.0]);
 }
 

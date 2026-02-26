@@ -103,7 +103,7 @@ fn test_registry_manifest_update_existing() {
     manifest.add(entry2);
 
     assert_eq!(manifest.len(), 1);
-    assert_eq!(manifest.find("test").unwrap().version, "2.0");
+    assert_eq!(manifest.find("test").expect("operation should succeed").version, "2.0");
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn test_registry_manifest_total_size() {
 
 #[test]
 fn test_offline_registry_new() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
     assert_eq!(registry.root(), temp.path());
@@ -127,7 +127,7 @@ fn test_offline_registry_new() {
 
 #[test]
 fn test_offline_registry_add_model() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
     let entry = ModelEntry::new("test", "1.0", "", 100, ModelSource::huggingface("test"));
@@ -139,10 +139,10 @@ fn test_offline_registry_add_model() {
 
 #[test]
 fn test_offline_registry_mirror_from_hub() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
-    let entry = registry.mirror_from_hub("bert-base-uncased").unwrap();
+    let entry = registry.mirror_from_hub("bert-base-uncased").expect("operation should succeed");
 
     assert_eq!(entry.name, "bert-base-uncased");
     assert!(matches!(entry.source, ModelSource::HuggingFace { .. }));
@@ -150,12 +150,13 @@ fn test_offline_registry_mirror_from_hub() {
 
 #[test]
 fn test_offline_registry_register_local() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let model_file = temp.path().join("test.gguf");
-    fs::write(&model_file, "test model content").unwrap();
+    fs::write(&model_file, "test model content").expect("file write should succeed");
 
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
-    let entry = registry.register_local("test-model", &model_file).unwrap();
+    let entry =
+        registry.register_local("test-model", &model_file).expect("operation should succeed");
 
     assert_eq!(entry.name, "test-model");
     assert!(entry.is_local());
@@ -165,20 +166,20 @@ fn test_offline_registry_register_local() {
 
 #[test]
 fn test_offline_registry_load() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let model_file = temp.path().join("test.gguf");
-    fs::write(&model_file, "test content").unwrap();
+    fs::write(&model_file, "test content").expect("file write should succeed");
 
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
-    registry.register_local("test", &model_file).unwrap();
+    registry.register_local("test", &model_file).expect("operation should succeed");
 
-    let loaded = registry.load("test").unwrap();
+    let loaded = registry.load("test").expect("load should succeed");
     assert_eq!(loaded, model_file);
 }
 
 #[test]
 fn test_offline_registry_load_not_found() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
     let result = registry.load("nonexistent");
@@ -187,30 +188,30 @@ fn test_offline_registry_load_not_found() {
 
 #[test]
 fn test_offline_registry_verify() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let model_file = temp.path().join("test.bin");
-    fs::write(&model_file, "test content").unwrap();
+    fs::write(&model_file, "test content").expect("file write should succeed");
 
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
-    let entry = registry.register_local("test", &model_file).unwrap();
+    let entry = registry.register_local("test", &model_file).expect("operation should succeed");
 
-    assert!(registry.verify(&entry).unwrap());
+    assert!(registry.verify(&entry).expect("operation should succeed"));
 
     // Modify file
-    fs::write(&model_file, "modified content").unwrap();
-    assert!(!registry.verify(&entry).unwrap());
+    fs::write(&model_file, "modified content").expect("file write should succeed");
+    assert!(!registry.verify(&entry).expect("operation should succeed"));
 }
 
 #[test]
 fn test_offline_registry_list_available() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let model_file = temp.path().join("local.bin");
-    fs::write(&model_file, "content").unwrap();
+    fs::write(&model_file, "content").expect("file write should succeed");
 
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
     // Add local model
-    registry.register_local("local", &model_file).unwrap();
+    registry.register_local("local", &model_file).expect("operation should succeed");
 
     // Add remote model (not available locally)
     registry.add_model(ModelEntry::new(
@@ -228,7 +229,7 @@ fn test_offline_registry_list_available() {
 
 #[test]
 fn test_offline_registry_remove() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
     let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
 
     registry.add_model(ModelEntry::new("test", "1.0", "", 100, ModelSource::huggingface("test")));
@@ -241,7 +242,7 @@ fn test_offline_registry_remove() {
 
 #[test]
 fn test_offline_registry_save_and_load() {
-    let temp = TempDir::new().unwrap();
+    let temp = TempDir::new().expect("temp file creation should succeed");
 
     {
         let mut registry = OfflineModelRegistry::new(temp.path().to_path_buf());
@@ -252,7 +253,7 @@ fn test_offline_registry_save_and_load() {
             100,
             ModelSource::huggingface("test"),
         ));
-        registry.save_manifest().unwrap();
+        registry.save_manifest().expect("save should succeed");
     }
 
     // Load in new instance
@@ -268,8 +269,9 @@ fn test_model_entry_serialization() {
             .with_format("gguf")
             .with_metadata("arch", "llama");
 
-    let json = serde_json::to_string(&entry).unwrap();
-    let parsed: ModelEntry = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&entry).expect("JSON serialization should succeed");
+    let parsed: ModelEntry =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(entry.name, parsed.name);
     assert_eq!(entry.format, parsed.format);

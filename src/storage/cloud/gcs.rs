@@ -65,8 +65,9 @@ mod tests {
     fn test_gcs_config_serde() {
         let config = GCSConfig::new("bucket").with_prefix("artifacts/").with_project("my-project");
 
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: GCSConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let parsed: GCSConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(config.bucket, parsed.bucket);
         assert_eq!(config.prefix, parsed.prefix);

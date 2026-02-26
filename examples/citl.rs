@@ -46,7 +46,7 @@ fn pattern_store_example() {
 
     // Create store with custom config
     let config = PatternStoreConfig { chunk_size: 256, embedding_dim: 384, rrf_k: 60.0 };
-    let mut store = DecisionPatternStore::with_config(config).unwrap();
+    let mut store = DecisionPatternStore::with_config(config).expect("operation should succeed");
 
     println!("Configuration:");
     println!("  Chunk size: {}", store.config().chunk_size);
@@ -78,7 +78,7 @@ fn pattern_store_example() {
             pattern.decision_sequence.len(),
             pattern.success_rate() * 100.0
         );
-        store.index_fix(pattern).unwrap();
+        store.index_fix(pattern).expect("operation should succeed");
     }
 
     println!("\nTotal patterns indexed: {}", store.len());
@@ -86,7 +86,7 @@ fn pattern_store_example() {
     // Query for suggestions
     println!("\n--- Querying for E0308 fixes ---");
     let context = vec!["type_inference".to_string()];
-    let suggestions = store.suggest_fix("E0308", &context, 5).unwrap();
+    let suggestions = store.suggest_fix("E0308", &context, 5).expect("operation should succeed");
 
     println!("Found {} suggestions:", suggestions.len());
     for (i, suggestion) in suggestions.iter().enumerate() {
@@ -106,12 +106,12 @@ fn pattern_store_example() {
 
     // Export to JSON
     println!("\n--- JSON Export ---");
-    let json = store.export_json().unwrap();
+    let json = store.export_json().expect("operation should succeed");
     println!("Exported {} bytes of JSON", json.len());
 
     // Create new store and import
-    let mut new_store = DecisionPatternStore::new().unwrap();
-    let count = new_store.import_json(&json).unwrap();
+    let mut new_store = DecisionPatternStore::new().expect("operation should succeed");
+    let count = new_store.import_json(&json).expect("operation should succeed");
     println!("Imported {count} patterns into new store");
 }
 
@@ -167,7 +167,7 @@ fn decision_tracing_example() {
 fn tarantula_example() {
     println!("Statistical fault localization using Tarantula scoring\n");
 
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     // Ingest failed sessions with type_inference
     println!("Ingesting 8 failed sessions with type_inference...");
@@ -178,7 +178,7 @@ fn tarantula_example() {
                 CompilationOutcome::failure(vec!["E0308".to_string()], vec![], vec![]),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     // Ingest successful sessions with type_inference
@@ -194,7 +194,7 @@ fn tarantula_example() {
                 CompilationOutcome::success(),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     // Ingest successful sessions with borrow_check (control)
@@ -210,7 +210,7 @@ fn tarantula_example() {
                 CompilationOutcome::success(),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     println!(
@@ -247,7 +247,7 @@ fn tarantula_example() {
 fn complete_workflow_example() {
     println!("End-to-end CITL workflow for CI/CD integration\n");
 
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     // Phase 1: Build history from past compilations
     println!("Phase 1: Building history from CI/CD logs...");
@@ -304,7 +304,7 @@ fn complete_workflow_example() {
     ];
 
     for (traces, outcome, fix) in ci_history {
-        trainer.ingest_session(traces, outcome, fix).unwrap();
+        trainer.ingest_session(traces, outcome, fix).expect("operation should succeed");
     }
 
     println!(
@@ -323,7 +323,8 @@ fn complete_workflow_example() {
 
     println!("  Error: {new_error_code} at {new_error_span}");
 
-    let correlation = trainer.correlate_error(new_error_code, &new_error_span).unwrap();
+    let correlation =
+        trainer.correlate_error(new_error_code, &new_error_span).expect("operation should succeed");
 
     println!("\nPhase 3: Analysis results...");
 
@@ -368,7 +369,7 @@ fn complete_workflow_example() {
 
     // Phase 5: Export for sharing
     println!("\nPhase 5: Exporting learned patterns...");
-    let json = trainer.pattern_store().export_json().unwrap();
+    let json = trainer.pattern_store().export_json().expect("operation should succeed");
     println!("  Exported {} patterns ({} bytes)", trainer.pattern_store().len(), json.len());
     println!("  Ready for: artifact storage, cross-team sharing, etc.");
 }
@@ -378,7 +379,7 @@ fn apr_persistence_example() {
     println!("Binary persistence with .apr format (zstd compressed)\n");
 
     // Create and populate a store
-    let mut store = DecisionPatternStore::new().unwrap();
+    let mut store = DecisionPatternStore::new().expect("operation should succeed");
 
     let patterns = vec![
         FixPattern::new("E0308", "- i32\n+ &str")
@@ -395,7 +396,7 @@ fn apr_persistence_example() {
     for mut pattern in patterns {
         pattern.record_success();
         pattern.record_success();
-        store.index_fix(pattern).unwrap();
+        store.index_fix(pattern).expect("operation should succeed");
     }
 
     println!("Created store with {} patterns", store.len());
@@ -403,14 +404,14 @@ fn apr_persistence_example() {
     // Save to APR format
     let temp_path = std::env::temp_dir().join("citl_example.apr");
     println!("\n--- Saving to APR ---");
-    store.save_apr(&temp_path).unwrap();
+    store.save_apr(&temp_path).expect("operation should succeed");
 
-    let apr_size = std::fs::metadata(&temp_path).unwrap().len();
+    let apr_size = std::fs::metadata(&temp_path).expect("operation should succeed").len();
     println!("  Path: {}", temp_path.display());
     println!("  Size: {apr_size} bytes");
 
     // Compare with JSON size
-    let json = store.export_json().unwrap();
+    let json = store.export_json().expect("operation should succeed");
     let json_size = json.len();
     let ratio = (apr_size as f64 / json_size as f64) * 100.0;
     println!("\n--- Size Comparison ---");
@@ -419,11 +420,13 @@ fn apr_persistence_example() {
 
     // Load from APR
     println!("\n--- Loading from APR ---");
-    let loaded = DecisionPatternStore::load_apr(&temp_path).unwrap();
+    let loaded = DecisionPatternStore::load_apr(&temp_path).expect("operation should succeed");
     println!("  Loaded {} patterns", loaded.len());
 
     // Verify RAG index is rebuilt
-    let suggestions = loaded.suggest_fix("E0308", &["type_inference".into()], 5).unwrap();
+    let suggestions = loaded
+        .suggest_fix("E0308", &["type_inference".into()], 5)
+        .expect("operation should succeed");
     println!("  RAG index rebuilt: {} suggestions for E0308", suggestions.len());
 
     // Verify config preserved

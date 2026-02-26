@@ -270,8 +270,9 @@ mod tests {
         let metrics =
             LLMMetrics::new("gpt-4").with_tokens(100, 50).with_latency(500.0).with_cost(0.01);
 
-        let json = serde_json::to_string(&metrics).unwrap();
-        let deserialized: LLMMetrics = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&metrics).expect("JSON serialization should succeed");
+        let deserialized: LLMMetrics =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(metrics.model_name, deserialized.model_name);
         assert_eq!(metrics.prompt_tokens, deserialized.prompt_tokens);
         assert_eq!(metrics.cost_usd, deserialized.cost_usd);

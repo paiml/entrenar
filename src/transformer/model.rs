@@ -463,7 +463,7 @@ mod tests {
 
         let transformer = Transformer::from_params(&config, &params);
         assert!(transformer.is_some());
-        let transformer = transformer.unwrap();
+        let transformer = transformer.expect("operation should succeed");
         assert!(transformer.lm_head.is_some());
         assert_eq!(transformer.layers.len(), config.num_hidden_layers);
     }
@@ -533,7 +533,7 @@ mod tests {
 
         let transformer = Transformer::from_params(&config, &params);
         assert!(transformer.is_some());
-        let transformer = transformer.unwrap();
+        let transformer = transformer.expect("operation should succeed");
         assert!(transformer.lm_head.is_none()); // Should use tied embeddings
     }
 
@@ -789,7 +789,7 @@ mod tests {
 
         // Logits should have gradient
         assert!(logits.grad().is_some());
-        let grad = logits.grad().unwrap();
+        let grad = logits.grad().expect("gradient should be available");
         assert!(grad.iter().all(|&v| v.is_finite()));
     }
 
@@ -1074,7 +1074,7 @@ mod tests {
         }
 
         // Stage 2: Apply softmax per row (the sampling step)
-        let logits_slice = logits_data.as_slice().unwrap();
+        let logits_slice = logits_data.as_slice().expect("operation should succeed");
         for row in 0..seq_len {
             let start = row * vocab_size;
             let end = start + vocab_size;
@@ -1102,14 +1102,14 @@ mod tests {
             let logit_argmax = row_logits
                 .iter()
                 .enumerate()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .unwrap()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed"))
+                .expect("operation should succeed")
                 .0;
             let prob_argmax = probs
                 .iter()
                 .enumerate()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .unwrap()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed"))
+                .expect("operation should succeed")
                 .0;
             assert_eq!(
                 logit_argmax, prob_argmax,

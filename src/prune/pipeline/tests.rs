@@ -115,7 +115,7 @@ fn test_metrics_perplexity() {
     assert_eq!(metrics.post_prune_ppl, Some(12.0));
 
     // 20% increase
-    let ppl_increase = metrics.ppl_increase_pct.unwrap();
+    let ppl_increase = metrics.ppl_increase_pct.expect("operation should succeed");
     assert!(
         (ppl_increase - 20.0).abs() < 1e-4,
         "PL-014 FALSIFIED: PPL increase should be 20%, got {ppl_increase}"
@@ -411,8 +411,9 @@ fn test_pipeline_metrics_access() {
 fn test_stage_serialize() {
     // TEST_ID: PL-050
     let stage = PruningStage::Calibrating;
-    let json = serde_json::to_string(&stage).unwrap();
-    let deserialized: PruningStage = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&stage).expect("JSON serialization should succeed");
+    let deserialized: PruningStage =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(stage, deserialized);
 }
 
@@ -423,8 +424,9 @@ fn test_metrics_serialize() {
     metrics.update_sparsity(500, 1000);
     metrics.add_layer_sparsity("layer.0", 0.5);
 
-    let json = serde_json::to_string(&metrics).unwrap();
-    let deserialized: PruningMetrics = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&metrics).expect("JSON serialization should succeed");
+    let deserialized: PruningMetrics =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert!(
         (deserialized.achieved_sparsity - 0.5).abs() < 1e-6,

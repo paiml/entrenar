@@ -136,7 +136,8 @@ mod tests {
         let schema = Arc::new(make_test_schema());
         let input = Float32Array::from(vec![1.0, 2.0, 3.0, 4.0]);
         let target = Float32Array::from(vec![0.0, 1.0, 0.0, 1.0]);
-        RecordBatch::try_new(schema, vec![Arc::new(input), Arc::new(target)]).unwrap()
+        RecordBatch::try_new(schema, vec![Arc::new(input), Arc::new(target)])
+            .expect("conversion should succeed")
     }
 
     #[test]
@@ -204,7 +205,7 @@ mod tests {
         let cols = vec!["input", "target"];
         let result = detect_columns(&cols);
         assert!(result.is_some());
-        let pair = result.unwrap();
+        let pair = result.expect("operation should succeed");
         assert_eq!(pair.input_name, "input");
         assert_eq!(pair.target_name, "target");
     }
@@ -234,7 +235,7 @@ mod tests {
         let schema = make_test_schema();
         let result = record_batch_to_training_batch(&record_batch, &schema, "input", "target");
         assert!(result.is_ok());
-        let batch = result.unwrap();
+        let batch = result.expect("operation should succeed");
         assert_eq!(batch.inputs.data().len(), 4);
         assert_eq!(batch.targets.data().len(), 4);
     }
@@ -265,7 +266,8 @@ mod tests {
         let input = Float64Array::from(vec![1.0, 2.0, 3.0]);
         let target = Float64Array::from(vec![0.0, 1.0, 2.0]);
         let record_batch =
-            RecordBatch::try_new(schema.clone(), vec![Arc::new(input), Arc::new(target)]).unwrap();
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(input), Arc::new(target)])
+                .expect("conversion should succeed");
 
         let result = record_batch_to_training_batch(&record_batch, &schema, "x", "y");
         assert!(result.is_ok());
@@ -280,7 +282,8 @@ mod tests {
         let input = Int32Array::from(vec![1, 2, 3]);
         let target = Int32Array::from(vec![0, 1, 0]);
         let record_batch =
-            RecordBatch::try_new(schema.clone(), vec![Arc::new(input), Arc::new(target)]).unwrap();
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(input), Arc::new(target)])
+                .expect("conversion should succeed");
 
         let result = record_batch_to_training_batch(&record_batch, &schema, "features", "labels");
         assert!(result.is_ok());

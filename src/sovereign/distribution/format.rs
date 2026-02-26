@@ -159,8 +159,9 @@ mod tests {
     #[test]
     fn test_distribution_format_serde() {
         let fmt = DistributionFormat::Flatpak;
-        let json = serde_json::to_string(&fmt).unwrap();
-        let deserialized: DistributionFormat = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&fmt).expect("JSON serialization should succeed");
+        let deserialized: DistributionFormat =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(fmt, deserialized);
     }
 

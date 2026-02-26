@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_parse_completion_command() {
-        let cli = parse_args(["entrenar", "completion", "bash"]).unwrap();
+        let cli = parse_args(["entrenar", "completion", "bash"]).expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Completion(args) => {
                 assert_eq!(args.shell, ShellType::Bash);
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_parse_bench_command() {
-        let cli = parse_args(["entrenar", "bench", "model.gguf"]).unwrap();
+        let cli = parse_args(["entrenar", "bench", "model.gguf"]).expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Bench(args) => {
                 assert_eq!(args.input, PathBuf::from("model.gguf"));
@@ -186,7 +186,7 @@ mod tests {
             "--format",
             "json",
         ])
-        .unwrap();
+        .expect("operation should succeed");
         match cli.command {
             crate::config::cli::Command::Bench(args) => {
                 assert_eq!(args.warmup, 5);
@@ -200,7 +200,8 @@ mod tests {
 
     #[test]
     fn test_parse_inspect_command() {
-        let cli = parse_args(["entrenar", "inspect", "data.parquet"]).unwrap();
+        let cli =
+            parse_args(["entrenar", "inspect", "data.parquet"]).expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Inspect(args) => {
                 assert_eq!(args.input, PathBuf::from("data.parquet"));
@@ -224,7 +225,7 @@ mod tests {
             "--z-threshold",
             "2.5",
         ])
-        .unwrap();
+        .expect("operation should succeed");
         match cli.command {
             crate::config::cli::Command::Inspect(args) => {
                 assert_eq!(args.mode, InspectMode::Outliers);
@@ -237,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_parse_audit_command() {
-        let cli = parse_args(["entrenar", "audit", "model.gguf"]).unwrap();
+        let cli = parse_args(["entrenar", "audit", "model.gguf"]).expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Audit(args) => {
                 assert_eq!(args.input, PathBuf::from("model.gguf"));
@@ -263,7 +264,7 @@ mod tests {
             "--format",
             "json",
         ])
-        .unwrap();
+        .expect("operation should succeed");
         match cli.command {
             crate::config::cli::Command::Audit(args) => {
                 assert_eq!(args.audit_type, AuditType::Fairness);
@@ -277,7 +278,8 @@ mod tests {
 
     #[test]
     fn test_parse_monitor_command() {
-        let cli = parse_args(["entrenar", "monitor", "model.gguf"]).unwrap();
+        let cli =
+            parse_args(["entrenar", "monitor", "model.gguf"]).expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Monitor(args) => {
                 assert_eq!(args.input, PathBuf::from("model.gguf"));
@@ -303,7 +305,7 @@ mod tests {
             "--format",
             "json",
         ])
-        .unwrap();
+        .expect("operation should succeed");
         match cli.command {
             crate::config::cli::Command::Monitor(args) => {
                 assert_eq!(args.baseline, Some(PathBuf::from("baseline.json")));
@@ -393,7 +395,7 @@ mod tests {
     #[test]
     fn test_completion_other_shells() {
         // Test other shell types for coverage
-        let cli = parse_args(["entrenar", "completion", "zsh"]).unwrap();
+        let cli = parse_args(["entrenar", "completion", "zsh"]).expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Completion(args) => {
                 assert_eq!(args.shell, ShellType::Zsh);
@@ -401,7 +403,7 @@ mod tests {
             _ => panic!("Expected Completion command"),
         }
 
-        let cli = parse_args(["entrenar", "completion", "fish"]).unwrap();
+        let cli = parse_args(["entrenar", "completion", "fish"]).expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Completion(args) => {
                 assert_eq!(args.shell, ShellType::Fish);
@@ -412,8 +414,8 @@ mod tests {
 
     #[test]
     fn test_inspect_distribution_mode() {
-        let cli =
-            parse_args(["entrenar", "inspect", "data.csv", "--mode", "distribution"]).unwrap();
+        let cli = parse_args(["entrenar", "inspect", "data.csv", "--mode", "distribution"])
+            .expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Inspect(args) => {
                 assert_eq!(args.mode, InspectMode::Distribution);
@@ -424,8 +426,8 @@ mod tests {
 
     #[test]
     fn test_audit_privacy_security_types() {
-        let cli =
-            parse_args(["entrenar", "audit", "model.bin", "--audit-type", "privacy"]).unwrap();
+        let cli = parse_args(["entrenar", "audit", "model.bin", "--audit-type", "privacy"])
+            .expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Audit(args) => {
                 assert_eq!(args.audit_type, AuditType::Privacy);
@@ -433,8 +435,8 @@ mod tests {
             _ => panic!("Expected Audit command"),
         }
 
-        let cli =
-            parse_args(["entrenar", "audit", "model.bin", "--audit-type", "security"]).unwrap();
+        let cli = parse_args(["entrenar", "audit", "model.bin", "--audit-type", "security"])
+            .expect("parsing should succeed");
         match cli.command {
             crate::config::cli::Command::Audit(args) => {
                 assert_eq!(args.audit_type, AuditType::Security);

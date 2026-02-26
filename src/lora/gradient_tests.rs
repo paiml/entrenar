@@ -101,7 +101,7 @@ mod tests {
             lora.lora_a_mut().set_grad(ndarray::arr1(&init_slice));
             lora.lora_a_mut().accumulate_grad(ndarray::arr1(&add_slice));
 
-            let grad = lora.lora_a().grad().unwrap();
+            let grad = lora.lora_a().grad().expect("gradient should be available");
             for i in 0..a_len {
                 let expected = init_slice[i] + add_slice[i];
                 prop_assert!(
@@ -235,7 +235,7 @@ mod tests {
         // Accumulate more gradient
         lora.lora_a_mut().accumulate_grad(ndarray::arr1(&[0.5, 0.5]));
 
-        let grad = lora.lora_a().grad().unwrap();
+        let grad = lora.lora_a().grad().expect("gradient should be available");
         assert_abs_diff_eq!(grad[0], 1.5, epsilon = 1e-6); // 1.0 + 0.5
         assert_abs_diff_eq!(grad[1], 2.5, epsilon = 1e-6); // 2.0 + 0.5
     }
@@ -268,8 +268,8 @@ mod tests {
         lora.lora_a_mut().set_grad(ndarray::arr1(&[1.0, 2.0]));
         lora.lora_b_mut().set_grad(ndarray::arr1(&[3.0, 4.0]));
 
-        let grad_a = lora.lora_a().grad().unwrap();
-        let grad_b = lora.lora_b().grad().unwrap();
+        let grad_a = lora.lora_a().grad().expect("gradient should be available");
+        let grad_b = lora.lora_b().grad().expect("gradient should be available");
 
         // Gradients should be independent
         assert_abs_diff_eq!(grad_a[0], 1.0, epsilon = 1e-6);
@@ -301,7 +301,7 @@ mod tests {
             param.set_grad(ndarray::Array1::ones(param.len()));
 
             // Simulate parameter update (grad descent)
-            let update = param.grad().unwrap() * 0.01;
+            let update = param.grad().expect("gradient should be available") * 0.01;
             *param.data_mut() = param.data() - &update;
 
             // Verify gradient is still there after update

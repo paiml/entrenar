@@ -68,7 +68,9 @@ fn test_evaluate_classification() {
     let y_pred = vec![0, 1, 1, 2, 0, 1];
     let y_true = vec![0, 1, 0, 2, 0, 2];
 
-    let result = evaluator.evaluate_classification("TestModel", &y_pred, &y_true).unwrap();
+    let result = evaluator
+        .evaluate_classification("TestModel", &y_pred, &y_true)
+        .expect("operation should succeed");
 
     assert!(result.get_score(Metric::Accuracy).is_some());
     assert!(result.get_score(Metric::Precision(Average::Macro)).is_some());
@@ -76,7 +78,7 @@ fn test_evaluate_classification() {
     assert!(result.get_score(Metric::F1(Average::Macro)).is_some());
 
     // Accuracy should be 4/6 = 0.667 (positions 0,1,3,4 correct)
-    let acc = result.get_score(Metric::Accuracy).unwrap();
+    let acc = result.get_score(Metric::Accuracy).expect("operation should succeed");
     assert!((acc - 0.667).abs() < 0.01);
 }
 
@@ -98,10 +100,11 @@ fn test_compare_classification() {
     let models: Vec<(&str, &[usize])> =
         vec![("Model A", &y_pred_a), ("Model B", &y_pred_b), ("Model C", &y_pred_c)];
 
-    let leaderboard = evaluator.compare_classification(&models, &y_true).unwrap();
+    let leaderboard =
+        evaluator.compare_classification(&models, &y_true).expect("operation should succeed");
 
     // Model B should be first (perfect accuracy)
-    assert_eq!(leaderboard.best().unwrap().model_name, "Model B");
+    assert_eq!(leaderboard.best().expect("operation should succeed").model_name, "Model B");
 }
 
 #[test]
@@ -119,15 +122,15 @@ fn test_evaluate_cv() {
         .evaluate_cv("PerfectModel", &y_true, |_train_idx, test_idx| {
             test_idx.iter().map(|&i| y_true[i]).collect()
         })
-        .unwrap();
+        .expect("operation should succeed");
 
     // Perfect predictions should have ~1.0 accuracy
     assert!(result.cv_mean.is_some());
-    let cv_mean = result.cv_mean.unwrap();
+    let cv_mean = result.cv_mean.expect("operation should succeed");
     assert!((cv_mean - 1.0).abs() < 0.01);
 
     // Should have 5 fold scores
-    assert_eq!(result.cv_scores.as_ref().unwrap().len(), 5);
+    assert_eq!(result.cv_scores.as_ref().expect("operation should succeed").len(), 5);
 }
 
 #[test]
@@ -172,7 +175,7 @@ fn test_evaluate_cv_with_precision_metric() {
         .evaluate_cv("TestModel", &y_true, |_train_idx, test_idx| {
             test_idx.iter().map(|&i| y_true[i]).collect()
         })
-        .unwrap();
+        .expect("operation should succeed");
 
     assert!(result.cv_mean.is_some());
 }
@@ -193,7 +196,7 @@ fn test_evaluate_cv_with_recall_metric() {
         .evaluate_cv("TestModel", &y_true, |_train_idx, test_idx| {
             test_idx.iter().map(|&i| y_true[i]).collect()
         })
-        .unwrap();
+        .expect("operation should succeed");
 
     assert!(result.cv_mean.is_some());
 }
@@ -210,7 +213,7 @@ fn test_evaluate_cv_single_fold_zero_std() {
         .evaluate_cv("TestModel", &y_true, |_train_idx, test_idx| {
             test_idx.iter().map(|&i| y_true[i]).collect()
         })
-        .unwrap();
+        .expect("operation should succeed");
 
     // With single fold, std should be 0
     assert_eq!(result.cv_std, Some(0.0));
@@ -250,7 +253,9 @@ fn test_evaluate_classification_skips_non_classification_metrics() {
     let y_pred = vec![0, 1, 1, 0];
     let y_true = vec![0, 1, 0, 0];
 
-    let result = evaluator.evaluate_classification("Test", &y_pred, &y_true).unwrap();
+    let result = evaluator
+        .evaluate_classification("Test", &y_pred, &y_true)
+        .expect("operation should succeed");
 
     // Classification metrics should be present
     assert!(result.get_score(Metric::Accuracy).is_some());
@@ -305,7 +310,7 @@ fn test_cv_non_classification_metric_falls_back_to_accuracy() {
             .evaluate_cv("FallbackTest", &y_true, |_train_idx, test_idx| {
                 test_idx.iter().map(|&i| y_true[i]).collect()
             })
-            .unwrap();
+            .expect("operation should succeed");
 
         assert!(
             result.cv_mean.is_some(),

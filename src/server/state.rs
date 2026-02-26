@@ -319,7 +319,9 @@ mod tests {
     #[test]
     fn test_create_experiment() {
         let storage = InMemoryStorage::new();
-        let exp = storage.create_experiment("my-exp", Some("desc".into()), None).unwrap();
+        let exp = storage
+            .create_experiment("my-exp", Some("desc".into()), None)
+            .expect("operation should succeed");
         assert!(exp.id.starts_with("exp-"));
         assert_eq!(exp.name, "my-exp");
         assert_eq!(storage.experiments_count(), 1);
@@ -328,8 +330,8 @@ mod tests {
     #[test]
     fn test_get_experiment() {
         let storage = InMemoryStorage::new();
-        let exp = storage.create_experiment("test", None, None).unwrap();
-        let retrieved = storage.get_experiment(&exp.id).unwrap();
+        let exp = storage.create_experiment("test", None, None).expect("operation should succeed");
+        let retrieved = storage.get_experiment(&exp.id).expect("operation should succeed");
         assert_eq!(retrieved.name, "test");
     }
 
@@ -343,17 +345,19 @@ mod tests {
     #[test]
     fn test_list_experiments() {
         let storage = InMemoryStorage::new();
-        storage.create_experiment("exp1", None, None).unwrap();
-        storage.create_experiment("exp2", None, None).unwrap();
-        let list = storage.list_experiments().unwrap();
+        storage.create_experiment("exp1", None, None).expect("operation should succeed");
+        storage.create_experiment("exp2", None, None).expect("operation should succeed");
+        let list = storage.list_experiments().expect("operation should succeed");
         assert_eq!(list.len(), 2);
     }
 
     #[test]
     fn test_create_run() {
         let storage = InMemoryStorage::new();
-        let exp = storage.create_experiment("test", None, None).unwrap();
-        let run = storage.create_run(&exp.id, Some("run-1".into()), None).unwrap();
+        let exp = storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = storage
+            .create_run(&exp.id, Some("run-1".into()), None)
+            .expect("operation should succeed");
         assert!(run.id.starts_with("run-"));
         assert_eq!(run.experiment_id, exp.id);
         assert_eq!(run.status, RunStatus::Running);
@@ -369,47 +373,61 @@ mod tests {
     #[test]
     fn test_update_run() {
         let storage = InMemoryStorage::new();
-        let exp = storage.create_experiment("test", None, None).unwrap();
-        let run = storage.create_run(&exp.id, None, None).unwrap();
+        let exp = storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
-        let updated = storage.update_run(&run.id, Some(RunStatus::Completed), None).unwrap();
+        let updated = storage
+            .update_run(&run.id, Some(RunStatus::Completed), None)
+            .expect("operation should succeed");
         assert_eq!(updated.status, RunStatus::Completed);
     }
 
     #[test]
     fn test_log_params() {
         let storage = InMemoryStorage::new();
-        let exp = storage.create_experiment("test", None, None).unwrap();
-        let run = storage.create_run(&exp.id, None, None).unwrap();
+        let exp = storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let mut params = HashMap::new();
         params.insert("lr".to_string(), serde_json::json!(0.001));
-        storage.log_params(&run.id, params).unwrap();
+        storage.log_params(&run.id, params).expect("operation should succeed");
 
-        let updated = storage.get_run(&run.id).unwrap();
+        let updated = storage.get_run(&run.id).expect("operation should succeed");
         assert!(updated.params.contains_key("lr"));
     }
 
     #[test]
     fn test_log_metrics() {
         let storage = InMemoryStorage::new();
-        let exp = storage.create_experiment("test", None, None).unwrap();
-        let run = storage.create_run(&exp.id, None, None).unwrap();
+        let exp = storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let mut metrics = HashMap::new();
         metrics.insert("loss".to_string(), 0.5);
-        storage.log_metrics(&run.id, metrics).unwrap();
+        storage.log_metrics(&run.id, metrics).expect("operation should succeed");
 
-        let updated = storage.get_run(&run.id).unwrap();
+        let updated = storage.get_run(&run.id).expect("operation should succeed");
         assert_eq!(updated.metrics.get("loss"), Some(&0.5));
     }
 
     #[test]
     fn test_run_status_from_str() {
-        assert_eq!("running".parse::<RunStatus>().unwrap(), RunStatus::Running);
-        assert_eq!("completed".parse::<RunStatus>().unwrap(), RunStatus::Completed);
-        assert_eq!("failed".parse::<RunStatus>().unwrap(), RunStatus::Failed);
-        assert_eq!("killed".parse::<RunStatus>().unwrap(), RunStatus::Killed);
+        assert_eq!(
+            "running".parse::<RunStatus>().expect("parsing should succeed"),
+            RunStatus::Running
+        );
+        assert_eq!(
+            "completed".parse::<RunStatus>().expect("parsing should succeed"),
+            RunStatus::Completed
+        );
+        assert_eq!(
+            "failed".parse::<RunStatus>().expect("parsing should succeed"),
+            RunStatus::Failed
+        );
+        assert_eq!(
+            "killed".parse::<RunStatus>().expect("parsing should succeed"),
+            RunStatus::Killed
+        );
         assert!("invalid".parse::<RunStatus>().is_err());
     }
 

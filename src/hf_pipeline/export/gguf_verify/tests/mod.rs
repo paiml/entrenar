@@ -12,7 +12,7 @@ use aprender::format::gguf::{export_tensors_to_gguf, GgmlType, GgufTensor, GgufV
 /// Helper: serialize GGUF to a Vec<u8> via aprender
 pub(super) fn write_gguf(tensors: &[GgufTensor], metadata: &[(String, GgufValue)]) -> Vec<u8> {
     let mut buf = Vec::new();
-    export_tensors_to_gguf(&mut buf, tensors, metadata).unwrap();
+    export_tensors_to_gguf(&mut buf, tensors, metadata).expect("operation should succeed");
     buf
 }
 
@@ -29,7 +29,9 @@ pub(super) fn extract_f32_tensor_data(
     (0..num_elements)
         .map(|i| {
             let off = start + i * 4;
-            f32::from_le_bytes(gguf_bytes[off..off + 4].try_into().unwrap())
+            f32::from_le_bytes(
+                gguf_bytes[off..off + 4].try_into().expect("conversion should succeed"),
+            )
         })
         .collect()
 }
@@ -43,17 +45,21 @@ pub(super) fn find_data_section_start(gguf_bytes: &[u8], summary: &GgufSummary) 
     let mut pos = 24; // skip header
                       // Skip metadata
     for _ in 0..summary.metadata_count {
-        let (_, new_pos) = read_gguf_string(gguf_bytes, pos).unwrap();
+        let (_, new_pos) = read_gguf_string(gguf_bytes, pos).expect("operation should succeed");
         pos = new_pos;
-        let value_type = u32::from_le_bytes(gguf_bytes[pos..pos + 4].try_into().unwrap());
+        let value_type = u32::from_le_bytes(
+            gguf_bytes[pos..pos + 4].try_into().expect("conversion should succeed"),
+        );
         pos += 4;
-        pos = skip_gguf_value(gguf_bytes, pos, value_type).unwrap();
+        pos = skip_gguf_value(gguf_bytes, pos, value_type).expect("operation should succeed");
     }
     // Skip tensor info
     for _ in 0..summary.tensor_count {
-        let (_, new_pos) = read_gguf_string(gguf_bytes, pos).unwrap();
+        let (_, new_pos) = read_gguf_string(gguf_bytes, pos).expect("operation should succeed");
         pos = new_pos;
-        let n_dims = u32::from_le_bytes(gguf_bytes[pos..pos + 4].try_into().unwrap()) as usize;
+        let n_dims = u32::from_le_bytes(
+            gguf_bytes[pos..pos + 4].try_into().expect("conversion should succeed"),
+        ) as usize;
         pos += 4 + n_dims * 8 + 4 + 8; // dims + dtype + offset
     }
     pos

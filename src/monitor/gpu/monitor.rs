@@ -362,7 +362,7 @@ mod tests {
     #[test]
     fn test_gpu_monitor_non_mock_sample() {
         // Create non-mock monitor but call sample (should return empty or real data)
-        let monitor = GpuMonitor::new().unwrap();
+        let monitor = GpuMonitor::new().expect("operation should succeed");
         let metrics = monitor.sample();
         // Just verify it doesn't crash - may be empty if no NVML
         let _ = metrics;
@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_gpu_monitor_non_mock_sample_with_variation() {
-        let mut monitor = GpuMonitor::new().unwrap();
+        let mut monitor = GpuMonitor::new().expect("operation should succeed");
         // Non-mock mode should return empty
         let metrics = monitor.sample_with_variation(1.0);
         // Should be empty for non-mock mode
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn test_gpu_monitor_nvml_sample() {
         // Test real NVML sampling if available
-        let monitor = GpuMonitor::new().unwrap();
+        let monitor = GpuMonitor::new().expect("operation should succeed");
         if monitor.num_devices() > 0 {
             let metrics = monitor.sample();
             assert!(!metrics.is_empty());

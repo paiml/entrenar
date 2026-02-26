@@ -356,15 +356,15 @@ mod tests {
             .row(0)
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .unwrap()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed"))
+            .expect("operation should succeed")
             .0;
         let output_argmax = probs
             .row(0)
             .iter()
             .enumerate()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .unwrap()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed"))
+            .expect("operation should succeed")
             .0;
 
         assert_eq!(
@@ -430,7 +430,7 @@ mod tests {
     fn falsify_sm_006_identical_elements_uniform() {
         for n in [2, 4, 8, 16] {
             let data: Vec<f32> = vec![7.0; n];
-            let x = Array2::from_shape_vec((1, n), data).unwrap();
+            let x = Array2::from_shape_vec((1, n), data).expect("operation should succeed");
             let probs = softmax_2d(&x);
 
             let expected = 1.0 / n as f32;
@@ -495,7 +495,7 @@ mod tests {
                 logits in proptest::collection::vec(-100.0_f32..100.0, 2..64),
             ) {
                 let n = logits.len();
-                let arr = Array2::from_shape_vec((1, n), logits).unwrap();
+                let arr = Array2::from_shape_vec((1, n), logits).expect("operation should succeed");
                 let probs = softmax_2d(&arr);
                 let sum: f32 = probs.row(0).sum();
                 prop_assert!(
@@ -513,7 +513,7 @@ mod tests {
                 logits in proptest::collection::vec(-500.0_f32..500.0, 2..32),
             ) {
                 let n = logits.len();
-                let arr = Array2::from_shape_vec((1, n), logits).unwrap();
+                let arr = Array2::from_shape_vec((1, n), logits).expect("operation should succeed");
                 let probs = softmax_2d(&arr);
                 for (i, &p) in probs.row(0).iter().enumerate() {
                     prop_assert!(p >= 0.0, "FALSIFIED SM-002-prop: probs[{}]={} negative", i, p);
@@ -537,12 +537,12 @@ mod tests {
                 }
 
                 let n = logits.len();
-                let arr = Array2::from_shape_vec((1, n), logits.clone()).unwrap();
+                let arr = Array2::from_shape_vec((1, n), logits.clone()).expect("operation should succeed");
                 let probs = softmax_2d(&arr);
                 let input_argmax = logits.iter().enumerate()
-                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).unwrap().0;
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed")).expect("operation should succeed").0;
                 let output_argmax = probs.row(0).iter().enumerate()
-                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap()).unwrap().0;
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).expect("operation should succeed")).expect("operation should succeed").0;
                 prop_assert_eq!(
                     input_argmax, output_argmax,
                     "FALSIFIED SM-003-prop: argmax {} -> {} for {:?}", input_argmax, output_argmax, logits

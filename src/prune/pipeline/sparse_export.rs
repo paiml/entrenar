@@ -170,11 +170,11 @@ mod tests {
     fn test_export_sparse_creates_files() {
         let (weights, shapes) = make_test_data();
         let metrics = PruningMetrics::new(0.5);
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert!(result.weights_path.exists());
         assert!(result.metadata_path.exists());
@@ -186,12 +186,15 @@ mod tests {
         let (weights, shapes) = make_test_data();
         let mut metrics = PruningMetrics::new(0.5);
         metrics.update_sparsity(5, 10);
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
-        export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors").unwrap();
+        export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors")
+            .expect("parsing should succeed");
 
-        let json = std::fs::read_to_string(tmp.path().join("sparsity_metadata.json")).unwrap();
-        let meta: SparsityMetadata = serde_json::from_str(&json).unwrap();
+        let json = std::fs::read_to_string(tmp.path().join("sparsity_metadata.json"))
+            .expect("file read should succeed");
+        let meta: SparsityMetadata =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(meta.version, "1.0");
         assert_eq!(meta.total_parameters, 10);
@@ -203,20 +206,31 @@ mod tests {
     fn test_per_tensor_sparsity() {
         let (weights, shapes) = make_test_data();
         let metrics = PruningMetrics::new(0.5);
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
-        export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors").unwrap();
+        export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors")
+            .expect("parsing should succeed");
 
-        let json = std::fs::read_to_string(tmp.path().join("sparsity_metadata.json")).unwrap();
-        let meta: SparsityMetadata = serde_json::from_str(&json).unwrap();
+        let json = std::fs::read_to_string(tmp.path().join("sparsity_metadata.json"))
+            .expect("file read should succeed");
+        let meta: SparsityMetadata =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         // layer.0.bias should have 0% sparsity
-        let bias_info = meta.tensors.iter().find(|t| t.name == "layer.0.bias").unwrap();
+        let bias_info = meta
+            .tensors
+            .iter()
+            .find(|t| t.name == "layer.0.bias")
+            .expect("operation should succeed");
         assert_eq!(bias_info.sparsity, 0.0);
         assert_eq!(bias_info.zero_count, 0);
 
         // layer.0.weight should have 5/8 = 62.5% sparsity
-        let weight_info = meta.tensors.iter().find(|t| t.name == "layer.0.weight").unwrap();
+        let weight_info = meta
+            .tensors
+            .iter()
+            .find(|t| t.name == "layer.0.weight")
+            .expect("operation should succeed");
         assert!(weight_info.sparsity > 0.5);
         assert_eq!(weight_info.zero_count, 5);
     }
@@ -225,15 +239,15 @@ mod tests {
     fn test_export_sparse_safetensors_valid() {
         let (weights, shapes) = make_test_data();
         let metrics = PruningMetrics::new(0.5);
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "sparse.safetensors")
-                .unwrap();
+                .expect("operation should succeed");
 
         // Verify safetensors is valid
-        let data = std::fs::read(&result.weights_path).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(&result.weights_path).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
         assert_eq!(loaded.len(), 2);
     }
 
@@ -242,11 +256,11 @@ mod tests {
         let weights = HashMap::new();
         let shapes = HashMap::new();
         let metrics = PruningMetrics::new(0.0);
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             export_sparse_model(&weights, &shapes, &metrics, tmp.path(), "empty.safetensors")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert_eq!(result.num_tensors, 0);
         assert_eq!(result.global_sparsity, 0.0);

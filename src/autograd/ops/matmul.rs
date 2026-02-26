@@ -309,7 +309,10 @@ mod tests {
         let b = Tensor::new(Array1::from(vec![5.0, 6.0, 7.0, 8.0]), false);
         let c = matmul(&a, &b, 2, 2, 2);
         assert!(!c.requires_grad());
-        assert_eq!(c.data().as_slice().unwrap(), &[19.0, 22.0, 43.0, 50.0]);
+        assert_eq!(
+            c.data().as_slice().expect("operation should succeed"),
+            &[19.0, 22.0, 43.0, 50.0]
+        );
     }
 
     #[test]

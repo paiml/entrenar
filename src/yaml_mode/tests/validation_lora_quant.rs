@@ -13,7 +13,7 @@ quantize:
   enabled: true
   bits: 5
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -35,7 +35,7 @@ lora:
     - q_proj
     - v_proj
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_ok());
 }
@@ -53,7 +53,7 @@ lora:
   alpha: 32
   target_modules: []
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -73,7 +73,7 @@ lora:
   alpha: 32
   target_modules: []
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_ok(), "Disabled LoRA should not require target_modules");
 }
@@ -92,7 +92,7 @@ lora:
   target_modules:
     - q_proj
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -113,7 +113,7 @@ lora:
   target_modules:
     - q_proj
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -135,7 +135,7 @@ lora:
   target_modules:
     - q_proj
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -157,7 +157,7 @@ lora:
     - q_proj
   quantize_bits: 3
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -176,7 +176,7 @@ optimizer:
   lr: 0.001
   weight_decay: -0.01
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -195,7 +195,7 @@ optimizer:
   lr: 0.001
   betas: [1.5, 0.999]
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -212,7 +212,7 @@ version: "1.0.0"
 scheduler:
   name: "invalid_scheduler"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -230,7 +230,7 @@ optimizer:
   name: "invalid_optimizer"
   lr: 0.001
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -248,7 +248,7 @@ optimizer:
   name: "adam"
   lr: 0.0
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -269,7 +269,7 @@ lora:
   target_modules: []
   target_modules_pattern: ".*proj$"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_ok());
 }
@@ -285,7 +285,7 @@ quantize:
   enabled: false
   bits: 99
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     let result = validate_manifest(&manifest);
     assert!(result.is_ok(), "Disabled quantize should skip bit validation");
 }

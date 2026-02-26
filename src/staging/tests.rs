@@ -29,8 +29,9 @@ fn test_stage_as_str() {
 #[test]
 fn test_stage_serialization_roundtrip() {
     for stage in [Stage::Dev, Stage::Staging, Stage::Production] {
-        let json = serde_json::to_string(&stage).unwrap();
-        let deserialized: Stage = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&stage).expect("JSON serialization should succeed");
+        let deserialized: Stage =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(stage, deserialized);
     }
 }
@@ -85,7 +86,7 @@ fn test_register_multiple_versions() {
 fn test_promote_dev_to_staging() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    let mv = registry.promote("m", "1.0.0", Stage::Staging).unwrap();
+    let mv = registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
     assert_eq!(mv.stage, Stage::Staging);
     assert!(mv.promoted_at.is_some());
 }
@@ -94,8 +95,8 @@ fn test_promote_dev_to_staging() {
 fn test_promote_staging_to_production() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
-    let mv = registry.promote("m", "1.0.0", Stage::Production).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
+    let mv = registry.promote("m", "1.0.0", Stage::Production).expect("operation should succeed");
     assert_eq!(mv.stage, Stage::Production);
     assert!(mv.promoted_at.is_some());
 }
@@ -105,10 +106,10 @@ fn test_promote_full_lifecycle() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
 
-    let mv = registry.promote("m", "1.0.0", Stage::Staging).unwrap();
+    let mv = registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
     assert_eq!(mv.stage, Stage::Staging);
 
-    let mv = registry.promote("m", "1.0.0", Stage::Production).unwrap();
+    let mv = registry.promote("m", "1.0.0", Stage::Production).expect("operation should succeed");
     assert_eq!(mv.stage, Stage::Production);
 }
 
@@ -144,8 +145,8 @@ fn test_promote_same_stage_rejected() {
 fn test_promote_beyond_production_rejected() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
-    registry.promote("m", "1.0.0", Stage::Production).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
+    registry.promote("m", "1.0.0", Stage::Production).expect("operation should succeed");
     // Already at Production, promoting to Staging should fail (not +1)
     let err = registry.promote("m", "1.0.0", Stage::Staging).unwrap_err();
     assert!(matches!(err, StagingError::InvalidTransition { .. }));
@@ -172,10 +173,10 @@ fn test_promote_nonexistent_model() {
 fn test_demote_production_to_staging() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
-    registry.promote("m", "1.0.0", Stage::Production).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
+    registry.promote("m", "1.0.0", Stage::Production).expect("operation should succeed");
 
-    let mv = registry.demote("m", "1.0.0", Stage::Staging).unwrap();
+    let mv = registry.demote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
     assert_eq!(mv.stage, Stage::Staging);
     assert!(mv.promoted_at.is_some());
 }
@@ -184,9 +185,9 @@ fn test_demote_production_to_staging() {
 fn test_demote_staging_to_dev() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
 
-    let mv = registry.demote("m", "1.0.0", Stage::Dev).unwrap();
+    let mv = registry.demote("m", "1.0.0", Stage::Dev).expect("operation should succeed");
     assert_eq!(mv.stage, Stage::Dev);
 }
 
@@ -194,8 +195,8 @@ fn test_demote_staging_to_dev() {
 fn test_demote_skip_stage_rejected() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
-    registry.promote("m", "1.0.0", Stage::Production).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
+    registry.promote("m", "1.0.0", Stage::Production).expect("operation should succeed");
 
     let err = registry.demote("m", "1.0.0", Stage::Dev).unwrap_err();
     match err {
@@ -227,7 +228,7 @@ fn test_demote_nonexistent_model() {
 fn test_demote_same_stage_rejected() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
     let err = registry.demote("m", "1.0.0", Stage::Staging).unwrap_err();
     assert!(matches!(err, StagingError::InvalidTransition { .. }));
 }
@@ -243,7 +244,7 @@ fn test_get_latest_returns_correct_version() {
     registry.register_model("m", "2.0.0", "/v2");
 
     // Both at Dev, latest by creation time should be v2
-    let latest = registry.get_latest("m", Stage::Dev).unwrap();
+    let latest = registry.get_latest("m", Stage::Dev).expect("operation should succeed");
     assert_eq!(latest.version, "2.0.0");
 }
 
@@ -252,14 +253,15 @@ fn test_get_latest_filters_by_stage() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/v1");
     registry.register_model("m", "2.0.0", "/v2");
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
 
     // Only v1 is in Staging
-    let latest_staging = registry.get_latest("m", Stage::Staging).unwrap();
+    let latest_staging =
+        registry.get_latest("m", Stage::Staging).expect("operation should succeed");
     assert_eq!(latest_staging.version, "1.0.0");
 
     // v2 is still in Dev
-    let latest_dev = registry.get_latest("m", Stage::Dev).unwrap();
+    let latest_dev = registry.get_latest("m", Stage::Dev).expect("operation should succeed");
     assert_eq!(latest_dev.version, "2.0.0");
 }
 
@@ -358,8 +360,9 @@ fn test_model_version_serialization_roundtrip() {
     let mut registry = StagingRegistry::new();
     let mv = registry.register_model("m", "1.0.0", "/path");
 
-    let json = serde_json::to_string(&mv).unwrap();
-    let deserialized: ModelVersion = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&mv).expect("JSON serialization should succeed");
+    let deserialized: ModelVersion =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(deserialized.name, mv.name);
     assert_eq!(deserialized.version, mv.version);
     assert_eq!(deserialized.stage, mv.stage);
@@ -375,12 +378,12 @@ fn test_promote_then_demote_roundtrip() {
     let mut registry = StagingRegistry::new();
     registry.register_model("m", "1.0.0", "/path");
 
-    registry.promote("m", "1.0.0", Stage::Staging).unwrap();
-    registry.promote("m", "1.0.0", Stage::Production).unwrap();
-    registry.demote("m", "1.0.0", Stage::Staging).unwrap();
-    registry.demote("m", "1.0.0", Stage::Dev).unwrap();
+    registry.promote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
+    registry.promote("m", "1.0.0", Stage::Production).expect("operation should succeed");
+    registry.demote("m", "1.0.0", Stage::Staging).expect("operation should succeed");
+    registry.demote("m", "1.0.0", Stage::Dev).expect("operation should succeed");
 
-    let mv = registry.get_latest("m", Stage::Dev).unwrap();
+    let mv = registry.get_latest("m", Stage::Dev).expect("operation should succeed");
     assert_eq!(mv.stage, Stage::Dev);
     assert_eq!(mv.version, "1.0.0");
 }
@@ -391,10 +394,16 @@ fn test_multiple_models_independent_stages() {
     registry.register_model("alpha", "1.0.0", "/a");
     registry.register_model("beta", "1.0.0", "/b");
 
-    registry.promote("alpha", "1.0.0", Stage::Staging).unwrap();
+    registry.promote("alpha", "1.0.0", Stage::Staging).expect("operation should succeed");
 
     // alpha is Staging, beta is still Dev
-    assert_eq!(registry.get_latest("alpha", Stage::Staging).unwrap().stage, Stage::Staging);
-    assert_eq!(registry.get_latest("beta", Stage::Dev).unwrap().stage, Stage::Dev);
+    assert_eq!(
+        registry.get_latest("alpha", Stage::Staging).expect("operation should succeed").stage,
+        Stage::Staging
+    );
+    assert_eq!(
+        registry.get_latest("beta", Stage::Dev).expect("operation should succeed").stage,
+        Stage::Dev
+    );
     assert!(registry.get_latest("beta", Stage::Staging).is_none());
 }

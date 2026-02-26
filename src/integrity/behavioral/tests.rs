@@ -269,8 +269,8 @@ fn test_behavioral_integrity_violations_by_type() {
     ));
 
     let by_type = integrity.violations_by_type();
-    assert_eq!(by_type.get(&MetamorphicRelationType::Identity).unwrap().len(), 2);
-    assert_eq!(by_type.get(&MetamorphicRelationType::Additive).unwrap().len(), 1);
+    assert_eq!(by_type.get(&MetamorphicRelationType::Identity).expect("key should exist").len(), 2);
+    assert_eq!(by_type.get(&MetamorphicRelationType::Additive).expect("key should exist").len(), 1);
 }
 
 #[test]
@@ -305,7 +305,7 @@ fn test_behavioral_integrity_most_severe_violation() {
         0.5,
     ));
 
-    let most_severe = integrity.most_severe_violation().unwrap();
+    let most_severe = integrity.most_severe_violation().expect("operation should succeed");
     assert_eq!(most_severe.id, "V2");
 }
 
@@ -391,8 +391,9 @@ fn test_behavioral_integrity_builder_with_violation() {
 #[test]
 fn test_behavioral_integrity_serialization() {
     let integrity = BehavioralIntegrity::new(0.9, 0.85, 0.1, 0.88, "model-v1");
-    let json = serde_json::to_string(&integrity).unwrap();
-    let parsed: BehavioralIntegrity = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&integrity).expect("JSON serialization should succeed");
+    let parsed: BehavioralIntegrity =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert!((parsed.equivalence_score - integrity.equivalence_score).abs() < f64::EPSILON);
     assert_eq!(parsed.model_id, integrity.model_id);

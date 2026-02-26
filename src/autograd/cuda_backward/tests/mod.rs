@@ -21,7 +21,7 @@ fn test_kernel_cache_initialization() {
         return;
     }
 
-    let ctx = CudaContext::new(0).unwrap();
+    let ctx = CudaContext::new(0).expect("operation should succeed");
     let ctx = Arc::new(ctx);
     let result = init_kernel_cache(ctx);
     assert!(result.is_ok());

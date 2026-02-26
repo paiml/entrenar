@@ -18,7 +18,7 @@ fn test_parse_research_init() {
         "--title",
         "My Dataset",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -49,7 +49,7 @@ fn test_parse_research_preregister() {
         "--analysis-plan",
         "t-test, alpha=0.05",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -65,8 +65,8 @@ fn test_parse_research_preregister() {
 
 #[test]
 fn test_parse_research_cite() {
-    let cli =
-        parse_args(["entrenar", "research", "cite", "artifact.yaml", "--year", "2024"]).unwrap();
+    let cli = parse_args(["entrenar", "research", "cite", "artifact.yaml", "--year", "2024"])
+        .expect("parsing should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -93,7 +93,7 @@ fn test_parse_research_export() {
         "--output",
         "analysis.ipynb",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -118,7 +118,7 @@ fn test_parse_research_deposit() {
         "zenodo",
         "--sandbox",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -143,7 +143,7 @@ fn test_parse_research_bundle() {
         "./ro-crate",
         "--zip",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -161,7 +161,7 @@ fn test_parse_research_bundle() {
 fn test_parse_research_verify() {
     let cli =
         parse_args(["entrenar", "research", "verify", "preregistration.yaml", "--verify-git"])
-            .unwrap();
+            .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -206,7 +206,7 @@ fn test_parse_research_init_all_options() {
         "--doi",
         "10.5281/zenodo.12345",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -246,7 +246,7 @@ fn test_parse_research_preregister_all_options() {
         "prereg.yaml",
         "--git-timestamp",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -283,7 +283,7 @@ fn test_parse_research_cite_all_options() {
         "--url",
         "https://example.com",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -318,7 +318,7 @@ fn test_parse_research_export_all_options() {
         "--kernel",
         "julia",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -353,7 +353,7 @@ fn test_parse_research_deposit_all_options() {
         "model.bin",
         "--dry-run",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -383,7 +383,7 @@ fn test_parse_research_bundle_all_options() {
         "data.csv",
         "--include-citations",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {
@@ -410,7 +410,7 @@ fn test_parse_research_verify_all_options() {
         "--original",
         "original.yaml",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         crate::config::cli::Command::Research(args) => match args.command {

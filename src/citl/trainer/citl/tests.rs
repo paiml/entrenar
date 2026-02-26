@@ -5,7 +5,7 @@ use crate::citl::trainer::{CompilationOutcome, DecisionTrace, SourceSpan};
 
 #[test]
 fn test_decision_citl_new() {
-    let trainer = DecisionCITL::new().unwrap();
+    let trainer = DecisionCITL::new().expect("operation should succeed");
     assert_eq!(trainer.session_count(), 0);
     assert_eq!(trainer.success_count(), 0);
     assert_eq!(trainer.failure_count(), 0);
@@ -13,12 +13,12 @@ fn test_decision_citl_new() {
 
 #[test]
 fn test_decision_citl_ingest_success() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     let traces = vec![DecisionTrace::new("d1", "type_inference", "desc")];
     let outcome = CompilationOutcome::success();
 
-    trainer.ingest_session(traces, outcome, None).unwrap();
+    trainer.ingest_session(traces, outcome, None).expect("operation should succeed");
 
     assert_eq!(trainer.session_count(), 1);
     assert_eq!(trainer.success_count(), 1);
@@ -27,7 +27,7 @@ fn test_decision_citl_ingest_success() {
 
 #[test]
 fn test_decision_citl_ingest_failure() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     let traces = vec![DecisionTrace::new("d1", "type_inference", "desc")];
     let outcome = CompilationOutcome::failure(
@@ -36,20 +36,20 @@ fn test_decision_citl_ingest_failure() {
         vec![],
     );
 
-    trainer.ingest_session(traces, outcome, None).unwrap();
+    trainer.ingest_session(traces, outcome, None).expect("operation should succeed");
 
     assert_eq!(trainer.failure_count(), 1);
 }
 
 #[test]
 fn test_decision_citl_ingest_with_fix() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     let traces = vec![DecisionTrace::new("d1", "type_inference", "desc")];
     let outcome = CompilationOutcome::failure(vec!["E0308".to_string()], vec![], vec![]);
     let fix = Some("- i32\n+ &str".to_string());
 
-    trainer.ingest_session(traces, outcome, fix).unwrap();
+    trainer.ingest_session(traces, outcome, fix).expect("operation should succeed");
 
     // Pattern should be indexed
     assert_eq!(trainer.pattern_store().len(), 1);
@@ -57,7 +57,7 @@ fn test_decision_citl_ingest_with_fix() {
 
 #[test]
 fn test_decision_citl_correlate_error() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     // Ingest a failed session
     let traces = vec![DecisionTrace::new("d1", "type_inference", "Inferred wrong type")
@@ -67,18 +67,19 @@ fn test_decision_citl_correlate_error() {
         vec![SourceSpan::line("main.rs", 5)],
         vec![],
     );
-    trainer.ingest_session(traces, outcome, None).unwrap();
+    trainer.ingest_session(traces, outcome, None).expect("operation should succeed");
 
     // Correlate
     let error_span = SourceSpan::line("main.rs", 5);
-    let correlation = trainer.correlate_error("E0308", &error_span).unwrap();
+    let correlation =
+        trainer.correlate_error("E0308", &error_span).expect("operation should succeed");
 
     assert_eq!(correlation.error_code, "E0308");
 }
 
 #[test]
 fn test_decision_citl_top_suspicious_types() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     // Add some sessions
     for _ in 0..5 {
@@ -88,7 +89,7 @@ fn test_decision_citl_top_suspicious_types() {
                 CompilationOutcome::failure(vec!["E0001".to_string()], vec![], vec![]),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     for _ in 0..3 {
@@ -98,7 +99,7 @@ fn test_decision_citl_top_suspicious_types() {
                 CompilationOutcome::success(),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     let top = trainer.top_suspicious_types(5);
@@ -107,7 +108,7 @@ fn test_decision_citl_top_suspicious_types() {
 
 #[test]
 fn test_decision_citl_decisions_by_file() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     trainer
         .ingest_session(
@@ -118,7 +119,7 @@ fn test_decision_citl_decisions_by_file() {
             CompilationOutcome::success(),
             None,
         )
-        .unwrap();
+        .expect("operation should succeed");
 
     let by_file = trainer.decisions_by_file();
     assert!(by_file.contains_key("main.rs"));
@@ -127,7 +128,7 @@ fn test_decision_citl_decisions_by_file() {
 
 #[test]
 fn test_decision_citl_build_dependency_graph() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     trainer
         .ingest_session(
@@ -139,16 +140,16 @@ fn test_decision_citl_build_dependency_graph() {
             CompilationOutcome::success(),
             None,
         )
-        .unwrap();
+        .expect("operation should succeed");
 
     let graph = trainer.build_dependency_graph();
-    assert_eq!(graph.get("d1").unwrap(), &vec!["d0".to_string()]);
-    assert_eq!(graph.get("d2").unwrap().len(), 2);
+    assert_eq!(graph.get("d1").expect("key should exist"), &vec!["d0".to_string()]);
+    assert_eq!(graph.get("d2").expect("key should exist").len(), 2);
 }
 
 #[test]
 fn test_decision_citl_find_root_causes() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     let span = SourceSpan::line("main.rs", 5);
     trainer
@@ -162,7 +163,7 @@ fn test_decision_citl_find_root_causes() {
             CompilationOutcome::failure(vec!["E0308".to_string()], vec![span.clone()], vec![]),
             None,
         )
-        .unwrap();
+        .expect("operation should succeed");
 
     let roots = trainer.find_root_causes(&span);
     assert!(!roots.is_empty());
@@ -171,7 +172,7 @@ fn test_decision_citl_find_root_causes() {
 
 #[test]
 fn test_decision_citl_debug() {
-    let trainer = DecisionCITL::new().unwrap();
+    let trainer = DecisionCITL::new().expect("operation should succeed");
     let debug = format!("{trainer:?}");
     assert!(debug.contains("DecisionCITL"));
 }
@@ -186,14 +187,14 @@ mod prop_tests {
             n_success in 0usize..10,
             n_fail in 0usize..10
         ) {
-            let mut trainer = DecisionCITL::new().unwrap();
+            let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
             for _ in 0..n_success {
                 trainer.ingest_session(
                     vec![DecisionTrace::new("d", "type", "")],
                     CompilationOutcome::success(),
                     None,
-                ).unwrap();
+                ).expect("operation should succeed");
             }
 
             for _ in 0..n_fail {
@@ -201,7 +202,7 @@ mod prop_tests {
                     vec![DecisionTrace::new("d", "type", "")],
                     CompilationOutcome::failure(vec![], vec![], vec![]),
                     None,
-                ).unwrap();
+                ).expect("operation should succeed");
             }
 
             prop_assert_eq!(trainer.success_count(), n_success);

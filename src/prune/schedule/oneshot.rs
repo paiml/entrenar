@@ -180,12 +180,13 @@ mod tests {
     fn test_serialize_oneshot() {
         // TEST_ID: SCHED-050
         let schedule = PruningSchedule::OneShot { step: 1000 };
-        let json = serde_json::to_string(&schedule).unwrap();
+        let json = serde_json::to_string(&schedule).expect("JSON serialization should succeed");
         assert!(
             json.contains("one_shot"),
             "SCHED-050 FALSIFIED: OneShot should serialize with type=one_shot"
         );
-        let deserialized: PruningSchedule = serde_json::from_str(&json).unwrap();
+        let deserialized: PruningSchedule =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(
             schedule, deserialized,
             "SCHED-050 FALSIFIED: Deserialized should match original"
@@ -196,7 +197,8 @@ mod tests {
     fn test_deserialize_oneshot_from_yaml() {
         // TEST_ID: SCHED-084
         let yaml = "type: one_shot\nstep: 500\n";
-        let schedule: PruningSchedule = serde_yaml::from_str(yaml).unwrap();
+        let schedule: PruningSchedule =
+            serde_yaml::from_str(yaml).expect("operation should succeed");
         match schedule {
             PruningSchedule::OneShot { step } => assert_eq!(step, 500),
             _ => panic!("Should deserialize to OneShot"),

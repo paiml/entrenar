@@ -85,9 +85,9 @@ fn test_causal_lineage_full_experiment_lifecycle() {
     let run1_events: Vec<_> = lineage.events_for_run("run-001");
     assert!(run1_events
         .first()
-        .unwrap()
+        .expect("operation should succeed")
         .timestamp
-        .happens_before(&run1_events.last().unwrap().timestamp));
+        .happens_before(&run1_events.last().expect("collection should not be empty").timestamp));
 }
 
 #[test]
@@ -100,9 +100,9 @@ fn test_lineage_event_context_propagation() {
 
     lineage.add_event(event);
 
-    let retrieved = lineage.latest_event_for_run("run-001").unwrap();
-    assert!(retrieved.context.as_ref().unwrap().contains("v2.1.0"));
-    assert!(retrieved.context.as_ref().unwrap().contains("auto-gate"));
+    let retrieved = lineage.latest_event_for_run("run-001").expect("operation should succeed");
+    assert!(retrieved.context.as_ref().expect("operation should succeed").contains("v2.1.0"));
+    assert!(retrieved.context.as_ref().expect("operation should succeed").contains("auto-gate"));
 }
 
 // ============================================================================
@@ -283,8 +283,11 @@ fn test_behavioral_integrity_violation_analysis() {
 
     // Analyze violations
     let by_type = integrity.violations_by_type();
-    assert_eq!(by_type.get(&MetamorphicRelationType::Additive).unwrap().len(), 2);
-    assert_eq!(by_type.get(&MetamorphicRelationType::Permutation).unwrap().len(), 1);
+    assert_eq!(by_type.get(&MetamorphicRelationType::Additive).expect("key should exist").len(), 2);
+    assert_eq!(
+        by_type.get(&MetamorphicRelationType::Permutation).expect("key should exist").len(),
+        1
+    );
 
     let counts = integrity.violation_counts();
     assert_eq!(counts.critical, 1);
@@ -292,7 +295,7 @@ fn test_behavioral_integrity_violation_analysis() {
     assert_eq!(counts.minor, 1);
     assert_eq!(counts.total, 3);
 
-    let most_severe = integrity.most_severe_violation().unwrap();
+    let most_severe = integrity.most_severe_violation().expect("operation should succeed");
     assert_eq!(most_severe.id, "MV-003");
 }
 
@@ -356,8 +359,12 @@ fn test_integrity_with_lineage_tracking() {
 
     let promotion = promotions[0];
     assert!(promotion.context.is_some());
-    assert!(promotion.context.as_ref().unwrap().contains("integrity_score"));
-    assert!(promotion.context.as_ref().unwrap().contains("assessment"));
+    assert!(promotion
+        .context
+        .as_ref()
+        .expect("operation should succeed")
+        .contains("integrity_score"));
+    assert!(promotion.context.as_ref().expect("operation should succeed").contains("assessment"));
 }
 
 #[test]
@@ -403,20 +410,24 @@ fn test_serialization_roundtrip_all_types() {
 
     // LamportTimestamp
     let ts = LamportTimestamp::with_counter("node-1", 42);
-    let ts_json = serde_json::to_string(&ts).unwrap();
-    let ts_parsed: LamportTimestamp = serde_json::from_str(&ts_json).unwrap();
+    let ts_json = serde_json::to_string(&ts).expect("JSON serialization should succeed");
+    let ts_parsed: LamportTimestamp =
+        serde_json::from_str(&ts_json).expect("JSON deserialization should succeed");
     assert_eq!(ts.counter, ts_parsed.counter);
 
     // TraceStoragePolicy
     let policy = TraceStoragePolicy::production();
-    let policy_json = serde_json::to_string(&policy).unwrap();
-    let policy_parsed: TraceStoragePolicy = serde_json::from_str(&policy_json).unwrap();
+    let policy_json = serde_json::to_string(&policy).expect("JSON serialization should succeed");
+    let policy_parsed: TraceStoragePolicy =
+        serde_json::from_str(&policy_json).expect("JSON deserialization should succeed");
     assert_eq!(policy.compression, policy_parsed.compression);
 
     // BehavioralIntegrity
     let integrity = BehavioralIntegrity::new(0.9, 0.85, 0.1, 0.88, "model-v1");
-    let integrity_json = serde_json::to_string(&integrity).unwrap();
-    let integrity_parsed: BehavioralIntegrity = serde_json::from_str(&integrity_json).unwrap();
+    let integrity_json =
+        serde_json::to_string(&integrity).expect("JSON serialization should succeed");
+    let integrity_parsed: BehavioralIntegrity =
+        serde_json::from_str(&integrity_json).expect("JSON deserialization should succeed");
     assert!(
         (integrity.equivalence_score - integrity_parsed.equivalence_score).abs() < f64::EPSILON
     );

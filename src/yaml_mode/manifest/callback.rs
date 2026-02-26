@@ -46,7 +46,8 @@ mod tests {
     #[test]
     fn test_callback_type_serde() {
         let json = r#""checkpoint""#;
-        let ct: CallbackType = serde_json::from_str(json).unwrap();
+        let ct: CallbackType =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert_eq!(ct, CallbackType::Checkpoint);
     }
 }

@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_train_produces_correct_dims() {
-        let trainer = CitlTrainer::train(&simple_pairs()).unwrap();
+        let trainer = CitlTrainer::train(&simple_pairs()).expect("operation should succeed");
         assert_eq!(trainer.error_dim(), 2);
         assert_eq!(trainer.fix_dim(), 2);
         assert_eq!(trainer.weights().shape(), &[2, 2]);
@@ -310,14 +310,14 @@ mod tests {
 
     #[test]
     fn test_predict_fix_output_length() {
-        let trainer = CitlTrainer::train(&simple_pairs()).unwrap();
+        let trainer = CitlTrainer::train(&simple_pairs()).expect("operation should succeed");
         let pred = trainer.predict_fix(&[1.0, 0.0]);
         assert_eq!(pred.len(), 2);
     }
 
     #[test]
     fn test_predict_fix_wrong_dim_returns_zeros() {
-        let trainer = CitlTrainer::train(&simple_pairs()).unwrap();
+        let trainer = CitlTrainer::train(&simple_pairs()).expect("operation should succeed");
         let pred = trainer.predict_fix(&[1.0, 0.0, 0.0]);
         assert_eq!(pred, vec![0.0, 0.0]);
     }
@@ -366,7 +366,7 @@ mod tests {
             })
             .collect();
 
-        let trainer = CitlTrainer::train(&pairs).unwrap();
+        let trainer = CitlTrainer::train(&pairs).expect("operation should succeed");
         let pred = trainer.predict_fix(&[1.0, 0.0, 0.0]);
         // Should approximately recover the identity mapping
         assert!((pred[0] - 1.0).abs() < 0.2, "pred[0]={}", pred[0]);
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn test_single_pair_training() {
         let pairs = vec![ErrorFixPair::new(vec![2.0, 0.0], vec![0.0, 4.0], 1.0)];
-        let trainer = CitlTrainer::train(&pairs).unwrap();
+        let trainer = CitlTrainer::train(&pairs).expect("operation should succeed");
         let pred = trainer.predict_fix(&[2.0, 0.0]);
         // With only one sample + ridge regularization, should approximate [0.0, 4.0]
         assert!(pred.len() == 2);
@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn test_invert_identity() {
         let eye = Array2::eye(3);
-        let inv = invert_matrix(&eye).unwrap();
+        let inv = invert_matrix(&eye).expect("operation should succeed");
         for i in 0..3 {
             for j in 0..3 {
                 let expected = if i == j { 1.0 } else { 0.0 };
@@ -409,8 +409,9 @@ mod tests {
     #[test]
     fn test_invert_2x2() {
         // [[2, 1], [1, 1]] -> inverse [[1, -1], [-1, 2]]
-        let m = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 1.0, 1.0]).unwrap();
-        let inv = invert_matrix(&m).unwrap();
+        let m = Array2::from_shape_vec((2, 2), vec![2.0, 1.0, 1.0, 1.0])
+            .expect("operation should succeed");
+        let inv = invert_matrix(&m).expect("operation should succeed");
         assert!((inv[[0, 0]] - 1.0).abs() < 1e-5);
         assert!((inv[[0, 1]] - (-1.0)).abs() < 1e-5);
         assert!((inv[[1, 0]] - (-1.0)).abs() < 1e-5);
@@ -424,7 +425,7 @@ mod tests {
             ErrorFixPair::new(vec![1.0, 0.0], vec![10.0, 0.0], 1.0), // high weight
             ErrorFixPair::new(vec![1.0, 0.0], vec![0.0, 10.0], 0.01), // low weight
         ];
-        let trainer = CitlTrainer::train(&pairs).unwrap();
+        let trainer = CitlTrainer::train(&pairs).expect("operation should succeed");
         let pred = trainer.predict_fix(&[1.0, 0.0]);
         // High-weight sample's fix direction should dominate
         assert!(pred[0] > pred[1], "High-weight sample should dominate: pred={pred:?}");

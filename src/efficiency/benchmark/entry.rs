@@ -195,8 +195,9 @@ mod tests {
     #[test]
     fn test_benchmark_entry_serde() {
         let entry = make_entry(0.9, 10.0, 36000.0, 0.5);
-        let json = serde_json::to_string(&entry).unwrap();
-        let deserialized: BenchmarkEntry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entry).expect("JSON serialization should succeed");
+        let deserialized: BenchmarkEntry =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(entry.run_id, deserialized.run_id);
         assert!((entry.quality_score - deserialized.quality_score).abs() < 1e-9);
     }

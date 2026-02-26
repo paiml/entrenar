@@ -9,8 +9,8 @@ fn test_gemm_backward_a_basic() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     // C = A @ B where A is 2x2, B is 2x2
     // grad_A = grad_C @ B^T
@@ -25,15 +25,17 @@ fn test_gemm_backward_a_basic() {
     let b_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
     let grad_a_data: Vec<f32> = vec![0.0; (m * k) as usize];
 
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let b = GpuBuffer::from_host(&ctx, &b_data).unwrap();
-    let mut grad_a = GpuBuffer::from_host(&ctx, &grad_a_data).unwrap();
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let b = GpuBuffer::from_host(&ctx, &b_data).expect("operation should succeed");
+    let mut grad_a = GpuBuffer::from_host(&ctx, &grad_a_data).expect("operation should succeed");
 
-    gemm_backward_a(&grad_output, &b, &mut grad_a, m, k, n, &stream).unwrap();
-    stream.synchronize().unwrap();
+    gemm_backward_a(&grad_output, &b, &mut grad_a, m, k, n, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; (m * k) as usize];
-    grad_a.copy_to_host(&mut result).unwrap();
+    grad_a.copy_to_host(&mut result).expect("operation should succeed");
 
     // Verify gradients are computed and not NaN
     assert!(!result.iter().any(|x| x.is_nan()), "GEMM backward A should not produce NaN");
@@ -57,8 +59,8 @@ fn test_gemm_backward_b_basic() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     // C = A @ B where A is 2x2, B is 2x2
     // grad_B = A^T @ grad_C
@@ -73,15 +75,17 @@ fn test_gemm_backward_b_basic() {
     let grad_output_data: Vec<f32> = vec![1.0, 0.0, 0.0, 1.0];
     let grad_b_data: Vec<f32> = vec![0.0; (k * n) as usize];
 
-    let a = GpuBuffer::from_host(&ctx, &a_data).unwrap();
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let mut grad_b = GpuBuffer::from_host(&ctx, &grad_b_data).unwrap();
+    let a = GpuBuffer::from_host(&ctx, &a_data).expect("operation should succeed");
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let mut grad_b = GpuBuffer::from_host(&ctx, &grad_b_data).expect("operation should succeed");
 
-    gemm_backward_b(&a, &grad_output, &mut grad_b, m, k, n, &stream).unwrap();
-    stream.synchronize().unwrap();
+    gemm_backward_b(&a, &grad_output, &mut grad_b, m, k, n, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; (k * n) as usize];
-    grad_b.copy_to_host(&mut result).unwrap();
+    grad_b.copy_to_host(&mut result).expect("operation should succeed");
 
     // Verify gradients are computed and not NaN
     assert!(!result.iter().any(|x| x.is_nan()), "GEMM backward B should not produce NaN");
@@ -105,8 +109,8 @@ fn test_gemm_backward_larger_matrices() {
         Some(c) => c,
         None => return,
     };
-    init_kernel_cache(ctx.clone()).unwrap();
-    let stream = CudaStream::new(&ctx).unwrap();
+    init_kernel_cache(ctx.clone()).expect("operation should succeed");
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
 
     // Test with larger matrices to exercise block tiling
     let m = 32u32;
@@ -119,20 +123,23 @@ fn test_gemm_backward_larger_matrices() {
     let grad_a_data: Vec<f32> = vec![0.0; (m * k) as usize];
     let grad_b_data: Vec<f32> = vec![0.0; (k * n) as usize];
 
-    let grad_output = GpuBuffer::from_host(&ctx, &grad_output_data).unwrap();
-    let b = GpuBuffer::from_host(&ctx, &b_data).unwrap();
-    let a = GpuBuffer::from_host(&ctx, &a_data).unwrap();
-    let mut grad_a = GpuBuffer::from_host(&ctx, &grad_a_data).unwrap();
-    let mut grad_b = GpuBuffer::from_host(&ctx, &grad_b_data).unwrap();
+    let grad_output =
+        GpuBuffer::from_host(&ctx, &grad_output_data).expect("operation should succeed");
+    let b = GpuBuffer::from_host(&ctx, &b_data).expect("operation should succeed");
+    let a = GpuBuffer::from_host(&ctx, &a_data).expect("operation should succeed");
+    let mut grad_a = GpuBuffer::from_host(&ctx, &grad_a_data).expect("operation should succeed");
+    let mut grad_b = GpuBuffer::from_host(&ctx, &grad_b_data).expect("operation should succeed");
 
-    gemm_backward_a(&grad_output, &b, &mut grad_a, m, k, n, &stream).unwrap();
-    gemm_backward_b(&a, &grad_output, &mut grad_b, m, k, n, &stream).unwrap();
-    stream.synchronize().unwrap();
+    gemm_backward_a(&grad_output, &b, &mut grad_a, m, k, n, &stream)
+        .expect("operation should succeed");
+    gemm_backward_b(&a, &grad_output, &mut grad_b, m, k, n, &stream)
+        .expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
 
     let mut result_a = vec![0.0f32; (m * k) as usize];
     let mut result_b = vec![0.0f32; (k * n) as usize];
-    grad_a.copy_to_host(&mut result_a).unwrap();
-    grad_b.copy_to_host(&mut result_b).unwrap();
+    grad_a.copy_to_host(&mut result_a).expect("operation should succeed");
+    grad_b.copy_to_host(&mut result_b).expect("operation should succeed");
 
     // Verify no NaN or Inf
     assert!(

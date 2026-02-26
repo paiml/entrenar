@@ -28,7 +28,7 @@ fn test_auto_retrainer_no_baseline() {
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     let batch: Vec<Vec<f64>> = (0..10).map(|i| vec![f64::from(i)]).collect();
-    let action = retrainer.process_batch(&batch).unwrap();
+    let action = retrainer.process_batch(&batch).expect("operation should succeed");
 
     assert_eq!(action, Action::None);
 }
@@ -43,7 +43,7 @@ fn test_auto_retrainer_no_drift() {
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     // Same distribution should not trigger
-    let action = retrainer.process_batch(&baseline).unwrap();
+    let action = retrainer.process_batch(&baseline).expect("operation should succeed");
     assert_eq!(action, Action::None);
 }
 
@@ -69,7 +69,7 @@ fn test_auto_retrainer_with_drift() {
 
     // Shifted distribution should trigger
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
-    let action = retrainer.process_batch(&shifted).unwrap();
+    let action = retrainer.process_batch(&shifted).expect("operation should succeed");
 
     assert!(matches!(action, Action::RetrainTriggered(_)));
     assert_eq!(retrain_count.load(Ordering::SeqCst), 1);
@@ -94,11 +94,11 @@ fn test_cooldown_prevents_retrain() {
 
     // First batch with drift should trigger
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
-    let action1 = retrainer.process_batch(&shifted).unwrap();
+    let action1 = retrainer.process_batch(&shifted).expect("operation should succeed");
     assert!(matches!(action1, Action::RetrainTriggered(_)));
 
     // Immediate second batch should be blocked by cooldown
-    let action2 = retrainer.process_batch(&shifted).unwrap();
+    let action2 = retrainer.process_batch(&shifted).expect("operation should succeed");
     assert_eq!(action2, Action::WarningLogged);
 }
 
@@ -116,11 +116,20 @@ fn test_max_retrains_limit() {
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
 
     // First two should trigger
-    assert!(matches!(retrainer.process_batch(&shifted).unwrap(), Action::RetrainTriggered(_)));
-    assert!(matches!(retrainer.process_batch(&shifted).unwrap(), Action::RetrainTriggered(_)));
+    assert!(matches!(
+        retrainer.process_batch(&shifted).expect("operation should succeed"),
+        Action::RetrainTriggered(_)
+    ));
+    assert!(matches!(
+        retrainer.process_batch(&shifted).expect("operation should succeed"),
+        Action::RetrainTriggered(_)
+    ));
 
     // Third should be blocked
-    assert_eq!(retrainer.process_batch(&shifted).unwrap(), Action::WarningLogged);
+    assert_eq!(
+        retrainer.process_batch(&shifted).expect("operation should succeed"),
+        Action::WarningLogged
+    );
 }
 
 #[test]
@@ -142,7 +151,7 @@ fn test_feature_count_policy() {
     // Both features shifted - should trigger
     let shifted: Vec<Vec<f64>> =
         (100..200).map(|i| vec![f64::from(i), f64::from(i) * 2.0]).collect();
-    let action = retrainer.process_batch(&shifted).unwrap();
+    let action = retrainer.process_batch(&shifted).expect("operation should succeed");
     assert!(matches!(action, Action::RetrainTriggered(_)));
 }
 
@@ -190,7 +199,7 @@ fn test_callback_latency() {
     });
 
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
-    let action = retrainer.process_batch(&shifted).unwrap();
+    let action = retrainer.process_batch(&shifted).expect("operation should succeed");
 
     assert!(matches!(action, Action::RetrainTriggered(_)));
     assert!(
@@ -216,7 +225,7 @@ fn test_critical_feature_policy() {
 
     // Shifted distribution should trigger for critical feature
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
-    let action = retrainer.process_batch(&shifted).unwrap();
+    let action = retrainer.process_batch(&shifted).expect("operation should succeed");
     assert!(matches!(action, Action::RetrainTriggered(_)));
 }
 
@@ -237,7 +246,7 @@ fn test_drift_percentage_policy() {
 
     // Shifted distribution - 100% drift (1 of 1 feature)
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
-    let action = retrainer.process_batch(&shifted).unwrap();
+    let action = retrainer.process_batch(&shifted).expect("operation should succeed");
     assert!(matches!(action, Action::RetrainTriggered(_)));
 }
 
@@ -300,7 +309,7 @@ fn test_no_callback_set_with_drift() {
 
     // Shifted distribution - should want to retrain but has no callback
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
-    let action = retrainer.process_batch(&shifted).unwrap();
+    let action = retrainer.process_batch(&shifted).expect("operation should succeed");
     // Returns WarningLogged since there's no callback
     assert_eq!(action, Action::WarningLogged);
 }
@@ -315,7 +324,7 @@ fn test_no_drift_during_cooldown() {
     let mut retrainer = AutoRetrainer::new(detector, config);
 
     // Same distribution - no drift during cooldown
-    let action = retrainer.process_batch(&baseline).unwrap();
+    let action = retrainer.process_batch(&baseline).expect("operation should succeed");
     assert_eq!(action, Action::None);
 }
 
@@ -338,10 +347,13 @@ fn test_max_retrains_with_warnings_disabled() {
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
 
     // First should trigger
-    assert!(matches!(retrainer.process_batch(&shifted).unwrap(), Action::RetrainTriggered(_)));
+    assert!(matches!(
+        retrainer.process_batch(&shifted).expect("operation should succeed"),
+        Action::RetrainTriggered(_)
+    ));
 
     // Second should be blocked, and since log_warnings is false, returns None
-    assert_eq!(retrainer.process_batch(&shifted).unwrap(), Action::None);
+    assert_eq!(retrainer.process_batch(&shifted).expect("operation should succeed"), Action::None);
 }
 
 #[test]
@@ -385,10 +397,10 @@ fn test_warnings_with_no_drift_but_in_cooldown() {
 
     // First retrain
     let shifted: Vec<Vec<f64>> = (100..200).map(|i| vec![f64::from(i)]).collect();
-    let action1 = retrainer.process_batch(&shifted).unwrap();
+    let action1 = retrainer.process_batch(&shifted).expect("operation should succeed");
     assert!(matches!(action1, Action::RetrainTriggered(_)));
 
     // In cooldown now - should return WarningLogged for drift
-    let action2 = retrainer.process_batch(&shifted).unwrap();
+    let action2 = retrainer.process_batch(&shifted).expect("operation should succeed");
     assert_eq!(action2, Action::WarningLogged);
 }

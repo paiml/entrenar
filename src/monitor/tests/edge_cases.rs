@@ -15,7 +15,7 @@ fn test_nan_handling() {
     collector.record(Metric::Loss, f64::NAN);
 
     let summary = collector.summary();
-    let stats = summary.get(&Metric::Loss).unwrap();
+    let stats = summary.get(&Metric::Loss).expect("key should exist");
 
     // NaN values should be detected
     assert!(stats.has_nan);
@@ -27,7 +27,7 @@ fn test_inf_handling() {
     collector.record(Metric::Loss, f64::INFINITY);
 
     let summary = collector.summary();
-    let stats = summary.get(&Metric::Loss).unwrap();
+    let stats = summary.get(&Metric::Loss).expect("key should exist");
 
     // Inf values should be detected
     assert!(stats.has_inf);

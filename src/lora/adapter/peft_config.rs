@@ -133,8 +133,9 @@ mod tests {
         let lora_config = make_test_lora_config();
         let peft = PeftAdapterConfig::from_lora_config(&lora_config, Some("test/model"));
 
-        let json = peft.to_json().unwrap();
-        let deserialized = PeftAdapterConfig::from_json(&json).unwrap();
+        let json = peft.to_json().expect("operation should succeed");
+        let deserialized =
+            PeftAdapterConfig::from_json(&json).expect("deserialization should succeed");
 
         assert_eq!(peft, deserialized);
     }
@@ -144,7 +145,7 @@ mod tests {
         let lora_config = make_test_lora_config();
         let peft = PeftAdapterConfig::from_lora_config(&lora_config, Some("test/model"));
 
-        let json = peft.to_json().unwrap();
+        let json = peft.to_json().expect("operation should succeed");
 
         // Verify expected PEFT schema keys are present
         assert!(json.contains("\"peft_type\""));
@@ -159,7 +160,7 @@ mod tests {
     #[test]
     fn test_json_no_base_model_omitted() {
         let peft = PeftAdapterConfig::from_lora_config(&LoRAConfig::new(4, 4.0), None);
-        let json = peft.to_json().unwrap();
+        let json = peft.to_json().expect("operation should succeed");
         // base_model_name_or_path should be omitted when None
         assert!(!json.contains("base_model_name_or_path"));
     }

@@ -59,9 +59,9 @@ mod tests {
 
     #[test]
     fn test_method_parsing() {
-        assert_eq!("lora".parse::<Method>().unwrap(), Method::LoRA);
-        assert_eq!("QLoRA".parse::<Method>().unwrap(), Method::QLoRA);
-        assert_eq!("AUTO".parse::<Method>().unwrap(), Method::Auto);
+        assert_eq!("lora".parse::<Method>().expect("parsing should succeed"), Method::LoRA);
+        assert_eq!("QLoRA".parse::<Method>().expect("parsing should succeed"), Method::QLoRA);
+        assert_eq!("AUTO".parse::<Method>().expect("parsing should succeed"), Method::Auto);
     }
 
     #[test]
@@ -72,8 +72,8 @@ mod tests {
 
     #[test]
     fn test_method_parsing_full() {
-        assert_eq!("full".parse::<Method>().unwrap(), Method::Full);
-        assert_eq!("FULL".parse::<Method>().unwrap(), Method::Full);
+        assert_eq!("full".parse::<Method>().expect("parsing should succeed"), Method::Full);
+        assert_eq!("FULL".parse::<Method>().expect("parsing should succeed"), Method::Full);
     }
 
     #[test]

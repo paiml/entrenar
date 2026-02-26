@@ -242,8 +242,9 @@ mod tests {
             0.7,
         );
 
-        let json = serde_json::to_string(&violation).unwrap();
-        let deserialized: MetamorphicViolation = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&violation).expect("JSON serialization should succeed");
+        let deserialized: MetamorphicViolation =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(violation.id, deserialized.id);
         assert_eq!(violation.relation_type, deserialized.relation_type);
     }

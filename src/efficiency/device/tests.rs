@@ -180,8 +180,9 @@ fn test_compute_device_relative_power() {
 #[test]
 fn test_compute_device_serialization() {
     let cpu = ComputeDevice::Cpu(CpuInfo::new(8, 16, SimdCapability::Avx2, "Test CPU"));
-    let json = serde_json::to_string(&cpu).unwrap();
-    let parsed: ComputeDevice = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&cpu).expect("JSON serialization should succeed");
+    let parsed: ComputeDevice =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert!(parsed.is_cpu());
     assert_eq!(parsed.name(), "Test CPU");
@@ -205,8 +206,9 @@ fn test_simd_capability_serde_all_variants() {
     ];
 
     for variant in variants {
-        let json = serde_json::to_string(&variant).unwrap();
-        let parsed: SimdCapability = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&variant).expect("JSON serialization should succeed");
+        let parsed: SimdCapability =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(variant, parsed);
     }
 }
@@ -255,8 +257,8 @@ fn test_cpu_info_estimated_bandwidth() {
 #[test]
 fn test_cpu_info_serde() {
     let cpu = CpuInfo::new(8, 16, SimdCapability::Avx2, "Test CPU").with_cache(30_000_000);
-    let json = serde_json::to_string(&cpu).unwrap();
-    let parsed: CpuInfo = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&cpu).expect("JSON serialization should succeed");
+    let parsed: CpuInfo = serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(cpu.cores, parsed.cores);
     assert_eq!(cpu.threads, parsed.threads);
     assert_eq!(cpu.simd, parsed.simd);
@@ -298,8 +300,8 @@ fn test_gpu_info_serde() {
     let gpu = GpuInfo::new("Test GPU", 16 * 1024 * 1024 * 1024)
         .with_compute_capability(8, 6)
         .with_index(0);
-    let json = serde_json::to_string(&gpu).unwrap();
-    let parsed: GpuInfo = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&gpu).expect("JSON serialization should succeed");
+    let parsed: GpuInfo = serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(gpu.name, parsed.name);
     assert_eq!(gpu.vram_bytes, parsed.vram_bytes);
     assert_eq!(gpu.compute_capability, parsed.compute_capability);
@@ -309,8 +311,8 @@ fn test_gpu_info_serde() {
 #[test]
 fn test_tpu_info_serde() {
     let tpu = TpuInfo::new("v5e", 16, 64 * 1024 * 1024 * 1024);
-    let json = serde_json::to_string(&tpu).unwrap();
-    let parsed: TpuInfo = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&tpu).expect("JSON serialization should succeed");
+    let parsed: TpuInfo = serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(tpu.version, parsed.version);
     assert_eq!(tpu.cores, parsed.cores);
     assert_eq!(tpu.hbm_bytes, parsed.hbm_bytes);
@@ -320,8 +322,9 @@ fn test_tpu_info_serde() {
 fn test_apple_silicon_info_serde() {
     let apple =
         AppleSiliconInfo::new("M3 Max").with_cores(12, 4, 40).with_memory(64 * 1024 * 1024 * 1024);
-    let json = serde_json::to_string(&apple).unwrap();
-    let parsed: AppleSiliconInfo = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&apple).expect("JSON serialization should succeed");
+    let parsed: AppleSiliconInfo =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(apple.chip, parsed.chip);
     assert_eq!(apple.p_cores, parsed.p_cores);
     assert_eq!(apple.e_cores, parsed.e_cores);
@@ -418,8 +421,9 @@ fn test_compute_device_serialization_all_variants() {
     ];
 
     for device in devices {
-        let json = serde_json::to_string(&device).unwrap();
-        let parsed: ComputeDevice = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&device).expect("JSON serialization should succeed");
+        let parsed: ComputeDevice =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(device.name(), parsed.name());
     }
 }

@@ -200,7 +200,7 @@ mod tests {
     fn test_run_inspect_unsupported_format() {
         let temp_dir = std::env::temp_dir();
         let path = temp_dir.join("test_inspect.xyz");
-        std::fs::write(&path, "test").unwrap();
+        std::fs::write(&path, "test").expect("file write should succeed");
 
         let args = InspectArgs {
             input: path.clone(),

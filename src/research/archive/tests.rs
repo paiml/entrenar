@@ -161,7 +161,7 @@ mod tests {
         let result = deposit.deposit();
         assert!(result.is_ok());
 
-        let result = result.unwrap();
+        let result = result.expect("operation should succeed");
         assert!(result.doi.starts_with("10.5281/zenodo."));
         assert!(result.url.starts_with("https://zenodo.org/record/"));
     }
@@ -292,8 +292,9 @@ mod tests {
             url: "https://zenodo.org/record/123".to_string(),
             provider: ArchiveProvider::Figshare,
         };
-        let json = serde_json::to_string(&result).unwrap();
-        let parsed: DepositResult = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&result).expect("JSON serialization should succeed");
+        let parsed: DepositResult =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(parsed.doi, result.doi);
         assert_eq!(parsed.provider, ArchiveProvider::Figshare);
     }
@@ -302,8 +303,9 @@ mod tests {
     fn test_zenodo_config_serde_roundtrip() {
         let config =
             ZenodoConfig::new("secret-token").with_sandbox(true).with_community("ml-research");
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: ZenodoConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let parsed: ZenodoConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(parsed.token, "secret-token");
         assert!(parsed.sandbox);
         assert_eq!(parsed.community, Some("ml-research".to_string()));
@@ -312,8 +314,9 @@ mod tests {
     #[test]
     fn test_figshare_config_serde_roundtrip() {
         let config = FigshareConfig::new("api-key").with_project(99999);
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: FigshareConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let parsed: FigshareConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(parsed.token, "api-key");
         assert_eq!(parsed.project_id, Some(99999));
     }
@@ -322,8 +325,9 @@ mod tests {
     fn test_deposit_metadata_serde_roundtrip() {
         let artifact = create_test_artifact();
         let metadata = DepositMetadata::from_artifact(&artifact);
-        let json = serde_json::to_string(&metadata).unwrap();
-        let parsed: DepositMetadata = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&metadata).expect("JSON serialization should succeed");
+        let parsed: DepositMetadata =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(parsed.title, metadata.title);
         assert_eq!(parsed.authors, metadata.authors);
     }
@@ -331,8 +335,9 @@ mod tests {
     #[test]
     fn test_related_identifier_serde_roundtrip() {
         let rel = RelatedIdentifier::is_supplement_to("https://github.com/example/repo");
-        let json = serde_json::to_string(&rel).unwrap();
-        let parsed: RelatedIdentifier = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&rel).expect("JSON serialization should succeed");
+        let parsed: RelatedIdentifier =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(parsed.identifier, rel.identifier);
         assert_eq!(parsed.relation, RelationType::IsSupplementTo);
     }
@@ -345,8 +350,9 @@ mod tests {
             ArchiveProvider::Dryad,
             ArchiveProvider::Dataverse,
         ] {
-            let json = serde_json::to_string(&provider).unwrap();
-            let parsed: ArchiveProvider = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&provider).expect("JSON serialization should succeed");
+            let parsed: ArchiveProvider =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             assert_eq!(parsed, provider);
         }
     }

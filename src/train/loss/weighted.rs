@@ -347,7 +347,7 @@ mod tests {
             backward_op.backward();
         }
 
-        let grad = pred.grad().unwrap();
+        let grad = pred.grad().expect("gradient should be available");
         // Gradient: 2 * w * (pred - target) / n
         // First: 2 * 2.0 * (-1) / 2 = -2.0
         // Second: 2 * 1.0 * (-1) / 2 = -1.0
@@ -413,7 +413,7 @@ mod tests {
             op.backward();
         }
 
-        let grad = pred.grad().unwrap();
+        let grad = pred.grad().expect("gradient should be available");
         assert!(grad[0].is_finite());
         assert!(grad[1].is_finite());
     }

@@ -189,11 +189,11 @@ mod tests {
         let (weights, shapes) = make_test_weights();
         let config =
             PruneQuantConfig { target_sparsity: 0.5, quant_format: PruneQuantFormat::Q4_0 };
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             prune_and_quantize(&weights, &shapes, &config, tmp.path(), "pruned.safetensors")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert!(result.achieved_sparsity >= 0.3);
         assert_eq!(result.quant_format, PruneQuantFormat::Q4_0);
@@ -206,11 +206,11 @@ mod tests {
         let (weights, shapes) = make_test_weights();
         let config =
             PruneQuantConfig { target_sparsity: 0.3, quant_format: PruneQuantFormat::Q8_0 };
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             prune_and_quantize(&weights, &shapes, &config, tmp.path(), "pruned-q8.safetensors")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert_eq!(result.quant_format, PruneQuantFormat::Q8_0);
         assert!(result.file_size > 0);
@@ -221,11 +221,11 @@ mod tests {
         let (weights, shapes) = make_test_weights();
         let config =
             PruneQuantConfig { target_sparsity: 0.0, quant_format: PruneQuantFormat::Q4_0 };
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let result =
             prune_and_quantize(&weights, &shapes, &config, tmp.path(), "unpruned.safetensors")
-                .unwrap();
+                .expect("operation should succeed");
 
         assert_eq!(result.achieved_sparsity, 0.0);
     }
@@ -249,18 +249,19 @@ mod tests {
         let (weights, shapes) = make_test_weights();
         let config =
             PruneQuantConfig { target_sparsity: 0.5, quant_format: PruneQuantFormat::Q4_0 };
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
-        let result =
-            prune_and_quantize(&weights, &shapes, &config, tmp.path(), "test.safetensors").unwrap();
+        let result = prune_and_quantize(&weights, &shapes, &config, tmp.path(), "test.safetensors")
+            .expect("config should be valid");
 
-        let data = std::fs::read(&result.output_path).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(&result.output_path).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
         assert_eq!(loaded.len(), 1);
 
         // Check metadata
-        let (_, meta) = safetensors::SafeTensors::read_metadata(&data).unwrap();
-        let md = meta.metadata().as_ref().unwrap();
+        let (_, meta) =
+            safetensors::SafeTensors::read_metadata(&data).expect("deserialization should succeed");
+        let md = meta.metadata().as_ref().expect("operation should succeed");
         assert!(md.contains_key("sparsity"));
         assert!(md.contains_key("quantization"));
     }

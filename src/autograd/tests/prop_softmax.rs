@@ -17,7 +17,7 @@ proptest! {
         let y_len = y.len();
         backward(&mut y, Some(ndarray::Array1::ones(y_len)));
 
-        let analytical = a.grad().unwrap();
+        let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |x_val| {
                 let t = Tensor::from_vec(x_val.to_vec(), false);

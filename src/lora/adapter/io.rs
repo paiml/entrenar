@@ -122,16 +122,16 @@ mod tests {
         let base = Tensor::zeros(8 * 16, false);
         let layer = LoRALayer::new(base, 8, 16, 4, 8.0);
 
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         save_adapter_peft(
             &[("model.layers.0.self_attn.q_proj", &layer)],
             &config,
             Some("test/model"),
             tmp.path(),
         )
-        .unwrap();
+        .expect("operation should succeed");
 
-        let (loaded_config, weights) = load_adapter_peft(tmp.path()).unwrap();
+        let (loaded_config, weights) = load_adapter_peft(tmp.path()).expect("load should succeed");
         assert_eq!(loaded_config.r, 4);
         assert_eq!(loaded_config.lora_alpha, 8.0);
         assert_eq!(weights.len(), 2); // lora_A + lora_B

@@ -115,7 +115,7 @@ fn gradient_check_matmul_q_projection() {
 
     // Backward pass
     backward(&mut q, Some(ndarray::Array1::ones(batch_seq * hidden_size)));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     // Numerical gradient
     let numerical = finite_difference(
@@ -148,7 +148,7 @@ fn gradient_check_matmul_k_projection() {
     let mut k = matmul(&x, &w_k, batch_seq, hidden_size, hidden_size);
 
     backward(&mut k, Some(ndarray::Array1::ones(batch_seq * hidden_size)));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -180,7 +180,7 @@ fn gradient_check_matmul_v_projection() {
     let mut v = matmul(&x, &w_v, batch_seq, hidden_size, hidden_size);
 
     backward(&mut v, Some(ndarray::Array1::ones(batch_seq * hidden_size)));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -212,7 +212,7 @@ fn gradient_check_matmul_o_projection() {
     let mut o = matmul(&attn_out, &w_o, batch_seq, hidden_size, hidden_size);
 
     backward(&mut o, Some(ndarray::Array1::ones(batch_seq * hidden_size)));
-    let analytical = attn_out.grad().unwrap();
+    let analytical = attn_out.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -250,7 +250,7 @@ fn gradient_check_ffn_gate_projection() {
     let mut gate = matmul(&x, &w_gate, batch_seq, hidden_size, intermediate_size);
 
     backward(&mut gate, Some(ndarray::Array1::ones(batch_seq * intermediate_size)));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -283,7 +283,7 @@ fn gradient_check_ffn_up_projection() {
     let mut up = matmul(&x, &w_up, batch_seq, hidden_size, intermediate_size);
 
     backward(&mut up, Some(ndarray::Array1::ones(batch_seq * intermediate_size)));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -318,7 +318,7 @@ fn gradient_check_ffn_down_projection() {
     let mut down = matmul(&ffn_out, &w_down, batch_seq, intermediate_size, hidden_size);
 
     backward(&mut down, Some(ndarray::Array1::ones(batch_seq * hidden_size)));
-    let analytical = ffn_out.grad().unwrap();
+    let analytical = ffn_out.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -348,7 +348,7 @@ fn gradient_check_gelu_activation() {
     let mut y = gelu(&x);
 
     backward(&mut y, Some(ndarray::Array1::ones(x_data.len())));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -373,7 +373,7 @@ fn gradient_check_swish_activation() {
     let mut y = swish(&x);
 
     backward(&mut y, Some(ndarray::Array1::ones(x_data.len())));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -401,7 +401,7 @@ fn gradient_check_swiglu_combined() {
     let mut output = mul(&gate, &up);
 
     backward(&mut output, Some(ndarray::Array1::ones(x_data.len())));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -435,7 +435,7 @@ fn gradient_check_layer_norm_input() {
     let mut y = layer_norm(&x, &gamma, &beta, 1e-5);
 
     backward(&mut y, Some(ndarray::Array1::ones(n)));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {
@@ -466,7 +466,7 @@ fn gradient_check_layer_norm_gamma() {
     let mut y = layer_norm(&x, &gamma, &beta, 1e-5);
 
     backward(&mut y, Some(ndarray::Array1::ones(n)));
-    let analytical = gamma.grad().unwrap();
+    let analytical = gamma.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |gamma_val| {
@@ -497,7 +497,7 @@ fn gradient_check_layer_norm_beta() {
     let mut y = layer_norm(&x, &gamma, &beta, 1e-5);
 
     backward(&mut y, Some(ndarray::Array1::ones(n)));
-    let analytical = beta.grad().unwrap();
+    let analytical = beta.grad().expect("gradient should be available");
 
     // Beta gradient should be exactly 1.0 for all elements (gradient flows directly through addition)
     for i in 0..n {
@@ -529,7 +529,7 @@ fn gradient_check_attention_q() {
     let mut output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
 
     backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
-    let analytical = q.grad().unwrap();
+    let analytical = q.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |q_val| {
@@ -564,7 +564,7 @@ fn gradient_check_attention_k() {
     let mut output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
 
     backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
-    let analytical = k.grad().unwrap();
+    let analytical = k.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |k_val| {
@@ -599,7 +599,7 @@ fn gradient_check_attention_v() {
     let mut output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
 
     backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
-    let analytical = v.grad().unwrap();
+    let analytical = v.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |v_val| {
@@ -636,7 +636,7 @@ fn gradient_check_attention_full_pass() {
     let mut output = attention(&q, &k, &v, seq_len, d_k, seq_len, d_v);
 
     backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
-    let analytical_q = q.grad().unwrap();
+    let analytical_q = q.grad().expect("gradient should be available");
 
     let numerical_q = finite_difference(
         |q_val| {
@@ -659,7 +659,7 @@ fn gradient_check_attention_full_pass() {
     let mut output2 = attention(&q2, &k2, &v2, seq_len, d_k, seq_len, d_v);
 
     backward(&mut output2, Some(ndarray::Array1::ones(seq_len * d_v)));
-    let analytical_k = k2.grad().unwrap();
+    let analytical_k = k2.grad().expect("gradient should be available");
 
     let numerical_k = finite_difference(
         |k_val| {
@@ -682,7 +682,7 @@ fn gradient_check_attention_full_pass() {
     let mut output3 = attention(&q3, &k3, &v3, seq_len, d_k, seq_len, d_v);
 
     backward(&mut output3, Some(ndarray::Array1::ones(seq_len * d_v)));
-    let analytical_v = v3.grad().unwrap();
+    let analytical_v = v3.grad().expect("gradient should be available");
 
     let numerical_v = finite_difference(
         |v_val| {
@@ -715,7 +715,7 @@ fn gradient_check_softmax() {
     let mut y = softmax(&x);
 
     backward(&mut y, Some(ndarray::Array1::ones(x_data.len())));
-    let analytical = x.grad().unwrap();
+    let analytical = x.grad().expect("gradient should be available");
 
     let numerical = finite_difference(
         |x_val| {

@@ -20,10 +20,10 @@ proptest! {
     fn prop_train_command_parses(config in config_path_strategy()) {
         let result = parse_args(["entrenar", "train", &config]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Train(args) => {
-                prop_assert_eq!(args.config.to_str().unwrap(), &config);
+                prop_assert_eq!(args.config.to_str().expect("config should be valid"), &config);
             }
             _ => prop_assert!(false, "Expected Train command"),
         }
@@ -33,10 +33,10 @@ proptest! {
     fn prop_validate_command_parses(config in config_path_strategy()) {
         let result = parse_args(["entrenar", "validate", &config]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Validate(args) => {
-                prop_assert_eq!(args.config.to_str().unwrap(), &config);
+                prop_assert_eq!(args.config.to_str().expect("config should be valid"), &config);
             }
             _ => prop_assert!(false, "Expected Validate command"),
         }
@@ -59,7 +59,7 @@ proptest! {
             "--epochs", &epochs_str,
         ]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Train(args) => {
                 prop_assert_eq!(args.epochs, Some(epochs));
@@ -79,7 +79,7 @@ proptest! {
             "--batch-size", &batch_str,
         ]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Train(args) => {
                 prop_assert_eq!(args.batch_size, Some(batch_size));
@@ -99,10 +99,10 @@ proptest! {
             "--lr", &lr_str,
         ]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Train(args) => {
-                let parsed_lr = args.lr.unwrap();
+                let parsed_lr = args.lr.expect("parsing should succeed");
                 // Allow for float parsing precision
                 prop_assert!((parsed_lr - lr).abs() < 1e-6 || (parsed_lr / lr - 1.0).abs() < 1e-4);
             }
@@ -121,7 +121,7 @@ proptest! {
             "--seed", &seed_str,
         ]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Train(args) => {
                 prop_assert_eq!(args.seed, Some(seed));
@@ -142,7 +142,7 @@ proptest! {
             "--bits", &bits_str,
         ]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Quantize(args) => {
                 prop_assert_eq!(args.bits, bits);
@@ -164,10 +164,10 @@ proptest! {
             "--weight", &weight_str,
         ]);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Merge(args) => {
-                let parsed_weight = args.weight.unwrap();
+                let parsed_weight = args.weight.expect("parsing should succeed");
                 prop_assert!((parsed_weight - weight).abs() < 1e-3);
             }
             _ => prop_assert!(false, "Expected Merge command"),
@@ -201,8 +201,8 @@ proptest! {
     #[test]
     fn prop_verbose_quiet_exclusive(config in config_path_strategy()) {
         // Can't have both verbose and quiet
-        let cli_v = parse_args(["entrenar", "-v", "train", &config]).unwrap();
-        let cli_q = parse_args(["entrenar", "-q", "train", &config]).unwrap();
+        let cli_v = parse_args(["entrenar", "-v", "train", &config]).expect("parsing should succeed");
+        let cli_q = parse_args(["entrenar", "-q", "train", &config]).expect("parsing should succeed");
 
         prop_assert!(cli_v.verbose && !cli_v.quiet);
         prop_assert!(!cli_q.verbose && cli_q.quiet);
@@ -222,7 +222,7 @@ proptest! {
 
         let result = parse_args(&args);
         prop_assert!(result.is_ok());
-        let cli = result.unwrap();
+        let cli = result.expect("operation should succeed");
         match cli.command {
             Command::Merge(merge_args) => {
                 prop_assert_eq!(merge_args.models.len(), model_count);

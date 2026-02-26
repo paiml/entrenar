@@ -214,10 +214,10 @@ mod tests {
         model2.insert("w".to_string(), Tensor::from_vec(vec![3.0, 4.0], false));
 
         let models = vec![model1, model2];
-        let config = DareConfig::new(0.5).unwrap().with_seed(42);
+        let config = DareConfig::new(0.5).expect("config should be valid").with_seed(42);
 
-        let result1 = dare_merge(&models, &base, &config).unwrap();
-        let result2 = dare_merge(&models, &base, &config).unwrap();
+        let result1 = dare_merge(&models, &base, &config).expect("config should be valid");
+        let result2 = dare_merge(&models, &base, &config).expect("config should be valid");
 
         // Same seed should produce same results
         let r1_data = result1["w"].data();
@@ -275,12 +275,12 @@ mod tests {
         model1.insert("w".to_string(), Tensor::from_vec(vec![1.0, 2.0], false));
 
         let models = vec![model1];
-        let config = DareConfig::new(0.0).unwrap().with_seed(42); // Keep all
+        let config = DareConfig::new(0.0).expect("config should be valid").with_seed(42); // Keep all
 
-        let result = dare_merge(&models, &base, &config).unwrap();
+        let result = dare_merge(&models, &base, &config).expect("config should be valid");
 
         // With drop_prob=0, should get model1 back
-        let w = result.get("w").unwrap();
+        let w = result.get("w").expect("key should exist");
         assert!((w.data()[0] - 1.0).abs() < 1e-6);
         assert!((w.data()[1] - 2.0).abs() < 1e-6);
     }
@@ -418,10 +418,10 @@ mod tests {
             model1.insert("w".to_string(), Tensor::from_vec(delta_values, false));
 
             let models = vec![model1];
-            let config = DareConfig::new(drop_prob).unwrap().with_seed(seed);
+            let config = DareConfig::new(drop_prob).expect("config should be valid").with_seed(seed);
 
-            let result1 = dare_merge(&models, &base, &config).unwrap();
-            let result2 = dare_merge(&models, &base, &config).unwrap();
+            let result1 = dare_merge(&models, &base, &config).expect("config should be valid");
+            let result2 = dare_merge(&models, &base, &config).expect("config should be valid");
 
             // Same seed should produce identical results
             for (a, b) in result1["w"].data().iter().zip(result2["w"].data().iter()) {

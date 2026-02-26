@@ -7,7 +7,7 @@ use tempfile::TempDir;
 fn create_test_artifact() -> ResearchArtifact {
     let author = Author::new("Alice Smith")
         .with_orcid("0000-0002-1825-0097")
-        .unwrap()
+        .expect("operation should succeed")
         .with_affiliation(Affiliation::new("MIT"));
 
     ResearchArtifact::new("dataset-001", "Test Dataset", ArtifactType::Dataset, License::CcBy4)
@@ -19,7 +19,7 @@ fn create_test_artifact() -> ResearchArtifact {
 
 #[test]
 fn test_ro_crate_directory_creation() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let crate_path = temp_dir.path().join("test-crate");
 
     let crate_pkg = RoCrate::new(&crate_path);
@@ -32,15 +32,16 @@ fn test_ro_crate_directory_creation() {
 
 #[test]
 fn test_ro_crate_metadata_json() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let crate_path = temp_dir.path().join("test-crate");
 
     let crate_pkg = RoCrate::new(&crate_path);
-    crate_pkg.to_directory().unwrap();
+    crate_pkg.to_directory().expect("operation should succeed");
 
-    let metadata_content =
-        std::fs::read_to_string(crate_path.join("ro-crate-metadata.json")).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&metadata_content).unwrap();
+    let metadata_content = std::fs::read_to_string(crate_path.join("ro-crate-metadata.json"))
+        .expect("file read should succeed");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&metadata_content).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed["@context"], RO_CRATE_CONTEXT);
     assert!(parsed["@graph"].is_array());
@@ -49,19 +50,19 @@ fn test_ro_crate_metadata_json() {
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_ro_crate_zip_creation() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let crate_path = temp_dir.path().join("test-crate");
 
     let mut crate_pkg = RoCrate::new(&crate_path);
     crate_pkg.add_text_file("data.csv", "a,b,c\n1,2,3");
 
-    let zip_data = crate_pkg.to_zip().unwrap();
+    let zip_data = crate_pkg.to_zip().expect("operation should succeed");
 
     assert!(!zip_data.is_empty());
 
     // Verify ZIP structure
     let reader = std::io::Cursor::new(zip_data);
-    let mut archive = zip::ZipArchive::new(reader).unwrap();
+    let mut archive = zip::ZipArchive::new(reader).expect("operation should succeed");
 
     assert!(archive.by_name("ro-crate-metadata.json").is_ok());
     assert!(archive.by_name("data.csv").is_ok());
@@ -70,7 +71,7 @@ fn test_ro_crate_zip_creation() {
 #[test]
 fn test_ro_crate_entities_linked() {
     let artifact = create_test_artifact();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let crate_path = temp_dir.path().join("test-crate");
 
     let crate_pkg = RoCrate::from_artifact(&artifact, &crate_path);
@@ -79,14 +80,14 @@ fn test_ro_crate_entities_linked() {
     assert!(crate_pkg.entity_count() >= 4);
 
     // Check root dataset has author reference
-    let root = crate_pkg.descriptor.root_dataset().unwrap();
+    let root = crate_pkg.descriptor.root_dataset().expect("operation should succeed");
     assert!(root.properties.contains_key("author"));
     assert!(root.properties.contains_key("name"));
 }
 
 #[test]
 fn test_ro_crate_includes_data_files() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
     let crate_path = temp_dir.path().join("test-crate");
 
     let mut crate_pkg = RoCrate::new(&crate_path);
@@ -94,7 +95,7 @@ fn test_ro_crate_includes_data_files() {
     crate_pkg.add_text_file("data/test.csv", "x,y\n3,4");
     crate_pkg.add_file("model.safetensors", vec![0u8; 100]);
 
-    crate_pkg.to_directory().unwrap();
+    crate_pkg.to_directory().expect("operation should succeed");
 
     assert!(crate_path.join("data/train.csv").exists());
     assert!(crate_path.join("data/test.csv").exists());
@@ -160,11 +161,11 @@ fn test_artifact_metadata_in_crate() {
     use serde_json::json;
 
     let artifact = create_test_artifact();
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = TempDir::new().expect("temp file creation should succeed");
 
     let crate_pkg = RoCrate::from_artifact(&artifact, temp_dir.path().join("crate"));
 
-    let root = crate_pkg.descriptor.root_dataset().unwrap();
+    let root = crate_pkg.descriptor.root_dataset().expect("operation should succeed");
 
     assert_eq!(root.properties.get("name"), Some(&json!("Test Dataset")));
     assert_eq!(root.properties.get("version"), Some(&json!("1.0.0")));

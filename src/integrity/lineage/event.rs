@@ -207,8 +207,9 @@ mod tests {
         let event = LineageEvent::new(ts, LineageEventType::ArtifactSaved, "run-789")
             .with_context("model.gguf");
 
-        let json = serde_json::to_string(&event).unwrap();
-        let deserialized: LineageEvent = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&event).expect("JSON serialization should succeed");
+        let deserialized: LineageEvent =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(event.run_id, deserialized.run_id);
         assert_eq!(event.event_type, deserialized.event_type);
         assert_eq!(event.context, deserialized.context);
@@ -217,8 +218,9 @@ mod tests {
     #[test]
     fn test_lineage_event_type_serde() {
         let et = LineageEventType::ModelPromoted;
-        let json = serde_json::to_string(&et).unwrap();
-        let deserialized: LineageEventType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&et).expect("JSON serialization should succeed");
+        let deserialized: LineageEventType =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(et, deserialized);
     }
 

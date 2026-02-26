@@ -334,8 +334,8 @@ mod tests {
         let coverage_json = r#"{"data":[{"totals":{"lines":{"percent":85.5}}}]}"#;
         let mutants_json = r#"{"total_mutants":100,"caught":75,"missed":20,"timeout":5}"#;
 
-        let metrics =
-            CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0).unwrap();
+        let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0)
+            .expect("operation should succeed");
 
         assert!((metrics.coverage_percent - 85.5).abs() < f64::EPSILON);
         assert!((metrics.mutation_score - 75.0).abs() < f64::EPSILON);
@@ -348,8 +348,8 @@ mod tests {
         let coverage_json = r#"{"data":[{"totals":{"lines":{"percent":100.0}}}]}"#;
         let mutants_json = r#"{"total_mutants":50,"caught":50,"missed":0,"timeout":0}"#;
 
-        let metrics =
-            CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0).unwrap();
+        let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0)
+            .expect("operation should succeed");
 
         assert!((metrics.coverage_percent - 100.0).abs() < f64::EPSILON);
         assert!((metrics.mutation_score - 100.0).abs() < f64::EPSILON);
@@ -361,8 +361,8 @@ mod tests {
         let coverage_json = r#"{"data":[{"totals":{"lines":{"percent":90.0}}}]}"#;
         let mutants_json = r#"{"total_mutants":0,"caught":0,"missed":0,"timeout":0}"#;
 
-        let metrics =
-            CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0).unwrap();
+        let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0)
+            .expect("operation should succeed");
 
         assert!((metrics.mutation_score - 0.0).abs() < f64::EPSILON);
     }
@@ -388,8 +388,9 @@ mod tests {
     #[test]
     fn test_code_quality_metrics_serialization() {
         let metrics = CodeQualityMetrics::new(90.0, 80.0, 0);
-        let json = serde_json::to_string(&metrics).unwrap();
-        let parsed: CodeQualityMetrics = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&metrics).expect("JSON serialization should succeed");
+        let parsed: CodeQualityMetrics =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert!((parsed.coverage_percent - metrics.coverage_percent).abs() < f64::EPSILON);
         assert_eq!(parsed.pmat_grade, metrics.pmat_grade);

@@ -52,32 +52,36 @@ fn test_architecture_serde() {
         num_attention_heads: 32,
         intermediate_size: 11008,
     };
-    let serialized = serde_json::to_string(&arch).unwrap();
-    let deserialized: Architecture = serde_json::from_str(&serialized).unwrap();
+    let serialized = serde_json::to_string(&arch).expect("JSON serialization should succeed");
+    let deserialized: Architecture =
+        serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
     assert_eq!(arch.param_count(), deserialized.param_count());
 }
 
 #[test]
 fn test_bert_architecture_serde() {
     let arch = Architecture::BERT { num_layers: 12, hidden_size: 768, num_attention_heads: 12 };
-    let serialized = serde_json::to_string(&arch).unwrap();
-    let deserialized: Architecture = serde_json::from_str(&serialized).unwrap();
+    let serialized = serde_json::to_string(&arch).expect("JSON serialization should succeed");
+    let deserialized: Architecture =
+        serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
     assert_eq!(arch.param_count(), deserialized.param_count());
 }
 
 #[test]
 fn test_gpt2_architecture_serde() {
     let arch = Architecture::GPT2 { num_layers: 12, hidden_size: 768, num_attention_heads: 12 };
-    let serialized = serde_json::to_string(&arch).unwrap();
-    let deserialized: Architecture = serde_json::from_str(&serialized).unwrap();
+    let serialized = serde_json::to_string(&arch).expect("JSON serialization should succeed");
+    let deserialized: Architecture =
+        serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
     assert_eq!(arch.param_count(), deserialized.param_count());
 }
 
 #[test]
 fn test_t5_architecture_serde() {
     let arch = Architecture::T5 { encoder_layers: 12, decoder_layers: 12, hidden_size: 768 };
-    let serialized = serde_json::to_string(&arch).unwrap();
-    let deserialized: Architecture = serde_json::from_str(&serialized).unwrap();
+    let serialized = serde_json::to_string(&arch).expect("JSON serialization should succeed");
+    let deserialized: Architecture =
+        serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
     assert_eq!(arch.param_count(), deserialized.param_count());
 }
 
@@ -85,8 +89,9 @@ fn test_t5_architecture_serde() {
 fn test_custom_architecture_serde() {
     let arch =
         Architecture::Custom { config: serde_json::json!({"model_type": "custom", "layers": 10}) };
-    let serialized = serde_json::to_string(&arch).unwrap();
-    let deserialized: Architecture = serde_json::from_str(&serialized).unwrap();
+    let serialized = serde_json::to_string(&arch).expect("JSON serialization should succeed");
+    let deserialized: Architecture =
+        serde_json::from_str(&serialized).expect("JSON deserialization should succeed");
     assert_eq!(arch.param_count(), deserialized.param_count());
     assert_eq!(arch.param_count(), 0); // Custom always returns 0
 }

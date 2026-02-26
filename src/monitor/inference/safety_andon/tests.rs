@@ -278,16 +278,18 @@ fn test_safety_andon_trigger_emergency() {
 #[test]
 fn test_serde_safety_integrity_level() {
     let sil = SafetyIntegrityLevel::SIL3;
-    let json = serde_json::to_string(&sil).unwrap();
-    let deserialized: SafetyIntegrityLevel = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&sil).expect("JSON serialization should succeed");
+    let deserialized: SafetyIntegrityLevel =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(sil, deserialized);
 }
 
 #[test]
 fn test_serde_emergency_condition() {
     let cond = EmergencyCondition::CollisionImminent { time_to_collision_ms: 100.0 };
-    let json = serde_json::to_string(&cond).unwrap();
-    let _: EmergencyCondition = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&cond).expect("JSON serialization should succeed");
+    let _: EmergencyCondition =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 }
 
 #[test]

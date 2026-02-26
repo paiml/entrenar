@@ -146,7 +146,7 @@ fn test_sovereign_distribution_to_manifest_json() {
     assert!(json.contains("\"tier\": \"Core\"") || json.contains("\"tier\":\"Core\""));
 
     // Verify round-trip
-    let parsed = SovereignDistribution::from_manifest_json(&json).unwrap();
+    let parsed = SovereignDistribution::from_manifest_json(&json).expect("parsing should succeed");
     assert_eq!(parsed.name, dist.name);
     assert_eq!(parsed.tier, dist.tier);
 }
@@ -185,8 +185,9 @@ fn test_distribution_format_display() {
 #[test]
 fn test_distribution_serialization() {
     let dist = SovereignDistribution::full();
-    let json = serde_json::to_string(&dist).unwrap();
-    let parsed: SovereignDistribution = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&dist).expect("JSON serialization should succeed");
+    let parsed: SovereignDistribution =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(dist.name, parsed.name);
     assert_eq!(dist.tier, parsed.tier);

@@ -209,9 +209,9 @@ mod tests {
     fn test_ro_crate_entity_with_references() {
         let entity = RoCrateEntity::new("test", EntityType::Dataset)
             .with_references("hasPart", vec!["file1.txt", "file2.txt"]);
-        let parts = entity.properties.get("hasPart").unwrap();
+        let parts = entity.properties.get("hasPart").expect("key should exist");
         assert!(parts.is_array());
-        let arr = parts.as_array().unwrap();
+        let arr = parts.as_array().expect("operation should succeed");
         assert_eq!(arr.len(), 2);
     }
 
@@ -251,8 +251,9 @@ mod tests {
             .with_name("Test Dataset")
             .with_description("A test");
 
-        let json = serde_json::to_string(&entity).unwrap();
-        let deserialized: RoCrateEntity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entity).expect("JSON serialization should succeed");
+        let deserialized: RoCrateEntity =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(entity.id, deserialized.id);
         assert_eq!(entity.type_field, deserialized.type_field);
     }
@@ -260,8 +261,9 @@ mod tests {
     #[test]
     fn test_entity_type_serde() {
         let et = EntityType::SoftwareApplication;
-        let json = serde_json::to_string(&et).unwrap();
-        let deserialized: EntityType = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&et).expect("JSON serialization should succeed");
+        let deserialized: EntityType =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(et, deserialized);
     }
 

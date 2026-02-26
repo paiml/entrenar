@@ -151,7 +151,7 @@ mod tests {
             tree.add_child(NodeId::new(0), child_state.clone(), child_action, vec![], 0.5);
 
         assert_eq!(tree.size(), 2);
-        let child = tree.get(child_id).unwrap();
+        let child = tree.get(child_id).expect("key should exist");
         assert_eq!(child.state, child_state);
     }
 

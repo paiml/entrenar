@@ -68,9 +68,9 @@ proptest! {
 
         let json = serde_json::to_string(&schedule);
         prop_assert!(json.is_ok(), "serialize failed: {:?}", json.err());
-        let json = json.unwrap();
+        let json = json.expect("operation should succeed");
         let deserialized: Result<PruningSchedule, _> = serde_json::from_str(&json);
         prop_assert!(deserialized.is_ok(), "deserialize failed: {:?}", deserialized.err());
-        prop_assert_eq!(schedule, deserialized.unwrap());
+        prop_assert_eq!(schedule, deserialized.expect("deserialization should succeed"));
     }
 }

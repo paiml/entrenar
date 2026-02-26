@@ -49,7 +49,7 @@ fn test_leaderboard() {
     leaderboard.add(result3);
 
     // Best should be Model B (highest accuracy)
-    assert_eq!(leaderboard.best().unwrap().model_name, "Model B");
+    assert_eq!(leaderboard.best().expect("operation should succeed").model_name, "Model B");
 
     // Order should be B, C, A
     assert_eq!(leaderboard.results[0].model_name, "Model B");
@@ -70,7 +70,7 @@ fn test_leaderboard_lower_is_better() {
     leaderboard.add(result2);
 
     // Best should be Model B (lowest MSE)
-    assert_eq!(leaderboard.best().unwrap().model_name, "Model B");
+    assert_eq!(leaderboard.best().expect("operation should succeed").model_name, "Model B");
 }
 
 #[test]
@@ -214,7 +214,7 @@ fn test_leaderboard_with_generative_metrics() {
     leaderboard.add(result2);
 
     // Best WER is lowest → Whisper-large
-    assert_eq!(leaderboard.best().unwrap().model_name, "Whisper-large");
+    assert_eq!(leaderboard.best().expect("operation should succeed").model_name, "Whisper-large");
 }
 
 #[test]
@@ -308,7 +308,7 @@ fn test_eval_result_cv_fields() {
     result.cv_std = Some(0.014);
     result.trace_id = Some("trace-123".to_string());
 
-    assert_eq!(result.cv_scores.as_ref().unwrap().len(), 5);
+    assert_eq!(result.cv_scores.as_ref().expect("operation should succeed").len(), 5);
     assert_eq!(result.cv_mean, Some(0.9));
     assert_eq!(result.cv_std, Some(0.014));
     assert_eq!(result.trace_id, Some("trace-123".to_string()));

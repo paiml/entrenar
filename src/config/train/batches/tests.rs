@@ -91,7 +91,7 @@ fn test_load_training_batches_nonexistent_file() {
 
     let result = load_training_batches(&spec);
     assert!(result.is_ok());
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert!(!batches.is_empty()); // Should return demo batches
 }
 
@@ -102,8 +102,9 @@ fn test_load_training_batches_unsupported_format() {
     use std::path::PathBuf;
 
     // Create a temp file with unsupported extension
-    let mut temp_file = NamedTempFile::with_suffix(".xyz").unwrap();
-    writeln!(temp_file, "test data").unwrap();
+    let mut temp_file =
+        NamedTempFile::with_suffix(".xyz").expect("temp file creation should succeed");
+    writeln!(temp_file, "test data").expect("file write should succeed");
 
     let spec = TrainSpec {
         model: crate::config::ModelRef {
@@ -133,14 +134,15 @@ fn test_load_training_batches_unsupported_format() {
 
     let result = load_training_batches(&spec);
     assert!(result.is_ok());
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert!(!batches.is_empty()); // Should return demo batches
 }
 
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_load_json_batches_structured_format() {
-    let mut temp_file = NamedTempFile::with_suffix(".json").unwrap();
+    let mut temp_file =
+        NamedTempFile::with_suffix(".json").expect("temp file creation should succeed");
     writeln!(
         temp_file,
         r#"{{
@@ -150,18 +152,19 @@ fn test_load_json_batches_structured_format() {
             ]
         }}"#
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let result = load_json_batches(temp_file.path(), 2);
     assert!(result.is_ok());
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert!(!batches.is_empty());
 }
 
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_load_json_batches_array_format() {
-    let mut temp_file = NamedTempFile::with_suffix(".json").unwrap();
+    let mut temp_file =
+        NamedTempFile::with_suffix(".json").expect("temp file creation should succeed");
     writeln!(
         temp_file,
         r#"[
@@ -170,24 +173,26 @@ fn test_load_json_batches_array_format() {
             {{"input": [5.0, 6.0], "target": [0.3]}}
         ]"#
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let result = load_json_batches(temp_file.path(), 2);
     assert!(result.is_ok());
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert!(!batches.is_empty());
 }
 
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_load_json_batches_invalid_format() {
-    let mut temp_file = NamedTempFile::with_suffix(".json").unwrap();
-    writeln!(temp_file, r#"{{"some": "other", "format": true}}"#).unwrap();
+    let mut temp_file =
+        NamedTempFile::with_suffix(".json").expect("temp file creation should succeed");
+    writeln!(temp_file, r#"{{"some": "other", "format": true}}"#)
+        .expect("file write should succeed");
 
     let result = load_json_batches(temp_file.path(), 2);
     assert!(result.is_ok());
     // Should fall back to demo batches
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert!(!batches.is_empty());
 }
 
@@ -202,7 +207,8 @@ fn test_load_json_batches_file_not_found() {
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_load_json_batches_batch_size_one() {
-    let mut temp_file = NamedTempFile::with_suffix(".json").unwrap();
+    let mut temp_file =
+        NamedTempFile::with_suffix(".json").expect("temp file creation should succeed");
     writeln!(
         temp_file,
         r#"[
@@ -210,19 +216,21 @@ fn test_load_json_batches_batch_size_one() {
             {{"input": [2.0], "target": [0.2]}}
         ]"#
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let result = load_json_batches(temp_file.path(), 1);
     assert!(result.is_ok());
-    let batches = result.unwrap();
+    let batches = result.expect("operation should succeed");
     assert_eq!(batches.len(), 2);
 }
 
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
 fn test_load_json_batches_batch_size_zero() {
-    let mut temp_file = NamedTempFile::with_suffix(".json").unwrap();
-    writeln!(temp_file, r#"[{{"input": [1.0], "target": [0.1]}}]"#).unwrap();
+    let mut temp_file =
+        NamedTempFile::with_suffix(".json").expect("temp file creation should succeed");
+    writeln!(temp_file, r#"[{{"input": [1.0], "target": [0.1]}}]"#)
+        .expect("file write should succeed");
 
     let result = load_json_batches(temp_file.path(), 0);
     assert!(result.is_ok());
@@ -235,8 +243,10 @@ fn test_load_training_batches_json_file() {
     use crate::config::schema::TrainSpec;
     use std::path::PathBuf;
 
-    let mut temp_file = NamedTempFile::with_suffix(".json").unwrap();
-    writeln!(temp_file, r#"[{{"input": [1.0, 2.0], "target": [0.5]}}]"#).unwrap();
+    let mut temp_file =
+        NamedTempFile::with_suffix(".json").expect("temp file creation should succeed");
+    writeln!(temp_file, r#"[{{"input": [1.0, 2.0], "target": [0.5]}}]"#)
+        .expect("file write should succeed");
 
     let spec = TrainSpec {
         model: crate::config::ModelRef {

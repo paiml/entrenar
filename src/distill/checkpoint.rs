@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn test_save_checkpoint_creates_files() {
         let (weights, shapes, checkpoint) = make_test_data();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let path = save_student_checkpoint(
             &weights,
@@ -130,7 +130,7 @@ mod tests {
             tmp.path(),
             "student.safetensors",
         )
-        .unwrap();
+        .expect("operation should succeed");
 
         assert!(path.exists());
         assert!(tmp.path().join("distillation_metadata.json").exists());
@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn test_save_checkpoint_safetensors_valid() {
         let (weights, shapes, checkpoint) = make_test_data();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let path = save_student_checkpoint(
             &weights,
@@ -148,10 +148,10 @@ mod tests {
             tmp.path(),
             "student.safetensors",
         )
-        .unwrap();
+        .expect("operation should succeed");
 
-        let data = std::fs::read(&path).unwrap();
-        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+        let data = std::fs::read(&path).expect("file read should succeed");
+        let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
         assert_eq!(loaded.len(), 2);
 
         let names = loaded.names();
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn test_save_checkpoint_metadata_in_safetensors() {
         let (weights, shapes, checkpoint) = make_test_data();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         let path = save_student_checkpoint(
             &weights,
@@ -171,28 +171,31 @@ mod tests {
             tmp.path(),
             "student.safetensors",
         )
-        .unwrap();
+        .expect("operation should succeed");
 
-        let data = std::fs::read(&path).unwrap();
-        let (_, st_meta) = safetensors::SafeTensors::read_metadata(&data).unwrap();
-        let meta = st_meta.metadata().as_ref().unwrap();
+        let data = std::fs::read(&path).expect("file read should succeed");
+        let (_, st_meta) =
+            safetensors::SafeTensors::read_metadata(&data).expect("deserialization should succeed");
+        let meta = st_meta.metadata().as_ref().expect("operation should succeed");
 
-        assert_eq!(meta.get("teacher_model").unwrap(), "bert-base-uncased");
-        assert_eq!(meta.get("temperature").unwrap(), "3");
-        assert_eq!(meta.get("alpha").unwrap(), "0.5");
-        assert_eq!(meta.get("epoch").unwrap(), "5");
+        assert_eq!(meta.get("teacher_model").expect("key should exist"), "bert-base-uncased");
+        assert_eq!(meta.get("temperature").expect("key should exist"), "3");
+        assert_eq!(meta.get("alpha").expect("key should exist"), "0.5");
+        assert_eq!(meta.get("epoch").expect("key should exist"), "5");
     }
 
     #[test]
     fn test_save_checkpoint_distillation_metadata() {
         let (weights, shapes, checkpoint) = make_test_data();
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
 
         save_student_checkpoint(&weights, &shapes, &checkpoint, tmp.path(), "student.safetensors")
-            .unwrap();
+            .expect("operation should succeed");
 
-        let json = std::fs::read_to_string(tmp.path().join("distillation_metadata.json")).unwrap();
-        let loaded: DistillationCheckpoint = serde_json::from_str(&json).unwrap();
+        let json = std::fs::read_to_string(tmp.path().join("distillation_metadata.json"))
+            .expect("file read should succeed");
+        let loaded: DistillationCheckpoint =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(loaded.teacher_model, "bert-base-uncased");
         assert_eq!(loaded.temperature, 3.0);
@@ -218,10 +221,10 @@ mod tests {
             step: 0,
         };
 
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let path =
             save_student_checkpoint(&weights, &shapes, &checkpoint, tmp.path(), "ckpt.safetensors")
-                .unwrap();
+                .expect("operation should succeed");
         assert!(path.exists());
     }
 }

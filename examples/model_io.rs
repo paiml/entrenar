@@ -51,8 +51,9 @@ fn main() {
     println!("  ✓ Parameters: {}", loaded_json.parameters.len());
 
     // Verify parameters match
-    let orig_weight = model.get_parameter("layer1.weight").unwrap();
-    let loaded_weight = loaded_json.get_parameter("layer1.weight").unwrap();
+    let orig_weight = model.get_parameter("layer1.weight").expect("operation should succeed");
+    let loaded_weight =
+        loaded_json.get_parameter("layer1.weight").expect("operation should succeed");
     println!("  ✓ Data integrity check: {}", orig_weight.data() == loaded_weight.data());
     println!();
 

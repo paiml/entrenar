@@ -429,8 +429,9 @@ mod tests {
     #[test]
     fn test_energy_metrics_serialization() {
         let metrics = EnergyMetrics::new(200.0, 720_000.0, 1000);
-        let json = serde_json::to_string(&metrics).unwrap();
-        let parsed: EnergyMetrics = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&metrics).expect("JSON serialization should succeed");
+        let parsed: EnergyMetrics =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert!((parsed.watts_avg - metrics.watts_avg).abs() < f64::EPSILON);
     }
@@ -438,8 +439,9 @@ mod tests {
     #[test]
     fn test_cost_metrics_serialization() {
         let metrics = CostMetrics::new(2.0, 1.50, 10000, 5);
-        let json = serde_json::to_string(&metrics).unwrap();
-        let parsed: CostMetrics = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&metrics).expect("JSON serialization should succeed");
+        let parsed: CostMetrics =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert!((parsed.total_cost_usd - metrics.total_cost_usd).abs() < f64::EPSILON);
     }

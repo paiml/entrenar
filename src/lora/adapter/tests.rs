@@ -29,11 +29,11 @@ proptest! {
         // Create adapter and save
         let adapter = LoRAAdapter::from_layer(&layer, rank, alpha);
         let path = format!("/tmp/prop_test_adapter_{d_out}_{d_in}_{rank}.json");
-        adapter.save(&path).unwrap();
+        adapter.save(&path).expect("save should succeed");
 
         // Load and reconstruct
-        let loaded = LoRAAdapter::load(&path).unwrap();
-        let loaded_layer = loaded.to_layer(base_weight).unwrap();
+        let loaded = LoRAAdapter::load(&path).expect("load should succeed");
+        let loaded_layer = loaded.to_layer(base_weight).expect("load should succeed");
 
         // Verify all fields preserved
         prop_assert_eq!(loaded_layer.d_out(), d_out);
@@ -84,8 +84,8 @@ proptest! {
 
         // Save and load
         let path = format!("/tmp/prop_forward_test_{d}_{rank}.json");
-        save_adapter(&layer, rank, 4.0, &path).unwrap();
-        let loaded_layer = load_adapter(base_weight, &path).unwrap();
+        save_adapter(&layer, rank, 4.0, &path).expect("save should succeed");
+        let loaded_layer = load_adapter(base_weight, &path).expect("load should succeed");
         let loaded_output = loaded_layer.forward(&x);
 
         // Forward outputs must match
@@ -140,11 +140,11 @@ fn test_adapter_serialization_round_trip() {
     // Save adapter
     let path = "/tmp/test_adapter.json";
     let adapter = LoRAAdapter::from_layer(&layer, 2, 4.0);
-    adapter.save(path).unwrap();
+    adapter.save(path).expect("save should succeed");
 
     // Load adapter
-    let loaded_adapter = LoRAAdapter::load(path).unwrap();
-    let loaded_layer = loaded_adapter.to_layer(base_weight).unwrap();
+    let loaded_adapter = LoRAAdapter::load(path).expect("load should succeed");
+    let loaded_layer = loaded_adapter.to_layer(base_weight).expect("load should succeed");
 
     // Verify weights match
     for (&orig, &loaded) in layer.lora_a().data().iter().zip(loaded_layer.lora_a().data().iter()) {
@@ -162,7 +162,7 @@ fn test_adapter_serialization_round_trip() {
     assert_abs_diff_eq!(loaded_layer.scale(), 2.0, epsilon = 1e-6); // 4.0 / 2
 
     // Cleanup
-    fs::remove_file(path).unwrap();
+    fs::remove_file(path).expect("operation should succeed");
 }
 
 #[test]
@@ -179,8 +179,8 @@ fn test_adapter_forward_consistency() {
 
     // Save and load
     let path = "/tmp/test_adapter_forward.json";
-    save_adapter(&layer, 1, 1.0, path).unwrap();
-    let loaded_layer = load_adapter(base_weight, path).unwrap();
+    save_adapter(&layer, 1, 1.0, path).expect("save should succeed");
+    let loaded_layer = load_adapter(base_weight, path).expect("load should succeed");
 
     let output_loaded = loaded_layer.forward(&x);
 
@@ -191,7 +191,7 @@ fn test_adapter_forward_consistency() {
     }
 
     // Cleanup
-    fs::remove_file(path).unwrap();
+    fs::remove_file(path).expect("operation should succeed");
 }
 
 #[test]
@@ -238,25 +238,26 @@ fn test_multiple_adapters_same_base() {
     let mut layer1 = LoRALayer::new(base_weight.clone(), 2, 2, 1, 1.0);
     *layer1.lora_a_mut().data_mut() = ndarray::arr1(&[1.0, 1.0]);
     *layer1.lora_b_mut().data_mut() = ndarray::arr1(&[1.0, 1.0]);
-    save_adapter(&layer1, 1, 1.0, "/tmp/adapter1.json").unwrap();
+    save_adapter(&layer1, 1, 1.0, "/tmp/adapter1.json").expect("save should succeed");
 
     // Create and save adapter 2
     let mut layer2 = LoRALayer::new(base_weight.clone(), 2, 2, 1, 1.0);
     *layer2.lora_a_mut().data_mut() = ndarray::arr1(&[2.0, 2.0]);
     *layer2.lora_b_mut().data_mut() = ndarray::arr1(&[2.0, 2.0]);
-    save_adapter(&layer2, 1, 1.0, "/tmp/adapter2.json").unwrap();
+    save_adapter(&layer2, 1, 1.0, "/tmp/adapter2.json").expect("save should succeed");
 
     // Load both adapters
-    let loaded1 = load_adapter(base_weight.clone(), "/tmp/adapter1.json").unwrap();
-    let loaded2 = load_adapter(base_weight, "/tmp/adapter2.json").unwrap();
+    let loaded1 =
+        load_adapter(base_weight.clone(), "/tmp/adapter1.json").expect("load should succeed");
+    let loaded2 = load_adapter(base_weight, "/tmp/adapter2.json").expect("load should succeed");
 
     // Verify they're different
     assert_abs_diff_eq!(loaded1.lora_a().data()[0], 1.0, epsilon = 1e-6);
     assert_abs_diff_eq!(loaded2.lora_a().data()[0], 2.0, epsilon = 1e-6);
 
     // Cleanup
-    fs::remove_file("/tmp/adapter1.json").unwrap();
-    fs::remove_file("/tmp/adapter2.json").unwrap();
+    fs::remove_file("/tmp/adapter1.json").expect("operation should succeed");
+    fs::remove_file("/tmp/adapter2.json").expect("operation should succeed");
 }
 
 #[test]
@@ -266,10 +267,10 @@ fn test_adapter_file_format_readable() {
     let layer = LoRALayer::new(base_weight, 2, 1, 1, 2.0);
 
     let path = "/tmp/test_readable.json";
-    save_adapter(&layer, 1, 2.0, path).unwrap();
+    save_adapter(&layer, 1, 2.0, path).expect("save should succeed");
 
     // Read raw file content
-    let content = fs::read_to_string(path).unwrap();
+    let content = fs::read_to_string(path).expect("file read should succeed");
 
     // Should contain key fields
     assert!(content.contains("\"version\""));
@@ -279,5 +280,5 @@ fn test_adapter_file_format_readable() {
     assert!(content.contains("\"lora_b\""));
 
     // Cleanup
-    fs::remove_file(path).unwrap();
+    fs::remove_file(path).expect("operation should succeed");
 }

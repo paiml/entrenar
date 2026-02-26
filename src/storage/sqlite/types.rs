@@ -129,7 +129,7 @@ mod tests {
 
         for value in values {
             let json = value.to_json();
-            let parsed = ParameterValue::from_json(&json).unwrap();
+            let parsed = ParameterValue::from_json(&json).expect("parsing should succeed");
             assert_eq!(value, parsed);
         }
     }
@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(param.type_name(), "dict");
 
         let json = param.to_json();
-        let parsed = ParameterValue::from_json(&json).unwrap();
+        let parsed = ParameterValue::from_json(&json).expect("parsing should succeed");
         assert_eq!(param, parsed);
     }
 

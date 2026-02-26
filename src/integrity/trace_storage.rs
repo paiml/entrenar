@@ -461,8 +461,9 @@ mod tests {
     #[test]
     fn test_trace_storage_policy_serialization() {
         let policy = TraceStoragePolicy::production();
-        let json = serde_json::to_string(&policy).unwrap();
-        let parsed: TraceStoragePolicy = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&policy).expect("JSON serialization should succeed");
+        let parsed: TraceStoragePolicy =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(parsed.compression, policy.compression);
         assert_eq!(parsed.retention_days, policy.retention_days);

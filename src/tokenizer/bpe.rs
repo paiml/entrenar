@@ -263,7 +263,7 @@ mod tests {
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["hello hello", "hello world", "world hello"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
         assert!(tokenizer.is_trained());
         assert!(tokenizer.vocab_size() > 256); // Base bytes + some merges
@@ -284,11 +284,11 @@ mod tests {
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["hello world", "hello there"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
         let text = "hello";
-        let encoded = tokenizer.encode(text).unwrap();
-        let decoded = tokenizer.decode(&encoded).unwrap();
+        let encoded = tokenizer.encode(text).expect("encoding should succeed");
+        let decoded = tokenizer.decode(&encoded).expect("encoding should succeed");
 
         assert_eq!(decoded, text);
     }
@@ -300,10 +300,10 @@ mod tests {
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["Hello World"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
-        let encoded = tokenizer.encode("HELLO").unwrap();
-        let decoded = tokenizer.decode(&encoded).unwrap();
+        let encoded = tokenizer.encode("HELLO").expect("encoding should succeed");
+        let decoded = tokenizer.decode(&encoded).expect("encoding should succeed");
 
         assert_eq!(decoded, "hello");
     }
@@ -314,7 +314,7 @@ mod tests {
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["test"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
         // ID 0 should be <unk>
         assert_eq!(tokenizer.id_to_token(0), Some("<unk>"));
@@ -326,7 +326,7 @@ mod tests {
         let mut tokenizer = BPETokenizer::new(config);
 
         let corpus = vec!["test"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
         assert_eq!(tokenizer.token_to_id("<unk>"), Some(0));
     }
@@ -346,9 +346,9 @@ mod property_tests {
                 .with_vocab_size(300)
                 .with_min_frequency(1);
             let mut tokenizer = BPETokenizer::new(config);
-            tokenizer.train(&[&text]).unwrap();
+            tokenizer.train(&[&text]).expect("operation should succeed");
 
-            let encoded = tokenizer.encode(&text).unwrap();
+            let encoded = tokenizer.encode(&text).expect("encoding should succeed");
 
             for id in encoded {
                 prop_assert!(tokenizer.id_to_token(id).is_some());
@@ -363,7 +363,7 @@ mod property_tests {
             let mut tokenizer = BPETokenizer::new(config);
 
             let corpus = vec!["hello world hello world test test"];
-            tokenizer.train(&corpus).unwrap();
+            tokenizer.train(&corpus).expect("operation should succeed");
 
             prop_assert!(tokenizer.vocab_size() <= target_size);
         }

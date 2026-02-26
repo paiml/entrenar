@@ -128,7 +128,7 @@ mod tests {
         let mut tokenizer = CharTokenizer::new(config);
 
         let corpus = vec!["hello", "world"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
         assert!(tokenizer.is_trained());
         // h, e, l, o, w, r, d = 7 unique chars
@@ -141,11 +141,11 @@ mod tests {
         let mut tokenizer = CharTokenizer::new(config);
 
         let corpus = vec!["hello"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
         let text = "hello";
-        let encoded = tokenizer.encode(text).unwrap();
-        let decoded = tokenizer.decode(&encoded).unwrap();
+        let encoded = tokenizer.encode(text).expect("encoding should succeed");
+        let decoded = tokenizer.decode(&encoded).expect("encoding should succeed");
 
         assert_eq!(decoded, text);
     }
@@ -156,11 +156,11 @@ mod tests {
         let mut tokenizer = CharTokenizer::new(config);
 
         let corpus = vec!["abc"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
         // 'x' is not in vocabulary, should be skipped
-        let encoded = tokenizer.encode("axbc").unwrap();
-        let decoded = tokenizer.decode(&encoded).unwrap();
+        let encoded = tokenizer.encode("axbc").expect("encoding should succeed");
+        let decoded = tokenizer.decode(&encoded).expect("encoding should succeed");
 
         assert_eq!(decoded, "abc");
     }
@@ -171,10 +171,10 @@ mod tests {
         let mut tokenizer = CharTokenizer::new(config);
 
         let corpus = vec!["Hello"];
-        tokenizer.train(&corpus).unwrap();
+        tokenizer.train(&corpus).expect("operation should succeed");
 
-        let encoded = tokenizer.encode("HELLO").unwrap();
-        let decoded = tokenizer.decode(&encoded).unwrap();
+        let encoded = tokenizer.encode("HELLO").expect("encoding should succeed");
+        let decoded = tokenizer.decode(&encoded).expect("encoding should succeed");
 
         assert_eq!(decoded, "hello");
     }
@@ -192,10 +192,10 @@ mod property_tests {
         fn prop_char_roundtrip(text in "[a-z]{1,20}") {
             let config = TokenizerConfig::char().with_min_frequency(1);
             let mut tokenizer = CharTokenizer::new(config);
-            tokenizer.train(&[&text]).unwrap();
+            tokenizer.train(&[&text]).expect("operation should succeed");
 
-            let encoded = tokenizer.encode(&text).unwrap();
-            let decoded = tokenizer.decode(&encoded).unwrap();
+            let encoded = tokenizer.encode(&text).expect("encoding should succeed");
+            let decoded = tokenizer.decode(&encoded).expect("encoding should succeed");
 
             prop_assert_eq!(decoded, text);
         }
@@ -206,7 +206,7 @@ mod property_tests {
                 .with_min_frequency(1)
                 .with_vocab_size(256);
             let mut tokenizer = CharTokenizer::new(config);
-            tokenizer.train(&[&text]).unwrap();
+            tokenizer.train(&[&text]).expect("operation should succeed");
 
             let unique_chars: std::collections::HashSet<char> = text.chars().collect();
             prop_assert_eq!(tokenizer.vocab_size(), unique_chars.len());

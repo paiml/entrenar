@@ -13,9 +13,9 @@ fn ties_permutation_invariance() {
         make_model(vec![-1.0, 2.0, 3.0, 4.0]),
     ];
 
-    let config = TiesConfig::new(0.5).unwrap();
+    let config = TiesConfig::new(0.5).expect("config should be valid");
 
-    let r1 = ties_merge(&models, &base, &config).unwrap();
+    let r1 = ties_merge(&models, &base, &config).expect("config should be valid");
 
     // All permutations should yield same result
     let perms =
@@ -23,7 +23,7 @@ fn ties_permutation_invariance() {
 
     for perm in perms {
         let permuted: Vec<Model> = perm.iter().map(|&i| models[i].clone()).collect();
-        let r = ties_merge(&permuted, &base, &config).unwrap();
+        let r = ties_merge(&permuted, &base, &config).expect("config should be valid");
         assert!(models_approx_equal(&r1, &r, 1e-5), "TIES should be permutation-invariant");
     }
 }
@@ -34,9 +34,10 @@ fn ties_self_merge_preserves_direction() {
     let base = make_model(vec![0.0, 0.0, 0.0]);
     let m = make_model(vec![1.0, -2.0, 3.0]);
 
-    let config = TiesConfig::new(0.8).unwrap(); // High density to keep most values
+    let config = TiesConfig::new(0.8).expect("config should be valid"); // High density to keep most values
 
-    let result = ties_merge(&[m.clone(), m.clone()], &base, &config).unwrap();
+    let result =
+        ties_merge(&[m.clone(), m.clone()], &base, &config).expect("config should be valid");
 
     // Signs should match original
     let orig = m["w"].data();

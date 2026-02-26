@@ -185,31 +185,31 @@ mod tests {
     fn test_skip_gguf_value_variant_0_1_7() {
         let data = [0u8; 16];
         // UINT8 (0)
-        assert_eq!(skip_gguf_value(&data, 0, 0).unwrap(), 1);
+        assert_eq!(skip_gguf_value(&data, 0, 0).expect("operation should succeed"), 1);
         // INT8 (1)
-        assert_eq!(skip_gguf_value(&data, 0, 1).unwrap(), 1);
+        assert_eq!(skip_gguf_value(&data, 0, 1).expect("operation should succeed"), 1);
         // BOOL (7)
-        assert_eq!(skip_gguf_value(&data, 0, 7).unwrap(), 1);
+        assert_eq!(skip_gguf_value(&data, 0, 7).expect("operation should succeed"), 1);
     }
 
     #[test]
     fn test_skip_gguf_value_variant_2_3() {
         let data = [0u8; 16];
         // UINT16 (2)
-        assert_eq!(skip_gguf_value(&data, 0, 2).unwrap(), 2);
+        assert_eq!(skip_gguf_value(&data, 0, 2).expect("operation should succeed"), 2);
         // INT16 (3)
-        assert_eq!(skip_gguf_value(&data, 0, 3).unwrap(), 2);
+        assert_eq!(skip_gguf_value(&data, 0, 3).expect("operation should succeed"), 2);
     }
 
     #[test]
     fn test_skip_gguf_value_variant_4_to_6() {
         let data = [0u8; 16];
         // UINT32 (4)
-        assert_eq!(skip_gguf_value(&data, 0, 4).unwrap(), 4);
+        assert_eq!(skip_gguf_value(&data, 0, 4).expect("operation should succeed"), 4);
         // INT32 (5)
-        assert_eq!(skip_gguf_value(&data, 0, 5).unwrap(), 4);
+        assert_eq!(skip_gguf_value(&data, 0, 5).expect("operation should succeed"), 4);
         // FLOAT32 (6)
-        assert_eq!(skip_gguf_value(&data, 0, 6).unwrap(), 4);
+        assert_eq!(skip_gguf_value(&data, 0, 6).expect("operation should succeed"), 4);
     }
 
     #[test]
@@ -222,18 +222,18 @@ mod tests {
         data[8] = b'a';
         data[9] = b'b';
         data[10] = b'c';
-        assert_eq!(skip_gguf_value(&data, 0, 8).unwrap(), 11);
+        assert_eq!(skip_gguf_value(&data, 0, 8).expect("operation should succeed"), 11);
     }
 
     #[test]
     fn test_skip_gguf_value_variant_10_to_12() {
         let data = [0u8; 16];
         // UINT64 (10)
-        assert_eq!(skip_gguf_value(&data, 0, 10).unwrap(), 8);
+        assert_eq!(skip_gguf_value(&data, 0, 10).expect("operation should succeed"), 8);
         // INT64 (11)
-        assert_eq!(skip_gguf_value(&data, 0, 11).unwrap(), 8);
+        assert_eq!(skip_gguf_value(&data, 0, 11).expect("operation should succeed"), 8);
         // FLOAT64 (12)
-        assert_eq!(skip_gguf_value(&data, 0, 12).unwrap(), 8);
+        assert_eq!(skip_gguf_value(&data, 0, 12).expect("operation should succeed"), 8);
     }
 
     #[test]
@@ -245,7 +245,7 @@ mod tests {
         data[0] = 0;
         // count = 2 (u64 LE)
         data[4] = 2;
-        assert_eq!(skip_gguf_value(&data, 0, 9).unwrap(), 14);
+        assert_eq!(skip_gguf_value(&data, 0, 9).expect("operation should succeed"), 14);
     }
 
     #[test]

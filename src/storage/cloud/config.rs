@@ -96,29 +96,29 @@ mod tests {
     #[test]
     fn test_backend_config_build_memory() {
         let config = BackendConfig::memory();
-        let backend = config.build().unwrap();
+        let backend = config.build().expect("builder should produce valid result");
         assert_eq!(backend.backend_type(), "memory");
     }
 
     #[test]
     fn test_backend_config_build_s3() {
         let config = BackendConfig::s3("bucket", "prefix");
-        let backend = config.build().unwrap();
+        let backend = config.build().expect("builder should produce valid result");
         assert_eq!(backend.backend_type(), "s3");
     }
 
     #[test]
     fn test_backend_config_build_local() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("temp file creation should succeed");
         let config = BackendConfig::local(tmp.path().to_path_buf());
-        let backend = config.build().unwrap();
+        let backend = config.build().expect("builder should produce valid result");
         assert_eq!(backend.backend_type(), "local");
     }
 
     #[test]
     fn test_backend_config_build_azure() {
         let config = BackendConfig::Azure(AzureConfig::new("account", "container"));
-        let backend = config.build().unwrap();
+        let backend = config.build().expect("builder should produce valid result");
         // Currently returns InMemoryBackend as placeholder
         assert_eq!(backend.backend_type(), "memory");
     }
@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn test_backend_config_build_gcs() {
         let config = BackendConfig::GCS(GCSConfig::new("bucket"));
-        let backend = config.build().unwrap();
+        let backend = config.build().expect("builder should produce valid result");
         // Currently returns InMemoryBackend as placeholder
         assert_eq!(backend.backend_type(), "memory");
     }
@@ -142,8 +142,9 @@ mod tests {
         ];
 
         for config in configs {
-            let json = serde_json::to_string(&config).unwrap();
-            let parsed: BackendConfig = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+            let parsed: BackendConfig =
+                serde_json::from_str(&json).expect("JSON deserialization should succeed");
             // Just verify it parses without panic
             let _ = parsed;
         }

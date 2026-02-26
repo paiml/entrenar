@@ -278,7 +278,7 @@ mod tests {
 
     fn setup_storage() -> (Arc<Mutex<InMemoryStorage>>, String) {
         let mut storage = InMemoryStorage::new();
-        let exp_id = storage.create_experiment("test-exp", None).unwrap();
+        let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
         (Arc::new(Mutex::new(storage)), exp_id)
     }
 
@@ -311,10 +311,10 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::default();
 
-        let run = Run::new(&exp_id, storage, config).unwrap();
+        let run = Run::new(&exp_id, storage, config).expect("config should be valid");
 
         assert!(run.span_id().is_some());
-        assert!(run.span_id().unwrap().starts_with("span-"));
+        assert!(run.span_id().expect("operation should succeed").starts_with("span-"));
     }
 
     #[test]
@@ -322,7 +322,7 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::disabled();
 
-        let run = Run::new(&exp_id, storage, config).unwrap();
+        let run = Run::new(&exp_id, storage, config).expect("config should be valid");
 
         assert!(run.span_id().is_none());
     }
@@ -332,15 +332,19 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::disabled();
 
-        let mut run = Run::new(&exp_id, storage.clone(), config).unwrap();
+        let mut run = Run::new(&exp_id, storage.clone(), config).expect("config should be valid");
 
-        run.log_metric("loss", 0.5).unwrap();
-        run.log_metric("loss", 0.4).unwrap();
-        run.log_metric("loss", 0.3).unwrap();
+        run.log_metric("loss", 0.5).expect("operation should succeed");
+        run.log_metric("loss", 0.4).expect("operation should succeed");
+        run.log_metric("loss", 0.3).expect("operation should succeed");
 
         assert_eq!(run.current_step("loss"), 3);
 
-        let metrics = storage.lock().unwrap().get_metrics(&run.id, "loss").unwrap();
+        let metrics = storage
+            .lock()
+            .expect("lock acquisition should succeed")
+            .get_metrics(&run.id, "loss")
+            .expect("lock acquisition should succeed");
         assert_eq!(metrics.len(), 3);
         assert_eq!(metrics[0].step, 0);
         assert_eq!(metrics[1].step, 1);
@@ -352,13 +356,17 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::disabled();
 
-        let mut run = Run::new(&exp_id, storage.clone(), config).unwrap();
+        let mut run = Run::new(&exp_id, storage.clone(), config).expect("config should be valid");
 
-        run.log_metric_at("accuracy", 0, 0.7).unwrap();
-        run.log_metric_at("accuracy", 10, 0.8).unwrap();
-        run.log_metric_at("accuracy", 20, 0.9).unwrap();
+        run.log_metric_at("accuracy", 0, 0.7).expect("operation should succeed");
+        run.log_metric_at("accuracy", 10, 0.8).expect("operation should succeed");
+        run.log_metric_at("accuracy", 20, 0.9).expect("operation should succeed");
 
-        let metrics = storage.lock().unwrap().get_metrics(&run.id, "accuracy").unwrap();
+        let metrics = storage
+            .lock()
+            .expect("lock acquisition should succeed")
+            .get_metrics(&run.id, "accuracy")
+            .expect("lock acquisition should succeed");
         assert_eq!(metrics.len(), 3);
         assert_eq!(metrics[0].step, 0);
         assert_eq!(metrics[1].step, 10);
@@ -370,11 +378,11 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::disabled();
 
-        let mut run = Run::new(&exp_id, storage.clone(), config).unwrap();
+        let mut run = Run::new(&exp_id, storage.clone(), config).expect("config should be valid");
 
-        run.log_metric("loss", 0.5).unwrap();
-        run.log_metric("accuracy", 0.8).unwrap();
-        run.log_metric("loss", 0.4).unwrap();
+        run.log_metric("loss", 0.5).expect("operation should succeed");
+        run.log_metric("accuracy", 0.8).expect("operation should succeed");
+        run.log_metric("loss", 0.4).expect("operation should succeed");
 
         assert_eq!(run.current_step("loss"), 2);
         assert_eq!(run.current_step("accuracy"), 1);
@@ -385,16 +393,16 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::disabled();
 
-        let run = Run::new(&exp_id, storage.clone(), config).unwrap();
+        let run = Run::new(&exp_id, storage.clone(), config).expect("config should be valid");
         let run_id = run.id.clone();
 
-        run.finish(RunStatus::Success).unwrap();
+        run.finish(RunStatus::Success).expect("operation should succeed");
 
         let status = storage
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_run_status(&run_id)
-            .unwrap();
+            .expect("operation should succeed");
         assert_eq!(status, RunStatus::Success);
     }
 
@@ -403,16 +411,16 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::disabled();
 
-        let run = Run::new(&exp_id, storage.clone(), config).unwrap();
+        let run = Run::new(&exp_id, storage.clone(), config).expect("config should be valid");
         let run_id = run.id.clone();
 
-        run.finish(RunStatus::Failed).unwrap();
+        run.finish(RunStatus::Failed).expect("operation should succeed");
 
         let status = storage
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_run_status(&run_id)
-            .unwrap();
+            .expect("operation should succeed");
         assert_eq!(status, RunStatus::Failed);
     }
 
@@ -421,10 +429,15 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::default();
 
-        let run = Run::new(&exp_id, storage.clone(), config).unwrap();
-        let span_id = run.span_id().unwrap().to_string();
+        let run = Run::new(&exp_id, storage.clone(), config).expect("config should be valid");
+        let span_id = run.span_id().expect("operation should succeed").to_string();
 
-        let stored_span = storage.lock().unwrap().get_span_id(&run.id).unwrap().unwrap();
+        let stored_span = storage
+            .lock()
+            .expect("lock acquisition should succeed")
+            .get_span_id(&run.id)
+            .expect("lock acquisition should succeed")
+            .expect("lock acquisition should succeed");
         assert_eq!(stored_span, span_id);
     }
 
@@ -433,7 +446,7 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::default();
 
-        let run = Run::new(&exp_id, storage, config).unwrap();
+        let run = Run::new(&exp_id, storage, config).expect("config should be valid");
 
         assert!(!run.is_finished());
         assert!(run.run_id().starts_with("run-"));
@@ -445,7 +458,7 @@ mod tests {
         let (storage, exp_id) = setup_storage();
         let config = TracingConfig::disabled();
 
-        let run = Run::new(&exp_id, storage, config).unwrap();
+        let run = Run::new(&exp_id, storage, config).expect("config should be valid");
         let debug_str = format!("{run:?}");
 
         assert!(debug_str.contains("Run"));

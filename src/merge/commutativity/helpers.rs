@@ -44,14 +44,14 @@ mod tests {
         let model = make_model(vec![1.0, 2.0, 3.0]);
         assert_eq!(model.len(), 1);
         assert!(model.contains_key("w"));
-        assert_eq!(model.get("w").unwrap().data().len(), 3);
+        assert_eq!(model.get("w").expect("key should exist").data().len(), 3);
     }
 
     #[test]
     fn test_make_model_empty() {
         let model = make_model(vec![]);
         assert_eq!(model.len(), 1);
-        assert!(model.get("w").unwrap().data().is_empty());
+        assert!(model.get("w").expect("key should exist").data().is_empty());
     }
 
     #[test]
@@ -59,8 +59,8 @@ mod tests {
         let model =
             make_multi_param_model(vec![("w1", vec![1.0, 2.0]), ("w2", vec![3.0, 4.0, 5.0])]);
         assert_eq!(model.len(), 2);
-        assert_eq!(model.get("w1").unwrap().data().len(), 2);
-        assert_eq!(model.get("w2").unwrap().data().len(), 3);
+        assert_eq!(model.get("w1").expect("key should exist").data().len(), 2);
+        assert_eq!(model.get("w2").expect("key should exist").data().len(), 3);
     }
 
     #[test]

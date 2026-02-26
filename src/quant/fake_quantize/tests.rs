@@ -159,7 +159,7 @@ fn test_fake_quantize_config_asymmetric() {
 fn test_fake_quantize_forward() {
     let input = Tensor::from_vec(vec![0.0, 1.0, -1.0, 0.5, -0.5], false);
     let mut fq = FakeQuantize::q8();
-    fq.calibrate(input.data().as_slice().unwrap());
+    fq.calibrate(input.data().as_slice().expect("operation should succeed"));
 
     let output = fq.forward(&input);
 
@@ -261,7 +261,7 @@ fn test_num_levels() {
 fn test_quantize_dequantize_round_trip() {
     let input = Tensor::from_vec(vec![0.0, 0.5, 1.0, -0.5, -1.0], false);
     let mut fq = FakeQuantize::q8();
-    fq.calibrate(input.data().as_slice().unwrap());
+    fq.calibrate(input.data().as_slice().expect("operation should succeed"));
 
     let output = fq.forward(&input);
 

@@ -292,7 +292,7 @@ mod tests {
 
         let result = HfTokenizer::from_json(json);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().vocab_size(), 3);
+        assert_eq!(result.expect("operation should succeed").vocab_size(), 3);
     }
 
     #[test]

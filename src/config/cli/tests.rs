@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[test]
 fn test_parse_train_command() {
-    let cli = parse_args(["entrenar", "train", "config.yaml"]).unwrap();
+    let cli = parse_args(["entrenar", "train", "config.yaml"]).expect("parsing should succeed");
     match cli.command {
         Command::Train(args) => {
             assert_eq!(args.config, PathBuf::from("config.yaml"));
@@ -30,13 +30,13 @@ fn test_parse_train_with_overrides() {
         "--output-dir",
         "./output",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         Command::Train(args) => {
             assert_eq!(args.epochs, Some(10));
             assert_eq!(args.batch_size, Some(32));
-            assert!((args.lr.unwrap() - 0.001).abs() < 1e-6);
+            assert!((args.lr.expect("operation should succeed") - 0.001).abs() < 1e-6);
             assert_eq!(args.output_dir, Some(PathBuf::from("./output")));
         }
         _ => panic!("Expected Train command"),
@@ -45,8 +45,8 @@ fn test_parse_train_with_overrides() {
 
 #[test]
 fn test_parse_train_with_resume() {
-    let cli =
-        parse_args(["entrenar", "train", "config.yaml", "--resume", "checkpoint.json"]).unwrap();
+    let cli = parse_args(["entrenar", "train", "config.yaml", "--resume", "checkpoint.json"])
+        .expect("parsing should succeed");
 
     match cli.command {
         Command::Train(args) => {
@@ -58,7 +58,8 @@ fn test_parse_train_with_resume() {
 
 #[test]
 fn test_parse_train_dry_run() {
-    let cli = parse_args(["entrenar", "train", "config.yaml", "--dry-run"]).unwrap();
+    let cli = parse_args(["entrenar", "train", "config.yaml", "--dry-run"])
+        .expect("parsing should succeed");
     match cli.command {
         Command::Train(args) => {
             assert!(args.dry_run);
@@ -69,7 +70,7 @@ fn test_parse_train_dry_run() {
 
 #[test]
 fn test_parse_validate_command() {
-    let cli = parse_args(["entrenar", "validate", "config.yaml"]).unwrap();
+    let cli = parse_args(["entrenar", "validate", "config.yaml"]).expect("parsing should succeed");
     match cli.command {
         Command::Validate(args) => {
             assert_eq!(args.config, PathBuf::from("config.yaml"));
@@ -81,7 +82,8 @@ fn test_parse_validate_command() {
 
 #[test]
 fn test_parse_validate_detailed() {
-    let cli = parse_args(["entrenar", "validate", "config.yaml", "--detailed"]).unwrap();
+    let cli = parse_args(["entrenar", "validate", "config.yaml", "--detailed"])
+        .expect("parsing should succeed");
     match cli.command {
         Command::Validate(args) => {
             assert!(args.detailed);
@@ -92,7 +94,7 @@ fn test_parse_validate_detailed() {
 
 #[test]
 fn test_parse_info_command() {
-    let cli = parse_args(["entrenar", "info", "config.yaml"]).unwrap();
+    let cli = parse_args(["entrenar", "info", "config.yaml"]).expect("parsing should succeed");
     match cli.command {
         Command::Info(args) => {
             assert_eq!(args.config, PathBuf::from("config.yaml"));
@@ -104,7 +106,8 @@ fn test_parse_info_command() {
 
 #[test]
 fn test_parse_info_json_format() {
-    let cli = parse_args(["entrenar", "info", "config.yaml", "--format", "json"]).unwrap();
+    let cli = parse_args(["entrenar", "info", "config.yaml", "--format", "json"])
+        .expect("parsing should succeed");
     match cli.command {
         Command::Info(args) => {
             assert_eq!(args.format, OutputFormat::Json);
@@ -115,8 +118,8 @@ fn test_parse_info_json_format() {
 
 #[test]
 fn test_parse_quantize_command() {
-    let cli =
-        parse_args(["entrenar", "quantize", "model.gguf", "--output", "model_q4.gguf"]).unwrap();
+    let cli = parse_args(["entrenar", "quantize", "model.gguf", "--output", "model_q4.gguf"])
+        .expect("parsing should succeed");
 
     match cli.command {
         Command::Quantize(args) => {
@@ -143,7 +146,7 @@ fn test_parse_quantize_with_options() {
         "asymmetric",
         "--per-channel",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         Command::Quantize(args) => {
@@ -159,7 +162,7 @@ fn test_parse_quantize_with_options() {
 fn test_parse_merge_command() {
     let cli =
         parse_args(["entrenar", "merge", "model1.gguf", "model2.gguf", "--output", "merged.gguf"])
-            .unwrap();
+            .expect("operation should succeed");
 
     match cli.command {
         Command::Merge(args) => {
@@ -185,12 +188,12 @@ fn test_parse_merge_slerp() {
         "--weight",
         "0.7",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         Command::Merge(args) => {
             assert_eq!(args.method, MergeMethod::Slerp);
-            assert!((args.weight.unwrap() - 0.7).abs() < 1e-6);
+            assert!((args.weight.expect("operation should succeed") - 0.7).abs() < 1e-6);
         }
         _ => panic!("Expected Merge command"),
     }
@@ -209,7 +212,7 @@ fn test_parse_merge_multiple_models() {
         "--method",
         "average",
     ])
-    .unwrap();
+    .expect("operation should succeed");
 
     match cli.command {
         Command::Merge(args) => {
@@ -222,14 +225,16 @@ fn test_parse_merge_multiple_models() {
 
 #[test]
 fn test_global_verbose_flag() {
-    let cli = parse_args(["entrenar", "-v", "train", "config.yaml"]).unwrap();
+    let cli =
+        parse_args(["entrenar", "-v", "train", "config.yaml"]).expect("parsing should succeed");
     assert!(cli.verbose);
     assert!(!cli.quiet);
 }
 
 #[test]
 fn test_global_quiet_flag() {
-    let cli = parse_args(["entrenar", "-q", "train", "config.yaml"]).unwrap();
+    let cli =
+        parse_args(["entrenar", "-q", "train", "config.yaml"]).expect("parsing should succeed");
     assert!(!cli.verbose);
     assert!(cli.quiet);
 }
@@ -387,18 +392,21 @@ fn create_test_spec() -> crate::config::TrainSpec {
 
 #[test]
 fn test_verbose_and_quiet_flags() {
-    let cli = parse_args(["entrenar", "--verbose", "train", "config.yaml"]).unwrap();
+    let cli = parse_args(["entrenar", "--verbose", "train", "config.yaml"])
+        .expect("parsing should succeed");
     assert!(cli.verbose);
     assert!(!cli.quiet);
 
-    let cli = parse_args(["entrenar", "--quiet", "train", "config.yaml"]).unwrap();
+    let cli = parse_args(["entrenar", "--quiet", "train", "config.yaml"])
+        .expect("parsing should succeed");
     assert!(!cli.verbose);
     assert!(cli.quiet);
 }
 
 #[test]
 fn test_info_yaml_format() {
-    let cli = parse_args(["entrenar", "info", "config.yaml", "--format", "yaml"]).unwrap();
+    let cli = parse_args(["entrenar", "info", "config.yaml", "--format", "yaml"])
+        .expect("parsing should succeed");
     match cli.command {
         Command::Info(args) => {
             assert_eq!(args.format, OutputFormat::Yaml);
@@ -409,7 +417,7 @@ fn test_info_yaml_format() {
 
 #[test]
 fn test_parse_init_command() {
-    let cli = parse_args(["entrenar", "init"]).unwrap();
+    let cli = parse_args(["entrenar", "init"]).expect("parsing should succeed");
     match cli.command {
         Command::Init(args) => {
             assert_eq!(args.template, InitTemplate::Minimal);
@@ -421,7 +429,8 @@ fn test_parse_init_command() {
 
 #[test]
 fn test_parse_init_with_template() {
-    let cli = parse_args(["entrenar", "init", "--template", "lora", "--name", "test-exp"]).unwrap();
+    let cli = parse_args(["entrenar", "init", "--template", "lora", "--name", "test-exp"])
+        .expect("parsing should succeed");
     match cli.command {
         Command::Init(args) => {
             assert_eq!(args.template, InitTemplate::Lora);

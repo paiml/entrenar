@@ -15,7 +15,7 @@ proptest! {
         }
 
         let summary = collector.summary();
-        let stats = summary.get(&Metric::Loss).unwrap();
+        let stats = summary.get(&Metric::Loss).expect("key should exist");
 
         prop_assert!(stats.mean >= min_val);
         prop_assert!(stats.mean <= max_val);
@@ -29,7 +29,7 @@ proptest! {
         }
 
         let summary = collector.summary();
-        let stats = summary.get(&Metric::Loss).unwrap();
+        let stats = summary.get(&Metric::Loss).expect("key should exist");
 
         prop_assert!(stats.std >= 0.0);
     }
@@ -42,7 +42,7 @@ proptest! {
         }
 
         let summary = collector.summary();
-        let stats = summary.get(&Metric::Loss).unwrap();
+        let stats = summary.get(&Metric::Loss).expect("key should exist");
 
         prop_assert_eq!(stats.count, values.len());
     }
@@ -58,7 +58,7 @@ proptest! {
         }
 
         let summary = collector.summary();
-        let stats = summary.get(&Metric::Loss).unwrap();
+        let stats = summary.get(&Metric::Loss).expect("key should exist");
 
         prop_assert!((stats.min - expected_min).abs() < 1e-10);
         prop_assert!((stats.max - expected_max).abs() < 1e-10);

@@ -86,7 +86,7 @@ fn test_dataset_mock() {
     assert_eq!(dataset.len(), 10);
     assert_eq!(dataset.name(), "mock_dataset");
 
-    let first = dataset.get(0).unwrap();
+    let first = dataset.get(0).expect("key should exist");
     assert_eq!(first.len(), 32);
     assert!(first.labels.is_some());
 }
@@ -133,7 +133,7 @@ fn test_fetcher_fetch_mock() {
     let fetcher = HfDatasetFetcher::default();
     let dataset = fetcher.fetch("wikitext", DatasetOptions::train().max_examples(50));
     assert!(dataset.is_ok());
-    assert_eq!(dataset.unwrap().len(), 50);
+    assert_eq!(dataset.expect("operation should succeed").len(), 50);
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn test_collator_with_labels() {
     let batch = collator.collate(&examples);
 
     assert!(batch.labels.is_some());
-    let labels = batch.labels.unwrap();
+    let labels = batch.labels.expect("operation should succeed");
     assert_eq!(labels[[0, 0]], 2);
     assert_eq!(labels[[1, 2]], 7);
 }

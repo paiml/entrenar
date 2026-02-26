@@ -36,7 +36,8 @@ fn test_end_to_end_training() {
         trainer.train_epoch(batches.clone(), std::clone::Clone::clone);
     }
 
-    let final_loss = trainer.metrics.losses.last().copied().unwrap();
+    let final_loss =
+        trainer.metrics.losses.last().copied().expect("collection should not be empty");
 
     // Loss should be finite
     assert!(initial_loss.is_finite());

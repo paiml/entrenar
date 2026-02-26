@@ -697,7 +697,8 @@ mod tests {
             ..TrainingConfig::default()
         };
 
-        let trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let trainer =
+            ClassifyTrainer::new(pipeline, corpus, config).expect("config should be valid");
         let val_before: Vec<String> = trainer.val_data().iter().map(|s| s.input.clone()).collect();
 
         // The val set is established at construction and must not change
@@ -723,7 +724,8 @@ mod tests {
             ..TrainingConfig::default()
         };
 
-        let mut trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let mut trainer =
+            ClassifyTrainer::new(pipeline, corpus, config).expect("config should be valid");
 
         // Capture order after epoch-0 shuffle
         trainer.shuffle_training_data(0);
@@ -768,13 +770,16 @@ mod tests {
             ..TrainingConfig::default()
         };
 
-        let mut trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let mut trainer =
+            ClassifyTrainer::new(pipeline, corpus, config).expect("config should be valid");
         let result = trainer.train();
 
         assert!(!result.epoch_metrics.is_empty(), "Should have at least one epoch of metrics");
 
-        let first_loss = result.epoch_metrics.first().unwrap().train_loss;
-        let last_loss = result.epoch_metrics.last().unwrap().train_loss;
+        let first_loss =
+            result.epoch_metrics.first().expect("collection should not be empty").train_loss;
+        let last_loss =
+            result.epoch_metrics.last().expect("collection should not be empty").train_loss;
 
         assert!(
             last_loss < first_loss,
@@ -799,7 +804,8 @@ mod tests {
             ..TrainingConfig::default()
         };
 
-        let mut trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let mut trainer =
+            ClassifyTrainer::new(pipeline, corpus, config).expect("config should be valid");
         let result = trainer.train();
 
         assert_eq!(result.epoch_metrics.len(), 2, "Should have 2 epochs");
@@ -841,7 +847,8 @@ mod tests {
             ..TrainingConfig::default()
         };
 
-        let mut trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let mut trainer =
+            ClassifyTrainer::new(pipeline, corpus, config).expect("config should be valid");
         let result = trainer.train();
 
         // Should have stopped before reaching 100 epochs
@@ -869,15 +876,16 @@ mod tests {
             ..TrainingConfig::default()
         };
 
-        let mut trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let mut trainer =
+            ClassifyTrainer::new(pipeline, corpus, config).expect("config should be valid");
         let result = trainer.train();
 
         // best_epoch must correspond to the lowest val_loss
         let actual_best = result
             .epoch_metrics
             .iter()
-            .min_by(|a, b| a.val_loss.partial_cmp(&b.val_loss).unwrap())
-            .unwrap();
+            .min_by(|a, b| a.val_loss.partial_cmp(&b.val_loss).expect("operation should succeed"))
+            .expect("operation should succeed");
 
         assert_eq!(
             result.best_epoch, actual_best.epoch,

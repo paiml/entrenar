@@ -160,20 +160,21 @@ mod tests {
 
     #[test]
     fn test_collect_model_files_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        let files = collect_model_files(dir.path()).unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
+        let files = collect_model_files(dir.path()).expect("operation should succeed");
         assert!(files.is_empty());
     }
 
     #[test]
     fn test_collect_model_files_filters_extensions() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("model.safetensors"), b"data").unwrap();
-        std::fs::write(dir.path().join("config.json"), b"{}").unwrap();
-        std::fs::write(dir.path().join("random.xyz"), b"skip").unwrap();
-        std::fs::write(dir.path().join(".hidden"), b"skip").unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
+        std::fs::write(dir.path().join("model.safetensors"), b"data")
+            .expect("file write should succeed");
+        std::fs::write(dir.path().join("config.json"), b"{}").expect("file write should succeed");
+        std::fs::write(dir.path().join("random.xyz"), b"skip").expect("file write should succeed");
+        std::fs::write(dir.path().join(".hidden"), b"skip").expect("file write should succeed");
 
-        let files = collect_model_files(dir.path()).unwrap();
+        let files = collect_model_files(dir.path()).expect("operation should succeed");
         assert_eq!(files.len(), 2);
         let names: Vec<&str> = files.iter().map(|(_, n)| n.as_str()).collect();
         assert!(names.contains(&"model.safetensors"));
@@ -182,11 +183,12 @@ mod tests {
 
     #[test]
     fn test_collect_model_files_sorted() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("z_weights.safetensors"), b"w").unwrap();
-        std::fs::write(dir.path().join("a_config.json"), b"c").unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
+        std::fs::write(dir.path().join("z_weights.safetensors"), b"w")
+            .expect("file write should succeed");
+        std::fs::write(dir.path().join("a_config.json"), b"c").expect("file write should succeed");
 
-        let files = collect_model_files(dir.path()).unwrap();
+        let files = collect_model_files(dir.path()).expect("operation should succeed");
         assert_eq!(files[0].1, "a_config.json");
         assert_eq!(files[1].1, "z_weights.safetensors");
     }
@@ -210,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_run_publish_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let args = PublishArgs {
             model_dir: dir.path().to_path_buf(),
             repo: "user/model".to_string(),
@@ -228,8 +230,9 @@ mod tests {
 
     #[test]
     fn test_run_publish_dry_run() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("model.safetensors"), b"data").unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
+        std::fs::write(dir.path().join("model.safetensors"), b"data")
+            .expect("file write should succeed");
 
         let args = PublishArgs {
             model_dir: dir.path().to_path_buf(),
@@ -247,8 +250,9 @@ mod tests {
 
     #[test]
     fn test_run_publish_no_hub_feature() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("model.safetensors"), b"data").unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
+        std::fs::write(dir.path().join("model.safetensors"), b"data")
+            .expect("file write should succeed");
 
         let args = PublishArgs {
             model_dir: dir.path().to_path_buf(),
@@ -277,25 +281,26 @@ mod tests {
 
     #[test]
     fn test_read_training_metadata_invalid_json() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let path = dir.path().join("final_model.json");
-        std::fs::write(&path, "not json").unwrap();
+        std::fs::write(&path, "not json").expect("file write should succeed");
         let result = read_training_metadata(&path);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_read_training_metadata_valid() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let metadata = serde_json::json!({
             "epochs_completed": 3,
             "final_loss": 1.5432,
             "training_mode": "LoRA"
         });
         let path = dir.path().join("final_model.json");
-        std::fs::write(&path, serde_json::to_string(&metadata).unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_string(&metadata).expect("file write should succeed"))
+            .expect("file write should succeed");
 
-        let details = read_training_metadata(&path).unwrap();
+        let details = read_training_metadata(&path).expect("operation should succeed");
         assert!(details.contains("Epochs"));
         assert!(details.contains("1.5432"));
         assert!(details.contains("LoRA"));
@@ -303,23 +308,24 @@ mod tests {
 
     #[test]
     fn test_read_training_metadata_partial() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let metadata = serde_json::json!({
             "epochs_completed": 5
         });
         let path = dir.path().join("final_model.json");
-        std::fs::write(&path, serde_json::to_string(&metadata).unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_string(&metadata).expect("file write should succeed"))
+            .expect("file write should succeed");
 
-        let details = read_training_metadata(&path).unwrap();
+        let details = read_training_metadata(&path).expect("operation should succeed");
         assert!(details.contains("Epochs"));
         assert!(details.contains('5'));
     }
 
     #[test]
     fn test_read_training_metadata_empty_json() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         let path = dir.path().join("final_model.json");
-        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(&path, "{}").expect("file write should succeed");
 
         let result = read_training_metadata(&path);
         assert!(result.is_none());
@@ -327,21 +333,23 @@ mod tests {
 
     #[test]
     fn test_collect_model_files_all_extensions() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
         for ext in &["safetensors", "gguf", "bin", "json", "yaml", "yml", "txt"] {
-            std::fs::write(dir.path().join(format!("file.{ext}")), b"data").unwrap();
+            std::fs::write(dir.path().join(format!("file.{ext}")), b"data")
+                .expect("file write should succeed");
         }
-        let files = collect_model_files(dir.path()).unwrap();
+        let files = collect_model_files(dir.path()).expect("operation should succeed");
         assert_eq!(files.len(), 7);
     }
 
     #[test]
     fn test_collect_model_files_skips_directories() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("model.safetensors"), b"data").unwrap();
-        std::fs::create_dir(dir.path().join("subdir")).unwrap();
+        let dir = tempfile::tempdir().expect("temp file creation should succeed");
+        std::fs::write(dir.path().join("model.safetensors"), b"data")
+            .expect("file write should succeed");
+        std::fs::create_dir(dir.path().join("subdir")).expect("thread join should succeed");
 
-        let files = collect_model_files(dir.path()).unwrap();
+        let files = collect_model_files(dir.path()).expect("operation should succeed");
         assert_eq!(files.len(), 1);
     }
 }

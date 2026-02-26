@@ -144,7 +144,7 @@ mod tests {
         params.insert("test.weight".to_string(), Tensor::from_vec(vec![1.0, 1.0, 1.0, 1.0], true));
         let norm = RMSNorm::from_params(&params, "test", 1e-6, 4);
         assert!(norm.is_some());
-        let norm = norm.unwrap();
+        let norm = norm.expect("operation should succeed");
         assert_eq!(norm.weight.len(), 4);
     }
 
@@ -165,7 +165,7 @@ mod tests {
         crate::autograd::backward(&mut output, Some(grad_out));
 
         assert!(norm.weight.grad().is_some());
-        let grad = norm.weight.grad().unwrap();
+        let grad = norm.weight.grad().expect("gradient should be available");
         assert!(grad.iter().all(|&v| v.is_finite()));
     }
 

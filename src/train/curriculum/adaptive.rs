@@ -198,12 +198,17 @@ mod tests {
         curriculum.update_class("E0308", true);
         assert_eq!(curriculum.class_attempts.get("E0308"), Some(&1));
         // First correct: 0.0 * 0.9 + 0.1 = 0.1
-        assert!((curriculum.class_accuracy.get("E0308").unwrap() - 0.1).abs() < 0.001);
+        assert!(
+            (curriculum.class_accuracy.get("E0308").expect("key should exist") - 0.1).abs() < 0.001
+        );
 
         curriculum.update_class("E0308", false);
         assert_eq!(curriculum.class_attempts.get("E0308"), Some(&2));
         // 0.1 * 0.9 + 0 = 0.09
-        assert!((curriculum.class_accuracy.get("E0308").unwrap() - 0.09).abs() < 0.001);
+        assert!(
+            (curriculum.class_accuracy.get("E0308").expect("key should exist") - 0.09).abs()
+                < 0.001
+        );
     }
 
     #[test]

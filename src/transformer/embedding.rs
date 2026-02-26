@@ -148,7 +148,7 @@ mod tests {
         params.insert("embed.weight".to_string(), Tensor::from_vec(vec![0.1; 100 * 8], true));
         let embed = Embedding::from_params(&params, "embed.weight", 100, 8);
         assert!(embed.is_some());
-        let embed = embed.unwrap();
+        let embed = embed.expect("operation should succeed");
         assert_eq!(embed.vocab_size(), 100);
         assert_eq!(embed.hidden_size(), 8);
     }
@@ -264,8 +264,8 @@ mod tests {
         let d1 = embed1.weight.data();
         let d2 = embed2.weight.data();
         assert_eq!(
-            d1.as_slice().unwrap(),
-            d2.as_slice().unwrap(),
+            d1.as_slice().expect("operation should succeed"),
+            d2.as_slice().expect("operation should succeed"),
             "FALSIFY-E7e: Same vocab+hidden must produce identical initialization"
         );
     }
@@ -370,8 +370,8 @@ mod tests {
         let o2 = embed.forward(&tokens);
 
         assert_eq!(
-            o1.data().as_slice().unwrap(),
-            o2.data().as_slice().unwrap(),
+            o1.data().as_slice().expect("operation should succeed"),
+            o2.data().as_slice().expect("operation should succeed"),
             "FALSIFIED EM-003: forward() is non-deterministic"
         );
     }

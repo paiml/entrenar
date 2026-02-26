@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_reference_curve_from_json() {
         let json = "[1.0, 0.8, 0.6, 0.4]";
-        let curve = ReferenceCurve::from_json(json).unwrap();
+        let curve = ReferenceCurve::from_json(json).expect("operation should succeed");
         assert_eq!(curve.get(0), Some(1.0));
         assert_eq!(curve.get(3), Some(0.4));
     }
@@ -100,7 +100,7 @@ mod tests {
         // 1.15 is 15% off from 1.0, exceeds 10% tolerance
         let deviation = curve.check_deviation(0, 1.15);
         assert!(deviation.is_some());
-        assert!((deviation.unwrap() - 0.15).abs() < 0.01);
+        assert!((deviation.expect("operation should succeed") - 0.15).abs() < 0.01);
     }
 
     #[test]

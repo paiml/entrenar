@@ -98,14 +98,14 @@ fn test_dependency_audit_max_severity_empty() {
 #[test]
 fn test_from_cargo_deny_output_empty() {
     let json = "";
-    let audits = DependencyAudit::from_cargo_deny_output(json).unwrap();
+    let audits = DependencyAudit::from_cargo_deny_output(json).expect("operation should succeed");
     assert!(audits.is_empty());
 }
 
 #[test]
 fn test_from_cargo_deny_output_no_vulnerabilities() {
     let json = r#"{"type": "summary", "fields": {"total": 100}}"#;
-    let audits = DependencyAudit::from_cargo_deny_output(json).unwrap();
+    let audits = DependencyAudit::from_cargo_deny_output(json).expect("operation should succeed");
     assert!(audits.is_empty());
 }
 
@@ -113,7 +113,7 @@ fn test_from_cargo_deny_output_no_vulnerabilities() {
 fn test_from_cargo_deny_output_with_vulnerability() {
     let json = r#"{"type":"diagnostic","fields":{"graphs":[],"severity":"error","code":"A001","message":"Detected security vulnerability","labels":[{"span":{"crate":{"name":"vulnerable-crate","version":"0.1.0"}}}]}}"#;
 
-    let audits = DependencyAudit::from_cargo_deny_output(json).unwrap();
+    let audits = DependencyAudit::from_cargo_deny_output(json).expect("operation should succeed");
 
     assert_eq!(audits.len(), 1);
     assert_eq!(audits[0].crate_name, "vulnerable-crate");
@@ -200,8 +200,9 @@ fn test_dependency_audit_serialization() {
         vec![Advisory::new("A001", Severity::High, "Test")],
     );
 
-    let json = serde_json::to_string(&audit).unwrap();
-    let parsed: DependencyAudit = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&audit).expect("JSON serialization should succeed");
+    let parsed: DependencyAudit =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed.crate_name, audit.crate_name);
     assert_eq!(parsed.audit_status, audit.audit_status);

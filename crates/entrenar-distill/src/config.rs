@@ -407,10 +407,12 @@ output:
 
     #[test]
     fn test_weight_format_serialization() {
-        let json = serde_json::to_string(&WeightFormat::SafeTensors).unwrap();
+        let json = serde_json::to_string(&WeightFormat::SafeTensors)
+            .expect("JSON serialization should succeed");
         assert_eq!(json, "\"safetensors\"");
 
-        let format: WeightFormat = serde_json::from_str("\"gguf\"").unwrap();
+        let format: WeightFormat =
+            serde_json::from_str("\"gguf\"").expect("JSON deserialization should succeed");
         assert_eq!(format, WeightFormat::Gguf);
     }
 
@@ -421,7 +423,7 @@ enabled: true
 layer_mapping: [[0, 3], [1, 7], [2, 11]]
 weight: 0.3
 "#;
-        let config: ProgressiveConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: ProgressiveConfig = serde_yaml::from_str(yaml).expect("config should be valid");
         assert!(config.enabled);
         assert_eq!(config.layer_mapping.len(), 3);
         assert_eq!(config.layer_mapping[0], (0, 3));

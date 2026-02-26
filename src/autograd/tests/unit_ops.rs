@@ -20,11 +20,11 @@ fn test_tensor_grad_accumulation() {
     let t = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);
 
     t.accumulate_grad(ndarray::arr1(&[1.0, 1.0, 1.0]));
-    let grad1 = t.grad().unwrap();
+    let grad1 = t.grad().expect("gradient should be available");
     assert_eq!(grad1[0], 1.0);
 
     t.accumulate_grad(ndarray::arr1(&[1.0, 1.0, 1.0]));
-    let grad2 = t.grad().unwrap();
+    let grad2 = t.grad().expect("gradient should be available");
     assert_eq!(grad2[0], 2.0);
 }
 
@@ -48,8 +48,8 @@ fn test_add_backward() {
     // Backward with gradient of ones
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0])));
 
-    let grad_a = a.grad().unwrap();
-    let grad_b = b.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
+    let grad_b = b.grad().expect("gradient should be available");
 
     assert_abs_diff_eq!(grad_a[0], 1.0);
     assert_abs_diff_eq!(grad_b[0], 1.0);
@@ -74,8 +74,8 @@ fn test_mul_backward() {
 
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0])));
 
-    let grad_a = a.grad().unwrap();
-    let grad_b = b.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
+    let grad_b = b.grad().expect("gradient should be available");
 
     // d(a*b)/da = b
     assert_abs_diff_eq!(grad_a[0], 5.0);
@@ -104,7 +104,7 @@ fn test_relu_backward() {
 
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0, 1.0])));
 
-    let grad_a = a.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
 
     // Gradient is 0 for negative inputs, 1 for positive
     assert_abs_diff_eq!(grad_a[0], 0.0);
@@ -130,7 +130,7 @@ fn test_scale_backward() {
 
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0])));
 
-    let grad_a = a.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
 
     // Gradient of scale is just the factor
     assert_abs_diff_eq!(grad_a[0], 3.0);
@@ -214,7 +214,7 @@ fn test_gelu_backward() {
 
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0])));
 
-    let grad_a = a.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
 
     // Gradients should exist
     assert_eq!(grad_a.len(), 3);
@@ -241,7 +241,7 @@ fn test_swish_backward() {
 
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0])));
 
-    let grad_a = a.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
 
     // Gradients should exist
     assert_eq!(grad_a.len(), 3);
@@ -275,9 +275,9 @@ fn test_layer_norm_backward() {
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0, 1.0])));
 
     // Gradients should exist for all inputs
-    let grad_a = a.grad().unwrap();
-    let grad_gamma = gamma.grad().unwrap();
-    let grad_beta = beta.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
+    let grad_gamma = gamma.grad().expect("gradient should be available");
+    let grad_beta = beta.grad().expect("gradient should be available");
 
     assert_eq!(grad_a.len(), 4);
     assert_eq!(grad_gamma.len(), 4);
@@ -320,9 +320,9 @@ fn test_attention_backward() {
     assert!(k.grad().is_some());
     assert!(v.grad().is_some());
 
-    let grad_q = q.grad().unwrap();
-    let grad_k = k.grad().unwrap();
-    let grad_v = v.grad().unwrap();
+    let grad_q = q.grad().expect("gradient should be available");
+    let grad_k = k.grad().expect("gradient should be available");
+    let grad_v = v.grad().expect("gradient should be available");
 
     assert_eq!(grad_q.len(), 4);
     assert_eq!(grad_k.len(), 4);
@@ -351,7 +351,7 @@ fn test_softmax_backward_gradient_check() {
 
     // Compute analytical gradient
     backward(&mut y, Some(ndarray::arr1(&[1.0, 0.0, 0.0, 0.0])));
-    let analytical = a.grad().unwrap();
+    let analytical = a.grad().expect("gradient should be available");
 
     // Compute numerical gradient
     let numerical = finite_difference(
@@ -377,7 +377,7 @@ fn test_sum_backward() {
 
     backward(&mut c, Some(ndarray::arr1(&[1.0])));
 
-    let grad_a = a.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
 
     // Sum gradient broadcasts to all inputs
     assert_abs_diff_eq!(grad_a[0], 1.0);
@@ -395,7 +395,7 @@ fn test_chain_rule() {
 
     backward(&mut d, None);
 
-    let grad_a = a.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
 
     // For x = -1: relu(-2) = 0, grad = 0
     assert_abs_diff_eq!(grad_a[0], 0.0);
@@ -441,8 +441,8 @@ fn test_matmul_backward() {
 
     backward(&mut c, Some(ndarray::arr1(&[1.0, 1.0, 1.0, 1.0])));
 
-    let grad_a = a.grad().unwrap();
-    let grad_b = b.grad().unwrap();
+    let grad_a = a.grad().expect("gradient should be available");
+    let grad_b = b.grad().expect("gradient should be available");
 
     // dL/dA = dL/dC @ B^T
     // dL/dB = A^T @ dL/dC

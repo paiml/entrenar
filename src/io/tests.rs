@@ -19,21 +19,21 @@ fn test_full_workflow_json() {
     let model = Model::new(metadata, params);
 
     // Save to JSON
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
     let path = temp_file.path().with_extension("json");
 
     let config = SaveConfig::new(ModelFormat::Json);
-    save_model(&model, &path, &config).unwrap();
+    save_model(&model, &path, &config).expect("save should succeed");
 
     // Load back
-    let loaded = load_model(&path).unwrap();
+    let loaded = load_model(&path).expect("load should succeed");
 
     // Verify
     assert_eq!(model.metadata.name, loaded.metadata.name);
     assert_eq!(model.parameters.len(), loaded.parameters.len());
 
-    let orig_weight = model.get_parameter("weight").unwrap();
-    let loaded_weight = loaded.get_parameter("weight").unwrap();
+    let orig_weight = model.get_parameter("weight").expect("parameter should exist");
+    let loaded_weight = loaded.get_parameter("weight").expect("load should succeed");
     assert_eq!(orig_weight.data(), loaded_weight.data());
 
     // Clean up
@@ -49,13 +49,13 @@ fn test_full_workflow_yaml() {
 
     let model = Model::new(ModelMetadata::new("yaml-test", "dual-layer"), params);
 
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
     let path = temp_file.path().with_extension("yaml");
 
     let config = SaveConfig::new(ModelFormat::Yaml);
-    save_model(&model, &path, &config).unwrap();
+    save_model(&model, &path, &config).expect("save should succeed");
 
-    let loaded = load_model(&path).unwrap();
+    let loaded = load_model(&path).expect("load should succeed");
 
     assert_eq!(model.metadata.name, loaded.metadata.name);
     assert_eq!(model.parameters.len(), loaded.parameters.len());
@@ -75,13 +75,13 @@ fn test_model_with_complex_metadata() {
 
     let model = Model::new(metadata, params);
 
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
     let path = temp_file.path().with_extension("json");
 
     let config = SaveConfig::new(ModelFormat::Json);
-    save_model(&model, &path, &config).unwrap();
+    save_model(&model, &path, &config).expect("save should succeed");
 
-    let loaded = load_model(&path).unwrap();
+    let loaded = load_model(&path).expect("load should succeed");
 
     assert_eq!(model.metadata.custom.get("num_layers"), loaded.metadata.custom.get("num_layers"));
     assert_eq!(model.metadata.custom.get("hidden_size"), loaded.metadata.custom.get("hidden_size"));
@@ -98,16 +98,16 @@ fn test_large_model_parameters() {
 
     let model = Model::new(ModelMetadata::new("large-test", "big"), params);
 
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
     let path = temp_file.path().with_extension("json");
 
     let config = SaveConfig::new(ModelFormat::Json);
-    save_model(&model, &path, &config).unwrap();
+    save_model(&model, &path, &config).expect("save should succeed");
 
-    let loaded = load_model(&path).unwrap();
+    let loaded = load_model(&path).expect("load should succeed");
 
-    let orig = model.get_parameter("large_weight").unwrap();
-    let load = loaded.get_parameter("large_weight").unwrap();
+    let orig = model.get_parameter("large_weight").expect("parameter should exist");
+    let load = loaded.get_parameter("large_weight").expect("load should succeed");
 
     assert_eq!(orig.len(), load.len());
     assert_eq!(orig.data(), load.data());

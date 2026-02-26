@@ -37,7 +37,7 @@ proptest! {
 
         backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
 
-        let analytical = q_tensor.grad().unwrap();
+        let analytical = q_tensor.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |q_val| {
                 let qt = Tensor::from_vec(q_val.to_vec(), false);
@@ -86,7 +86,7 @@ proptest! {
 
         backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
 
-        let analytical = k_tensor.grad().unwrap();
+        let analytical = k_tensor.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |k_val| {
                 let qt = Tensor::from_vec(q_vec.clone(), false);
@@ -135,7 +135,7 @@ proptest! {
 
         backward(&mut output, Some(ndarray::Array1::ones(seq_len * d_v)));
 
-        let analytical = v_tensor.grad().unwrap();
+        let analytical = v_tensor.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |v_val| {
                 let qt = Tensor::from_vec(q_vec.clone(), false);

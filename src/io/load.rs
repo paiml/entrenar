@@ -157,14 +157,14 @@ mod tests {
 
         let original = Model::new(ModelMetadata::new("test-model", "linear"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("json");
 
         let config = SaveConfig::new(ModelFormat::Json);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
         // Load it back
-        let loaded = load_model(&temp_path).unwrap();
+        let loaded = load_model(&temp_path).expect("load should succeed");
 
         // Verify
         assert_eq!(original.metadata.name, loaded.metadata.name);
@@ -181,13 +181,13 @@ mod tests {
 
         let original = Model::new(ModelMetadata::new("yaml-test", "simple"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("yaml");
 
         let config = SaveConfig::new(ModelFormat::Yaml);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
-        let loaded = load_model(&temp_path).unwrap();
+        let loaded = load_model(&temp_path).expect("load should succeed");
 
         assert_eq!(original.metadata.name, loaded.metadata.name);
         assert_eq!(original.parameters.len(), loaded.parameters.len());
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_load_unsupported_extension() {
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("unknown");
 
         let result = load_model(&temp_path);
@@ -220,19 +220,19 @@ mod tests {
 
         let original = Model::new(meta, params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("json");
 
         // Save and load
         let config = SaveConfig::new(ModelFormat::Json).with_pretty(true);
-        save_model(&original, &temp_path, &config).unwrap();
-        let loaded = load_model(&temp_path).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
+        let loaded = load_model(&temp_path).expect("load should succeed");
 
         // Verify all parameters match
         assert_eq!(original.parameters.len(), loaded.parameters.len());
 
         for (orig_name, orig_tensor) in &original.parameters {
-            let loaded_tensor = loaded.get_parameter(orig_name).unwrap();
+            let loaded_tensor = loaded.get_parameter(orig_name).expect("load should succeed");
             assert_eq!(orig_tensor.data(), loaded_tensor.data());
             assert_eq!(orig_tensor.requires_grad(), loaded_tensor.requires_grad());
         }
@@ -263,12 +263,12 @@ mod tests {
     #[test]
     fn test_load_model_invalid_json() {
         use std::io::Write;
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("json");
 
         // Write invalid JSON
-        let mut f = File::create(&temp_path).unwrap();
-        f.write_all(b"{ invalid json }").unwrap();
+        let mut f = File::create(&temp_path).expect("file write should succeed");
+        f.write_all(b"{ invalid json }").expect("file write should succeed");
         drop(f);
 
         let result = load_model(&temp_path);
@@ -280,12 +280,12 @@ mod tests {
     #[test]
     fn test_load_model_invalid_yaml() {
         use std::io::Write;
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("yaml");
 
         // Write invalid YAML
-        let mut f = File::create(&temp_path).unwrap();
-        f.write_all(b"this: is: not: valid: yaml: [}").unwrap();
+        let mut f = File::create(&temp_path).expect("file write should succeed");
+        f.write_all(b"this: is: not: valid: yaml: [}").expect("file write should succeed");
         drop(f);
 
         let result = load_model(&temp_path);
@@ -299,13 +299,13 @@ mod tests {
         let params = vec![("weight".to_string(), Tensor::from_vec(vec![1.0], true))];
         let original = Model::new(ModelMetadata::new("yml-test", "simple"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("yml");
 
         let config = SaveConfig::new(ModelFormat::Yaml);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
-        let loaded = load_model(&temp_path).unwrap();
+        let loaded = load_model(&temp_path).expect("load should succeed");
         assert_eq!(original.metadata.name, loaded.metadata.name);
 
         std::fs::remove_file(temp_path).ok();
@@ -320,13 +320,13 @@ mod tests {
 
         let original = Model::new(ModelMetadata::new("safetensor-test", "linear"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("safetensors");
 
         let config = SaveConfig::new(ModelFormat::SafeTensors);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
-        let loaded = load_model(&temp_path).unwrap();
+        let loaded = load_model(&temp_path).expect("load should succeed");
 
         assert_eq!(original.metadata.name, loaded.metadata.name);
         assert_eq!(original.metadata.architecture, loaded.metadata.architecture);
@@ -344,17 +344,17 @@ mod tests {
 
         let original = Model::new(ModelMetadata::new("round-trip", "mlp"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("safetensors");
 
         let config = SaveConfig::new(ModelFormat::SafeTensors);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
-        let loaded = load_model(&temp_path).unwrap();
+        let loaded = load_model(&temp_path).expect("load should succeed");
 
         // Verify data matches
         for (name, orig_tensor) in &original.parameters {
-            let loaded_tensor = loaded.get_parameter(name).unwrap();
+            let loaded_tensor = loaded.get_parameter(name).expect("load should succeed");
             assert_eq!(orig_tensor.data(), loaded_tensor.data());
         }
 
@@ -370,12 +370,12 @@ mod tests {
     #[test]
     fn test_load_safetensors_invalid_data() {
         use std::io::Write;
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("safetensors");
 
         // Write invalid safetensors data
-        let mut f = File::create(&temp_path).unwrap();
-        f.write_all(b"not valid safetensors binary data").unwrap();
+        let mut f = File::create(&temp_path).expect("file write should succeed");
+        f.write_all(b"not valid safetensors binary data").expect("file write should succeed");
         drop(f);
 
         let result = load_model(&temp_path);
@@ -394,15 +394,15 @@ mod tests {
 
         let original = Model::new(ModelMetadata::new("large-model", "test"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("safetensors");
 
         let config = SaveConfig::new(ModelFormat::SafeTensors);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
-        let loaded = load_model(&temp_path).unwrap();
+        let loaded = load_model(&temp_path).expect("load should succeed");
 
-        let loaded_large = loaded.get_parameter("large_weight").unwrap();
+        let loaded_large = loaded.get_parameter("large_weight").expect("load should succeed");
         assert_eq!(loaded_large.len(), 5000);
 
         // Verify some values
@@ -418,13 +418,13 @@ mod tests {
         let params = vec![("w".to_string(), Tensor::from_vec(vec![1.0], false))];
         let original = Model::new(ModelMetadata::new("meta-model", "transformer"), params);
 
-        let temp_file = NamedTempFile::new().unwrap();
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
         let temp_path = temp_file.path().with_extension("safetensors");
 
         let config = SaveConfig::new(ModelFormat::SafeTensors);
-        save_model(&original, &temp_path, &config).unwrap();
+        save_model(&original, &temp_path, &config).expect("save should succeed");
 
-        let loaded = load_model(&temp_path).unwrap();
+        let loaded = load_model(&temp_path).expect("load should succeed");
 
         assert_eq!(loaded.metadata.name, "meta-model");
         assert_eq!(loaded.metadata.architecture, "transformer");

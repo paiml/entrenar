@@ -67,7 +67,7 @@ impl Explainable for LinearModel {
     }
 
     fn explain_one(&self, sample: &[f32]) -> Self::Path {
-        self.predict_explained(sample, 1).1.into_iter().next().unwrap()
+        self.predict_explained(sample, 1).1.into_iter().next().expect("operation should succeed")
     }
 }
 
@@ -118,7 +118,7 @@ impl Explainable for DecisionTreeModel {
     }
 
     fn explain_one(&self, sample: &[f32]) -> Self::Path {
-        self.predict_explained(sample, 1).1.into_iter().next().unwrap()
+        self.predict_explained(sample, 1).1.into_iter().next().expect("operation should succeed")
     }
 }
 
@@ -360,7 +360,8 @@ fn demo_serialization() {
 
     // Binary serialization
     let binary_serializer = TraceSerializer::new(TraceFormat::Binary);
-    let binary_bytes = binary_serializer.serialize(&trace, PathType::Linear).unwrap();
+    let binary_bytes =
+        binary_serializer.serialize(&trace, PathType::Linear).expect("operation should succeed");
     println!("Binary (APRT format):");
     println!("  Size: {} bytes", binary_bytes.len());
     println!(
@@ -370,13 +371,15 @@ fn demo_serialization() {
 
     // JSON serialization
     let json_serializer = TraceSerializer::new(TraceFormat::Json);
-    let json_bytes = json_serializer.serialize(&trace, PathType::Linear).unwrap();
+    let json_bytes =
+        json_serializer.serialize(&trace, PathType::Linear).expect("operation should succeed");
     println!("\nJSON format:");
     println!("  Size: {} bytes", json_bytes.len());
     println!("  Preview: {}...", String::from_utf8_lossy(&json_bytes[..80.min(json_bytes.len())]));
 
     // Round-trip verification
-    let restored: DecisionTrace<LinearPath> = binary_serializer.deserialize(&binary_bytes).unwrap();
+    let restored: DecisionTrace<LinearPath> =
+        binary_serializer.deserialize(&binary_bytes).expect("operation should succeed");
     println!("\nRound-trip verification:");
     println!("  Original sequence: {}", trace.sequence);
     println!("  Restored sequence: {}", restored.sequence);

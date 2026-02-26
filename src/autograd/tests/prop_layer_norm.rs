@@ -20,7 +20,7 @@ proptest! {
         let c_len = c.len();
         backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
-        let analytical = a.grad().unwrap();
+        let analytical = a.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |x_val| {
                 let t = Tensor::from_vec(x_val.to_vec(), false);
@@ -58,7 +58,7 @@ proptest! {
 
         backward(&mut c, Some(ndarray::Array1::ones(n)));
 
-        let analytical = g.grad().unwrap();
+        let analytical = g.grad().expect("gradient should be available");
         let numerical = finite_difference(
             |gamma_val| {
                 let t = Tensor::from_vec(x_vec.clone(), false);
@@ -96,7 +96,7 @@ proptest! {
 
         backward(&mut c, Some(ndarray::Array1::ones(n)));
 
-        let analytical = b.grad().unwrap();
+        let analytical = b.grad().expect("gradient should be available");
 
         // Beta gradient should be exactly the upstream gradient (1.0 for all elements)
         for i in 0..n {

@@ -35,7 +35,7 @@ fn test_fetcher_without_token_is_not_authenticated() {
 fn test_parse_repo_id_valid() {
     let result = HfModelFetcher::parse_repo_id("microsoft/codebert-base");
     assert!(result.is_ok());
-    let (org, name) = result.unwrap();
+    let (org, name) = result.expect("operation should succeed");
     assert_eq!(org, "microsoft");
     assert_eq!(name, "codebert-base");
 }
@@ -82,7 +82,7 @@ fn test_download_nonexistent_repo_returns_error() {
     let temp_dir = std::env::temp_dir().join("hf_test_nonexistent");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+    let fetcher = HfModelFetcher::new().expect("operation should succeed").cache_dir(&temp_dir);
     let result = fetcher.download_model(
         "nonexistent-org-xyz123/nonexistent-model-abc456",
         FetchOptions::new().files(&["model.safetensors"]).cache_dir(&temp_dir),
@@ -100,7 +100,7 @@ fn test_download_security_check_blocks_pytorch() {
     let temp_dir = std::env::temp_dir().join("hf_test_security");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+    let fetcher = HfModelFetcher::new().expect("operation should succeed").cache_dir(&temp_dir);
     let result = fetcher.download_model(
         "microsoft/codebert-base",
         FetchOptions::new()
@@ -123,14 +123,14 @@ fn test_download_real_model_integration() {
     let temp_dir = std::env::temp_dir().join("hf_test_real");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+    let fetcher = HfModelFetcher::new().expect("operation should succeed").cache_dir(&temp_dir);
     let result = fetcher.download_model(
         "hf-internal-testing/tiny-random-bert",
         FetchOptions::new().files(&["config.json"]).cache_dir(&temp_dir),
     );
 
     assert!(result.is_ok(), "Should download from real repo: {:?}", result.err());
-    let artifact = result.unwrap();
+    let artifact = result.expect("operation should succeed");
     assert!(artifact.path.exists(), "Cache directory should exist");
 
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -201,7 +201,7 @@ fn test_download_with_non_main_revision() {
     let temp_dir = std::env::temp_dir().join("hf_test_revision");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+    let fetcher = HfModelFetcher::new().expect("operation should succeed").cache_dir(&temp_dir);
     let result = fetcher.download_model(
         "nonexistent-org/nonexistent-model",
         FetchOptions::new()
@@ -221,7 +221,7 @@ fn test_download_with_empty_files_uses_defaults() {
     let temp_dir = std::env::temp_dir().join("hf_test_empty_files");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+    let fetcher = HfModelFetcher::new().expect("operation should succeed").cache_dir(&temp_dir);
     // Empty files should default to model.safetensors and config.json
     let result = fetcher.download_model(
         "nonexistent-org-abc123/nonexistent-model-xyz789",
@@ -240,7 +240,7 @@ fn test_download_pytorch_allowed_when_flag_set() {
     let temp_dir = std::env::temp_dir().join("hf_test_pytorch_allowed");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let fetcher = HfModelFetcher::new().unwrap().cache_dir(&temp_dir);
+    let fetcher = HfModelFetcher::new().expect("operation should succeed").cache_dir(&temp_dir);
     let result = fetcher.download_model(
         "nonexistent-org/nonexistent-model",
         FetchOptions::new()
@@ -260,7 +260,7 @@ fn test_download_uses_custom_cache_dir_from_options() {
     let temp_dir = std::env::temp_dir().join("hf_test_custom_cache");
     let _ = std::fs::remove_dir_all(&temp_dir);
 
-    let fetcher = HfModelFetcher::new().unwrap();
+    let fetcher = HfModelFetcher::new().expect("operation should succeed");
     let result = fetcher.download_model(
         "nonexistent-org/nonexistent-model",
         FetchOptions::new().files(&["model.safetensors"]).cache_dir(&temp_dir), // Custom cache from options

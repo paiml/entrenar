@@ -34,8 +34,8 @@ proptest! {
     #[test]
     fn prop_chunk_id_serialization_roundtrip(n in 0u128..1000) {
         let id = ChunkId(uuid::Uuid::from_u128(n));
-        let json = serde_json::to_string(&id).unwrap();
-        let deserialized: ChunkId = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&id).expect("JSON serialization should succeed");
+        let deserialized: ChunkId = serde_json::from_str(&json).expect("JSON deserialization should succeed");
         prop_assert_eq!(id, deserialized);
     }
 
@@ -63,7 +63,7 @@ proptest! {
         error_codes in proptest::collection::vec("[A-Z][0-9]{4}", 1..5),
         successes in proptest::collection::vec(0u32..10, 1..5)
     ) {
-        let mut store = DecisionPatternStore::new().unwrap();
+        let mut store = DecisionPatternStore::new().expect("operation should succeed");
 
         for (i, code) in error_codes.iter().enumerate() {
             let mut pattern = FixPattern::new(code, format!("fix{i}"));
@@ -71,14 +71,14 @@ proptest! {
             for _ in 0..success_count {
                 pattern.record_success();
             }
-            store.index_fix(pattern).unwrap();
+            store.index_fix(pattern).expect("operation should succeed");
         }
 
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("temp file creation should succeed");
         let path = temp_dir.path().join("patterns.apr");
 
-        store.save_apr(&path).unwrap();
-        let loaded = DecisionPatternStore::load_apr(&path).unwrap();
+        store.save_apr(&path).expect("save should succeed");
+        let loaded = DecisionPatternStore::load_apr(&path).expect("load should succeed");
 
         prop_assert_eq!(store.len(), loaded.len());
 

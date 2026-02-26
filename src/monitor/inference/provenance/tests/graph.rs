@@ -168,6 +168,6 @@ fn test_add_inference_from_trace() {
     let mut graph = ProvenanceGraph::new();
     let id = graph.add_inference(&trace, "model-1", "v1.0");
 
-    let node = graph.get_node(id).unwrap();
+    let node = graph.get_node(id).expect("operation should succeed");
     assert_eq!(node.type_name(), "Inference");
 }

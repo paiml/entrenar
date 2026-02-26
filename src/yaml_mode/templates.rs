@@ -507,7 +507,7 @@ mod tests {
         let manifest =
             generate_manifest(Template::Lora, "lora-exp", Some("hf://llama"), Some("hf://data"));
         assert!(manifest.lora.is_some());
-        let lora = manifest.lora.unwrap();
+        let lora = manifest.lora.expect("operation should succeed");
         assert!(lora.enabled);
         assert_eq!(lora.rank, 16);
         assert!(lora.quantize_base.is_none());
@@ -517,10 +517,15 @@ mod tests {
     fn test_generate_qlora() {
         let manifest = generate_manifest(Template::Qlora, "qlora-exp", None, None);
         assert!(manifest.lora.is_some());
-        let lora = manifest.lora.unwrap();
-        assert!(lora.quantize_base.unwrap());
+        let lora = manifest.lora.expect("operation should succeed");
+        assert!(lora.quantize_base.expect("operation should succeed"));
         assert_eq!(lora.quantize_bits, Some(4));
-        assert!(manifest.training.as_ref().unwrap().mixed_precision.is_some());
+        assert!(manifest
+            .training
+            .as_ref()
+            .expect("operation should succeed")
+            .mixed_precision
+            .is_some());
     }
 
     #[test]
@@ -532,7 +537,7 @@ mod tests {
         assert!(manifest.callbacks.is_some());
         assert!(manifest.output.is_some());
 
-        let monitoring = manifest.monitoring.unwrap();
+        let monitoring = manifest.monitoring.expect("operation should succeed");
         assert!(monitoring.tracking.is_some());
         assert!(monitoring.system.is_some());
         assert!(monitoring.alerts.is_some());
@@ -567,10 +572,10 @@ mod tests {
             Some(32),   // small model rank
             Some(3e-4), // small model lr
         );
-        let lora = manifest.lora.unwrap();
+        let lora = manifest.lora.expect("operation should succeed");
         assert_eq!(lora.rank, 32);
         assert!((lora.alpha - 64.0).abs() < 0.01); // alpha = 2 * rank
-        assert!((manifest.optimizer.unwrap().lr - 3e-4).abs() < 1e-10);
+        assert!((manifest.optimizer.expect("operation should succeed").lr - 3e-4).abs() < 1e-10);
     }
 
     #[test]
@@ -583,7 +588,7 @@ mod tests {
             Some(128),
             Some(1e-4),
         );
-        let lora = manifest.lora.unwrap();
+        let lora = manifest.lora.expect("operation should succeed");
         assert_eq!(lora.rank, 128);
         assert!((lora.alpha - 256.0).abs() < 0.01);
     }
@@ -593,7 +598,7 @@ mod tests {
         // Without hints, defaults should be unchanged
         let manifest =
             generate_manifest_with_hints(Template::Lora, "no-hints", None, None, None, None);
-        let lora = manifest.lora.unwrap();
+        let lora = manifest.lora.expect("operation should succeed");
         assert_eq!(lora.rank, 16); // original default
         assert!((lora.alpha - 32.0).abs() < 0.01);
     }
@@ -615,7 +620,7 @@ mod tests {
             merge_adapters: true
             format: safetensors
         "#;
-        let config: PublishConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: PublishConfig = serde_yaml::from_str(yaml).expect("config should be valid");
         assert_eq!(config.repo, "myuser/my-model");
         assert!(!config.private);
         assert!(config.model_card);
@@ -628,7 +633,7 @@ mod tests {
         use super::super::manifest::PublishConfig;
 
         let yaml = r#"repo: "org/name""#;
-        let config: PublishConfig = serde_yaml::from_str(yaml).unwrap();
+        let config: PublishConfig = serde_yaml::from_str(yaml).expect("config should be valid");
         assert!(!config.private);
         assert!(config.model_card); // default true
         assert!(!config.merge_adapters);
@@ -645,8 +650,9 @@ publish:
   repo: myuser/my-model
   merge_adapters: true
 "#;
-        let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-        let publish = manifest.publish.unwrap();
+        let manifest: TrainingManifest =
+            serde_yaml::from_str(yaml).expect("operation should succeed");
+        let publish = manifest.publish.expect("operation should succeed");
         assert_eq!(publish.repo, "myuser/my-model");
         assert!(publish.merge_adapters);
         assert!(publish.model_card); // default

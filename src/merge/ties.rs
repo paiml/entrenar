@@ -298,13 +298,13 @@ mod tests {
         let mut model2 = HashMap::new();
         model2.insert("w".to_string(), Tensor::from_vec(vec![2.0, -1.0, 4.0], false));
 
-        let config = TiesConfig::new(1.0).unwrap(); // Keep all
-        let result = ties_merge(&[model1, model2], &base, &config).unwrap();
+        let config = TiesConfig::new(1.0).expect("config should be valid"); // Keep all
+        let result = ties_merge(&[model1, model2], &base, &config).expect("config should be valid");
 
         // Both positive at index 0: average (1+2)/2 = 1.5
         // Mixed at index 1: pos=2, neg=-1, pos wins -> 2.0
         // Both positive at index 2: average (3+4)/2 = 3.5
-        let w = result.get("w").unwrap();
+        let w = result.get("w").expect("key should exist");
         assert!((w.data()[0] - 1.5).abs() < 1e-6);
         assert!((w.data()[2] - 3.5).abs() < 1e-6);
     }

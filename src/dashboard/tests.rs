@@ -8,7 +8,7 @@ use crate::storage::{ExperimentStorage, InMemoryStorage, RunStatus};
 
 fn setup_storage() -> (Arc<Mutex<InMemoryStorage>>, String) {
     let mut storage = InMemoryStorage::new();
-    let exp_id = storage.create_experiment("test-exp", None).unwrap();
+    let exp_id = storage.create_experiment("test-exp", None).expect("operation should succeed");
     (Arc::new(Mutex::new(storage)), exp_id)
 }
 
@@ -88,7 +88,7 @@ fn test_metric_snapshot_mean() {
     let values = vec![(1000, 1.0), (2000, 2.0), (3000, 3.0)];
     let snapshot = MetricSnapshot::new("metric", values);
 
-    assert!((snapshot.mean().unwrap() - 2.0).abs() < f64::EPSILON);
+    assert!((snapshot.mean().expect("operation should succeed") - 2.0).abs() < f64::EPSILON);
 }
 
 #[test]
@@ -124,7 +124,10 @@ fn test_resource_snapshot_with_values() {
     assert!((snapshot.gpu_util - 0.75).abs() < f64::EPSILON);
     assert!((snapshot.cpu_util - 0.50).abs() < f64::EPSILON);
     assert!((snapshot.memory_util() - 0.5).abs() < f64::EPSILON);
-    assert!((snapshot.gpu_memory_util().unwrap() - 0.375).abs() < f64::EPSILON);
+    assert!(
+        (snapshot.gpu_memory_util().expect("operation should succeed") - 0.375).abs()
+            < f64::EPSILON
+    );
 }
 
 #[test]
@@ -145,7 +148,8 @@ fn test_resource_snapshot_zero_total() {
 #[test]
 fn test_run_dashboard_status_running() {
     let (storage, exp_id) = setup_storage();
-    let run = Run::new(&exp_id, storage, TracingConfig::disabled()).unwrap();
+    let run =
+        Run::new(&exp_id, storage, TracingConfig::disabled()).expect("config should be valid");
 
     assert_eq!(run.status(), RunStatus::Running);
 }
@@ -153,10 +157,11 @@ fn test_run_dashboard_status_running() {
 #[test]
 fn test_run_dashboard_status_finished() {
     let (storage, exp_id) = setup_storage();
-    let run = Run::new(&exp_id, storage, TracingConfig::disabled()).unwrap();
+    let run =
+        Run::new(&exp_id, storage, TracingConfig::disabled()).expect("config should be valid");
     let run_id = run.id.clone();
 
-    run.finish(RunStatus::Success).unwrap();
+    run.finish(RunStatus::Success).expect("operation should succeed");
 
     // Status would be checked after finish
     // Note: we consumed run, so we can't call status() on it
@@ -166,43 +171,46 @@ fn test_run_dashboard_status_finished() {
 #[test]
 fn test_run_dashboard_recent_metrics() {
     let (storage, exp_id) = setup_storage();
-    let mut run = Run::new(&exp_id, storage, TracingConfig::disabled()).unwrap();
+    let mut run =
+        Run::new(&exp_id, storage, TracingConfig::disabled()).expect("config should be valid");
 
-    run.log_metric("loss", 0.5).unwrap();
-    run.log_metric("loss", 0.4).unwrap();
-    run.log_metric("loss", 0.3).unwrap();
-    run.log_metric("accuracy", 0.8).unwrap();
+    run.log_metric("loss", 0.5).expect("operation should succeed");
+    run.log_metric("loss", 0.4).expect("operation should succeed");
+    run.log_metric("loss", 0.3).expect("operation should succeed");
+    run.log_metric("accuracy", 0.8).expect("operation should succeed");
 
     let metrics = run.recent_metrics(10);
 
     assert!(metrics.contains_key("loss"));
     assert!(metrics.contains_key("accuracy"));
-    assert_eq!(metrics.get("loss").unwrap().len(), 3);
-    assert_eq!(metrics.get("accuracy").unwrap().len(), 1);
+    assert_eq!(metrics.get("loss").expect("key should exist").len(), 3);
+    assert_eq!(metrics.get("accuracy").expect("key should exist").len(), 1);
 }
 
 #[test]
 fn test_run_dashboard_recent_metrics_limited() {
     let (storage, exp_id) = setup_storage();
-    let mut run = Run::new(&exp_id, storage, TracingConfig::disabled()).unwrap();
+    let mut run =
+        Run::new(&exp_id, storage, TracingConfig::disabled()).expect("config should be valid");
 
     for i in 0..20 {
-        run.log_metric("loss", 1.0 / (f64::from(i) + 1.0)).unwrap();
+        run.log_metric("loss", 1.0 / (f64::from(i) + 1.0)).expect("operation should succeed");
     }
 
     let metrics = run.recent_metrics(5);
 
-    assert_eq!(metrics.get("loss").unwrap().len(), 5);
+    assert_eq!(metrics.get("loss").expect("key should exist").len(), 5);
 }
 
 #[test]
 fn test_run_metric_keys() {
     let (storage, exp_id) = setup_storage();
-    let mut run = Run::new(&exp_id, storage, TracingConfig::disabled()).unwrap();
+    let mut run =
+        Run::new(&exp_id, storage, TracingConfig::disabled()).expect("config should be valid");
 
-    run.log_metric("loss", 0.5).unwrap();
-    run.log_metric("accuracy", 0.8).unwrap();
-    run.log_metric("f1", 0.75).unwrap();
+    run.log_metric("loss", 0.5).expect("operation should succeed");
+    run.log_metric("accuracy", 0.8).expect("operation should succeed");
+    run.log_metric("f1", 0.75).expect("operation should succeed");
 
     let keys = run.metric_keys();
 
@@ -215,7 +223,8 @@ fn test_run_metric_keys() {
 #[test]
 fn test_run_resource_usage() {
     let (storage, exp_id) = setup_storage();
-    let run = Run::new(&exp_id, storage, TracingConfig::disabled()).unwrap();
+    let run =
+        Run::new(&exp_id, storage, TracingConfig::disabled()).expect("config should be valid");
 
     let resources = run.resource_usage();
 

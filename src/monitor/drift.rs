@@ -262,7 +262,7 @@ mod tests {
         // Extreme outlier (far from mean ~54.5, std ~2.87)
         let anomaly = baseline.detect_anomaly(100.0, 3.0);
         assert!(anomaly.is_some());
-        let a = anomaly.unwrap();
+        let a = anomaly.expect("operation should succeed");
         assert!(a.z_score > 5.0); // Should be high severity
     }
 

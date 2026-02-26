@@ -177,8 +177,9 @@ mod tests {
     #[test]
     fn test_config_serialization() {
         let config = TransformerConfig::llama2_7b();
-        let json = serde_json::to_string(&config).unwrap();
-        let restored: TransformerConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+        let restored: TransformerConfig =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(restored.hidden_size, config.hidden_size);
         assert_eq!(restored.num_attention_heads, config.num_attention_heads);
     }
@@ -210,8 +211,9 @@ mod tests {
     #[test]
     fn test_config_yaml_serialization() {
         let config = TransformerConfig::tiny();
-        let yaml = serde_yaml::to_string(&config).unwrap();
-        let restored: TransformerConfig = serde_yaml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml::to_string(&config).expect("config should be valid");
+        let restored: TransformerConfig =
+            serde_yaml::from_str(&yaml).expect("config should be valid");
         assert_eq!(restored.hidden_size, config.hidden_size);
         assert_eq!(restored.num_hidden_layers, config.num_hidden_layers);
     }

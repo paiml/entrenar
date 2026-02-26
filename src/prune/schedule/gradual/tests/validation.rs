@@ -138,12 +138,13 @@ fn test_serialize_gradual() {
         final_sparsity: 0.5,
         frequency: 10,
     };
-    let json = serde_json::to_string(&schedule).unwrap();
+    let json = serde_json::to_string(&schedule).expect("JSON serialization should succeed");
     assert!(
         json.contains("gradual"),
         "SCHED-051 FALSIFIED: Gradual should serialize with type=gradual"
     );
-    let deserialized: PruningSchedule = serde_json::from_str(&json).unwrap();
+    let deserialized: PruningSchedule =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(schedule, deserialized, "SCHED-051 FALSIFIED: Deserialized should match original");
 }
 
@@ -158,7 +159,7 @@ initial_sparsity: 0.0
 final_sparsity: 0.5
 frequency: 10
 ";
-    let schedule: PruningSchedule = serde_yaml::from_str(yaml).unwrap();
+    let schedule: PruningSchedule = serde_yaml::from_str(yaml).expect("operation should succeed");
     match schedule {
         PruningSchedule::Gradual {
             start_step,

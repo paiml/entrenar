@@ -192,8 +192,9 @@ fn test_platform_efficiency_edge() {
 #[test]
 fn test_server_efficiency_serialization() {
     let eff = ServerEfficiency::new(1000.0, 85.0, 500.0);
-    let json = serde_json::to_string(&eff).unwrap();
-    let parsed: ServerEfficiency = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&eff).expect("JSON serialization should succeed");
+    let parsed: ServerEfficiency =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert!(
         (parsed.throughput_samples_per_sec - eff.throughput_samples_per_sec).abs() < f64::EPSILON
@@ -203,8 +204,9 @@ fn test_server_efficiency_serialization() {
 #[test]
 fn test_edge_efficiency_serialization() {
     let eff = EdgeEfficiency::new(5 * 1024 * 1024, 100, 10.0, 128 * 1024 * 1024);
-    let json = serde_json::to_string(&eff).unwrap();
-    let parsed: EdgeEfficiency = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&eff).expect("JSON serialization should succeed");
+    let parsed: EdgeEfficiency =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(parsed.binary_size_bytes, eff.binary_size_bytes);
 }
@@ -280,21 +282,24 @@ fn test_platform_efficiency_server_memory_bytes() {
 #[test]
 fn test_platform_efficiency_serde() {
     let server = PlatformEfficiency::Server(ServerEfficiency::new(1000.0, 80.0, 500.0));
-    let json = serde_json::to_string(&server).unwrap();
-    let parsed: PlatformEfficiency = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&server).expect("JSON serialization should succeed");
+    let parsed: PlatformEfficiency =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert!(parsed.is_server());
 
     let edge = PlatformEfficiency::Edge(EdgeEfficiency::new(1024, 100, 10.0, 4096));
-    let json = serde_json::to_string(&edge).unwrap();
-    let parsed: PlatformEfficiency = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&edge).expect("JSON serialization should succeed");
+    let parsed: PlatformEfficiency =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert!(parsed.is_edge());
 }
 
 #[test]
 fn test_wasm_budget_serde() {
     let budget = WasmBudget::mobile();
-    let json = serde_json::to_string(&budget).unwrap();
-    let parsed: WasmBudget = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&budget).expect("JSON serialization should succeed");
+    let parsed: WasmBudget =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(budget.max_binary_size, parsed.max_binary_size);
 }
 

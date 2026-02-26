@@ -38,7 +38,7 @@ fn test_trainer_config_progressive() {
     let config = TrainerConfig::new("t", "s").with_progressive(vec![(0, 2), (1, 5)]);
 
     assert!(config.progressive.is_some());
-    let prog = config.progressive.unwrap();
+    let prog = config.progressive.expect("config should be valid");
     assert_eq!(prog.layer_mapping.len(), 2);
 }
 
@@ -47,7 +47,7 @@ fn test_trainer_config_attention_transfer() {
     let config = TrainerConfig::new("t", "s").with_attention_transfer(0.2);
 
     assert!(config.attention_transfer.is_some());
-    let at = config.attention_transfer.unwrap();
+    let at = config.attention_transfer.expect("config should be valid");
     assert_eq!(at.weight, 0.2);
 }
 
@@ -124,10 +124,10 @@ fn test_training_state_avg_loss() {
     state.step();
     state.record_loss(3.0);
 
-    let avg = state.avg_loss(2).unwrap();
+    let avg = state.avg_loss(2).expect("operation should succeed");
     assert!((avg - 2.5).abs() < 0.01);
 
-    let avg_all = state.avg_loss(10).unwrap();
+    let avg_all = state.avg_loss(10).expect("operation should succeed");
     assert!((avg_all - 2.0).abs() < 0.01);
 }
 
@@ -174,8 +174,10 @@ fn test_trainer_compute_loss() {
     let teacher = SafeTensorsTeacher::mock(12, 768);
     let trainer = DistillationTrainer::new(config, teacher);
 
-    let student_logits = Array2::from_shape_vec((2, 10), vec![1.0; 20]).unwrap();
-    let teacher_logits = Array2::from_shape_vec((2, 10), vec![1.1; 20]).unwrap();
+    let student_logits =
+        Array2::from_shape_vec((2, 10), vec![1.0; 20]).expect("operation should succeed");
+    let teacher_logits =
+        Array2::from_shape_vec((2, 10), vec![1.1; 20]).expect("operation should succeed");
     let targets = vec![5, 3];
 
     let loss =
@@ -192,8 +194,10 @@ fn test_trainer_compute_loss_with_progressive() {
     let teacher = SafeTensorsTeacher::mock(12, 768);
     let trainer = DistillationTrainer::new(config, teacher);
 
-    let student_logits = Array2::from_shape_vec((2, 10), vec![1.0; 20]).unwrap();
-    let teacher_logits = Array2::from_shape_vec((2, 10), vec![1.1; 20]).unwrap();
+    let student_logits =
+        Array2::from_shape_vec((2, 10), vec![1.0; 20]).expect("operation should succeed");
+    let teacher_logits =
+        Array2::from_shape_vec((2, 10), vec![1.1; 20]).expect("operation should succeed");
     let targets = vec![5, 3];
 
     let sh = vec![Array2::<f32>::zeros((2, 768))];
@@ -324,8 +328,10 @@ fn test_trainer_compute_loss_with_attention_transfer() {
     let teacher = SafeTensorsTeacher::mock(12, 768);
     let trainer = DistillationTrainer::new(config, teacher);
 
-    let student_logits = Array2::from_shape_vec((2, 10), vec![1.0; 20]).unwrap();
-    let teacher_logits = Array2::from_shape_vec((2, 10), vec![1.1; 20]).unwrap();
+    let student_logits =
+        Array2::from_shape_vec((2, 10), vec![1.0; 20]).expect("operation should succeed");
+    let teacher_logits =
+        Array2::from_shape_vec((2, 10), vec![1.1; 20]).expect("operation should succeed");
     let targets = vec![5, 3];
 
     // Attention maps (simulating attention scores)

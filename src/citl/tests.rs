@@ -9,7 +9,7 @@ use super::*;
 #[test]
 fn test_full_citl_workflow() {
     // Create trainer
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     // Simulate multiple failed sessions with similar patterns
     for i in 0..5 {
@@ -38,7 +38,7 @@ fn test_full_citl_workflow() {
             None
         };
 
-        trainer.ingest_session(traces, outcome, fix).unwrap();
+        trainer.ingest_session(traces, outcome, fix).expect("operation should succeed");
     }
 
     // Simulate successful sessions
@@ -50,7 +50,9 @@ fn test_full_citl_workflow() {
         )
         .with_span(SourceSpan::line("main.rs", 10))];
 
-        trainer.ingest_session(traces, CompilationOutcome::success(), None).unwrap();
+        trainer
+            .ingest_session(traces, CompilationOutcome::success(), None)
+            .expect("operation should succeed");
     }
 
     // Verify session counts
@@ -62,7 +64,8 @@ fn test_full_citl_workflow() {
 
     // Correlate the error
     let error_span = SourceSpan::line("main.rs", 10);
-    let correlation = trainer.correlate_error("E0308", &error_span).unwrap();
+    let correlation =
+        trainer.correlate_error("E0308", &error_span).expect("operation should succeed");
 
     assert_eq!(correlation.error_code, "E0308");
 
@@ -84,7 +87,7 @@ fn test_full_citl_workflow() {
 
 #[test]
 fn test_dependency_chain_tracking() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     let span = SourceSpan::line("main.rs", 5);
 
@@ -105,12 +108,12 @@ fn test_dependency_chain_tracking() {
             CompilationOutcome::failure(vec!["E0308".to_string()], vec![span.clone()], vec![]),
             None,
         )
-        .unwrap();
+        .expect("operation should succeed");
 
     // Build dependency graph
     let graph = trainer.build_dependency_graph();
-    assert_eq!(graph.get("middle").unwrap(), &vec!["root".to_string()]);
-    assert_eq!(graph.get("leaf").unwrap(), &vec!["middle".to_string()]);
+    assert_eq!(graph.get("middle").expect("key should exist"), &vec!["root".to_string()]);
+    assert_eq!(graph.get("leaf").expect("key should exist"), &vec!["middle".to_string()]);
 
     // Find root causes
     let roots = trainer.find_root_causes(&span);
@@ -119,20 +122,20 @@ fn test_dependency_chain_tracking() {
 
 #[test]
 fn test_pattern_store_with_multiple_error_codes() {
-    let mut store = DecisionPatternStore::new().unwrap();
+    let mut store = DecisionPatternStore::new().expect("operation should succeed");
 
     // Index patterns for different error codes
     store
         .index_fix(FixPattern::new("E0308", "type mismatch fix").with_decision("type_inference"))
-        .unwrap();
+        .expect("operation should succeed");
 
     store
         .index_fix(FixPattern::new("E0382", "use after move fix").with_decision("borrow_check"))
-        .unwrap();
+        .expect("operation should succeed");
 
     store
         .index_fix(FixPattern::new("E0308", "another type fix").with_decision("type_coercion"))
-        .unwrap();
+        .expect("operation should succeed");
 
     // Verify indexing
     assert_eq!(store.len(), 3);
@@ -140,13 +143,15 @@ fn test_pattern_store_with_multiple_error_codes() {
     assert_eq!(store.patterns_for_error("E0382").len(), 1);
 
     // Query suggestions
-    let suggestions = store.suggest_fix("E0308", &["type_inference".to_string()], 5).unwrap();
+    let suggestions = store
+        .suggest_fix("E0308", &["type_inference".to_string()], 5)
+        .expect("operation should succeed");
     assert!(!suggestions.is_empty());
 }
 
 #[test]
 fn test_success_rate_affects_ranking() {
-    let mut store = DecisionPatternStore::new().unwrap();
+    let mut store = DecisionPatternStore::new().expect("operation should succeed");
 
     // Pattern with high success rate
     let mut pattern1 = FixPattern::new("E0308", "successful fix");
@@ -154,7 +159,7 @@ fn test_success_rate_affects_ranking() {
         pattern1.record_success();
     }
     let id1 = pattern1.id;
-    store.index_fix(pattern1).unwrap();
+    store.index_fix(pattern1).expect("operation should succeed");
 
     // Pattern with low success rate
     let mut pattern2 = FixPattern::new("E0308", "failing fix");
@@ -162,11 +167,11 @@ fn test_success_rate_affects_ranking() {
         pattern2.record_failure();
     }
     let id2 = pattern2.id;
-    store.index_fix(pattern2).unwrap();
+    store.index_fix(pattern2).expect("operation should succeed");
 
     // High success pattern should have higher weighted score
-    let p1 = store.get(&id1).unwrap();
-    let p2 = store.get(&id2).unwrap();
+    let p1 = store.get(&id1).expect("key should exist");
+    let p2 = store.get(&id2).expect("key should exist");
 
     let suggestion1 = FixSuggestion::new(p1.clone(), 1.0, 0);
     let suggestion2 = FixSuggestion::new(p2.clone(), 1.0, 0);
@@ -176,7 +181,7 @@ fn test_success_rate_affects_ranking() {
 
 #[test]
 fn test_tarantula_suspiciousness_calculation() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     // Bad decision: appears in all failures
     for _ in 0..10 {
@@ -186,7 +191,7 @@ fn test_tarantula_suspiciousness_calculation() {
                 CompilationOutcome::failure(vec!["E".to_string()], vec![], vec![]),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     // Good decision: appears in all successes
@@ -197,7 +202,7 @@ fn test_tarantula_suspiciousness_calculation() {
                 CompilationOutcome::success(),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     // Mixed decision: appears in both
@@ -208,14 +213,14 @@ fn test_tarantula_suspiciousness_calculation() {
                 CompilationOutcome::failure(vec!["E".to_string()], vec![], vec![]),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
         trainer
             .ingest_session(
                 vec![DecisionTrace::new("d", "mixed_decision", "")],
                 CompilationOutcome::success(),
                 None,
             )
-            .unwrap();
+            .expect("operation should succeed");
     }
 
     let top = trainer.top_suspicious_types(3);
@@ -230,7 +235,7 @@ fn test_tarantula_suspiciousness_calculation() {
 
 #[test]
 fn test_json_export_import_preserves_data() {
-    let mut store = DecisionPatternStore::new().unwrap();
+    let mut store = DecisionPatternStore::new().expect("operation should succeed");
 
     let mut pattern =
         FixPattern::new("E0308", "- old\n+ new").with_decision("step1").with_decision("step2");
@@ -238,12 +243,12 @@ fn test_json_export_import_preserves_data() {
     pattern.record_success();
     pattern.record_failure();
 
-    store.index_fix(pattern).unwrap();
+    store.index_fix(pattern).expect("operation should succeed");
 
-    let json = store.export_json().unwrap();
+    let json = store.export_json().expect("operation should succeed");
 
-    let mut new_store = DecisionPatternStore::new().unwrap();
-    new_store.import_json(&json).unwrap();
+    let mut new_store = DecisionPatternStore::new().expect("operation should succeed");
+    new_store.import_json(&json).expect("operation should succeed");
 
     let patterns: Vec<_> = new_store.patterns_for_error("E0308");
     assert_eq!(patterns.len(), 1);
@@ -258,7 +263,7 @@ fn test_json_export_import_preserves_data() {
 
 #[test]
 fn test_overlapping_spans_detected() {
-    let mut trainer = DecisionCITL::new().unwrap();
+    let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
     // Decision spanning lines 5-10
     let wide_span = SourceSpan::new("main.rs", 5, 1, 10, 80);
@@ -268,11 +273,11 @@ fn test_overlapping_spans_detected() {
             CompilationOutcome::failure(vec!["E".to_string()], vec![], vec![]),
             None,
         )
-        .unwrap();
+        .expect("operation should succeed");
 
     // Error on line 7 should overlap with decision
     let error_span = SourceSpan::line("main.rs", 7);
-    let correlation = trainer.correlate_error("E", &error_span).unwrap();
+    let correlation = trainer.correlate_error("E", &error_span).expect("operation should succeed");
 
     // Should find the overlapping decision
     let found = trainer.find_root_causes(&error_span);
@@ -295,10 +300,10 @@ proptest! {
 
         let json = serde_json::to_string(&pattern);
         prop_assert!(json.is_ok(), "serialize failed: {:?}", json.err());
-        let json = json.unwrap();
+        let json = json.expect("operation should succeed");
         let restored: Result<FixPattern, _> = serde_json::from_str(&json);
         prop_assert!(restored.is_ok(), "deserialize failed: {:?}", restored.err());
-        let restored = restored.unwrap();
+        let restored = restored.expect("operation should succeed");
 
         prop_assert_eq!(pattern.error_code, restored.error_code);
         prop_assert_eq!(pattern.fix_diff, restored.fix_diff);
@@ -317,10 +322,10 @@ proptest! {
     fn prop_store_len_matches_indexed(
         n_patterns in 1usize..20
     ) {
-        let mut store = DecisionPatternStore::new().unwrap();
+        let mut store = DecisionPatternStore::new().expect("operation should succeed");
 
         for i in 0..n_patterns {
-            store.index_fix(FixPattern::new(format!("E{i:04}"), "fix")).unwrap();
+            store.index_fix(FixPattern::new(format!("E{i:04}"), "fix")).expect("operation should succeed");
         }
 
         prop_assert_eq!(store.len(), n_patterns);
@@ -331,10 +336,10 @@ proptest! {
         n_success in 0usize..10,
         n_fail in 0usize..10
     ) {
-        let mut trainer = DecisionCITL::new().unwrap();
+        let mut trainer = DecisionCITL::new().expect("operation should succeed");
 
         for _ in 0..n_success {
-            trainer.ingest_session(vec![], CompilationOutcome::success(), None).unwrap();
+            trainer.ingest_session(vec![], CompilationOutcome::success(), None).expect("operation should succeed");
         }
 
         for _ in 0..n_fail {
@@ -342,7 +347,7 @@ proptest! {
                 vec![],
                 CompilationOutcome::failure(vec![], vec![], vec![]),
                 None,
-            ).unwrap();
+            ).expect("operation should succeed");
         }
 
         prop_assert!(trainer.success_count() >= 0);

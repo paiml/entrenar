@@ -4,7 +4,7 @@ use super::*;
 fn test_verify_empty_gguf() {
     let data = write_gguf(&[], &[]);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.version, 3);
     assert_eq!(summary.tensor_count, 0);
     assert_eq!(summary.metadata_count, 0);
@@ -15,7 +15,7 @@ fn test_verify_with_metadata() {
     let metadata = vec![("general.name".into(), GgufValue::String("test".into()))];
     let data = write_gguf(&[], &metadata);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -37,7 +37,7 @@ fn test_verify_with_tensors() {
     ];
     let data = write_gguf(&tensors, &[]);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensor_count, 2);
     assert_eq!(summary.tensors.len(), 2);
     assert_eq!(summary.tensors[0].name, "w1");
@@ -55,7 +55,7 @@ fn test_roundtrip_f32() {
     }];
     let data = write_gguf(&tensors, &metadata);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensor_count, 1);
     assert_eq!(summary.metadata_count, 1);
     assert_eq!(summary.tensors[0].shape, vec![8, 16]);
@@ -69,7 +69,7 @@ fn test_roundtrip_q4_0() {
         vec![GgufTensor { name: "quantized".into(), shape: vec![64], dtype, data: bytes }];
     let data = write_gguf(&tensors, &[]);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensors[0].dtype, 2); // Q4_0
 }
 
@@ -80,7 +80,7 @@ fn test_roundtrip_q8_0() {
         vec![GgufTensor { name: "quantized".into(), shape: vec![32], dtype, data: bytes }];
     let data = write_gguf(&tensors, &[]);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensors[0].dtype, 8); // Q8_0
 }
 
@@ -138,7 +138,7 @@ fn test_verify_u32_metadata() {
     let tensors = vec![GgufTensor { name: "w".into(), shape: vec![1], dtype, data: bytes }];
     let data = write_gguf(&tensors, &metadata);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
     assert_eq!(summary.tensor_count, 1);
 }
@@ -148,7 +148,7 @@ fn test_verify_f32_metadata() {
     let metadata = vec![("loss".into(), GgufValue::Float32(0.42))];
     let data = write_gguf(&[], &metadata);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -157,7 +157,7 @@ fn test_verify_u64_metadata() {
     let metadata = vec![("params".into(), GgufValue::Uint64(7_000_000_000))];
     let data = write_gguf(&[], &metadata);
 
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -169,7 +169,7 @@ fn test_verify_u64_metadata() {
 fn test_verify_uint8_metadata() {
     let metadata = vec![("flag".into(), GgufValue::Uint8(42))];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -177,7 +177,7 @@ fn test_verify_uint8_metadata() {
 fn test_verify_int8_metadata() {
     let metadata = vec![("offset".into(), GgufValue::Int8(-1))];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -185,7 +185,7 @@ fn test_verify_int8_metadata() {
 fn test_verify_bool_metadata() {
     let metadata = vec![("enabled".into(), GgufValue::Bool(true))];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -193,7 +193,7 @@ fn test_verify_bool_metadata() {
 fn test_verify_uint16_metadata() {
     let metadata = vec![("vocab_size".into(), GgufValue::Uint16(32000))];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -201,7 +201,7 @@ fn test_verify_uint16_metadata() {
 fn test_verify_int16_metadata() {
     let metadata = vec![("temperature".into(), GgufValue::Int16(-100))];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -209,7 +209,7 @@ fn test_verify_int16_metadata() {
 fn test_verify_int64_metadata() {
     let metadata = vec![("timestamp".into(), GgufValue::Int64(-9_000_000))];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -217,7 +217,7 @@ fn test_verify_int64_metadata() {
 fn test_verify_float64_metadata() {
     let metadata = vec![("learning_rate".into(), GgufValue::Float64(1e-5))];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 1);
 }
 
@@ -238,7 +238,7 @@ fn test_verify_all_metadata_types_combined() {
         ("f64_val".into(), GgufValue::Float64(2.718281828)),
     ];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 12);
 }
 
@@ -250,77 +250,77 @@ fn test_verify_all_metadata_types_combined() {
 fn test_skip_gguf_value_type_0_uint8() {
     // Type 0 (UINT8): skip 1 byte -> match arm 0 | 1 | 7
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 0).unwrap(), 1);
+    assert_eq!(skip_gguf_value(&data, 0, 0).expect("operation should succeed"), 1);
 }
 
 #[test]
 fn test_skip_gguf_value_type_1_int8() {
     // Type 1 (INT8): skip 1 byte -> match arm 0 | 1 | 7
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 1).unwrap(), 1);
+    assert_eq!(skip_gguf_value(&data, 0, 1).expect("operation should succeed"), 1);
 }
 
 #[test]
 fn test_skip_gguf_value_type_7_bool() {
     // Type 7 (BOOL): skip 1 byte -> match arm 0 | 1 | 7
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 7).unwrap(), 1);
+    assert_eq!(skip_gguf_value(&data, 0, 7).expect("operation should succeed"), 1);
 }
 
 #[test]
 fn test_skip_gguf_value_type_2_uint16() {
     // Type 2 (UINT16): skip 2 bytes -> match arm 2 | 3
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 2).unwrap(), 2);
+    assert_eq!(skip_gguf_value(&data, 0, 2).expect("operation should succeed"), 2);
 }
 
 #[test]
 fn test_skip_gguf_value_type_3_int16() {
     // Type 3 (INT16): skip 2 bytes -> match arm 2 | 3
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 3).unwrap(), 2);
+    assert_eq!(skip_gguf_value(&data, 0, 3).expect("operation should succeed"), 2);
 }
 
 #[test]
 fn test_skip_gguf_value_type_4_uint32() {
     // Type 4 (UINT32): skip 4 bytes -> match arm 4..=6
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 4).unwrap(), 4);
+    assert_eq!(skip_gguf_value(&data, 0, 4).expect("operation should succeed"), 4);
 }
 
 #[test]
 fn test_skip_gguf_value_type_5_int32() {
     // Type 5 (INT32): skip 4 bytes -> match arm 4..=6
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 5).unwrap(), 4);
+    assert_eq!(skip_gguf_value(&data, 0, 5).expect("operation should succeed"), 4);
 }
 
 #[test]
 fn test_skip_gguf_value_type_6_float32() {
     // Type 6 (FLOAT32): skip 4 bytes -> match arm 4..=6
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 6).unwrap(), 4);
+    assert_eq!(skip_gguf_value(&data, 0, 6).expect("operation should succeed"), 4);
 }
 
 #[test]
 fn test_skip_gguf_value_type_10_uint64() {
     // Type 10 (UINT64): skip 8 bytes -> match arm 10..=12
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 10).unwrap(), 8);
+    assert_eq!(skip_gguf_value(&data, 0, 10).expect("operation should succeed"), 8);
 }
 
 #[test]
 fn test_skip_gguf_value_type_11_int64() {
     // Type 11 (INT64): skip 8 bytes -> match arm 10..=12
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 11).unwrap(), 8);
+    assert_eq!(skip_gguf_value(&data, 0, 11).expect("operation should succeed"), 8);
 }
 
 #[test]
 fn test_skip_gguf_value_type_12_float64() {
     // Type 12 (FLOAT64): skip 8 bytes -> match arm 10..=12
     let data = vec![0u8; 16];
-    assert_eq!(skip_gguf_value(&data, 0, 12).unwrap(), 8);
+    assert_eq!(skip_gguf_value(&data, 0, 12).expect("operation should succeed"), 8);
 }
 
 #[test]

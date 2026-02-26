@@ -12,7 +12,7 @@ fn test_train_from_yaml_nonexistent() {
 
 #[test]
 fn test_train_from_yaml_success() {
-    let output_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
     let yaml = format!(
         r#"
 model:
@@ -34,8 +34,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -47,7 +47,7 @@ training:
 
 #[test]
 fn test_train_from_yaml_with_grad_clip() {
-    let output_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
     let yaml = format!(
         r#"
 model:
@@ -70,8 +70,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -79,7 +79,7 @@ training:
 
 #[test]
 fn test_train_from_yaml_with_lora() {
-    let output_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
     let yaml = format!(
         r#"
 model:
@@ -106,8 +106,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -115,7 +115,7 @@ training:
 
 #[test]
 fn test_train_from_yaml_with_quantize() {
-    let output_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
     let yaml = format!(
         r#"
 model:
@@ -141,8 +141,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -151,8 +151,8 @@ training:
 #[test]
 fn test_train_from_yaml_malformed() {
     let yaml = "not: [valid yaml";
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_err());
@@ -172,8 +172,8 @@ optimizer:
   name: adam
   lr: 0.001
 ";
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_err());
@@ -187,8 +187,8 @@ optimizer:
 /// Uses a minimal config file to keep tests fast
 #[test]
 fn test_train_from_yaml_transformer_mode() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
 
     // Create a minimal model config for fast testing
     let config_path = config_dir.path().join("config.json");
@@ -207,7 +207,7 @@ fn test_train_from_yaml_transformer_mode() {
             "attention_bias": false
         }"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -234,8 +234,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -245,15 +245,15 @@ training:
     assert!(output_path.exists());
 
     // Verify output contains transformer-specific metadata
-    let output_content = std::fs::read_to_string(&output_path).unwrap();
+    let output_content = std::fs::read_to_string(&output_path).expect("file read should succeed");
     assert!(output_content.contains("transformer"));
 }
 
 /// Test gradient accumulation works in transformer mode
 #[test]
 fn test_train_from_yaml_transformer_with_gradient_accumulation() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
 
     // Create a minimal model config
     let config_path = config_dir.path().join("config.json");
@@ -269,7 +269,7 @@ fn test_train_from_yaml_transformer_with_gradient_accumulation() {
             "max_position_embeddings": 64
         }"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -298,8 +298,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -308,8 +308,8 @@ training:
 /// Test mixed precision is applied correctly
 #[test]
 fn test_train_from_yaml_transformer_with_mixed_precision() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
 
     // Create a minimal model config
     let config_path = config_dir.path().join("config.json");
@@ -325,7 +325,7 @@ fn test_train_from_yaml_transformer_with_mixed_precision() {
             "max_position_embeddings": 64
         }"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -353,8 +353,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -363,7 +363,7 @@ training:
 #[test]
 fn test_train_from_yaml_default_mode_is_tabular() {
     // When mode is not specified, should default to tabular
-    let output_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
     let yaml = format!(
         r#"
 model:
@@ -384,8 +384,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -393,10 +393,10 @@ training:
 
 #[test]
 fn test_train_from_yaml_transformer_with_config_file() {
-    let output_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
 
     // Create a mock config.json file
-    let config_dir = TempDir::new().unwrap();
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = config_dir.path().join("config.json");
     std::fs::write(
         &config_path,
@@ -413,7 +413,7 @@ fn test_train_from_yaml_transformer_with_config_file() {
             "attention_bias": false
         }"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -440,8 +440,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -453,9 +453,9 @@ training:
 
 #[test]
 fn test_train_from_yaml_transformer_with_text_json() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
 
     // Create a minimal model config
     let config_path = config_dir.path().join("config.json");
@@ -471,7 +471,7 @@ fn test_train_from_yaml_transformer_with_text_json() {
             "max_position_embeddings": 64
         }"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     // Create text training data in JSON format
     let data_path = data_dir.path().join("train.json");
@@ -483,7 +483,7 @@ fn test_train_from_yaml_transformer_with_text_json() {
             {"text": "More data for the language model."}
         ]"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -512,8 +512,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -521,9 +521,9 @@ training:
 
 #[test]
 fn test_train_from_yaml_transformer_with_jsonl() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
 
     // Create a minimal model config
     let config_path = config_dir.path().join("config.json");
@@ -531,7 +531,7 @@ fn test_train_from_yaml_transformer_with_jsonl() {
         &config_path,
         r#"{"hidden_size": 32, "num_attention_heads": 2, "num_key_value_heads": 1, "intermediate_size": 64, "num_hidden_layers": 1, "vocab_size": 100, "max_position_embeddings": 64}"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     // Create text training data in JSONL format
     let data_path = data_dir.path().join("train.jsonl");
@@ -541,7 +541,7 @@ fn test_train_from_yaml_transformer_with_jsonl() {
 {"text": "Second line of training data."}
 {"text": "Third line of training data."}"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -569,8 +569,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());
@@ -578,9 +578,9 @@ training:
 
 #[test]
 fn test_train_from_yaml_transformer_with_pretokenized() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
 
     // Create a minimal model config
     let config_path = config_dir.path().join("config.json");
@@ -588,7 +588,7 @@ fn test_train_from_yaml_transformer_with_pretokenized() {
         &config_path,
         r#"{"hidden_size": 32, "num_attention_heads": 2, "num_key_value_heads": 1, "intermediate_size": 64, "num_hidden_layers": 1, "vocab_size": 100, "max_position_embeddings": 64}"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     // Create pre-tokenized training data
     let data_path = data_dir.path().join("train.json");
@@ -600,7 +600,7 @@ fn test_train_from_yaml_transformer_with_pretokenized() {
             {"input_ids": [100, 200, 300, 400]}
         ]}"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -628,8 +628,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok());

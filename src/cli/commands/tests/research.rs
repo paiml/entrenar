@@ -46,7 +46,7 @@ fn run_research_init_helper(
 fn test_research_init_basic() {
     use crate::config::{ArtifactTypeArg, LicenseArg};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output = dir.path().join("artifact.yaml");
 
     let result = run_research_init_helper(
@@ -71,7 +71,7 @@ fn test_research_init_basic() {
 fn test_research_init_with_author() {
     use crate::config::{ArtifactTypeArg, LicenseArg};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output = dir.path().join("artifact.yaml");
 
     let result = run_research_init_helper(
@@ -96,7 +96,7 @@ fn test_research_init_with_author() {
 fn test_research_init_all_artifact_types() {
     use crate::config::{ArtifactTypeArg, LicenseArg};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
 
     // Test each artifact type
     let artifact_types = [
@@ -133,7 +133,7 @@ fn test_research_init_all_artifact_types() {
 fn test_research_init_all_licenses() {
     use crate::config::{ArtifactTypeArg, LicenseArg};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
 
     // Test each license type
     let licenses = [
@@ -186,7 +186,7 @@ fn create_test_artifact(dir: &TempDir) -> PathBuf {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     output
 }
@@ -195,7 +195,7 @@ fn create_test_artifact(dir: &TempDir) -> PathBuf {
 fn test_research_cite_bibtex() {
     use crate::config::{CitationFormat, CiteArgs, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = create_test_artifact(&dir);
     let output = dir.path().join("citation.bib");
 
@@ -221,7 +221,7 @@ fn test_research_cite_bibtex() {
 fn test_research_cite_cff() {
     use crate::config::{CitationFormat, CiteArgs, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = create_test_artifact(&dir);
     let output = dir.path().join("CITATION.cff");
 
@@ -247,7 +247,7 @@ fn test_research_cite_cff() {
 fn test_research_cite_json() {
     use crate::config::{CitationFormat, CiteArgs, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = create_test_artifact(&dir);
     let output = dir.path().join("citation.json");
 
@@ -295,9 +295,9 @@ fn test_research_cite_missing_artifact() {
 fn test_research_verify_invalid_file() {
     use crate::config::{ResearchArgs, ResearchCommand, VerifyArgs};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let file_path = dir.path().join("invalid.yaml");
-    std::fs::write(&file_path, "not valid yaml: [").unwrap();
+    std::fs::write(&file_path, "not valid yaml: [").expect("file write should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Verify(VerifyArgs {
@@ -338,7 +338,7 @@ fn test_run_command_research_init() {
         ArtifactTypeArg, LicenseArg, ResearchArgs, ResearchCommand, ResearchInitArgs,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output = dir.path().join("artifact.yaml");
 
     let cli = Cli {
@@ -370,7 +370,7 @@ fn test_run_command_research_init() {
 fn test_research_preregister_basic() {
     use crate::config::{PreregisterArgs, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output = dir.path().join("preregistration.yaml");
 
     let args = ResearchArgs {
@@ -395,7 +395,7 @@ fn test_research_preregister_basic() {
 fn test_research_preregister_with_notes() {
     use crate::config::{PreregisterArgs, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output = dir.path().join("preregistration.yaml");
 
     let args = ResearchArgs {
@@ -420,7 +420,7 @@ fn test_research_preregister_with_notes() {
 fn test_research_bundle_directory() {
     use crate::config::{ArtifactTypeArg, BundleArgs, LicenseArg, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
     let output = dir.path().join("ro-crate");
 
@@ -438,7 +438,7 @@ fn test_research_bundle_directory() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Bundle(BundleArgs {
@@ -459,7 +459,7 @@ fn test_research_bundle_directory() {
 fn test_research_bundle_zip() {
     use crate::config::{ArtifactTypeArg, BundleArgs, LicenseArg, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
     let output = dir.path().join("ro-crate");
 
@@ -477,7 +477,7 @@ fn test_research_bundle_zip() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Bundle(BundleArgs {
@@ -497,7 +497,7 @@ fn test_research_bundle_zip() {
 fn test_research_bundle_with_files() {
     use crate::config::{ArtifactTypeArg, BundleArgs, LicenseArg, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
     let output = dir.path().join("ro-crate");
     let data_file = dir.path().join("data.txt");
@@ -516,8 +516,8 @@ fn test_research_bundle_with_files() {
         None,
         None,
     )
-    .unwrap();
-    std::fs::write(&data_file, "test data content").unwrap();
+    .expect("operation should succeed");
+    std::fs::write(&data_file, "test data content").expect("file write should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Bundle(BundleArgs {
@@ -539,7 +539,7 @@ fn test_research_deposit_dry_run() {
         ArchiveProviderArg, ArtifactTypeArg, DepositArgs, LicenseArg, ResearchArgs, ResearchCommand,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
 
     // Create artifact first
@@ -556,7 +556,7 @@ fn test_research_deposit_dry_run() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Deposit(DepositArgs {
@@ -580,7 +580,7 @@ fn test_research_deposit_all_providers() {
         ArchiveProviderArg, ArtifactTypeArg, DepositArgs, LicenseArg, ResearchArgs, ResearchCommand,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
 
     // Create artifact first
@@ -597,7 +597,7 @@ fn test_research_deposit_all_providers() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let providers = [
         ArchiveProviderArg::Zenodo,
@@ -628,12 +628,13 @@ fn test_research_deposit_all_providers() {
 fn test_research_export_notebook() {
     use crate::config::{ExportArgs, ExportFormat, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let input = dir.path().join("document.md");
     let output = dir.path().join("notebook.ipynb");
 
     // Create a literate document
-    std::fs::write(&input, "# Title\n\nSome text.\n\n```python\nprint('hello')\n```\n").unwrap();
+    std::fs::write(&input, "# Title\n\nSome text.\n\n```python\nprint('hello')\n```\n")
+        .expect("file write should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -655,12 +656,12 @@ fn test_research_export_notebook() {
 fn test_research_export_html() {
     use crate::config::{ExportArgs, ExportFormat, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let input = dir.path().join("document.md");
     let output = dir.path().join("output.html");
 
     // Create a literate document
-    std::fs::write(&input, "# Title\n\nSome **bold** text.\n").unwrap();
+    std::fs::write(&input, "# Title\n\nSome **bold** text.\n").expect("file write should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -684,7 +685,7 @@ fn test_research_export_anonymized() {
         ArtifactTypeArg, ExportArgs, ExportFormat, LicenseArg, ResearchArgs, ResearchCommand,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
     let output = dir.path().join("anon.json");
 
@@ -702,7 +703,7 @@ fn test_research_export_anonymized() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -726,7 +727,7 @@ fn test_research_export_anonymized_missing_flag() {
         ArtifactTypeArg, ExportArgs, ExportFormat, LicenseArg, ResearchArgs, ResearchCommand,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
     let output = dir.path().join("anon.json");
 
@@ -744,7 +745,7 @@ fn test_research_export_anonymized_missing_flag() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -766,11 +767,11 @@ fn test_research_export_anonymized_missing_flag() {
 fn test_research_export_rocrate_error() {
     use crate::config::{ExportArgs, ExportFormat, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let input = dir.path().join("input.md");
     let output = dir.path().join("output");
 
-    std::fs::write(&input, "# Test\n").unwrap();
+    std::fs::write(&input, "# Test\n").expect("file write should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -791,7 +792,7 @@ fn test_research_export_rocrate_error() {
 // Test info command with different formats
 #[test]
 fn test_info_command_json() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let args = InfoArgs { config: config_path, format: OutputFormat::Json };
@@ -802,7 +803,7 @@ fn test_info_command_json() {
 
 #[test]
 fn test_info_command_yaml() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let args = InfoArgs { config: config_path, format: OutputFormat::Yaml };
@@ -818,7 +819,7 @@ fn test_research_deposit_no_dry_run() {
         ArchiveProviderArg, ArtifactTypeArg, DepositArgs, LicenseArg, ResearchArgs, ResearchCommand,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
 
     run_research_init_helper(
@@ -834,7 +835,7 @@ fn test_research_deposit_no_dry_run() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Deposit(DepositArgs {
@@ -859,7 +860,7 @@ fn test_research_deposit_with_files() {
         ArchiveProviderArg, ArtifactTypeArg, DepositArgs, LicenseArg, ResearchArgs, ResearchCommand,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
     let data_file = dir.path().join("data.txt");
 
@@ -876,9 +877,9 @@ fn test_research_deposit_with_files() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
-    std::fs::write(&data_file, "test data").unwrap();
+    std::fs::write(&data_file, "test data").expect("file write should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Deposit(DepositArgs {
@@ -899,7 +900,7 @@ fn test_research_deposit_with_files() {
 // Test info command verbose
 #[test]
 fn test_info_command_verbose() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let args = InfoArgs { config: config_path, format: OutputFormat::Text };
@@ -911,7 +912,7 @@ fn test_info_command_verbose() {
 // Test validate verbose
 #[test]
 fn test_validate_command_verbose() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = create_test_config(&dir);
 
     let args = ValidateArgs { config: config_path, detailed: true };
@@ -927,7 +928,7 @@ fn test_research_export_anonymized_missing_salt() {
         ArtifactTypeArg, ExportArgs, ExportFormat, LicenseArg, ResearchArgs, ResearchCommand,
     };
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = dir.path().join("artifact.yaml");
     let output = dir.path().join("anon.json");
 
@@ -944,7 +945,7 @@ fn test_research_export_anonymized_missing_salt() {
         None,
         None,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -965,12 +966,12 @@ fn test_research_export_anonymized_missing_salt() {
 // Test quantize with calibration data
 #[test]
 fn test_quantize_command_with_calibration() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model_path = create_safetensors_file(&dir, "model.safetensors");
     let calib_path = dir.path().join("calibration.json");
     let output = dir.path().join("quantized.json");
 
-    std::fs::write(&calib_path, "[]").unwrap();
+    std::fs::write(&calib_path, "[]").expect("file write should succeed");
 
     let args = QuantizeArgs {
         model: model_path,
@@ -990,7 +991,7 @@ fn test_quantize_command_with_calibration() {
 fn test_research_bundle_missing_artifact() {
     use crate::config::{BundleArgs, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Bundle(BundleArgs {
@@ -1034,7 +1035,7 @@ fn test_research_deposit_missing_artifact() {
 fn test_research_export_missing_input() {
     use crate::config::{ExportArgs, ExportFormat, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
 
     let args = ResearchArgs {
         command: ResearchCommand::Export(ExportArgs {
@@ -1055,7 +1056,7 @@ fn test_research_export_missing_input() {
 // Test merge with weights count mismatch
 #[test]
 fn test_merge_command_weights_count_mismatch() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let model2 = create_safetensors_file(&dir, "model2.safetensors");
     let output = dir.path().join("merged.json");
@@ -1093,7 +1094,7 @@ fn test_init_command_stdout() {
 // Test init with qlora template
 #[test]
 fn test_init_command_qlora_template() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output_path = dir.path().join("qlora_config.yaml");
 
     let args = InitArgs {
@@ -1113,7 +1114,7 @@ fn test_init_command_qlora_template() {
 // Test init with full template
 #[test]
 fn test_init_command_full_template() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output_path = dir.path().join("full_config.yaml");
 
     let args = InitArgs {
@@ -1133,9 +1134,9 @@ fn test_init_command_full_template() {
 // Test validate with invalid YAML
 #[test]
 fn test_validate_command_invalid_yaml() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let config_path = dir.path().join("invalid.yaml");
-    std::fs::write(&config_path, "invalid: [yaml: content").unwrap();
+    std::fs::write(&config_path, "invalid: [yaml: content").expect("file write should succeed");
 
     let args = ValidateArgs { config: config_path, detailed: false };
 
@@ -1146,9 +1147,9 @@ fn test_validate_command_invalid_yaml() {
 // Test inspect with columns filter
 #[test]
 fn test_inspect_command_with_columns() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let csv_path = dir.path().join("data.csv");
-    std::fs::write(&csv_path, b"col1,col2,col3\n1,2,3\n4,5,6").unwrap();
+    std::fs::write(&csv_path, b"col1,col2,col3\n1,2,3\n4,5,6").expect("file write should succeed");
 
     let args = InspectArgs {
         input: csv_path,
@@ -1164,7 +1165,7 @@ fn test_inspect_command_with_columns() {
 // Test missing model for merge
 #[test]
 fn test_merge_command_missing_model() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let model1 = create_safetensors_file(&dir, "model1.safetensors");
     let output = dir.path().join("merged.json");
 
@@ -1184,7 +1185,7 @@ fn test_merge_command_missing_model() {
 // Test quantize missing model
 #[test]
 fn test_quantize_command_missing_model() {
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let output = dir.path().join("quantized.json");
 
     let args = QuantizeArgs {
@@ -1215,7 +1216,7 @@ fn test_info_command_missing_config() {
 fn test_research_cite_stdout() {
     use crate::config::{CitationFormat, CiteArgs, ResearchArgs, ResearchCommand};
 
-    let dir = TempDir::new().unwrap();
+    let dir = TempDir::new().expect("temp file creation should succeed");
     let artifact_path = create_test_artifact(&dir);
 
     let args = ResearchArgs {

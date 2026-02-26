@@ -177,7 +177,7 @@ fn main() {
         let predicted = probs
             .iter()
             .enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .max_by(|a, b| a.1.partial_cmp(b.1).expect("operation should succeed"))
             .map_or(0, |(i, _)| i);
         let confidence = probs[predicted] * 100.0;
 

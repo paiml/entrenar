@@ -145,18 +145,21 @@ fn test_path_type_all_variants() {
 #[test]
 fn test_trace_format_serde() {
     let format = TraceFormat::Json;
-    let json = serde_json::to_string(&format).unwrap();
-    let restored: TraceFormat = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&format).expect("JSON serialization should succeed");
+    let restored: TraceFormat =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(format, restored);
 
     let format = TraceFormat::JsonLines;
-    let json = serde_json::to_string(&format).unwrap();
-    let restored: TraceFormat = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&format).expect("JSON serialization should succeed");
+    let restored: TraceFormat =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(format, restored);
 
     let format = TraceFormat::Binary;
-    let json = serde_json::to_string(&format).unwrap();
-    let restored: TraceFormat = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&format).expect("JSON serialization should succeed");
+    let restored: TraceFormat =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(format, restored);
 }
 

@@ -27,7 +27,8 @@ fn test_code_quality_metrics_from_cargo_output() {
     // Simulate cargo mutants JSON output
     let mutants_json = r#"{"total_mutants":200,"caught":170,"missed":25,"timeout":5}"#;
 
-    let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 2).unwrap();
+    let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 2)
+        .expect("operation should succeed");
 
     assert!((metrics.coverage_percent - 92.5).abs() < 0.01);
     assert!((metrics.mutation_score - 85.0).abs() < 0.01);
@@ -38,8 +39,9 @@ fn test_code_quality_metrics_from_cargo_output() {
 #[test]
 fn test_code_quality_metrics_serialization_roundtrip() {
     let original = CodeQualityMetrics::new(90.0, 80.0, 5);
-    let json = serde_json::to_string(&original).unwrap();
-    let restored: CodeQualityMetrics = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&original).expect("JSON serialization should succeed");
+    let restored: CodeQualityMetrics =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert!((restored.coverage_percent - original.coverage_percent).abs() < f64::EPSILON);
     assert!((restored.mutation_score - original.mutation_score).abs() < f64::EPSILON);
@@ -83,7 +85,8 @@ fn test_dependency_audit_vulnerable_crate() {
 fn test_dependency_audit_from_cargo_deny_output() {
     let cargo_deny_json = r#"{"type":"diagnostic","fields":{"graphs":[],"severity":"error","code":"A001","message":"Crate has known vulnerability RUSTSEC-2024-0001","labels":[{"span":{"crate":{"name":"vuln-crate","version":"1.2.3"}}}]}}"#;
 
-    let audits = DependencyAudit::from_cargo_deny_output(cargo_deny_json).unwrap();
+    let audits =
+        DependencyAudit::from_cargo_deny_output(cargo_deny_json).expect("operation should succeed");
 
     assert_eq!(audits.len(), 1);
     assert_eq!(audits[0].crate_name, "vuln-crate");
@@ -97,7 +100,8 @@ fn test_dependency_audit_multiple_lines() {
 {"type":"diagnostic","fields":{"graphs":[],"severity":"error","code":"A002","message":"Vuln 2","labels":[{"span":{"crate":{"name":"crate2","version":"2.0.0"}}}]}}
 {"type":"summary","fields":{"total":100}}"#;
 
-    let audits = DependencyAudit::from_cargo_deny_output(cargo_deny_json).unwrap();
+    let audits =
+        DependencyAudit::from_cargo_deny_output(cargo_deny_json).expect("operation should succeed");
 
     assert_eq!(audits.len(), 2);
     assert_eq!(audits[0].crate_name, "crate1");
@@ -256,7 +260,8 @@ fn test_quality_gate_workflow() {
     let mutants_json = r#"{"total_mutants":100,"caught":88,"missed":10,"timeout":2}"#;
 
     // Step 1: Parse code quality metrics
-    let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0).unwrap();
+    let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 0)
+        .expect("operation should succeed");
 
     // Step 2: Check against thresholds (95% coverage, 85% mutation required for A)
     assert!(metrics.meets_threshold(95.0, 85.0));
@@ -264,7 +269,8 @@ fn test_quality_gate_workflow() {
 
     // Step 3: Simulate cargo-deny check (no vulnerabilities)
     let deny_json = r#"{"type":"summary","fields":{"total":150,"clean":150}}"#;
-    let audits = DependencyAudit::from_cargo_deny_output(deny_json).unwrap();
+    let audits =
+        DependencyAudit::from_cargo_deny_output(deny_json).expect("operation should succeed");
     assert!(audits.is_empty());
 
     // All gates pass!
@@ -276,7 +282,8 @@ fn test_quality_gate_failure_workflow() {
     let coverage_json = r#"{"data":[{"totals":{"lines":{"percent":70.0}}}]}"#;
     let mutants_json = r#"{"total_mutants":100,"caught":50,"missed":45,"timeout":5}"#;
 
-    let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 10).unwrap();
+    let metrics = CodeQualityMetrics::from_cargo_output(coverage_json, mutants_json, 10)
+        .expect("operation should succeed");
 
     // Check fails (70% coverage >= 60%, 50% mutation >= 50% = Grade D)
     assert!(!metrics.meets_threshold(90.0, 80.0));

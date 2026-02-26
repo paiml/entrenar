@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn test_checkpoint_callback_save_every() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("temp file creation should succeed");
         let mut cb = CheckpointCallback::new(temp_dir.path()).save_every(2);
 
         let mut ctx = CallbackContext::default();
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_checkpoint_callback_save_best_disabled() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("temp file creation should succeed");
         let mut cb = CheckpointCallback::new(temp_dir.path()).save_best(false);
 
         let mut ctx = CallbackContext::default();
@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_checkpoint_callback_on_train_end() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("temp file creation should succeed");
         let mut cb = CheckpointCallback::new(temp_dir.path());
 
         let ctx = CallbackContext { epoch: 5, ..Default::default() };
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_checkpoint_callback_val_loss_for_best() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("temp file creation should succeed");
         let mut cb = CheckpointCallback::new(temp_dir.path());
 
         let mut ctx = CallbackContext::default();

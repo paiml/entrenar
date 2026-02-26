@@ -227,7 +227,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_experiment() {
         let state = test_state();
-        let exp = state.storage.create_experiment("test", None, None).unwrap();
+        let exp =
+            state.storage.create_experiment("test", None, None).expect("operation should succeed");
 
         let (status, _) = get_experiment(State(state), Path(exp.id)).await;
         assert_eq!(status, StatusCode::OK);
@@ -244,8 +245,8 @@ mod tests {
     #[tokio::test]
     async fn test_list_experiments() {
         let state = test_state();
-        state.storage.create_experiment("exp1", None, None).unwrap();
-        state.storage.create_experiment("exp2", None, None).unwrap();
+        state.storage.create_experiment("exp1", None, None).expect("operation should succeed");
+        state.storage.create_experiment("exp2", None, None).expect("operation should succeed");
 
         let (status, _) = list_experiments(State(state)).await;
         assert_eq!(status, StatusCode::OK);
@@ -254,7 +255,8 @@ mod tests {
     #[tokio::test]
     async fn test_create_run() {
         let state = test_state();
-        let exp = state.storage.create_experiment("test", None, None).unwrap();
+        let exp =
+            state.storage.create_experiment("test", None, None).expect("operation should succeed");
 
         let req =
             CreateRunRequest { experiment_id: exp.id, name: Some("run-1".to_string()), tags: None };
@@ -277,8 +279,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_run() {
         let state = test_state();
-        let exp = state.storage.create_experiment("test", None, None).unwrap();
-        let run = state.storage.create_run(&exp.id, None, None).unwrap();
+        let exp =
+            state.storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = state.storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let (status, _) = get_run(State(state), Path(run.id)).await;
         assert_eq!(status, StatusCode::OK);
@@ -287,8 +290,9 @@ mod tests {
     #[tokio::test]
     async fn test_update_run() {
         let state = test_state();
-        let exp = state.storage.create_experiment("test", None, None).unwrap();
-        let run = state.storage.create_run(&exp.id, None, None).unwrap();
+        let exp =
+            state.storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = state.storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let req = UpdateRunRequest { status: Some("completed".to_string()), end_time: None };
 
@@ -299,8 +303,9 @@ mod tests {
     #[tokio::test]
     async fn test_log_params() {
         let state = test_state();
-        let exp = state.storage.create_experiment("test", None, None).unwrap();
-        let run = state.storage.create_run(&exp.id, None, None).unwrap();
+        let exp =
+            state.storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = state.storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let mut params = std::collections::HashMap::new();
         params.insert("lr".to_string(), serde_json::json!(0.001));
@@ -313,8 +318,9 @@ mod tests {
     #[tokio::test]
     async fn test_log_metrics() {
         let state = test_state();
-        let exp = state.storage.create_experiment("test", None, None).unwrap();
-        let run = state.storage.create_run(&exp.id, None, None).unwrap();
+        let exp =
+            state.storage.create_experiment("test", None, None).expect("operation should succeed");
+        let run = state.storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let mut metrics = std::collections::HashMap::new();
         metrics.insert("loss".to_string(), 0.5);

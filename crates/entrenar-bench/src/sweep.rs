@@ -313,7 +313,7 @@ mod tests {
     fn test_sweeper_runs() {
         let config = SweepConfig::temperature(1.0..3.0, 1.0).with_runs(2);
         let sweeper = Sweeper::new(config);
-        let result = sweeper.run().unwrap();
+        let result = sweeper.run().expect("operation should succeed");
 
         assert!(!result.data_points.is_empty());
         assert!(result.optimal.is_some());
@@ -323,10 +323,10 @@ mod tests {
     fn test_sweeper_finds_optimal_temperature() {
         let config = SweepConfig::temperature(2.0..6.0, 1.0).with_runs(1);
         let sweeper = Sweeper::new(config);
-        let result = sweeper.run().unwrap();
+        let result = sweeper.run().expect("operation should succeed");
 
         // Optimal should be around 4.0
-        let optimal = result.optimal.unwrap();
+        let optimal = result.optimal.expect("operation should succeed");
         assert!((optimal.parameter_value - 4.0).abs() < 1.5);
     }
 
@@ -334,7 +334,7 @@ mod tests {
     fn test_sweep_result_table() {
         let config = SweepConfig::temperature(1.0..3.0, 1.0);
         let sweeper = Sweeper::new(config);
-        let result = sweeper.run().unwrap();
+        let result = sweeper.run().expect("operation should succeed");
 
         let table = result.to_table();
         assert!(table.contains("temperature"));
@@ -407,7 +407,7 @@ mod tests {
     fn test_sweep_result_fields() {
         let config = SweepConfig::temperature(1.0..3.0, 1.0);
         let sweeper = Sweeper::new(config);
-        let result = sweeper.run().unwrap();
+        let result = sweeper.run().expect("operation should succeed");
 
         assert_eq!(result.parameter_name, "temperature");
         assert!(!result.data_points.is_empty());
@@ -445,7 +445,7 @@ mod tests {
     fn test_sweep_result_table_optimal() {
         let config = SweepConfig::temperature(3.0..5.0, 1.0);
         let sweeper = Sweeper::new(config);
-        let result = sweeper.run().unwrap();
+        let result = sweeper.run().expect("operation should succeed");
 
         let table = result.to_table();
 
@@ -458,10 +458,10 @@ mod tests {
     fn test_sweep_deterministic() {
         let config = SweepConfig::temperature(1.0..3.0, 1.0).with_seed(42);
         let sweeper = Sweeper::new(config.clone());
-        let result1 = sweeper.run().unwrap();
+        let result1 = sweeper.run().expect("operation should succeed");
 
         let sweeper2 = Sweeper::new(config);
-        let result2 = sweeper2.run().unwrap();
+        let result2 = sweeper2.run().expect("operation should succeed");
 
         // Same seed should produce same results
         assert_eq!(result1.data_points[0].mean_loss, result2.data_points[0].mean_loss);
@@ -471,10 +471,10 @@ mod tests {
     fn test_alpha_sweep_finds_optimal() {
         let config = SweepConfig::alpha(0.3..0.9, 0.2).with_runs(1);
         let sweeper = Sweeper::new(config);
-        let result = sweeper.run().unwrap();
+        let result = sweeper.run().expect("operation should succeed");
 
         // Optimal should be around 0.7
-        let optimal = result.optimal.unwrap();
+        let optimal = result.optimal.expect("operation should succeed");
         assert!((optimal.parameter_value - 0.7).abs() < 0.3);
     }
 
@@ -482,7 +482,7 @@ mod tests {
     fn test_sweep_multiple_runs() {
         let config = SweepConfig::temperature(3.0..5.0, 1.0).with_runs(3);
         let sweeper = Sweeper::new(config);
-        let result = sweeper.run().unwrap();
+        let result = sweeper.run().expect("operation should succeed");
 
         // Each data point should have 3 runs
         for point in &result.data_points {

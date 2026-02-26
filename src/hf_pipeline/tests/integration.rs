@@ -36,7 +36,7 @@ fn test_integration_full_pipeline_flow() {
     // 5. Verify training state
     assert_eq!(trainer.state().epoch, 3);
     assert_eq!(trainer.state().global_step, 30);
-    assert!(trainer.state().avg_loss(10).unwrap() < 0.5);
+    assert!(trainer.state().avg_loss(10).expect("operation should succeed") < 0.5);
 }
 
 #[test]
@@ -79,10 +79,10 @@ dataset:
   path: "wikitext"
 "#;
 
-    let config = DistillationYamlConfig::from_yaml(yaml).unwrap();
+    let config = DistillationYamlConfig::from_yaml(yaml).expect("config should be valid");
     assert!(config.validate().is_ok());
 
-    let trainer_config = config.to_trainer_config().unwrap();
+    let trainer_config = config.to_trainer_config().expect("config should be valid");
     assert_eq!(trainer_config.epochs, 5);
     assert!(trainer_config.progressive.is_some());
 }

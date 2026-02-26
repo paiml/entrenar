@@ -81,18 +81,19 @@ mod tests {
 
     #[test]
     fn test_preregister_basic() {
-        let output_file = NamedTempFile::new().unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
         let args = make_test_args(output_file.path().to_path_buf());
         let result = run_research_preregister(args, LogLevel::Quiet);
         assert!(result.is_ok());
         // Verify output was created
-        let content = std::fs::read_to_string(output_file.path()).unwrap();
+        let content =
+            std::fs::read_to_string(output_file.path()).expect("file read should succeed");
         assert!(content.contains("hash:"));
     }
 
     #[test]
     fn test_preregister_with_notes() {
-        let output_file = NamedTempFile::new().unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.notes = Some("Additional notes".to_string());
         let result = run_research_preregister(args, LogLevel::Quiet);
@@ -101,11 +102,11 @@ mod tests {
 
     #[test]
     fn test_preregister_with_signing() {
-        let output_file = NamedTempFile::new().unwrap();
-        let key_file = NamedTempFile::new().unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
+        let key_file = NamedTempFile::new().expect("temp file creation should succeed");
 
         // Write a valid 32-byte key
-        std::fs::write(key_file.path(), [1u8; 32]).unwrap();
+        std::fs::write(key_file.path(), [1u8; 32]).expect("file write should succeed");
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());
@@ -114,18 +115,19 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify signed output
-        let content = std::fs::read_to_string(output_file.path()).unwrap();
+        let content =
+            std::fs::read_to_string(output_file.path()).expect("file read should succeed");
         assert!(content.contains("signature:"));
         assert!(content.contains("public_key:"));
     }
 
     #[test]
     fn test_preregister_invalid_key_size() {
-        let output_file = NamedTempFile::new().unwrap();
-        let key_file = NamedTempFile::new().unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
+        let key_file = NamedTempFile::new().expect("temp file creation should succeed");
 
         // Write invalid key size (not 32 bytes)
-        std::fs::write(key_file.path(), [1u8; 16]).unwrap();
+        std::fs::write(key_file.path(), [1u8; 16]).expect("file write should succeed");
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());
@@ -137,7 +139,7 @@ mod tests {
 
     #[test]
     fn test_preregister_missing_key_file() {
-        let output_file = NamedTempFile::new().unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(std::path::PathBuf::from("/nonexistent/key/file"));
 
@@ -167,9 +169,9 @@ mod tests {
             return;
         }
 
-        let output_file = NamedTempFile::new().unwrap();
-        let key_file = NamedTempFile::new().unwrap();
-        std::fs::write(key_file.path(), [2u8; 32]).unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
+        let key_file = NamedTempFile::new().expect("temp file creation should succeed");
+        std::fs::write(key_file.path(), [2u8; 32]).expect("file write should succeed");
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());
@@ -178,13 +180,14 @@ mod tests {
         let result = run_research_preregister(args, LogLevel::Quiet);
         assert!(result.is_ok());
 
-        let content = std::fs::read_to_string(output_file.path()).unwrap();
+        let content =
+            std::fs::read_to_string(output_file.path()).expect("file read should succeed");
         assert!(content.contains("timestamp_proof:") || content.contains("GitCommit"));
     }
 
     #[test]
     fn test_preregister_verbose_logging() {
-        let output_file = NamedTempFile::new().unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
         let args = make_test_args(output_file.path().to_path_buf());
         // Just ensure it doesn't panic with verbose logging
         let result = run_research_preregister(args, LogLevel::Verbose);
@@ -193,9 +196,9 @@ mod tests {
 
     #[test]
     fn test_preregister_with_signing_verbose() {
-        let output_file = NamedTempFile::new().unwrap();
-        let key_file = NamedTempFile::new().unwrap();
-        std::fs::write(key_file.path(), [3u8; 32]).unwrap();
+        let output_file = NamedTempFile::new().expect("temp file creation should succeed");
+        let key_file = NamedTempFile::new().expect("temp file creation should succeed");
+        std::fs::write(key_file.path(), [3u8; 32]).expect("file write should succeed");
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());

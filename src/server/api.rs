@@ -112,9 +112,14 @@ mod tests {
         let app = server.router();
 
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .expect("operation should succeed"),
+            )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::OK);
     }
@@ -132,10 +137,10 @@ mod tests {
                     .uri("/api/v1/experiments")
                     .header("Content-Type", "application/json")
                     .body(Body::from(body))
-                    .unwrap(),
+                    .expect("operation should succeed"),
             )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::CREATED);
     }
@@ -146,9 +151,14 @@ mod tests {
         let app = server.router();
 
         let response = app
-            .oneshot(Request::builder().uri("/api/v1/experiments").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/experiments")
+                    .body(Body::empty())
+                    .expect("operation should succeed"),
+            )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::OK);
     }
@@ -163,10 +173,10 @@ mod tests {
                 Request::builder()
                     .uri("/api/v1/experiments/nonexistent")
                     .body(Body::empty())
-                    .unwrap(),
+                    .expect("operation should succeed"),
             )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
@@ -176,7 +186,11 @@ mod tests {
         let server = test_server();
 
         // First create an experiment
-        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
+        let exp = server
+            .state
+            .storage
+            .create_experiment("test", None, None)
+            .expect("operation should succeed");
 
         let app = server.router();
         let body = format!(r#"{{"experiment_id": "{}"}}"#, exp.id);
@@ -188,10 +202,10 @@ mod tests {
                     .uri("/api/v1/runs")
                     .header("Content-Type", "application/json")
                     .body(Body::from(body))
-                    .unwrap(),
+                    .expect("operation should succeed"),
             )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::CREATED);
     }
@@ -201,8 +215,13 @@ mod tests {
         let server = test_server();
 
         // Create experiment and run
-        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
-        let run = server.state.storage.create_run(&exp.id, None, None).unwrap();
+        let exp = server
+            .state
+            .storage
+            .create_experiment("test", None, None)
+            .expect("operation should succeed");
+        let run =
+            server.state.storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let app = server.router();
         let body = r#"{"params": {"lr": 0.001, "batch_size": 32}}"#;
@@ -214,10 +233,10 @@ mod tests {
                     .uri(format!("/api/v1/runs/{}/params", run.id))
                     .header("Content-Type", "application/json")
                     .body(Body::from(body))
-                    .unwrap(),
+                    .expect("operation should succeed"),
             )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::OK);
     }
@@ -227,8 +246,13 @@ mod tests {
         let server = test_server();
 
         // Create experiment and run
-        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
-        let run = server.state.storage.create_run(&exp.id, None, None).unwrap();
+        let exp = server
+            .state
+            .storage
+            .create_experiment("test", None, None)
+            .expect("operation should succeed");
+        let run =
+            server.state.storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let app = server.router();
         let body = r#"{"metrics": {"loss": 0.5, "accuracy": 0.9}, "step": 100}"#;
@@ -240,10 +264,10 @@ mod tests {
                     .uri(format!("/api/v1/runs/{}/metrics", run.id))
                     .header("Content-Type", "application/json")
                     .body(Body::from(body))
-                    .unwrap(),
+                    .expect("operation should succeed"),
             )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::OK);
     }
@@ -253,8 +277,13 @@ mod tests {
         let server = test_server();
 
         // Create experiment and run
-        let exp = server.state.storage.create_experiment("test", None, None).unwrap();
-        let run = server.state.storage.create_run(&exp.id, None, None).unwrap();
+        let exp = server
+            .state
+            .storage
+            .create_experiment("test", None, None)
+            .expect("operation should succeed");
+        let run =
+            server.state.storage.create_run(&exp.id, None, None).expect("operation should succeed");
 
         let app = server.router();
         let body = r#"{"status": "completed"}"#;
@@ -266,10 +295,10 @@ mod tests {
                     .uri(format!("/api/v1/runs/{}", run.id))
                     .header("Content-Type", "application/json")
                     .body(Body::from(body))
-                    .unwrap(),
+                    .expect("operation should succeed"),
             )
             .await
-            .unwrap();
+            .expect("operation should succeed");
 
         assert_eq!(response.status(), StatusCode::OK);
     }

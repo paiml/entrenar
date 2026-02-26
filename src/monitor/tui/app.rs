@@ -411,17 +411,18 @@ mod state_writer_tests {
 
     #[test]
     fn test_training_state_writer() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
 
         writer.set_epochs(10, 100);
-        writer.start().unwrap();
+        writer.start().expect("file write should succeed");
 
-        writer.update_step(1, 10, 0.5, 0.0002, 1.5, 1200.0).unwrap();
+        writer.update_step(1, 10, 0.5, 0.0002, 1.5, 1200.0).expect("file write should succeed");
 
         // Verify state was written
         let mut state = TrainingState::new(temp_dir.path());
-        let snapshot = state.read().unwrap().unwrap();
+        let snapshot =
+            state.read().expect("file read should succeed").expect("file read should succeed");
 
         assert_eq!(snapshot.epoch, 1);
         assert_eq!(snapshot.step, 10);
@@ -431,28 +432,30 @@ mod state_writer_tests {
 
     #[test]
     fn test_training_state_writer_complete() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
 
-        writer.start().unwrap();
-        writer.complete().unwrap();
+        writer.start().expect("file write should succeed");
+        writer.complete().expect("file write should succeed");
 
         let mut state = TrainingState::new(temp_dir.path());
-        let snapshot = state.read().unwrap().unwrap();
+        let snapshot =
+            state.read().expect("file read should succeed").expect("file read should succeed");
 
         assert_eq!(snapshot.status, TrainingStatus::Completed);
     }
 
     #[test]
     fn test_training_state_writer_fail() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
 
-        writer.start().unwrap();
-        writer.fail("OOM error").unwrap();
+        writer.start().expect("file write should succeed");
+        writer.fail("OOM error").expect("file write should succeed");
 
         let mut state = TrainingState::new(temp_dir.path());
-        let snapshot = state.read().unwrap().unwrap();
+        let snapshot =
+            state.read().expect("file read should succeed").expect("file read should succeed");
 
         match snapshot.status {
             TrainingStatus::Failed(msg) => assert!(msg.contains("OOM")),
@@ -462,19 +465,22 @@ mod state_writer_tests {
 
     #[test]
     fn test_loss_history_truncation() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
         let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
         writer.history_max = 5; // Small for testing
 
-        writer.start().unwrap();
+        writer.start().expect("file write should succeed");
 
         // Add more than max history
         for i in 0..10 {
-            writer.update_step(1, i, i as f32 * 0.1, 0.0002, 1.5, 1200.0).unwrap();
+            writer
+                .update_step(1, i, i as f32 * 0.1, 0.0002, 1.5, 1200.0)
+                .expect("file write should succeed");
         }
 
         let mut state = TrainingState::new(temp_dir.path());
-        let snapshot = state.read().unwrap().unwrap();
+        let snapshot =
+            state.read().expect("file read should succeed").expect("file read should succeed");
 
         assert_eq!(snapshot.loss_history.len(), 5);
         // Should have last 5 values (0.5, 0.6, 0.7, 0.8, 0.9)

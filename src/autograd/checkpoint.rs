@@ -596,7 +596,7 @@ mod tests {
         segment.set_output(output.clone());
 
         assert!(segment.output().is_some());
-        assert_eq!(segment.output().unwrap().len(), 2);
+        assert_eq!(segment.output().expect("operation should succeed").len(), 2);
     }
 
     #[test]
@@ -896,7 +896,7 @@ mod tests {
         assert_eq!(manager.total_bytes(), 12);
 
         // Retrieve saved activation
-        let saved = manager.get(0).unwrap();
+        let saved = manager.get(0).expect("key should exist");
         assert_eq!(saved.len(), 3);
     }
 

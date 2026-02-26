@@ -38,7 +38,7 @@ proptest! {
         let c_len = c.len();
         backward(&mut c, Some(ndarray::Array1::ones(c_len)));
 
-        let analytical_a = a.grad().unwrap();
+        let analytical_a = a.grad().expect("gradient should be available");
 
         // Numerical gradient for A
         let numerical_a = finite_difference(

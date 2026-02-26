@@ -128,7 +128,7 @@ mod tests {
         suite.add(make_result("high", 50.0, 0.01, 4.0));
         suite.add(make_result("mid", 40.0, 0.015, 4.0));
 
-        let best = suite.best_by_sqnr().unwrap();
+        let best = suite.best_by_sqnr().expect("operation should succeed");
         assert_eq!(best.name, "high");
         assert!((best.sqnr_db - 50.0).abs() < 1e-6);
     }
@@ -146,7 +146,7 @@ mod tests {
         suite.add(make_result("low_error", 50.0, 0.005, 4.0));
         suite.add(make_result("mid_error", 40.0, 0.01, 4.0));
 
-        let best = suite.best_by_mse().unwrap();
+        let best = suite.best_by_mse().expect("operation should succeed");
         assert_eq!(best.name, "low_error");
         assert!((best.mse - 0.005).abs() < 1e-6);
     }
@@ -181,8 +181,9 @@ mod tests {
     #[test]
     fn test_quant_benchmark_result_serde() {
         let result = make_result("test", 40.0, 0.01, 4.0);
-        let json = serde_json::to_string(&result).unwrap();
-        let deserialized: QuantBenchmarkResult = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&result).expect("JSON serialization should succeed");
+        let deserialized: QuantBenchmarkResult =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(result.name, deserialized.name);
         assert!((result.sqnr_db - deserialized.sqnr_db).abs() < 1e-6);
     }
@@ -193,8 +194,9 @@ mod tests {
         suite.add(make_result("test1", 40.0, 0.01, 4.0));
         suite.add(make_result("test2", 50.0, 0.005, 4.0));
 
-        let json = serde_json::to_string(&suite).unwrap();
-        let deserialized: BenchmarkSuite = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&suite).expect("JSON serialization should succeed");
+        let deserialized: BenchmarkSuite =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
         assert_eq!(suite.results.len(), deserialized.results.len());
     }
 }

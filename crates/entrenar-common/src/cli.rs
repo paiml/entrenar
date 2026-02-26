@@ -182,16 +182,25 @@ mod tests {
     fn test_output_format_roundtrip() {
         for format in [OutputFormat::Table, OutputFormat::Json, OutputFormat::Compact] {
             let s = format.to_string();
-            let parsed: OutputFormat = s.parse().unwrap();
+            let parsed: OutputFormat = s.parse().expect("parsing should succeed");
             assert_eq!(format, parsed);
         }
     }
 
     #[test]
     fn test_output_format_case_insensitive() {
-        assert_eq!("JSON".parse::<OutputFormat>().unwrap(), OutputFormat::Json);
-        assert_eq!("Table".parse::<OutputFormat>().unwrap(), OutputFormat::Table);
-        assert_eq!("COMPACT".parse::<OutputFormat>().unwrap(), OutputFormat::Compact);
+        assert_eq!(
+            "JSON".parse::<OutputFormat>().expect("parsing should succeed"),
+            OutputFormat::Json
+        );
+        assert_eq!(
+            "Table".parse::<OutputFormat>().expect("parsing should succeed"),
+            OutputFormat::Table
+        );
+        assert_eq!(
+            "COMPACT".parse::<OutputFormat>().expect("parsing should succeed"),
+            OutputFormat::Compact
+        );
     }
 
     #[test]
@@ -231,9 +240,15 @@ mod tests {
     #[test]
     fn test_output_format_aliases() {
         // "text" is alias for Table
-        assert_eq!("text".parse::<OutputFormat>().unwrap(), OutputFormat::Table);
+        assert_eq!(
+            "text".parse::<OutputFormat>().expect("parsing should succeed"),
+            OutputFormat::Table
+        );
         // "line" is alias for Compact
-        assert_eq!("line".parse::<OutputFormat>().unwrap(), OutputFormat::Compact);
+        assert_eq!(
+            "line".parse::<OutputFormat>().expect("parsing should succeed"),
+            OutputFormat::Compact
+        );
     }
 
     #[test]

@@ -214,37 +214,48 @@ mod tests {
 
     #[test]
     fn test_validation_missing_file() {
-        let result = validate_model("/nonexistent/model.safetensors").unwrap();
+        let result =
+            validate_model("/nonexistent/model.safetensors").expect("operation should succeed");
         assert!(!result.valid);
         assert!(result.issues.iter().any(|i| i.code == "V001"));
     }
 
     #[test]
     fn test_validation_safe_format() {
-        let mut file = NamedTempFile::with_suffix(".safetensors").unwrap();
-        file.write_all(&[0u8; 2000]).unwrap();
+        let mut file =
+            NamedTempFile::with_suffix(".safetensors").expect("temp file creation should succeed");
+        file.write_all(&[0u8; 2000]).expect("file write should succeed");
 
-        let result = validate_model(file.path()).unwrap();
+        let result = validate_model(file.path()).expect("operation should succeed");
         assert!(result.checks.iter().any(|c| c.name == "Safe format" && c.passed));
     }
 
     #[test]
     fn test_validation_unsafe_format() {
-        let mut file = NamedTempFile::with_suffix(".pt").unwrap();
-        file.write_all(&[0u8; 2000]).unwrap();
+        let mut file =
+            NamedTempFile::with_suffix(".pt").expect("temp file creation should succeed");
+        file.write_all(&[0u8; 2000]).expect("file write should succeed");
 
-        let result = validate_model(file.path()).unwrap();
+        let result = validate_model(file.path()).expect("operation should succeed");
         // In non-strict mode, unsafe format is a warning not error
-        let format_check = result.checks.iter().find(|c| c.name == "Safe format").unwrap();
+        let format_check = result
+            .checks
+            .iter()
+            .find(|c| c.name == "Safe format")
+            .expect("operation should succeed");
         assert!(!format_check.passed);
     }
 
     #[test]
     fn test_strict_mode() {
-        let mut file = NamedTempFile::with_suffix(".pt").unwrap();
-        file.write_all(&[0u8; 2000]).unwrap();
+        let mut file =
+            NamedTempFile::with_suffix(".pt").expect("temp file creation should succeed");
+        file.write_all(&[0u8; 2000]).expect("file write should succeed");
 
-        let result = IntegrityChecker::new().strict().validate(file.path()).unwrap();
+        let result = IntegrityChecker::new()
+            .strict()
+            .validate(file.path())
+            .expect("operation should succeed");
         assert!(!result.valid); // Unsafe format is error in strict mode
     }
 
@@ -346,10 +357,11 @@ mod tests {
     fn test_integrity_checker_default() {
         let checker = IntegrityChecker::default();
         // Should be non-strict by default
-        let mut file = NamedTempFile::with_suffix(".pt").unwrap();
-        file.write_all(&[0u8; 2000]).unwrap();
+        let mut file =
+            NamedTempFile::with_suffix(".pt").expect("temp file creation should succeed");
+        file.write_all(&[0u8; 2000]).expect("file write should succeed");
 
-        let result = checker.validate(file.path()).unwrap();
+        let result = checker.validate(file.path()).expect("operation should succeed");
         // Non-strict mode: unsafe format is warning, not error
         assert!(result.valid);
     }
@@ -401,33 +413,36 @@ mod tests {
 
     #[test]
     fn test_validation_small_file_warning() {
-        let mut file = NamedTempFile::with_suffix(".safetensors").unwrap();
-        file.write_all(&[0u8; 100]).unwrap(); // Very small file
+        let mut file =
+            NamedTempFile::with_suffix(".safetensors").expect("temp file creation should succeed");
+        file.write_all(&[0u8; 100]).expect("file write should succeed"); // Very small file
 
-        let result = validate_model(file.path()).unwrap();
+        let result = validate_model(file.path()).expect("operation should succeed");
         // Small file should generate a warning
         assert!(!result.warnings.is_empty() || !result.checks.iter().all(|c| c.passed));
     }
 
     #[test]
     fn test_validation_gguf_format() {
-        let mut file = NamedTempFile::with_suffix(".gguf").unwrap();
-        file.write_all(&[0u8; 2000]).unwrap();
+        let mut file =
+            NamedTempFile::with_suffix(".gguf").expect("temp file creation should succeed");
+        file.write_all(&[0u8; 2000]).expect("file write should succeed");
 
-        let result = validate_model(file.path()).unwrap();
+        let result = validate_model(file.path()).expect("operation should succeed");
         let format_check = result.checks.iter().find(|c| c.name == "Safe format");
         assert!(format_check.is_some());
-        assert!(format_check.unwrap().passed);
+        assert!(format_check.expect("operation should succeed").passed);
     }
 
     #[test]
     fn test_validation_apr_format() {
-        let mut file = NamedTempFile::with_suffix(".apr").unwrap();
-        file.write_all(&[0u8; 2000]).unwrap();
+        let mut file =
+            NamedTempFile::with_suffix(".apr").expect("temp file creation should succeed");
+        file.write_all(&[0u8; 2000]).expect("file write should succeed");
 
-        let result = validate_model(file.path()).unwrap();
+        let result = validate_model(file.path()).expect("operation should succeed");
         let format_check = result.checks.iter().find(|c| c.name == "Safe format");
         assert!(format_check.is_some());
-        assert!(format_check.unwrap().passed);
+        assert!(format_check.expect("operation should succeed").passed);
     }
 }

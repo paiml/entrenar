@@ -16,7 +16,7 @@ fn create_dummy_safetensors(dir: &TempDir, name: &str) -> std::path::PathBuf {
     let mut content = Vec::new();
     content.extend_from_slice(&header_len);
     content.extend_from_slice(header);
-    fs::write(&path, content).unwrap();
+    fs::write(&path, content).expect("file write should succeed");
     path
 }
 
@@ -38,7 +38,7 @@ fn create_minimal_config(config_dir: &TempDir) -> std::path::PathBuf {
             "attention_bias": false
         }"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
     config_path
 }
 
@@ -56,17 +56,17 @@ fn create_pretokenized_data(data_dir: &TempDir) -> std::path::PathBuf {
             ]
         }"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
     data_path
 }
 
 /// Test: Complete transformer training pipeline
 #[test]
 fn test_e2e_transformer_training() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
-    let model_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
+    let model_dir = TempDir::new().expect("temp file creation should succeed");
 
     let config_path = create_minimal_config(&config_dir);
     let data_path = create_pretokenized_data(&data_dir);
@@ -99,8 +99,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok(), "Training should succeed: {:?}", result.err());
@@ -110,7 +110,7 @@ training:
     assert!(output_path.exists(), "Output model file should exist");
 
     // Verify output contains expected metadata
-    let content = fs::read_to_string(&output_path).unwrap();
+    let content = fs::read_to_string(&output_path).expect("file read should succeed");
     assert!(content.contains("transformer"), "Should indicate transformer mode");
     assert!(content.contains("epochs_completed"), "Should have epoch count");
     assert!(content.contains("final_loss"), "Should have final loss");
@@ -119,10 +119,10 @@ training:
 /// Test: Training with gradient accumulation
 #[test]
 fn test_e2e_training_with_gradient_accumulation() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
-    let model_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
+    let model_dir = TempDir::new().expect("temp file creation should succeed");
 
     let config_path = create_minimal_config(&config_dir);
     let data_path = create_pretokenized_data(&data_dir);
@@ -157,8 +157,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(
@@ -171,10 +171,10 @@ training:
 /// Test: Training with mixed precision
 #[test]
 fn test_e2e_training_with_mixed_precision() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
-    let model_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
+    let model_dir = TempDir::new().expect("temp file creation should succeed");
 
     let config_path = create_minimal_config(&config_dir);
     let data_path = create_pretokenized_data(&data_dir);
@@ -208,8 +208,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok(), "Training with mixed precision should succeed: {:?}", result.err());
@@ -218,10 +218,10 @@ training:
 /// Test: Multiple epochs show loss progression
 #[test]
 fn test_e2e_loss_tracking() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
-    let model_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
+    let model_dir = TempDir::new().expect("temp file creation should succeed");
 
     let config_path = create_minimal_config(&config_dir);
     let data_path = create_pretokenized_data(&data_dir);
@@ -254,19 +254,20 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok(), "Training should succeed: {:?}", result.err());
 
     // Verify output metadata
     let output_path = output_dir.path().join("final_model.json");
-    let content = fs::read_to_string(&output_path).unwrap();
-    let metadata: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let content = fs::read_to_string(&output_path).expect("file read should succeed");
+    let metadata: serde_json::Value =
+        serde_json::from_str(&content).expect("JSON deserialization should succeed");
 
     // Check epochs completed
-    assert_eq!(metadata["epochs_completed"].as_u64().unwrap(), 5);
+    assert_eq!(metadata["epochs_completed"].as_u64().expect("operation should succeed"), 5);
 
     // Check that we have loss values
     assert!(metadata["final_loss"].as_f64().is_some(), "Should have final_loss");
@@ -276,10 +277,10 @@ training:
 /// Test: Text data with tokenization
 #[test]
 fn test_e2e_text_tokenization() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
-    let model_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
+    let model_dir = TempDir::new().expect("temp file creation should succeed");
 
     let config_path = create_minimal_config(&config_dir);
     let model_path = create_dummy_safetensors(&model_dir, "model.safetensors");
@@ -294,7 +295,7 @@ fn test_e2e_text_tokenization() {
             {"text": "Another example"}
         ]"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -324,8 +325,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok(), "Training with text tokenization should succeed: {:?}", result.err());
@@ -334,10 +335,10 @@ training:
 /// Test: JSONL format support
 #[test]
 fn test_e2e_jsonl_format() {
-    let output_dir = TempDir::new().unwrap();
-    let config_dir = TempDir::new().unwrap();
-    let data_dir = TempDir::new().unwrap();
-    let model_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().expect("temp file creation should succeed");
+    let config_dir = TempDir::new().expect("temp file creation should succeed");
+    let data_dir = TempDir::new().expect("temp file creation should succeed");
+    let model_dir = TempDir::new().expect("temp file creation should succeed");
 
     let config_path = create_minimal_config(&config_dir);
     let model_path = create_dummy_safetensors(&model_dir, "model.safetensors");
@@ -350,7 +351,7 @@ fn test_e2e_jsonl_format() {
 {"text": "Second training example"}
 {"text": "Third training example"}"#,
     )
-    .unwrap();
+    .expect("operation should succeed");
 
     let yaml = format!(
         r#"
@@ -379,8 +380,8 @@ training:
         output_dir.path().display()
     );
 
-    let mut temp_file = NamedTempFile::new().unwrap();
-    temp_file.write_all(yaml.as_bytes()).unwrap();
+    let mut temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+    temp_file.write_all(yaml.as_bytes()).expect("file write should succeed");
 
     let result = train_from_yaml(temp_file.path());
     assert!(result.is_ok(), "Training with JSONL format should succeed: {:?}", result.err());

@@ -115,8 +115,10 @@ mod tests {
         assert_eq!(configs.len(), 5);
 
         // Check values are evenly spaced
-        let values: Vec<f64> =
-            configs.iter().map(|c| c.get("lr").unwrap().as_float().unwrap()).collect();
+        let values: Vec<f64> = configs
+            .iter()
+            .map(|c| c.get("lr").expect("key should exist").as_float().expect("key should exist"))
+            .collect();
         assert!((values[0] - 0.0).abs() < 1e-10);
         assert!((values[4] - 1.0).abs() < 1e-10);
     }
@@ -155,8 +157,10 @@ mod tests {
         let grid = GridSearch::new(space, 4);
         let configs = grid.configurations();
 
-        let values: Vec<f64> =
-            configs.iter().map(|c| c.get("lr").unwrap().as_float().unwrap()).collect();
+        let values: Vec<f64> = configs
+            .iter()
+            .map(|c| c.get("lr").expect("key should exist").as_float().expect("key should exist"))
+            .collect();
 
         // Log scale should give approximately: 1e-4, 1e-3, 1e-2, 1e-1
         assert!(values[0] < 1e-3);

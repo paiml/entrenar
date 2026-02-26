@@ -92,7 +92,7 @@ fn test_nix_flake_config_add_crate() {
 fn test_nix_flake_config_with_features() {
     let config = NixFlakeConfig::new("Test").with_features("test", ["feat1", "feat2"]);
 
-    let features = config.features.get("test").unwrap();
+    let features = config.features.get("test").expect("key should exist");
     assert_eq!(features.len(), 2);
 }
 
@@ -156,8 +156,9 @@ fn test_nix_flake_config_default() {
 #[test]
 fn test_crate_spec_serialization() {
     let spec = CrateSpec::crates_io("test", "1.0.0");
-    let json = serde_json::to_string(&spec).unwrap();
-    let parsed: CrateSpec = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&spec).expect("JSON serialization should succeed");
+    let parsed: CrateSpec =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(spec.name, parsed.name);
     assert_eq!(spec.version, parsed.version);

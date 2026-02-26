@@ -484,28 +484,29 @@ mod tests {
 
     #[test]
     fn test_parse_fetch() {
-        let cmd = parse("fetch meta-llama/Llama-2-7b --teacher").unwrap();
+        let cmd = parse("fetch meta-llama/Llama-2-7b --teacher").expect("parsing should succeed");
         assert!(matches!(cmd, Command::Fetch { role: ModelRole::Teacher, .. }));
 
-        let cmd = parse("fetch TinyLlama/TinyLlama-1.1B --student").unwrap();
+        let cmd =
+            parse("fetch TinyLlama/TinyLlama-1.1B --student").expect("parsing should succeed");
         assert!(matches!(cmd, Command::Fetch { role: ModelRole::Student, .. }));
     }
 
     #[test]
     fn test_parse_inspect() {
         assert!(matches!(
-            parse("inspect").unwrap(),
+            parse("inspect").expect("parsing should succeed"),
             Command::Inspect { target: InspectTarget::All }
         ));
         assert!(matches!(
-            parse("inspect layers").unwrap(),
+            parse("inspect layers").expect("parsing should succeed"),
             Command::Inspect { target: InspectTarget::Layers }
         ));
     }
 
     #[test]
     fn test_parse_memory() {
-        let cmd = parse("memory --batch 64 --seq 1024").unwrap();
+        let cmd = parse("memory --batch 64 --seq 1024").expect("parsing should succeed");
         if let Command::Memory { batch_size, seq_len } = cmd {
             assert_eq!(batch_size, Some(64));
             assert_eq!(seq_len, Some(1024));
@@ -516,9 +517,9 @@ mod tests {
 
     #[test]
     fn test_parse_quit_variants() {
-        assert!(matches!(parse("quit").unwrap(), Command::Quit));
-        assert!(matches!(parse("exit").unwrap(), Command::Quit));
-        assert!(matches!(parse("q").unwrap(), Command::Quit));
+        assert!(matches!(parse("quit").expect("parsing should succeed"), Command::Quit));
+        assert!(matches!(parse("exit").expect("parsing should succeed"), Command::Quit));
+        assert!(matches!(parse("q").expect("parsing should succeed"), Command::Quit));
     }
 
     #[test]
@@ -534,16 +535,16 @@ mod tests {
     fn test_execute_set() {
         let mut state = SessionState::new();
 
-        execute_set("batch_size", "64", &mut state).unwrap();
+        execute_set("batch_size", "64", &mut state).expect("operation should succeed");
         assert_eq!(state.preferences().default_batch_size, 64);
 
-        execute_set("seq_len", "1024", &mut state).unwrap();
+        execute_set("seq_len", "1024", &mut state).expect("operation should succeed");
         assert_eq!(state.preferences().default_seq_len, 1024);
     }
 
     #[test]
     fn test_unknown_command() {
-        let cmd = parse("foobar").unwrap();
+        let cmd = parse("foobar").expect("parsing should succeed");
         assert!(matches!(cmd, Command::Unknown { .. }));
     }
 
@@ -567,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_parse_export_valid() {
-        let cmd = parse("export safetensors /tmp/model.st").unwrap();
+        let cmd = parse("export safetensors /tmp/model.st").expect("parsing should succeed");
         if let Command::Export { format, path } = cmd {
             assert_eq!(format, "safetensors");
             assert_eq!(path, "/tmp/model.st");
@@ -578,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_parse_help_with_topic() {
-        let cmd = parse("help fetch").unwrap();
+        let cmd = parse("help fetch").expect("parsing should succeed");
         if let Command::Help { topic } = cmd {
             assert_eq!(topic, Some("fetch".to_string()));
         } else {
@@ -588,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_parse_distill_dry_run() {
-        let cmd = parse("distill --dry-run").unwrap();
+        let cmd = parse("distill --dry-run").expect("parsing should succeed");
         if let Command::Distill { dry_run } = cmd {
             assert!(dry_run);
         } else {
@@ -598,7 +599,7 @@ mod tests {
 
     #[test]
     fn test_parse_distill_short_flag() {
-        let cmd = parse("distill -n").unwrap();
+        let cmd = parse("distill -n").expect("parsing should succeed");
         if let Command::Distill { dry_run } = cmd {
             assert!(dry_run);
         } else {
@@ -608,7 +609,7 @@ mod tests {
 
     #[test]
     fn test_parse_inspect_model() {
-        let cmd = parse("inspect teacher").unwrap();
+        let cmd = parse("inspect teacher").expect("parsing should succeed");
         if let Command::Inspect { target } = cmd {
             assert_eq!(target, InspectTarget::Model("teacher".to_string()));
         } else {
@@ -618,35 +619,44 @@ mod tests {
 
     #[test]
     fn test_parse_inspect_memory() {
-        let cmd = parse("inspect memory").unwrap();
+        let cmd = parse("inspect memory").expect("parsing should succeed");
         assert!(matches!(cmd, Command::Inspect { target: InspectTarget::Memory }));
     }
 
     #[test]
     fn test_parse_command_aliases() {
         // download = fetch
-        assert!(matches!(parse("download model").unwrap(), Command::Fetch { .. }));
+        assert!(matches!(
+            parse("download model").expect("parsing should succeed"),
+            Command::Fetch { .. }
+        ));
         // show = inspect
-        assert!(matches!(parse("show layers").unwrap(), Command::Inspect { .. }));
+        assert!(matches!(
+            parse("show layers").expect("parsing should succeed"),
+            Command::Inspect { .. }
+        ));
         // mem = memory
-        assert!(matches!(parse("mem").unwrap(), Command::Memory { .. }));
+        assert!(matches!(parse("mem").expect("parsing should succeed"), Command::Memory { .. }));
         // train = distill
-        assert!(matches!(parse("train").unwrap(), Command::Distill { .. }));
+        assert!(matches!(parse("train").expect("parsing should succeed"), Command::Distill { .. }));
         // save = export (needs args)
-        assert!(matches!(parse("save gguf /tmp/out").unwrap(), Command::Export { .. }));
+        assert!(matches!(
+            parse("save gguf /tmp/out").expect("parsing should succeed"),
+            Command::Export { .. }
+        ));
         // cls = clear
-        assert!(matches!(parse("cls").unwrap(), Command::Clear));
+        assert!(matches!(parse("cls").expect("parsing should succeed"), Command::Clear));
         // ? = help
-        assert!(matches!(parse("?").unwrap(), Command::Help { .. }));
+        assert!(matches!(parse("?").expect("parsing should succeed"), Command::Help { .. }));
         // hist = history
-        assert!(matches!(parse("hist").unwrap(), Command::History));
+        assert!(matches!(parse("hist").expect("parsing should succeed"), Command::History));
     }
 
     #[test]
     fn test_execute_inspect_no_models() {
         let state = SessionState::new();
         let result = execute_inspect(&InspectTarget::All, &state);
-        assert!(result.unwrap().contains("No models loaded"));
+        assert!(result.expect("load should succeed").contains("No models loaded"));
     }
 
     #[test]
@@ -663,7 +673,8 @@ mod tests {
         };
         state.add_model("test".to_string(), model);
 
-        let result = execute_inspect(&InspectTarget::Layers, &state).unwrap();
+        let result =
+            execute_inspect(&InspectTarget::Layers, &state).expect("operation should succeed");
         assert!(result.contains("32 layers"));
     }
 
@@ -677,25 +688,25 @@ mod tests {
     #[test]
     fn test_execute_history_empty() {
         let state = SessionState::new();
-        let result = execute_history(&state).unwrap();
+        let result = execute_history(&state).expect("operation should succeed");
         assert!(result.contains("No command history"));
     }
 
     #[test]
     fn test_execute_help_topics() {
-        let fetch_help = execute_help(Some("fetch")).unwrap();
+        let fetch_help = execute_help(Some("fetch")).expect("operation should succeed");
         assert!(fetch_help.contains("Download"));
 
-        let inspect_help = execute_help(Some("inspect")).unwrap();
+        let inspect_help = execute_help(Some("inspect")).expect("operation should succeed");
         assert!(inspect_help.contains("Inspect"));
 
-        let memory_help = execute_help(Some("memory")).unwrap();
+        let memory_help = execute_help(Some("memory")).expect("operation should succeed");
         assert!(memory_help.contains("memory"));
 
-        let distill_help = execute_help(Some("distill")).unwrap();
+        let distill_help = execute_help(Some("distill")).expect("operation should succeed");
         assert!(distill_help.contains("distill"));
 
-        let general_help = execute_help(None).unwrap();
+        let general_help = execute_help(None).expect("operation should succeed");
         assert!(general_help.contains("Available commands"));
     }
 
@@ -819,27 +830,29 @@ mod tests {
         };
         state.add_model("student".to_string(), student);
 
-        let result = execute_distill(true, &state).unwrap();
+        let result = execute_distill(true, &state).expect("operation should succeed");
         assert!(result.contains("Dry run"));
     }
 
     #[test]
     fn test_execute_export() {
         let state = SessionState::new();
-        let result = execute_export("safetensors", "/tmp/model.st", &state).unwrap();
+        let result = execute_export("safetensors", "/tmp/model.st", &state)
+            .expect("operation should succeed");
         assert!(result.contains("Exported"));
     }
 
     #[test]
     fn test_parse_empty_input() {
-        let cmd = parse("").unwrap();
+        let cmd = parse("").expect("parsing should succeed");
         assert!(matches!(cmd, Command::Unknown { .. }));
     }
 
     #[test]
     fn test_execute_memory_with_args() {
         let state = SessionState::new();
-        let result = execute_memory(Some(64), Some(1024), &state).unwrap();
+        let result =
+            execute_memory(Some(64), Some(1024), &state).expect("operation should succeed");
         assert!(result.contains("batch=64"));
         assert!(result.contains("seq=1024"));
     }

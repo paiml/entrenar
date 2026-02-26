@@ -9,7 +9,7 @@ entrenar: "1.0"
 name: "test-experiment"
 version: "1.0.0"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     assert_eq!(manifest.entrenar, "1.0");
     assert_eq!(manifest.name, "test-experiment");
     assert_eq!(manifest.version, "1.0.0");
@@ -24,7 +24,7 @@ version: "1.0.0"
 description: "MNIST digit classification experiment"
 seed: 42
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
     assert_eq!(manifest.description, Some("MNIST digit classification experiment".to_string()));
     assert_eq!(manifest.seed, Some(42));
 }
@@ -40,8 +40,8 @@ data:
   source: "./data/train.parquet"
   format: "parquet"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let data = manifest.data.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let data = manifest.data.expect("operation should succeed");
     assert_eq!(data.source, Some("./data/train.parquet".to_string()));
     assert_eq!(data.format, Some("parquet".to_string()));
 }
@@ -62,9 +62,9 @@ data:
     stratify: "label"
     seed: 42
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let data = manifest.data.unwrap();
-    let split = data.split.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let data = manifest.data.expect("operation should succeed");
+    let split = data.split.expect("operation should succeed");
     assert_eq!(split.train, 0.8);
     assert_eq!(split.val, Some(0.1));
     assert_eq!(split.test, Some(0.1));
@@ -88,8 +88,8 @@ data:
     pin_memory: true
     drop_last: false
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let loader = manifest.data.unwrap().loader.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let loader = manifest.data.expect("load should succeed").loader.expect("load should succeed");
     assert_eq!(loader.batch_size, 32);
     assert!(loader.shuffle);
     assert_eq!(loader.num_workers, Some(4));
@@ -112,12 +112,12 @@ model:
     - "embed_tokens"
     - "layers.0"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let model = manifest.model.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let model = manifest.model.expect("operation should succeed");
     assert_eq!(model.source, "hf://meta-llama/Llama-2-7b");
     assert_eq!(model.device, Some("auto".to_string()));
     assert_eq!(model.dtype, Some("float16".to_string()));
-    assert_eq!(model.freeze.unwrap().len(), 2);
+    assert_eq!(model.freeze.expect("operation should succeed").len(), 2);
 }
 
 #[test]
@@ -134,8 +134,8 @@ optimizer:
   betas: [0.9, 0.999]
   eps: 1e-8
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let optim = manifest.optimizer.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let optim = manifest.optimizer.expect("operation should succeed");
     assert_eq!(optim.name, "adamw");
     assert_eq!(optim.lr, 0.001);
     assert_eq!(optim.weight_decay, Some(0.01));
@@ -158,10 +158,10 @@ scheduler:
   T_max: 10000
   eta_min: 1e-6
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let sched = manifest.scheduler.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let sched = manifest.scheduler.expect("operation should succeed");
     assert_eq!(sched.name, "cosine_annealing");
-    let warmup = sched.warmup.unwrap();
+    let warmup = sched.warmup.expect("operation should succeed");
     assert_eq!(warmup.steps, Some(1000));
     assert_eq!(warmup.start_lr, Some(1e-7));
     assert_eq!(sched.t_max, Some(10000));
@@ -184,13 +184,13 @@ training:
     enabled: true
     dtype: "float16"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let training = manifest.training.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let training = manifest.training.expect("operation should succeed");
     assert_eq!(training.epochs, Some(10));
-    let grad = training.gradient.unwrap();
+    let grad = training.gradient.expect("operation should succeed");
     assert_eq!(grad.accumulation_steps, Some(4));
     assert_eq!(grad.clip_norm, Some(1.0));
-    let mp = training.mixed_precision.unwrap();
+    let mp = training.mixed_precision.expect("operation should succeed");
     assert!(mp.enabled);
     assert_eq!(mp.dtype, Some("float16".to_string()));
 }
@@ -216,15 +216,15 @@ lora:
   quantize_bits: 4
   quant_type: "nf4"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let lora = manifest.lora.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let lora = manifest.lora.expect("operation should succeed");
     assert!(lora.enabled);
     assert_eq!(lora.rank, 16);
     assert_eq!(lora.alpha, 32.0);
     assert_eq!(lora.dropout, Some(0.05));
     assert_eq!(lora.target_modules.len(), 3);
     assert_eq!(lora.bias, Some("none".to_string()));
-    assert!(lora.quantize_base.unwrap());
+    assert!(lora.quantize_base.expect("operation should succeed"));
     assert_eq!(lora.quantize_bits, Some(4));
     assert_eq!(lora.quant_type, Some("nf4".to_string()));
 }
@@ -243,8 +243,8 @@ quantize:
   granularity: "per_channel"
   group_size: 128
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let quant = manifest.quantize.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let quant = manifest.quantize.expect("operation should succeed");
     assert!(quant.enabled);
     assert_eq!(quant.bits, 4);
     assert_eq!(quant.scheme, Some("symmetric".to_string()));
@@ -271,13 +271,13 @@ monitoring:
     backend: "trueno-db"
     project: "my-project"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let mon = manifest.monitoring.unwrap();
-    let term = mon.terminal.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let mon = manifest.monitoring.expect("operation should succeed");
+    let term = mon.terminal.expect("operation should succeed");
     assert!(term.enabled);
     assert_eq!(term.refresh_rate, Some(100));
-    assert_eq!(term.metrics.unwrap().len(), 2);
-    let track = mon.tracking.unwrap();
+    assert_eq!(term.metrics.expect("operation should succeed").len(), 2);
+    let track = mon.tracking.expect("operation should succeed");
     assert!(track.enabled);
     assert_eq!(track.backend, Some("trueno-db".to_string()));
 }
@@ -295,12 +295,12 @@ output:
     format: "safetensors"
     save_optimizer: true
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
-    let output = manifest.output.unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
+    let output = manifest.output.expect("operation should succeed");
     assert_eq!(output.dir, "./experiments/{{ name }}/{{ timestamp }}");
-    let model = output.model.unwrap();
+    let model = output.model.expect("operation should succeed");
     assert_eq!(model.format, Some("safetensors".to_string()));
-    assert!(model.save_optimizer.unwrap());
+    assert!(model.save_optimizer.expect("save should succeed"));
 }
 
 #[test]
@@ -379,7 +379,7 @@ output:
   model:
     format: "safetensors"
 "#;
-    let manifest: TrainingManifest = serde_yaml::from_str(yaml).unwrap();
+    let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("operation should succeed");
 
     // Verify all sections parsed correctly
     assert_eq!(manifest.entrenar, "1.0");

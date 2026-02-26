@@ -108,7 +108,7 @@ fn demo_progress_bar() {
         progress.update(step);
 
         print!("\r  {}", progress.render());
-        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+        std::io::Write::flush(&mut std::io::stdout()).expect("operation should succeed");
 
         // Simulate varying step durations
         let delay = 50 + (step % 3) * 10;

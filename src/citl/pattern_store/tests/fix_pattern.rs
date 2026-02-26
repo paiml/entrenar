@@ -77,8 +77,9 @@ fn test_fix_pattern_to_searchable_text() {
 fn test_fix_pattern_serialization() {
     let pattern = FixPattern::new("E0308", "diff").with_decision("step1");
 
-    let json = serde_json::to_string(&pattern).unwrap();
-    let deserialized: FixPattern = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&pattern).expect("JSON serialization should succeed");
+    let deserialized: FixPattern =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
     assert_eq!(pattern.error_code, deserialized.error_code);
     assert_eq!(pattern.fix_diff, deserialized.fix_diff);

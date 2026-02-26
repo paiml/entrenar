@@ -136,7 +136,7 @@ training:
   epochs: 1
 ";
         let config_path = "/tmp/test_train_config.yaml";
-        std::fs::write(config_path, config_content).unwrap();
+        std::fs::write(config_path, config_content).expect("file write should succeed");
 
         let args = make_args(config_path, true);
         let result = run_train(args, LogLevel::Quiet);
@@ -167,7 +167,7 @@ training:
   epochs: 5
 ";
         let config_path = "/tmp/test_train_config_logs.yaml";
-        std::fs::write(config_path, config_content).unwrap();
+        std::fs::write(config_path, config_content).expect("file write should succeed");
 
         let args = make_args(config_path, true);
         // Test with verbose logging to cover log branches

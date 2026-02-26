@@ -380,8 +380,9 @@ mod tests {
             },
         };
 
-        let json = serde_json::to_string(&sample).unwrap();
-        let restored: TestGenSample = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&sample).expect("JSON serialization should succeed");
+        let restored: TestGenSample =
+            serde_json::from_str(&json).expect("JSON deserialization should succeed");
 
         assert_eq!(restored.function, sample.function);
         assert_eq!(restored.unit_tests, sample.unit_tests);

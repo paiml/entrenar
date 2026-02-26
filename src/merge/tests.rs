@@ -31,13 +31,13 @@ mod ties_properties {
             vec![1.0, -2.0, -3.0, 4.0],
         ]);
 
-        let config = TiesConfig::new(0.5).unwrap();
+        let config = TiesConfig::new(0.5).expect("config should be valid");
 
-        let result1 = ties_merge(&models, &base, &config).unwrap();
+        let result1 = ties_merge(&models, &base, &config).expect("config should be valid");
 
         // Permute models
         let permuted = vec![models[2].clone(), models[0].clone(), models[1].clone()];
-        let result2 = ties_merge(&permuted, &base, &config).unwrap();
+        let result2 = ties_merge(&permuted, &base, &config).expect("config should be valid");
 
         // Results should be identical
         let r1_data = result1["w"].data();
@@ -56,8 +56,8 @@ mod ties_properties {
         let models = vec![model.clone(), model.clone()];
 
         // Use high density to preserve most values
-        let config = TiesConfig::new(0.8).unwrap();
-        let result = ties_merge(&models, &base, &config).unwrap();
+        let config = TiesConfig::new(0.8).expect("config should be valid");
+        let result = ties_merge(&models, &base, &config).expect("config should be valid");
 
         // Result should be close to the model (after trimming)
         // Since both models are identical, all votes agree, so kept values equal original
@@ -80,7 +80,7 @@ mod ties_properties {
         let models = vec![base.clone(), base.clone()];
 
         let config = TiesConfig::default();
-        let result = ties_merge(&models, &base, &config).unwrap();
+        let result = ties_merge(&models, &base, &config).expect("config should be valid");
 
         let expected = base["w"].data();
         let actual = result["w"].data();
@@ -101,10 +101,10 @@ mod dare_properties {
         let base = create_model("w", vec![0.0, 0.0]);
         let models = create_models(vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
 
-        let config = DareConfig::new(0.5).unwrap().with_seed(42);
+        let config = DareConfig::new(0.5).expect("config should be valid").with_seed(42);
 
-        let result1 = dare_merge(&models, &base, &config).unwrap();
-        let result2 = dare_merge(&models, &base, &config).unwrap();
+        let result1 = dare_merge(&models, &base, &config).expect("config should be valid");
+        let result2 = dare_merge(&models, &base, &config).expect("config should be valid");
 
         let r1_data = result1["w"].data();
         let r2_data = result2["w"].data();
@@ -119,8 +119,8 @@ mod dare_properties {
         let base = create_model("w", vec![0.0, 0.0]);
         let models = create_models(vec![vec![2.0, 4.0], vec![4.0, 6.0]]);
 
-        let config = DareConfig::new(0.0).unwrap();
-        let result = dare_merge(&models, &base, &config).unwrap();
+        let config = DareConfig::new(0.0).expect("config should be valid");
+        let result = dare_merge(&models, &base, &config).expect("config should be valid");
 
         // Expected: (2+4)/2 = 3.0, (4+6)/2 = 5.0
         assert!((result["w"].data()[0] - 3.0).abs() < 1e-5);
@@ -134,7 +134,7 @@ mod dare_properties {
         let models = vec![base.clone(), base.clone()];
 
         let config = DareConfig::default();
-        let result = dare_merge(&models, &base, &config).unwrap();
+        let result = dare_merge(&models, &base, &config).expect("config should be valid");
 
         let expected = base["w"].data();
         let actual = result["w"].data();
@@ -155,8 +155,8 @@ mod slerp_properties {
         let model1 = create_model("w", vec![1.0, 2.0, 3.0]);
         let model2 = create_model("w", vec![4.0, 5.0, 6.0]);
 
-        let config = SlerpConfig::new(0.0).unwrap();
-        let result = slerp_merge(&model1, &model2, &config).unwrap();
+        let config = SlerpConfig::new(0.0).expect("slerp config creation should succeed");
+        let result = slerp_merge(&model1, &model2, &config).expect("config should be valid");
 
         let expected = model1["w"].data();
         let actual = result["w"].data();
@@ -171,8 +171,8 @@ mod slerp_properties {
         let model1 = create_model("w", vec![1.0, 2.0, 3.0]);
         let model2 = create_model("w", vec![4.0, 5.0, 6.0]);
 
-        let config = SlerpConfig::new(1.0).unwrap();
-        let result = slerp_merge(&model1, &model2, &config).unwrap();
+        let config = SlerpConfig::new(1.0).expect("slerp config creation should succeed");
+        let result = slerp_merge(&model1, &model2, &config).expect("config should be valid");
 
         let expected = model2["w"].data();
         let actual = result["w"].data();
@@ -187,11 +187,11 @@ mod slerp_properties {
         let model1 = create_model("w", vec![1.0, 0.0]);
         let model2 = create_model("w", vec![0.0, 1.0]);
 
-        let config1 = SlerpConfig::new(0.5).unwrap();
-        let config2 = SlerpConfig::new(0.51).unwrap();
+        let config1 = SlerpConfig::new(0.5).expect("slerp config creation should succeed");
+        let config2 = SlerpConfig::new(0.51).expect("slerp config creation should succeed");
 
-        let result1 = slerp_merge(&model1, &model2, &config1).unwrap();
-        let result2 = slerp_merge(&model1, &model2, &config2).unwrap();
+        let result1 = slerp_merge(&model1, &model2, &config1).expect("config should be valid");
+        let result2 = slerp_merge(&model1, &model2, &config2).expect("config should be valid");
 
         // Results should be very close for nearby t values
         let r1_data = result1["w"].data();
@@ -207,8 +207,8 @@ mod slerp_properties {
         let model1 = create_model("w", vec![1.0]);
         let model2 = create_model("w", vec![-1.0]);
 
-        let config = SlerpConfig::new(0.5).unwrap();
-        let result = slerp_merge(&model1, &model2, &config).unwrap();
+        let config = SlerpConfig::new(0.5).expect("slerp config creation should succeed");
+        let result = slerp_merge(&model1, &model2, &config).expect("config should be valid");
 
         // For anti-parallel vectors, SLERP at t=0.5 should be near zero
         assert!(result["w"].data()[0].abs() < 0.1);
@@ -228,15 +228,16 @@ mod integration_tests {
 
         // TIES
         let ties_config = TiesConfig::default();
-        let ties_result = ties_merge(&models, &base, &ties_config).unwrap();
+        let ties_result = ties_merge(&models, &base, &ties_config).expect("config should be valid");
 
         // DARE with zero drop (equivalent to average)
-        let dare_config = DareConfig::new(0.0).unwrap();
-        let dare_result = dare_merge(&models, &base, &dare_config).unwrap();
+        let dare_config = DareConfig::new(0.0).expect("config should be valid");
+        let dare_result = dare_merge(&models, &base, &dare_config).expect("config should be valid");
 
         // SLERP at midpoint
-        let slerp_config = SlerpConfig::new(0.5).unwrap();
-        let slerp_result = slerp_merge(&models[0], &models[1], &slerp_config).unwrap();
+        let slerp_config = SlerpConfig::new(0.5).expect("slerp config creation should succeed");
+        let slerp_result =
+            slerp_merge(&models[0], &models[1], &slerp_config).expect("config should be valid");
 
         // All should produce reasonable results (no NaN/Inf)
         for val in ties_result["w"].data() {
@@ -284,7 +285,7 @@ mod mod_coverage_tests {
         let model2 = create_model("w", vec![4.0, 5.0, 6.0]);
 
         let models = vec![model1, model2];
-        let deltas = compute_deltas(&models, &base).unwrap();
+        let deltas = compute_deltas(&models, &base).expect("operation should succeed");
 
         assert_eq!(deltas.len(), 2);
         assert_eq!(deltas[0]["w"].data()[0], 1.0);

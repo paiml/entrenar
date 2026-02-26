@@ -281,7 +281,7 @@ mod tests {
     fn create_test_artifact() -> ResearchArtifact {
         let author = Author::new("Alice Smith")
             .with_orcid("0000-0002-1825-0097")
-            .unwrap()
+            .expect("operation should succeed")
             .with_role(ContributorRole::Conceptualization)
             .with_affiliation(Affiliation::new("MIT"));
 

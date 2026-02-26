@@ -11,7 +11,7 @@ fn test_falsify_f32_tensor_data_survives_roundtrip() {
         data: bytemuck::cast_slice(&original).to_vec(),
     }];
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     let data_start = find_data_section_start(&data, &summary);
     let recovered = extract_f32_tensor_data(&data, data_start, &summary.tensors[0], 256);
     assert_eq!(original, recovered, "f32 tensor data must survive roundtrip exactly");
@@ -62,7 +62,7 @@ fn test_falsify_special_float_values_survive() {
         data: bytemuck::cast_slice(&special).to_vec(),
     }];
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     let data_start = find_data_section_start(&data, &summary);
     let recovered = extract_f32_tensor_data(&data, data_start, &summary.tensors[0], special.len());
 
@@ -97,7 +97,7 @@ fn test_falsify_multi_tensor_ordering_preserved() {
         })
         .collect();
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
 
     assert_eq!(summary.tensor_count, 8);
     for (i, info) in summary.tensors.iter().enumerate() {
@@ -136,7 +136,7 @@ fn test_falsify_mixed_metadata_types_roundtrip() {
         data: bytemuck::cast_slice(&[1.0f32, 2.0, 3.0, 4.0]).to_vec(),
     }];
     let data = write_gguf(&tensors, &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
 
     assert_eq!(summary.metadata_count, 6);
     assert_eq!(summary.tensor_count, 1);
@@ -162,7 +162,7 @@ fn test_falsify_q4_0_q8_0_f32_mixed_in_single_file() {
         GgufTensor { name: "q8_tensor".into(), shape: vec![32], dtype: q8_dtype, data: q8_bytes },
     ];
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
 
     assert_eq!(summary.tensor_count, 3);
     assert_eq!(summary.tensors[0].dtype, 0); // F32
@@ -186,7 +186,7 @@ fn test_falsify_long_tensor_name() {
         data: bytemuck::cast_slice(&[42.0f32]).to_vec(),
     }];
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensors[0].name, long_name);
 }
 
@@ -203,7 +203,7 @@ fn test_falsify_high_dimensional_shape() {
         data: bytemuck::cast_slice(&values).to_vec(),
     }];
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensors[0].shape, shape);
 
     let data_start = find_data_section_start(&data, &summary);
@@ -226,17 +226,19 @@ fn test_falsify_exporter_gguf_roundtrip_via_file() {
     weights.metadata.hidden_size = Some(2);
     weights.metadata.num_layers = Some(1);
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("temp file creation should succeed");
     let path = dir.path().join("falsify.gguf");
 
     let exporter = Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::None);
-    let result = exporter.export(&weights, ExportFormat::GGUF, "falsify.gguf").unwrap();
+    let result = exporter
+        .export(&weights, ExportFormat::GGUF, "falsify.gguf")
+        .expect("operation should succeed");
 
     assert_eq!(result.num_tensors, 2);
     assert!(result.size_bytes > 0);
 
-    let file_data = std::fs::read(&path).unwrap();
-    let summary = verify_gguf(&file_data).unwrap();
+    let file_data = std::fs::read(&path).expect("file read should succeed");
+    let summary = verify_gguf(&file_data).expect("operation should succeed");
 
     assert_eq!(summary.version, 3);
     assert_eq!(summary.tensor_count, 2);
@@ -267,13 +269,14 @@ fn test_falsify_exporter_q4_0_roundtrip_via_file() {
     let data: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) * 0.1).collect();
     weights.add_tensor("quantized_layer", data, vec![64]);
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("temp file creation should succeed");
     let exporter = Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::Q4_0);
-    let result = exporter.export(&weights, ExportFormat::GGUF, "q4.gguf").unwrap();
+    let result =
+        exporter.export(&weights, ExportFormat::GGUF, "q4.gguf").expect("operation should succeed");
     assert_eq!(result.num_tensors, 1);
 
-    let file_data = std::fs::read(dir.path().join("q4.gguf")).unwrap();
-    let summary = verify_gguf(&file_data).unwrap();
+    let file_data = std::fs::read(dir.path().join("q4.gguf")).expect("file read should succeed");
+    let summary = verify_gguf(&file_data).expect("operation should succeed");
     assert_eq!(summary.tensors[0].dtype, 2); // Q4_0
     assert_eq!(summary.tensors[0].shape, vec![64]);
 }
@@ -286,13 +289,14 @@ fn test_falsify_exporter_q8_0_roundtrip_via_file() {
     let data: Vec<f32> = (0..128).map(|i| (i as f32) * 0.01).collect();
     weights.add_tensor("q8_layer", data, vec![128]);
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("temp file creation should succeed");
     let exporter = Exporter::new().output_dir(dir.path()).gguf_quantization(GgufQuantization::Q8_0);
-    let result = exporter.export(&weights, ExportFormat::GGUF, "q8.gguf").unwrap();
+    let result =
+        exporter.export(&weights, ExportFormat::GGUF, "q8.gguf").expect("operation should succeed");
     assert_eq!(result.num_tensors, 1);
 
-    let file_data = std::fs::read(dir.path().join("q8.gguf")).unwrap();
-    let summary = verify_gguf(&file_data).unwrap();
+    let file_data = std::fs::read(dir.path().join("q8.gguf")).expect("file read should succeed");
+    let summary = verify_gguf(&file_data).expect("operation should succeed");
     assert_eq!(summary.tensors[0].dtype, 8); // Q8_0
     assert_eq!(summary.tensors[0].shape, vec![128]);
 }
@@ -307,12 +311,13 @@ fn test_falsify_no_metadata_mode() {
     weights.metadata.architecture = Some("llama".into());
     weights.metadata.model_name = Some("should-not-appear".into());
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("temp file creation should succeed");
     let exporter = Exporter::new().output_dir(dir.path()).include_metadata(false);
-    exporter.export(&weights, ExportFormat::GGUF, "nometa.gguf").unwrap();
+    exporter.export(&weights, ExportFormat::GGUF, "nometa.gguf").expect("operation should succeed");
 
-    let file_data = std::fs::read(dir.path().join("nometa.gguf")).unwrap();
-    let summary = verify_gguf(&file_data).unwrap();
+    let file_data =
+        std::fs::read(dir.path().join("nometa.gguf")).expect("file read should succeed");
+    let summary = verify_gguf(&file_data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 0);
     assert_eq!(summary.tensor_count, 1);
 }
@@ -327,12 +332,15 @@ fn test_falsify_minimal_metadata_only_param_count() {
     weights.metadata.num_params = 2;
     // architecture, model_name, hidden_size, num_layers all None
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("temp file creation should succeed");
     let exporter = Exporter::new().output_dir(dir.path());
-    exporter.export(&weights, ExportFormat::GGUF, "minimal.gguf").unwrap();
+    exporter
+        .export(&weights, ExportFormat::GGUF, "minimal.gguf")
+        .expect("operation should succeed");
 
-    let file_data = std::fs::read(dir.path().join("minimal.gguf")).unwrap();
-    let summary = verify_gguf(&file_data).unwrap();
+    let file_data =
+        std::fs::read(dir.path().join("minimal.gguf")).expect("file read should succeed");
+    let summary = verify_gguf(&file_data).expect("operation should succeed");
     // Only general.parameter_count should be present
     assert_eq!(summary.metadata_count, 1);
     assert_eq!(summary.tensor_count, 1);
@@ -349,12 +357,13 @@ fn test_falsify_exporter_alphabetical_tensor_sort() {
     weights.add_tensor("m_layer", vec![2.0], vec![1]);
     weights.add_tensor("a_layer", vec![1.0], vec![1]);
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().expect("temp file creation should succeed");
     let exporter = Exporter::new().output_dir(dir.path()).include_metadata(false);
-    exporter.export(&weights, ExportFormat::GGUF, "sorted.gguf").unwrap();
+    exporter.export(&weights, ExportFormat::GGUF, "sorted.gguf").expect("operation should succeed");
 
-    let file_data = std::fs::read(dir.path().join("sorted.gguf")).unwrap();
-    let summary = verify_gguf(&file_data).unwrap();
+    let file_data =
+        std::fs::read(dir.path().join("sorted.gguf")).expect("file read should succeed");
+    let summary = verify_gguf(&file_data).expect("operation should succeed");
     assert_eq!(summary.tensor_count, 3);
     assert_eq!(summary.tensors[0].name, "a_layer");
     assert_eq!(summary.tensors[1].name, "m_layer");
@@ -388,7 +397,7 @@ fn test_falsify_utf8_tensor_names() {
         },
     ];
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensor_count, 2);
     assert_eq!(summary.tensors[0].name, "layer.\u{706B}.weight");
     assert_eq!(summary.tensors[1].name, "\u{43C}\u{43E}\u{434}\u{435}\u{43B}\u{44C}.bias");
@@ -410,7 +419,7 @@ fn test_falsify_utf8_metadata_values() {
         ),
     ];
     let data = write_gguf(&[], &metadata);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.metadata_count, 2);
 }
 
@@ -427,7 +436,7 @@ fn test_falsify_10d_tensor_shape() {
         data: bytemuck::cast_slice(&values).to_vec(),
     }];
     let data = write_gguf(&tensors, &[]);
-    let summary = verify_gguf(&data).unwrap();
+    let summary = verify_gguf(&data).expect("operation should succeed");
     assert_eq!(summary.tensors[0].shape, shape);
     assert_eq!(summary.tensors[0].shape.len(), 10);
 }

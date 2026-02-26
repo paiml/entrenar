@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_server_config_with_address() {
-        let addr: SocketAddr = "0.0.0.0:8080".parse().unwrap();
+        let addr: SocketAddr = "0.0.0.0:8080".parse().expect("parsing should succeed");
         let config = ServerConfig::default().with_address(addr);
         assert_eq!(config.address.port(), 8080);
     }
@@ -311,14 +311,15 @@ mod tests {
             experiments_count: 10,
             runs_count: 50,
         };
-        let json = serde_json::to_string(&health).unwrap();
+        let json = serde_json::to_string(&health).expect("JSON serialization should succeed");
         assert!(json.contains("healthy"));
     }
 
     #[test]
     fn test_create_experiment_request() {
         let json = r#"{"name": "test-exp", "description": "A test"}"#;
-        let req: CreateExperimentRequest = serde_json::from_str(json).unwrap();
+        let req: CreateExperimentRequest =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert_eq!(req.name, "test-exp");
         assert_eq!(req.description, Some("A test".to_string()));
     }
@@ -326,7 +327,8 @@ mod tests {
     #[test]
     fn test_create_run_request() {
         let json = r#"{"experiment_id": "exp-123", "name": "run-1"}"#;
-        let req: CreateRunRequest = serde_json::from_str(json).unwrap();
+        let req: CreateRunRequest =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert_eq!(req.experiment_id, "exp-123");
         assert_eq!(req.name, Some("run-1".to_string()));
     }
@@ -334,7 +336,8 @@ mod tests {
     #[test]
     fn test_log_params_request() {
         let json = r#"{"params": {"lr": 0.001, "batch_size": 32}}"#;
-        let req: LogParamsRequest = serde_json::from_str(json).unwrap();
+        let req: LogParamsRequest =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert!(req.params.contains_key("lr"));
         assert!(req.params.contains_key("batch_size"));
     }
@@ -342,7 +345,8 @@ mod tests {
     #[test]
     fn test_log_metrics_request() {
         let json = r#"{"metrics": {"loss": 0.5, "accuracy": 0.9}, "step": 100}"#;
-        let req: LogMetricsRequest = serde_json::from_str(json).unwrap();
+        let req: LogMetricsRequest =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert_eq!(req.metrics.get("loss"), Some(&0.5));
         assert_eq!(req.step, Some(100));
     }
@@ -350,7 +354,8 @@ mod tests {
     #[test]
     fn test_update_run_request() {
         let json = r#"{"status": "completed", "end_time": "2024-01-15T10:30:00Z"}"#;
-        let req: UpdateRunRequest = serde_json::from_str(json).unwrap();
+        let req: UpdateRunRequest =
+            serde_json::from_str(json).expect("JSON deserialization should succeed");
         assert_eq!(req.status, Some("completed".to_string()));
     }
 
@@ -363,7 +368,7 @@ mod tests {
             created_at: "2024-01-15T10:00:00Z".to_string(),
             tags: std::collections::HashMap::new(),
         };
-        let json = serde_json::to_string(&exp).unwrap();
+        let json = serde_json::to_string(&exp).expect("JSON serialization should succeed");
         assert!(json.contains("exp-123"));
     }
 
@@ -380,7 +385,7 @@ mod tests {
             metrics: std::collections::HashMap::new(),
             tags: std::collections::HashMap::new(),
         };
-        let json = serde_json::to_string(&run).unwrap();
+        let json = serde_json::to_string(&run).expect("JSON serialization should succeed");
         assert!(json.contains("run-456"));
     }
 }
@@ -399,7 +404,7 @@ mod property_tests {
 
         #[test]
         fn prop_server_config_port_preserved(port in 1024u16..65535) {
-            let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+            let addr: SocketAddr = format!("127.0.0.1:{port}").parse().expect("parsing should succeed");
             let config = ServerConfig::default().with_address(addr);
             prop_assert_eq!(config.address.port(), port);
         }
@@ -425,8 +430,8 @@ mod property_tests {
                 description: None,
                 tags: None,
             };
-            let json = serde_json::to_string(&req).unwrap();
-            let parsed: CreateExperimentRequest = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&req).expect("JSON serialization should succeed");
+            let parsed: CreateExperimentRequest = serde_json::from_str(&json).expect("JSON deserialization should succeed");
             prop_assert_eq!(parsed.name, name);
         }
 
@@ -438,9 +443,9 @@ mod property_tests {
             let mut metrics = std::collections::HashMap::new();
             metrics.insert(metric_name.clone(), value);
             let req = LogMetricsRequest { metrics, step: None };
-            let json = serde_json::to_string(&req).unwrap();
-            let parsed: LogMetricsRequest = serde_json::from_str(&json).unwrap();
-            prop_assert!((parsed.metrics.get(&metric_name).unwrap() - value).abs() < 1e-10);
+            let json = serde_json::to_string(&req).expect("JSON serialization should succeed");
+            let parsed: LogMetricsRequest = serde_json::from_str(&json).expect("JSON deserialization should succeed");
+            prop_assert!((parsed.metrics.get(&metric_name).expect("parsing should succeed") - value).abs() < 1e-10);
         }
     }
 }

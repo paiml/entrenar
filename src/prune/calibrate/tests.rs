@@ -42,8 +42,9 @@ fn test_config_builder_pattern() {
 fn test_config_serialize_json() {
     // TEST_ID: CAL-003
     let config = CalibrationConfig::new().with_num_samples(64);
-    let json = serde_json::to_string(&config).unwrap();
-    let deserialized: CalibrationConfig = serde_json::from_str(&json).unwrap();
+    let json = serde_json::to_string(&config).expect("JSON serialization should succeed");
+    let deserialized: CalibrationConfig =
+        serde_json::from_str(&json).expect("JSON deserialization should succeed");
     assert_eq!(
         config.num_samples(),
         deserialized.num_samples(),
@@ -202,7 +203,7 @@ fn test_collector_duplicate_registration() {
     collector.register_layer("layer.0", 512);
     collector.register_layer("layer.0", 1024); // Different dim, should not override
 
-    let stats = collector.get_layer_stats("layer.0").unwrap();
+    let stats = collector.get_layer_stats("layer.0").expect("operation should succeed");
     assert_eq!(
         stats.input_dim(),
         512,
@@ -219,7 +220,7 @@ fn test_collector_record_activations() {
     let activations = vec![vec![1.0, 2.0, 3.0, 4.0], vec![5.0, 6.0, 7.0, 8.0]];
     collector.record_activations("layer.0", &activations);
 
-    let stats = collector.get_layer_stats("layer.0").unwrap();
+    let stats = collector.get_layer_stats("layer.0").expect("operation should succeed");
     assert_eq!(stats.count(), 2, "CAL-023 FALSIFIED: Should have recorded 2 samples");
 }
 
@@ -298,7 +299,7 @@ fn test_collector_stops_recording_when_complete() {
     // Try to record more (should be ignored)
     collector.record_activations("layer.0", &[vec![5.0, 6.0]]);
 
-    let stats = collector.get_layer_stats("layer.0").unwrap();
+    let stats = collector.get_layer_stats("layer.0").expect("operation should succeed");
     assert_eq!(stats.count(), 2, "CAL-028 FALSIFIED: Recording should stop when complete");
 }
 
@@ -316,7 +317,7 @@ fn test_collector_reset() {
     collector.reset();
     assert!(!collector.is_complete());
     assert_eq!(collector.samples_processed(), 0);
-    let stats = collector.get_layer_stats("layer.0").unwrap();
+    let stats = collector.get_layer_stats("layer.0").expect("operation should succeed");
     assert!(stats.is_empty(), "CAL-029 FALSIFIED: Layer stats should be reset");
 }
 
