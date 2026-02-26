@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn test_inferred_schema_debug() {
         let schema = make_schema();
-        let debug_str = format!("{:?}", schema);
+        let debug_str = format!("{schema:?}");
         assert!(debug_str.contains("InferredSchema"));
         assert!(debug_str.contains("features"));
     }

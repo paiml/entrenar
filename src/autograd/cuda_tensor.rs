@@ -309,7 +309,7 @@ mod tests {
 
         let err = CudaTensorError::ShapeMismatch { expected: 10, actual: 5 };
         assert!(err.to_string().contains("10"));
-        assert!(err.to_string().contains("5"));
+        assert!(err.to_string().contains('5'));
     }
 
     #[test]

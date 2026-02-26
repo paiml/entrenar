@@ -1,5 +1,6 @@
 //! Tests for archive module.
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::research::archive::{
@@ -262,25 +263,25 @@ mod tests {
         let metadata = DepositMetadata::from_citation(&citation);
         assert_eq!(metadata.title, "Test Dataset for Machine Learning");
         // Should have both the original DOI and the supplement URL
-        assert!(metadata.related_identifiers.len() >= 1);
+        assert!(!metadata.related_identifiers.is_empty());
     }
 
     #[test]
     fn test_deposit_error_display() {
         let err = DepositError::NoFiles;
-        assert!(format!("{}", err).contains("No files"));
+        assert!(format!("{err}").contains("No files"));
 
         let err = DepositError::AuthenticationFailed;
-        assert!(format!("{}", err).contains("Authentication"));
+        assert!(format!("{err}").contains("Authentication"));
 
         let err = DepositError::InvalidMetadata("missing title".to_string());
-        assert!(format!("{}", err).contains("missing title"));
+        assert!(format!("{err}").contains("missing title"));
 
         let err = DepositError::UploadFailed("timeout".to_string());
-        assert!(format!("{}", err).contains("timeout"));
+        assert!(format!("{err}").contains("timeout"));
 
         let err = DepositError::ApiError("rate limit".to_string());
-        assert!(format!("{}", err).contains("rate limit"));
+        assert!(format!("{err}").contains("rate limit"));
     }
 
     #[test]

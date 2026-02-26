@@ -21,7 +21,7 @@ pub(super) fn create_test_config(dir: &TempDir) -> PathBuf {
     std::fs::create_dir_all(&output_path).unwrap();
 
     let config = format!(
-        r#"
+        r"
 model:
   path: {}
   layers: [q_proj, v_proj]
@@ -38,7 +38,7 @@ optimizer:
 training:
   epochs: 1
   output_dir: {}
-"#,
+",
         model_path.display(),
         data_path.display(),
         output_path.display()
@@ -792,7 +792,7 @@ fn test_merge_command_ties() {
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "TIES merge failed: {:?}", result);
+    assert!(result.is_ok(), "TIES merge failed: {result:?}");
     assert!(output.exists());
 }
 
@@ -815,7 +815,7 @@ fn test_merge_command_dare() {
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
-    assert!(result.is_ok(), "DARE merge failed: {:?}", result);
+    assert!(result.is_ok(), "DARE merge failed: {result:?}");
     assert!(output.exists());
 }
 

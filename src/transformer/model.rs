@@ -1113,8 +1113,7 @@ mod tests {
                 .0;
             assert_eq!(
                 logit_argmax, prob_argmax,
-                "FALSIFIED PIPE-001/SM-003: row {row} argmax changed {} → {}",
-                logit_argmax, prob_argmax
+                "FALSIFIED PIPE-001/SM-003: row {row} argmax changed {logit_argmax} → {prob_argmax}"
             );
         }
     }
@@ -1146,7 +1145,7 @@ mod tests {
 
             // Helper to create f32 bytes
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
+                std::iter::repeat_n(val, n).flat_map(f32::to_le_bytes).collect()
             };
 
             // Embedding
@@ -1254,7 +1253,7 @@ mod tests {
             // Helper to create bf16 bytes
             let make_bf16 = |n: usize, val: f32| -> Vec<u8> {
                 std::iter::repeat_n(half::bf16::from_f32(val), n)
-                    .flat_map(|v| v.to_le_bytes())
+                    .flat_map(half::bf16::to_le_bytes)
                     .collect()
             };
 
@@ -1358,7 +1357,7 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "from_safetensors should succeed: {}",
-                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+                result.as_ref().err().map_or(String::new(), std::string::ToString::to_string)
             );
 
             let transformer = result.expect("validated above");
@@ -1376,7 +1375,7 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "BF16 loading should succeed: {}",
-                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+                result.as_ref().err().map_or(String::new(), std::string::ToString::to_string)
             );
 
             let transformer = result.expect("validated above");
@@ -1403,7 +1402,7 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "Direct file path should work: {}",
-                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+                result.as_ref().err().map_or(String::new(), std::string::ToString::to_string)
             );
         }
 
@@ -1461,7 +1460,7 @@ mod tests {
 
             // Create a file with wrong embedding shape
             let wrong_embed_bytes: Vec<u8> =
-                std::iter::repeat_n(0.01_f32, 42).flat_map(|v| v.to_le_bytes()).collect();
+                std::iter::repeat_n(0.01_f32, 42).flat_map(f32::to_le_bytes).collect();
 
             // We need at least embedding + norm + 2 layers to pass validate_weights.
             // But the embedding shape is wrong, so validate_weight_shapes should catch it.
@@ -1473,7 +1472,7 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
+                std::iter::repeat_n(val, n).flat_map(f32::to_le_bytes).collect()
             };
 
             // WRONG: embedding has 42 elements instead of vocab * hidden
@@ -1571,7 +1570,7 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
+                std::iter::repeat_n(val, n).flat_map(f32::to_le_bytes).collect()
             };
 
             // Embedding with NaN injected
@@ -1670,7 +1669,7 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
+                std::iter::repeat_n(val, n).flat_map(f32::to_le_bytes).collect()
             };
 
             // norm with Inf injected
@@ -1799,7 +1798,7 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
+                std::iter::repeat_n(val, n).flat_map(f32::to_le_bytes).collect()
             };
 
             td.push((
@@ -1954,7 +1953,7 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "Valid shapes should pass: {}",
-                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+                result.as_ref().err().map_or(String::new(), std::string::ToString::to_string)
             );
         }
 
@@ -2045,7 +2044,7 @@ mod tests {
             let mut td: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
 
             let make_f32 = |n: usize, val: f32| -> Vec<u8> {
-                std::iter::repeat_n(val, n).flat_map(|v| v.to_le_bytes()).collect()
+                std::iter::repeat_n(val, n).flat_map(f32::to_le_bytes).collect()
             };
 
             td.push((
@@ -2140,7 +2139,7 @@ mod tests {
             assert!(
                 result.is_ok(),
                 "Extra bias tensors should not cause failure: {}",
-                result.as_ref().err().map_or(String::new(), |e| e.to_string())
+                result.as_ref().err().map_or(String::new(), std::string::ToString::to_string)
             );
         }
     }

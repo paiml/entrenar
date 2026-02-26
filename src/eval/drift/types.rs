@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn test_drift_test_debug() {
         let test = DriftTest::KS { threshold: 0.05 };
-        let debug_str = format!("{:?}", test);
+        let debug_str = format!("{test:?}");
         assert!(debug_str.contains("KS"));
         assert!(debug_str.contains("threshold"));
     }
@@ -251,7 +251,7 @@ mod tests {
     fn test_drift_summary_debug() {
         let summary =
             DriftSummary { total_features: 10, drifted_features: 3, warnings: 2, critical: 1 };
-        let debug_str = format!("{:?}", summary);
+        let debug_str = format!("{summary:?}");
         assert!(debug_str.contains("DriftSummary"));
         assert!(debug_str.contains("total_features"));
     }

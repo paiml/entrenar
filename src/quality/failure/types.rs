@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn test_failure_category_clone_copy() {
         let cat = FailureCategory::ModelConvergence;
-        let cloned = cat.clone();
+        let cloned = cat;
         let copied = cat;
         assert_eq!(cat, cloned);
         assert_eq!(cat, copied);

@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn test_adapter_debug() {
         let adapter = make_test_adapter();
-        let debug = format!("{:?}", adapter);
+        let debug = format!("{adapter:?}");
         assert!(debug.contains("LoRAAdapter"));
     }
 }

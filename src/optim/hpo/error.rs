@@ -31,19 +31,19 @@ mod tests {
     #[test]
     fn test_hpo_error_display() {
         let err = HPOError::EmptySpace;
-        assert!(format!("{}", err).contains("Empty search space"));
+        assert!(format!("{err}").contains("Empty search space"));
 
         let err = HPOError::ParameterNotFound("lr".to_string());
-        assert!(format!("{}", err).contains("Parameter not found"));
-        assert!(format!("{}", err).contains("lr"));
+        assert!(format!("{err}").contains("Parameter not found"));
+        assert!(format!("{err}").contains("lr"));
 
         let err = HPOError::InvalidValue("lr".to_string(), "invalid".to_string());
-        assert!(format!("{}", err).contains("Invalid parameter value"));
+        assert!(format!("{err}").contains("Invalid parameter value"));
 
         let err = HPOError::NoTrials;
-        assert!(format!("{}", err).contains("No trials completed"));
+        assert!(format!("{err}").contains("No trials completed"));
 
         let err = HPOError::Internal("test error".to_string());
-        assert!(format!("{}", err).contains("HPO error"));
+        assert!(format!("{err}").contains("HPO error"));
     }
 }

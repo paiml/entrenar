@@ -122,7 +122,7 @@ proptest! {
         hypothesis in "[a-z]{1,5}( [a-z]{1,5}){2,9}"
     ) {
         let score = bleu_score(&[&reference], &hypothesis, 4);
-        prop_assert!(score >= 0.0 && score <= 1.0, "BLEU must be in [0,1], got {}", score);
+        prop_assert!((0.0..=1.0).contains(&score), "BLEU must be in [0,1], got {}", score);
     }
 }
 
@@ -167,10 +167,10 @@ proptest! {
         hypothesis in "[a-z]{1,4}( [a-z]{1,4}){1,8}"
     ) {
         let r1 = rouge_n(&reference, &hypothesis, 1);
-        prop_assert!(r1 >= 0.0 && r1 <= 1.0, "ROUGE-1 must be in [0,1], got {}", r1);
+        prop_assert!((0.0..=1.0).contains(&r1), "ROUGE-1 must be in [0,1], got {}", r1);
 
         let rl = rouge_l(&reference, &hypothesis);
-        prop_assert!(rl >= 0.0 && rl <= 1.0, "ROUGE-L must be in [0,1], got {}", rl);
+        prop_assert!((0.0..=1.0).contains(&rl), "ROUGE-L must be in [0,1], got {}", rl);
     }
 }
 
@@ -247,7 +247,7 @@ proptest! {
     fn prop_pass_at_k_bounds(n in 1..100usize, c in 0..100usize, k in 1..100usize) {
         let c = c.min(n);
         let p = pass_at_k(n, c, k);
-        prop_assert!(p >= 0.0 && p <= 1.0, "pass@k must be in [0,1], got {}", p);
+        prop_assert!((0.0..=1.0).contains(&p), "pass@k must be in [0,1], got {}", p);
     }
 }
 
@@ -294,7 +294,7 @@ proptest! {
     #[test]
     fn prop_ndcg_bounds(scores in proptest::collection::vec(0.0f64..5.0, 1..20), k in 1..20usize) {
         let ndcg = ndcg_at_k(&scores, k);
-        prop_assert!(ndcg >= 0.0 && ndcg <= 1.0 + 1e-10, "NDCG must be in [0,1], got {}", ndcg);
+        prop_assert!((0.0..=1.0 + 1e-10).contains(&ndcg), "NDCG must be in [0,1], got {}", ndcg);
     }
 
     #[test]

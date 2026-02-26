@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_contributor_role_debug() {
         let role = ContributorRole::Software;
-        assert_eq!(format!("{:?}", role), "Software");
+        assert_eq!(format!("{role:?}"), "Software");
     }
 
     #[test]

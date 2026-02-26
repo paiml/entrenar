@@ -311,9 +311,9 @@ mod tests {
         let loaded = build_model(&spec).unwrap();
 
         // Verify training metadata was added
-        assert!(loaded.metadata.custom.get("optimizer").is_some());
-        assert!(loaded.metadata.custom.get("learning_rate").is_some());
-        assert!(loaded.metadata.custom.get("batch_size").is_some());
+        assert!(loaded.metadata.custom.contains_key("optimizer"));
+        assert!(loaded.metadata.custom.contains_key("learning_rate"));
+        assert!(loaded.metadata.custom.contains_key("batch_size"));
 
         // Clean up
         std::fs::remove_file(temp_path).ok();

@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn test_signature_status_debug() {
         let valid = SignatureStatus::Valid;
-        assert!(format!("{:?}", valid).contains("Valid"));
+        assert!(format!("{valid:?}").contains("Valid"));
     }
 
     #[test]

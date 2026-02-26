@@ -407,7 +407,7 @@ mod tests {
 
         for metric in &metrics {
             let trend = analyzer.determine_trend(metric, &stable_stats);
-            let _ = match metric {
+            match metric {
                 Metric::Loss => {
                     assert!(matches!(
                         trend,
@@ -426,7 +426,7 @@ mod tests {
                 Metric::LearningRate | Metric::Epoch | Metric::Batch | Metric::Custom(_) => {
                     assert_eq!(trend, Trend::Stable);
                 }
-            };
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 //! Tests for quantization granularity module
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::quant::granularity::{

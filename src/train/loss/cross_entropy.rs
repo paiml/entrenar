@@ -349,7 +349,7 @@ mod ce_contract_tests {
         use super::*;
         use proptest::prelude::*;
 
-        /// FALSIFY-CE-001-prop: Non-negativity for random one-hot targets
+        // FALSIFY-CE-001-prop: Non-negativity for random one-hot targets
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(200))]
 
@@ -377,7 +377,7 @@ mod ce_contract_tests {
             }
         }
 
-        /// FALSIFY-CE-003-prop: Numerical stability for random logits
+        // FALSIFY-CE-003-prop: Numerical stability for random logits
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(200))]
 
@@ -406,7 +406,7 @@ mod ce_contract_tests {
             }
         }
 
-        /// FALSIFY-CE-002-prop: Log-softmax upper bound for random inputs
+        // FALSIFY-CE-002-prop: Log-softmax upper bound for random inputs
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(200))]
 
@@ -423,7 +423,7 @@ mod ce_contract_tests {
                 let probs = CrossEntropyLoss::softmax(&x);
                 for (j, &p) in probs.iter().enumerate() {
                     prop_assert!(
-                        p >= 0.0 && p <= 1.0 + 1e-6,
+                        (0.0..=1.0 + 1e-6).contains(&p),
                         "FALSIFIED CE-002-prop: softmax[{}] = {} outside [0,1]",
                         j, p
                     );

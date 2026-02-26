@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn test_llm_metrics_debug() {
         let metrics = LLMMetrics::new("gpt-4");
-        let debug_str = format!("{:?}", metrics);
+        let debug_str = format!("{metrics:?}");
         assert!(debug_str.contains("LLMMetrics"));
         assert!(debug_str.contains("gpt-4"));
     }

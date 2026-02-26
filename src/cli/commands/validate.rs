@@ -312,7 +312,7 @@ mod tests {
         assert!(info.contains("cosine"));
         assert!(info.contains("warmup=200"));
         assert!(info.contains("t_max"));
-        assert!(info.contains("8"));
+        assert!(info.contains('8'));
         assert!(info.contains("bf16"));
         assert!(info.contains("42"));
     }
@@ -337,7 +337,7 @@ mod tests {
     fn test_format_quant_info() {
         let spec = make_test_spec();
         let info = format_quant_info(&spec).unwrap();
-        assert!(info.contains("4"));
+        assert!(info.contains('4'));
         assert!(info.contains("true"));
     }
 

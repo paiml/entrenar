@@ -178,8 +178,7 @@ fn main() {
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .map(|(i, _)| i)
-            .unwrap_or(0);
+            .map_or(0, |(i, _)| i);
         let confidence = probs[predicted] * 100.0;
 
         let snippet: String = sample.input.chars().filter(|c| *c != '\n').take(30).collect();

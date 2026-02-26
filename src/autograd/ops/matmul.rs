@@ -465,7 +465,7 @@ mod tests {
         use super::*;
         use proptest::prelude::*;
 
-        /// FALSIFY-MM-001e-prop: Shape correctness for random dimensions
+        // FALSIFY-MM-001e-prop: Shape correctness for random dimensions
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(100))]
 
@@ -480,7 +480,7 @@ mod tests {
             }
         }
 
-        /// FALSIFY-MM-005e-prop: Identity matrix for random dimensions
+        // FALSIFY-MM-005e-prop: Identity matrix for random dimensions
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(50))]
 

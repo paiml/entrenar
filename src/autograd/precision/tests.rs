@@ -1,5 +1,6 @@
 //! Tests for mixed-precision training utilities.
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::autograd::precision::{

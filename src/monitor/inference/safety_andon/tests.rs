@@ -190,7 +190,7 @@ fn test_emergency_condition_decision_timeout_message() {
 fn test_emergency_condition_consecutive_low_confidence_message() {
     let cond = EmergencyCondition::ConsecutiveLowConfidence { count: 7, threshold: 0.65 };
     let msg = cond.message();
-    assert!(msg.contains("7"));
+    assert!(msg.contains('7'));
     assert!(msg.contains("65.0%"));
 }
 

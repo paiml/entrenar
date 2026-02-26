@@ -514,7 +514,7 @@ mod tests {
     #[test]
     fn test_multi_label_no_active_classes() {
         let sample =
-            MultiLabelSafetySample { input: "".into(), labels: vec![0.0, 0.0, 0.0, 0.0, 0.0] };
+            MultiLabelSafetySample { input: String::new(), labels: vec![0.0, 0.0, 0.0, 0.0, 0.0] };
         assert!(sample.active_classes().is_empty());
     }
 

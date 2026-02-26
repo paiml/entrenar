@@ -1,5 +1,6 @@
 //! Tests for training loops
 
+#![allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::optim::Adam;

@@ -161,10 +161,10 @@ mod tests {
         let mut prev = pct_color(0.0);
         for i in 1..=100 {
             let curr = pct_color(i as f32);
-            let dr = (curr.0 as i32 - prev.0 as i32).abs();
-            let dg = (curr.1 as i32 - prev.1 as i32).abs();
-            let db = (curr.2 as i32 - prev.2 as i32).abs();
-            assert!(dr < 50 && dg < 50 && db < 50, "Color jump at {}%", i);
+            let dr = (i32::from(curr.0) - i32::from(prev.0)).abs();
+            let dg = (i32::from(curr.1) - i32::from(prev.1)).abs();
+            let db = (i32::from(curr.2) - i32::from(prev.2)).abs();
+            assert!(dr < 50 && dg < 50 && db < 50, "Color jump at {i}%");
             prev = curr;
         }
     }

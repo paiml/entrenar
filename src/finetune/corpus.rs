@@ -386,7 +386,7 @@ mod tests {
         assert_eq!(restored.function, sample.function);
         assert_eq!(restored.unit_tests, sample.unit_tests);
         assert_eq!(restored.property_tests, sample.property_tests);
-        assert_eq!(restored.metadata.has_generics, true);
+        assert!(restored.metadata.has_generics);
     }
 
     #[test]

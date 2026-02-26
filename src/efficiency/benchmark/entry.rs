@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn test_benchmark_entry_debug() {
         let entry = make_entry(0.9, 10.0, 36000.0, 0.5);
-        let debug_str = format!("{:?}", entry);
+        let debug_str = format!("{entry:?}");
         assert!(debug_str.contains("BenchmarkEntry"));
         assert!(debug_str.contains("test-run"));
     }

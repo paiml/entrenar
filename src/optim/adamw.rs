@@ -442,11 +442,9 @@ mod tests {
         }
 
         // Check v (second moment) is non-negative
-        for v_opt in &optimizer.v {
-            if let Some(v_arr) = v_opt {
-                for (j, &v_val) in v_arr.iter().enumerate() {
-                    assert!(v_val >= 0.0, "FALSIFIED AW-002e: v[{j}] = {v_val} < 0 after 50 steps");
-                }
+        for v_arr in optimizer.v.iter().flatten() {
+            for (j, &v_val) in v_arr.iter().enumerate() {
+                assert!(v_val >= 0.0, "FALSIFIED AW-002e: v[{j}] = {v_val} < 0 after 50 steps");
             }
         }
     }
@@ -509,7 +507,7 @@ mod tests {
         use super::*;
         use proptest::prelude::*;
 
-        /// FALSIFY-AW-002e-prop: Second moment non-negative for random gradients
+        // FALSIFY-AW-002e-prop: Second moment non-negative for random gradients
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(50))]
 
@@ -536,7 +534,7 @@ mod tests {
             }
         }
 
-        /// FALSIFY-AW-004e-prop: Update finiteness for random initial params
+        // FALSIFY-AW-004e-prop: Update finiteness for random initial params
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(50))]
 

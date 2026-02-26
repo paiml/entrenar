@@ -53,7 +53,7 @@ fn test_expert_relu_activation() {
 
     let input = ndarray::Array1::ones(4);
     let output = expert.forward(&input);
-    for &v in output.iter() {
+    for &v in &output {
         assert!((v - 42.0).abs() < 1e-5, "Output should equal b2 when ReLU zeros hidden layer");
     }
 }
@@ -85,7 +85,7 @@ fn test_softmax_rows_sum_to_one() {
 fn test_softmax_rows_non_negative() {
     let logits = Array2::from_shape_fn((4, 8), |(i, j)| -((i * 8 + j) as f32));
     let probs = softmax_rows(&logits);
-    for &v in probs.iter() {
+    for &v in &probs {
         assert!(v >= 0.0, "Softmax values must be non-negative");
     }
 }
@@ -275,7 +275,7 @@ fn test_expert_load_fractions_uniform() {
     let probs = Array2::from_elem((batch, experts), 1.0 / experts as f32);
     let fractions = expert_load_fractions(&probs);
 
-    for &f in fractions.iter() {
+    for &f in &fractions {
         assert!((f - 0.25).abs() < 1e-5, "Uniform probs should give equal load fractions");
     }
 }
@@ -299,7 +299,7 @@ fn test_expert_load_fractions_empty_batch() {
     let probs = Array2::zeros((0, 4));
     let fractions = expert_load_fractions(&probs);
     assert_eq!(fractions.len(), 4);
-    for &f in fractions.iter() {
+    for &f in &fractions {
         assert!((f - 0.0).abs() < 1e-6);
     }
 }
@@ -390,8 +390,7 @@ fn test_moe_layer_uses_multiple_experts() {
 
     assert!(
         used_experts.len() > 1,
-        "With varied inputs, multiple experts should be used; got {:?}",
-        used_experts
+        "With varied inputs, multiple experts should be used; got {used_experts:?}"
     );
 }
 
@@ -594,7 +593,7 @@ fn test_top_k_equals_num_experts() {
     for indices in &routing.expert_indices {
         assert_eq!(indices.len(), 3, "All 3 experts should be selected");
         let mut sorted = indices.clone();
-        sorted.sort();
+        sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), 3, "All experts should be distinct");
     }

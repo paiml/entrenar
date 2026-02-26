@@ -105,7 +105,7 @@ mod tests {
         let key_file = NamedTempFile::new().unwrap();
 
         // Write a valid 32-byte key
-        std::fs::write(key_file.path(), &[1u8; 32]).unwrap();
+        std::fs::write(key_file.path(), [1u8; 32]).unwrap();
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());
@@ -125,7 +125,7 @@ mod tests {
         let key_file = NamedTempFile::new().unwrap();
 
         // Write invalid key size (not 32 bytes)
-        std::fs::write(key_file.path(), &[1u8; 16]).unwrap();
+        std::fs::write(key_file.path(), [1u8; 16]).unwrap();
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());
@@ -169,7 +169,7 @@ mod tests {
 
         let output_file = NamedTempFile::new().unwrap();
         let key_file = NamedTempFile::new().unwrap();
-        std::fs::write(key_file.path(), &[2u8; 32]).unwrap();
+        std::fs::write(key_file.path(), [2u8; 32]).unwrap();
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());
@@ -195,7 +195,7 @@ mod tests {
     fn test_preregister_with_signing_verbose() {
         let output_file = NamedTempFile::new().unwrap();
         let key_file = NamedTempFile::new().unwrap();
-        std::fs::write(key_file.path(), &[3u8; 32]).unwrap();
+        std::fs::write(key_file.path(), [3u8; 32]).unwrap();
 
         let mut args = make_test_args(output_file.path().to_path_buf());
         args.sign_key = Some(key_file.path().to_path_buf());

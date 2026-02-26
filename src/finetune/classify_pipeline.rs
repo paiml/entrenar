@@ -1599,7 +1599,7 @@ mod tests {
     fn test_ssc025_safety_sample_input_ids() {
         let sample = SafetySample { input: "echo".into(), label: 0 };
         let ids = sample.input_ids();
-        assert_eq!(ids, vec![b'e' as u32, b'c' as u32, b'h' as u32, b'o' as u32]);
+        assert_eq!(ids, vec![u32::from(b'e'), u32::from(b'c'), u32::from(b'h'), u32::from(b'o')]);
     }
 
     #[test]
@@ -1653,7 +1653,7 @@ mod tests {
         let pipeline = ClassifyPipeline::new(&model_config, classify_config);
 
         let ids = pipeline.tokenize("echo");
-        assert_eq!(ids, vec![b'e' as u32, b'c' as u32, b'h' as u32, b'o' as u32]);
+        assert_eq!(ids, vec![u32::from(b'e'), u32::from(b'c'), u32::from(b'h'), u32::from(b'o')]);
     }
 
     #[test]

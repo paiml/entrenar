@@ -234,7 +234,7 @@ fn test_simd_capability_hash() {
 fn test_simd_capability_clone_copy() {
     let original = SimdCapability::Avx512;
     let copied = original;
-    let cloned = original.clone();
+    let cloned = original;
     assert_eq!(original, copied);
     assert_eq!(original, cloned);
 }
@@ -267,7 +267,7 @@ fn test_cpu_info_serde() {
 #[test]
 fn test_cpu_info_debug() {
     let cpu = CpuInfo::new(4, 8, SimdCapability::Sse4, "Debug CPU");
-    let debug = format!("{:?}", cpu);
+    let debug = format!("{cpu:?}");
     assert!(debug.contains("Debug CPU"));
     assert!(debug.contains("Sse4"));
 }

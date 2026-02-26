@@ -390,8 +390,11 @@ mod tests {
 
         run.finish(RunStatus::Success).unwrap();
 
-        let status =
-            storage.lock().unwrap_or_else(|e| e.into_inner()).get_run_status(&run_id).unwrap();
+        let status = storage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_run_status(&run_id)
+            .unwrap();
         assert_eq!(status, RunStatus::Success);
     }
 
@@ -405,8 +408,11 @@ mod tests {
 
         run.finish(RunStatus::Failed).unwrap();
 
-        let status =
-            storage.lock().unwrap_or_else(|e| e.into_inner()).get_run_status(&run_id).unwrap();
+        let status = storage
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_run_status(&run_id)
+            .unwrap();
         assert_eq!(status, RunStatus::Failed);
     }
 

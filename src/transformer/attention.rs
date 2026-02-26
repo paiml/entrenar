@@ -1042,7 +1042,7 @@ mod tests {
         use super::*;
         use proptest::prelude::*;
 
-        /// FALSIFY-GQ-001e-prop: GQA output shape for random configs
+        // FALSIFY-GQ-001e-prop: GQA output shape for random configs
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(50))]
 
@@ -1074,7 +1074,7 @@ mod tests {
                 );
 
                 // All finite
-                for v in output.data().iter() {
+                for v in output.data() {
                     prop_assert!(
                         v.is_finite(),
                         "FALSIFIED GQ-001e-prop: non-finite output"
@@ -1083,7 +1083,7 @@ mod tests {
             }
         }
 
-        /// FALSIFY-GQ-006e-prop: MQA boundary with random inputs
+        // FALSIFY-GQ-006e-prop: MQA boundary with random inputs
         proptest! {
             #![proptest_config(ProptestConfig::with_cases(30))]
 
@@ -1110,7 +1110,7 @@ mod tests {
                     "FALSIFIED GQ-006e-prop: MQA output len mismatch"
                 );
 
-                for v in output.data().iter() {
+                for v in output.data() {
                     prop_assert!(
                         v.is_finite(),
                         "FALSIFIED GQ-006e-prop: non-finite MQA output"
