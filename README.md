@@ -71,7 +71,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-entrenar = "0.2"
+entrenar = "0.7"
 ```
 
 ### Basic Training
@@ -334,10 +334,10 @@ entrenar/
 
 | Library | Purpose | Version |
 |---------|---------|---------|
-| [trueno](https://crates.io/crates/trueno) | SIMD tensor operations | 0.7.3 |
-| **entrenar** | Training & optimization | 0.2.3 |
-| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.14.0 |
-| [realizar](https://crates.io/crates/realizar) | GGUF inference | 0.2.1 |
+| [trueno](https://crates.io/crates/trueno) | SIMD tensor operations | 0.16.0 |
+| **entrenar** | Training & optimization | 0.7.2 |
+| [aprender](https://crates.io/crates/aprender) | ML algorithms & explainability | 0.27.0 |
+| [realizar](https://crates.io/crates/realizar) | GGUF inference | 0.8.0 |
 
 ## Documentation
 
