@@ -36,76 +36,16 @@ use crate::autograd::cuda_backward::{
     gemm_backward_a, gemm_backward_b, rms_norm_backward, silu_backward,
 };
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_forward::{fused_swiglu_forward, gemm_forward, rms_norm_forward};
+use crate::autograd::cuda_forward::{
+    batched_4d_gemm_forward, batched_softmax_forward, batched_to_interleaved_forward,
+    batched_transpose_forward, expand_kv_heads, fused_swiglu_forward, gemm_forward,
+    interleaved_to_batched_forward, residual_add_forward, rms_norm_forward, scale_forward,
+};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_tensor::Result;
 
 #[cfg(feature = "cuda")]
 use super::config::TransformerConfig;
-
-/// Download GPU buffer to Vec using stream-ordered async copy.
-///
-/// Issues `cuMemcpyDtoHAsync` on the given stream and synchronizes before returning,
-/// ensuring proper ordering with kernel launches on the same stream.
-/// This avoids the default-stream vs non-blocking-stream race that occurs with
-/// synchronous `cuMemcpyDtoH`.
-#[cfg(feature = "cuda")]
-fn gpu_to_vec(buf: &GpuBuffer<f32>, stream: &CudaStream) -> Result<Vec<f32>> {
-    let mut data = vec![0.0f32; buf.len()];
-    // SAFETY: data lives until stream sync below; buf is a valid GPU allocation
-    unsafe {
-        buf.copy_to_host_async(&mut data, stream).map_err(|e| {
-            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                "Async D2H failed: {e}"
-            ))
-        })?;
-    }
-    // Block until copy completes so `data` is valid for CPU access
-    sync_stream(stream)?;
-    Ok(data)
-}
-
-/// Upload Vec to GPU buffer using stream-ordered async copy (pads with zeros if needed).
-///
-/// Issues `cuMemcpyHtoDAsync` on the given stream and synchronizes to ensure
-/// the host data is no longer needed before this function returns.
-#[cfg(feature = "cuda")]
-fn vec_to_gpu(buf: &mut GpuBuffer<f32>, data: &[f32], stream: &CudaStream) -> Result<()> {
-    if data.len() == buf.len() {
-        // SAFETY: data lives until sync_stream below completes
-        unsafe {
-            buf.copy_from_host_async(data, stream).map_err(|e| {
-                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                    "Async H2D failed: {e}"
-                ))
-            })?;
-        }
-        // Stream synchronization ensures H2D transfer completes before Vec deallocation
-        sync_stream(stream)?;
-    } else if data.len() < buf.len() {
-        // Pad with zeros — scratch buffers are allocated for max_seq_len
-        // but actual data may be shorter for the current sequence
-        let mut padded = vec![0.0f32; buf.len()];
-        padded[..data.len()].copy_from_slice(data);
-        // SAFETY: padded lives until sync_stream below
-        unsafe {
-            buf.copy_from_host_async(&padded, stream).map_err(|e| {
-                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                    "Async H2D failed: {e}"
-                ))
-            })?;
-        }
-        // Must sync before padded goes out of scope
-        sync_stream(stream)?;
-    } else {
-        return Err(crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-            "Data too large for GPU buffer: {} > {}",
-            data.len(),
-            buf.len()
-        )));
-    }
-    Ok(())
-}
 
 /// CUDA-accelerated transformer block
 ///
@@ -184,6 +124,13 @@ struct CudaBlockScratch {
     grad_hidden: GpuBuffer<f32>,
     /// Gradient for SwiGLU intermediate
     grad_swiglu: GpuBuffer<f32>,
+    // === Attention layout scratch buffers (GPU-only attention pipeline) ===
+    /// Q in batched layout [num_heads, seq_len, head_dim]
+    attn_q_batched: GpuBuffer<f32>,
+    /// K/V layout temp buffer [num_heads, seq_len, head_dim]
+    attn_kv_temp: GpuBuffer<f32>,
+    /// K transposed / second temp [num_heads, head_dim, seq_len]
+    attn_kv_temp2: GpuBuffer<f32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -245,6 +192,10 @@ impl CudaTransformerBlock {
             grad_down: GpuBuffer::new(&ctx, intermediate_size * hidden_size)?,
             grad_hidden: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             grad_swiglu: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
+            // Attention layout scratch (all sized for num_heads, handles GQA expansion)
+            attn_q_batched: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
+            attn_kv_temp: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
+            attn_kv_temp2: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
         };
 
         Ok(Self {
@@ -323,10 +274,7 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // Sync before CPU attention (needs Q, K, V on host)
-        sync_stream(stream)?;
-
-        // === Multi-Head Attention (ENT-148) ===
+        // === Multi-Head Attention (GPU-only, zero CPU transfers) ===
         self.compute_attention_cuda(seq_len, stream)?;
 
         // === Output Projection ===
@@ -401,7 +349,6 @@ impl CudaTransformerBlock {
         )?;
 
         // === Final Residual Add (residual1 + ffn_output) ===
-        // gpu_to_vec syncs stream internally, so GEMM output is visible to CPU.
         cuda_add(
             &self.scratch.residual1,
             &self.scratch.ffn_out,
@@ -413,69 +360,221 @@ impl CudaTransformerBlock {
         Ok(())
     }
 
-    /// Compute multi-head attention on GPU with CUDA softmax
+    /// Compute multi-head attention entirely on GPU (zero CPU transfers)
+    ///
+    /// # Contract (C-ATTN-001)
+    ///
+    /// - **Precondition**: Q [seq, hidden], K [seq, kv_hidden], V [seq, kv_hidden] on GPU
+    /// - **Postcondition**: attn_out [seq, hidden] = concat(head_0..head_H) where
+    ///   head_h = softmax(Q_h @ K_{kv(h)}^T / √d_k) @ V_{kv(h)}
+    /// - **Invariant**: Zero gpu_to_vec / vec_to_gpu calls; numerically equivalent to CPU
+    ///
+    /// Uses existing trueno-gpu kernels:
+    /// - `InterleavedToBatchedKernel` for Q/K/V layout conversion
+    /// - `BatchedTransposeKernel` for K^T
+    /// - `Batched4DGemmKernel` for Q@K^T and attn@V
+    /// - `ScaleKernel` for 1/√d_k scaling
+    /// - `BatchedSoftmaxKernel` for row-wise softmax
+    /// - `BatchedToInterleavedKernel` for output layout conversion
+    /// - D2D copies for GQA head expansion
     fn compute_attention_cuda(&mut self, seq_len: usize, stream: &CudaStream) -> Result<()> {
-        let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;
         let head_dim = self.config.head_dim();
         let heads_per_kv = num_heads / num_kv_heads;
-        let kv_hidden_size = num_kv_heads * head_dim;
         let scale = 1.0 / (head_dim as f32).sqrt();
 
-        // Copy Q, K, V to host for per-head processing
-        // (Full CUDA implementation would use batched attention kernels)
-        let q_data = gpu_to_vec(&self.scratch.q, stream)?;
-        let k_data = gpu_to_vec(&self.scratch.k, stream)?;
-        let v_data = gpu_to_vec(&self.scratch.v, stream)?;
+        let seq = saturating_u32(seq_len);
+        let nh = saturating_u32(num_heads);
+        let nkv = saturating_u32(num_kv_heads);
+        let hd = saturating_u32(head_dim);
 
-        let mut attn_out = vec![0.0f32; seq_len * hidden_size];
+        // Step 1: Q interleaved [seq, num_heads * head_dim] → batched [num_heads, seq, head_dim]
+        interleaved_to_batched_forward(
+            &self.scratch.q,
+            &mut self.scratch.attn_q_batched,
+            seq,
+            nh,
+            hd,
+            stream,
+        )?;
 
-        // Process each attention head
-        for h in 0..num_heads {
-            let kv_h = h / heads_per_kv;
+        // Step 2: K interleaved [seq, num_kv_heads * head_dim] → batched [num_kv_heads, seq, head_dim]
+        interleaved_to_batched_forward(
+            &self.scratch.k,
+            &mut self.scratch.attn_kv_temp,
+            seq,
+            nkv,
+            hd,
+            stream,
+        )?;
 
-            // Compute Q_h @ K_h^T with scaling
-            let mut scores = vec![0.0f32; seq_len * seq_len];
-            for i in 0..seq_len {
-                for j in 0..seq_len {
-                    let mut sum = 0.0f32;
-                    for d in 0..head_dim {
-                        let q_idx = i * hidden_size + h * head_dim + d;
-                        let k_idx = j * kv_hidden_size + kv_h * head_dim + d;
-                        sum += q_data[q_idx] * k_data[k_idx];
-                    }
-                    scores[i * seq_len + j] = sum * scale;
-                }
-            }
-
-            // Apply softmax row-wise (CUDA softmax kernel would be used here)
-            for i in 0..seq_len {
-                let row_start = i * seq_len;
-                let row = &scores[row_start..row_start + seq_len];
-                let max_val = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-                let exp_vals: Vec<f32> = row.iter().map(|&x| (x - max_val).exp()).collect();
-                let sum_exp: f32 = exp_vals.iter().sum();
-                for (j, &exp_val) in exp_vals.iter().enumerate() {
-                    scores[row_start + j] = exp_val / sum_exp;
-                }
-            }
-
-            // Compute attention @ V_h
-            for i in 0..seq_len {
-                for d in 0..head_dim {
-                    let mut sum = 0.0f32;
-                    for j in 0..seq_len {
-                        let v_idx = j * kv_hidden_size + kv_h * head_dim + d;
-                        sum += scores[i * seq_len + j] * v_data[v_idx];
-                    }
-                    attn_out[i * hidden_size + h * head_dim + d] = sum;
-                }
+        // Step 3: GQA expansion + transpose for K
+        if heads_per_kv == 1 {
+            // MHA: transpose directly [num_heads, seq, head_dim] → [num_heads, head_dim, seq]
+            batched_transpose_forward(
+                &self.scratch.attn_kv_temp,
+                &mut self.scratch.attn_kv_temp2,
+                nh,
+                seq,
+                hd,
+                stream,
+            )?;
+        } else {
+            // GQA: expand [num_kv_heads, seq, hd] → [num_heads, seq, hd] in attn_kv_temp2
+            expand_kv_heads(
+                &self.scratch.attn_kv_temp,
+                &mut self.scratch.attn_kv_temp2,
+                num_kv_heads,
+                heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+            // Transpose expanded K: [num_heads, seq, hd] → [num_heads, hd, seq] in attn_kv_temp
+            batched_transpose_forward(
+                &self.scratch.attn_kv_temp2,
+                &mut self.scratch.attn_kv_temp,
+                nh,
+                seq,
+                hd,
+                stream,
+            )?;
+            // Move K^T to attn_kv_temp2 for consistent naming below
+            // (swap pointers via D2D copy — attn_kv_temp → attn_kv_temp2)
+            // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+            unsafe {
+                self.scratch
+                    .attn_kv_temp2
+                    .copy_from_buffer_async(&self.scratch.attn_kv_temp, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "K^T buffer copy failed: {e}"
+                        ))
+                    })?;
             }
         }
 
-        // Copy result back to GPU (async on our stream for proper ordering)
-        vec_to_gpu(&mut self.scratch.attn_out, &attn_out, stream)?;
+        // Step 4: Q @ K^T → attn_scores [num_heads, seq, seq]
+        // attn_q_batched: [1, num_heads, seq, head_dim]
+        // attn_kv_temp2:  [1, num_heads, head_dim, seq] (K transposed)
+        // attn_scores:    [1, num_heads, seq, seq]
+        batched_4d_gemm_forward(
+            &self.scratch.attn_q_batched,
+            &self.scratch.attn_kv_temp2,
+            &mut self.scratch.attn_scores,
+            1,
+            nh,
+            seq,
+            seq,
+            hd,
+            stream,
+        )?;
+
+        // Step 5: Scale scores by 1/√d_k (in-place)
+        let total_scores = nh * seq * seq;
+        {
+            // SAFETY: In-place aliasing is safe for element-wise operations where each
+            // element is read before being written. ScaleKernel processes elements
+            // independently. The view is forgotten to prevent double-free.
+            let scores_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    self.scratch.attn_scores.as_ptr(),
+                    self.scratch.attn_scores.len(),
+                )
+            };
+            scale_forward(
+                &scores_view,
+                &mut self.scratch.attn_scores,
+                scale,
+                total_scores,
+                stream,
+            )?;
+            std::mem::forget(scores_view);
+        }
+
+        // Step 6: Row-wise softmax → attn_weights [num_heads * seq, seq] (in-place)
+        let total_rows = nh * seq;
+        {
+            // SAFETY: In-place aliasing is safe for BatchedSoftmaxKernel which uses
+            // shared memory for row-wise reduction. Each row is fully read into shared
+            // memory before any output is written. The view is forgotten to prevent double-free.
+            let scores_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    self.scratch.attn_scores.as_ptr(),
+                    self.scratch.attn_scores.len(),
+                )
+            };
+            batched_softmax_forward(
+                &scores_view,
+                &mut self.scratch.attn_scores,
+                total_rows,
+                seq,
+                stream,
+            )?;
+            std::mem::forget(scores_view);
+        }
+
+        // Step 7: V layout conversion + GQA expansion
+        interleaved_to_batched_forward(
+            &self.scratch.v,
+            &mut self.scratch.attn_kv_temp,
+            seq,
+            nkv,
+            hd,
+            stream,
+        )?;
+
+        if heads_per_kv == 1 {
+            // MHA: V already in [num_heads, seq, head_dim] in attn_kv_temp
+        } else {
+            // GQA: expand V [num_kv_heads, seq, hd] → [num_heads, seq, hd]
+            expand_kv_heads(
+                &self.scratch.attn_kv_temp,
+                &mut self.scratch.attn_kv_temp2,
+                num_kv_heads,
+                heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+            // Copy expanded V back to attn_kv_temp for the GEMM
+            // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+            unsafe {
+                self.scratch
+                    .attn_kv_temp
+                    .copy_from_buffer_async(&self.scratch.attn_kv_temp2, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "V expanded buffer copy failed: {e}"
+                        ))
+                    })?;
+            }
+        }
+
+        // Step 8: attn_weights @ V → attn_result [num_heads, seq, head_dim]
+        // attn_scores:   [1, num_heads, seq, seq]
+        // attn_kv_temp:  [1, num_heads, seq, head_dim]
+        // → attn_q_batched: [1, num_heads, seq, head_dim] (reuse Q buffer)
+        batched_4d_gemm_forward(
+            &self.scratch.attn_scores,
+            &self.scratch.attn_kv_temp,
+            &mut self.scratch.attn_q_batched,
+            1,
+            nh,
+            seq,
+            hd,
+            seq,
+            stream,
+        )?;
+
+        // Step 9: Convert back to interleaved [seq, num_heads * head_dim] → attn_out
+        batched_to_interleaved_forward(
+            &self.scratch.attn_q_batched,
+            &mut self.scratch.attn_out,
+            seq,
+            nh,
+            hd,
+            stream,
+        )?;
 
         Ok(())
     }
@@ -577,14 +676,24 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // Clone grad_hidden to separate buffer preventing mutable borrow conflict
-        // gpu_to_vec syncs stream internally
-        let grad_hidden_data = gpu_to_vec(&self.scratch.grad_hidden, stream)?;
+        // D2D copy grad_hidden to attn_kv_temp to avoid borrow conflict
+        // (grad_hidden is read by gemm_backward_b, then overwritten by gemm_backward_a)
+        // SAFETY: Both buffers are valid GPU allocations; attn_kv_temp is unused during backward.
+        unsafe {
+            self.scratch
+                .attn_kv_temp
+                .copy_from_buffer_async(&self.scratch.grad_hidden, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "Backward FFN grad_hidden D2D copy failed: {e}"
+                    ))
+                })?;
+        }
 
         // grad_w_gate = norm2_out^T @ grad_gate_out
         gemm_backward_b(
             &self.scratch.norm2_out,
-            &self.scratch.grad_hidden,
+            &self.scratch.attn_kv_temp,
             &mut self.scratch.grad_gate,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -592,10 +701,9 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // Write back and compute grad_norm2
-        vec_to_gpu(&mut self.scratch.grad_hidden, &grad_hidden_data, stream)?;
+        // Compute grad_norm2 using the copy in attn_kv_temp
         gemm_backward_a(
-            &self.scratch.grad_hidden,
+            &self.scratch.attn_kv_temp,
             &self.w_gate,
             &mut self.scratch.norm2_out, // Reuse as temp output
             saturating_u32(seq_len),
@@ -616,9 +724,18 @@ impl CudaTransformerBlock {
         eps: f32,
         stream: &CudaStream,
     ) -> Result<()> {
-        // gpu_to_vec syncs stream internally before returning CPU-readable data
-        let grad_norm2_data = gpu_to_vec(&self.scratch.norm2_out, stream)?;
-        vec_to_gpu(&mut self.scratch.grad_hidden, &grad_norm2_data, stream)?;
+        // D2D copy norm2_out → grad_hidden (avoids D2H + H2D round-trip)
+        // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+        unsafe {
+            self.scratch
+                .grad_hidden
+                .copy_from_buffer_async(&self.scratch.norm2_out, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "Backward norm D2D copy failed: {e}"
+                    ))
+                })?;
+        }
 
         rms_norm_backward(
             &self.scratch.residual1,
@@ -644,20 +761,38 @@ impl CudaTransformerBlock {
         eps: f32,
         stream: &CudaStream,
     ) -> Result<()> {
-        // residual1 = input + o_proj_out; grad_input += grad_residual1
-        // gpu_to_vec syncs stream internally
-        let grad_in_data = gpu_to_vec(grad_input, stream)?;
-        let grad_out_data = gpu_to_vec(grad_output, stream)?;
-        let sum: Vec<f32> = grad_in_data
-            .iter()
-            .zip(grad_out_data.iter())
-            .take(seq_len * hidden_size)
-            .map(|(a, b)| a + b)
-            .collect();
-        vec_to_gpu(grad_input, &sum, stream)?;
+        let n = saturating_u32(seq_len * hidden_size);
 
-        // Copy grad_input to grad_hidden to avoid aliasing
-        vec_to_gpu(&mut self.scratch.grad_hidden, &sum, stream)?;
+        // residual1 = input + o_proj_out; grad_input += grad_residual1
+        // Use attn_kv_temp as temp to hold grad_input + grad_output sum,
+        // since residual_add_forward can't alias input with output when
+        // grad_input is both input and output.
+        residual_add_forward(grad_input, grad_output, &mut self.scratch.attn_kv_temp, n, stream)?;
+
+        // Copy sum back to grad_input
+        // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+        unsafe {
+            grad_input
+                .copy_from_buffer_async(&self.scratch.attn_kv_temp, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "Backward residual grad_input D2D copy failed: {e}"
+                    ))
+                })?;
+        }
+
+        // D2D copy grad_input to grad_hidden (avoids aliasing for rms_norm_backward)
+        // SAFETY: Both buffers are valid GPU allocations.
+        unsafe {
+            self.scratch
+                .grad_hidden
+                .copy_from_buffer_async(&self.scratch.attn_kv_temp, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "Backward residual grad_hidden D2D copy failed: {e}"
+                    ))
+                })?;
+        }
 
         rms_norm_backward(
             input,
@@ -673,23 +808,9 @@ impl CudaTransformerBlock {
     }
 }
 
-/// Synchronize CUDA stream — ensures all prior kernel launches have completed
-/// before CPU reads GPU buffers via `copy_to_host`.
+/// CUDA element-wise addition on GPU (zero CPU transfers)
 ///
-/// CRITICAL: The stream is created with `CU_STREAM_NON_BLOCKING`, which means
-/// `cuMemcpyDtoH` (used by `GpuBuffer::copy_to_host`) does NOT implicitly
-/// synchronize with this stream. Without explicit sync, kernel output may not
-/// be visible to subsequent CPU reads, producing stale/NaN data.
-#[cfg(feature = "cuda")]
-fn sync_stream(stream: &CudaStream) -> Result<()> {
-    stream.synchronize().map_err(|e| {
-        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-            "Stream sync failed: {e}"
-        ))
-    })
-}
-
-/// CUDA element-wise addition (standalone to avoid borrow issues)
+/// Uses `ResidualAddKernel` — single kernel launch, no D2H/H2D transfers.
 #[cfg(feature = "cuda")]
 fn cuda_add(
     a: &GpuBuffer<f32>,
@@ -698,14 +819,12 @@ fn cuda_add(
     n: usize,
     stream: &CudaStream,
 ) -> Result<()> {
-    let a_data = gpu_to_vec(a, stream)?;
-    let b_data = gpu_to_vec(b, stream)?;
-    let result: Vec<f32> = a_data.iter().zip(b_data.iter()).take(n).map(|(x, y)| x + y).collect();
-    vec_to_gpu(output, &result, stream)?;
-    Ok(())
+    residual_add_forward(a, b, output, saturating_u32(n), stream)
 }
 
-/// CUDA element-wise multiplication (standalone to avoid borrow issues)
+/// CUDA element-wise multiplication on GPU (zero CPU transfers)
+///
+/// Uses `ElementwiseMulKernel` — single kernel launch, no D2H/H2D transfers.
 #[cfg(feature = "cuda")]
 fn cuda_mul(
     a: &GpuBuffer<f32>,
@@ -714,11 +833,13 @@ fn cuda_mul(
     n: usize,
     stream: &CudaStream,
 ) -> Result<()> {
-    let a_data = gpu_to_vec(a, stream)?;
-    let b_data = gpu_to_vec(b, stream)?;
-    let result: Vec<f32> = a_data.iter().zip(b_data.iter()).take(n).map(|(x, y)| x * y).collect();
-    vec_to_gpu(output, &result, stream)?;
-    Ok(())
+    crate::autograd::cuda_forward::elementwise_mul_forward(
+        a,
+        b,
+        output,
+        saturating_u32(n),
+        stream,
+    )
 }
 
 // CPU fallback stub

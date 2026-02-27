@@ -6,7 +6,9 @@
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::kernels::{GeluKernel, Kernel, ReluKernel, SiluKernel, SoftmaxKernel};
+use trueno_gpu::kernels::{
+    BatchedSoftmaxKernel, GeluKernel, Kernel, ReluKernel, SiluKernel, SoftmaxKernel,
+};
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
 
@@ -182,6 +184,66 @@ pub fn silu_forward(
     unsafe {
         stream.launch_kernel(module, "silu", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("SiLU forward launch failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Batched softmax forward pass on GPU
+///
+/// Computes row-wise softmax for a matrix of shape [total_rows, row_size]:
+///   output[r][j] = exp(input[r][j] - max_r) / Σ_k exp(input[r][k] - max_r)
+///
+/// Uses warp-parallel reduction (one warp per row) with shfl_down for numerical stability.
+///
+/// # Contract (C-BSMAX-001)
+///
+/// - **Precondition**: input.len() == output.len() >= total_rows * row_size,
+///   row_size > 0, total_rows > 0
+/// - **Postcondition**: Each row sums to 1.0 (±ε for float), numerically stable (max-subtraction)
+/// - **Invariant**: Zero CPU-side data transfers
+#[cfg(feature = "cuda")]
+pub fn batched_softmax_forward(
+    input: &GpuBuffer<f32>,
+    output: &mut GpuBuffer<f32>,
+    total_rows: u32,
+    row_size: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = BatchedSoftmaxKernel::new(total_rows, row_size);
+    let kernel_name = kernel.name();
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+
+    let key = format!("batched_softmax_forward_{total_rows}_{row_size}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    // One warp (32 threads) per row, one block per row
+    let config =
+        LaunchConfig { grid: (total_rows, 1, 1), block: (32.min(row_size), 1, 1), shared_mem: 72 };
+
+    let input_ptr = input.as_ptr();
+    let output_ptr = output.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 4] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &total_rows as *const _ as *mut _,
+        &row_size as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
+    unsafe {
+        stream.launch_kernel(module, kernel_name, &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!(
+                "Batched softmax forward launch failed: {e:?}"
+            ))
         })?;
     }
 

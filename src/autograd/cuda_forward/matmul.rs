@@ -6,7 +6,7 @@
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::kernels::{FusedSwigluKernel, GemmKernel, Kernel};
+use trueno_gpu::kernels::{Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel};
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
 
@@ -113,6 +113,77 @@ pub fn gemm_forward(
     unsafe {
         stream.launch_kernel(module, "gemm_naive", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("GEMM forward launch failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Batched 4D GEMM forward pass on GPU for multi-head attention
+///
+/// Computes: C[b,h] = A[b,h] @ B[b,h] for each batch b and head h
+/// Pattern: [batch, heads, m, k] @ [batch, heads, k, n] -> [batch, heads, m, n]
+///
+/// # Contract (C-B4DGEMM-001)
+///
+/// - **Precondition**: a.len() >= batch * heads * m * k, b.len() >= batch * heads * k * n,
+///   c.len() >= batch * heads * m * n
+/// - **Postcondition**: C[b,h] = A[b,h] @ B[b,h] for all (b,h) in [0,batch)×[0,heads)
+/// - **Invariant**: Zero CPU-side data transfers
+#[cfg(feature = "cuda")]
+pub fn batched_4d_gemm_forward(
+    a: &GpuBuffer<f32>,
+    b: &GpuBuffer<f32>,
+    c: &mut GpuBuffer<f32>,
+    batch: u32,
+    heads: u32,
+    m: u32,
+    n: u32,
+    k: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = Batched4DGemmKernel::new(batch, heads, m, n, k);
+    let tile_size = kernel.config.tile_size;
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+
+    let key = format!("batched_4d_gemm_{batch}_{heads}_{m}_{n}_{k}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    // Grid: ((m+tile-1)/tile, (n+tile-1)/tile, batch * heads)
+    // Block: (tile_size, tile_size, 1)
+    // Shared memory: tile_size * tile_size * 4 * 2 bytes (tiles for A and B)
+    let config = LaunchConfig {
+        grid: (n.div_ceil(tile_size), m.div_ceil(tile_size), batch * heads),
+        block: (tile_size, tile_size, 1),
+        shared_mem: tile_size * tile_size * 4 * 2,
+    };
+
+    let a_ptr = a.as_ptr();
+    let b_ptr = b.as_ptr();
+    let c_ptr = c.as_ptr();
+
+    // PTX kernel signature: (a_ptr, b_ptr, c_ptr, batch, heads, m, n, k)
+    let mut args: [*mut std::ffi::c_void; 8] = [
+        &a_ptr as *const _ as *mut _,
+        &b_ptr as *const _ as *mut _,
+        &c_ptr as *const _ as *mut _,
+        &batch as *const _ as *mut _,
+        &heads as *const _ as *mut _,
+        &m as *const _ as *mut _,
+        &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
+    unsafe {
+        stream.launch_kernel(module, "batched_4d_gemm", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Batched 4D GEMM forward launch failed: {e:?}"))
         })?;
     }
 
