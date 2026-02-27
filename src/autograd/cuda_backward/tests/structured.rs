@@ -234,7 +234,7 @@ fn rms_norm_forward_cpu(input: &[f32], gamma: &[f32], hidden_size: usize, eps: f
 }
 
 /// CPU reference for RMSNorm backward: grad_input
-/// ∂L/∂x_i = γ_i/rms * (∂L/∂y_i - x_i/rms² * mean(x · ∂L/∂y · γ))
+/// ∂L/∂x_i = (1/rms) * (γ_i * ∂L/∂y_i - x_i/rms² * mean(x · ∂L/∂y · γ))
 fn rms_norm_backward_cpu(
     input: &[f32],
     gamma: &[f32],
@@ -259,7 +259,7 @@ fn rms_norm_backward_cpu(
 
         for i in 0..hidden_size {
             let correction = row[i] / variance_eps * mean_xgg;
-            grad_input[base + i] = gamma[i] / rms * (grad_output[base + i] - correction);
+            grad_input[base + i] = (1.0 / rms) * (gamma[i] * grad_output[base + i] - correction);
         }
     }
     grad_input
