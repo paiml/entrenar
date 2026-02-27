@@ -20,8 +20,9 @@ target
 .idea/
 .vscode/
 
-# Cargo local config
-.cargo/
+# Cargo local config (except config.toml which has dev [patch] overrides)
+.cargo/*
+!.cargo/config.toml
 
 # Temporary files
 *.tmp

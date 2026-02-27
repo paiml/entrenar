@@ -369,16 +369,6 @@ name = "design_by_contract"
 path = "examples/design_by_contract.rs"
 required-features = []
 
-# Phase 11: CUDA-First Architecture (SPEC-FT-001 v3.0.0)
-# realizar needs local patch due to trueno-gpu API changes
-# trueno-gpu needs local patch for relu_backward selp fix
-[patch.crates-io]
-aprender = { path = "../aprender" }  # GH-305: use local aprender for re-exported path types
-realizar = { path = "../realizar" }
-trueno = { path = "../trueno" }
-trueno-gpu = { path = "../trueno/trueno-gpu" }
-trueno-viz = { path = "../trueno-viz" }
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--generate-link-to-definition"]
