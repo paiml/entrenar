@@ -33,8 +33,10 @@ use trueno_gpu::driver::{CudaContext, CudaStream, GpuBuffer};
 
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_backward::{
-    gemm_backward_a, gemm_backward_b, rms_norm_backward, silu_backward,
+    batched_softmax_backward, gemm_backward_a, gemm_backward_b, rms_norm_backward, silu_backward,
 };
+#[cfg(feature = "cuda")]
+use crate::autograd::cuda_optim::adamw_step_cuda;
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{
     batched_4d_gemm_forward, batched_softmax_forward, batched_to_interleaved_forward,
@@ -131,6 +133,54 @@ struct CudaBlockScratch {
     attn_kv_temp: GpuBuffer<f32>,
     /// K transposed / second temp [num_heads, head_dim, seq_len]
     attn_kv_temp2: GpuBuffer<f32>,
+    // === Attention backward gradient buffers (ENT-151b) ===
+    /// Gradient for attention scores [num_heads * seq_len * seq_len]
+    /// Kept separate from attn_scores because softmax backward reads y while writing grad_x
+    grad_attn_scores: GpuBuffer<f32>,
+    /// Gradient for Q projection weight [hidden_size * hidden_size]
+    grad_w_q: GpuBuffer<f32>,
+    /// Gradient for K projection weight [hidden_size * kv_hidden_size]
+    grad_w_k: GpuBuffer<f32>,
+    /// Gradient for V projection weight [hidden_size * kv_hidden_size]
+    grad_w_v: GpuBuffer<f32>,
+    /// Gradient for output projection weight [hidden_size * hidden_size]
+    grad_w_o: GpuBuffer<f32>,
+}
+
+/// GPU-resident AdamW optimizer state for one transformer block.
+///
+/// Stores first (m) and second (v) moment estimates for all 9 weight tensors:
+/// 7 matmul weights + 2 RMSNorm weights. All buffers live on GPU to avoid
+/// CPU↔GPU transfers during training.
+///
+/// # Contract (C-OPTSTATE-001)
+///
+/// - **Precondition**: CUDA context valid, all buffers allocated to match weight dimensions
+/// - **Postcondition**: m and v buffers initialized to zero (unbiased start)
+/// - **Invariant**: Buffer sizes immutable after creation; m/v never reallocated
+#[cfg(feature = "cuda")]
+pub struct GpuBlockOptimizerState {
+    // Attention projection optimizer states
+    m_w_q: GpuBuffer<f32>,
+    v_w_q: GpuBuffer<f32>,
+    m_w_k: GpuBuffer<f32>,
+    v_w_k: GpuBuffer<f32>,
+    m_w_v: GpuBuffer<f32>,
+    v_w_v: GpuBuffer<f32>,
+    m_w_o: GpuBuffer<f32>,
+    v_w_o: GpuBuffer<f32>,
+    // FFN projection optimizer states
+    m_w_gate: GpuBuffer<f32>,
+    v_w_gate: GpuBuffer<f32>,
+    m_w_up: GpuBuffer<f32>,
+    v_w_up: GpuBuffer<f32>,
+    m_w_down: GpuBuffer<f32>,
+    v_w_down: GpuBuffer<f32>,
+    // RMSNorm weight optimizer states
+    m_input_norm: GpuBuffer<f32>,
+    v_input_norm: GpuBuffer<f32>,
+    m_post_attn_norm: GpuBuffer<f32>,
+    v_post_attn_norm: GpuBuffer<f32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -196,6 +246,16 @@ impl CudaTransformerBlock {
             attn_q_batched: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
             attn_kv_temp: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
             attn_kv_temp2: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
+            // Attention backward gradient buffers (ENT-151b)
+            // grad_attn_scores needs max(H*S*S, H*S*hd) for buffer reuse safety
+            grad_attn_scores: GpuBuffer::new(
+                &ctx,
+                num_heads * max_seq_len * max_seq_len.max(config.head_dim()),
+            )?,
+            grad_w_q: GpuBuffer::new(&ctx, hidden_size * hidden_size)?,
+            grad_w_k: GpuBuffer::new(&ctx, hidden_size * kv_hidden_size)?,
+            grad_w_v: GpuBuffer::new(&ctx, hidden_size * kv_hidden_size)?,
+            grad_w_o: GpuBuffer::new(&ctx, hidden_size * hidden_size)?,
         };
 
         Ok(Self {
@@ -605,6 +665,7 @@ impl CudaTransformerBlock {
     /// - `scratch.grad_input_norm` - Gradient for input RMSNorm weight
     /// - `scratch.grad_post_attn_norm` - Gradient for post-attention RMSNorm weight
     /// - `scratch.grad_gate/up/down` - Gradients for FFN weights
+    /// - `scratch.grad_w_q/w_k/w_v/w_o` - Gradients for attention projection weights
     pub fn backward(
         &mut self,
         input: &GpuBuffer<f32>,
@@ -622,6 +683,10 @@ impl CudaTransformerBlock {
 
         // Backward through post-attention RMSNorm
         self.backward_post_attn_norm(grad_input, seq_len, hidden_size, eps, stream)?;
+
+        // Backward through attention: output projection, attention weights, Q/K/V projections
+        // (ENT-151b: previously missing — attention params received no gradients)
+        self.backward_attention(grad_input, seq_len, stream)?;
 
         // Backward through first residual connection and input RMSNorm
         self.backward_residual_and_input_norm(
@@ -750,6 +815,621 @@ impl CudaTransformerBlock {
         )
     }
 
+    /// Backward through multi-head attention (ENT-151b)
+    ///
+    /// Reverses the forward attention pipeline:
+    /// output_proj → layout → attn_weights@V → softmax → scale → Q@K^T → layout → Q/K/V proj
+    ///
+    /// # Contract (C-ATTN-BACK-001)
+    ///
+    /// - **Precondition**: grad_input contains gradient from post-attention norm backward,
+    ///   scratch.{q, k, v, attn_scores, attn_out, norm1_out} contain forward pass values
+    /// - **Postcondition**: grad_hidden contains gradient w.r.t. norm1_out (input to Q/K/V proj),
+    ///   grad_w_{q,k,v,o} contain weight gradients for attention projections
+    /// - **Invariant**: Zero CPU-side data transfers; all operations on GPU
+    fn backward_attention(
+        &mut self,
+        grad_input: &mut GpuBuffer<f32>,
+        seq_len: usize,
+        stream: &CudaStream,
+    ) -> Result<()> {
+        let hidden_size = self.config.hidden_size;
+        let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
+        let num_heads = self.config.num_attention_heads;
+        let num_kv_heads = self.config.num_kv_heads;
+        let head_dim = self.config.head_dim();
+        let heads_per_kv = num_heads / num_kv_heads;
+        let scale = 1.0 / (head_dim as f32).sqrt();
+
+        let seq = saturating_u32(seq_len);
+        let nh = saturating_u32(num_heads);
+        let nkv = saturating_u32(num_kv_heads);
+        let hd = saturating_u32(head_dim);
+
+        // === Step 4.1: Output projection backward ===
+        // grad_input currently holds gradient from post_attn_norm backward.
+        // grad_attn_out = grad_input @ w_o^T → grad_hidden
+        gemm_backward_a(
+            grad_input,
+            &self.w_o,
+            &mut self.scratch.grad_hidden,
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // grad_w_o = attn_out^T @ grad_input
+        gemm_backward_b(
+            &self.scratch.attn_out,
+            grad_input,
+            &mut self.scratch.grad_w_o,
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // === Step 4.2: Layout conversion ===
+        // grad_attn_out [seq, hidden] → grad_attn_batched [num_heads, seq, head_dim]
+        // Reuse attn_q_batched for grad_attn_batched
+        interleaved_to_batched_forward(
+            &self.scratch.grad_hidden,
+            &mut self.scratch.attn_q_batched,
+            seq,
+            nh,
+            hd,
+            stream,
+        )?;
+
+        // === Step 4.3: Backward through attn_weights @ V ===
+        // Forward was: attn_result = attn_weights @ V_batched
+        // Reconstruct V_batched from preserved v
+        interleaved_to_batched_forward(
+            &self.scratch.v,
+            &mut self.scratch.attn_kv_temp,
+            seq,
+            nkv,
+            hd,
+            stream,
+        )?;
+
+        // GQA expand V if needed
+        if heads_per_kv > 1 {
+            expand_kv_heads(
+                &self.scratch.attn_kv_temp,
+                &mut self.scratch.attn_kv_temp2,
+                num_kv_heads,
+                heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+            // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+            unsafe {
+                self.scratch
+                    .attn_kv_temp
+                    .copy_from_buffer_async(&self.scratch.attn_kv_temp2, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "Attn backward V expand D2D copy failed: {e}"
+                        ))
+                    })?;
+            }
+        }
+        // attn_kv_temp now has V_batched [num_heads, seq, head_dim]
+
+        // Transpose V: [num_heads, seq, head_dim] → [num_heads, head_dim, seq]
+        batched_transpose_forward(
+            &self.scratch.attn_kv_temp,
+            &mut self.scratch.attn_kv_temp2,
+            nh,
+            seq,
+            hd,
+            stream,
+        )?;
+        // attn_kv_temp2 = V^T [num_heads, head_dim, seq]
+
+        // grad_attn_weights = grad_attn_batched @ V^T → grad_attn_scores [H, seq, seq]
+        batched_4d_gemm_forward(
+            &self.scratch.attn_q_batched,
+            &self.scratch.attn_kv_temp2,
+            &mut self.scratch.grad_attn_scores,
+            1,
+            nh,
+            seq,
+            seq,
+            hd,
+            stream,
+        )?;
+
+        // grad_V = attn_weights^T @ grad_attn_batched → attn_kv_temp [H, seq, hd]
+        // First transpose attn_weights (attn_scores): [H, seq, seq] → [H, seq, seq] (symmetric dims)
+        // Actually we need attn_scores^T which is just transpose of [H, seq, seq]
+        batched_transpose_forward(
+            &self.scratch.attn_scores,
+            &mut self.scratch.attn_kv_temp2,
+            nh,
+            seq,
+            seq,
+            stream,
+        )?;
+        // attn_kv_temp2 = attn_weights^T [H, seq, seq]
+
+        batched_4d_gemm_forward(
+            &self.scratch.attn_kv_temp2,
+            &self.scratch.attn_q_batched,
+            &mut self.scratch.attn_kv_temp,
+            1,
+            nh,
+            seq,
+            hd,
+            seq,
+            stream,
+        )?;
+        // attn_kv_temp = grad_V [num_heads, seq, head_dim]
+
+        // === Step 4.4: Softmax backward ===
+        // attn_scores contains softmax output from forward pass
+        // In-place: grad_attn_scores is both input (grad_output) and output (grad_input)
+        // This is safe because the kernel reads all elements in pass 1 before writing in pass 2.
+        let total_rows = nh * seq;
+        {
+            // SAFETY: In-place aliasing is safe for BatchedSoftmaxBackwardKernel which uses
+            // a two-pass approach: pass 1 reads all y[i]*gy[i] to compute dot product,
+            // pass 2 writes grad_x[i]. The view is forgotten to prevent double-free.
+            let grad_scores_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    self.scratch.grad_attn_scores.as_ptr(),
+                    self.scratch.grad_attn_scores.len(),
+                )
+            };
+            batched_softmax_backward(
+                &self.scratch.attn_scores,
+                &grad_scores_view,
+                &mut self.scratch.grad_attn_scores,
+                total_rows,
+                seq,
+                stream,
+            )?;
+            std::mem::forget(grad_scores_view);
+        }
+        // grad_attn_scores now contains gradient through softmax
+
+        // === Step 4.5: Scale backward ===
+        // Forward scaled by 1/√d_k, backward is same scale (linear operation)
+        let total_scores = nh * seq * seq;
+        {
+            // SAFETY: In-place aliasing safe for element-wise scale (independent elements).
+            let scores_view = unsafe {
+                GpuBuffer::<f32>::from_raw_parts(
+                    self.scratch.grad_attn_scores.as_ptr(),
+                    self.scratch.grad_attn_scores.len(),
+                )
+            };
+            scale_forward(
+                &scores_view,
+                &mut self.scratch.grad_attn_scores,
+                scale,
+                total_scores,
+                stream,
+            )?;
+            std::mem::forget(scores_view);
+        }
+
+        // === Step 4.6: Backward through Q @ K^T ===
+        // Forward was: scores = Q_batched @ K^T
+        // Reconstruct K_batched and expand for GQA
+        interleaved_to_batched_forward(
+            &self.scratch.k,
+            &mut self.scratch.attn_kv_temp2,
+            seq,
+            nkv,
+            hd,
+            stream,
+        )?;
+
+        if heads_per_kv > 1 {
+            // SAFETY: Both buffers are valid GPU allocations; attn_q_batched is about to be
+            // overwritten anyway.
+            unsafe {
+                self.scratch
+                    .attn_q_batched
+                    .copy_from_buffer_async(&self.scratch.attn_kv_temp2, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "Attn backward K copy for GQA expand failed: {e}"
+                        ))
+                    })?;
+            }
+            expand_kv_heads(
+                &self.scratch.attn_q_batched,
+                &mut self.scratch.attn_kv_temp2,
+                num_kv_heads,
+                heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+        }
+        // attn_kv_temp2 = K_expanded [num_heads, seq, head_dim]
+
+        // grad_Q = grad_scores @ K_expanded → attn_q_batched [H, seq, hd]
+        batched_4d_gemm_forward(
+            &self.scratch.grad_attn_scores,
+            &self.scratch.attn_kv_temp2,
+            &mut self.scratch.attn_q_batched,
+            1,
+            nh,
+            seq,
+            hd,
+            seq,
+            stream,
+        )?;
+
+        // grad_K^T = Q^T @ grad_scores
+        // First reconstruct Q_batched from preserved q
+        // We need Q_batched but attn_q_batched is now grad_Q. Use o_proj_out as temp.
+        interleaved_to_batched_forward(
+            &self.scratch.q,
+            &mut self.scratch.o_proj_out, // temp buffer for Q_batched
+            seq,
+            nh,
+            hd,
+            stream,
+        )?;
+
+        // Transpose Q: [H, seq, hd] → [H, hd, seq]
+        batched_transpose_forward(
+            &self.scratch.o_proj_out,
+            &mut self.scratch.attn_kv_temp2, // reuse for Q^T
+            nh,
+            seq,
+            hd,
+            stream,
+        )?;
+
+        // grad_K^T = Q^T @ grad_scores → ffn_out as temp [H, hd, seq]
+        batched_4d_gemm_forward(
+            &self.scratch.attn_kv_temp2,
+            &self.scratch.grad_attn_scores,
+            &mut self.scratch.ffn_out, // reuse as temp for grad_K^T [H, hd, seq]
+            1,
+            nh,
+            hd,
+            seq,
+            seq,
+            stream,
+        )?;
+
+        // Transpose grad_K^T → grad_K: [H, hd, seq] → [H, seq, hd]
+        batched_transpose_forward(
+            &self.scratch.ffn_out,
+            &mut self.scratch.attn_kv_temp2, // grad_K [H, seq, hd]
+            nh,
+            hd,
+            seq,
+            stream,
+        )?;
+
+        // === Step 4.7: GQA gradient reduction ===
+        // grad_K and grad_V are in [num_heads, seq, hd], need to reduce to [num_kv_heads, seq, hd]
+        if heads_per_kv > 1 {
+            self.reduce_gqa_gradients(num_kv_heads, heads_per_kv, seq_len, head_dim, stream)?;
+        }
+
+        // === Step 4.8: Convert gradients back to interleaved layout ===
+        // grad_Q: attn_q_batched [H, seq, hd] → o_proj_out [seq, hidden] (interleaved)
+        batched_to_interleaved_forward(
+            &self.scratch.attn_q_batched,
+            &mut self.scratch.o_proj_out,
+            seq,
+            nh,
+            hd,
+            stream,
+        )?;
+
+        // grad_K: attn_kv_temp2 [nkv, seq, hd] → norm2_out [seq, kv_hidden] (interleaved)
+        batched_to_interleaved_forward(
+            &self.scratch.attn_kv_temp2,
+            &mut self.scratch.norm2_out,
+            seq,
+            nkv,
+            hd,
+            stream,
+        )?;
+
+        // grad_V: attn_kv_temp [nkv, seq, hd] → ffn_out [seq, kv_hidden] (interleaved)
+        batched_to_interleaved_forward(
+            &self.scratch.attn_kv_temp,
+            &mut self.scratch.ffn_out,
+            seq,
+            nkv,
+            hd,
+            stream,
+        )?;
+
+        // === Step 4.9: Q/K/V projection backward ===
+        // grad_norm1 = grad_q @ w_q^T → grad_hidden
+        gemm_backward_a(
+            &self.scratch.o_proj_out, // grad_q interleaved
+            &self.w_q,
+            &mut self.scratch.grad_hidden,
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // grad_norm1 += grad_k @ w_k^T
+        // Use grad_attn_scores as temp for the GEMM result
+        gemm_backward_a(
+            &self.scratch.norm2_out, // grad_k interleaved
+            &self.w_k,
+            &mut self.scratch.grad_attn_scores, // temp for grad_k @ w_k^T
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
+            stream,
+        )?;
+        // Accumulate: grad_hidden += grad_attn_scores → gate_out (temp), then copy back
+        let n_hidden = saturating_u32(seq_len * hidden_size);
+        residual_add_forward(
+            &self.scratch.grad_hidden,
+            &self.scratch.grad_attn_scores,
+            &mut self.scratch.gate_out, // temp output (gate_out is large enough)
+            n_hidden,
+            stream,
+        )?;
+        // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+        unsafe {
+            self.scratch
+                .grad_hidden
+                .copy_from_buffer_async(&self.scratch.gate_out, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "Attn backward grad_hidden accumulate K D2D copy failed: {e}"
+                    ))
+                })?;
+        }
+
+        // grad_norm1 += grad_v @ w_v^T
+        gemm_backward_a(
+            &self.scratch.ffn_out, // grad_v interleaved
+            &self.w_v,
+            &mut self.scratch.grad_attn_scores, // temp for grad_v @ w_v^T
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
+            stream,
+        )?;
+        // Accumulate: grad_hidden += grad_attn_scores → gate_out (temp), then copy back
+        residual_add_forward(
+            &self.scratch.grad_hidden,
+            &self.scratch.grad_attn_scores,
+            &mut self.scratch.gate_out, // temp output
+            n_hidden,
+            stream,
+        )?;
+        // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+        unsafe {
+            self.scratch
+                .grad_hidden
+                .copy_from_buffer_async(&self.scratch.gate_out, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "Attn backward grad_hidden accumulate V D2D copy failed: {e}"
+                    ))
+                })?;
+        }
+
+        // Weight gradients: grad_w_q = norm1_out^T @ grad_q
+        gemm_backward_b(
+            &self.scratch.norm1_out,
+            &self.scratch.o_proj_out, // grad_q
+            &mut self.scratch.grad_w_q,
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // grad_w_k = norm1_out^T @ grad_k
+        gemm_backward_b(
+            &self.scratch.norm1_out,
+            &self.scratch.norm2_out, // grad_k
+            &mut self.scratch.grad_w_k,
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
+            stream,
+        )?;
+
+        // grad_w_v = norm1_out^T @ grad_v
+        gemm_backward_b(
+            &self.scratch.norm1_out,
+            &self.scratch.ffn_out, // grad_v
+            &mut self.scratch.grad_w_v,
+            seq,
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
+            stream,
+        )?;
+
+        // Copy grad_hidden → grad_input for downstream (residual backward)
+        // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+        unsafe {
+            grad_input
+                .copy_from_buffer_async(&self.scratch.grad_hidden, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "Attn backward grad_hidden → grad_input D2D copy failed: {e}"
+                    ))
+                })?;
+        }
+
+        Ok(())
+    }
+
+    /// Reduce GQA head gradients from [num_heads] to [num_kv_heads] by summing groups.
+    ///
+    /// Reads grad_K from `attn_kv_temp2` and grad_V from `attn_kv_temp` (both [H, seq, hd]).
+    /// Writes reduced grad_K to `attn_kv_temp2` and reduced grad_V to `attn_kv_temp`
+    /// (both [nkv, seq, hd]).
+    ///
+    /// Uses `grad_attn_scores`, `ffn_out`, `o_proj_out`, `grad_hidden` as scratch.
+    fn reduce_gqa_gradients(
+        &mut self,
+        num_kv_heads: usize,
+        heads_per_kv: usize,
+        seq_len: usize,
+        head_dim: usize,
+        stream: &CudaStream,
+    ) -> Result<()> {
+        let elems_per_head = seq_len * head_dim;
+
+        // Reduce grad_K: attn_kv_temp2 [H] → grad_attn_scores [nkv]
+        self.reduce_single_gqa_gradient(
+            true, num_kv_heads, heads_per_kv, elems_per_head, stream,
+        )?;
+
+        // Reduce grad_V: attn_kv_temp [H] → ffn_out [nkv]
+        self.reduce_single_gqa_gradient(
+            false, num_kv_heads, heads_per_kv, elems_per_head, stream,
+        )?;
+
+        // Copy reduced results to known locations for step 4.8
+        let kv_elems = num_kv_heads * elems_per_head;
+        // SAFETY: Valid GPU allocations with sufficient size.
+        unsafe {
+            self.scratch
+                .attn_kv_temp2
+                .copy_from_buffer_at_async(&self.scratch.grad_attn_scores, 0, 0, kv_elems, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "GQA grad_K reduced final copy failed: {e}"
+                    ))
+                })?;
+            self.scratch
+                .attn_kv_temp
+                .copy_from_buffer_at_async(&self.scratch.ffn_out, 0, 0, kv_elems, stream)
+                .map_err(|e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "GQA grad_V reduced final copy failed: {e}"
+                    ))
+                })?;
+        }
+        Ok(())
+    }
+
+    /// Reduce one gradient tensor from [num_heads] to [num_kv_heads] by summing groups.
+    ///
+    /// When `is_k=true`: reads from `attn_kv_temp2`, writes to `grad_attn_scores`.
+    /// When `is_k=false`: reads from `attn_kv_temp`, writes to `ffn_out`.
+    /// Uses `o_proj_out` and `grad_hidden` as scratch.
+    fn reduce_single_gqa_gradient(
+        &mut self,
+        is_k: bool,
+        num_kv_heads: usize,
+        heads_per_kv: usize,
+        elems_per_head: usize,
+        stream: &CudaStream,
+    ) -> Result<()> {
+        let label = if is_k { "K" } else { "V" };
+
+        for kv_h in 0..num_kv_heads {
+            let dst_offset = kv_h * elems_per_head;
+            let first_h = kv_h * heads_per_kv;
+            let src_offset = first_h * elems_per_head;
+
+            // Copy first head of group as base
+            // SAFETY: All offsets are within buffer bounds.
+            unsafe {
+                let (dst, src) = if is_k {
+                    (&mut self.scratch.grad_attn_scores, &self.scratch.attn_kv_temp2)
+                } else {
+                    (&mut self.scratch.ffn_out, &self.scratch.attn_kv_temp)
+                };
+                dst.copy_from_buffer_at_async(src, dst_offset, src_offset, elems_per_head, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "GQA grad_{label} reduce base copy failed: {e}"
+                        ))
+                    })?;
+            }
+
+            // Add remaining heads in group
+            for rep in 1..heads_per_kv {
+                let h = kv_h * heads_per_kv + rep;
+                let h_offset = h * elems_per_head;
+
+                // Copy head to o_proj_out temp
+                // SAFETY: Valid GPU allocations with sufficient size.
+                unsafe {
+                    let src = if is_k {
+                        &self.scratch.attn_kv_temp2
+                    } else {
+                        &self.scratch.attn_kv_temp
+                    };
+                    self.scratch
+                        .o_proj_out
+                        .copy_from_buffer_at_async(src, 0, h_offset, elems_per_head, stream)
+                        .map_err(|e| {
+                            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                                "GQA grad_{label} reduce head copy failed: {e}"
+                            ))
+                        })?;
+                }
+
+                // Add: dst[dst_offset..] += o_proj_out[0..elems_per_head]
+                // SAFETY: Creating non-owning views for arithmetic; forgotten to prevent double-free.
+                unsafe {
+                    let dst_buf = if is_k {
+                        &self.scratch.grad_attn_scores
+                    } else {
+                        &self.scratch.ffn_out
+                    };
+                    let dst_view = GpuBuffer::<f32>::from_raw_parts(
+                        dst_buf.as_ptr() + (dst_offset as u64 * 4),
+                        elems_per_head,
+                    );
+                    let src_view = GpuBuffer::<f32>::from_raw_parts(
+                        self.scratch.o_proj_out.as_ptr(),
+                        elems_per_head,
+                    );
+                    let mut sum_view = GpuBuffer::<f32>::from_raw_parts(
+                        self.scratch.grad_hidden.as_ptr(),
+                        elems_per_head,
+                    );
+                    residual_add_forward(
+                        &dst_view,
+                        &src_view,
+                        &mut sum_view,
+                        saturating_u32(elems_per_head),
+                        stream,
+                    )?;
+                    // Copy sum back to dst at dst_offset
+                    let dst_buf = if is_k {
+                        &mut self.scratch.grad_attn_scores
+                    } else {
+                        &mut self.scratch.ffn_out
+                    };
+                    dst_buf
+                        .copy_from_buffer_at_async(
+                            &self.scratch.grad_hidden, dst_offset, 0, elems_per_head, stream,
+                        )
+                        .map_err(|e| {
+                            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                                "GQA grad_{label} reduce sum copy failed: {e}"
+                            ))
+                        })?;
+                    std::mem::forget(dst_view);
+                    std::mem::forget(src_view);
+                    std::mem::forget(sum_view);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Backward through first residual connection and input RMSNorm.
     fn backward_residual_and_input_norm(
         &mut self,
@@ -806,6 +1486,186 @@ impl CudaTransformerBlock {
             stream,
         )
     }
+
+    /// Initialize GPU-resident AdamW optimizer state for all block weights.
+    ///
+    /// Allocates zero-initialized first and second moment buffers for each of the
+    /// 9 weight tensors (4 attention projections + 3 FFN projections + 2 RMSNorm).
+    ///
+    /// # Contract (C-OPTINIT-001)
+    ///
+    /// - **Precondition**: CUDA context is valid, sufficient GPU memory available
+    /// - **Postcondition**: All m/v buffers are zero-initialized with dimensions
+    ///   matching the corresponding weight tensors
+    /// - **Invariant**: Total GPU memory for optimizer state = 2 × sum(weight_sizes) × 4 bytes
+    pub fn init_optimizer_state(&self) -> Result<GpuBlockOptimizerState> {
+        let hidden = self.config.hidden_size;
+        let kv_hidden = self.config.num_kv_heads * self.config.head_dim();
+        let intermediate = self.config.intermediate_size;
+
+        Ok(GpuBlockOptimizerState {
+            m_w_q: GpuBuffer::new(&self.ctx, hidden * hidden)?,
+            v_w_q: GpuBuffer::new(&self.ctx, hidden * hidden)?,
+            m_w_k: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
+            v_w_k: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
+            m_w_v: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
+            v_w_v: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
+            m_w_o: GpuBuffer::new(&self.ctx, hidden * hidden)?,
+            v_w_o: GpuBuffer::new(&self.ctx, hidden * hidden)?,
+            m_w_gate: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
+            v_w_gate: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
+            m_w_up: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
+            v_w_up: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
+            m_w_down: GpuBuffer::new(&self.ctx, intermediate * hidden)?,
+            v_w_down: GpuBuffer::new(&self.ctx, intermediate * hidden)?,
+            m_input_norm: GpuBuffer::new(&self.ctx, hidden)?,
+            v_input_norm: GpuBuffer::new(&self.ctx, hidden)?,
+            m_post_attn_norm: GpuBuffer::new(&self.ctx, hidden)?,
+            v_post_attn_norm: GpuBuffer::new(&self.ctx, hidden)?,
+        })
+    }
+
+    /// Run GPU-resident AdamW optimizer step on all block weights.
+    ///
+    /// Updates weights in-place using gradients computed by `backward()`.
+    /// All operations run on GPU — zero CPU↔GPU data transfers.
+    ///
+    /// # Contract (C-OPTSTEP-001)
+    ///
+    /// - **Precondition**: `backward()` completed for this block (scratch grad buffers valid),
+    ///   `state` initialized via `init_optimizer_state()`, `step > 0`
+    /// - **Postcondition**: All 9 weight tensors updated by AdamW rule,
+    ///   m/v states updated with current gradient statistics
+    /// - **Invariant**: Weight dimensions unchanged; no GPU memory allocated or freed
+    pub fn optimizer_step(
+        &mut self,
+        state: &mut GpuBlockOptimizerState,
+        step: u32,
+        lr: f32,
+        beta1: f32,
+        beta2: f32,
+        eps: f32,
+        weight_decay: f32,
+        stream: &CudaStream,
+    ) -> Result<()> {
+        debug_assert!(step > 0, "C-OPTSTEP-001: step must be > 0 for bias correction");
+
+        // Pre-capture lengths to avoid borrow conflicts (len is immutable borrow,
+        // adamw_step_cuda takes mutable borrow on same buffer)
+        let n_wq = self.w_q.len() as u32;
+        let n_wk = self.w_k.len() as u32;
+        let n_wv = self.w_v.len() as u32;
+        let n_wo = self.w_o.len() as u32;
+        let n_gate = self.w_gate.len() as u32;
+        let n_up = self.w_up.len() as u32;
+        let n_down = self.w_down.len() as u32;
+        let n_inorm = self.input_norm_weight.len() as u32;
+        let n_panorm = self.post_attn_norm_weight.len() as u32;
+
+        // Attention projection weights
+        adamw_step_cuda(
+            &mut self.w_q, &self.scratch.grad_w_q,
+            &mut state.m_w_q, &mut state.v_w_q,
+            lr, beta1, beta2, eps, weight_decay, step, n_wq, stream,
+        )?;
+        adamw_step_cuda(
+            &mut self.w_k, &self.scratch.grad_w_k,
+            &mut state.m_w_k, &mut state.v_w_k,
+            lr, beta1, beta2, eps, weight_decay, step, n_wk, stream,
+        )?;
+        adamw_step_cuda(
+            &mut self.w_v, &self.scratch.grad_w_v,
+            &mut state.m_w_v, &mut state.v_w_v,
+            lr, beta1, beta2, eps, weight_decay, step, n_wv, stream,
+        )?;
+        adamw_step_cuda(
+            &mut self.w_o, &self.scratch.grad_w_o,
+            &mut state.m_w_o, &mut state.v_w_o,
+            lr, beta1, beta2, eps, weight_decay, step, n_wo, stream,
+        )?;
+
+        // FFN projection weights
+        adamw_step_cuda(
+            &mut self.w_gate, &self.scratch.grad_gate,
+            &mut state.m_w_gate, &mut state.v_w_gate,
+            lr, beta1, beta2, eps, weight_decay, step, n_gate, stream,
+        )?;
+        adamw_step_cuda(
+            &mut self.w_up, &self.scratch.grad_up,
+            &mut state.m_w_up, &mut state.v_w_up,
+            lr, beta1, beta2, eps, weight_decay, step, n_up, stream,
+        )?;
+        adamw_step_cuda(
+            &mut self.w_down, &self.scratch.grad_down,
+            &mut state.m_w_down, &mut state.v_w_down,
+            lr, beta1, beta2, eps, weight_decay, step, n_down, stream,
+        )?;
+
+        // RMSNorm weights
+        adamw_step_cuda(
+            &mut self.input_norm_weight, &self.scratch.grad_input_norm,
+            &mut state.m_input_norm, &mut state.v_input_norm,
+            lr, beta1, beta2, eps, weight_decay, step, n_inorm, stream,
+        )?;
+        adamw_step_cuda(
+            &mut self.post_attn_norm_weight, &self.scratch.grad_post_attn_norm,
+            &mut state.m_post_attn_norm, &mut state.v_post_attn_norm,
+            lr, beta1, beta2, eps, weight_decay, step, n_panorm, stream,
+        )?;
+
+        Ok(())
+    }
+
+    /// Download all weight data from GPU to host vectors.
+    ///
+    /// Used to synchronize GPU-updated weights back to CPU model for checkpointing.
+    ///
+    /// # Contract (C-DLWEIGHTS-001)
+    ///
+    /// - **Precondition**: Block weights are valid GPU allocations
+    /// - **Postcondition**: Returned vectors have exact same length and content as GPU buffers
+    /// - **Invariant**: GPU buffers are not modified
+    pub fn download_weights(&self) -> Result<BlockWeights> {
+        let download = |buf: &GpuBuffer<f32>| -> Result<Vec<f32>> {
+            let mut host = vec![0.0f32; buf.len()];
+            buf.copy_to_host(&mut host).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "Weight download failed: {e}"
+                ))
+            })?;
+            Ok(host)
+        };
+
+        Ok(BlockWeights {
+            w_q: download(&self.w_q)?,
+            w_k: download(&self.w_k)?,
+            w_v: download(&self.w_v)?,
+            w_o: download(&self.w_o)?,
+            w_gate: download(&self.w_gate)?,
+            w_up: download(&self.w_up)?,
+            w_down: download(&self.w_down)?,
+            input_norm_weight: download(&self.input_norm_weight)?,
+            post_attn_norm_weight: download(&self.post_attn_norm_weight)?,
+        })
+    }
+}
+
+/// Downloaded weight data from a CUDA transformer block.
+///
+/// # Contract (C-BLOCKWT-001)
+///
+/// - **Invariant**: Vector lengths match original weight dimensions
+#[cfg(feature = "cuda")]
+pub struct BlockWeights {
+    pub w_q: Vec<f32>,
+    pub w_k: Vec<f32>,
+    pub w_v: Vec<f32>,
+    pub w_o: Vec<f32>,
+    pub w_gate: Vec<f32>,
+    pub w_up: Vec<f32>,
+    pub w_down: Vec<f32>,
+    pub input_norm_weight: Vec<f32>,
+    pub post_attn_norm_weight: Vec<f32>,
 }
 
 /// CUDA element-wise addition on GPU (zero CPU transfers)

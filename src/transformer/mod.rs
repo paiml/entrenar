@@ -21,6 +21,6 @@ mod weights;
 pub use attention::{LoRAProjection, MultiHeadAttention, MultiHeadAttentionWithLoRA};
 pub use config::TransformerConfig;
 #[cfg(feature = "cuda")]
-pub use cuda_block::CudaTransformerBlock;
+pub use cuda_block::{BlockWeights, CudaTransformerBlock, GpuBlockOptimizerState};
 pub use model::Transformer;
 pub use weights::{load_safetensors_weights, validate_weights, Architecture};
