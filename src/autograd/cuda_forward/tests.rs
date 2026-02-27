@@ -1,4 +1,5 @@
 mod test_activations;
+mod test_elementwise;
 mod test_matmul;
 mod test_normalization;
 
