@@ -31,9 +31,11 @@ use std::path::Path;
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
-use crate::transformer::CudaTransformerBlock;
+use crate::transformer::{CudaTransformerBlock, GpuBlockOptimizerState};
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
+#[cfg(feature = "cuda")]
+use trueno_gpu::driver::GpuBuffer;
 
 /// Classification fine-tuning pipeline configuration.
 #[derive(Debug, Clone)]
@@ -109,6 +111,36 @@ impl BatchResult {
     }
 }
 
+/// GPU-resident training state for full-finetune backward pass.
+///
+/// Holds per-layer activation snapshots, optimizer state, and scratch buffers
+/// required to run backward through all transformer blocks on GPU.
+///
+/// # Contract (C-GPUTRAIN-001)
+///
+/// - **Precondition**: `init()` called after CUDA blocks are created
+/// - **Postcondition**: All layer_inputs saved during forward; optimizer states zero-initialized
+/// - **Invariant**: `layer_inputs.len() == num_layers`; buffers never reallocated after init
+#[cfg(feature = "cuda")]
+struct GpuTrainingState {
+    /// Saved input to each block during forward [num_layers][max_seq_len * hidden_size]
+    layer_inputs: Vec<GpuBuffer<f32>>,
+    /// Final RMSNorm weight uploaded to GPU [hidden_size]
+    final_norm_weight: GpuBuffer<f32>,
+    /// Blocks output saved on GPU for final norm backward [max_seq_len * hidden_size]
+    blocks_output: GpuBuffer<f32>,
+    /// Gradient scratch buffer A [max_seq_len * hidden_size]
+    grad_buf_a: GpuBuffer<f32>,
+    /// Gradient scratch buffer B [max_seq_len * hidden_size]
+    grad_buf_b: GpuBuffer<f32>,
+    /// Gradient for final RMSNorm weight [hidden_size]
+    grad_final_norm_weight: GpuBuffer<f32>,
+    /// Per-block AdamW optimizer states
+    optimizer_states: Vec<GpuBlockOptimizerState>,
+    /// Global optimizer step counter
+    step: u32,
+}
+
 /// Classification fine-tuning pipeline.
 ///
 /// Owns the transformer, LoRA adapters, and classification head.
@@ -116,6 +148,8 @@ impl BatchResult {
 ///
 /// When compiled with `feature = "cuda"` and a GPU is available, the forward pass
 /// runs on CUDA via `CudaTransformerBlock`s for ~10-50x speedup (F-CUDA-007).
+/// When `gpu_training` is set, the backward pass also runs on GPU with full-finetune
+/// of all transformer weights (F-CUDA-014).
 pub struct ClassifyPipeline {
     /// Base transformer model (weights frozen)
     pub model: Transformer,
@@ -139,6 +173,10 @@ pub struct ClassifyPipeline {
     /// Used to decide when to permanently disable CUDA (threshold: 100).
     #[cfg(feature = "cuda")]
     cuda_nan_count: usize,
+    /// GPU training state for full-finetune backward pass (F-CUDA-014).
+    /// When `Some`, backward pass runs on GPU updating all transformer weights.
+    #[cfg(feature = "cuda")]
+    gpu_training: Option<GpuTrainingState>,
 }
 
 impl ClassifyPipeline {
@@ -167,6 +205,12 @@ impl ClassifyPipeline {
         let (cuda_trainer, cuda_blocks) =
             Self::try_init_cuda(&model, model_config, &classify_config);
 
+        // ── GPU training state (F-CUDA-014) ────────────────────────────
+        #[cfg(feature = "cuda")]
+        let gpu_training = Self::try_init_gpu_training(
+            &model, model_config, &cuda_trainer, &cuda_blocks,
+        );
+
         Self {
             model,
             classifier,
@@ -180,6 +224,8 @@ impl ClassifyPipeline {
             cuda_blocks,
             #[cfg(feature = "cuda")]
             cuda_nan_count: 0,
+            #[cfg(feature = "cuda")]
+            gpu_training,
         }
     }
 
@@ -231,6 +277,12 @@ impl ClassifyPipeline {
         let (cuda_trainer, cuda_blocks) =
             Self::try_init_cuda(&model, model_config, &classify_config);
 
+        // ── GPU training state (F-CUDA-014) ────────────────────────────
+        #[cfg(feature = "cuda")]
+        let gpu_training = Self::try_init_gpu_training(
+            &model, model_config, &cuda_trainer, &cuda_blocks,
+        );
+
         Ok(Self {
             model,
             classifier,
@@ -244,6 +296,8 @@ impl ClassifyPipeline {
             cuda_blocks,
             #[cfg(feature = "cuda")]
             cuda_nan_count: 0,
+            #[cfg(feature = "cuda")]
+            gpu_training,
         })
     }
 
@@ -410,39 +464,427 @@ impl ClassifyPipeline {
         (Some(trainer), Some(blocks))
     }
 
+    /// Initialize GPU training state for full-finetune backward pass (F-CUDA-014).
+    ///
+    /// Allocates layer-input snapshot buffers, uploads final RMSNorm weight,
+    /// and initializes per-block AdamW optimizer state. Returns `None` if CUDA
+    /// is not active or any allocation fails.
+    ///
+    /// # Contract (C-GPUTRAINIT-001)
+    ///
+    /// - **Precondition**: CUDA trainer and blocks are initialized (`Some`)
+    /// - **Postcondition**: All buffers allocated; optimizer states zero-initialized
+    /// - **Invariant**: Returns `None` on any failure (graceful fallback to CPU training)
+    #[cfg(feature = "cuda")]
+    fn try_init_gpu_training(
+        model: &Transformer,
+        model_config: &TransformerConfig,
+        cuda_trainer: &Option<CudaTrainer>,
+        cuda_blocks: &Option<Vec<CudaTransformerBlock>>,
+    ) -> Option<GpuTrainingState> {
+        let trainer = cuda_trainer.as_ref()?;
+        let blocks = cuda_blocks.as_ref()?;
+
+        let hidden_size = model_config.hidden_size;
+        let max_seq_len = model_config.max_position_embeddings.min(512); // cap for memory
+        let buf_size = max_seq_len * hidden_size;
+        let num_layers = blocks.len();
+
+        // Allocate layer-input snapshot buffers
+        let mut layer_inputs = Vec::with_capacity(num_layers);
+        for _ in 0..num_layers {
+            match trainer.zeros(buf_size) {
+                Ok(buf) => layer_inputs.push(buf),
+                Err(e) => {
+                    eprintln!("[CUDA] GPU training init failed (layer input alloc): {e}");
+                    return None;
+                }
+            }
+        }
+
+        // Upload final RMSNorm weight
+        let norm_data = model.norm.weight.data();
+        let norm_slice = norm_data.as_slice().expect("contiguous final norm weight");
+        let final_norm_weight = match trainer.upload(norm_slice) {
+            Ok(buf) => buf,
+            Err(e) => {
+                eprintln!("[CUDA] GPU training init failed (final norm upload): {e}");
+                return None;
+            }
+        };
+
+        // Allocate gradient scratch buffers
+        let blocks_output = trainer.zeros(buf_size).ok()?;
+        let grad_buf_a = trainer.zeros(buf_size).ok()?;
+        let grad_buf_b = trainer.zeros(buf_size).ok()?;
+        let grad_final_norm_weight = trainer.zeros(hidden_size).ok()?;
+
+        // Initialize per-block optimizer states
+        let mut optimizer_states = Vec::with_capacity(num_layers);
+        for (i, block) in blocks.iter().enumerate() {
+            match block.init_optimizer_state() {
+                Ok(state) => optimizer_states.push(state),
+                Err(e) => {
+                    eprintln!("[CUDA] GPU training init failed (optimizer state layer {i}): {e}");
+                    return None;
+                }
+            }
+        }
+
+        eprintln!(
+            "[CUDA] GPU training state initialized: {num_layers} layers, \
+             {buf_size} buf_size ({:.1} MB optimizer state)",
+            (optimizer_states.len() * 18 * buf_size * 4) as f64 / 1e6
+        );
+
+        Some(GpuTrainingState {
+            layer_inputs,
+            final_norm_weight,
+            blocks_output,
+            grad_buf_a,
+            grad_buf_b,
+            grad_final_norm_weight,
+            optimizer_states,
+            step: 0,
+        })
+    }
+
+    /// GPU-accelerated forward pass that saves layer inputs for backward (F-CUDA-014).
+    ///
+    /// Like `forward_hidden_cuda_impl` but additionally:
+    /// 1. Saves each block's input for backward pass
+    /// 2. Keeps blocks output on GPU (for RMSNorm backward)
+    /// 3. Also downloads and applies final RMSNorm on CPU for the classifier
+    ///
+    /// # Contract (C-GPUFWD-001)
+    ///
+    /// - **Precondition**: CUDA trainer, blocks, and gpu_training are all `Some`;
+    ///   `token_ids.len() <= max_seq_len`
+    /// - **Postcondition**: `gpu_training.layer_inputs[i]` contains input to block `i`;
+    ///   `gpu_training.blocks_output` contains final block output (pre-norm);
+    ///   returned Tensor is the normed hidden states on CPU
+    /// - **Invariant**: GPU blocks contain valid forward-pass scratch for backward
+    #[cfg(feature = "cuda")]
+    #[allow(unsafe_code)]
+    fn forward_hidden_cuda_training(
+        model: &Transformer,
+        token_ids: &[u32],
+        trainer: &CudaTrainer,
+        cuda_blocks: &mut [CudaTransformerBlock],
+        training_state: &mut GpuTrainingState,
+    ) -> Option<Tensor> {
+        let seq_len = token_ids.len();
+        let hidden_size = model.config.hidden_size;
+
+        // Step 1: Embed on CPU
+        let hidden = model.embed_tokens.forward(token_ids);
+        let hidden_data = hidden.data();
+        let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
+
+        // Step 2: Upload to GPU
+        let mut gpu_input = trainer.upload(hidden_slice).ok()?;
+        let mut gpu_output = trainer.zeros(seq_len * hidden_size).ok()?;
+
+        // Step 3: Run through CUDA transformer blocks, saving inputs
+        let stream = trainer.stream();
+        for (i, block) in cuda_blocks.iter_mut().enumerate() {
+            // Save input to this block for backward pass
+            // SAFETY: Both buffers are valid GPU allocations with matching sizes.
+            // The copy completes before block.forward() reads from gpu_input.
+            unsafe {
+                training_state.layer_inputs[i]
+                    .copy_from_buffer_async(&gpu_input, stream)
+                    .ok()?;
+            }
+
+            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream) {
+                eprintln!("[CUDA] Layer {i} forward failed: {e}");
+                return None;
+            }
+            std::mem::swap(&mut gpu_input, &mut gpu_output);
+        }
+        // After loop: gpu_input holds final block output
+
+        // Save blocks output for final norm backward
+        // SAFETY: Both buffers valid, copy completes before any read.
+        unsafe {
+            training_state.blocks_output
+                .copy_from_buffer_async(&gpu_input, stream)
+                .ok()?;
+        }
+
+        // Sync and download for CPU classifier path
+        stream.synchronize().ok()?;
+        let result_data = trainer.download(&gpu_input).ok()?;
+
+        // NaN guard
+        if result_data.iter().any(|v| !v.is_finite()) {
+            return None;
+        }
+
+        // Apply final RMSNorm on CPU
+        let result_tensor = Tensor::from_vec(result_data, false);
+        Some(model.norm.forward_batched(&result_tensor, seq_len, hidden_size))
+    }
+
+    /// Run backward pass through all GPU transformer blocks (F-CUDA-014).
+    ///
+    /// Computes gradients for all transformer weights by:
+    /// 1. Computing grad through classifier and mean-pool on CPU
+    /// 2. Uploading gradient to GPU
+    /// 3. Running RMSNorm backward on GPU (final norm)
+    /// 4. Running block.backward() for each layer in reverse
+    ///
+    /// # Contract (C-GPUBACK-001)
+    ///
+    /// - **Precondition**: Forward training pass completed (`forward_hidden_cuda_training`),
+    ///   `grad_logits` has length `num_classes`, `hidden_pre_norm` is the raw block output
+    /// - **Postcondition**: Each block's scratch contains weight gradients (grad_w_q/k/v/o,
+    ///   grad_gate/up/down, grad_input_norm, grad_post_attn_norm)
+    /// - **Invariant**: Zero GPU memory allocation during backward; all buffers preallocated
+    #[cfg(feature = "cuda")]
+    #[allow(unsafe_code)]
+    fn backward_gpu_blocks(
+        &mut self,
+        grad_logits: &[f32],
+        seq_len: usize,
+    ) -> Option<()> {
+        let trainer = self.cuda_trainer.as_ref()?;
+        let hidden_size = self.model.config.hidden_size;
+        let num_classes = self.config.num_classes;
+
+        // Step 1: Classifier backward on CPU (trivial: hidden_size * num_classes mults)
+        // grad_pooled = W_classifier^T @ grad_logits
+        let w_data = self.classifier.weight.data();
+        let w_slice = w_data.as_slice().expect("contiguous classifier weight");
+        let mut grad_pooled = vec![0.0f32; hidden_size];
+        for j in 0..hidden_size {
+            let mut sum = 0.0f32;
+            for c in 0..num_classes {
+                sum += grad_logits[c] * w_slice[j * num_classes + c];
+            }
+            grad_pooled[j] = sum;
+        }
+
+        // Step 2: Mean-pool backward on CPU
+        // grad_final_hidden[i][j] = grad_pooled[j] / seq_len
+        let scale = 1.0 / seq_len as f32;
+        let mut grad_final_hidden = vec![0.0f32; seq_len * hidden_size];
+        for i in 0..seq_len {
+            for j in 0..hidden_size {
+                grad_final_hidden[i * hidden_size + j] = grad_pooled[j] * scale;
+            }
+        }
+
+        // Step 3: Upload gradient to GPU
+        let stream = trainer.stream();
+        let gpu_grad = trainer.upload(&grad_final_hidden).ok()?;
+
+        // Need mutable access to training state and blocks separately
+        let training_state = self.gpu_training.as_mut()?;
+        let blocks = self.cuda_blocks.as_mut()?;
+
+        // Step 4: RMSNorm backward on GPU (final norm)
+        // input = blocks_output, gamma = final_norm_weight
+        // grad_output = gpu_grad, grad_input = grad_buf_a, grad_gamma = grad_final_norm_weight
+        crate::autograd::cuda_backward::rms_norm_backward(
+            &training_state.blocks_output,
+            &training_state.final_norm_weight,
+            &gpu_grad,
+            &mut training_state.grad_buf_a,
+            &mut training_state.grad_final_norm_weight,
+            seq_len as u32,
+            hidden_size as u32,
+            1e-5_f32,
+            stream,
+        ).ok()?;
+
+        // Step 5: Backward through blocks in reverse
+        // grad_buf_a has the gradient w.r.t. blocks_output (= grad for last block's output)
+        // We alternate between grad_buf_a and grad_buf_b as we propagate backward
+        let num_layers = blocks.len();
+
+        // Alternate between grad_buf_a (output) and grad_buf_b (input) buffers.
+        // After RMSNorm backward, grad_buf_a holds the gradient for the last block's output.
+        // We use raw pointers to get disjoint mutable borrows of grad_buf_a/b.
+        // SAFETY: grad_buf_a and grad_buf_b are separate heap-allocated GPU buffers
+        // (disjoint fields of GpuTrainingState). We never alias them.
+        let grad_a_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_a;
+        let grad_b_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_b;
+        let mut grad_output_is_a = true;
+
+        for layer_idx in (0..num_layers).rev() {
+            // SAFETY: grad_a_ptr and grad_b_ptr point to disjoint fields.
+            let (grad_output, grad_input) = unsafe {
+                if grad_output_is_a {
+                    (&*grad_a_ptr, &mut *grad_b_ptr)
+                } else {
+                    (&*grad_b_ptr, &mut *grad_a_ptr)
+                }
+            };
+
+            blocks[layer_idx].backward(
+                &training_state.layer_inputs[layer_idx],
+                grad_output,
+                grad_input,
+                seq_len,
+                stream,
+            ).ok()?;
+
+            grad_output_is_a = !grad_output_is_a;
+        }
+
+        // Sync to ensure all backward kernels completed
+        stream.synchronize().ok()?;
+
+        Some(())
+    }
+
+    /// Run GPU-resident AdamW optimizer step on all transformer block weights.
+    ///
+    /// # Contract (C-GPUOPT-001)
+    ///
+    /// - **Precondition**: `backward_gpu_blocks()` completed successfully
+    /// - **Postcondition**: All block weights updated; optimizer step counter incremented
+    /// - **Invariant**: Learning rate and hyperparameters applied uniformly across all blocks
+    #[cfg(feature = "cuda")]
+    fn gpu_optimizer_step(&mut self, lr: f32) -> Option<()> {
+        let trainer = self.cuda_trainer.as_ref()?;
+        let stream = trainer.stream();
+        let training_state = self.gpu_training.as_mut()?;
+        let blocks = self.cuda_blocks.as_mut()?;
+
+        training_state.step += 1;
+        let step = training_state.step;
+
+        for (block, opt_state) in blocks.iter_mut().zip(training_state.optimizer_states.iter_mut()) {
+            block.optimizer_step(
+                opt_state, step, lr,
+                0.9,    // beta1
+                0.999,  // beta2
+                1e-8,   // eps
+                0.01,   // weight_decay
+                stream,
+            ).ok()?;
+        }
+
+        // Sync to ensure all optimizer kernels completed
+        stream.synchronize().ok()?;
+
+        Some(())
+    }
+
+    /// Synchronize GPU-updated weights back to CPU model tensors.
+    ///
+    /// Required for checkpointing and after training completes. Downloads all
+    /// weight data from GPU and updates the CPU model's weight tensors in-place.
+    ///
+    /// # Contract (C-SYNCWT-001)
+    ///
+    /// - **Precondition**: GPU blocks have valid weights (after one or more optimizer steps)
+    /// - **Postcondition**: CPU model weights match GPU weights exactly
+    /// - **Invariant**: GPU weights are not modified
+    #[cfg(feature = "cuda")]
+    pub fn sync_weights_to_cpu(&mut self) {
+        let blocks = match self.cuda_blocks.as_ref() {
+            Some(b) => b,
+            None => return,
+        };
+
+        for (layer_idx, block) in blocks.iter().enumerate() {
+            if let Ok(weights) = block.download_weights() {
+                let layer = &mut self.model.layers[layer_idx];
+
+                // Update attention weights
+                layer.self_attn.w_q = Tensor::from_vec(weights.w_q, false);
+                layer.self_attn.w_k = Tensor::from_vec(weights.w_k, false);
+                layer.self_attn.w_v = Tensor::from_vec(weights.w_v, false);
+                layer.self_attn.w_o = Tensor::from_vec(weights.w_o, false);
+
+                // Update FFN weights
+                layer.ffn.w_gate = Tensor::from_vec(weights.w_gate, false);
+                layer.ffn.w_up = Tensor::from_vec(weights.w_up, false);
+                layer.ffn.w_down = Tensor::from_vec(weights.w_down, false);
+
+                // Update norm weights
+                layer.input_norm.weight = Tensor::from_vec(weights.input_norm_weight, false);
+                layer.post_attn_norm.weight =
+                    Tensor::from_vec(weights.post_attn_norm_weight, false);
+            }
+        }
+    }
+
+    /// Check if GPU training (full finetune backward) is active.
+    #[must_use]
+    pub fn is_gpu_training(&self) -> bool {
+        #[cfg(feature = "cuda")]
+        {
+            self.gpu_training.is_some()
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            false
+        }
+    }
+
     /// Forward pass through transformer layers, dispatching to GPU when available.
     ///
     /// - **GPU path** (F-CUDA-007..009): Embed on CPU, upload to GPU, run CUDA layers, download
     /// - **CPU path**: Use `Transformer::forward_hidden()`
     fn forward_hidden_dispatch(&mut self, token_ids: &[u32]) -> Tensor {
         #[cfg(feature = "cuda")]
-        {
-            if let (Some(ref trainer), Some(ref mut blocks)) =
-                (&self.cuda_trainer, &mut self.cuda_blocks)
-            {
-                match Self::forward_hidden_cuda_impl(&self.model, token_ids, trainer, blocks) {
-                    Some(tensor) => return tensor,
-                    None => {
-                        // GPU produced NaN/Inf for this sample — use CPU fallback
-                        // but keep CUDA enabled for subsequent samples.
-                        // Sporadic NaN is expected with randomly initialized weights
-                        // due to different accumulation ordering in CUDA GEMM.
-                        self.cuda_nan_count += 1;
-                        if self.cuda_nan_count > 100 {
-                            eprintln!(
-                                "[CUDA] {} NaN fallbacks — disabling GPU acceleration",
-                                self.cuda_nan_count
-                            );
-                            self.cuda_trainer = None;
-                            self.cuda_blocks = None;
-                        }
-                    }
-                }
-            }
+        if let Some(tensor) = self.try_forward_hidden_gpu(token_ids) {
+            return tensor;
         }
 
         // CPU fallback
         self.model.forward_hidden(token_ids)
+    }
+
+    /// Attempt GPU-accelerated forward pass (training or inference).
+    ///
+    /// Returns `Some(tensor)` on success, `None` to fall back to CPU.
+    #[cfg(feature = "cuda")]
+    fn try_forward_hidden_gpu(&mut self, token_ids: &[u32]) -> Option<Tensor> {
+        if self.gpu_training.is_some() {
+            // GPU training path: saves layer inputs for backward
+            let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
+                (Some(ref t), Some(ref mut b)) => (t, b),
+                _ => return None,
+            };
+            let mut training = self.gpu_training.take();
+            let result = Self::forward_hidden_cuda_training(
+                &self.model, token_ids, trainer, blocks,
+                training.as_mut().expect("gpu_training was Some"),
+            );
+            self.gpu_training = training;
+
+            if result.is_none() {
+                self.cuda_nan_count += 1;
+            }
+            return result;
+        }
+
+        // Inference-only GPU path (no layer input saving)
+        let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
+            (Some(ref t), Some(ref mut b)) => (t, b),
+            _ => return None,
+        };
+        match Self::forward_hidden_cuda_impl(&self.model, token_ids, trainer, blocks) {
+            Some(tensor) => Some(tensor),
+            None => {
+                self.cuda_nan_count += 1;
+                if self.cuda_nan_count > 100 {
+                    eprintln!(
+                        "[CUDA] {} NaN fallbacks — disabling GPU acceleration",
+                        self.cuda_nan_count
+                    );
+                    self.cuda_trainer = None;
+                    self.cuda_blocks = None;
+                }
+                None
+            }
+        }
     }
 
     /// GPU-accelerated forward pass (F-CUDA-007).
@@ -613,10 +1055,27 @@ impl ClassifyPipeline {
         }
 
         // Manually set bias gradient (∂L/∂bias = ∂L/∂logits)
-        self.classifier.bias.set_grad(ndarray::Array1::from(grad_logits));
+        self.classifier.bias.set_grad(ndarray::Array1::from(grad_logits.clone()));
+
+        // GPU backward through transformer blocks (F-CUDA-014)
+        #[cfg(feature = "cuda")]
+        {
+            if self.gpu_training.is_some() {
+                self.backward_gpu_blocks(&grad_logits, seq_len);
+            }
+        }
 
         // ── 5. Optimizer step ─────────────────────────────────────────
-        // Collect trainable params without borrowing through self (avoids borrow conflict with optimizer)
+        // GPU optimizer step for transformer block weights (F-CUDA-014)
+        #[cfg(feature = "cuda")]
+        {
+            if self.gpu_training.is_some() {
+                let lr = self.optimizer.lr();
+                self.gpu_optimizer_step(lr);
+            }
+        }
+
+        // CPU optimizer step for LoRA + classifier head
         let mut params: Vec<&mut Tensor> = Vec::new();
         for lora in &mut self.lora_layers {
             params.extend(lora.trainable_params());
@@ -685,6 +1144,16 @@ impl ClassifyPipeline {
         };
 
         // ── 5. Optimizer step (once for the whole batch) ───────────────
+        // GPU optimizer step for transformer block weights (F-CUDA-014)
+        #[cfg(feature = "cuda")]
+        {
+            if self.gpu_training.is_some() {
+                let lr = self.optimizer.lr();
+                self.gpu_optimizer_step(lr);
+            }
+        }
+
+        // CPU optimizer step for LoRA + classifier head
         let mut params: Vec<&mut Tensor> = Vec::new();
         for lora in &mut self.lora_layers {
             params.extend(lora.trainable_params());
@@ -856,13 +1325,22 @@ impl ClassifyPipeline {
         let mut grad_logits = probs;
         grad_logits[label] -= 1.0;
 
+        // CPU autograd backward for classifier head (LoRA + classifier.weight)
         logits.set_grad(ndarray::Array1::from(grad_logits.clone()));
         if let Some(op) = logits.backward_op() {
             op.backward();
         }
 
         // Accumulate bias gradient (not set — accumulate)
-        self.classifier.bias.accumulate_grad(ndarray::Array1::from(grad_logits));
+        self.classifier.bias.accumulate_grad(ndarray::Array1::from(grad_logits.clone()));
+
+        // GPU backward through all transformer blocks (F-CUDA-014)
+        #[cfg(feature = "cuda")]
+        {
+            if self.gpu_training.is_some() {
+                self.backward_gpu_blocks(&grad_logits, seq_len);
+            }
+        }
 
         (loss_val, predicted)
     }

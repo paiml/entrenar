@@ -39,4 +39,6 @@ mod tests;
 pub use cache::init_kernel_cache;
 pub use elementwise::{gelu_backward, relu_backward, silu_backward};
 pub use gemm::{gemm_backward_a, gemm_backward_b};
-pub use structured::{layer_norm_backward, rms_norm_backward, softmax_backward};
+pub use structured::{
+    batched_softmax_backward, layer_norm_backward, rms_norm_backward, softmax_backward,
+};
