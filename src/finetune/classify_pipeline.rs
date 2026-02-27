@@ -165,7 +165,7 @@ impl ClassifyPipeline {
         // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
         #[cfg(feature = "cuda")]
         let (cuda_trainer, cuda_blocks) =
-            Self::try_init_cuda(&model, &model_config, &classify_config);
+            Self::try_init_cuda(&model, model_config, &classify_config);
 
         Self {
             model,
@@ -229,7 +229,7 @@ impl ClassifyPipeline {
         // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
         #[cfg(feature = "cuda")]
         let (cuda_trainer, cuda_blocks) =
-            Self::try_init_cuda(&model, &model_config, &classify_config);
+            Self::try_init_cuda(&model, model_config, &classify_config);
 
         Ok(Self {
             model,
@@ -523,7 +523,7 @@ impl ClassifyPipeline {
     pub fn gpu_name(&self) -> Option<String> {
         #[cfg(feature = "cuda")]
         {
-            self.cuda_trainer.as_ref().map(|t| t.device_name())
+            self.cuda_trainer.as_ref().map(crate::autograd::cuda_training::CudaTrainer::device_name)
         }
         #[cfg(not(feature = "cuda"))]
         {
@@ -536,7 +536,7 @@ impl ClassifyPipeline {
     pub fn gpu_total_memory(&self) -> Option<usize> {
         #[cfg(feature = "cuda")]
         {
-            self.cuda_trainer.as_ref().map(|t| t.total_memory())
+            self.cuda_trainer.as_ref().map(crate::autograd::cuda_training::CudaTrainer::total_memory)
         }
         #[cfg(not(feature = "cuda"))]
         {
