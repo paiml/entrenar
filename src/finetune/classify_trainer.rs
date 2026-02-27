@@ -254,19 +254,16 @@ impl ClassifyTrainer {
                 epochs_without_improvement = 0;
 
                 // Save best checkpoint
-                let _ =
-                    self.save_checkpoint(&self.config.checkpoint_dir.join("best"), epoch, &metrics);
+                let best_path = self.config.checkpoint_dir.join("best");
+                let _ = self.save_checkpoint(&best_path, epoch, &metrics);
             } else {
                 epochs_without_improvement += 1;
             }
 
             // Periodic checkpoint
             if self.config.save_every > 0 && (epoch + 1) % self.config.save_every == 0 {
-                let _ = self.save_checkpoint(
-                    &self.config.checkpoint_dir.join(format!("epoch-{epoch}")),
-                    epoch,
-                    &metrics,
-                );
+                let epoch_path = self.config.checkpoint_dir.join(format!("epoch-{epoch}"));
+                let _ = self.save_checkpoint(&epoch_path, epoch, &metrics);
             }
 
             // Detect NaN/Inf loss — signal failure to monitor
@@ -398,13 +395,26 @@ impl ClassifyTrainer {
 
     /// Save checkpoint with metadata JSON and SafeTensors model weights.
     ///
+    /// When GPU training is active, downloads GPU-updated transformer weights
+    /// to CPU before saving so checkpoints include all trained parameters.
+    ///
     /// Creates: `{path}/metadata.json` and `{path}/model.safetensors`
+    ///
+    /// # Contract (C-CKPT-001)
+    ///
+    /// - **Precondition**: `path` is a writable directory (or will be created)
+    /// - **Postcondition**: Checkpoint contains all trained parameters including
+    ///   GPU-updated transformer block weights (if GPU training active)
+    /// - **Invariant**: CPU model state is consistent with GPU state after save
     pub fn save_checkpoint(
-        &self,
+        &mut self,
         path: &Path,
         epoch: usize,
         metrics: &EpochMetrics,
     ) -> crate::Result<()> {
+        // Sync GPU weights to CPU before saving (no-op if GPU training inactive)
+        #[cfg(feature = "cuda")]
+        self.pipeline.sync_weights_to_cpu();
         std::fs::create_dir_all(path).map_err(|e| {
             crate::Error::Io(format!("Failed to create checkpoint dir {}: {e}", path.display()))
         })?;
