@@ -275,6 +275,10 @@ cargo run --example cli_audit          # Bias detection
 cargo run --example cli_monitor        # Drift detection (PSI)
 cargo run --example cli_inspect        # Model inspection
 
+# Classification Fine-Tuning
+cargo run --example shell_safety_classify  # Shell Safety Classifier (5-class LoRA)
+cargo run --example classify_tune_demo     # Classification hyperparameter tuning (TPE/ASHA)
+
 # Advanced
 cargo run --example citl               # Compiler-in-the-loop training
 cargo run --example research           # Research artifact management
@@ -312,6 +316,8 @@ entrenar/
 ├── quant/        QAT, PTQ, GGUF quantization
 ├── merge/        TIES, DARE, SLERP merging
 ├── distill/      Knowledge distillation
+├── finetune/     ClassifyPipeline, ClassifyTrainer, evaluation
+├── eval/         Classification metrics, drift detection, Andon
 ├── train/        Trainer, callbacks, metrics
 ├── monitor/      Real-time monitoring, Andon
 ├── config/       Declarative YAML config

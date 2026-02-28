@@ -5,6 +5,51 @@ All notable changes to Entrenar will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-02-28
+
+### Added
+
+#### Classification Evaluation Harness
+- **`ClassifyEvalReport`**: Comprehensive evaluation report with 13 metrics across 4 categories
+  - Accuracy & Agreement: accuracy, top-2 accuracy, Cohen's kappa, MCC (all with bootstrap 95% CIs)
+  - Per-class: precision, recall, F1, support for each class
+  - Proper scoring rules: Brier score (multi-class MSE), log loss (negative log-likelihood)
+  - Calibration: ECE, mean confidence, confidence gap, reliability diagram
+  - Baselines: random (1/K), majority-class, lift over majority
+  - Error analysis: top-N most confused class pairs from confusion matrix
+- **`evaluate_checkpoint()`**: Standalone function to load a LoRA adapter checkpoint and evaluate against a JSONL test set
+  - Resolves base model path from `adapter_config.json`
+  - Builds `ClassifyPipeline::from_pretrained()` and runs `forward_only_with_probs()`
+- **`to_report()`**: sklearn-style text classification report with per-class rows and macro/weighted averages
+- **`to_json()`**: Machine-readable JSON with all metrics, confidence intervals, calibration data
+- **`to_model_card()`**: Publication-quality HuggingFace README.md with YAML front matter, `model-index` metrics, confusion matrix (raw + normalized), calibration curve, error analysis, intended use, limitations (auto-detected weak classes), ethical considerations
+- Bootstrap CIs use deterministic LCG PRNG (seed=42, 1,000 resamples) for reproducible results
+
+### Changed
+- `from_predictions_with_probs()` refactored into focused helper methods for complexity compliance
+- `to_model_card()` decomposed from 217-line monolithic method into 14 section helpers
+- Removed unused `from_predictions()` (no-probs fallback) — all evaluation paths now use probability-aware methods
+
+## [0.7.3] - 2026-02-28
+
+### Added
+
+#### HuggingFace-Complete Checkpoint Output
+- **config.json**: Auto-generated HF model architecture config (architectures, model_type, num_labels, hidden_size, etc.) from `TransformerConfig`
+- **adapter_config.json**: PEFT-compatible LoRA adapter config (rank, alpha, target_modules, task_type=SEQ_CLS) via `PeftAdapterConfig`
+- **tokenizer.json**: Copied from base model directory when loaded via `from_pretrained()`
+- **model_dir accessor**: `ClassifyPipeline::model_dir()` returns the base model path for tokenizer copying
+
+Checkpoints are now directly publishable to HuggingFace Hub:
+```bash
+apr finetune --task classify ... -o ./checkpoints/
+apr publish ./checkpoints/best/ paiml/shell-safety-classifier
+```
+
+### Changed
+- `ClassifyPipeline` now stores `model_dir: Option<PathBuf>` (set by `from_pretrained()`)
+- `ClassifyTrainer::save_checkpoint()` now produces 6 files: model.safetensors, model.apr, metadata.json, config.json, adapter_config.json, tokenizer.json
+
 ## [0.7.2] - 2026-02-26
 
 ### Changed
