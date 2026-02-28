@@ -676,19 +676,22 @@ impl ClassifyTrainer {
 
         let mut y_true: Vec<usize> = Vec::with_capacity(data.len());
         let mut y_pred: Vec<usize> = Vec::with_capacity(data.len());
+        let mut all_probs: Vec<Vec<f32>> = Vec::with_capacity(data.len());
         let mut total_loss = 0.0f32;
 
         for sample in data {
             let ids = self.pipeline.tokenize(&sample.input);
-            let (loss, predicted) = self.pipeline.forward_only(&ids, sample.label);
+            let (loss, predicted, probs) = self.pipeline.forward_only_with_probs(&ids, sample.label);
             total_loss += loss;
             y_true.push(sample.label);
             y_pred.push(predicted);
+            all_probs.push(probs);
         }
 
-        ClassifyEvalReport::from_predictions(
+        ClassifyEvalReport::from_predictions_with_probs(
             &y_pred,
             &y_true,
+            &all_probs,
             total_loss,
             num_classes,
             label_names,
@@ -699,7 +702,8 @@ impl ClassifyTrainer {
 
 /// Evaluation report from the classification pipeline.
 ///
-/// Contains per-class precision/recall/F1, confusion matrix, and aggregate metrics.
+/// Contains per-class precision/recall/F1, confusion matrix, aggregate metrics,
+/// and advanced diagnostics (Cohen's kappa, MCC, calibration, confidence distribution).
 /// Produced by [`ClassifyTrainer::evaluate`] or [`evaluate_checkpoint`].
 #[derive(Debug, Clone)]
 pub struct ClassifyEvalReport {
@@ -725,13 +729,35 @@ pub struct ClassifyEvalReport {
     pub eval_time_ms: u64,
     /// Human-readable class names
     pub label_names: Vec<String>,
+    /// Cohen's kappa (chance-corrected agreement, -1 to 1)
+    pub cohens_kappa: f64,
+    /// Matthews Correlation Coefficient (-1 to 1, robust to class imbalance)
+    pub mcc: f64,
+    /// Top-2 accuracy (correct class in top 2 predictions)
+    pub top2_accuracy: f64,
+    /// Mean prediction confidence (max softmax probability)
+    pub mean_confidence: f64,
+    /// Mean confidence when prediction is correct
+    pub mean_confidence_correct: f64,
+    /// Mean confidence when prediction is wrong
+    pub mean_confidence_wrong: f64,
+    /// Samples per second throughput
+    pub samples_per_sec: f64,
+    /// Calibration bins: (mean_confidence, mean_accuracy, count) for 10 bins
+    pub calibration_bins: Vec<(f64, f64, usize)>,
+    /// Expected Calibration Error (lower is better, 0 = perfectly calibrated)
+    pub ece: f64,
 }
 
 impl ClassifyEvalReport {
-    /// Build a report from raw predictions.
-    fn from_predictions(
+    /// Build a report from raw predictions with full probability distributions.
+    ///
+    /// Computes all metrics including Cohen's kappa, MCC, calibration ECE,
+    /// top-2 accuracy, and confidence analysis.
+    fn from_predictions_with_probs(
         y_pred: &[usize],
         y_true: &[usize],
+        all_probs: &[Vec<f32>],
         total_loss: f32,
         num_classes: usize,
         label_names: &[String],
@@ -746,9 +772,31 @@ impl ClassifyEvalReport {
 
         let cm = ConfusionMatrix::from_predictions(y_pred, y_true);
         let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
+        let accuracy = cm.accuracy();
+
+        let cohens_kappa = Self::compute_cohens_kappa(&cm, total_samples);
+        let mcc = Self::compute_mcc(&cm, num_classes, total_samples);
+        let top2_accuracy = Self::compute_top2_accuracy(all_probs, y_true, total_samples);
+
+        let confidences: Vec<f64> = all_probs
+            .iter()
+            .map(|p| p.iter().copied().fold(0.0f32, f32::max) as f64)
+            .collect();
+
+        let (mean_confidence, mean_confidence_correct, mean_confidence_wrong) =
+            Self::compute_confidence_stats(&confidences, y_pred, y_true);
+
+        let (calibration_bins, ece) =
+            Self::compute_calibration(&confidences, y_pred, y_true, total_samples);
+
+        let samples_per_sec = if eval_time_ms > 0 {
+            total_samples as f64 / (eval_time_ms as f64 / 1000.0)
+        } else {
+            0.0
+        };
 
         Self {
-            accuracy: cm.accuracy(),
+            accuracy,
             avg_loss,
             per_class_precision: metrics.precision,
             per_class_recall: metrics.recall,
@@ -759,7 +807,212 @@ impl ClassifyEvalReport {
             total_samples,
             eval_time_ms,
             label_names: label_names.to_vec(),
+            cohens_kappa,
+            mcc,
+            top2_accuracy,
+            mean_confidence,
+            mean_confidence_correct,
+            mean_confidence_wrong,
+            samples_per_sec,
+            calibration_bins,
+            ece,
         }
+    }
+
+    /// Compute top-2 accuracy: fraction of samples where the true label is in the top 2 predictions.
+    fn compute_top2_accuracy(all_probs: &[Vec<f32>], y_true: &[usize], total: usize) -> f64 {
+        if total == 0 {
+            return 0.0;
+        }
+        let correct = all_probs
+            .iter()
+            .zip(y_true.iter())
+            .filter(|(probs, &true_label)| {
+                let mut indexed: Vec<(usize, f32)> =
+                    probs.iter().copied().enumerate().collect();
+                indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                indexed.len() >= 2
+                    && (indexed[0].0 == true_label || indexed[1].0 == true_label)
+            })
+            .count();
+        correct as f64 / total as f64
+    }
+
+    /// Compute mean confidence overall, for correct predictions, and for wrong predictions.
+    fn compute_confidence_stats(
+        confidences: &[f64],
+        y_pred: &[usize],
+        y_true: &[usize],
+    ) -> (f64, f64, f64) {
+        let mean = if confidences.is_empty() {
+            0.0
+        } else {
+            confidences.iter().sum::<f64>() / confidences.len() as f64
+        };
+
+        let (mut sum_correct, mut n_correct) = (0.0f64, 0usize);
+        let (mut sum_wrong, mut n_wrong) = (0.0f64, 0usize);
+        for (i, &conf) in confidences.iter().enumerate() {
+            if y_pred[i] == y_true[i] {
+                sum_correct += conf;
+                n_correct += 1;
+            } else {
+                sum_wrong += conf;
+                n_wrong += 1;
+            }
+        }
+
+        let mean_correct = if n_correct > 0 { sum_correct / n_correct as f64 } else { 0.0 };
+        let mean_wrong = if n_wrong > 0 { sum_wrong / n_wrong as f64 } else { 0.0 };
+
+        (mean, mean_correct, mean_wrong)
+    }
+
+    /// Compute calibration bins (10 equal-width bins) and Expected Calibration Error.
+    fn compute_calibration(
+        confidences: &[f64],
+        y_pred: &[usize],
+        y_true: &[usize],
+        total_samples: usize,
+    ) -> (Vec<(f64, f64, usize)>, f64) {
+        let num_bins = 10;
+        let mut bin_sum_conf = vec![0.0f64; num_bins];
+        let mut bin_sum_acc = vec![0.0f64; num_bins];
+        let mut bin_count = vec![0usize; num_bins];
+
+        for (i, &conf) in confidences.iter().enumerate() {
+            let bin = ((conf * num_bins as f64) as usize).min(num_bins - 1);
+            bin_sum_conf[bin] += conf;
+            bin_sum_acc[bin] += if y_pred[i] == y_true[i] { 1.0 } else { 0.0 };
+            bin_count[bin] += 1;
+        }
+
+        let bins: Vec<(f64, f64, usize)> = (0..num_bins)
+            .map(|b| {
+                if bin_count[b] > 0 {
+                    (
+                        bin_sum_conf[b] / bin_count[b] as f64,
+                        bin_sum_acc[b] / bin_count[b] as f64,
+                        bin_count[b],
+                    )
+                } else {
+                    (0.0, 0.0, 0)
+                }
+            })
+            .collect();
+
+        let ece: f64 = bins
+            .iter()
+            .map(|&(conf, acc, count)| {
+                if count > 0 {
+                    (conf - acc).abs() * count as f64 / total_samples as f64
+                } else {
+                    0.0
+                }
+            })
+            .sum();
+
+        (bins, ece)
+    }
+
+    /// Build a report from raw predictions (without probabilities).
+    ///
+    /// Used when probability distributions are not available.
+    /// Advanced metrics (calibration, confidence, top-2) will be zeroed.
+    fn from_predictions(
+        y_pred: &[usize],
+        y_true: &[usize],
+        total_loss: f32,
+        num_classes: usize,
+        label_names: &[String],
+        eval_time_ms: u64,
+    ) -> Self {
+        // Create dummy uniform probabilities for the basic path
+        let dummy_probs: Vec<Vec<f32>> = y_pred
+            .iter()
+            .map(|&pred| {
+                let mut p = vec![0.0f32; num_classes];
+                if pred < num_classes {
+                    p[pred] = 1.0;
+                }
+                p
+            })
+            .collect();
+        Self::from_predictions_with_probs(
+            y_pred,
+            y_true,
+            &dummy_probs,
+            total_loss,
+            num_classes,
+            label_names,
+            eval_time_ms,
+        )
+    }
+
+    /// Cohen's kappa: chance-corrected agreement.
+    ///
+    /// kappa = (p_o - p_e) / (1 - p_e)
+    /// where p_o = observed agreement (accuracy), p_e = expected agreement by chance
+    fn compute_cohens_kappa(cm: &ConfusionMatrix, total: usize) -> f64 {
+        if total == 0 {
+            return 0.0;
+        }
+        let mat = cm.matrix();
+        let n = total as f64;
+        let p_o = cm.accuracy();
+
+        // p_e = sum_k (row_k_total * col_k_total) / n^2
+        let k = mat.len();
+        let mut p_e = 0.0f64;
+        for class in 0..k {
+            let row_sum: f64 = mat[class].iter().sum::<usize>() as f64;
+            let col_sum: f64 = mat.iter().map(|row| row[class]).sum::<usize>() as f64;
+            p_e += (row_sum * col_sum) / (n * n);
+        }
+
+        if (1.0 - p_e).abs() < 1e-10 {
+            return if (p_o - 1.0).abs() < 1e-10 { 1.0 } else { 0.0 };
+        }
+
+        (p_o - p_e) / (1.0 - p_e)
+    }
+
+    /// Matthews Correlation Coefficient for multiclass.
+    ///
+    /// MCC = (c * s - sum_k(p_k * t_k)) / sqrt((s^2 - sum_k(p_k^2)) * (s^2 - sum_k(t_k^2)))
+    /// where c = correct predictions, s = total samples, p_k = predicted counts, t_k = true counts
+    fn compute_mcc(cm: &ConfusionMatrix, num_classes: usize, total: usize) -> f64 {
+        if total == 0 {
+            return 0.0;
+        }
+        let mat = cm.matrix();
+        let s = total as f64;
+
+        // c = sum of diagonal (correct predictions)
+        let c: f64 = (0..num_classes).map(|k| mat[k][k] as f64).sum();
+
+        // p_k = column sums (predicted counts per class)
+        let p: Vec<f64> = (0..num_classes)
+            .map(|k| mat.iter().map(|row| row[k] as f64).sum())
+            .collect();
+
+        // t_k = row sums (true counts per class)
+        let t: Vec<f64> = (0..num_classes)
+            .map(|k| mat[k].iter().sum::<usize>() as f64)
+            .collect();
+
+        let sum_pk_tk: f64 = p.iter().zip(t.iter()).map(|(pk, tk)| pk * tk).sum();
+        let sum_pk_sq: f64 = p.iter().map(|pk| pk * pk).sum();
+        let sum_tk_sq: f64 = t.iter().map(|tk| tk * tk).sum();
+
+        let numer = c * s - sum_pk_tk;
+        let denom_sq = (s * s - sum_pk_sq) * (s * s - sum_tk_sq);
+
+        if denom_sq <= 0.0 {
+            return 0.0;
+        }
+
+        numer / denom_sq.sqrt()
     }
 
     /// Format as a human-readable sklearn-style classification report.
@@ -814,12 +1067,59 @@ impl ClassifyEvalReport {
             "weighted avg", weighted_p, weighted_r, weighted_f1, total_support,
         ));
 
-        out.push_str(&format!("\nAccuracy: {:.4}\n", self.accuracy));
-        out.push_str(&format!("Avg loss: {:.4}\n", self.avg_loss));
-        out.push_str(&format!("Samples:  {}\n", self.total_samples));
-        out.push_str(&format!("Time:     {}ms\n", self.eval_time_ms));
+        // ── Summary metrics ───────────────────────────────────────
+        out.push_str(&format!("\nAccuracy:       {:.4}  ({:.1}%)\n", self.accuracy, self.accuracy * 100.0));
+        out.push_str(&format!("Top-2 accuracy: {:.4}  ({:.1}%)\n", self.top2_accuracy, self.top2_accuracy * 100.0));
+        out.push_str(&format!("Cohen's kappa:  {:.4}  ({})\n", self.cohens_kappa, Self::kappa_interpretation(self.cohens_kappa)));
+        out.push_str(&format!("MCC:            {:.4}\n", self.mcc));
+        out.push_str(&format!("Avg loss:       {:.4}\n", self.avg_loss));
+
+        // ── Confidence analysis ──────────────────────────────────────
+        out.push_str(&format!("\nConfidence (mean): {:.4}\n", self.mean_confidence));
+        out.push_str(&format!("  correct preds:   {:.4}\n", self.mean_confidence_correct));
+        out.push_str(&format!("  wrong preds:     {:.4}\n", self.mean_confidence_wrong));
+        let gap = self.mean_confidence_correct - self.mean_confidence_wrong;
+        out.push_str(&format!("  gap (higher=better): {:.4}\n", gap));
+
+        // ── Calibration ──────────────────────────────────────────────
+        out.push_str(&format!("\nECE (Expected Calibration Error): {:.4}\n", self.ece));
+        out.push_str("Calibration:\n");
+        out.push_str("  Bin       Confidence  Accuracy    Count\n");
+        for (i, &(conf, acc, count)) in self.calibration_bins.iter().enumerate() {
+            if count > 0 {
+                let lo = i as f64 * 0.1;
+                let hi = lo + 0.1;
+                let overconf = if conf > acc { "+" } else { "" };
+                out.push_str(&format!(
+                    "  [{:.1}-{:.1})  {:.4}      {:.4}      {:>5}  {overconf}{:.3}\n",
+                    lo, hi, conf, acc, count,
+                    conf - acc,
+                ));
+            }
+        }
+
+        // ── Throughput ───────────────────────────────────────────────
+        out.push_str(&format!("\nSamples:   {}\n", self.total_samples));
+        out.push_str(&format!("Time:      {}ms ({:.1} samples/sec)\n", self.eval_time_ms, self.samples_per_sec));
 
         out
+    }
+
+    /// Interpret Cohen's kappa value.
+    fn kappa_interpretation(kappa: f64) -> &'static str {
+        if kappa < 0.0 {
+            "worse than chance"
+        } else if kappa < 0.20 {
+            "slight"
+        } else if kappa < 0.40 {
+            "fair"
+        } else if kappa < 0.60 {
+            "moderate"
+        } else if kappa < 0.80 {
+            "substantial"
+        } else {
+            "almost perfect"
+        }
     }
 
     /// Format as JSON string.
@@ -844,14 +1144,43 @@ impl ClassifyEvalReport {
             })
             .collect();
 
+        let calibration: Vec<serde_json::Value> = self
+            .calibration_bins
+            .iter()
+            .enumerate()
+            .filter(|(_, &(_, _, count))| count > 0)
+            .map(|(i, &(conf, acc, count))| {
+                serde_json::json!({
+                    "bin": format!("[{:.1}-{:.1})", i as f64 * 0.1, (i + 1) as f64 * 0.1),
+                    "mean_confidence": conf,
+                    "mean_accuracy": acc,
+                    "count": count,
+                })
+            })
+            .collect();
+
         let json = serde_json::json!({
             "accuracy": self.accuracy,
+            "top2_accuracy": self.top2_accuracy,
+            "cohens_kappa": self.cohens_kappa,
+            "mcc": self.mcc,
             "avg_loss": self.avg_loss,
             "total_samples": self.total_samples,
             "num_classes": self.num_classes,
             "eval_time_ms": self.eval_time_ms,
+            "samples_per_sec": self.samples_per_sec,
             "per_class": per_class,
             "confusion_matrix": self.confusion_matrix,
+            "confidence": {
+                "mean": self.mean_confidence,
+                "mean_correct": self.mean_confidence_correct,
+                "mean_wrong": self.mean_confidence_wrong,
+                "gap": self.mean_confidence_correct - self.mean_confidence_wrong,
+            },
+            "calibration": {
+                "ece": self.ece,
+                "bins": calibration,
+            },
         });
 
         serde_json::to_string_pretty(&json).unwrap_or_default()
@@ -859,19 +1188,44 @@ impl ClassifyEvalReport {
 
     /// Generate a HuggingFace-compatible model card (README.md) from evaluation results.
     ///
-    /// Includes YAML front matter with metrics, per-class table, confusion matrix,
-    /// and label descriptions.
+    /// Produces a publication-quality model card with YAML front matter, summary metrics,
+    /// per-class breakdown, confusion matrix (raw + normalized), calibration analysis,
+    /// intended use, limitations, and ethical considerations.
     #[must_use]
     pub fn to_model_card(&self, model_name: &str, base_model: Option<&str>) -> String {
         use crate::eval::classification::Average;
 
-        let mut out = String::new();
+        let macro_f1 = self.avg_metric(&self.per_class_f1, Average::Macro);
+        let weighted_f1 = self.avg_metric(&self.per_class_f1, Average::Weighted);
 
-        // ── YAML front matter ──────────────────────────────────────────
+        let mut out = String::new();
+        self.card_yaml_front_matter(&mut out, model_name, base_model, macro_f1, weighted_f1);
+        self.card_title(&mut out, model_name, base_model);
+        self.card_summary(&mut out, macro_f1, weighted_f1);
+        self.card_labels(&mut out);
+        self.card_per_class_metrics(&mut out);
+        self.card_confusion_matrix(&mut out);
+        self.card_calibration(&mut out);
+        Self::card_intended_use(&mut out);
+        self.card_limitations(&mut out);
+        Self::card_ethical_considerations(&mut out);
+        self.card_training(&mut out, base_model);
+        out.push_str("---\n*Generated by [entrenar](https://github.com/paiml/entrenar)*\n");
+        out
+    }
+
+    fn card_yaml_front_matter(
+        &self,
+        out: &mut String,
+        model_name: &str,
+        base_model: Option<&str>,
+        macro_f1: f64,
+        weighted_f1: f64,
+    ) {
         out.push_str("---\n");
         out.push_str("license: apache-2.0\n");
         out.push_str("language:\n- en\n");
-        out.push_str("tags:\n- shell-safety\n- code-classification\n- lora\n- entrenar\n");
+        out.push_str("tags:\n- shell-safety\n- code-classification\n- lora\n- entrenar\n- security\n");
         if let Some(base) = base_model {
             out.push_str(&format!("base_model: {base}\n"));
         }
@@ -884,40 +1238,60 @@ impl ClassifyEvalReport {
         out.push_str("      name: Shell Safety Classification\n");
         out.push_str("    metrics:\n");
         out.push_str(&format!("    - type: accuracy\n      value: {:.4}\n", self.accuracy));
-        let macro_f1 = self.avg_metric(&self.per_class_f1, Average::Macro);
-        out.push_str(&format!("    - type: f1\n      value: {macro_f1:.4}\n"));
+        out.push_str(&format!("    - type: f1\n      value: {macro_f1:.4}\n      name: Macro F1\n"));
+        out.push_str(&format!("    - type: f1\n      value: {weighted_f1:.4}\n      name: Weighted F1\n"));
+        out.push_str(&format!("    - type: mcc\n      value: {:.4}\n", self.mcc));
+        out.push_str(&format!("    - type: cohens_kappa\n      value: {:.4}\n", self.cohens_kappa));
         out.push_str("---\n\n");
+    }
 
-        // ── Markdown body ──────────────────────────────────────────────
+    fn card_title(&self, out: &mut String, model_name: &str, base_model: Option<&str>) {
         out.push_str(&format!("# {model_name}\n\n"));
-        out.push_str("A shell command safety classifier that categorizes shell commands into 5 safety classes.\n\n");
+        out.push_str("A shell command safety classifier that categorizes shell commands into safety classes, ");
+        out.push_str("enabling automated triage of commands before execution.\n\n");
         out.push_str("Trained with [entrenar](https://github.com/paiml/entrenar) using LoRA fine-tuning");
         if let Some(base) = base_model {
-            out.push_str(&format!(" on `{base}`"));
+            out.push_str(&format!(" on [`{base}`](https://huggingface.co/{base})"));
         }
         out.push_str(".\n\n");
+    }
 
-        // Labels section
+    fn card_summary(&self, out: &mut String, macro_f1: f64, weighted_f1: f64) {
+        out.push_str("## Summary\n\n");
+        out.push_str("| Metric | Value |\n");
+        out.push_str("|--------|-------|\n");
+        out.push_str(&format!("| Accuracy | {:.2}% |\n", self.accuracy * 100.0));
+        out.push_str(&format!("| Top-2 Accuracy | {:.2}% |\n", self.top2_accuracy * 100.0));
+        out.push_str(&format!("| Macro F1 | {macro_f1:.4} |\n"));
+        out.push_str(&format!("| Weighted F1 | {weighted_f1:.4} |\n"));
+        out.push_str(&format!("| Cohen's Kappa | {:.4} ({}) |\n", self.cohens_kappa, Self::kappa_interpretation(self.cohens_kappa)));
+        out.push_str(&format!("| MCC | {:.4} |\n", self.mcc));
+        out.push_str(&format!("| ECE | {:.4} |\n", self.ece));
+        out.push_str(&format!("| Avg Loss | {:.4} |\n", self.avg_loss));
+        out.push_str(&format!("| Eval Samples | {} |\n", self.total_samples));
+        out.push_str(&format!("| Throughput | {:.1} samples/sec |\n\n", self.samples_per_sec));
+    }
+
+    fn card_labels(&self, out: &mut String) {
         out.push_str("## Labels\n\n");
         out.push_str("| ID | Label | Description |\n");
         out.push_str("|----|-------|-------------|\n");
         let descriptions = [
-            "Command is safe to execute",
-            "Command needs variable quoting for safety",
-            "Command contains non-deterministic elements ($RANDOM, $$, etc.)",
-            "Command is not idempotent (unsafe to re-run)",
-            "Command is unsafe (destructive or injection risk)",
+            "Command is safe to execute as-is",
+            "Command contains unquoted variable expansions (word splitting/globbing risk)",
+            "Command uses non-deterministic sources ($RANDOM, $$, date, etc.)",
+            "Command is not idempotent (unsafe to re-run: mkdir without -p, etc.)",
+            "Command is destructive or has injection risk (rm -rf, eval, etc.)",
         ];
         for (i, name) in self.label_names.iter().enumerate() {
             let desc = descriptions.get(i).unwrap_or(&"");
             out.push_str(&format!("| {i} | {name} | {desc} |\n"));
         }
         out.push('\n');
+    }
 
-        // Evaluation results
-        out.push_str("## Evaluation Results\n\n");
-        out.push_str(&format!("**Accuracy**: {:.2}%\n\n", self.accuracy * 100.0));
-        out.push_str("### Per-Class Metrics\n\n");
+    fn card_per_class_metrics(&self, out: &mut String) {
+        out.push_str("## Per-Class Metrics\n\n");
         out.push_str("| Label | Precision | Recall | F1 | Support |\n");
         out.push_str("|-------|-----------|--------|----|---------|\n");
         for i in 0..self.num_classes {
@@ -935,44 +1309,138 @@ impl ClassifyEvalReport {
             ));
         }
         out.push('\n');
+    }
 
-        // Confusion matrix
-        out.push_str("### Confusion Matrix\n\n");
-        out.push_str("```\n");
-        // Header row
-        out.push_str(&format!("{:>18}", "Predicted →"));
-        for name in &self.label_names {
-            let short = if name.len() > 8 {
-                &name[..8]
-            } else {
-                name.as_str()
-            };
-            out.push_str(&format!(" {:>8}", short));
-        }
-        out.push('\n');
-        // Data rows
+    fn card_confusion_matrix(&self, out: &mut String) {
+        out.push_str("## Confusion Matrix\n\n");
+        self.card_confusion_raw(out);
+        self.card_confusion_normalized(out);
+    }
+
+    fn card_confusion_raw(&self, out: &mut String) {
+        out.push_str("### Raw Counts\n\n```\n");
+        self.card_confusion_header(out);
         for (i, row) in self.confusion_matrix.iter().enumerate() {
-            let name = self
-                .label_names
-                .get(i)
-                .map_or_else(|| format!("class_{i}"), |n| n.clone());
-            let short = if name.len() > 18 {
-                &name[..18]
-            } else {
-                name.as_str()
-            };
-            out.push_str(&format!("{:>18}", short));
+            self.card_confusion_row_label(out, i);
             for val in row {
                 out.push_str(&format!(" {:>8}", val));
             }
             out.push('\n');
         }
         out.push_str("```\n\n");
+    }
 
-        // Footer
-        out.push_str("---\n*Generated by [entrenar](https://github.com/paiml/entrenar)*\n");
+    fn card_confusion_normalized(&self, out: &mut String) {
+        out.push_str("### Normalized (row %)\n\n```\n");
+        self.card_confusion_header(out);
+        for (i, row) in self.confusion_matrix.iter().enumerate() {
+            self.card_confusion_row_label(out, i);
+            let row_sum: usize = row.iter().sum();
+            for val in row {
+                if row_sum > 0 {
+                    out.push_str(&format!(" {:>7.1}%", *val as f64 / row_sum as f64 * 100.0));
+                } else {
+                    out.push_str("     0.0%");
+                }
+            }
+            out.push('\n');
+        }
+        out.push_str("```\n\n");
+    }
 
-        out
+    fn card_confusion_header(&self, out: &mut String) {
+        out.push_str(&format!("{:>18}", "Predicted →"));
+        for name in &self.label_names {
+            let short = if name.len() > 8 { &name[..8] } else { name.as_str() };
+            out.push_str(&format!(" {:>8}", short));
+        }
+        out.push('\n');
+    }
+
+    fn card_confusion_row_label(&self, out: &mut String, i: usize) {
+        let name = self.label_names.get(i).map_or_else(|| format!("class_{i}"), |n| n.clone());
+        let short = if name.len() > 18 { &name[..18] } else { name.as_str() };
+        out.push_str(&format!("{:>18}", short));
+    }
+
+    fn card_calibration(&self, out: &mut String) {
+        out.push_str("## Confidence & Calibration\n\n");
+        out.push_str("| Metric | Value |\n");
+        out.push_str("|--------|-------|\n");
+        out.push_str(&format!("| Mean confidence | {:.4} |\n", self.mean_confidence));
+        out.push_str(&format!("| Confidence (correct) | {:.4} |\n", self.mean_confidence_correct));
+        out.push_str(&format!("| Confidence (wrong) | {:.4} |\n", self.mean_confidence_wrong));
+        let gap = self.mean_confidence_correct - self.mean_confidence_wrong;
+        out.push_str(&format!("| Confidence gap | {:.4} |\n", gap));
+        out.push_str(&format!("| ECE | {:.4} |\n\n", self.ece));
+
+        out.push_str("**Calibration curve** (reliability diagram):\n\n");
+        out.push_str("```\n");
+        out.push_str("Bin         Conf    Acc     Count\n");
+        for (i, &(conf, acc, count)) in self.calibration_bins.iter().enumerate() {
+            if count > 0 {
+                let lo = i as f64 * 0.1;
+                let hi = lo + 0.1;
+                out.push_str(&format!(
+                    "[{:.1}-{:.1})   {:.3}   {:.3}   {:>5}\n",
+                    lo, hi, conf, acc, count,
+                ));
+            }
+        }
+        out.push_str("```\n\n");
+    }
+
+    fn card_intended_use(out: &mut String) {
+        out.push_str("## Intended Use\n\n");
+        out.push_str("This model is designed for **automated shell command safety triage** in:\n\n");
+        out.push_str("- **CI/CD pipelines**: Pre-flight safety check before executing generated scripts\n");
+        out.push_str("- **Shell purification tools**: Classify commands to determine transformation strategy\n");
+        out.push_str("- **Code review**: Flag potentially unsafe shell commands in pull requests\n");
+        out.push_str("- **Interactive shells**: Warn users before executing risky commands\n\n");
+    }
+
+    fn card_limitations(&self, out: &mut String) {
+        out.push_str("## Limitations\n\n");
+        out.push_str("- **Not a security oracle**: This model provides *classification hints*, not security guarantees\n");
+        out.push_str("- **Context-blind**: Cannot assess safety based on the execution environment or user permissions\n");
+        out.push_str("- **Training distribution**: Trained on synthetic shell scripts; may underperform on novel patterns\n");
+        out.push_str("- **English only**: Command names and variable patterns are English-centric\n");
+        self.card_weak_classes(out);
+        out.push('\n');
+    }
+
+    fn card_weak_classes(&self, out: &mut String) {
+        let min_f1_idx = self.per_class_f1.iter().enumerate()
+            .min_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i);
+        if let Some(idx) = min_f1_idx {
+            if self.per_class_f1[idx] < 0.5 {
+                let name = self.label_names.get(idx).map_or("unknown", |n| n.as_str());
+                out.push_str(&format!(
+                    "- **Weak class**: `{name}` (F1={:.2}) — consider additional training data\n",
+                    self.per_class_f1[idx]
+                ));
+            }
+        }
+    }
+
+    fn card_ethical_considerations(out: &mut String) {
+        out.push_str("## Ethical Considerations\n\n");
+        out.push_str("- **False negatives are dangerous**: An `unsafe` command classified as `safe` could lead to data loss\n");
+        out.push_str("- **Defense in depth**: Always combine this classifier with other safety mechanisms (sandboxing, dry-run)\n");
+        out.push_str("- **Not adversarial-robust**: Determined attackers can craft commands to evade classification\n\n");
+    }
+
+    fn card_training(&self, out: &mut String, base_model: Option<&str>) {
+        out.push_str("## Training\n\n");
+        out.push_str("| Parameter | Value |\n");
+        out.push_str("|-----------|-------|\n");
+        out.push_str("| Framework | [entrenar](https://github.com/paiml/entrenar) (Rust) |\n");
+        out.push_str("| Method | LoRA (Low-Rank Adaptation) |\n");
+        if let Some(base) = base_model {
+            out.push_str(&format!("| Base model | `{base}` |\n"));
+        }
+        out.push_str(&format!("| Num classes | {} |\n\n", self.num_classes));
     }
 
     /// Average a metric vector using the given strategy.
@@ -1141,22 +1609,31 @@ pub fn evaluate_checkpoint(
     // Load test corpus
     let samples = load_safety_corpus(test_data, num_classes)?;
 
-    // Run forward-only on all samples
+    // Run forward-only on all samples, collecting full probability distributions
     let mut y_true: Vec<usize> = Vec::with_capacity(samples.len());
     let mut y_pred: Vec<usize> = Vec::with_capacity(samples.len());
+    let mut all_probs: Vec<Vec<f32>> = Vec::with_capacity(samples.len());
     let mut total_loss = 0.0f32;
 
-    for sample in &samples {
+    for (i, sample) in samples.iter().enumerate() {
         let ids = pipeline.tokenize(&sample.input);
-        let (loss, predicted) = pipeline.forward_only(&ids, sample.label);
+        let (loss, predicted, probs) = pipeline.forward_only_with_probs(&ids, sample.label);
         total_loss += loss;
         y_true.push(sample.label);
         y_pred.push(predicted);
-    }
+        all_probs.push(probs);
 
-    Ok(ClassifyEvalReport::from_predictions(
+        // Progress indicator every 100 samples
+        if (i + 1) % 100 == 0 {
+            eprintln!("  Evaluated {}/{} samples...", i + 1, samples.len());
+        }
+    }
+    eprintln!("  Evaluated {}/{} samples (done)", samples.len(), samples.len());
+
+    Ok(ClassifyEvalReport::from_predictions_with_probs(
         &y_pred,
         &y_true,
+        &all_probs,
         total_loss,
         num_classes,
         label_names,
