@@ -280,63 +280,64 @@ impl TrainingPalette {
     pub const PRIMARY: Rgb = Rgb::new(0, 188, 212);
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Threshold Lookup
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Return the color for the first threshold in `thresholds` that `value` does not exceed,
+    /// or `fallback` if `value` exceeds all thresholds.
+    ///
+    /// `thresholds` is a slice of `(upper_bound_exclusive, color)` pairs in ascending order.
+    fn threshold_color(value: f32, thresholds: &[(f32, Rgb)], fallback: Rgb) -> Rgb {
+        for &(bound, color) in thresholds {
+            if value <= bound {
+                return color;
+            }
+        }
+        fallback
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // GPU Metrics Colors
     // ─────────────────────────────────────────────────────────────────────────
 
     /// Color for GPU utilization based on percentage
     pub fn gpu_util_color(percent: f32) -> Rgb {
         let p = percent.clamp(0.0, 100.0);
-        if p <= 30.0 {
-            Self::MUTED // Low (gray - underutilized)
-        } else if p <= 70.0 {
-            Self::SUCCESS // Good (green)
-        } else if p <= 90.0 {
-            Self::INFO // High (blue)
-        } else {
-            Self::PRIMARY // Very high (cyan)
-        }
+        Self::threshold_color(
+            p,
+            &[(30.0, Self::MUTED), (70.0, Self::SUCCESS), (90.0, Self::INFO)],
+            Self::PRIMARY,
+        )
     }
 
     /// Color for VRAM usage based on percentage
     pub fn vram_color(percent: f32) -> Rgb {
         let p = percent.clamp(0.0, 100.0);
-        if p <= 50.0 {
-            Self::SUCCESS // OK (green)
-        } else if p <= 75.0 {
-            Self::INFO // Moderate (blue)
-        } else if p <= 90.0 {
-            Self::WARNING // High (yellow)
-        } else {
-            Self::ERROR // Critical (red)
-        }
+        Self::threshold_color(
+            p,
+            &[(50.0, Self::SUCCESS), (75.0, Self::INFO), (90.0, Self::WARNING)],
+            Self::ERROR,
+        )
     }
 
     /// Color for temperature in Celsius
     pub fn temp_color(celsius: f32) -> Rgb {
         let t = celsius.clamp(0.0, 200.0);
-        if t <= 50.0 {
-            Self::SUCCESS // Cool (green)
-        } else if t <= 70.0 {
-            Self::INFO // Normal (blue)
-        } else if t <= 80.0 {
-            Self::WARNING // Warm (yellow)
-        } else {
-            Self::ERROR // Hot (red)
-        }
+        Self::threshold_color(
+            t,
+            &[(50.0, Self::SUCCESS), (70.0, Self::INFO), (80.0, Self::WARNING)],
+            Self::ERROR,
+        )
     }
 
     /// Color for power usage based on percentage of limit
     pub fn power_color(percent: f32) -> Rgb {
         let p = percent.clamp(0.0, 100.0);
-        if p <= 60.0 {
-            Self::SUCCESS // Low (green)
-        } else if p <= 80.0 {
-            Self::INFO // Moderate (blue)
-        } else if p <= 95.0 {
-            Self::WARNING // High (yellow)
-        } else {
-            Self::ERROR // At limit (red)
-        }
+        Self::threshold_color(
+            p,
+            &[(60.0, Self::SUCCESS), (80.0, Self::INFO), (95.0, Self::WARNING)],
+            Self::ERROR,
+        )
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -345,15 +346,11 @@ impl TrainingPalette {
 
     /// Color for gradient norm (explosion warning)
     pub fn grad_norm_color(norm: f32) -> Rgb {
-        if norm <= 1.0 {
-            Self::SUCCESS // Healthy
-        } else if norm <= 5.0 {
-            Self::INFO // Normal
-        } else if norm <= 10.0 {
-            Self::WARNING // High
-        } else {
-            Self::ERROR // Explosion risk
-        }
+        Self::threshold_color(
+            norm,
+            &[(1.0, Self::SUCCESS), (5.0, Self::INFO), (10.0, Self::WARNING)],
+            Self::ERROR,
+        )
     }
 
     /// Color for loss value (lower is better)

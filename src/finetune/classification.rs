@@ -297,35 +297,45 @@ pub fn load_multi_label_corpus(
         if line.is_empty() {
             continue;
         }
-
-        // Try multi-label format first
-        if let Ok(sample) = serde_json::from_str::<MultiLabelSafetySample>(line) {
-            if sample.labels.len() != num_classes {
-                return Err(crate::Error::ConfigError(format!(
-                    "F-CLASS-001: labels length {} at line {} != num_classes {num_classes}",
-                    sample.labels.len(),
-                    line_num + 1,
-                )));
-            }
-            samples.push(sample);
-        } else if let Ok(single) = serde_json::from_str::<SafetySample>(line) {
-            if single.label >= num_classes {
-                return Err(crate::Error::ConfigError(format!(
-                    "F-CLASS-002: label {} at line {} out of range (num_classes={num_classes})",
-                    single.label,
-                    line_num + 1,
-                )));
-            }
-            samples.push(MultiLabelSafetySample::from_single_label(&single, num_classes));
-        } else {
-            return Err(crate::Error::ConfigError(format!(
-                "Invalid JSONL at line {}: unrecognized format",
-                line_num + 1,
-            )));
-        }
+        samples.push(parse_multi_label_line(line, line_num, num_classes)?);
     }
 
     Ok(samples)
+}
+
+/// Parse a single JSONL line as multi-label or single-label sample.
+fn parse_multi_label_line(
+    line: &str,
+    line_num: usize,
+    num_classes: usize,
+) -> crate::Result<MultiLabelSafetySample> {
+    // Try multi-label format first
+    if let Ok(sample) = serde_json::from_str::<MultiLabelSafetySample>(line) {
+        if sample.labels.len() != num_classes {
+            return Err(crate::Error::ConfigError(format!(
+                "F-CLASS-001: labels length {} at line {} != num_classes {num_classes}",
+                sample.labels.len(),
+                line_num + 1,
+            )));
+        }
+        return Ok(sample);
+    }
+
+    if let Ok(single) = serde_json::from_str::<SafetySample>(line) {
+        if single.label >= num_classes {
+            return Err(crate::Error::ConfigError(format!(
+                "F-CLASS-002: label {} at line {} out of range (num_classes={num_classes})",
+                single.label,
+                line_num + 1,
+            )));
+        }
+        return Ok(MultiLabelSafetySample::from_single_label(&single, num_classes));
+    }
+
+    Err(crate::Error::ConfigError(format!(
+        "Invalid JSONL at line {}: unrecognized format",
+        line_num + 1,
+    )))
 }
 
 /// BCE with logits loss for multi-label classification.
@@ -355,6 +365,95 @@ pub fn bce_with_logits_loss(logits: &Tensor, targets: &[f32], num_classes: usize
     let total_loss = if total_loss.is_finite() { total_loss } else { 100.0 };
 
     Tensor::from_vec(vec![total_loss], logits.requires_grad())
+}
+
+/// Class weight computation strategy for imbalanced datasets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassWeightStrategy {
+    /// All classes weighted equally: w_c = 1.0
+    Uniform,
+    /// Inverse frequency: w_c = N / (K * n_c)
+    InverseFreq,
+    /// Square root of inverse frequency: w_c = sqrt(N / (K * n_c))
+    SqrtInverse,
+}
+
+impl std::str::FromStr for ClassWeightStrategy {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "uniform" => Ok(Self::Uniform),
+            "inverse_freq" | "inverse" => Ok(Self::InverseFreq),
+            "sqrt_inverse" | "sqrt" => Ok(Self::SqrtInverse),
+            _ => Err(format!(
+                "Unknown class weight strategy: {s}. Use: uniform, inverse_freq, sqrt_inverse"
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for ClassWeightStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Uniform => write!(f, "uniform"),
+            Self::InverseFreq => write!(f, "inverse_freq"),
+            Self::SqrtInverse => write!(f, "sqrt_inverse"),
+        }
+    }
+}
+
+/// Compute class weights from corpus statistics.
+///
+/// Weights are normalized so they sum to `num_classes`, preserving
+/// the overall loss scale while rebalancing class contributions.
+///
+/// # Contract (F-TUNE-005)
+/// `abs(sum(weights) - num_classes) < 1e-5`
+///
+/// # Panics
+/// Panics if `stats.class_counts.len() != num_classes` or any class has zero samples.
+pub fn compute_class_weights(
+    stats: &SafetyCorpusStats,
+    strategy: ClassWeightStrategy,
+    num_classes: usize,
+) -> Vec<f32> {
+    assert_eq!(
+        stats.class_counts.len(),
+        num_classes,
+        "F-TUNE-005: class_counts.len() != num_classes"
+    );
+
+    let n = stats.total as f32;
+    let k = num_classes as f32;
+
+    let raw_weights: Vec<f32> = match strategy {
+        ClassWeightStrategy::Uniform => vec![1.0; num_classes],
+        ClassWeightStrategy::InverseFreq => stats
+            .class_counts
+            .iter()
+            .map(|&count| {
+                let count = count.max(1) as f32; // avoid division by zero
+                n / (k * count)
+            })
+            .collect(),
+        ClassWeightStrategy::SqrtInverse => stats
+            .class_counts
+            .iter()
+            .map(|&count| {
+                let count = count.max(1) as f32;
+                (n / (k * count)).sqrt()
+            })
+            .collect(),
+    };
+
+    // Normalize so weights sum to num_classes
+    let sum: f32 = raw_weights.iter().sum();
+    if sum < 1e-10 {
+        return vec![1.0; num_classes];
+    }
+    let scale = k / sum;
+    raw_weights.iter().map(|&w| w * scale).collect()
 }
 
 /// Cross-entropy loss for classification.
@@ -433,175 +532,6 @@ pub fn compute_class_weights(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_classification_head_shape() {
-        let head = ClassificationHead::new(128, 5);
-        assert_eq!(head.num_classes(), 5);
-        assert_eq!(head.hidden_size(), 128);
-        assert_eq!(head.num_parameters(), 128 * 5 + 5);
-    }
-
-    #[test]
-    fn test_classification_head_forward() {
-        let head = ClassificationHead::new(64, 5);
-        // Simulate hidden states: 3 tokens, hidden_size=64
-        let hidden = Tensor::from_vec(vec![0.1f32; 3 * 64], false);
-        let logits = head.forward(&hidden, 3);
-        assert_eq!(logits.len(), 5, "F-CLASS-001: must produce 5 logits");
-    }
-
-    #[test]
-    fn test_classification_head_parameters() {
-        let mut head = ClassificationHead::new(64, 5);
-        assert_eq!(head.parameters().len(), 2); // weight + bias
-        assert_eq!(head.parameters_mut().len(), 2);
-    }
-
-    #[test]
-    fn test_cross_entropy_loss_finite() {
-        let logits = Tensor::from_vec(vec![1.0, 2.0, -1.0, 0.5, 3.0], false);
-        let loss = cross_entropy_loss(&logits, 2, 5);
-        let loss_val = loss.data()[0];
-        assert!(loss_val.is_finite(), "F-CLASS-005: loss must be finite");
-        assert!(loss_val > 0.0, "Cross-entropy loss must be positive");
-    }
-
-    #[test]
-    fn test_cross_entropy_loss_correct_class() {
-        // If logit for target class is much larger, loss should be small
-        let logits = Tensor::from_vec(vec![-100.0, -100.0, 100.0, -100.0, -100.0], false);
-        let loss = cross_entropy_loss(&logits, 2, 5);
-        let loss_val = loss.data()[0];
-        assert!(loss_val < 0.01, "Loss for correct high-confidence should be ~0");
-    }
-
-    #[test]
-    fn test_cross_entropy_loss_wrong_class() {
-        // If logit for target class is much smaller, loss should be large
-        let logits = Tensor::from_vec(vec![100.0, -100.0, -100.0, -100.0, -100.0], false);
-        let loss = cross_entropy_loss(&logits, 2, 5);
-        let loss_val = loss.data()[0];
-        assert!(loss_val > 1.0, "Loss for wrong class should be large");
-    }
-
-    #[test]
-    fn test_mean_pool() {
-        let head = ClassificationHead::new(4, 2);
-        // 2 tokens, hidden_size=4: [[1,2,3,4], [5,6,7,8]] → mean = [3,4,5,6]
-        let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], false);
-        let pooled = head.mean_pool(&hidden, 2);
-        let data = pooled.data();
-        let slice = data.as_slice().expect("contiguous");
-        assert_eq!(slice.len(), 4);
-        assert!((slice[0] - 3.0).abs() < 1e-6);
-        assert!((slice[1] - 4.0).abs() < 1e-6);
-        assert!((slice[2] - 5.0).abs() < 1e-6);
-        assert!((slice[3] - 6.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_corpus_stats_empty() {
-        let stats = corpus_stats(&[], 5);
-        assert_eq!(stats.total, 0);
-        assert_eq!(stats.class_counts, vec![0; 5]);
-    }
-
-    #[test]
-    fn test_corpus_stats_distribution() {
-        let samples = vec![
-            SafetySample { input: "echo hello".into(), label: 0 },
-            SafetySample { input: "echo $HOME".into(), label: 1 },
-            SafetySample { input: "echo $RANDOM".into(), label: 2 },
-            SafetySample { input: "mkdir /tmp/x".into(), label: 3 },
-            SafetySample { input: "eval $x".into(), label: 4 },
-            SafetySample { input: "ls".into(), label: 0 },
-        ];
-        let stats = corpus_stats(&samples, 5);
-        assert_eq!(stats.total, 6);
-        assert_eq!(stats.class_counts, vec![2, 1, 1, 1, 1]);
-    }
-
-    #[test]
-    #[should_panic(expected = "F-CLASS-001")]
-    fn test_cross_entropy_wrong_logit_count() {
-        let logits = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
-        let _ = cross_entropy_loss(&logits, 0, 5);
-    }
-
-    #[test]
-    #[should_panic(expected = "F-CLASS-002")]
-    fn test_cross_entropy_label_out_of_range() {
-        let logits = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
-        let _ = cross_entropy_loss(&logits, 5, 5);
-    }
-
-    // ── Multi-label tests ──────────────────────────────────────────
-
-    #[test]
-    fn test_multi_label_from_single_label() {
-        let single = SafetySample { input: "echo $RANDOM".into(), label: 2 };
-        let multi = MultiLabelSafetySample::from_single_label(&single, 5);
-        assert_eq!(multi.labels, vec![0.0, 0.0, 1.0, 0.0, 0.0]);
-        assert_eq!(multi.active_classes(), vec![2]);
-    }
-
-    #[test]
-    fn test_multi_label_active_classes() {
-        let sample = MultiLabelSafetySample {
-            input: "echo $RANDOM $HOME".into(),
-            labels: vec![0.0, 1.0, 1.0, 0.0, 0.0],
-        };
-        assert_eq!(sample.active_classes(), vec![1, 2]);
-    }
-
-    #[test]
-    fn test_multi_label_no_active_classes() {
-        let sample =
-            MultiLabelSafetySample { input: String::new(), labels: vec![0.0, 0.0, 0.0, 0.0, 0.0] };
-        assert!(sample.active_classes().is_empty());
-    }
-
-    #[test]
-    fn test_multi_label_all_active() {
-        let sample = MultiLabelSafetySample {
-            input: "eval $RANDOM; mkdir /x".into(),
-            labels: vec![1.0, 1.0, 1.0, 1.0, 1.0],
-        };
-        assert_eq!(sample.active_classes(), vec![0, 1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn test_bce_with_logits_loss_basic() {
-        let logits = Tensor::from_vec(vec![2.0, -1.0, 0.5, -2.0, 3.0], false);
-        let targets = [1.0, 0.0, 1.0, 0.0, 0.0];
-        let loss = bce_with_logits_loss(&logits, &targets, 5);
-        let loss_val = loss.data()[0];
-        assert!(loss_val.is_finite(), "F-CLASS-005: loss must be finite");
-        assert!(loss_val > 0.0, "BCE loss must be positive");
-    }
-
-    #[test]
-    fn test_bce_with_logits_loss_perfect() {
-        let logits = Tensor::from_vec(vec![100.0, -100.0, 100.0, -100.0, -100.0], false);
-        let targets = [1.0, 0.0, 1.0, 0.0, 0.0];
-        let loss = bce_with_logits_loss(&logits, &targets, 5);
-        assert!(loss.data()[0] < 0.01, "Perfect prediction should have near-zero loss");
-    }
-
-    #[test]
-    #[should_panic(expected = "F-CLASS-001")]
-    fn test_bce_logit_shape_mismatch() {
-        let logits = Tensor::from_vec(vec![1.0, 2.0, 3.0], false);
-        let _ = bce_with_logits_loss(&logits, &[1.0, 0.0, 1.0, 0.0, 0.0], 5);
-    }
-
-    #[test]
-    #[should_panic(expected = "F-CLASS-001")]
-    fn test_bce_target_shape_mismatch() {
-        let logits = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
-        let _ = bce_with_logits_loss(&logits, &[1.0, 0.0, 1.0], 5);
-    }
-}
+#[allow(clippy::unwrap_used)]
+#[path = "classification_tests.rs"]
+mod tests;
