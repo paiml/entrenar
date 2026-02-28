@@ -368,6 +368,11 @@ name = "design_by_contract"
 path = "examples/design_by_contract.rs"
 required-features = []
 
+[[example]]
+name = "classify_tune_demo"
+path = "examples/classify_tune_demo.rs"
+required-features = []
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--generate-link-to-definition"]

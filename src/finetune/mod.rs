@@ -18,6 +18,8 @@
 pub mod classification;
 pub mod classify_pipeline;
 pub mod classify_trainer;
+pub mod classify_tuner;
+pub mod tune_searchers;
 mod corpus;
 mod device;
 mod eval;
@@ -30,12 +32,16 @@ mod tests;
 mod tests_classification_contract_falsify;
 
 pub use classification::{
-    bce_with_logits_loss, corpus_stats, cross_entropy_loss, load_multi_label_corpus,
-    load_safety_corpus, ClassificationHead, MultiLabelSafetySample, SafetyCorpusStats,
-    SafetySample,
+    bce_with_logits_loss, compute_class_weights, corpus_stats, cross_entropy_loss,
+    load_multi_label_corpus, load_safety_corpus, ClassWeightStrategy, ClassificationHead,
+    MultiLabelSafetySample, SafetyCorpusStats, SafetySample,
 };
 pub use classify_pipeline::{BatchResult, ClassifyConfig, ClassifyPipeline};
 pub use classify_trainer::{ClassifyTrainer, EpochMetrics, TrainResult, TrainingConfig};
+pub use classify_tuner::{
+    default_classify_search_space, extract_trial_params, ClassifyTuner, SchedulerKind,
+    TrialSummary, TuneConfig, TuneResult, TuneScheduler, TuneSearcher, TuneStrategy,
+};
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
 pub use device::{ComputeDevice, DeviceInfo};
 pub use eval::{
