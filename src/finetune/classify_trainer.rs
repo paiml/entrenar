@@ -1023,8 +1023,12 @@ pub const SSC_LABELS: [&str; 5] = [
 /// Standalone function that loads a checkpoint, builds a pipeline, and runs
 /// evaluation without needing a full `ClassifyTrainer` setup.
 ///
+/// Handles LoRA adapter checkpoints: reads `adapter_config.json` to find the
+/// base model path, loads the full transformer from that path, then restores
+/// trained LoRA + classifier head weights from the checkpoint's `model.safetensors`.
+///
 /// # Arguments
-/// * `checkpoint_dir` - Directory containing `model.safetensors` + `tokenizer.json`
+/// * `checkpoint_dir` - Directory containing `model.safetensors` + `adapter_config.json`
 /// * `test_data` - JSONL file with `{"input": "...", "label": N}` entries
 /// * `model_config` - Transformer architecture config (must match checkpoint)
 /// * `classify_config` - Classification config (num_classes, etc.)
@@ -1044,9 +1048,95 @@ pub fn evaluate_checkpoint(
     let start = std::time::Instant::now();
     let num_classes = classify_config.num_classes;
 
-    // Load pipeline from checkpoint
-    let mut pipeline =
-        ClassifyPipeline::from_pretrained(checkpoint_dir, model_config, classify_config)?;
+    // Resolve the base model directory from adapter_config.json (LoRA checkpoint)
+    // or fall back to loading directly from checkpoint_dir (full model checkpoint)
+    let adapter_config_path = checkpoint_dir.join("adapter_config.json");
+    let mut pipeline = if adapter_config_path.exists() {
+        // LoRA adapter checkpoint: load base model, then restore adapter weights
+        let adapter_json = std::fs::read_to_string(&adapter_config_path).map_err(|e| {
+            crate::Error::Io(format!("Failed to read adapter_config.json: {e}"))
+        })?;
+        let peft_config: crate::lora::PeftAdapterConfig =
+            serde_json::from_str(&adapter_json).map_err(|e| {
+                crate::Error::Serialization(format!("Invalid adapter_config.json: {e}"))
+            })?;
+
+        let base_model_path = peft_config
+            .base_model_name_or_path
+            .as_deref()
+            .ok_or_else(|| {
+                crate::Error::Io(
+                    "adapter_config.json missing base_model_name_or_path".to_string(),
+                )
+            })?;
+
+        eprintln!(
+            "Loading base model from: {base_model_path}"
+        );
+        let mut pipe =
+            ClassifyPipeline::from_pretrained(base_model_path, model_config, classify_config)?;
+
+        // Load trained LoRA + classifier weights from checkpoint
+        let st_path = checkpoint_dir.join("model.safetensors");
+        let st_data = std::fs::read(&st_path).map_err(|e| {
+            crate::Error::Io(format!(
+                "Failed to read checkpoint model.safetensors: {e}"
+            ))
+        })?;
+        let tensors = safetensors::SafeTensors::deserialize(&st_data).map_err(|e| {
+            crate::Error::Serialization(format!("Failed to deserialize checkpoint: {e}"))
+        })?;
+
+        // Restore classifier head weights
+        if let Ok(w) = tensors.tensor("classifier.weight") {
+            let w_data: &[f32] = bytemuck::cast_slice(w.data());
+            pipe.classifier
+                .weight
+                .data_mut()
+                .as_slice_mut()
+                .expect("contiguous classifier.weight")
+                .copy_from_slice(w_data);
+        }
+        if let Ok(b) = tensors.tensor("classifier.bias") {
+            let b_data: &[f32] = bytemuck::cast_slice(b.data());
+            pipe.classifier
+                .bias
+                .data_mut()
+                .as_slice_mut()
+                .expect("contiguous classifier.bias")
+                .copy_from_slice(b_data);
+        }
+
+        // Restore LoRA adapter weights (convention: 2 per layer, Q=even V=odd)
+        for (idx, lora) in pipe.lora_layers.iter_mut().enumerate() {
+            let layer = idx / 2;
+            let proj = if idx % 2 == 0 { "q" } else { "v" };
+
+            if let Ok(a) = tensors.tensor(&format!("lora.{layer}.{proj}_proj.lora_a")) {
+                let a_data: &[f32] = bytemuck::cast_slice(a.data());
+                lora.lora_a_mut()
+                    .data_mut()
+                    .as_slice_mut()
+                    .expect("contiguous lora_a")
+                    .copy_from_slice(a_data);
+            }
+            if let Ok(b) = tensors.tensor(&format!("lora.{layer}.{proj}_proj.lora_b")) {
+                let b_data: &[f32] = bytemuck::cast_slice(b.data());
+                lora.lora_b_mut()
+                    .data_mut()
+                    .as_slice_mut()
+                    .expect("contiguous lora_b")
+                    .copy_from_slice(b_data);
+            }
+        }
+
+        let loaded_count = tensors.names().len();
+        eprintln!("Restored {loaded_count} tensors from checkpoint");
+        pipe
+    } else {
+        // Full model checkpoint: load directly
+        ClassifyPipeline::from_pretrained(checkpoint_dir, model_config, classify_config)?
+    };
 
     // Load test corpus
     let samples = load_safety_corpus(test_data, num_classes)?;
