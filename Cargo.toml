@@ -95,7 +95,7 @@ unnecessary_wraps = "allow"
 
 [package]
 name = "entrenar"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2021"
 rust-version = "1.87"
 authors = ["PAIML <hello@paiml.com>"]
@@ -159,7 +159,7 @@ hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard
 # Core PAIML stack
 ndarray = "0.16"
 trueno = "0.16"  # SIMD-accelerated compute (local patch via [patch.crates-io])
-trueno-gpu = { version = "0.4.11", optional = true }  # CUDA compute for GPU training
+trueno-gpu = { version = "0.4.19", optional = true }  # CUDA compute for GPU training (0.4.19: sm_target())
 realizar = { version = "0.8", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.27"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.2", features = ["terminal"] }  # Terminal visualization
