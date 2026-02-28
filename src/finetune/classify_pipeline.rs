@@ -26,7 +26,7 @@ use crate::tokenizer::HfTokenizer;
 use crate::transformer::Transformer;
 use crate::transformer::TransformerConfig;
 use crate::Tensor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
@@ -69,6 +69,14 @@ pub struct ClassifyConfig {
     /// When `Some(max_norm)`, gradients are clipped to this L2 norm before
     /// the optimizer step. `None` disables gradient clipping.
     pub gradient_clip_norm: Option<f32>,
+    /// Per-class loss weights for imbalanced datasets.
+    ///
+    /// When `Some(weights)`, the cross-entropy loss for label `c` is multiplied
+    /// by `weights[c]`. Weights should sum to `num_classes` to preserve loss scale.
+    /// When `None`, all classes are weighted equally (weight = 1.0).
+    ///
+    /// See SPEC-TUNE-2026-001 §9 for weight computation strategies.
+    pub class_weights: Option<Vec<f32>>,
 }
 
 impl Default for ClassifyConfig {
@@ -84,6 +92,7 @@ impl Default for ClassifyConfig {
             batch_size: 32,
             accumulation_steps: 1,
             gradient_clip_norm: Some(1.0),
+            class_weights: None,
         }
     }
 }
@@ -163,6 +172,8 @@ pub struct ClassifyPipeline {
     optimizer: AdamW,
     /// Optional BPE tokenizer (None = byte-level fallback)
     tokenizer: Option<HfTokenizer>,
+    /// Path to base model directory (set by `from_pretrained`, None for random init)
+    model_dir: Option<PathBuf>,
     /// CUDA trainer for GPU memory management (F-CUDA-002)
     #[cfg(feature = "cuda")]
     cuda_trainer: Option<CudaTrainer>,
@@ -218,6 +229,7 @@ impl ClassifyPipeline {
             config: classify_config,
             optimizer,
             tokenizer: None,
+            model_dir: None,
             #[cfg(feature = "cuda")]
             cuda_trainer,
             #[cfg(feature = "cuda")]
@@ -290,6 +302,7 @@ impl ClassifyPipeline {
             config: classify_config,
             optimizer,
             tokenizer,
+            model_dir: Some(model_dir.to_path_buf()),
             #[cfg(feature = "cuda")]
             cuda_trainer,
             #[cfg(feature = "cuda")]
@@ -986,6 +999,12 @@ impl ClassifyPipeline {
         }
     }
 
+    /// Get the base model directory path (if loaded from pretrained weights).
+    #[must_use]
+    pub fn model_dir(&self) -> Option<&Path> {
+        self.model_dir.as_deref()
+    }
+
     /// Single training step: forward + loss + backward + optimizer update.
     ///
     /// Performs the complete training cycle:
@@ -1037,14 +1056,17 @@ impl ClassifyPipeline {
         let sum_exp: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
 
-        // Loss = -log(prob[target])
-        let loss_val = -(probs[label].max(1e-10).ln());
+        // Class weight for this sample's label (default 1.0 if no weights configured)
+        let w = self.config.class_weights.as_ref().map_or(1.0, |weights| weights[label]);
+
+        // Loss = -w[label] * log(prob[target])
+        let loss_val = -w * (probs[label].max(1e-10).ln());
         let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
 
-        // ∂L/∂logits = probs - one_hot(target)
-        // This is the well-known cross-entropy gradient
-        let mut grad_logits = probs.clone();
-        grad_logits[label] -= 1.0;
+        // ∂L/∂logits = w[label] * (probs - one_hot(target))
+        // The weight multiplier applies to both loss and gradient
+        let mut grad_logits: Vec<f32> = probs.iter().map(|&p| w * p).collect();
+        grad_logits[label] -= w;
 
         // ── 4. Backward through matmul (autograd) ─────────────────────
         // Set loss gradient on the matmul output, then call backward
@@ -1307,13 +1329,16 @@ impl ClassifyPipeline {
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .map_or(0, |(idx, _)| idx);
 
-        // ── Cross-entropy loss ──────────────────────────────────────────
+        // ── Cross-entropy loss (weighted) ────────────────────────────────
         let max_val = logits_with_bias.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
         let sum_exp: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
 
-        let loss_val = -(probs[label].max(1e-10).ln());
+        // Class weight for this sample's label (default 1.0 if no weights configured)
+        let w = self.config.class_weights.as_ref().map_or(1.0, |weights| weights[label]);
+
+        let loss_val = -w * (probs[label].max(1e-10).ln());
         let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
 
         // ── Contract postcondition (F-CLASS-005): loss finite & non-negative
@@ -1321,9 +1346,9 @@ impl ClassifyPipeline {
         debug_assert!(loss_val >= 0.0, "F-CLASS-005: loss is negative: {loss_val}");
 
         // ── Backward ────────────────────────────────────────────────────
-        // dL/d_logits = softmax(logits) - one_hot(label)
-        let mut grad_logits = probs;
-        grad_logits[label] -= 1.0;
+        // dL/d_logits = w[label] * (softmax(logits) - one_hot(label))
+        let mut grad_logits: Vec<f32> = probs.iter().map(|&p| w * p).collect();
+        grad_logits[label] -= w;
 
         // CPU autograd backward for classifier head (LoRA + classifier.weight)
         logits.set_grad(ndarray::Array1::from(grad_logits.clone()));
@@ -1430,16 +1455,64 @@ impl ClassifyPipeline {
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .map_or(0, |(idx, _)| idx);
 
-        // Cross-entropy loss
+        // Cross-entropy loss (weighted)
         let max_val = logits_with_bias.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
         let sum_exp: f32 = exp_vals.iter().sum();
         let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
 
-        let loss_val = -(probs[label].max(1e-10).ln());
+        // Class weight for this sample's label (default 1.0 if no weights configured)
+        let w = self.config.class_weights.as_ref().map_or(1.0, |weights| weights[label]);
+
+        let loss_val = -w * (probs[label].max(1e-10).ln());
         let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
 
         (loss_val, predicted)
+    }
+
+    /// Forward-only pass returning loss, predicted class, and softmax probabilities.
+    ///
+    /// Identical to [`forward_only`] but also returns the full probability distribution
+    /// for confidence analysis, calibration, and per-sample diagnostics.
+    pub fn forward_only_with_probs(
+        &mut self,
+        token_ids: &[u32],
+        label: usize,
+    ) -> (f32, usize, Vec<f32>) {
+        let seq_len = token_ids.len();
+        let num_classes = self.config.num_classes;
+
+        let hidden = self.forward_hidden_dispatch(token_ids);
+        let pooled = self.classifier.mean_pool(&hidden, seq_len);
+
+        let logits =
+            matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);
+
+        let logits_with_bias: Vec<f32> = logits
+            .data()
+            .as_slice()
+            .expect("contiguous logits")
+            .iter()
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
+            .map(|(&l, &b)| l + b)
+            .collect();
+
+        let predicted = logits_with_bias
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map_or(0, |(idx, _)| idx);
+
+        let max_val = logits_with_bias.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
+        let sum_exp: f32 = exp_vals.iter().sum();
+        let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
+
+        let w = self.config.class_weights.as_ref().map_or(1.0, |weights| weights[label]);
+        let loss_val = -w * (probs[label].max(1e-10).ln());
+        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
+
+        (loss_val, predicted, probs)
     }
 
     /// Multi-label training step using BCE with logits loss.

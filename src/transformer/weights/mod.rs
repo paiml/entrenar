@@ -81,7 +81,7 @@ pub fn load_safetensors_weights(
         // Auto-detect architecture from first file
         if detected_arch == Architecture::Auto {
             detected_arch = detect_architecture(&tensors);
-            println!("  Detected architecture: {detected_arch:?}");
+            eprintln!("  Detected architecture: {detected_arch:?}");
         }
 
         // Load and map tensors
@@ -98,7 +98,7 @@ pub fn load_safetensors_weights(
         }
     }
 
-    println!("  Loaded {} weight tensors", weights.len());
+    eprintln!("  Loaded {} weight tensors", weights.len());
     Ok(weights)
 }
 
