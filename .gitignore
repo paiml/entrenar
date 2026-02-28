@@ -108,3 +108,6 @@ book/book/
 .pmat-work/
 .pmat-metrics/
 .pmat/workspace.db
+
+# Experiment store (per-project SQLite, large artifacts)
+.entrenar/

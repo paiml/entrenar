@@ -6,8 +6,8 @@
 //!
 //! SQLite provides consistent, predictable performance without external dependencies.
 
+pub(crate) mod schema;
 mod sqlite_backend;
-mod state;
 
 pub use sqlite_backend::SqliteBackend;
 

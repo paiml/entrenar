@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use super::extended::{
-    AuditArgs, BenchArgs, CompletionArgs, InspectArgs, MonitorArgs, PublishArgs,
+    AuditArgs, BenchArgs, CompletionArgs, ExperimentsArgs, InspectArgs, MonitorArgs, PublishArgs,
 };
 use super::init::InitArgs;
 use super::quant_merge::{MergeArgs, QuantizeArgs};
@@ -74,6 +74,9 @@ pub enum Command {
 
     /// Publish a trained model to HuggingFace Hub
     Publish(PublishArgs),
+
+    /// Query the experiment store (runs, metrics, artifacts)
+    Experiments(ExperimentsArgs),
 }
 
 /// Arguments for the train command
