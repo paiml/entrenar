@@ -19,6 +19,7 @@ pub mod classification;
 pub mod classify_pipeline;
 pub mod classify_trainer;
 pub mod classify_tuner;
+pub mod training_plan;
 pub mod tune_searchers;
 mod corpus;
 mod device;
@@ -53,3 +54,8 @@ pub use eval::{
 };
 pub use popperian::{PopperianQA, QAGrade};
 pub use reproducibility::{ExperimentLock, ReproducibilityConfig};
+pub use training_plan::{
+    execute_plan, plan as training_plan, ApplyConfig, CheckStatus, DataAudit,
+    HyperparameterPlan, ManualConfig, ModelInfo, PlanConfig, PlanIssue, PlanVerdict,
+    PreFlightCheck, ResourceEstimate, TrainingPlan, TrialPreview,
+};
