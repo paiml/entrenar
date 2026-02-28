@@ -268,6 +268,7 @@
 ## Fine-tuning
 - [Test Generation (Qwen2-0.5B)](./examples/finetune-test-gen.md)
 - [Real Fine-Tuning (Qwen2.5-Coder-0.5B)](./examples/finetune-real.md)
+- [Classification HP Tuning](./examples/classify-tune.md)
 
 ## Evaluation & Publishing
 - [OpenASR Leaderboard (Whisper)](./examples/open-asr-leaderboard.md)
