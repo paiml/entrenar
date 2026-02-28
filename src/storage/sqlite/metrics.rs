@@ -3,11 +3,33 @@
 //! Contains metric logging and retrieval methods (ExperimentStorage trait implementation).
 
 use super::backend::SqliteBackend;
-use super::types::{ArtifactRef, Experiment, Run};
 use crate::storage::{ExperimentStorage, MetricPoint, Result, RunStatus, StorageError};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
+use rusqlite::params;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+
+/// Map a RunStatus to its SQLite TEXT representation
+fn status_to_str(status: RunStatus) -> &'static str {
+    match status {
+        RunStatus::Pending => "pending",
+        RunStatus::Running => "running",
+        RunStatus::Success => "completed",
+        RunStatus::Failed => "failed",
+        RunStatus::Cancelled => "cancelled",
+    }
+}
+
+/// Parse a SQLite TEXT status back to RunStatus
+pub(crate) fn str_to_status(s: &str) -> RunStatus {
+    match s {
+        "pending" => RunStatus::Pending,
+        "running" => RunStatus::Running,
+        "completed" => RunStatus::Success,
+        "failed" => RunStatus::Failed,
+        "cancelled" => RunStatus::Cancelled,
+        _ => RunStatus::Failed,
+    }
+}
 
 impl ExperimentStorage for SqliteBackend {
     fn create_experiment(
@@ -15,130 +37,147 @@ impl ExperimentStorage for SqliteBackend {
         name: &str,
         config: Option<serde_json::Value>,
     ) -> Result<String> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
-
         let id = Self::generate_id();
-        let now = Utc::now();
+        let config_json = config.map(|c| c.to_string());
+        let now = Utc::now().to_rfc3339();
 
-        let experiment = Experiment {
-            id: id.clone(),
-            name: name.to_string(),
-            description: None,
-            config,
-            tags: HashMap::new(),
-            created_at: now,
-            updated_at: now,
-        };
+        let conn = self.lock_conn()?;
+        conn.execute(
+            "INSERT INTO experiments (id, name, config, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, name, config_json, now, now],
+        )
+        .map_err(|e| StorageError::Backend(format!("Failed to create experiment: {e}")))?;
 
-        state.experiments.insert(id.clone(), experiment);
         Ok(id)
     }
 
     fn create_run(&mut self, experiment_id: &str) -> Result<String> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        if !state.experiments.contains_key(experiment_id) {
+        // Verify experiment exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM experiments WHERE id = ?1)",
+                [experiment_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| StorageError::Backend(format!("Failed to check experiment: {e}")))?;
+
+        if !exists {
             return Err(StorageError::ExperimentNotFound(experiment_id.to_string()));
         }
 
         let id = Self::generate_id();
+        let now = Utc::now().to_rfc3339();
 
-        let run = Run {
-            id: id.clone(),
-            experiment_id: experiment_id.to_string(),
-            status: RunStatus::Pending,
-            start_time: Utc::now(),
-            end_time: None,
-            params: HashMap::new(),
-            tags: HashMap::new(),
-        };
+        conn.execute(
+            "INSERT INTO runs (id, experiment_id, status, start_time) VALUES (?1, ?2, 'pending', ?3)",
+            params![id, experiment_id, now],
+        )
+        .map_err(|e| StorageError::Backend(format!("Failed to create run: {e}")))?;
 
-        state.runs.insert(id.clone(), run);
         Ok(id)
     }
 
     fn start_run(&mut self, run_id: &str) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        let run = state
-            .runs
-            .get_mut(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let current_status: String = conn
+            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| {
+                row.get(0)
+            })
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    StorageError::RunNotFound(run_id.to_string())
+                }
+                _ => StorageError::Backend(format!("Failed to get run status: {e}")),
+            })?;
 
-        if run.status != RunStatus::Pending {
+        if current_status != "pending" {
             return Err(StorageError::InvalidState(format!(
-                "Cannot start run in {:?} status",
-                run.status
+                "Cannot start run in {current_status} status"
             )));
         }
 
-        run.status = RunStatus::Running;
-        run.start_time = Utc::now();
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE runs SET status = 'running', start_time = ?1 WHERE id = ?2",
+            params![now, run_id],
+        )
+        .map_err(|e| StorageError::Backend(format!("Failed to start run: {e}")))?;
+
         Ok(())
     }
 
     fn complete_run(&mut self, run_id: &str, status: RunStatus) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        let run = state
-            .runs
-            .get_mut(run_id)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))?;
+        let current_status: String = conn
+            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| {
+                row.get(0)
+            })
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    StorageError::RunNotFound(run_id.to_string())
+                }
+                _ => StorageError::Backend(format!("Failed to get run status: {e}")),
+            })?;
 
-        if run.status != RunStatus::Running {
+        if current_status != "running" {
             return Err(StorageError::InvalidState(format!(
-                "Cannot complete run in {:?} status",
-                run.status
+                "Cannot complete run in {current_status} status"
             )));
         }
 
-        run.status = status;
-        run.end_time = Some(Utc::now());
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE runs SET status = ?1, end_time = ?2 WHERE id = ?3",
+            params![status_to_str(status), now, run_id],
+        )
+        .map_err(|e| StorageError::Backend(format!("Failed to complete run: {e}")))?;
+
         Ok(())
     }
 
     fn log_metric(&mut self, run_id: &str, key: &str, step: u64, value: f64) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        if !state.runs.contains_key(run_id) {
+        // Verify run exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
+                [run_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
+
+        if !exists {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        let point = MetricPoint::new(step, value);
-
-        state
-            .metrics
-            .entry(run_id.to_string())
-            .or_default()
-            .entry(key.to_string())
-            .or_default()
-            .push(point);
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO metrics (run_id, key, step, value, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![run_id, key, step as i64, value, now],
+        )
+        .map_err(|e| StorageError::Backend(format!("Failed to log metric: {e}")))?;
 
         Ok(())
     }
 
     fn log_artifact(&mut self, run_id: &str, key: &str, data: &[u8]) -> Result<String> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        if !state.runs.contains_key(run_id) {
+        // Verify run exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
+                [run_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
+
+        if !exists {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
@@ -147,74 +186,123 @@ impl ExperimentStorage for SqliteBackend {
         hasher.update(data);
         let sha256 = format!("{:x}", hasher.finalize());
 
-        // Store artifact data (deduplicated by hash)
-        state.artifact_data.entry(sha256.clone()).or_insert_with(|| data.to_vec());
+        let id = Self::generate_id();
+        let size = data.len() as i64;
 
-        // Create artifact reference
-        let artifact = ArtifactRef {
-            id: Self::generate_id(),
-            run_id: run_id.to_string(),
-            path: key.to_string(),
-            size_bytes: data.len() as u64,
-            sha256: sha256.clone(),
-            created_at: Utc::now(),
-        };
-
-        state.artifacts.entry(run_id.to_string()).or_default().push(artifact);
+        conn.execute(
+            "INSERT INTO artifacts (id, run_id, path, size_bytes, sha256, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, run_id, key, size, sha256, data],
+        )
+        .map_err(|e| StorageError::Backend(format!("Failed to log artifact: {e}")))?;
 
         Ok(sha256)
     }
 
     fn get_metrics(&self, run_id: &str, key: &str) -> Result<Vec<MetricPoint>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        if !state.runs.contains_key(run_id) {
+        // Verify run exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
+                [run_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
+
+        if !exists {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        Ok(state.metrics.get(run_id).and_then(|m| m.get(key)).cloned().unwrap_or_default())
+        let mut stmt = conn
+            .prepare("SELECT step, value, timestamp FROM metrics WHERE run_id = ?1 AND key = ?2 ORDER BY step")
+            .map_err(|e| StorageError::Backend(format!("Failed to prepare metrics query: {e}")))?;
+
+        let points = stmt
+            .query_map(params![run_id, key], |row| {
+                let step: i64 = row.get(0)?;
+                let value: f64 = row.get(1)?;
+                let ts_str: String = row.get(2)?;
+                let timestamp: DateTime<Utc> = ts_str
+                    .parse()
+                    .unwrap_or_else(|_| Utc::now());
+                Ok(MetricPoint::with_timestamp(step as u64, value, timestamp))
+            })
+            .map_err(|e| StorageError::Backend(format!("Failed to query metrics: {e}")))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| StorageError::Backend(format!("Failed to read metric row: {e}")))?;
+
+        Ok(points)
     }
 
     fn get_run_status(&self, run_id: &str) -> Result<RunStatus> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        state
-            .runs
-            .get(run_id)
-            .map(|r| r.status)
-            .ok_or_else(|| StorageError::RunNotFound(run_id.to_string()))
+        let status_str: String = conn
+            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| {
+                row.get(0)
+            })
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    StorageError::RunNotFound(run_id.to_string())
+                }
+                _ => StorageError::Backend(format!("Failed to get run status: {e}")),
+            })?;
+
+        Ok(str_to_status(&status_str))
     }
 
     fn set_span_id(&mut self, run_id: &str, span_id: &str) -> Result<()> {
-        let mut state = self
-            .state
-            .write()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire write lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        if !state.runs.contains_key(run_id) {
+        // Verify run exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
+                [run_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
+
+        if !exists {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        state.span_ids.insert(run_id.to_string(), span_id.to_string());
+        conn.execute(
+            "INSERT OR REPLACE INTO span_ids (run_id, span_id) VALUES (?1, ?2)",
+            params![run_id, span_id],
+        )
+        .map_err(|e| StorageError::Backend(format!("Failed to set span ID: {e}")))?;
+
         Ok(())
     }
 
     fn get_span_id(&self, run_id: &str) -> Result<Option<String>> {
-        let state = self
-            .state
-            .read()
-            .map_err(|e| StorageError::Backend(format!("Failed to acquire read lock: {e}")))?;
+        let conn = self.lock_conn()?;
 
-        if !state.runs.contains_key(run_id) {
+        // Verify run exists
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
+                [run_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
+
+        if !exists {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        Ok(state.span_ids.get(run_id).cloned())
+        let result = conn.query_row(
+            "SELECT span_id FROM span_ids WHERE run_id = ?1",
+            [run_id],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(span_id) => Ok(Some(span_id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(StorageError::Backend(format!("Failed to get span ID: {e}"))),
+        }
     }
 }

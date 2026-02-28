@@ -1,6 +1,6 @@
 //! Extended command types - Completion, Bench, Inspect, Audit, Monitor, Publish
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use super::types::{AuditType, InspectMode, OutputFormat, ShellType};
@@ -139,6 +139,61 @@ pub struct PublishArgs {
     /// Dry run (validate but don't upload)
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// Arguments for the experiments command
+#[derive(Parser, Debug, Clone, PartialEq)]
+pub struct ExperimentsArgs {
+    /// Subcommand to execute
+    #[command(subcommand)]
+    pub command: ExperimentsCommand,
+
+    /// Project directory (defaults to current directory)
+    #[arg(short, long, global = true, default_value = ".")]
+    pub project: PathBuf,
+
+    /// Output format (text, json)
+    #[arg(short, long, global = true, default_value = "text")]
+    pub format: OutputFormat,
+}
+
+/// Experiment store subcommands
+#[derive(Subcommand, Debug, Clone, PartialEq)]
+pub enum ExperimentsCommand {
+    /// List all experiments
+    List,
+
+    /// Show details of a specific experiment
+    Show {
+        /// Experiment ID
+        #[arg(value_name = "ID")]
+        id: String,
+    },
+
+    /// List runs for an experiment
+    Runs {
+        /// Experiment ID
+        #[arg(value_name = "EXPERIMENT_ID")]
+        experiment_id: String,
+    },
+
+    /// Show metrics for a run
+    Metrics {
+        /// Run ID
+        #[arg(value_name = "RUN_ID")]
+        run_id: String,
+
+        /// Metric key (e.g., "loss", "accuracy")
+        #[arg(value_name = "KEY")]
+        key: String,
+    },
+
+    /// Delete an experiment and all its runs
+    Delete {
+        /// Experiment ID
+        #[arg(value_name = "ID")]
+        id: String,
+    },
 }
 
 #[cfg(test)]

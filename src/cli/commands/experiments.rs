@@ -1,0 +1,247 @@
+//! Experiment store CLI commands.
+//!
+//! Query experiments, runs, and metrics from the project-local SQLite store.
+
+use crate::cli::LogLevel;
+use crate::config::{ExperimentsArgs, ExperimentsCommand, OutputFormat};
+use crate::storage::{ExperimentStorage, SqliteBackend};
+
+pub fn run_experiments(args: ExperimentsArgs, log_level: LogLevel) -> Result<(), String> {
+    let store = SqliteBackend::open_project(&args.project)
+        .map_err(|e| format!("Failed to open experiment store: {e}"))?;
+
+    match args.command {
+        ExperimentsCommand::List => list_experiments(&store, &args.format, log_level),
+        ExperimentsCommand::Show { id } => show_experiment(&store, &id, &args.format),
+        ExperimentsCommand::Runs { experiment_id } => {
+            list_runs(&store, &experiment_id, &args.format)
+        }
+        ExperimentsCommand::Metrics { run_id, key } => {
+            show_metrics(&store, &run_id, &key, &args.format)
+        }
+        ExperimentsCommand::Delete { id } => delete_experiment(&store, &id, log_level),
+    }
+}
+
+fn list_experiments(
+    store: &SqliteBackend,
+    format: &OutputFormat,
+    _log_level: LogLevel,
+) -> Result<(), String> {
+    let experiments = store
+        .list_experiments()
+        .map_err(|e| format!("Failed to list experiments: {e}"))?;
+
+    if experiments.is_empty() {
+        eprintln!("No experiments found in {}", store.path());
+        return Ok(());
+    }
+
+    match format {
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(&experiments)
+                .map_err(|e| format!("JSON serialization failed: {e}"))?;
+            println!("{json}");
+        }
+        _ => {
+            println!("{:<20} {:<30} {:<24}", "ID", "NAME", "CREATED");
+            println!("{}", "-".repeat(74));
+            for exp in &experiments {
+                println!(
+                    "{:<20} {:<30} {:<24}",
+                    truncate(&exp.id, 18),
+                    truncate(&exp.name, 28),
+                    exp.created_at.format("%Y-%m-%d %H:%M:%S"),
+                );
+            }
+            println!("\n{} experiment(s)", experiments.len());
+        }
+    }
+
+    Ok(())
+}
+
+fn show_experiment(
+    store: &SqliteBackend,
+    id: &str,
+    format: &OutputFormat,
+) -> Result<(), String> {
+    let experiment = store
+        .get_experiment(id)
+        .map_err(|e| format!("Failed to get experiment: {e}"))?;
+
+    match format {
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(&experiment)
+                .map_err(|e| format!("JSON serialization failed: {e}"))?;
+            println!("{json}");
+        }
+        _ => {
+            println!("Experiment: {}", experiment.name);
+            println!("  ID:      {}", experiment.id);
+            println!("  Created: {}", experiment.created_at.format("%Y-%m-%d %H:%M:%S"));
+            println!("  Updated: {}", experiment.updated_at.format("%Y-%m-%d %H:%M:%S"));
+            if let Some(desc) = &experiment.description {
+                println!("  Desc:    {desc}");
+            }
+            if let Some(config) = &experiment.config {
+                println!("  Config:  {config}");
+            }
+
+            // Also show runs
+            if let Ok(runs) = store.list_runs(id) {
+                if !runs.is_empty() {
+                    println!("\n  Runs ({}):", runs.len());
+                    for run in &runs {
+                        println!(
+                            "    {:<18} {:?}  {}",
+                            truncate(&run.id, 16),
+                            run.status,
+                            run.start_time.format("%Y-%m-%d %H:%M:%S"),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn list_runs(
+    store: &SqliteBackend,
+    experiment_id: &str,
+    format: &OutputFormat,
+) -> Result<(), String> {
+    let runs = store
+        .list_runs(experiment_id)
+        .map_err(|e| format!("Failed to list runs: {e}"))?;
+
+    if runs.is_empty() {
+        eprintln!("No runs found for experiment {experiment_id}");
+        return Ok(());
+    }
+
+    match format {
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(&runs)
+                .map_err(|e| format!("JSON serialization failed: {e}"))?;
+            println!("{json}");
+        }
+        _ => {
+            println!("{:<20} {:<12} {:<24} {:<24}", "ID", "STATUS", "STARTED", "ENDED");
+            println!("{}", "-".repeat(80));
+            for run in &runs {
+                let end = run
+                    .end_time
+                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                println!(
+                    "{:<20} {:<12} {:<24} {:<24}",
+                    truncate(&run.id, 18),
+                    format!("{:?}", run.status),
+                    run.start_time.format("%Y-%m-%d %H:%M:%S"),
+                    end,
+                );
+            }
+            println!("\n{} run(s)", runs.len());
+        }
+    }
+
+    Ok(())
+}
+
+fn show_metrics(
+    store: &SqliteBackend,
+    run_id: &str,
+    key: &str,
+    format: &OutputFormat,
+) -> Result<(), String> {
+    let metrics = store
+        .get_metrics(run_id, key)
+        .map_err(|e| format!("Failed to get metrics: {e}"))?;
+
+    if metrics.is_empty() {
+        eprintln!("No metrics found for run {run_id}, key '{key}'");
+        return Ok(());
+    }
+
+    match format {
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(&metrics)
+                .map_err(|e| format!("JSON serialization failed: {e}"))?;
+            println!("{json}");
+        }
+        _ => {
+            println!("Metrics: {key} (run {run_id})");
+            println!("{:<8} {:<16} {:<24}", "STEP", "VALUE", "TIMESTAMP");
+            println!("{}", "-".repeat(48));
+            for point in &metrics {
+                println!(
+                    "{:<8} {:<16.6} {:<24}",
+                    point.step,
+                    point.value,
+                    point.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                );
+            }
+            println!("\n{} point(s)", metrics.len());
+        }
+    }
+
+    Ok(())
+}
+
+fn delete_experiment(
+    store: &SqliteBackend,
+    id: &str,
+    _log_level: LogLevel,
+) -> Result<(), String> {
+    // Verify it exists first
+    store
+        .get_experiment(id)
+        .map_err(|e| format!("Failed to find experiment: {e}"))?;
+
+    let conn = store.lock_conn().map_err(|e| format!("Lock error: {e}"))?;
+
+    // Delete in dependency order: metrics → params → artifacts → span_ids → runs → experiment
+    conn.execute(
+        "DELETE FROM metrics WHERE run_id IN (SELECT id FROM runs WHERE experiment_id = ?1)",
+        [id],
+    )
+    .map_err(|e| format!("Failed to delete metrics: {e}"))?;
+
+    conn.execute(
+        "DELETE FROM params WHERE run_id IN (SELECT id FROM runs WHERE experiment_id = ?1)",
+        [id],
+    )
+    .map_err(|e| format!("Failed to delete params: {e}"))?;
+
+    conn.execute(
+        "DELETE FROM artifacts WHERE run_id IN (SELECT id FROM runs WHERE experiment_id = ?1)",
+        [id],
+    )
+    .map_err(|e| format!("Failed to delete artifacts: {e}"))?;
+
+    conn.execute(
+        "DELETE FROM span_ids WHERE run_id IN (SELECT id FROM runs WHERE experiment_id = ?1)",
+        [id],
+    )
+    .map_err(|e| format!("Failed to delete span IDs: {e}"))?;
+
+    conn.execute("DELETE FROM runs WHERE experiment_id = ?1", [id])
+        .map_err(|e| format!("Failed to delete runs: {e}"))?;
+
+    conn.execute("DELETE FROM experiments WHERE id = ?1", [id])
+        .map_err(|e| format!("Failed to delete experiment: {e}"))?;
+
+    eprintln!("Deleted experiment {id}");
+    Ok(())
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() > max {
+        format!("{}...", &s[..max - 3])
+    } else {
+        s.to_string()
+    }
+}

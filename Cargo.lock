@@ -1777,7 +1777,7 @@ checksum = "c34f04666d835ff5d62e058c3995147c06f42fe86ff053337632bca83e42702d"
 
 [[package]]
 name = "entrenar"
-version = "0.7.4"
+version = "0.7.5"
 dependencies = [
  "alimentar",
  "approx",
@@ -1806,6 +1806,7 @@ dependencies = [
  "regex",
  "renacer",
  "reqwest",
+ "rusqlite",
  "safetensors",
  "serde",
  "serde_json",
@@ -1819,9 +1820,9 @@ dependencies = [
  "tower-http",
  "trueno 0.16.1",
  "trueno-db",
- "trueno-gpu 0.4.19",
+ "trueno-gpu",
  "trueno-rag",
- "trueno-viz 0.2.1",
+ "trueno-viz 0.2.2",
  "uuid",
  "wasm-bindgen",
  "zip",
@@ -1853,7 +1854,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "trueno-viz 0.1.24",
+ "trueno-viz 0.1.27",
 ]
 
 [[package]]
@@ -4420,7 +4421,7 @@ dependencies = [
  "tower 0.4.13",
  "tracing",
  "trueno 0.16.1",
- "trueno-gpu 0.4.18",
+ "trueno-gpu",
  "trueno-quant 0.1.0",
  "uuid",
 ]
@@ -5782,18 +5783,7 @@ dependencies = [
 
 [[package]]
 name = "trueno-gpu"
-version = "0.4.18"
-dependencies = [
- "batuta-common",
- "libloading",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "trueno-gpu"
 version = "0.4.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57884e4d63829bd5e4207f1bd84d18e005c7182d2c22c0a816eaf6e29f9fe2e5"
 dependencies = [
  "batuta-common",
  "libloading",
@@ -5852,20 +5842,21 @@ dependencies = [
 
 [[package]]
 name = "trueno-viz"
-version = "0.1.24"
+version = "0.1.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "882ffd53613bef43526c08f0a87d6058a10c276a599c7055caa985103475faf9"
 dependencies = [
  "base64",
+ "batuta-common",
  "libc",
  "png 0.17.16",
  "thiserror 2.0.18",
- "trueno 0.14.6",
+ "trueno 0.15.0",
 ]
 
 [[package]]
 name = "trueno-viz"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e91f4e6187571b112986d271adee25bf9e87af3e8bc142282d793023da9be12"
+version = "0.2.2"
 dependencies = [
  "base64",
  "batuta-common",
