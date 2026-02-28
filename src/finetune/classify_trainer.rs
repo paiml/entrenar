@@ -141,7 +141,7 @@ impl ClassifyTrainer {
     /// Returns error if corpus is empty, val_split is out of (0.0, 0.5],
     /// or epochs is 0.
     pub fn new(
-        pipeline: ClassifyPipeline,
+        mut pipeline: ClassifyPipeline,
         corpus: Vec<SafetySample>,
         config: TrainingConfig,
     ) -> crate::Result<Self> {
@@ -158,6 +158,9 @@ impl ClassifyTrainer {
             return Err(crate::Error::ConfigError("SSC-026: epochs must be > 0".to_string()));
         }
 
+        // ── Auto-detect class imbalance and apply weights ────────────────
+        Self::auto_balance_classes(&mut pipeline, &corpus);
+
         let (train_data, val_data) = Self::split_dataset(&corpus, config.val_split, config.seed);
 
         if train_data.is_empty() || val_data.is_empty() {
@@ -171,6 +174,59 @@ impl ClassifyTrainer {
         let rng_seed = config.seed;
 
         Ok(Self { pipeline, config, train_data, val_data, rng_seed, monitor_writer: None })
+    }
+
+    /// Auto-detect class imbalance and apply sqrt-inverse weights when no
+    /// explicit weights are configured.
+    ///
+    /// World-class training frameworks (sklearn, HuggingFace Trainer) auto-balance
+    /// by default. A training run on imbalanced data with uniform weights silently
+    /// optimizes for majority-class accuracy — the model learns to never predict
+    /// minority classes.
+    ///
+    /// Threshold: if max_count / min_count > 2.0, imbalance is detected.
+    /// Strategy: `SqrtInverse` (moderate rebalancing, avoids overcorrection).
+    fn auto_balance_classes(pipeline: &mut ClassifyPipeline, corpus: &[SafetySample]) {
+        use super::classification::{corpus_stats, compute_class_weights, ClassWeightStrategy};
+
+        // Skip if user explicitly configured weights
+        if pipeline.config.class_weights.is_some() {
+            return;
+        }
+
+        let num_classes = pipeline.config.num_classes;
+        let stats = corpus_stats(corpus, num_classes);
+
+        // Check if any class is missing entirely
+        let min_count = stats.class_counts.iter().copied().min().unwrap_or(0);
+        let max_count = stats.class_counts.iter().copied().max().unwrap_or(1);
+
+        if min_count == 0 {
+            eprintln!(
+                "  Warning: class with zero samples detected. \
+                 Class weights not applied (would produce Inf)."
+            );
+            return;
+        }
+
+        let imbalance_ratio = max_count as f64 / min_count as f64;
+
+        if imbalance_ratio > 2.0 {
+            let weights = compute_class_weights(&stats, ClassWeightStrategy::SqrtInverse, num_classes);
+            eprintln!(
+                "  Auto-detected class imbalance (ratio {imbalance_ratio:.1}:1), \
+                 applying sqrt-inverse weights: {weights:?}"
+            );
+            eprintln!(
+                "  Class counts: {:?} (total: {})",
+                stats.class_counts, stats.total
+            );
+            pipeline.config.class_weights = Some(weights);
+        } else {
+            eprintln!(
+                "  Class balance OK (ratio {imbalance_ratio:.1}:1), using uniform weights"
+            );
+        }
     }
 
     /// Attach a monitor writer for live TUI updates.
