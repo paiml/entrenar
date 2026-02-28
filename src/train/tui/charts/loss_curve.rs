@@ -6,7 +6,6 @@ use trueno_viz::prelude::Rgba;
 
 /// Helper to set dimensions on a LossCurve builder (compatible across trueno-viz 0.1/0.2).
 fn with_dimensions(mut curve: LossCurve, width: u32, height: u32) -> LossCurve {
-    use trueno_viz::prelude::WithDimensions;
     curve.set_dimensions(width, height);
     curve
 }
