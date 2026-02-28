@@ -78,6 +78,25 @@ Config: AdamW  Batch: 1  Checkpoint: ./experiments/finetune-real
 | LoRA Alpha | 32 | Scaling factor |
 | Batch Size | 1 | Per-sample training |
 
+## Checkpoint Output
+
+Checkpoints are saved as HuggingFace-complete directories containing:
+
+| File | Description |
+|------|-------------|
+| `model.safetensors` | Classifier head + LoRA adapter weights |
+| `model.apr` | Same weights in APR format |
+| `metadata.json` | Epoch metrics (loss, accuracy, LR) |
+| `config.json` | HF model architecture config |
+| `adapter_config.json` | PEFT LoRA adapter config |
+| `tokenizer.json` | BPE tokenizer (copied from base model) |
+
+Publish directly to HuggingFace:
+
+```bash
+apr publish ./checkpoints/best/ paiml/my-model
+```
+
 ## IPC State File
 
 Training state is persisted to `experiments/finetune-real/training_state.json` for:

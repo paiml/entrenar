@@ -100,6 +100,20 @@ pub struct Run<S: ExperimentStorage> {
 }
 
 impl<S: ExperimentStorage> Run<S> {
+    /// Acquire the storage mutex, mapping poison errors to `StorageError::Backend`.
+    fn lock_storage(
+        storage: &Arc<Mutex<S>>,
+    ) -> Result<std::sync::MutexGuard<'_, S>> {
+        storage
+            .lock()
+            .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))
+    }
+
+    /// Acquire the storage mutex on `self`, mapping poison errors to `StorageError::Backend`.
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, S>> {
+        Self::lock_storage(&self.storage)
+    }
+
     /// Create a new run with tracing
     ///
     /// Creates a run in the storage backend, starts it, and optionally
@@ -113,9 +127,7 @@ impl<S: ExperimentStorage> Run<S> {
     pub fn new(experiment_id: &str, storage: Arc<Mutex<S>>, config: TracingConfig) -> Result<Self> {
         // Create run in storage
         let run_id = {
-            let mut store = storage
-                .lock()
-                .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?;
+            let mut store = Self::lock_storage(&storage)?;
             let run_id = store.create_run(experiment_id)?;
             store.start_run(&run_id)?;
             run_id
@@ -124,10 +136,7 @@ impl<S: ExperimentStorage> Run<S> {
         // Create span if tracing enabled
         let span = if config.tracing_enabled {
             let span_id = Self::create_span(&run_id);
-            storage
-                .lock()
-                .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?
-                .set_span_id(&run_id, &span_id)?;
+            Self::lock_storage(&storage)?.set_span_id(&run_id, &span_id)?;
             Some(span_id)
         } else {
             None
@@ -179,10 +188,7 @@ impl<S: ExperimentStorage> Run<S> {
             return Err(StorageError::InvalidState("Cannot log to finished run".to_string()));
         }
 
-        self.storage
-            .lock()
-            .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?
-            .log_metric(&self.id, key, step, value)?;
+        self.lock()?.log_metric(&self.id, key, step, value)?;
 
         // Emit span event if tracing enabled
         if self.config.tracing_enabled {
@@ -213,10 +219,7 @@ impl<S: ExperimentStorage> Run<S> {
             return Ok(());
         }
 
-        self.storage
-            .lock()
-            .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))?
-            .complete_run(&self.id, status)?;
+        self.lock()?.complete_run(&self.id, status)?;
 
         self.finished = true;
 

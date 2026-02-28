@@ -1067,7 +1067,7 @@ impl CudaTransformerBlock {
 
         // grad_K^T = Q^T @ grad_scores
         // First reconstruct Q_batched from preserved q
-        // We need Q_batched but attn_q_batched is now grad_Q. Use o_proj_out as temp.
+        // Reconstruct Q_batched into o_proj_out (attn_q_batched already overwritten by grad_Q).
         interleaved_to_batched_forward(
             &self.scratch.q,
             &mut self.scratch.o_proj_out, // temp buffer for Q_batched
@@ -1160,7 +1160,7 @@ impl CudaTransformerBlock {
         )?;
 
         // grad_norm1 += grad_k @ w_k^T
-        // Use grad_attn_scores as temp for the GEMM result
+        // GEMM result stored in grad_attn_scores scratch space
         gemm_backward_a(
             &self.scratch.norm2_out, // grad_k interleaved
             &self.w_k,
@@ -1170,7 +1170,7 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        // Accumulate: grad_hidden += grad_attn_scores → gate_out (temp), then copy back
+        // grad_hidden += grad_attn_scores (through gate_out scratch)
         let n_hidden = saturating_u32(seq_len * hidden_size);
         residual_add_forward(
             &self.scratch.grad_hidden,
@@ -1201,7 +1201,7 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        // Accumulate: grad_hidden += grad_attn_scores → gate_out (temp), then copy back
+        // grad_hidden += grad_attn_scores (through gate_out scratch)
         residual_add_forward(
             &self.scratch.grad_hidden,
             &self.scratch.grad_attn_scores,
@@ -1361,7 +1361,7 @@ impl CudaTransformerBlock {
                 let h = kv_h * heads_per_kv + rep;
                 let h_offset = h * elems_per_head;
 
-                // Copy head to o_proj_out temp
+                // Head extraction into o_proj_out buffer
                 // SAFETY: Valid GPU allocations with sufficient size.
                 unsafe {
                     let src = if is_k {
@@ -1444,9 +1444,8 @@ impl CudaTransformerBlock {
         let n = saturating_u32(seq_len * hidden_size);
 
         // residual1 = input + o_proj_out; grad_input += grad_residual1
-        // Use attn_kv_temp as temp to hold grad_input + grad_output sum,
-        // since residual_add_forward can't alias input with output when
-        // grad_input is both input and output.
+        // attn_kv_temp holds grad_input + grad_output sum (avoids alias
+        // between input and output in residual_add_forward).
         residual_add_forward(grad_input, grad_output, &mut self.scratch.attn_kv_temp, n, stream)?;
 
         // Copy sum back to grad_input
