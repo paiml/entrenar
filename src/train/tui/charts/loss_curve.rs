@@ -4,7 +4,7 @@ use trueno_viz::output::{TerminalEncoder, TerminalMode as TruenoTerminalMode};
 use trueno_viz::plots::{LossCurve, MetricSeries};
 use trueno_viz::prelude::Rgba;
 
-/// Helper to set dimensions on a LossCurve builder (compatible across trueno-viz 0.1/0.2).
+/// Helper to set dimensions on a LossCurve builder.
 fn with_dimensions(mut curve: LossCurve, width: u32, height: u32) -> LossCurve {
     curve.set_dimensions(width, height);
     curve
