@@ -485,52 +485,6 @@ pub fn cross_entropy_loss(logits: &Tensor, target: usize, num_classes: usize) ->
     Tensor::from_vec(vec![loss], logits.requires_grad())
 }
 
-/// Strategy for computing class weights to handle imbalanced datasets.
-#[derive(Debug, Clone, Copy)]
-pub enum ClassWeightStrategy {
-    /// Weight = 1 / class_frequency (aggressive rebalancing)
-    Inverse,
-    /// Weight = 1 / sqrt(class_frequency) (moderate rebalancing)
-    SqrtInverse,
-}
-
-/// Compute per-class weights from corpus statistics.
-///
-/// Returns a vector of weights (one per class) that can be used to
-/// scale the loss function for imbalanced datasets.
-pub fn compute_class_weights(
-    stats: &SafetyCorpusStats,
-    strategy: ClassWeightStrategy,
-    num_classes: usize,
-) -> Vec<f32> {
-    let total = stats.total as f64;
-    let mut weights = Vec::with_capacity(num_classes);
-
-    for i in 0..num_classes {
-        let count = stats.class_counts.get(i).copied().unwrap_or(0) as f64;
-        if count == 0.0 {
-            weights.push(1.0);
-            continue;
-        }
-        let freq = count / total;
-        let w = match strategy {
-            ClassWeightStrategy::Inverse => 1.0 / freq,
-            ClassWeightStrategy::SqrtInverse => 1.0 / freq.sqrt(),
-        };
-        weights.push(w as f32);
-    }
-
-    // Normalize so mean weight = 1.0
-    let mean: f32 = weights.iter().sum::<f32>() / weights.len() as f32;
-    if mean > 0.0 {
-        for w in &mut weights {
-            *w /= mean;
-        }
-    }
-
-    weights
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 #[path = "classification_tests.rs"]
