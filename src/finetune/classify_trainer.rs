@@ -14,6 +14,7 @@
 
 use super::classification::SafetySample;
 use super::classify_pipeline::ClassifyPipeline;
+use crate::eval::classification::{ConfusionMatrix, MultiClassMetrics};
 use crate::optim::LRScheduler;
 use crate::optim::WarmupCosineDecayLR;
 use std::path::{Path, PathBuf};
@@ -501,6 +502,63 @@ impl ClassifyTrainer {
         // Save APR format
         self.save_apr_checkpoint(path, epoch, metrics)?;
 
+        // ── HuggingFace-compatible metadata (config.json, adapter_config.json, tokenizer.json) ──
+
+        // config.json: HF model architecture config
+        let model_config = &self.pipeline.model.config;
+        let hf_config = serde_json::json!({
+            "architectures": ["Qwen2ForSequenceClassification"],
+            "model_type": "qwen2",
+            "hidden_size": model_config.hidden_size,
+            "num_attention_heads": model_config.num_attention_heads,
+            "num_key_value_heads": model_config.num_kv_heads,
+            "intermediate_size": model_config.intermediate_size,
+            "num_hidden_layers": model_config.num_hidden_layers,
+            "vocab_size": model_config.vocab_size,
+            "max_position_embeddings": model_config.max_position_embeddings,
+            "rms_norm_eps": model_config.rms_norm_eps,
+            "rope_theta": model_config.rope_theta,
+            "use_cache": true,
+            "torch_dtype": "float32",
+            "num_labels": self.pipeline.config.num_classes,
+            "problem_type": "single_label_classification",
+        });
+        let config_json = serde_json::to_string_pretty(&hf_config).map_err(|e| {
+            crate::Error::Serialization(format!("Failed to serialize config.json: {e}"))
+        })?;
+        std::fs::write(path.join("config.json"), config_json)?;
+
+        // adapter_config.json: PEFT adapter configuration
+        let lora_config = crate::lora::LoRAConfig::new(
+            self.pipeline.config.lora_rank,
+            self.pipeline.config.lora_alpha,
+        )
+        .target_qv_projections();
+
+        let base_model = self
+            .pipeline
+            .model_dir()
+            .map(|p| p.display().to_string());
+
+        let peft_config =
+            crate::lora::PeftAdapterConfig::from_lora_config(&lora_config, base_model.as_deref())
+                .with_task_type("SEQ_CLS");
+
+        let adapter_json = peft_config.to_json().map_err(|e| {
+            crate::Error::Serialization(format!("Failed to serialize adapter_config.json: {e}"))
+        })?;
+        std::fs::write(path.join("adapter_config.json"), adapter_json)?;
+
+        // tokenizer.json: copy from base model directory (if available)
+        if let Some(model_dir) = self.pipeline.model_dir() {
+            let src = model_dir.join("tokenizer.json");
+            if src.exists() {
+                std::fs::copy(&src, path.join("tokenizer.json")).map_err(|e| {
+                    crate::Error::Io(format!("Failed to copy tokenizer.json: {e}"))
+                })?;
+            }
+        }
+
         Ok(())
     }
 
@@ -603,6 +661,417 @@ impl ClassifyTrainer {
     pub fn pipeline_mut(&mut self) -> &mut ClassifyPipeline {
         &mut self.pipeline
     }
+
+    /// Evaluate the model on a dataset, returning structured per-class metrics.
+    ///
+    /// Runs forward-only on every sample, collects predictions, and computes
+    /// precision/recall/F1/confusion matrix via `ConfusionMatrix` and `MultiClassMetrics`.
+    ///
+    /// # Arguments
+    /// * `data` - Labeled samples to evaluate on
+    /// * `label_names` - Human-readable class names (length must match num_classes)
+    pub fn evaluate(&mut self, data: &[SafetySample], label_names: &[String]) -> ClassifyEvalReport {
+        let start = std::time::Instant::now();
+        let num_classes = self.pipeline.config.num_classes;
+
+        let mut y_true: Vec<usize> = Vec::with_capacity(data.len());
+        let mut y_pred: Vec<usize> = Vec::with_capacity(data.len());
+        let mut total_loss = 0.0f32;
+
+        for sample in data {
+            let ids = self.pipeline.tokenize(&sample.input);
+            let (loss, predicted) = self.pipeline.forward_only(&ids, sample.label);
+            total_loss += loss;
+            y_true.push(sample.label);
+            y_pred.push(predicted);
+        }
+
+        ClassifyEvalReport::from_predictions(
+            &y_pred,
+            &y_true,
+            total_loss,
+            num_classes,
+            label_names,
+            start.elapsed().as_millis() as u64,
+        )
+    }
+}
+
+/// Evaluation report from the classification pipeline.
+///
+/// Contains per-class precision/recall/F1, confusion matrix, and aggregate metrics.
+/// Produced by [`ClassifyTrainer::evaluate`] or [`evaluate_checkpoint`].
+#[derive(Debug, Clone)]
+pub struct ClassifyEvalReport {
+    /// Overall accuracy (0.0-1.0)
+    pub accuracy: f64,
+    /// Average cross-entropy loss
+    pub avg_loss: f32,
+    /// Per-class precision (0.0-1.0)
+    pub per_class_precision: Vec<f64>,
+    /// Per-class recall (0.0-1.0)
+    pub per_class_recall: Vec<f64>,
+    /// Per-class F1 score (0.0-1.0)
+    pub per_class_f1: Vec<f64>,
+    /// Per-class support (sample count)
+    pub per_class_support: Vec<usize>,
+    /// Confusion matrix: `confusion_matrix[true][predicted]`
+    pub confusion_matrix: Vec<Vec<usize>>,
+    /// Number of classes
+    pub num_classes: usize,
+    /// Total samples evaluated
+    pub total_samples: usize,
+    /// Evaluation wall-clock time in milliseconds
+    pub eval_time_ms: u64,
+    /// Human-readable class names
+    pub label_names: Vec<String>,
+}
+
+impl ClassifyEvalReport {
+    /// Build a report from raw predictions.
+    fn from_predictions(
+        y_pred: &[usize],
+        y_true: &[usize],
+        total_loss: f32,
+        num_classes: usize,
+        label_names: &[String],
+        eval_time_ms: u64,
+    ) -> Self {
+        let total_samples = y_pred.len();
+        let avg_loss = if total_samples > 0 {
+            total_loss / total_samples as f32
+        } else {
+            0.0
+        };
+
+        let cm = ConfusionMatrix::from_predictions(y_pred, y_true);
+        let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
+
+        Self {
+            accuracy: cm.accuracy(),
+            avg_loss,
+            per_class_precision: metrics.precision,
+            per_class_recall: metrics.recall,
+            per_class_f1: metrics.f1,
+            per_class_support: metrics.support,
+            confusion_matrix: cm.matrix().clone(),
+            num_classes,
+            total_samples,
+            eval_time_ms,
+            label_names: label_names.to_vec(),
+        }
+    }
+
+    /// Format as a human-readable sklearn-style classification report.
+    #[must_use]
+    pub fn to_report(&self) -> String {
+        use crate::eval::classification::Average;
+
+        let mut out = String::new();
+
+        // Header
+        out.push_str(&format!(
+            "{:>18} {:>10} {:>10} {:>10} {:>10}\n",
+            "", "precision", "recall", "f1-score", "support"
+        ));
+        out.push_str(&format!("{}\n", "-".repeat(62)));
+
+        // Per-class rows
+        for i in 0..self.num_classes {
+            let name = self
+                .label_names
+                .get(i)
+                .map_or_else(|| format!("Class {i}"), |n| n.clone());
+            out.push_str(&format!(
+                "{:>18} {:>10.4} {:>10.4} {:>10.4} {:>10}\n",
+                name,
+                self.per_class_precision[i],
+                self.per_class_recall[i],
+                self.per_class_f1[i],
+                self.per_class_support[i],
+            ));
+        }
+
+        out.push_str(&format!("{}\n", "-".repeat(62)));
+
+        let total_support: usize = self.per_class_support.iter().sum();
+
+        // Macro average
+        let macro_p = self.avg_metric(&self.per_class_precision, Average::Macro);
+        let macro_r = self.avg_metric(&self.per_class_recall, Average::Macro);
+        let macro_f1 = self.avg_metric(&self.per_class_f1, Average::Macro);
+        out.push_str(&format!(
+            "{:>18} {:>10.4} {:>10.4} {:>10.4} {:>10}\n",
+            "macro avg", macro_p, macro_r, macro_f1, total_support,
+        ));
+
+        // Weighted average
+        let weighted_p = self.avg_metric(&self.per_class_precision, Average::Weighted);
+        let weighted_r = self.avg_metric(&self.per_class_recall, Average::Weighted);
+        let weighted_f1 = self.avg_metric(&self.per_class_f1, Average::Weighted);
+        out.push_str(&format!(
+            "{:>18} {:>10.4} {:>10.4} {:>10.4} {:>10}\n",
+            "weighted avg", weighted_p, weighted_r, weighted_f1, total_support,
+        ));
+
+        out.push_str(&format!("\nAccuracy: {:.4}\n", self.accuracy));
+        out.push_str(&format!("Avg loss: {:.4}\n", self.avg_loss));
+        out.push_str(&format!("Samples:  {}\n", self.total_samples));
+        out.push_str(&format!("Time:     {}ms\n", self.eval_time_ms));
+
+        out
+    }
+
+    /// Format as JSON string.
+    ///
+    /// Uses `serde_json::json!` internally — infallible.
+    #[must_use]
+    #[allow(clippy::disallowed_methods)]
+    pub fn to_json(&self) -> String {
+        let per_class: Vec<serde_json::Value> = (0..self.num_classes)
+            .map(|i| {
+                let name = self
+                    .label_names
+                    .get(i)
+                    .map_or_else(|| format!("class_{i}"), |n| n.clone());
+                serde_json::json!({
+                    "label": name,
+                    "precision": self.per_class_precision[i],
+                    "recall": self.per_class_recall[i],
+                    "f1": self.per_class_f1[i],
+                    "support": self.per_class_support[i],
+                })
+            })
+            .collect();
+
+        let json = serde_json::json!({
+            "accuracy": self.accuracy,
+            "avg_loss": self.avg_loss,
+            "total_samples": self.total_samples,
+            "num_classes": self.num_classes,
+            "eval_time_ms": self.eval_time_ms,
+            "per_class": per_class,
+            "confusion_matrix": self.confusion_matrix,
+        });
+
+        serde_json::to_string_pretty(&json).unwrap_or_default()
+    }
+
+    /// Generate a HuggingFace-compatible model card (README.md) from evaluation results.
+    ///
+    /// Includes YAML front matter with metrics, per-class table, confusion matrix,
+    /// and label descriptions.
+    #[must_use]
+    pub fn to_model_card(&self, model_name: &str, base_model: Option<&str>) -> String {
+        use crate::eval::classification::Average;
+
+        let mut out = String::new();
+
+        // ── YAML front matter ──────────────────────────────────────────
+        out.push_str("---\n");
+        out.push_str("license: apache-2.0\n");
+        out.push_str("language:\n- en\n");
+        out.push_str("tags:\n- shell-safety\n- code-classification\n- lora\n- entrenar\n");
+        if let Some(base) = base_model {
+            out.push_str(&format!("base_model: {base}\n"));
+        }
+        out.push_str("pipeline_tag: text-classification\n");
+        out.push_str("model-index:\n");
+        out.push_str(&format!("- name: {model_name}\n"));
+        out.push_str("  results:\n");
+        out.push_str("  - task:\n");
+        out.push_str("      type: text-classification\n");
+        out.push_str("      name: Shell Safety Classification\n");
+        out.push_str("    metrics:\n");
+        out.push_str(&format!("    - type: accuracy\n      value: {:.4}\n", self.accuracy));
+        let macro_f1 = self.avg_metric(&self.per_class_f1, Average::Macro);
+        out.push_str(&format!("    - type: f1\n      value: {macro_f1:.4}\n"));
+        out.push_str("---\n\n");
+
+        // ── Markdown body ──────────────────────────────────────────────
+        out.push_str(&format!("# {model_name}\n\n"));
+        out.push_str("A shell command safety classifier that categorizes shell commands into 5 safety classes.\n\n");
+        out.push_str("Trained with [entrenar](https://github.com/paiml/entrenar) using LoRA fine-tuning");
+        if let Some(base) = base_model {
+            out.push_str(&format!(" on `{base}`"));
+        }
+        out.push_str(".\n\n");
+
+        // Labels section
+        out.push_str("## Labels\n\n");
+        out.push_str("| ID | Label | Description |\n");
+        out.push_str("|----|-------|-------------|\n");
+        let descriptions = [
+            "Command is safe to execute",
+            "Command needs variable quoting for safety",
+            "Command contains non-deterministic elements ($RANDOM, $$, etc.)",
+            "Command is not idempotent (unsafe to re-run)",
+            "Command is unsafe (destructive or injection risk)",
+        ];
+        for (i, name) in self.label_names.iter().enumerate() {
+            let desc = descriptions.get(i).unwrap_or(&"");
+            out.push_str(&format!("| {i} | {name} | {desc} |\n"));
+        }
+        out.push('\n');
+
+        // Evaluation results
+        out.push_str("## Evaluation Results\n\n");
+        out.push_str(&format!("**Accuracy**: {:.2}%\n\n", self.accuracy * 100.0));
+        out.push_str("### Per-Class Metrics\n\n");
+        out.push_str("| Label | Precision | Recall | F1 | Support |\n");
+        out.push_str("|-------|-----------|--------|----|---------|\n");
+        for i in 0..self.num_classes {
+            let name = self
+                .label_names
+                .get(i)
+                .map_or_else(|| format!("class_{i}"), |n| n.clone());
+            out.push_str(&format!(
+                "| {} | {:.4} | {:.4} | {:.4} | {} |\n",
+                name,
+                self.per_class_precision[i],
+                self.per_class_recall[i],
+                self.per_class_f1[i],
+                self.per_class_support[i],
+            ));
+        }
+        out.push('\n');
+
+        // Confusion matrix
+        out.push_str("### Confusion Matrix\n\n");
+        out.push_str("```\n");
+        // Header row
+        out.push_str(&format!("{:>18}", "Predicted →"));
+        for name in &self.label_names {
+            let short = if name.len() > 8 {
+                &name[..8]
+            } else {
+                name.as_str()
+            };
+            out.push_str(&format!(" {:>8}", short));
+        }
+        out.push('\n');
+        // Data rows
+        for (i, row) in self.confusion_matrix.iter().enumerate() {
+            let name = self
+                .label_names
+                .get(i)
+                .map_or_else(|| format!("class_{i}"), |n| n.clone());
+            let short = if name.len() > 18 {
+                &name[..18]
+            } else {
+                name.as_str()
+            };
+            out.push_str(&format!("{:>18}", short));
+            for val in row {
+                out.push_str(&format!(" {:>8}", val));
+            }
+            out.push('\n');
+        }
+        out.push_str("```\n\n");
+
+        // Footer
+        out.push_str("---\n*Generated by [entrenar](https://github.com/paiml/entrenar)*\n");
+
+        out
+    }
+
+    /// Average a metric vector using the given strategy.
+    fn avg_metric(&self, values: &[f64], average: crate::eval::classification::Average) -> f64 {
+        match average {
+            crate::eval::classification::Average::Macro => {
+                if values.is_empty() {
+                    0.0
+                } else {
+                    values.iter().sum::<f64>() / values.len() as f64
+                }
+            }
+            crate::eval::classification::Average::Weighted => {
+                let total: usize = self.per_class_support.iter().sum();
+                if total == 0 {
+                    return 0.0;
+                }
+                values
+                    .iter()
+                    .zip(self.per_class_support.iter())
+                    .map(|(&v, &s)| v * s as f64)
+                    .sum::<f64>()
+                    / total as f64
+            }
+            _ => {
+                // Fallback to macro
+                if values.is_empty() {
+                    0.0
+                } else {
+                    values.iter().sum::<f64>() / values.len() as f64
+                }
+            }
+        }
+    }
+}
+
+/// SSC label names used across the shell safety classifier.
+pub const SSC_LABELS: [&str; 5] = [
+    "safe",
+    "needs-quoting",
+    "non-deterministic",
+    "non-idempotent",
+    "unsafe",
+];
+
+/// Evaluate a saved checkpoint against a test JSONL dataset.
+///
+/// Standalone function that loads a checkpoint, builds a pipeline, and runs
+/// evaluation without needing a full `ClassifyTrainer` setup.
+///
+/// # Arguments
+/// * `checkpoint_dir` - Directory containing `model.safetensors` + `tokenizer.json`
+/// * `test_data` - JSONL file with `{"input": "...", "label": N}` entries
+/// * `model_config` - Transformer architecture config (must match checkpoint)
+/// * `classify_config` - Classification config (num_classes, etc.)
+/// * `label_names` - Human-readable class names
+///
+/// # Errors
+/// Returns error if checkpoint or test data cannot be loaded.
+pub fn evaluate_checkpoint(
+    checkpoint_dir: &Path,
+    test_data: &Path,
+    model_config: &crate::transformer::TransformerConfig,
+    classify_config: super::classify_pipeline::ClassifyConfig,
+    label_names: &[String],
+) -> crate::Result<ClassifyEvalReport> {
+    use super::classification::load_safety_corpus;
+
+    let start = std::time::Instant::now();
+    let num_classes = classify_config.num_classes;
+
+    // Load pipeline from checkpoint
+    let mut pipeline =
+        ClassifyPipeline::from_pretrained(checkpoint_dir, model_config, classify_config)?;
+
+    // Load test corpus
+    let samples = load_safety_corpus(test_data, num_classes)?;
+
+    // Run forward-only on all samples
+    let mut y_true: Vec<usize> = Vec::with_capacity(samples.len());
+    let mut y_pred: Vec<usize> = Vec::with_capacity(samples.len());
+    let mut total_loss = 0.0f32;
+
+    for sample in &samples {
+        let ids = pipeline.tokenize(&sample.input);
+        let (loss, predicted) = pipeline.forward_only(&ids, sample.label);
+        total_loss += loss;
+        y_true.push(sample.label);
+        y_pred.push(predicted);
+    }
+
+    Ok(ClassifyEvalReport::from_predictions(
+        &y_pred,
+        &y_true,
+        total_loss,
+        num_classes,
+        label_names,
+        start.elapsed().as_millis() as u64,
+    ))
 }
 
 #[cfg(test)]
