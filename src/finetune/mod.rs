@@ -37,7 +37,10 @@ pub use classification::{
     MultiLabelSafetySample, SafetyCorpusStats, SafetySample,
 };
 pub use classify_pipeline::{BatchResult, ClassifyConfig, ClassifyPipeline};
-pub use classify_trainer::{ClassifyTrainer, EpochMetrics, TrainResult, TrainingConfig};
+pub use classify_trainer::{
+    evaluate_checkpoint, ClassifyEvalReport, ClassifyTrainer, EpochMetrics, TrainResult,
+    TrainingConfig, SSC_LABELS,
+};
 pub use classify_tuner::{
     default_classify_search_space, extract_trial_params, ClassifyTuner, SchedulerKind,
     TrialSummary, TuneConfig, TuneResult, TuneScheduler, TuneSearcher, TuneStrategy,
