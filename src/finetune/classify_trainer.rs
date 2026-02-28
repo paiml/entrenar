@@ -747,6 +747,19 @@ pub struct ClassifyEvalReport {
     pub calibration_bins: Vec<(f64, f64, usize)>,
     /// Expected Calibration Error (lower is better, 0 = perfectly calibrated)
     pub ece: f64,
+    /// Brier score (multi-class mean squared error of probabilities, lower is better)
+    pub brier_score: f64,
+    /// Log loss (negative log-likelihood of true class, lower is better)
+    pub log_loss: f64,
+    /// Bootstrap 95% confidence intervals: (lower, upper) for (accuracy, macro_f1, mcc)
+    pub ci_accuracy: (f64, f64),
+    pub ci_macro_f1: (f64, f64),
+    pub ci_mcc: (f64, f64),
+    /// Baseline accuracies: (random, majority_class, stratified_random)
+    pub baseline_random: f64,
+    pub baseline_majority: f64,
+    /// Most confused class pairs: (true_class, pred_class, count)
+    pub top_confusions: Vec<(usize, usize, usize)>,
 }
 
 impl ClassifyEvalReport {
@@ -795,6 +808,17 @@ impl ClassifyEvalReport {
             0.0
         };
 
+        let brier_score = Self::compute_brier_score(all_probs, y_true, num_classes);
+        let log_loss = Self::compute_log_loss(all_probs, y_true);
+
+        let (ci_accuracy, ci_macro_f1, ci_mcc) =
+            Self::compute_bootstrap_cis(y_pred, y_true, num_classes, 1000);
+
+        let (baseline_random, baseline_majority) =
+            Self::compute_baselines(&metrics.support, total_samples, num_classes);
+
+        let top_confusions = Self::compute_top_confusions(cm.matrix(), 5);
+
         Self {
             accuracy,
             avg_loss,
@@ -816,6 +840,14 @@ impl ClassifyEvalReport {
             samples_per_sec,
             calibration_bins,
             ece,
+            brier_score,
+            log_loss,
+            ci_accuracy,
+            ci_macro_f1,
+            ci_mcc,
+            baseline_random,
+            baseline_majority,
+            top_confusions,
         }
     }
 
@@ -915,40 +947,6 @@ impl ClassifyEvalReport {
         (bins, ece)
     }
 
-    /// Build a report from raw predictions (without probabilities).
-    ///
-    /// Used when probability distributions are not available.
-    /// Advanced metrics (calibration, confidence, top-2) will be zeroed.
-    fn from_predictions(
-        y_pred: &[usize],
-        y_true: &[usize],
-        total_loss: f32,
-        num_classes: usize,
-        label_names: &[String],
-        eval_time_ms: u64,
-    ) -> Self {
-        // Create dummy uniform probabilities for the basic path
-        let dummy_probs: Vec<Vec<f32>> = y_pred
-            .iter()
-            .map(|&pred| {
-                let mut p = vec![0.0f32; num_classes];
-                if pred < num_classes {
-                    p[pred] = 1.0;
-                }
-                p
-            })
-            .collect();
-        Self::from_predictions_with_probs(
-            y_pred,
-            y_true,
-            &dummy_probs,
-            total_loss,
-            num_classes,
-            label_names,
-            eval_time_ms,
-        )
-    }
-
     /// Cohen's kappa: chance-corrected agreement.
     ///
     /// kappa = (p_o - p_e) / (1 - p_e)
@@ -1015,6 +1013,142 @@ impl ClassifyEvalReport {
         numer / denom_sq.sqrt()
     }
 
+    /// Multi-class Brier score: mean of sum_k (p_k - y_k)^2 across samples.
+    fn compute_brier_score(all_probs: &[Vec<f32>], y_true: &[usize], num_classes: usize) -> f64 {
+        if all_probs.is_empty() {
+            return 0.0;
+        }
+        let total: f64 = all_probs
+            .iter()
+            .zip(y_true.iter())
+            .map(|(probs, &true_label)| {
+                (0..num_classes)
+                    .map(|k| {
+                        let p = *probs.get(k).unwrap_or(&0.0) as f64;
+                        let y = if k == true_label { 1.0 } else { 0.0 };
+                        (p - y) * (p - y)
+                    })
+                    .sum::<f64>()
+            })
+            .sum();
+        total / all_probs.len() as f64
+    }
+
+    /// Log loss: -mean(log(p_true_class)).
+    fn compute_log_loss(all_probs: &[Vec<f32>], y_true: &[usize]) -> f64 {
+        if all_probs.is_empty() {
+            return 0.0;
+        }
+        let eps = 1e-15_f64;
+        let total: f64 = all_probs
+            .iter()
+            .zip(y_true.iter())
+            .map(|(probs, &true_label)| {
+                let p = probs.get(true_label).copied().unwrap_or(0.0) as f64;
+                -p.clamp(eps, 1.0 - eps).ln()
+            })
+            .sum();
+        total / all_probs.len() as f64
+    }
+
+    /// Bootstrap 95% confidence intervals for accuracy, macro F1, and MCC.
+    ///
+    /// Uses percentile method with `n_boot` resamples. Deterministic seed
+    /// for reproducibility.
+    fn compute_bootstrap_cis(
+        y_pred: &[usize],
+        y_true: &[usize],
+        num_classes: usize,
+        n_boot: usize,
+    ) -> ((f64, f64), (f64, f64), (f64, f64)) {
+        let n = y_pred.len();
+        if n == 0 {
+            return ((0.0, 0.0), (0.0, 0.0), (0.0, 0.0));
+        }
+
+        let mut accs = Vec::with_capacity(n_boot);
+        let mut f1s = Vec::with_capacity(n_boot);
+        let mut mccs = Vec::with_capacity(n_boot);
+
+        // Simple LCG PRNG (deterministic, no dependency needed)
+        let mut rng_state: u64 = 42;
+        let lcg_next = |state: &mut u64| -> usize {
+            *state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            ((*state >> 33) as usize) % n
+        };
+
+        for _ in 0..n_boot {
+            // Resample with replacement
+            let mut boot_pred = Vec::with_capacity(n);
+            let mut boot_true = Vec::with_capacity(n);
+            for _ in 0..n {
+                let idx = lcg_next(&mut rng_state);
+                boot_pred.push(y_pred[idx]);
+                boot_true.push(y_true[idx]);
+            }
+
+            let cm = ConfusionMatrix::from_predictions(&boot_pred, &boot_true);
+            let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
+
+            accs.push(cm.accuracy());
+
+            // Macro F1
+            let valid_f1: Vec<f64> = metrics.f1.iter().copied().filter(|v| !v.is_nan()).collect();
+            let macro_f1 = if valid_f1.is_empty() {
+                0.0
+            } else {
+                valid_f1.iter().sum::<f64>() / valid_f1.len() as f64
+            };
+            f1s.push(macro_f1);
+
+            mccs.push(Self::compute_mcc(&cm, num_classes, n));
+        }
+
+        accs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        f1s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        mccs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let lo = (0.025 * n_boot as f64) as usize;
+        let hi = (0.975 * n_boot as f64).ceil() as usize;
+        let hi = hi.min(n_boot - 1);
+
+        ((accs[lo], accs[hi]), (f1s[lo], f1s[hi]), (mccs[lo], mccs[hi]))
+    }
+
+    /// Compute baseline accuracies: random and majority-class.
+    fn compute_baselines(
+        support: &[usize],
+        total: usize,
+        num_classes: usize,
+    ) -> (f64, f64) {
+        let random = if num_classes > 0 {
+            1.0 / num_classes as f64
+        } else {
+            0.0
+        };
+        let majority = if total > 0 {
+            support.iter().copied().max().unwrap_or(0) as f64 / total as f64
+        } else {
+            0.0
+        };
+        (random, majority)
+    }
+
+    /// Extract top-N most confused class pairs from the confusion matrix (off-diagonal).
+    fn compute_top_confusions(matrix: &[Vec<usize>], top_n: usize) -> Vec<(usize, usize, usize)> {
+        let mut pairs: Vec<(usize, usize, usize)> = Vec::new();
+        for (i, row) in matrix.iter().enumerate() {
+            for (j, &count) in row.iter().enumerate() {
+                if i != j && count > 0 {
+                    pairs.push((i, j, count));
+                }
+            }
+        }
+        pairs.sort_by(|a, b| b.2.cmp(&a.2));
+        pairs.truncate(top_n);
+        pairs
+    }
+
     /// Format as a human-readable sklearn-style classification report.
     #[must_use]
     pub fn to_report(&self) -> String {
@@ -1068,20 +1202,44 @@ impl ClassifyEvalReport {
         ));
 
         // ── Summary metrics ───────────────────────────────────────
-        out.push_str(&format!("\nAccuracy:       {:.4}  ({:.1}%)\n", self.accuracy, self.accuracy * 100.0));
+        self.report_summary(&mut out);
+        self.report_confidence(&mut out);
+        self.report_scoring_rules(&mut out);
+        self.report_calibration(&mut out);
+        self.report_baselines(&mut out);
+        self.report_top_confusions(&mut out);
+        self.report_throughput(&mut out);
+        out
+    }
+
+    fn report_summary(&self, out: &mut String) {
+        out.push_str(&format!("\nAccuracy:       {:.4}  ({:.1}%)  95% CI [{:.4}, {:.4}]\n",
+            self.accuracy, self.accuracy * 100.0, self.ci_accuracy.0, self.ci_accuracy.1));
         out.push_str(&format!("Top-2 accuracy: {:.4}  ({:.1}%)\n", self.top2_accuracy, self.top2_accuracy * 100.0));
         out.push_str(&format!("Cohen's kappa:  {:.4}  ({})\n", self.cohens_kappa, Self::kappa_interpretation(self.cohens_kappa)));
-        out.push_str(&format!("MCC:            {:.4}\n", self.mcc));
+        out.push_str(&format!("MCC:            {:.4}  95% CI [{:.4}, {:.4}]\n", self.mcc, self.ci_mcc.0, self.ci_mcc.1));
+        out.push_str(&format!("Macro F1:       {:.4}  95% CI [{:.4}, {:.4}]\n",
+            self.avg_metric(&self.per_class_f1, crate::eval::classification::Average::Macro),
+            self.ci_macro_f1.0, self.ci_macro_f1.1));
         out.push_str(&format!("Avg loss:       {:.4}\n", self.avg_loss));
+    }
 
-        // ── Confidence analysis ──────────────────────────────────────
+    fn report_confidence(&self, out: &mut String) {
         out.push_str(&format!("\nConfidence (mean): {:.4}\n", self.mean_confidence));
         out.push_str(&format!("  correct preds:   {:.4}\n", self.mean_confidence_correct));
         out.push_str(&format!("  wrong preds:     {:.4}\n", self.mean_confidence_wrong));
         let gap = self.mean_confidence_correct - self.mean_confidence_wrong;
         out.push_str(&format!("  gap (higher=better): {:.4}\n", gap));
+    }
 
-        // ── Calibration ──────────────────────────────────────────────
+    fn report_scoring_rules(&self, out: &mut String) {
+        out.push_str(&format!("\nBrier score:    {:.4}  (perfect=0, random={:.4})\n",
+            self.brier_score, 1.0 - 1.0 / self.num_classes as f64));
+        out.push_str(&format!("Log loss:       {:.4}  (random={:.4})\n",
+            self.log_loss, (self.num_classes as f64).ln()));
+    }
+
+    fn report_calibration(&self, out: &mut String) {
         out.push_str(&format!("\nECE (Expected Calibration Error): {:.4}\n", self.ece));
         out.push_str("Calibration:\n");
         out.push_str("  Bin       Confidence  Accuracy    Count\n");
@@ -1097,12 +1255,32 @@ impl ClassifyEvalReport {
                 ));
             }
         }
+    }
 
-        // ── Throughput ───────────────────────────────────────────────
+    fn report_baselines(&self, out: &mut String) {
+        out.push_str(&format!("\nBaselines:  random={:.1}%  majority={:.1}%  model={:.1}%  lift={:.1}x\n",
+            self.baseline_random * 100.0,
+            self.baseline_majority * 100.0,
+            self.accuracy * 100.0,
+            if self.baseline_majority > 0.0 { self.accuracy / self.baseline_majority } else { 0.0 },
+        ));
+    }
+
+    fn report_top_confusions(&self, out: &mut String) {
+        if self.top_confusions.is_empty() {
+            return;
+        }
+        out.push_str("\nTop confusions (true → predicted, count):\n");
+        for &(true_c, pred_c, count) in &self.top_confusions {
+            let true_name = self.label_names.get(true_c).map_or("?", |n| n.as_str());
+            let pred_name = self.label_names.get(pred_c).map_or("?", |n| n.as_str());
+            out.push_str(&format!("  {true_name} → {pred_name}: {count}\n"));
+        }
+    }
+
+    fn report_throughput(&self, out: &mut String) {
         out.push_str(&format!("\nSamples:   {}\n", self.total_samples));
         out.push_str(&format!("Time:      {}ms ({:.1} samples/sec)\n", self.eval_time_ms, self.samples_per_sec));
-
-        out
     }
 
     /// Interpret Cohen's kappa value.
@@ -1159,18 +1337,39 @@ impl ClassifyEvalReport {
             })
             .collect();
 
+        let confusions: Vec<serde_json::Value> = self.top_confusions.iter().map(|&(t, p, c)| {
+            serde_json::json!({
+                "true_class": self.label_names.get(t).cloned().unwrap_or_else(|| format!("class_{t}")),
+                "pred_class": self.label_names.get(p).cloned().unwrap_or_else(|| format!("class_{p}")),
+                "count": c,
+            })
+        }).collect();
+
         let json = serde_json::json!({
             "accuracy": self.accuracy,
             "top2_accuracy": self.top2_accuracy,
             "cohens_kappa": self.cohens_kappa,
             "mcc": self.mcc,
             "avg_loss": self.avg_loss,
+            "brier_score": self.brier_score,
+            "log_loss": self.log_loss,
             "total_samples": self.total_samples,
             "num_classes": self.num_classes,
             "eval_time_ms": self.eval_time_ms,
             "samples_per_sec": self.samples_per_sec,
+            "confidence_intervals_95": {
+                "accuracy": [self.ci_accuracy.0, self.ci_accuracy.1],
+                "macro_f1": [self.ci_macro_f1.0, self.ci_macro_f1.1],
+                "mcc": [self.ci_mcc.0, self.ci_mcc.1],
+            },
+            "baselines": {
+                "random": self.baseline_random,
+                "majority_class": self.baseline_majority,
+                "lift_over_majority": if self.baseline_majority > 0.0 { self.accuracy / self.baseline_majority } else { 0.0 },
+            },
             "per_class": per_class,
             "confusion_matrix": self.confusion_matrix,
+            "top_confusions": confusions,
             "confidence": {
                 "mean": self.mean_confidence,
                 "mean_correct": self.mean_confidence_correct,
@@ -1179,6 +1378,8 @@ impl ClassifyEvalReport {
             },
             "calibration": {
                 "ece": self.ece,
+                "brier_score": self.brier_score,
+                "log_loss": self.log_loss,
                 "bins": calibration,
             },
         });
@@ -1205,6 +1406,7 @@ impl ClassifyEvalReport {
         self.card_labels(&mut out);
         self.card_per_class_metrics(&mut out);
         self.card_confusion_matrix(&mut out);
+        self.card_error_analysis(&mut out);
         self.card_calibration(&mut out);
         Self::card_intended_use(&mut out);
         self.card_limitations(&mut out);
@@ -1258,18 +1460,26 @@ impl ClassifyEvalReport {
 
     fn card_summary(&self, out: &mut String, macro_f1: f64, weighted_f1: f64) {
         out.push_str("## Summary\n\n");
-        out.push_str("| Metric | Value |\n");
-        out.push_str("|--------|-------|\n");
-        out.push_str(&format!("| Accuracy | {:.2}% |\n", self.accuracy * 100.0));
-        out.push_str(&format!("| Top-2 Accuracy | {:.2}% |\n", self.top2_accuracy * 100.0));
-        out.push_str(&format!("| Macro F1 | {macro_f1:.4} |\n"));
-        out.push_str(&format!("| Weighted F1 | {weighted_f1:.4} |\n"));
-        out.push_str(&format!("| Cohen's Kappa | {:.4} ({}) |\n", self.cohens_kappa, Self::kappa_interpretation(self.cohens_kappa)));
-        out.push_str(&format!("| MCC | {:.4} |\n", self.mcc));
-        out.push_str(&format!("| ECE | {:.4} |\n", self.ece));
-        out.push_str(&format!("| Avg Loss | {:.4} |\n", self.avg_loss));
-        out.push_str(&format!("| Eval Samples | {} |\n", self.total_samples));
-        out.push_str(&format!("| Throughput | {:.1} samples/sec |\n\n", self.samples_per_sec));
+        out.push_str("| Metric | Value | 95% CI |\n");
+        out.push_str("|--------|-------|--------|\n");
+        out.push_str(&format!("| Accuracy | {:.2}% | [{:.2}%, {:.2}%] |\n",
+            self.accuracy * 100.0, self.ci_accuracy.0 * 100.0, self.ci_accuracy.1 * 100.0));
+        out.push_str(&format!("| Top-2 Accuracy | {:.2}% | — |\n", self.top2_accuracy * 100.0));
+        out.push_str(&format!("| Macro F1 | {macro_f1:.4} | [{:.4}, {:.4}] |\n", self.ci_macro_f1.0, self.ci_macro_f1.1));
+        out.push_str(&format!("| Weighted F1 | {weighted_f1:.4} | — |\n"));
+        out.push_str(&format!("| Cohen's Kappa | {:.4} ({}) | — |\n", self.cohens_kappa, Self::kappa_interpretation(self.cohens_kappa)));
+        out.push_str(&format!("| MCC | {:.4} | [{:.4}, {:.4}] |\n", self.mcc, self.ci_mcc.0, self.ci_mcc.1));
+        out.push_str(&format!("| Brier Score | {:.4} | — |\n", self.brier_score));
+        out.push_str(&format!("| Log Loss | {:.4} | — |\n", self.log_loss));
+        out.push_str(&format!("| ECE | {:.4} | — |\n", self.ece));
+        out.push_str(&format!("| Avg Loss | {:.4} | — |\n", self.avg_loss));
+        out.push_str(&format!("| Eval Samples | {} | — |\n", self.total_samples));
+        out.push_str(&format!("| Throughput | {:.1} samples/sec | — |\n\n", self.samples_per_sec));
+
+        let lift = if self.baseline_majority > 0.0 { self.accuracy / self.baseline_majority } else { 0.0 };
+        out.push_str("**Baselines**: ");
+        out.push_str(&format!("random={:.1}%, majority={:.1}%, model={:.1}% ({:.1}x lift over majority)\n\n",
+            self.baseline_random * 100.0, self.baseline_majority * 100.0, self.accuracy * 100.0, lift));
     }
 
     fn card_labels(&self, out: &mut String) {
@@ -1388,6 +1598,22 @@ impl ClassifyEvalReport {
             }
         }
         out.push_str("```\n\n");
+    }
+
+    fn card_error_analysis(&self, out: &mut String) {
+        if self.top_confusions.is_empty() {
+            return;
+        }
+        out.push_str("## Error Analysis\n\n");
+        out.push_str("Most frequent misclassifications:\n\n");
+        out.push_str("| True Class | Predicted As | Count |\n");
+        out.push_str("|------------|-------------|-------|\n");
+        for &(true_c, pred_c, count) in &self.top_confusions {
+            let true_name = self.label_names.get(true_c).map_or("?", |n| n.as_str());
+            let pred_name = self.label_names.get(pred_c).map_or("?", |n| n.as_str());
+            out.push_str(&format!("| {true_name} | {pred_name} | {count} |\n"));
+        }
+        out.push('\n');
     }
 
     fn card_intended_use(out: &mut String) {
