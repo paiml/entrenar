@@ -638,8 +638,11 @@ impl ClassifyTrainer {
         })?;
         std::fs::write(&st_path, safetensor_bytes)?;
 
-        // Save APR format
+        // Save APR format (full training state)
         self.save_apr_checkpoint(path, epoch, metrics)?;
+
+        // Save adapter-only APR (F-CKPT-003: no __training__.* tensors)
+        self.save_adapter_apr(path, epoch, metrics)?;
 
         // ── HuggingFace-compatible metadata (config.json, adapter_config.json, tokenizer.json) ──
 
@@ -854,20 +857,144 @@ impl ClassifyTrainer {
         );
 
         // ── NaN/Inf check (F-CKPT-007) ──────────────────────────────────
-        // Validate model tensors before writing (skip training state which
-        // is trusted internal state)
-        let weight_check = weight_slice.iter().all(|v| v.is_finite());
-        let bias_check = bias_slice.iter().all(|v| v.is_finite());
-        if !weight_check || !bias_check {
+        if !weight_slice.iter().all(|v| v.is_finite()) {
             return Err(crate::Error::Serialization(
-                "F-CKPT-007: classifier tensors contain NaN or Inf".to_string(),
+                "F-CKPT-007: classifier.weight contains NaN or Inf".to_string(),
             ));
+        }
+        if !bias_slice.iter().all(|v| v.is_finite()) {
+            return Err(crate::Error::Serialization(
+                "F-CKPT-007: classifier.bias contains NaN or Inf".to_string(),
+            ));
+        }
+        for (idx, lora) in self.pipeline.lora_layers.iter().enumerate() {
+            let a = lora.lora_a().data();
+            let b = lora.lora_b().data();
+            if !a.iter().all(|v| v.is_finite()) {
+                return Err(crate::Error::Serialization(format!(
+                    "F-CKPT-007: lora[{idx}].lora_a contains NaN or Inf"
+                )));
+            }
+            if !b.iter().all(|v| v.is_finite()) {
+                return Err(crate::Error::Serialization(format!(
+                    "F-CKPT-007: lora[{idx}].lora_b contains NaN or Inf"
+                )));
+            }
+        }
+
+        // ── Shape validation (F-CKPT-008) ────────────────────────────────
+        let expected_weight_len = self.pipeline.config.num_classes
+            * self.pipeline.model.config.hidden_size;
+        if weight_slice.len() != expected_weight_len {
+            return Err(crate::Error::Serialization(format!(
+                "F-CKPT-008: classifier.weight shape mismatch: \
+                 expected {} ({}×{}), got {}",
+                expected_weight_len,
+                self.pipeline.config.num_classes,
+                self.pipeline.model.config.hidden_size,
+                weight_slice.len(),
+            )));
+        }
+        if bias_slice.len() != self.pipeline.config.num_classes {
+            return Err(crate::Error::Serialization(format!(
+                "F-CKPT-008: classifier.bias shape mismatch: \
+                 expected {}, got {}",
+                self.pipeline.config.num_classes,
+                bias_slice.len(),
+            )));
         }
 
         let apr_path = path.join("model.apr");
         writer
             .write(&apr_path)
             .map_err(|e| crate::Error::Serialization(format!("APR serialization failed: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Save adapter-only APR (no training state) (F-CKPT-003).
+    ///
+    /// Produces a `.adapter.apr` with zero `__training__.*` tensors.
+    /// Used for publishing and inference deployment.
+    fn save_adapter_apr(&self, path: &Path, epoch: usize, metrics: &EpochMetrics) -> crate::Result<()> {
+        use aprender::serialization::apr::AprWriter;
+
+        let mut writer = AprWriter::new();
+
+        writer.set_metadata(
+            "__checkpoint__.schema_version".to_string(),
+            serde_json::json!("1.3.0"),
+        );
+        writer.set_metadata("model_type".to_string(), serde_json::json!("adapter"));
+        writer.set_metadata("epoch".to_string(), serde_json::json!(epoch));
+        writer.set_metadata("val_loss".to_string(), serde_json::json!(metrics.val_loss));
+        writer.set_metadata("val_accuracy".to_string(), serde_json::json!(metrics.val_accuracy));
+        writer.set_metadata(
+            "architecture".to_string(),
+            serde_json::json!("qwen2_classify"),
+        );
+        writer.set_metadata(
+            "num_classes".to_string(),
+            serde_json::json!(self.pipeline.config.num_classes),
+        );
+        writer.set_metadata(
+            "lora_rank".to_string(),
+            serde_json::json!(self.pipeline.config.lora_rank),
+        );
+        writer.set_metadata(
+            "lora_alpha".to_string(),
+            serde_json::json!(self.pipeline.config.lora_alpha),
+        );
+        writer.set_metadata(
+            "hidden_size".to_string(),
+            serde_json::json!(self.pipeline.model.config.hidden_size),
+        );
+        writer.set_metadata("data_hash".to_string(), serde_json::json!(self.data_hash));
+        writer.set_metadata(
+            "provenance".to_string(),
+            serde_json::json!({
+                "tool": format!("entrenar v{}", env!("CARGO_PKG_VERSION")),
+                "started_at": self.train_start,
+            }),
+        );
+
+        // Classifier head
+        let weight = &self.pipeline.classifier.weight;
+        let weight_data = weight.data();
+        let weight_slice = weight_data.as_slice().expect("contiguous weight");
+        writer.add_tensor_f32("classifier.weight", vec![weight.len()], weight_slice);
+
+        let bias = &self.pipeline.classifier.bias;
+        let bias_data = bias.data();
+        let bias_slice = bias_data.as_slice().expect("contiguous bias");
+        writer.add_tensor_f32("classifier.bias", vec![bias.len()], bias_slice);
+
+        // LoRA adapters (NO __training__.* tensors — F-CKPT-003)
+        for (idx, lora) in self.pipeline.lora_layers.iter().enumerate() {
+            let layer = idx / 2;
+            let proj = if idx % 2 == 0 { "q" } else { "v" };
+
+            let a_data = lora.lora_a().data();
+            let a_slice = a_data.as_slice().expect("contiguous lora_a");
+            writer.add_tensor_f32(
+                format!("lora.{layer}.{proj}_proj.lora_a"),
+                vec![lora.rank(), lora.d_in()],
+                a_slice,
+            );
+
+            let b_data = lora.lora_b().data();
+            let b_slice = b_data.as_slice().expect("contiguous lora_b");
+            writer.add_tensor_f32(
+                format!("lora.{layer}.{proj}_proj.lora_b"),
+                vec![lora.d_out(), lora.rank()],
+                b_slice,
+            );
+        }
+
+        let adapter_path = path.join("model.adapter.apr");
+        writer.write(&adapter_path).map_err(|e| {
+            crate::Error::Serialization(format!("APR adapter serialization failed: {e}"))
+        })?;
 
         Ok(())
     }
@@ -901,12 +1028,22 @@ impl ClassifyTrainer {
             }
         }
 
-        // ── Restore classifier head ─────────────────────────────────────
-        let weight_data = reader.read_tensor_f32("classifier.weight").map_err(|e| {
-            crate::Error::Serialization(format!("Missing classifier.weight: {e}"))
+        // ── Shape-config validation (F-CKPT-014) ────────────────────────
+        let expected_weight = self.pipeline.config.num_classes
+            * self.pipeline.model.config.hidden_size;
+        reader.validate_tensor_shape("classifier.weight", expected_weight).map_err(|e| {
+            crate::Error::Serialization(e)
         })?;
-        let bias_data = reader.read_tensor_f32("classifier.bias").map_err(|e| {
-            crate::Error::Serialization(format!("Missing classifier.bias: {e}"))
+        reader.validate_tensor_shape("classifier.bias", self.pipeline.config.num_classes).map_err(|e| {
+            crate::Error::Serialization(e)
+        })?;
+
+        // ── Restore classifier head (F-CKPT-013: NaN scan) ──────────────
+        let weight_data = reader.read_tensor_f32_checked("classifier.weight").map_err(|e| {
+            crate::Error::Serialization(e)
+        })?;
+        let bias_data = reader.read_tensor_f32_checked("classifier.bias").map_err(|e| {
+            crate::Error::Serialization(e)
         })?;
 
         self.pipeline
