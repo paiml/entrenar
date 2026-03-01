@@ -447,6 +447,7 @@ fn fallback_demo_config() -> TransformerConfig {
         rms_norm_eps: 1e-6,
         rope_theta: QWEN_ROPE_THETA as f32,
         use_bias: false,
+        head_dim_override: None,
     }
 }
 
@@ -515,6 +516,9 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         1e-6
     }) as f32;
     let use_bias = hf_config["attention_bias"].as_bool().unwrap_or(false);
+    let head_dim_override = hf_config["head_dim"]
+        .as_u64()
+        .map(|v| v as usize);
 
     Ok(TransformerConfig {
         hidden_size,
@@ -527,6 +531,7 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         rms_norm_eps,
         rope_theta,
         use_bias,
+        head_dim_override,
     })
 }
 
@@ -555,7 +560,7 @@ fn load_lm_batches(spec: &TrainSpec) -> Result<Vec<LMBatch>> {
     create_demo_lm_batches(batch_size, seq_len)
 }
 
-/// Attempt to load LM batches from the training data file
+/// Attempt to load LM batches from the training data file or directory
 fn try_load_lm_from_file(
     spec: &TrainSpec,
     tokenizer: Option<&HfTokenizer>,
@@ -565,6 +570,19 @@ fn try_load_lm_from_file(
     if !spec.data.train.exists() {
         return None;
     }
+
+    // Handle directory of Parquet shards (ALB-007)
+    if spec.data.train.is_dir() {
+        let tokenizer = tokenizer?;
+        return Some(load_lm_batches_from_parquet(
+            &spec.data.train,
+            tokenizer,
+            batch_size,
+            seq_len,
+            spec.data.input_column.as_deref().unwrap_or("text"),
+        ));
+    }
+
     let ext = spec.data.train.extension()?;
 
     if ext == "json" || ext == "jsonl" {
@@ -794,10 +812,237 @@ fn tokenize_texts_to_batches(
     create_lm_batches_from_sequences(&sequences, batch_size, seq_len)
 }
 
-/// Load LM batches from Parquet file with text column
+/// Load LM batches from Parquet file with text or pre-tokenized columns (ALB-007)
 ///
-/// Note: For now, parquet with text requires converting to JSON first.
-/// Use `alimentar` CLI: `alimentar export input.parquet -o output.jsonl`
+/// Supports two modes:
+/// 1. **Text column** (Utf8): reads text, tokenizes with HfTokenizer, creates LMBatch
+/// 2. **Pre-tokenized column** (List<UInt32/Int32>): reads token ID lists directly
+///
+/// Also handles directory paths containing multiple .parquet shard files.
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn load_lm_batches_from_parquet(
+    path: &std::path::Path,
+    tokenizer: &HfTokenizer,
+    batch_size: usize,
+    seq_len: usize,
+    text_column: &str,
+) -> Result<Vec<LMBatch>> {
+    use alimentar::{ArrowDataset, Dataset};
+
+    // Handle directory of parquet shards
+    if path.is_dir() {
+        return load_lm_batches_from_parquet_dir(path, tokenizer, batch_size, seq_len, text_column);
+    }
+
+    println!("  Loading Parquet LM data: {}", path.display());
+
+    let dataset = ArrowDataset::from_parquet(path).map_err(|e| {
+        Error::ConfigError(format!("Failed to load parquet {}: {e}", path.display()))
+    })?;
+
+    println!("  Loaded {} rows from Parquet", dataset.len());
+
+    let schema = dataset.schema();
+    let column_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+
+    // Try pre-tokenized first (input_ids column with integer list type)
+    if let Some(sequences) = try_extract_pretokenized(&dataset, &column_names) {
+        println!("  Found pre-tokenized column, loaded {} sequences", sequences.len());
+        return create_lm_batches_from_sequences(&sequences, batch_size, seq_len);
+    }
+
+    // Fall back to text column + tokenization
+    let texts = extract_text_column(&dataset, text_column, &column_names)?;
+    println!("  Extracted {} text rows, tokenizing...", texts.len());
+    tokenize_texts_to_batches(&texts, tokenizer, batch_size, seq_len)
+}
+
+/// Load LM batches from a directory of Parquet shard files (ALB-007)
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn load_lm_batches_from_parquet_dir(
+    dir: &std::path::Path,
+    tokenizer: &HfTokenizer,
+    batch_size: usize,
+    seq_len: usize,
+    text_column: &str,
+) -> Result<Vec<LMBatch>> {
+    let mut parquet_files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| Error::ConfigError(format!("Cannot read directory {}: {e}", dir.display())))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "parquet"))
+        .collect();
+
+    parquet_files.sort();
+
+    if parquet_files.is_empty() {
+        return Err(Error::ConfigError(format!(
+            "No .parquet files found in {}",
+            dir.display()
+        )));
+    }
+
+    println!(
+        "  Loading {} Parquet shard(s) from {}",
+        parquet_files.len(),
+        dir.display()
+    );
+
+    let mut all_batches = Vec::new();
+    for file in &parquet_files {
+        let shard_batches =
+            load_lm_batches_from_parquet(file, tokenizer, batch_size, seq_len, text_column)?;
+        all_batches.extend(shard_batches);
+    }
+
+    println!("  Total: {} batches from {} shards", all_batches.len(), parquet_files.len());
+    Ok(all_batches)
+}
+
+/// Try to extract pre-tokenized sequences from a Parquet dataset (ALB-007)
+///
+/// Looks for columns named `input_ids` or `token_ids` containing integer arrays.
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn try_extract_pretokenized(
+    dataset: &alimentar::ArrowDataset,
+    column_names: &[&str],
+) -> Option<Vec<Vec<u32>>> {
+    use alimentar::Dataset;
+
+    let token_col = column_names
+        .iter()
+        .find(|&&n| n == "input_ids" || n == "token_ids")
+        .copied()?;
+
+    let schema = dataset.schema();
+    let col_idx = schema.index_of(token_col).ok()?;
+
+    let mut all_sequences = Vec::new();
+
+    for batch in dataset.iter() {
+        let col = batch.column(col_idx);
+        extract_sequences_from_column(col, &mut all_sequences);
+    }
+
+    if all_sequences.is_empty() { None } else { Some(all_sequences) }
+}
+
+/// Extract token sequences from a single Arrow column (List or flat integer types)
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn extract_sequences_from_column(
+    col: &arrow::array::ArrayRef,
+    sequences: &mut Vec<Vec<u32>>,
+) {
+    use arrow::array::{Array, ListArray};
+
+    if let Some(list_arr) = col.as_any().downcast_ref::<ListArray>() {
+        for i in 0..list_arr.len() {
+            if list_arr.is_null(i) {
+                continue;
+            }
+            let values = list_arr.value(i);
+            let seq = extract_u32_from_array(&values);
+            if !seq.is_empty() {
+                sequences.push(seq);
+            }
+        }
+    } else {
+        // Flat integer column: treat entire column as one sequence
+        let seq = extract_u32_from_array(col.as_ref());
+        if !seq.is_empty() {
+            sequences.push(seq);
+        }
+    }
+}
+
+/// Extract u32 token IDs from an Arrow array (inner values of a ListArray)
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn extract_u32_from_array(array: &dyn arrow::array::Array) -> Vec<u32> {
+    use arrow::array::{Int32Array, Int64Array, UInt32Array};
+
+    if let Some(arr) = array.as_any().downcast_ref::<UInt32Array>() {
+        arr.values().to_vec()
+    } else if let Some(arr) = array.as_any().downcast_ref::<Int32Array>() {
+        arr.values().iter().map(|&v| v as u32).collect()
+    } else if let Some(arr) = array.as_any().downcast_ref::<Int64Array>() {
+        arr.values().iter().map(|&v| v as u32).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+/// Resolve text column name from available columns (ALB-007)
+///
+/// Tries the specified name first, then common alternatives: text, content, code.
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn resolve_text_column_name(text_column: &str, column_names: &[&str]) -> Result<String> {
+    if column_names.contains(&text_column) {
+        return Ok(text_column.to_string());
+    }
+    for &fallback in &["text", "content", "code"] {
+        if column_names.contains(&fallback) {
+            return Ok(fallback.to_string());
+        }
+    }
+    Err(Error::ConfigError(format!(
+        "No text column found in Parquet (tried '{}', 'text', 'content', 'code'). Available: {:?}",
+        text_column, column_names
+    )))
+}
+
+/// Extract text strings from a Parquet dataset column (ALB-007)
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn extract_text_column(
+    dataset: &alimentar::ArrowDataset,
+    text_column: &str,
+    column_names: &[&str],
+) -> Result<Vec<String>> {
+    use alimentar::Dataset;
+
+    let col_name = resolve_text_column_name(text_column, column_names)?;
+
+    let schema = dataset.schema();
+    let col_idx = schema.index_of(&col_name).map_err(|e| {
+        Error::ConfigError(format!("Column '{col_name}' not found: {e}"))
+    })?;
+
+    let mut texts = Vec::new();
+    for batch in dataset.iter() {
+        let col = batch.column(col_idx);
+        extract_strings_from_array(col, &col_name, &mut texts)?;
+    }
+    Ok(texts)
+}
+
+/// Extract non-empty strings from a StringArray column
+#[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+fn extract_strings_from_array(
+    col: &arrow::array::ArrayRef,
+    col_name: &str,
+    texts: &mut Vec<String>,
+) -> Result<()> {
+    use arrow::array::{Array, StringArray};
+
+    let str_arr = col.as_any().downcast_ref::<StringArray>().ok_or_else(|| {
+        Error::ConfigError(format!(
+            "Column '{col_name}' is not a string type (found {:?})",
+            col.data_type()
+        ))
+    })?;
+
+    for i in 0..str_arr.len() {
+        if !str_arr.is_null(i) {
+            let text = str_arr.value(i);
+            if !text.is_empty() {
+                texts.push(text.to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Fallback: Parquet loading without alimentar feature
+#[cfg(not(all(not(target_arch = "wasm32"), feature = "parquet")))]
 fn load_lm_batches_from_parquet(
     path: &std::path::Path,
     _tokenizer: &HfTokenizer,
@@ -805,15 +1050,15 @@ fn load_lm_batches_from_parquet(
     seq_len: usize,
     text_column: &str,
 ) -> Result<Vec<LMBatch>> {
-    // Parquet text loading requires the alimentar runtime.
-    // For now, recommend converting to JSONL first.
     eprintln!(
-        "Warning: Parquet text loading requires conversion. \
-         Use: alimentar export {} -o train.jsonl --text-column {}",
+        "Warning: Parquet LM loading requires the 'parquet' feature. \
+         Build with: cargo build --features parquet"
+    );
+    eprintln!(
+        "  Alternatively, convert to JSONL: alimentar export {} -o train.jsonl --text-column {}",
         path.display(),
         text_column
     );
-    eprintln!("Using demo LM batches for now.");
     create_demo_lm_batches(batch_size, seq_len)
 }
 
@@ -1169,16 +1414,15 @@ mod tests {
     fn test_load_lm_batches_from_parquet_fallback() {
         use std::path::Path;
         let tokenizer = HfTokenizer::qwen2();
-        // Non-existent path triggers fallback
-        let batches = load_lm_batches_from_parquet(
+        // Non-existent path returns error (ALB-007: real parquet loading, not demo fallback)
+        let result = load_lm_batches_from_parquet(
             Path::new("/nonexistent.parquet"),
             &tokenizer,
             4,
             32,
             "text",
-        )
-        .expect("operation should succeed");
-        assert!(!batches.is_empty());
+        );
+        assert!(result.is_err());
     }
 
     #[test]
@@ -1444,5 +1688,135 @@ optimizer:
         assert!(result.unwrap_err().to_string().contains("hub-publish"));
         #[cfg(feature = "hub-publish")]
         let _ = result; // May succeed or fail depending on network
+    }
+
+    /// ALB-007: Parquet text column loading via alimentar
+    #[test]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+    fn test_load_lm_batches_from_parquet_text_column() {
+        use arrow::array::{RecordBatch, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        // Create a temp parquet file with text data
+        let dir = tempfile::tempdir().expect("temp dir should succeed");
+        let parquet_path = dir.path().join("train.parquet");
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("text", DataType::Utf8, false),
+        ]));
+        let texts = StringArray::from(vec![
+            "def hello():\n    print('hello world')",
+            "def add(a, b):\n    return a + b",
+            "class Foo:\n    def __init__(self):\n        self.x = 1",
+            "import os\nprint(os.getcwd())",
+        ]);
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(texts)])
+            .expect("batch creation should succeed");
+
+        let file = std::fs::File::create(&parquet_path).expect("file create should succeed");
+        let mut writer = parquet::arrow::ArrowWriter::try_new(file, schema, None)
+            .expect("writer creation should succeed");
+        writer.write(&batch).expect("write should succeed");
+        writer.close().expect("close should succeed");
+
+        // Load via our new implementation
+        let tokenizer = HfTokenizer::qwen2();
+        let batches = load_lm_batches_from_parquet(
+            &parquet_path,
+            &tokenizer,
+            2,
+            64,
+            "text",
+        )
+        .expect("parquet loading should succeed");
+
+        assert!(!batches.is_empty());
+        // 4 texts with batch_size=2 → at least 2 batches
+        assert!(batches.len() >= 2);
+        assert!(batches[0].batch_size <= 2);
+        assert!(batches[0].seq_len > 0);
+    }
+
+    /// ALB-007: Parquet directory loading (multiple shards)
+    #[test]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+    fn test_load_lm_batches_from_parquet_directory() {
+        use arrow::array::{RecordBatch, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().expect("temp dir should succeed");
+        let shard_dir = dir.path().join("shards");
+        std::fs::create_dir_all(&shard_dir).expect("dir creation should succeed");
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("text", DataType::Utf8, false),
+        ]));
+
+        // Write two shard files
+        for (i, texts) in [
+            vec!["def foo(): pass", "def bar(): return 1"],
+            vec!["class A: pass", "import sys"],
+        ]
+        .iter()
+        .enumerate()
+        {
+            let arr = StringArray::from(texts.clone());
+            let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(arr)])
+                .expect("batch should succeed");
+            let path = shard_dir.join(format!("shard_{i:04}.parquet"));
+            let file = std::fs::File::create(&path).expect("file should succeed");
+            let mut writer = parquet::arrow::ArrowWriter::try_new(file, schema.clone(), None)
+                .expect("writer should succeed");
+            writer.write(&batch).expect("write should succeed");
+            writer.close().expect("close should succeed");
+        }
+
+        let tokenizer = HfTokenizer::qwen2();
+        let batches = load_lm_batches_from_parquet(
+            &shard_dir,
+            &tokenizer,
+            2,
+            64,
+            "text",
+        )
+        .expect("directory loading should succeed");
+
+        assert!(!batches.is_empty());
+        // 4 total texts across 2 shards
+        let total_seqs: usize = batches.iter().map(|b| b.batch_size).sum();
+        assert_eq!(total_seqs, 4);
+    }
+
+    /// ALB-007: Missing text column returns error
+    #[test]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
+    fn test_load_lm_batches_from_parquet_missing_column() {
+        use arrow::array::{Int32Array, RecordBatch};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().expect("temp dir should succeed");
+        let path = dir.path().join("numeric.parquet");
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("numbers", DataType::Int32, false),
+        ]));
+        let arr = Int32Array::from(vec![1, 2, 3]);
+        let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(arr)])
+            .expect("batch should succeed");
+
+        let file = std::fs::File::create(&path).expect("file should succeed");
+        let mut writer = parquet::arrow::ArrowWriter::try_new(file, schema, None)
+            .expect("writer should succeed");
+        writer.write(&batch).expect("write should succeed");
+        writer.close().expect("close should succeed");
+
+        let tokenizer = HfTokenizer::qwen2();
+        let result = load_lm_batches_from_parquet(&path, &tokenizer, 2, 64, "text");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No text column found"));
     }
 }
