@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::shorthand::deserialize_human_usize_opt;
+
 /// Model configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
@@ -42,15 +44,20 @@ pub struct ArchitectureConfig {
     #[serde(rename = "type")]
     pub arch_type: String,
 
-    /// Hidden size (embedding dimension)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Hidden size (embedding dimension). Accepts shorthand: `"1K"` = 1024.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_human_usize_opt"
+    )]
     pub hidden_size: Option<usize>,
 
     /// Number of transformer layers
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        alias = "num_hidden_layers"
+        alias = "num_hidden_layers",
+        deserialize_with = "deserialize_human_usize_opt"
     )]
     pub num_layers: Option<usize>,
 
@@ -58,7 +65,8 @@ pub struct ArchitectureConfig {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        alias = "num_attention_heads"
+        alias = "num_attention_heads",
+        deserialize_with = "deserialize_human_usize_opt"
     )]
     pub num_heads: Option<usize>,
 
@@ -66,23 +74,33 @@ pub struct ArchitectureConfig {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        alias = "num_key_value_heads"
+        alias = "num_key_value_heads",
+        deserialize_with = "deserialize_human_usize_opt"
     )]
     pub num_kv_heads: Option<usize>,
 
-    /// FFN intermediate dimension
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub intermediate_size: Option<usize>,
-
-    /// Vocabulary size
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vocab_size: Option<usize>,
-
-    /// Maximum sequence/position length
+    /// FFN intermediate dimension. Accepts shorthand: `"4K"` = 4096.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        alias = "max_position_embeddings"
+        deserialize_with = "deserialize_human_usize_opt"
+    )]
+    pub intermediate_size: Option<usize>,
+
+    /// Vocabulary size. Accepts shorthand: `"32K"` = 32768.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_human_usize_opt"
+    )]
+    pub vocab_size: Option<usize>,
+
+    /// Maximum sequence/position length. Accepts shorthand: `"2K"` = 2048, `"128K"` = 131072.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "max_position_embeddings",
+        deserialize_with = "deserialize_human_usize_opt"
     )]
     pub max_seq_length: Option<usize>,
 

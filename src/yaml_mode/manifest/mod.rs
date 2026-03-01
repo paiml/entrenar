@@ -29,6 +29,7 @@ pub mod output;
 pub mod publish;
 pub mod quantize;
 pub mod scheduler;
+pub mod shorthand;
 pub mod training;
 
 // Re-export all public types for API compatibility
