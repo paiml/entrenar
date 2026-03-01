@@ -666,14 +666,15 @@ impl ClassifyTrainer {
         Ok(())
     }
 
-    /// Save model in APR format (classifier head + all LoRA adapters).
+    /// Save model in APR format with full training state.
     ///
-    /// # Contract (F-CKPT-001)
+    /// # Contract (F-CKPT-001, F-CKPT-004, F-CKPT-005)
     ///
-    /// - **Precondition**: Pipeline has trained classifier + LoRA layers
-    /// - **Postcondition**: APR file contains classifier.weight, classifier.bias,
-    ///   and all `lora.{layer}.{q|v}_proj.lora_{a|b}` tensors
-    /// - **Invariant**: Tensor count = 2 (classifier) + 2 * lora_layers.len() (LoRA A+B)
+    /// - **F-CKPT-001**: All adapter tensors (classifier + LoRA A/B)
+    /// - **F-CKPT-004**: Optimizer state (`__training__.optimizer.*`)
+    /// - **F-CKPT-005**: Training metadata (epoch, LR, step count)
+    ///
+    /// Inference readers skip `__training__.*` via `AprReader::open_filtered()`.
     fn save_apr_checkpoint(
         &self,
         path: &Path,
@@ -731,12 +732,10 @@ impl ClassifyTrainer {
         writer.add_tensor_f32("classifier.bias", vec![bias.len()], bias_slice);
 
         // ── LoRA adapter tensors (F-CKPT-001: adapter completeness) ──────
-        // Convention: 2 adapters per layer (Q=even index, V=odd index)
         for (idx, lora) in self.pipeline.lora_layers.iter().enumerate() {
             let layer = idx / 2;
             let proj = if idx % 2 == 0 { "q" } else { "v" };
 
-            // LoRA A: [rank, d_in]
             let a_data = lora.lora_a().data();
             let a_slice = a_data.as_slice().expect("contiguous lora_a");
             writer.add_tensor_f32(
@@ -745,7 +744,6 @@ impl ClassifyTrainer {
                 a_slice,
             );
 
-            // LoRA B: [d_out, rank]
             let b_data = lora.lora_b().data();
             let b_slice = b_data.as_slice().expect("contiguous lora_b");
             writer.add_tensor_f32(
@@ -755,12 +753,172 @@ impl ClassifyTrainer {
             );
         }
 
+        // ── Training state (F-CKPT-004: optimizer moments) ──────────────
+        let optimizer = self.pipeline.optimizer();
+
+        // Save AdamW step counter as 1-element tensor
+        writer.add_tensor_f32(
+            "__training__.optimizer.step",
+            vec![1],
+            &[optimizer.step_count() as f32],
+        );
+
+        // Save first moments (m) and second moments (v)
+        for (i, (m_opt, v_opt)) in optimizer
+            .first_moments()
+            .iter()
+            .zip(optimizer.second_moments().iter())
+            .enumerate()
+        {
+            if let Some(m) = m_opt {
+                let m_slice = m.as_slice().expect("contiguous moment m");
+                writer.add_tensor_f32(
+                    format!("__training__.optimizer.m.{i}"),
+                    vec![m.len()],
+                    m_slice,
+                );
+            }
+            if let Some(v) = v_opt {
+                let v_slice = v.as_slice().expect("contiguous moment v");
+                writer.add_tensor_f32(
+                    format!("__training__.optimizer.v.{i}"),
+                    vec![v.len()],
+                    v_slice,
+                );
+            }
+        }
+
+        // ── Training metadata (F-CKPT-005) ──────────────────────────────
+        writer.add_tensor_f32("__training__.epoch", vec![1], &[epoch as f32]);
+        writer.add_tensor_f32(
+            "__training__.learning_rate",
+            vec![1],
+            &[metrics.learning_rate],
+        );
+
         let apr_path = path.join("model.apr");
         writer
             .write(&apr_path)
             .map_err(|e| crate::Error::Serialization(format!("APR serialization failed: {e}")))?;
 
         Ok(())
+    }
+
+    /// Resume training state from an APR checkpoint (F-CKPT-006).
+    ///
+    /// Loads model weights (classifier + LoRA) and optimizer state
+    /// (`__training__.*` tensors) from a `.ckpt.apr` or `model.apr` file.
+    ///
+    /// Returns the epoch number stored in the checkpoint so the training
+    /// loop can resume from the next epoch.
+    ///
+    /// # Errors
+    /// Returns error if checkpoint is invalid or tensors are missing.
+    pub fn resume_from_apr_checkpoint(&mut self, apr_path: &Path) -> crate::Result<usize> {
+        use aprender::serialization::apr::AprReader;
+
+        let reader = AprReader::open(apr_path).map_err(|e| {
+            crate::Error::Serialization(format!("Failed to open APR checkpoint: {e}"))
+        })?;
+
+        // ── Restore classifier head ─────────────────────────────────────
+        let weight_data = reader.read_tensor_f32("classifier.weight").map_err(|e| {
+            crate::Error::Serialization(format!("Missing classifier.weight: {e}"))
+        })?;
+        let bias_data = reader.read_tensor_f32("classifier.bias").map_err(|e| {
+            crate::Error::Serialization(format!("Missing classifier.bias: {e}"))
+        })?;
+
+        self.pipeline
+            .classifier
+            .weight
+            .data_mut()
+            .as_slice_mut()
+            .expect("contiguous weight")
+            .copy_from_slice(&weight_data);
+        self.pipeline
+            .classifier
+            .bias
+            .data_mut()
+            .as_slice_mut()
+            .expect("contiguous bias")
+            .copy_from_slice(&bias_data);
+
+        // ── Restore LoRA adapters ───────────────────────────────────────
+        for (idx, lora) in self.pipeline.lora_layers.iter_mut().enumerate() {
+            let layer = idx / 2;
+            let proj = if idx % 2 == 0 { "q" } else { "v" };
+
+            let a_name = format!("lora.{layer}.{proj}_proj.lora_a");
+            let b_name = format!("lora.{layer}.{proj}_proj.lora_b");
+
+            if let Ok(a_data) = reader.read_tensor_f32(&a_name) {
+                let a_tensor = lora.lora_a_mut();
+                let a_buf = a_tensor.data_mut();
+                a_buf
+                    .as_slice_mut()
+                    .expect("contiguous lora_a")
+                    .copy_from_slice(&a_data);
+            }
+            if let Ok(b_data) = reader.read_tensor_f32(&b_name) {
+                let b_tensor = lora.lora_b_mut();
+                let b_buf = b_tensor.data_mut();
+                b_buf
+                    .as_slice_mut()
+                    .expect("contiguous lora_b")
+                    .copy_from_slice(&b_data);
+            }
+        }
+
+        // ── Restore optimizer state (F-CKPT-004) ────────────────────────
+        let optimizer = self.pipeline.optimizer_mut();
+
+        // Restore step counter
+        if let Ok(step_data) = reader.read_tensor_f32("__training__.optimizer.step") {
+            optimizer.set_step_count(step_data[0] as u64);
+        }
+
+        // Restore first and second moments
+        for i in 0..256 {
+            let m_name = format!("__training__.optimizer.m.{i}");
+            let v_name = format!("__training__.optimizer.v.{i}");
+
+            let m_exists = reader.read_tensor_f32(&m_name);
+            let v_exists = reader.read_tensor_f32(&v_name);
+
+            match (m_exists, v_exists) {
+                (Ok(m_data), Ok(v_data)) => {
+                    optimizer
+                        .set_first_moment(i, ndarray::Array1::from_vec(m_data));
+                    optimizer
+                        .set_second_moment(i, ndarray::Array1::from_vec(v_data));
+                }
+                _ => break, // No more moment buffers
+            }
+        }
+
+        // ── Restore training metadata (F-CKPT-005) ─────────────────────
+        let epoch = if let Ok(epoch_data) = reader.read_tensor_f32("__training__.epoch") {
+            epoch_data[0] as usize
+        } else {
+            // Fall back to metadata
+            reader
+                .get_metadata("epoch")
+                .and_then(|v| v.as_u64())
+                .map(|e| e as usize)
+                .unwrap_or(0)
+        };
+
+        if let Ok(lr_data) = reader.read_tensor_f32("__training__.learning_rate") {
+            self.pipeline.set_optimizer_lr(lr_data[0]);
+        }
+
+        eprintln!(
+            "  Resumed from APR checkpoint: epoch {epoch}, optimizer step {}",
+            self.pipeline.optimizer().step_count(),
+        );
+
+        Ok(epoch)
     }
 
     /// Split dataset into disjoint train/val sets.

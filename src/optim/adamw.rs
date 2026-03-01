@@ -41,6 +41,65 @@ impl AdamW {
             self.v = params.iter().map(|_| None).collect();
         }
     }
+
+    // ── Checkpoint state accessors (F-CKPT-004) ────────────────────────
+
+    /// Get optimizer step counter.
+    #[must_use]
+    pub fn step_count(&self) -> u64 {
+        self.t
+    }
+
+    /// Set optimizer step counter (for checkpoint resume).
+    pub fn set_step_count(&mut self, t: u64) {
+        self.t = t;
+    }
+
+    /// Get first moment buffers (m) as f32 slices.
+    #[must_use]
+    pub fn first_moments(&self) -> &[Option<Array1<f32>>] {
+        &self.m
+    }
+
+    /// Get second moment buffers (v) as f32 slices.
+    #[must_use]
+    pub fn second_moments(&self) -> &[Option<Array1<f32>>] {
+        &self.v
+    }
+
+    /// Set first moment buffer at index.
+    pub fn set_first_moment(&mut self, idx: usize, data: Array1<f32>) {
+        if idx >= self.m.len() {
+            self.m.resize(idx + 1, None);
+        }
+        self.m[idx] = Some(data);
+    }
+
+    /// Set second moment buffer at index.
+    pub fn set_second_moment(&mut self, idx: usize, data: Array1<f32>) {
+        if idx >= self.v.len() {
+            self.v.resize(idx + 1, None);
+        }
+        self.v[idx] = Some(data);
+    }
+
+    /// Get beta1 hyperparameter.
+    #[must_use]
+    pub fn beta1(&self) -> f32 {
+        self.beta1
+    }
+
+    /// Get beta2 hyperparameter.
+    #[must_use]
+    pub fn beta2(&self) -> f32 {
+        self.beta2
+    }
+
+    /// Get weight decay hyperparameter.
+    #[must_use]
+    pub fn weight_decay(&self) -> f32 {
+        self.weight_decay
+    }
 }
 
 impl Optimizer for AdamW {

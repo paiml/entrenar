@@ -1005,6 +1005,13 @@ impl ClassifyPipeline {
         self.model_dir.as_deref()
     }
 
+    /// Set the base model path (used when the model was loaded from an APR file
+    /// rather than a SafeTensors directory, so checkpoint saves can record the
+    /// provenance in `adapter_config.json`).
+    pub fn set_model_path(&mut self, path: impl Into<PathBuf>) {
+        self.model_dir = Some(path.into());
+    }
+
     /// Single training step: forward + loss + backward + optimizer update.
     ///
     /// Performs the complete training cycle:
@@ -1664,6 +1671,17 @@ impl ClassifyPipeline {
     #[must_use]
     pub fn optimizer_lr(&self) -> f32 {
         self.optimizer.lr()
+    }
+
+    /// Get a reference to the internal AdamW optimizer (F-CKPT-004).
+    #[must_use]
+    pub fn optimizer(&self) -> &AdamW {
+        &self.optimizer
+    }
+
+    /// Get a mutable reference to the internal AdamW optimizer (F-CKPT-004).
+    pub fn optimizer_mut(&mut self) -> &mut AdamW {
+        &mut self.optimizer
     }
 
     /// Summary of the pipeline configuration.
