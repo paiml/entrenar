@@ -51,8 +51,8 @@ pub use infer::{
     FeatureType, InferenceConfig, InferredSchema,
 };
 pub use schema::{
-    is_hf_repo_id, DataConfig, LoRASpec, MergeSpec, ModelMode, ModelRef, OptimSpec, PublishSpec,
-    QuantSpec, TrainSpec, TrainingMode, TrainingParams,
+    is_hf_repo_id, ArchitectureOverrides, DataConfig, LoRASpec, MergeSpec, ModelMode, ModelRef,
+    OptimSpec, PublishSpec, QuantSpec, TrainSpec, TrainingMode, TrainingParams,
 };
 pub use train::{load_config, train_from_yaml};
 pub use validate::{validate_config, ValidationError};

@@ -117,6 +117,61 @@ fn default_safetensors() -> String {
     "safetensors".to_string()
 }
 
+/// Architecture override parameters from YAML manifest.
+///
+/// These override individual fields of the `TransformerConfig` resolved from
+/// `config.json` or preset defaults. Only `Some` fields apply; `None` fields
+/// are left as-is from the base config.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ArchitectureOverrides {
+    /// Hidden size (embedding dimension)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden_size: Option<usize>,
+    /// Number of transformer layers
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_hidden_layers: Option<usize>,
+    /// Number of attention heads
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_attention_heads: Option<usize>,
+    /// Number of key-value heads (for grouped-query attention)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_kv_heads: Option<usize>,
+    /// FFN intermediate dimension
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intermediate_size: Option<usize>,
+    /// Vocabulary size
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vocab_size: Option<usize>,
+    /// Maximum sequence/position length
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_position_embeddings: Option<usize>,
+    /// RMS normalization epsilon
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rms_norm_eps: Option<f32>,
+    /// RoPE theta (rotary positional encoding base)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rope_theta: Option<f32>,
+    /// Whether to use bias in linear layers
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_bias: Option<bool>,
+}
+
+impl ArchitectureOverrides {
+    /// Returns true if no overrides are set.
+    pub fn is_empty(&self) -> bool {
+        self.hidden_size.is_none()
+            && self.num_hidden_layers.is_none()
+            && self.num_attention_heads.is_none()
+            && self.num_kv_heads.is_none()
+            && self.intermediate_size.is_none()
+            && self.vocab_size.is_none()
+            && self.max_position_embeddings.is_none()
+            && self.rms_norm_eps.is_none()
+            && self.rope_theta.is_none()
+            && self.use_bias.is_none()
+    }
+}
+
 /// Model reference and target layers
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelRef {
@@ -138,6 +193,11 @@ pub struct ModelRef {
     /// Only used when mode=transformer
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config: Option<String>,
+
+    /// Architecture parameter overrides from YAML manifest.
+    /// Applied on top of config.json / preset values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<ArchitectureOverrides>,
 }
 
 impl ModelRef {

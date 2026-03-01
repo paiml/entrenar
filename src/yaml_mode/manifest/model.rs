@@ -33,33 +33,72 @@ pub struct ModelConfig {
 }
 
 /// Model architecture configuration
+///
+/// Supports both preset names and custom architecture parameters.
+/// Custom params override values from config.json or preset defaults.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchitectureConfig {
     /// Architecture type (transformer, sequential)
     #[serde(rename = "type")]
     pub arch_type: String,
 
-    /// Hidden size
+    /// Hidden size (embedding dimension)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden_size: Option<usize>,
 
-    /// Number of layers
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Number of transformer layers
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "num_hidden_layers"
+    )]
     pub num_layers: Option<usize>,
 
     /// Number of attention heads
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "num_attention_heads"
+    )]
     pub num_heads: Option<usize>,
+
+    /// Number of key-value heads (for grouped-query attention)
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "num_key_value_heads"
+    )]
+    pub num_kv_heads: Option<usize>,
+
+    /// FFN intermediate dimension
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intermediate_size: Option<usize>,
 
     /// Vocabulary size
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vocab_size: Option<usize>,
 
-    /// Maximum sequence length
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Maximum sequence/position length
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "max_position_embeddings"
+    )]
     pub max_seq_length: Option<usize>,
 
-    /// Sequential layers
+    /// RMS normalization epsilon
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rms_norm_eps: Option<f32>,
+
+    /// RoPE theta (rotary positional encoding base)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rope_theta: Option<f32>,
+
+    /// Whether to use bias in linear layers
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_bias: Option<bool>,
+
+    /// Sequential layers (for sequential architecture type)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layers: Option<Vec<HashMap<String, serde_json::Value>>>,
 }
