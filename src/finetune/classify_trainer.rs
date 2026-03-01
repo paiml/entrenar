@@ -486,6 +486,7 @@ impl ClassifyTrainer {
             "learning_rate": metrics.learning_rate,
             "epoch_time_ms": metrics.epoch_time_ms,
             "samples_per_sec": metrics.samples_per_sec,
+            "class_weights": self.pipeline.config.class_weights,
         });
 
         let meta_path = path.join("metadata.json");
@@ -1776,6 +1777,23 @@ pub const SSC_LABELS: [&str; 5] = [
 /// Handles LoRA adapter checkpoints: reads `adapter_config.json` to find the
 /// base model path, loads the full transformer from that path, then restores
 /// trained LoRA + classifier head weights from the checkpoint's `model.safetensors`.
+/// Restore class_weights from checkpoint metadata.json if present.
+/// Training runs that use `auto_balance_classes()` save weights to metadata;
+/// without this, evaluation would use uniform weights while training used weighted loss.
+fn restore_class_weights_from_metadata(
+    checkpoint_dir: &std::path::Path,
+    num_classes: usize,
+) -> Option<Vec<f32>> {
+    let meta_str = std::fs::read_to_string(checkpoint_dir.join("metadata.json")).ok()?;
+    let meta: serde_json::Value = serde_json::from_str(&meta_str).ok()?;
+    let arr = meta.get("class_weights")?.as_array()?;
+    let weights: Vec<f32> = arr
+        .iter()
+        .filter_map(|v| v.as_f64().map(|f| f as f32))
+        .collect();
+    (weights.len() == num_classes).then_some(weights)
+}
+
 ///
 /// # Arguments
 /// * `checkpoint_dir` - Directory containing `model.safetensors` + `adapter_config.json`
@@ -1797,6 +1815,15 @@ pub fn evaluate_checkpoint(
 
     let start = std::time::Instant::now();
     let num_classes = classify_config.num_classes;
+
+    // Restore class_weights from checkpoint metadata if not provided by caller.
+    let mut classify_config = classify_config;
+    if classify_config.class_weights.is_none() {
+        if let Some(weights) = restore_class_weights_from_metadata(checkpoint_dir, num_classes) {
+            eprintln!("Restored class_weights from checkpoint: {weights:?}");
+            classify_config.class_weights = Some(weights);
+        }
+    }
 
     // Resolve the base model directory from adapter_config.json (LoRA checkpoint)
     // or fall back to loading directly from checkpoint_dir (full model checkpoint)

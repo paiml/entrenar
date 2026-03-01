@@ -39,7 +39,8 @@ pub use builder::{build_model, build_optimizer};
 pub use cli::{
     apply_overrides, parse_args, ArchiveProviderArg, ArtifactTypeArg, AuditArgs, AuditType,
     BenchArgs, BundleArgs, CitationFormat, CiteArgs, Cli, Command, CompletionArgs, DepositArgs,
-    ExperimentsArgs, ExperimentsCommand, ExportArgs, ExportFormat, InfoArgs, InitArgs,
+    ExperimentsArgs, ExperimentsCommand, ExportArgs, ExportFormat, FinetuneArgs, FinetuneCommand,
+    InfoArgs, InitArgs,
     InitTemplate, InspectArgs, InspectMode, LicenseArg, MergeArgs, MergeMethod, MonitorArgs,
     OutputFormat, PreregisterArgs, PublishArgs, QuantMethod, QuantizeArgs, ResearchArgs,
     ResearchCommand, ResearchInitArgs, ShellType, TrainArgs, TrainingMethod, ValidateArgs,

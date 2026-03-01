@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ClassifyTrainer::auto_balance_classes()` — auto-detects class imbalance (ratio >2:1) and applies `SqrtInverse` weights when no explicit weights configured
+
 #### Classification Evaluation Harness
 - **`ClassifyEvalReport`**: Comprehensive evaluation report with 13 metrics across 4 categories
   - Accuracy & Agreement: accuracy, top-2 accuracy, Cohen's kappa, MCC (all with bootstrap 95% CIs)

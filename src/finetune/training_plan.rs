@@ -60,6 +60,18 @@ pub struct PlanConfig {
     pub manual_lora_rank: Option<usize>,
     /// Manual batch size.
     pub manual_batch_size: Option<usize>,
+    /// Manual LoRA alpha.
+    pub manual_lora_alpha: Option<f32>,
+    /// Manual warmup fraction.
+    pub manual_warmup: Option<f32>,
+    /// Manual gradient clip norm.
+    pub manual_gradient_clip: Option<f32>,
+    /// Manual LR min ratio.
+    pub manual_lr_min_ratio: Option<f32>,
+    /// Manual class weight strategy.
+    pub manual_class_weights: Option<String>,
+    /// Manual target modules.
+    pub manual_target_modules: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -209,6 +221,24 @@ pub struct ManualConfig {
     pub lora_rank: usize,
     /// Batch size.
     pub batch_size: usize,
+    /// LoRA alpha (defaults to rank if absent).
+    #[serde(default)]
+    pub lora_alpha: Option<f32>,
+    /// Warmup fraction (defaults to 0.1 if absent).
+    #[serde(default)]
+    pub warmup_fraction: Option<f32>,
+    /// Gradient clip norm (defaults to 1.0 if absent).
+    #[serde(default)]
+    pub gradient_clip_norm: Option<f32>,
+    /// LR min ratio for cosine decay (defaults to 0.01 if absent).
+    #[serde(default)]
+    pub lr_min_ratio: Option<f32>,
+    /// Class weight strategy: "uniform", "inverse_freq", "sqrt_inverse".
+    #[serde(default)]
+    pub class_weights: Option<String>,
+    /// Target modules: "qv", "qkv", "all_linear".
+    #[serde(default)]
+    pub target_modules: Option<String>,
 }
 
 /// Resource usage estimate.
@@ -652,6 +682,12 @@ fn build_hpo_plan(
                 learning_rate: lr,
                 lora_rank: rank,
                 batch_size: batch,
+                lora_alpha: config.manual_lora_alpha,
+                warmup_fraction: config.manual_warmup,
+                gradient_clip_norm: config.manual_gradient_clip,
+                lr_min_ratio: config.manual_lr_min_ratio,
+                class_weights: config.manual_class_weights.clone(),
+                target_modules: config.manual_target_modules.clone(),
             }),
             recommendation: Some(
                 "Consider using --strategy tpe for automated hyperparameter search".to_string(),
@@ -925,24 +961,40 @@ pub fn execute_plan(
             )
         })?;
 
+        let num_classes = plan.data.class_counts.len();
+        let lora_alpha = manual.lora_alpha.unwrap_or(manual.lora_rank as f32);
+        let gradient_clip = manual.gradient_clip_norm.unwrap_or(1.0);
+        let warmup = manual.warmup_fraction.unwrap_or(0.1);
+        let lr_min_ratio = manual.lr_min_ratio.unwrap_or(0.01);
+
+        let class_weights = manual
+            .class_weights
+            .as_deref()
+            .map(|s| resolve_class_weights(s, &plan.data.class_counts, num_classes))
+            .flatten();
+
         let classify_config = ClassifyConfig {
-            num_classes: plan.data.class_counts.len(),
+            num_classes,
             lora_rank: manual.lora_rank,
-            lora_alpha: manual.lora_rank as f32,
+            lora_alpha,
             learning_rate: manual.learning_rate,
             epochs: plan.hyperparameters.max_epochs,
             batch_size: manual.batch_size,
+            gradient_clip_norm: Some(gradient_clip),
+            class_weights,
             ..ClassifyConfig::default()
         };
 
         let trial_start = std::time::Instant::now();
-        let result = run_single_trial(
+        let result = run_single_trial_with_warmup(
             &apply.model_path,
             &apply.data_path,
             &apply.output_dir.join("trial_001"),
             &model_config,
             classify_config,
             plan.hyperparameters.max_epochs,
+            warmup,
+            lr_min_ratio,
             &plan.model.size,
         )?;
 
@@ -1177,29 +1229,6 @@ pub fn execute_plan(
     );
 
     Ok(result)
-}
-
-/// Execute a single training trial with default warmup/LR settings.
-fn run_single_trial(
-    model_path: &std::path::Path,
-    data_path: &std::path::Path,
-    checkpoint_dir: &std::path::Path,
-    model_config: &crate::transformer::TransformerConfig,
-    classify_config: super::classify_pipeline::ClassifyConfig,
-    epochs: usize,
-    model_name: &str,
-) -> crate::Result<super::classify_trainer::TrainResult> {
-    run_single_trial_with_warmup(
-        model_path,
-        data_path,
-        checkpoint_dir,
-        model_config,
-        classify_config,
-        epochs,
-        0.1,   // default warmup fraction
-        0.01,  // default lr_min_ratio
-        model_name,
-    )
 }
 
 /// Execute a single training trial with explicit warmup/LR min parameters.
@@ -1487,6 +1516,12 @@ mod tests {
             manual_lr: Some(1e-4),
             manual_lora_rank: Some(16),
             manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let result = plan(&config);
         assert!(result.is_err());
@@ -1522,6 +1557,12 @@ mod tests {
             manual_lr: Some(1e-4),
             manual_lora_rank: Some(16),
             manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
         assert_eq!(p.hyperparameters.strategy, "manual");
@@ -1558,6 +1599,12 @@ mod tests {
             manual_lr: None,
             manual_lora_rank: None,
             manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
         assert_eq!(p.hyperparameters.strategy, "tpe");
@@ -1603,6 +1650,12 @@ mod tests {
             manual_lr: None,
             manual_lora_rank: None,
             manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
         assert!(p.data.imbalance_ratio > 5.0);
@@ -1643,6 +1696,12 @@ mod tests {
             manual_lr: Some(1e-4),
             manual_lora_rank: Some(16),
             manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
         assert!(p.data.duplicates > 0);
@@ -1678,6 +1737,12 @@ mod tests {
             manual_lr: None,
             manual_lora_rank: None,
             manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
 
@@ -1723,6 +1788,12 @@ mod tests {
             manual_lr: Some(1e-4),
             manual_lora_rank: Some(16),
             manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
         assert!(p.resources.estimated_vram_gb > 0.0);
@@ -1759,6 +1830,12 @@ mod tests {
             manual_lr: None,
             manual_lora_rank: None,
             manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
         // Should be WarningsPresent (model_path not specified)
@@ -1794,6 +1871,12 @@ mod tests {
             manual_lr: Some(1e-4),
             manual_lora_rank: Some(16),
             manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
         };
         let p = plan(&config).unwrap();
         assert_eq!(p.model.hidden_size, 896);
@@ -1939,6 +2022,12 @@ mod tests {
                     learning_rate: 1e-4,
                     lora_rank: 16,
                     batch_size: 32,
+                    lora_alpha: None,
+                    warmup_fraction: None,
+                    gradient_clip_norm: None,
+                    lr_min_ratio: None,
+                    class_weights: None,
+                    target_modules: None,
                 }),
                 recommendation: None,
             },
