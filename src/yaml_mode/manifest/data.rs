@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::shorthand::deserialize_human_usize_opt;
+
 /// Dataset configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataConfig {
@@ -49,8 +51,12 @@ pub struct DataConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tokenizer: Option<String>,
 
-    /// Sequence length (for transformers)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Sequence length (for transformers). Accepts shorthand: `"2K"` = 2048.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_human_usize_opt"
+    )]
     pub seq_len: Option<usize>,
 
     /// Input text column name (for transformer mode)
@@ -61,8 +67,12 @@ pub struct DataConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_column: Option<String>,
 
-    /// Maximum tokenization length
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Maximum tokenization length. Accepts shorthand: `"512"`, `"1K"`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_human_usize_opt"
+    )]
     pub max_length: Option<usize>,
 }
 
