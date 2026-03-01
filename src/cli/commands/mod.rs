@@ -4,6 +4,7 @@ mod audit;
 mod bench;
 mod completion;
 mod experiments;
+mod finetune;
 mod info;
 mod init;
 mod inspect;
@@ -46,6 +47,7 @@ pub fn run_command(cli: Cli) -> Result<(), String> {
         Command::Audit(args) => audit::run_audit(args, log_level),
         Command::Monitor(args) => monitor::run_monitor(args, log_level),
         Command::Publish(args) => publish::run_publish(args, log_level),
+        Command::Finetune(args) => finetune::run_finetune(args, log_level),
         Command::Experiments(args) => experiments::run_experiments(args, log_level),
     }
 }
