@@ -304,6 +304,18 @@ impl ClassifyTrainer {
 
             epoch_metrics_vec.push(metrics.clone());
 
+            // Human-readable epoch summary
+            let is_best = val_loss < best_val_loss;
+            let best_marker = if is_best { " *best*" } else { "" };
+            eprintln!(
+                "  Epoch {}/{} done in {:.0}s — train_loss: {:.4}, train_acc: {:.1}%, val_loss: {:.4}, val_acc: {:.1}%, LR: {:.2e}{best_marker}",
+                epoch + 1, self.config.epochs,
+                epoch_time.as_secs_f32(),
+                train_loss, train_accuracy * 100.0,
+                val_loss, val_accuracy * 100.0,
+                scheduler.get_lr(),
+            );
+
             // Track best validation loss
             if val_loss < best_val_loss {
                 best_val_loss = val_loss;
@@ -317,8 +329,13 @@ impl ClassifyTrainer {
                 epochs_without_improvement += 1;
             }
 
-            // Periodic checkpoint
-            if self.config.save_every > 0 && (epoch + 1) % self.config.save_every == 0 {
+            // Periodic checkpoint — when epochs <= save_every, save every epoch
+            let effective_save_every = if self.config.epochs <= self.config.save_every {
+                1
+            } else {
+                self.config.save_every
+            };
+            if effective_save_every > 0 && (epoch + 1) % effective_save_every == 0 {
                 let epoch_path = self.config.checkpoint_dir.join(format!("epoch-{epoch}"));
                 let _ = self.save_checkpoint(&epoch_path, epoch, &metrics);
             }
@@ -363,6 +380,7 @@ impl ClassifyTrainer {
     /// Returns `(avg_loss, accuracy)` for the epoch.
     fn train_epoch(&mut self, scheduler: &mut WarmupCosineDecayLR, epoch: usize) -> (f32, f32) {
         let batch_size = self.pipeline.config.batch_size;
+        let num_batches = self.train_data.len().div_ceil(batch_size);
         let mut total_loss = 0.0f32;
         let mut total_correct = 0usize;
         let mut total_samples = 0usize;
@@ -371,6 +389,9 @@ impl ClassifyTrainer {
         let train_snapshot: Vec<SafetySample> = self.train_data.clone();
 
         let epoch_start = std::time::Instant::now();
+
+        // Print every ~10% of batches, minimum every 10 steps
+        let log_every = (num_batches / 10).max(10).min(num_batches);
 
         for (batch_idx, chunk) in train_snapshot.chunks(batch_size).enumerate() {
             // Apply current LR from scheduler
@@ -381,17 +402,43 @@ impl ClassifyTrainer {
             total_correct += result.correct;
             total_samples += result.total;
 
-            // Emit per-batch metrics to monitor
+            let running_avg_loss = total_loss / total_samples as f32;
+            let elapsed_secs = epoch_start.elapsed().as_secs_f32();
+            let samples_per_sec =
+                if elapsed_secs > 0.0 { total_samples as f32 / elapsed_secs } else { 0.0 };
+            let current_lr = scheduler.get_lr();
+
+            // Human-readable progress to stderr
+            let step = batch_idx + 1;
+            if step == 1 || step % log_every == 0 || step == num_batches {
+                let elapsed_min = elapsed_secs / 60.0;
+                let eta_min = if step > 0 {
+                    elapsed_min / step as f32 * (num_batches - step) as f32
+                } else {
+                    0.0
+                };
+                let acc_pct = if total_samples > 0 {
+                    100.0 * total_correct as f32 / total_samples as f32
+                } else {
+                    0.0
+                };
+                eprintln!(
+                    "  [Epoch {}/{}] Step {}/{} | Loss: {:.4} | Acc: {:.1}% | LR: {:.2e} | Grad: {:.1} | {:.1} sam/s | {:.0}m elapsed, ~{:.0}m left",
+                    epoch + 1, self.config.epochs,
+                    step, num_batches,
+                    running_avg_loss, acc_pct, current_lr,
+                    result.grad_norm, samples_per_sec,
+                    elapsed_min, eta_min,
+                );
+            }
+
+            // Emit per-batch metrics to monitor (JSON state file)
             if let Some(ref mut writer) = self.monitor_writer {
-                let running_avg_loss = total_loss / total_samples as f32;
-                let elapsed_secs = epoch_start.elapsed().as_secs_f32();
-                let samples_per_sec =
-                    if elapsed_secs > 0.0 { total_samples as f32 / elapsed_secs } else { 0.0 };
                 let _ = writer.update_step(
                     epoch + 1,
-                    batch_idx + 1,
+                    step,
                     running_avg_loss,
-                    scheduler.get_lr(),
+                    current_lr,
                     result.grad_norm,
                     samples_per_sec,
                 );
@@ -619,7 +666,14 @@ impl ClassifyTrainer {
         Ok(())
     }
 
-    /// Save model in APR format.
+    /// Save model in APR format (classifier head + all LoRA adapters).
+    ///
+    /// # Contract (F-CKPT-001)
+    ///
+    /// - **Precondition**: Pipeline has trained classifier + LoRA layers
+    /// - **Postcondition**: APR file contains classifier.weight, classifier.bias,
+    ///   and all `lora.{layer}.{q|v}_proj.lora_{a|b}` tensors
+    /// - **Invariant**: Tensor count = 2 (classifier) + 2 * lora_layers.len() (LoRA A+B)
     fn save_apr_checkpoint(
         &self,
         path: &Path,
@@ -629,12 +683,43 @@ impl ClassifyTrainer {
         use aprender::serialization::apr::AprWriter;
 
         let mut writer = AprWriter::new();
-        writer.set_metadata("model_type".to_string(), serde_json::json!("classify_pipeline"));
+
+        // ── Rich metadata ────────────────────────────────────────────────
+        writer.set_metadata("model_type".to_string(), serde_json::json!("adapter"));
         writer.set_metadata("epoch".to_string(), serde_json::json!(epoch));
         writer.set_metadata("val_loss".to_string(), serde_json::json!(metrics.val_loss));
         writer.set_metadata("val_accuracy".to_string(), serde_json::json!(metrics.val_accuracy));
+        writer.set_metadata("train_loss".to_string(), serde_json::json!(metrics.train_loss));
+        writer.set_metadata(
+            "train_accuracy".to_string(),
+            serde_json::json!(metrics.train_accuracy),
+        );
+        writer.set_metadata(
+            "architecture".to_string(),
+            serde_json::json!("qwen2_classify"),
+        );
+        writer.set_metadata(
+            "num_classes".to_string(),
+            serde_json::json!(self.pipeline.config.num_classes),
+        );
+        writer.set_metadata(
+            "lora_rank".to_string(),
+            serde_json::json!(self.pipeline.config.lora_rank),
+        );
+        writer.set_metadata(
+            "lora_alpha".to_string(),
+            serde_json::json!(self.pipeline.config.lora_alpha),
+        );
+        writer.set_metadata(
+            "hidden_size".to_string(),
+            serde_json::json!(self.pipeline.model.config.hidden_size),
+        );
+        writer.set_metadata(
+            "num_layers".to_string(),
+            serde_json::json!(self.pipeline.model.config.num_hidden_layers),
+        );
 
-        // Add classifier weight and bias tensors
+        // ── Classifier head tensors ──────────────────────────────────────
         let weight = &self.pipeline.classifier.weight;
         let weight_data = weight.data();
         let weight_slice = weight_data.as_slice().expect("contiguous weight");
@@ -644,6 +729,31 @@ impl ClassifyTrainer {
         let bias_data = bias.data();
         let bias_slice = bias_data.as_slice().expect("contiguous bias");
         writer.add_tensor_f32("classifier.bias", vec![bias.len()], bias_slice);
+
+        // ── LoRA adapter tensors (F-CKPT-001: adapter completeness) ──────
+        // Convention: 2 adapters per layer (Q=even index, V=odd index)
+        for (idx, lora) in self.pipeline.lora_layers.iter().enumerate() {
+            let layer = idx / 2;
+            let proj = if idx % 2 == 0 { "q" } else { "v" };
+
+            // LoRA A: [rank, d_in]
+            let a_data = lora.lora_a().data();
+            let a_slice = a_data.as_slice().expect("contiguous lora_a");
+            writer.add_tensor_f32(
+                format!("lora.{layer}.{proj}_proj.lora_a"),
+                vec![lora.rank(), lora.d_in()],
+                a_slice,
+            );
+
+            // LoRA B: [d_out, rank]
+            let b_data = lora.lora_b().data();
+            let b_slice = b_data.as_slice().expect("contiguous lora_b");
+            writer.add_tensor_f32(
+                format!("lora.{layer}.{proj}_proj.lora_b"),
+                vec![lora.d_out(), lora.rank()],
+                b_slice,
+            );
+        }
 
         let apr_path = path.join("model.apr");
         writer
@@ -840,12 +950,12 @@ impl ClassifyEvalReport {
             0.0
         };
 
-        let cm = ConfusionMatrix::from_predictions(y_pred, y_true);
+        let cm = ConfusionMatrix::from_predictions_with_min_classes(y_pred, y_true, num_classes);
         let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
         let accuracy = cm.accuracy();
 
         let cohens_kappa = Self::compute_cohens_kappa(&cm, total_samples);
-        let mcc = Self::compute_mcc(&cm, num_classes, total_samples);
+        let mcc = Self::compute_mcc(&cm, cm.n_classes(), total_samples);
         let top2_accuracy = Self::compute_top2_accuracy(all_probs, y_true, total_samples);
 
         let confidences: Vec<f64> = all_probs
@@ -1144,7 +1254,7 @@ impl ClassifyEvalReport {
                 boot_true.push(y_true[idx]);
             }
 
-            let cm = ConfusionMatrix::from_predictions(&boot_pred, &boot_true);
+            let cm = ConfusionMatrix::from_predictions_with_min_classes(&boot_pred, &boot_true, num_classes);
             let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
 
             accs.push(cm.accuracy());
@@ -1158,7 +1268,7 @@ impl ClassifyEvalReport {
             };
             f1s.push(macro_f1);
 
-            mccs.push(Self::compute_mcc(&cm, num_classes, n));
+            mccs.push(Self::compute_mcc(&cm, cm.n_classes(), n));
         }
 
         accs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -1838,20 +1948,45 @@ pub fn evaluate_checkpoint(
                 crate::Error::Serialization(format!("Invalid adapter_config.json: {e}"))
             })?;
 
-        let base_model_path = peft_config
-            .base_model_name_or_path
-            .as_deref()
-            .ok_or_else(|| {
-                crate::Error::Io(
-                    "adapter_config.json missing base_model_name_or_path".to_string(),
-                )
-            })?;
+        // Update classify_config with LoRA rank/alpha from the checkpoint's
+        // adapter_config.json so LoRA layers are created with matching dimensions.
+        if peft_config.r > 0 {
+            classify_config.lora_rank = peft_config.r;
+        }
+        if peft_config.lora_alpha > 0.0 {
+            classify_config.lora_alpha = peft_config.lora_alpha;
+        }
 
-        eprintln!(
-            "Loading base model from: {base_model_path}"
-        );
-        let mut pipe =
-            ClassifyPipeline::from_pretrained(base_model_path, model_config, classify_config)?;
+        // Try to load base model from pretrained weights.  Fall back to random
+        // init when the path is missing, points to an .apr file (not a
+        // SafeTensors directory), or otherwise fails to load.
+        let mut pipe = match peft_config.base_model_name_or_path.as_deref() {
+            Some(base_model_path)
+                if std::path::Path::new(base_model_path).is_dir()
+                    || std::path::Path::new(base_model_path)
+                        .extension()
+                        .is_some_and(|e| e == "safetensors") =>
+            {
+                eprintln!("Loading base model from: {base_model_path}");
+                ClassifyPipeline::from_pretrained(
+                    base_model_path,
+                    model_config,
+                    classify_config.clone(),
+                )?
+            }
+            Some(base_model_path) => {
+                eprintln!(
+                    "Base model path is not a SafeTensors directory: {base_model_path}"
+                );
+                eprintln!("Using random-init base model (adapter weights will be restored from checkpoint)");
+                ClassifyPipeline::new(model_config, classify_config.clone())
+            }
+            None => {
+                eprintln!("No base_model_name_or_path in adapter_config.json");
+                eprintln!("Using random-init base model (adapter weights will be restored from checkpoint)");
+                ClassifyPipeline::new(model_config, classify_config.clone())
+            }
+        };
 
         // Load trained LoRA + classifier weights from checkpoint
         let st_path = checkpoint_dir.join("model.safetensors");
