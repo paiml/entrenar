@@ -17,6 +17,7 @@ use super::classify_pipeline::ClassifyPipeline;
 use crate::eval::classification::{ConfusionMatrix, MultiClassMetrics};
 use crate::optim::LRScheduler;
 use crate::optim::WarmupCosineDecayLR;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 /// Training configuration for the classification trainer.
@@ -115,6 +116,10 @@ pub struct ClassifyTrainer {
     rng_seed: u64,
     /// Optional monitor writer for live TUI updates
     monitor_writer: Option<crate::monitor::tui::TrainingStateWriter>,
+    /// SHA-256 hash of training data for provenance (F-CKPT-017)
+    data_hash: String,
+    /// Training start timestamp (ISO 8601) for provenance
+    train_start: String,
 }
 
 #[allow(clippy::missing_fields_in_debug)]
@@ -173,7 +178,37 @@ impl ClassifyTrainer {
 
         let rng_seed = config.seed;
 
-        Ok(Self { pipeline, config, train_data, val_data, rng_seed, monitor_writer: None })
+        // F-CKPT-017: Compute data hash for provenance
+        let data_hash = Self::compute_data_hash(&corpus);
+        let train_start = chrono::Utc::now().to_rfc3339();
+
+        Ok(Self {
+            pipeline,
+            config,
+            train_data,
+            val_data,
+            rng_seed,
+            monitor_writer: None,
+            data_hash,
+            train_start,
+        })
+    }
+
+    /// Compute SHA-256 hash of training corpus for provenance (F-CKPT-017).
+    ///
+    /// Hash is computed over sorted (input, label) pairs for determinism.
+    fn compute_data_hash(corpus: &[SafetySample]) -> String {
+        let mut hasher = Sha256::new();
+        let mut sorted: Vec<(&str, usize)> =
+            corpus.iter().map(|s| (s.input.as_str(), s.label)).collect();
+        sorted.sort();
+        for (input, label) in &sorted {
+            hasher.update(input.as_bytes());
+            hasher.update(&[0u8]); // separator
+            hasher.update(&label.to_le_bytes());
+        }
+        let result = hasher.finalize();
+        format!("sha256:{:x}", result)
     }
 
     /// Auto-detect class imbalance and apply sqrt-inverse weights when no
@@ -718,6 +753,22 @@ impl ClassifyTrainer {
         writer.set_metadata(
             "num_layers".to_string(),
             serde_json::json!(self.pipeline.model.config.num_hidden_layers),
+        );
+
+        // ── Provenance chain (F-CKPT-017) ───────────────────────────────
+        writer.set_metadata("data_hash".to_string(), serde_json::json!(self.data_hash));
+        if let Some(model_dir) = self.pipeline.model_dir() {
+            writer.set_metadata(
+                "base_model_source".to_string(),
+                serde_json::json!(model_dir.display().to_string()),
+            );
+        }
+        writer.set_metadata(
+            "provenance".to_string(),
+            serde_json::json!({
+                "tool": format!("entrenar v{}", env!("CARGO_PKG_VERSION")),
+                "started_at": self.train_start,
+            }),
         );
 
         // ── Classifier head tensors ──────────────────────────────────────
