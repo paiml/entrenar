@@ -720,6 +720,12 @@ impl ClassifyTrainer {
 
         let mut writer = AprWriter::new();
 
+        // ── Schema version (F-CKPT-002) ─────────────────────────────────
+        writer.set_metadata(
+            "__checkpoint__.schema_version".to_string(),
+            serde_json::json!("1.2.0"),
+        );
+
         // ── Rich metadata ────────────────────────────────────────────────
         writer.set_metadata("model_type".to_string(), serde_json::json!("adapter"));
         writer.set_metadata("epoch".to_string(), serde_json::json!(epoch));
@@ -847,6 +853,17 @@ impl ClassifyTrainer {
             &[metrics.learning_rate],
         );
 
+        // ── NaN/Inf check (F-CKPT-007) ──────────────────────────────────
+        // Validate model tensors before writing (skip training state which
+        // is trusted internal state)
+        let weight_check = weight_slice.iter().all(|v| v.is_finite());
+        let bias_check = bias_slice.iter().all(|v| v.is_finite());
+        if !weight_check || !bias_check {
+            return Err(crate::Error::Serialization(
+                "F-CKPT-007: classifier tensors contain NaN or Inf".to_string(),
+            ));
+        }
+
         let apr_path = path.join("model.apr");
         writer
             .write(&apr_path)
@@ -871,6 +888,18 @@ impl ClassifyTrainer {
         let reader = AprReader::open(apr_path).map_err(|e| {
             crate::Error::Serialization(format!("Failed to open APR checkpoint: {e}"))
         })?;
+
+        // ── Data hash verification (F-CKPT-006) ─────────────────────────
+        if let Some(saved_hash) = reader.get_metadata("data_hash").and_then(|v| v.as_str()) {
+            if saved_hash != self.data_hash {
+                return Err(crate::Error::ConfigError(format!(
+                    "F-CKPT-006: training data hash mismatch. \
+                     Checkpoint: {saved_hash}, current: {}. \
+                     Use --allow-data-mismatch to override.",
+                    self.data_hash,
+                )));
+            }
+        }
 
         // ── Restore classifier head ─────────────────────────────────────
         let weight_data = reader.read_tensor_f32("classifier.weight").map_err(|e| {
