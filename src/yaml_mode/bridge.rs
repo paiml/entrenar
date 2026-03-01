@@ -67,6 +67,8 @@ fn convert_model(
     manifest: &TrainingManifest,
     warnings: &mut Vec<String>,
 ) -> Result<ModelRef, BridgeError> {
+    use crate::config::ArchitectureOverrides;
+
     let model_cfg =
         manifest.model.as_ref().ok_or_else(|| BridgeError::MissingRequired("model".into()))?;
 
@@ -91,7 +93,23 @@ fn convert_model(
         warnings.push("model.device is not supported in legacy TrainSpec".into());
     }
 
-    Ok(ModelRef { path: PathBuf::from(&model_cfg.source), layers, mode, config: None })
+    // Convert architecture params to overrides
+    let architecture = model_cfg.architecture.as_ref().map(|arch| {
+        ArchitectureOverrides {
+            hidden_size: arch.hidden_size,
+            num_hidden_layers: arch.num_layers,
+            num_attention_heads: arch.num_heads,
+            num_kv_heads: arch.num_kv_heads,
+            intermediate_size: arch.intermediate_size,
+            vocab_size: arch.vocab_size,
+            max_position_embeddings: arch.max_seq_length,
+            rms_norm_eps: arch.rms_norm_eps,
+            rope_theta: arch.rope_theta,
+            use_bias: arch.use_bias,
+        }
+    }).filter(|o| !o.is_empty());
+
+    Ok(ModelRef { path: PathBuf::from(&model_cfg.source), layers, mode, config: None, architecture })
 }
 
 /// Resolve the training data path from manifest data config.
@@ -557,8 +575,13 @@ mod tests {
                 hidden_size: None,
                 num_layers: None,
                 num_heads: None,
+                num_kv_heads: None,
+                intermediate_size: None,
                 vocab_size: None,
                 max_seq_length: None,
+                rms_norm_eps: None,
+                rope_theta: None,
+                use_bias: None,
                 layers: None,
             });
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
@@ -936,8 +959,13 @@ output:
                 hidden_size: None,
                 num_layers: None,
                 num_heads: None,
+                num_kv_heads: None,
+                intermediate_size: None,
                 vocab_size: None,
                 max_seq_length: None,
+                rms_norm_eps: None,
+                rope_theta: None,
+                use_bias: None,
                 layers: None,
             });
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
@@ -1170,5 +1198,127 @@ output:
         let manifest = minimal_manifest();
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
         assert!(result.spec.training.seed.is_none());
+    }
+
+    #[test]
+    fn test_architecture_overrides_converted() {
+        let mut manifest = minimal_manifest();
+        manifest.model.as_mut().expect("config should be valid").architecture =
+            Some(ArchitectureConfig {
+                arch_type: "transformer".into(),
+                hidden_size: Some(1024),
+                num_layers: Some(16),
+                num_heads: Some(16),
+                num_kv_heads: Some(4),
+                intermediate_size: Some(4096),
+                vocab_size: Some(50000),
+                max_seq_length: Some(2048),
+                rms_norm_eps: Some(1e-5),
+                rope_theta: Some(500_000.0),
+                use_bias: Some(true),
+                layers: None,
+            });
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let arch = result.spec.model.architecture.expect("architecture overrides should be set");
+        assert_eq!(arch.hidden_size, Some(1024));
+        assert_eq!(arch.num_hidden_layers, Some(16));
+        assert_eq!(arch.num_attention_heads, Some(16));
+        assert_eq!(arch.num_kv_heads, Some(4));
+        assert_eq!(arch.intermediate_size, Some(4096));
+        assert_eq!(arch.vocab_size, Some(50000));
+        assert_eq!(arch.max_position_embeddings, Some(2048));
+        assert_eq!(arch.rms_norm_eps, Some(1e-5));
+        assert_eq!(arch.rope_theta, Some(500_000.0));
+        assert_eq!(arch.use_bias, Some(true));
+    }
+
+    #[test]
+    fn test_architecture_overrides_none_when_no_params() {
+        let mut manifest = minimal_manifest();
+        manifest.model.as_mut().expect("config should be valid").architecture =
+            Some(ArchitectureConfig {
+                arch_type: "transformer".into(),
+                hidden_size: None,
+                num_layers: None,
+                num_heads: None,
+                num_kv_heads: None,
+                intermediate_size: None,
+                vocab_size: None,
+                max_seq_length: None,
+                rms_norm_eps: None,
+                rope_theta: None,
+                use_bias: None,
+                layers: None,
+            });
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        // All None → overrides filtered out
+        assert!(result.spec.model.architecture.is_none());
+    }
+
+    #[test]
+    fn test_architecture_overrides_partial() {
+        let mut manifest = minimal_manifest();
+        manifest.model.as_mut().expect("config should be valid").architecture =
+            Some(ArchitectureConfig {
+                arch_type: "transformer".into(),
+                hidden_size: Some(768),
+                num_layers: None,
+                num_heads: None,
+                num_kv_heads: None,
+                intermediate_size: None,
+                vocab_size: None,
+                max_seq_length: None,
+                rms_norm_eps: None,
+                rope_theta: None,
+                use_bias: None,
+                layers: None,
+            });
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        let arch = result.spec.model.architecture.expect("architecture overrides should be set");
+        assert_eq!(arch.hidden_size, Some(768));
+        assert!(arch.num_attention_heads.is_none());
+    }
+
+    #[test]
+    fn test_architecture_overrides_from_yaml() {
+        let yaml = r#"
+entrenar: "1.0"
+name: "arch-test"
+version: "1.0.0"
+
+model:
+  source: "./models/custom.safetensors"
+  architecture:
+    type: transformer
+    hidden_size: 1024
+    num_layers: 16
+    num_heads: 16
+    num_kv_heads: 4
+    intermediate_size: 4096
+    vocab_size: 50000
+    max_seq_length: 2048
+    rms_norm_eps: 0.00001
+    rope_theta: 500000.0
+    use_bias: true
+
+data:
+  source: "./data/train.parquet"
+
+optimizer:
+  name: adamw
+  lr: 0.0003
+"#;
+        let manifest: TrainingManifest =
+            serde_yaml::from_str(yaml).expect("YAML should parse");
+        let result = manifest_to_spec(&manifest).expect("bridge should succeed");
+        assert_eq!(result.spec.model.mode, ModelMode::Transformer);
+        let arch = result.spec.model.architecture.expect("overrides should be set");
+        assert_eq!(arch.hidden_size, Some(1024));
+        assert_eq!(arch.num_hidden_layers, Some(16));
+        assert_eq!(arch.num_attention_heads, Some(16));
+        assert_eq!(arch.num_kv_heads, Some(4));
+        assert_eq!(arch.intermediate_size, Some(4096));
+        assert_eq!(arch.vocab_size, Some(50000));
+        assert_eq!(arch.max_position_embeddings, Some(2048));
     }
 }

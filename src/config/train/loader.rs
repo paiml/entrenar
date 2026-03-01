@@ -361,27 +361,82 @@ fn load_transformer_model(
     }
 }
 
+/// Apply architecture overrides to a `TransformerConfig`.
+///
+/// Only `Some` fields in the overrides replace the corresponding base config field.
+fn apply_architecture_overrides(
+    config: &mut TransformerConfig,
+    overrides: &crate::config::ArchitectureOverrides,
+) {
+    if let Some(v) = overrides.hidden_size {
+        config.hidden_size = v;
+    }
+    if let Some(v) = overrides.num_hidden_layers {
+        config.num_hidden_layers = v;
+    }
+    if let Some(v) = overrides.num_attention_heads {
+        config.num_attention_heads = v;
+    }
+    if let Some(v) = overrides.num_kv_heads {
+        config.num_kv_heads = v;
+    }
+    if let Some(v) = overrides.intermediate_size {
+        config.intermediate_size = v;
+    }
+    if let Some(v) = overrides.vocab_size {
+        config.vocab_size = v;
+    }
+    if let Some(v) = overrides.max_position_embeddings {
+        config.max_position_embeddings = v;
+    }
+    if let Some(v) = overrides.rms_norm_eps {
+        config.rms_norm_eps = v;
+    }
+    if let Some(v) = overrides.rope_theta {
+        config.rope_theta = v;
+    }
+    if let Some(v) = overrides.use_bias {
+        config.use_bias = v;
+    }
+}
+
 /// Build TransformerConfig from TrainSpec
 ///
 /// Uses config file if specified, otherwise defaults to a small model.
+/// Architecture overrides from the YAML manifest are applied on top.
 fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerConfig> {
     // Check if config file is specified
-    if let Some(config_path) = &spec.model.config {
+    let mut config = if let Some(config_path) = &spec.model.config {
         let config_file = std::path::Path::new(config_path);
         if config_file.exists() {
             let config_content = std::fs::read_to_string(config_file)
                 .map_err(|e| Error::ConfigError(format!("Failed to read model config: {e}")))?;
 
             if let Ok(hf_config) = serde_json::from_str::<serde_json::Value>(&config_content) {
-                return parse_hf_config(&hf_config);
+                parse_hf_config(&hf_config)?
+            } else {
+                fallback_demo_config()
             }
+        } else {
+            fallback_demo_config()
         }
+    } else {
+        fallback_demo_config()
+    };
+
+    // Apply architecture overrides from YAML manifest
+    if let Some(ref overrides) = spec.model.architecture {
+        apply_architecture_overrides(&mut config, overrides);
     }
 
-    // R-05 (Meyer DbC): Explicit Qwen2-0.5B demo config — NOT a generic default.
-    // This path is ONLY for testing without a model. Production callers must provide config.json.
+    Ok(config)
+}
+
+/// R-05 (Meyer DbC): Explicit Qwen2-0.5B demo config — NOT a generic default.
+/// This path is ONLY for testing without a model. Production callers must provide config.json.
+fn fallback_demo_config() -> TransformerConfig {
     eprintln!("WARNING: No model config found — using Qwen2-0.5B demo config (NOT suitable for production training)");
-    Ok(TransformerConfig {
+    TransformerConfig {
         hidden_size: QWEN_HIDDEN_SIZE,
         num_attention_heads: QWEN_NUM_ATTENTION_HEADS,
         num_kv_heads: QWEN_NUM_KV_HEADS,
@@ -392,7 +447,7 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
         rms_norm_eps: 1e-6,
         rope_theta: QWEN_ROPE_THETA as f32,
         use_bias: false,
-    })
+    }
 }
 
 /// Parse HuggingFace config.json into `TransformerConfig`.
@@ -1004,6 +1059,110 @@ mod tests {
         assert_eq!(config.num_attention_heads, 14);
         assert_eq!(config.num_kv_heads, 2);
         assert_eq!(config.intermediate_size, 4864);
+    }
+
+    #[test]
+    fn test_build_transformer_config_with_architecture_overrides() {
+        use crate::config::schema::{
+            ArchitectureOverrides, DataConfig, ModelRef, OptimSpec, TrainingParams,
+        };
+        use std::collections::HashMap;
+        use std::path::PathBuf;
+
+        let spec = TrainSpec {
+            model: ModelRef {
+                path: PathBuf::from("/nonexistent/model"),
+                config: None,
+                architecture: Some(ArchitectureOverrides {
+                    hidden_size: Some(1024),
+                    num_hidden_layers: Some(16),
+                    num_attention_heads: Some(16),
+                    num_kv_heads: Some(4),
+                    intermediate_size: Some(4096),
+                    vocab_size: Some(50000),
+                    max_position_embeddings: None,
+                    rms_norm_eps: Some(1e-5),
+                    rope_theta: Some(500_000.0),
+                    use_bias: Some(true),
+                }),
+                ..Default::default()
+            },
+            data: DataConfig {
+                train: PathBuf::from("/nonexistent/data.json"),
+                batch_size: 4,
+                ..Default::default()
+            },
+            optimizer: OptimSpec { name: "adam".to_string(), lr: 1e-4, params: HashMap::new() },
+            training: TrainingParams {
+                epochs: 1,
+                output_dir: PathBuf::from("/tmp"),
+                ..Default::default()
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+            publish: None,
+        };
+
+        let config = build_transformer_config_from_spec(&spec).expect("config should be valid");
+        // Overridden fields
+        assert_eq!(config.hidden_size, 1024);
+        assert_eq!(config.num_hidden_layers, 16);
+        assert_eq!(config.num_attention_heads, 16);
+        assert_eq!(config.num_kv_heads, 4);
+        assert_eq!(config.intermediate_size, 4096);
+        assert_eq!(config.vocab_size, 50000);
+        assert_eq!(config.rms_norm_eps, 1e-5);
+        assert_eq!(config.rope_theta, 500_000.0);
+        assert!(config.use_bias);
+        // Non-overridden field keeps the demo default
+        assert_eq!(config.max_position_embeddings, QWEN_MAX_POSITION_EMBEDDINGS);
+    }
+
+    #[test]
+    fn test_build_transformer_config_partial_overrides() {
+        use crate::config::schema::{
+            ArchitectureOverrides, DataConfig, ModelRef, OptimSpec, TrainingParams,
+        };
+        use std::collections::HashMap;
+        use std::path::PathBuf;
+
+        let spec = TrainSpec {
+            model: ModelRef {
+                path: PathBuf::from("/nonexistent/model"),
+                config: None,
+                architecture: Some(ArchitectureOverrides {
+                    hidden_size: Some(768),
+                    vocab_size: Some(32000),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            data: DataConfig {
+                train: PathBuf::from("/nonexistent/data.json"),
+                batch_size: 4,
+                ..Default::default()
+            },
+            optimizer: OptimSpec { name: "adam".to_string(), lr: 1e-4, params: HashMap::new() },
+            training: TrainingParams {
+                epochs: 1,
+                output_dir: PathBuf::from("/tmp"),
+                ..Default::default()
+            },
+            lora: None,
+            quantize: None,
+            merge: None,
+            publish: None,
+        };
+
+        let config = build_transformer_config_from_spec(&spec).expect("config should be valid");
+        // Only these two should be overridden
+        assert_eq!(config.hidden_size, 768);
+        assert_eq!(config.vocab_size, 32000);
+        // Rest keeps demo defaults
+        assert_eq!(config.num_attention_heads, QWEN_NUM_ATTENTION_HEADS);
+        assert_eq!(config.num_kv_heads, QWEN_NUM_KV_HEADS);
+        assert_eq!(config.intermediate_size, QWEN_INTERMEDIATE_SIZE);
     }
 
     #[test]
