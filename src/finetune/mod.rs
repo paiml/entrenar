@@ -19,6 +19,9 @@ pub mod classification;
 pub mod classify_pipeline;
 pub mod classify_trainer;
 pub mod classify_tuner;
+pub mod instruct_corpus;
+pub mod instruct_pipeline;
+pub mod instruct_trainer;
 pub mod training_plan;
 pub mod tune_searchers;
 mod corpus;
@@ -47,6 +50,16 @@ pub use classify_tuner::{
     TrialSummary, TuneConfig, TuneResult, TuneScheduler, TuneSearcher, TuneStrategy,
 };
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
+pub use instruct_corpus::{
+    format_chat_prompt, instruct_corpus_stats, load_instruct_corpus, InstructCorpusStats,
+    InstructMetadata, InstructSample,
+};
+pub use instruct_pipeline::{
+    InstructBatchResult, InstructConfig, InstructPipeline, InstructStepResult,
+};
+pub use instruct_trainer::{
+    InstructEpochMetrics, InstructTrainResult, InstructTrainer, InstructTrainingConfig,
+};
 pub use device::{ComputeDevice, DeviceInfo};
 pub use eval::{
     contains_tautology, count_test_functions, has_edge_case_tests, has_meaningful_assertions,

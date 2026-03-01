@@ -112,6 +112,25 @@ impl TransformerConfig {
         }
     }
 
+    /// Qwen2.5-Coder 7B configuration (GH-371)
+    ///
+    /// Qwen2.5-Coder-7B-Instruct: 28 layers, 28 heads, 4 KV heads, hidden=3584
+    /// Contract: contracts/model-families/qwen2.yaml
+    pub fn qwen2_7b() -> Self {
+        Self {
+            hidden_size: 3584,
+            num_attention_heads: 28,
+            num_kv_heads: 4,
+            intermediate_size: 18944,
+            num_hidden_layers: 28,
+            vocab_size: 152064,
+            max_position_embeddings: QWEN2_MAX_SEQ_LEN,
+            rms_norm_eps: 1e-6,
+            rope_theta: QWEN2_ROPE_THETA,
+            use_bias: true,
+        }
+    }
+
     /// Qwen3.5 9B configuration
     ///
     /// Key differences from Qwen2: no attention bias, head_dim=256 (explicit),
