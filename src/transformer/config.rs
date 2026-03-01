@@ -16,6 +16,8 @@ const QWEN2_0_5B_INTERMEDIATE_SIZE: usize = 4864;
 const QWEN2_VOCAB_SIZE: usize = 151936;
 const QWEN2_MAX_SEQ_LEN: usize = 32768;
 const QWEN2_ROPE_THETA: f32 = 1_000_000.0;
+const QWEN3_4B_HIDDEN_SIZE: usize = 2560;
+const QWEN3_4B_INTERMEDIATE_SIZE: usize = 9728;
 const QWEN3_5_9B_HIDDEN_SIZE: usize = 4096;
 const QWEN3_5_9B_INTERMEDIATE_SIZE: usize = 12288;
 const QWEN3_5_VOCAB_SIZE: usize = 248320;
@@ -45,6 +47,10 @@ pub struct TransformerConfig {
     pub rope_theta: f32,
     /// Whether to use bias in linear layers
     pub use_bias: bool,
+    /// Explicit per-head dimension (overrides hidden_size / num_heads).
+    /// Required for Qwen3 where head_dim=128 but hidden_size/num_heads=80.
+    #[serde(default)]
+    pub head_dim_override: Option<usize>,
 }
 
 impl TransformerConfig {
@@ -61,6 +67,7 @@ impl TransformerConfig {
             rms_norm_eps: 1e-6,
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
+            head_dim_override: None,
         }
     }
 
@@ -77,6 +84,7 @@ impl TransformerConfig {
             rms_norm_eps: 1e-6,
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
+            head_dim_override: None,
         }
     }
 
@@ -93,6 +101,7 @@ impl TransformerConfig {
             rms_norm_eps: 1e-5,
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
+            head_dim_override: None,
         }
     }
 
@@ -109,6 +118,7 @@ impl TransformerConfig {
             rms_norm_eps: 1e-6,
             rope_theta: QWEN2_ROPE_THETA,
             use_bias: true,
+            head_dim_override: None,
         }
     }
 
@@ -128,6 +138,27 @@ impl TransformerConfig {
             rms_norm_eps: 1e-6,
             rope_theta: QWEN2_ROPE_THETA,
             use_bias: true,
+            head_dim_override: None,
+        }
+    }
+
+    /// Qwen3 4B configuration
+    ///
+    /// Qwen3-4B: 36 layers, 32 heads, 8 KV heads, hidden=2560, head_dim=128.
+    /// Same vocab_size as Qwen2 (151936). No attention bias (Qwen3 family).
+    pub fn qwen3_4b() -> Self {
+        Self {
+            hidden_size: QWEN3_4B_HIDDEN_SIZE,
+            num_attention_heads: 32,
+            num_kv_heads: 8,
+            intermediate_size: QWEN3_4B_INTERMEDIATE_SIZE,
+            num_hidden_layers: 36,
+            vocab_size: QWEN2_VOCAB_SIZE, // 151936, same as Qwen2
+            max_position_embeddings: 40960,
+            rms_norm_eps: 1e-6,
+            rope_theta: QWEN2_ROPE_THETA, // 1M theta
+            use_bias: false,              // Qwen3: no attention bias
+            head_dim_override: Some(128), // Contract: qwen3.yaml §4b.head_dim=128
         }
     }
 
@@ -148,6 +179,7 @@ impl TransformerConfig {
             rms_norm_eps: 1e-6,
             rope_theta: QWEN2_ROPE_THETA, // Same 1M theta as Qwen2
             use_bias: false,              // KEY: no attention bias (unlike Qwen2)
+            head_dim_override: None,      // 4096/16=256, no override needed
         }
     }
 
@@ -164,12 +196,25 @@ impl TransformerConfig {
             rms_norm_eps: 1e-6,
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
+            head_dim_override: None,
         }
     }
 
-    /// Per-head dimension
+    /// Per-head dimension.
+    ///
+    /// Uses explicit override when set (Qwen3: head_dim=128 with hidden=2560, 32 heads).
+    /// Falls back to hidden_size / num_heads for standard architectures.
     pub fn head_dim(&self) -> usize {
-        self.hidden_size / self.num_attention_heads
+        self.head_dim_override
+            .unwrap_or(self.hidden_size / self.num_attention_heads)
+    }
+
+    /// Total Q/O projection dimension = num_heads * head_dim.
+    ///
+    /// Equals hidden_size for standard architectures but differs when head_dim
+    /// is explicitly overridden (e.g. Qwen3-4B: 32 * 128 = 4096 != 2560).
+    pub fn q_dim(&self) -> usize {
+        self.num_attention_heads * self.head_dim()
     }
 }
 
