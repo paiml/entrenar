@@ -2,11 +2,128 @@
 //!
 //! This module provides multi-head self-attention with grouped-query attention support.
 
-use crate::autograd::matmul;
+use crate::autograd::{matmul, BackwardOp};
 use crate::Tensor;
+use ndarray::Array1;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::config::TransformerConfig;
+
+// ---------------------------------------------------------------------------
+// AttentionBlockBackward: combined backward for multi-head attention
+//
+// Orchestrates gradient flow: concat → per-head attention → Q/K/V projections.
+// Calls each Q/K/V matmul backward exactly once to avoid gradient inflation.
+// ---------------------------------------------------------------------------
+
+struct AttentionBlockBackward {
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    head_q_tensors: Vec<Tensor>,
+    head_k_tensors: Vec<Tensor>,
+    head_v_tensors: Vec<Tensor>,
+    head_outputs: Vec<Tensor>,
+    head_kv_indices: Vec<usize>,
+    seq_len: usize,
+    head_dim: usize,
+    q_dim: usize,
+    kv_hidden_size: usize,
+    result_grad: Rc<RefCell<Option<Array1<f32>>>>,
+}
+
+impl BackwardOp for AttentionBlockBackward {
+    fn backward(&self) {
+        let Some(grad_out) = self.result_grad.borrow().as_ref().cloned() else { return };
+        let go = grad_out.as_slice().expect("grad contiguous");
+        let h = self.head_dim;
+
+        // Step 1: Split concat grad per head and trigger each attention backward
+        split_and_backward_heads(go, &self.head_outputs, self.seq_len, h, self.q_dim);
+
+        // Step 2-4: Scatter per-head grads into full Q/K/V
+        scatter_head_grads_q(&self.q, &self.head_q_tensors, self.seq_len, h, self.q_dim);
+        scatter_head_grads_kv(
+            &self.k, &self.head_k_tensors, &self.head_kv_indices,
+            self.seq_len, h, self.kv_hidden_size,
+        );
+        scatter_head_grads_kv(
+            &self.v, &self.head_v_tensors, &self.head_kv_indices,
+            self.seq_len, h, self.kv_hidden_size,
+        );
+
+        // Step 5: Propagate backward through Q/K/V matmuls (once each)
+        for proj in [&self.q, &self.k, &self.v] {
+            if let Some(op) = proj.backward_op() {
+                op.backward();
+            }
+        }
+    }
+}
+
+/// Split concat gradient per head and trigger each head's attention backward
+fn split_and_backward_heads(
+    go: &[f32], head_outputs: &[Tensor], seq_len: usize, head_dim: usize, q_dim: usize,
+) {
+    for (head_idx, head_out) in head_outputs.iter().enumerate() {
+        let mut grad_head = vec![0.0_f32; seq_len * head_dim];
+        for s in 0..seq_len {
+            let src_base = s * q_dim + head_idx * head_dim;
+            let dst_base = s * head_dim;
+            grad_head[dst_base..dst_base + head_dim].copy_from_slice(&go[src_base..src_base + head_dim]);
+        }
+        head_out.accumulate_grad(Array1::from(grad_head));
+        if let Some(op) = head_out.backward_op() {
+            op.backward();
+        }
+    }
+}
+
+/// Scatter per-head Q gradients into the full Q projection tensor
+fn scatter_head_grads_q(
+    q: &Tensor, head_q_tensors: &[Tensor], seq_len: usize, head_dim: usize, q_dim: usize,
+) {
+    if !q.requires_grad() { return; }
+    let mut grad_q = vec![0.0_f32; seq_len * q_dim];
+    for (head_idx, head_q) in head_q_tensors.iter().enumerate() {
+        if let Some(hgrad) = head_q.grad() {
+            let hg = hgrad.as_slice().expect("contiguous");
+            for s in 0..seq_len {
+                let src_base = s * head_dim;
+                let dst_base = s * q_dim + head_idx * head_dim;
+                for d in 0..head_dim {
+                    grad_q[dst_base + d] += hg[src_base + d];
+                }
+            }
+        }
+    }
+    q.accumulate_grad(Array1::from(grad_q));
+}
+
+/// Scatter per-head K or V gradients into the full K/V projection tensor (GQA-correct)
+fn scatter_head_grads_kv(
+    target: &Tensor, head_tensors: &[Tensor], kv_indices: &[usize],
+    seq_len: usize, head_dim: usize, kv_hidden_size: usize,
+) {
+    if !target.requires_grad() { return; }
+    let mut grad = vec![0.0_f32; seq_len * kv_hidden_size];
+    for (head_idx, head_t) in head_tensors.iter().enumerate() {
+        let kv_h = kv_indices[head_idx];
+        if let Some(hgrad) = head_t.grad() {
+            let hg = hgrad.as_slice().expect("contiguous");
+            for s in 0..seq_len {
+                let src_base = s * head_dim;
+                let dst_base = s * kv_hidden_size + kv_h * head_dim;
+                for d in 0..head_dim {
+                    grad[dst_base + d] += hg[src_base + d];
+                }
+            }
+        }
+    }
+    target.accumulate_grad(Array1::from(grad));
+}
 
 /// Multi-head self-attention layer
 pub struct MultiHeadAttention {
@@ -26,35 +143,36 @@ impl MultiHeadAttention {
     /// Create new attention layer with initialized weights
     pub fn new(config: &TransformerConfig) -> Self {
         let hidden_size = config.hidden_size;
+        let q_dim = config.q_dim();
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
 
         // Xavier initialization scale
-        let scale = (2.0 / (hidden_size + hidden_size) as f32).sqrt();
+        let q_scale = (2.0 / (hidden_size + q_dim) as f32).sqrt();
         let kv_scale = (2.0 / (hidden_size + kv_hidden_size) as f32).sqrt();
 
         Self {
             config: config.clone(),
             w_q: Tensor::from_vec(
-                (0..hidden_size * hidden_size)
-                    .map(|i| ((i as f32 * 0.123).sin() * scale))
+                (0..q_dim * hidden_size)
+                    .map(|i| ((i as f32 * 0.123).sin() * q_scale))
                     .collect(),
                 true,
             ),
             w_k: Tensor::from_vec(
-                (0..hidden_size * kv_hidden_size)
+                (0..kv_hidden_size * hidden_size)
                     .map(|i| ((i as f32 * 0.234).sin() * kv_scale))
                     .collect(),
                 true,
             ),
             w_v: Tensor::from_vec(
-                (0..hidden_size * kv_hidden_size)
+                (0..kv_hidden_size * hidden_size)
                     .map(|i| ((i as f32 * 0.345).sin() * kv_scale))
                     .collect(),
                 true,
             ),
             w_o: Tensor::from_vec(
-                (0..hidden_size * hidden_size)
-                    .map(|i| ((i as f32 * 0.456).sin() * scale))
+                (0..hidden_size * q_dim)
+                    .map(|i| ((i as f32 * 0.456).sin() * q_scale))
                     .collect(),
                 true,
             ),
@@ -82,14 +200,16 @@ impl MultiHeadAttention {
         let w_o = params.get(&format!("{prefix}.o_proj.weight"))?.clone();
 
         let hidden = config.hidden_size;
+        let q_dim = config.q_dim();
         let kv_hidden = config.num_kv_heads * config.head_dim();
 
         // PMAT-331: Shape validation for attention projections
+        // Q: [q_dim, hidden], K: [kv_hidden, hidden], V: [kv_hidden, hidden], O: [hidden, q_dim]
         let checks: &[(&str, &Tensor, usize)] = &[
-            ("q_proj", &w_q, hidden * hidden),
-            ("k_proj", &w_k, hidden * kv_hidden),
-            ("v_proj", &w_v, hidden * kv_hidden),
-            ("o_proj", &w_o, hidden * hidden),
+            ("q_proj", &w_q, q_dim * hidden),
+            ("k_proj", &w_k, kv_hidden * hidden),
+            ("v_proj", &w_v, kv_hidden * hidden),
+            ("o_proj", &w_o, hidden * q_dim),
         ];
         for &(name, tensor, expected) in checks {
             if tensor.len() != expected {
@@ -117,86 +237,102 @@ impl MultiHeadAttention {
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;
         let head_dim = self.config.head_dim();
+        let q_dim = self.config.q_dim();
         let kv_hidden_size = num_kv_heads * head_dim;
 
-        // Project Q, K, V
-        // x: (seq_len, hidden_size) -> Q: (seq_len, hidden_size)
-        let q = matmul(x, &self.w_q, seq_len, hidden_size, hidden_size);
-        // x: (seq_len, hidden_size) -> K: (seq_len, kv_hidden_size)
+        // Project Q, K, V (autograd-tracked matmuls)
+        let q = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
         let k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
-        // x: (seq_len, hidden_size) -> V: (seq_len, kv_hidden_size)
         let v = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
 
-        // Multi-head attention with grouped-query attention support
-        let mut attn_outputs = Vec::with_capacity(num_heads * seq_len * head_dim);
-
-        // Number of query heads per KV head
+        let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
         let heads_per_kv = num_heads / num_kv_heads;
 
-        for h in 0..num_heads {
-            // Which KV head to use for this query head
-            let kv_h = h / heads_per_kv;
+        // Per-head attention with gradient tracking
+        let mut head_q_tensors = Vec::with_capacity(num_heads);
+        let mut head_k_tensors = Vec::with_capacity(num_heads);
+        let mut head_v_tensors = Vec::with_capacity(num_heads);
+        let mut head_outputs = Vec::with_capacity(num_heads);
+        let mut head_kv_indices = Vec::with_capacity(num_heads);
 
-            // Extract Q for this head: (seq_len, head_dim)
+        for h in 0..num_heads {
+            let kv_h = h / heads_per_kv;
+            head_kv_indices.push(kv_h);
+
+            // Extract per-head slices (requires_grad=true so attention creates backward ops,
+            // but no backward_op on these tensors — AttentionBlockBackward handles chain)
             let q_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
-                    let start = s * hidden_size + h * head_dim;
-                    q.data().as_slice().expect("contiguous Q tensor")[start..start + head_dim]
-                        .to_vec()
+                    let start = s * q_dim + h * head_dim;
+                    q.data().as_slice().expect("contiguous Q")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
-            // Extract K for this KV head: (seq_len, head_dim)
             let k_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * kv_hidden_size + kv_h * head_dim;
-                    k.data().as_slice().expect("contiguous K tensor")[start..start + head_dim]
-                        .to_vec()
+                    k.data().as_slice().expect("contiguous K")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
-            // Extract V for this KV head: (seq_len, head_dim)
             let v_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
                     let start = s * kv_hidden_size + kv_h * head_dim;
-                    v.data().as_slice().expect("contiguous V tensor")[start..start + head_dim]
-                        .to_vec()
+                    v.data().as_slice().expect("contiguous V")[start..start + head_dim].to_vec()
                 })
                 .collect();
 
-            // Scaled dot-product attention for this head
-            let q_tensor = Tensor::from_vec(q_head, false);
-            let k_tensor = Tensor::from_vec(k_head, false);
-            let v_tensor = Tensor::from_vec(v_head, false);
+            let q_tensor = Tensor::from_vec(q_head, requires_grad);
+            let k_tensor = Tensor::from_vec(k_head, requires_grad);
+            let v_tensor = Tensor::from_vec(v_head, requires_grad);
 
             let attn_out = crate::autograd::attention(
                 &q_tensor, &k_tensor, &v_tensor, seq_len, head_dim, seq_len, head_dim,
             );
 
-            attn_outputs.extend_from_slice(
-                attn_out.data().as_slice().expect("contiguous attention output"),
-            );
+            head_q_tensors.push(q_tensor);
+            head_k_tensors.push(k_tensor);
+            head_v_tensors.push(v_tensor);
+            head_outputs.push(attn_out);
         }
 
-        // Concatenate heads and reshape: (seq_len, num_heads * head_dim) = (seq_len, hidden_size)
-        // Then reorder from head-major to position-major
-        let mut concat_output = vec![0.0; seq_len * hidden_size];
-        for h in 0..num_heads {
+        // Concatenate heads: reorder from per-head (head, seq, dim) to (seq, head*dim)
+        let mut concat_output = vec![0.0; seq_len * q_dim];
+        for (h, head_out) in head_outputs.iter().enumerate() {
+            let hd = head_out.data();
+            let hdata = hd.as_slice().expect("contiguous attention output");
             for s in 0..seq_len {
                 for d in 0..head_dim {
-                    // Source: head h, position s, dimension d
-                    let src_idx = h * seq_len * head_dim + s * head_dim + d;
-                    // Destination: position s, head h, dimension d
-                    let dst_idx = s * hidden_size + h * head_dim + d;
-                    concat_output[dst_idx] = attn_outputs[src_idx];
+                    let src_idx = s * head_dim + d;
+                    let dst_idx = s * q_dim + h * head_dim + d;
+                    concat_output[dst_idx] = hdata[src_idx];
                 }
             }
         }
 
-        let concat_tensor = Tensor::from_vec(concat_output, true);
+        let mut concat_tensor = Tensor::from_vec(concat_output, requires_grad);
 
-        // Output projection: (seq_len, hidden_size) @ (hidden_size, hidden_size) = (seq_len, hidden_size)
-        matmul(&concat_tensor, &self.w_o, seq_len, hidden_size, hidden_size)
+        if requires_grad {
+            let backward_op = Rc::new(AttentionBlockBackward {
+                q: q.clone(),
+                k: k.clone(),
+                v: v.clone(),
+                head_q_tensors,
+                head_k_tensors,
+                head_v_tensors,
+                head_outputs,
+                head_kv_indices,
+                seq_len,
+                head_dim,
+                q_dim,
+                kv_hidden_size,
+                result_grad: concat_tensor.grad_cell(),
+            });
+            concat_tensor.set_backward_op(backward_op);
+        }
+
+        // Output projection: (seq_len, q_dim) @ (q_dim, hidden_size) = (seq_len, hidden_size)
+        matmul(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
     }
 
     /// Get all parameters as a vector
@@ -321,14 +457,15 @@ impl MultiHeadAttentionWithLoRA {
     /// * `alpha` - LoRA alpha scaling factor
     pub fn from_attention(attn: &MultiHeadAttention, rank: usize, alpha: f32) -> Self {
         let hidden_size = attn.config.hidden_size;
+        let q_dim = attn.config.q_dim();
         let kv_hidden_size = attn.config.num_kv_heads * attn.config.head_dim();
 
         Self {
             config: attn.config.clone(),
-            q_proj: LoRAProjection::new(attn.w_q.clone(), hidden_size, hidden_size, rank, alpha),
+            q_proj: LoRAProjection::new(attn.w_q.clone(), hidden_size, q_dim, rank, alpha),
             k_proj: LoRAProjection::new(attn.w_k.clone(), hidden_size, kv_hidden_size, rank, alpha),
             v_proj: LoRAProjection::new(attn.w_v.clone(), hidden_size, kv_hidden_size, rank, alpha),
-            o_proj: LoRAProjection::new(attn.w_o.clone(), hidden_size, hidden_size, rank, alpha),
+            o_proj: LoRAProjection::new(attn.w_o.clone(), q_dim, hidden_size, rank, alpha),
         }
     }
 
@@ -336,10 +473,10 @@ impl MultiHeadAttentionWithLoRA {
     ///
     /// LoRA is applied to all Q, K, V, O projections
     pub fn forward(&self, x: &Tensor, seq_len: usize) -> Tensor {
-        let hidden_size = self.config.hidden_size;
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;
         let head_dim = self.config.head_dim();
+        let q_dim = self.config.q_dim();
         let kv_hidden_size = num_kv_heads * head_dim;
 
         // Project Q, K, V with LoRA
@@ -357,7 +494,7 @@ impl MultiHeadAttentionWithLoRA {
             // Extract Q for this head
             let q_head: Vec<f32> = (0..seq_len)
                 .flat_map(|s| {
-                    let start = s * hidden_size + h * head_dim;
+                    let start = s * q_dim + h * head_dim;
                     q.data().as_slice().expect("contiguous Q tensor")[start..start + head_dim]
                         .to_vec()
                 })
@@ -395,13 +532,13 @@ impl MultiHeadAttentionWithLoRA {
             );
         }
 
-        // Concatenate heads and reorder
-        let mut concat_output = vec![0.0; seq_len * hidden_size];
+        // Concatenate heads and reorder: (seq_len, q_dim)
+        let mut concat_output = vec![0.0; seq_len * q_dim];
         for h in 0..num_heads {
             for s in 0..seq_len {
                 for d in 0..head_dim {
                     let src_idx = h * seq_len * head_dim + s * head_dim + d;
-                    let dst_idx = s * hidden_size + h * head_dim + d;
+                    let dst_idx = s * q_dim + h * head_dim + d;
                     concat_output[dst_idx] = attn_outputs[src_idx];
                 }
             }
@@ -409,7 +546,7 @@ impl MultiHeadAttentionWithLoRA {
 
         let concat_tensor = Tensor::from_vec(concat_output, true);
 
-        // Output projection with LoRA
+        // Output projection with LoRA: (seq_len, q_dim) -> (seq_len, hidden_size)
         self.o_proj.forward(&concat_tensor, seq_len)
     }
 
@@ -582,6 +719,46 @@ mod tests {
         assert!(grad_o.iter().all(|&v| v.is_finite()));
         let sum: f32 = grad_o.iter().map(|v| v.abs()).sum();
         assert!(sum > 0.0, "Output projection gradient should not be all zero");
+    }
+
+    /// ALB-038: Full attention forward must propagate gradients to Q/K/V weights
+    #[test]
+    fn test_attention_full_forward_qkv_gradients() {
+        let config = TransformerConfig::tiny();
+        let attn = MultiHeadAttention::new(&config);
+        let hidden_size = config.hidden_size;
+        let seq_len = 3;
+
+        // Non-uniform input: different positions must have different representations
+        // so softmax produces non-uniform weights with non-zero score gradients
+        let x_data: Vec<f32> = (0..seq_len * hidden_size)
+            .map(|i| ((i as f32) * 0.17).sin() * 0.5)
+            .collect();
+        let x = Tensor::from_vec(x_data, true);
+        let mut output = attn.forward(&x, seq_len);
+
+        let grad_out = ndarray::Array1::ones(seq_len * hidden_size);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        // All four projection weights must receive gradients
+        for (name, param) in [("w_q", &attn.w_q), ("w_k", &attn.w_k), ("w_v", &attn.w_v), ("w_o", &attn.w_o)] {
+            assert!(
+                param.grad().is_some(),
+                "ALB-038: {name} must have gradient after full attention forward"
+            );
+            let grad = param.grad().expect("gradient available");
+            assert!(
+                grad.iter().all(|&v| v.is_finite()),
+                "ALB-038: {name} gradient must be finite"
+            );
+            assert!(
+                grad.iter().any(|&v| v.abs() > 1e-10),
+                "ALB-038: {name} gradient must be non-zero"
+            );
+        }
+
+        // Input must also receive gradient (enables gradient flow through model)
+        assert!(x.grad().is_some(), "ALB-038: input x must have gradient");
     }
 
     // ============================================================================
