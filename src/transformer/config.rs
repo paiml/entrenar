@@ -240,6 +240,23 @@ impl TransformerConfig {
         })
     }
 
+    /// Resolve config from a model size string. Errors on unknown sizes.
+    ///
+    /// GH-377: Replaces `_ => TransformerConfig::tiny()` catch-all pattern.
+    /// This is the single canonical mapping from size strings to configs.
+    /// Every callsite that previously had its own match table should use this.
+    pub fn from_size_str(size: &str) -> Result<Self, String> {
+        match size {
+            "0.5B" | "500M" | "qwen2-0.5b" => Ok(Self::qwen2_0_5b()),
+            "7B" | "qwen2.5-7b" => Ok(Self::qwen2_7b()),
+            "4B" | "qwen3-4b" | "qwen3" => Ok(Self::qwen3_4b()),
+            "9B" | "qwen3.5-9b" | "qwen3_5" | "qwen3.5" => Ok(Self::qwen3_5_9b()),
+            unknown => Err(format!(
+                "Unknown model size '{unknown}'. Known sizes: 0.5B, 4B, 7B, 9B"
+            )),
+        }
+    }
+
     /// Tiny configuration for testing
     pub fn tiny() -> Self {
         Self {
