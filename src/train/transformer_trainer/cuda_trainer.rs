@@ -58,34 +58,33 @@ use super::batch::LMBatch;
 #[cfg(feature = "cuda")]
 use super::config::TransformerTrainConfig;
 
-/// Estimate gradient L2 norm of the shared workspace by sampling, return clip scale.
+/// Compute exact gradient L2 norm of the shared workspace (downloads all buffers to CPU).
 ///
 /// Free function to avoid borrow conflicts with `&mut self`.
+/// For 350M model, downloads ~58 MB per block (~1.8ms on PCIe 4.0 x16).
 #[cfg(feature = "cuda")]
-fn estimate_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> f32 {
-    fn sample_sq_norm(buf: &GpuBuffer<f32>) -> f64 {
-        let sample_size = buf.len().min(1024);
-        let mut sample = vec![0.0f32; sample_size];
-        if buf.copy_to_host_at(&mut sample, 0).is_err() {
+fn compute_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> f32 {
+    fn exact_sq_norm(buf: &GpuBuffer<f32>) -> f64 {
+        let mut host = vec![0.0f32; buf.len()];
+        if buf.copy_to_host_at(&mut host, 0).is_err() {
             return 0.0;
         }
-        let partial: f64 = sample.iter().map(|&x| (x as f64) * (x as f64)).sum();
-        partial * (buf.len() as f64 / sample_size as f64)
+        host.iter().map(|&x| (x as f64) * (x as f64)).sum()
     }
 
-    let total_sq = sample_sq_norm(&ws.grad_w_q)
-        + sample_sq_norm(&ws.grad_w_k)
-        + sample_sq_norm(&ws.grad_w_v)
-        + sample_sq_norm(&ws.grad_w_o)
-        + sample_sq_norm(&ws.grad_gate)
-        + sample_sq_norm(&ws.grad_up)
-        + sample_sq_norm(&ws.grad_down)
-        + sample_sq_norm(&ws.grad_input_norm)
-        + sample_sq_norm(&ws.grad_post_attn_norm);
+    let total_sq = exact_sq_norm(&ws.grad_w_q)
+        + exact_sq_norm(&ws.grad_w_k)
+        + exact_sq_norm(&ws.grad_w_v)
+        + exact_sq_norm(&ws.grad_w_o)
+        + exact_sq_norm(&ws.grad_gate)
+        + exact_sq_norm(&ws.grad_up)
+        + exact_sq_norm(&ws.grad_down)
+        + exact_sq_norm(&ws.grad_input_norm)
+        + exact_sq_norm(&ws.grad_post_attn_norm);
 
-    let estimated_norm = total_sq.sqrt() as f32;
-    if estimated_norm > max_norm {
-        max_norm / estimated_norm
+    let grad_norm = total_sq.sqrt() as f32;
+    if grad_norm > max_norm {
+        max_norm / grad_norm
     } else {
         1.0
     }
@@ -96,7 +95,7 @@ fn estimate_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> f32 {
 /// Free function to avoid borrow conflicts with `&mut self` + `stream`.
 #[cfg(feature = "cuda")]
 fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &CudaStream) {
-    let scale = estimate_workspace_clip_scale(ws, max_norm);
+    let scale = compute_workspace_clip_scale(ws, max_norm);
     if (scale - 1.0).abs() < 1e-7 {
         return;
     }
@@ -397,7 +396,14 @@ impl CudaTransformerTrainer {
         );
 
         let loss_fn = CausalLMLoss::new(vocab_size);
-        let embed_optimizer = AdamW::default_params(config.lr);
+        // C-EMBED-GRAD-001: CPU optimizer must match YAML hyperparams (not defaults)
+        let embed_optimizer = AdamW::new(
+            config.lr,
+            config.beta1,
+            config.beta2,
+            1e-8,
+            config.weight_decay,
+        );
 
         Ok(Self {
             model,
@@ -443,39 +449,18 @@ impl CudaTransformerTrainer {
         let seq_len = input_ids.len();
 
         // Steps 1-6: GPU forward pass → returns logits on CPU
-        let logits_data = match self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size) {
-            Some(d) => d,
-            None => {
-                eprintln!("[CUDA] gpu_forward failed (seq_len={seq_len}, H={hidden_size}, V={vocab_size})");
-                return None;
-            }
-        };
+        let logits_data = self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
 
         // Step 7: Cross-entropy loss + gradient (CPU)
-        let (loss_val, grad_logits) = match self.cpu_loss_and_grad(
-            &logits_data, target_ids, seq_len, vocab_size,
-        ) {
-            Some(v) => v,
-            None => {
-                eprintln!("[CUDA] cpu_loss_and_grad failed");
-                return None;
-            }
-        };
+        let (loss_val, grad_logits) =
+            self.cpu_loss_and_grad(&logits_data, target_ids, seq_len, vocab_size)?;
 
         // Steps 8-11: GPU backward pass
-        let grad_output_is_a = match self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size) {
-            Some(v) => v,
-            None => {
-                eprintln!("[CUDA] gpu_backward failed");
-                return None;
-            }
-        };
+        let grad_output_is_a =
+            self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size)?;
 
         // Step 12: Embedding backward (CPU)
-        if self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a).is_none() {
-            eprintln!("[CUDA] embed_backward failed");
-            return None;
-        }
+        self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a)?;
 
         Some(loss_val)
     }
@@ -558,11 +543,8 @@ impl CudaTransformerTrainer {
         let mut buf = vec![0.0f32; seq_len * vocab_size];
         self.gpu_training.logits_buf.copy_to_host_at(&mut buf, 0).ok()?;
 
-        // NaN guard
+        // NaN guard: bail if logits contain non-finite values
         if buf.iter().any(|v| !v.is_finite()) {
-            let nan_count = buf.iter().filter(|v| v.is_nan()).count();
-            let inf_count = buf.iter().filter(|v| v.is_infinite()).count();
-            eprintln!("[CUDA] NaN in logits — falling back (nan={nan_count}, inf={inf_count}, total={}))", buf.len());
             return None;
         }
 
@@ -643,9 +625,7 @@ impl CudaTransformerTrainer {
         let weight_decay = self.config.weight_decay;
 
         // Upload grad_logits (Transfer 3: H2D)
-        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).map_err(|e| {
-            eprintln!("[CUDA backward] upload failed: {e:?}");
-        }).ok()?;
+        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).ok()?;
 
         // LM head GEMM backward
         gemm_backward_a(
@@ -654,7 +634,7 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.lm_head_grad_hidden,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).map_err(|e| eprintln!("[CUDA backward] lm_head gemm_a failed: {e:?}")).ok()?;
+        ).ok()?;
 
         gemm_backward_b(
             &self.gpu_training.norm_output,
@@ -662,11 +642,11 @@ impl CudaTransformerTrainer {
             &mut self.lm_head_grad_gpu,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).map_err(|e| eprintln!("[CUDA backward] lm_head gemm_b failed: {e:?}")).ok()?;
+        ).ok()?;
 
-        // Clip + optimize LM head weight gradient
+        // Clip LM head weight gradient
         if let Some(max_norm) = max_grad_norm {
-            let scale = Self::estimate_clip_scale(&self.lm_head_grad_gpu, max_norm);
+            let scale = Self::compute_clip_scale(&self.lm_head_grad_gpu, max_norm);
             let n = self.lm_head_grad_gpu.len() as u32;
             let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, scale, n, stream);
         }
@@ -679,11 +659,11 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.grad_buf_a,
             &mut self.gpu_training.grad_final_norm_weight,
             seq_len as u32, hidden_size as u32, 1e-5_f32, stream,
-        ).map_err(|e| eprintln!("[CUDA backward] rms_norm failed: {e:?}")).ok()?;
+        ).ok()?;
 
         // Clip final norm weight gradient
         if let Some(max_norm) = max_grad_norm {
-            let scale = Self::estimate_clip_scale(&self.gpu_training.grad_final_norm_weight, max_norm);
+            let scale = Self::compute_clip_scale(&self.gpu_training.grad_final_norm_weight, max_norm);
             let n = self.gpu_training.grad_final_norm_weight.len() as u32;
             let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
         }
@@ -735,9 +715,7 @@ impl CudaTransformerTrainer {
                 &self.gpu_training.layer_inputs[layer_idx],
                 grad_output, grad_input, seq_len, stream,
                 &mut self.cuda_grad_workspace,
-            ).map_err(|e| {
-                eprintln!("[CUDA backward] block[{layer_idx}] failed: {e:?}");
-            }).ok()?;
+            ).ok()?;
 
             // Per-block gradient clipping: estimate L2 norm from workspace, scale if needed
             if let Some(max_norm) = max_grad_norm {
@@ -754,36 +732,37 @@ impl CudaTransformerTrainer {
             grad_output_is_a = !grad_output_is_a;
         }
 
-        stream.synchronize().map_err(|e| {
-            eprintln!("[CUDA backward] final sync failed: {e:?}");
-        }).ok()?;
+        stream.synchronize().ok()?;
 
         Some(grad_output_is_a)
     }
 
-    /// Estimate gradient L2 norm by sampling and compute clip scale factor.
+    /// Compute exact gradient L2 norm by downloading the full buffer to CPU.
     ///
-    /// Downloads 1024 elements from the buffer, computes partial L2 norm,
-    /// and extrapolates to the full buffer. Returns `min(1.0, max_norm / estimated_norm)`.
-    fn estimate_clip_scale(buf: &GpuBuffer<f32>, max_norm: f32) -> f32 {
-        let sample_size = buf.len().min(1024);
-        let mut sample = vec![0.0f32; sample_size];
-        if buf.copy_to_host_at(&mut sample, 0).is_err() {
+    /// Returns `min(1.0, max_norm / grad_norm)`.
+    fn compute_clip_scale(buf: &GpuBuffer<f32>, max_norm: f32) -> f32 {
+        let mut host = vec![0.0f32; buf.len()];
+        if buf.copy_to_host_at(&mut host, 0).is_err() {
             return 1.0;
         }
-        let partial_sq_sum: f64 = sample.iter().map(|&x| (x as f64) * (x as f64)).sum();
-        // Extrapolate: full_norm ≈ sqrt(partial_sum * (total_len / sample_len))
-        let scale_factor = buf.len() as f64 / sample_size as f64;
-        let estimated_norm = (partial_sq_sum * scale_factor).sqrt() as f32;
-        if estimated_norm > max_norm {
-            max_norm / estimated_norm
+        let sq_sum: f64 = host.iter().map(|&x| (x as f64) * (x as f64)).sum();
+        let grad_norm = sq_sum.sqrt() as f32;
+        if grad_norm > max_norm {
+            max_norm / grad_norm
         } else {
             1.0
         }
     }
 
 
-    /// Download embedding gradient from GPU and scatter-add into CPU weight.
+    /// Download embedding gradient from GPU, clip, and scatter-add into CPU weight.
+    ///
+    /// # Contract (C-EMBED-GRAD-001)
+    ///
+    /// The activation gradient from block[0]'s backward is unclipped (per-block clipping
+    /// only applies to weight gradients in the shared workspace). For deep networks with
+    /// random init, this gradient can overflow f32, producing NaN in the CPU AdamW.
+    /// We clip the activation gradient to max_grad_norm before scatter-adding.
     #[allow(unsafe_code)]
     fn embed_backward(
         &mut self,
@@ -799,7 +778,21 @@ impl CudaTransformerTrainer {
         let embed_grad_buf = unsafe {
             if grad_output_is_a { &*grad_a_ptr } else { &*grad_b_ptr }
         };
-        let embed_grad_data = self.cuda_trainer.download(embed_grad_buf).ok()?;
+        let mut embed_grad_data = self.cuda_trainer.download(embed_grad_buf).ok()?;
+
+        // C-EMBED-GRAD-001: Clip activation gradient before scatter-add.
+        // Without this, 24-layer random-init backward amplifies gradients to ~1e35,
+        // which overflows the CPU AdamW's second moment buffer.
+        if let Some(max_norm) = self.config.base.max_grad_norm {
+            let sq_sum: f64 = embed_grad_data.iter().map(|&x| (x as f64) * (x as f64)).sum();
+            let grad_norm = sq_sum.sqrt() as f32;
+            if grad_norm > max_norm {
+                let scale = max_norm / grad_norm;
+                for g in &mut embed_grad_data {
+                    *g *= scale;
+                }
+            }
+        }
 
         // Scatter-add into embedding weight gradient
         let embed_weight = &mut self.model.embed_tokens.weight;
