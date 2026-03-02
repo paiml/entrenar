@@ -41,6 +41,10 @@ impl OutputFormat {
 }
 
 /// JSON output structure for headless mode
+///
+/// **Contract (ALB-053)**: Every field rendered by the TUI dashboard MUST appear
+/// here. JSON/LLM-agent output is **identical** to TUI data — same struct, same
+/// fields, same semantics. If you add a field to the TUI, add it here.
 #[derive(Debug, Clone, Serialize)]
 pub struct HeadlessOutput {
     pub timestamp_ms: u64,
@@ -48,18 +52,32 @@ pub struct HeadlessOutput {
     pub total_epochs: usize,
     pub step: usize,
     pub steps_per_epoch: usize,
+    pub global_step: usize,
+    pub progress_percent: f32,
     pub loss: f32,
     pub loss_trend: String,
+    pub loss_history: Vec<f32>,
     pub learning_rate: f32,
+    pub lr_history: Vec<f32>,
     pub gradient_norm: f32,
+    pub accuracy: f32,
     pub tokens_per_second: f32,
+    pub samples_per_second: f32,
+    pub elapsed_seconds: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eta_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu: Option<HeadlessGpu>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sample: Option<HeadlessSample>,
     pub status: String,
     pub experiment_id: String,
     pub model_name: String,
+    pub optimizer_name: String,
+    pub batch_size: usize,
+    pub model_path: String,
+    pub checkpoint_path: String,
+    pub executable_path: String,
 }
 
 /// GPU telemetry for JSON output
@@ -74,10 +92,20 @@ pub struct HeadlessGpu {
     pub power_limit_watts: f32,
 }
 
+/// Sample peek for JSON output
+#[derive(Debug, Clone, Serialize)]
+pub struct HeadlessSample {
+    pub input_preview: String,
+    pub target_preview: String,
+    pub generated_preview: String,
+    pub token_match_percent: f32,
+}
+
 impl From<&TrainingSnapshot> for HeadlessOutput {
     fn from(snapshot: &TrainingSnapshot) -> Self {
         let eta_seconds = snapshot.estimated_remaining().map(|d| d.as_secs());
         let loss_trend = snapshot.loss_trend();
+        let elapsed = snapshot.elapsed();
 
         let gpu = snapshot.gpu.as_ref().map(|g| HeadlessGpu {
             device_name: g.device_name.clone(),
@@ -87,6 +115,13 @@ impl From<&TrainingSnapshot> for HeadlessOutput {
             temperature_celsius: g.temperature_celsius,
             power_watts: g.power_watts,
             power_limit_watts: g.power_limit_watts,
+        });
+
+        let sample = snapshot.sample.as_ref().map(|s| HeadlessSample {
+            input_preview: s.input_preview.clone(),
+            target_preview: s.target_preview.clone(),
+            generated_preview: s.generated_preview.clone(),
+            token_match_percent: s.token_match_percent,
         });
 
         let status = match &snapshot.status {
@@ -103,16 +138,29 @@ impl From<&TrainingSnapshot> for HeadlessOutput {
             total_epochs: snapshot.total_epochs,
             step: snapshot.step,
             steps_per_epoch: snapshot.steps_per_epoch,
+            global_step: snapshot.global_step(),
+            progress_percent: snapshot.progress_percent(),
             loss: snapshot.loss,
             loss_trend: loss_trend.description().to_string(),
+            loss_history: snapshot.loss_history.clone(),
             learning_rate: snapshot.learning_rate,
+            lr_history: snapshot.lr_history.clone(),
             gradient_norm: snapshot.gradient_norm,
+            accuracy: snapshot.accuracy,
             tokens_per_second: snapshot.tokens_per_second,
+            samples_per_second: snapshot.samples_per_second,
+            elapsed_seconds: elapsed.as_secs_f64(),
             eta_seconds,
             gpu,
+            sample,
             status: status.to_string(),
             experiment_id: snapshot.experiment_id.clone(),
             model_name: snapshot.model_name.clone(),
+            optimizer_name: snapshot.optimizer_name.clone(),
+            batch_size: snapshot.batch_size,
+            model_path: snapshot.model_path.clone(),
+            checkpoint_path: snapshot.checkpoint_path.clone(),
+            executable_path: snapshot.executable_path.clone(),
         }
     }
 }
@@ -157,7 +205,7 @@ impl<W: Write> HeadlessWriter<W> {
         // First line: training metrics
         write!(
             self.writer,
-            "[{}] Epoch {}/{} | Step {}/{} | Loss: {:.3} {} | LR: {:.2e} | Grad: {:.1}",
+            "[{}] Epoch {}/{} | Step {}/{} | Loss: {:.3} {} | Acc: {:.1}% | LR: {:.2e} | Grad: {:.1}",
             elapsed_str,
             snapshot.epoch,
             snapshot.total_epochs,
@@ -165,12 +213,13 @@ impl<W: Write> HeadlessWriter<W> {
             snapshot.steps_per_epoch,
             snapshot.loss,
             trend_arrow,
+            snapshot.accuracy * 100.0,
             snapshot.learning_rate,
             snapshot.gradient_norm,
         )?;
 
-        if snapshot.tokens_per_second > 0.0 {
-            write!(self.writer, " | {:.1} tok/s", snapshot.tokens_per_second)?;
+        if snapshot.samples_per_second > 0.0 {
+            write!(self.writer, " | {:.1} sam/s", snapshot.samples_per_second)?;
         }
 
         if let Some(eta) = snapshot.estimated_remaining() {
@@ -331,7 +380,9 @@ mod tests {
             loss_history: vec![3.0, 2.8, 2.6, 2.5, 2.5],
             learning_rate: 0.001,
             gradient_norm: 1.5,
+            accuracy: 0.85,
             tokens_per_second: 1200.0,
+            samples_per_second: 300.0,
             start_timestamp_ms: 0,
             gpu: None,
             sample: None,
@@ -400,7 +451,7 @@ mod tests {
         let output = String::from_utf8(buffer).expect("operation should succeed");
         assert!(output.contains("Epoch 2/10"));
         assert!(output.contains("Loss: 2.500"));
-        assert!(output.contains("500.0 tok/s"));
+        assert!(output.contains("Acc: 0.0%"));
     }
 
     #[test]

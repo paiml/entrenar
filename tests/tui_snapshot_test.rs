@@ -64,6 +64,8 @@ fn mock_snapshot(epoch: usize, step: usize, loss: f32) -> TrainingSnapshot {
         batch_size: 4,
         checkpoint_path: "./experiments/test/checkpoints".to_string(),
         executable_path: "/usr/bin/finetune_real".to_string(),
+        accuracy: 0.0,
+        samples_per_second: 0.0,
     }
 }
 

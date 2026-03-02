@@ -70,6 +70,8 @@ fn valid_snapshot() -> TrainingSnapshot {
         executable_path: "/path/to/finetune_real".into(),
         experiment_id: "test".into(),
         model_name: "test-model".into(),
+        accuracy: 0.0,
+        samples_per_second: 0.0,
     }
 }
 

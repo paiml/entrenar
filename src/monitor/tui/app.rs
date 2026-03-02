@@ -147,6 +147,8 @@ pub struct TrainingStateWriter {
     state: TrainingState,
     snapshot: TrainingSnapshot,
     history_max: usize,
+    /// When true, emit formatted progress lines to stdout during training.
+    console_progress: bool,
 }
 
 impl TrainingStateWriter {
@@ -157,7 +159,21 @@ impl TrainingStateWriter {
         snapshot.model_name = model_name.to_string();
         snapshot.status = TrainingStatus::Initializing;
 
-        Self { state: TrainingState::new(experiment_dir), snapshot, history_max: LOSS_HISTORY_MAX }
+        Self {
+            state: TrainingState::new(experiment_dir),
+            snapshot,
+            history_max: LOSS_HISTORY_MAX,
+            console_progress: false,
+        }
+    }
+
+    /// Enable inline console progress on stdout.
+    ///
+    /// When enabled, `update_step()` periodically prints a formatted progress
+    /// line so users see output without needing a separate `apr monitor` process.
+    pub fn with_console_progress(mut self, enabled: bool) -> Self {
+        self.console_progress = enabled;
+        self
     }
 
     /// Set total epochs and steps for a training phase
@@ -227,6 +243,7 @@ impl TrainingStateWriter {
         learning_rate: f32,
         gradient_norm: f32,
         tokens_per_second: f32,
+        accuracy: f32,
     ) -> io::Result<()> {
         // Validate step doesn't exceed configured steps_per_epoch
         if self.snapshot.steps_per_epoch > 0 && step > self.snapshot.steps_per_epoch {
@@ -250,6 +267,8 @@ impl TrainingStateWriter {
         self.snapshot.learning_rate = learning_rate;
         self.snapshot.gradient_norm = gradient_norm;
         self.snapshot.tokens_per_second = tokens_per_second;
+        self.snapshot.accuracy = accuracy;
+        self.snapshot.samples_per_second = tokens_per_second;
 
         // Update timestamp
         self.snapshot.timestamp_ms = std::time::SystemTime::now()
@@ -269,7 +288,60 @@ impl TrainingStateWriter {
             self.snapshot.lr_history.remove(0);
         }
 
+        // Inline console progress (reuses HeadlessWriter text format)
+        if self.console_progress {
+            let log_every = (self.snapshot.steps_per_epoch / 10)
+                .max(10)
+                .min(self.snapshot.steps_per_epoch.max(1));
+            if step == 1 || step % log_every == 0 || step == self.snapshot.steps_per_epoch {
+                self.emit_console_progress();
+            }
+        }
+
         self.state.write(&self.snapshot)
+    }
+
+    /// Emit a single console progress line via the headless text formatter.
+    fn emit_console_progress(&self) {
+        let mut buf = Vec::new();
+        let mut writer =
+            super::headless::HeadlessWriter::new(&mut buf, super::headless::OutputFormat::Text);
+        let _ = writer.write(&self.snapshot);
+        if let Ok(s) = String::from_utf8(buf) {
+            print!("  {s}");
+        }
+    }
+
+    /// Emit an epoch-end summary line to the console.
+    pub fn emit_epoch_summary(
+        &self,
+        epoch: usize,
+        total_epochs: usize,
+        train_loss: f32,
+        train_acc: f32,
+        val_loss: f32,
+        val_acc: f32,
+        epoch_secs: f32,
+        lr: f32,
+        is_best: bool,
+    ) {
+        if self.console_progress {
+            let best = if is_best { " *best*" } else { "" };
+            println!(
+                "  Epoch {epoch}/{total_epochs} done in {epoch_secs:.0}s — \
+                 train_loss: {train_loss:.4}, train_acc: {:.1}%, \
+                 val_loss: {val_loss:.4}, val_acc: {:.1}%, LR: {lr:.2e}{best}",
+                train_acc * 100.0,
+                val_acc * 100.0,
+            );
+        }
+    }
+
+    /// Emit a one-shot informational message through the monitoring framework.
+    pub fn emit_info(&self, msg: &str) {
+        if self.console_progress {
+            println!("  {msg}");
+        }
     }
 
     /// Update GPU telemetry
@@ -315,7 +387,7 @@ mod state_writer_tests {
         writer.set_epochs(10, 100);
         writer.start().expect("file write should succeed");
 
-        writer.update_step(1, 10, 0.5, 0.0002, 1.5, 1200.0).expect("file write should succeed");
+        writer.update_step(1, 10, 0.5, 0.0002, 1.5, 1200.0, 0.75).expect("file write should succeed");
 
         // Verify state was written
         let mut state = TrainingState::new(temp_dir.path());
@@ -372,7 +444,7 @@ mod state_writer_tests {
         // Add more than max history
         for i in 0..10 {
             writer
-                .update_step(1, i, i as f32 * 0.1, 0.0002, 1.5, 1200.0)
+                .update_step(1, i, i as f32 * 0.1, 0.0002, 1.5, 1200.0, 0.0)
                 .expect("file write should succeed");
         }
 

@@ -480,6 +480,8 @@ mod tests {
             batch_size: 4,
             checkpoint_path: "./checkpoints".into(),
             executable_path: "/path/to/finetune_real".into(),
+            accuracy: 0.0,
+            samples_per_second: 0.0,
         }
     }
 
