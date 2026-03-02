@@ -41,7 +41,9 @@ pub fn gemm_backward_a(
     })?;
 
     let tile = BACKWARD_TILE_SIZE;
-    let kernel = GemmBackwardAKernel::tiled_unrolled(m, k, n, tile);
+    // Constructor is tiled_unrolled(m, n, k, tile_size) — n and k must match
+    // trueno semantics: n = reduction dim (forward output dim), k = output cols
+    let kernel = GemmBackwardAKernel::tiled_unrolled(m, n, k, tile);
     let kernel_name = kernel.name();
     let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
@@ -103,7 +105,9 @@ pub fn gemm_backward_b(
     })?;
 
     let tile = BACKWARD_TILE_SIZE;
-    let kernel = GemmBackwardBKernel::tiled_unrolled(m, k, n, tile);
+    // Constructor is tiled_unrolled(m, n, k, tile_size) — n and k must match
+    // trueno semantics: n = reduction dim (forward output dim), k = output cols
+    let kernel = GemmBackwardBKernel::tiled_unrolled(m, n, k, tile);
     let kernel_name = kernel.name();
     let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
