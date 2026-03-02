@@ -29,11 +29,11 @@ use crate::Tensor;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_forward::pre_warm_forward_kernels;
+use crate::autograd::cuda_forward::{pre_warm_forward_kernels, pre_warm_lora_backward_kernels};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
-use crate::transformer::{CudaBlock, CudaBlockScratch, CudaGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState};
+use crate::transformer::{CudaBlock, CudaBlockScratch, CudaGradWorkspace, CudaLoraGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState, GpuLoraOptimizerState};
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 #[cfg(feature = "cuda")]
@@ -204,6 +204,16 @@ pub struct ClassifyPipeline {
     /// Contract: C-GRADWS-001. Saves (L-1) * 372 MB for Qwen3-4B (13.0 GB).
     #[cfg(feature = "cuda")]
     cuda_grad_workspace: Option<CudaGradWorkspace>,
+    /// Shared LoRA gradient workspace for NF4 QLoRA backward (ENT-153).
+    /// One set of LoRA gradient buffers shared across all layers.
+    #[cfg(feature = "cuda")]
+    cuda_lora_grad_workspace: Option<CudaLoraGradWorkspace>,
+    /// Per-layer LoRA optimizer states for NF4 QLoRA training (ENT-153).
+    #[cfg(feature = "cuda")]
+    cuda_lora_optimizer_states: Option<Vec<GpuLoraOptimizerState>>,
+    /// NF4 LoRA optimizer step counter (separate from fp32 GpuTrainingState.step).
+    #[cfg(feature = "cuda")]
+    nf4_lora_step: u32,
 }
 
 impl ClassifyPipeline {
@@ -230,18 +240,14 @@ impl ClassifyPipeline {
         // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
         #[cfg(feature = "cuda")]
         let (cuda_trainer, cuda_blocks, shared_scratch) =
-            Self::try_init_cuda(&model, model_config, &classify_config);
+            Self::try_init_cuda(&model, model_config, &classify_config, &lora_layers);
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
         #[cfg(feature = "cuda")]
-        let gpu_training = if classify_config.quantize_nf4 {
-            None
-        } else {
-            Self::try_init_gpu_training(
-                &model, model_config, classify_config.max_seq_len,
-                &cuda_trainer, &cuda_blocks,
-            )
-        };
+        let gpu_training = Self::try_init_gpu_training(
+            &model, model_config, classify_config.max_seq_len,
+            &cuda_trainer, &cuda_blocks,
+        );
 
         // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
         #[cfg(feature = "cuda")]
@@ -253,6 +259,14 @@ impl ClassifyPipeline {
                     .map_err(|e| eprintln!("[CUDA] Failed to allocate grad workspace: {e}"))
                     .ok()
             })
+        };
+
+        // ── NF4 LoRA training state (ENT-153) ──────────────────────────
+        #[cfg(feature = "cuda")]
+        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states) = if classify_config.quantize_nf4 {
+            Self::try_init_nf4_lora_training(&cuda_trainer, &cuda_blocks, model_config, &classify_config)
+        } else {
+            (None, None)
         };
 
         Self {
@@ -275,6 +289,12 @@ impl ClassifyPipeline {
             gpu_training,
             #[cfg(feature = "cuda")]
             cuda_grad_workspace,
+            #[cfg(feature = "cuda")]
+            cuda_lora_grad_workspace,
+            #[cfg(feature = "cuda")]
+            cuda_lora_optimizer_states,
+            #[cfg(feature = "cuda")]
+            nf4_lora_step: 0,
         }
     }
 
@@ -324,20 +344,14 @@ impl ClassifyPipeline {
         // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
         #[cfg(feature = "cuda")]
         let (cuda_trainer, cuda_blocks, shared_scratch) =
-            Self::try_init_cuda(&model, model_config, &classify_config);
+            Self::try_init_cuda(&model, model_config, &classify_config, &lora_layers);
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
-        // NF4 blocks are frozen — skip GPU training (backward stays CPU, only LoRA trains)
         #[cfg(feature = "cuda")]
-        let gpu_training = if classify_config.quantize_nf4 {
-            eprintln!("[CUDA] NF4 mode: GPU backward disabled (LoRA-only training on CPU)");
-            None
-        } else {
-            Self::try_init_gpu_training(
-                &model, model_config, classify_config.max_seq_len,
-                &cuda_trainer, &cuda_blocks,
-            )
-        };
+        let gpu_training = Self::try_init_gpu_training(
+            &model, model_config, classify_config.max_seq_len,
+            &cuda_trainer, &cuda_blocks,
+        );
 
         // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
         #[cfg(feature = "cuda")]
@@ -349,6 +363,14 @@ impl ClassifyPipeline {
                     .map_err(|e| eprintln!("[CUDA] Failed to allocate grad workspace: {e}"))
                     .ok()
             })
+        };
+
+        // ── NF4 LoRA training state (ENT-153) ──────────────────────────
+        #[cfg(feature = "cuda")]
+        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states) = if classify_config.quantize_nf4 {
+            Self::try_init_nf4_lora_training(&cuda_trainer, &cuda_blocks, model_config, &classify_config)
+        } else {
+            (None, None)
         };
 
         Ok(Self {
@@ -371,6 +393,12 @@ impl ClassifyPipeline {
             gpu_training,
             #[cfg(feature = "cuda")]
             cuda_grad_workspace,
+            #[cfg(feature = "cuda")]
+            cuda_lora_grad_workspace,
+            #[cfg(feature = "cuda")]
+            cuda_lora_optimizer_states,
+            #[cfg(feature = "cuda")]
+            nf4_lora_step: 0,
         })
     }
 
@@ -454,6 +482,7 @@ impl ClassifyPipeline {
         model: &Transformer,
         model_config: &TransformerConfig,
         classify_config: &ClassifyConfig,
+        lora_layers: &[LoRALayer],
     ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>, Option<CudaBlockScratch>) {
         if !cuda_training_available() {
             eprintln!("[CUDA] No CUDA runtime detected — using CPU");
@@ -497,6 +526,21 @@ impl ClassifyPipeline {
         let quantize_nf4 = classify_config.quantize_nf4;
         if quantize_nf4 {
             eprintln!("[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)");
+
+            // C-PREWARM-001: Pre-warm LoRA backward GEMM kernels for QLoRA training.
+            // These small-matrix GEMMs (rank << hidden_size) must be JIT-compiled
+            // while VRAM is free, before block upload fills GPU memory.
+            let head_dim = model_config.head_dim();
+            if let Err(e) = pre_warm_lora_backward_kernels(
+                model_config.hidden_size,
+                model_config.num_attention_heads * head_dim,
+                model_config.num_kv_heads * head_dim,
+                max_seq_len,
+                classify_config.lora_rank,
+            ) {
+                eprintln!("[CUDA] Failed to pre-warm LoRA backward kernels: {e} — using CPU");
+                return (None, None, None);
+            }
         }
 
         let mut blocks = Vec::with_capacity(model.config.num_hidden_layers);
@@ -523,6 +567,40 @@ impl ClassifyPipeline {
             let w_down = w_down.as_slice().expect("contiguous w_down");
 
             let result = if quantize_nf4 {
+                // Extract LoRA data for this layer's Q and V projections
+                let lora_scale = classify_config.lora_alpha / classify_config.lora_rank as f32;
+                let lora_rank = classify_config.lora_rank;
+                let q_lora_idx = i * 2;
+                let v_lora_idx = i * 2 + 1;
+
+                // Q LoRA
+                let q_a_data;
+                let q_b_data;
+                let q_lora = if q_lora_idx < lora_layers.len() {
+                    q_a_data = lora_layers[q_lora_idx].lora_a().data();
+                    q_b_data = lora_layers[q_lora_idx].lora_b().data();
+                    Some((
+                        q_a_data.as_slice().expect("contiguous lora_a_q"),
+                        q_b_data.as_slice().expect("contiguous lora_b_q"),
+                    ))
+                } else {
+                    None
+                };
+
+                // V LoRA
+                let v_a_data;
+                let v_b_data;
+                let v_lora = if v_lora_idx < lora_layers.len() {
+                    v_a_data = lora_layers[v_lora_idx].lora_a().data();
+                    v_b_data = lora_layers[v_lora_idx].lora_b().data();
+                    Some((
+                        v_a_data.as_slice().expect("contiguous lora_a_v"),
+                        v_b_data.as_slice().expect("contiguous lora_b_v"),
+                    ))
+                } else {
+                    None
+                };
+
                 crate::transformer::CudaNf4TransformerBlock::new(
                     model_config,
                     i,
@@ -532,8 +610,8 @@ impl ClassifyPipeline {
                     w_q, w_k, w_v, w_o,
                     w_gate, w_up, w_down,
                     max_seq_len,
-                    None, None, // no LoRA adapters
-                    0.0, 0,     // lora_scale, lora_rank
+                    q_lora, v_lora,
+                    lora_scale, lora_rank,
                 ).map(CudaBlock::Nf4)
             } else {
                 CudaTransformerBlock::new(
@@ -570,7 +648,7 @@ impl ClassifyPipeline {
 
         // C-SCRATCH-001: Allocate one shared scratch for NF4 (saves 7.5 GB for Qwen3-4B)
         let shared_scratch = if quantize_nf4 {
-            match CudaBlockScratch::new(model_config, max_seq_len, &ctx, 0) {
+            match CudaBlockScratch::new(model_config, max_seq_len, &ctx, classify_config.lora_rank) {
                 Ok(s) => Some(s),
                 Err(e) => {
                     eprintln!("[CUDA] Failed to allocate shared scratch: {e} — using CPU");
@@ -613,9 +691,10 @@ impl ClassifyPipeline {
         // ── VRAM budget guard (C-GPUTRAINIT-002) ────────────────────────
         // Pre-compute optimizer state size to avoid OOM that would poison
         // the CUDA context (CUDA_ERROR_ILLEGAL_ADDRESS after failed alloc).
-        // Optimizer state = 2 (m + v) × per_layer_weights × num_layers × 4 bytes
+        // NF4 blocks have no per-layer fp32 optimizer — only need layer inputs + grad scratch
+        let is_nf4 = blocks.first().map_or(false, |b| matches!(b, CudaBlock::Nf4(_)));
         let per_layer_weights = model_config.per_layer_weight_elements();
-        let optimizer_bytes = num_layers * per_layer_weights * 2 * 4;
+        let optimizer_bytes = if is_nf4 { 0 } else { num_layers * per_layer_weights * 2 * 4 };
         let layer_input_bytes = num_layers * buf_size * 4;
         let grad_scratch_bytes = (3 * buf_size + hidden_size) * 4;
         let total_training_bytes = optimizer_bytes + layer_input_bytes + grad_scratch_bytes;
@@ -670,22 +749,29 @@ impl ClassifyPipeline {
         let grad_buf_b = trainer.zeros(buf_size).ok()?;
         let grad_final_norm_weight = trainer.zeros(hidden_size).ok()?;
 
-        // Initialize per-block optimizer states
+        // Initialize per-block optimizer states (fp32 only — NF4 uses separate LoRA optimizer)
         let mut optimizer_states = Vec::with_capacity(num_layers);
-        for (i, block) in blocks.iter().enumerate() {
-            match block.init_optimizer_state() {
-                Ok(state) => optimizer_states.push(state),
-                Err(e) => {
-                    eprintln!("[CUDA] GPU training init failed (optimizer state layer {i}): {e}");
-                    return None;
+        let is_nf4 = blocks.first().map_or(false, |b| matches!(b, CudaBlock::Nf4(_)));
+        if !is_nf4 {
+            for (i, block) in blocks.iter().enumerate() {
+                match block.init_optimizer_state() {
+                    Ok(state) => optimizer_states.push(state),
+                    Err(e) => {
+                        eprintln!("[CUDA] GPU training init failed (optimizer state layer {i}): {e}");
+                        return None;
+                    }
                 }
             }
         }
 
         eprintln!(
             "[CUDA] GPU training state initialized: {num_layers} layers, \
-             {buf_size} buf_size ({:.1} MB optimizer state)",
-            (optimizer_states.len() * 18 * buf_size * 4) as f64 / 1e6
+             {buf_size} buf_size{}",
+            if is_nf4 {
+                " (NF4 QLoRA mode — LoRA optimizer separate)".to_string()
+            } else {
+                format!(" ({:.1} MB optimizer state)", (optimizer_states.len() * 18 * buf_size * 4) as f64 / 1e6)
+            }
         );
 
         Some(GpuTrainingState {
@@ -698,6 +784,62 @@ impl ClassifyPipeline {
             optimizer_states,
             step: 0,
         })
+    }
+
+    /// Initialize NF4 LoRA training state: gradient workspace + per-layer optimizer states.
+    ///
+    /// # Contract (C-NF4LORA-INIT-001)
+    ///
+    /// - **Precondition**: CUDA trainer and NF4 blocks initialized
+    /// - **Postcondition**: LoRA grad workspace allocated, one optimizer state per NF4 block
+    /// - **Invariant**: Returns `(None, None)` on any failure (graceful fallback to CPU LoRA)
+    #[cfg(feature = "cuda")]
+    fn try_init_nf4_lora_training(
+        cuda_trainer: &Option<CudaTrainer>,
+        cuda_blocks: &Option<Vec<CudaBlock>>,
+        model_config: &TransformerConfig,
+        classify_config: &ClassifyConfig,
+    ) -> (Option<CudaLoraGradWorkspace>, Option<Vec<GpuLoraOptimizerState>>) {
+        let trainer = match cuda_trainer.as_ref() {
+            Some(t) => t,
+            None => return (None, None),
+        };
+        let blocks = match cuda_blocks.as_ref() {
+            Some(b) => b,
+            None => return (None, None),
+        };
+
+        // Allocate shared LoRA gradient workspace
+        let grad_ws = match CudaLoraGradWorkspace::new(
+            trainer.context(), model_config, classify_config.lora_rank,
+        ) {
+            Ok(ws) => ws,
+            Err(e) => {
+                eprintln!("[CUDA] NF4 LoRA grad workspace alloc failed: {e}");
+                return (None, None);
+            }
+        };
+
+        // Initialize per-block LoRA optimizer states
+        let mut opt_states = Vec::with_capacity(blocks.len());
+        for (i, block) in blocks.iter().enumerate() {
+            match block.init_lora_optimizer_state() {
+                Ok(state) => opt_states.push(state),
+                Err(e) => {
+                    eprintln!("[CUDA] NF4 LoRA optimizer init failed (layer {i}): {e}");
+                    return (None, None);
+                }
+            }
+        }
+
+        eprintln!(
+            "[CUDA] NF4 QLoRA training initialized: {} layers, rank={}, scale={:.2}",
+            blocks.len(),
+            classify_config.lora_rank,
+            classify_config.lora_alpha / classify_config.lora_rank as f32,
+        );
+
+        (Some(grad_ws), Some(opt_states))
     }
 
     /// GPU-accelerated forward pass that saves layer inputs for backward (F-CUDA-014).
@@ -723,6 +865,7 @@ impl ClassifyPipeline {
         trainer: &CudaTrainer,
         cuda_blocks: &mut [CudaBlock],
         training_state: &mut GpuTrainingState,
+        shared_scratch: &mut Option<CudaBlockScratch>,
     ) -> Option<Tensor> {
         let seq_len = token_ids.len();
         let hidden_size = model.config.hidden_size;
@@ -748,7 +891,7 @@ impl ClassifyPipeline {
                     .ok()?;
             }
 
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, None) {
+            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut()) {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
@@ -929,6 +1072,135 @@ impl ClassifyPipeline {
         Some(())
     }
 
+    /// NF4 QLoRA backward pass through all GPU transformer blocks (ENT-153).
+    ///
+    /// Like `backward_gpu_blocks` but uses NF4 transposed GEMM for gradient flow
+    /// through frozen weights, and computes LoRA gradients for Q/V projections.
+    /// After each block backward, immediately runs the LoRA optimizer step
+    /// (grad workspace is shared across layers, so we must consume grads before
+    /// the next layer overwrites them).
+    ///
+    /// # Contract (C-NF4BACK-001)
+    ///
+    /// - **Precondition**: Forward training pass completed, grad_logits has length num_classes
+    /// - **Postcondition**: LoRA weights updated for all NF4 blocks
+    /// - **Invariant**: Zero GPU memory allocation during backward
+    #[cfg(feature = "cuda")]
+    #[allow(unsafe_code)]
+    fn backward_nf4_gpu_blocks(
+        &mut self,
+        grad_logits: &[f32],
+        seq_len: usize,
+    ) -> Option<()> {
+        let trainer = self.cuda_trainer.as_ref()?;
+        let hidden_size = self.model.config.hidden_size;
+        let num_classes = self.config.num_classes;
+        let lr = self.optimizer.lr();
+
+        // Step 1: Classifier backward on CPU (trivial: hidden_size * num_classes mults)
+        let w_data = self.classifier.weight.data();
+        let w_slice = w_data.as_slice().expect("contiguous classifier weight");
+        let mut grad_pooled = vec![0.0f32; hidden_size];
+        for j in 0..hidden_size {
+            let mut sum = 0.0f32;
+            for c in 0..num_classes {
+                sum += grad_logits[c] * w_slice[j * num_classes + c];
+            }
+            grad_pooled[j] = sum;
+        }
+
+        // Step 2: Mean-pool backward on CPU
+        let scale = 1.0 / seq_len as f32;
+        let mut grad_final_hidden = vec![0.0f32; seq_len * hidden_size];
+        for i in 0..seq_len {
+            for j in 0..hidden_size {
+                grad_final_hidden[i * hidden_size + j] = grad_pooled[j] * scale;
+            }
+        }
+
+        // Step 3: Upload gradient to GPU
+        let stream = trainer.stream();
+        let gpu_grad = trainer.upload(&grad_final_hidden).ok()?;
+
+        // Borrow check: take mutable references to all needed fields
+        let training_state = self.gpu_training.as_mut()?;
+        let blocks = self.cuda_blocks.as_mut()?;
+        let shared_scratch = self.shared_scratch.as_mut()?;
+        let grad_lora = self.cuda_lora_grad_workspace.as_mut()?;
+        let opt_states = self.cuda_lora_optimizer_states.as_mut()?;
+
+        // Step 4: RMSNorm backward on GPU (final norm)
+        crate::autograd::cuda_backward::rms_norm_backward(
+            &training_state.blocks_output,
+            &training_state.final_norm_weight,
+            &gpu_grad,
+            &mut training_state.grad_buf_a,
+            &mut training_state.grad_final_norm_weight,
+            seq_len as u32,
+            hidden_size as u32,
+            1e-5_f32,
+            stream,
+        ).ok()?;
+
+        // Step 5: Backward through blocks in reverse, interleaved with optimizer
+        let num_layers = blocks.len();
+
+        // Alternate gradient buffers using raw pointers for disjoint mutable borrows
+        let grad_a_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_a;
+        let grad_b_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_b;
+        let mut grad_output_is_a = true;
+
+        // Increment step counter for AdamW
+        self.nf4_lora_step += 1;
+        let step = self.nf4_lora_step;
+
+        // Temp buffer for forward recompute during activation checkpointing
+        let mut output_scratch = trainer.zeros(seq_len * hidden_size).ok()?;
+
+        for layer_idx in (0..num_layers).rev() {
+            // SAFETY: grad_a_ptr and grad_b_ptr point to disjoint fields.
+            let (grad_output, grad_input) = unsafe {
+                if grad_output_is_a {
+                    (&*grad_a_ptr, &mut *grad_b_ptr)
+                } else {
+                    (&*grad_b_ptr, &mut *grad_a_ptr)
+                }
+            };
+
+            // NF4 backward: activation checkpointing + LoRA gradient computation
+            blocks[layer_idx].backward_nf4(
+                &training_state.layer_inputs[layer_idx],
+                grad_output,
+                grad_input,
+                &mut output_scratch,
+                seq_len,
+                stream,
+                shared_scratch,
+                grad_lora,
+            ).ok()?;
+
+            // Immediately apply LoRA optimizer step (grad workspace is shared)
+            blocks[layer_idx].lora_optimizer_step(
+                &mut opt_states[layer_idx],
+                step,
+                lr,
+                0.9,    // beta1
+                0.999,  // beta2
+                1e-8,   // eps
+                0.01,   // weight_decay
+                stream,
+                grad_lora,
+            ).ok()?;
+
+            grad_output_is_a = !grad_output_is_a;
+        }
+
+        // Sync to ensure all backward + optimizer kernels completed
+        stream.synchronize().ok()?;
+
+        Some(())
+    }
+
     /// Synchronize GPU-updated weights back to CPU model tensors.
     ///
     /// Required for checkpointing and after training completes. Downloads all
@@ -965,6 +1237,49 @@ impl ClassifyPipeline {
                 layer.input_norm.weight = Tensor::from_vec(weights.input_norm_weight, false);
                 layer.post_attn_norm.weight =
                     Tensor::from_vec(weights.post_attn_norm_weight, false);
+            }
+        }
+    }
+
+    /// Synchronize GPU LoRA weights back to CPU LoRA layers (NF4 QLoRA).
+    ///
+    /// Required for checkpointing after NF4 QLoRA training. Downloads A_q, B_q,
+    /// A_v, B_v from each NF4 block and updates the corresponding CPU LoRA layers.
+    ///
+    /// B matrices are stored pre-scaled on GPU (includes lora_scale). This method
+    /// un-scales them before writing back to CPU.
+    ///
+    /// # Contract (C-QLORA-CKPT-001)
+    ///
+    /// - **Precondition**: NF4 QLoRA training completed (optimizer steps applied)
+    /// - **Postcondition**: CPU LoRA layers match GPU-trained LoRA weights
+    #[cfg(feature = "cuda")]
+    pub fn sync_lora_to_cpu(&mut self) {
+        let blocks = match self.cuda_blocks.as_ref() {
+            Some(b) => b,
+            None => return,
+        };
+
+        let lora_scale = self.config.lora_alpha / self.config.lora_rank.max(1) as f32;
+        let inv_scale = if lora_scale.abs() > 1e-10 { 1.0 / lora_scale } else { 1.0 };
+
+        for (layer_idx, block) in blocks.iter().enumerate() {
+            if let Ok((a_q, b_q, a_v, b_v)) = block.download_lora_weights() {
+                let q_lora_idx = layer_idx * 2;
+                let v_lora_idx = layer_idx * 2 + 1;
+
+                // Un-scale B matrices (GPU stores B * lora_scale)
+                let b_q_unscaled: Vec<f32> = b_q.iter().map(|&v| v * inv_scale).collect();
+                let b_v_unscaled: Vec<f32> = b_v.iter().map(|&v| v * inv_scale).collect();
+
+                if q_lora_idx < self.lora_layers.len() {
+                    *self.lora_layers[q_lora_idx].lora_a_mut() = Tensor::from_vec(a_q, true);
+                    *self.lora_layers[q_lora_idx].lora_b_mut() = Tensor::from_vec(b_q_unscaled, true);
+                }
+                if v_lora_idx < self.lora_layers.len() {
+                    *self.lora_layers[v_lora_idx].lora_a_mut() = Tensor::from_vec(a_v, true);
+                    *self.lora_layers[v_lora_idx].lora_b_mut() = Tensor::from_vec(b_v_unscaled, true);
+                }
             }
         }
     }
@@ -1011,6 +1326,7 @@ impl ClassifyPipeline {
             let result = Self::forward_hidden_cuda_training(
                 &self.model, token_ids, trainer, blocks,
                 training.as_mut().expect("gpu_training was Some"),
+                &mut self.shared_scratch,
             );
             self.gpu_training = training;
 
@@ -1229,28 +1545,38 @@ impl ClassifyPipeline {
         // Manually set bias gradient (∂L/∂bias = ∂L/∂logits)
         self.classifier.bias.set_grad(ndarray::Array1::from(grad_logits.clone()));
 
-        // GPU backward through transformer blocks (F-CUDA-014)
+        // GPU backward through transformer blocks (F-CUDA-014 / ENT-153)
         #[cfg(feature = "cuda")]
         {
             if self.gpu_training.is_some() {
-                self.backward_gpu_blocks(&grad_logits, seq_len);
+                if self.config.quantize_nf4 {
+                    // NF4 QLoRA: backward + optimizer interleaved per layer
+                    self.backward_nf4_gpu_blocks(&grad_logits, seq_len);
+                } else {
+                    self.backward_gpu_blocks(&grad_logits, seq_len);
+                }
             }
         }
 
         // ── 5. Optimizer step ─────────────────────────────────────────
-        // GPU optimizer step for transformer block weights (F-CUDA-014)
+        // GPU optimizer step for fp32 transformer block weights (F-CUDA-014)
+        // NF4 QLoRA optimizer is already applied in backward_nf4_gpu_blocks
         #[cfg(feature = "cuda")]
         {
-            if self.gpu_training.is_some() {
+            if self.gpu_training.is_some() && !self.config.quantize_nf4 {
                 let lr = self.optimizer.lr();
                 self.gpu_optimizer_step(lr);
             }
         }
 
-        // CPU optimizer step for LoRA + classifier head
+        // CPU optimizer step
+        // NF4 mode: only classifier head (LoRA trained on GPU)
+        // fp32 mode: LoRA + classifier head
         let mut params: Vec<&mut Tensor> = Vec::new();
-        for lora in &mut self.lora_layers {
-            params.extend(lora.trainable_params());
+        if !self.config.quantize_nf4 {
+            for lora in &mut self.lora_layers {
+                params.extend(lora.trainable_params());
+            }
         }
         params.extend(self.classifier.parameters_mut());
         self.optimizer.step_refs(&mut params);
@@ -1316,19 +1642,24 @@ impl ClassifyPipeline {
         };
 
         // ── 5. Optimizer step (once for the whole batch) ───────────────
-        // GPU optimizer step for transformer block weights (F-CUDA-014)
+        // GPU optimizer step for fp32 transformer block weights (F-CUDA-014)
+        // NF4 QLoRA: optimizer already applied per-layer in backward_nf4_gpu_blocks
         #[cfg(feature = "cuda")]
         {
-            if self.gpu_training.is_some() {
+            if self.gpu_training.is_some() && !self.config.quantize_nf4 {
                 let lr = self.optimizer.lr();
                 self.gpu_optimizer_step(lr);
             }
         }
 
-        // CPU optimizer step for LoRA + classifier head
+        // CPU optimizer step
+        // NF4 mode: only classifier head (LoRA trained on GPU)
+        // fp32 mode: LoRA + classifier head
         let mut params: Vec<&mut Tensor> = Vec::new();
-        for lora in &mut self.lora_layers {
-            params.extend(lora.trainable_params());
+        if !self.config.quantize_nf4 {
+            for lora in &mut self.lora_layers {
+                params.extend(lora.trainable_params());
+            }
         }
         params.extend(self.classifier.parameters_mut());
         self.optimizer.step_refs(&mut params);
@@ -1417,9 +1748,12 @@ impl ClassifyPipeline {
         }
 
         // ── 3. Optimizer step ──────────────────────────────────────────
+        // NF4 mode: only classifier head (LoRA trained on GPU in backward)
         let mut params: Vec<&mut Tensor> = Vec::new();
-        for lora in &mut self.lora_layers {
-            params.extend(lora.trainable_params());
+        if !self.config.quantize_nf4 {
+            for lora in &mut self.lora_layers {
+                params.extend(lora.trainable_params());
+            }
         }
         params.extend(self.classifier.parameters_mut());
         self.optimizer.step_refs(&mut params);
@@ -1509,11 +1843,15 @@ impl ClassifyPipeline {
         // Accumulate bias gradient (not set — accumulate)
         self.classifier.bias.accumulate_grad(ndarray::Array1::from(grad_logits.clone()));
 
-        // GPU backward through all transformer blocks (F-CUDA-014)
+        // GPU backward through all transformer blocks (F-CUDA-014 / ENT-153)
         #[cfg(feature = "cuda")]
         {
             if self.gpu_training.is_some() {
-                self.backward_gpu_blocks(&grad_logits, seq_len);
+                if self.config.quantize_nf4 {
+                    self.backward_nf4_gpu_blocks(&grad_logits, seq_len);
+                } else {
+                    self.backward_gpu_blocks(&grad_logits, seq_len);
+                }
             }
         }
 

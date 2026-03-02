@@ -1952,7 +1952,7 @@ impl CudaBlock {
     ///
     /// For NF4 blocks, `shared_scratch` must be `Some` — shared across all layers (C-SCRATCH-001).
     /// For fp32 blocks, `shared_scratch` is ignored (each block owns its scratch for backward).
-    pub fn forward(
+    pub(crate) fn forward(
         &mut self,
         input: &GpuBuffer<f32>,
         output: &mut GpuBuffer<f32>,
@@ -2035,7 +2035,7 @@ impl CudaBlock {
     ///
     /// Only callable on NF4 blocks. Returns error for fp32 blocks.
     #[allow(clippy::too_many_arguments)]
-    pub fn backward_nf4(
+    pub(crate) fn backward_nf4(
         &self,
         layer_input: &GpuBuffer<f32>,
         grad_output: &GpuBuffer<f32>,
