@@ -420,16 +420,47 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
         } else {
             fallback_demo_config()
         }
+    } else if let Some(ref overrides) = spec.model.architecture {
+        // No config file specified — try to build entirely from architecture overrides
+        if let Some(cfg) = config_from_overrides(overrides) {
+            cfg
+        } else {
+            fallback_demo_config()
+        }
     } else {
         fallback_demo_config()
     };
 
-    // Apply architecture overrides from YAML manifest
+    // Apply architecture overrides from YAML manifest (handles partial overrides on top of base)
     if let Some(ref overrides) = spec.model.architecture {
         apply_architecture_overrides(&mut config, overrides);
     }
 
     Ok(config)
+}
+
+/// Build a TransformerConfig directly from architecture overrides if all required fields are present.
+/// Required: hidden_size, num_attention_heads, num_hidden_layers, vocab_size, intermediate_size.
+fn config_from_overrides(overrides: &crate::config::ArchitectureOverrides) -> Option<TransformerConfig> {
+    let hidden_size = overrides.hidden_size?;
+    let num_attention_heads = overrides.num_attention_heads?;
+    let num_hidden_layers = overrides.num_hidden_layers?;
+    let vocab_size = overrides.vocab_size?;
+    let intermediate_size = overrides.intermediate_size?;
+
+    Some(TransformerConfig {
+        hidden_size,
+        num_attention_heads,
+        num_kv_heads: overrides.num_kv_heads.unwrap_or(num_attention_heads),
+        intermediate_size,
+        num_hidden_layers,
+        vocab_size,
+        max_position_embeddings: overrides.max_position_embeddings.unwrap_or(2048),
+        rms_norm_eps: overrides.rms_norm_eps.unwrap_or(1e-5),
+        rope_theta: overrides.rope_theta.unwrap_or(10000.0),
+        use_bias: overrides.use_bias.unwrap_or(false),
+        head_dim_override: None,
+    })
 }
 
 /// R-05 (Meyer DbC): Explicit Qwen2-0.5B demo config — NOT a generic default.
@@ -1360,8 +1391,8 @@ mod tests {
         assert_eq!(config.rms_norm_eps, 1e-5);
         assert_eq!(config.rope_theta, 500_000.0);
         assert!(config.use_bias);
-        // Non-overridden field keeps the demo default
-        assert_eq!(config.max_position_embeddings, QWEN_MAX_POSITION_EMBEDDINGS);
+        // Non-overridden field uses generic default (not Qwen2 demo config)
+        assert_eq!(config.max_position_embeddings, 2048);
     }
 
     #[test]
