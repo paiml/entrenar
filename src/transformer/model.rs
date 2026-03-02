@@ -142,6 +142,7 @@ impl Transformer {
         config: &TransformerConfig,
     ) -> Result<()> {
         let hidden = config.hidden_size;
+        let q_dim = config.q_dim();
         let kv_hidden = config.num_kv_heads * config.head_dim();
         let intermediate = config.intermediate_size;
         let vocab = config.vocab_size;
@@ -177,11 +178,11 @@ impl Transformer {
             check(&format!("{p}.input_layernorm.weight"), hidden)?;
             check(&format!("{p}.post_attention_layernorm.weight"), hidden)?;
 
-            // Attention projections
-            check(&format!("{p}.self_attn.q_proj.weight"), hidden * hidden)?;
-            check(&format!("{p}.self_attn.k_proj.weight"), hidden * kv_hidden)?;
-            check(&format!("{p}.self_attn.v_proj.weight"), hidden * kv_hidden)?;
-            check(&format!("{p}.self_attn.o_proj.weight"), hidden * hidden)?;
+            // Attention projections: Q/O use q_dim, K/V use kv_hidden
+            check(&format!("{p}.self_attn.q_proj.weight"), q_dim * hidden)?;
+            check(&format!("{p}.self_attn.k_proj.weight"), kv_hidden * hidden)?;
+            check(&format!("{p}.self_attn.v_proj.weight"), kv_hidden * hidden)?;
+            check(&format!("{p}.self_attn.o_proj.weight"), hidden * q_dim)?;
 
             // MLP projections
             check(&format!("{p}.mlp.gate_proj.weight"), hidden * intermediate)?;

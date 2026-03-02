@@ -563,9 +563,7 @@ impl CudaTransformerTrainer {
         let stream = self.cuda_trainer.stream();
 
         // Upload grad_logits (Transfer 3: H2D)
-        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).map_err(|e| {
-            eprintln!("[CUDA backward] upload grad_logits failed: {e:?}");
-        }).ok()?;
+        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).ok()?;
 
         // LM head GEMM backward
         gemm_backward_a(
@@ -574,18 +572,15 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.lm_head_grad_hidden,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).map_err(|e| {
-            eprintln!("[CUDA backward] gemm_backward_a failed: {e:?}");
-        }).ok()?;
+        ).ok()?;
+
         gemm_backward_b(
             &self.gpu_training.norm_output,
             &grad_logits_gpu,
             &mut self.lm_head_grad_gpu,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).map_err(|e| {
-            eprintln!("[CUDA backward] gemm_backward_b failed: {e:?}");
-        }).ok()?;
+        ).ok()?;
 
         // Final RMSNorm backward
         rms_norm_backward(
@@ -595,9 +590,7 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.grad_buf_a,
             &mut self.gpu_training.grad_final_norm_weight,
             seq_len as u32, hidden_size as u32, 1e-5_f32, stream,
-        ).map_err(|e| {
-            eprintln!("[CUDA backward] rms_norm_backward failed: {e:?}");
-        }).ok()?;
+        ).ok()?;
 
         // Backward through blocks in reverse
         // SAFETY: grad_buf_a and grad_buf_b are disjoint fields. Raw pointers
@@ -618,9 +611,7 @@ impl CudaTransformerTrainer {
                 &self.gpu_training.layer_inputs[layer_idx],
                 grad_output, grad_input, seq_len, stream,
                 &mut self.cuda_grad_workspace,
-            ).map_err(|e| {
-                eprintln!("[CUDA backward] block[{layer_idx}].backward failed: {e:?}");
-            }).ok()?;
+            ).ok()?;
             grad_output_is_a = !grad_output_is_a;
         }
 

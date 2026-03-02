@@ -27,10 +27,20 @@ impl ConfusionMatrix {
 
     /// Create from predictions and ground truth
     pub fn from_predictions(y_pred: &[usize], y_true: &[usize]) -> Self {
+        Self::from_predictions_with_min_classes(y_pred, y_true, 0)
+    }
+
+    /// Create from predictions and ground truth, ensuring at least `min_classes` classes
+    pub fn from_predictions_with_min_classes(
+        y_pred: &[usize],
+        y_true: &[usize],
+        min_classes: usize,
+    ) -> Self {
         assert_eq!(y_pred.len(), y_true.len(), "Predictions and targets must have same length");
 
-        // Determine number of classes
-        let n_classes = y_pred.iter().chain(y_true.iter()).max().map_or(0, |&m| m + 1);
+        // Determine number of classes (at least min_classes)
+        let observed = y_pred.iter().chain(y_true.iter()).max().map_or(0, |&m| m + 1);
+        let n_classes = observed.max(min_classes);
 
         let mut cm = Self::new(n_classes);
 
