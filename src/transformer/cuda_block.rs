@@ -137,6 +137,12 @@ pub(crate) struct CudaBlockScratch {
     /// Gradient for attention scores [num_heads * seq_len * seq_len]
     /// Kept separate from attn_scores because softmax backward reads y while writing grad_x
     grad_attn_scores: GpuBuffer<f32>,
+    // === LoRA scratch buffers (ENT-153: QLoRA) ===
+    /// LoRA intermediate: x @ A, sized [max_seq_len * max_lora_rank]
+    lora_inter: GpuBuffer<f32>,
+    /// LoRA temp for scaled addition, sized [max_seq_len * max_proj_dim]
+    /// (reuses largest projection dimension for Q/V LoRA output)
+    lora_temp: GpuBuffer<f32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -146,13 +152,19 @@ impl CudaBlockScratch {
     /// # Contract (C-SCRATCH-001)
     ///
     /// All buffer sizes are deterministic from (config, max_seq_len).
-    pub(crate) fn new(config: &TransformerConfig, max_seq_len: usize, ctx: &Arc<CudaContext>) -> Result<Self> {
+    pub(crate) fn new(config: &TransformerConfig, max_seq_len: usize, ctx: &Arc<CudaContext>, lora_rank: usize) -> Result<Self> {
         let hidden_size = config.hidden_size;
         let q_dim = config.q_dim();
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
         let intermediate_size = config.intermediate_size;
         let num_heads = config.num_attention_heads;
         let head_dim = config.head_dim();
+
+        // LoRA scratch: max(q_dim, kv_hidden) for the largest projection output
+        let max_proj_dim = q_dim.max(kv_hidden_size);
+        // Minimum 1 element to avoid zero-size GPU allocation
+        let lora_inter_size = (max_seq_len * lora_rank).max(1);
+        let lora_temp_size = (max_seq_len * max_proj_dim).max(1);
 
         Ok(Self {
             norm1_out: GpuBuffer::new(ctx, max_seq_len * hidden_size)?,
@@ -177,6 +189,8 @@ impl CudaBlockScratch {
                 ctx,
                 num_heads * max_seq_len * max_seq_len.max(head_dim),
             )?,
+            lora_inter: GpuBuffer::new(ctx, lora_inter_size)?,
+            lora_temp: GpuBuffer::new(ctx, lora_temp_size)?,
         })
     }
 }
@@ -341,6 +355,9 @@ impl CudaTransformerBlock {
                 &ctx,
                 num_heads * max_seq_len * max_seq_len.max(config.head_dim()),
             )?,
+            // LoRA scratch (unused for fp32 blocks, minimum allocation)
+            lora_inter: GpuBuffer::new(&ctx, 1)?,
+            lora_temp: GpuBuffer::new(&ctx, 1)?,
         };
 
         Ok(Self {
@@ -1105,25 +1122,41 @@ impl CudaTransformerBlock {
         )?;
 
         // grad_V = attn_weights^T @ grad_attn_batched → attn_kv_temp [H, seq, hd]
-        // First transpose attn_weights (attn_scores): [H, seq, seq] → [H, seq, seq] (symmetric dims)
-        // Actually we need attn_scores^T which is just transpose of [H, seq, seq]
+        //
+        // BUG FIX: Cannot transpose attn_scores [H,S,S] into attn_kv_temp2 [H,S,hd]
+        // because H*S*S >> H*S*hd when S > hd (e.g. 350M: 4.2M vs 524K = 8× overflow).
+        //
+        // Use identity: grad_V = (grad_attn_batched^T @ attn_scores)^T
+        // All intermediates are [H, hd, S] = [H, S, hd] size — no H*S*S buffer needed.
+
+        // Step A: transpose grad_attn_batched [H,S,hd] → [H,hd,S]
         batched_transpose_forward(
-            &self.scratch.attn_scores,
-            &mut self.scratch.attn_kv_temp2,
+            &self.scratch.attn_q_batched,   // grad_attn_batched [H, S, hd]
+            &mut self.scratch.attn_kv_temp, // temp: grad_attn_batched^T [H, hd, S]
             nh,
             seq,
-            seq,
+            hd,
             stream,
         )?;
-        // attn_kv_temp2 = attn_weights^T [H, seq, seq]
 
+        // Step B: GEMM [H,hd,S] @ [H,S,S] → [H,hd,S] (= grad_V^T)
         batched_4d_gemm_forward(
-            &self.scratch.attn_kv_temp2,
-            &self.scratch.attn_q_batched,
-            &mut self.scratch.attn_kv_temp,
+            &self.scratch.attn_kv_temp,      // grad_attn_batched^T [H, hd, S]
+            &self.scratch.attn_scores,        // attn_weights [H, S, S]
+            &mut self.scratch.attn_kv_temp2,  // grad_V^T [H, hd, S]
             1,
             nh,
-            seq,
+            hd,  // m
+            seq, // n
+            seq, // k
+            stream,
+        )?;
+
+        // Step C: transpose grad_V^T [H,hd,S] → grad_V [H,S,hd]
+        batched_transpose_forward(
+            &self.scratch.attn_kv_temp2,    // grad_V^T [H, hd, S]
+            &mut self.scratch.attn_kv_temp, // grad_V [H, S, hd]
+            nh,
             hd,
             seq,
             stream,
@@ -1845,6 +1878,27 @@ fn cuda_add(
     residual_add_forward(a, b, output, saturating_u32(n), stream)
 }
 
+/// In-place add: `target += source` using residual add with aliased output.
+///
+/// # Safety
+///
+/// The ResidualAdd kernel reads `a[i]` and `b[i]` then writes `output[i] = a[i] + b[i]`.
+/// When `a` and `output` alias the same GPU buffer, each element is read before written
+/// (no inter-element dependency), so this is safe for elementwise operations.
+#[cfg(feature = "cuda")]
+fn cuda_add_inplace(
+    target: &mut GpuBuffer<f32>,
+    source: &GpuBuffer<f32>,
+    n: usize,
+    stream: &CudaStream,
+) -> Result<()> {
+    // SAFETY: ResidualAdd kernel is elementwise (output[i] = a[i] + b[i]).
+    // Aliasing target as both input and output is safe because each element is
+    // independent — the GPU reads a[i] before writing output[i] at the same address.
+    let target_ref: &GpuBuffer<f32> = unsafe { &*(target as *const GpuBuffer<f32>) };
+    residual_add_forward(target_ref, source, target, saturating_u32(n), stream)
+}
+
 /// CUDA element-wise multiplication on GPU (zero CPU transfers)
 ///
 /// Uses `ElementwiseMulKernel` — single kernel launch, no D2H/H2D transfers.
@@ -2026,6 +2080,14 @@ pub struct CudaNf4TransformerBlock {
     w_up_scales: GpuBuffer<f32>,
     w_down_nf4: GpuBuffer<u8>,
     w_down_scales: GpuBuffer<f32>,
+    // LoRA adapters for Q and V projections (ENT-153: QLoRA backward)
+    // None when LoRA is not active (inference-only or non-QLoRA training)
+    lora_a_q: Option<GpuBuffer<f32>>,    // [hidden_size, rank]
+    lora_b_q: Option<GpuBuffer<f32>>,    // [rank, q_dim]
+    lora_a_v: Option<GpuBuffer<f32>>,    // [hidden_size, rank]
+    lora_b_v: Option<GpuBuffer<f32>>,    // [rank, kv_hidden]
+    lora_scale: f32,
+    lora_rank: usize,
     ctx: Arc<CudaContext>,
     // NF4 blocks do NOT own scratch — shared across all layers (C-SCRATCH-001)
 }
@@ -2051,6 +2113,11 @@ impl CudaNf4TransformerBlock {
         w_up: &[f32],
         w_down: &[f32],
         _max_seq_len: usize, // NF4 blocks use shared scratch (C-SCRATCH-001)
+        // ENT-153: Optional LoRA adapters for Q and V projections
+        q_lora: Option<(&[f32], &[f32])>,
+        v_lora: Option<(&[f32], &[f32])>,
+        lora_scale: f32,
+        lora_rank: usize,
     ) -> Result<Self> {
         use trueno_gpu::kernels::{quantize_nf4, NF4_BLOCK_SIZE};
 
@@ -2117,6 +2184,27 @@ impl CudaNf4TransformerBlock {
         // Pipeline allocates one CudaBlockScratch and passes &mut to each forward() call.
         // Saves (L-1) * 214 MB = 7.5 GB for Qwen3-4B (36 layers).
 
+        // Upload LoRA adapters to GPU (ENT-153)
+        // B matrices are pre-scaled by lora_scale to avoid a separate scale kernel in forward.
+        let (lora_a_q, lora_b_q) = match q_lora {
+            Some((a_data, b_data)) => {
+                let a = GpuBuffer::from_host(&ctx, a_data)?;
+                let scaled_b: Vec<f32> = b_data.iter().map(|&v| v * lora_scale).collect();
+                let b = GpuBuffer::from_host(&ctx, &scaled_b)?;
+                (Some(a), Some(b))
+            }
+            None => (None, None),
+        };
+        let (lora_a_v, lora_b_v) = match v_lora {
+            Some((a_data, b_data)) => {
+                let a = GpuBuffer::from_host(&ctx, a_data)?;
+                let scaled_b: Vec<f32> = b_data.iter().map(|&v| v * lora_scale).collect();
+                let b = GpuBuffer::from_host(&ctx, &scaled_b)?;
+                (Some(a), Some(b))
+            }
+            None => (None, None),
+        };
+
         Ok(Self {
             config: config.clone(),
             layer_idx,
@@ -2136,6 +2224,12 @@ impl CudaNf4TransformerBlock {
             w_up_scales,
             w_down_nf4,
             w_down_scales,
+            lora_a_q,
+            lora_b_q,
+            lora_a_v,
+            lora_b_v,
+            lora_scale,
+            lora_rank,
             ctx,
         })
     }
@@ -2169,7 +2263,7 @@ impl CudaNf4TransformerBlock {
             stream,
         )?;
 
-        // === Q, K, V Projections (NF4 fused dequant + GEMM) ===
+        // === Q, K, V Projections (NF4 fused dequant + GEMM + LoRA) ===
         // C-NF4GEMM-001: Q proj is C[seq,q_dim] = A[seq,hidden] @ B[hidden,q_dim]
         gemm_nf4_forward(
             &scratch.norm1_out,
@@ -2181,6 +2275,20 @@ impl CudaNf4TransformerBlock {
             saturating_u32(q_dim),
             stream,
         )?;
+
+        // ENT-153: Q LoRA: q += (norm1_out @ A_q) @ B_q  (B_q pre-scaled by lora_scale)
+        if let (Some(a_q), Some(b_q)) = (&self.lora_a_q, &self.lora_b_q) {
+            let s = saturating_u32(seq_len);
+            let h = saturating_u32(hidden_size);
+            let r = saturating_u32(self.lora_rank);
+            let qd = saturating_u32(q_dim);
+            // lora_inter[seq, rank] = norm1_out[seq, hidden] @ A_q[hidden, rank]
+            gemm_forward(&scratch.norm1_out, a_q, &mut scratch.lora_inter, s, h, r, stream)?;
+            // lora_temp[seq, q_dim] = lora_inter[seq, rank] @ B_q[rank, q_dim]
+            gemm_forward(&scratch.lora_inter, b_q, &mut scratch.lora_temp, s, r, qd, stream)?;
+            // q += lora_temp (in-place add)
+            cuda_add_inplace(&mut scratch.q, &scratch.lora_temp, seq_len * q_dim, stream)?;
+        }
 
         gemm_nf4_forward(
             &scratch.norm1_out,
@@ -2203,6 +2311,20 @@ impl CudaNf4TransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
+
+        // ENT-153: V LoRA: v += (norm1_out @ A_v) @ B_v  (B_v pre-scaled by lora_scale)
+        if let (Some(a_v), Some(b_v)) = (&self.lora_a_v, &self.lora_b_v) {
+            let s = saturating_u32(seq_len);
+            let h = saturating_u32(hidden_size);
+            let r = saturating_u32(self.lora_rank);
+            let vd = saturating_u32(kv_hidden_size);
+            // lora_inter[seq, rank] = norm1_out[seq, hidden] @ A_v[hidden, rank]
+            gemm_forward(&scratch.norm1_out, a_v, &mut scratch.lora_inter, s, h, r, stream)?;
+            // lora_temp[seq, kv_hidden] = lora_inter[seq, rank] @ B_v[rank, kv_hidden]
+            gemm_forward(&scratch.lora_inter, b_v, &mut scratch.lora_temp, s, r, vd, stream)?;
+            // v += lora_temp (in-place add)
+            cuda_add_inplace(&mut scratch.v, &scratch.lora_temp, seq_len * kv_hidden_size, stream)?;
+        }
 
         // === Multi-Head Attention (GPU-only, zero CPU transfers) ===
         self.compute_attention_cuda(seq_len, stream, scratch)?;
