@@ -416,6 +416,10 @@ pub struct TrainingParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scheduler_params: Option<HashMap<String, serde_json::Value>>,
 
+    /// Maximum training steps (overrides epochs if set)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_steps: Option<usize>,
+
     /// Global random seed for reproducibility
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
@@ -435,6 +439,7 @@ impl Default for TrainingParams {
             checkpoints: None,
             mixed_precision: None,
             scheduler_params: None,
+            max_steps: None,
             seed: None,
         }
     }

@@ -23,6 +23,8 @@ pub struct TransformerTrainConfig {
     pub warmup_steps: usize,
     /// Learning rate
     pub lr: f32,
+    /// Maximum training steps (stop after this many optimizer steps)
+    pub max_steps: Option<usize>,
 }
 
 impl TransformerTrainConfig {
@@ -37,6 +39,7 @@ impl TransformerTrainConfig {
             accumulation_steps: 1,
             warmup_steps: 0,
             lr: 0.001,
+            max_steps: None,
         }
     }
 
@@ -85,6 +88,12 @@ impl TransformerTrainConfig {
     /// Set gradient clipping
     pub fn with_grad_clip(mut self, clip: f32) -> Self {
         self.base.max_grad_norm = Some(clip);
+        self
+    }
+
+    /// Set maximum training steps
+    pub fn with_max_steps(mut self, steps: usize) -> Self {
+        self.max_steps = Some(steps);
         self
     }
 }

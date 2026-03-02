@@ -334,6 +334,7 @@ fn convert_training(
         gradient_accumulation,
         checkpoints: None,
         mixed_precision,
+        max_steps: training_cfg.and_then(|t| t.max_steps),
         scheduler_params,
         seed,
     }

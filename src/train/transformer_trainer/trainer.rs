@@ -180,6 +180,9 @@ impl TransformerTrainer {
     ///
     /// The callback receives (batch_index, batch_loss, &self) after each batch.
     /// Use this for progress logging, checkpointing, or early stopping.
+    ///
+    /// Stops early if `max_steps` is set and the step count reaches it.
+    /// Returns `(avg_loss, reached_max_steps)`.
     pub fn train_epoch_with_callback<F>(&mut self, batches: &[LMBatch], mut on_batch: F) -> f32
     where
         F: FnMut(usize, f32, &Self),
@@ -189,14 +192,30 @@ impl TransformerTrainer {
         }
 
         let mut total_loss = 0.0;
+        let mut batches_processed = 0;
 
         for (i, batch) in batches.iter().enumerate() {
+            // Check max_steps before processing
+            if let Some(max) = self.config.max_steps {
+                if self.step >= max {
+                    break;
+                }
+            }
+
             let batch_loss = self.train_batch(batch);
             total_loss += batch_loss;
+            batches_processed += 1;
             on_batch(i, batch_loss, self);
         }
 
-        total_loss / batches.len().max(1) as f32
+        total_loss / batches_processed.max(1) as f32
+    }
+
+    /// Returns true if max_steps has been reached.
+    pub fn reached_max_steps(&self) -> bool {
+        self.config
+            .max_steps
+            .map_or(false, |max| self.step >= max)
     }
 
     /// Get current step count
