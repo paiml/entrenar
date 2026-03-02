@@ -22,6 +22,7 @@ pub use attention::{LoRAProjection, MultiHeadAttention, MultiHeadAttentionWithLo
 pub use config::TransformerConfig;
 #[cfg(feature = "cuda")]
 pub use cuda_block::{BlockWeights, CudaBlock, CudaGradWorkspace, CudaNf4TransformerBlock, CudaTransformerBlock, GpuBlockOptimizerState};
+pub(crate) use cuda_block::CudaBlockScratch;
 #[cfg(not(feature = "cuda"))]
 pub use cuda_block::{CudaBlock, CudaTransformerBlock};
 pub use model::Transformer;

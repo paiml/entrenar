@@ -33,7 +33,7 @@ use crate::autograd::cuda_forward::pre_warm_forward_kernels;
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
-use crate::transformer::{CudaBlock, CudaGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState};
+use crate::transformer::{CudaBlock, CudaBlockScratch, CudaGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState};
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 #[cfg(feature = "cuda")]
@@ -188,6 +188,10 @@ pub struct ClassifyPipeline {
     /// CUDA-accelerated transformer blocks — one per layer (F-CUDA-006)
     #[cfg(feature = "cuda")]
     cuda_blocks: Option<Vec<CudaBlock>>,
+    /// Shared scratch buffers for NF4 forward pass (C-SCRATCH-001).
+    /// One allocation shared across all 36 layers — saves 7.5 GB for Qwen3-4B.
+    #[cfg(feature = "cuda")]
+    shared_scratch: Option<CudaBlockScratch>,
     /// Count of GPU forward passes that produced NaN/Inf and fell back to CPU.
     /// Used to decide when to permanently disable CUDA (threshold: 100).
     #[cfg(feature = "cuda")]
@@ -225,7 +229,7 @@ impl ClassifyPipeline {
 
         // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
         #[cfg(feature = "cuda")]
-        let (cuda_trainer, cuda_blocks) =
+        let (cuda_trainer, cuda_blocks, shared_scratch) =
             Self::try_init_cuda(&model, model_config, &classify_config);
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
@@ -263,6 +267,8 @@ impl ClassifyPipeline {
             cuda_trainer,
             #[cfg(feature = "cuda")]
             cuda_blocks,
+            #[cfg(feature = "cuda")]
+            shared_scratch,
             #[cfg(feature = "cuda")]
             cuda_nan_count: 0,
             #[cfg(feature = "cuda")]
@@ -317,7 +323,7 @@ impl ClassifyPipeline {
 
         // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
         #[cfg(feature = "cuda")]
-        let (cuda_trainer, cuda_blocks) =
+        let (cuda_trainer, cuda_blocks, shared_scratch) =
             Self::try_init_cuda(&model, model_config, &classify_config);
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
@@ -357,6 +363,8 @@ impl ClassifyPipeline {
             cuda_trainer,
             #[cfg(feature = "cuda")]
             cuda_blocks,
+            #[cfg(feature = "cuda")]
+            shared_scratch,
             #[cfg(feature = "cuda")]
             cuda_nan_count: 0,
             #[cfg(feature = "cuda")]
@@ -446,10 +454,10 @@ impl ClassifyPipeline {
         model: &Transformer,
         model_config: &TransformerConfig,
         classify_config: &ClassifyConfig,
-    ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>) {
+    ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>, Option<CudaBlockScratch>) {
         if !cuda_training_available() {
             eprintln!("[CUDA] No CUDA runtime detected — using CPU");
-            return (None, None);
+            return (None, None, None);
         }
 
         let trainer = match CudaTrainer::new() {
@@ -463,7 +471,7 @@ impl ClassifyPipeline {
             }
             Err(e) => {
                 eprintln!("[CUDA] Failed to create trainer: {e} — using CPU");
-                return (None, None);
+                return (None, None, None);
             }
         };
 
@@ -483,7 +491,7 @@ impl ClassifyPipeline {
             max_seq_len,
         ) {
             eprintln!("[CUDA] Failed to pre-warm forward kernels: {e} — using CPU");
-            return (None, None);
+            return (None, None, None);
         }
 
         let quantize_nf4 = classify_config.quantize_nf4;
@@ -544,7 +552,7 @@ impl ClassifyPipeline {
                     eprintln!(
                         "[CUDA] Failed to upload layer {i} to GPU: {e} — falling back to CPU"
                     );
-                    return (None, None);
+                    return (None, None, None);
                 }
             }
         }
@@ -558,7 +566,20 @@ impl ClassifyPipeline {
         // F-CUDA-006: verify all layers uploaded
         assert_eq!(blocks.len(), model.config.num_hidden_layers);
 
-        (Some(trainer), Some(blocks))
+        // C-SCRATCH-001: Allocate one shared scratch for NF4 (saves 7.5 GB for Qwen3-4B)
+        let shared_scratch = if quantize_nf4 {
+            match CudaBlockScratch::new(model_config, max_seq_len, &ctx) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    eprintln!("[CUDA] Failed to allocate shared scratch: {e} — using CPU");
+                    return (None, None, None);
+                }
+            }
+        } else {
+            None // fp32 blocks own their scratch (needed for backward)
+        };
+
+        (Some(trainer), Some(blocks), shared_scratch)
     }
 
     /// Initialize GPU training state for full-finetune backward pass (F-CUDA-014).
@@ -725,7 +746,7 @@ impl ClassifyPipeline {
                     .ok()?;
             }
 
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream) {
+            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, None) {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
@@ -1002,7 +1023,7 @@ impl ClassifyPipeline {
             (Some(ref t), Some(ref mut b)) => (t, b),
             _ => return None,
         };
-        match Self::forward_hidden_cuda_impl(&self.model, token_ids, trainer, blocks) {
+        match Self::forward_hidden_cuda_impl(&self.model, token_ids, trainer, blocks, &mut self.shared_scratch) {
             Some(tensor) => Some(tensor),
             None => {
                 self.cuda_nan_count += 1;
@@ -1034,6 +1055,7 @@ impl ClassifyPipeline {
         token_ids: &[u32],
         trainer: &CudaTrainer,
         cuda_blocks: &mut [CudaBlock],
+        shared_scratch: &mut Option<CudaBlockScratch>,
     ) -> Option<Tensor> {
         let seq_len = token_ids.len();
         let hidden_size = model.config.hidden_size;
@@ -1050,7 +1072,7 @@ impl ClassifyPipeline {
         // Step 3: Run through CUDA transformer blocks
         let stream = trainer.stream();
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream) {
+            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut()) {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
