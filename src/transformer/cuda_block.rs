@@ -1755,6 +1755,109 @@ impl CudaTransformerBlock {
 }
 
 // =============================================================================
+// CudaBlock — enum dispatching fp32 or NF4 transformer blocks
+// =============================================================================
+
+/// Unified enum for CUDA transformer blocks (fp32 or NF4-quantized).
+///
+/// The classify pipeline stores `Vec<CudaBlock>` and calls `forward()` without
+/// caring which quantization format the frozen weights use.
+#[cfg(feature = "cuda")]
+pub enum CudaBlock {
+    /// Standard fp32 weights (full precision, ~16 GB for Qwen3-4B)
+    Fp32(CudaTransformerBlock),
+    /// NF4 quantized weights (~2 GB for Qwen3-4B, ~8x compression)
+    Nf4(CudaNf4TransformerBlock),
+}
+
+#[cfg(feature = "cuda")]
+impl CudaBlock {
+    /// Forward pass through the transformer block.
+    ///
+    /// Dispatches to the underlying fp32 or NF4 implementation.
+    pub fn forward(
+        &mut self,
+        input: &GpuBuffer<f32>,
+        output: &mut GpuBuffer<f32>,
+        seq_len: usize,
+        stream: &CudaStream,
+    ) -> Result<()> {
+        match self {
+            CudaBlock::Fp32(b) => b.forward(input, output, seq_len, stream),
+            CudaBlock::Nf4(b) => b.forward(input, output, seq_len, stream),
+        }
+    }
+
+    /// Get the layer index of this block.
+    pub fn layer_idx(&self) -> usize {
+        match self {
+            CudaBlock::Fp32(b) => b.layer_idx(),
+            CudaBlock::Nf4(b) => b.layer_idx,
+        }
+    }
+
+    /// Backward pass (only supported for fp32 blocks).
+    ///
+    /// NF4 blocks are frozen — backward is never called when `quantize_nf4` is active
+    /// because `gpu_training` is set to `None`.
+    pub fn backward(
+        &mut self,
+        input: &GpuBuffer<f32>,
+        grad_output: &GpuBuffer<f32>,
+        grad_input: &mut GpuBuffer<f32>,
+        seq_len: usize,
+        stream: &CudaStream,
+        grad_ws: &mut CudaGradWorkspace,
+    ) -> Result<()> {
+        match self {
+            CudaBlock::Fp32(b) => b.backward(input, grad_output, grad_input, seq_len, stream, grad_ws),
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("backward not supported on NF4 blocks (frozen weights)".into())),
+        }
+    }
+
+    /// Initialize optimizer state (only supported for fp32 blocks).
+    pub fn init_optimizer_state(&self) -> Result<GpuBlockOptimizerState> {
+        match self {
+            CudaBlock::Fp32(b) => b.init_optimizer_state(),
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("init_optimizer_state not supported on NF4 blocks".into())),
+        }
+    }
+
+    /// Download weights from GPU (only supported for fp32 blocks).
+    pub fn download_weights(&self) -> Result<BlockWeights> {
+        match self {
+            CudaBlock::Fp32(b) => b.download_weights(),
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("download_weights not supported on NF4 blocks".into())),
+        }
+    }
+
+    /// Optimizer step (only supported for fp32 blocks).
+    pub fn optimizer_step(
+        &mut self,
+        state: &mut GpuBlockOptimizerState,
+        step: u32,
+        lr: f32,
+        beta1: f32,
+        beta2: f32,
+        eps: f32,
+        weight_decay: f32,
+        stream: &CudaStream,
+        grad_ws: &CudaGradWorkspace,
+    ) -> Result<()> {
+        match self {
+            CudaBlock::Fp32(b) => b.optimizer_step(state, step, lr, beta1, beta2, eps, weight_decay, stream, grad_ws),
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("optimizer_step not supported on NF4 blocks (frozen weights)".into())),
+        }
+    }
+}
+
+/// CPU fallback stub for CudaBlock.
+#[cfg(not(feature = "cuda"))]
+pub enum CudaBlock {
+    Fp32(CudaTransformerBlock),
+}
+
+// =============================================================================
 // NF4 Quantized Transformer Block (trueno#108: QLoRA support)
 // =============================================================================
 
