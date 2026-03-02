@@ -369,23 +369,49 @@ impl CudaTransformerTrainer {
         input_ids: &[u32],
         target_ids: &[u32],
     ) -> Option<f32> {
-        let seq_len = input_ids.len();
         let hidden_size = self.config.model_config.hidden_size;
         let vocab_size = self.config.model_config.vocab_size;
 
+        // Truncate to max_seq_len — GPU buffers are pre-allocated for this size
+        let max_sl = self.config.max_seq_len;
+        let input_ids = if input_ids.len() > max_sl { &input_ids[..max_sl] } else { input_ids };
+        let target_ids = if target_ids.len() > max_sl { &target_ids[..max_sl] } else { target_ids };
+        let seq_len = input_ids.len();
+
         // Steps 1-6: GPU forward pass → returns logits on CPU
-        let logits_data = self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
+        let logits_data = match self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size) {
+            Some(d) => d,
+            None => {
+                eprintln!("[CUDA] gpu_forward failed (seq_len={seq_len}, H={hidden_size}, V={vocab_size})");
+                return None;
+            }
+        };
 
         // Step 7: Cross-entropy loss + gradient (CPU)
-        let (loss_val, grad_logits) = self.cpu_loss_and_grad(
+        let (loss_val, grad_logits) = match self.cpu_loss_and_grad(
             &logits_data, target_ids, seq_len, vocab_size,
-        )?;
+        ) {
+            Some(v) => v,
+            None => {
+                eprintln!("[CUDA] cpu_loss_and_grad failed");
+                return None;
+            }
+        };
 
         // Steps 8-11: GPU backward pass
-        let grad_output_is_a = self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size)?;
+        let grad_output_is_a = match self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size) {
+            Some(v) => v,
+            None => {
+                eprintln!("[CUDA] gpu_backward failed");
+                return None;
+            }
+        };
 
         // Step 12: Embedding backward (CPU)
-        self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a)?;
+        if self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a).is_none() {
+            eprintln!("[CUDA] embed_backward failed");
+            return None;
+        }
 
         Some(loss_val)
     }
@@ -537,7 +563,9 @@ impl CudaTransformerTrainer {
         let stream = self.cuda_trainer.stream();
 
         // Upload grad_logits (Transfer 3: H2D)
-        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).ok()?;
+        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).map_err(|e| {
+            eprintln!("[CUDA backward] upload grad_logits failed: {e:?}");
+        }).ok()?;
 
         // LM head GEMM backward
         gemm_backward_a(
@@ -546,14 +574,18 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.lm_head_grad_hidden,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).ok()?;
+        ).map_err(|e| {
+            eprintln!("[CUDA backward] gemm_backward_a failed: {e:?}");
+        }).ok()?;
         gemm_backward_b(
             &self.gpu_training.norm_output,
             &grad_logits_gpu,
             &mut self.lm_head_grad_gpu,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).ok()?;
+        ).map_err(|e| {
+            eprintln!("[CUDA backward] gemm_backward_b failed: {e:?}");
+        }).ok()?;
 
         // Final RMSNorm backward
         rms_norm_backward(
@@ -563,7 +595,9 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.grad_buf_a,
             &mut self.gpu_training.grad_final_norm_weight,
             seq_len as u32, hidden_size as u32, 1e-5_f32, stream,
-        ).ok()?;
+        ).map_err(|e| {
+            eprintln!("[CUDA backward] rms_norm_backward failed: {e:?}");
+        }).ok()?;
 
         // Backward through blocks in reverse
         // SAFETY: grad_buf_a and grad_buf_b are disjoint fields. Raw pointers
@@ -584,7 +618,9 @@ impl CudaTransformerTrainer {
                 &self.gpu_training.layer_inputs[layer_idx],
                 grad_output, grad_input, seq_len, stream,
                 &mut self.cuda_grad_workspace,
-            ).ok()?;
+            ).map_err(|e| {
+                eprintln!("[CUDA backward] block[{layer_idx}].backward failed: {e:?}");
+            }).ok()?;
             grad_output_is_a = !grad_output_is_a;
         }
 

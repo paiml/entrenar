@@ -1214,12 +1214,12 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        // grad_hidden += grad_attn_scores (through gate_out scratch)
+        // grad_hidden += grad_attn_scores (through o_proj_out scratch — same hidden_size)
         let n_hidden = saturating_u32(seq_len * hidden_size);
         residual_add_forward(
             &self.scratch.grad_hidden,
             &self.scratch.grad_attn_scores,
-            &mut self.scratch.gate_out, // temp output (gate_out is large enough)
+            &mut self.scratch.o_proj_out, // temp output (hidden_size, matches grad_hidden)
             n_hidden,
             stream,
         )?;
@@ -1227,7 +1227,7 @@ impl CudaTransformerBlock {
         unsafe {
             self.scratch
                 .grad_hidden
-                .copy_from_buffer_async(&self.scratch.gate_out, stream)
+                .copy_from_buffer_async(&self.scratch.o_proj_out, stream)
                 .map_err(|e| {
                     crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
                         "Attn backward grad_hidden accumulate K D2D copy failed: {e}"
@@ -1245,11 +1245,11 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        // grad_hidden += grad_attn_scores (through gate_out scratch)
+        // grad_hidden += grad_attn_scores (through o_proj_out scratch)
         residual_add_forward(
             &self.scratch.grad_hidden,
             &self.scratch.grad_attn_scores,
-            &mut self.scratch.gate_out, // temp output
+            &mut self.scratch.o_proj_out, // temp output (hidden_size)
             n_hidden,
             stream,
         )?;
@@ -1257,7 +1257,7 @@ impl CudaTransformerBlock {
         unsafe {
             self.scratch
                 .grad_hidden
-                .copy_from_buffer_async(&self.scratch.gate_out, stream)
+                .copy_from_buffer_async(&self.scratch.o_proj_out, stream)
                 .map_err(|e| {
                     crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
                         "Attn backward grad_hidden accumulate V D2D copy failed: {e}"
