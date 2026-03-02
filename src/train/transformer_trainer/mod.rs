@@ -5,6 +5,7 @@
 
 mod batch;
 mod config;
+mod cuda_trainer;
 mod trainer;
 mod utils;
 
@@ -14,5 +15,6 @@ mod tests;
 // Re-export all public types
 pub use batch::LMBatch;
 pub use config::TransformerTrainConfig;
+pub use cuda_trainer::CudaTransformerTrainer;
 pub use trainer::TransformerTrainer;
 pub use utils::{perplexity, tokens_per_second};

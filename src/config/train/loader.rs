@@ -16,7 +16,7 @@ use crate::config::validate::validate_config;
 use crate::error::{Error, Result};
 use crate::tokenizer::HfTokenizer;
 use crate::trace::TRACER;
-use crate::train::{LMBatch, TransformerTrainConfig, TransformerTrainer};
+use crate::train::{CudaTransformerTrainer, LMBatch, TransformerTrainConfig, TransformerTrainer};
 use crate::transformer::{load_safetensors_weights, Architecture, Transformer, TransformerConfig};
 use crate::yaml_mode;
 use std::fs;
@@ -110,34 +110,72 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         }
     }
 
-    // Create TransformerTrainer (with loaded weights if available)
-    let mut trainer = if let Some(loaded_model) = transformer {
-        TransformerTrainer::with_model(loaded_model, train_config)
-    } else {
-        TransformerTrainer::new(train_config)
-    };
-    println!("✓ TransformerTrainer initialized");
-    println!("  Mixed precision: {}", trainer.is_mixed_precision());
-    println!("  Checkpointing: {}", trainer.is_checkpointing());
-    println!();
-
     // Load training data as LMBatches (supports tokenizer + text data)
     println!("Loading training data...");
     let batches = load_lm_batches(spec)?;
     println!("✓ {} LM batches created", batches.len());
     println!();
 
-    // Training loop
-    println!("Starting transformer training...");
+    // Try CUDA-resident training first (ALB-040), fall back to CPU
+    if train_config.use_cuda {
+        let cuda_config = train_config.clone();
+        let cuda_result = match transformer {
+            Some(loaded_model) => {
+                CudaTransformerTrainer::with_model(loaded_model, cuda_config)
+            }
+            None => CudaTransformerTrainer::new(cuda_config),
+        };
+
+        match cuda_result {
+            Ok(mut cuda_trainer) => {
+                println!(
+                    "✓ CudaTransformerTrainer initialized (GPU: {})",
+                    cuda_trainer.gpu_name()
+                );
+                return train_loop_cuda(&mut cuda_trainer, &batches, spec);
+            }
+            Err(e) => {
+                eprintln!("Warning: CUDA training failed ({e}), falling back to CPU");
+                // transformer was consumed — rebuild from config
+                let mut trainer = TransformerTrainer::new(train_config);
+                println!("✓ TransformerTrainer initialized (CPU fallback)");
+                println!("  Mixed precision: {}", trainer.is_mixed_precision());
+                println!("  Checkpointing: {}", trainer.is_checkpointing());
+                println!();
+                return train_loop_cpu(&mut trainer, &batches, spec);
+            }
+        }
+    }
+
+    // CPU-only path (use_cuda=false or no CUDA feature)
+    let mut trainer = if let Some(loaded_model) = transformer {
+        TransformerTrainer::with_model(loaded_model, train_config)
+    } else {
+        TransformerTrainer::new(train_config)
+    };
+    println!("✓ TransformerTrainer initialized (CPU)");
+    println!("  Mixed precision: {}", trainer.is_mixed_precision());
+    println!("  Checkpointing: {}", trainer.is_checkpointing());
     println!();
 
-    // Enable tracing for overhead analysis
+    train_loop_cpu(&mut trainer, &batches, spec)
+}
+
+/// Training loop for CPU TransformerTrainer
+fn train_loop_cpu(
+    trainer: &mut TransformerTrainer,
+    batches: &[LMBatch],
+    spec: &TrainSpec,
+) -> Result<()> {
+    println!("Starting transformer training (CPU)...");
+    println!();
+
     TRACER.enable();
     TRACER.clear();
 
     let num_batches = batches.len();
     let start_time = std::time::Instant::now();
-    let log_interval = std::cmp::max(num_batches / 100, 1); // Log ~100 times per epoch
+    let log_interval = std::cmp::max(num_batches / 100, 1);
 
     if let Some(max_steps) = spec.training.max_steps {
         println!("  max_steps: {} (will stop early when reached)", max_steps);
@@ -145,7 +183,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 
     for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
-        let avg_loss = trainer.train_epoch_with_callback(&batches, |batch_idx, batch_loss, trainer| {
+        let avg_loss = trainer.train_epoch_with_callback(batches, |batch_idx, batch_loss, trainer| {
             if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
                 let elapsed = epoch_start.elapsed().as_secs_f64();
                 let batches_done = batch_idx + 1;
@@ -169,18 +207,86 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
             epoch_start.elapsed().as_secs_f64(),
         );
 
-        // Stop training if max_steps reached (ALB-034)
         if trainer.reached_max_steps() {
             println!("Reached max_steps={}, stopping training.", spec.training.max_steps.unwrap_or(0));
             break;
         }
     }
+
+    let total_time = start_time.elapsed();
+    println!("Total training time: {:.1}s", total_time.as_secs_f64());
+    println!("{}", TRACER.report());
+
+    save_trained_model_cpu(trainer, spec)
+}
+
+/// Training loop for GPU CudaTransformerTrainer (ALB-040)
+#[cfg(feature = "cuda")]
+fn train_loop_cuda(
+    trainer: &mut CudaTransformerTrainer,
+    batches: &[LMBatch],
+    spec: &TrainSpec,
+) -> Result<()> {
+    println!("Starting transformer training (CUDA GPU-resident)...");
+    println!();
+
+    let num_batches = batches.len();
+    let start_time = std::time::Instant::now();
+    let log_interval = std::cmp::max(num_batches / 100, 1);
+
+    if let Some(max_steps) = spec.training.max_steps {
+        println!("  max_steps: {} (will stop early when reached)", max_steps);
+    }
+
+    for epoch in 0..spec.training.epochs {
+        let epoch_start = std::time::Instant::now();
+        let avg_loss = trainer.train_epoch_with_callback(batches, |batch_idx, batch_loss, trainer| {
+            if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
+                let elapsed = epoch_start.elapsed().as_secs_f64();
+                let batches_done = batch_idx + 1;
+                let seq_len = spec.data.seq_len.unwrap_or(128);
+                let tokens_done = batches_done * spec.data.batch_size * seq_len;
+                let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
+                let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
+                println!(
+                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} eta={:.0}s",
+                    batches_done, num_batches,
+                    trainer.step(), batch_loss, trainer.current_lr(),
+                    tokens_done as f64 / elapsed.max(0.001),
+                    remaining,
+                );
+            }
+        });
+        let ppl = crate::train::perplexity(avg_loss);
+        println!(
+            "Epoch {}/{}: loss={:.6}, perplexity={:.2}, time={:.1}s",
+            epoch + 1, spec.training.epochs, avg_loss, ppl,
+            epoch_start.elapsed().as_secs_f64(),
+        );
+
+        if trainer.reached_max_steps() {
+            println!("Reached max_steps={}, stopping training.", spec.training.max_steps.unwrap_or(0));
+            break;
+        }
+    }
+
     let total_time = start_time.elapsed();
     println!("Total training time: {:.1}s", total_time.as_secs_f64());
 
-    // Print trace report
-    println!("{}", TRACER.report());
+    save_trained_model_cuda(trainer, spec)
+}
 
+#[cfg(not(feature = "cuda"))]
+fn train_loop_cuda(
+    _trainer: &mut CudaTransformerTrainer,
+    _batches: &[LMBatch],
+    _spec: &TrainSpec,
+) -> Result<()> {
+    Err(Error::ConfigError("CUDA not available".into()))
+}
+
+/// Save trained model from CPU trainer
+fn save_trained_model_cpu(trainer: &TransformerTrainer, spec: &TrainSpec) -> Result<()> {
     println!();
     println!("✓ Transformer training complete");
     println!("  Final loss: {:.6}", trainer.metrics.losses.last().copied().unwrap_or(0.0));
@@ -188,10 +294,8 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     println!("  Steps completed: {}", trainer.step());
     println!();
 
-    // Save the trained model
     std::fs::create_dir_all(&spec.training.output_dir).ok();
 
-    // Save model weights to SafeTensors
     let weights_path = spec.training.output_dir.join("model.safetensors");
     let model_name = spec.model.path.file_name()
         .and_then(|n| n.to_str())
@@ -203,9 +307,46 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
     );
 
-    // Save HuggingFace-compatible config.json (ALB-037: required by realizar for inference)
+    save_config_and_metadata(trainer.model().config(), trainer.step(),
+        &trainer.metrics, &weights_path, spec)
+}
+
+/// Save trained model from CUDA trainer (syncs GPU→CPU first)
+#[cfg(feature = "cuda")]
+fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpec) -> Result<()> {
+    println!();
+    println!("✓ Transformer training complete (CUDA)");
+    println!("  Final loss: {:.6}", trainer.metrics.losses.last().copied().unwrap_or(0.0));
+    println!("  Best loss: {:.6}", trainer.metrics.best_loss().unwrap_or(0.0));
+    println!("  Steps completed: {}", trainer.step());
+    println!();
+
+    std::fs::create_dir_all(&spec.training.output_dir).ok();
+
+    let weights_path = spec.training.output_dir.join("model.safetensors");
+    let model_name = spec.model.path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("entrenar-model");
+    println!("Saving model weights to {}...", weights_path.display());
+    trainer.save(&weights_path, model_name, "LlamaForCausalLM")?;
+    println!(
+        "✓ Model weights saved ({} bytes)",
+        std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
+    );
+
+    save_config_and_metadata(trainer.model().config(), trainer.step(),
+        &trainer.metrics, &weights_path, spec)
+}
+
+/// Save config.json and metadata (shared by CPU and CUDA paths)
+fn save_config_and_metadata(
+    mc: &TransformerConfig,
+    step: usize,
+    metrics: &crate::train::MetricsTracker,
+    weights_path: &std::path::Path,
+    spec: &TrainSpec,
+) -> Result<()> {
     let config_json_path = spec.training.output_dir.join("config.json");
-    let mc = trainer.model().config();
     let config_json = serde_json::json!({
         "architectures": ["LlamaForCausalLM"],
         "model_type": "llama",
@@ -226,7 +367,6 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     std::fs::write(&config_json_path, config_json_str)?;
     println!("✓ config.json saved (realizar-compatible)");
 
-    // Save training metadata
     let metadata_path = spec.training.output_dir.join("final_model.json");
     println!("Saving metadata to {}...", metadata_path.display());
     let metadata = serde_json::json!({
@@ -235,9 +375,9 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         "mode": "transformer",
         "training_mode": format!("{:?}", spec.training.mode),
         "epochs_completed": spec.training.epochs,
-        "final_loss": trainer.metrics.losses.last().copied().unwrap_or(0.0),
-        "best_loss": trainer.metrics.best_loss().unwrap_or(0.0),
-        "steps": trainer.step(),
+        "final_loss": metrics.losses.last().copied().unwrap_or(0.0),
+        "best_loss": metrics.best_loss().unwrap_or(0.0),
+        "steps": step,
     });
     let metadata_json = serde_json::to_string_pretty(&metadata)
         .map_err(|e| Error::ConfigError(format!("Failed to serialize metadata: {e}")))?;
