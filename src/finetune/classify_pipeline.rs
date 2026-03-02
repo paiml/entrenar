@@ -29,9 +29,11 @@ use crate::Tensor;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "cuda")]
+use crate::autograd::cuda_forward::pre_warm_forward_kernels;
+#[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
-use crate::transformer::{CudaTransformerBlock, GpuBlockOptimizerState};
+use crate::transformer::{CudaBlock, CudaGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState};
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 #[cfg(feature = "cuda")]
@@ -77,6 +79,11 @@ pub struct ClassifyConfig {
     ///
     /// See SPEC-TUNE-2026-001 §9 for weight computation strategies.
     pub class_weights: Option<Vec<f32>>,
+    /// Quantize frozen weights to NF4 (4-bit) for QLoRA training (default: false).
+    ///
+    /// When enabled, uses `CudaNf4TransformerBlock` (~8x VRAM compression) instead
+    /// of `CudaTransformerBlock`. GPU backward pass is disabled (LoRA-only training).
+    pub quantize_nf4: bool,
 }
 
 impl Default for ClassifyConfig {
@@ -93,6 +100,7 @@ impl Default for ClassifyConfig {
             accumulation_steps: 1,
             gradient_clip_norm: Some(1.0),
             class_weights: None,
+            quantize_nf4: false,
         }
     }
 }
@@ -179,7 +187,7 @@ pub struct ClassifyPipeline {
     cuda_trainer: Option<CudaTrainer>,
     /// CUDA-accelerated transformer blocks — one per layer (F-CUDA-006)
     #[cfg(feature = "cuda")]
-    cuda_blocks: Option<Vec<CudaTransformerBlock>>,
+    cuda_blocks: Option<Vec<CudaBlock>>,
     /// Count of GPU forward passes that produced NaN/Inf and fell back to CPU.
     /// Used to decide when to permanently disable CUDA (threshold: 100).
     #[cfg(feature = "cuda")]
@@ -188,6 +196,10 @@ pub struct ClassifyPipeline {
     /// When `Some`, backward pass runs on GPU updating all transformer weights.
     #[cfg(feature = "cuda")]
     gpu_training: Option<GpuTrainingState>,
+    /// Shared gradient workspace — one set of weight-gradient buffers for all layers.
+    /// Contract: C-GRADWS-001. Saves (L-1) * 372 MB for Qwen3-4B (13.0 GB).
+    #[cfg(feature = "cuda")]
+    cuda_grad_workspace: Option<CudaGradWorkspace>,
 }
 
 impl ClassifyPipeline {
@@ -218,9 +230,26 @@ impl ClassifyPipeline {
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
         #[cfg(feature = "cuda")]
-        let gpu_training = Self::try_init_gpu_training(
-            &model, model_config, &cuda_trainer, &cuda_blocks,
-        );
+        let gpu_training = if classify_config.quantize_nf4 {
+            None
+        } else {
+            Self::try_init_gpu_training(
+                &model, model_config, classify_config.max_seq_len,
+                &cuda_trainer, &cuda_blocks,
+            )
+        };
+
+        // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
+        #[cfg(feature = "cuda")]
+        let cuda_grad_workspace = if classify_config.quantize_nf4 {
+            None
+        } else {
+            cuda_trainer.as_ref().and_then(|t| {
+                CudaGradWorkspace::new(t.context(), model_config)
+                    .map_err(|e| eprintln!("[CUDA] Failed to allocate grad workspace: {e}"))
+                    .ok()
+            })
+        };
 
         Self {
             model,
@@ -238,6 +267,8 @@ impl ClassifyPipeline {
             cuda_nan_count: 0,
             #[cfg(feature = "cuda")]
             gpu_training,
+            #[cfg(feature = "cuda")]
+            cuda_grad_workspace,
         }
     }
 
@@ -290,10 +321,29 @@ impl ClassifyPipeline {
             Self::try_init_cuda(&model, model_config, &classify_config);
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
+        // NF4 blocks are frozen — skip GPU training (backward stays CPU, only LoRA trains)
         #[cfg(feature = "cuda")]
-        let gpu_training = Self::try_init_gpu_training(
-            &model, model_config, &cuda_trainer, &cuda_blocks,
-        );
+        let gpu_training = if classify_config.quantize_nf4 {
+            eprintln!("[CUDA] NF4 mode: GPU backward disabled (LoRA-only training on CPU)");
+            None
+        } else {
+            Self::try_init_gpu_training(
+                &model, model_config, classify_config.max_seq_len,
+                &cuda_trainer, &cuda_blocks,
+            )
+        };
+
+        // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
+        #[cfg(feature = "cuda")]
+        let cuda_grad_workspace = if classify_config.quantize_nf4 {
+            None  // No grad workspace needed for frozen NF4 weights
+        } else {
+            cuda_trainer.as_ref().and_then(|t| {
+                CudaGradWorkspace::new(t.context(), model_config)
+                    .map_err(|e| eprintln!("[CUDA] Failed to allocate grad workspace: {e}"))
+                    .ok()
+            })
+        };
 
         Ok(Self {
             model,
@@ -311,6 +361,8 @@ impl ClassifyPipeline {
             cuda_nan_count: 0,
             #[cfg(feature = "cuda")]
             gpu_training,
+            #[cfg(feature = "cuda")]
+            cuda_grad_workspace,
         })
     }
 
@@ -341,7 +393,7 @@ impl ClassifyPipeline {
 
         let mut lora_layers = Vec::new();
         let hidden = model_config.hidden_size;
-        let head_dim = hidden / model_config.num_attention_heads;
+        let head_dim = model_config.head_dim();
 
         for layer in &model.layers {
             let attn = &layer.self_attn;
@@ -394,7 +446,7 @@ impl ClassifyPipeline {
         model: &Transformer,
         model_config: &TransformerConfig,
         classify_config: &ClassifyConfig,
-    ) -> (Option<CudaTrainer>, Option<Vec<CudaTransformerBlock>>) {
+    ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>) {
         if !cuda_training_available() {
             eprintln!("[CUDA] No CUDA runtime detected — using CPU");
             return (None, None);
@@ -417,6 +469,28 @@ impl ClassifyPipeline {
 
         let ctx = Arc::clone(trainer.context());
         let max_seq_len = classify_config.max_seq_len;
+
+        // ── C-PREWARM-001: JIT-compile all forward kernels BEFORE block upload ──
+        // CUDA JIT (cuModuleLoadDataEx) needs free device memory for compilation.
+        // After uploading 36 blocks (~22 GB), the GPU is near-OOM and JIT fails with
+        // CUDA_ERROR_ILLEGAL_ADDRESS. Pre-warming compiles all PTX while VRAM is free.
+        if let Err(e) = pre_warm_forward_kernels(
+            model_config.hidden_size,
+            model_config.intermediate_size,
+            model_config.num_attention_heads,
+            model_config.num_kv_heads,
+            model_config.head_dim(),
+            max_seq_len,
+        ) {
+            eprintln!("[CUDA] Failed to pre-warm forward kernels: {e} — using CPU");
+            return (None, None);
+        }
+
+        let quantize_nf4 = classify_config.quantize_nf4;
+        if quantize_nf4 {
+            eprintln!("[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)");
+        }
+
         let mut blocks = Vec::with_capacity(model.config.num_hidden_layers);
 
         for (i, layer) in model.layers.iter().enumerate() {
@@ -440,21 +514,31 @@ impl ClassifyPipeline {
             let w_down = layer.ffn.w_down.data();
             let w_down = w_down.as_slice().expect("contiguous w_down");
 
-            match CudaTransformerBlock::new(
-                model_config,
-                i,
-                Arc::clone(&ctx),
-                input_norm,
-                post_attn_norm,
-                w_q,
-                w_k,
-                w_v,
-                w_o,
-                w_gate,
-                w_up,
-                w_down,
-                max_seq_len,
-            ) {
+            let result = if quantize_nf4 {
+                crate::transformer::CudaNf4TransformerBlock::new(
+                    model_config,
+                    i,
+                    Arc::clone(&ctx),
+                    input_norm,
+                    post_attn_norm,
+                    w_q, w_k, w_v, w_o,
+                    w_gate, w_up, w_down,
+                    max_seq_len,
+                ).map(CudaBlock::Nf4)
+            } else {
+                CudaTransformerBlock::new(
+                    model_config,
+                    i,
+                    Arc::clone(&ctx),
+                    input_norm,
+                    post_attn_norm,
+                    w_q, w_k, w_v, w_o,
+                    w_gate, w_up, w_down,
+                    max_seq_len,
+                ).map(CudaBlock::Fp32)
+            };
+
+            match result {
                 Ok(block) => blocks.push(block),
                 Err(e) => {
                     eprintln!(
@@ -492,16 +576,47 @@ impl ClassifyPipeline {
     fn try_init_gpu_training(
         model: &Transformer,
         model_config: &TransformerConfig,
+        max_seq_len: usize,
         cuda_trainer: &Option<CudaTrainer>,
-        cuda_blocks: &Option<Vec<CudaTransformerBlock>>,
+        cuda_blocks: &Option<Vec<CudaBlock>>,
     ) -> Option<GpuTrainingState> {
         let trainer = cuda_trainer.as_ref()?;
         let blocks = cuda_blocks.as_ref()?;
 
         let hidden_size = model_config.hidden_size;
-        let max_seq_len = model_config.max_position_embeddings.min(512); // cap for memory
         let buf_size = max_seq_len * hidden_size;
         let num_layers = blocks.len();
+
+        // ── VRAM budget guard (C-GPUTRAINIT-002) ────────────────────────
+        // Pre-compute optimizer state size to avoid OOM that would poison
+        // the CUDA context (CUDA_ERROR_ILLEGAL_ADDRESS after failed alloc).
+        // Optimizer state = 2 (m + v) × per_layer_weights × num_layers × 4 bytes
+        let per_layer_weights = model_config.per_layer_weight_elements();
+        let optimizer_bytes = num_layers * per_layer_weights * 2 * 4;
+        let layer_input_bytes = num_layers * buf_size * 4;
+        let grad_scratch_bytes = (3 * buf_size + hidden_size) * 4;
+        let total_training_bytes = optimizer_bytes + layer_input_bytes + grad_scratch_bytes;
+
+        // After block upload + grad workspace, remaining VRAM is approximately:
+        //   device_vram - (weights + scratch + grad_workspace)
+        // For safety, we estimate remaining as device_vram minus our VRAM budget formula.
+        let model_vram = model_config.total_training_vram_bytes_shared(max_seq_len);
+        // Use 24 GB as conservative device VRAM (RTX 4090 = 24564 MiB)
+        let device_vram = 24_u64 * 1024 * 1024 * 1024;
+        let remaining_vram = device_vram.saturating_sub(model_vram as u64);
+
+        if total_training_bytes as u64 > remaining_vram {
+            eprintln!(
+                "[CUDA] Skipping GPU training state: needs {:.1} GB \
+                 (optimizer: {:.1} GB, layer inputs: {:.1} GB), \
+                 estimated remaining VRAM: {:.1} GB — will use GPU forward + CPU backward",
+                total_training_bytes as f64 / 1e9,
+                optimizer_bytes as f64 / 1e9,
+                layer_input_bytes as f64 / 1e9,
+                remaining_vram as f64 / 1e9,
+            );
+            return None;
+        }
 
         // Allocate layer-input snapshot buffers
         let mut layer_inputs = Vec::with_capacity(num_layers);
@@ -583,7 +698,7 @@ impl ClassifyPipeline {
         model: &Transformer,
         token_ids: &[u32],
         trainer: &CudaTrainer,
-        cuda_blocks: &mut [CudaTransformerBlock],
+        cuda_blocks: &mut [CudaBlock],
         training_state: &mut GpuTrainingState,
     ) -> Option<Tensor> {
         let seq_len = token_ids.len();
@@ -662,6 +777,7 @@ impl ClassifyPipeline {
         grad_logits: &[f32],
         seq_len: usize,
     ) -> Option<()> {
+        let grad_ws = self.cuda_grad_workspace.as_mut()?;
         let trainer = self.cuda_trainer.as_ref()?;
         let hidden_size = self.model.config.hidden_size;
         let num_classes = self.config.num_classes;
@@ -742,6 +858,7 @@ impl ClassifyPipeline {
                 grad_input,
                 seq_len,
                 stream,
+                grad_ws,
             ).ok()?;
 
             grad_output_is_a = !grad_output_is_a;
@@ -762,6 +879,7 @@ impl ClassifyPipeline {
     /// - **Invariant**: Learning rate and hyperparameters applied uniformly across all blocks
     #[cfg(feature = "cuda")]
     fn gpu_optimizer_step(&mut self, lr: f32) -> Option<()> {
+        let grad_ws = self.cuda_grad_workspace.as_ref()?;
         let trainer = self.cuda_trainer.as_ref()?;
         let stream = trainer.stream();
         let training_state = self.gpu_training.as_mut()?;
@@ -778,6 +896,7 @@ impl ClassifyPipeline {
                 1e-8,   // eps
                 0.01,   // weight_decay
                 stream,
+                grad_ws,
             ).ok()?;
         }
 
@@ -914,7 +1033,7 @@ impl ClassifyPipeline {
         model: &Transformer,
         token_ids: &[u32],
         trainer: &CudaTrainer,
-        cuda_blocks: &mut [CudaTransformerBlock],
+        cuda_blocks: &mut [CudaBlock],
     ) -> Option<Tensor> {
         let seq_len = token_ids.len();
         let hidden_size = model.config.hidden_size;
