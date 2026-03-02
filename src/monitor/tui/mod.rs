@@ -39,7 +39,9 @@ pub mod state;
 pub use app::{TrainingStateWriter, TuiMonitor, TuiMonitorConfig};
 pub use color::{colored_bar, colored_value, ColorMode, Rgb, Styled, TrainingPalette};
 pub use dashboard::TrainingDashboard;
-pub use headless::{HeadlessMonitor, HeadlessOutput, HeadlessWriter, OutputFormat};
+pub use headless::{
+    HeadlessGpu, HeadlessMonitor, HeadlessOutput, HeadlessSample, HeadlessWriter, OutputFormat,
+};
 pub use panel::{
     layout_can_render, verify_layout, GpuPanel, LossCurvePanel, MetricsPanel, Panel,
     PanelVerification, ProcessPanel, SamplePanel,

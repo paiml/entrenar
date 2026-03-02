@@ -15,6 +15,7 @@ use crate::config::schema::{ModelMode, TrainSpec};
 use crate::config::validate::validate_config;
 use crate::error::{Error, Result};
 use crate::monitor::tui::state::{TrainingSnapshot, TrainingState, TrainingStatus};
+use crate::storage::{ExperimentStorage, ParameterValue, RunStatus, SqliteBackend};
 use crate::tokenizer::HfTokenizer;
 use crate::trace::TRACER;
 use crate::train::{CudaTransformerTrainer, LMBatch, TransformerTrainConfig, TransformerTrainer};
@@ -171,7 +172,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     train_loop_cpu(&mut trainer, &batches, spec)
 }
 
-/// Training loop for CPU TransformerTrainer (ALB-045: training_state.json IPC)
+/// Training loop for CPU TransformerTrainer (ALB-045, ALB-055/056)
 fn train_loop_cpu(
     trainer: &mut TransformerTrainer,
     batches: &[LMBatch],
@@ -191,6 +192,9 @@ fn train_loop_cpu(
     let state = TrainingState::new(&spec.training.output_dir);
     let start_ms = now_ms();
     let total_epochs = spec.training.epochs;
+
+    // ALB-055/056: Open SQLite experiment tracking (local + global)
+    let mut tracker = PretrainTracker::open(spec, "CPU");
 
     write_training_snapshot(
         &state, start_ms, 0, total_epochs, 0, num_batches,
@@ -235,6 +239,9 @@ fn train_loop_cpu(
                     trainer.current_lr(), tok_per_sec as f32,
                     TrainingStatus::Running, spec, "CPU",
                 );
+
+                // ALB-055/056: Log step metrics to SQLite
+                tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
             }
         });
         let ppl = crate::train::perplexity(avg_loss);
@@ -263,6 +270,9 @@ fn train_loop_cpu(
         trainer.current_lr(), 0.0,
         TrainingStatus::Completed, spec, "CPU",
     );
+
+    // ALB-055/056: Mark run as completed in SQLite
+    tracker.complete();
 
     save_trained_model_cpu(trainer, spec)
 }
@@ -358,13 +368,150 @@ fn write_training_snapshot(
         batch_size: spec.data.batch_size,
         checkpoint_path: spec.training.output_dir.display().to_string(),
         executable_path: String::new(),
+        accuracy: 0.0,
+        samples_per_second: 0.0,
     };
     if let Err(e) = state.write(&snapshot) {
         eprintln!("[ALB-045] Failed to write training_state.json: {e}");
     }
 }
 
-/// Training loop for GPU CudaTransformerTrainer (ALB-040, ALB-045)
+// =============================================================================
+// SQLite Experiment Tracking (ALB-055/056)
+// =============================================================================
+
+/// Best-effort experiment tracker for pretrain loops.
+///
+/// Opens two SQLite databases:
+/// - **Local**: `<output_dir>/.entrenar/experiments.db` (per-experiment metrics history)
+/// - **Global**: `~/.entrenar/experiments.db` (cross-machine experiment registry)
+///
+/// All operations are best-effort — storage failures never block training.
+struct PretrainTracker {
+    local: Option<SqliteBackend>,
+    global: Option<SqliteBackend>,
+    run_id: Option<String>,
+    global_run_id: Option<String>,
+}
+
+impl PretrainTracker {
+    /// Open both local and global SQLite stores, create experiment + run.
+    fn open(spec: &TrainSpec, device: &str) -> Self {
+        let exp_name = spec.training.output_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("pretrain");
+
+        let config_json = serde_json::json!({
+            "task": "pretrain",
+            "model": spec.model.path.display().to_string(),
+            "optimizer": &spec.optimizer.name,
+            "lr": spec.optimizer.lr,
+            "epochs": spec.training.epochs,
+            "batch_size": spec.data.batch_size,
+            "seq_len": spec.data.seq_len,
+            "max_steps": spec.training.max_steps,
+            "device": device,
+            "output_dir": spec.training.output_dir.display().to_string(),
+        });
+
+        // Local store: in the output/checkpoint directory
+        let local = SqliteBackend::open_project(&spec.training.output_dir).ok();
+
+        // Global store: ~/.entrenar/experiments.db
+        let global = dirs::home_dir()
+            .map(|h| h.join(".entrenar"))
+            .and_then(|p| {
+                fs::create_dir_all(&p).ok()?;
+                SqliteBackend::open(p.join("experiments.db").to_string_lossy().as_ref()).ok()
+            });
+
+        let mut tracker = Self { local, global, run_id: None, global_run_id: None };
+
+        // Create experiment + run in local store
+        if let Some(store) = tracker.local.as_mut() {
+            if let Ok(eid) = store.create_experiment(exp_name, Some(config_json.clone())) {
+                if let Ok(rid) = store.create_run(&eid) {
+                    let _ = store.start_run(&rid);
+                    log_run_params(store, &rid, spec, device);
+                    tracker.run_id = Some(rid);
+                }
+            }
+        }
+
+        // Create experiment + run in global store
+        if let Some(store) = tracker.global.as_mut() {
+            if let Ok(eid) = store.create_experiment(exp_name, Some(config_json)) {
+                if let Ok(rid) = store.create_run(&eid) {
+                    let _ = store.start_run(&rid);
+                    log_run_params(store, &rid, spec, device);
+                    tracker.global_run_id = Some(rid);
+                }
+            }
+        }
+
+        tracker
+    }
+
+    /// Log a training step's metrics to both local and global stores.
+    fn log_step(&mut self, step: u64, loss: f32, lr: f32, tok_per_sec: f32) {
+        for (store, run_id) in [
+            (self.local.as_mut(), self.run_id.as_deref()),
+            (self.global.as_mut(), self.global_run_id.as_deref()),
+        ] {
+            if let (Some(s), Some(rid)) = (store, run_id) {
+                let _ = s.log_metric(rid, "loss", step, f64::from(loss));
+                let _ = s.log_metric(rid, "learning_rate", step, f64::from(lr));
+                let _ = s.log_metric(rid, "tokens_per_second", step, f64::from(tok_per_sec));
+            }
+        }
+    }
+
+    /// Mark training as completed in both stores.
+    fn complete(&mut self) {
+        for (store, run_id) in [
+            (self.local.as_mut(), self.run_id.as_deref()),
+            (self.global.as_mut(), self.global_run_id.as_deref()),
+        ] {
+            if let (Some(s), Some(rid)) = (store, run_id) {
+                let _ = s.complete_run(rid, RunStatus::Success);
+            }
+        }
+    }
+
+    /// Mark training as failed in both stores.
+    #[allow(dead_code)]
+    fn fail(&mut self) {
+        for (store, run_id) in [
+            (self.local.as_mut(), self.run_id.as_deref()),
+            (self.global.as_mut(), self.global_run_id.as_deref()),
+        ] {
+            if let (Some(s), Some(rid)) = (store, run_id) {
+                let _ = s.complete_run(rid, RunStatus::Failed);
+            }
+        }
+    }
+}
+
+/// Log hyperparameters for a pretrain run (ALB-055/056)
+fn log_run_params(store: &SqliteBackend, run_id: &str, spec: &TrainSpec, device: &str) {
+    let _ = store.log_param(run_id, "task", ParameterValue::String("pretrain".into()));
+    let _ = store.log_param(run_id, "model", ParameterValue::String(spec.model.path.display().to_string()));
+    let _ = store.log_param(run_id, "optimizer", ParameterValue::String(spec.optimizer.name.clone()));
+    let _ = store.log_param(run_id, "learning_rate", ParameterValue::Float(f64::from(spec.optimizer.lr)));
+    let _ = store.log_param(run_id, "epochs", ParameterValue::Int(spec.training.epochs as i64));
+    let _ = store.log_param(run_id, "batch_size", ParameterValue::Int(spec.data.batch_size as i64));
+    let _ = store.log_param(run_id, "device", ParameterValue::String(device.to_string()));
+    let _ = store.log_param(run_id, "output_dir", ParameterValue::String(spec.training.output_dir.display().to_string()));
+    if let Some(seq_len) = spec.data.seq_len {
+        let _ = store.log_param(run_id, "seq_len", ParameterValue::Int(seq_len as i64));
+    }
+    if let Some(max_steps) = spec.training.max_steps {
+        let _ = store.log_param(run_id, "max_steps", ParameterValue::Int(max_steps as i64));
+    }
+}
+
+/// Training loop for GPU CudaTransformerTrainer (ALB-040, ALB-045, ALB-055/056)
 #[cfg(feature = "cuda")]
 fn train_loop_cuda(
     trainer: &mut CudaTransformerTrainer,
@@ -383,6 +530,9 @@ fn train_loop_cuda(
     let start_ms = now_ms();
     let gpu_name = trainer.gpu_name();
     let total_epochs = spec.training.epochs;
+
+    // ALB-055/056: Open SQLite experiment tracking (local + global)
+    let mut tracker = PretrainTracker::open(spec, &gpu_name);
 
     // Write initial "Initializing" snapshot
     write_training_snapshot(
@@ -430,6 +580,9 @@ fn train_loop_cuda(
                     trainer.current_lr(), tok_per_sec as f32,
                     TrainingStatus::Running, spec, &gpu_name,
                 );
+
+                // ALB-055/056: Log step metrics to SQLite
+                tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
             }
         });
         let ppl = crate::train::perplexity(avg_loss);
@@ -457,6 +610,9 @@ fn train_loop_cuda(
         trainer.current_lr(), 0.0,
         TrainingStatus::Completed, spec, &gpu_name,
     );
+
+    // ALB-055/056: Mark run as completed in SQLite
+    tracker.complete();
 
     save_trained_model_cuda(trainer, spec)
 }
