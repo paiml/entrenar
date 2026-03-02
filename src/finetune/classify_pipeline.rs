@@ -532,6 +532,8 @@ impl ClassifyPipeline {
                     w_q, w_k, w_v, w_o,
                     w_gate, w_up, w_down,
                     max_seq_len,
+                    None, None, // no LoRA adapters
+                    0.0, 0,     // lora_scale, lora_rank
                 ).map(CudaBlock::Nf4)
             } else {
                 CudaTransformerBlock::new(
@@ -568,7 +570,7 @@ impl ClassifyPipeline {
 
         // C-SCRATCH-001: Allocate one shared scratch for NF4 (saves 7.5 GB for Qwen3-4B)
         let shared_scratch = if quantize_nf4 {
-            match CudaBlockScratch::new(model_config, max_seq_len, &ctx) {
+            match CudaBlockScratch::new(model_config, max_seq_len, &ctx, 0) {
                 Ok(s) => Some(s),
                 Err(e) => {
                     eprintln!("[CUDA] Failed to allocate shared scratch: {e} — using CPU");
