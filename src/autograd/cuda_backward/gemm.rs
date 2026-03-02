@@ -14,9 +14,17 @@ use super::super::cuda_tensor::{CudaTensorError, Result};
 #[cfg(feature = "cuda")]
 use super::cache::KERNEL_CACHE;
 
-/// GEMM backward pass for matrix A on GPU
+/// Tile size for backward GEMM kernels (C-TILE-BWD-001).
+///
+/// Must be divisible by 4 (unroll factor). Shared memory per block = 2 * TILE^2 * 4 bytes.
+/// TILE=16: 2KB smem, 256 threads/block. Safe for all dimensions including LoRA rank=16.
+const BACKWARD_TILE_SIZE: u32 = 16;
+
+/// GEMM backward pass for matrix A on GPU (trueno#109: tiled)
 ///
 /// Given C = A @ B, computes: grad_A = grad_C @ B^T
+///
+/// Uses tiled GEMM with shared memory (C-TILE-BWD-001) and 4x unrolled inner loop.
 #[cfg(feature = "cuda")]
 pub fn gemm_backward_a(
     grad_output: &GpuBuffer<f32>,
@@ -32,19 +40,20 @@ pub fn gemm_backward_a(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = GemmBackwardAKernel::new(m, k, n);
+    let tile = BACKWARD_TILE_SIZE;
+    let kernel = GemmBackwardAKernel::tiled_unrolled(m, k, n, tile);
+    let kernel_name = kernel.name();
     let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("gemm_backward_a_{m}_{k}_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
-    // Use 16x16 thread blocks for GEMM
-    // Kernel: col = ctaid.x, row = ctaid.y; output is grad_a[M,K]
-    // So grid.x = ceil(K/16) for columns, grid.y = ceil(M/16) for rows
+    // Tiled launch: block = (TILE, TILE), grid covers output grad_a[M, K]
+    let smem = 2 * tile * tile * 4; // 2 tiles of f32
     let config = LaunchConfig {
-        grid: (k.div_ceil(16), m.div_ceil(16), 1),
-        block: (16, 16, 1),
-        shared_mem: 0,
+        grid: (k.div_ceil(tile), m.div_ceil(tile), 1),
+        block: (tile, tile, 1),
+        shared_mem: smem,
     };
 
     let grad_out_ptr = grad_output.as_ptr();
@@ -65,7 +74,7 @@ pub fn gemm_backward_a(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream.launch_kernel(module, "gemm_backward_a", &config, &mut args).map_err(|e| {
+        stream.launch_kernel(module, kernel_name, &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("GEMM backward A launch failed: {e:?}"))
         })?;
     }
@@ -73,9 +82,11 @@ pub fn gemm_backward_a(
     Ok(())
 }
 
-/// GEMM backward pass for matrix B on GPU
+/// GEMM backward pass for matrix B on GPU (trueno#109: tiled)
 ///
 /// Given C = A @ B, computes: grad_B = A^T @ grad_C
+///
+/// Uses tiled GEMM with shared memory (C-TILE-BWD-002) and 4x unrolled inner loop.
 #[cfg(feature = "cuda")]
 pub fn gemm_backward_b(
     a: &GpuBuffer<f32>,
@@ -91,19 +102,20 @@ pub fn gemm_backward_b(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = GemmBackwardBKernel::new(m, k, n);
+    let tile = BACKWARD_TILE_SIZE;
+    let kernel = GemmBackwardBKernel::tiled_unrolled(m, k, n, tile);
+    let kernel_name = kernel.name();
     let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("gemm_backward_b_{m}_{k}_{n}");
     let module = cache.get_or_compile(&key, &ptx)?;
 
-    // Use 16x16 thread blocks for GEMM
-    // Kernel: col = ctaid.x, row = ctaid.y; output is grad_b[K,N]
-    // So grid.x = ceil(N/16) for columns, grid.y = ceil(K/16) for rows
+    // Tiled launch: block = (TILE, TILE), grid covers output grad_b[K, N]
+    let smem = 2 * tile * tile * 4;
     let config = LaunchConfig {
-        grid: (n.div_ceil(16), k.div_ceil(16), 1),
-        block: (16, 16, 1),
-        shared_mem: 0,
+        grid: (n.div_ceil(tile), k.div_ceil(tile), 1),
+        block: (tile, tile, 1),
+        shared_mem: smem,
     };
 
     let a_ptr = a.as_ptr();
@@ -124,7 +136,7 @@ pub fn gemm_backward_b(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream.launch_kernel(module, "gemm_backward_b", &config, &mut args).map_err(|e| {
+        stream.launch_kernel(module, kernel_name, &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("GEMM backward B launch failed: {e:?}"))
         })?;
     }
