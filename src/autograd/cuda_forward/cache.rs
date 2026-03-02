@@ -14,7 +14,7 @@ use trueno_gpu::driver::{CudaContext, CudaModule};
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel,
     BatchedTransposeKernel, FusedSwigluKernel, GemmKernel, InterleavedToBatchedKernel, Kernel,
-    Nf4GemmKernel, ResidualAddKernel, RmsNormKernel, ScaleKernel,
+    Nf4GemmKernel, Nf4GemmTransposeKernel, ResidualAddKernel, RmsNormKernel, ScaleKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -217,7 +217,98 @@ impl ForwardKernelCache {
             }
         }
 
+        // 19-22. NF4 transposed GEMM for QLoRA backward (ENT-153).
+        // Same shapes as forward but transposed: grad_input = grad_output @ dequant(W)^T
+        // Only needed when NF4 training (backward) is enabled.
+        if h % 64 == 0 {
+            // Q/O backward: grad[S,H] @ W[H,H]^T → [S,H]
+            warm!(format!("nf4_gemm_transpose_{s}_{h}_{h}"), Nf4GemmTransposeKernel::new(s, h, h));
+            if kv_h != h && kv_h % 64 == 0 {
+                // K/V backward: grad[S,kv_h] @ W[kv_h,H]^T → [S,H]
+                warm!(format!("nf4_gemm_transpose_{s}_{kv_h}_{h}"), Nf4GemmTransposeKernel::new(s, kv_h, h));
+            }
+            if i % 64 == 0 {
+                // Gate/Up backward: grad[S,I] @ W[I,H]^T → [S,H]
+                warm!(format!("nf4_gemm_transpose_{s}_{i}_{h}"), Nf4GemmTransposeKernel::new(s, i, h));
+                // Down backward: grad[S,H] @ W[H,I]^T → [S,I]
+                warm!(format!("nf4_gemm_transpose_{s}_{h}_{i}"), Nf4GemmTransposeKernel::new(s, h, i));
+            }
+        }
+
         eprintln!("[CUDA] Pre-warmed {count} forward kernels (JIT compiled before block upload)");
+        Ok(())
+    }
+
+    /// Pre-warm LoRA backward GEMM kernels for QLoRA training (ENT-153).
+    ///
+    /// The LoRA backward uses regular fp32 GEMMs for:
+    /// - Forward LoRA: x @ A → [S, R], inter @ B → [S, proj_dim]
+    /// - Backward A: x^T @ grad_inter → grad_A [H, R]
+    /// - Backward B: inter^T @ grad_proj → grad_B [R, proj_dim]
+    /// - Backward input: grad_proj @ B^T → [S, R], then [S, R] @ A^T → [S, H]
+    ///
+    /// These shapes are small (rank << hidden_size) but must still be JIT-compiled.
+    pub(super) fn pre_warm_lora_backward(
+        &mut self,
+        hidden_size: usize,
+        q_dim: usize,
+        kv_hidden_size: usize,
+        max_seq_len: usize,
+        lora_rank: usize,
+    ) -> Result<()> {
+        if lora_rank == 0 {
+            return Ok(());
+        }
+
+        let s = max_seq_len as u32;
+        let h = hidden_size as u32;
+        let r = lora_rank as u32;
+        let qd = q_dim as u32;
+        let kv = kv_hidden_size as u32;
+
+        let mut count = 0u32;
+        let target = self.sm_target.clone();
+
+        macro_rules! warm {
+            ($key:expr, $kernel:expr) => {{
+                let ptx = $kernel.emit_ptx_for_target(&target);
+                self.get_or_compile(&$key, &ptx)?;
+                count += 1;
+            }};
+        }
+
+        // LoRA forward GEMMs (also needed in backward for activation checkpointing)
+        // x[S,H] @ A[H,R] → [S,R]
+        warm!(format!("gemm_forward_{s}_{h}_{r}"), GemmKernel::naive(s, r, h));
+        // inter[S,R] @ B[R,qd] → [S,qd]
+        warm!(format!("gemm_forward_{s}_{r}_{qd}"), GemmKernel::naive(s, qd, r));
+        // inter[S,R] @ B[R,kv] → [S,kv]
+        if kv != qd {
+            warm!(format!("gemm_forward_{s}_{r}_{kv}"), GemmKernel::naive(s, kv, r));
+        }
+
+        // LoRA backward GEMMs (gemm_backward_a and gemm_backward_b use regular GEMM shapes)
+        // grad_B = inter^T[R,S] @ grad_proj[S,qd] → [R,qd]
+        // This is a GEMM with M=R, N=qd, K=S
+        warm!(format!("gemm_forward_{r}_{s}_{qd}"), GemmKernel::naive(r, qd, s));
+        if kv != qd {
+            warm!(format!("gemm_forward_{r}_{s}_{kv}"), GemmKernel::naive(r, kv, s));
+        }
+
+        // grad_li = grad_proj[S,qd] @ B^T[qd,R] → [S,R]
+        // This is effectively GEMM with M=S, N=R, K=qd
+        warm!(format!("gemm_forward_{s}_{qd}_{r}"), GemmKernel::naive(s, r, qd));
+        if kv != qd {
+            warm!(format!("gemm_forward_{s}_{kv}_{r}"), GemmKernel::naive(s, r, kv));
+        }
+
+        // grad_A = x^T[H,S] @ grad_li[S,R] → [H,R]
+        warm!(format!("gemm_forward_{h}_{s}_{r}"), GemmKernel::naive(h, r, s));
+
+        // grad_input += grad_li[S,R] @ A^T[R,H] → [S,H]
+        warm!(format!("gemm_forward_{s}_{r}_{h}"), GemmKernel::naive(s, h, r));
+
+        eprintln!("[CUDA] Pre-warmed {count} LoRA backward kernels");
         Ok(())
     }
 }
@@ -258,5 +349,32 @@ pub fn pre_warm_forward_kernels(
         num_kv_heads,
         head_dim,
         max_seq_len,
+    )
+}
+
+/// Pre-warm LoRA backward GEMM kernels for QLoRA training (ENT-153).
+///
+/// Must be called BEFORE uploading transformer blocks. Compiles the
+/// small-matrix GEMMs needed for LoRA gradient computation.
+#[cfg(feature = "cuda")]
+pub fn pre_warm_lora_backward_kernels(
+    hidden_size: usize,
+    q_dim: usize,
+    kv_hidden_size: usize,
+    max_seq_len: usize,
+    lora_rank: usize,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE
+        .get()
+        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+    cache.pre_warm_lora_backward(
+        hidden_size,
+        q_dim,
+        kv_hidden_size,
+        max_seq_len,
+        lora_rank,
     )
 }
