@@ -94,6 +94,10 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         train_config = train_config.with_accumulation_steps(accum);
     }
 
+    if let Some(max_steps) = spec.training.max_steps {
+        train_config = train_config.with_max_steps(max_steps);
+    }
+
     // Enable mixed precision if specified
     if let Some(ref precision) = spec.training.mixed_precision {
         match precision.as_str() {
@@ -135,6 +139,10 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     let start_time = std::time::Instant::now();
     let log_interval = std::cmp::max(num_batches / 100, 1); // Log ~100 times per epoch
 
+    if let Some(max_steps) = spec.training.max_steps {
+        println!("  max_steps: {} (will stop early when reached)", max_steps);
+    }
+
     for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let avg_loss = trainer.train_epoch_with_callback(&batches, |batch_idx, batch_loss, trainer| {
@@ -160,6 +168,12 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
             epoch + 1, spec.training.epochs, avg_loss, ppl,
             epoch_start.elapsed().as_secs_f64(),
         );
+
+        // Stop training if max_steps reached (ALB-034)
+        if trainer.reached_max_steps() {
+            println!("Reached max_steps={}, stopping training.", spec.training.max_steps.unwrap_or(0));
+            break;
+        }
     }
     let total_time = start_time.elapsed();
     println!("Total training time: {:.1}s", total_time.as_secs_f64());

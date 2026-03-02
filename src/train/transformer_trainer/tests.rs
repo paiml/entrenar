@@ -197,6 +197,44 @@ fn test_transformer_trainer_with_accumulation() {
 }
 
 #[test]
+fn test_transformer_trainer_max_steps_stops_early() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_max_steps(3);
+    let mut trainer = TransformerTrainer::new(config);
+
+    let batches = vec![
+        LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]),
+        LMBatch::single(vec![5, 6, 7], vec![6, 7, 8]),
+        LMBatch::single(vec![1, 3, 5], vec![3, 5, 7]),
+        LMBatch::single(vec![2, 4, 6], vec![4, 6, 8]),
+        LMBatch::single(vec![10, 11, 12], vec![11, 12, 13]),
+    ];
+
+    // Epoch 1: should process 3 batches then stop (max_steps=3)
+    trainer.train_epoch(&batches);
+    assert_eq!(trainer.step(), 3);
+    assert!(trainer.reached_max_steps());
+
+    // Epoch 2: should process 0 batches (already at max_steps)
+    trainer.train_epoch(&batches);
+    assert_eq!(trainer.step(), 3);
+}
+
+#[test]
+fn test_transformer_trainer_max_steps_none_runs_all() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    let mut trainer = TransformerTrainer::new(config);
+
+    let batches = vec![
+        LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]),
+        LMBatch::single(vec![5, 6, 7], vec![6, 7, 8]),
+    ];
+
+    trainer.train_epoch(&batches);
+    assert_eq!(trainer.step(), 2);
+    assert!(!trainer.reached_max_steps());
+}
+
+#[test]
 fn test_transformer_trainer_warmup_lr() {
     let config = TransformerTrainConfig::new(TransformerConfig::tiny())
         .with_lr(0.001)
