@@ -248,3 +248,109 @@ fn test_lm_batch_shift_correctness() {
     assert_eq!(target[2], 3);
     assert_eq!(target[3], 200); // EOS
 }
+
+// =========================================================================
+// FALSIFY-ALBOR-038: Training must modify model weights
+//
+// Root cause: RMSNorm::forward_batched() created tensors with no backward op,
+// blocking all gradient flow through the model. The optimizer never received
+// gradients, so weights remained at initialization values.
+//
+// This test verifies the end-to-end fix: forward → backward → optimizer → save
+// produces weights that differ from initialization.
+// =========================================================================
+
+/// FALSIFY-ALBOR-038: Training step must change model weights
+#[test]
+fn falsify_alb038_training_changes_weights() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    let mut trainer = TransformerTrainer::new(config);
+
+    // Snapshot initial weights
+    let init_params: Vec<Vec<f32>> = trainer
+        .model()
+        .parameters()
+        .iter()
+        .map(|p| p.data().to_vec())
+        .collect();
+
+    // Train for several steps
+    let batch = LMBatch::single(vec![1, 2, 3, 4], vec![2, 3, 4, 5]);
+    for _ in 0..5 {
+        trainer.train_batch(&batch);
+    }
+
+    // Check that at least some weights changed
+    let final_params: Vec<Vec<f32>> = trainer
+        .model()
+        .parameters()
+        .iter()
+        .map(|p| p.data().to_vec())
+        .collect();
+
+    let mut changed_count = 0;
+    for (i, (init, final_p)) in init_params.iter().zip(final_params.iter()).enumerate() {
+        if init != final_p {
+            changed_count += 1;
+        } else {
+            // Log which parameter didn't change (for debugging)
+            eprintln!("ALB-038 WARNING: parameter {i} unchanged after training (len={})", init.len());
+        }
+    }
+
+    assert!(
+        changed_count > 0,
+        "FALSIFIED ALB-038: No model weights changed after 5 training steps. \
+         All {} parameters remained at initialization values.",
+        init_params.len()
+    );
+
+    // Specifically check FFN weights (these must change with working norm backward)
+    // Parameters order: embed, norm, [per layer: input_norm, post_attn_norm, q, k, v, o, gate, up, down]
+    // For tiny config with 2 layers: embed(0), norm(1), then per layer 9 params each
+    // FFN gate_proj for layer 0 is at index 2 + 0*9 + 6 = 8
+    let num_params = init_params.len();
+    if num_params > 8 {
+        assert_ne!(
+            init_params[8], final_params[8],
+            "FALSIFIED ALB-038: FFN gate_proj (param 8) unchanged — norm backward broken"
+        );
+    }
+}
+
+/// FALSIFY-ALBOR-038: Saved weights must differ from initialization
+#[test]
+fn falsify_alb038_saved_weights_differ_from_init() {
+    use tempfile::NamedTempFile;
+
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    let mut trainer = TransformerTrainer::new(config);
+
+    // Snapshot init weights for comparison
+    let init_embed = trainer.model().embed_tokens.weight.data().to_vec();
+
+    // Train
+    let batch = LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]);
+    for _ in 0..5 {
+        trainer.train_batch(&batch);
+    }
+
+    // Save to temp file
+    let temp = NamedTempFile::new().expect("temp file creation should succeed");
+    trainer
+        .save(temp.path(), "alb038-test", "test")
+        .expect("save should succeed");
+
+    // Load back and verify weights differ from init
+    let data = std::fs::read(temp.path()).expect("file read should succeed");
+    let loaded = safetensors::SafeTensors::deserialize(&data).expect("load should succeed");
+
+    let saved_embed = loaded.tensor("model.embed_tokens.weight").expect("tensor exists");
+    let saved_data: &[f32] = bytemuck::cast_slice(saved_embed.data());
+
+    // Saved embed weights must differ from init
+    assert_ne!(
+        saved_data, &init_embed[..],
+        "FALSIFIED ALB-038: Saved embedding weights are identical to initialization"
+    );
+}
