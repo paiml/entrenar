@@ -40,8 +40,9 @@ use crate::autograd::cuda_optim::adamw_step_cuda;
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{
     batched_4d_gemm_forward, batched_softmax_forward, batched_to_interleaved_forward,
-    batched_transpose_forward, expand_kv_heads, fused_swiglu_forward, gemm_forward,
-    interleaved_to_batched_forward, residual_add_forward, rms_norm_forward, scale_forward,
+    batched_transpose_forward, elementwise_mul_forward, expand_kv_heads, fused_swiglu_forward,
+    gemm_forward, interleaved_to_batched_forward, residual_add_forward, rms_norm_forward,
+    scale_forward, silu_forward,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_tensor::Result;
@@ -791,7 +792,20 @@ impl CudaTransformerBlock {
         Ok(())
     }
 
-    /// Backward through FFN: down projection, SwiGLU, and gate projection.
+    /// Backward through FFN: down projection, SwiGLU, gate+up projections.
+    ///
+    /// SwiGLU(gate, up) = silu(gate) * up
+    /// ∂L/∂gate = ∂L/∂swiglu * up * silu'(gate)
+    /// ∂L/∂up   = ∂L/∂swiglu * silu(gate)
+    ///
+    /// Buffer reuse plan (all [S,I] unless noted):
+    ///   grad_swiglu  = ∂L/∂swiglu          (computed step 1, read steps 2/4/6)
+    ///   swiglu_out  → temp1 (step 2)       → silu(gate) (step 4)
+    ///   up_out      → grad_gate (step 3)
+    ///   gate_out    → grad_up (step 6)
+    ///   ffn_out     → grad_norm2_gate [S,H] (step 8)
+    ///   grad_hidden → grad_norm2_up [S,H]   (step 9)
+    ///   norm2_out   → accumulated grad [S,H] (step 10)
     fn backward_ffn(
         &mut self,
         grad_output: &GpuBuffer<f32>,
@@ -801,7 +815,10 @@ impl CudaTransformerBlock {
         stream: &CudaStream,
         grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
-        // grad_swiglu = grad_ffn_out @ w_down^T
+        let n_inter = saturating_u32(seq_len * intermediate_size);
+        let n_hidden = saturating_u32(seq_len * hidden_size);
+
+        // Step 1: grad_swiglu = grad_ffn_out @ w_down^T  [S,I]
         gemm_backward_a(
             grad_output,
             &self.w_down,
@@ -812,7 +829,8 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // grad_w_down = swiglu_out^T @ grad_ffn_out
+        // Step 2: grad_w_down = swiglu_out^T @ grad_ffn_out  [I,H]
+        // (swiglu_out free after this)
         gemm_backward_b(
             &self.scratch.swiglu_out,
             grad_output,
@@ -823,32 +841,51 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // SiLU backward on gate
-        silu_backward(
-            &self.scratch.gate_out,
+        // === SwiGLU backward: swiglu = silu(gate) * up ===
+
+        // Step 3: temp1 = grad_swiglu * up_out → swiglu_out [S,I]
+        elementwise_mul_forward(
             &self.scratch.grad_swiglu,
-            &mut self.scratch.grad_hidden,
+            &self.scratch.up_out,
+            &mut self.scratch.swiglu_out,
+            n_inter,
             stream,
         )?;
 
-        // D2D copy grad_hidden to attn_kv_temp to avoid borrow conflict
-        // (grad_hidden is read by gemm_backward_b, then overwritten by gemm_backward_a)
-        // SAFETY: Both buffers are valid GPU allocations; attn_kv_temp is unused during backward.
-        unsafe {
-            self.scratch
-                .attn_kv_temp
-                .copy_from_buffer_async(&self.scratch.grad_hidden, stream)
-                .map_err(|e| {
-                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                        "Backward FFN grad_hidden D2D copy failed: {e}"
-                    ))
-                })?;
-        }
+        // Step 4: grad_gate = silu_backward(gate_out, temp1) → up_out [S,I]
+        // Computes: (grad_swiglu * up_out) * silu'(gate_out) = correct ∂L/∂gate
+        silu_backward(
+            &self.scratch.gate_out,
+            &self.scratch.swiglu_out,
+            &mut self.scratch.up_out,
+            stream,
+        )?;
+        // up_out now holds grad_gate [S,I]
 
-        // grad_w_gate = norm2_out^T @ grad_gate_out
+        // Step 5: silu_gate = silu(gate_out) → swiglu_out [S,I]
+        silu_forward(
+            &self.scratch.gate_out,
+            &mut self.scratch.swiglu_out,
+            n_inter,
+            stream,
+        )?;
+
+        // Step 6: grad_up = grad_swiglu * silu_gate → gate_out [S,I]
+        elementwise_mul_forward(
+            &self.scratch.grad_swiglu,
+            &self.scratch.swiglu_out,
+            &mut self.scratch.gate_out,
+            n_inter,
+            stream,
+        )?;
+        // gate_out now holds grad_up [S,I]
+
+        // === Weight gradients ===
+
+        // Step 7a: grad_w_gate = norm2_out^T @ grad_gate (in up_out)  [H,I]
         gemm_backward_b(
             &self.scratch.norm2_out,
-            &self.scratch.attn_kv_temp,
+            &self.scratch.up_out,
             &mut grad_ws.grad_gate,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -856,14 +893,47 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // Compute grad_norm2 using the copy in attn_kv_temp
-        gemm_backward_a(
-            &self.scratch.attn_kv_temp,
-            &self.w_gate,
-            &mut self.scratch.norm2_out, // Reuse as temp output
+        // Step 7b: grad_w_up = norm2_out^T @ grad_up (in gate_out)  [H,I]
+        gemm_backward_b(
+            &self.scratch.norm2_out,
+            &self.scratch.gate_out,
+            &mut grad_ws.grad_up,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
             saturating_u32(intermediate_size),
+            stream,
+        )?;
+
+        // === Input gradient (accumulate gate + up paths) ===
+
+        // Step 8: grad_norm2_gate = grad_gate @ w_gate^T → ffn_out [S,H]
+        gemm_backward_a(
+            &self.scratch.up_out,
+            &self.w_gate,
+            &mut self.scratch.ffn_out,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
+            stream,
+        )?;
+
+        // Step 9: grad_norm2_up = grad_up @ w_up^T → grad_hidden [S,H]
+        gemm_backward_a(
+            &self.scratch.gate_out,
+            &self.w_up,
+            &mut self.scratch.grad_hidden,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
+            stream,
+        )?;
+
+        // Step 10: norm2_out = grad_norm2_gate + grad_norm2_up  [S,H]
+        residual_add_forward(
+            &self.scratch.ffn_out,
+            &self.scratch.grad_hidden,
+            &mut self.scratch.norm2_out,
+            n_hidden,
             stream,
         )?;
 
