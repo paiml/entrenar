@@ -166,6 +166,8 @@ trueno-gpu = { version = "0.4.19", optional = true }  # CUDA compute for GPU tra
 realizar = { version = "0.8", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.27"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.2", features = ["terminal"] }  # Terminal visualization
+presentar-terminal = "0.3.5"  # Sovereign TUI framework (ALB-047/048)
+presentar-core = "0.3.4"  # Presentar core traits
 trueno-db = { version = "0.3.11", optional = true }  # Time-series storage
 chrono = { version = "0.4", features = ["serde"] }  # Timestamps for metric storage
 renacer = { version = "0.9", optional = true }  # Distributed tracing

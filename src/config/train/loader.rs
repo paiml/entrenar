@@ -275,6 +275,43 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Query live GPU telemetry via nvidia-smi CLI (ALB-046)
+///
+/// Shells out to `nvidia-smi --query-gpu` with CSV output and parses
+/// the result into GpuTelemetry. Zero-dependency approach — nvidia-smi
+/// is always available when CUDA is. Returns None if nvidia-smi fails.
+fn query_gpu_telemetry(device_name: &str) -> Option<crate::monitor::tui::state::GpuTelemetry> {
+    let output = std::process::Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let line = stdout.lines().next()?.trim();
+    let fields: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+    if fields.len() < 6 {
+        return None;
+    }
+
+    Some(crate::monitor::tui::state::GpuTelemetry {
+        device_name: device_name.to_string(),
+        utilization_percent: fields[0].parse().unwrap_or(0.0),
+        vram_used_gb: fields[1].parse::<f32>().unwrap_or(0.0) / 1024.0, // MiB → GiB
+        vram_total_gb: fields[2].parse::<f32>().unwrap_or(0.0) / 1024.0,
+        temperature_celsius: fields[3].parse().unwrap_or(0.0),
+        power_watts: fields[4].parse().unwrap_or(0.0),
+        power_limit_watts: fields[5].parse().unwrap_or(0.0),
+        processes: Vec::new(),
+    })
+}
+
 /// Write a TrainingSnapshot to training_state.json (ALB-045)
 ///
 /// This is the IPC mechanism that `apr monitor` reads. Called on every
@@ -308,10 +345,10 @@ fn write_training_snapshot(
         gradient_norm: 0.0, // not tracked per-batch in current trainer
         tokens_per_second,
         start_timestamp_ms: start_ms,
-        gpu: Some(crate::monitor::tui::state::GpuTelemetry {
+        gpu: query_gpu_telemetry(gpu_name).or_else(|| Some(crate::monitor::tui::state::GpuTelemetry {
             device_name: gpu_name.to_string(),
             ..Default::default()
-        }),
+        })),
         sample: None,
         status,
         experiment_id: spec.training.output_dir.display().to_string(),

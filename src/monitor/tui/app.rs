@@ -1,13 +1,13 @@
 //! TUI Monitor Application (SPEC-FT-001 Section 10)
 //!
-//! Detached observer that reads training state and renders the TUI.
+//! Detached observer that reads training state and renders via presentar-terminal.
 //! Runs in a separate shell/process from the training loop.
+//! ALB-047/048: Terminal resize, Ctrl+C, cursor management via presentar.
 
-use super::render::render_layout;
 use super::state::{TrainingSnapshot, TrainingState, TrainingStatus};
-use std::io::{self, Write};
+use std::io;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Default TUI refresh interval in milliseconds
 const DEFAULT_REFRESH_MS: u64 = 500;
@@ -42,15 +42,14 @@ impl Default for TuiMonitorConfig {
     }
 }
 
-/// Detached TUI Monitor
+/// Detached TUI Monitor (presentar-terminal backend, ALB-047/048)
 ///
-/// Reads training state from the metric store and renders the TUI.
-/// Does not block the training loop.
+/// Reads training state from the metric store and renders via presentar's
+/// TuiApp framework. Gets terminal resize, Ctrl+C, cursor management,
+/// and smart diffing for free from the sovereign stack.
 pub struct TuiMonitor {
     config: TuiMonitorConfig,
     state: TrainingState,
-    last_render: Option<Instant>,
-    frame_count: u64,
 }
 
 impl TuiMonitor {
@@ -59,14 +58,17 @@ impl TuiMonitor {
         Self {
             config,
             state: TrainingState::new(experiment_dir),
-            last_render: None,
-            frame_count: 0,
         }
     }
 
-    /// Run the TUI monitor loop
+    /// Run the TUI monitor loop using presentar-terminal (ALB-047/048).
     ///
-    /// This is a blocking call that runs until training completes or user exits.
+    /// This is a blocking call that runs until training completes, user presses
+    /// 'q', or Ctrl+C. Uses presentar's TuiApp for:
+    /// - Automatic terminal resize detection
+    /// - Ctrl+C / 'q' handling with clean cursor restore
+    /// - Smart diffing (only redraws changed cells)
+    /// - 60fps rendering with frame budgets
     pub fn run(&mut self) -> io::Result<()> {
         // Wait for state file to appear
         eprintln!("Waiting for training state file at {}...", self.state.path().display());
@@ -76,132 +78,28 @@ impl TuiMonitor {
             return Ok(());
         }
 
-        eprintln!("Connected to training session. Press Ctrl+C to detach.\n");
+        eprintln!("Connected to training session. Press 'q' or Ctrl+C to detach.\n");
 
-        // Clear screen and hide cursor
-        self.clear_screen()?;
-        self.hide_cursor()?;
+        // Create presentar dashboard widget
+        let experiment_dir = self.state.path().parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+        let dashboard = super::dashboard::TrainingDashboard::new(experiment_dir);
 
-        // Main render loop
-        loop {
-            // Check if enough time has passed since last render
-            let should_render = self
-                .last_render
-                .is_none_or(|t| t.elapsed() >= Duration::from_millis(self.config.refresh_ms));
+        // Launch presentar TuiApp — handles resize, Ctrl+C, cursor, smart diffing
+        let config = presentar_terminal::TuiConfig {
+            tick_rate_ms: self.config.refresh_ms,
+            ..Default::default()
+        };
+        let mut app = presentar_terminal::TuiApp::new(dashboard)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+            .with_config(config);
 
-            if should_render {
-                // Read latest state
-                if let Some(snapshot) = self.state.read()? {
-                    self.render_frame(&snapshot)?;
+        app.run()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-                    // Check for completion
-                    if self.config.exit_on_complete
-                        && matches!(
-                            snapshot.status,
-                            TrainingStatus::Completed | TrainingStatus::Failed(_)
-                        )
-                    {
-                        self.render_final_summary(&snapshot)?;
-                        break;
-                    }
-                }
-
-                self.last_render = Some(Instant::now());
-                self.frame_count += 1;
-            }
-
-            // Sleep briefly to avoid busy-waiting
-            std::thread::sleep(Duration::from_millis(50));
-
-            // Keyboard input handling (Ctrl+C, resize) deferred to terminal event integration
-        }
-
-        // Restore cursor
-        self.show_cursor()?;
-
+        eprintln!("\nDetached from training session. Training continues in background.");
         Ok(())
     }
 
-    /// Render a single frame
-    fn render_frame(&self, snapshot: &TrainingSnapshot) -> io::Result<()> {
-        let mut stdout = io::stdout();
-
-        // Move cursor to top-left
-        write!(stdout, "\x1b[H")?;
-
-        // Render layout
-        let layout = render_layout(snapshot, self.config.width);
-        write!(stdout, "{layout}")?;
-
-        // Status line
-        let status = format!(
-            "Frame: {} | Loss: {:.4} | Progress: {:.1}%",
-            self.frame_count,
-            snapshot.loss,
-            snapshot.progress_percent()
-        );
-        writeln!(stdout, "\n{status}")?;
-
-        stdout.flush()
-    }
-
-    /// Render final summary when training completes
-    fn render_final_summary(&self, snapshot: &TrainingSnapshot) -> io::Result<()> {
-        let mut stdout = io::stdout();
-
-        writeln!(stdout, "\n")?;
-        writeln!(stdout, "╔════════════════════════════════════════════════════════════╗")?;
-        writeln!(stdout, "║                    Training Complete                        ║")?;
-        writeln!(stdout, "╠════════════════════════════════════════════════════════════╣")?;
-
-        match &snapshot.status {
-            TrainingStatus::Completed => {
-                writeln!(stdout, "║  Status:    Completed Successfully                         ║")?;
-            }
-            TrainingStatus::Failed(msg) => {
-                writeln!(stdout, "║  Status:    FAILED - {msg}                    ║")?;
-            }
-            TrainingStatus::Initializing | TrainingStatus::Running | TrainingStatus::Paused => {}
-        }
-
-        writeln!(stdout, "║  Model:     {:.40}                           ║", snapshot.model_name)?;
-        writeln!(
-            stdout,
-            "║  Duration:  {}                                    ║",
-            super::render::format_duration(snapshot.elapsed())
-        )?;
-        writeln!(
-            stdout,
-            "║  Final Loss: {:.6}                                      ║",
-            snapshot.loss
-        )?;
-        writeln!(
-            stdout,
-            "║  Epochs:    {}/{}                                          ║",
-            snapshot.epoch, snapshot.total_epochs
-        )?;
-        writeln!(stdout, "╚════════════════════════════════════════════════════════════╝")?;
-
-        stdout.flush()
-    }
-
-    fn clear_screen(&self) -> io::Result<()> {
-        let mut stdout = io::stdout();
-        write!(stdout, "\x1b[2J\x1b[H")?;
-        stdout.flush()
-    }
-
-    fn hide_cursor(&self) -> io::Result<()> {
-        let mut stdout = io::stdout();
-        write!(stdout, "\x1b[?25l")?;
-        stdout.flush()
-    }
-
-    fn show_cursor(&self) -> io::Result<()> {
-        let mut stdout = io::stdout();
-        write!(stdout, "\x1b[?25h")?;
-        stdout.flush()
-    }
 }
 
 #[cfg(test)]
