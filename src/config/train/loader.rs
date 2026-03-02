@@ -14,6 +14,7 @@ use super::batches::load_training_batches;
 use crate::config::schema::{ModelMode, TrainSpec};
 use crate::config::validate::validate_config;
 use crate::error::{Error, Result};
+use crate::monitor::tui::state::{TrainingSnapshot, TrainingState, TrainingStatus};
 use crate::tokenizer::HfTokenizer;
 use crate::trace::TRACER;
 use crate::train::{CudaTransformerTrainer, LMBatch, TransformerTrainConfig, TransformerTrainer};
@@ -21,6 +22,7 @@ use crate::transformer::{load_safetensors_weights, Architecture, Transformer, Tr
 use crate::yaml_mode;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Train a model from YAML configuration file
 ///
@@ -169,7 +171,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     train_loop_cpu(&mut trainer, &batches, spec)
 }
 
-/// Training loop for CPU TransformerTrainer
+/// Training loop for CPU TransformerTrainer (ALB-045: training_state.json IPC)
 fn train_loop_cpu(
     trainer: &mut TransformerTrainer,
     batches: &[LMBatch],
@@ -185,13 +187,31 @@ fn train_loop_cpu(
     let start_time = std::time::Instant::now();
     let log_interval = std::cmp::max(num_batches / 100, 1);
 
+    // ALB-045: Initialize training state IPC for `apr monitor`
+    let state = TrainingState::new(&spec.training.output_dir);
+    let start_ms = now_ms();
+    let total_epochs = spec.training.epochs;
+
+    write_training_snapshot(
+        &state, start_ms, 0, total_epochs, 0, num_batches,
+        0.0, &[], 0.0, 0.0,
+        TrainingStatus::Initializing, spec, "CPU",
+    );
+
     if let Some(max_steps) = spec.training.max_steps {
         println!("  max_steps: {} (will stop early when reached)", max_steps);
     }
 
+    let mut loss_history: Vec<f32> = Vec::new();
+
     for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let avg_loss = trainer.train_epoch_with_callback(batches, |batch_idx, batch_loss, trainer| {
+            loss_history.push(batch_loss);
+            if loss_history.len() > 100 {
+                loss_history.remove(0);
+            }
+
             if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
                 let elapsed = epoch_start.elapsed().as_secs_f64();
                 let batches_done = batch_idx + 1;
@@ -199,12 +219,21 @@ fn train_loop_cpu(
                 let tokens_done = batches_done * spec.data.batch_size * seq_len;
                 let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
                 let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
+                let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
                 println!(
                     "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} eta={:.0}s",
                     batches_done, num_batches,
                     trainer.step(), batch_loss, trainer.current_lr(),
-                    tokens_done as f64 / elapsed.max(0.001),
-                    remaining,
+                    tok_per_sec, remaining,
+                );
+
+                // ALB-045: Write snapshot for `apr monitor`
+                write_training_snapshot(
+                    &state, start_ms, epoch + 1, total_epochs,
+                    trainer.step(), num_batches,
+                    batch_loss, &loss_history,
+                    trainer.current_lr(), tok_per_sec as f32,
+                    TrainingStatus::Running, spec, "CPU",
                 );
             }
         });
@@ -225,10 +254,80 @@ fn train_loop_cpu(
     println!("Total training time: {:.1}s", total_time.as_secs_f64());
     println!("{}", TRACER.report());
 
+    // ALB-045: Write final "Completed" snapshot
+    let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
+    write_training_snapshot(
+        &state, start_ms, total_epochs, total_epochs,
+        trainer.step(), num_batches,
+        final_loss, &loss_history,
+        trainer.current_lr(), 0.0,
+        TrainingStatus::Completed, spec, "CPU",
+    );
+
     save_trained_model_cpu(trainer, spec)
 }
 
-/// Training loop for GPU CudaTransformerTrainer (ALB-040)
+/// Get current Unix timestamp in milliseconds
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Write a TrainingSnapshot to training_state.json (ALB-045)
+///
+/// This is the IPC mechanism that `apr monitor` reads. Called on every
+/// log interval so the TUI stays current. Uses atomic write (tmp+rename)
+/// via TrainingState::write().
+fn write_training_snapshot(
+    state: &TrainingState,
+    start_ms: u64,
+    epoch: usize,
+    total_epochs: usize,
+    step: usize,
+    steps_per_epoch: usize,
+    loss: f32,
+    loss_history: &[f32],
+    lr: f32,
+    tokens_per_second: f32,
+    status: TrainingStatus,
+    spec: &TrainSpec,
+    gpu_name: &str,
+) {
+    let snapshot = TrainingSnapshot {
+        timestamp_ms: now_ms(),
+        epoch,
+        total_epochs,
+        step,
+        steps_per_epoch,
+        loss,
+        loss_history: loss_history.to_vec(),
+        learning_rate: lr,
+        lr_history: Vec::new(),
+        gradient_norm: 0.0, // not tracked per-batch in current trainer
+        tokens_per_second,
+        start_timestamp_ms: start_ms,
+        gpu: Some(crate::monitor::tui::state::GpuTelemetry {
+            device_name: gpu_name.to_string(),
+            ..Default::default()
+        }),
+        sample: None,
+        status,
+        experiment_id: spec.training.output_dir.display().to_string(),
+        model_name: spec.model.path.display().to_string(),
+        model_path: spec.model.path.display().to_string(),
+        optimizer_name: spec.optimizer.name.clone(),
+        batch_size: spec.data.batch_size,
+        checkpoint_path: spec.training.output_dir.display().to_string(),
+        executable_path: String::new(),
+    };
+    if let Err(e) = state.write(&snapshot) {
+        eprintln!("[ALB-045] Failed to write training_state.json: {e}");
+    }
+}
+
+/// Training loop for GPU CudaTransformerTrainer (ALB-040, ALB-045)
 #[cfg(feature = "cuda")]
 fn train_loop_cuda(
     trainer: &mut CudaTransformerTrainer,
@@ -242,13 +341,35 @@ fn train_loop_cuda(
     let start_time = std::time::Instant::now();
     let log_interval = std::cmp::max(num_batches / 100, 1);
 
+    // ALB-045: Initialize training state IPC for `apr monitor`
+    let state = TrainingState::new(&spec.training.output_dir);
+    let start_ms = now_ms();
+    let gpu_name = trainer.gpu_name();
+    let total_epochs = spec.training.epochs;
+
+    // Write initial "Initializing" snapshot
+    write_training_snapshot(
+        &state, start_ms, 0, total_epochs, 0, num_batches,
+        0.0, &[], 0.0, 0.0,
+        TrainingStatus::Initializing, spec, &gpu_name,
+    );
+
     if let Some(max_steps) = spec.training.max_steps {
         println!("  max_steps: {} (will stop early when reached)", max_steps);
     }
 
+    // Track loss history for TUI sparkline
+    let mut loss_history: Vec<f32> = Vec::new();
+
     for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let avg_loss = trainer.train_epoch_with_callback(batches, |batch_idx, batch_loss, trainer| {
+            // Track loss history (keep last 100 for sparkline)
+            loss_history.push(batch_loss);
+            if loss_history.len() > 100 {
+                loss_history.remove(0);
+            }
+
             if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
                 let elapsed = epoch_start.elapsed().as_secs_f64();
                 let batches_done = batch_idx + 1;
@@ -256,12 +377,21 @@ fn train_loop_cuda(
                 let tokens_done = batches_done * spec.data.batch_size * seq_len;
                 let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
                 let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
+                let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
                 println!(
                     "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} eta={:.0}s",
                     batches_done, num_batches,
                     trainer.step(), batch_loss, trainer.current_lr(),
-                    tokens_done as f64 / elapsed.max(0.001),
-                    remaining,
+                    tok_per_sec, remaining,
+                );
+
+                // ALB-045: Write snapshot for `apr monitor`
+                write_training_snapshot(
+                    &state, start_ms, epoch + 1, total_epochs,
+                    trainer.step(), num_batches,
+                    batch_loss, &loss_history,
+                    trainer.current_lr(), tok_per_sec as f32,
+                    TrainingStatus::Running, spec, &gpu_name,
                 );
             }
         });
@@ -280,6 +410,16 @@ fn train_loop_cuda(
 
     let total_time = start_time.elapsed();
     println!("Total training time: {:.1}s", total_time.as_secs_f64());
+
+    // ALB-045: Write final "Completed" snapshot
+    let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
+    write_training_snapshot(
+        &state, start_ms, total_epochs, total_epochs,
+        trainer.step(), num_batches,
+        final_loss, &loss_history,
+        trainer.current_lr(), 0.0,
+        TrainingStatus::Completed, spec, &gpu_name,
+    );
 
     save_trained_model_cuda(trainer, spec)
 }
