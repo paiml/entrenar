@@ -65,6 +65,7 @@ impl RMSNorm {
     /// * `hidden_size` - Hidden dimension
     pub fn forward_batched(&self, x: &Tensor, seq_len: usize, hidden_size: usize) -> Tensor {
         let mut output = vec![0.0; seq_len * hidden_size];
+        let mut rms_values = Vec::with_capacity(seq_len);
 
         for s in 0..seq_len {
             let start = s * hidden_size;
@@ -74,6 +75,7 @@ impl RMSNorm {
             // Compute RMS for this position
             let sq_sum: f32 = slice.iter().map(|v| v * v).sum();
             let rms = (sq_sum / hidden_size as f32 + self.eps).sqrt();
+            rms_values.push(rms);
 
             // Normalize and scale
             for (i, &val) in slice.iter().enumerate() {
@@ -81,7 +83,97 @@ impl RMSNorm {
             }
         }
 
-        Tensor::from_vec(output, x.requires_grad())
+        let requires_grad = x.requires_grad() || self.weight.requires_grad();
+        let mut result = Tensor::from_vec(output, requires_grad);
+
+        if requires_grad {
+            use crate::autograd::BackwardOp;
+            use ndarray::Array1;
+            use std::cell::RefCell;
+            use std::rc::Rc;
+
+            struct RMSNormBatchedBackward {
+                x: Tensor,
+                weight: Tensor,
+                rms_values: Vec<f32>,
+                seq_len: usize,
+                hidden_size: usize,
+                result_grad: Rc<RefCell<Option<Array1<f32>>>>,
+            }
+
+            impl BackwardOp for RMSNormBatchedBackward {
+                fn backward(&self) {
+                    if let Some(grad_output) = self.result_grad.borrow().as_ref() {
+                        let h = self.hidden_size;
+                        let x_data = self.x.data();
+                        let x_sl = x_data.as_slice().expect("x contiguous");
+                        let w_data = self.weight.data();
+                        let w_sl = w_data.as_slice().expect("weight contiguous");
+                        let go = grad_output.as_slice().expect("grad contiguous");
+
+                        if self.x.requires_grad() {
+                            // dx[s,j] = (go[s,j]*w[j] - x[s,j]*c_s) / rms_s
+                            // c_s = sum_i(go[s,i]*w[i]*x[s,i]) / (n * rms_s^2)
+                            let mut grad_x = vec![0.0_f32; self.seq_len * h];
+                            let n = h as f32;
+
+                            for s in 0..self.seq_len {
+                                let off = s * h;
+                                let rms = self.rms_values[s];
+
+                                let mut dot = 0.0_f32;
+                                for i in 0..h {
+                                    dot += go[off + i] * w_sl[i] * x_sl[off + i];
+                                }
+                                let c = dot / (n * rms * rms);
+
+                                for j in 0..h {
+                                    grad_x[off + j] =
+                                        (go[off + j] * w_sl[j] - x_sl[off + j] * c) / rms;
+                                }
+                            }
+
+                            self.x.accumulate_grad(Array1::from(grad_x));
+                        }
+
+                        if self.weight.requires_grad() {
+                            // dw[i] = sum_s(go[s,i] * x[s,i] / rms_s)
+                            let mut grad_w = vec![0.0_f32; h];
+
+                            for s in 0..self.seq_len {
+                                let off = s * h;
+                                let rms = self.rms_values[s];
+                                for i in 0..h {
+                                    grad_w[i] += go[off + i] * x_sl[off + i] / rms;
+                                }
+                            }
+
+                            self.weight.accumulate_grad(Array1::from(grad_w));
+                        }
+
+                        // Continue backward propagation through inputs
+                        if let Some(op) = self.x.backward_op() {
+                            op.backward();
+                        }
+                        if let Some(op) = self.weight.backward_op() {
+                            op.backward();
+                        }
+                    }
+                }
+            }
+
+            let backward_op = Rc::new(RMSNormBatchedBackward {
+                x: x.clone(),
+                weight: self.weight.clone(),
+                rms_values,
+                seq_len,
+                hidden_size,
+                result_grad: result.grad_cell(),
+            });
+            result.set_backward_op(backward_op);
+        }
+
+        result
     }
 }
 
@@ -167,6 +259,64 @@ mod tests {
         assert!(norm.weight.grad().is_some());
         let grad = norm.weight.grad().expect("gradient should be available");
         assert!(grad.iter().all(|&v| v.is_finite()));
+    }
+
+    /// ALB-038 fix: forward_batched must propagate gradients (was creating tensors with no backward op)
+    #[test]
+    fn test_rms_norm_batched_backward_gradient_exists() {
+        let norm = RMSNorm::new(4, 1e-6);
+        let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
+        let mut output = norm.forward_batched(&x, 2, 4);
+
+        let grad_out = ndarray::Array1::ones(8);
+        crate::autograd::backward(&mut output, Some(grad_out));
+
+        // Weight must receive gradient (was broken before ALB-038 fix)
+        assert!(norm.weight.grad().is_some(), "ALB-038: norm weight must have gradient");
+        let wgrad = norm.weight.grad().expect("gradient available");
+        assert!(wgrad.iter().all(|&v| v.is_finite()), "Weight gradients must be finite");
+        assert!(wgrad.iter().any(|&v| v.abs() > 1e-10), "Weight gradients must be non-zero");
+
+        // Input must receive gradient (enables gradient flow through model)
+        assert!(x.grad().is_some(), "ALB-038: input x must have gradient");
+        let xgrad = x.grad().expect("gradient available");
+        assert!(xgrad.iter().all(|&v| v.is_finite()), "Input gradients must be finite");
+        assert!(xgrad.iter().any(|&v| v.abs() > 1e-10), "Input gradients must be non-zero");
+    }
+
+    /// ALB-038 fix: batched backward produces correct weight gradients
+    ///
+    /// Note: forward() uses scale(x, 1/rms) which treats rms as constant w.r.t. x,
+    /// giving an approximate input gradient. forward_batched() computes the exact
+    /// RMSNorm gradient including d(rms)/d(x). Weight gradients match exactly since
+    /// dL/dw_i = go_i * x_i / rms regardless.
+    #[test]
+    fn test_rms_norm_batched_backward_weight_grad_matches() {
+        let hidden = 4;
+        let data = vec![1.0_f32, -2.0, 3.0, -0.5];
+
+        // Non-batched path (uses autograd ops)
+        let norm1 = RMSNorm::new(hidden, 1e-6);
+        let x1 = Tensor::from_vec(data.clone(), true);
+        let mut out1 = norm1.forward(&x1);
+        crate::autograd::backward(&mut out1, Some(ndarray::Array1::ones(hidden)));
+        let wgrad1 = norm1.weight.grad().expect("gradient available");
+
+        // Batched path (new backward op)
+        let norm2 = RMSNorm::new(hidden, 1e-6);
+        let x2 = Tensor::from_vec(data, true);
+        let mut out2 = norm2.forward_batched(&x2, 1, hidden);
+        crate::autograd::backward(&mut out2, Some(ndarray::Array1::ones(hidden)));
+        let wgrad2 = norm2.weight.grad().expect("gradient available");
+
+        // Weight gradients should match exactly (dw = go * x / rms)
+        for i in 0..hidden {
+            assert!(
+                (wgrad1[i] - wgrad2[i]).abs() < 1e-5,
+                "Weight grad mismatch at [{i}]: unbatched={}, batched={}",
+                wgrad1[i], wgrad2[i]
+            );
+        }
     }
 
     // =========================================================================
