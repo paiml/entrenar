@@ -25,6 +25,8 @@ pub struct TransformerTrainConfig {
     pub lr: f32,
     /// Maximum training steps (stop after this many optimizer steps)
     pub max_steps: Option<usize>,
+    /// Use CUDA GPU training when available (default: true = auto-detect)
+    pub use_cuda: bool,
 }
 
 impl TransformerTrainConfig {
@@ -40,6 +42,7 @@ impl TransformerTrainConfig {
             warmup_steps: 0,
             lr: 0.001,
             max_steps: None,
+            use_cuda: true,
         }
     }
 
@@ -94,6 +97,12 @@ impl TransformerTrainConfig {
     /// Set maximum training steps
     pub fn with_max_steps(mut self, steps: usize) -> Self {
         self.max_steps = Some(steps);
+        self
+    }
+
+    /// Enable or disable CUDA GPU training (default: true = auto-detect)
+    pub fn with_use_cuda(mut self, use_cuda: bool) -> Self {
+        self.use_cuda = use_cuda;
         self
     }
 }
