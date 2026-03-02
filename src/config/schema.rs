@@ -134,7 +134,11 @@ pub struct ArchitectureOverrides {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub num_attention_heads: Option<usize>,
     /// Number of key-value heads (for grouped-query attention)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "num_key_value_heads"
+    )]
     pub num_kv_heads: Option<usize>,
     /// FFN intermediate dimension
     #[serde(default, skip_serializing_if = "Option::is_none")]
