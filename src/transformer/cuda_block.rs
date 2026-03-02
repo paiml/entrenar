@@ -82,7 +82,10 @@ pub struct CudaTransformerBlock {
     scratch: CudaBlockScratch,
 }
 
-/// Preallocated scratch buffers for transformer forward pass
+/// Preallocated scratch buffers for transformer forward/backward pass (per-layer).
+///
+/// These are per-layer because the backward pass reads forward activations
+/// stored during the forward pass. Seq_len-dependent sizes.
 #[cfg(feature = "cuda")]
 struct CudaBlockScratch {
     /// After input RMSNorm (seq_len * hidden_size)
@@ -111,17 +114,7 @@ struct CudaBlockScratch {
     swiglu_out: GpuBuffer<f32>,
     /// FFN down projection output
     ffn_out: GpuBuffer<f32>,
-    // === Gradient buffers for backward pass (ENT-151) ===
-    /// Gradient for input norm weight
-    grad_input_norm: GpuBuffer<f32>,
-    /// Gradient for post-attention norm weight
-    grad_post_attn_norm: GpuBuffer<f32>,
-    /// Gradient for FFN gate projection
-    grad_gate: GpuBuffer<f32>,
-    /// Gradient for FFN up projection
-    grad_up: GpuBuffer<f32>,
-    /// Gradient for FFN down projection
-    grad_down: GpuBuffer<f32>,
+    // === Seq-dependent backward scratch (per-layer for activation reuse) ===
     /// Gradient accumulator for hidden states
     grad_hidden: GpuBuffer<f32>,
     /// Gradient for SwiGLU intermediate
@@ -133,18 +126,69 @@ struct CudaBlockScratch {
     attn_kv_temp: GpuBuffer<f32>,
     /// K transposed / second temp [num_heads, head_dim, seq_len]
     attn_kv_temp2: GpuBuffer<f32>,
-    // === Attention backward gradient buffers (ENT-151b) ===
+    // === Attention backward scratch (seq-dependent) ===
     /// Gradient for attention scores [num_heads * seq_len * seq_len]
     /// Kept separate from attn_scores because softmax backward reads y while writing grad_x
     grad_attn_scores: GpuBuffer<f32>,
+}
+
+/// Shared gradient workspace for weight gradients (one per model, NOT per layer).
+///
+/// # Contract (C-GRADWS-001)
+///
+/// Backward processes layers sequentially — only one layer's weight gradients
+/// are computed at a time. Sharing this workspace across layers saves
+/// `(L-1) * per_layer_grad_weight_elements * 4` bytes of VRAM.
+///
+/// For Qwen3-4B: saves 35 * 372 MB = 13.0 GB.
+///
+/// - **Precondition**: Allocated once before training loop starts
+/// - **Postcondition**: After backward() for layer i, contains layer i's weight gradients
+/// - **Invariant**: Buffer sizes match model config; never reallocated during training
+#[cfg(feature = "cuda")]
+pub struct CudaGradWorkspace {
+    /// Gradient for input norm weight [hidden_size]
+    pub(crate) grad_input_norm: GpuBuffer<f32>,
+    /// Gradient for post-attention norm weight [hidden_size]
+    pub(crate) grad_post_attn_norm: GpuBuffer<f32>,
+    /// Gradient for FFN gate projection [hidden_size * intermediate_size]
+    pub(crate) grad_gate: GpuBuffer<f32>,
+    /// Gradient for FFN up projection [hidden_size * intermediate_size]
+    pub(crate) grad_up: GpuBuffer<f32>,
+    /// Gradient for FFN down projection [intermediate_size * hidden_size]
+    pub(crate) grad_down: GpuBuffer<f32>,
     /// Gradient for Q projection weight [hidden_size * hidden_size]
-    grad_w_q: GpuBuffer<f32>,
+    pub(crate) grad_w_q: GpuBuffer<f32>,
     /// Gradient for K projection weight [hidden_size * kv_hidden_size]
-    grad_w_k: GpuBuffer<f32>,
+    pub(crate) grad_w_k: GpuBuffer<f32>,
     /// Gradient for V projection weight [hidden_size * kv_hidden_size]
-    grad_w_v: GpuBuffer<f32>,
+    pub(crate) grad_w_v: GpuBuffer<f32>,
     /// Gradient for output projection weight [hidden_size * hidden_size]
-    grad_w_o: GpuBuffer<f32>,
+    pub(crate) grad_w_o: GpuBuffer<f32>,
+}
+
+#[cfg(feature = "cuda")]
+impl CudaGradWorkspace {
+    /// Allocate shared gradient workspace for the given model config.
+    ///
+    /// Called once per training run. All 9 buffers are zero-initialized.
+    pub fn new(ctx: &Arc<CudaContext>, config: &TransformerConfig) -> Result<Self> {
+        let h = config.hidden_size;
+        let kv = config.num_kv_heads * config.head_dim();
+        let i = config.intermediate_size;
+
+        Ok(Self {
+            grad_input_norm: GpuBuffer::new(ctx, h)?,
+            grad_post_attn_norm: GpuBuffer::new(ctx, h)?,
+            grad_gate: GpuBuffer::new(ctx, h * i)?,
+            grad_up: GpuBuffer::new(ctx, h * i)?,
+            grad_down: GpuBuffer::new(ctx, i * h)?,
+            grad_w_q: GpuBuffer::new(ctx, h * h)?,
+            grad_w_k: GpuBuffer::new(ctx, h * kv)?,
+            grad_w_v: GpuBuffer::new(ctx, h * kv)?,
+            grad_w_o: GpuBuffer::new(ctx, h * h)?,
+        })
+    }
 }
 
 /// GPU-resident AdamW optimizer state for one transformer block.
@@ -234,12 +278,7 @@ impl CudaTransformerBlock {
             up_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
             swiglu_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
             ffn_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
-            // Gradient buffers (ENT-151)
-            grad_input_norm: GpuBuffer::new(&ctx, hidden_size)?,
-            grad_post_attn_norm: GpuBuffer::new(&ctx, hidden_size)?,
-            grad_gate: GpuBuffer::new(&ctx, hidden_size * intermediate_size)?,
-            grad_up: GpuBuffer::new(&ctx, hidden_size * intermediate_size)?,
-            grad_down: GpuBuffer::new(&ctx, intermediate_size * hidden_size)?,
+            // Seq-dependent backward scratch
             grad_hidden: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             grad_swiglu: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
             // Attention layout scratch (all sized for num_heads, handles GQA expansion)
@@ -252,10 +291,6 @@ impl CudaTransformerBlock {
                 &ctx,
                 num_heads * max_seq_len * max_seq_len.max(config.head_dim()),
             )?,
-            grad_w_q: GpuBuffer::new(&ctx, hidden_size * hidden_size)?,
-            grad_w_k: GpuBuffer::new(&ctx, hidden_size * kv_hidden_size)?,
-            grad_w_v: GpuBuffer::new(&ctx, hidden_size * kv_hidden_size)?,
-            grad_w_o: GpuBuffer::new(&ctx, hidden_size * hidden_size)?,
         };
 
         Ok(Self {
@@ -673,20 +708,21 @@ impl CudaTransformerBlock {
         grad_input: &mut GpuBuffer<f32>,
         seq_len: usize,
         stream: &CudaStream,
+        grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
         let hidden_size = self.config.hidden_size;
         let intermediate_size = self.config.intermediate_size;
         let eps = 1e-5_f32;
 
         // Backward through final residual: grad_output flows to both residual1 and ffn_out
-        self.backward_ffn(grad_output, seq_len, hidden_size, intermediate_size, stream)?;
+        self.backward_ffn(grad_output, seq_len, hidden_size, intermediate_size, stream, grad_ws)?;
 
         // Backward through post-attention RMSNorm
-        self.backward_post_attn_norm(grad_input, seq_len, hidden_size, eps, stream)?;
+        self.backward_post_attn_norm(grad_input, seq_len, hidden_size, eps, stream, grad_ws)?;
 
         // Backward through attention: output projection, attention weights, Q/K/V projections
         // (ENT-151b: previously missing — attention params received no gradients)
-        self.backward_attention(grad_input, seq_len, stream)?;
+        self.backward_attention(grad_input, seq_len, stream, grad_ws)?;
 
         // Backward through first residual connection and input RMSNorm
         self.backward_residual_and_input_norm(
@@ -697,6 +733,7 @@ impl CudaTransformerBlock {
             hidden_size,
             eps,
             stream,
+            grad_ws,
         )?;
 
         Ok(())
@@ -710,6 +747,7 @@ impl CudaTransformerBlock {
         hidden_size: usize,
         intermediate_size: usize,
         stream: &CudaStream,
+        grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
         // grad_swiglu = grad_ffn_out @ w_down^T
         gemm_backward_a(
@@ -726,7 +764,7 @@ impl CudaTransformerBlock {
         gemm_backward_b(
             &self.scratch.swiglu_out,
             grad_output,
-            &mut self.scratch.grad_down,
+            &mut grad_ws.grad_down,
             saturating_u32(seq_len),
             saturating_u32(intermediate_size),
             saturating_u32(hidden_size),
@@ -759,7 +797,7 @@ impl CudaTransformerBlock {
         gemm_backward_b(
             &self.scratch.norm2_out,
             &self.scratch.attn_kv_temp,
-            &mut self.scratch.grad_gate,
+            &mut grad_ws.grad_gate,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
             saturating_u32(intermediate_size),
@@ -788,6 +826,7 @@ impl CudaTransformerBlock {
         hidden_size: usize,
         eps: f32,
         stream: &CudaStream,
+        grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
         // D2D copy norm2_out → grad_hidden (avoids D2H + H2D round-trip)
         // SAFETY: Both buffers are valid GPU allocations with matching sizes.
@@ -807,7 +846,7 @@ impl CudaTransformerBlock {
             &self.post_attn_norm_weight,
             &self.scratch.grad_hidden,
             grad_input,
-            &mut self.scratch.grad_post_attn_norm,
+            &mut grad_ws.grad_post_attn_norm,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
             eps,
@@ -832,6 +871,7 @@ impl CudaTransformerBlock {
         grad_input: &mut GpuBuffer<f32>,
         seq_len: usize,
         stream: &CudaStream,
+        grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
         let hidden_size = self.config.hidden_size;
         let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
@@ -863,7 +903,7 @@ impl CudaTransformerBlock {
         gemm_backward_b(
             &self.scratch.attn_out,
             grad_input,
-            &mut self.scratch.grad_w_o,
+            &mut grad_ws.grad_w_o,
             seq,
             saturating_u32(hidden_size),
             saturating_u32(hidden_size),
@@ -1225,7 +1265,7 @@ impl CudaTransformerBlock {
         gemm_backward_b(
             &self.scratch.norm1_out,
             &self.scratch.o_proj_out, // grad_q
-            &mut self.scratch.grad_w_q,
+            &mut grad_ws.grad_w_q,
             seq,
             saturating_u32(hidden_size),
             saturating_u32(hidden_size),
@@ -1236,7 +1276,7 @@ impl CudaTransformerBlock {
         gemm_backward_b(
             &self.scratch.norm1_out,
             &self.scratch.norm2_out, // grad_k
-            &mut self.scratch.grad_w_k,
+            &mut grad_ws.grad_w_k,
             seq,
             saturating_u32(hidden_size),
             saturating_u32(kv_hidden_size),
@@ -1247,7 +1287,7 @@ impl CudaTransformerBlock {
         gemm_backward_b(
             &self.scratch.norm1_out,
             &self.scratch.ffn_out, // grad_v
-            &mut self.scratch.grad_w_v,
+            &mut grad_ws.grad_w_v,
             seq,
             saturating_u32(hidden_size),
             saturating_u32(kv_hidden_size),
@@ -1440,6 +1480,7 @@ impl CudaTransformerBlock {
         hidden_size: usize,
         eps: f32,
         stream: &CudaStream,
+        grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
         let n = saturating_u32(seq_len * hidden_size);
 
@@ -1478,7 +1519,7 @@ impl CudaTransformerBlock {
             &self.input_norm_weight,
             &self.scratch.grad_hidden,
             grad_input,
-            &mut self.scratch.grad_input_norm,
+            &mut grad_ws.grad_input_norm,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
             eps,
@@ -1546,6 +1587,7 @@ impl CudaTransformerBlock {
         eps: f32,
         weight_decay: f32,
         stream: &CudaStream,
+        grad_ws: &CudaGradWorkspace,
     ) -> Result<()> {
         debug_assert!(step > 0, "C-OPTSTEP-001: step must be > 0 for bias correction");
 
@@ -1563,51 +1605,51 @@ impl CudaTransformerBlock {
 
         // Attention projection weights
         adamw_step_cuda(
-            &mut self.w_q, &self.scratch.grad_w_q,
+            &mut self.w_q, &grad_ws.grad_w_q,
             &mut state.m_w_q, &mut state.v_w_q,
             lr, beta1, beta2, eps, weight_decay, step, n_wq, stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_k, &self.scratch.grad_w_k,
+            &mut self.w_k, &grad_ws.grad_w_k,
             &mut state.m_w_k, &mut state.v_w_k,
             lr, beta1, beta2, eps, weight_decay, step, n_wk, stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_v, &self.scratch.grad_w_v,
+            &mut self.w_v, &grad_ws.grad_w_v,
             &mut state.m_w_v, &mut state.v_w_v,
             lr, beta1, beta2, eps, weight_decay, step, n_wv, stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_o, &self.scratch.grad_w_o,
+            &mut self.w_o, &grad_ws.grad_w_o,
             &mut state.m_w_o, &mut state.v_w_o,
             lr, beta1, beta2, eps, weight_decay, step, n_wo, stream,
         )?;
 
         // FFN projection weights
         adamw_step_cuda(
-            &mut self.w_gate, &self.scratch.grad_gate,
+            &mut self.w_gate, &grad_ws.grad_gate,
             &mut state.m_w_gate, &mut state.v_w_gate,
             lr, beta1, beta2, eps, weight_decay, step, n_gate, stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_up, &self.scratch.grad_up,
+            &mut self.w_up, &grad_ws.grad_up,
             &mut state.m_w_up, &mut state.v_w_up,
             lr, beta1, beta2, eps, weight_decay, step, n_up, stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_down, &self.scratch.grad_down,
+            &mut self.w_down, &grad_ws.grad_down,
             &mut state.m_w_down, &mut state.v_w_down,
             lr, beta1, beta2, eps, weight_decay, step, n_down, stream,
         )?;
 
         // RMSNorm weights
         adamw_step_cuda(
-            &mut self.input_norm_weight, &self.scratch.grad_input_norm,
+            &mut self.input_norm_weight, &grad_ws.grad_input_norm,
             &mut state.m_input_norm, &mut state.v_input_norm,
             lr, beta1, beta2, eps, weight_decay, step, n_inorm, stream,
         )?;
         adamw_step_cuda(
-            &mut self.post_attn_norm_weight, &self.scratch.grad_post_attn_norm,
+            &mut self.post_attn_norm_weight, &grad_ws.grad_post_attn_norm,
             &mut state.m_post_attn_norm, &mut state.v_post_attn_norm,
             lr, beta1, beta2, eps, weight_decay, step, n_panorm, stream,
         )?;
@@ -1712,6 +1754,477 @@ impl CudaTransformerBlock {
     }
 }
 
+// =============================================================================
+// NF4 Quantized Transformer Block (trueno#108: QLoRA support)
+// =============================================================================
+
+/// CUDA-accelerated transformer block with NF4-quantized frozen weights.
+///
+/// Stores the 7 projection weights as packed NF4 (4-bit) + per-block scales instead
+/// of fp32, achieving ~8x compression. Norm weights remain fp32 (negligible size).
+///
+/// # VRAM Savings (Qwen3-4B example)
+///
+/// | Component | fp32 | NF4 |
+/// |-----------|------|-----|
+/// | Frozen weights (36L × 7 projections) | 16.0 GB | 2.1 GB |
+///
+/// # Forward Only
+///
+/// NF4 blocks are frozen — no backward pass needed. LoRA adapters (fp32) handle
+/// the trainable parameters separately. The forward pass uses fused dequant+GEMM
+/// kernels that read NF4 directly without materializing fp32 weights.
+#[cfg(feature = "cuda")]
+pub struct CudaNf4TransformerBlock {
+    config: TransformerConfig,
+    layer_idx: usize,
+    // Norm weights stay fp32 (tiny: 2 × hidden_size floats)
+    input_norm_weight: GpuBuffer<f32>,
+    post_attn_norm_weight: GpuBuffer<f32>,
+    // Projection weights: NF4 quantized (packed data + per-block scales)
+    w_q_nf4: GpuBuffer<u8>,
+    w_q_scales: GpuBuffer<f32>,
+    w_k_nf4: GpuBuffer<u8>,
+    w_k_scales: GpuBuffer<f32>,
+    w_v_nf4: GpuBuffer<u8>,
+    w_v_scales: GpuBuffer<f32>,
+    w_o_nf4: GpuBuffer<u8>,
+    w_o_scales: GpuBuffer<f32>,
+    w_gate_nf4: GpuBuffer<u8>,
+    w_gate_scales: GpuBuffer<f32>,
+    w_up_nf4: GpuBuffer<u8>,
+    w_up_scales: GpuBuffer<f32>,
+    w_down_nf4: GpuBuffer<u8>,
+    w_down_scales: GpuBuffer<f32>,
+    ctx: Arc<CudaContext>,
+    scratch: CudaBlockScratch,
+}
+
+#[cfg(feature = "cuda")]
+impl CudaNf4TransformerBlock {
+    /// Create a new NF4 transformer block from fp32 CPU tensors.
+    ///
+    /// Quantizes all 7 projection weights to NF4 on CPU, then uploads the packed
+    /// data and scales to GPU. Norm weights are uploaded as fp32.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        config: &TransformerConfig,
+        layer_idx: usize,
+        ctx: Arc<CudaContext>,
+        input_norm_weight: &[f32],
+        post_attn_norm_weight: &[f32],
+        w_q: &[f32],
+        w_k: &[f32],
+        w_v: &[f32],
+        w_o: &[f32],
+        w_gate: &[f32],
+        w_up: &[f32],
+        w_down: &[f32],
+        max_seq_len: usize,
+    ) -> Result<Self> {
+        use trueno_gpu::kernels::{quantize_nf4, NF4_BLOCK_SIZE};
+
+        let hidden_size = config.hidden_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+        let intermediate_size = config.intermediate_size;
+        let num_heads = config.num_attention_heads;
+
+        // Upload norm weights as fp32
+        let input_norm_weight = GpuBuffer::from_host(&ctx, input_norm_weight)?;
+        let post_attn_norm_weight = GpuBuffer::from_host(&ctx, post_attn_norm_weight)?;
+
+        // Helper: quantize fp32 weight to NF4, upload packed data + scales to GPU
+        let quantize_and_upload =
+            |weights: &[f32], rows: usize, cols: usize| -> Result<(GpuBuffer<u8>, GpuBuffer<f32>)> {
+                // Pad K dimension to multiple of NF4_BLOCK_SIZE if needed
+                let n = weights.len();
+                assert_eq!(n, rows * cols, "weight shape mismatch");
+                assert!(
+                    n % NF4_BLOCK_SIZE == 0,
+                    "weight count {n} not divisible by NF4 block size {NF4_BLOCK_SIZE}"
+                );
+
+                let q = quantize_nf4(weights, rows, cols);
+                let nf4_buf = GpuBuffer::from_host(&ctx, &q.data)?;
+                let scales_buf = GpuBuffer::from_host(&ctx, &q.scales)?;
+                Ok((nf4_buf, scales_buf))
+            };
+
+        // Quantize all 7 projection weights
+        let (w_q_nf4, w_q_scales) = quantize_and_upload(w_q, hidden_size, hidden_size)?;
+        let (w_k_nf4, w_k_scales) = quantize_and_upload(w_k, hidden_size, kv_hidden_size)?;
+        let (w_v_nf4, w_v_scales) = quantize_and_upload(w_v, hidden_size, kv_hidden_size)?;
+        let (w_o_nf4, w_o_scales) = quantize_and_upload(w_o, hidden_size, hidden_size)?;
+        let (w_gate_nf4, w_gate_scales) =
+            quantize_and_upload(w_gate, hidden_size, intermediate_size)?;
+        let (w_up_nf4, w_up_scales) = quantize_and_upload(w_up, hidden_size, intermediate_size)?;
+        let (w_down_nf4, w_down_scales) =
+            quantize_and_upload(w_down, intermediate_size, hidden_size)?;
+
+        // Allocate scratch buffers (same as fp32 block — activations are always fp32)
+        let scratch = CudaBlockScratch {
+            norm1_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            q: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            k: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
+            v: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
+            attn_scores: GpuBuffer::new(&ctx, num_heads * max_seq_len * max_seq_len)?,
+            attn_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            o_proj_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            residual1: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            norm2_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            gate_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
+            up_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
+            swiglu_out: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
+            ffn_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            grad_hidden: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            grad_swiglu: GpuBuffer::new(&ctx, max_seq_len * intermediate_size)?,
+            attn_q_batched: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
+            attn_kv_temp: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
+            attn_kv_temp2: GpuBuffer::new(&ctx, num_heads * max_seq_len * config.head_dim())?,
+            grad_attn_scores: GpuBuffer::new(
+                &ctx,
+                num_heads * max_seq_len * max_seq_len.max(config.head_dim()),
+            )?,
+        };
+
+        Ok(Self {
+            config: config.clone(),
+            layer_idx,
+            input_norm_weight,
+            post_attn_norm_weight,
+            w_q_nf4,
+            w_q_scales,
+            w_k_nf4,
+            w_k_scales,
+            w_v_nf4,
+            w_v_scales,
+            w_o_nf4,
+            w_o_scales,
+            w_gate_nf4,
+            w_gate_scales,
+            w_up_nf4,
+            w_up_scales,
+            w_down_nf4,
+            w_down_scales,
+            ctx,
+            scratch,
+        })
+    }
+
+    /// Forward pass using NF4 fused dequant+GEMM kernels.
+    ///
+    /// Identical pipeline to `CudaTransformerBlock::forward()` but all 7 GEMM
+    /// calls use `gemm_nf4_forward()` which reads NF4 weights directly.
+    pub fn forward(
+        &mut self,
+        input: &GpuBuffer<f32>,
+        output: &mut GpuBuffer<f32>,
+        seq_len: usize,
+        stream: &CudaStream,
+    ) -> Result<()> {
+        use crate::autograd::cuda_forward::gemm_nf4_forward;
+
+        let hidden_size = self.config.hidden_size;
+        let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
+        let intermediate_size = self.config.intermediate_size;
+
+        // === Pre-attention RMSNorm ===
+        rms_norm_forward(
+            input,
+            &self.input_norm_weight,
+            &mut self.scratch.norm1_out,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // === Q, K, V Projections (NF4 fused dequant + GEMM) ===
+        gemm_nf4_forward(
+            &self.scratch.norm1_out,
+            &self.w_q_nf4,
+            &self.w_q_scales,
+            &mut self.scratch.q,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        gemm_nf4_forward(
+            &self.scratch.norm1_out,
+            &self.w_k_nf4,
+            &self.w_k_scales,
+            &mut self.scratch.k,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
+            stream,
+        )?;
+
+        gemm_nf4_forward(
+            &self.scratch.norm1_out,
+            &self.w_v_nf4,
+            &self.w_v_scales,
+            &mut self.scratch.v,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(kv_hidden_size),
+            stream,
+        )?;
+
+        // === Multi-Head Attention (GPU-only, zero CPU transfers) ===
+        // Reuses the same attention pipeline as fp32 (activations are fp32)
+        self.compute_attention_cuda(seq_len, stream)?;
+
+        // === Output Projection ===
+        gemm_nf4_forward(
+            &self.scratch.attn_out,
+            &self.w_o_nf4,
+            &self.w_o_scales,
+            &mut self.scratch.o_proj_out,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // === Residual Add ===
+        cuda_add(
+            input,
+            &self.scratch.o_proj_out,
+            &mut self.scratch.residual1,
+            seq_len * hidden_size,
+            stream,
+        )?;
+
+        // === Post-attention RMSNorm ===
+        rms_norm_forward(
+            &self.scratch.residual1,
+            &self.post_attn_norm_weight,
+            &mut self.scratch.norm2_out,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // === FFN: Gate + Up Projections (NF4) ===
+        gemm_nf4_forward(
+            &self.scratch.norm2_out,
+            &self.w_gate_nf4,
+            &self.w_gate_scales,
+            &mut self.scratch.gate_out,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
+            stream,
+        )?;
+
+        gemm_nf4_forward(
+            &self.scratch.norm2_out,
+            &self.w_up_nf4,
+            &self.w_up_scales,
+            &mut self.scratch.up_out,
+            saturating_u32(seq_len),
+            saturating_u32(hidden_size),
+            saturating_u32(intermediate_size),
+            stream,
+        )?;
+
+        // === FFN: Fused SwiGLU ===
+        fused_swiglu_forward(
+            &self.scratch.gate_out,
+            &self.scratch.up_out,
+            &mut self.scratch.swiglu_out,
+            saturating_u32(seq_len * intermediate_size),
+            stream,
+        )?;
+
+        // === FFN: Down Projection (NF4) ===
+        gemm_nf4_forward(
+            &self.scratch.swiglu_out,
+            &self.w_down_nf4,
+            &self.w_down_scales,
+            &mut self.scratch.ffn_out,
+            saturating_u32(seq_len),
+            saturating_u32(intermediate_size),
+            saturating_u32(hidden_size),
+            stream,
+        )?;
+
+        // === Final Residual Add ===
+        cuda_add(
+            &self.scratch.residual1,
+            &self.scratch.ffn_out,
+            output,
+            seq_len * hidden_size,
+            stream,
+        )?;
+
+        Ok(())
+    }
+
+    /// Layer index accessor.
+    pub fn layer_idx(&self) -> usize {
+        self.layer_idx
+    }
+}
+
+/// Helper: delegate attention computation to the shared implementation.
+///
+/// `CudaNf4TransformerBlock` reuses the same attention pipeline as the fp32 block
+/// since attention operates on fp32 activations (Q/K/V are already dequantized by GEMM).
+#[cfg(feature = "cuda")]
+impl CudaNf4TransformerBlock {
+    fn compute_attention_cuda(&mut self, seq_len: usize, stream: &CudaStream) -> Result<()> {
+        let num_heads = self.config.num_attention_heads;
+        let num_kv_heads = self.config.num_kv_heads;
+        let head_dim = self.config.head_dim();
+        let heads_per_kv = num_heads / num_kv_heads;
+
+        let s = saturating_u32(seq_len);
+        let nh = saturating_u32(num_heads);
+        let nkv = saturating_u32(num_kv_heads);
+        let hd = saturating_u32(head_dim);
+
+        // Q: interleaved → batched layout
+        interleaved_to_batched_forward(
+            &self.scratch.q,
+            &mut self.scratch.attn_q_batched,
+            s, nh, hd,
+            stream,
+        )?;
+
+        // K: interleaved → batched, then GQA expand if needed
+        interleaved_to_batched_forward(
+            &self.scratch.k,
+            &mut self.scratch.attn_kv_temp,
+            s, nkv, hd,
+            stream,
+        )?;
+
+        if heads_per_kv > 1 {
+            expand_kv_heads(
+                &self.scratch.attn_kv_temp,
+                &mut self.scratch.attn_kv_temp2,
+                num_kv_heads, heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+        } else {
+            // SAFETY: D2D copy with matching buffer sizes
+            unsafe {
+                self.scratch.attn_kv_temp2
+                    .copy_from_buffer_async(&self.scratch.attn_kv_temp, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                            format!("K copy failed: {e:?}"),
+                        )
+                    })?;
+            }
+        }
+
+        // K^T: transpose for attention scores
+        batched_transpose_forward(
+            &self.scratch.attn_kv_temp2,
+            &mut self.scratch.attn_kv_temp,
+            nh, s, hd,
+            stream,
+        )?;
+
+        // Q @ K^T → attention scores
+        batched_4d_gemm_forward(
+            &self.scratch.attn_q_batched,
+            &self.scratch.attn_kv_temp,
+            &mut self.scratch.attn_scores,
+            1, nh, s, s, hd,
+            stream,
+        )?;
+
+        // Scale by 1/sqrt(head_dim)
+        let scale_factor = 1.0 / (head_dim as f32).sqrt();
+        let total_scores = num_heads * seq_len * seq_len;
+        let scores_view = unsafe {
+            GpuBuffer::<f32>::from_raw_parts(
+                self.scratch.attn_scores.as_ptr(),
+                self.scratch.attn_scores.len(),
+            )
+        };
+        scale_forward(
+            &scores_view,
+            &mut self.scratch.attn_scores,
+            scale_factor,
+            saturating_u32(total_scores),
+            stream,
+        )?;
+        std::mem::forget(scores_view);
+
+        // Softmax (in-place: input aliased with output via unsafe view)
+        // SAFETY: The softmax kernel reads each row completely into shared memory / registers
+        // before writing output. The view is forgotten to prevent double-free.
+        let scores_view = unsafe {
+            GpuBuffer::<f32>::from_raw_parts(
+                self.scratch.attn_scores.as_ptr(),
+                self.scratch.attn_scores.len(),
+            )
+        };
+        batched_softmax_forward(
+            &scores_view,
+            &mut self.scratch.attn_scores,
+            saturating_u32(num_heads * seq_len),
+            s,
+            stream,
+        )?;
+        std::mem::forget(scores_view);
+
+        // V: interleaved → batched, then GQA expand
+        interleaved_to_batched_forward(
+            &self.scratch.v,
+            &mut self.scratch.attn_kv_temp,
+            s, nkv, hd,
+            stream,
+        )?;
+
+        if heads_per_kv > 1 {
+            expand_kv_heads(
+                &self.scratch.attn_kv_temp,
+                &mut self.scratch.attn_kv_temp2,
+                num_kv_heads, heads_per_kv,
+                seq_len * head_dim,
+                stream,
+            )?;
+        } else {
+            unsafe {
+                self.scratch.attn_kv_temp2
+                    .copy_from_buffer_async(&self.scratch.attn_kv_temp, stream)
+                    .map_err(|e| {
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                            format!("V copy failed: {e:?}"),
+                        )
+                    })?;
+            }
+        }
+
+        // attn_scores @ V → attention output
+        batched_4d_gemm_forward(
+            &self.scratch.attn_scores,
+            &self.scratch.attn_kv_temp2,
+            &mut self.scratch.attn_q_batched,
+            1, nh, s, hd, s,
+            stream,
+        )?;
+
+        // Batched → interleaved layout
+        batched_to_interleaved_forward(
+            &self.scratch.attn_q_batched,
+            &mut self.scratch.attn_out,
+            s, nh, hd,
+            stream,
+        )?;
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1721,6 +2234,7 @@ mod tests {
         {
             use super::*;
             let _ = std::mem::size_of::<CudaTransformerBlock>();
+            let _ = std::mem::size_of::<CudaNf4TransformerBlock>();
         }
     }
 }

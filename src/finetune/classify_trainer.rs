@@ -41,6 +41,15 @@ pub struct TrainingConfig {
     pub warmup_fraction: f32,
     /// Minimum learning rate for cosine decay (default: 1e-6)
     pub lr_min: f32,
+    /// Oversample minority classes to match majority count (default: false).
+    /// When enabled, duplicates minority-class samples and skips auto class weights.
+    pub oversample_minority: bool,
+    /// Quantize frozen weights to NF4 (4-bit) for QLoRA training (default: false).
+    ///
+    /// When enabled, transformer blocks use `CudaNf4TransformerBlock` instead of
+    /// `CudaTransformerBlock`, achieving ~8x VRAM compression on frozen weights.
+    /// Only LoRA adapters remain trainable in fp32.
+    pub quantize_nf4: bool,
 }
 
 impl Default for TrainingConfig {
@@ -55,6 +64,8 @@ impl Default for TrainingConfig {
             log_interval: 1,
             warmup_fraction: 0.1,
             lr_min: 1e-6,
+            oversample_minority: false,
+            quantize_nf4: false,
         }
     }
 }
@@ -164,9 +175,16 @@ impl ClassifyTrainer {
         }
 
         // ── Auto-detect class imbalance and apply weights ────────────────
-        Self::auto_balance_classes(&mut pipeline, &corpus);
+        // Skip when oversampling: data will be balanced, so weights are unnecessary.
+        if !config.oversample_minority {
+            Self::auto_balance_classes(&mut pipeline, &corpus);
+        }
 
-        let (train_data, val_data) = Self::split_dataset(&corpus, config.val_split, config.seed);
+        let (mut train_data, val_data) = Self::split_dataset(&corpus, config.val_split, config.seed);
+
+        if config.oversample_minority {
+            Self::oversample_training_data(&mut train_data, config.seed);
+        }
 
         if train_data.is_empty() || val_data.is_empty() {
             return Err(crate::Error::ConfigError(format!(
@@ -262,6 +280,50 @@ impl ClassifyTrainer {
                 "  Class balance OK (ratio {imbalance_ratio:.1}:1), using uniform weights"
             );
         }
+    }
+
+    /// Oversample minority classes by duplicating samples until each class
+    /// matches the majority count.
+    ///
+    /// This is a simple, effective strategy for moderate imbalance (e.g. 93/7 splits).
+    /// After oversampling the training set is shuffled deterministically.
+    fn oversample_training_data(train_data: &mut Vec<SafetySample>, seed: u64) {
+        use std::collections::HashMap;
+
+        // Count per-class
+        let mut class_indices: HashMap<usize, Vec<usize>> = HashMap::new();
+        for (i, sample) in train_data.iter().enumerate() {
+            class_indices.entry(sample.label).or_default().push(i);
+        }
+
+        let majority_count = class_indices.values().map(|v| v.len()).max().unwrap_or(0);
+        let before = train_data.len();
+
+        // Duplicate minority samples (cycling) to match majority
+        for (_label, indices) in &class_indices {
+            let count = indices.len();
+            if count < majority_count {
+                let deficit = majority_count - count;
+                for i in 0..deficit {
+                    let src_idx = indices[i % count];
+                    train_data.push(train_data[src_idx].clone());
+                }
+            }
+        }
+
+        // Deterministic shuffle via Fisher-Yates with simple LCG
+        let n = train_data.len();
+        let mut rng_state: u64 = seed.wrapping_mul(0x517cc1b727220a95).wrapping_add(1);
+        for i in (1..n).rev() {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let j = (rng_state >> 33) as usize % (i + 1);
+            train_data.swap(i, j);
+        }
+
+        eprintln!(
+            "  Oversampled minority classes: {before} \u{2192} {} training samples",
+            train_data.len()
+        );
     }
 
     /// Attach a monitor writer for live TUI updates.
