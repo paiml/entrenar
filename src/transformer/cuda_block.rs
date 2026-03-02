@@ -248,6 +248,7 @@ impl CudaTransformerBlock {
         max_seq_len: usize,
     ) -> Result<Self> {
         let hidden_size = config.hidden_size;
+        let q_dim = config.q_dim(); // num_heads * head_dim (may differ from hidden_size)
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
         let intermediate_size = config.intermediate_size;
         let num_heads = config.num_attention_heads;
@@ -263,14 +264,14 @@ impl CudaTransformerBlock {
         let w_up = GpuBuffer::from_host(&ctx, w_up)?;
         let w_down = GpuBuffer::from_host(&ctx, w_down)?;
 
-        // Allocate scratch buffers for max sequence length
+        // Allocate scratch buffers — Q and attn_out need q_dim, not hidden_size
         let scratch = CudaBlockScratch {
             norm1_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
-            q: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            q: GpuBuffer::new(&ctx, max_seq_len * q_dim)?,
             k: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
             v: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
             attn_scores: GpuBuffer::new(&ctx, num_heads * max_seq_len * max_seq_len)?,
-            attn_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            attn_out: GpuBuffer::new(&ctx, max_seq_len * q_dim)?,
             o_proj_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             residual1: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             norm2_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
@@ -325,6 +326,7 @@ impl CudaTransformerBlock {
         stream: &CudaStream,
     ) -> Result<()> {
         let hidden_size = self.config.hidden_size;
+        let q_dim = self.config.q_dim();
         let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
         let intermediate_size = self.config.intermediate_size;
 
@@ -339,13 +341,14 @@ impl CudaTransformerBlock {
         )?;
 
         // === Q, K, V Projections (CUDA GEMM) ===
+        // C[seq,q_dim] = A[seq,hidden] @ B[hidden,q_dim]
         gemm_forward(
             &self.scratch.norm1_out,
             &self.w_q,
             &mut self.scratch.q,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             stream,
         )?;
 
@@ -373,12 +376,13 @@ impl CudaTransformerBlock {
         self.compute_attention_cuda(seq_len, stream)?;
 
         // === Output Projection ===
+        // C[seq,hidden] = A[seq,q_dim] @ B[q_dim,hidden]
         gemm_forward(
             &self.scratch.attn_out,
             &self.w_o,
             &mut self.scratch.o_proj_out,
             saturating_u32(seq_len),
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             saturating_u32(hidden_size),
             stream,
         )?;
@@ -1928,9 +1932,30 @@ impl CudaNf4TransformerBlock {
         use trueno_gpu::kernels::{quantize_nf4, NF4_BLOCK_SIZE};
 
         let hidden_size = config.hidden_size;
+        let q_dim = config.q_dim(); // num_heads * head_dim (may differ from hidden_size)
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
         let intermediate_size = config.intermediate_size;
         let num_heads = config.num_attention_heads;
+
+        // ── C-NF4SHAPE-001: Weight shape contracts ──────────────────────
+        // Ground truth: PMAT-331 validation in attention.rs from_pretrained()
+        //   Q: [q_dim, hidden], K: [kv_hidden, hidden], V: [kv_hidden, hidden], O: [hidden, q_dim]
+        //   gate: [intermediate, hidden], up: [intermediate, hidden], down: [hidden, intermediate]
+        assert_eq!(w_q.len(), q_dim * hidden_size,
+            "C-NF4SHAPE-001: w_q expected {}, got {} (q_dim={q_dim}, hidden={hidden_size})",
+            q_dim * hidden_size, w_q.len());
+        assert_eq!(w_k.len(), kv_hidden_size * hidden_size,
+            "C-NF4SHAPE-001: w_k expected {}, got {}", kv_hidden_size * hidden_size, w_k.len());
+        assert_eq!(w_v.len(), kv_hidden_size * hidden_size,
+            "C-NF4SHAPE-001: w_v expected {}, got {}", kv_hidden_size * hidden_size, w_v.len());
+        assert_eq!(w_o.len(), hidden_size * q_dim,
+            "C-NF4SHAPE-001: w_o expected {}, got {}", hidden_size * q_dim, w_o.len());
+        assert_eq!(w_gate.len(), intermediate_size * hidden_size,
+            "C-NF4SHAPE-001: w_gate expected {}, got {}", intermediate_size * hidden_size, w_gate.len());
+        assert_eq!(w_up.len(), intermediate_size * hidden_size,
+            "C-NF4SHAPE-001: w_up expected {}, got {}", intermediate_size * hidden_size, w_up.len());
+        assert_eq!(w_down.len(), hidden_size * intermediate_size,
+            "C-NF4SHAPE-001: w_down expected {}, got {}", hidden_size * intermediate_size, w_down.len());
 
         // Upload norm weights as fp32
         let input_norm_weight = GpuBuffer::from_host(&ctx, input_norm_weight)?;
@@ -1938,40 +1963,43 @@ impl CudaNf4TransformerBlock {
 
         // Helper: quantize fp32 weight to NF4, upload packed data + scales to GPU
         let quantize_and_upload =
-            |weights: &[f32], rows: usize, cols: usize| -> Result<(GpuBuffer<u8>, GpuBuffer<f32>)> {
-                // Pad K dimension to multiple of NF4_BLOCK_SIZE if needed
-                let n = weights.len();
-                assert_eq!(n, rows * cols, "weight shape mismatch");
+            |weights: &[f32], total: usize| -> Result<(GpuBuffer<u8>, GpuBuffer<f32>)> {
+                assert_eq!(weights.len(), total, "weight length mismatch");
                 assert!(
-                    n % NF4_BLOCK_SIZE == 0,
-                    "weight count {n} not divisible by NF4 block size {NF4_BLOCK_SIZE}"
+                    total % NF4_BLOCK_SIZE == 0,
+                    "weight count {total} not divisible by NF4 block size {NF4_BLOCK_SIZE}"
                 );
 
-                let q = quantize_nf4(weights, rows, cols);
+                // NF4 quantization operates on flat buffer — rows/cols only matter for
+                // block alignment. Use (total/NF4_BLOCK_SIZE, NF4_BLOCK_SIZE) to ensure
+                // every block is full.
+                let q = quantize_nf4(weights, total / NF4_BLOCK_SIZE, NF4_BLOCK_SIZE);
                 let nf4_buf = GpuBuffer::from_host(&ctx, &q.data)?;
                 let scales_buf = GpuBuffer::from_host(&ctx, &q.scales)?;
                 Ok((nf4_buf, scales_buf))
             };
 
-        // Quantize all 7 projection weights
-        let (w_q_nf4, w_q_scales) = quantize_and_upload(w_q, hidden_size, hidden_size)?;
-        let (w_k_nf4, w_k_scales) = quantize_and_upload(w_k, hidden_size, kv_hidden_size)?;
-        let (w_v_nf4, w_v_scales) = quantize_and_upload(w_v, hidden_size, kv_hidden_size)?;
-        let (w_o_nf4, w_o_scales) = quantize_and_upload(w_o, hidden_size, hidden_size)?;
+        // Quantize all 7 projection weights (shape contracts already verified above)
+        let (w_q_nf4, w_q_scales) = quantize_and_upload(w_q, q_dim * hidden_size)?;
+        let (w_k_nf4, w_k_scales) = quantize_and_upload(w_k, kv_hidden_size * hidden_size)?;
+        let (w_v_nf4, w_v_scales) = quantize_and_upload(w_v, kv_hidden_size * hidden_size)?;
+        let (w_o_nf4, w_o_scales) = quantize_and_upload(w_o, hidden_size * q_dim)?;
         let (w_gate_nf4, w_gate_scales) =
-            quantize_and_upload(w_gate, hidden_size, intermediate_size)?;
-        let (w_up_nf4, w_up_scales) = quantize_and_upload(w_up, hidden_size, intermediate_size)?;
+            quantize_and_upload(w_gate, intermediate_size * hidden_size)?;
+        let (w_up_nf4, w_up_scales) =
+            quantize_and_upload(w_up, intermediate_size * hidden_size)?;
         let (w_down_nf4, w_down_scales) =
-            quantize_and_upload(w_down, intermediate_size, hidden_size)?;
+            quantize_and_upload(w_down, hidden_size * intermediate_size)?;
 
-        // Allocate scratch buffers (same as fp32 block — activations are always fp32)
+        // Allocate scratch buffers — Q and attn_out need q_dim, not hidden_size
+        // C-NF4SCRATCH-001: q_dim = num_heads * head_dim (may differ from hidden_size)
         let scratch = CudaBlockScratch {
             norm1_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
-            q: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            q: GpuBuffer::new(&ctx, max_seq_len * q_dim)?,
             k: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
             v: GpuBuffer::new(&ctx, max_seq_len * kv_hidden_size)?,
             attn_scores: GpuBuffer::new(&ctx, num_heads * max_seq_len * max_seq_len)?,
-            attn_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
+            attn_out: GpuBuffer::new(&ctx, max_seq_len * q_dim)?,
             o_proj_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             residual1: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
             norm2_out: GpuBuffer::new(&ctx, max_seq_len * hidden_size)?,
@@ -2028,6 +2056,7 @@ impl CudaNf4TransformerBlock {
         use crate::autograd::cuda_forward::gemm_nf4_forward;
 
         let hidden_size = self.config.hidden_size;
+        let q_dim = self.config.q_dim();
         let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
         let intermediate_size = self.config.intermediate_size;
 
@@ -2042,6 +2071,7 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === Q, K, V Projections (NF4 fused dequant + GEMM) ===
+        // C-NF4GEMM-001: Q proj is C[seq,q_dim] = A[seq,hidden] @ B[hidden,q_dim]
         gemm_nf4_forward(
             &self.scratch.norm1_out,
             &self.w_q_nf4,
@@ -2049,7 +2079,7 @@ impl CudaNf4TransformerBlock {
             &mut self.scratch.q,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             stream,
         )?;
 
@@ -2080,13 +2110,14 @@ impl CudaNf4TransformerBlock {
         self.compute_attention_cuda(seq_len, stream)?;
 
         // === Output Projection ===
+        // C-NF4GEMM-002: O proj is C[seq,hidden] = A[seq,q_dim] @ B[q_dim,hidden]
         gemm_nf4_forward(
             &self.scratch.attn_out,
             &self.w_o_nf4,
             &self.w_o_scales,
             &mut self.scratch.o_proj_out,
             saturating_u32(seq_len),
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             saturating_u32(hidden_size),
             stream,
         )?;
