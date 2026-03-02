@@ -149,6 +149,29 @@ fn test_transformer_trainer_train_epoch() {
 }
 
 #[test]
+fn test_transformer_trainer_epoch_with_callback() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    let mut trainer = TransformerTrainer::new(config);
+
+    let batches = vec![
+        LMBatch::single(vec![1, 2, 3], vec![2, 3, 4]),
+        LMBatch::single(vec![5, 6, 7], vec![6, 7, 8]),
+    ];
+
+    let mut callback_calls = Vec::new();
+    let avg_loss = trainer.train_epoch_with_callback(&batches, |batch_idx, loss, _trainer| {
+        callback_calls.push((batch_idx, loss));
+    });
+
+    assert!(avg_loss > 0.0);
+    assert_eq!(callback_calls.len(), 2);
+    assert_eq!(callback_calls[0].0, 0);
+    assert_eq!(callback_calls[1].0, 1);
+    assert!(callback_calls[0].1 > 0.0);
+    assert!(callback_calls[1].1 > 0.0);
+}
+
+#[test]
 fn test_transformer_trainer_empty_epoch() {
     let config = TransformerTrainConfig::new(TransformerConfig::tiny());
     let mut trainer = TransformerTrainer::new(config);

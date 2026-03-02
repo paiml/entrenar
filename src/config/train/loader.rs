@@ -131,17 +131,38 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     TRACER.enable();
     TRACER.clear();
 
+    let num_batches = batches.len();
+    let start_time = std::time::Instant::now();
+    let log_interval = std::cmp::max(num_batches / 100, 1); // Log ~100 times per epoch
+
     for epoch in 0..spec.training.epochs {
-        let avg_loss = trainer.train_epoch(&batches);
+        let epoch_start = std::time::Instant::now();
+        let avg_loss = trainer.train_epoch_with_callback(&batches, |batch_idx, batch_loss, trainer| {
+            if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
+                let elapsed = epoch_start.elapsed().as_secs_f64();
+                let batches_done = batch_idx + 1;
+                let seq_len = spec.data.seq_len.unwrap_or(128);
+                let tokens_done = batches_done * spec.data.batch_size * seq_len;
+                let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
+                let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
+                println!(
+                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} eta={:.0}s",
+                    batches_done, num_batches,
+                    trainer.step(), batch_loss, trainer.current_lr(),
+                    tokens_done as f64 / elapsed.max(0.001),
+                    remaining,
+                );
+            }
+        });
         let ppl = crate::train::perplexity(avg_loss);
         println!(
-            "Epoch {}/{}: loss={:.6}, perplexity={:.2}",
-            epoch + 1,
-            spec.training.epochs,
-            avg_loss,
-            ppl
+            "Epoch {}/{}: loss={:.6}, perplexity={:.2}, time={:.1}s",
+            epoch + 1, spec.training.epochs, avg_loss, ppl,
+            epoch_start.elapsed().as_secs_f64(),
         );
     }
+    let total_time = start_time.elapsed();
+    println!("Total training time: {:.1}s", total_time.as_secs_f64());
 
     // Print trace report
     println!("{}", TRACER.report());

@@ -173,15 +173,27 @@ impl TransformerTrainer {
 
     /// Train for one epoch over batches
     pub fn train_epoch(&mut self, batches: &[LMBatch]) -> f32 {
+        self.train_epoch_with_callback(batches, |_, _, _| {})
+    }
+
+    /// Train for one epoch with a per-step callback.
+    ///
+    /// The callback receives (batch_index, batch_loss, &self) after each batch.
+    /// Use this for progress logging, checkpointing, or early stopping.
+    pub fn train_epoch_with_callback<F>(&mut self, batches: &[LMBatch], mut on_batch: F) -> f32
+    where
+        F: FnMut(usize, f32, &Self),
+    {
         if batches.is_empty() {
             return 0.0;
         }
 
         let mut total_loss = 0.0;
 
-        for batch in batches {
+        for (i, batch) in batches.iter().enumerate() {
             let batch_loss = self.train_batch(batch);
             total_loss += batch_loss;
+            on_batch(i, batch_loss, self);
         }
 
         total_loss / batches.len().max(1) as f32
