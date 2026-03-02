@@ -370,18 +370,20 @@ impl CudaTransformerTrainer {
         let lm_head_grad_gpu = GpuBuffer::new(&ctx, vocab_size * hidden_size).map_err(|e| {
             crate::error::Error::ConfigError(format!("LM head grad alloc failed: {e:?}"))
         })?;
-        let lm_head_m = GpuBuffer::new(&ctx, vocab_size * hidden_size).map_err(|e| {
+        // CRITICAL: Must zero-initialize m/v buffers. GpuBuffer::new() does NOT
+        // zero memory (cuMemAlloc returns uninitialized VRAM).
+        let lm_head_m = GpuBuffer::from_host(&ctx, &vec![0.0f32; vocab_size * hidden_size]).map_err(|e| {
             crate::error::Error::ConfigError(format!("LM head m alloc failed: {e:?}"))
         })?;
-        let lm_head_v = GpuBuffer::new(&ctx, vocab_size * hidden_size).map_err(|e| {
+        let lm_head_v = GpuBuffer::from_host(&ctx, &vec![0.0f32; vocab_size * hidden_size]).map_err(|e| {
             crate::error::Error::ConfigError(format!("LM head v alloc failed: {e:?}"))
         })?;
 
         // Final norm optimizer states
-        let final_norm_m = GpuBuffer::new(&ctx, hidden_size).map_err(|e| {
+        let final_norm_m = GpuBuffer::from_host(&ctx, &vec![0.0f32; hidden_size]).map_err(|e| {
             crate::error::Error::ConfigError(format!("Final norm m alloc failed: {e:?}"))
         })?;
-        let final_norm_v = GpuBuffer::new(&ctx, hidden_size).map_err(|e| {
+        let final_norm_v = GpuBuffer::from_host(&ctx, &vec![0.0f32; hidden_size]).map_err(|e| {
             crate::error::Error::ConfigError(format!("Final norm v alloc failed: {e:?}"))
         })?;
 

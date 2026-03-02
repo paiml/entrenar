@@ -1698,25 +1698,22 @@ impl CudaTransformerBlock {
         let kv_hidden = self.config.num_kv_heads * self.config.head_dim();
         let intermediate = self.config.intermediate_size;
 
+        // CRITICAL: Must zero-initialize m/v buffers. GpuBuffer::new() does NOT
+        // zero memory (cuMemAlloc returns uninitialized VRAM). Uninitialized m/v
+        // causes v_new = beta2 * GARBAGE which can be negative → sqrt(neg) → NaN.
+        let z = |n: usize| -> Result<GpuBuffer<f32>> {
+            Ok(GpuBuffer::from_host(&self.ctx, &vec![0.0f32; n])?)
+        };
         Ok(GpuBlockOptimizerState {
-            m_w_q: GpuBuffer::new(&self.ctx, hidden * hidden)?,
-            v_w_q: GpuBuffer::new(&self.ctx, hidden * hidden)?,
-            m_w_k: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
-            v_w_k: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
-            m_w_v: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
-            v_w_v: GpuBuffer::new(&self.ctx, hidden * kv_hidden)?,
-            m_w_o: GpuBuffer::new(&self.ctx, hidden * hidden)?,
-            v_w_o: GpuBuffer::new(&self.ctx, hidden * hidden)?,
-            m_w_gate: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
-            v_w_gate: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
-            m_w_up: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
-            v_w_up: GpuBuffer::new(&self.ctx, hidden * intermediate)?,
-            m_w_down: GpuBuffer::new(&self.ctx, intermediate * hidden)?,
-            v_w_down: GpuBuffer::new(&self.ctx, intermediate * hidden)?,
-            m_input_norm: GpuBuffer::new(&self.ctx, hidden)?,
-            v_input_norm: GpuBuffer::new(&self.ctx, hidden)?,
-            m_post_attn_norm: GpuBuffer::new(&self.ctx, hidden)?,
-            v_post_attn_norm: GpuBuffer::new(&self.ctx, hidden)?,
+            m_w_q: z(hidden * hidden)?,       v_w_q: z(hidden * hidden)?,
+            m_w_k: z(hidden * kv_hidden)?,    v_w_k: z(hidden * kv_hidden)?,
+            m_w_v: z(hidden * kv_hidden)?,    v_w_v: z(hidden * kv_hidden)?,
+            m_w_o: z(hidden * hidden)?,       v_w_o: z(hidden * hidden)?,
+            m_w_gate: z(hidden * intermediate)?, v_w_gate: z(hidden * intermediate)?,
+            m_w_up: z(hidden * intermediate)?,   v_w_up: z(hidden * intermediate)?,
+            m_w_down: z(intermediate * hidden)?, v_w_down: z(intermediate * hidden)?,
+            m_input_norm: z(hidden)?,         v_input_norm: z(hidden)?,
+            m_post_attn_norm: z(hidden)?,     v_post_attn_norm: z(hidden)?,
         })
     }
 
@@ -2743,19 +2740,18 @@ impl GpuLoraOptimizerState {
         let kv = config.num_kv_heads * config.head_dim();
         let r = lora_rank;
 
+        // CRITICAL: Must zero-initialize m/v buffers. GpuBuffer::new() does NOT
+        // zero memory (cuMemAlloc returns uninitialized VRAM).
+        let z = |n: usize| -> Result<GpuBuffer<f32>> {
+            Ok(GpuBuffer::from_host(ctx, &vec![0.0f32; n])?)
+        };
         Ok(Self {
-            m_lora_a_q: GpuBuffer::new(ctx, h * r)?,
-            v_lora_a_q: GpuBuffer::new(ctx, h * r)?,
-            m_lora_b_q: GpuBuffer::new(ctx, r * q_dim)?,
-            v_lora_b_q: GpuBuffer::new(ctx, r * q_dim)?,
-            m_lora_a_v: GpuBuffer::new(ctx, h * r)?,
-            v_lora_a_v: GpuBuffer::new(ctx, h * r)?,
-            m_lora_b_v: GpuBuffer::new(ctx, r * kv)?,
-            v_lora_b_v: GpuBuffer::new(ctx, r * kv)?,
-            m_input_norm: GpuBuffer::new(ctx, h)?,
-            v_input_norm: GpuBuffer::new(ctx, h)?,
-            m_post_attn_norm: GpuBuffer::new(ctx, h)?,
-            v_post_attn_norm: GpuBuffer::new(ctx, h)?,
+            m_lora_a_q: z(h * r)?,  v_lora_a_q: z(h * r)?,
+            m_lora_b_q: z(r * q_dim)?,  v_lora_b_q: z(r * q_dim)?,
+            m_lora_a_v: z(h * r)?,  v_lora_a_v: z(h * r)?,
+            m_lora_b_v: z(r * kv)?,  v_lora_b_v: z(r * kv)?,
+            m_input_norm: z(h)?,  v_input_norm: z(h)?,
+            m_post_attn_norm: z(h)?,  v_post_attn_norm: z(h)?,
         })
     }
 }
