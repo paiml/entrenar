@@ -37,7 +37,7 @@ use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward};
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_optim::adamw_step_cuda;
+use crate::autograd::cuda_optim::{adamw_step_cuda, gradient_clip_cuda};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
@@ -57,6 +57,70 @@ use crate::transformer::{
 use super::batch::LMBatch;
 #[cfg(feature = "cuda")]
 use super::config::TransformerTrainConfig;
+
+/// Estimate gradient L2 norm of the shared workspace by sampling, return clip scale.
+///
+/// Free function to avoid borrow conflicts with `&mut self`.
+#[cfg(feature = "cuda")]
+fn estimate_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> f32 {
+    fn sample_sq_norm(buf: &GpuBuffer<f32>) -> f64 {
+        let sample_size = buf.len().min(1024);
+        let mut sample = vec![0.0f32; sample_size];
+        if buf.copy_to_host_at(&mut sample, 0).is_err() {
+            return 0.0;
+        }
+        let partial: f64 = sample.iter().map(|&x| (x as f64) * (x as f64)).sum();
+        partial * (buf.len() as f64 / sample_size as f64)
+    }
+
+    let total_sq = sample_sq_norm(&ws.grad_w_q)
+        + sample_sq_norm(&ws.grad_w_k)
+        + sample_sq_norm(&ws.grad_w_v)
+        + sample_sq_norm(&ws.grad_w_o)
+        + sample_sq_norm(&ws.grad_gate)
+        + sample_sq_norm(&ws.grad_up)
+        + sample_sq_norm(&ws.grad_down)
+        + sample_sq_norm(&ws.grad_input_norm)
+        + sample_sq_norm(&ws.grad_post_attn_norm);
+
+    let estimated_norm = total_sq.sqrt() as f32;
+    if estimated_norm > max_norm {
+        max_norm / estimated_norm
+    } else {
+        1.0
+    }
+}
+
+/// Clip all gradient buffers in the shared workspace using per-block L2 norm estimate.
+///
+/// Free function to avoid borrow conflicts with `&mut self` + `stream`.
+#[cfg(feature = "cuda")]
+fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &CudaStream) {
+    let scale = estimate_workspace_clip_scale(ws, max_norm);
+    if (scale - 1.0).abs() < 1e-7 {
+        return;
+    }
+
+    let n_wq = ws.grad_w_q.len() as u32;
+    let n_wk = ws.grad_w_k.len() as u32;
+    let n_wv = ws.grad_w_v.len() as u32;
+    let n_wo = ws.grad_w_o.len() as u32;
+    let n_gate = ws.grad_gate.len() as u32;
+    let n_up = ws.grad_up.len() as u32;
+    let n_down = ws.grad_down.len() as u32;
+    let n_inorm = ws.grad_input_norm.len() as u32;
+    let n_panorm = ws.grad_post_attn_norm.len() as u32;
+
+    let _ = gradient_clip_cuda(&mut ws.grad_w_q, scale, n_wq, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_w_k, scale, n_wk, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_w_v, scale, n_wv, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_w_o, scale, n_wo, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_gate, scale, n_gate, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_up, scale, n_up, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_down, scale, n_down, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_input_norm, scale, n_inorm, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_post_attn_norm, scale, n_panorm, stream);
+}
 
 /// GPU-resident training state for pretraining.
 ///
@@ -434,14 +498,17 @@ impl CudaTransformerTrainer {
         let hidden_slice = hidden.data().as_slice()?;
 
         // Upload hidden states to GPU (Transfer 1: H2D)
-        let actual_buf_size = seq_len * hidden_size;
-        let mut gpu_input = self.cuda_trainer.upload(hidden_slice).ok()?;
-        let mut gpu_output = self.cuda_trainer.zeros(actual_buf_size).ok()?;
+        // Pad to max_seq_len so D2D copies to pre-allocated layer_inputs match.
+        let max_buf_size = self.config.max_seq_len * hidden_size;
+        let mut padded_hidden = vec![0.0f32; max_buf_size];
+        padded_hidden[..hidden_slice.len()].copy_from_slice(hidden_slice);
+        let mut gpu_input = self.cuda_trainer.upload(&padded_hidden).ok()?;
+        let mut gpu_output = self.cuda_trainer.zeros(max_buf_size).ok()?;
 
         // Forward through CUDA blocks, saving layer inputs
         for (i, block) in self.cuda_blocks.iter_mut().enumerate() {
-            // SAFETY: Both buffers are valid GPU allocations. Copy completes
-            // before block.forward() reads from gpu_input (same stream ordering).
+            // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
+            // Copy completes before block.forward() reads from gpu_input (same stream ordering).
             unsafe {
                 self.gpu_training.layer_inputs[i]
                     .copy_from_buffer_async(&gpu_input, stream)
@@ -452,7 +519,7 @@ impl CudaTransformerTrainer {
         }
 
         // Save blocks output for final norm backward
-        // SAFETY: Disjoint GPU buffers, stream-ordered.
+        // SAFETY: Disjoint GPU buffers with matching max_seq_len sizes.
         unsafe {
             self.gpu_training
                 .blocks_output
@@ -486,13 +553,16 @@ impl CudaTransformerTrainer {
         .ok()?;
 
         // Download logits (Transfer 2: D2H)
+        // logits_buf is max_seq_len*vocab_size; only download seq_len*vocab_size.
         stream.synchronize().ok()?;
         let mut buf = vec![0.0f32; seq_len * vocab_size];
-        self.gpu_training.logits_buf.copy_to_host(&mut buf).ok()?;
+        self.gpu_training.logits_buf.copy_to_host_at(&mut buf, 0).ok()?;
 
         // NaN guard
         if buf.iter().any(|v| !v.is_finite()) {
-            eprintln!("[CUDA] NaN in logits — falling back");
+            let nan_count = buf.iter().filter(|v| v.is_nan()).count();
+            let inf_count = buf.iter().filter(|v| v.is_infinite()).count();
+            eprintln!("[CUDA] NaN in logits — falling back (nan={nan_count}, inf={inf_count}, total={}))", buf.len());
             return None;
         }
 
@@ -548,7 +618,12 @@ impl CudaTransformerTrainer {
         Some((loss_val, grad_logits))
     }
 
-    /// GPU backward pass: upload grad → LM head backward → norm backward → block backward.
+    /// GPU backward pass with interleaved per-block optimizer step.
+    ///
+    /// Each block's backward writes weight gradients to the shared `CudaGradWorkspace`.
+    /// Since `gemm_backward_b` overwrites (not accumulates), we must run each block's
+    /// optimizer step immediately after its backward, before the next block overwrites
+    /// the workspace. This also enables per-block gradient clipping.
     ///
     /// Returns `grad_output_is_a` flag for embedding backward.
     /// Transfer: 1 H2D (grad_logits).
@@ -561,9 +636,16 @@ impl CudaTransformerTrainer {
         vocab_size: usize,
     ) -> Option<bool> {
         let stream = self.cuda_trainer.stream();
+        let max_grad_norm = self.config.base.max_grad_norm;
+        let lr = self.current_lr();
+        let beta1 = self.config.beta1;
+        let beta2 = self.config.beta2;
+        let weight_decay = self.config.weight_decay;
 
         // Upload grad_logits (Transfer 3: H2D)
-        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).ok()?;
+        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).map_err(|e| {
+            eprintln!("[CUDA backward] upload failed: {e:?}");
+        }).ok()?;
 
         // LM head GEMM backward
         gemm_backward_a(
@@ -572,7 +654,7 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.lm_head_grad_hidden,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).ok()?;
+        ).map_err(|e| eprintln!("[CUDA backward] lm_head gemm_a failed: {e:?}")).ok()?;
 
         gemm_backward_b(
             &self.gpu_training.norm_output,
@@ -580,7 +662,14 @@ impl CudaTransformerTrainer {
             &mut self.lm_head_grad_gpu,
             seq_len as u32, hidden_size as u32, vocab_size as u32,
             stream,
-        ).ok()?;
+        ).map_err(|e| eprintln!("[CUDA backward] lm_head gemm_b failed: {e:?}")).ok()?;
+
+        // Clip + optimize LM head weight gradient
+        if let Some(max_norm) = max_grad_norm {
+            let scale = Self::estimate_clip_scale(&self.lm_head_grad_gpu, max_norm);
+            let n = self.lm_head_grad_gpu.len() as u32;
+            let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, scale, n, stream);
+        }
 
         // Final RMSNorm backward
         rms_norm_backward(
@@ -590,9 +679,44 @@ impl CudaTransformerTrainer {
             &mut self.gpu_training.grad_buf_a,
             &mut self.gpu_training.grad_final_norm_weight,
             seq_len as u32, hidden_size as u32, 1e-5_f32, stream,
-        ).ok()?;
+        ).map_err(|e| eprintln!("[CUDA backward] rms_norm failed: {e:?}")).ok()?;
 
-        // Backward through blocks in reverse
+        // Clip final norm weight gradient
+        if let Some(max_norm) = max_grad_norm {
+            let scale = Self::estimate_clip_scale(&self.gpu_training.grad_final_norm_weight, max_norm);
+            let n = self.gpu_training.grad_final_norm_weight.len() as u32;
+            let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
+        }
+
+        // Increment optimizer step counter (once per optimizer step, not per block)
+        self.gpu_training.step += 1;
+        let step = self.gpu_training.step;
+
+        // LM head optimizer step (before blocks overwrite anything)
+        let n_lm = self.lm_head_weight_gpu.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.lm_head_weight_gpu,
+            &self.lm_head_grad_gpu,
+            &mut self.lm_head_m,
+            &mut self.lm_head_v,
+            lr, beta1, beta2, 1e-8, weight_decay, step, n_lm, stream,
+        );
+
+        // Final norm optimizer step
+        let n_norm = self.gpu_training.final_norm_weight.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.gpu_training.final_norm_weight,
+            &self.gpu_training.grad_final_norm_weight,
+            &mut self.final_norm_m,
+            &mut self.final_norm_v,
+            lr, beta1, beta2, 1e-8, weight_decay, step, n_norm, stream,
+        );
+
+        // Backward through blocks in reverse, with interleaved clip + optimizer.
+        //
+        // Each block's backward writes weight gradients to the shared CudaGradWorkspace.
+        // We immediately clip and optimize before the next block overwrites the workspace.
+        //
         // SAFETY: grad_buf_a and grad_buf_b are disjoint fields. Raw pointers
         // allow alternating read/write without violating aliasing rules.
         let grad_a_ptr: *mut GpuBuffer<f32> = &mut self.gpu_training.grad_buf_a;
@@ -611,20 +735,60 @@ impl CudaTransformerTrainer {
                 &self.gpu_training.layer_inputs[layer_idx],
                 grad_output, grad_input, seq_len, stream,
                 &mut self.cuda_grad_workspace,
-            ).ok()?;
+            ).map_err(|e| {
+                eprintln!("[CUDA backward] block[{layer_idx}] failed: {e:?}");
+            }).ok()?;
+
+            // Per-block gradient clipping: estimate L2 norm from workspace, scale if needed
+            if let Some(max_norm) = max_grad_norm {
+                clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
+            }
+
+            // Per-block optimizer step: consume workspace gradients before next block overwrites
+            let _ = self.cuda_blocks[layer_idx].optimizer_step(
+                &mut self.gpu_training.optimizer_states[layer_idx],
+                step, lr, beta1, beta2, 1e-8, weight_decay, stream,
+                &self.cuda_grad_workspace,
+            );
+
             grad_output_is_a = !grad_output_is_a;
         }
 
-        stream.synchronize().ok()?;
+        stream.synchronize().map_err(|e| {
+            eprintln!("[CUDA backward] final sync failed: {e:?}");
+        }).ok()?;
+
         Some(grad_output_is_a)
     }
+
+    /// Estimate gradient L2 norm by sampling and compute clip scale factor.
+    ///
+    /// Downloads 1024 elements from the buffer, computes partial L2 norm,
+    /// and extrapolates to the full buffer. Returns `min(1.0, max_norm / estimated_norm)`.
+    fn estimate_clip_scale(buf: &GpuBuffer<f32>, max_norm: f32) -> f32 {
+        let sample_size = buf.len().min(1024);
+        let mut sample = vec![0.0f32; sample_size];
+        if buf.copy_to_host_at(&mut sample, 0).is_err() {
+            return 1.0;
+        }
+        let partial_sq_sum: f64 = sample.iter().map(|&x| (x as f64) * (x as f64)).sum();
+        // Extrapolate: full_norm ≈ sqrt(partial_sum * (total_len / sample_len))
+        let scale_factor = buf.len() as f64 / sample_size as f64;
+        let estimated_norm = (partial_sq_sum * scale_factor).sqrt() as f32;
+        if estimated_norm > max_norm {
+            max_norm / estimated_norm
+        } else {
+            1.0
+        }
+    }
+
 
     /// Download embedding gradient from GPU and scatter-add into CPU weight.
     #[allow(unsafe_code)]
     fn embed_backward(
         &mut self,
         input_ids: &[u32],
-        seq_len: usize,
+        _seq_len: usize,
         hidden_size: usize,
         vocab_size: usize,
         grad_output_is_a: bool,
@@ -660,69 +824,12 @@ impl CudaTransformerTrainer {
         Some(())
     }
 
-    /// Apply optimizer step to all GPU weights and CPU embedding.
+    /// Apply optimizer step to CPU embedding and update metrics.
     ///
-    /// Called after accumulation_steps batches.
+    /// GPU block optimizer steps now run interleaved with backward in `gpu_backward()`.
+    /// LM head and final norm optimizer steps also run in `gpu_backward()`.
+    /// This method handles only CPU embedding and bookkeeping.
     fn optimizer_step(&mut self) {
-        let lr = self.current_lr();
-        let stream = self.cuda_trainer.stream();
-
-        self.gpu_training.step += 1;
-        let step = self.gpu_training.step;
-
-        // GPU optimizer step for transformer blocks
-        for (block, opt_state) in self.cuda_blocks.iter_mut().zip(
-            self.gpu_training.optimizer_states.iter_mut(),
-        ) {
-            let _ = block.optimizer_step(
-                opt_state,
-                step,
-                lr,
-                0.9,   // beta1
-                0.999, // beta2
-                1e-8,  // eps
-                0.01,  // weight_decay
-                stream,
-                &self.cuda_grad_workspace,
-            );
-        }
-
-        // GPU optimizer step for LM head weight
-        let n_lm = self.lm_head_weight_gpu.len() as u32;
-        let _ = adamw_step_cuda(
-            &mut self.lm_head_weight_gpu,
-            &self.lm_head_grad_gpu,
-            &mut self.lm_head_m,
-            &mut self.lm_head_v,
-            lr,
-            0.9,
-            0.999,
-            1e-8,
-            0.01,
-            step,
-            n_lm,
-            stream,
-        );
-
-        // GPU optimizer step for final norm weight
-        let n_norm = self.gpu_training.final_norm_weight.len() as u32;
-        let _ = adamw_step_cuda(
-            &mut self.gpu_training.final_norm_weight,
-            &self.gpu_training.grad_final_norm_weight,
-            &mut self.final_norm_m,
-            &mut self.final_norm_v,
-            lr,
-            0.9,
-            0.999,
-            1e-8,
-            0.01,
-            step,
-            n_norm,
-            stream,
-        );
-
-        let _ = stream.synchronize();
-
         // CPU optimizer step for embedding weight
         let mut embed_params = vec![&mut self.model.embed_tokens.weight];
         self.embed_optimizer.step_refs(&mut embed_params);

@@ -90,6 +90,14 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         train_config = train_config.with_grad_clip(clip);
     }
 
+    // Wire optimizer hyperparameters from YAML (ALB-040)
+    if let Some(v) = spec.optimizer.params.get("beta2").and_then(|v| v.as_f64()) {
+        train_config = train_config.with_beta2(v as f32);
+    }
+    if let Some(v) = spec.optimizer.params.get("weight_decay").and_then(|v| v.as_f64()) {
+        train_config = train_config.with_weight_decay(v as f32);
+    }
+
     if let Some(accum) = spec.training.gradient_accumulation {
         train_config = train_config.with_accumulation_steps(accum);
     }

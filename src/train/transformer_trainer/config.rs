@@ -27,6 +27,12 @@ pub struct TransformerTrainConfig {
     pub max_steps: Option<usize>,
     /// Use CUDA GPU training when available (default: true = auto-detect)
     pub use_cuda: bool,
+    /// AdamW beta1 (default: 0.9)
+    pub beta1: f32,
+    /// AdamW beta2 (default: 0.999)
+    pub beta2: f32,
+    /// AdamW weight decay (default: 0.01)
+    pub weight_decay: f32,
 }
 
 impl TransformerTrainConfig {
@@ -43,6 +49,9 @@ impl TransformerTrainConfig {
             lr: 0.001,
             max_steps: None,
             use_cuda: true,
+            beta1: 0.9,
+            beta2: 0.999,
+            weight_decay: 0.01,
         }
     }
 
@@ -103,6 +112,18 @@ impl TransformerTrainConfig {
     /// Enable or disable CUDA GPU training (default: true = auto-detect)
     pub fn with_use_cuda(mut self, use_cuda: bool) -> Self {
         self.use_cuda = use_cuda;
+        self
+    }
+
+    /// Set AdamW beta2 (default: 0.999)
+    pub fn with_beta2(mut self, beta2: f32) -> Self {
+        self.beta2 = beta2;
+        self
+    }
+
+    /// Set AdamW weight decay (default: 0.01)
+    pub fn with_weight_decay(mut self, wd: f32) -> Self {
+        self.weight_decay = wd;
         self
     }
 }
