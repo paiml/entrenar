@@ -6,7 +6,7 @@
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::kernels::{Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel};
+use trueno_gpu::kernels::{Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel, Nf4GemmTransposeKernel};
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
 
@@ -255,6 +255,83 @@ pub fn gemm_nf4_forward(
     unsafe {
         stream.launch_kernel(module, "nf4_gemm_fused", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("NF4 GEMM forward launch failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+/// NF4 transposed GEMM for backward pass (ENT-153: QLoRA backward).
+///
+/// Computes: `grad_input[M×K] = grad_output[M×N] @ dequant(W_nf4[K×N])^T`
+///
+/// This is the gradient-flow kernel: given upstream gradient and frozen NF4 weights,
+/// computes the input gradient without materializing fp32 weights.
+///
+/// # Arguments
+///
+/// * `grad_output` - Upstream gradient `[M × N]` (f32)
+/// * `w_nf4` - Frozen NF4-packed weights for `W[K × N]` (u8)
+/// * `w_scales` - Per-block scales for `W[K × N]` (f32)
+/// * `grad_input` - Output gradient `[M × K]` (f32)
+/// * `m` - Rows of grad_output (seq_len)
+/// * `n` - Columns of W (reduction dimension)
+/// * `k` - Rows of W (output columns = input dimension)
+///
+/// # Contract: C-NF4T-001 (Transposed GEMM Parity)
+///
+/// `gemm_nf4_backward_a(grad, W_nf4) ≈ gemm(grad, dequant(W)^T)` within 1e-3.
+#[cfg(feature = "cuda")]
+pub fn gemm_nf4_backward_a(
+    grad_output: &GpuBuffer<f32>,
+    w_nf4: &GpuBuffer<u8>,
+    w_scales: &GpuBuffer<f32>,
+    grad_input: &mut GpuBuffer<f32>,
+    m: u32,
+    n: u32,
+    k: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = Nf4GemmTransposeKernel::new(m, n, k);
+    let tile_size = kernel.tile_size;
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+
+    let key = format!("nf4_gemm_transpose_{m}_{n}_{k}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    // Output is [M, K], so grid.x covers K, grid.y covers M
+    let config = LaunchConfig {
+        grid: (k.div_ceil(tile_size), m.div_ceil(tile_size), 1),
+        block: (tile_size * tile_size, 1, 1),
+        shared_mem: 16 * 4, // NF4 codebook LUT (16 × f32)
+    };
+
+    let a_ptr = grad_output.as_ptr();
+    let b_nf4_ptr = w_nf4.as_ptr();
+    let b_scales_ptr = w_scales.as_ptr();
+    let c_ptr = grad_input.as_ptr();
+
+    // PTX kernel signature: (a_ptr, b_nf4_ptr, b_scales_ptr, c_ptr, m, n, k)
+    let mut args: [*mut std::ffi::c_void; 7] = [
+        &a_ptr as *const _ as *mut _,
+        &b_nf4_ptr as *const _ as *mut _,
+        &b_scales_ptr as *const _ as *mut _,
+        &c_ptr as *const _ as *mut _,
+        &m as *const _ as *mut _,
+        &n as *const _ as *mut _,
+        &k as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
+    // matching sizes, and the kernel parameters match the expected PTX signature.
+    unsafe {
+        stream.launch_kernel(module, "nf4_gemm_transpose", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("NF4 GEMM transpose launch failed: {e:?}"))
         })?;
     }
 

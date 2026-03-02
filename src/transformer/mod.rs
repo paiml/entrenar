@@ -23,7 +23,7 @@ pub use config::TransformerConfig;
 #[cfg(feature = "cuda")]
 pub use cuda_block::{BlockWeights, CudaBlock, CudaGradWorkspace, CudaNf4TransformerBlock, CudaTransformerBlock, GpuBlockOptimizerState};
 #[cfg(feature = "cuda")]
-pub(crate) use cuda_block::CudaBlockScratch;
+pub(crate) use cuda_block::{CudaBlockScratch, CudaLoraGradWorkspace, GpuLoraOptimizerState};
 #[cfg(not(feature = "cuda"))]
 pub use cuda_block::{CudaBlock, CudaTransformerBlock};
 pub use model::Transformer;
