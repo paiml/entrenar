@@ -391,3 +391,6 @@ search = "## \\[Unreleased\\]"
 replace = "## [{{version}}] - {{date}}"
 
 [workspace.dependencies]
+
+[patch.crates-io]
+trueno-gpu = { path = "../trueno/trueno-gpu" }

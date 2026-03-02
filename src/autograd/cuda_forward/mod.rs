@@ -38,10 +38,10 @@ mod tests;
 pub use activations::{
     batched_softmax_forward, gelu_forward, relu_forward, silu_forward, softmax_forward,
 };
-pub use cache::init_forward_kernel_cache;
+pub use cache::{init_forward_kernel_cache, pre_warm_forward_kernels};
 pub use elementwise::{
     batched_to_interleaved_forward, batched_transpose_forward, elementwise_mul_forward,
     expand_kv_heads, interleaved_to_batched_forward, residual_add_forward, scale_forward,
 };
-pub use matmul::{batched_4d_gemm_forward, fused_swiglu_forward, gemm_forward};
+pub use matmul::{batched_4d_gemm_forward, fused_swiglu_forward, gemm_forward, gemm_nf4_forward};
 pub use normalization::{layer_norm_forward, rms_norm_forward};
