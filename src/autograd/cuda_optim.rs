@@ -76,6 +76,82 @@ pub fn init_optim_kernel_cache(ctx: std::sync::Arc<CudaContext>) -> Result<()> {
     Ok(())
 }
 
+/// Pre-warm AdamW optimizer kernels for all trainable parameter sizes (ENT-153).
+///
+/// The kernel key is `adamw_step_{n}` where `n` is parameter count.
+///
+/// ## LoRA mode (NF4 QLoRA)
+/// - `hidden * rank` for A_q, A_v
+/// - `rank * q_dim` for B_q
+/// - `rank * kv_hidden` for B_v
+/// - `hidden_size` for norm weights
+///
+/// ## Full fp32 mode (non-NF4)
+/// - `hidden * hidden` for w_q, w_o
+/// - `hidden * kv_hidden` for w_k, w_v
+/// - `hidden * intermediate` for w_gate, w_up, w_down
+/// - `hidden_size` for norm weights
+///
+/// ## Classifier head (both modes)
+/// - `num_classes * hidden_size` for classifier weight
+/// - `num_classes` for classifier bias
+///
+/// Must JIT-compile before block upload fills VRAM (C-PREWARM-001).
+#[cfg(feature = "cuda")]
+pub fn pre_warm_lora_adamw_kernels(
+    hidden_size: usize,
+    q_dim: usize,
+    kv_hidden_size: usize,
+    lora_rank: usize,
+    num_classes: usize,
+    intermediate_size: usize,
+    quantize_nf4: bool,
+) -> Result<()> {
+    if lora_rank == 0 {
+        return Ok(());
+    }
+
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire optim kernel cache lock".to_string())
+    })?;
+
+    let target = cache.sm_target().to_string();
+
+    let mut sizes: Vec<u32> = Vec::new();
+
+    // LoRA parameter sizes (always needed)
+    sizes.push((hidden_size * lora_rank) as u32);    // A_q, A_v
+    sizes.push((lora_rank * q_dim) as u32);          // B_q
+    sizes.push((lora_rank * kv_hidden_size) as u32); // B_v
+    sizes.push(hidden_size as u32);                   // norm weights
+
+    // Full fp32 weight sizes (non-NF4 mode: optimizer runs on all block weights)
+    if !quantize_nf4 {
+        sizes.push((hidden_size * hidden_size) as u32);       // w_q, w_o
+        sizes.push((hidden_size * kv_hidden_size) as u32);    // w_k, w_v
+        sizes.push((hidden_size * intermediate_size) as u32); // w_gate, w_up, w_down
+    }
+
+    // Classifier head sizes
+    if num_classes > 0 {
+        sizes.push((num_classes * hidden_size) as u32);
+        sizes.push(num_classes as u32);
+    }
+
+    sizes.sort_unstable();
+    sizes.dedup();
+
+    for n in sizes {
+        let kernel = AdamWStepKernel::new(n);
+        let ptx = kernel.emit_ptx_for_target(&target);
+        let key = format!("adamw_step_{n}");
+        cache.get_or_compile(&key, &ptx)?;
+    }
+
+    Ok(())
+}
+
 /// Fused AdamW optimizer step on GPU
 ///
 /// Performs in-place weight update with momentum, adaptive learning rate, and weight decay.

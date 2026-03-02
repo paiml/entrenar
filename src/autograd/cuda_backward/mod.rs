@@ -36,7 +36,7 @@ mod structured;
 #[cfg(test)]
 mod tests;
 
-pub use cache::init_kernel_cache;
+pub use cache::{init_kernel_cache, pre_warm_lora_backward_kernels};
 pub use elementwise::{gelu_backward, relu_backward, silu_backward};
 pub use gemm::{gemm_backward_a, gemm_backward_b};
 pub use structured::{

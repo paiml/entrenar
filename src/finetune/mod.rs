@@ -40,7 +40,10 @@ pub use classification::{
     load_multi_label_corpus, load_safety_corpus, ClassWeightStrategy, ClassificationHead,
     MultiLabelSafetySample, SafetyCorpusStats, SafetySample,
 };
-pub use classify_pipeline::{BatchResult, ClassifyConfig, ClassifyPipeline};
+pub use classify_pipeline::{
+    BatchResult, ClassifyConfig, ClassifyPipeline, DataStats, DiagSeverity,
+    HyperparamDiagnostic, HyperparamDiagnostics,
+};
 pub use classify_trainer::{
     evaluate_checkpoint, ClassifyEvalReport, ClassifyTrainer, EpochMetrics, TrainResult,
     TrainingConfig, SSC_LABELS,

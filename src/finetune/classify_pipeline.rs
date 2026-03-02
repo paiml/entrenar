@@ -31,6 +31,12 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{pre_warm_forward_kernels, pre_warm_lora_backward_kernels};
 #[cfg(feature = "cuda")]
+use crate::autograd::cuda_backward::pre_warm_lora_backward_kernels as pre_warm_backward_cache_kernels;
+#[cfg(feature = "cuda")]
+use crate::autograd::cuda_optim::pre_warm_lora_adamw_kernels;
+#[cfg(feature = "cuda")]
+use crate::autograd::ops::pre_warm_realizador_gemm;
+#[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
 use crate::transformer::{CudaBlock, CudaBlockScratch, CudaGradWorkspace, CudaLoraGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState, GpuLoraOptimizerState};
@@ -102,6 +108,249 @@ impl Default for ClassifyConfig {
             class_weights: None,
             quantize_nf4: false,
         }
+    }
+}
+
+/// Hyperparameter diagnostic from contract validation.
+///
+/// Contract: qlora-hyperparameters-v1.yaml (C-HP-001..008)
+#[derive(Debug, Clone)]
+pub struct HyperparamDiagnostic {
+    pub contract_id: &'static str,
+    pub severity: DiagSeverity,
+    pub message: String,
+    pub recommendation: String,
+}
+
+/// Severity level for hyperparameter diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagSeverity {
+    /// Informational — config is acceptable but not optimal.
+    Info,
+    /// Warning — config violates a research-grounded contract.
+    Warn,
+    /// Error — config is mathematically invalid (e.g., lr=0).
+    Error,
+}
+
+/// Collection of hyperparameter diagnostics.
+#[derive(Debug, Clone, Default)]
+pub struct HyperparamDiagnostics {
+    pub items: Vec<HyperparamDiagnostic>,
+}
+
+impl HyperparamDiagnostics {
+    /// Check if any diagnostic matches a contract ID.
+    pub fn has_warning(&self, contract_id: &str) -> bool {
+        self.items.iter().any(|d| d.contract_id == contract_id
+            && matches!(d.severity, DiagSeverity::Warn | DiagSeverity::Error))
+    }
+
+    /// Check if there are any blocking errors.
+    pub fn has_errors(&self) -> bool {
+        self.items.iter().any(|d| matches!(d.severity, DiagSeverity::Error))
+    }
+
+    /// Print all diagnostics to stderr.
+    pub fn print_all(&self) {
+        for d in &self.items {
+            let prefix = match d.severity {
+                DiagSeverity::Info => "[HP-INFO]",
+                DiagSeverity::Warn => "[HP-WARN]",
+                DiagSeverity::Error => "[HP-ERROR]",
+            };
+            eprintln!("{prefix} {}: {} → {}", d.contract_id, d.message, d.recommendation);
+        }
+    }
+}
+
+/// Data distribution statistics for data-driven hyperparameter validation.
+///
+/// Contract: C-HP-004 (seq_len from data), C-HP-008 (epochs for imbalance)
+pub struct DataStats {
+    /// 99th percentile of BPE token lengths in training data.
+    pub p99_token_length: usize,
+    /// Class imbalance ratio (majority_count / minority_count).
+    pub imbalance_ratio: f32,
+    /// Number of samples in minority class.
+    pub minority_count: usize,
+}
+
+impl ClassifyConfig {
+    /// Create a QLoRA config with research-grounded defaults.
+    ///
+    /// Every parameter traces to a published source:
+    ///
+    /// | Parameter | Value | Source |
+    /// |-----------|-------|--------|
+    /// | `learning_rate` | 2e-4 (≤13B) / 1e-4 (>13B) | Dettmers 2023 Table 9 |
+    /// | `lora_alpha` | 2 × rank | Lightning AI experiments |
+    /// | `batch_size` | 4 | RTX VRAM budget |
+    /// | `accumulation_steps` | 4 | effective=16, Dettmers 2023 |
+    /// | `gradient_clip_norm` | 1.0 | Standard practice |
+    /// | `epochs` | 3 | Imbalanced classification |
+    ///
+    /// Contract: provable-contracts/contracts/entrenar/qlora-hyperparameters-v1.yaml
+    pub fn qlora_default(model_params: u64) -> Self {
+        // C-HP-001: lr scales with model size (Dettmers 2023 Table 9)
+        let learning_rate = if model_params <= 13_000_000_000 {
+            2e-4
+        } else {
+            1e-4
+        };
+        let lora_rank = 16;
+        Self {
+            num_classes: 2,
+            lora_rank,
+            // C-HP-003: alpha = 2 * rank (Lightning AI)
+            lora_alpha: (2 * lora_rank) as f32,
+            learning_rate,
+            // C-HP-008: >= 2 epochs for imbalanced classification
+            epochs: 3,
+            // C-HP-004: set from data, 256 is SSC v3 default
+            max_seq_len: 256,
+            log_interval: 100,
+            // C-HP-002: batch=4, accum=4 → effective=16 (Dettmers 2023)
+            batch_size: 4,
+            accumulation_steps: 4,
+            // C-HP-006: gradient clipping (standard, SSC v2.2 precedent)
+            gradient_clip_norm: Some(1.0),
+            class_weights: None,
+            quantize_nf4: true,
+        }
+    }
+
+    /// Validate hyperparameters against research-grounded contracts.
+    ///
+    /// Returns diagnostics (warnings/errors) for each violated contract.
+    /// Does NOT block — caller decides whether to abort or proceed.
+    ///
+    /// Contract: qlora-hyperparameters-v1.yaml (FALSIFY-HP-001..008)
+    pub fn validate_hyperparameters(&self, model_params: u64) -> HyperparamDiagnostics {
+        let mut diags = HyperparamDiagnostics::default();
+
+        // C-HP-001: Learning rate scaling
+        if self.quantize_nf4 && model_params <= 13_000_000_000 && self.learning_rate < 1.5e-4 {
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-001",
+                severity: DiagSeverity::Warn,
+                message: format!(
+                    "lr={:.0e} too low for {}B model (Dettmers 2023: use 2e-4 for ≤13B)",
+                    self.learning_rate, model_params / 1_000_000_000
+                ),
+                recommendation: "learning_rate: 0.0002".to_string(),
+            });
+        }
+
+        // C-HP-002: Effective batch size
+        let eff_batch = self.batch_size * self.accumulation_steps;
+        if eff_batch != 16 {
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-002",
+                severity: DiagSeverity::Warn,
+                message: format!(
+                    "effective_batch={eff_batch} ({}×{}), Dettmers 2023 recommends 16 for ≤13B",
+                    self.batch_size, self.accumulation_steps
+                ),
+                recommendation: format!(
+                    "batch_size: {}, accumulation_steps: {}",
+                    self.batch_size, 16 / self.batch_size.max(1)
+                ),
+            });
+        }
+
+        // C-HP-003: Alpha/rank ratio
+        let expected_alpha = 2.0 * self.lora_rank as f32;
+        if (self.lora_alpha - expected_alpha).abs() > 0.5 {
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-003",
+                severity: DiagSeverity::Warn,
+                message: format!(
+                    "lora_alpha={} with rank={} (ratio={:.1}), Lightning AI: alpha=2×rank={} optimal",
+                    self.lora_alpha, self.lora_rank,
+                    self.lora_alpha / self.lora_rank as f32,
+                    expected_alpha
+                ),
+                recommendation: format!("lora_alpha: {expected_alpha}"),
+            });
+        }
+
+        // C-HP-006: Gradient clipping
+        if self.gradient_clip_norm.is_none() {
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-006",
+                severity: DiagSeverity::Warn,
+                message: "No gradient clipping — SSC v2.2 saw grad norms up to 115.1".to_string(),
+                recommendation: "gradient_clip_norm: 1.0".to_string(),
+            });
+        }
+
+        // Blocking errors
+        if self.learning_rate <= 0.0 {
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-001",
+                severity: DiagSeverity::Error,
+                message: "learning_rate must be > 0".to_string(),
+                recommendation: "learning_rate: 0.0002".to_string(),
+            });
+        }
+        if self.batch_size == 0 {
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-002",
+                severity: DiagSeverity::Error,
+                message: "batch_size must be > 0".to_string(),
+                recommendation: "batch_size: 4".to_string(),
+            });
+        }
+
+        diags
+    }
+
+    /// Validate hyperparameters that depend on training data distribution.
+    ///
+    /// Requires measuring the actual data (genchi genbutsu — go and see).
+    ///
+    /// Contract: C-HP-004 (seq_len), C-HP-008 (epochs)
+    pub fn validate_with_data(&self, stats: &DataStats) -> HyperparamDiagnostics {
+        let mut diags = HyperparamDiagnostics::default();
+
+        // C-HP-004: Sequence length from data distribution
+        if self.max_seq_len > 2 * stats.p99_token_length && stats.p99_token_length > 0 {
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-004",
+                severity: DiagSeverity::Warn,
+                message: format!(
+                    "max_seq_len={} but p99(tokens)={} — attention is O(n²), wasting {:.0}× compute",
+                    self.max_seq_len,
+                    stats.p99_token_length,
+                    (self.max_seq_len as f64 / stats.p99_token_length as f64).powi(2)
+                ),
+                recommendation: format!(
+                    "max_seq_len: {} (next_pow2 of p99)",
+                    stats.p99_token_length.next_power_of_two()
+                ),
+            });
+        }
+
+        // C-HP-008: Epochs for imbalanced classification
+        if stats.imbalance_ratio > 5.0 && self.epochs < 2 {
+            let eff_batch = self.batch_size * self.accumulation_steps;
+            let updates_per_epoch = stats.minority_count / eff_batch.max(1);
+            diags.items.push(HyperparamDiagnostic {
+                contract_id: "C-HP-008",
+                severity: DiagSeverity::Warn,
+                message: format!(
+                    "epochs={} with {:.1}:1 imbalance — minority gets only {} gradient updates",
+                    self.epochs, stats.imbalance_ratio, updates_per_epoch * self.epochs
+                ),
+                recommendation: format!(
+                    "epochs: 3 (minority gets {} updates)",
+                    updates_per_epoch * 3
+                ),
+            });
+        }
+
+        diags
     }
 }
 
@@ -328,7 +577,7 @@ impl ClassifyPipeline {
             }
         }
 
-        // Load tokenizer if tokenizer.json exists (optional — falls back to byte-level)
+        // CONTRACT: Training requires a BPE tokenizer — byte-fallback is not acceptable.
         let tokenizer_path = model_dir.join("tokenizer.json");
         let tokenizer = if tokenizer_path.exists() {
             Some(
@@ -336,7 +585,10 @@ impl ClassifyPipeline {
                     .map_err(|e| crate::Error::Io(format!("Failed to load tokenizer: {e}")))?,
             )
         } else {
-            None
+            return Err(crate::Error::ConfigError(format!(
+                "No tokenizer.json found in '{}'. Training requires a BPE tokenizer.",
+                model_dir.display(),
+            )));
         };
 
         let optimizer = AdamW::default_params(classify_config.learning_rate);
@@ -402,15 +654,138 @@ impl ClassifyPipeline {
         })
     }
 
-    /// Tokenize input text using BPE tokenizer if available, else byte-level fallback.
+    /// Create pipeline from APR model file (.apr format).
+    ///
+    /// Loads transformer weights from the APR binary, dequantizing from any
+    /// stored dtype (F16, Q4K, etc.) to F32. Loads sibling tokenizer if present
+    /// (e.g., `model.tokenizer.json` next to `model.apr`).
+    ///
+    /// # Errors
+    /// Returns error if APR file cannot be loaded or weights are invalid.
+    pub fn from_apr(
+        apr_path: &Path,
+        model_config: &TransformerConfig,
+        classify_config: ClassifyConfig,
+    ) -> crate::Result<Self> {
+        let model = Transformer::from_apr(apr_path, model_config)?;
+        let classifier =
+            ClassificationHead::new(model_config.hidden_size, classify_config.num_classes);
+        let mut lora_layers = Self::build_lora_layers(&model, model_config, &classify_config);
+
+        for lora in &mut lora_layers {
+            for param in lora.trainable_params() {
+                param.set_requires_grad(true);
+            }
+        }
+
+        // CONTRACT: Training requires a BPE tokenizer — byte-fallback is not acceptable.
+        let tokenizer = {
+            let sibling = apr_path
+                .file_stem()
+                .and_then(|stem| {
+                    apr_path
+                        .parent()
+                        .map(|p| p.join(format!("{}.tokenizer.json", stem.to_str().unwrap_or(""))))
+                });
+
+            match sibling {
+                Some(ref path) if path.exists() => {
+                    let tok = HfTokenizer::from_file(path).map_err(|e| {
+                        crate::Error::ConfigError(format!(
+                            "Failed to load tokenizer from '{}': {e}. \
+                             Training requires a BPE tokenizer.",
+                            path.display(),
+                        ))
+                    })?;
+                    Some(tok)
+                }
+                _ => {
+                    return Err(crate::Error::ConfigError(format!(
+                        "No sibling tokenizer found for '{}'. Expected \
+                         '{}.tokenizer.json' next to the .apr file. Training \
+                         requires a BPE tokenizer.",
+                        apr_path.display(),
+                        apr_path.file_stem().unwrap_or_default().to_str().unwrap_or(""),
+                    )));
+                }
+            }
+        };
+
+        let optimizer = AdamW::default_params(classify_config.learning_rate);
+
+        #[cfg(feature = "cuda")]
+        let (cuda_trainer, cuda_blocks, shared_scratch) =
+            Self::try_init_cuda(&model, model_config, &classify_config, &lora_layers);
+
+        #[cfg(feature = "cuda")]
+        let gpu_training = Self::try_init_gpu_training(
+            &model, model_config, classify_config.max_seq_len,
+            &cuda_trainer, &cuda_blocks,
+        );
+
+        #[cfg(feature = "cuda")]
+        let cuda_grad_workspace = if classify_config.quantize_nf4 {
+            None
+        } else {
+            cuda_trainer.as_ref().and_then(|t| {
+                CudaGradWorkspace::new(t.context(), model_config)
+                    .map_err(|e| eprintln!("[CUDA] Failed to allocate grad workspace: {e}"))
+                    .ok()
+            })
+        };
+
+        #[cfg(feature = "cuda")]
+        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states) = if classify_config.quantize_nf4 {
+            Self::try_init_nf4_lora_training(&cuda_trainer, &cuda_blocks, model_config, &classify_config)
+        } else {
+            (None, None)
+        };
+
+        Ok(Self {
+            model,
+            classifier,
+            lora_layers,
+            config: classify_config,
+            optimizer,
+            tokenizer,
+            model_dir: Some(apr_path.to_path_buf()),
+            #[cfg(feature = "cuda")]
+            cuda_trainer,
+            #[cfg(feature = "cuda")]
+            cuda_blocks,
+            #[cfg(feature = "cuda")]
+            shared_scratch,
+            #[cfg(feature = "cuda")]
+            cuda_nan_count: 0,
+            #[cfg(feature = "cuda")]
+            gpu_training,
+            #[cfg(feature = "cuda")]
+            cuda_grad_workspace,
+            #[cfg(feature = "cuda")]
+            cuda_lora_grad_workspace,
+            #[cfg(feature = "cuda")]
+            cuda_lora_optimizer_states,
+            #[cfg(feature = "cuda")]
+            nf4_lora_step: 0,
+        })
+    }
+
+    /// Tokenize input text using BPE tokenizer.
     ///
     /// Truncates to `config.max_seq_len` and ensures at least one token.
+    ///
+    /// # Panics
+    /// Panics if no BPE tokenizer is loaded. Training pipelines MUST have a
+    /// tokenizer — byte-level fallback is a silent corruption path.
     pub(crate) fn tokenize(&self, text: &str) -> Vec<u32> {
-        let mut ids = if let Some(ref tok) = self.tokenizer {
-            tok.encode(text)
-        } else {
-            text.bytes().map(u32::from).collect()
-        };
+        let mut ids = self
+            .tokenizer
+            .as_ref()
+            .expect(
+                "ClassifyPipeline::tokenize() called without BPE tokenizer. \
+                 Ensure a tokenizer.json is available.",
+            )
+            .encode(text);
         ids.truncate(self.config.max_seq_len);
         if ids.is_empty() {
             ids.push(0);
@@ -472,6 +847,88 @@ impl ClassifyPipeline {
 
     // ── CUDA GPU acceleration (F-CUDA-001..014) ────────────────────────
 
+    /// C-PREWARM-001: JIT-compile all CUDA kernels before block upload.
+    ///
+    /// CUDA JIT needs free VRAM for PTX compilation. After uploading transformer
+    /// layers, JIT fails with CUDA_ERROR_ILLEGAL_ADDRESS or OOM.
+    #[cfg(feature = "cuda")]
+    fn pre_warm_all_kernels(
+        model_config: &TransformerConfig,
+        classify_config: &ClassifyConfig,
+    ) -> bool {
+        let max_seq_len = classify_config.max_seq_len;
+        let quantize_nf4 = classify_config.quantize_nf4;
+        let head_dim = model_config.head_dim();
+
+        if let Err(e) = pre_warm_forward_kernels(
+            model_config.hidden_size,
+            model_config.intermediate_size,
+            model_config.num_attention_heads,
+            model_config.num_kv_heads,
+            head_dim,
+            max_seq_len,
+        ) {
+            eprintln!("[CUDA] Failed to pre-warm forward kernels: {e} — using CPU");
+            return false;
+        }
+
+        if quantize_nf4 {
+            eprintln!("[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)");
+        }
+
+        if let Err(e) = pre_warm_lora_backward_kernels(
+            model_config.hidden_size,
+            model_config.num_attention_heads * head_dim,
+            model_config.num_kv_heads * head_dim,
+            max_seq_len,
+            classify_config.lora_rank,
+        ) {
+            eprintln!("[CUDA] Failed to pre-warm LoRA forward-cache backward kernels: {e} — using CPU");
+            return false;
+        }
+
+        if let Err(e) = pre_warm_backward_cache_kernels(
+            model_config.hidden_size,
+            model_config.num_attention_heads * head_dim,
+            model_config.num_kv_heads * head_dim,
+            max_seq_len,
+            classify_config.lora_rank,
+            model_config.intermediate_size,
+            model_config.num_attention_heads,
+            quantize_nf4,
+        ) {
+            eprintln!("[CUDA] Failed to pre-warm backward cache kernels: {e} — using CPU");
+            return false;
+        }
+
+        if let Err(e) = pre_warm_lora_adamw_kernels(
+            model_config.hidden_size,
+            model_config.num_attention_heads * head_dim,
+            model_config.num_kv_heads * head_dim,
+            classify_config.lora_rank,
+            classify_config.num_classes,
+            model_config.intermediate_size,
+            quantize_nf4,
+        ) {
+            eprintln!("[CUDA] Failed to pre-warm AdamW kernels: {e} — using CPU");
+            return false;
+        }
+
+        let realizador_warmed = pre_warm_realizador_gemm(
+            max_seq_len,
+            model_config.hidden_size,
+            model_config.num_kv_heads * head_dim,
+            model_config.intermediate_size,
+            classify_config.lora_rank,
+            classify_config.num_classes,
+        );
+        if realizador_warmed > 0 {
+            eprintln!("[CUDA] Pre-warmed {realizador_warmed} realizador GEMM shapes");
+        }
+
+        true
+    }
+
     /// Attempt to initialize CUDA acceleration.
     ///
     /// Creates `CudaTrainer` and uploads all transformer layer weights to GPU as
@@ -506,41 +963,10 @@ impl ClassifyPipeline {
 
         let ctx = Arc::clone(trainer.context());
         let max_seq_len = classify_config.max_seq_len;
-
-        // ── C-PREWARM-001: JIT-compile all forward kernels BEFORE block upload ──
-        // CUDA JIT (cuModuleLoadDataEx) needs free device memory for compilation.
-        // After uploading 36 blocks (~22 GB), the GPU is near-OOM and JIT fails with
-        // CUDA_ERROR_ILLEGAL_ADDRESS. Pre-warming compiles all PTX while VRAM is free.
-        if let Err(e) = pre_warm_forward_kernels(
-            model_config.hidden_size,
-            model_config.intermediate_size,
-            model_config.num_attention_heads,
-            model_config.num_kv_heads,
-            model_config.head_dim(),
-            max_seq_len,
-        ) {
-            eprintln!("[CUDA] Failed to pre-warm forward kernels: {e} — using CPU");
-            return (None, None, None);
-        }
-
         let quantize_nf4 = classify_config.quantize_nf4;
-        if quantize_nf4 {
-            eprintln!("[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)");
 
-            // C-PREWARM-001: Pre-warm LoRA backward GEMM kernels for QLoRA training.
-            // These small-matrix GEMMs (rank << hidden_size) must be JIT-compiled
-            // while VRAM is free, before block upload fills GPU memory.
-            let head_dim = model_config.head_dim();
-            if let Err(e) = pre_warm_lora_backward_kernels(
-                model_config.hidden_size,
-                model_config.num_attention_heads * head_dim,
-                model_config.num_kv_heads * head_dim,
-                max_seq_len,
-                classify_config.lora_rank,
-            ) {
-                eprintln!("[CUDA] Failed to pre-warm LoRA backward kernels: {e} — using CPU");
-                return (None, None, None);
-            }
+        if !Self::pre_warm_all_kernels(model_config, classify_config) {
+            return (None, None, None);
         }
 
         let mut blocks = Vec::with_capacity(model.config.num_hidden_layers);
@@ -1768,7 +2194,6 @@ impl ClassifyPipeline {
     /// gradient buffers (does NOT zero them first). Returns the loss and
     /// the predicted class index (argmax of logits).
     fn forward_backward_single(&mut self, token_ids: &[u32], label: usize) -> (f32, usize) {
-        let seq_len = token_ids.len();
         let num_classes = self.config.num_classes;
 
         // ── Contract precondition (F-CLASS-002): label in bounds ─────────
@@ -1777,9 +2202,29 @@ impl ClassifyPipeline {
             "F-CLASS-002: label index {label} >= num_classes {num_classes}"
         );
 
+        // ── Pad to max_seq_len for deterministic GPU kernel shapes (C-PREWARM-001) ──
+        // GPU backward kernels embed seq_len in cache keys. Pre-warming compiles for
+        // max_seq_len only, so variable-length inputs would trigger JIT compilation
+        // post-VRAM-fill. Pad to max_seq_len; mean_pool uses orig_seq_len for correctness.
+        let orig_seq_len = token_ids.len().min(self.config.max_seq_len);
+        let has_gpu_training = {
+            #[cfg(feature = "cuda")]
+            { self.gpu_training.is_some() }
+            #[cfg(not(feature = "cuda"))]
+            { false }
+        };
+        let (padded_tokens, seq_len) = if has_gpu_training {
+            let mut padded = vec![0u32; self.config.max_seq_len];
+            padded[..orig_seq_len].copy_from_slice(&token_ids[..orig_seq_len]);
+            (padded, self.config.max_seq_len)
+        } else {
+            (token_ids.to_vec(), token_ids.len())
+        };
+        let _ = seq_len; // used by #[cfg(feature = "cuda")] backward pass
+
         // ── Forward pass (GPU-dispatched if available) ──────────────────
-        let hidden = self.forward_hidden_dispatch(token_ids);
-        let pooled = self.classifier.mean_pool(&hidden, seq_len);
+        let hidden = self.forward_hidden_dispatch(&padded_tokens);
+        let pooled = self.classifier.mean_pool(&hidden, orig_seq_len);
 
         let logits =
             matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);
@@ -1917,12 +2362,27 @@ impl ClassifyPipeline {
     /// # Returns
     /// `(loss, predicted_class)` tuple
     pub fn forward_only(&mut self, token_ids: &[u32], label: usize) -> (f32, usize) {
-        let seq_len = token_ids.len();
         let num_classes = self.config.num_classes;
 
+        // Pad to max_seq_len for deterministic GPU kernel shapes (matches forward_backward_single)
+        let orig_seq_len = token_ids.len().min(self.config.max_seq_len);
+        let has_gpu_training = {
+            #[cfg(feature = "cuda")]
+            { self.gpu_training.is_some() }
+            #[cfg(not(feature = "cuda"))]
+            { false }
+        };
+        let (tokens_for_forward, _seq_len) = if has_gpu_training {
+            let mut padded = vec![0u32; self.config.max_seq_len];
+            padded[..orig_seq_len].copy_from_slice(&token_ids[..orig_seq_len]);
+            (padded, self.config.max_seq_len)
+        } else {
+            (token_ids.to_vec(), token_ids.len())
+        };
+
         // Forward pass (F-CUDA-009: classification head runs on CPU after GPU hidden states)
-        let hidden = self.forward_hidden_dispatch(token_ids);
-        let pooled = self.classifier.mean_pool(&hidden, seq_len);
+        let hidden = self.forward_hidden_dispatch(&tokens_for_forward);
+        let pooled = self.classifier.mean_pool(&hidden, orig_seq_len);
 
         let logits =
             matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);

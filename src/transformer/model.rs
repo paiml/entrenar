@@ -136,6 +136,50 @@ impl Transformer {
         })
     }
 
+    /// Load transformer from APR file (.apr format)
+    ///
+    /// Reads tensor data from an APR binary file, dequantizing from any stored
+    /// dtype (F16, Q4K, etc.) to F32. Uses the same validation pipeline as
+    /// `from_safetensors`: structural, shape, and NaN/Inf checks.
+    ///
+    /// # Arguments
+    /// * `apr_path` - Path to the .apr model file
+    /// * `config` - Transformer configuration (typically read from APR metadata)
+    ///
+    /// # Errors
+    /// Returns `Error::ConfigError` if tensors are missing, shapes mismatch, or
+    /// weights contain NaN/Inf values.
+    pub fn from_apr(apr_path: impl AsRef<Path>, config: &TransformerConfig) -> Result<Self> {
+        use aprender::serialization::apr::AprReader;
+
+        let apr_path = apr_path.as_ref();
+        let reader = AprReader::open(apr_path).map_err(|e| {
+            Error::ConfigError(format!("Failed to open APR file '{}': {e}", apr_path.display()))
+        })?;
+
+        // Build weight map from APR tensors — same key convention as SafeTensors
+        let mut weights = HashMap::new();
+        for desc in &reader.tensors {
+            let data = reader.read_tensor_as_f32(&desc.name).map_err(|e| {
+                Error::ConfigError(format!("Failed to read tensor '{}': {e}", desc.name))
+            })?;
+            weights.insert(desc.name.clone(), Tensor::from_vec(data, false));
+        }
+
+        // Same validation pipeline as from_safetensors
+        validate_weights(&weights, config.num_hidden_layers)?;
+        Self::validate_weight_shapes(&weights, config)?;
+        Self::validate_weight_values(&weights)?;
+
+        Self::from_params(config, &weights).ok_or_else(|| {
+            Error::ConfigError(
+                "Failed to construct Transformer from APR weights \
+                 (from_params returned None after validation passed)"
+                    .into(),
+            )
+        })
+    }
+
     /// Validate that all weight tensor shapes match the config dimensions
     fn validate_weight_shapes(
         weights: &HashMap<String, Tensor>,
