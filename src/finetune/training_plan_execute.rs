@@ -63,88 +63,17 @@ pub fn execute_plan(
 
     let total_start = std::time::Instant::now();
 
+    // Auto-enable NF4 quantization for large models.
+    // Full fp32 weights for hidden_size >= 2048 (roughly >= 1B params)
+    // exceed RTX 4090 VRAM (24 GB) after scratch + kernel cache overhead.
+    let auto_nf4 = model_config.hidden_size >= 2048;
+    if auto_nf4 {
+        eprintln!("[plan] Auto-enabling NF4 quantization (hidden_size={} >= 2048)", model_config.hidden_size);
+    }
+
     // ── Manual strategy: single trial ──────────────────────────────────
     if plan.hyperparameters.strategy == "manual" {
-        let manual = plan.hyperparameters.manual.as_ref().ok_or_else(|| {
-            crate::Error::ConfigError(
-                "Manual strategy requires manual hyperparameters in plan".to_string(),
-            )
-        })?;
-
-        let classify_config = ClassifyConfig {
-            num_classes: plan.data.class_counts.len(),
-            lora_rank: manual.lora_rank,
-            lora_alpha: manual.lora_rank as f32,
-            learning_rate: manual.learning_rate,
-            epochs: plan.hyperparameters.max_epochs,
-            batch_size: manual.batch_size,
-            ..ClassifyConfig::default()
-        };
-
-        let trial_start = std::time::Instant::now();
-        let result = run_single_trial(
-            &apply.model_path,
-            &apply.data_path,
-            &apply.output_dir.join("trial_001"),
-            &model_config,
-            classify_config,
-            plan.hyperparameters.max_epochs,
-            &plan.model.size,
-        )?;
-
-        let mut config_map = HashMap::new();
-        config_map.insert(
-            "learning_rate".to_string(),
-            ParameterValue::Float(manual.learning_rate as f64),
-        );
-        config_map.insert(
-            "lora_rank".to_string(),
-            ParameterValue::Int(manual.lora_rank as i64),
-        );
-        config_map.insert(
-            "batch_size".to_string(),
-            ParameterValue::Categorical(manual.batch_size.to_string()),
-        );
-
-        let summary = TrialSummary {
-            id: 0,
-            val_loss: result.best_val_loss as f64,
-            val_accuracy: result
-                .epoch_metrics
-                .get(result.best_epoch)
-                .map_or(0.0, |m| m.val_accuracy as f64),
-            train_loss: result
-                .epoch_metrics
-                .last()
-                .map_or(0.0, |m| m.train_loss as f64),
-            train_accuracy: result
-                .epoch_metrics
-                .last()
-                .map_or(0.0, |m| m.train_accuracy as f64),
-            epochs_run: result.epoch_metrics.len(),
-            time_ms: trial_start.elapsed().as_millis() as u64,
-            config: config_map,
-            status: if result.stopped_early {
-                "stopped_early".to_string()
-            } else {
-                "completed".to_string()
-            },
-        };
-
-        tracker.log_manual_trial(manual, &result);
-
-        if let Some(cb) = apply.on_trial_complete {
-            cb(0, 1, &summary);
-        }
-
-        return Ok(super::classify_tuner::TuneResult {
-            strategy: "manual".to_string(),
-            mode: "manual".to_string(),
-            budget: 1,
-            trials: vec![summary],
-            best_trial_id: 0,
-            total_time_ms: total_start.elapsed().as_millis() as u64,
-        });
+        return execute_manual_trial(plan, apply, &model_config, auto_nf4, &mut tracker, total_start);
     }
 
     // ── HPO strategy: multiple trials ──────────────────────────────────
@@ -212,6 +141,7 @@ pub fn execute_plan(
             batch_size,
             gradient_clip_norm: Some(clip),
             class_weights,
+            quantize_nf4: auto_nf4,
             ..ClassifyConfig::default()
         };
 
@@ -331,6 +261,133 @@ pub fn execute_plan(
     Ok(result)
 }
 
+/// Execute the manual strategy (single trial with explicit hyperparameters).
+fn execute_manual_trial(
+    plan: &TrainingPlan,
+    apply: &ApplyConfig,
+    model_config: &crate::transformer::TransformerConfig,
+    auto_nf4: bool,
+    tracker: &mut ExperimentTracker,
+    total_start: std::time::Instant,
+) -> crate::Result<super::classify_tuner::TuneResult> {
+    use super::classify_pipeline::ClassifyConfig;
+    use super::classify_tuner::TrialSummary;
+    use crate::optim::ParameterValue;
+    use std::collections::HashMap;
+
+    let manual = plan.hyperparameters.manual.as_ref().ok_or_else(|| {
+        crate::Error::ConfigError(
+            "Manual strategy requires manual hyperparameters in plan".to_string(),
+        )
+    })?;
+
+    // Build ClassifyConfig from contract-grounded defaults.
+    // When NF4 is enabled, start from qlora_default() (Dettmers 2023, Lightning AI).
+    let model_params = estimate_model_params(model_config);
+    let mut classify_config = if auto_nf4 {
+        let mut cfg = ClassifyConfig::qlora_default(model_params);
+        cfg.num_classes = plan.data.class_counts.len();
+        cfg.lora_rank = manual.lora_rank;
+        cfg.learning_rate = manual.learning_rate;
+        cfg.batch_size = manual.batch_size;
+        cfg.epochs = plan.hyperparameters.max_epochs;
+        cfg.lora_alpha = manual.lora_alpha.unwrap_or((2 * manual.lora_rank) as f32);
+        cfg.gradient_clip_norm = Some(manual.gradient_clip_norm.unwrap_or(1.0));
+        let target_eff_batch: usize = 16;
+        cfg.accumulation_steps = (target_eff_batch / manual.batch_size.max(1)).max(1);
+        cfg
+    } else {
+        ClassifyConfig {
+            num_classes: plan.data.class_counts.len(),
+            lora_rank: manual.lora_rank,
+            lora_alpha: manual.lora_alpha.unwrap_or(manual.lora_rank as f32),
+            learning_rate: manual.learning_rate,
+            epochs: plan.hyperparameters.max_epochs,
+            batch_size: manual.batch_size,
+            gradient_clip_norm: Some(manual.gradient_clip_norm.unwrap_or(1.0)),
+            quantize_nf4: false,
+            ..ClassifyConfig::default()
+        }
+    };
+    classify_config.quantize_nf4 = auto_nf4;
+
+    let diags = classify_config.validate_hyperparameters(model_params);
+    if !diags.items.is_empty() {
+        eprintln!("[plan] Hyperparameter contract validation (qlora-hyperparameters-v1.yaml):");
+        diags.print_all();
+    }
+    if diags.has_errors() {
+        return Err(crate::Error::ConfigError(
+            "Hyperparameter validation failed — see errors above".to_string(),
+        ));
+    }
+
+    let trial_start = std::time::Instant::now();
+    let result = run_single_trial(
+        &apply.model_path,
+        &apply.data_path,
+        &apply.output_dir.join("trial_001"),
+        model_config,
+        classify_config,
+        plan.hyperparameters.max_epochs,
+        &plan.model.size,
+    )?;
+
+    let mut config_map = HashMap::new();
+    config_map.insert(
+        "learning_rate".to_string(),
+        ParameterValue::Float(manual.learning_rate as f64),
+    );
+    config_map.insert(
+        "lora_rank".to_string(),
+        ParameterValue::Int(manual.lora_rank as i64),
+    );
+    config_map.insert(
+        "batch_size".to_string(),
+        ParameterValue::Categorical(manual.batch_size.to_string()),
+    );
+
+    let summary = TrialSummary {
+        id: 0,
+        val_loss: result.best_val_loss as f64,
+        val_accuracy: result
+            .epoch_metrics
+            .get(result.best_epoch)
+            .map_or(0.0, |m| m.val_accuracy as f64),
+        train_loss: result
+            .epoch_metrics
+            .last()
+            .map_or(0.0, |m| m.train_loss as f64),
+        train_accuracy: result
+            .epoch_metrics
+            .last()
+            .map_or(0.0, |m| m.train_accuracy as f64),
+        epochs_run: result.epoch_metrics.len(),
+        time_ms: trial_start.elapsed().as_millis() as u64,
+        config: config_map,
+        status: if result.stopped_early {
+            "stopped_early".to_string()
+        } else {
+            "completed".to_string()
+        },
+    };
+
+    tracker.log_manual_trial(manual, &result);
+
+    if let Some(cb) = apply.on_trial_complete {
+        cb(0, 1, &summary);
+    }
+
+    Ok(super::classify_tuner::TuneResult {
+        strategy: "manual".to_string(),
+        mode: "manual".to_string(),
+        budget: 1,
+        trials: vec![summary],
+        best_trial_id: 0,
+        total_time_ms: total_start.elapsed().as_millis() as u64,
+    })
+}
+
 /// Execute a single training trial with default warmup/LR settings.
 fn run_single_trial(
     model_path: &std::path::Path,
@@ -414,7 +471,8 @@ fn run_single_trial_with_warmup(
         checkpoint_dir,
         &experiment_id,
         model_name,
-    );
+    )
+    .with_console_progress(true);
     trainer.set_monitor_writer(writer);
 
     // Run training
@@ -603,6 +661,26 @@ impl ExperimentTracker {
             let _ = store.log_metric(run_id, "val_accuracy", i as u64, f64::from(epoch.val_accuracy));
         }
     }
+}
+
+/// Estimate total model parameters from config dimensions.
+///
+/// Rough approximation: 12 * num_layers * hidden_size^2
+/// (accounts for Q/K/V/O projections + FFN up/down/gate + embeddings).
+///
+/// Used by C-HP-001 to select learning rate tier.
+fn estimate_model_params(config: &TransformerConfig) -> u64 {
+    let h = config.hidden_size as u64;
+    let l = config.num_hidden_layers as u64;
+    // Transformer parameter estimate:
+    // Attention: 4 * h * h per layer (Q, K, V, O)
+    // FFN: 3 * h * intermediate per layer (gate, up, down)
+    // Norms: 2 * h per layer
+    // Embedding: vocab * h
+    let intermediate = config.intermediate_size as u64;
+    let vocab = config.vocab_size as u64;
+    let per_layer = 4 * h * h + 3 * h * intermediate + 2 * h;
+    l * per_layer + vocab * h
 }
 
 #[cfg(test)]

@@ -242,19 +242,36 @@ impl InstructTrainer {
                 samples_per_sec,
             };
 
-            epoch_metrics.push(metrics);
-
-            // ── Early stopping ──
+            // ── Checkpointing ──
             if val_result.avg_loss < best_val_loss {
                 best_val_loss = val_result.avg_loss;
                 best_epoch = epoch;
                 patience_counter = 0;
+
+                // Save best checkpoint
+                let best_path = self.config.checkpoint_dir.join("best");
+                let _ = self.save_checkpoint(&best_path, epoch, &metrics);
             } else {
                 patience_counter += 1;
-                if patience_counter >= self.config.early_stopping_patience {
-                    stopped_early = true;
-                    break;
-                }
+            }
+
+            // Periodic checkpoint
+            let effective_save_every = if self.config.epochs <= self.config.save_every {
+                1
+            } else {
+                self.config.save_every
+            };
+            if effective_save_every > 0 && (epoch + 1) % effective_save_every == 0 {
+                let epoch_path = self.config.checkpoint_dir.join(format!("epoch-{epoch}"));
+                let _ = self.save_checkpoint(&epoch_path, epoch, &metrics);
+            }
+
+            epoch_metrics.push(metrics);
+
+            // ── Early stopping ──
+            if patience_counter >= self.config.early_stopping_patience {
+                stopped_early = true;
+                break;
             }
         }
 
@@ -333,9 +350,9 @@ impl InstructTrainer {
         let mut hasher = Sha256::new();
         for s in corpus {
             hasher.update(s.instruction.as_bytes());
-            hasher.update(&[0u8]);
+            hasher.update([0u8]);
             hasher.update(s.response.as_bytes());
-            hasher.update(&[0u8]);
+            hasher.update([0u8]);
         }
         format!("sha256:{:x}", hasher.finalize())
     }
@@ -356,6 +373,110 @@ impl InstructTrainer {
     #[must_use]
     pub fn val_size(&self) -> usize {
         self.val_data.len()
+    }
+
+    /// Save a checkpoint with LoRA adapter weights and training metadata.
+    ///
+    /// Creates a directory at `path` containing:
+    /// - `metadata.json`: training metrics for this checkpoint
+    /// - `model.safetensors`: LoRA adapter weights (Q/V projections per layer)
+    pub fn save_checkpoint(
+        &mut self,
+        path: &std::path::Path,
+        epoch: usize,
+        metrics: &InstructEpochMetrics,
+    ) -> crate::Result<()> {
+        // Sync GPU LoRA weights to CPU before saving
+        #[cfg(feature = "cuda")]
+        self.pipeline.sync_lora_to_cpu();
+
+        std::fs::create_dir_all(path).map_err(|e| {
+            crate::Error::Io(format!(
+                "Failed to create checkpoint dir {}: {e}",
+                path.display()
+            ))
+        })?;
+
+        // Save metadata.json
+        let metadata = serde_json::json!({
+            "task": "instruct",
+            "epoch": epoch,
+            "train_loss": metrics.train_loss,
+            "val_loss": metrics.val_loss,
+            "train_perplexity": metrics.train_perplexity,
+            "val_perplexity": metrics.val_perplexity,
+            "learning_rate": metrics.learning_rate,
+            "epoch_time_ms": metrics.epoch_time_ms,
+            "samples_per_sec": metrics.samples_per_sec,
+            "lora_rank": self.pipeline.config.lora_rank,
+            "lora_alpha": self.pipeline.config.lora_alpha,
+            "data_hash": self.data_hash,
+        });
+
+        let meta_json = serde_json::to_string_pretty(&metadata).map_err(|e| {
+            crate::Error::Serialization(format!("Failed to serialize metadata: {e}"))
+        })?;
+        std::fs::write(path.join("metadata.json"), meta_json)?;
+
+        // Save LoRA adapter weights as SafeTensors
+        let mut tensor_data: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+        for (idx, lora) in self.pipeline.lora_layers.iter().enumerate() {
+            let layer = idx / 2;
+            let proj = if idx % 2 == 0 { "q" } else { "v" };
+
+            // LoRA A: [rank, d_in]
+            let a_data = lora.lora_a().data();
+            let a_bytes: Vec<u8> =
+                bytemuck::cast_slice(a_data.as_slice().expect("contiguous lora_a")).to_vec();
+            let a_shape = vec![lora.rank(), lora.d_in()];
+            tensor_data.push((
+                format!("lora.{layer}.{proj}_proj.lora_a"),
+                a_bytes,
+                a_shape,
+            ));
+
+            // LoRA B: [d_out, rank]
+            let b_data = lora.lora_b().data();
+            let b_bytes: Vec<u8> =
+                bytemuck::cast_slice(b_data.as_slice().expect("contiguous lora_b")).to_vec();
+            let b_shape = vec![lora.d_out(), lora.rank()];
+            tensor_data.push((
+                format!("lora.{layer}.{proj}_proj.lora_b"),
+                b_bytes,
+                b_shape,
+            ));
+        }
+
+        let views: Vec<(&str, safetensors::tensor::TensorView<'_>)> = tensor_data
+            .iter()
+            .map(|(name, bytes, shape)| {
+                let view = safetensors::tensor::TensorView::new(
+                    safetensors::tensor::Dtype::F32,
+                    shape.clone(),
+                    bytes,
+                )
+                .expect("valid tensor view");
+                (name.as_str(), view)
+            })
+            .collect();
+
+        let mut st_metadata = std::collections::HashMap::new();
+        st_metadata.insert("epoch".to_string(), epoch.to_string());
+        st_metadata.insert(
+            "val_loss".to_string(),
+            format!("{:.6}", metrics.val_loss),
+        );
+
+        let safetensor_bytes =
+            safetensors::serialize(views, Some(st_metadata)).map_err(|e| {
+                crate::Error::Serialization(format!(
+                    "SafeTensors serialization failed: {e}"
+                ))
+            })?;
+        std::fs::write(path.join("model.safetensors"), safetensor_bytes)?;
+
+        Ok(())
     }
 }
 

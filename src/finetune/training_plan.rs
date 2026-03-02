@@ -950,6 +950,14 @@ pub fn execute_plan(
 
     let total_start = std::time::Instant::now();
 
+    // Auto-enable NF4 quantization for large models.
+    // Full fp32 weights for hidden_size >= 2048 (roughly >= 1B params)
+    // exceed RTX 4090 VRAM (24 GB) after scratch + kernel cache overhead.
+    let auto_nf4 = model_config.hidden_size >= 2048;
+    if auto_nf4 {
+        eprintln!("[plan] Auto-enabling NF4 quantization (hidden_size={} >= 2048)", model_config.hidden_size);
+    }
+
     // ── Manual strategy: single trial ──────────────────────────────────
     if plan.hyperparameters.strategy == "manual" {
         let manual = plan.hyperparameters.manual.as_ref().ok_or_else(|| {
@@ -979,6 +987,7 @@ pub fn execute_plan(
             batch_size: manual.batch_size,
             gradient_clip_norm: Some(gradient_clip),
             class_weights,
+            quantize_nf4: auto_nf4,
             ..ClassifyConfig::default()
         };
 
@@ -1115,6 +1124,7 @@ pub fn execute_plan(
             batch_size,
             gradient_clip_norm: Some(clip),
             class_weights,
+            quantize_nf4: auto_nf4,
             ..ClassifyConfig::default()
         };
 

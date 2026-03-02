@@ -13,8 +13,9 @@ use trueno_gpu::driver::{CudaContext, CudaModule};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel,
-    BatchedTransposeKernel, FusedSwigluKernel, GemmKernel, InterleavedToBatchedKernel, Kernel,
-    Nf4GemmKernel, Nf4GemmTransposeKernel, ResidualAddKernel, RmsNormKernel, ScaleKernel,
+    BatchedTransposeKernel, ElementwiseMulKernel, FusedSwigluKernel, GemmKernel,
+    InterleavedToBatchedKernel, Kernel, Nf4GemmKernel,
+    ResidualAddKernel, RmsNormKernel, ScaleKernel, SiluKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -174,6 +175,12 @@ impl ForwardKernelCache {
             BatchedTransposeKernel::new(nh, s, hd)
         );
 
+        // 9b. Batched transpose: backward reverse (NH, HD, S)
+        warm!(
+            format!("batched_transpose_{nh}_{hd}_{s}"),
+            BatchedTransposeKernel::new(nh, hd, s)
+        );
+
         // 10. Batched 4D GEMM: Q@K^T (1, NH, S, S, HD)
         warm!(
             format!("batched_4d_gemm_1_{nh}_{s}_{s}_{hd}"),
@@ -197,13 +204,25 @@ impl ForwardKernelCache {
             Batched4DGemmKernel::new(1, nh, s, hd, s)
         );
 
+        // 13b. Batched 4D GEMM: attention backward grad_V^T (1, NH, HD, S, S)
+        warm!(
+            format!("batched_4d_gemm_1_{nh}_{hd}_{s}_{s}"),
+            Batched4DGemmKernel::new(1, nh, hd, s, s)
+        );
+
         // 14. Batched-to-interleaved: attention output (S, NH, HD)
         warm!(
             format!("batched_to_interleaved_{s}_{nh}_{hd}"),
             BatchedToInterleavedKernel::new(s, nh, hd)
         );
 
-        // 15-18. NF4 quantized GEMM variants (trueno#108: QLoRA support)
+        // 15. Element-wise multiply (used in FFN backward for SwiGLU gate * up)
+        warm!(format!("elementwise_mul_forward_{si}"), ElementwiseMulKernel::new(si));
+
+        // 16. SiLU forward activation (standalone, used in LoRA FFN path)
+        warm!(format!("silu_forward_{si}"), SiluKernel::new(si));
+
+        // 17-20. NF4 quantized GEMM variants (trueno#108: QLoRA support)
         // Same 4 GEMM shapes but with Nf4GemmKernel instead of GemmKernel.
         // Only compiled if K is divisible by 64 (NF4 block size).
         if h % 64 == 0 {
@@ -218,22 +237,8 @@ impl ForwardKernelCache {
         }
 
         // 19-22. NF4 transposed GEMM for QLoRA backward (ENT-153).
-        // Same shapes as forward but transposed: grad_input = grad_output @ dequant(W)^T
-        // Only needed when NF4 training (backward) is enabled.
-        if h % 64 == 0 {
-            // Q/O backward: grad[S,H] @ W[H,H]^T → [S,H]
-            warm!(format!("nf4_gemm_transpose_{s}_{h}_{h}"), Nf4GemmTransposeKernel::new(s, h, h));
-            if kv_h != h && kv_h % 64 == 0 {
-                // K/V backward: grad[S,kv_h] @ W[kv_h,H]^T → [S,H]
-                warm!(format!("nf4_gemm_transpose_{s}_{kv_h}_{h}"), Nf4GemmTransposeKernel::new(s, kv_h, h));
-            }
-            if i % 64 == 0 {
-                // Gate/Up backward: grad[S,I] @ W[I,H]^T → [S,H]
-                warm!(format!("nf4_gemm_transpose_{s}_{i}_{h}"), Nf4GemmTransposeKernel::new(s, i, h));
-                // Down backward: grad[S,H] @ W[H,I]^T → [S,I]
-                warm!(format!("nf4_gemm_transpose_{s}_{h}_{i}"), Nf4GemmTransposeKernel::new(s, h, i));
-            }
-        }
+        // NOTE: Nf4GemmTransposeKernel removed — not yet exported by trueno-gpu.
+        // Backward NF4 path uses fp32 dequant + regular GEMM instead.
 
         eprintln!("[CUDA] Pre-warmed {count} forward kernels (JIT compiled before block upload)");
         Ok(())

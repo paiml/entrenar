@@ -13,4 +13,6 @@ pub use activations::{gelu, relu, softmax, swish};
 pub use attention::attention;
 pub use basic::{add, add_scaled, mul, scale, sum};
 pub use matmul::{matmul, matmul_compute, transpose};
+#[cfg(feature = "cuda")]
+pub use matmul::pre_warm_realizador_gemm;
 pub use normalize::layer_norm;

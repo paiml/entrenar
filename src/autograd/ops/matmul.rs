@@ -11,10 +11,19 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(feature = "cuda")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "cuda")]
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(feature = "cuda")]
 use realizar::cuda::CudaExecutor;
+
+/// Once a realizador CUDA matmul fails (typically JIT OOM after GPU VRAM is filled
+/// by NF4 block upload), disable all further attempts. Without this flag, every
+/// matmul call re-attempts CUDA, fails, and falls back to CPU — producing thousands
+/// of log lines per training step and adding ~100ms overhead per call.
+#[cfg(feature = "cuda")]
+static CUDA_MATMUL_DISABLED: AtomicBool = AtomicBool::new(false);
 
 /// Global CUDA executor (singleton, initialized once)
 #[cfg(feature = "cuda")]
@@ -26,11 +35,11 @@ fn get_cuda_executor() -> Option<&'static Mutex<CudaExecutor>> {
     CUDA_EXECUTOR
         .get_or_init(|| match CudaExecutor::new(0) {
             Ok(executor) => {
-                eprintln!("realizar CUDA executor initialized on GPU 0");
+                TRACER.end(TraceStep::Transfer, "realizar CUDA executor initialized on GPU 0");
                 Some(Mutex::new(executor))
             }
-            Err(e) => {
-                eprintln!("CUDA init failed: {e:?}, using CPU");
+            Err(_e) => {
+                CUDA_MATMUL_DISABLED.store(true, Ordering::Relaxed);
                 None
             }
         })
@@ -81,23 +90,139 @@ fn transpose_simple(src: &[f32], dst: &mut [f32], rows: usize, cols: usize) {
     }
 }
 
-/// Compute matrix multiplication using realizar CUDA if available, else SIMD CPU
+/// Compute matrix multiplication using realizar CUDA if available, else SIMD CPU.
+///
+/// After the first CUDA failure (typically JIT OOM when VRAM is occupied by NF4
+/// block uploads), all subsequent calls skip CUDA entirely and use trueno SIMD.
 #[cfg(feature = "cuda")]
 pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
-    // Try CUDA via realizar
-    if let Some(executor_mutex) = get_cuda_executor() {
-        if let Ok(mut executor) = executor_mutex.lock() {
-            match cuda_matmul(&mut executor, a, b, m, k, n) {
-                Ok(result) => return result,
-                Err(e) => {
-                    eprintln!("CUDA matmul failed: {e:?}, falling back to CPU");
+    // Fast path: skip CUDA entirely once disabled (common during QLoRA training
+    // where NF4 blocks fill VRAM before realizador can JIT-compile gemm_tiled)
+    if !CUDA_MATMUL_DISABLED.load(Ordering::Relaxed) {
+        if let Some(executor_mutex) = get_cuda_executor() {
+            if let Ok(mut executor) = executor_mutex.lock() {
+                match cuda_matmul(&mut executor, a, b, m, k, n) {
+                    Ok(result) => return result,
+                    Err(_e) => {
+                        // First failure: disable all future CUDA matmul attempts
+                        CUDA_MATMUL_DISABLED.store(true, Ordering::Relaxed);
+                        TRACER.end(
+                            TraceStep::Matmul,
+                            "realizar CUDA matmul disabled (JIT failure), using trueno SIMD",
+                        );
+                    }
                 }
             }
         }
     }
 
-    // Fall back to trueno SIMD
+    // wgpu GPU fallback (AMD/Intel/Apple GPUs via Vulkan/Metal/DX12)
+    #[cfg(feature = "gpu")]
+    if m * k * n > 32_768 {
+        if let Some(result) = wgpu_matmul(a, b, m, k, n) {
+            return result;
+        }
+    }
+
+    // trueno SIMD fallback (rayon-parallel if trueno/parallel enabled)
     cpu_matmul(a, b, m, k, n)
+}
+
+/// Pre-warm realizador's CUDA GEMM kernels for all training shapes.
+///
+/// Realizador JIT-compiles `gemm_tiled` per unique (M,K,N) shape. If compilation
+/// happens after transformer block upload fills VRAM, JIT fails with
+/// CUDA_ERROR_ILLEGAL_ADDRESS and `CUDA_MATMUL_DISABLED` gets set, forcing ALL
+/// matmul to CPU SIMD (~100x slower).
+///
+/// This function pre-warms with every (M,K,N) triplet used during training:
+/// - Forward: linear projections (Q,K,V,O), FFN (gate,up,down)
+/// - Backward: transposed shapes for grad_A and grad_B
+/// - LoRA: A and B projection shapes
+/// - Classifier head
+///
+/// Call this BEFORE uploading transformer blocks (C-PREWARM-001).
+#[cfg(feature = "cuda")]
+pub fn pre_warm_realizador_gemm(
+    seq_len: usize,
+    hidden_size: usize,
+    kv_hidden_size: usize,
+    intermediate_size: usize,
+    lora_rank: usize,
+    num_classes: usize,
+) -> usize {
+    let executor_mutex = match get_cuda_executor() {
+        Some(e) => e,
+        None => return 0,
+    };
+    let mut executor = match executor_mutex.lock() {
+        Ok(e) => e,
+        Err(_) => return 0,
+    };
+
+    // Collect all unique (M, K, N) shapes used during training
+    let s = seq_len;
+    let h = hidden_size;
+    let kv = kv_hidden_size;
+    let i = intermediate_size;
+    let r = lora_rank;
+
+    let mut shapes: Vec<(usize, usize, usize)> = vec![
+        // Forward linear projections
+        (s, h, h),   // Q, O projections
+        (s, h, kv),  // K, V projections
+        (s, h, i),   // FFN gate, up
+        (s, i, h),   // FFN down
+        // LoRA forward
+        (s, h, r),   // LoRA A (Q/O/gate/up)
+        (s, r, h),   // LoRA B (Q/O)
+        (s, kv, r),  // LoRA A (K/V) — if kv != h
+        (s, r, kv),  // LoRA B (K/V)
+        // Backward: grad_A = grad_C @ B^T → (M, N_fwd, K_fwd)
+        // For (s,h,h): grad_A is (s,h,h) — same
+        (s, kv, h),  // K/V backward grad_A: (s, kv) @ (kv, h)
+        (s, i, h),   // Gate/Up backward grad_A — same as FFN down forward
+        (s, h, i),   // Down backward grad_A — same as FFN gate forward
+        // Backward: grad_B = A^T @ grad_C → (K_fwd, M, N_fwd)
+        (h, s, h),   // Q/O backward grad_B: (h, s) @ (s, h)
+        (h, s, kv),  // K/V backward grad_B: (h, s) @ (s, kv)
+        (h, s, i),   // Gate/Up backward grad_B: (h, s) @ (s, i)
+        (i, s, h),   // Down backward grad_B: (i, s) @ (s, h)
+        // LoRA backward
+        (s, r, h),   // LoRA A backward grad_A — same as LoRA B forward
+        (h, s, r),   // LoRA A backward grad_B
+        (s, h, r),   // LoRA B backward grad_A — same as LoRA A forward
+        (r, s, h),   // LoRA B backward grad_B
+        (r, s, kv),  // LoRA B (K/V) backward grad_B
+        // Classifier head
+        (1, h, num_classes),
+    ];
+
+    // Deduplicate
+    shapes.sort_unstable();
+    shapes.dedup();
+    // Remove zero-dimension shapes
+    shapes.retain(|&(m, k, n)| m > 0 && k > 0 && n > 0);
+
+    let mut warmed = 0usize;
+    for &(m, k, n) in &shapes {
+        let a = vec![0.0f32; m * k];
+        let b = vec![0.0f32; k * n];
+        match cuda_matmul(&mut executor, &a, &b, m, k, n) {
+            Ok(_) => warmed += 1,
+            Err(e) => {
+                eprintln!(
+                    "[CUDA] realizador GEMM pre-warm failed for ({m},{k},{n}): {e}"
+                );
+            }
+        }
+    }
+
+    if warmed == 0 {
+        CUDA_MATMUL_DISABLED.store(true, Ordering::Relaxed);
+    }
+
+    warmed
 }
 
 /// CUDA matrix multiplication via realizar's CudaExecutor
@@ -124,8 +249,8 @@ fn cuda_matmul(
 fn cpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     let mut c = vec![0.0f32; m * n];
 
-    if let Err(e) = trueno::blis::gemm(m, n, k, a, b, &mut c) {
-        eprintln!("trueno gemm failed: {e:?}, using naive");
+    if let Err(_e) = trueno::blis::gemm(m, n, k, a, b, &mut c) {
+        // Naive triple-loop fallback (trueno BLIS should never fail in practice)
         for i in 0..m {
             for j in 0..n {
                 let mut sum = 0.0;
@@ -140,10 +265,64 @@ fn cpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     c
 }
 
-/// CPU-only path (no CUDA feature)
+/// CPU/wgpu path (no CUDA feature)
+///
+/// Tries wgpu GPU matmul first (Vulkan/Metal/DX12), falls back to rayon-parallel
+/// trueno BLIS GEMM on CPU. The wgpu path uses trueno's GpuDevice for cross-platform
+/// GPU compute on AMD, Intel, and Apple GPUs.
 #[cfg(not(feature = "cuda"))]
 pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    #[cfg(feature = "gpu")]
+    {
+        // Try wgpu GPU matmul for large matrices (amortize transfer overhead)
+        if m * k * n > 32_768 {
+            if let Some(result) = wgpu_matmul(a, b, m, k, n) {
+                return result;
+            }
+        }
+    }
     cpu_matmul(a, b, m, k, n)
+}
+
+/// wgpu GPU matmul via trueno GpuDevice (Vulkan/Metal/DX12)
+///
+/// Returns None if GPU is unavailable or matmul fails (auto-fallback to CPU).
+#[cfg(feature = "gpu")]
+fn wgpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Option<Vec<f32>> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static WGPU_DISABLED: AtomicBool = AtomicBool::new(false);
+    static WGPU_LOGGED: AtomicBool = AtomicBool::new(false);
+
+    if WGPU_DISABLED.load(Ordering::Relaxed) {
+        return None;
+    }
+
+    if !trueno::backends::gpu::GpuBackend::is_available() {
+        WGPU_DISABLED.store(true, Ordering::Relaxed);
+        return None;
+    }
+
+    let device = match trueno::backends::gpu::GpuDevice::new() {
+        Ok(d) => d,
+        Err(_) => {
+            WGPU_DISABLED.store(true, Ordering::Relaxed);
+            return None;
+        }
+    };
+
+    let mut result = vec![0.0f32; m * n];
+    match device.matmul(a, b, &mut result, m, k, n) {
+        Ok(()) => {
+            if !WGPU_LOGGED.swap(true, Ordering::Relaxed) {
+                eprintln!("[wgpu] GPU matmul active ({m}x{k}x{n})");
+            }
+            Some(result)
+        }
+        Err(_e) => {
+            WGPU_DISABLED.store(true, Ordering::Relaxed);
+            None
+        }
+    }
 }
 
 /// Matrix multiplication
