@@ -104,8 +104,14 @@ pub struct TrainingSnapshot {
     pub lr_history: Vec<f32>,
     /// Gradient norm
     pub gradient_norm: f32,
+    /// Training accuracy (0.0 to 1.0)
+    #[serde(default)]
+    pub accuracy: f32,
     /// Throughput in tokens per second
     pub tokens_per_second: f32,
+    /// Throughput in samples per second
+    #[serde(default)]
+    pub samples_per_second: f32,
     /// Training start timestamp (ms)
     pub start_timestamp_ms: u64,
     /// GPU telemetry (optional)
@@ -166,7 +172,9 @@ impl Default for TrainingSnapshot {
             learning_rate: 0.0,
             lr_history: Vec::new(),
             gradient_norm: 0.0,
+            accuracy: 0.0,
             tokens_per_second: 0.0,
+            samples_per_second: 0.0,
             start_timestamp_ms: now,
             gpu: None,
             sample: None,
@@ -499,7 +507,9 @@ mod tests {
                 learning_rate,
                 lr_history: vec![learning_rate; 3],
                 gradient_norm,
+                accuracy: 0.0,
                 tokens_per_second,
+                samples_per_second: 0.0,
                 start_timestamp_ms: 12345000,
                 gpu: None,
                 sample: None,

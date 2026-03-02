@@ -431,6 +431,7 @@ fn run_training_loop(
                 new_lr,
                 grad_norm,
                 tokens_per_second,
+                0.0, // accuracy not tracked in this example
             ) {
                 eprintln!("Warning: Could not write training state: {e}");
             }

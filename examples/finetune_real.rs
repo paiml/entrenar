@@ -1622,6 +1622,7 @@ fn log_step_metrics(
         current_lr,
         grad_norm,
         tokens_per_second,
+        0.0, // accuracy not tracked in this example
     );
 
     if step == 0 || step.is_multiple_of(5) {

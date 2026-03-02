@@ -255,7 +255,7 @@ impl ClassifyTrainer {
         let max_count = stats.class_counts.iter().copied().max().unwrap_or(1);
 
         if min_count == 0 {
-            eprintln!(
+            println!(
                 "  Warning: class with zero samples detected. \
                  Class weights not applied (would produce Inf)."
             );
@@ -266,17 +266,17 @@ impl ClassifyTrainer {
 
         if imbalance_ratio > 2.0 {
             let weights = compute_class_weights(&stats, ClassWeightStrategy::SqrtInverse, num_classes);
-            eprintln!(
+            println!(
                 "  Auto-detected class imbalance (ratio {imbalance_ratio:.1}:1), \
                  applying sqrt-inverse weights: {weights:?}"
             );
-            eprintln!(
+            println!(
                 "  Class counts: {:?} (total: {})",
                 stats.class_counts, stats.total
             );
             pipeline.config.class_weights = Some(weights);
         } else {
-            eprintln!(
+            println!(
                 "  Class balance OK (ratio {imbalance_ratio:.1}:1), using uniform weights"
             );
         }
@@ -320,7 +320,7 @@ impl ClassifyTrainer {
             train_data.swap(i, j);
         }
 
-        eprintln!(
+        println!(
             "  Oversampled minority classes: {before} \u{2192} {} training samples",
             train_data.len()
         );
@@ -401,17 +401,21 @@ impl ClassifyTrainer {
 
             epoch_metrics_vec.push(metrics.clone());
 
-            // Human-readable epoch summary
+            // Epoch summary via monitoring framework
             let is_best = val_loss < best_val_loss;
-            let best_marker = if is_best { " *best*" } else { "" };
-            eprintln!(
-                "  Epoch {}/{} done in {:.0}s — train_loss: {:.4}, train_acc: {:.1}%, val_loss: {:.4}, val_acc: {:.1}%, LR: {:.2e}{best_marker}",
-                epoch + 1, self.config.epochs,
-                epoch_time.as_secs_f32(),
-                train_loss, train_accuracy * 100.0,
-                val_loss, val_accuracy * 100.0,
-                scheduler.get_lr(),
-            );
+            if let Some(ref writer) = self.monitor_writer {
+                writer.emit_epoch_summary(
+                    epoch + 1,
+                    self.config.epochs,
+                    train_loss,
+                    train_accuracy,
+                    val_loss,
+                    val_accuracy,
+                    epoch_time.as_secs_f32(),
+                    scheduler.get_lr(),
+                    is_best,
+                );
+            }
 
             // Track best validation loss
             if val_loss < best_val_loss {
@@ -477,7 +481,6 @@ impl ClassifyTrainer {
     /// Returns `(avg_loss, accuracy)` for the epoch.
     fn train_epoch(&mut self, scheduler: &mut WarmupCosineDecayLR, epoch: usize) -> (f32, f32) {
         let batch_size = self.pipeline.config.batch_size;
-        let num_batches = self.train_data.len().div_ceil(batch_size);
         let mut total_loss = 0.0f32;
         let mut total_correct = 0usize;
         let mut total_samples = 0usize;
@@ -486,9 +489,6 @@ impl ClassifyTrainer {
         let train_snapshot: Vec<SafetySample> = self.train_data.clone();
 
         let epoch_start = std::time::Instant::now();
-
-        // Print every ~10% of batches, minimum every 10 steps
-        let log_every = (num_batches / 10).max(10).min(num_batches);
 
         for (batch_idx, chunk) in train_snapshot.chunks(batch_size).enumerate() {
             // Apply current LR from scheduler
@@ -505,31 +505,14 @@ impl ClassifyTrainer {
                 if elapsed_secs > 0.0 { total_samples as f32 / elapsed_secs } else { 0.0 };
             let current_lr = scheduler.get_lr();
 
-            // Human-readable progress to stderr
             let step = batch_idx + 1;
-            if step == 1 || step % log_every == 0 || step == num_batches {
-                let elapsed_min = elapsed_secs / 60.0;
-                let eta_min = if step > 0 {
-                    elapsed_min / step as f32 * (num_batches - step) as f32
-                } else {
-                    0.0
-                };
-                let acc_pct = if total_samples > 0 {
-                    100.0 * total_correct as f32 / total_samples as f32
-                } else {
-                    0.0
-                };
-                eprintln!(
-                    "  [Epoch {}/{}] Step {}/{} | Loss: {:.4} | Acc: {:.1}% | LR: {:.2e} | Grad: {:.1} | {:.1} sam/s | {:.0}m elapsed, ~{:.0}m left",
-                    epoch + 1, self.config.epochs,
-                    step, num_batches,
-                    running_avg_loss, acc_pct, current_lr,
-                    result.grad_norm, samples_per_sec,
-                    elapsed_min, eta_min,
-                );
-            }
+            let acc = if total_samples > 0 {
+                total_correct as f32 / total_samples as f32
+            } else {
+                0.0
+            };
 
-            // Emit per-batch metrics to monitor (JSON state file)
+            // Emit per-batch metrics to monitor (JSON state file + optional console)
             if let Some(ref mut writer) = self.monitor_writer {
                 let _ = writer.update_step(
                     epoch + 1,
@@ -538,6 +521,7 @@ impl ClassifyTrainer {
                     current_lr,
                     result.grad_norm,
                     samples_per_sec,
+                    acc,
                 );
             }
 
@@ -1192,7 +1176,7 @@ impl ClassifyTrainer {
             self.pipeline.set_optimizer_lr(lr_data[0]);
         }
 
-        eprintln!(
+        println!(
             "  Resumed from APR checkpoint: epoch {epoch}, optimizer step {}",
             self.pipeline.optimizer().step_count(),
         );
@@ -2367,7 +2351,7 @@ pub fn evaluate_checkpoint(
     let mut classify_config = classify_config;
     if classify_config.class_weights.is_none() {
         if let Some(weights) = restore_class_weights_from_metadata(checkpoint_dir, num_classes) {
-            eprintln!("Restored class_weights from checkpoint: {weights:?}");
+            println!("Restored class_weights from checkpoint: {weights:?}");
             classify_config.class_weights = Some(weights);
         }
     }
@@ -2404,7 +2388,7 @@ pub fn evaluate_checkpoint(
                         .extension()
                         .is_some_and(|e| e == "safetensors") =>
             {
-                eprintln!("Loading base model from: {base_model_path}");
+                println!("Loading base model from: {base_model_path}");
                 ClassifyPipeline::from_pretrained(
                     base_model_path,
                     model_config,
@@ -2412,15 +2396,15 @@ pub fn evaluate_checkpoint(
                 )?
             }
             Some(base_model_path) => {
-                eprintln!(
+                println!(
                     "Base model path is not a SafeTensors directory: {base_model_path}"
                 );
-                eprintln!("Using random-init base model (adapter weights will be restored from checkpoint)");
+                println!("Using random-init base model (adapter weights will be restored from checkpoint)");
                 ClassifyPipeline::new(model_config, classify_config.clone())
             }
             None => {
-                eprintln!("No base_model_name_or_path in adapter_config.json");
-                eprintln!("Using random-init base model (adapter weights will be restored from checkpoint)");
+                println!("No base_model_name_or_path in adapter_config.json");
+                println!("Using random-init base model (adapter weights will be restored from checkpoint)");
                 ClassifyPipeline::new(model_config, classify_config.clone())
             }
         };
@@ -2480,7 +2464,7 @@ pub fn evaluate_checkpoint(
         }
 
         let loaded_count = tensors.names().len();
-        eprintln!("Restored {loaded_count} tensors from checkpoint");
+        println!("Restored {loaded_count} tensors from checkpoint");
         pipe
     } else {
         // Full model checkpoint: load directly
@@ -2506,10 +2490,10 @@ pub fn evaluate_checkpoint(
 
         // Progress indicator every 100 samples
         if (i + 1) % 100 == 0 {
-            eprintln!("  Evaluated {}/{} samples...", i + 1, samples.len());
+            println!("  Evaluated {}/{} samples...", i + 1, samples.len());
         }
     }
-    eprintln!("  Evaluated {}/{} samples (done)", samples.len(), samples.len());
+    println!("  Evaluated {}/{} samples (done)", samples.len(), samples.len());
 
     Ok(ClassifyEvalReport::from_predictions_with_probs(
         &y_pred,
