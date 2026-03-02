@@ -193,12 +193,38 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 
     // Save model weights to SafeTensors
     let weights_path = spec.training.output_dir.join("model.safetensors");
+    let model_name = spec.model.path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("entrenar-model");
     println!("Saving model weights to {}...", weights_path.display());
-    trainer.save(&weights_path, "rust-cli-docs-model", "Qwen2ForCausalLM")?;
+    trainer.save(&weights_path, model_name, "LlamaForCausalLM")?;
     println!(
         "✓ Model weights saved ({} bytes)",
         std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
     );
+
+    // Save HuggingFace-compatible config.json (ALB-037: required by realizar for inference)
+    let config_json_path = spec.training.output_dir.join("config.json");
+    let mc = trainer.model().config();
+    let config_json = serde_json::json!({
+        "architectures": ["LlamaForCausalLM"],
+        "model_type": "llama",
+        "hidden_size": mc.hidden_size,
+        "num_hidden_layers": mc.num_hidden_layers,
+        "num_attention_heads": mc.num_attention_heads,
+        "num_key_value_heads": mc.num_kv_heads,
+        "intermediate_size": mc.intermediate_size,
+        "vocab_size": mc.vocab_size,
+        "max_position_embeddings": mc.max_position_embeddings,
+        "rms_norm_eps": mc.rms_norm_eps,
+        "rope_theta": mc.rope_theta,
+        "tie_word_embeddings": false,
+        "use_cache": true,
+    });
+    let config_json_str = serde_json::to_string_pretty(&config_json)
+        .map_err(|e| Error::ConfigError(format!("Failed to serialize config.json: {e}")))?;
+    std::fs::write(&config_json_path, config_json_str)?;
+    println!("✓ config.json saved (realizar-compatible)");
 
     // Save training metadata
     let metadata_path = spec.training.output_dir.join("final_model.json");
