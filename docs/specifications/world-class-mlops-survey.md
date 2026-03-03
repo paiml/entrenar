@@ -12,18 +12,18 @@
 | Metric | Value |
 |--------|-------|
 | **Best practices evaluated** | 100 |
-| **PASS** | 85 |
-| **PARTIAL** | 6 |
+| **PASS** | 87 |
+| **PARTIAL** | 4 |
 | **FAIL** | 9 |
-| **Score** | **88.0%** |
+| **Score** | **89.0%** |
 | **Letter grade** | **B+** |
 | **Batuta falsify score** | 79.2% (63/108 pass, 0 fail, 45 partial) |
 
-**Update (2026-03-03, batch 10)**: Distributed training infrastructure + activation checkpointing implemented in batch 10, raising score from 82% → 88%. All features are **pure Rust** — no Python scripts count toward the score (sovereign stack constraint enforced since batch 7).
+**Update (2026-03-03, batch 10)**: Distributed training infrastructure + activation checkpointing implemented in batch 10, raising score from 82% → 89%. All features are **pure Rust** — no Python scripts count toward the score (sovereign stack constraint enforced since batch 7).
 
 Key batch 10 additions: `DistributedCudaTrainer` with per-block AllReduce architecture, `RingAllReduceWorker` (bandwidth-optimal scatter-reduce + all-gather over TCP), `StreamingParquetLoader` with file-level sharding (C-SHARD-001), wire protocol v2 (4 new message types for block-level gradient exchange), `DistributedCheckpointCoordinator` with barrier sync, `ComputeDevice::detect_all_devices()` for heterogeneous hardware enumeration, activation checkpointing with segment-based gradient recomputation (R-021), YAML `training.distributed` + `checkpoints` config, CLI `--distributed --world-size --rank --coordinator-addr --deterministic --seed` flags. 4 new provable contracts (C-DDP-001, C-RING-001, C-WIRE-002, C-SHARD-001). 46 new unit tests.
 
-The sovereign stack (entrenar/albor) excels in: provable contracts (100%), checkpointing (100%), observability (100%), optimization (100%), fault tolerance (100%), evaluation (100%), configuration (100%), security (100%), data pipeline (100%), reproducibility (100%), and gradient management (90%). Remaining gaps: distributed training (3.5/10 — infrastructure built, needs multi-GPU integration), mixed precision (0.5/5).
+The sovereign stack (entrenar/albor) excels in: provable contracts (100%), checkpointing (100%), observability (100%), optimization (100%), fault tolerance (100%), evaluation (100%), configuration (100%), security (100%), data pipeline (100%), reproducibility (100%), and gradient management (100%). Remaining gaps: distributed training (3.5/10 — infrastructure built, needs multi-GPU integration), mixed precision (1.0/5 — accum buffers PASS, BF16 kernels needed).
 
 The remaining high-impact items (BF16 mixed precision, full distributed GPU testing) would raise the score to ~95% (A) with focused CUDA engineering.
 
@@ -190,10 +190,10 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 31 | BF16/FP16 forward pass | **FAIL** | All computation in f32. No mixed precision. |
 | 32 | FP32 master weights with lower-precision compute | **FAIL** | N/A (no mixed precision). |
 | 33 | Loss scaling for FP16 (or no-op for BF16) | **FAIL** | N/A. |
-| 34 | FP32 gradient accumulation buffer | **PARTIAL** | Accumulation is f32 (trivially, since everything is f32). |
+| 34 | FP32 gradient accumulation buffer | **PASS** | R-038: `PerBlockGradientAccumulator` holds `Vec<f32>` per-block. `BlockGradientSet::accumulate()` element-wise f32 add. Explicit FP32 accumulation buffers used across micro-batches before averaging. |
 | 35 | Mixed precision optimizer state (FP32 moments) | **FAIL** | N/A. |
 
-**Score: 0.5/5**
+**Score: 1.0/5**
 
 ### Category 5: Gradient Management (10 practices)
 
@@ -201,7 +201,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 |---|----------|--------|----------|
 | 36 | Global gradient norm clipping | **PASS** | Per-block gradient clipping in CudaGradWorkspace. |
 | 37 | Activation gradient clipping at device boundaries | **PASS** | C-EMBED-GRAD-001. ALB-044 fix. Clip before CPU optimizer. |
-| 38 | Gradient accumulation across micro-batches | **PARTIAL** | ALB-066: CPU embedding accumulation works. GPU per-block optimizer runs interleaved (arch limitation). |
+| 38 | Gradient accumulation across micro-batches | **PASS** | R-038: `PerBlockGradientAccumulator` (CPU-side) stores per-block weight gradients. `gpu_backward(accumulate_only=true)` downloads workspace per block. After N steps, `gpu_optimizer_from_accum()` averages + uploads + optimizer. YAML: `gradient_accumulation: 4`. Embedding grads scatter-add normally. |
 | 39 | Gradient overflow/underflow detection | **PASS** | R-018: NaN/Inf detection in loss + R-017 ZClip gradient spike detection. |
 | 40 | Per-parameter gradient statistics | **PASS** | R-040: Per-parameter-group grad norms (LM head, embedding) logged to JSONL every step. |
 | 41 | Gradient noise scale estimation | **PASS** | R-029: B_noise = Var(||g||)/E[||g||]² from rolling window, logged every 100 steps. |
@@ -210,7 +210,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 44 | Gradient synchronization verification | **PASS** | Single GPU. No sync needed. Trivially satisfied. |
 | 45 | Dead gradient detection (zero grad on trainable param) | **PASS** | CLAUDE.md Rule 4. Verified after ALB-038 fix. |
 
-**Score: 9.0/10**
+**Score: 10.0/10**
 
 ### Category 6: Data Pipeline (10 practices)
 
@@ -332,8 +332,8 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 1. Checkpointing & State Persistence | 10.0 | 10 | 100% |
 | 2. Fault Tolerance & Crash Recovery | 10.0 | 10 | 100% |
 | 3. Observability & Monitoring | 10.0 | 10 | 100% |
-| 4. Mixed Precision Training | 0.5 | 5 | 10% |
-| 5. Gradient Management | 9.0 | 10 | 90% |
+| 4. Mixed Precision Training | 1.0 | 5 | 20% |
+| 5. Gradient Management | 10.0 | 10 | 100% |
 | 6. Data Pipeline | 10.0 | 10 | 100% |
 | 7. Learning Rate & Optimization | 5.0 | 5 | 100% |
 | 8. Evaluation & Benchmarking | 10.0 | 10 | 100% |
@@ -342,7 +342,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 11. Security & Supply Chain | 5.0 | 5 | 100% |
 | 12. Configuration & Validation | 5.0 | 5 | 100% |
 | 13. Provable Correctness & Contracts | 5.0 | 5 | 100% |
-| **TOTAL** | **88.0** | **100** | **88.0%** |
+| **TOTAL** | **89.0** | **100** | **89.0%** |
 
 ### Letter Grade: **B+**
 

@@ -587,3 +587,61 @@ fn test_checkpoint_with_cpu_trainer() {
     assert!(loss > 0.0, "Loss should be positive");
     assert!(loss.is_finite(), "Loss should be finite");
 }
+
+#[test]
+fn test_gradient_accumulation_produces_different_weights_than_no_accum() {
+    // R-038: Verify that gradient accumulation with accum_steps=2 produces
+    // different weights than single-step training, proving the accumulation
+    // path is actually wired (not a no-op).
+    let model_config = TransformerConfig::tiny();
+    let seq = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+    let batch = LMBatch::from_sequences(&[seq.clone()], 0, 0);
+
+    // Train with accum=1 (immediate optimizer step)
+    let config_no_accum = TransformerTrainConfig::new(model_config.clone())
+        .with_lr(0.01)
+        .with_max_seq_len(32);
+    let model1 = Transformer::new(&model_config);
+    let mut trainer1 = TransformerTrainer::with_model(model1, config_no_accum);
+    trainer1.train_batch(&batch);
+    trainer1.train_batch(&batch);
+    let weights1: Vec<f32> = trainer1.model().embed_tokens.weight.data()
+        .as_slice().unwrap().to_vec();
+
+    // Train with accum=2 (deferred optimizer step)
+    let config_accum = TransformerTrainConfig::new(model_config.clone())
+        .with_lr(0.01)
+        .with_max_seq_len(32)
+        .with_accumulation_steps(2);
+    let model2 = Transformer::new(&model_config);
+    let mut trainer2 = TransformerTrainer::with_model(model2, config_accum);
+    trainer2.train_batch(&batch);
+    trainer2.train_batch(&batch);
+    let weights2: Vec<f32> = trainer2.model().embed_tokens.weight.data()
+        .as_slice().unwrap().to_vec();
+
+    // Weights should differ (different optimizer dynamics)
+    let diff: f64 = weights1.iter().zip(&weights2).map(|(a, b)| (*a as f64 - *b as f64).abs()).sum();
+    assert!(diff > 1e-6, "Gradient accumulation should produce different weights (diff={diff})");
+}
+
+#[test]
+fn test_per_block_gradient_accumulator_sizes() {
+    // Verify PerBlockGradientAccumulator sizes match model architecture
+    use super::grad_accumulator::PerBlockGradientAccumulator;
+
+    let model_config = TransformerConfig::tiny();
+    let h = model_config.hidden_size;
+    let kv = model_config.num_kv_heads * model_config.head_dim();
+    let i = model_config.intermediate_size;
+    let sizes = PerBlockGradientAccumulator::compute_block_sizes(h, kv, i);
+    let accum = PerBlockGradientAccumulator::new(
+        model_config.num_hidden_layers, sizes,
+        model_config.vocab_size, h,
+    );
+    assert_eq!(accum.num_blocks(), model_config.num_hidden_layers);
+    assert_eq!(accum.lm_head_grad.len(), model_config.vocab_size * h);
+    assert_eq!(accum.final_norm_grad.len(), h);
+    assert_eq!(accum.embedding_grad.len(), model_config.vocab_size * h);
+    assert!(!accum.has_non_finite());
+}
