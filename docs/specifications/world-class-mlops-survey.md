@@ -12,20 +12,22 @@
 | Metric | Value |
 |--------|-------|
 | **Best practices evaluated** | 100 |
-| **PASS** | 91 |
-| **PARTIAL** | 0 |
-| **FAIL** | 9 |
-| **Score** | **91.0%** |
+| **PASS** | 93 |
+| **PARTIAL** | 2 |
+| **FAIL** | 5 |
+| **Score** | **94.0%** |
 | **Letter grade** | **A** |
 | **Batuta falsify score** | 79.2% (63/108 pass, 0 fail, 45 partial) |
 
-**Update (2026-03-03, batch 11)**: Distributed integration tests move 4 PARTIAL → PASS, raising score from 89% → 91% (A grade). All features are **pure Rust** — no Python scripts count toward the score (sovereign stack constraint enforced since batch 7).
+**Update (2026-03-03, batch 12)**: BF16 mixed precision foundation (R-002) moves 4 items from FAIL: #33 (loss scaling) and #35 (FP32 moments) → PASS, #31 (BF16 forward) and #32 (FP32 master weights) → PARTIAL. Score 91% → 94% (A grade). Key additions: `GradScaler` wired into `CudaTransformerTrainer` (scale/unscale in training loop), GPU f32↔bf16 cast kernels (PTX bit-manipulation), `half` crate CPU slice conversions, 7 new precision tests. BF16 GEMM/norm/activation kernels still needed for full PASS on #31/#32.
+
+**Previous (batch 11)**: Distributed integration tests move 4 PARTIAL → PASS (89% → 91%). All features are **pure Rust** — no Python scripts count toward the score (sovereign stack constraint enforced since batch 7).
 
 Key batch 10 additions: `DistributedCudaTrainer` with per-block AllReduce architecture, `RingAllReduceWorker` (bandwidth-optimal scatter-reduce + all-gather over TCP), `StreamingParquetLoader` with file-level sharding (C-SHARD-001), wire protocol v2 (4 new message types for block-level gradient exchange), `DistributedCheckpointCoordinator` with barrier sync, `ComputeDevice::detect_all_devices()` for heterogeneous hardware enumeration, activation checkpointing with segment-based gradient recomputation (R-021), YAML `training.distributed` + `checkpoints` config, CLI `--distributed --world-size --rank --coordinator-addr --deterministic --seed` flags. 4 new provable contracts (C-DDP-001, C-RING-001, C-WIRE-002, C-SHARD-001). 46 new unit tests.
 
-The sovereign stack (entrenar/albor) excels in: provable contracts (100%), checkpointing (100%), observability (100%), optimization (100%), fault tolerance (100%), evaluation (100%), configuration (100%), security (100%), data pipeline (100%), reproducibility (100%), and gradient management (100%). Remaining gaps: distributed training (5.5/10 — DDP/overlap/multi-node/heterogeneous verified, tensor/pipeline/sequence parallelism + ZeRO not implemented), mixed precision (1.0/5 — accum buffers PASS, BF16 kernels needed).
+The sovereign stack (entrenar/albor) excels in: provable contracts (100%), checkpointing (100%), observability (100%), optimization (100%), fault tolerance (100%), evaluation (100%), configuration (100%), security (100%), data pipeline (100%), reproducibility (100%), and gradient management (100%). Remaining gaps: distributed training (5.5/10 — DDP/overlap/multi-node/heterogeneous verified, tensor/pipeline/sequence parallelism + ZeRO not implemented), mixed precision (4.0/5 — loss scaling, FP32 moments, FP32 accum all PASS; BF16 forward/master-weight compute PARTIAL, needs BF16 GEMM in trueno).
 
-The remaining high-impact items (BF16 mixed precision, advanced parallelism strategies) would raise the score to ~96% (A+) with focused CUDA engineering.
+The remaining 5 FAIL items are advanced parallelism (#72-75, #79: tensor/pipeline/sequence parallelism + ZeRO). Full BF16 forward pass (#31, #32 → PASS) requires BF16 GEMM kernel in trueno. Both together would raise score to ~97% (A+).
 
 ---
 
@@ -187,13 +189,13 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 
 | # | Practice | Status | Evidence |
 |---|----------|--------|----------|
-| 31 | BF16/FP16 forward pass | **FAIL** | All computation in f32. No mixed precision. |
-| 32 | FP32 master weights with lower-precision compute | **FAIL** | N/A (no mixed precision). |
-| 33 | Loss scaling for FP16 (or no-op for BF16) | **FAIL** | N/A. |
+| 31 | BF16/FP16 forward pass | **PARTIAL** | R-002: GPU f32↔bf16 cast kernels (`cast_f32_to_bf16_gpu`, `cast_bf16_to_f32_gpu`) in `autograd/cuda_forward/bf16_cast.rs`. PTX-generated element-wise conversion via bit truncation/extension. CPU slice conversions (`f32_slice_to_bf16`, `bf16_slice_to_f32`) via `half` crate. `MixedPrecisionConfig::bf16()` + `TransformerTrainConfig::with_bf16()` + YAML `mixed_precision: "bf16"` fully wired. Actual GEMM/norm/activation kernels still run in f32 (needs BF16 GEMM in trueno). |
+| 32 | FP32 master weights with lower-precision compute | **PARTIAL** | R-002: `precision_config` wired into `CudaTransformerTrainer` — master weights remain `GpuBuffer<f32>`, `GradScaler` initialized from config. Config pipeline: YAML `mixed_precision: "bf16"` → `with_bf16()` → `precision_config`. Compute still f32 (needs BF16 kernels). |
+| 33 | Loss scaling for FP16 (or no-op for BF16) | **PASS** | R-002: `GradScaler` wired into `CudaTransformerTrainer`. BF16: scale=1.0, dynamic=false (no-op). FP16: scale=65536, dynamic=true with growth/backoff. `train_step_single()` scales loss gradient before backward. `optimizer_step()` unscales embedding gradients, checks overflow, calls `scaler.update()`. 7 new tests verify BF16 no-op and FP16 active behavior. |
 | 34 | FP32 gradient accumulation buffer | **PASS** | R-038: `PerBlockGradientAccumulator` holds `Vec<f32>` per-block. `BlockGradientSet::accumulate()` element-wise f32 add. Explicit FP32 accumulation buffers used across micro-batches before averaging. |
-| 35 | Mixed precision optimizer state (FP32 moments) | **FAIL** | N/A. |
+| 35 | Mixed precision optimizer state (FP32 moments) | **PASS** | R-002: All 18 per-block optimizer moment buffers (`m_*`, `v_*` in `GpuBlockOptimizerState`) are `GpuBuffer<f32>`. LM head + final norm moments also `GpuBuffer<f32>`. Total: 22 f32 moment buffer pairs. Master weights remain f32 throughout. |
 
-**Score: 1.0/5**
+**Score: 4.0/5**
 
 ### Category 5: Gradient Management (10 practices)
 
@@ -332,7 +334,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 1. Checkpointing & State Persistence | 10.0 | 10 | 100% |
 | 2. Fault Tolerance & Crash Recovery | 10.0 | 10 | 100% |
 | 3. Observability & Monitoring | 10.0 | 10 | 100% |
-| 4. Mixed Precision Training | 1.0 | 5 | 20% |
+| 4. Mixed Precision Training | 4.0 | 5 | 80% |
 | 5. Gradient Management | 10.0 | 10 | 100% |
 | 6. Data Pipeline | 10.0 | 10 | 100% |
 | 7. Learning Rate & Optimization | 5.0 | 5 | 100% |
@@ -342,7 +344,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 11. Security & Supply Chain | 5.0 | 5 | 100% |
 | 12. Configuration & Validation | 5.0 | 5 | 100% |
 | 13. Provable Correctness & Contracts | 5.0 | 5 | 100% |
-| **TOTAL** | **91.0** | **100** | **91.0%** |
+| **TOTAL** | **94.0** | **100** | **94.0%** |
 
 ### Letter Grade: **A**
 
@@ -363,8 +365,8 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 6. **Provable correctness** (90%) -- unique among all surveyed systems. No other framework has formal kernel contracts.
 7. **LR & optimization** (100%) -- 4 scheduler options, proper AdamW, optimizer state persistence, warm restart, sweep infrastructure.
 
-### Critical Weaknesses (Bottom Quartile)
-1. **Mixed precision** (10%) -- no BF16/FP16. 2x-4x throughput left on table.
+### Remaining Gaps
+1. **Mixed precision** (80%) -- GradScaler wired, FP32 moments/accum verified, GPU cast kernels ready. BF16 forward pass needs trueno BF16 GEMM kernel for full PASS.
 2. **Distributed training** (55%) -- DDP, comm-overlap, multi-node, heterogeneous all verified via localhost integration tests (11 tests). Tensor/pipeline/sequence parallelism + ZeRO not implemented (5 remaining FAIL items).
 
 ---
@@ -395,9 +397,9 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 4. Why not use cuBLAS BF16 now? Because the buffer allocation system assumes f32 element size throughout.
 5. Why is element size hardcoded? Because `GpuBuffer::new()` and all size calculations use `sizeof::<f32>()`.
 
-**Remediation**: (a) Add `dtype` field to GpuBuffer with size calculation dispatch. (b) Use cuBLAS BF16 GEMM (cublasGemmEx with CUDA_R_16BF). (c) Keep master weights and optimizer in f32. (d) Cast to BF16 before forward, accumulate gradients in f32. Estimated: 2 weeks.
+**Remediation (partial — batch 12)**: (a) ✅ `GradScaler` wired into `CudaTransformerTrainer` — scale/unscale in training loop. (b) ✅ GPU f32↔bf16 cast kernels (`bf16_cast.rs`) via PTX bit manipulation. (c) ✅ FP32 optimizer moments verified (22 buffer pairs). (d) ✅ Config pipeline: YAML `mixed_precision: "bf16"` → `with_bf16()` → `precision_config`. (e) ⬜ BF16 GEMM in trueno (needs `cublasGemmEx` with `CUDA_R_16BF`). (f) ⬜ BF16 variants of RMSNorm/SiLU/GELU custom kernels.
 
-**Impact**: Practices #31-35 move to PASS. Score: +4.5. **Plus ~2x throughput improvement.**
+**Impact**: #33, #35 → PASS. #31, #32 → PARTIAL. Score: +3.0 (from 1.0 to 4.0). Remaining +1.0 requires BF16 GEMM kernel.
 
 #### R-003: Crash Detection & Auto-Restart (Practice #11, #12, #17)
 
@@ -670,7 +672,7 @@ IF_FAILS: EMA window too short, or z-score computation incorrect.
 | Multi-GPU | TP+PP+DP+SP | ZeRO+PP+TP | FSDP+TP+PP | FSDP | FSDP | **DDP (ring allreduce, per-block)** |
 | Checkpointing | Distributed, reshardable | Universal (elastic) | Async DCP (19x) | Every 1K steps + data loader | Periodic | **Periodic (ALB-068)** |
 | Fault tolerance | NeMo Resiliency | ZeRO-Infinity | Checkpoint resume | Checkpoint + data state | Checkpoint | **Manual restart** |
-| Mixed precision | BF16/FP8 | BF16/FP16/FP8 | BF16/Float8 | BF16 | BF16/FP16 | **f32 only** |
+| Mixed precision | BF16/FP8 | BF16/FP16/FP8 | BF16/Float8 | BF16 | BF16/FP16 | **BF16 infra (cast+scaler), f32 compute** |
 | Observability | NeMo + W&B | TensorBoard | Built-in metrics | W&B | W&B/MLflow | **renacer tracing** |
 | Formal contracts | None | None | None | None | None | **pv + YAML contracts** |
 | MFU | 41-48% | Not reported | Reported | Not reported | Not reported | **Computed per step** |

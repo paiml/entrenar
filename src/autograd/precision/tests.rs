@@ -248,4 +248,83 @@ mod tests {
         let config = MixedPrecisionConfig::default();
         assert!(!config.is_mixed());
     }
+
+    // ── R-002: BF16 mixed precision integration tests ──────────────────
+
+    #[test]
+    fn test_grad_scaler_bf16_is_noop() {
+        // BF16 has same exponent range as f32, so no loss scaling needed.
+        // GradScaler for BF16 config must be a no-op (scale=1.0, dynamic=false).
+        let config = MixedPrecisionConfig::bf16();
+        let mut scaler = GradScaler::from_config(&config);
+
+        assert_eq!(scaler.scale(), 1.0, "BF16 scaler should have scale=1.0");
+        assert!(!scaler.is_dynamic(), "BF16 scaler should not be dynamic");
+
+        // scale_loss should be identity
+        assert_eq!(scaler.scale_loss(0.5), 0.5);
+
+        // unscale_grad should be identity
+        assert_eq!(scaler.unscale_grad(42.0), 42.0);
+
+        // update should not change scale
+        scaler.update(true);
+        assert_eq!(scaler.scale(), 1.0);
+        scaler.update(false);
+        assert_eq!(scaler.scale(), 1.0);
+    }
+
+    #[test]
+    fn test_grad_scaler_fp16_is_active() {
+        // FP16 needs dynamic loss scaling to prevent gradient underflow.
+        let config = MixedPrecisionConfig::fp16();
+        let scaler = GradScaler::from_config(&config);
+
+        assert_eq!(scaler.scale(), 65536.0, "FP16 scaler should start at 65536");
+        assert!(scaler.is_dynamic(), "FP16 scaler should be dynamic");
+
+        // scale_loss should amplify
+        assert_eq!(scaler.scale_loss(0.001), 0.001 * 65536.0);
+    }
+
+    #[test]
+    fn test_bf16_nan_preserved() {
+        let nan_bits = f32_to_bf16(f32::NAN);
+        let back = bf16_to_f32(nan_bits);
+        assert!(back.is_nan(), "NaN must be preserved through BF16 roundtrip");
+    }
+
+    #[test]
+    fn test_bf16_infinity_preserved() {
+        let inf = f32_to_bf16(f32::INFINITY);
+        assert_eq!(bf16_to_f32(inf), f32::INFINITY);
+
+        let neg_inf = f32_to_bf16(f32::NEG_INFINITY);
+        assert_eq!(bf16_to_f32(neg_inf), f32::NEG_INFINITY);
+    }
+
+    #[test]
+    fn test_bf16_precision_characteristics() {
+        // BF16 has 7-bit mantissa → ~2 decimal digits of precision
+        // Relative error should be <= 2^-7 ≈ 0.0078
+        let test_values = [1.0_f32, 0.1, 3.14159, 100.0, 0.001, 65504.0];
+        for &val in &test_values {
+            let bf16 = f32_to_bf16(val);
+            let back = bf16_to_f32(bf16);
+            let rel_err = (back - val).abs() / val.abs();
+            assert!(
+                rel_err < 0.008,
+                "BF16 relative error {rel_err} too large for {val}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bf16_vram_savings() {
+        // BF16 uses 2 bytes vs f32's 4 bytes → 50% VRAM savings on activations
+        let (fp32_bytes, mixed_bytes, savings) =
+            estimate_memory_savings(1_000_000, 8, 512, 4096, Precision::Bf16);
+        assert!(savings > 0.3, "BF16 should save >30% memory (got {savings})");
+        assert!(mixed_bytes < fp32_bytes);
+    }
 }

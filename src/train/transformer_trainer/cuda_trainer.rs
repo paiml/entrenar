@@ -47,6 +47,8 @@ use crate::io::{save_model, Model, ModelFormat, ModelMetadata, SaveConfig};
 #[cfg(feature = "cuda")]
 use crate::optim::{AdamW, Optimizer};
 #[cfg(feature = "cuda")]
+use crate::autograd::precision::GradScaler;
+#[cfg(feature = "cuda")]
 use crate::train::{CausalLMLoss, LossFn, MetricsTracker};
 #[cfg(feature = "cuda")]
 use crate::transformer::{
@@ -228,6 +230,10 @@ pub struct CudaTransformerTrainer {
     /// R-038: Per-block gradient accumulation for true multi-step gradient accumulation.
     /// Only allocated when accumulation_steps > 1. CPU-side buffers (~335 MB for 350M).
     grad_accum: Option<super::grad_accumulator::PerBlockGradientAccumulator>,
+    /// R-002: Gradient scaler for mixed-precision training.
+    /// For BF16: no-op (scale=1.0, dynamic=false).
+    /// For FP16: dynamic loss scaling to prevent gradient underflow.
+    grad_scaler: GradScaler,
 }
 
 #[cfg(feature = "cuda")]
@@ -489,6 +495,17 @@ impl CudaTransformerTrainer {
             None
         };
 
+        // R-002: Initialize gradient scaler from precision config
+        let grad_scaler = GradScaler::from_config(&config.precision_config);
+        if config.precision_config.is_mixed() {
+            println!(
+                "  ✓ Mixed precision: {} (loss scale={}, dynamic={})",
+                config.precision_config.compute_precision,
+                grad_scaler.scale(),
+                grad_scaler.is_dynamic(),
+            );
+        }
+
         Ok(Self {
             model,
             cuda_trainer,
@@ -511,6 +528,7 @@ impl CudaTransformerTrainer {
             last_grad_norm: 0.0,
             last_embed_grad_norm: 0.0,
             grad_accum,
+            grad_scaler,
         })
     }
 
@@ -541,8 +559,16 @@ impl CudaTransformerTrainer {
         let logits_data = self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
 
         // Step 7: Cross-entropy loss + gradient (CPU)
-        let (loss_val, grad_logits) =
+        let (loss_val, mut grad_logits) =
             self.cpu_loss_and_grad(&logits_data, target_ids, seq_len, vocab_size)?;
+
+        // R-002: Scale loss gradient for mixed precision (no-op for BF16/FP32, active for FP16)
+        if self.grad_scaler.scale() != 1.0 {
+            let scale = self.grad_scaler.scale();
+            for g in &mut grad_logits {
+                *g *= scale;
+            }
+        }
 
         // Steps 8-11: GPU backward pass (with or without optimizer)
         let grad_output_is_a =
@@ -1220,6 +1246,21 @@ impl CudaTransformerTrainer {
     /// LM head and final norm optimizer steps also run in `gpu_backward()`.
     /// This method handles only CPU embedding and bookkeeping.
     fn optimizer_step(&mut self) {
+        // R-002: Unscale embedding gradients before optimizer step (mixed precision)
+        if self.grad_scaler.scale() != 1.0 {
+            let embed_weight = &mut self.model.embed_tokens.weight;
+            if let Some(grad) = embed_weight.grad() {
+                let mut unscaled: Vec<f32> = grad.to_vec();
+                let grads_valid = self.grad_scaler.unscale_and_check(&mut unscaled);
+                embed_weight.set_grad(ndarray::Array1::from(unscaled));
+                self.grad_scaler.update(grads_valid);
+            } else {
+                self.grad_scaler.update(true);
+            }
+        } else {
+            self.grad_scaler.update(true);
+        }
+
         // CPU optimizer step for embedding weight
         let mut embed_params = vec![&mut self.model.embed_tokens.weight];
         self.embed_optimizer.step_refs(&mut embed_params);
@@ -1456,6 +1497,11 @@ impl CudaTransformerTrainer {
     /// Check if using mixed precision.
     pub fn is_mixed_precision(&self) -> bool {
         self.config.precision_config.is_mixed()
+    }
+
+    /// Get the gradient scaler (R-002: loss scaling for mixed precision).
+    pub fn grad_scaler(&self) -> &GradScaler {
+        &self.grad_scaler
     }
 
     /// Check if using gradient checkpointing.
