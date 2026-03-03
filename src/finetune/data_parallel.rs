@@ -164,51 +164,30 @@ impl DataParallelCoordinator {
 
     /// Synchronize LoRA weights from primary pipeline to all replicas.
     ///
-    /// Copies the primary pipeline's LoRA A/B matrices and classifier head
-    /// weights to all other pipelines, ensuring weight consistency.
+    /// Uses `split_at_mut` for disjoint borrows — copies primary weights
+    /// directly into replicas via `assign()`, no intermediate allocations.
+    ///
+    /// # KAIZEN-034
+    /// Eliminates double copy (to_vec + clone) per LoRA layer per step.
     fn sync_lora_weights_from_primary(&mut self) {
         if self.pipelines.len() <= 1 {
             return;
         }
 
-        // Collect primary's LoRA weights via public accessors
-        let primary_lora_data: Vec<(Vec<f32>, Vec<f32>)> = self.pipelines[0]
-            .lora_layers
-            .iter()
-            .map(|lora| {
-                let a_data = lora.lora_a().data().to_vec();
-                let b_data = lora.lora_b().data().to_vec();
-                (a_data, b_data)
-            })
-            .collect();
+        // split_at_mut gives disjoint borrows: primary (immutable) vs replicas (mutable)
+        let (primary_slice, replicas) = self.pipelines.split_at_mut(1);
+        let primary = &primary_slice[0];
 
-        // Copy primary classifier weights
-        let classifier_data: Vec<f32> = self.pipelines[0]
-            .classifier
-            .weight
-            .data()
-            .to_vec();
-        let classifier_bias: Vec<f32> = self.pipelines[0]
-            .classifier
-            .bias
-            .data()
-            .to_vec();
-
-        // Broadcast to replicas
-        for pipeline in self.pipelines.iter_mut().skip(1) {
-            for (i, lora) in pipeline.lora_layers.iter_mut().enumerate() {
-                if let Some((ref a_data, ref b_data)) = primary_lora_data.get(i) {
-                    let a_arr = ndarray::Array1::from(a_data.clone());
-                    let b_arr = ndarray::Array1::from(b_data.clone());
-                    *lora.lora_a_mut().data_mut() = a_arr;
-                    *lora.lora_b_mut().data_mut() = b_arr;
-                }
+        for replica in replicas.iter_mut() {
+            // Copy LoRA weights directly via assign (single memcpy per matrix)
+            for (src_lora, dst_lora) in primary.lora_layers.iter().zip(replica.lora_layers.iter_mut()) {
+                dst_lora.lora_a_mut().data_mut().assign(&src_lora.lora_a().data());
+                dst_lora.lora_b_mut().data_mut().assign(&src_lora.lora_b().data());
             }
 
-            let w_arr = ndarray::Array1::from(classifier_data.clone());
-            let b_arr = ndarray::Array1::from(classifier_bias.clone());
-            *pipeline.classifier.weight.data_mut() = w_arr;
-            *pipeline.classifier.bias.data_mut() = b_arr;
+            // Copy classifier head weights
+            replica.classifier.weight.data_mut().assign(&primary.classifier.weight.data());
+            replica.classifier.bias.data_mut().assign(&primary.classifier.bias.data());
         }
     }
 }
