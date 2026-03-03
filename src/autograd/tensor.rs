@@ -6,9 +6,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Tensor with automatic differentiation support
+///
+/// Data is stored behind `Rc` for O(1) clone.  Backward ops clone input
+/// tensors to hold references for gradient computation — with `Rc`, this
+/// is a reference-count bump instead of a full memcpy.  For Qwen3-4B with
+/// batch_size=8, this eliminates ~16 GB of redundant frozen-weight copies
+/// per training step (KAIZEN-019).
+///
+/// `data_mut()` uses `Rc::make_mut` for copy-on-write: mutation only copies
+/// when there are multiple Rc references to the same data.
 #[derive(Clone)]
 pub struct Tensor {
-    data: Array1<f32>,
+    data: Rc<Array1<f32>>,
     grad: Rc<RefCell<Option<Array1<f32>>>>,
     backward_op: Option<Rc<dyn BackwardOp>>,
     requires_grad: bool,
@@ -17,7 +26,7 @@ pub struct Tensor {
 impl Tensor {
     /// Create a new tensor with data
     pub fn new(data: Array1<f32>, requires_grad: bool) -> Self {
-        Self { data, grad: Rc::new(RefCell::new(None)), backward_op: None, requires_grad }
+        Self { data: Rc::new(data), grad: Rc::new(RefCell::new(None)), backward_op: None, requires_grad }
     }
 
     /// Create a tensor from a vector
@@ -40,9 +49,14 @@ impl Tensor {
         &self.data
     }
 
-    /// Get mutable reference to data
+    /// Get mutable reference to data (copy-on-write via `Rc::make_mut`)
+    ///
+    /// If this is the only `Rc` reference, returns a mutable reference to
+    /// the existing data with no copy.  If there are other references
+    /// (e.g. backward ops holding clones), clones the data first so
+    /// mutations don't affect other holders.
     pub fn data_mut(&mut self) -> &mut Array1<f32> {
-        &mut self.data
+        Rc::make_mut(&mut self.data)
     }
 
     /// Get gradient (if computed)
