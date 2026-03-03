@@ -2869,7 +2869,7 @@ impl ClassifyPipeline {
         let all_params: Vec<&Tensor> = self
             .lora_layers
             .iter()
-            .flat_map(|l| vec![l.lora_a(), l.lora_b()])
+            .flat_map(|l| [l.lora_a(), l.lora_b()])
             .chain(self.classifier.parameters())
             .collect();
 
@@ -2888,7 +2888,7 @@ impl ClassifyPipeline {
         let all_params: Vec<&Tensor> = self
             .lora_layers
             .iter()
-            .flat_map(|l| vec![l.lora_a(), l.lora_b()])
+            .flat_map(|l| [l.lora_a(), l.lora_b()])
             .chain(self.classifier.parameters())
             .collect();
         for param in all_params {
