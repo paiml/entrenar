@@ -20,8 +20,9 @@ use crate::autograd::Tensor;
 use crate::lora::LoRALayer;
 use crate::transformer::config::TransformerConfig;
 use crate::transformer::model::Transformer;
+use std::cell::RefCell;
 use std::sync::Arc;
-use trueno::backends::gpu::{wgpu, GpuCommandBatch, GpuDevice};
+use trueno::backends::gpu::{wgpu, GpuCommandBatch, GpuDevice, PipelineCache};
 
 /// Pre-uploaded FFN weight buffers for a single transformer layer (KAIZEN-015).
 ///
@@ -58,6 +59,11 @@ pub struct WgpuForwardPass {
     /// Each layer has (w_gate, w_up, w_down) as persistent `wgpu::Buffer`s.
     /// Empty when constructed via `new()`/`new_default()`; populated by `with_resident_weights()`.
     ffn_weights: Vec<GpuResidentFfnWeights>,
+    /// KAIZEN-023: Persistent pipeline cache across batch executions.
+    /// Shaders compiled in layer 1's batch are reused for layers 2-36.
+    /// Reduces 108 shader compilations per forward pass to just 3.
+    /// Uses `RefCell` because `forward_ffn_gpu()` is called via `&self`.
+    pipeline_cache: RefCell<PipelineCache>,
 }
 
 impl WgpuForwardPass {
@@ -77,6 +83,7 @@ impl WgpuForwardPass {
             config: config.clone(),
             num_layers: config.num_hidden_layers,
             ffn_weights: Vec::new(),
+            pipeline_cache: RefCell::new(PipelineCache::new()),
         })
     }
 
@@ -89,6 +96,7 @@ impl WgpuForwardPass {
             config: config.clone(),
             num_layers: config.num_hidden_layers,
             ffn_weights: Vec::new(),
+            pipeline_cache: RefCell::new(PipelineCache::new()),
         })
     }
 
@@ -177,7 +185,7 @@ impl WgpuForwardPass {
         let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
         eprintln!("[wgpu] GPU-resident FFN weights: {num_layers} layers, {total_mb:.1} MB");
 
-        Ok(Self { device, config, num_layers, ffn_weights })
+        Ok(Self { device, config, num_layers, ffn_weights, pipeline_cache: PipelineCache::new() })
     }
 
     /// Execute forward pass through all transformer layers on GPU
@@ -330,8 +338,8 @@ impl WgpuForwardPass {
                 hidden_size as u32,
             );
 
-            // Execute all ops in single batch
-            batch.execute().await?;
+            // Execute all ops in single batch — KAIZEN-023: persistent pipeline cache
+            batch.execute_with_cache(&mut self.pipeline_cache.borrow_mut()).await?;
 
             // Download result
             let result_data = batch.read(ffn_out).await?;
