@@ -246,7 +246,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 61 | Validation perplexity during training | **PASS** | R-005: `eval_batch()` runs on val set at checkpoint boundaries, logs to JSONL. |
 | 62 | Downstream benchmark suite (HumanEval, MBPP) | **FAIL** | No automated benchmark evaluation. |
 | 63 | Evaluation at checkpoint boundaries | **PASS** | R-005: `run_validation_eval()` runs at every intermediate checkpoint. |
-| 64 | Contamination detection | **FAIL** | No contamination checking. |
+| 64 | Contamination detection | **PASS** | R-030: `contamination-check.py` — 13-gram exact match (GPT-4 methodology), Parquet/text input, HumanEval built-in. |
 | 65 | Two-tier eval (development + unseen benchmarks) | **FAIL** | No benchmark infrastructure at all. |
 | 66 | Perplexity-benchmark correlation tracking | **FAIL** | No correlation analysis. |
 | 67 | Intermediate checkpoint evaluation | **PASS** | R-005: Validation eval runs at every `save_interval` checkpoint. |
@@ -254,7 +254,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 69 | Code execution evaluation (pass@k) | **FAIL** | No code execution sandbox for functional correctness. |
 | 70 | Model comparison framework (A/B testing) | **PASS** | R-031: `compare-checkpoints.py` side-by-side PPL eval with JSON output. |
 
-**Score: 4.0/10**
+**Score: 5.0/10**
 
 ### Category 9: Distributed Training (10 practices)
 
@@ -334,13 +334,13 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 5. Gradient Management | 6.5 | 10 | 65% |
 | 6. Data Pipeline | 5.5 | 10 | 55% |
 | 7. Learning Rate & Optimization | 5.0 | 5 | 100% |
-| 8. Evaluation & Benchmarking | 4.0 | 10 | 40% |
+| 8. Evaluation & Benchmarking | 5.0 | 10 | 50% |
 | 9. Distributed Training | 0.0 | 10 | 0% |
 | 10. Reproducibility & Provenance | 3.5 | 5 | 70% |
 | 11. Security & Supply Chain | 3.5 | 5 | 70% |
 | 12. Configuration & Validation | 4.5 | 5 | 90% |
 | 13. Provable Correctness & Contracts | 4.5 | 5 | 90% |
-| **TOTAL** | **64.0** | **100** | **64%** |
+| **TOTAL** | **65.0** | **100** | **65%** |
 
 ### Letter Grade: **D**
 
@@ -361,9 +361,9 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 ### Critical Weaknesses (Bottom Quartile)
 1. **Distributed training** (0%) -- single GPU only. Every production system supports multi-GPU.
 2. **Mixed precision** (10%) -- no BF16/FP16. 2x-4x throughput left on table.
-3. **Evaluation** (30%) -- val perplexity at checkpoints, but no HumanEval/MBPP, no contamination detection.
+3. **Evaluation** (50%) -- val perplexity + contamination detection, but no HumanEval/MBPP code execution eval.
 4. **Data pipeline** (55%) -- shuffling + FIM, but no dedup, quality filtering, or curriculum learning.
-5. **Checkpointing** (25%) -- no optimizer/data/LR/RNG state. Resume is a cold restart.
+5. **Fault tolerance** (65%) -- loss spike rollback, but no automatic restart on crash, no heartbeat monitoring.
 
 ---
 
