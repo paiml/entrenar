@@ -1182,6 +1182,76 @@ impl CudaTransformerTrainer {
     pub fn gpu_name(&self) -> String {
         self.cuda_trainer.device_name()
     }
+
+    /// R-001: Save CPU embedding optimizer state (m/v buffers + step counter).
+    ///
+    /// Writes `optimizer_state.json` to the given directory. GPU block optimizer
+    /// states remain on-device (D2H for 20 buffers × N blocks is deferred).
+    pub fn save_optimizer_state(&self, dir: &std::path::Path) -> crate::Result<()> {
+        let path = dir.join("optimizer_state.json");
+        let m_data: Vec<Option<Vec<f32>>> = self.embed_optimizer.first_moments()
+            .iter()
+            .map(|opt| opt.as_ref().map(|a| a.to_vec()))
+            .collect();
+        let v_data: Vec<Option<Vec<f32>>> = self.embed_optimizer.second_moments()
+            .iter()
+            .map(|opt| opt.as_ref().map(|a| a.to_vec()))
+            .collect();
+        let state = serde_json::json!({
+            "type": "adamw_cpu_embed",
+            "step": self.embed_optimizer.step_count(),
+            "m": m_data,
+            "v": v_data,
+        });
+        let json_str = serde_json::to_string(&state)
+            .map_err(|e| crate::error::Error::ConfigError(format!("serialize optimizer state: {}", e)))?;
+        std::fs::write(&path, json_str)
+            .map_err(|e| crate::error::Error::ConfigError(format!("write optimizer state: {}", e)))?;
+        Ok(())
+    }
+
+    /// R-001: Load CPU embedding optimizer state from `optimizer_state.json`.
+    ///
+    /// Returns true if state was loaded, false if file doesn't exist.
+    pub fn load_optimizer_state(&mut self, dir: &std::path::Path) -> bool {
+        let path = dir.join("optimizer_state.json");
+        let data = match std::fs::read_to_string(&path) {
+            Ok(d) => d,
+            Err(_) => return false,
+        };
+        let state: serde_json::Value = match serde_json::from_str(&data) {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+        if let Some(step) = state["step"].as_u64() {
+            self.embed_optimizer.set_step_count(step);
+        }
+        restore_moment_buffers(&state["m"], |idx, arr| {
+            self.embed_optimizer.set_first_moment(idx, arr);
+        });
+        restore_moment_buffers(&state["v"], |idx, arr| {
+            self.embed_optimizer.set_second_moment(idx, arr);
+        });
+        true
+    }
+}
+
+/// Parse a JSON array of moment buffers and apply each via callback.
+#[cfg(feature = "cuda")]
+fn restore_moment_buffers(
+    json_arr: &serde_json::Value,
+    mut set_fn: impl FnMut(usize, ndarray::Array1<f32>),
+) {
+    let Some(arr) = json_arr.as_array() else { return };
+    for (idx, val) in arr.iter().enumerate() {
+        let Some(inner) = val.as_array() else { continue };
+        let floats: Vec<f32> = inner.iter()
+            .filter_map(|v| v.as_f64().map(|f| f as f32))
+            .collect();
+        if !floats.is_empty() {
+            set_fn(idx, ndarray::Array1::from_vec(floats));
+        }
+    }
 }
 
 // ── Non-CUDA stub ──
