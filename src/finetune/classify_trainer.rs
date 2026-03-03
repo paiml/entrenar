@@ -353,6 +353,11 @@ impl ClassifyTrainer {
     /// 6. Save checkpoint if `save_every` or new best val_loss
     /// 7. Check early stopping
     pub fn train(&mut self) -> TrainResult {
+        // Dispatch to coordinator-mode training if distributed config is set
+        if self.is_coordinator_mode() {
+            return self.train_as_coordinator();
+        }
+
         let total_start = std::time::Instant::now();
         let batch_size = self.pipeline.config.batch_size;
         let batches_per_epoch = self.train_data.len().div_ceil(batch_size);
@@ -481,6 +486,171 @@ impl ClassifyTrainer {
             best_val_loss,
             stopped_early,
             total_time_ms,
+        }
+    }
+
+    /// Run training as the distributed coordinator.
+    ///
+    /// Starts a `GradientServer`, waits for workers, then runs the full
+    /// training loop with distributed AllReduce gradient averaging.
+    ///
+    /// # Contract: F-DP-001 (Weight Consistency)
+    ///
+    /// After each AllReduce step, all workers receive identical averaged
+    /// gradients and apply the same optimizer step.
+    fn train_as_coordinator(&mut self) -> TrainResult {
+        use super::gradient_server::GradientServer;
+
+        let dist_config = self.config.distributed.clone()
+            .expect("train_as_coordinator requires distributed config");
+
+        let total_start = std::time::Instant::now();
+
+        // Bind gradient server
+        let mut server = match GradientServer::bind(dist_config) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[coordinator] Failed to bind: {e}");
+                return TrainResult {
+                    epoch_metrics: vec![],
+                    best_epoch: 0,
+                    best_val_loss: f32::INFINITY,
+                    stopped_early: true,
+                    total_time_ms: total_start.elapsed().as_millis() as u64,
+                };
+            }
+        };
+
+        // Wait for all workers to connect
+        if let Err(e) = server.wait_for_workers() {
+            eprintln!("[coordinator] Worker connection failed: {e}");
+            return TrainResult {
+                epoch_metrics: vec![],
+                best_epoch: 0,
+                best_val_loss: f32::INFINITY,
+                stopped_early: true,
+                total_time_ms: total_start.elapsed().as_millis() as u64,
+            };
+        }
+
+        let num_workers = server.worker_count();
+        server.set_total_samples(self.train_data.len());
+
+        eprintln!(
+            "[coordinator] Starting training: {} epochs, {} workers, {} samples",
+            self.config.epochs, num_workers, self.train_data.len(),
+        );
+
+        let mut epoch_metrics_vec: Vec<EpochMetrics> = Vec::with_capacity(self.config.epochs);
+        let mut best_val_loss = f32::INFINITY;
+        let mut best_epoch = 0usize;
+        let mut stopped_early = false;
+
+        for epoch in 0..self.config.epochs {
+            let epoch_start = std::time::Instant::now();
+
+            self.shuffle_training_data(epoch);
+
+            let batch_size = self.pipeline.config.batch_size;
+            let train_snapshot = self.train_data.clone();
+            let mut total_loss = 0.0f32;
+            let mut total_correct = 0usize;
+            let mut total_samples = 0usize;
+
+            // Process batches using distributed AllReduce
+            for (step_idx, chunk) in train_snapshot.chunks(batch_size).enumerate() {
+                let step = epoch as u64 * (train_snapshot.len() / batch_size) as u64
+                    + step_idx as u64;
+
+                // Send shard assignments to workers
+                if let Err(e) = server.send_shard_assignments(step) {
+                    eprintln!("[coordinator] Shard assignment failed at step {step}: {e}");
+                    stopped_early = true;
+                    break;
+                }
+
+                // Coordinator also computes its own shard (local forward/backward)
+                let _local = self.pipeline.train_batch(chunk);
+
+                // Collect and average gradients from all workers (F-DP-001)
+                match server.collect_and_reduce(step) {
+                    Ok(allreduce) => {
+                        // Apply averaged gradients locally
+                        self.pipeline.apply_lora_gradients(&allreduce.avg_gradients);
+
+                        // Broadcast to workers
+                        if let Err(e) = server.broadcast_averaged(step, &allreduce) {
+                            eprintln!("[coordinator] Broadcast failed at step {step}: {e}");
+                            stopped_early = true;
+                            break;
+                        }
+
+                        total_loss += allreduce.global_loss * allreduce.total_samples as f32;
+                        total_correct += allreduce.total_correct;
+                        total_samples += allreduce.total_samples;
+                    }
+                    Err(e) => {
+                        eprintln!("[coordinator] AllReduce failed at step {step}: {e}");
+                        stopped_early = true;
+                        break;
+                    }
+                }
+            }
+
+            if stopped_early {
+                break;
+            }
+
+            let avg_loss = if total_samples > 0 {
+                total_loss / total_samples as f32
+            } else { 0.0 };
+            let accuracy = if total_samples > 0 {
+                total_correct as f32 / total_samples as f32
+            } else { 0.0 };
+
+            // Validate on coordinator's local val set
+            let (val_loss, val_accuracy) = self.validate();
+
+            let epoch_time_ms = epoch_start.elapsed().as_millis() as u64;
+            let samples_per_sec = if epoch_time_ms > 0 {
+                total_samples as f32 / (epoch_time_ms as f32 / 1000.0)
+            } else { 0.0 };
+
+            let metrics = EpochMetrics {
+                epoch,
+                train_loss: avg_loss,
+                train_accuracy: accuracy,
+                val_loss,
+                val_accuracy,
+                learning_rate: self.pipeline.optimizer_lr(),
+                epoch_time_ms,
+                samples_per_sec,
+            };
+
+            eprintln!(
+                "[coordinator] Epoch {}: loss={:.4}, acc={:.1}%, val_loss={:.4}, val_acc={:.1}%",
+                epoch + 1, avg_loss, accuracy * 100.0, val_loss, val_accuracy * 100.0,
+            );
+
+            if val_loss < best_val_loss {
+                best_val_loss = val_loss;
+                best_epoch = epoch;
+
+                let best_path = self.config.checkpoint_dir.join("best");
+                let _ = self.save_checkpoint(&best_path, epoch, &metrics);
+            }
+
+            epoch_metrics_vec.push(metrics);
+        }
+
+        server.shutdown_workers();
+
+        TrainResult {
+            epoch_metrics: epoch_metrics_vec,
+            best_epoch,
+            best_val_loss,
+            stopped_early,
+            total_time_ms: total_start.elapsed().as_millis() as u64,
         }
     }
 
@@ -1256,6 +1426,14 @@ impl ClassifyTrainer {
     /// Get a mutable reference to the underlying pipeline.
     pub fn pipeline_mut(&mut self) -> &mut ClassifyPipeline {
         &mut self.pipeline
+    }
+
+    /// Check if distributed coordinator mode is configured.
+    fn is_coordinator_mode(&self) -> bool {
+        self.config
+            .distributed
+            .as_ref()
+            .is_some_and(|d| matches!(d.role, super::distributed::NodeRole::Coordinator))
     }
 
     /// Run as a distributed worker node.
