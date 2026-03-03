@@ -2682,17 +2682,14 @@ impl ClassifyPipeline {
             #[cfg(not(feature = "cuda"))]
             { false }
         };
-        let (padded_tokens, seq_len) = if has_gpu_training {
+        // KAIZEN-035: Avoid token_ids.to_vec() on CPU path — borrow directly.
+        let hidden = if has_gpu_training {
             let mut padded = vec![0u32; self.config.max_seq_len];
             padded[..orig_seq_len].copy_from_slice(&token_ids[..orig_seq_len]);
-            (padded, self.config.max_seq_len)
+            self.forward_hidden_dispatch(&padded)
         } else {
-            (token_ids.to_vec(), token_ids.len())
+            self.forward_hidden_dispatch(token_ids)
         };
-        let _ = seq_len; // used by #[cfg(feature = "cuda")] backward pass
-
-        // ── Forward pass (GPU-dispatched if available) ──────────────────
-        let hidden = self.forward_hidden_dispatch(&padded_tokens);
         let pooled = self.classifier.mean_pool(&hidden, orig_seq_len);
 
         let logits =
@@ -2921,16 +2918,14 @@ impl ClassifyPipeline {
             #[cfg(not(feature = "cuda"))]
             { false }
         };
-        let (tokens_for_forward, _seq_len) = if has_gpu_training {
+        // KAIZEN-035: Avoid token_ids.to_vec() on CPU path — borrow directly.
+        let hidden = if has_gpu_training {
             let mut padded = vec![0u32; self.config.max_seq_len];
             padded[..orig_seq_len].copy_from_slice(&token_ids[..orig_seq_len]);
-            (padded, self.config.max_seq_len)
+            self.forward_hidden_dispatch(&padded)
         } else {
-            (token_ids.to_vec(), token_ids.len())
+            self.forward_hidden_dispatch(token_ids)
         };
-
-        // Forward pass (F-CUDA-009: classification head runs on CPU after GPU hidden states)
-        let hidden = self.forward_hidden_dispatch(&tokens_for_forward);
         let pooled = self.classifier.mean_pool(&hidden, orig_seq_len);
 
         let logits =
