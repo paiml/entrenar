@@ -210,9 +210,10 @@ impl ClassifyConfig {
             // C-HP-004: set from data, 256 is SSC v3 default
             max_seq_len: 256,
             log_interval: 100,
-            // C-HP-002: batch=4, accum=4 → effective=16 (Dettmers 2023)
-            batch_size: 4,
-            accumulation_steps: 4,
+            // C-HP-002: effective=16 (Dettmers 2023). Micro-batch=16 to saturate
+            // GPU occupancy (batch=4 leaves RTX 4090 at 1.5% MFU).
+            batch_size: 16,
+            accumulation_steps: 1,
             // C-HP-006: gradient clipping (standard, SSC v2.2 precedent)
             gradient_clip_norm: Some(1.0),
             class_weights: None,
@@ -663,9 +664,16 @@ impl ClassifyPipeline {
             let has_cuda = false;
 
             if !has_cuda {
-                crate::transformer::WgpuForwardPass::new_default(model_config)
-                    .map_err(|e| eprintln!("[wgpu] GPU init failed: {e}"))
-                    .ok()
+                match crate::transformer::WgpuForwardPass::new_default(model_config) {
+                    Ok(pass) => {
+                        eprintln!("[wgpu] Batched forward pass initialized ({} layers)", model_config.num_hidden_layers);
+                        Some(pass)
+                    }
+                    Err(e) => {
+                        eprintln!("[wgpu] GPU init failed, using per-op fallback: {e}");
+                        None
+                    }
+                }
             } else {
                 None
             }

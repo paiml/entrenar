@@ -333,7 +333,8 @@ fn wgpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Option<Vec
             if !WGPU_LOGGED.swap(true, Ordering::Relaxed) {
                 eprintln!("[wgpu] GPU matmul active ({m}x{k}x{n})");
             }
-            if calls > 0 && calls % 1000 == 0 {
+            // KAIZEN-003: Demote to 10k intervals; previous 1k floods logs
+            if calls > 0 && calls % 10_000 == 0 {
                 eprintln!("[wgpu] {calls} GPU matmuls completed");
             }
             Some(result)
