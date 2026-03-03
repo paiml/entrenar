@@ -87,8 +87,14 @@ impl WgpuForwardPass {
 
         // Step 2: Process each transformer layer
         // Attention stays on CPU; FFN matmuls go to GPU via batched execution
+        //
+        // KAIZEN-004: Suppress per-op wgpu during attention. Without this,
+        // each Q/K/V/O projection triggers a full buffer upload/compute/download
+        // cycle (144 per-op matmuls × ~3-5ms = 430-720ms overhead per sample).
+        // CPU SIMD is equally fast and doesn't contend for GPU bandwidth.
+        crate::autograd::suppress_per_op_wgpu();
         for layer in &model.layers {
-            // --- Attention on CPU (includes RoPE, softmax, masking) ---
+            // --- Attention on CPU SIMD (includes RoPE, softmax, masking) ---
             let norm1 = layer.input_norm.forward_batched(&hidden, seq_len, hidden_size);
             let attn_out = layer.self_attn.forward(&norm1, seq_len);
             let residual1 = crate::autograd::add(&hidden, &attn_out);
@@ -109,6 +115,8 @@ impl WgpuForwardPass {
             // Residual connection
             hidden = crate::autograd::add(&residual1, &ffn_out);
         }
+        // KAIZEN-004: Re-enable per-op wgpu for backward pass / other operations
+        crate::autograd::unsuppress_per_op_wgpu();
 
         // Step 3: Final normalization on CPU
         let normalized = model.norm.forward_batched(&hidden, seq_len, hidden_size);
