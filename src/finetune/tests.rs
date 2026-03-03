@@ -67,6 +67,9 @@ fn test_device_selection_for_qlora() {
                 assert!(info.sufficient_for_qlora());
             }
         }
+        ComputeDevice::Wgpu { adapter_index: _ } => {
+            // wgpu device detected — valid for QLoRA
+        }
     }
 }
 

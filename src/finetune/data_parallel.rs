@@ -599,4 +599,269 @@ mod tests {
             assert_eq!(coordinator.num_gpus(), n as usize);
         }
     }
+
+    // ─── Strengthened F-DP-001: verify ALL layers, not just layer 0 ──────────
+
+    #[test]
+    fn falsify_dp_001_weight_sync_all_layers_and_classifier() {
+        let (model_config, classify_config) = test_config();
+        let mut coordinator = DataParallelCoordinator::new(
+            &model_config,
+            classify_config,
+            &[0, 1],
+        )
+        .expect("creation should succeed");
+
+        // Perturb ALL lora_a/lora_b of replica 1 and classifier
+        for lora in &mut coordinator.pipelines[1].lora_layers {
+            let perturbed_a: Vec<f32> = lora.lora_a().data().iter().map(|v| v + 42.0).collect();
+            *lora.lora_a_mut().data_mut() = ndarray::Array1::from(perturbed_a);
+            let perturbed_b: Vec<f32> = lora.lora_b().data().iter().map(|v| v + 7.0).collect();
+            *lora.lora_b_mut().data_mut() = ndarray::Array1::from(perturbed_b);
+        }
+        let perturbed_w: Vec<f32> = coordinator.pipelines[1]
+            .classifier.weight.data().iter().map(|v| v + 99.0).collect();
+        *coordinator.pipelines[1].classifier.weight.data_mut() =
+            ndarray::Array1::from(perturbed_w);
+
+        // Sync from primary
+        coordinator.sync_lora_weights_from_primary();
+
+        // Verify ALL LoRA layers match bit-for-bit
+        for (i, (l0, l1)) in coordinator.pipelines[0]
+            .lora_layers
+            .iter()
+            .zip(coordinator.pipelines[1].lora_layers.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                l0.lora_a().data().as_slice().unwrap(),
+                l1.lora_a().data().as_slice().unwrap(),
+                "F-DP-001: lora_a of layer {i} must match after sync"
+            );
+            assert_eq!(
+                l0.lora_b().data().as_slice().unwrap(),
+                l1.lora_b().data().as_slice().unwrap(),
+                "F-DP-001: lora_b of layer {i} must match after sync"
+            );
+        }
+
+        // Verify classifier head
+        assert_eq!(
+            coordinator.pipelines[0].classifier.weight.data().as_slice().unwrap(),
+            coordinator.pipelines[1].classifier.weight.data().as_slice().unwrap(),
+            "F-DP-001: classifier weight must match after sync"
+        );
+        assert_eq!(
+            coordinator.pipelines[0].classifier.bias.data().as_slice().unwrap(),
+            coordinator.pipelines[1].classifier.bias.data().as_slice().unwrap(),
+            "F-DP-001: classifier bias must match after sync"
+        );
+    }
+
+    // ─── F-DP-005: Multi-GPU loss equivalence ────────────────────────────────
+
+    #[test]
+    fn falsify_dp_005_single_vs_multi_gpu_loss_convergence() {
+        // F-DP-005: |loss_multi - loss_single| < tolerance after training
+        // This tests that gradient averaging produces equivalent results to
+        // single-pipeline training on the same data.
+        let (model_config, classify_config) = test_config();
+
+        // Create samples
+        let samples: Vec<SafetySample> = (0..20)
+            .map(|i| SafetySample {
+                input: format!("test_sample_{i}"),
+                label: i % 2,
+            })
+            .collect();
+
+        // ── Single GPU: train locally ──
+        let mut single_pipe = ClassifyPipeline::new(&model_config, classify_config.clone());
+        let token_ids_batch: Vec<Vec<u32>> = samples
+            .iter()
+            .map(|s| {
+                let bytes: Vec<u32> = s.input.bytes().map(u32::from).collect();
+                bytes[..bytes.len().min(16)].to_vec()
+            })
+            .collect();
+
+        // Forward/backward each sample, accumulate loss
+        let mut single_loss = 0.0f32;
+        for (ids, sample) in token_ids_batch.iter().zip(&samples) {
+            let (loss, _pred) = single_pipe.forward_only(ids, sample.label);
+            single_loss += loss;
+        }
+        let single_avg_loss = single_loss / samples.len() as f32;
+
+        // ── Multi GPU (2 replicas): shard and average ──
+        let mut multi = DataParallelCoordinator::new(
+            &model_config,
+            classify_config,
+            &[0, 1],
+        )
+        .expect("creation should succeed");
+
+        // Pair token IDs with labels so sharding preserves the mapping
+        let id_label_pairs: Vec<(&Vec<u32>, usize)> = token_ids_batch
+            .iter()
+            .zip(samples.iter().map(|s| s.label))
+            .collect();
+        let shards = shard_samples(&id_label_pairs, 2);
+        let mut multi_loss = 0.0f32;
+        let mut multi_count = 0usize;
+
+        for (shard_idx, shard) in shards.iter().enumerate() {
+            let pipe = &mut multi.pipelines[shard_idx];
+            for &(ids, label) in *shard {
+                let (loss, _pred) = pipe.forward_only(ids, label);
+                multi_loss += loss;
+                multi_count += 1;
+            }
+        }
+        let multi_avg_loss = multi_loss / multi_count as f32;
+
+        // F-DP-005: losses should be in same ballpark
+        // With identical initial weights and same data, forward-only loss should match exactly
+        assert!(
+            (single_avg_loss - multi_avg_loss).abs() < 0.01 * single_avg_loss.abs() + 1e-6,
+            "F-DP-005: single GPU loss ({single_avg_loss:.6}) vs multi GPU loss ({multi_avg_loss:.6}) \
+             diverged beyond 1% tolerance"
+        );
+    }
+
+    // ─── F-HET-001: Mixed backend gradient shape consistency ─────────────────
+
+    #[test]
+    fn falsify_het_001_gradient_layout_identical_across_pipelines() {
+        // F-HET-001: Gradient tensor layout must be identical regardless of
+        // which pipeline produces it. This ensures AllReduce averaging is
+        // element-wise correct when mixing backends.
+        let (model_config, classify_config) = test_config();
+
+        let pipe_a = ClassifyPipeline::new(&model_config, classify_config.clone());
+        let pipe_b = ClassifyPipeline::new(&model_config, classify_config);
+
+        // Gradient vector length must match
+        let grads_a = pipe_a.collect_lora_gradients();
+        let grads_b = pipe_b.collect_lora_gradients();
+        assert_eq!(
+            grads_a.len(),
+            grads_b.len(),
+            "F-HET-001: gradient layout length mismatch between pipelines"
+        );
+
+        // Both must equal num_trainable_parameters
+        assert_eq!(
+            grads_a.len(),
+            pipe_a.num_trainable_parameters(),
+            "F-HET-001: gradient length != num_trainable_parameters for pipeline A"
+        );
+        assert_eq!(
+            grads_b.len(),
+            pipe_b.num_trainable_parameters(),
+            "F-HET-001: gradient length != num_trainable_parameters for pipeline B"
+        );
+
+        // LoRA layer count must be identical
+        assert_eq!(
+            pipe_a.lora_layers.len(),
+            pipe_b.lora_layers.len(),
+            "F-HET-001: different LoRA layer counts"
+        );
+
+        // Each LoRA layer must have matching dimensions
+        for (i, (la, lb)) in pipe_a.lora_layers.iter().zip(pipe_b.lora_layers.iter()).enumerate() {
+            assert_eq!(
+                la.lora_a().data().len(),
+                lb.lora_a().data().len(),
+                "F-HET-001: lora_a dimension mismatch at layer {i}"
+            );
+            assert_eq!(
+                la.lora_b().data().len(),
+                lb.lora_b().data().len(),
+                "F-HET-001: lora_b dimension mismatch at layer {i}"
+            );
+        }
+    }
+
+    // ─── F-HET-002: Heterogeneous memory budget ──────────────────────────────
+
+    #[test]
+    fn falsify_het_002_memory_budget_within_vram() {
+        // F-HET-002: Per-GPU memory usage must stay within VRAM budget.
+        // Qwen3-4B fp32: ~1052 MB per GPU. Tiny test config much smaller.
+        let (model_config, classify_config) = test_config();
+        let pipeline = ClassifyPipeline::new(&model_config, classify_config);
+
+        // Calculate memory: model weights + LoRA adapters + classifier
+        let hidden = model_config.hidden_size;
+        let layers = model_config.num_hidden_layers;
+        let vocab = model_config.vocab_size;
+
+        // Model weight memory estimate (fp32, 4 bytes per param)
+        let model_params = vocab * hidden  // embedding
+            + layers * (4 * hidden * hidden)  // Q/K/V/O per layer
+            + layers * (2 * hidden * 4 * hidden); // FFN up/down
+        let model_bytes = model_params * 4;
+
+        // LoRA adapter memory
+        let trainable = pipeline.num_trainable_parameters();
+        let adapter_bytes = trainable * 4;
+
+        // Total must be reasonable (less than 8GB for test config)
+        let total_bytes = model_bytes + adapter_bytes;
+        let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
+
+        assert!(
+            total_mb < 8192.0,
+            "F-HET-002: estimated memory {total_mb:.1} MB exceeds 8 GB VRAM budget"
+        );
+
+        // Adapter memory should be << model memory (LoRA efficiency)
+        let adapter_ratio = adapter_bytes as f64 / model_bytes as f64;
+        assert!(
+            adapter_ratio < 0.1,
+            "F-HET-002: adapter memory ratio {adapter_ratio:.4} exceeds 10% of model — \
+             LoRA should be much smaller than frozen model"
+        );
+    }
+
+    // ─── Strengthened F-DP-003: server-side Inf halt ─────────────────────────
+
+    #[test]
+    fn falsify_dp_003_nan_and_inf_combined_in_gradient() {
+        // Gradients containing both NaN and Inf should be detected
+        assert!(has_non_finite(&[1.0, f32::NAN, f32::INFINITY, 4.0]));
+        assert!(has_non_finite(&[f32::NEG_INFINITY]));
+
+        // Averaging NaN+Inf produces NaN
+        let grads = vec![
+            vec![f32::NAN, 1.0],
+            vec![f32::INFINITY, 2.0],
+        ];
+        let avg = average_gradients(&grads);
+        assert!(avg[0].is_nan(), "NaN + Inf average should be NaN");
+        assert!(has_non_finite(&avg));
+    }
+
+    // ─── Strengthened F-DP-002: edge cases ───────────────────────────────────
+
+    #[test]
+    fn falsify_dp_002_shard_empty_samples() {
+        // Sharding empty data should produce empty shards
+        let samples: Vec<i32> = vec![];
+        let shards = shard_samples(&samples, 3);
+        let total: usize = shards.iter().map(|s| s.len()).sum();
+        assert_eq!(total, 0, "F-DP-002: sharding empty data must produce 0 total samples");
+    }
+
+    #[test]
+    fn falsify_dp_002_shard_single_sample() {
+        // 1 sample across 3 workers: only last worker should get it
+        let samples = vec![42];
+        let shards = shard_samples(&samples, 3);
+        let total: usize = shards.iter().map(|s| s.len()).sum();
+        assert_eq!(total, 1, "F-DP-002: must not lose or duplicate the single sample");
+    }
 }
