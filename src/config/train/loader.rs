@@ -642,6 +642,11 @@ fn train_loop_cuda(
     // R-026: Save training config hash to JSONL for diff tracking
     write_config_provenance(&mut jsonl_file, spec);
 
+    // R-023: Curriculum learning — track current stage index
+    let mut curriculum_stage: usize = 0;
+    let curriculum = spec.training.curriculum.as_deref();
+    print_curriculum_stages(curriculum);
+
     'outer: for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let mut total_loss = 0.0;
@@ -667,6 +672,11 @@ fn train_loop_cuda(
             if reached_max_steps(spec.training.max_steps, trainer.step()) {
                 break 'outer;
             }
+
+            // R-023: Check curriculum stage transition
+            curriculum_stage = check_curriculum_transition(
+                curriculum, curriculum_stage, trainer.step(), &mut jsonl_file,
+            );
 
             let batch = &batches[batch_idx];
             // R-028: Per-step timing
@@ -1128,6 +1138,57 @@ fn handle_graceful_shutdown(
     );
     tracker.complete();
     println!("[SIGINT] Shutdown complete.");
+}
+
+/// R-023: Print curriculum stage configuration at startup.
+fn print_curriculum_stages(curriculum: Option<&[crate::config::schema::CurriculumStage]>) {
+    let Some(stages) = curriculum else { return };
+    println!("  Curriculum learning: {} stages configured", stages.len());
+    for (i, stage) in stages.iter().enumerate() {
+        let until = stage.until_step.map_or("end".to_string(), |s| format!("step {s}"));
+        println!("    Stage {}: {} (until {})", i, stage.data.display(), until);
+    }
+}
+
+/// R-023: Check curriculum transition and log if stage changes.
+/// Returns the (possibly updated) stage index.
+fn check_curriculum_transition(
+    curriculum: Option<&[crate::config::schema::CurriculumStage]>,
+    current_stage: usize,
+    step: usize,
+    jsonl_file: &mut Option<std::fs::File>,
+) -> usize {
+    let Some(stages) = curriculum else { return current_stage };
+    let Some(next) = advance_curriculum(stages, current_stage, step) else { return current_stage };
+    println!("  [Curriculum] → Stage {} at step {} (data: {})",
+        next, step, stages[next].data.display());
+    write_jsonl_event_json(jsonl_file, &serde_json::json!({
+        "type": "curriculum_transition",
+        "stage": next,
+        "step": step,
+        "data": stages[next].data.to_string_lossy(),
+        "timestamp": now_ms(),
+    }));
+    next
+}
+
+/// R-023: Check if training should advance to the next curriculum stage.
+/// Returns `Some(next_stage)` if a transition is needed, `None` otherwise.
+fn advance_curriculum(
+    stages: &[crate::config::schema::CurriculumStage],
+    current: usize,
+    step: usize,
+) -> Option<usize> {
+    if current >= stages.len() {
+        return None;
+    }
+    let stage = &stages[current];
+    if let Some(until) = stage.until_step {
+        if step >= until && current + 1 < stages.len() {
+            return Some(current + 1);
+        }
+    }
+    None
 }
 
 /// R-014: Write a step entry to the JSONL experiment log.

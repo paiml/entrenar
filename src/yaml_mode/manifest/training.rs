@@ -50,6 +50,10 @@ pub struct TrainingConfig {
     /// Benchmark mode (cuDNN autotuner)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub benchmark: Option<bool>,
+
+    /// R-023: Curriculum learning — multi-stage data mixing
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curriculum: Option<Vec<crate::config::CurriculumStage>>,
 }
 
 /// Gradient settings
