@@ -294,11 +294,56 @@ impl TrainingStateWriter {
                 .max(10)
                 .min(self.snapshot.steps_per_epoch.max(1));
             if step == 1 || step % log_every == 0 || step == self.snapshot.steps_per_epoch {
+                self.refresh_gpu_telemetry();
                 self.emit_console_progress();
             }
         }
 
         self.state.write(&self.snapshot)
+    }
+
+    /// Refresh GPU telemetry by querying nvidia-smi.
+    ///
+    /// Only updates if GPU was previously set (i.e., CUDA is active).
+    /// Called at the same frequency as console progress (~every 10% of epoch).
+    fn refresh_gpu_telemetry(&mut self) {
+        let device_name = match &self.snapshot.gpu {
+            Some(gpu) => gpu.device_name.clone(),
+            None => return,
+        };
+
+        let output = std::process::Command::new("nvidia-smi")
+            .args([
+                "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit",
+                "--format=csv,noheader,nounits",
+            ])
+            .output();
+
+        let output = match output {
+            Ok(o) if o.status.success() => o,
+            _ => return,
+        };
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let line = match stdout.lines().next() {
+            Some(l) => l.trim(),
+            None => return,
+        };
+        let fields: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        if fields.len() < 6 {
+            return;
+        }
+
+        self.snapshot.gpu = Some(super::state::GpuTelemetry {
+            device_name,
+            utilization_percent: fields[0].parse().unwrap_or(0.0),
+            vram_used_gb: fields[1].parse::<f32>().unwrap_or(0.0) / 1024.0,
+            vram_total_gb: fields[2].parse::<f32>().unwrap_or(0.0) / 1024.0,
+            temperature_celsius: fields[3].parse().unwrap_or(0.0),
+            power_watts: fields[4].parse().unwrap_or(0.0),
+            power_limit_watts: fields[5].parse().unwrap_or(0.0),
+            processes: Vec::new(),
+        });
     }
 
     /// Emit a single console progress line via the headless text formatter.

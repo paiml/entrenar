@@ -3,6 +3,64 @@
 use crate::autograd::{CheckpointConfig, MixedPrecisionConfig};
 use crate::train::TrainConfig;
 use crate::transformer::TransformerConfig;
+use std::net::SocketAddr;
+
+/// Role of a node in distributed pretraining.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistributedRole {
+    /// Coordinates training: AllReduces gradients, manages checkpoints
+    Coordinator,
+    /// Computes forward/backward on assigned shard
+    Worker,
+}
+
+impl Default for DistributedRole {
+    fn default() -> Self {
+        Self::Coordinator
+    }
+}
+
+/// Compute backend for a distributed worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DistributedBackend {
+    /// NVIDIA CUDA
+    Cuda,
+    /// wgpu (cross-platform)
+    Wgpu,
+    /// Auto-detect best available
+    Auto,
+}
+
+impl Default for DistributedBackend {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+/// Configuration for distributed pretraining (DDP).
+///
+/// Specifies this worker's role, rank, and communication topology.
+/// All workers must agree on `world_size`. The coordinator address
+/// is where workers connect and where AllReduce is orchestrated.
+///
+/// # Contract
+///
+/// C-DDP-001: After AllReduce + optimizer step, all workers hold identical weights.
+#[derive(Debug, Clone)]
+pub struct DistributedTrainConfig {
+    /// Total number of workers participating
+    pub world_size: usize,
+    /// This worker's global rank (0-indexed)
+    pub rank: usize,
+    /// This worker's local rank on its machine (for multi-GPU)
+    pub local_rank: usize,
+    /// Role: coordinator (rank 0) or worker
+    pub role: DistributedRole,
+    /// Address for coordinator to bind / workers to connect
+    pub coordinator_addr: SocketAddr,
+    /// Compute backend for this worker
+    pub backend: DistributedBackend,
+}
 
 /// Configuration for transformer training
 #[derive(Debug, Clone)]
@@ -33,6 +91,13 @@ pub struct TransformerTrainConfig {
     pub beta2: f32,
     /// AdamW weight decay (default: 0.01)
     pub weight_decay: f32,
+    /// Distributed training configuration (None = single-GPU)
+    pub distributed: Option<DistributedTrainConfig>,
+    /// Enable bitwise deterministic training (CUBLAS_WORKSPACE_CONFIG, cuDNN deterministic)
+    /// Contract: C-DETERM-001
+    pub deterministic: bool,
+    /// Random seed for reproducibility
+    pub seed: u64,
 }
 
 impl TransformerTrainConfig {
@@ -52,6 +117,9 @@ impl TransformerTrainConfig {
             beta1: 0.9,
             beta2: 0.999,
             weight_decay: 0.01,
+            distributed: None,
+            deterministic: false,
+            seed: 42,
         }
     }
 
@@ -125,5 +193,61 @@ impl TransformerTrainConfig {
     pub fn with_weight_decay(mut self, wd: f32) -> Self {
         self.weight_decay = wd;
         self
+    }
+
+    /// Enable bitwise deterministic training (C-DETERM-001)
+    ///
+    /// Sets CUBLAS_WORKSPACE_CONFIG, cuDNN deterministic mode, and disables
+    /// cuDNN benchmark. May reduce throughput but guarantees reproducibility.
+    pub fn with_deterministic(mut self, deterministic: bool) -> Self {
+        self.deterministic = deterministic;
+        self
+    }
+
+    /// Set random seed for reproducibility
+    pub fn with_seed(mut self, seed: u64) -> Self {
+        self.seed = seed;
+        self
+    }
+
+    /// Apply deterministic settings to the CUDA environment.
+    ///
+    /// Must be called before any cuBLAS/cuDNN operations.
+    /// Uses `ReproducibilityConfig` from finetune infrastructure.
+    ///
+    /// # Contract (C-DETERM-001)
+    ///
+    /// After calling this, `CUBLAS_WORKSPACE_CONFIG=:4096:8` and
+    /// `CUDNN_DETERMINISTIC=1` are guaranteed set in the process environment.
+    pub fn apply_deterministic_settings(&self) {
+        if self.deterministic {
+            use crate::finetune::ReproducibilityConfig;
+            let repro = ReproducibilityConfig::with_seed(self.seed);
+            repro.apply();
+        }
+    }
+
+    /// Enable distributed training with the given configuration
+    pub fn with_distributed(mut self, config: DistributedTrainConfig) -> Self {
+        self.distributed = Some(config);
+        self
+    }
+
+    /// Check if distributed training is enabled
+    #[must_use]
+    pub fn is_distributed(&self) -> bool {
+        self.distributed.is_some()
+    }
+
+    /// Get world size (1 for single-GPU)
+    #[must_use]
+    pub fn world_size(&self) -> usize {
+        self.distributed.as_ref().map_or(1, |d| d.world_size)
+    }
+
+    /// Get this worker's rank (0 for single-GPU)
+    #[must_use]
+    pub fn rank(&self) -> usize {
+        self.distributed.as_ref().map_or(0, |d| d.rank)
     }
 }

@@ -11,7 +11,7 @@
 mod attention;
 mod block;
 mod config;
-mod cuda_block;
+pub(crate) mod cuda_block;
 mod embedding;
 mod feedforward;
 mod model;

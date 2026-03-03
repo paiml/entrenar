@@ -12,7 +12,7 @@
 //! - F-LOOP-009: Val set frozen (same composition across epochs)
 //! - F-LOOP-010: Early stopping respects patience
 
-use super::classification::SafetySample;
+use super::classification::{SafetySample, TokenizedSample};
 use super::classify_pipeline::ClassifyPipeline;
 use super::distributed::DistributedConfig;
 use crate::eval::classification::{ConfusionMatrix, MultiClassMetrics};
@@ -129,8 +129,16 @@ pub struct ClassifyTrainer {
     config: TrainingConfig,
     /// Training data (shuffled per epoch)
     train_data: Vec<SafetySample>,
+    /// Pre-tokenized training data — indices parallel `train_data` (KAIZEN-028).
+    /// Token IDs computed once at construction; shuffled in sync with `train_data`.
+    train_tokens: Vec<TokenizedSample>,
+    /// Pre-tokenized validation data (frozen, KAIZEN-028).
+    val_tokens: Vec<TokenizedSample>,
     /// Validation data (frozen, never shuffled)
     val_data: Vec<SafetySample>,
+    /// KAIZEN-013: Pre-tokenized validation data — avoids re-tokenizing every epoch.
+    /// Each entry is `(token_ids, label)`. Populated once at construction.
+    val_token_cache: Vec<(Vec<u32>, usize)>,
     /// Base random seed
     rng_seed: u64,
     /// Optional monitor writer for live TUI updates
@@ -147,7 +155,9 @@ impl std::fmt::Debug for ClassifyTrainer {
         f.debug_struct("ClassifyTrainer")
             .field("config", &self.config)
             .field("train_data_len", &self.train_data.len())
+            .field("train_tokens_len", &self.train_tokens.len())
             .field("val_data_len", &self.val_data.len())
+            .field("val_tokens_len", &self.val_tokens.len())
             .field("rng_seed", &self.rng_seed)
             .finish()
     }
@@ -204,15 +214,31 @@ impl ClassifyTrainer {
 
         let rng_seed = config.seed;
 
+        // KAIZEN-028: Pre-tokenize all samples once at construction time.
+        // Eliminates redundant BPE encoding across epochs and batches.
+        // For 17,942 SSC samples × 50 epochs = 897,100 tokenizations reduced to 17,942.
+        let train_tokens = pipeline.pre_tokenize(&train_data);
+        let val_tokens = pipeline.pre_tokenize(&val_data);
+
         // F-CKPT-017: Compute data hash for provenance
         let data_hash = Self::compute_data_hash(&corpus);
         let train_start = chrono::Utc::now().to_rfc3339();
+
+        // KAIZEN-013: Pre-tokenize validation data once (val set is frozen per F-LOOP-009).
+        // Avoids re-tokenizing all val samples every epoch — saves ~1s per 1000 samples.
+        let val_token_cache: Vec<(Vec<u32>, usize)> = val_data
+            .iter()
+            .map(|s| (pipeline.tokenize(&s.input), s.label))
+            .collect();
 
         Ok(Self {
             pipeline,
             config,
             train_data,
+            train_tokens,
+            val_tokens,
             val_data,
+            val_token_cache,
             rng_seed,
             monitor_writer: None,
             data_hash,
@@ -552,14 +578,15 @@ impl ClassifyTrainer {
             self.shuffle_training_data(epoch);
 
             let batch_size = self.pipeline.config.batch_size;
-            let train_snapshot = self.train_data.clone();
+            // KAIZEN-028: Use pre-tokenized snapshot — cheaper clone, no re-tokenization
+            let token_snapshot = self.train_tokens.clone();
             let mut total_loss = 0.0f32;
             let mut total_correct = 0usize;
             let mut total_samples = 0usize;
 
             // Process batches using distributed AllReduce
-            for (step_idx, chunk) in train_snapshot.chunks(batch_size).enumerate() {
-                let step = epoch as u64 * (train_snapshot.len() / batch_size) as u64
+            for (step_idx, chunk) in token_snapshot.chunks(batch_size).enumerate() {
+                let step = epoch as u64 * (token_snapshot.len() / batch_size) as u64
                     + step_idx as u64;
 
                 // Send shard assignments to workers
@@ -570,7 +597,7 @@ impl ClassifyTrainer {
                 }
 
                 // Coordinator also computes its own shard (local forward/backward)
-                let _local = self.pipeline.train_batch(chunk);
+                let _local = self.pipeline.train_batch_tokenized(chunk);
 
                 // Collect and average gradients from all workers (F-DP-001)
                 match server.collect_and_reduce(step) {
@@ -663,16 +690,18 @@ impl ClassifyTrainer {
         let mut total_correct = 0usize;
         let mut total_samples = 0usize;
 
-        // Clone train_data to avoid borrow conflict (pipeline is &mut self)
-        let train_snapshot: Vec<SafetySample> = self.train_data.clone();
+        // KAIZEN-028: Use pre-tokenized data — no String cloning, no re-tokenization.
+        // Clone Vec<TokenizedSample> (just Vec<u32> + usize) instead of Vec<SafetySample>
+        // (which contains String). For 17K samples this saves ~2MB of String copies per epoch.
+        let token_snapshot: Vec<TokenizedSample> = self.train_tokens.clone();
 
         let epoch_start = std::time::Instant::now();
 
-        for (batch_idx, chunk) in train_snapshot.chunks(batch_size).enumerate() {
+        for (batch_idx, chunk) in token_snapshot.chunks(batch_size).enumerate() {
             // Apply current LR from scheduler
             self.pipeline.set_optimizer_lr(scheduler.get_lr());
 
-            let result = self.pipeline.train_batch(chunk);
+            let result = self.pipeline.train_batch_tokenized(chunk);
             total_loss += result.avg_loss * result.total as f32;
             total_correct += result.correct;
             total_samples += result.total;
@@ -717,19 +746,44 @@ impl ClassifyTrainer {
     /// Compute validation metrics (forward-only, no gradient updates).
     ///
     /// F-LOOP-009: Val set is frozen — same samples every epoch.
+    /// KAIZEN-013: Uses pre-tokenized cache and reports progress.
     fn validate(&mut self) -> (f32, f32) {
         let mut total_loss = 0.0f32;
         let mut correct = 0usize;
-        let total = self.val_data.len();
+        let total = self.val_tokens.len();
 
-        for sample in &self.val_data {
-            let ids = self.pipeline.tokenize(&sample.input);
-            let (loss, predicted) = self.pipeline.forward_only(&ids, sample.label);
+        let val_start = std::time::Instant::now();
+
+        // KAIZEN-028: Use pre-tokenized validation data — no BPE re-encoding.
+        // KAIZEN-013: Progress reporting with timing and running accuracy.
+        for (i, sample) in self.val_tokens.iter().enumerate() {
+            let (loss, predicted) = self.pipeline.forward_only(&sample.token_ids, sample.label);
             total_loss += loss;
             if predicted == sample.label {
                 correct += 1;
             }
+            // Progress reporting every 100 samples
+            if (i + 1) % 100 == 0 || i + 1 == total {
+                let elapsed = val_start.elapsed().as_secs_f32();
+                let sam_per_sec = if elapsed > 0.0 { (i + 1) as f32 / elapsed } else { 0.0 };
+                let running_acc = if i > 0 { correct as f32 / (i + 1) as f32 * 100.0 } else { 0.0 };
+                eprint!(
+                    "\r  Validating: {}/{} ({:.1} sam/s, acc={:.1}%)   ",
+                    i + 1, total, sam_per_sec, running_acc,
+                );
+            }
         }
+
+        let val_elapsed = val_start.elapsed();
+        let val_sam_per_sec = if val_elapsed.as_secs_f32() > 0.0 {
+            total as f32 / val_elapsed.as_secs_f32()
+        } else {
+            0.0
+        };
+        eprintln!(
+            "\r  Validation complete: {} samples in {:.1}s ({:.1} sam/s)              ",
+            total, val_elapsed.as_secs_f32(), val_sam_per_sec,
+        );
 
         let avg_loss = if total > 0 { total_loss / total as f32 } else { 0.0 };
         let accuracy = if total > 0 { correct as f32 / total as f32 } else { 0.0 };
@@ -747,12 +801,14 @@ impl ClassifyTrainer {
         let n = self.train_data.len();
 
         // Fisher-Yates shuffle with LCG PRNG
+        // KAIZEN-028: Shuffle train_tokens in sync with train_data
         for i in (1..n).rev() {
             rng_state = rng_state
                 .wrapping_mul(6_364_136_223_846_793_005)
                 .wrapping_add(1_442_695_040_888_963_407);
             let j = (rng_state >> 33) as usize % (i + 1);
             self.train_data.swap(i, j);
+            self.train_tokens.swap(i, j);
         }
     }
 

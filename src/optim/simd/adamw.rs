@@ -1,11 +1,24 @@
-//! SIMD-accelerated AdamW parameter update with decoupled weight decay
+//! Fused AdamW parameter update kernel (KAIZEN-026)
+//!
+//! Single-pass loop over all elements — zero temporary allocations.
+//! The compiler auto-vectorizes this into SIMD instructions (AVX2/AVX-512).
+//!
+//! Previous implementation (pre-KAIZEN-026) created 14 temporary Vector
+//! allocations per call via trueno::vector::Vector operations.  For Qwen3-4B
+//! LoRA (5.9M params across ~200 tensors): ~330 MB of temporaries per
+//! optimizer step, with 14 passes over the data.
+//!
+//! # Contract (C-ADAMW-FUSED-001)
+//!
+//! - **Precondition**: All slices have equal length
+//! - **Postcondition**: m, v, param updated in-place per AdamW equations
+//! - **Invariant**: v[i] >= 0 for all i (squared gradient accumulation)
+//! - **Invariant**: All outputs finite for finite inputs
 
-use trueno::vector::Vector;
-
-/// SIMD-accelerated AdamW parameter update with decoupled weight decay
+/// Fused AdamW parameter update with decoupled weight decay.
 ///
-/// Similar to Adam update but includes weight decay applied directly to
-/// parameters before the Adam update.
+/// Updates momentum, variance, and parameters in a single pass with
+/// zero temporary allocations.
 ///
 /// # Arguments
 /// * `grad` - Gradient vector
@@ -35,37 +48,17 @@ pub fn simd_adamw_update(
     assert_eq!(grad.len(), v.len(), "Gradient and variance lengths must match");
     assert_eq!(grad.len(), param.len(), "Gradient and parameter lengths must match");
 
-    // Convert to Trueno vectors
-    let grad_vec = Vector::from_slice(grad);
-    let m_vec = Vector::from_slice(m);
-    let v_vec = Vector::from_slice(v);
-    let param_vec = Vector::from_slice(param);
+    let one_minus_beta1 = 1.0 - beta1;
+    let one_minus_beta2 = 1.0 - beta2;
+    let wd_factor = 1.0 - lr * weight_decay;
 
-    // Update first moment: m_t = β1 * m + (1 - β1) * g
-    let m_scaled = m_vec.scale(beta1).expect("Scale m failed");
-    let grad_scaled = grad_vec.scale(1.0 - beta1).expect("Scale grad failed");
-    let m_new = m_scaled.add(&grad_scaled).expect("Add m failed");
-
-    // Update second moment: v_t = β2 * v + (1 - β2) * g²
-    let grad_sq = grad_vec.mul(&grad_vec).expect("Square grad failed");
-    let v_scaled = v_vec.scale(beta2).expect("Scale v failed");
-    let grad_sq_scaled = grad_sq.scale(1.0 - beta2).expect("Scale grad_sq failed");
-    let v_new = v_scaled.add(&grad_sq_scaled).expect("Add v failed");
-
-    // Compute adaptive update: lr_t * m_t / (√v_t + ε)
-    let v_sqrt = v_new.sqrt().expect("Sqrt v failed");
-    let denominator =
-        v_sqrt.add(&Vector::from_slice(&vec![epsilon; grad.len()])).expect("Add epsilon failed");
-    let numerator = m_new.scale(lr_t).expect("Scale m_new failed");
-    let adaptive_update = numerator.div(&denominator).expect("Div failed");
-
-    // Apply weight decay: θ = (1 - lr * λ) * θ - update
-    let weight_decay_factor = 1.0 - lr * weight_decay;
-    let param_decayed = param_vec.scale(weight_decay_factor).expect("Weight decay failed");
-    let param_new = param_decayed.sub(&adaptive_update).expect("Sub failed");
-
-    // Write back results
-    m.copy_from_slice(m_new.as_slice());
-    v.copy_from_slice(v_new.as_slice());
-    param.copy_from_slice(param_new.as_slice());
+    // Single fused pass — compiler auto-vectorizes this loop
+    for i in 0..grad.len() {
+        // m_t = β1 * m_{t-1} + (1 - β1) * g
+        m[i] = beta1 * m[i] + one_minus_beta1 * grad[i];
+        // v_t = β2 * v_{t-1} + (1 - β2) * g²
+        v[i] = beta2 * v[i] + one_minus_beta2 * grad[i] * grad[i];
+        // θ_t = (1 - lr * λ) * θ_{t-1} - lr_t * m_t / (√v_t + ε)
+        param[i] = wd_factor * param[i] - lr_t * m[i] / (v[i].sqrt() + epsilon);
+    }
 }
