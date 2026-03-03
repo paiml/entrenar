@@ -136,9 +136,6 @@ pub struct ClassifyTrainer {
     val_tokens: Vec<TokenizedSample>,
     /// Validation data (frozen, never shuffled)
     val_data: Vec<SafetySample>,
-    /// KAIZEN-013: Pre-tokenized validation data — avoids re-tokenizing every epoch.
-    /// Each entry is `(token_ids, label)`. Populated once at construction.
-    val_token_cache: Vec<(Vec<u32>, usize)>,
     /// Base random seed
     rng_seed: u64,
     /// Optional monitor writer for live TUI updates
@@ -224,13 +221,6 @@ impl ClassifyTrainer {
         let data_hash = Self::compute_data_hash(&corpus);
         let train_start = chrono::Utc::now().to_rfc3339();
 
-        // KAIZEN-013: Pre-tokenize validation data once (val set is frozen per F-LOOP-009).
-        // Avoids re-tokenizing all val samples every epoch — saves ~1s per 1000 samples.
-        let val_token_cache: Vec<(Vec<u32>, usize)> = val_data
-            .iter()
-            .map(|s| (pipeline.tokenize(&s.input), s.label))
-            .collect();
-
         Ok(Self {
             pipeline,
             config,
@@ -238,7 +228,6 @@ impl ClassifyTrainer {
             train_tokens,
             val_tokens,
             val_data,
-            val_token_cache,
             rng_seed,
             monitor_writer: None,
             data_hash,
@@ -578,15 +567,13 @@ impl ClassifyTrainer {
             self.shuffle_training_data(epoch);
 
             let batch_size = self.pipeline.config.batch_size;
-            // KAIZEN-028: Use pre-tokenized snapshot — cheaper clone, no re-tokenization
-            let token_snapshot = self.train_tokens.clone();
             let mut total_loss = 0.0f32;
             let mut total_correct = 0usize;
             let mut total_samples = 0usize;
 
-            // Process batches using distributed AllReduce
-            for (step_idx, chunk) in token_snapshot.chunks(batch_size).enumerate() {
-                let step = epoch as u64 * (token_snapshot.len() / batch_size) as u64
+            // KAIZEN-032: Borrow pre-tokenized data directly — no per-epoch clone.
+            for (step_idx, chunk) in self.train_tokens.chunks(batch_size).enumerate() {
+                let step = epoch as u64 * (self.train_tokens.len() / batch_size) as u64
                     + step_idx as u64;
 
                 // Send shard assignments to workers
@@ -690,14 +677,10 @@ impl ClassifyTrainer {
         let mut total_correct = 0usize;
         let mut total_samples = 0usize;
 
-        // KAIZEN-028: Use pre-tokenized data — no String cloning, no re-tokenization.
-        // Clone Vec<TokenizedSample> (just Vec<u32> + usize) instead of Vec<SafetySample>
-        // (which contains String). For 17K samples this saves ~2MB of String copies per epoch.
-        let token_snapshot: Vec<TokenizedSample> = self.train_tokens.clone();
-
         let epoch_start = std::time::Instant::now();
 
-        for (batch_idx, chunk) in token_snapshot.chunks(batch_size).enumerate() {
+        // KAIZEN-032: Borrow pre-tokenized data directly — no per-epoch clone.
+        for (batch_idx, chunk) in self.train_tokens.chunks(batch_size).enumerate() {
             // Apply current LR from scheduler
             self.pipeline.set_optimizer_lr(scheduler.get_lr());
 
