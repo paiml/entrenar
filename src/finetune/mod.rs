@@ -19,6 +19,10 @@ pub mod classification;
 pub mod classify_pipeline;
 pub mod classify_trainer;
 pub mod classify_tuner;
+pub mod data_parallel;
+pub mod distributed;
+pub mod gradient_server;
+pub mod worker_client;
 pub mod instruct_corpus;
 pub mod instruct_pipeline;
 pub mod instruct_trainer;
@@ -63,7 +67,11 @@ pub use instruct_pipeline::{
 pub use instruct_trainer::{
     InstructEpochMetrics, InstructTrainResult, InstructTrainer, InstructTrainingConfig,
 };
+pub use data_parallel::{DataParallelCoordinator, average_gradients, has_non_finite, shard_samples};
 pub use device::{ComputeDevice, DeviceInfo};
+pub use distributed::{DistributedConfig, NodeRole, WireMessage};
+pub use gradient_server::{AllReduceResult, GradientServer};
+pub use worker_client::{AveragedResult, ShardAssignment, WorkerClient};
 pub use eval::{
     contains_tautology, count_test_functions, has_edge_case_tests, has_meaningful_assertions,
     EvalMetrics, EvalResult, TestEvaluator,

@@ -1795,6 +1795,7 @@ dependencies = [
  "half",
  "hex",
  "hf-hub",
+ "hostname",
  "insta",
  "js-sys",
  "jugar-probar",
