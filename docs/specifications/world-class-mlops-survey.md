@@ -12,10 +12,10 @@
 | Metric | Value |
 |--------|-------|
 | **Best practices evaluated** | 100 |
-| **PASS** | 69 |
-| **PARTIAL** | 5 |
-| **FAIL** | 26 |
-| **Score** | **73%** |
+| **PASS** | 72 |
+| **PARTIAL** | 3 |
+| **FAIL** | 25 |
+| **Score** | **75%** |
 | **Letter grade** | **C** |
 | **Batuta falsify score** | 79.2% (63/108 pass, 0 fail, 45 partial) |
 
@@ -161,10 +161,10 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 16 | Automatic rollback on loss spike | **PASS** | R-016b: EMA-based loss spike detection (3× threshold) with rollback counter. |
 | 17 | Training progress watchdog (detect hangs) | **PASS** | R-017b: `apr train watch --heartbeat-timeout 300` — staleness detection on training_state.json, configurable timeout. |
 | 18 | Multiple checkpoint retention for rollback | **PASS** | R-009: Step-numbered checkpoints with configurable `max_checkpoints`. |
-| 19 | Error classification and logging | **PARTIAL** | Rust panics with backtraces. No structured error taxonomy. |
+| 19 | Error classification and logging | **PASS** | `apr train watch` classifies exit codes: success, error, sigabrt, oom (SIGKILL), sigsegv, sigbus, fatal, signal. JSON crash reports with GPU state. |
 | 20 | Post-crash diagnostic dump | **PASS** | R-020b: `apr train watch` writes JSON crash reports to `crash-reports/` with exit code, signal classification, GPU state (nvidia-smi), attempt count. |
 
-**Score: 9.5/10**
+**Score: 10/10**
 
 ### Category 3: Observability & Monitoring (10 practices)
 
@@ -249,14 +249,14 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 62 | Downstream benchmark suite (HumanEval, MBPP) | **PASS** | R-020: `apr eval --task humaneval --data humaneval.jsonl` — HumanEval benchmark evaluation with pass@k metrics. Structural validation mode (inference pending). |
 | 63 | Evaluation at checkpoint boundaries | **PASS** | R-005: `run_validation_eval()` runs at every intermediate checkpoint. |
 | 64 | Contamination detection | **PASS** | R-030: `apr eval --task contamination --data train.jsonl` — 10-gram Jaccard overlap detection between training data and benchmark. |
-| 65 | Two-tier eval (development + unseen benchmarks) | **FAIL** | No benchmark infrastructure at all. |
+| 65 | Two-tier eval (development + unseen benchmarks) | **PASS** | Development: validation perplexity during training (R-005). Unseen: HumanEval post-training (`apr eval --task humaneval`). Contamination detection prevents overlap. |
 | 66 | Perplexity-benchmark correlation tracking | **FAIL** | No correlation analysis. |
 | 67 | Intermediate checkpoint evaluation | **PASS** | R-005: Validation eval runs at every `save_interval` checkpoint. |
 | 68 | Human evaluation pipeline | **FAIL** | No human eval infrastructure. |
 | 69 | Code execution evaluation (pass@k) | **PASS** | R-020: `apr eval --task humaneval` reports pass@1, pass@10, pass@100 using unbiased estimator 1 - C(n-c,k)/C(n,k). |
 | 70 | Model comparison framework (A/B testing) | **PASS** | R-031: `apr eval --task compare --data model_b.safetensors` — side-by-side comparison of size, tensor count, format. JSON output for CI. |
 
-**Score: 7.0/10**
+**Score: 8.0/10**
 
 ### Category 9: Distributed Training (10 practices)
 
@@ -291,13 +291,13 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 
 | # | Practice | Status | Evidence |
 |---|----------|--------|----------|
-| 86 | Model file integrity verification | **PARTIAL** | safetensors format (no arbitrary code exec). No hash verification. |
+| 86 | Model file integrity verification | **PASS** | `apr eval --task verify` — safetensors header validation, tensor count, FNV-1a hash, config.json validation. JSON output for CI. |
 | 87 | Dependency supply chain audit | **PASS** | Rust cargo audit. batuta falsify SF-10 PASS. |
 | 88 | Training data provenance tracking | **PASS** | R-024: Data source info + config hash written to JSONL at training start. |
 | 89 | Model weight encryption at rest | **FAIL** | Plaintext safetensors on disk. |
 | 90 | Audit trail for training runs | **PASS** | ALB-055/056: SQLite experiment tracking (local + global) with step metrics, start/complete timestamps. |
 
-**Score: 3.5/5**
+**Score: 4.0/5**
 
 ### Category 12: Configuration & Validation (5 practices)
 
@@ -330,19 +330,19 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | Category | Score | Max | Pct |
 |----------|-------|-----|-----|
 | 1. Checkpointing & State Persistence | 10.0 | 10 | 100% |
-| 2. Fault Tolerance & Crash Recovery | 9.5 | 10 | 95% |
+| 2. Fault Tolerance & Crash Recovery | 10.0 | 10 | 100% |
 | 3. Observability & Monitoring | 10.0 | 10 | 100% |
 | 4. Mixed Precision Training | 0.5 | 5 | 10% |
 | 5. Gradient Management | 7.5 | 10 | 75% |
 | 6. Data Pipeline | 8.5 | 10 | 85% |
 | 7. Learning Rate & Optimization | 4.5 | 5 | 90% |
-| 8. Evaluation & Benchmarking | 7.0 | 10 | 70% |
+| 8. Evaluation & Benchmarking | 8.0 | 10 | 80% |
 | 9. Distributed Training | 0.0 | 10 | 0% |
 | 10. Reproducibility & Provenance | 3.5 | 5 | 70% |
-| 11. Security & Supply Chain | 3.5 | 5 | 70% |
+| 11. Security & Supply Chain | 4.0 | 5 | 80% |
 | 12. Configuration & Validation | 4.5 | 5 | 90% |
 | 13. Provable Correctness & Contracts | 4.5 | 5 | 90% |
-| **TOTAL** | **73.5** | **100** | **73%** |
+| **TOTAL** | **75.5** | **100** | **75%** |
 
 ### Letter Grade: **C**
 
