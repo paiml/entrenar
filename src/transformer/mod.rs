@@ -17,6 +17,8 @@ mod feedforward;
 mod model;
 mod norm;
 mod weights;
+#[cfg(feature = "gpu")]
+pub mod wgpu_block;
 
 pub use attention::{LoRAProjection, MultiHeadAttention, MultiHeadAttentionWithLoRA};
 pub use config::TransformerConfig;
@@ -28,3 +30,5 @@ pub(crate) use cuda_block::{CudaBlockScratch, CudaLoraGradWorkspace, GpuLoraOpti
 pub use cuda_block::{CudaBlock, CudaTransformerBlock};
 pub use model::Transformer;
 pub use weights::{load_safetensors_weights, validate_weights, Architecture};
+#[cfg(feature = "gpu")]
+pub use wgpu_block::WgpuForwardPass;

@@ -11,12 +11,14 @@ pub enum ComputeDevice {
     Cpu,
     /// CUDA GPU with device ID
     Cuda { device_id: usize },
+    /// wgpu GPU with adapter index (Vulkan/Metal/DX12)
+    Wgpu { adapter_index: u32 },
 }
 
 impl ComputeDevice {
     /// Auto-detect best available device
     ///
-    /// Prefers CUDA if available with sufficient memory (≥6GB).
+    /// Priority: CUDA (if ≥6GB) > wgpu (if available) > CPU
     #[must_use]
     pub fn auto_detect() -> Self {
         if Self::cuda_available() {
@@ -25,6 +27,9 @@ impl ComputeDevice {
                     return Self::Cuda { device_id: 0 };
                 }
             }
+        }
+        if Self::wgpu_available() {
+            return Self::Wgpu { adapter_index: 0 };
         }
         Self::Cpu
     }
@@ -46,6 +51,19 @@ impl ComputeDevice {
             .unwrap_or(false)
     }
 
+    /// Check if wgpu GPU is available
+    #[must_use]
+    pub fn wgpu_available() -> bool {
+        #[cfg(feature = "gpu")]
+        {
+            trueno::backends::gpu::GpuDevice::is_available()
+        }
+        #[cfg(not(feature = "gpu"))]
+        {
+            false
+        }
+    }
+
     /// Check if this device is CUDA
     #[must_use]
     pub const fn is_cuda(&self) -> bool {
@@ -58,12 +76,27 @@ impl ComputeDevice {
         matches!(self, Self::Cpu)
     }
 
+    /// Check if this device is wgpu
+    #[must_use]
+    pub const fn is_wgpu(&self) -> bool {
+        matches!(self, Self::Wgpu { .. })
+    }
+
     /// Get device ID for CUDA devices
     #[must_use]
     pub const fn device_id(&self) -> Option<usize> {
         match self {
             Self::Cuda { device_id } => Some(*device_id),
-            Self::Cpu => None,
+            Self::Cpu | Self::Wgpu { .. } => None,
+        }
+    }
+
+    /// Get adapter index for wgpu devices
+    #[must_use]
+    pub const fn adapter_index(&self) -> Option<u32> {
+        match self {
+            Self::Wgpu { adapter_index } => Some(*adapter_index),
+            Self::Cpu | Self::Cuda { .. } => None,
         }
     }
 }
@@ -79,6 +112,7 @@ impl fmt::Display for ComputeDevice {
         match self {
             Self::Cpu => write!(f, "CPU"),
             Self::Cuda { device_id } => write!(f, "CUDA:{device_id}"),
+            Self::Wgpu { adapter_index } => write!(f, "wgpu:{adapter_index}"),
         }
     }
 }
@@ -196,8 +230,20 @@ mod tests {
         let device = ComputeDevice::Cuda { device_id: 0 };
         assert!(device.is_cuda());
         assert!(!device.is_cpu());
+        assert!(!device.is_wgpu());
         assert_eq!(device.device_id(), Some(0));
         assert_eq!(device.to_string(), "CUDA:0");
+    }
+
+    #[test]
+    fn test_compute_device_wgpu() {
+        let device = ComputeDevice::Wgpu { adapter_index: 1 };
+        assert!(device.is_wgpu());
+        assert!(!device.is_cpu());
+        assert!(!device.is_cuda());
+        assert_eq!(device.adapter_index(), Some(1));
+        assert_eq!(device.device_id(), None);
+        assert_eq!(device.to_string(), "wgpu:1");
     }
 
     #[test]

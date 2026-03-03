@@ -463,6 +463,9 @@ pub struct ClassifyPipeline {
     /// NF4 LoRA optimizer step counter (separate from fp32 GpuTrainingState.step).
     #[cfg(feature = "cuda")]
     nf4_lora_step: u32,
+    /// wgpu-accelerated forward pass (GPU feature, non-CUDA)
+    #[cfg(feature = "gpu")]
+    wgpu_forward_pass: Option<crate::transformer::WgpuForwardPass>,
 }
 
 impl ClassifyPipeline {
@@ -518,6 +521,30 @@ impl ClassifyPipeline {
             (None, None)
         };
 
+        // ── wgpu initialization (when CUDA unavailable) ──────────────────
+        #[cfg(feature = "gpu")]
+        let wgpu_forward_pass = {
+            #[cfg(feature = "cuda")]
+            let has_cuda = cuda_trainer.is_some();
+            #[cfg(not(feature = "cuda"))]
+            let has_cuda = false;
+
+            if !has_cuda {
+                match crate::transformer::WgpuForwardPass::new_default(model_config) {
+                    Ok(pass) => {
+                        eprintln!("[wgpu] GPU forward pass initialized");
+                        Some(pass)
+                    }
+                    Err(e) => {
+                        eprintln!("[wgpu] GPU initialization failed, using CPU: {e}");
+                        None
+                    }
+                }
+            } else {
+                None // CUDA takes priority
+            }
+        };
+
         Self {
             model,
             classifier,
@@ -544,6 +571,8 @@ impl ClassifyPipeline {
             cuda_lora_optimizer_states,
             #[cfg(feature = "cuda")]
             nf4_lora_step: 0,
+            #[cfg(feature = "gpu")]
+            wgpu_forward_pass,
         }
     }
 
@@ -625,6 +654,23 @@ impl ClassifyPipeline {
             (None, None)
         };
 
+        // ── wgpu initialization (when CUDA unavailable) ──────────────────
+        #[cfg(feature = "gpu")]
+        let wgpu_forward_pass = {
+            #[cfg(feature = "cuda")]
+            let has_cuda = cuda_trainer.is_some();
+            #[cfg(not(feature = "cuda"))]
+            let has_cuda = false;
+
+            if !has_cuda {
+                crate::transformer::WgpuForwardPass::new_default(model_config)
+                    .map_err(|e| eprintln!("[wgpu] GPU init failed: {e}"))
+                    .ok()
+            } else {
+                None
+            }
+        };
+
         Ok(Self {
             model,
             classifier,
@@ -651,6 +697,8 @@ impl ClassifyPipeline {
             cuda_lora_optimizer_states,
             #[cfg(feature = "cuda")]
             nf4_lora_step: 0,
+            #[cfg(feature = "gpu")]
+            wgpu_forward_pass,
         })
     }
 
@@ -741,6 +789,23 @@ impl ClassifyPipeline {
             (None, None)
         };
 
+        // ── wgpu initialization ──────────────────────────────────────────
+        #[cfg(feature = "gpu")]
+        let wgpu_forward_pass = {
+            #[cfg(feature = "cuda")]
+            let has_cuda = cuda_trainer.is_some();
+            #[cfg(not(feature = "cuda"))]
+            let has_cuda = false;
+
+            if !has_cuda {
+                crate::transformer::WgpuForwardPass::new_default(model_config)
+                    .map_err(|e| eprintln!("[wgpu] GPU init failed: {e}"))
+                    .ok()
+            } else {
+                None
+            }
+        };
+
         Ok(Self {
             model,
             classifier,
@@ -767,6 +832,8 @@ impl ClassifyPipeline {
             cuda_lora_optimizer_states,
             #[cfg(feature = "cuda")]
             nf4_lora_step: 0,
+            #[cfg(feature = "gpu")]
+            wgpu_forward_pass,
         })
     }
 
@@ -1725,12 +1792,26 @@ impl ClassifyPipeline {
 
     /// Forward pass through transformer layers, dispatching to GPU when available.
     ///
-    /// - **GPU path** (F-CUDA-007..009): Embed on CPU, upload to GPU, run CUDA layers, download
+    /// Priority: CUDA > wgpu > CPU
+    ///
+    /// - **CUDA path** (F-CUDA-007..009): Embed on CPU, upload to GPU, run CUDA layers, download
+    /// - **wgpu path**: Batched FFN matmuls via `WgpuForwardPass`, attention on CPU
     /// - **CPU path**: Use `Transformer::forward_hidden()`
     fn forward_hidden_dispatch(&mut self, token_ids: &[u32]) -> Tensor {
         #[cfg(feature = "cuda")]
         if let Some(tensor) = self.try_forward_hidden_gpu(token_ids) {
             return tensor;
+        }
+
+        // wgpu fallback (batched FFN matmuls on GPU, attention on CPU)
+        #[cfg(feature = "gpu")]
+        if let Some(ref wgpu_pass) = self.wgpu_forward_pass {
+            match wgpu_pass.forward_hidden(&self.model, token_ids) {
+                Ok(tensor) => return tensor,
+                Err(e) => {
+                    eprintln!("[wgpu] Forward pass failed, falling back to CPU: {e}");
+                }
+            }
         }
 
         // CPU fallback
@@ -2652,6 +2733,97 @@ impl ClassifyPipeline {
             self.classifier.num_parameters(),
             self.num_trainable_parameters(),
         )
+    }
+
+    /// Collect all LoRA + classifier gradients into a flat `Vec<f32>`.
+    ///
+    /// Used by distributed training workers to send gradients to the coordinator
+    /// for AllReduce averaging (F-DP-001).
+    ///
+    /// Layout: `[lora_0_a_grad, lora_0_b_grad, ..., lora_N_a_grad, lora_N_b_grad,
+    ///           classifier_weight_grad, classifier_bias_grad]`
+    #[must_use]
+    pub fn collect_lora_gradients(&self) -> Vec<f32> {
+        let total = self.num_trainable_parameters();
+        let mut grads = Vec::with_capacity(total);
+
+        for lora in &self.lora_layers {
+            if let Some(g) = lora.lora_a().grad() {
+                grads.extend(g.iter());
+            } else {
+                grads.extend(std::iter::repeat(0.0f32).take(lora.lora_a().data().len()));
+            }
+            if let Some(g) = lora.lora_b().grad() {
+                grads.extend(g.iter());
+            } else {
+                grads.extend(std::iter::repeat(0.0f32).take(lora.lora_b().data().len()));
+            }
+        }
+
+        if let Some(g) = self.classifier.weight.grad() {
+            grads.extend(g.iter());
+        } else {
+            grads.extend(std::iter::repeat(0.0f32).take(self.classifier.weight.data().len()));
+        }
+        if let Some(g) = self.classifier.bias.grad() {
+            grads.extend(g.iter());
+        } else {
+            grads.extend(std::iter::repeat(0.0f32).take(self.classifier.bias.data().len()));
+        }
+
+        grads
+    }
+
+    /// Apply averaged gradients from AllReduce and run optimizer step.
+    ///
+    /// Used by distributed training workers after receiving averaged gradients
+    /// from the coordinator (F-DP-001 weight consistency).
+    ///
+    /// The gradient vector layout must match `collect_lora_gradients()`.
+    pub fn apply_lora_gradients(&mut self, averaged_grads: &[f32]) {
+        let mut offset = 0usize;
+
+        // Write averaged gradients into each parameter's grad slot
+        for lora in &self.lora_layers {
+            let a_len = lora.lora_a().data().len();
+            if offset + a_len <= averaged_grads.len() {
+                lora.lora_a().set_grad(
+                    ndarray::Array1::from_vec(averaged_grads[offset..offset + a_len].to_vec()),
+                );
+            }
+            offset += a_len;
+
+            let b_len = lora.lora_b().data().len();
+            if offset + b_len <= averaged_grads.len() {
+                lora.lora_b().set_grad(
+                    ndarray::Array1::from_vec(averaged_grads[offset..offset + b_len].to_vec()),
+                );
+            }
+            offset += b_len;
+        }
+
+        let w_len = self.classifier.weight.data().len();
+        if offset + w_len <= averaged_grads.len() {
+            self.classifier.weight.set_grad(
+                ndarray::Array1::from_vec(averaged_grads[offset..offset + w_len].to_vec()),
+            );
+        }
+        offset += w_len;
+
+        let b_len = self.classifier.bias.data().len();
+        if offset + b_len <= averaged_grads.len() {
+            self.classifier.bias.set_grad(
+                ndarray::Array1::from_vec(averaged_grads[offset..offset + b_len].to_vec()),
+            );
+        }
+
+        // Now run optimizer step with the averaged gradients
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        for lora in &mut self.lora_layers {
+            params.extend(lora.trainable_params());
+        }
+        params.extend(self.classifier.parameters_mut());
+        self.optimizer.step_refs(&mut params);
     }
 }
 
