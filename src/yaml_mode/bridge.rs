@@ -339,6 +339,7 @@ fn convert_training(
         seed,
         max_checkpoints: 5,
         shuffle: true,
+        curriculum: training_cfg.and_then(|t| t.curriculum.clone()),
     }
 }
 

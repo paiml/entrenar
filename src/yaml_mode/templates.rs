@@ -232,6 +232,7 @@ fn default_training_config() -> TrainingConfig {
         validation: None,
         deterministic: None,
         benchmark: None,
+        curriculum: None,
     }
 }
 

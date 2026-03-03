@@ -437,6 +437,22 @@ pub struct TrainingParams {
     /// Shuffle training batches per epoch (default true)
     #[serde(default = "default_true")]
     pub shuffle: bool,
+
+    // === R-023: Curriculum learning ===
+    /// Multi-stage data mixing: switch data sources at step boundaries.
+    /// Each stage specifies a data path and the step at which to transition.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curriculum: Option<Vec<CurriculumStage>>,
+}
+
+/// A curriculum learning stage: a data source active until a given step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurriculumStage {
+    /// Path to training data for this stage
+    pub data: PathBuf,
+    /// Step number at which to transition to next stage (None = until end)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub until_step: Option<usize>,
 }
 
 impl Default for TrainingParams {
@@ -457,6 +473,7 @@ impl Default for TrainingParams {
             seed: None,
             max_checkpoints: 5,
             shuffle: true,
+            curriculum: None,
         }
     }
 }
