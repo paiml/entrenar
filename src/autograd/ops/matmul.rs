@@ -286,25 +286,41 @@ pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec
 
 /// wgpu GPU matmul via trueno GpuDevice (Vulkan/Metal/DX12)
 ///
+/// Uses a singleton GpuDevice to avoid per-call device creation overhead.
 /// Returns None if GPU is unavailable or matmul fails (auto-fallback to CPU).
 #[cfg(feature = "gpu")]
 fn wgpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Option<Vec<f32>> {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::OnceLock;
     static WGPU_DISABLED: AtomicBool = AtomicBool::new(false);
     static WGPU_LOGGED: AtomicBool = AtomicBool::new(false);
+    static WGPU_CALLS: AtomicU64 = AtomicU64::new(0);
+    static WGPU_DEVICE: OnceLock<Option<trueno::backends::gpu::GpuDevice>> = OnceLock::new();
 
     if WGPU_DISABLED.load(Ordering::Relaxed) {
         return None;
     }
 
-    if !trueno::backends::gpu::GpuBackend::is_available() {
-        WGPU_DISABLED.store(true, Ordering::Relaxed);
-        return None;
-    }
+    let device_opt = WGPU_DEVICE.get_or_init(|| {
+        if !trueno::backends::gpu::GpuBackend::is_available() {
+            eprintln!("[wgpu] No GPU available, using CPU");
+            return None;
+        }
+        match trueno::backends::gpu::GpuDevice::new() {
+            Ok(d) => {
+                eprintln!("[wgpu] GPU device initialized for matmul");
+                Some(d)
+            }
+            Err(e) => {
+                eprintln!("[wgpu] GPU init failed: {e}, using CPU");
+                None
+            }
+        }
+    });
 
-    let device = match trueno::backends::gpu::GpuDevice::new() {
-        Ok(d) => d,
-        Err(_) => {
+    let device = match device_opt.as_ref() {
+        Some(d) => d,
+        None => {
             WGPU_DISABLED.store(true, Ordering::Relaxed);
             return None;
         }
@@ -313,8 +329,12 @@ fn wgpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Option<Vec
     let mut result = vec![0.0f32; m * n];
     match device.matmul(a, b, &mut result, m, k, n) {
         Ok(()) => {
+            let calls = WGPU_CALLS.fetch_add(1, Ordering::Relaxed);
             if !WGPU_LOGGED.swap(true, Ordering::Relaxed) {
                 eprintln!("[wgpu] GPU matmul active ({m}x{k}x{n})");
+            }
+            if calls > 0 && calls % 1000 == 0 {
+                eprintln!("[wgpu] {calls} GPU matmuls completed");
             }
             Some(result)
         }
