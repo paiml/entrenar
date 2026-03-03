@@ -443,6 +443,12 @@ pub struct TrainingParams {
     /// Each stage specifies a data path and the step at which to transition.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curriculum: Option<Vec<CurriculumStage>>,
+
+    // === Distributed training (tickets #131-#140) ===
+    /// Distributed data-parallel training configuration.
+    /// When present, enables multi-GPU / multi-node DDP pretraining.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distributed: Option<DistributedSpec>,
 }
 
 /// A curriculum learning stage: a data source active until a given step.
@@ -453,6 +459,59 @@ pub struct CurriculumStage {
     /// Step number at which to transition to next stage (None = until end)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub until_step: Option<usize>,
+}
+
+/// Distributed training configuration from YAML.
+///
+/// Specifies how to coordinate multiple workers for data-parallel pretraining.
+/// When present in the `training` section, enables distributed mode.
+///
+/// # Example YAML
+///
+/// ```yaml
+/// training:
+///   distributed:
+///     world_size: 2
+///     backend: "auto"
+///     role: "coordinator"
+///     coordinator_addr: "0.0.0.0:9000"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DistributedSpec {
+    /// Total number of workers
+    pub world_size: usize,
+
+    /// Compute backend: "cuda", "wgpu", or "auto" (default: "auto")
+    #[serde(default = "default_backend")]
+    pub backend: String,
+
+    /// Node role: "coordinator" or "worker" (default: "coordinator")
+    #[serde(default = "default_role")]
+    pub role: String,
+
+    /// Coordinator address (bind for coordinator, connect for worker)
+    #[serde(default = "default_coordinator_addr")]
+    pub coordinator_addr: String,
+
+    /// This worker's global rank (default: 0)
+    #[serde(default)]
+    pub rank: usize,
+
+    /// This worker's local rank on its machine (default: 0)
+    #[serde(default)]
+    pub local_rank: usize,
+}
+
+fn default_backend() -> String {
+    "auto".to_string()
+}
+
+fn default_role() -> String {
+    "coordinator".to_string()
+}
+
+fn default_coordinator_addr() -> String {
+    "0.0.0.0:9000".to_string()
 }
 
 impl Default for TrainingParams {
@@ -474,6 +533,7 @@ impl Default for TrainingParams {
             max_checkpoints: 5,
             shuffle: true,
             curriculum: None,
+            distributed: None,
         }
     }
 }
@@ -690,6 +750,85 @@ optimizer:
         assert!(params.mixed_precision.is_none());
         assert!(params.scheduler_params.is_none());
         assert!(params.seed.is_none());
+        assert!(params.distributed.is_none());
+    }
+
+    #[test]
+    fn test_deserialize_distributed_config() {
+        let yaml = r"
+model:
+  path: model.safetensors
+  mode: transformer
+
+data:
+  train: data/train/
+  batch_size: 4
+
+optimizer:
+  name: adamw
+  lr: 0.0003
+
+training:
+  epochs: 5
+  mode: causal_lm
+  distributed:
+    world_size: 2
+    backend: cuda
+    role: coordinator
+    coordinator_addr: '0.0.0.0:9000'
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).expect("operation should succeed");
+        let dist = spec.training.distributed.expect("distributed config present");
+        assert_eq!(dist.world_size, 2);
+        assert_eq!(dist.backend, "cuda");
+        assert_eq!(dist.role, "coordinator");
+        assert_eq!(dist.coordinator_addr, "0.0.0.0:9000");
+        assert_eq!(dist.rank, 0);
+        assert_eq!(dist.local_rank, 0);
+    }
+
+    #[test]
+    fn test_distributed_config_defaults() {
+        let yaml = r"
+model:
+  path: model.safetensors
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adamw
+  lr: 0.001
+
+training:
+  distributed:
+    world_size: 4
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).expect("operation should succeed");
+        let dist = spec.training.distributed.expect("distributed config present");
+        assert_eq!(dist.world_size, 4);
+        assert_eq!(dist.backend, "auto");
+        assert_eq!(dist.role, "coordinator");
+        assert_eq!(dist.coordinator_addr, "0.0.0.0:9000");
+    }
+
+    #[test]
+    fn test_backward_compatible_no_distributed() {
+        let yaml = r"
+model:
+  path: model.gguf
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adam
+  lr: 0.001
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).expect("operation should succeed");
+        assert!(spec.training.distributed.is_none());
     }
 
     #[test]

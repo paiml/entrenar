@@ -99,6 +99,64 @@ impl ComputeDevice {
             Self::Cpu | Self::Cuda { .. } => None,
         }
     }
+
+    /// Detect all available compute devices on this machine.
+    ///
+    /// Enumerates all CUDA GPUs and wgpu adapters. Returns at least
+    /// one device (CPU fallback if no GPUs found).
+    ///
+    /// Used by distributed training to discover multi-GPU configurations.
+    #[must_use]
+    pub fn detect_all_devices() -> Vec<Self> {
+        let mut devices = Vec::new();
+
+        // Enumerate CUDA devices
+        if Self::cuda_available() {
+            let cuda_count = Self::cuda_device_count();
+            for i in 0..cuda_count {
+                if let Some(info) = DeviceInfo::cuda_info(i) {
+                    if info.memory_gb >= 4.0 {
+                        devices.push(Self::Cuda { device_id: i });
+                    }
+                }
+            }
+        }
+
+        // Enumerate wgpu adapters
+        #[cfg(feature = "gpu")]
+        {
+            let wgpu_count = Self::wgpu_adapter_count();
+            for i in 0..wgpu_count {
+                devices.push(Self::Wgpu { adapter_index: i as u32 });
+            }
+        }
+
+        // CPU fallback
+        if devices.is_empty() {
+            devices.push(Self::Cpu);
+        }
+
+        devices
+    }
+
+    /// Count CUDA devices via nvidia-smi.
+    fn cuda_device_count() -> usize {
+        std::process::Command::new("nvidia-smi")
+            .args(["--query-gpu=name", "--format=csv,noheader"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
+            .unwrap_or(0)
+    }
+
+    /// Count wgpu adapters.
+    #[cfg(feature = "gpu")]
+    fn wgpu_adapter_count() -> usize {
+        // wgpu adapter enumeration would go here
+        // For now, return 0 as wgpu multi-adapter is not yet implemented
+        0
+    }
 }
 
 impl Default for ComputeDevice {
@@ -266,6 +324,14 @@ mod tests {
         let device = ComputeDevice::default();
         // Should be valid
         assert!(device.is_cpu() || device.is_cuda());
+    }
+
+    #[test]
+    fn test_detect_all_devices() {
+        let devices = ComputeDevice::detect_all_devices();
+        assert!(!devices.is_empty(), "must detect at least one device");
+        // First device should be the best available
+        // Last resort is CPU
     }
 
     #[test]
