@@ -17,6 +17,7 @@
 //! - **Invariant**: GPU buffers remain valid across forward calls
 
 use crate::autograd::Tensor;
+use crate::lora::LoRALayer;
 use crate::transformer::config::TransformerConfig;
 use crate::transformer::model::Transformer;
 use trueno::backends::gpu::{GpuCommandBatch, GpuDevice};
@@ -216,10 +217,18 @@ impl WgpuForwardPass {
     ///
     /// Attention remains per-sample on CPU SIMD. FFN inputs are concatenated
     /// across samples for a single large matmul per layer.
+    ///
+    /// # KAIZEN-010: LoRA integration
+    ///
+    /// When `lora_layers` is provided, attention uses `forward_with_lora()` to
+    /// apply LoRA corrections to Q and V projections. Layout: `[Q_0, V_0, Q_1, V_1, ...]`
+    /// (2 LoRA layers per transformer layer). Without this, only the classifier
+    /// head trains on the wgpu path (5,122 params vs 5.9M with LoRA).
     pub fn forward_hidden_batch(
         &self,
         model: &Transformer,
         batch_token_ids: &[Vec<u32>],
+        lora_layers: Option<&[LoRALayer]>,
     ) -> Result<Vec<Tensor>, String> {
         let hidden_size = self.config.hidden_size;
         let intermediate_size = self.config.intermediate_size;
@@ -234,14 +243,37 @@ impl WgpuForwardPass {
         // Step 2: Layer-at-a-time processing
         // Attention on CPU SIMD (per-sample), FFN on GPU (all samples concatenated)
         crate::autograd::suppress_per_op_wgpu();
-        for layer in &model.layers {
+        for (layer_idx, layer) in model.layers.iter().enumerate() {
             // Attention on CPU (per-sample, independent)
             let mut ffn_inputs: Vec<Vec<f32>> = Vec::with_capacity(n);
             let mut residuals: Vec<Tensor> = Vec::with_capacity(n);
             for (i, hidden) in hiddens.iter().enumerate() {
                 let seq_len = batch_token_ids[i].len();
                 let norm1 = layer.input_norm.forward_batched(hidden, seq_len, hidden_size);
-                let attn_out = layer.self_attn.forward(&norm1, seq_len);
+
+                // KAIZEN-010: Use LoRA-enabled attention when adapters are available
+                let attn_out = match lora_layers {
+                    Some(loras) => {
+                        let q_idx = layer_idx * 2;
+                        let v_idx = layer_idx * 2 + 1;
+                        if v_idx < loras.len() {
+                            layer.self_attn.forward_with_lora(
+                                &norm1,
+                                seq_len,
+                                loras[q_idx].lora_a(),
+                                loras[q_idx].lora_b(),
+                                loras[v_idx].lora_a(),
+                                loras[v_idx].lora_b(),
+                                loras[q_idx].rank(),
+                                loras[q_idx].scale(),
+                            )
+                        } else {
+                            layer.self_attn.forward(&norm1, seq_len)
+                        }
+                    }
+                    None => layer.self_attn.forward(&norm1, seq_len),
+                };
+
                 let residual1 = crate::autograd::add(hidden, &attn_out);
                 let norm2 = layer.post_attn_norm.forward_batched(&residual1, seq_len, hidden_size);
                 ffn_inputs.push(
