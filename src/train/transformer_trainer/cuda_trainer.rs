@@ -724,14 +724,25 @@ impl CudaTransformerTrainer {
                 &mut self.cuda_grad_workspace,
             ).ok()?;
 
-            // Per-block gradient clipping: estimate L2 norm from workspace, scale if needed.
-            // SYNC required: backward kernels run on CU_STREAM_NON_BLOCKING stream,
-            // but clip_workspace_gradients() uses cuMemcpyDtoH which doesn't wait for
-            // non-blocking streams. Without sync, reads stale GPU data (ALB-065).
-            if let Some(max_norm) = max_grad_norm {
-                stream.synchronize().ok()?;
-                clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
-            }
+            // Per-block gradient clipping DISABLED (ALB-067: CPU-side L2 norm bottleneck).
+            //
+            // compute_workspace_clip_scale() downloads 9 gradient buffers per block to
+            // CPU for L2 norm computation. For 24 blocks × 4 sequences/batch: 864 D2H
+            // transfers (~1.4 GB/step) + heap allocation + f64 summation. This pegs CPU
+            // at 100% and GPU at 7%, making each step take minutes instead of seconds.
+            //
+            // SAFETY: Per-block weight gradients are bounded by block activations and
+            // regularized by AdamW second moments. LM head + final norm weight clipping
+            // is preserved (lines 653-676). Activation gradient clipping (C-EMBED-GRAD-001)
+            // in embed_backward() is preserved — this is the critical safety net.
+            //
+            // TODO(ALB-067): Re-enable when GPU-side squared norm reduction is implemented
+            // in trueno. The kernel needs: per-thread x[i]^2, warp shuffle reduction,
+            // shared memory block reduction, single f32 output per buffer.
+            //
+            // No stream.synchronize() needed: backward and optimizer_step are both
+            // GPU-side operations on the same stream — CUDA stream ordering guarantees
+            // the backward completes before optimizer_step reads the workspace.
 
             // Per-block optimizer step: consume workspace gradients before next block overwrites
             let _ = self.cuda_blocks[layer_idx].optimizer_step(
