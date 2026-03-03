@@ -1124,6 +1124,60 @@ impl CudaTransformerTrainer {
         save_model(&model, path, &config)
     }
 
+    /// R-011: Prepare checkpoint data for async save.
+    /// Syncs GPU weights to CPU and snapshots tensor data as Send-able Vec<f32>.
+    /// Returns a closure that writes the checkpoint file from another thread.
+    pub fn prepare_async_save(
+        &mut self,
+        name: &str,
+        architecture: &str,
+    ) -> Box<dyn FnOnce(&std::path::Path) -> crate::Result<()> + Send> {
+        self.sync_weights_to_cpu();
+
+        let model_params = self.model.parameters();
+        let num_total = model_params.len();
+        let num_layers = (num_total - 2) / 9;
+        let mut names: Vec<String> = Vec::with_capacity(num_total);
+
+        names.push("model.embed_tokens.weight".to_string());
+        names.push("model.norm.weight".to_string());
+        for layer in 0..num_layers {
+            names.push(format!("model.layers.{layer}.input_layernorm.weight"));
+            names.push(format!("model.layers.{layer}.post_attention_layernorm.weight"));
+            names.push(format!("model.layers.{layer}.self_attn.q_proj.weight"));
+            names.push(format!("model.layers.{layer}.self_attn.k_proj.weight"));
+            names.push(format!("model.layers.{layer}.self_attn.v_proj.weight"));
+            names.push(format!("model.layers.{layer}.self_attn.o_proj.weight"));
+            names.push(format!("model.layers.{layer}.mlp.gate_proj.weight"));
+            names.push(format!("model.layers.{layer}.mlp.up_proj.weight"));
+            names.push(format!("model.layers.{layer}.mlp.down_proj.weight"));
+        }
+        if names.len() < num_total {
+            names.push("lm_head.weight".to_string());
+        }
+
+        // Snapshot raw Vec<f32> data — Send-safe (Tensor contains Rc, not Send)
+        let param_data: Vec<(String, Vec<f32>)> = names
+            .into_iter()
+            .zip(model_params)
+            .map(|(n, t)| (n, t.data().to_vec()))
+            .collect();
+
+        let name = name.to_string();
+        let architecture = architecture.to_string();
+
+        Box::new(move |path: &std::path::Path| {
+            let params: Vec<(String, Tensor)> = param_data
+                .into_iter()
+                .map(|(n, d)| (n, Tensor::from_vec(d, false)))
+                .collect();
+            let metadata = ModelMetadata::new(&name, &architecture);
+            let model = Model::new(metadata, params);
+            let config = SaveConfig::new(ModelFormat::SafeTensors);
+            save_model(&model, path, &config)
+        })
+    }
+
     /// GPU device name.
     pub fn gpu_name(&self) -> String {
         self.cuda_trainer.device_name()
