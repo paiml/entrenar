@@ -943,14 +943,20 @@ fn save_and_validate_checkpoint(
     jsonl_file: &mut Option<std::fs::File>,
 ) {
     let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
-    if let Err(e) = trainer.save(&ckpt_path, model_name, "LlamaForCausalLM") {
-        println!("  [WARN] Checkpoint save at step {} failed: {}", step, e);
-    } else {
-        verify_checkpoint(&ckpt_path);
-        println!("  [checkpoint] step={} saved to {}", step, ckpt_path.display());
-        save_training_state(&spec.training.output_dir, step, epoch, batch_idx);
-        prune_checkpoints(&spec.training.output_dir, max_checkpoints);
-    }
+    // R-011: Async checkpointing — prepare data on main thread, write on background thread
+    let save_fn = trainer.prepare_async_save(model_name, "LlamaForCausalLM");
+    let async_path = ckpt_path.clone();
+    let async_output_dir = spec.training.output_dir.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = save_fn(&async_path) {
+            println!("  [WARN] Async checkpoint save failed: {}", e);
+        } else {
+            verify_checkpoint(&async_path);
+            println!("  [checkpoint] step={} saved to {}", step, async_path.display());
+            save_training_state(&async_output_dir, step, epoch, batch_idx);
+            prune_checkpoints(&async_output_dir, max_checkpoints);
+        }
+    });
     run_validation_eval(trainer, val_batches, step, jsonl_file);
 }
 
