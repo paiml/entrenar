@@ -131,6 +131,9 @@ pub struct ClassifyTrainer {
     train_data: Vec<SafetySample>,
     /// Validation data (frozen, never shuffled)
     val_data: Vec<SafetySample>,
+    /// KAIZEN-013: Pre-tokenized validation data — avoids re-tokenizing every epoch.
+    /// Each entry is `(token_ids, label)`. Populated once at construction.
+    val_token_cache: Vec<(Vec<u32>, usize)>,
     /// Base random seed
     rng_seed: u64,
     /// Optional monitor writer for live TUI updates
@@ -208,11 +211,19 @@ impl ClassifyTrainer {
         let data_hash = Self::compute_data_hash(&corpus);
         let train_start = chrono::Utc::now().to_rfc3339();
 
+        // KAIZEN-013: Pre-tokenize validation data once (val set is frozen per F-LOOP-009).
+        // Avoids re-tokenizing all val samples every epoch — saves ~1s per 1000 samples.
+        let val_token_cache: Vec<(Vec<u32>, usize)> = val_data
+            .iter()
+            .map(|s| (pipeline.tokenize(&s.input), s.label))
+            .collect();
+
         Ok(Self {
             pipeline,
             config,
             train_data,
             val_data,
+            val_token_cache,
             rng_seed,
             monitor_writer: None,
             data_hash,
@@ -717,19 +728,43 @@ impl ClassifyTrainer {
     /// Compute validation metrics (forward-only, no gradient updates).
     ///
     /// F-LOOP-009: Val set is frozen — same samples every epoch.
+    /// KAIZEN-013: Uses pre-tokenized cache and reports progress.
     fn validate(&mut self) -> (f32, f32) {
         let mut total_loss = 0.0f32;
         let mut correct = 0usize;
-        let total = self.val_data.len();
+        let total = self.val_token_cache.len();
 
-        for sample in &self.val_data {
-            let ids = self.pipeline.tokenize(&sample.input);
-            let (loss, predicted) = self.pipeline.forward_only(&ids, sample.label);
+        let val_start = std::time::Instant::now();
+
+        // KAIZEN-013: Use pre-tokenized cache instead of re-tokenizing
+        for (i, (ids, label)) in self.val_token_cache.iter().enumerate() {
+            let (loss, predicted) = self.pipeline.forward_only(ids, *label);
             total_loss += loss;
-            if predicted == sample.label {
+            if predicted == *label {
                 correct += 1;
             }
+            // Progress reporting every 100 samples
+            if (i + 1) % 100 == 0 || i + 1 == total {
+                let elapsed = val_start.elapsed().as_secs_f32();
+                let sam_per_sec = if elapsed > 0.0 { (i + 1) as f32 / elapsed } else { 0.0 };
+                let running_acc = if i > 0 { correct as f32 / (i + 1) as f32 * 100.0 } else { 0.0 };
+                eprint!(
+                    "\r  Validating: {}/{} ({:.1} sam/s, acc={:.1}%)   ",
+                    i + 1, total, sam_per_sec, running_acc,
+                );
+            }
         }
+
+        let val_elapsed = val_start.elapsed();
+        let val_sam_per_sec = if val_elapsed.as_secs_f32() > 0.0 {
+            total as f32 / val_elapsed.as_secs_f32()
+        } else {
+            0.0
+        };
+        eprintln!(
+            "\r  Validation complete: {} samples in {:.1}s ({:.1} sam/s)              ",
+            total, val_elapsed.as_secs_f32(), val_sam_per_sec,
+        );
 
         let avg_loss = if total > 0 { total_loss / total as f32 } else { 0.0 };
         let accuracy = if total > 0 { correct as f32 / total as f32 } else { 0.0 };
