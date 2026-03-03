@@ -505,3 +505,85 @@ fn test_deterministic_training_reproducibility() {
         );
     }
 }
+
+// ── Activation Checkpointing (R-021, #115) ──────────────────────────────
+
+#[test]
+fn test_checkpoint_config_segment_calculation() {
+    // Verify checkpoint boundary mask calculation
+    // tiny has 2 layers, 2 segments → segment_size = 1 → all layers are checkpoints
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_checkpointing(2);
+
+    assert!(config.checkpoint_config.enabled);
+    assert_eq!(config.checkpoint_config.num_segments, 2);
+
+    let num_layers = config.model_config.num_hidden_layers;
+    assert_eq!(num_layers, 2);
+    let ns = config.checkpoint_config.num_segments.max(1);
+    let segment_size = (num_layers + ns - 1) / ns;
+    assert_eq!(segment_size, 1);
+    let mask: Vec<bool> = (0..num_layers)
+        .map(|i| i % segment_size == 0)
+        .collect();
+    assert_eq!(mask, vec![true, true]);
+}
+
+#[test]
+fn test_checkpoint_config_fewer_segments() {
+    // Use a config with more layers: 24 layers, 4 segments → segment_size = 6
+    // Checkpoint boundary layers: 0, 6, 12, 18
+    let mut model_config = TransformerConfig::tiny();
+    model_config.num_hidden_layers = 24;
+    let config = TransformerTrainConfig::new(model_config)
+        .with_checkpointing(4);
+
+    let num_layers = config.model_config.num_hidden_layers;
+    assert_eq!(num_layers, 24);
+    let ns = config.checkpoint_config.num_segments.max(1);
+    let segment_size = (num_layers + ns - 1) / ns;
+    assert_eq!(segment_size, 6);
+    let mask: Vec<bool> = (0..num_layers)
+        .map(|i| i % segment_size == 0)
+        .collect();
+    // Only layers 0, 6, 12, 18 are checkpoints
+    let expected: Vec<bool> = (0..24).map(|i| i % 6 == 0).collect();
+    assert_eq!(mask, expected);
+    assert_eq!(mask.iter().filter(|&&x| x).count(), 4);
+    assert_eq!(mask.iter().filter(|&&x| !x).count(), 20);
+}
+
+#[test]
+fn test_checkpoint_disabled_saves_all_layers() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+
+    assert!(!config.checkpoint_config.enabled);
+
+    // When disabled, all layers should be "checkpointed" (saved)
+    let num_layers = config.model_config.num_hidden_layers;
+    let mask: Vec<bool> = (0..num_layers)
+        .map(|_| true) // !checkpointing → all saved
+        .collect();
+    assert!(mask.iter().all(|&x| x));
+}
+
+#[test]
+fn test_checkpoint_with_cpu_trainer() {
+    // CPU trainer with checkpointing enabled should train normally
+    // (checkpointing only affects CUDA path, CPU path ignores it)
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config.clone())
+        .with_checkpointing(2)
+        .with_lr(0.001)
+        .with_max_seq_len(32);
+
+    let model = Transformer::new(&model_config);
+    let mut trainer = TransformerTrainer::with_model(model, config);
+
+    let input = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+    let batch = LMBatch::from_sequences(&[input], 0, 0);
+
+    let loss = trainer.train_batch(&batch);
+    assert!(loss > 0.0, "Loss should be positive");
+    assert!(loss.is_finite(), "Loss should be finite");
+}

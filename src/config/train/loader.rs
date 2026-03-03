@@ -54,6 +54,73 @@ pub fn train_from_yaml<P: AsRef<Path>>(config_path: P) -> Result<()> {
     }
 }
 
+/// Build a TransformerTrainConfig from YAML spec, wiring all hyperparameters.
+fn build_train_config(
+    model_config: crate::transformer::TransformerConfig,
+    spec: &TrainSpec,
+) -> TransformerTrainConfig {
+    let mut config = TransformerTrainConfig::new(model_config)
+        .with_lr(spec.optimizer.lr)
+        .with_warmup_steps(spec.training.warmup_steps)
+        .with_max_seq_len({
+            let seq_len = spec.data.seq_len.unwrap_or_else(|| {
+                eprintln!("Warning: seq_len not specified in config, defaulting to 512");
+                512
+            });
+            seq_len
+        });
+
+    if let Some(clip) = spec.training.grad_clip {
+        config = config.with_grad_clip(clip);
+    }
+
+    // Wire optimizer hyperparameters from YAML (ALB-040)
+    if let Some(v) = spec.optimizer.params.get("beta2").and_then(|v| v.as_f64()) {
+        config = config.with_beta2(v as f32);
+    }
+    if let Some(v) = spec.optimizer.params.get("weight_decay").and_then(|v| v.as_f64()) {
+        config = config.with_weight_decay(v as f32);
+    }
+
+    if let Some(accum) = spec.training.gradient_accumulation {
+        config = config.with_accumulation_steps(accum);
+        if accum > 1 {
+            println!("  [WARN] gradient_accumulation={} — GPU block optimizer steps are per-sequence (ALB-066)", accum);
+        }
+    }
+
+    if let Some(max_steps) = spec.training.max_steps {
+        config = config.with_max_steps(max_steps);
+    }
+
+    // Enable mixed precision if specified
+    if let Some(ref precision) = spec.training.mixed_precision {
+        match precision.as_str() {
+            "bf16" => config = config.with_bf16(),
+            "fp16" => config = config.with_fp16(),
+            "fp32" => {}
+            other => {
+                eprintln!("Warning: unknown mixed_precision value '{other}', defaulting to fp32");
+            }
+        }
+    }
+
+    // R-021: Activation checkpointing (gradient recomputation)
+    if let Some(num_segments) = spec.training.checkpoints {
+        config = config.with_checkpointing(num_segments);
+    }
+
+    // R-084: Bitwise deterministic training (C-DETERM-001)
+    if spec.training.deterministic {
+        config = config.with_deterministic(true);
+    }
+    if let Some(seed) = spec.training.seed {
+        config = config.with_seed(seed);
+    }
+
+    config
+}
+
 /// Train a transformer model (LLM) from spec
 ///
 /// Uses TransformerTrainer with CausalLMLoss for language modeling.
@@ -79,63 +146,8 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     // Try to load model weights if path exists (ENT-117)
     let transformer = load_transformer_model(&resolved_path, &model_config)?;
 
-    // Build TransformerTrainConfig
-    let mut train_config = TransformerTrainConfig::new(model_config)
-        .with_lr(spec.optimizer.lr)
-        .with_warmup_steps(spec.training.warmup_steps)
-        .with_max_seq_len({
-            let seq_len = spec.data.seq_len.unwrap_or_else(|| {
-                eprintln!("Warning: seq_len not specified in config, defaulting to 512");
-                512
-            });
-            seq_len
-        });
-
-    if let Some(clip) = spec.training.grad_clip {
-        train_config = train_config.with_grad_clip(clip);
-    }
-
-    // Wire optimizer hyperparameters from YAML (ALB-040)
-    if let Some(v) = spec.optimizer.params.get("beta2").and_then(|v| v.as_f64()) {
-        train_config = train_config.with_beta2(v as f32);
-    }
-    if let Some(v) = spec.optimizer.params.get("weight_decay").and_then(|v| v.as_f64()) {
-        train_config = train_config.with_weight_decay(v as f32);
-    }
-
-    if let Some(accum) = spec.training.gradient_accumulation {
-        train_config = train_config.with_accumulation_steps(accum);
-        // R-016/ALB-066: Gradient accumulation for CUDA trainer accumulates loss
-        // and defers the CPU embedding optimizer step. GPU per-block optimizer steps
-        // still run interleaved with backward (workspace-sharing constraint).
-        if accum > 1 {
-            println!("  [WARN] gradient_accumulation={} — GPU block optimizer steps are per-sequence (ALB-066)", accum);
-        }
-    }
-
-    if let Some(max_steps) = spec.training.max_steps {
-        train_config = train_config.with_max_steps(max_steps);
-    }
-
-    // Enable mixed precision if specified
-    if let Some(ref precision) = spec.training.mixed_precision {
-        match precision.as_str() {
-            "bf16" => train_config = train_config.with_bf16(),
-            "fp16" => train_config = train_config.with_fp16(),
-            "fp32" => {} // fp32 is the default, no action needed
-            other => {
-                eprintln!("Warning: unknown mixed_precision value '{other}', defaulting to fp32");
-            }
-        }
-    }
-
-    // R-084: Bitwise deterministic training (C-DETERM-001)
-    if spec.training.deterministic {
-        train_config = train_config.with_deterministic(true);
-    }
-    if let Some(seed) = spec.training.seed {
-        train_config = train_config.with_seed(seed);
-    }
+    // Build TransformerTrainConfig from YAML spec fields
+    let mut train_config = build_train_config(model_config, spec);
 
     // Apply deterministic settings before any CUDA operations
     train_config.apply_deterministic_settings();
