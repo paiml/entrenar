@@ -63,7 +63,7 @@ use super::config::TransformerTrainConfig;
 /// Free function to avoid borrow conflicts with `&mut self`.
 /// For 350M model, downloads ~58 MB per block (~1.8ms on PCIe 4.0 x16).
 #[cfg(feature = "cuda")]
-fn compute_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> f32 {
+fn compute_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> (f32, f32) {
     fn exact_sq_norm(buf: &GpuBuffer<f32>) -> f64 {
         let mut host = vec![0.0f32; buf.len()];
         if buf.copy_to_host_at(&mut host, 0).is_err() {
@@ -83,21 +83,22 @@ fn compute_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> f32 {
         + exact_sq_norm(&ws.grad_post_attn_norm);
 
     let grad_norm = total_sq.sqrt() as f32;
-    if grad_norm > max_norm {
+    let scale = if grad_norm > max_norm {
         max_norm / grad_norm
     } else {
         1.0
-    }
+    };
+    (scale, grad_norm)
 }
 
 /// Clip all gradient buffers in the shared workspace using per-block L2 norm estimate.
 ///
-/// Free function to avoid borrow conflicts with `&mut self` + `stream`.
+/// R-004: Returns pre-clip gradient L2 norm for observability logging.
 #[cfg(feature = "cuda")]
-fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &CudaStream) {
-    let scale = compute_workspace_clip_scale(ws, max_norm);
+fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &CudaStream) -> f32 {
+    let (scale, grad_norm) = compute_workspace_clip_scale(ws, max_norm);
     if (scale - 1.0).abs() < 1e-7 {
-        return;
+        return grad_norm;
     }
 
     let n_wq = ws.grad_w_q.len() as u32;
@@ -119,6 +120,16 @@ fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &
     let _ = gradient_clip_cuda(&mut ws.grad_down, scale, n_down, stream);
     let _ = gradient_clip_cuda(&mut ws.grad_input_norm, scale, n_inorm, stream);
     let _ = gradient_clip_cuda(&mut ws.grad_post_attn_norm, scale, n_panorm, stream);
+    grad_norm
+}
+
+/// R-004: Compute gradient L2 norm without clipping (for observability only).
+///
+/// Used when grad_clip is disabled to still report gradient norms.
+#[cfg(feature = "cuda")]
+fn compute_workspace_grad_norm(ws: &CudaGradWorkspace) -> f32 {
+    let (_, norm) = compute_workspace_clip_scale(ws, f32::MAX);
+    norm
 }
 
 /// GPU-resident training state for pretraining.
@@ -202,6 +213,8 @@ pub struct CudaTransformerTrainer {
     accumulated_loss: f32,
     /// Accumulated batch count
     accumulated_batches: usize,
+    /// R-004: Last observed LM head gradient L2 norm (proxy for global grad norm)
+    last_grad_norm: f32,
 }
 
 #[cfg(feature = "cuda")]
@@ -426,6 +439,7 @@ impl CudaTransformerTrainer {
             step: 0,
             accumulated_loss: 0.0,
             accumulated_batches: 0,
+            last_grad_norm: 0.0,
         })
     }
 
@@ -652,7 +666,8 @@ impl CudaTransformerTrainer {
         // Root cause of ALB-065 silent crash.
         if let Some(max_norm) = max_grad_norm {
             stream.synchronize().ok()?;
-            let scale = Self::compute_clip_scale(&self.lm_head_grad_gpu, max_norm);
+            let (scale, norm) = Self::compute_clip_scale_with_norm(&self.lm_head_grad_gpu, max_norm);
+            self.last_grad_norm = norm; // R-004: capture for observability
             let n = self.lm_head_grad_gpu.len() as u32;
             let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, scale, n, stream);
         }
@@ -670,7 +685,7 @@ impl CudaTransformerTrainer {
         // Clip final norm weight gradient (sync for same reason as LM head clip)
         if let Some(max_norm) = max_grad_norm {
             stream.synchronize().ok()?;
-            let scale = Self::compute_clip_scale(&self.gpu_training.grad_final_norm_weight, max_norm);
+            let (scale, _) = Self::compute_clip_scale_with_norm(&self.gpu_training.grad_final_norm_weight, max_norm);
             let n = self.gpu_training.grad_final_norm_weight.len() as u32;
             let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
         }
@@ -761,19 +776,20 @@ impl CudaTransformerTrainer {
 
     /// Compute exact gradient L2 norm by downloading the full buffer to CPU.
     ///
-    /// Returns `min(1.0, max_norm / grad_norm)`.
-    fn compute_clip_scale(buf: &GpuBuffer<f32>, max_norm: f32) -> f32 {
+    /// R-004: Returns `(clip_scale, grad_norm)` for observability.
+    fn compute_clip_scale_with_norm(buf: &GpuBuffer<f32>, max_norm: f32) -> (f32, f32) {
         let mut host = vec![0.0f32; buf.len()];
         if buf.copy_to_host_at(&mut host, 0).is_err() {
-            return 1.0;
+            return (1.0, 0.0);
         }
         let sq_sum: f64 = host.iter().map(|&x| (x as f64) * (x as f64)).sum();
         let grad_norm = sq_sum.sqrt() as f32;
-        if grad_norm > max_norm {
+        let scale = if grad_norm > max_norm {
             max_norm / grad_norm
         } else {
             1.0
-        }
+        };
+        (scale, grad_norm)
     }
 
 
@@ -957,6 +973,16 @@ impl CudaTransformerTrainer {
         } else {
             base_lr
         }
+    }
+
+    /// R-004: Get last observed gradient L2 norm (LM head proxy).
+    pub fn last_grad_norm(&self) -> f32 {
+        self.last_grad_norm
+    }
+
+    /// R-012: Get total trainable parameter count for MFU calculation.
+    pub fn num_params(&self) -> usize {
+        self.model.parameters().iter().map(|t| t.len()).sum()
     }
 
     /// Sync all GPU weights back to CPU model.

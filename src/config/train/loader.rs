@@ -511,17 +511,23 @@ fn log_run_params(store: &SqliteBackend, run_id: &str, spec: &TrainSpec, device:
     }
 }
 
-/// Training loop for GPU CudaTransformerTrainer (ALB-040, ALB-045, ALB-055/056, ALB-068)
+/// Training loop for GPU CudaTransformerTrainer
 ///
-/// ALB-068: Manual batch loop (instead of train_epoch_with_callback) to enable
-/// intermediate checkpoint saving. train_epoch_with_callback's callback receives
-/// `&Self` (immutable), but `save()` requires `&mut self` for sync_weights_to_cpu.
+/// ALB-068: Manual batch loop for intermediate checkpoint saving.
+/// R-004: Gradient norm logging. R-008: Graceful shutdown.
+/// R-009: Multi-checkpoint retention. R-012: MFU tracking.
+/// R-014: JSONL experiment log. R-015: Per-epoch shuffling.
+/// R-006/R-007: Training state persistence.
 #[cfg(feature = "cuda")]
 fn train_loop_cuda(
     trainer: &mut CudaTransformerTrainer,
     batches: &[LMBatch],
     spec: &TrainSpec,
 ) -> Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
     println!("Starting transformer training (CUDA GPU-resident)...");
     println!();
 
@@ -529,6 +535,7 @@ fn train_loop_cuda(
     let start_time = std::time::Instant::now();
     let log_interval = std::cmp::max(num_batches / 100, 1);
     let save_interval = spec.training.save_interval;
+    let max_checkpoints = spec.training.max_checkpoints;
 
     // ALB-045: Initialize training state IPC for `apr monitor`
     let state = TrainingState::new(&spec.training.output_dir);
@@ -538,6 +545,44 @@ fn train_loop_cuda(
 
     // ALB-055/056: Open SQLite experiment tracking (local + global)
     let mut tracker = PretrainTracker::open(spec, &gpu_name);
+
+    // R-012: MFU calculation setup
+    let num_params = trainer.num_params();
+    let seq_len = spec.data.seq_len.unwrap_or(128);
+    let tokens_per_batch = spec.data.batch_size * seq_len;
+    // RTX 4090: 82.6 TFLOPS fp32. TODO: query via cuDeviceGetAttribute
+    let gpu_peak_tflops: f64 = 82.58e12;
+
+    // R-014: Open JSONL experiment log
+    let jsonl_path = spec.training.output_dir.join("training_log.jsonl");
+    std::fs::create_dir_all(&spec.training.output_dir).ok();
+    let mut jsonl_file = std::fs::OpenOptions::new()
+        .create(true).append(true).open(&jsonl_path).ok();
+    // Write config header
+    if let Some(ref mut f) = jsonl_file {
+        let header = serde_json::json!({
+            "type": "config",
+            "num_params": num_params,
+            "batch_size": spec.data.batch_size,
+            "seq_len": seq_len,
+            "max_steps": spec.training.max_steps,
+            "epochs": spec.training.epochs,
+            "lr": spec.optimizer.lr,
+            "gpu": &gpu_name,
+            "timestamp": now_ms(),
+        });
+        let _ = writeln!(f, "{}", header);
+    }
+
+    // R-008: Graceful shutdown signal handler
+    let shutdown_flag = Arc::new(AtomicBool::new(false));
+    {
+        let flag = shutdown_flag.clone();
+        let _ = ctrlc::set_handler(move || {
+            flag.store(true, Ordering::SeqCst);
+            eprintln!("\n[SIGINT] Graceful shutdown requested. Saving checkpoint...");
+        });
+    }
 
     // Write initial "Initializing" snapshot
     write_training_snapshot(
@@ -559,13 +604,30 @@ fn train_loop_cuda(
         .unwrap_or("entrenar-model")
         .to_string();
 
+    // R-015: Prepare shuffled batch indices
+    let shuffle = spec.training.shuffle;
+    let seed = spec.training.seed.unwrap_or(42);
+
     'outer: for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let mut total_loss = 0.0;
         let mut batches_processed = 0;
 
+        // R-015: Generate shuffled indices for this epoch
+        let batch_order = shuffled_batch_order(num_batches, shuffle, seed, epoch);
+
         // ALB-068: Manual batch loop for intermediate checkpoint saving
-        for (batch_idx, batch) in batches.iter().enumerate() {
+        for (iter_idx, &batch_idx) in batch_order.iter().enumerate() {
+            // R-008: Check graceful shutdown flag
+            if shutdown_flag.load(Ordering::SeqCst) {
+                handle_graceful_shutdown(
+                    trainer, spec, &state, &mut tracker, start_ms,
+                    epoch, iter_idx, total_epochs, num_batches,
+                    &loss_history, &model_name, &gpu_name,
+                );
+                return Ok(());
+            }
+
             // Check max_steps before processing
             if let Some(max) = spec.training.max_steps {
                 if trainer.step() >= max {
@@ -574,6 +636,7 @@ fn train_loop_cuda(
                 }
             }
 
+            let batch = &batches[batch_idx];
             let batch_loss = trainer.train_batch(batch);
             total_loss += batch_loss;
             batches_processed += 1;
@@ -585,19 +648,27 @@ fn train_loop_cuda(
             }
 
             // Logging at log_interval boundaries
-            if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
+            if (iter_idx + 1) % log_interval == 0 || iter_idx == 0 {
                 let elapsed = epoch_start.elapsed().as_secs_f64();
-                let batches_done = batch_idx + 1;
-                let seq_len = spec.data.seq_len.unwrap_or(128);
-                let tokens_done = batches_done * spec.data.batch_size * seq_len;
+                let batches_done = iter_idx + 1;
+                let tokens_done = batches_done * tokens_per_batch;
                 let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
                 let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
                 let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
+
+                // R-012: Compute MFU
+                let flops_per_step = 6.0 * num_params as f64 * tokens_per_batch as f64;
+                let step_time = elapsed / batches_done as f64;
+                let mfu = (flops_per_step / step_time) / gpu_peak_tflops * 100.0;
+
+                // R-004: Get gradient norm
+                let grad_norm = trainer.last_grad_norm();
+
                 println!(
-                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} eta={:.0}s",
+                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} mfu={:.1}% gnorm={:.2e} eta={:.0}s",
                     batches_done, num_batches,
                     trainer.step(), batch_loss, trainer.current_lr(),
-                    tok_per_sec, remaining,
+                    tok_per_sec, mfu, grad_norm, remaining,
                 );
 
                 // ALB-045: Write snapshot for `apr monitor`
@@ -611,18 +682,28 @@ fn train_loop_cuda(
 
                 // ALB-055/056: Log step metrics to SQLite
                 tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
+
+                // R-014: Write JSONL log entry
+                write_jsonl_step(&mut jsonl_file, trainer.step(), batch_loss,
+                    trainer.current_lr(), tok_per_sec, mfu, grad_norm, epoch,
+                    start_time.elapsed().as_secs_f64());
             }
 
             // ALB-068: Intermediate checkpoint saving at save_interval boundaries
+            // R-009: Step-numbered filenames with retention limit
             let current_step = trainer.step();
             if current_step > 0 && current_step != last_save_step
                 && current_step % save_interval == 0
             {
-                let weights_path = spec.training.output_dir.join("model.safetensors");
-                if let Err(e) = trainer.save(&weights_path, &model_name, "LlamaForCausalLM") {
+                let ckpt_path = checkpoint_path(&spec.training.output_dir, current_step);
+                if let Err(e) = trainer.save(&ckpt_path, &model_name, "LlamaForCausalLM") {
                     println!("  [WARN] Checkpoint save at step {} failed: {}", current_step, e);
                 } else {
-                    println!("  [checkpoint] step={} saved to {}", current_step, weights_path.display());
+                    println!("  [checkpoint] step={} saved to {}", current_step, ckpt_path.display());
+                    // R-006/R-007: Save training state alongside checkpoint
+                    save_training_state(&spec.training.output_dir, current_step, epoch, iter_idx);
+                    // R-009: Prune old checkpoints
+                    prune_checkpoints(&spec.training.output_dir, max_checkpoints);
                 }
                 last_save_step = current_step;
             }
@@ -658,7 +739,157 @@ fn train_loop_cuda(
     // ALB-055/056: Mark run as completed in SQLite
     tracker.complete();
 
+    // R-014: Write completion entry
+    if let Some(ref mut f) = jsonl_file {
+        let entry = serde_json::json!({
+            "type": "complete",
+            "step": trainer.step(),
+            "final_loss": final_loss,
+            "total_time_s": total_time.as_secs_f64(),
+            "timestamp": now_ms(),
+        });
+        let _ = writeln!(f, "{}", entry);
+    }
+
     save_trained_model_cuda(trainer, spec)
+}
+
+/// R-015: Generate shuffled or sequential batch indices for an epoch.
+fn shuffled_batch_order(num_batches: usize, shuffle: bool, seed: u64, epoch: usize) -> Vec<usize> {
+    if !shuffle {
+        return (0..num_batches).collect();
+    }
+    let mut indices: Vec<usize> = (0..num_batches).collect();
+    // Deterministic Fisher-Yates using LCG PRNG seeded by seed + epoch
+    let mut rng_state: u64 = seed
+        .wrapping_add(epoch as u64)
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    for i in (1..indices.len()).rev() {
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let j = (rng_state >> 33) as usize % (i + 1);
+        indices.swap(i, j);
+    }
+    indices
+}
+
+/// R-008: Handle SIGINT/SIGTERM graceful shutdown with emergency checkpoint.
+#[allow(clippy::too_many_arguments)]
+fn handle_graceful_shutdown(
+    trainer: &mut CudaTransformerTrainer,
+    spec: &TrainSpec,
+    state: &TrainingState,
+    tracker: &mut PretrainTracker,
+    start_ms: u64,
+    epoch: usize,
+    iter_idx: usize,
+    total_epochs: usize,
+    num_batches: usize,
+    loss_history: &[f32],
+    model_name: &str,
+    gpu_name: &str,
+) {
+    println!("[SIGINT] Emergency checkpoint at step {}...", trainer.step());
+    let ckpt_path = checkpoint_path(&spec.training.output_dir, trainer.step());
+    if let Err(e) = trainer.save(&ckpt_path, model_name, "LlamaForCausalLM") {
+        println!("  [WARN] Emergency save failed: {}", e);
+    } else {
+        println!("  [checkpoint] emergency save to {}", ckpt_path.display());
+        save_training_state(&spec.training.output_dir, trainer.step(), epoch, iter_idx);
+    }
+    let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
+    write_training_snapshot(
+        state, start_ms, epoch + 1, total_epochs,
+        trainer.step(), num_batches,
+        final_loss, loss_history,
+        trainer.current_lr(), 0.0,
+        TrainingStatus::Completed, spec, gpu_name,
+    );
+    tracker.complete();
+    println!("[SIGINT] Shutdown complete.");
+}
+
+/// R-014: Write a step entry to the JSONL experiment log.
+#[allow(clippy::too_many_arguments)]
+fn write_jsonl_step(
+    jsonl_file: &mut Option<std::fs::File>,
+    step: usize, loss: f32, lr: f32, tok_s: f64,
+    mfu: f64, grad_norm: f32, epoch: usize, elapsed_s: f64,
+) {
+    use std::io::Write;
+    if let Some(ref mut f) = jsonl_file {
+        let entry = serde_json::json!({
+            "type": "step",
+            "step": step,
+            "loss": loss,
+            "lr": lr,
+            "tok_s": tok_s,
+            "mfu": mfu,
+            "grad_norm": grad_norm,
+            "epoch": epoch,
+            "elapsed_s": elapsed_s,
+            "timestamp": now_ms(),
+        });
+        let _ = writeln!(f, "{}", entry);
+    }
+}
+
+/// R-009: Generate step-numbered checkpoint path.
+fn checkpoint_path(output_dir: &Path, step: usize) -> PathBuf {
+    output_dir.join(format!("model-step-{}.safetensors", step))
+}
+
+/// Parse step number from a checkpoint filename like "model-step-123.safetensors".
+fn parse_checkpoint_step(filename: &str) -> Option<usize> {
+    filename
+        .strip_prefix("model-step-")?
+        .strip_suffix(".safetensors")?
+        .parse()
+        .ok()
+}
+
+/// R-009: Prune old checkpoints, keeping the most recent `max_keep`.
+fn prune_checkpoints(output_dir: &Path, max_keep: usize) {
+    if max_keep == 0 {
+        return; // 0 = unlimited
+    }
+    let entries = match std::fs::read_dir(output_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let mut ckpts: Vec<(usize, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let step = parse_checkpoint_step(&e.file_name().to_string_lossy())?;
+            Some((step, e.path()))
+        })
+        .collect();
+    if ckpts.len() <= max_keep {
+        return;
+    }
+    ckpts.sort_by_key(|(step, _)| *step);
+    let to_remove = ckpts.len() - max_keep;
+    for (step, path) in ckpts.into_iter().take(to_remove) {
+        if std::fs::remove_file(&path).is_ok() {
+            println!("  [prune] removed old checkpoint step={}", step);
+        }
+    }
+}
+
+/// R-006/R-007: Save training state metadata alongside checkpoint.
+fn save_training_state(output_dir: &Path, step: usize, epoch: usize, batch_idx: usize) {
+    let state = serde_json::json!({
+        "step": step,
+        "epoch": epoch,
+        "batch_index": batch_idx,
+        "timestamp": now_ms(),
+    });
+    let path = output_dir.join("training_state.json");
+    if let Ok(json) = serde_json::to_string_pretty(&state) {
+        let _ = std::fs::write(path, json);
+    }
 }
 
 #[cfg(not(feature = "cuda"))]

@@ -427,6 +427,16 @@ pub struct TrainingParams {
     /// Global random seed for reproducibility
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
+
+    // === R-009: Multiple checkpoint retention ===
+    /// Maximum number of checkpoints to keep (default 5, 0 = unlimited)
+    #[serde(default = "default_max_checkpoints")]
+    pub max_checkpoints: usize,
+
+    // === R-015: Data shuffling ===
+    /// Shuffle training batches per epoch (default true)
+    #[serde(default = "default_true")]
+    pub shuffle: bool,
 }
 
 impl Default for TrainingParams {
@@ -445,8 +455,14 @@ impl Default for TrainingParams {
             scheduler_params: None,
             max_steps: None,
             seed: None,
+            max_checkpoints: 5,
+            shuffle: true,
         }
     }
+}
+
+fn default_max_checkpoints() -> usize {
+    5
 }
 
 fn default_true() -> bool {

@@ -200,6 +200,7 @@ bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for 
 arrow = { version = "57", default-features = false, optional = true }  # Arrow array types for alimentar integration
 nvml-wrapper = { version = "0.10", optional = true }  # NVIDIA NVML bindings for GPU monitoring
 hostname = "0.4.2"
+ctrlc = "3.4"  # Signal handling for graceful shutdown (R-008)
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 hf-hub = { version = "0.4", optional = true }  # HuggingFace Hub API (gated behind hub feature)
