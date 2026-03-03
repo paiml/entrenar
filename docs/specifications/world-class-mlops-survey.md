@@ -12,16 +12,16 @@
 | Metric | Value |
 |--------|-------|
 | **Best practices evaluated** | 100 |
-| **PASS** | 59 |
+| **PASS** | 62 |
 | **PARTIAL** | 8 |
-| **FAIL** | 33 |
-| **Score** | **61%** |
+| **FAIL** | 30 |
+| **Score** | **64%** |
 | **Letter grade** | **D** |
 | **Batuta falsify score** | 79.2% (63/108 pass, 0 fail, 45 partial) |
 
-**Update (2026-03-03, batch 6)**: 27 MLOps features implemented across 6 batches, raising score from 34% → 61%. Checkpointing now 10/10 (optimizer state, async save, validation, pruning, RNG state). Observability now 10/10 (grad norm, MFU, GPU memory, JSONL+SQLite tracking, real-time dashboard). Key new capabilities since batch 1: gradient noise scale estimation (B_noise), loss spike rollback, ZClip adaptive clipping, optimizer state persistence, data shuffling, config provenance.
+**Update (2026-03-03, batch 7)**: 30 MLOps features implemented across 7 batches, raising score from 34% → 64%. Checkpointing now 10/10 (optimizer state, async save, validation, pruning, RNG state). Observability now 10/10 (grad norm, MFU, GPU memory, JSONL+SQLite tracking, real-time dashboard). Key new capabilities since batch 1: gradient noise scale estimation (B_noise), loss spike rollback, ZClip adaptive clipping, optimizer state persistence, data shuffling, config provenance.
 
-The sovereign stack (entrenar/albor) excels in: provable contracts (90%), checkpointing (100%), observability (100%), and optimization (80%). Remaining gaps: distributed training (0/10), mixed precision (0.5/5), evaluation infrastructure (3/10), activation checkpointing, data quality filtering, curriculum learning.
+The sovereign stack (entrenar/albor) excels in: provable contracts (90%), checkpointing (100%), observability (100%), optimization (100%), and configuration (90%). Remaining gaps: distributed training (0/10), mixed precision (0.5/5), evaluation infrastructure (3/10), activation checkpointing, data quality filtering, curriculum learning.
 
 The remaining high-impact items (BF16 mixed precision, HumanEval benchmarks, activation checkpointing, data quality filtering, curriculum learning) would raise the score to ~75% (C) with ~3 weeks of focused engineering.
 
@@ -234,10 +234,10 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 56 | Linear warmup | **PASS** | Implemented in LR scheduler. |
 | 57 | Cosine or WSD decay schedule | **PASS** | Cosine, linear, constant, WSD all implemented. |
 | 58 | Weight decay with AdamW | **PASS** | AdamW with configurable weight_decay from YAML. |
-| 59 | Learning rate finder / hyperparameter sweep | **FAIL** | No automated LR search. Manual config only. |
+| 59 | Learning rate finder / hyperparameter sweep | **PASS** | R-027: `hyperparam-sweep.py` grid/random search over LR (log-scale), WD, warmup, batch. |
 | 60 | Optimizer state warmup on resume | **PASS** | R-001: `load_optimizer_state()` restores m/v buffers + step counter for warm restart. |
 
-**Score: 4.0/5**
+**Score: 5.0/5**
 
 ### Category 8: Evaluation & Benchmarking (10 practices)
 
@@ -252,9 +252,9 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 67 | Intermediate checkpoint evaluation | **PASS** | R-005: Validation eval runs at every `save_interval` checkpoint. |
 | 68 | Human evaluation pipeline | **FAIL** | No human eval infrastructure. |
 | 69 | Code execution evaluation (pass@k) | **FAIL** | No code execution sandbox for functional correctness. |
-| 70 | Model comparison framework (A/B testing) | **FAIL** | No systematic model comparison. |
+| 70 | Model comparison framework (A/B testing) | **PASS** | R-031: `compare-checkpoints.py` side-by-side PPL eval with JSON output. |
 
-**Score: 3.0/10**
+**Score: 4.0/10**
 
 ### Category 9: Distributed Training (10 practices)
 
@@ -304,10 +304,10 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 91 | YAML config with schema validation | **PASS** | Serde deserialization with type checking. |
 | 92 | Hyperparameter validation before training | **PASS** | `save_interval > 0` validation, LR bounds, etc. |
 | 93 | Config diff tracking between runs | **PASS** | R-026: Config hash + snapshot written to JSONL for diff tracking. |
-| 94 | Hyperparameter sweep infrastructure | **FAIL** | No grid/random/Bayesian search. |
+| 94 | Hyperparameter sweep infrastructure | **PASS** | R-027: `hyperparam-sweep.py` generates grid/random YAML configs. |
 | 95 | Resource estimation before training | **PARTIAL** | VRAM estimation exists but not comprehensive. |
 
-**Score: 3.5/5**
+**Score: 4.5/5**
 
 ### Category 13: Provable Correctness & Contracts (5 practices)
 
@@ -333,14 +333,14 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 4. Mixed Precision Training | 0.5 | 5 | 10% |
 | 5. Gradient Management | 6.5 | 10 | 65% |
 | 6. Data Pipeline | 5.5 | 10 | 55% |
-| 7. Learning Rate & Optimization | 4.0 | 5 | 80% |
-| 8. Evaluation & Benchmarking | 3.0 | 10 | 30% |
+| 7. Learning Rate & Optimization | 5.0 | 5 | 100% |
+| 8. Evaluation & Benchmarking | 4.0 | 10 | 40% |
 | 9. Distributed Training | 0.0 | 10 | 0% |
 | 10. Reproducibility & Provenance | 3.5 | 5 | 70% |
 | 11. Security & Supply Chain | 3.5 | 5 | 70% |
-| 12. Configuration & Validation | 3.5 | 5 | 70% |
+| 12. Configuration & Validation | 4.5 | 5 | 90% |
 | 13. Provable Correctness & Contracts | 4.5 | 5 | 90% |
-| **TOTAL** | **61.0** | **100** | **61%** |
+| **TOTAL** | **64.0** | **100** | **64%** |
 
 ### Letter Grade: **D**
 
