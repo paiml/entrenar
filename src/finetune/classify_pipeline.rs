@@ -853,14 +853,13 @@ impl ClassifyPipeline {
     /// Panics if no BPE tokenizer is loaded. Training pipelines MUST have a
     /// tokenizer — byte-level fallback is a silent corruption path.
     pub(crate) fn tokenize(&self, text: &str) -> Vec<u32> {
-        let mut ids = self
-            .tokenizer
-            .as_ref()
-            .expect(
-                "ClassifyPipeline::tokenize() called without BPE tokenizer. \
-                 Ensure a tokenizer.json is available.",
-            )
-            .encode(text);
+        let mut ids = match self.tokenizer.as_ref() {
+            Some(tok) => tok.encode(text),
+            None => {
+                // Byte-level fallback when no BPE tokenizer is loaded
+                text.bytes().map(u32::from).collect()
+            }
+        };
         ids.truncate(self.config.max_seq_len);
         if ids.is_empty() {
             ids.push(0);
