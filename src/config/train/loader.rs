@@ -511,7 +511,11 @@ fn log_run_params(store: &SqliteBackend, run_id: &str, spec: &TrainSpec, device:
     }
 }
 
-/// Training loop for GPU CudaTransformerTrainer (ALB-040, ALB-045, ALB-055/056)
+/// Training loop for GPU CudaTransformerTrainer (ALB-040, ALB-045, ALB-055/056, ALB-068)
+///
+/// ALB-068: Manual batch loop (instead of train_epoch_with_callback) to enable
+/// intermediate checkpoint saving. train_epoch_with_callback's callback receives
+/// `&Self` (immutable), but `save()` requires `&mut self` for sync_weights_to_cpu.
 #[cfg(feature = "cuda")]
 fn train_loop_cuda(
     trainer: &mut CudaTransformerTrainer,
@@ -524,6 +528,7 @@ fn train_loop_cuda(
     let num_batches = batches.len();
     let start_time = std::time::Instant::now();
     let log_interval = std::cmp::max(num_batches / 100, 1);
+    let save_interval = spec.training.save_interval;
 
     // ALB-045: Initialize training state IPC for `apr monitor`
     let state = TrainingState::new(&spec.training.output_dir);
@@ -547,16 +552,39 @@ fn train_loop_cuda(
 
     // Track loss history for TUI sparkline
     let mut loss_history: Vec<f32> = Vec::new();
+    let mut last_save_step: usize = 0;
 
-    for epoch in 0..spec.training.epochs {
+    let model_name = spec.model.path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("entrenar-model")
+        .to_string();
+
+    'outer: for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
-        let avg_loss = trainer.train_epoch_with_callback(batches, |batch_idx, batch_loss, trainer| {
+        let mut total_loss = 0.0;
+        let mut batches_processed = 0;
+
+        // ALB-068: Manual batch loop for intermediate checkpoint saving
+        for (batch_idx, batch) in batches.iter().enumerate() {
+            // Check max_steps before processing
+            if let Some(max) = spec.training.max_steps {
+                if trainer.step() >= max {
+                    println!("Reached max_steps={}, stopping training.", max);
+                    break 'outer;
+                }
+            }
+
+            let batch_loss = trainer.train_batch(batch);
+            total_loss += batch_loss;
+            batches_processed += 1;
+
             // Track loss history (keep last 100 for sparkline)
             loss_history.push(batch_loss);
             if loss_history.len() > 100 {
                 loss_history.remove(0);
             }
 
+            // Logging at log_interval boundaries
             if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
                 let elapsed = epoch_start.elapsed().as_secs_f64();
                 let batches_done = batch_idx + 1;
@@ -584,7 +612,23 @@ fn train_loop_cuda(
                 // ALB-055/056: Log step metrics to SQLite
                 tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
             }
-        });
+
+            // ALB-068: Intermediate checkpoint saving at save_interval boundaries
+            let current_step = trainer.step();
+            if current_step > 0 && current_step != last_save_step
+                && current_step % save_interval == 0
+            {
+                let weights_path = spec.training.output_dir.join("model.safetensors");
+                if let Err(e) = trainer.save(&weights_path, &model_name, "LlamaForCausalLM") {
+                    println!("  [WARN] Checkpoint save at step {} failed: {}", current_step, e);
+                } else {
+                    println!("  [checkpoint] step={} saved to {}", current_step, weights_path.display());
+                }
+                last_save_step = current_step;
+            }
+        }
+
+        let avg_loss = total_loss / batches_processed.max(1) as f32;
         let ppl = crate::train::perplexity(avg_loss);
         println!(
             "Epoch {}/{}: loss={:.6}, perplexity={:.2}, time={:.1}s",
