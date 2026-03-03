@@ -105,6 +105,12 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 
     if let Some(accum) = spec.training.gradient_accumulation {
         train_config = train_config.with_accumulation_steps(accum);
+        // R-016/ALB-066: Gradient accumulation for CUDA trainer accumulates loss
+        // and defers the CPU embedding optimizer step. GPU per-block optimizer steps
+        // still run interleaved with backward (workspace-sharing constraint).
+        if accum > 1 {
+            println!("  [WARN] gradient_accumulation={} — GPU block optimizer steps are per-sequence (ALB-066)", accum);
+        }
     }
 
     if let Some(max_steps) = spec.training.max_steps {
@@ -527,7 +533,6 @@ fn train_loop_cuda(
     batches: &[LMBatch],
     spec: &TrainSpec,
 ) -> Result<()> {
-    use std::io::Write;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
@@ -562,20 +567,17 @@ fn train_loop_cuda(
     let mut jsonl_file = std::fs::OpenOptions::new()
         .create(true).append(true).open(&jsonl_path).ok();
     // Write config header
-    if let Some(ref mut f) = jsonl_file {
-        let header = serde_json::json!({
-            "type": "config",
-            "num_params": num_params,
-            "batch_size": spec.data.batch_size,
-            "seq_len": seq_len,
-            "max_steps": spec.training.max_steps,
-            "epochs": spec.training.epochs,
-            "lr": spec.optimizer.lr,
-            "gpu": &gpu_name,
-            "timestamp": now_ms(),
-        });
-        let _ = writeln!(f, "{}", header);
-    }
+    write_jsonl_event_json(&mut jsonl_file, &serde_json::json!({
+        "type": "config",
+        "num_params": num_params,
+        "batch_size": spec.data.batch_size,
+        "seq_len": seq_len,
+        "max_steps": spec.training.max_steps,
+        "epochs": spec.training.epochs,
+        "lr": spec.optimizer.lr,
+        "gpu": &gpu_name,
+        "timestamp": now_ms(),
+    }));
 
     // R-008: Graceful shutdown signal handler
     let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -633,6 +635,10 @@ fn train_loop_cuda(
     let mut rollback_count: usize = 0;
     let max_rollbacks: usize = 3;
 
+    // R-029: Gradient noise scale estimation — rolling window of grad norms
+    let mut gnorm_window: Vec<f64> = Vec::with_capacity(100);
+    let noise_scale_interval: usize = 100;
+
     // R-026: Save training config hash to JSONL for diff tracking
     write_config_provenance(&mut jsonl_file, spec);
 
@@ -689,6 +695,12 @@ fn train_loop_cuda(
                 &mut gnorm_ema, &mut gnorm_ema_sq, zclip_alpha, zclip_threshold,
             );
 
+            // R-029: Track grad norm for noise scale estimation
+            update_noise_scale(
+                trainer.last_grad_norm() as f64, trainer.step(),
+                &mut gnorm_window, noise_scale_interval, &mut jsonl_file,
+            );
+
             // R-003: Write heartbeat for crash detection
             write_heartbeat(&heartbeat_path, trainer.step());
 
@@ -696,7 +708,7 @@ fn train_loop_cuda(
             push_capped(&mut loss_history, batch_loss, 100);
 
             // Logging at log_interval boundaries
-            if (iter_idx + 1) % log_interval == 0 || iter_idx == 0 {
+            if should_log(iter_idx, log_interval) {
                 log_step_metrics(
                     trainer, &state, &mut tracker, &mut jsonl_file,
                     &epoch_start, &start_time, &step_elapsed,
@@ -708,9 +720,7 @@ fn train_loop_cuda(
 
             // ALB-068/R-009: Intermediate checkpoint saving at save_interval
             let current_step = trainer.step();
-            if current_step > 0 && current_step != last_save_step
-                && current_step % save_interval == 0
-            {
+            if should_save_checkpoint(current_step, last_save_step, save_interval) {
                 save_and_validate_checkpoint(
                     trainer, spec, &val_batches, &model_name,
                     current_step, epoch, iter_idx, max_checkpoints,
@@ -750,21 +760,28 @@ fn train_loop_cuda(
     tracker.complete();
 
     // R-014: Write completion entry
-    if let Some(ref mut f) = jsonl_file {
-        let entry = serde_json::json!({
-            "type": "complete",
-            "step": trainer.step(),
-            "final_loss": final_loss,
-            "total_time_s": total_time.as_secs_f64(),
-            "timestamp": now_ms(),
-        });
-        let _ = writeln!(f, "{}", entry);
-    }
+    write_jsonl_event_json(&mut jsonl_file, &serde_json::json!({
+        "type": "complete",
+        "step": trainer.step(),
+        "final_loss": final_loss,
+        "total_time_s": total_time.as_secs_f64(),
+        "timestamp": now_ms(),
+    }));
 
     save_trained_model_cuda(trainer, spec)
 }
 
 /// Check if max_steps has been reached.
+/// Check if this iteration should log metrics.
+fn should_log(iter_idx: usize, interval: usize) -> bool {
+    (iter_idx + 1) % interval == 0 || iter_idx == 0
+}
+
+/// Check if this step should trigger a checkpoint save.
+fn should_save_checkpoint(step: usize, last_save_step: usize, interval: usize) -> bool {
+    step > 0 && step != last_save_step && step % interval == 0
+}
+
 fn reached_max_steps(max_steps: Option<usize>, current_step: usize) -> bool {
     if let Some(max) = max_steps {
         if current_step >= max {
@@ -801,6 +818,44 @@ fn push_capped(history: &mut Vec<f32>, value: f32, max_len: usize) {
     }
 }
 
+/// Push f64 value onto a capped rolling window.
+fn push_capped_f64(window: &mut Vec<f64>, value: f64, max_len: usize) {
+    window.push(value);
+    if window.len() > max_len {
+        window.remove(0);
+    }
+}
+
+/// R-029: Track gradient norm and estimate noise scale at intervals.
+/// B_noise = Var(||g||) / Mean(||g||)² — proxy for critical batch size.
+fn update_noise_scale(
+    grad_norm: f64, step: usize,
+    window: &mut Vec<f64>, interval: usize,
+    jsonl_file: &mut Option<std::fs::File>,
+) {
+    push_capped_f64(window, grad_norm, 100);
+    if step == 0 || step % interval != 0 || window.len() < 10 {
+        return;
+    }
+    let n = window.len() as f64;
+    let mean = window.iter().sum::<f64>() / n;
+    if mean < 1e-12 {
+        return;
+    }
+    let variance = window.iter().map(|&g| (g - mean).powi(2)).sum::<f64>() / (n - 1.0);
+    let b_noise = variance / (mean * mean);
+    println!("  [noise-scale] step={} B_noise={:.4} (window={})", step, b_noise, window.len());
+    write_jsonl_event_json(jsonl_file, &serde_json::json!({
+        "type": "noise_scale",
+        "step": step,
+        "b_noise": b_noise,
+        "gnorm_mean": mean,
+        "gnorm_var": variance,
+        "window_size": window.len(),
+        "timestamp": now_ms(),
+    }));
+}
+
 /// R-016b: Detect loss spikes and log rollback events.
 #[allow(clippy::too_many_arguments)]
 fn detect_loss_spike(
@@ -833,6 +888,17 @@ fn write_jsonl_event(
             "loss_ema": loss_ema,
             "timestamp": now_ms(),
         });
+        let _ = writeln!(f, "{}", entry);
+    }
+}
+
+/// Write an arbitrary JSON event to the JSONL log (generic version).
+fn write_jsonl_event_json(
+    jsonl_file: &mut Option<std::fs::File>,
+    entry: &serde_json::Value,
+) {
+    use std::io::Write;
+    if let Some(ref mut f) = jsonl_file {
         let _ = writeln!(f, "{}", entry);
     }
 }
