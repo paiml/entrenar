@@ -2133,17 +2133,13 @@ impl ClassifyPipeline {
         self.zero_all_gradients();
 
         // ── 2. Accumulate gradients over all samples ───────────────────
-        let mut total_loss = 0.0f32;
-        let mut correct = 0usize;
+        // KAIZEN-008: try batched wgpu forward (uploads FFN weights ONCE per layer)
+        #[cfg(feature = "gpu")]
+        let (total_loss, correct) = self.try_train_batch_wgpu(samples)
+            .unwrap_or_else(|| self.train_batch_per_sample(samples));
 
-        for sample in samples {
-            let ids = self.tokenize(&sample.input);
-            let (loss, predicted) = self.forward_backward_single(&ids, sample.label);
-            total_loss += loss;
-            if predicted == sample.label {
-                correct += 1;
-            }
-        }
+        #[cfg(not(feature = "gpu"))]
+        let (total_loss, correct) = self.train_batch_per_sample(samples);
 
         // ── 3. Normalize gradients by batch size ───────────────────────
         self.scale_all_gradients(1.0 / batch_size as f32);
@@ -2185,6 +2181,59 @@ impl ClassifyPipeline {
             total: batch_size,
             grad_norm,
         }
+    }
+
+    /// Per-sample forward + backward fallback for train_batch.
+    fn train_batch_per_sample(&mut self, samples: &[SafetySample]) -> (f32, usize) {
+        let mut total_loss = 0.0f32;
+        let mut correct = 0usize;
+        for sample in samples {
+            let ids = self.tokenize(&sample.input);
+            let (loss, predicted) = self.forward_backward_single(&ids, sample.label);
+            total_loss += loss;
+            if predicted == sample.label {
+                correct += 1;
+            }
+        }
+        (total_loss, correct)
+    }
+
+    /// Batched wgpu forward pass for train_batch (KAIZEN-008).
+    ///
+    /// Tokenizes all samples, runs a single batched forward through all transformer
+    /// layers (uploading FFN weights ONCE per layer), then classifies each sample.
+    /// Returns `Some((total_loss, correct))` on success, `None` to fall back.
+    #[cfg(feature = "gpu")]
+    fn try_train_batch_wgpu(&mut self, samples: &[SafetySample]) -> Option<(f32, usize)> {
+        if self.wgpu_forward_pass.is_none() {
+            return None;
+        }
+
+        let batch_token_ids: Vec<Vec<u32>> = samples
+            .iter()
+            .map(|s| self.tokenize(&s.input))
+            .collect();
+
+        let hiddens = self.wgpu_forward_pass.as_ref()
+            .expect("checked is_none above")
+            .forward_hidden_batch(&self.model, &batch_token_ids)
+            .map_err(|e| eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}"))
+            .ok()?;
+
+        let mut total_loss = 0.0f32;
+        let mut correct = 0usize;
+        for (i, hidden) in hiddens.iter().enumerate() {
+            let (loss, predicted) = self.classify_backward_from_hidden(
+                hidden,
+                batch_token_ids[i].len(),
+                samples[i].label,
+            );
+            total_loss += loss;
+            if predicted == samples[i].label {
+                correct += 1;
+            }
+        }
+        Some((total_loss, correct))
     }
 
     /// Accumulate gradients for a micro-batch without calling optimizer.step().
@@ -2388,6 +2437,86 @@ impl ClassifyPipeline {
                 }
             }
         }
+
+        (loss_val, predicted)
+    }
+
+    /// Classifier head + loss + backward from pre-computed hidden states (KAIZEN-008).
+    ///
+    /// Extracts the classify-and-backward logic from `forward_backward_single` for use
+    /// with batched wgpu forward pass, where hidden states are computed in bulk.
+    ///
+    /// # Contract (C-WGPU-BATCH-001)
+    ///
+    /// - **Precondition**: hidden tensor has shape (seq_len * hidden_size), label < num_classes
+    /// - **Postcondition**: gradients accumulated into classifier.weight, classifier.bias, LoRA params
+    /// - **Invariant**: numerically identical to forward_backward_single classifier path
+    #[cfg(feature = "gpu")]
+    fn classify_backward_from_hidden(
+        &mut self,
+        hidden: &Tensor,
+        orig_seq_len: usize,
+        label: usize,
+    ) -> (f32, usize) {
+        let num_classes = self.config.num_classes;
+
+        debug_assert!(
+            label < num_classes,
+            "F-CLASS-002: label index {label} >= num_classes {num_classes}"
+        );
+
+        // ── Classifier forward ────────────────────────────────────────
+        let pooled = self.classifier.mean_pool(hidden, orig_seq_len);
+        let logits =
+            matmul(&pooled, &self.classifier.weight, 1, self.classifier.hidden_size(), num_classes);
+
+        let logits_with_bias: Vec<f32> = logits
+            .data()
+            .as_slice()
+            .expect("contiguous logits")
+            .iter()
+            .zip(self.classifier.bias.data().as_slice().expect("contiguous bias").iter())
+            .map(|(&l, &b)| l + b)
+            .collect();
+
+        debug_assert_eq!(
+            logits_with_bias.len(),
+            num_classes,
+            "F-CLASS-001: logits.len()={} != num_classes={num_classes}",
+            logits_with_bias.len()
+        );
+        debug_assert!(
+            logits_with_bias.iter().all(|v| v.is_finite()),
+            "F-CLASS-001: logits contain NaN or Inf"
+        );
+
+        // ── Predicted class (argmax) ────────────────────────────────────
+        let predicted = logits_with_bias
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map_or(0, |(idx, _)| idx);
+
+        // ── Cross-entropy loss (weighted) ────────────────────────────────
+        let max_val = logits_with_bias.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits_with_bias.iter().map(|&v| (v - max_val).exp()).collect();
+        let sum_exp: f32 = exp_vals.iter().sum();
+        let probs: Vec<f32> = exp_vals.iter().map(|&e| e / sum_exp).collect();
+
+        let w = self.config.class_weights.as_ref().map_or(1.0, |weights| weights[label]);
+        let loss_val = -w * (probs[label].max(1e-10).ln());
+        let loss_val = if loss_val.is_finite() { loss_val } else { 100.0 };
+
+        // ── Backward ────────────────────────────────────────────────────
+        let mut grad_logits: Vec<f32> = probs.iter().map(|&p| w * p).collect();
+        grad_logits[label] -= w;
+
+        logits.set_grad(ndarray::Array1::from(grad_logits.clone()));
+        if let Some(op) = logits.backward_op() {
+            op.backward();
+        }
+
+        self.classifier.bias.accumulate_grad(ndarray::Array1::from(grad_logits));
 
         (loss_val, predicted)
     }
