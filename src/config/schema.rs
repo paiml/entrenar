@@ -444,6 +444,13 @@ pub struct TrainingParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curriculum: Option<Vec<CurriculumStage>>,
 
+    // === R-084: Bitwise deterministic training ===
+    /// Enable bitwise deterministic training mode (C-DETERM-001).
+    /// Sets CUBLAS_WORKSPACE_CONFIG, cuDNN deterministic mode, disables
+    /// cuDNN benchmark. May reduce throughput but guarantees reproducibility.
+    #[serde(default)]
+    pub deterministic: bool,
+
     // === Distributed training (tickets #131-#140) ===
     /// Distributed data-parallel training configuration.
     /// When present, enables multi-GPU / multi-node DDP pretraining.
@@ -533,6 +540,7 @@ impl Default for TrainingParams {
             max_checkpoints: 5,
             shuffle: true,
             curriculum: None,
+            deterministic: false,
             distributed: None,
         }
     }
@@ -1033,5 +1041,48 @@ publish:
         assert!(publish.model_card);
         assert!(!publish.merge_adapters);
         assert_eq!(publish.format, "safetensors");
+    }
+
+    #[test]
+    fn test_deterministic_config_yaml() {
+        let yaml = r"
+model:
+  path: test-model
+  type: transformer
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adamw
+  lr: 0.001
+
+training:
+  epochs: 10
+  deterministic: true
+  seed: 12345
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).expect("parse YAML");
+        assert!(spec.training.deterministic, "deterministic should be true from YAML");
+        assert_eq!(spec.training.seed, Some(12345));
+    }
+
+    #[test]
+    fn test_deterministic_defaults_to_false() {
+        let yaml = r"
+model:
+  path: test-model
+
+data:
+  train: data.parquet
+  batch_size: 8
+
+optimizer:
+  name: adamw
+  lr: 0.001
+";
+        let spec: TrainSpec = serde_yaml::from_str(yaml).expect("parse YAML");
+        assert!(!spec.training.deterministic, "deterministic should default to false");
     }
 }

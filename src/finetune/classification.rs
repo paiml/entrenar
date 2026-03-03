@@ -180,6 +180,24 @@ impl SafetySample {
     }
 }
 
+/// A pre-tokenized training sample (KAIZEN-028).
+///
+/// Token IDs are computed once at dataset construction time and reused
+/// across all epochs, eliminating redundant BPE encoding.
+///
+/// # Contract (C-PRETOK-001)
+///
+/// - **Precondition**: `token_ids` produced by the same tokenizer used for inference
+/// - **Postcondition**: `token_ids.len() <= max_seq_len` (truncated at construction)
+/// - **Invariant**: `token_ids` is non-empty (at least one token)
+#[derive(Debug, Clone)]
+pub struct TokenizedSample {
+    /// Pre-computed token IDs (truncated to max_seq_len)
+    pub token_ids: Vec<u32>,
+    /// Safety class index
+    pub label: usize,
+}
+
 /// A multi-label shell safety corpus sample.
 ///
 /// A script can have multiple active labels (e.g., both non-deterministic AND needs-quoting).

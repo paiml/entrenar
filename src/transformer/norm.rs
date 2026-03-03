@@ -67,10 +67,18 @@ impl RMSNorm {
         let mut output = vec![0.0; seq_len * hidden_size];
         let mut rms_values = Vec::with_capacity(seq_len);
 
+        // KAIZEN-020: Hoist data borrows outside the sequence loop.
+        // Previously x.data().as_slice() was called per-position (seq_len times)
+        // and self.weight.data()[i] was called per-element (seq_len * hidden_size times).
+        let x_data = x.data();
+        let x_slice = x_data.as_slice().expect("norm input must be contiguous");
+        let w_data = self.weight.data();
+        let w_slice = w_data.as_slice().expect("norm weight must be contiguous");
+
         for s in 0..seq_len {
             let start = s * hidden_size;
             let end = start + hidden_size;
-            let slice = &x.data().as_slice().expect("norm input must be contiguous")[start..end];
+            let slice = &x_slice[start..end];
 
             // Compute RMS for this position
             let sq_sum: f32 = slice.iter().map(|v| v * v).sum();
@@ -79,7 +87,7 @@ impl RMSNorm {
 
             // Normalize and scale
             for (i, &val) in slice.iter().enumerate() {
-                output[start + i] = (val / rms) * self.weight.data()[i];
+                output[start + i] = (val / rms) * w_slice[i];
             }
         }
 

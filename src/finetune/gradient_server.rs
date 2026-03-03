@@ -57,6 +57,30 @@ pub struct AllReduceResult {
     pub allreduce_ms: f64,
 }
 
+/// Result of per-block AllReduce for DDP pretraining.
+#[derive(Debug, Clone)]
+pub struct BlockAllReduceResult {
+    /// Block index
+    pub block_idx: u32,
+    /// Averaged gradient vector (flattened, same layout as BlockGradientPayload)
+    pub avg_gradients: Vec<f32>,
+    /// Component sizes (for reconstructing block gradient structure)
+    pub component_sizes: Vec<u32>,
+    /// AllReduce wall time in milliseconds
+    pub allreduce_ms: f64,
+}
+
+/// Result of non-block AllReduce for DDP pretraining.
+#[derive(Debug, Clone)]
+pub struct NonBlockAllReduceResult {
+    /// Component ID (0=lm_head, 1=final_norm, 2=embedding)
+    pub component: u8,
+    /// Averaged gradient vector
+    pub avg_gradients: Vec<f32>,
+    /// AllReduce wall time in milliseconds
+    pub allreduce_ms: f64,
+}
+
 impl GradientServer {
     /// Create and bind the gradient server.
     ///
@@ -267,6 +291,179 @@ impl GradientServer {
     #[must_use]
     pub fn worker_count(&self) -> usize {
         self.workers.len()
+    }
+
+    /// Collect and reduce per-block gradients from all workers.
+    ///
+    /// Waits for `BlockGradientPayload` from each worker for the specified
+    /// block index, averages them, and returns the result.
+    ///
+    /// # Contract: C-DDP-001
+    ///
+    /// Output equals arithmetic mean of all workers' block gradients.
+    /// Jidoka halt on NaN/Inf gradients (F-DP-003).
+    ///
+    /// # Errors
+    ///
+    /// Returns error on communication failure, step mismatch, or NaN gradient.
+    pub fn collect_and_reduce_block(
+        &mut self,
+        step: u64,
+        block_idx: u32,
+    ) -> Result<BlockAllReduceResult, String> {
+        let start = Instant::now();
+        let n = self.workers.len();
+        let mut all_grads: Vec<Vec<f32>> = Vec::with_capacity(n);
+        let mut component_sizes = Vec::new();
+
+        for worker in &self.workers {
+            let msg = read_wire_message(&worker.stream)?;
+            match msg {
+                WireMessage::BlockGradientPayload {
+                    step: recv_step,
+                    block_idx: recv_block_idx,
+                    gradients,
+                    component_sizes: cs,
+                    ..
+                } => {
+                    if recv_step != step {
+                        return Err(format!(
+                            "step mismatch: expected {step}, got {recv_step}"
+                        ));
+                    }
+                    if recv_block_idx != block_idx {
+                        return Err(format!(
+                            "block_idx mismatch: expected {block_idx}, got {recv_block_idx}"
+                        ));
+                    }
+                    if has_non_finite(&gradients) {
+                        return Err(format!(
+                            "JIDOKA HALT: worker {} sent non-finite block {block_idx} gradient at step {step}",
+                            worker.worker_id
+                        ));
+                    }
+                    if component_sizes.is_empty() {
+                        component_sizes = cs;
+                    }
+                    all_grads.push(gradients);
+                }
+                other => {
+                    return Err(format!(
+                        "expected BlockGradientPayload from worker {}, got {other:?}",
+                        worker.worker_id
+                    ));
+                }
+            }
+        }
+
+        let avg_gradients = average_gradients(&all_grads);
+        let allreduce_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        Ok(BlockAllReduceResult {
+            block_idx,
+            avg_gradients,
+            component_sizes,
+            allreduce_ms,
+        })
+    }
+
+    /// Broadcast averaged block gradient to all workers.
+    ///
+    /// # Errors
+    /// Returns error if any send fails.
+    pub fn broadcast_averaged_block(
+        &mut self,
+        step: u64,
+        result: &BlockAllReduceResult,
+    ) -> Result<(), String> {
+        let msg = WireMessage::AveragedBlockGradient {
+            step,
+            block_idx: result.block_idx,
+            gradients: result.avg_gradients.clone(),
+            component_sizes: result.component_sizes.clone(),
+        };
+        for worker in &self.workers {
+            send_wire_message(&worker.stream, &msg)?;
+        }
+        Ok(())
+    }
+
+    /// Collect and reduce non-block gradient from all workers.
+    ///
+    /// Used for LM head, final norm, and embedding gradients.
+    ///
+    /// # Errors
+    /// Returns error on communication failure or NaN gradient.
+    pub fn collect_and_reduce_non_block(
+        &mut self,
+        step: u64,
+        expected_component: u8,
+    ) -> Result<NonBlockAllReduceResult, String> {
+        let start = Instant::now();
+        let n = self.workers.len();
+        let mut all_grads: Vec<Vec<f32>> = Vec::with_capacity(n);
+
+        for worker in &self.workers {
+            let msg = read_wire_message(&worker.stream)?;
+            match msg {
+                WireMessage::NonBlockGradientPayload {
+                    step: recv_step,
+                    component,
+                    gradients,
+                    ..
+                } => {
+                    if recv_step != step {
+                        return Err(format!(
+                            "step mismatch: expected {step}, got {recv_step}"
+                        ));
+                    }
+                    if component != expected_component {
+                        return Err(format!(
+                            "component mismatch: expected {expected_component}, got {component}"
+                        ));
+                    }
+                    if has_non_finite(&gradients) {
+                        return Err(format!(
+                            "JIDOKA HALT: worker {} sent non-finite component {component} gradient at step {step}",
+                            worker.worker_id
+                        ));
+                    }
+                    all_grads.push(gradients);
+                }
+                other => {
+                    return Err(format!(
+                        "expected NonBlockGradientPayload from worker {}, got {other:?}",
+                        worker.worker_id
+                    ));
+                }
+            }
+        }
+
+        let avg_gradients = average_gradients(&all_grads);
+        let allreduce_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+        Ok(NonBlockAllReduceResult {
+            component: expected_component,
+            avg_gradients,
+            allreduce_ms,
+        })
+    }
+
+    /// Broadcast averaged non-block gradient to all workers.
+    pub fn broadcast_averaged_non_block(
+        &mut self,
+        step: u64,
+        result: &NonBlockAllReduceResult,
+    ) -> Result<(), String> {
+        let msg = WireMessage::AveragedNonBlockGradient {
+            step,
+            component: result.component,
+            gradients: result.avg_gradients.clone(),
+        };
+        for worker in &self.workers {
+            send_wire_message(&worker.stream, &msg)?;
+        }
+        Ok(())
     }
 }
 

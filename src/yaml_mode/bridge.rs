@@ -323,6 +323,10 @@ fn convert_training(
 
     warn_unsupported_training_fields(training_cfg, warnings);
 
+    let deterministic = training_cfg
+        .and_then(|t| t.deterministic)
+        .unwrap_or(false);
+
     TrainingParams {
         epochs,
         grad_clip,
@@ -340,6 +344,7 @@ fn convert_training(
         max_checkpoints: 5,
         shuffle: true,
         curriculum: training_cfg.and_then(|t| t.curriculum.clone()),
+        deterministic,
         distributed: None,
     }
 }
@@ -641,6 +646,7 @@ mod tests {
             validation: None,
             deterministic: None,
             benchmark: None,
+            curriculum: None,
         });
 
         let result = manifest_to_spec(&manifest).expect("operation should succeed");
@@ -1325,5 +1331,33 @@ optimizer:
         assert_eq!(arch.intermediate_size, Some(4096));
         assert_eq!(arch.vocab_size, Some(50000));
         assert_eq!(arch.max_position_embeddings, Some(2048));
+    }
+
+    #[test]
+    fn test_deterministic_passed_through() {
+        let mut manifest = minimal_manifest();
+        manifest.training = Some(TrainingConfig {
+            epochs: Some(5),
+            max_steps: None,
+            duration: None,
+            gradient: None,
+            mixed_precision: None,
+            distributed: None,
+            checkpoint: None,
+            early_stopping: None,
+            validation: None,
+            deterministic: Some(true),
+            benchmark: None,
+            curriculum: None,
+        });
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        assert!(result.spec.training.deterministic, "deterministic should be true");
+    }
+
+    #[test]
+    fn test_deterministic_defaults_false_when_not_set() {
+        let manifest = minimal_manifest();
+        let result = manifest_to_spec(&manifest).expect("operation should succeed");
+        assert!(!result.spec.training.deterministic, "deterministic should default to false");
     }
 }

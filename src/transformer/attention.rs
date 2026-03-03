@@ -2,7 +2,7 @@
 //!
 //! This module provides multi-head self-attention with grouped-query attention support.
 
-use crate::autograd::{matmul, transpose, BackwardOp};
+use crate::autograd::{matmul, transpose_tracked, BackwardOp};
 use crate::Tensor;
 use ndarray::Array1;
 use std::cell::RefCell;
@@ -248,6 +248,15 @@ impl MultiHeadAttention {
         let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
         let heads_per_kv = num_heads / num_kv_heads;
 
+        // KAIZEN-016: Hoist data borrows outside the head loop to avoid
+        // num_heads × seq_len × 3 redundant RefCell borrows per attention call.
+        let q_data = q.data();
+        let q_slice = q_data.as_slice().expect("contiguous Q");
+        let k_data = k.data();
+        let k_slice = k_data.as_slice().expect("contiguous K");
+        let v_data = v.data();
+        let v_slice = v_data.as_slice().expect("contiguous V");
+
         // Per-head attention with gradient tracking
         let mut head_q_tensors = Vec::with_capacity(num_heads);
         let mut head_k_tensors = Vec::with_capacity(num_heads);
@@ -259,28 +268,26 @@ impl MultiHeadAttention {
             let kv_h = h / heads_per_kv;
             head_kv_indices.push(kv_h);
 
-            // Extract per-head slices (requires_grad=true so attention creates backward ops,
-            // but no backward_op on these tensors — AttentionBlockBackward handles chain)
-            let q_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * q_dim + h * head_dim;
-                    q.data().as_slice().expect("contiguous Q")[start..start + head_dim].to_vec()
-                })
-                .collect();
+            // KAIZEN-016: Use extend_from_slice instead of flat_map+to_vec.
+            // Eliminates num_heads × 3 × seq_len intermediate Vec allocations
+            // (3.5M allocs/forward for Qwen3-4B).
+            let mut q_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * q_dim + h * head_dim;
+                q_head.extend_from_slice(&q_slice[start..start + head_dim]);
+            }
 
-            let k_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * kv_hidden_size + kv_h * head_dim;
-                    k.data().as_slice().expect("contiguous K")[start..start + head_dim].to_vec()
-                })
-                .collect();
+            let mut k_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * kv_hidden_size + kv_h * head_dim;
+                k_head.extend_from_slice(&k_slice[start..start + head_dim]);
+            }
 
-            let v_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * kv_hidden_size + kv_h * head_dim;
-                    v.data().as_slice().expect("contiguous V")[start..start + head_dim].to_vec()
-                })
-                .collect();
+            let mut v_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * kv_hidden_size + kv_h * head_dim;
+                v_head.extend_from_slice(&v_slice[start..start + head_dim]);
+            }
 
             let q_tensor = Tensor::from_vec(q_head, requires_grad);
             let k_tensor = Tensor::from_vec(k_head, requires_grad);
@@ -302,11 +309,10 @@ impl MultiHeadAttention {
             let hd = head_out.data();
             let hdata = hd.as_slice().expect("contiguous attention output");
             for s in 0..seq_len {
-                for d in 0..head_dim {
-                    let src_idx = s * head_dim + d;
-                    let dst_idx = s * q_dim + h * head_dim + d;
-                    concat_output[dst_idx] = hdata[src_idx];
-                }
+                let src_base = s * head_dim;
+                let dst_base = s * q_dim + h * head_dim;
+                concat_output[dst_base..dst_base + head_dim]
+                    .copy_from_slice(&hdata[src_base..src_base + head_dim]);
             }
         }
 
@@ -366,38 +372,39 @@ impl MultiHeadAttention {
         let kv_hidden_size = num_kv_heads * head_dim;
 
         // Q projection with LoRA: Q = x @ W_q + scale * (x @ A_q^T) @ B_q^T
+        //
+        // KAIZEN-011: Use matmul_nt to compute x @ A^T directly on the ORIGINAL
+        // LoRA tensors. Previous impl created transposed copies via Tensor::from_vec
+        // which broke gradient flow — gradients accumulated on ephemeral copies
+        // instead of the actual trainable LoRA parameters.
+        //
+        // LoRA layout: A is (rank, d_in), B is (d_out, rank)
+        // matmul_nt(x, A, seq, d_in, rank) computes x @ A^T = (seq, d_in) @ (d_in, rank) = (seq, rank)
+        // matmul_nt(mid, B, seq, rank, d_out) computes mid @ B^T = (seq, rank) @ (rank, d_out) = (seq, d_out)
         let q_base = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
-        let lora_a_q_t = Tensor::from_vec(
-            transpose(lora_a_q.data().as_slice().expect("contiguous"), lora_rank, hidden_size),
-            true,
-        );
-        let lora_b_q_t = Tensor::from_vec(
-            transpose(lora_b_q.data().as_slice().expect("contiguous"), q_dim, lora_rank),
-            true,
-        );
-        let q_mid = matmul(x, &lora_a_q_t, seq_len, hidden_size, lora_rank);
-        let q_lora = matmul(&q_mid, &lora_b_q_t, seq_len, lora_rank, q_dim);
+        let q_mid = crate::autograd::matmul_nt(x, lora_a_q, seq_len, hidden_size, lora_rank);
+        let q_lora = crate::autograd::matmul_nt(&q_mid, lora_b_q, seq_len, lora_rank, q_dim);
         let q = crate::autograd::add_scaled(&q_base, &q_lora, lora_scale);
 
         // K projection (no LoRA)
         let k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
 
-        // V projection with LoRA: V = x @ W_v + scale * (x @ A_v^T) @ B_v^T
+        // V projection with LoRA (same pattern as Q)
         let v_base = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
-        let lora_a_v_t = Tensor::from_vec(
-            transpose(lora_a_v.data().as_slice().expect("contiguous"), lora_rank, hidden_size),
-            true,
-        );
-        let lora_b_v_t = Tensor::from_vec(
-            transpose(lora_b_v.data().as_slice().expect("contiguous"), kv_hidden_size, lora_rank),
-            true,
-        );
-        let v_mid = matmul(x, &lora_a_v_t, seq_len, hidden_size, lora_rank);
-        let v_lora = matmul(&v_mid, &lora_b_v_t, seq_len, lora_rank, kv_hidden_size);
+        let v_mid = crate::autograd::matmul_nt(x, lora_a_v, seq_len, hidden_size, lora_rank);
+        let v_lora = crate::autograd::matmul_nt(&v_mid, lora_b_v, seq_len, lora_rank, kv_hidden_size);
         let v = crate::autograd::add_scaled(&v_base, &v_lora, lora_scale);
 
         let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
         let heads_per_kv = num_heads / num_kv_heads;
+
+        // KAIZEN-016: Hoist data borrows outside head loop (same optimization as forward())
+        let q_data = q.data();
+        let q_slice = q_data.as_slice().expect("contiguous Q");
+        let k_data = k.data();
+        let k_slice = k_data.as_slice().expect("contiguous K");
+        let v_data = v.data();
+        let v_slice = v_data.as_slice().expect("contiguous V");
 
         // Per-head attention (same as forward())
         let mut head_q_tensors = Vec::with_capacity(num_heads);
@@ -410,26 +417,24 @@ impl MultiHeadAttention {
             let kv_h = h / heads_per_kv;
             head_kv_indices.push(kv_h);
 
-            let q_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * q_dim + h * head_dim;
-                    q.data().as_slice().expect("contiguous Q")[start..start + head_dim].to_vec()
-                })
-                .collect();
+            // KAIZEN-016: extend_from_slice replaces flat_map+to_vec
+            let mut q_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * q_dim + h * head_dim;
+                q_head.extend_from_slice(&q_slice[start..start + head_dim]);
+            }
 
-            let k_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * kv_hidden_size + kv_h * head_dim;
-                    k.data().as_slice().expect("contiguous K")[start..start + head_dim].to_vec()
-                })
-                .collect();
+            let mut k_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * kv_hidden_size + kv_h * head_dim;
+                k_head.extend_from_slice(&k_slice[start..start + head_dim]);
+            }
 
-            let v_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * kv_hidden_size + kv_h * head_dim;
-                    v.data().as_slice().expect("contiguous V")[start..start + head_dim].to_vec()
-                })
-                .collect();
+            let mut v_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * kv_hidden_size + kv_h * head_dim;
+                v_head.extend_from_slice(&v_slice[start..start + head_dim]);
+            }
 
             let q_tensor = Tensor::from_vec(q_head, requires_grad);
             let k_tensor = Tensor::from_vec(k_head, requires_grad);
@@ -451,9 +456,10 @@ impl MultiHeadAttention {
             let hd = head_out.data();
             let hdata = hd.as_slice().expect("contiguous attention output");
             for s in 0..seq_len {
-                for d in 0..head_dim {
-                    concat_output[s * q_dim + h * head_dim + d] = hdata[s * head_dim + d];
-                }
+                let src_base = s * head_dim;
+                let dst_base = s * q_dim + h * head_dim;
+                concat_output[dst_base..dst_base + head_dim]
+                    .copy_from_slice(&hdata[src_base..src_base + head_dim]);
             }
         }
 
@@ -635,35 +641,35 @@ impl MultiHeadAttentionWithLoRA {
         let mut attn_outputs = Vec::with_capacity(num_heads * seq_len * head_dim);
         let heads_per_kv = num_heads / num_kv_heads;
 
+        // KAIZEN-016: Hoist data borrows outside head loop
+        let q_data = q.data();
+        let q_slice = q_data.as_slice().expect("contiguous Q tensor");
+        let k_data = k.data();
+        let k_slice = k_data.as_slice().expect("contiguous K tensor");
+        let v_data = v.data();
+        let v_slice = v_data.as_slice().expect("contiguous V tensor");
+
         for h in 0..num_heads {
             let kv_h = h / heads_per_kv;
 
-            // Extract Q for this head
-            let q_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * q_dim + h * head_dim;
-                    q.data().as_slice().expect("contiguous Q tensor")[start..start + head_dim]
-                        .to_vec()
-                })
-                .collect();
+            // KAIZEN-016: extend_from_slice replaces flat_map+to_vec
+            let mut q_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * q_dim + h * head_dim;
+                q_head.extend_from_slice(&q_slice[start..start + head_dim]);
+            }
 
-            // Extract K for this KV head
-            let k_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * kv_hidden_size + kv_h * head_dim;
-                    k.data().as_slice().expect("contiguous K tensor")[start..start + head_dim]
-                        .to_vec()
-                })
-                .collect();
+            let mut k_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * kv_hidden_size + kv_h * head_dim;
+                k_head.extend_from_slice(&k_slice[start..start + head_dim]);
+            }
 
-            // Extract V for this KV head
-            let v_head: Vec<f32> = (0..seq_len)
-                .flat_map(|s| {
-                    let start = s * kv_hidden_size + kv_h * head_dim;
-                    v.data().as_slice().expect("contiguous V tensor")[start..start + head_dim]
-                        .to_vec()
-                })
-                .collect();
+            let mut v_head = Vec::with_capacity(seq_len * head_dim);
+            for s in 0..seq_len {
+                let start = s * kv_hidden_size + kv_h * head_dim;
+                v_head.extend_from_slice(&v_slice[start..start + head_dim]);
+            }
 
             // Scaled dot-product attention
             let q_tensor = Tensor::from_vec(q_head, false);
@@ -683,11 +689,10 @@ impl MultiHeadAttentionWithLoRA {
         let mut concat_output = vec![0.0; seq_len * q_dim];
         for h in 0..num_heads {
             for s in 0..seq_len {
-                for d in 0..head_dim {
-                    let src_idx = h * seq_len * head_dim + s * head_dim + d;
-                    let dst_idx = s * q_dim + h * head_dim + d;
-                    concat_output[dst_idx] = attn_outputs[src_idx];
-                }
+                let src_idx = h * seq_len * head_dim + s * head_dim;
+                let dst_idx = s * q_dim + h * head_dim;
+                concat_output[dst_idx..dst_idx + head_dim]
+                    .copy_from_slice(&attn_outputs[src_idx..src_idx + head_dim]);
             }
         }
 

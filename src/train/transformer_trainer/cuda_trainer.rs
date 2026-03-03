@@ -143,6 +143,14 @@ fn compute_workspace_grad_norm(ws: &CudaGradWorkspace) -> f32 {
 struct GpuPretrainState {
     /// Saved layer inputs for backward [num_layers][seq_len * hidden_size]
     layer_inputs: Vec<GpuBuffer<f32>>,
+    /// Which layer inputs were saved during forward (activation checkpointing).
+    /// When checkpointing is enabled, only checkpoint boundary layers are saved.
+    /// Non-saved layers are recomputed from the nearest checkpoint before backward.
+    saved_layer_mask: Vec<bool>,
+    /// Temporary buffer for activation recomputation [seq_len * hidden_size].
+    /// Used as the initial input when recomputing from a checkpoint boundary.
+    /// Only allocated when activation checkpointing is enabled.
+    recompute_buf: Option<GpuBuffer<f32>>,
     /// Final RMSNorm weight on GPU [hidden_size]
     final_norm_weight: GpuBuffer<f32>,
     /// Final block output (pre-norm) for RMSNorm backward [seq_len * hidden_size]
@@ -217,6 +225,9 @@ pub struct CudaTransformerTrainer {
     last_grad_norm: f32,
     /// R-040: Last observed embedding activation gradient L2 norm
     last_embed_grad_norm: f32,
+    /// R-038: Per-block gradient accumulation for true multi-step gradient accumulation.
+    /// Only allocated when accumulation_steps > 1. CPU-side buffers (~335 MB for 350M).
+    grad_accum: Option<super::grad_accumulator::PerBlockGradientAccumulator>,
 }
 
 #[cfg(feature = "cuda")]
@@ -312,12 +323,43 @@ impl CudaTransformerTrainer {
         let buf_size = max_seq_len * hidden_size;
         let logits_size = max_seq_len * vocab_size;
 
+        // Activation checkpointing: determine which layers save their inputs.
+        // Checkpoint boundary layers (every segment_size layers) are always saved.
+        // Non-boundary layers are recomputed from the nearest checkpoint during backward.
+        let checkpointing = config.checkpoint_config.enabled;
+        let segment_size = if checkpointing {
+            let ns = config.checkpoint_config.num_segments.max(1);
+            (num_layers + ns - 1) / ns
+        } else {
+            1 // Every layer is a checkpoint (no recomputation)
+        };
+        let saved_layer_mask: Vec<bool> = (0..num_layers)
+            .map(|i| !checkpointing || i % segment_size == 0)
+            .collect();
+
         let mut layer_inputs = Vec::with_capacity(num_layers);
         for _ in 0..num_layers {
             layer_inputs.push(
                 GpuBuffer::new(&ctx, buf_size).map_err(|e| {
                     crate::error::Error::ConfigError(format!("Layer input alloc failed: {e:?}"))
                 })?,
+            );
+        }
+
+        // Allocate recompute buffer if checkpointing is enabled
+        let recompute_buf = if checkpointing {
+            Some(GpuBuffer::new(&ctx, buf_size).map_err(|e| {
+                crate::error::Error::ConfigError(format!("Recompute buf alloc failed: {e:?}"))
+            })?)
+        } else {
+            None
+        };
+
+        if checkpointing {
+            let saved_count = saved_layer_mask.iter().filter(|&&x| x).count();
+            println!(
+                "  ✓ Activation checkpointing: {} segments, saving {}/{} layer inputs",
+                config.checkpoint_config.num_segments, saved_count, num_layers
             );
         }
 
@@ -359,6 +401,8 @@ impl CudaTransformerTrainer {
 
         let gpu_training = GpuPretrainState {
             layer_inputs,
+            saved_layer_mask,
+            recompute_buf,
             final_norm_weight,
             blocks_output,
             grad_buf_a,
@@ -422,6 +466,29 @@ impl CudaTransformerTrainer {
             config.weight_decay,
         );
 
+        // R-038: Allocate per-block gradient accumulation buffers (CPU-side)
+        // when accumulation_steps > 1 for true gradient accumulation.
+        let grad_accum = if config.accumulation_steps > 1 {
+            let kv_hidden = mc.num_kv_heads * mc.head_dim();
+            let block_sizes = super::grad_accumulator::PerBlockGradientAccumulator::compute_block_sizes(
+                hidden_size, kv_hidden, mc.intermediate_size,
+            );
+            let accum = super::grad_accumulator::PerBlockGradientAccumulator::new(
+                num_layers, block_sizes, vocab_size, hidden_size,
+            );
+            println!(
+                "  ✓ Gradient accumulation: {} steps, CPU buffers ({:.1} MB)",
+                config.accumulation_steps,
+                (accum.block_grads.iter().map(|b| b.total_elements()).sum::<usize>()
+                    + accum.lm_head_grad.len()
+                    + accum.final_norm_grad.len()
+                    + accum.embedding_grad.len()) as f64 * 4.0 / 1e6,
+            );
+            Some(accum)
+        } else {
+            None
+        };
+
         Ok(Self {
             model,
             cuda_trainer,
@@ -443,20 +510,23 @@ impl CudaTransformerTrainer {
             accumulated_batches: 0,
             last_grad_norm: 0.0,
             last_embed_grad_norm: 0.0,
+            grad_accum,
         })
     }
 
-    /// Run one forward+backward+optimizer step for a single sequence.
+    /// Run one forward+backward step for a single sequence.
     ///
     /// # Contract (C-GPUSTEP-001)
     ///
     /// - Precondition: `input_ids.len() == target_ids.len() <= max_seq_len`
-    /// - Postcondition: All GPU weights updated, embedding gradients set
-    /// - Transfer count: exactly 3 PCIe transfers
+    /// - Postcondition: If `accumulate_only` is false, all GPU weights updated.
+    ///   If true, gradients accumulated into CPU buffers (no weight updates).
+    /// - Transfer count: 3 PCIe transfers (+ 24×9 D2H if accumulating)
     fn train_step_single(
         &mut self,
         input_ids: &[u32],
         target_ids: &[u32],
+        accumulate_only: bool,
     ) -> Option<f32> {
         let hidden_size = self.config.model_config.hidden_size;
         let vocab_size = self.config.model_config.vocab_size;
@@ -474,11 +544,11 @@ impl CudaTransformerTrainer {
         let (loss_val, grad_logits) =
             self.cpu_loss_and_grad(&logits_data, target_ids, seq_len, vocab_size)?;
 
-        // Steps 8-11: GPU backward pass
+        // Steps 8-11: GPU backward pass (with or without optimizer)
         let grad_output_is_a =
-            self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size)?;
+            self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size, accumulate_only)?;
 
-        // Step 12: Embedding backward (CPU)
+        // Step 12: Embedding backward (CPU scatter-add always accumulates)
         self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a)?;
 
         Some(loss_val)
@@ -509,14 +579,18 @@ impl CudaTransformerTrainer {
         let mut gpu_input = self.cuda_trainer.upload(&padded_hidden).ok()?;
         let mut gpu_output = self.cuda_trainer.zeros(max_buf_size).ok()?;
 
-        // Forward through CUDA blocks, saving layer inputs
+        // Forward through CUDA blocks.
+        // With activation checkpointing, only save layer inputs at checkpoint boundaries.
+        // Non-boundary inputs are recomputed from the nearest checkpoint during backward.
         for (i, block) in self.cuda_blocks.iter_mut().enumerate() {
-            // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
-            // Copy completes before block.forward() reads from gpu_input (same stream ordering).
-            unsafe {
-                self.gpu_training.layer_inputs[i]
-                    .copy_from_buffer_async(&gpu_input, stream)
-                    .ok()?;
+            if self.gpu_training.saved_layer_mask[i] {
+                // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
+                // Copy completes before block.forward() reads from gpu_input (same stream ordering).
+                unsafe {
+                    self.gpu_training.layer_inputs[i]
+                        .copy_from_buffer_async(&gpu_input, stream)
+                        .ok()?;
+                }
             }
             block.forward(&gpu_input, &mut gpu_output, seq_len, stream).ok()?;
             std::mem::swap(&mut gpu_input, &mut gpu_output);
@@ -622,12 +696,93 @@ impl CudaTransformerTrainer {
     /// GPU backward pass with interleaved per-block optimizer step.
     ///
     /// Each block's backward writes weight gradients to the shared `CudaGradWorkspace`.
+    /// Recompute layer inputs for a segment during backward (activation checkpointing).
+    ///
+    /// When checkpointing is enabled, non-checkpoint layers don't save their inputs
+    /// during forward. Before their backward pass, we recompute from the nearest
+    /// checkpoint by re-running forward through intermediate blocks.
+    ///
+    /// This recomputes the entire segment [checkpoint..=target_layer], storing
+    /// intermediate layer_inputs so subsequent layers in the same segment don't
+    /// need redundant recomputation.
+    ///
+    /// # Contract (R-021)
+    ///
+    /// After this call, `layer_inputs[i]` is valid for all i in [checkpoint..=target_layer].
+    #[allow(unsafe_code)]
+    fn recompute_segment(
+        gpu_training: &mut GpuPretrainState,
+        cuda_blocks: &mut [crate::transformer::CudaTransformerBlock],
+        target_layer: usize,
+        seq_len: usize,
+        stream: &CudaStream,
+    ) -> Option<()> {
+        // Find nearest saved checkpoint at or before target
+        let seg_start = (0..=target_layer)
+            .rev()
+            .find(|&i| gpu_training.saved_layer_mask[i])?;
+
+        if seg_start == target_layer {
+            return Some(()); // Already saved
+        }
+
+        // Copy checkpoint input to recompute_buf as starting point.
+        // SAFETY: recompute_buf and layer_inputs are disjoint allocations.
+        let recompute_buf = gpu_training.recompute_buf.as_mut()?;
+        unsafe {
+            recompute_buf
+                .copy_from_buffer_async(
+                    &gpu_training.layer_inputs[seg_start],
+                    stream,
+                )
+                .ok()?;
+        }
+
+        // Forward through blocks [seg_start..target_layer], saving intermediate inputs.
+        // For block i, input → block i → output becomes input for block i+1.
+        // We save output (= input to block i+1) in layer_inputs[i+1].
+        //
+        // Buffer pattern:
+        //   i == seg_start: input = recompute_buf, output = layer_inputs[seg_start+1]
+        //   i > seg_start:  input = layer_inputs[i], output = layer_inputs[i+1]
+        //
+        // SAFETY: split_at_mut ensures non-overlapping borrows of layer_inputs.
+        // recompute_buf is separate from layer_inputs.
+        for i in seg_start..target_layer {
+            if i == seg_start {
+                // Input is in recompute_buf, output goes to layer_inputs[i+1]
+                let recompute_ptr: *const GpuBuffer<f32> = recompute_buf;
+                let li = &mut gpu_training.layer_inputs;
+                unsafe {
+                    cuda_blocks[i]
+                        .forward(&*recompute_ptr, &mut li[i + 1], seq_len, stream)
+                        .ok()?;
+                }
+            } else {
+                // Input = layer_inputs[i], output = layer_inputs[i+1]
+                let li = &mut gpu_training.layer_inputs;
+                let (left, right) = li.split_at_mut(i + 1);
+                cuda_blocks[i]
+                    .forward(&left[i], &mut right[0], seq_len, stream)
+                    .ok()?;
+            }
+        }
+
+        Some(())
+    }
+
     /// Since `gemm_backward_b` overwrites (not accumulates), we must run each block's
     /// optimizer step immediately after its backward, before the next block overwrites
     /// the workspace. This also enables per-block gradient clipping.
     ///
+    /// When `accumulate_only` is true (R-038 gradient accumulation), the per-block
+    /// optimizer steps are skipped and workspace gradients are downloaded to CPU-side
+    /// `PerBlockGradientAccumulator` instead. LM head and final norm gradients are
+    /// also downloaded and accumulated. The optimizer step is deferred until
+    /// `gpu_optimizer_from_accum()` is called.
+    ///
     /// Returns `grad_output_is_a` flag for embedding backward.
-    /// Transfer: 1 H2D (grad_logits).
+    /// Transfer: 1 H2D (grad_logits) + 24×9 D2H if accumulating.
     #[allow(unsafe_code)]
     fn gpu_backward(
         &mut self,
@@ -635,6 +790,7 @@ impl CudaTransformerTrainer {
         seq_len: usize,
         hidden_size: usize,
         vocab_size: usize,
+        accumulate_only: bool,
     ) -> Option<bool> {
         let stream = self.cuda_trainer.stream();
         let max_grad_norm = self.config.base.max_grad_norm;
@@ -693,29 +849,23 @@ impl CudaTransformerTrainer {
             let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
         }
 
-        // Increment optimizer step counter (once per optimizer step, not per block)
-        self.gpu_training.step += 1;
-        let step = self.gpu_training.step;
-
-        // LM head optimizer step (before blocks overwrite anything)
-        let n_lm = self.lm_head_weight_gpu.len() as u32;
-        let _ = adamw_step_cuda(
-            &mut self.lm_head_weight_gpu,
-            &self.lm_head_grad_gpu,
-            &mut self.lm_head_m,
-            &mut self.lm_head_v,
-            lr, beta1, beta2, 1e-8, weight_decay, step, n_lm, stream,
-        );
-
-        // Final norm optimizer step
-        let n_norm = self.gpu_training.final_norm_weight.len() as u32;
-        let _ = adamw_step_cuda(
-            &mut self.gpu_training.final_norm_weight,
-            &self.gpu_training.grad_final_norm_weight,
-            &mut self.final_norm_m,
-            &mut self.final_norm_v,
-            lr, beta1, beta2, 1e-8, weight_decay, step, n_norm, stream,
-        );
+        // R-038: Either accumulate non-block grads or run non-block optimizer.
+        if accumulate_only {
+            stream.synchronize().ok()?;
+            Self::download_nonblock_grads_to_accum(
+                &self.lm_head_grad_gpu,
+                &self.gpu_training.grad_final_norm_weight,
+                &mut self.grad_accum,
+            )?;
+        } else {
+            Self::run_nonblock_optimizer_step(
+                &mut self.gpu_training,
+                &mut self.lm_head_weight_gpu, &self.lm_head_grad_gpu,
+                &mut self.lm_head_m, &mut self.lm_head_v,
+                &mut self.final_norm_m, &mut self.final_norm_v,
+                lr, beta1, beta2, weight_decay, stream,
+            );
+        }
 
         // Backward through blocks in reverse, with interleaved clip + optimizer.
         //
@@ -729,6 +879,18 @@ impl CudaTransformerTrainer {
         let mut grad_output_is_a = true;
 
         for layer_idx in (0..self.cuda_blocks.len()).rev() {
+            // Activation checkpointing: if this layer's input wasn't saved during
+            // forward, recompute the segment from the nearest checkpoint.
+            if !self.gpu_training.saved_layer_mask[layer_idx] {
+                Self::recompute_segment(
+                    &mut self.gpu_training,
+                    &mut self.cuda_blocks,
+                    layer_idx,
+                    seq_len,
+                    stream,
+                )?;
+            }
+
             let (grad_output, grad_input) = unsafe {
                 if grad_output_is_a {
                     (&*grad_a_ptr, &mut *grad_b_ptr)
@@ -762,12 +924,25 @@ impl CudaTransformerTrainer {
             // GPU-side operations on the same stream — CUDA stream ordering guarantees
             // the backward completes before optimizer_step reads the workspace.
 
-            // Per-block optimizer step: consume workspace gradients before next block overwrites
-            let _ = self.cuda_blocks[layer_idx].optimizer_step(
-                &mut self.gpu_training.optimizer_states[layer_idx],
-                step, lr, beta1, beta2, 1e-8, weight_decay, stream,
-                &self.cuda_grad_workspace,
-            );
+            // R-038: Either accumulate workspace grads (CPU-side) or run optimizer per-block.
+            if accumulate_only {
+                // Download workspace to CPU accum per-block.
+                // SYNC: Must synchronize before D2H (ALB-065 / Rule 6).
+                stream.synchronize().ok()?;
+                if let Some(accum) = &mut self.grad_accum {
+                    Self::download_workspace_to_accum(
+                        &self.cuda_grad_workspace, accum, layer_idx,
+                    )?;
+                }
+            } else {
+                // Per-block optimizer step: consume workspace gradients before next block overwrites
+                let step = self.gpu_training.step;
+                let _ = self.cuda_blocks[layer_idx].optimizer_step(
+                    &mut self.gpu_training.optimizer_states[layer_idx],
+                    step, lr, beta1, beta2, 1e-8, weight_decay, stream,
+                    &self.cuda_grad_workspace,
+                );
+            }
 
             grad_output_is_a = !grad_output_is_a;
         }
@@ -775,6 +950,186 @@ impl CudaTransformerTrainer {
         stream.synchronize().ok()?;
 
         Some(grad_output_is_a)
+    }
+
+    /// R-038: Download non-block (LM head + final norm) gradients to CPU accumulator.
+    /// Static method to avoid borrow conflicts.
+    fn download_nonblock_grads_to_accum(
+        lm_head_grad: &GpuBuffer<f32>,
+        final_norm_grad: &GpuBuffer<f32>,
+        grad_accum: &mut Option<super::grad_accumulator::PerBlockGradientAccumulator>,
+    ) -> Option<()> {
+        let accum = grad_accum.as_mut()?;
+        let mut lm_host = vec![0.0f32; lm_head_grad.len()];
+        lm_head_grad.copy_to_host_at(&mut lm_host, 0).ok()?;
+        for (d, s) in accum.lm_head_grad.iter_mut().zip(&lm_host) {
+            *d += s;
+        }
+        let mut norm_host = vec![0.0f32; final_norm_grad.len()];
+        final_norm_grad.copy_to_host_at(&mut norm_host, 0).ok()?;
+        for (d, s) in accum.final_norm_grad.iter_mut().zip(&norm_host) {
+            *d += s;
+        }
+        Some(())
+    }
+
+    /// Run LM head + final norm optimizer step (non-accumulating path).
+    /// Static method to avoid borrow conflicts with `stream`.
+    #[allow(clippy::too_many_arguments)]
+    fn run_nonblock_optimizer_step(
+        gpu_training: &mut GpuPretrainState,
+        lm_head_weight_gpu: &mut GpuBuffer<f32>,
+        lm_head_grad_gpu: &GpuBuffer<f32>,
+        lm_head_m: &mut GpuBuffer<f32>,
+        lm_head_v: &mut GpuBuffer<f32>,
+        final_norm_m: &mut GpuBuffer<f32>,
+        final_norm_v: &mut GpuBuffer<f32>,
+        lr: f32,
+        beta1: f32,
+        beta2: f32,
+        weight_decay: f32,
+        stream: &CudaStream,
+    ) {
+        gpu_training.step += 1;
+        let step = gpu_training.step;
+
+        let n_lm = lm_head_weight_gpu.len() as u32;
+        let _ = adamw_step_cuda(
+            lm_head_weight_gpu,
+            lm_head_grad_gpu,
+            lm_head_m,
+            lm_head_v,
+            lr, beta1, beta2, 1e-8, weight_decay, step, n_lm, stream,
+        );
+
+        let n_norm = gpu_training.final_norm_weight.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut gpu_training.final_norm_weight,
+            &gpu_training.grad_final_norm_weight,
+            final_norm_m,
+            final_norm_v,
+            lr, beta1, beta2, 1e-8, weight_decay, step, n_norm, stream,
+        );
+    }
+
+    /// R-038: Download shared CudaGradWorkspace to CPU per-block accumulation buffers.
+    ///
+    /// Static method to avoid borrow conflicts with `stream` (same pattern as
+    /// `recompute_segment`). Must be called after stream.synchronize() (ALB-065 / Rule 6).
+    fn download_workspace_to_accum(
+        ws: &CudaGradWorkspace,
+        accum: &mut super::grad_accumulator::PerBlockGradientAccumulator,
+        layer_idx: usize,
+    ) -> Option<()> {
+        let bg = &mut accum.block_grads[layer_idx];
+
+        // Download each workspace buffer and accumulate into CPU accum
+        fn download_and_add(gpu_buf: &GpuBuffer<f32>, cpu_accum: &mut [f32]) -> Option<()> {
+            let mut host = vec![0.0f32; gpu_buf.len()];
+            gpu_buf.copy_to_host_at(&mut host, 0).ok()?;
+            for (d, s) in cpu_accum.iter_mut().zip(&host) {
+                *d += s;
+            }
+            Some(())
+        }
+
+        use super::grad_accumulator::component;
+        download_and_add(&ws.grad_w_q, &mut bg.components[component::W_Q])?;
+        download_and_add(&ws.grad_w_k, &mut bg.components[component::W_K])?;
+        download_and_add(&ws.grad_w_v, &mut bg.components[component::W_V])?;
+        download_and_add(&ws.grad_w_o, &mut bg.components[component::W_O])?;
+        download_and_add(&ws.grad_gate, &mut bg.components[component::GATE])?;
+        download_and_add(&ws.grad_up, &mut bg.components[component::UP])?;
+        download_and_add(&ws.grad_down, &mut bg.components[component::DOWN])?;
+        download_and_add(&ws.grad_input_norm, &mut bg.components[component::INPUT_NORM])?;
+        download_and_add(&ws.grad_post_attn_norm, &mut bg.components[component::POST_ATTN_NORM])?;
+        Some(())
+    }
+
+    /// R-038: Upload averaged CPU accumulation buffers to GPU workspace and run
+    /// optimizer step for all blocks + LM head + final norm.
+    ///
+    /// Called once after `accumulation_steps` micro-batches have been accumulated.
+    #[allow(unsafe_code)]
+    fn gpu_optimizer_from_accum(&mut self) -> Option<()> {
+        let stream = self.cuda_trainer.stream();
+        let lr = self.current_lr();
+        let beta1 = self.config.beta1;
+        let beta2 = self.config.beta2;
+        let weight_decay = self.config.weight_decay;
+
+        // Average accumulated gradients
+        let accum = self.grad_accum.as_mut()?;
+        accum.average();
+
+        // Jidoka: check for NaN/Inf before applying
+        if accum.has_non_finite() {
+            println!("[WARN] R-038: NaN/Inf in accumulated gradients, skipping optimizer step");
+            accum.zero_all();
+            return Some(());
+        }
+
+        self.gpu_training.step += 1;
+        let step = self.gpu_training.step;
+
+        // Upload and optimize each block
+        use super::grad_accumulator::component;
+        for layer_idx in 0..self.cuda_blocks.len() {
+            let bg = &accum.block_grads[layer_idx];
+
+            // Upload accumulated gradients to shared workspace
+            unsafe {
+                self.cuda_grad_workspace.grad_w_q.copy_from_host_async(&bg.components[component::W_Q], stream).ok()?;
+                self.cuda_grad_workspace.grad_w_k.copy_from_host_async(&bg.components[component::W_K], stream).ok()?;
+                self.cuda_grad_workspace.grad_w_v.copy_from_host_async(&bg.components[component::W_V], stream).ok()?;
+                self.cuda_grad_workspace.grad_w_o.copy_from_host_async(&bg.components[component::W_O], stream).ok()?;
+                self.cuda_grad_workspace.grad_gate.copy_from_host_async(&bg.components[component::GATE], stream).ok()?;
+                self.cuda_grad_workspace.grad_up.copy_from_host_async(&bg.components[component::UP], stream).ok()?;
+                self.cuda_grad_workspace.grad_down.copy_from_host_async(&bg.components[component::DOWN], stream).ok()?;
+                self.cuda_grad_workspace.grad_input_norm.copy_from_host_async(&bg.components[component::INPUT_NORM], stream).ok()?;
+                self.cuda_grad_workspace.grad_post_attn_norm.copy_from_host_async(&bg.components[component::POST_ATTN_NORM], stream).ok()?;
+            }
+
+            // Run optimizer step with uploaded averaged gradients
+            let _ = self.cuda_blocks[layer_idx].optimizer_step(
+                &mut self.gpu_training.optimizer_states[layer_idx],
+                step, lr, beta1, beta2, 1e-8, weight_decay, stream,
+                &self.cuda_grad_workspace,
+            );
+        }
+
+        // Upload and optimize LM head
+        unsafe {
+            self.lm_head_grad_gpu.copy_from_host_async(&accum.lm_head_grad, stream).ok()?;
+        }
+        let n_lm = self.lm_head_weight_gpu.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.lm_head_weight_gpu,
+            &self.lm_head_grad_gpu,
+            &mut self.lm_head_m,
+            &mut self.lm_head_v,
+            lr, beta1, beta2, 1e-8, weight_decay, step, n_lm, stream,
+        );
+
+        // Upload and optimize final norm
+        unsafe {
+            self.gpu_training.grad_final_norm_weight
+                .copy_from_host_async(&accum.final_norm_grad, stream).ok()?;
+        }
+        let n_norm = self.gpu_training.final_norm_weight.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.gpu_training.final_norm_weight,
+            &self.gpu_training.grad_final_norm_weight,
+            &mut self.final_norm_m,
+            &mut self.final_norm_v,
+            lr, beta1, beta2, 1e-8, weight_decay, step, n_norm, stream,
+        );
+
+        stream.synchronize().ok()?;
+
+        // Zero accum for next window
+        accum.zero_all();
+        Some(())
     }
 
     /// Compute exact gradient L2 norm by downloading the full buffer to CPU.
@@ -879,11 +1234,21 @@ impl CudaTransformerTrainer {
 
     /// Process a batch (forward + backward + optimizer step with accumulation).
     ///
+    /// R-038: When `accumulation_steps > 1`, runs forward+backward without optimizer
+    /// for each micro-batch, downloading per-block weight gradients to CPU-side
+    /// `PerBlockGradientAccumulator`. After `accumulation_steps` batches, averages
+    /// the accumulated gradients, uploads them to GPU, and runs a single optimizer step.
+    ///
+    /// When `accumulation_steps == 1` (default), runs forward+backward+optimizer
+    /// immediately per sequence (original behavior).
+    ///
     /// Returns average loss for the batch.
     pub fn train_batch(&mut self, batch: &LMBatch) -> f32 {
         if batch.batch_size == 0 {
             return 0.0;
         }
+
+        let accumulating = self.grad_accum.is_some();
 
         if self.accumulated_batches == 0 {
             // Zero embedding gradients at start of accumulation window
@@ -902,9 +1267,17 @@ impl CudaTransformerTrainer {
                 continue;
             };
 
-            if let Some(loss) = self.train_step_single(input_ids, target_ids) {
+            // R-038: When accumulating, run backward without optimizer (accumulate_only=true).
+            // Gradients are downloaded to CPU per-block accum buffers. Embedding grads are
+            // scatter-added normally (they're already on CPU).
+            if let Some(loss) = self.train_step_single(input_ids, target_ids, accumulating) {
                 total_loss += loss;
                 valid_count += 1;
+                if accumulating {
+                    if let Some(accum) = &mut self.grad_accum {
+                        accum.accumulated_count += 1;
+                    }
+                }
             }
         }
 
@@ -918,6 +1291,10 @@ impl CudaTransformerTrainer {
         self.accumulated_batches += 1;
 
         if self.accumulated_batches >= self.config.accumulation_steps {
+            if accumulating {
+                // R-038: Average accumulated gradients and run single optimizer step
+                self.gpu_optimizer_from_accum();
+            }
             self.optimizer_step();
         }
 

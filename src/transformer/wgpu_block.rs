@@ -20,7 +20,27 @@ use crate::autograd::Tensor;
 use crate::lora::LoRALayer;
 use crate::transformer::config::TransformerConfig;
 use crate::transformer::model::Transformer;
-use trueno::backends::gpu::{GpuCommandBatch, GpuDevice};
+use std::cell::RefCell;
+use std::sync::Arc;
+use trueno::backends::gpu::{wgpu, GpuCommandBatch, GpuDevice, PipelineCache};
+
+/// Pre-uploaded FFN weight buffers for a single transformer layer (KAIZEN-015).
+///
+/// Each buffer is wrapped in `Arc` so it can be shared across multiple
+/// `GpuCommandBatch` executions via `import_buffer()` without re-uploading.
+/// The buffers remain GPU-resident for the lifetime of `WgpuForwardPass`.
+struct GpuResidentFfnWeights {
+    /// Gate projection: (hidden_size, intermediate_size)
+    w_gate: Arc<wgpu::Buffer>,
+    /// Up projection: (hidden_size, intermediate_size)
+    w_up: Arc<wgpu::Buffer>,
+    /// Down projection: (intermediate_size, hidden_size)
+    w_down: Arc<wgpu::Buffer>,
+    /// Size of gate/up buffers in f32 elements (hidden_size * intermediate_size)
+    gate_up_elements: usize,
+    /// Size of down buffer in f32 elements (intermediate_size * hidden_size)
+    down_elements: usize,
+}
 
 /// wgpu-accelerated transformer forward pass
 ///
@@ -35,6 +55,15 @@ pub struct WgpuForwardPass {
     config: TransformerConfig,
     /// Number of transformer layers
     num_layers: usize,
+    /// KAIZEN-015: GPU-resident FFN weights — uploaded once, reused every forward pass.
+    /// Each layer has (w_gate, w_up, w_down) as persistent `wgpu::Buffer`s.
+    /// Empty when constructed via `new()`/`new_default()`; populated by `with_resident_weights()`.
+    ffn_weights: Vec<GpuResidentFfnWeights>,
+    /// KAIZEN-023: Persistent pipeline cache across batch executions.
+    /// Shaders compiled in layer 1's batch are reused for layers 2-36.
+    /// Reduces 108 shader compilations per forward pass to just 3.
+    /// Uses `RefCell` because `forward_ffn_gpu()` is called via `&self`.
+    pipeline_cache: RefCell<PipelineCache>,
 }
 
 impl WgpuForwardPass {
@@ -53,6 +82,8 @@ impl WgpuForwardPass {
             device,
             config: config.clone(),
             num_layers: config.num_hidden_layers,
+            ffn_weights: Vec::new(),
+            pipeline_cache: RefCell::new(PipelineCache::new()),
         })
     }
 
@@ -64,7 +95,97 @@ impl WgpuForwardPass {
             device,
             config: config.clone(),
             num_layers: config.num_hidden_layers,
+            ffn_weights: Vec::new(),
+            pipeline_cache: RefCell::new(PipelineCache::new()),
         })
+    }
+
+    /// Create from model with GPU-resident FFN weights (KAIZEN-015).
+    ///
+    /// Uploads all FFN weights (gate, up, down projections for every layer) to
+    /// GPU memory at construction time. Subsequent forward passes use
+    /// `import_buffer()` to reference these persistent buffers, eliminating
+    /// the per-call H2D transfer overhead.
+    ///
+    /// For Qwen3-4B (36 layers, hidden=3584, intermediate=18944):
+    /// - Per-layer: 3 * 3584 * 18944 * 4 bytes = ~775 MB
+    /// - Total: 36 layers * 775 MB = ~27.2 GB GPU memory (once)
+    /// - Savings: 14.6 GB/step H2D transfer eliminated
+    ///
+    /// # Contract (C-WGPU-RESIDENT-001)
+    ///
+    /// - **Precondition**: Model has valid FFN weights for all layers
+    /// - **Postcondition**: All FFN weights GPU-resident, zero H2D transfers during forward
+    /// - **Invariant**: Weights are frozen (read-only) -- LoRA adapters remain CPU-resident
+    pub fn with_resident_weights(model: &Transformer) -> Result<Self, String> {
+        let device = GpuDevice::new()?;
+        let config = model.config.clone();
+        let num_layers = config.num_hidden_layers;
+        let hidden_size = config.hidden_size;
+        let intermediate_size = config.intermediate_size;
+        let gate_up_elements = hidden_size * intermediate_size;
+        let down_elements = intermediate_size * hidden_size;
+
+        let mut ffn_weights = Vec::with_capacity(num_layers);
+        let mut total_bytes: usize = 0;
+
+        for (i, layer) in model.layers.iter().enumerate() {
+            let gate_data = layer.ffn.w_gate.data();
+            let gate_slice = gate_data.as_slice()
+                .ok_or_else(|| format!("Layer {i}: gate weight not contiguous"))?;
+            let up_data = layer.ffn.w_up.data();
+            let up_slice = up_data.as_slice()
+                .ok_or_else(|| format!("Layer {i}: up weight not contiguous"))?;
+            let down_data = layer.ffn.w_down.data();
+            let down_slice = down_data.as_slice()
+                .ok_or_else(|| format!("Layer {i}: down weight not contiguous"))?;
+
+            let w_gate = Arc::new(device.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("ffn_gate_L{i}")),
+                size: (gate_slice.len() * 4) as u64,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            device.queue.write_buffer(&w_gate, 0, bytemuck::cast_slice(gate_slice));
+
+            let w_up = Arc::new(device.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("ffn_up_L{i}")),
+                size: (up_slice.len() * 4) as u64,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            device.queue.write_buffer(&w_up, 0, bytemuck::cast_slice(up_slice));
+
+            let w_down = Arc::new(device.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("ffn_down_L{i}")),
+                size: (down_slice.len() * 4) as u64,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            device.queue.write_buffer(&w_down, 0, bytemuck::cast_slice(down_slice));
+
+            let layer_bytes = (gate_slice.len() + up_slice.len() + down_slice.len()) * 4;
+            total_bytes += layer_bytes;
+
+            ffn_weights.push(GpuResidentFfnWeights {
+                w_gate,
+                w_up,
+                w_down,
+                gate_up_elements,
+                down_elements,
+            });
+        }
+
+        let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
+        eprintln!("[wgpu] GPU-resident FFN weights: {num_layers} layers, {total_mb:.1} MB");
+
+        Ok(Self { device, config, num_layers, ffn_weights, pipeline_cache: RefCell::new(PipelineCache::new()) })
     }
 
     /// Execute forward pass through all transformer layers on GPU
@@ -94,7 +215,7 @@ impl WgpuForwardPass {
         // cycle (144 per-op matmuls × ~3-5ms = 430-720ms overhead per sample).
         // CPU SIMD is equally fast and doesn't contend for GPU bandwidth.
         crate::autograd::suppress_per_op_wgpu();
-        for layer in &model.layers {
+        for (layer_idx, layer) in model.layers.iter().enumerate() {
             // --- Attention on CPU SIMD (includes RoPE, softmax, masking) ---
             let norm1 = layer.input_norm.forward_batched(&hidden, seq_len, hidden_size);
             let attn_out = layer.self_attn.forward(&norm1, seq_len);
@@ -102,6 +223,9 @@ impl WgpuForwardPass {
 
             // --- FFN on GPU (3 large matmuls + SwiGLU) ---
             let norm2 = layer.post_attn_norm.forward_batched(&residual1, seq_len, hidden_size);
+
+            // KAIZEN-015: Use GPU-resident weights if available
+            let resident = self.ffn_weights.get(layer_idx);
 
             let ffn_out = self.forward_ffn_gpu(
                 &norm2,
@@ -111,6 +235,7 @@ impl WgpuForwardPass {
                 seq_len,
                 hidden_size,
                 intermediate_size,
+                resident,
             )?;
 
             // Residual connection
@@ -125,15 +250,17 @@ impl WgpuForwardPass {
         Ok(normalized)
     }
 
-    /// Execute FFN forward pass on GPU using batched operations
+    /// Execute FFN forward pass on GPU using batched operations.
     ///
     /// Batches gate/up/down matmuls + SwiGLU into single GPU execution:
-    /// 1. Upload: norm_output, w_gate, w_up, w_down
-    /// 2. Compute: gate = norm @ w_gate, up = norm @ w_up, silu(gate) * up, down
-    /// 3. Download: ffn_output
+    /// 1. Upload input (small: seq_len * hidden_size)
+    /// 2. Import or upload weights (gate, up, down)
+    /// 3. Compute: gate = input @ w_gate, up = input @ w_up, silu(gate) * up, down
+    /// 4. Download: ffn_output
     ///
-    /// This eliminates 6 CPU↔GPU transfers per layer (3 matmuls × 2 transfers each)
-    /// down to 2 total (1 upload batch + 1 download).
+    /// When `resident_weights` is `Some`, weight buffers are imported from
+    /// persistent GPU memory (KAIZEN-015: zero H2D transfer for weights).
+    /// When `None`, falls back to uploading from CPU tensors each call.
     fn forward_ffn_gpu(
         &self,
         input: &Tensor,
@@ -143,30 +270,42 @@ impl WgpuForwardPass {
         seq_len: usize,
         hidden_size: usize,
         intermediate_size: usize,
+        resident_weights: Option<&GpuResidentFfnWeights>,
     ) -> Result<Tensor, String> {
         use trueno::backends::gpu::runtime;
 
         runtime::block_on(async {
             let mut batch = GpuCommandBatch::new(self.device.clone());
 
-            // Upload input and weights
+            // Upload input (always from CPU — small: seq_len * hidden_size)
             let input_data = input.data();
             let input_slice = input_data.as_slice()
                 .ok_or("Input tensor not contiguous")?;
-            let gate_data = w_gate.data();
-            let gate_slice = gate_data.as_slice()
-                .ok_or("Gate weight not contiguous")?;
-            let up_data = w_up.data();
-            let up_slice = up_data.as_slice()
-                .ok_or("Up weight not contiguous")?;
-            let down_data = w_down.data();
-            let down_slice = down_data.as_slice()
-                .ok_or("Down weight not contiguous")?;
-
             let buf_input = batch.upload(input_slice);
-            let buf_gate = batch.upload(gate_slice);
-            let buf_up = batch.upload(up_slice);
-            let buf_down = batch.upload(down_slice);
+
+            // KAIZEN-015: Import GPU-resident weights or fall back to CPU upload
+            let (buf_gate, buf_up, buf_down) = if let Some(rw) = resident_weights {
+                // Zero H2D transfer — Arc::clone is cheap (~1 atomic increment)
+                let g = batch.import_buffer(Arc::clone(&rw.w_gate), rw.gate_up_elements);
+                let u = batch.import_buffer(Arc::clone(&rw.w_up), rw.gate_up_elements);
+                let d = batch.import_buffer(Arc::clone(&rw.w_down), rw.down_elements);
+                (g, u, d)
+            } else {
+                // Fallback: upload weights from CPU tensors (original path)
+                let gate_data = w_gate.data();
+                let gate_slice = gate_data.as_slice()
+                    .ok_or("Gate weight not contiguous")?;
+                let up_data = w_up.data();
+                let up_slice = up_data.as_slice()
+                    .ok_or("Up weight not contiguous")?;
+                let down_data = w_down.data();
+                let down_slice = down_data.as_slice()
+                    .ok_or("Down weight not contiguous")?;
+                let g = batch.upload(gate_slice);
+                let u = batch.upload(up_slice);
+                let d = batch.upload(down_slice);
+                (g, u, d)
+            };
 
             // Gate projection: (seq_len, hidden) @ (hidden, intermediate)
             let gate_out = batch.matmul(
@@ -199,8 +338,8 @@ impl WgpuForwardPass {
                 hidden_size as u32,
             );
 
-            // Execute all ops in single batch
-            batch.execute().await?;
+            // Execute all ops in single batch — KAIZEN-023: persistent pipeline cache
+            batch.execute_with_cache(&mut self.pipeline_cache.borrow_mut()).await?;
 
             // Download result
             let result_data = batch.read(ffn_out).await?;
@@ -242,10 +381,16 @@ impl WgpuForwardPass {
 
         // Step 2: Layer-at-a-time processing
         // Attention on CPU SIMD (per-sample), FFN on GPU (all samples concatenated)
+        //
+        // KAIZEN-017: Pre-compute total_tokens once (constant across layers).
+        let total_tokens: usize = batch_token_ids.iter().map(|ids| ids.len()).sum();
+
         crate::autograd::suppress_per_op_wgpu();
         for (layer_idx, layer) in model.layers.iter().enumerate() {
             // Attention on CPU (per-sample, independent)
-            let mut ffn_inputs: Vec<Vec<f32>> = Vec::with_capacity(n);
+            // KAIZEN-017: Keep Tensor references instead of .to_vec() copies.
+            // Eliminates n per-sample Vec allocations per layer (360 MB total for Qwen3-4B).
+            let mut ffn_input_tensors: Vec<Tensor> = Vec::with_capacity(n);
             let mut residuals: Vec<Tensor> = Vec::with_capacity(n);
             for (i, hidden) in hiddens.iter().enumerate() {
                 let seq_len = batch_token_ids[i].len();
@@ -276,26 +421,22 @@ impl WgpuForwardPass {
 
                 let residual1 = crate::autograd::add(hidden, &attn_out);
                 let norm2 = layer.post_attn_norm.forward_batched(&residual1, seq_len, hidden_size);
-                ffn_inputs.push(
-                    norm2
-                        .data()
-                        .as_slice()
-                        .expect("norm2 contiguous")
-                        .to_vec(),
-                );
+                ffn_input_tensors.push(norm2);
                 residuals.push(residual1);
             }
 
             // Concatenate all samples' FFN inputs for single GPU batch
-            let total_tokens: usize = batch_token_ids.iter().map(|ids| ids.len()).sum();
-            let mut concat_input =
-                Vec::with_capacity(total_tokens * hidden_size);
-            for inp in &ffn_inputs {
-                concat_input.extend_from_slice(inp);
+            // KAIZEN-017: Borrow directly from Tensor instead of intermediate Vecs
+            let mut concat_input = Vec::with_capacity(total_tokens * hidden_size);
+            for norm2 in &ffn_input_tensors {
+                let data = norm2.data();
+                concat_input.extend_from_slice(data.as_slice().expect("norm2 contiguous"));
             }
             let concat_tensor = Tensor::from_vec(concat_input, false);
 
-            // FFN on GPU — weights uploaded ONCE for all samples
+            // FFN on GPU — KAIZEN-015: import GPU-resident weights (zero H2D)
+            let resident = self.ffn_weights.get(layer_idx);
+
             let ffn_out = self.forward_ffn_gpu(
                 &concat_tensor,
                 &layer.ffn.w_gate,
@@ -304,6 +445,7 @@ impl WgpuForwardPass {
                 total_tokens,
                 hidden_size,
                 intermediate_size,
+                resident,
             )?;
 
             // Split FFN output back into per-sample tensors + residual
@@ -408,6 +550,7 @@ mod tests {
         let gpu_result = pass.forward_ffn_gpu(
             &input, &w_gate, &w_up, &w_down,
             1, 8, 16,
+            None, // No GPU-resident weights for this test
         );
 
         assert!(gpu_result.is_ok(), "GPU FFN failed: {:?}", gpu_result.err());

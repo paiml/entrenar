@@ -22,6 +22,7 @@ pub mod classify_tuner;
 pub mod data_parallel;
 pub mod distributed;
 pub mod gradient_server;
+pub mod ring_allreduce;
 pub mod worker_client;
 pub mod instruct_corpus;
 pub mod instruct_pipeline;
@@ -42,7 +43,7 @@ mod tests_classification_contract_falsify;
 pub use classification::{
     bce_with_logits_loss, compute_class_weights, corpus_stats, cross_entropy_loss,
     load_multi_label_corpus, load_safety_corpus, ClassWeightStrategy, ClassificationHead,
-    MultiLabelSafetySample, SafetyCorpusStats, SafetySample,
+    MultiLabelSafetySample, SafetyCorpusStats, SafetySample, TokenizedSample,
 };
 pub use classify_pipeline::{
     BatchResult, ClassifyConfig, ClassifyPipeline, DataStats, DiagSeverity,
@@ -70,7 +71,10 @@ pub use instruct_trainer::{
 pub use data_parallel::{DataParallelCoordinator, average_gradients, has_non_finite, shard_samples};
 pub use device::{ComputeDevice, DeviceInfo};
 pub use distributed::{DistributedConfig, NodeRole, WireMessage};
-pub use gradient_server::{AllReduceResult, GradientServer};
+pub use gradient_server::{
+    AllReduceResult, BlockAllReduceResult, GradientServer, NonBlockAllReduceResult,
+};
+pub use ring_allreduce::RingAllReduceWorker;
 pub use worker_client::{AveragedResult, ShardAssignment, WorkerClient};
 pub use eval::{
     contains_tautology, count_test_functions, has_edge_case_tests, has_meaningful_assertions,

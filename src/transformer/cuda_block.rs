@@ -1883,7 +1883,7 @@ fn cuda_add(
 /// When `a` and `output` alias the same GPU buffer, each element is read before written
 /// (no inter-element dependency), so this is safe for elementwise operations.
 #[cfg(feature = "cuda")]
-fn cuda_add_inplace(
+pub(crate) fn cuda_add_inplace(
     target: &mut GpuBuffer<f32>,
     source: &GpuBuffer<f32>,
     n: usize,

@@ -311,6 +311,58 @@ impl Transformer {
         self.norm.forward_batched(&hidden, seq_len, hidden_size)
     }
 
+    /// Forward pass returning hidden states with LoRA corrections (KAIZEN-011)
+    ///
+    /// Like `forward_hidden` but applies LoRA adapters to Q/V projections in
+    /// each transformer layer's attention. Enables non-CUDA LoRA training by
+    /// putting LoRA parameters into the autograd graph.
+    ///
+    /// # Arguments
+    /// * `token_ids` - Input token IDs
+    /// * `lora_layers` - LoRA layers in [Q_0, V_0, Q_1, V_1, ...] order
+    ///
+    /// # Returns
+    /// Hidden states tensor (seq_len * hidden_size, flattened)
+    pub fn forward_hidden_with_lora(
+        &self,
+        token_ids: &[u32],
+        lora_layers: &[crate::lora::LoRALayer],
+    ) -> Tensor {
+        let seq_len = token_ids.len();
+        let hidden_size = self.config.hidden_size;
+
+        let mut hidden = self.embed_tokens.forward(token_ids);
+
+        for (layer_idx, layer) in self.layers.iter().enumerate() {
+            let norm1 = layer.input_norm.forward_batched(&hidden, seq_len, hidden_size);
+
+            // KAIZEN-011: Apply LoRA to attention Q/V projections
+            let q_idx = layer_idx * 2;
+            let v_idx = layer_idx * 2 + 1;
+            let attn_out = if v_idx < lora_layers.len() {
+                layer.self_attn.forward_with_lora(
+                    &norm1,
+                    seq_len,
+                    lora_layers[q_idx].lora_a(),
+                    lora_layers[q_idx].lora_b(),
+                    lora_layers[v_idx].lora_a(),
+                    lora_layers[v_idx].lora_b(),
+                    lora_layers[q_idx].rank(),
+                    lora_layers[q_idx].scale(),
+                )
+            } else {
+                layer.self_attn.forward(&norm1, seq_len)
+            };
+
+            let residual = crate::autograd::add(&hidden, &attn_out);
+            let norm2 = layer.post_attn_norm.forward_batched(&residual, seq_len, hidden_size);
+            let ffn_out = layer.ffn.forward(&norm2, seq_len);
+            hidden = crate::autograd::add(&residual, &ffn_out);
+        }
+
+        self.norm.forward_batched(&hidden, seq_len, hidden_size)
+    }
+
     /// Get the last token's logits (for generation)
     pub fn forward_last(&self, token_ids: &[u32]) -> Tensor {
         let logits = self.forward(token_ids);

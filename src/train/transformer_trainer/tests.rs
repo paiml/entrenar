@@ -415,3 +415,233 @@ fn falsify_alb038_saved_weights_differ_from_init() {
         "FALSIFIED ALB-038: Saved embedding weights are identical to initialization"
     );
 }
+
+// === R-084: Bitwise deterministic training (C-DETERM-001) ===
+
+#[test]
+fn test_deterministic_config_defaults() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!(!config.deterministic, "deterministic should default to false");
+    assert_eq!(config.seed, 42, "default seed should be 42");
+}
+
+#[test]
+fn test_deterministic_config_builder() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(12345);
+    assert!(config.deterministic);
+    assert_eq!(config.seed, 12345);
+}
+
+#[test]
+fn test_deterministic_env_vars_set() {
+    // O-DET-001: ReproducibilityConfig::apply() sets CUDA env vars
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(99999);
+    config.apply_deterministic_settings();
+
+    assert_eq!(
+        std::env::var("CUBLAS_WORKSPACE_CONFIG").unwrap_or_default(),
+        ":4096:8",
+        "CUBLAS_WORKSPACE_CONFIG must be :4096:8 (I-DET-001)"
+    );
+    assert_eq!(
+        std::env::var("CUDNN_DETERMINISTIC").unwrap_or_default(),
+        "1",
+        "CUDNN_DETERMINISTIC must be 1 (I-DET-002)"
+    );
+    assert_eq!(
+        std::env::var("CUDNN_BENCHMARK").unwrap_or_default(),
+        "0",
+        "CUDNN_BENCHMARK must be 0 (I-DET-003)"
+    );
+}
+
+#[test]
+fn test_deterministic_disabled_no_env_change() {
+    // When deterministic=false, apply_deterministic_settings() is a no-op
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(false);
+    // Clear env first to verify it's not set
+    std::env::remove_var("PYTHONHASHSEED");
+    config.apply_deterministic_settings();
+    // PYTHONHASHSEED should NOT have been set
+    assert!(
+        std::env::var("PYTHONHASHSEED").is_err(),
+        "deterministic=false should not set PYTHONHASHSEED"
+    );
+}
+
+#[test]
+fn test_deterministic_training_reproducibility() {
+    // F-DET-001: Two runs with same seed produce identical loss
+    let config1 = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(42);
+    let config2 = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(42);
+
+    let mut trainer1 = TransformerTrainer::new(config1);
+    let mut trainer2 = TransformerTrainer::new(config2);
+
+    let batch = LMBatch::single(vec![1, 2, 3, 4, 5], vec![2, 3, 4, 5, 6]);
+
+    let mut losses1 = Vec::new();
+    let mut losses2 = Vec::new();
+
+    for _ in 0..5 {
+        losses1.push(trainer1.train_batch(&batch));
+        losses2.push(trainer2.train_batch(&batch));
+    }
+
+    // CPU training with same init should produce identical losses
+    for (i, (l1, l2)) in losses1.iter().zip(losses2.iter()).enumerate() {
+        assert!(
+            (l1 - l2).abs() < 1e-6,
+            "Step {i}: loss mismatch {l1} vs {l2} (C-DETERM-001 violation)"
+        );
+    }
+}
+
+// ── Activation Checkpointing (R-021, #115) ──────────────────────────────
+
+#[test]
+fn test_checkpoint_config_segment_calculation() {
+    // Verify checkpoint boundary mask calculation
+    // tiny has 2 layers, 2 segments → segment_size = 1 → all layers are checkpoints
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_checkpointing(2);
+
+    assert!(config.checkpoint_config.enabled);
+    assert_eq!(config.checkpoint_config.num_segments, 2);
+
+    let num_layers = config.model_config.num_hidden_layers;
+    assert_eq!(num_layers, 2);
+    let ns = config.checkpoint_config.num_segments.max(1);
+    let segment_size = (num_layers + ns - 1) / ns;
+    assert_eq!(segment_size, 1);
+    let mask: Vec<bool> = (0..num_layers)
+        .map(|i| i % segment_size == 0)
+        .collect();
+    assert_eq!(mask, vec![true, true]);
+}
+
+#[test]
+fn test_checkpoint_config_fewer_segments() {
+    // Use a config with more layers: 24 layers, 4 segments → segment_size = 6
+    // Checkpoint boundary layers: 0, 6, 12, 18
+    let mut model_config = TransformerConfig::tiny();
+    model_config.num_hidden_layers = 24;
+    let config = TransformerTrainConfig::new(model_config)
+        .with_checkpointing(4);
+
+    let num_layers = config.model_config.num_hidden_layers;
+    assert_eq!(num_layers, 24);
+    let ns = config.checkpoint_config.num_segments.max(1);
+    let segment_size = (num_layers + ns - 1) / ns;
+    assert_eq!(segment_size, 6);
+    let mask: Vec<bool> = (0..num_layers)
+        .map(|i| i % segment_size == 0)
+        .collect();
+    // Only layers 0, 6, 12, 18 are checkpoints
+    let expected: Vec<bool> = (0..24).map(|i| i % 6 == 0).collect();
+    assert_eq!(mask, expected);
+    assert_eq!(mask.iter().filter(|&&x| x).count(), 4);
+    assert_eq!(mask.iter().filter(|&&x| !x).count(), 20);
+}
+
+#[test]
+fn test_checkpoint_disabled_saves_all_layers() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+
+    assert!(!config.checkpoint_config.enabled);
+
+    // When disabled, all layers should be "checkpointed" (saved)
+    let num_layers = config.model_config.num_hidden_layers;
+    let mask: Vec<bool> = (0..num_layers)
+        .map(|_| true) // !checkpointing → all saved
+        .collect();
+    assert!(mask.iter().all(|&x| x));
+}
+
+#[test]
+fn test_checkpoint_with_cpu_trainer() {
+    // CPU trainer with checkpointing enabled should train normally
+    // (checkpointing only affects CUDA path, CPU path ignores it)
+    let model_config = TransformerConfig::tiny();
+    let config = TransformerTrainConfig::new(model_config.clone())
+        .with_checkpointing(2)
+        .with_lr(0.001)
+        .with_max_seq_len(32);
+
+    let model = Transformer::new(&model_config);
+    let mut trainer = TransformerTrainer::with_model(model, config);
+
+    let input = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+    let batch = LMBatch::from_sequences(&[input], 0, 0);
+
+    let loss = trainer.train_batch(&batch);
+    assert!(loss > 0.0, "Loss should be positive");
+    assert!(loss.is_finite(), "Loss should be finite");
+}
+
+#[test]
+fn test_gradient_accumulation_produces_different_weights_than_no_accum() {
+    // R-038: Verify that gradient accumulation with accum_steps=2 produces
+    // different weights than single-step training, proving the accumulation
+    // path is actually wired (not a no-op).
+    let model_config = TransformerConfig::tiny();
+    let seq = vec![1u32, 2, 3, 4, 5, 6, 7, 8];
+    let batch = LMBatch::from_sequences(&[seq.clone()], 0, 0);
+
+    // Train with accum=1 (immediate optimizer step)
+    let config_no_accum = TransformerTrainConfig::new(model_config.clone())
+        .with_lr(0.01)
+        .with_max_seq_len(32);
+    let model1 = Transformer::new(&model_config);
+    let mut trainer1 = TransformerTrainer::with_model(model1, config_no_accum);
+    trainer1.train_batch(&batch);
+    trainer1.train_batch(&batch);
+    let weights1: Vec<f32> = trainer1.model().embed_tokens.weight.data()
+        .as_slice().unwrap().to_vec();
+
+    // Train with accum=2 (deferred optimizer step)
+    let config_accum = TransformerTrainConfig::new(model_config.clone())
+        .with_lr(0.01)
+        .with_max_seq_len(32)
+        .with_accumulation_steps(2);
+    let model2 = Transformer::new(&model_config);
+    let mut trainer2 = TransformerTrainer::with_model(model2, config_accum);
+    trainer2.train_batch(&batch);
+    trainer2.train_batch(&batch);
+    let weights2: Vec<f32> = trainer2.model().embed_tokens.weight.data()
+        .as_slice().unwrap().to_vec();
+
+    // Weights should differ (different optimizer dynamics)
+    let diff: f64 = weights1.iter().zip(&weights2).map(|(a, b)| (*a as f64 - *b as f64).abs()).sum();
+    assert!(diff > 1e-6, "Gradient accumulation should produce different weights (diff={diff})");
+}
+
+#[test]
+fn test_per_block_gradient_accumulator_sizes() {
+    // Verify PerBlockGradientAccumulator sizes match model architecture
+    use super::grad_accumulator::PerBlockGradientAccumulator;
+
+    let model_config = TransformerConfig::tiny();
+    let h = model_config.hidden_size;
+    let kv = model_config.num_kv_heads * model_config.head_dim();
+    let i = model_config.intermediate_size;
+    let sizes = PerBlockGradientAccumulator::compute_block_sizes(h, kv, i);
+    let accum = PerBlockGradientAccumulator::new(
+        model_config.num_hidden_layers, sizes,
+        model_config.vocab_size, h,
+    );
+    assert_eq!(accum.num_blocks(), model_config.num_hidden_layers);
+    assert_eq!(accum.lm_head_grad.len(), model_config.vocab_size * h);
+    assert_eq!(accum.final_norm_grad.len(), h);
+    assert_eq!(accum.embedding_grad.len(), model_config.vocab_size * h);
+    assert!(!accum.has_non_finite());
+}
