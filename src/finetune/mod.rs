@@ -74,7 +74,7 @@ pub use distributed::{DistributedConfig, NodeRole, WireMessage};
 pub use gradient_server::{
     AllReduceResult, BlockAllReduceResult, GradientServer, NonBlockAllReduceResult,
 };
-pub use ring_allreduce::RingAllReduceWorker;
+pub use ring_allreduce::{allreduce_pair, RingAllReduceWorker};
 pub use worker_client::{AveragedResult, ShardAssignment, WorkerClient};
 pub use eval::{
     contains_tautology, count_test_functions, has_edge_case_tests, has_meaningful_assertions,
