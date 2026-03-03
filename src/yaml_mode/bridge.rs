@@ -337,6 +337,8 @@ fn convert_training(
         max_steps: training_cfg.and_then(|t| t.max_steps),
         scheduler_params,
         seed,
+        max_checkpoints: 5,
+        shuffle: true,
     }
 }
 
