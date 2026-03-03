@@ -143,6 +143,14 @@ fn compute_workspace_grad_norm(ws: &CudaGradWorkspace) -> f32 {
 struct GpuPretrainState {
     /// Saved layer inputs for backward [num_layers][seq_len * hidden_size]
     layer_inputs: Vec<GpuBuffer<f32>>,
+    /// Which layer inputs were saved during forward (activation checkpointing).
+    /// When checkpointing is enabled, only checkpoint boundary layers are saved.
+    /// Non-saved layers are recomputed from the nearest checkpoint before backward.
+    saved_layer_mask: Vec<bool>,
+    /// Temporary buffer for activation recomputation [seq_len * hidden_size].
+    /// Used as the initial input when recomputing from a checkpoint boundary.
+    /// Only allocated when activation checkpointing is enabled.
+    recompute_buf: Option<GpuBuffer<f32>>,
     /// Final RMSNorm weight on GPU [hidden_size]
     final_norm_weight: GpuBuffer<f32>,
     /// Final block output (pre-norm) for RMSNorm backward [seq_len * hidden_size]
@@ -312,12 +320,43 @@ impl CudaTransformerTrainer {
         let buf_size = max_seq_len * hidden_size;
         let logits_size = max_seq_len * vocab_size;
 
+        // Activation checkpointing: determine which layers save their inputs.
+        // Checkpoint boundary layers (every segment_size layers) are always saved.
+        // Non-boundary layers are recomputed from the nearest checkpoint during backward.
+        let checkpointing = config.checkpoint_config.enabled;
+        let segment_size = if checkpointing {
+            let ns = config.checkpoint_config.num_segments.max(1);
+            (num_layers + ns - 1) / ns
+        } else {
+            1 // Every layer is a checkpoint (no recomputation)
+        };
+        let saved_layer_mask: Vec<bool> = (0..num_layers)
+            .map(|i| !checkpointing || i % segment_size == 0)
+            .collect();
+
         let mut layer_inputs = Vec::with_capacity(num_layers);
         for _ in 0..num_layers {
             layer_inputs.push(
                 GpuBuffer::new(&ctx, buf_size).map_err(|e| {
                     crate::error::Error::ConfigError(format!("Layer input alloc failed: {e:?}"))
                 })?,
+            );
+        }
+
+        // Allocate recompute buffer if checkpointing is enabled
+        let recompute_buf = if checkpointing {
+            Some(GpuBuffer::new(&ctx, buf_size).map_err(|e| {
+                crate::error::Error::ConfigError(format!("Recompute buf alloc failed: {e:?}"))
+            })?)
+        } else {
+            None
+        };
+
+        if checkpointing {
+            let saved_count = saved_layer_mask.iter().filter(|&&x| x).count();
+            println!(
+                "  ✓ Activation checkpointing: {} segments, saving {}/{} layer inputs",
+                config.checkpoint_config.num_segments, saved_count, num_layers
             );
         }
 
@@ -359,6 +398,8 @@ impl CudaTransformerTrainer {
 
         let gpu_training = GpuPretrainState {
             layer_inputs,
+            saved_layer_mask,
+            recompute_buf,
             final_norm_weight,
             blocks_output,
             grad_buf_a,
@@ -509,14 +550,18 @@ impl CudaTransformerTrainer {
         let mut gpu_input = self.cuda_trainer.upload(&padded_hidden).ok()?;
         let mut gpu_output = self.cuda_trainer.zeros(max_buf_size).ok()?;
 
-        // Forward through CUDA blocks, saving layer inputs
+        // Forward through CUDA blocks.
+        // With activation checkpointing, only save layer inputs at checkpoint boundaries.
+        // Non-boundary inputs are recomputed from the nearest checkpoint during backward.
         for (i, block) in self.cuda_blocks.iter_mut().enumerate() {
-            // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
-            // Copy completes before block.forward() reads from gpu_input (same stream ordering).
-            unsafe {
-                self.gpu_training.layer_inputs[i]
-                    .copy_from_buffer_async(&gpu_input, stream)
-                    .ok()?;
+            if self.gpu_training.saved_layer_mask[i] {
+                // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
+                // Copy completes before block.forward() reads from gpu_input (same stream ordering).
+                unsafe {
+                    self.gpu_training.layer_inputs[i]
+                        .copy_from_buffer_async(&gpu_input, stream)
+                        .ok()?;
+                }
             }
             block.forward(&gpu_input, &mut gpu_output, seq_len, stream).ok()?;
             std::mem::swap(&mut gpu_input, &mut gpu_output);
@@ -622,6 +667,81 @@ impl CudaTransformerTrainer {
     /// GPU backward pass with interleaved per-block optimizer step.
     ///
     /// Each block's backward writes weight gradients to the shared `CudaGradWorkspace`.
+    /// Recompute layer inputs for a segment during backward (activation checkpointing).
+    ///
+    /// When checkpointing is enabled, non-checkpoint layers don't save their inputs
+    /// during forward. Before their backward pass, we recompute from the nearest
+    /// checkpoint by re-running forward through intermediate blocks.
+    ///
+    /// This recomputes the entire segment [checkpoint..=target_layer], storing
+    /// intermediate layer_inputs so subsequent layers in the same segment don't
+    /// need redundant recomputation.
+    ///
+    /// # Contract (R-021)
+    ///
+    /// After this call, `layer_inputs[i]` is valid for all i in [checkpoint..=target_layer].
+    #[allow(unsafe_code)]
+    fn recompute_segment(
+        gpu_training: &mut GpuPretrainState,
+        cuda_blocks: &mut [crate::transformer::CudaTransformerBlock],
+        target_layer: usize,
+        seq_len: usize,
+        stream: &CudaStream,
+    ) -> Option<()> {
+        // Find nearest saved checkpoint at or before target
+        let seg_start = (0..=target_layer)
+            .rev()
+            .find(|&i| gpu_training.saved_layer_mask[i])?;
+
+        if seg_start == target_layer {
+            return Some(()); // Already saved
+        }
+
+        // Copy checkpoint input to recompute_buf as starting point.
+        // SAFETY: recompute_buf and layer_inputs are disjoint allocations.
+        let recompute_buf = gpu_training.recompute_buf.as_mut()?;
+        unsafe {
+            recompute_buf
+                .copy_from_buffer_async(
+                    &gpu_training.layer_inputs[seg_start],
+                    stream,
+                )
+                .ok()?;
+        }
+
+        // Forward through blocks [seg_start..target_layer], saving intermediate inputs.
+        // For block i, input → block i → output becomes input for block i+1.
+        // We save output (= input to block i+1) in layer_inputs[i+1].
+        //
+        // Buffer pattern:
+        //   i == seg_start: input = recompute_buf, output = layer_inputs[seg_start+1]
+        //   i > seg_start:  input = layer_inputs[i], output = layer_inputs[i+1]
+        //
+        // SAFETY: split_at_mut ensures non-overlapping borrows of layer_inputs.
+        // recompute_buf is separate from layer_inputs.
+        for i in seg_start..target_layer {
+            if i == seg_start {
+                // Input is in recompute_buf, output goes to layer_inputs[i+1]
+                let recompute_ptr: *const GpuBuffer<f32> = recompute_buf;
+                let li = &mut gpu_training.layer_inputs;
+                unsafe {
+                    cuda_blocks[i]
+                        .forward(&*recompute_ptr, &mut li[i + 1], seq_len, stream)
+                        .ok()?;
+                }
+            } else {
+                // Input = layer_inputs[i], output = layer_inputs[i+1]
+                let li = &mut gpu_training.layer_inputs;
+                let (left, right) = li.split_at_mut(i + 1);
+                cuda_blocks[i]
+                    .forward(&left[i], &mut right[0], seq_len, stream)
+                    .ok()?;
+            }
+        }
+
+        Some(())
+    }
+
     /// Since `gemm_backward_b` overwrites (not accumulates), we must run each block's
     /// optimizer step immediately after its backward, before the next block overwrites
     /// the workspace. This also enables per-block gradient clipping.
@@ -729,6 +849,18 @@ impl CudaTransformerTrainer {
         let mut grad_output_is_a = true;
 
         for layer_idx in (0..self.cuda_blocks.len()).rev() {
+            // Activation checkpointing: if this layer's input wasn't saved during
+            // forward, recompute the segment from the nearest checkpoint.
+            if !self.gpu_training.saved_layer_mask[layer_idx] {
+                Self::recompute_segment(
+                    &mut self.gpu_training,
+                    &mut self.cuda_blocks,
+                    layer_idx,
+                    seq_len,
+                    stream,
+                )?;
+            }
+
             let (grad_output, grad_input) = unsafe {
                 if grad_output_is_a {
                     (&*grad_a_ptr, &mut *grad_b_ptr)
