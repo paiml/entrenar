@@ -130,6 +130,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     println!();
 
     // Try CUDA-resident training first (ALB-040), fall back to CPU
+    #[cfg(feature = "cuda")]
     if train_config.use_cuda {
         let cuda_config = train_config.clone();
         let cuda_result = match transformer {
@@ -1116,14 +1117,6 @@ fn save_training_state(output_dir: &Path, step: usize, epoch: usize, batch_idx: 
     }
 }
 
-#[cfg(not(feature = "cuda"))]
-fn train_loop_cuda(
-    _trainer: &mut CudaTransformerTrainer,
-    _batches: &[LMBatch],
-    _spec: &TrainSpec,
-) -> Result<()> {
-    Err(Error::ConfigError("CUDA not available".into()))
-}
 
 /// Save trained model from CPU trainer
 fn save_trained_model_cpu(trainer: &TransformerTrainer, spec: &TrainSpec) -> Result<()> {
