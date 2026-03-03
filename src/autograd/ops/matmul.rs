@@ -64,6 +64,62 @@ pub fn transpose(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     transposed
 }
 
+/// Autograd-aware transpose that preserves the backward chain (KAIZEN-018).
+///
+/// Creates a new tensor with transposed data AND a backward op that
+/// accumulates the inverse-transposed gradient on the original tensor.
+/// This ensures gradient flow through LoRA weight transposes.
+///
+/// # Contract (C-LORA-GRAD-001)
+///
+/// - **Precondition**: `tensor` has shape (rows, cols) in row-major layout
+/// - **Postcondition**: Returns tensor with shape (cols, rows), backward chain connected
+/// - **Invariant**: `original.grad()` receives the correctly transposed gradient
+pub fn transpose_tracked(tensor: &Tensor, rows: usize, cols: usize) -> Tensor {
+    let data = tensor.data();
+    let slice = data.as_slice().expect("transpose_tracked: tensor must be contiguous");
+    let transposed_data = transpose(slice, rows, cols);
+    let mut result = Tensor::from_vec(transposed_data, tensor.requires_grad());
+
+    if tensor.requires_grad() {
+        let backward_op = Rc::new(TransposeBackward {
+            original: tensor.clone(),
+            rows,
+            cols,
+            result_grad: result.grad_cell(),
+        });
+        result.set_backward_op(backward_op);
+    }
+
+    result
+}
+
+/// Backward op for autograd-aware transpose (KAIZEN-018).
+///
+/// Given forward: result = transpose(original, rows, cols)
+/// Backward: grad_original = transpose(grad_result, cols, rows)
+/// (The inverse of an (r,c) transpose is a (c,r) transpose.)
+struct TransposeBackward {
+    original: Tensor,
+    rows: usize,
+    cols: usize,
+    result_grad: Rc<RefCell<Option<Array1<f32>>>>,
+}
+
+impl BackwardOp for TransposeBackward {
+    fn backward(&self) {
+        if let Some(grad) = self.result_grad.borrow().as_ref() {
+            let grad_slice = grad.as_slice().expect("gradient must be contiguous");
+            // Inverse transpose: (cols, rows) → (rows, cols)
+            let grad_original = transpose(grad_slice, self.cols, self.rows);
+            self.original.accumulate_grad(Array1::from(grad_original));
+            if let Some(op) = self.original.backward_op() {
+                op.backward();
+            }
+        }
+    }
+}
+
 /// Blocked transpose for cache efficiency on large matrices.
 #[inline]
 fn transpose_blocked(src: &[f32], dst: &mut [f32], rows: usize, cols: usize, block: usize) {
@@ -739,5 +795,72 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// KAIZEN-018: Verify transpose_tracked backward propagates gradient
+    /// to the original tensor through the inverse transpose.
+    #[test]
+    fn test_transpose_tracked_backward_gradient_flow() {
+        // Original tensor A: 2×3 matrix [1,2,3,4,5,6], requires_grad=true
+        let a = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], true);
+
+        // Tracked transpose: A^T is 3×2
+        let a_t = transpose_tracked(&a, 2, 3);
+        assert_eq!(a_t.len(), 6);
+
+        // Verify transposed data is correct
+        let at_data = a_t.data();
+        let at_slice = at_data.as_slice().expect("contiguous");
+        assert_eq!(at_slice, &[1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+
+        // Set gradient on transposed tensor (as if backward computed it)
+        // Gradient shape matches A^T: 3×2
+        a_t.set_grad(Array1::from(vec![10.0, 40.0, 20.0, 50.0, 30.0, 60.0]));
+
+        // Trigger backward: should transpose grad back (3×2 → 2×3) and accumulate on a
+        if let Some(op) = a_t.backward_op() {
+            op.backward();
+        }
+
+        // Check that the original tensor has the correctly transposed gradient
+        let grad = a.grad().expect("original tensor should have gradient");
+        let grad_slice = grad.as_slice().expect("contiguous");
+        // Transpose of 3×2 [10,40,20,50,30,60] = 2×3 [10,20,30,40,50,60]
+        assert_eq!(grad_slice, &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
+    }
+
+    /// KAIZEN-018: Verify that transpose_tracked + matmul backward flows
+    /// gradient to the original (non-transposed) LoRA parameter.
+    #[test]
+    fn test_transpose_tracked_lora_gradient_chain() {
+        // Simulate LoRA forward: y = x @ A^T where A is (rank=2, d_in=3)
+        let lora_a = Tensor::from_vec(vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6], true);
+        let x = Tensor::from_vec(vec![1.0, 2.0, 3.0], true); // 1×3 input
+
+        // Tracked transpose: A^T is (d_in=3, rank=2)
+        let lora_a_t = transpose_tracked(&lora_a, 2, 3);
+
+        // Matmul: (1, 3) @ (3, 2) = (1, 2)
+        let result = matmul(&x, &lora_a_t, 1, 3, 2);
+        assert_eq!(result.len(), 2);
+
+        // Set gradient on result (as if loss backward computed it)
+        result.set_grad(Array1::from(vec![1.0, 1.0]));
+
+        // Trigger backward chain: result → matmul backward → lora_a_t → transpose backward → lora_a
+        if let Some(op) = result.backward_op() {
+            op.backward();
+        }
+
+        // The original lora_a should now have a gradient
+        let grad = lora_a.grad().expect("LoRA A should receive gradient via transpose_tracked");
+        assert_eq!(grad.len(), 6);
+
+        // Verify gradient is finite and non-zero
+        for (i, &val) in grad.as_slice().expect("contiguous").iter().enumerate() {
+            assert!(val.is_finite(), "Gradient element {} is not finite: {}", i, val);
+        }
+        let grad_sum: f32 = grad.iter().sum();
+        assert!(grad_sum.abs() > 1e-6, "Gradient should be non-zero, got sum={}", grad_sum);
     }
 }
