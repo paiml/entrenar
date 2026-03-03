@@ -626,6 +626,13 @@ fn train_loop_cuda(
     // R-003: Heartbeat file for crash detection
     let heartbeat_path = spec.training.output_dir.join("heartbeat");
 
+    // R-016b: Loss spike rollback — EMA for spike detection
+    let mut loss_ema: f64 = 0.0;
+    let loss_ema_alpha: f64 = 0.05;
+    let loss_spike_threshold: f64 = 3.0; // spike if loss > threshold × EMA
+    let mut rollback_count: usize = 0;
+    let max_rollbacks: usize = 3;
+
     // R-026: Save training config hash to JSONL for diff tracking
     write_config_provenance(&mut jsonl_file, spec);
 
@@ -645,6 +652,7 @@ fn train_loop_cuda(
                     trainer, spec, &state, &mut tracker, start_ms,
                     epoch, iter_idx, total_epochs, num_batches,
                     &loss_history, &model_name, &gpu_name,
+                    seed, loss_ema,
                 );
                 return Ok(());
             }
@@ -669,6 +677,12 @@ fn train_loop_cuda(
             total_loss += batch_loss;
             batches_processed += 1;
 
+            // R-016b: Loss spike detection + rollback
+            detect_loss_spike(
+                batch_loss, trainer.step(), &mut loss_ema, loss_ema_alpha,
+                loss_spike_threshold, &mut rollback_count, max_rollbacks, &mut jsonl_file,
+            );
+
             // R-017: ZClip — update EMA and detect gradient spikes
             zclip_update(
                 trainer.last_grad_norm() as f64, trainer.step(),
@@ -679,55 +693,17 @@ fn train_loop_cuda(
             write_heartbeat(&heartbeat_path, trainer.step());
 
             // Track loss history (keep last 100 for sparkline)
-            loss_history.push(batch_loss);
-            if loss_history.len() > 100 {
-                loss_history.remove(0);
-            }
+            push_capped(&mut loss_history, batch_loss, 100);
 
             // Logging at log_interval boundaries
             if (iter_idx + 1) % log_interval == 0 || iter_idx == 0 {
-                let elapsed = epoch_start.elapsed().as_secs_f64();
-                let batches_done = iter_idx + 1;
-                let tokens_done = batches_done * tokens_per_batch;
-                let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
-                let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
-                let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
-
-                // R-012: Compute MFU
-                let flops_per_step = 6.0 * num_params as f64 * tokens_per_batch as f64;
-                let step_time = elapsed / batches_done as f64;
-                let mfu = (flops_per_step / step_time) / gpu_peak_tflops * 100.0;
-
-                // R-004: Get gradient norm
-                let grad_norm = trainer.last_grad_norm();
-                // R-013: GPU memory usage
-                let (gpu_used_mb, gpu_total_mb) = trainer.gpu_memory_mb();
-                // R-028: Step time in ms
-                let step_ms = step_elapsed.as_secs_f64() * 1000.0;
-
-                println!(
-                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} mfu={:.1}% gnorm={:.2e} gpu={}/{}MB step={:.0}ms eta={:.0}s",
-                    batches_done, num_batches,
-                    trainer.step(), batch_loss, trainer.current_lr(),
-                    tok_per_sec, mfu, grad_norm, gpu_used_mb, gpu_total_mb, step_ms, remaining,
+                log_step_metrics(
+                    trainer, &state, &mut tracker, &mut jsonl_file,
+                    &epoch_start, &start_time, &step_elapsed,
+                    epoch, total_epochs, iter_idx, num_batches,
+                    tokens_per_batch, num_params, gpu_peak_tflops,
+                    start_ms, batch_loss, &loss_history, spec, &gpu_name,
                 );
-
-                // ALB-045: Write snapshot for `apr monitor`
-                write_training_snapshot(
-                    &state, start_ms, epoch + 1, total_epochs,
-                    trainer.step(), num_batches,
-                    batch_loss, &loss_history,
-                    trainer.current_lr(), tok_per_sec as f32,
-                    TrainingStatus::Running, spec, &gpu_name,
-                );
-
-                // ALB-055/056: Log step metrics to SQLite
-                tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
-
-                // R-014: Write JSONL log entry
-                write_jsonl_step(&mut jsonl_file, trainer.step(), batch_loss,
-                    trainer.current_lr(), tok_per_sec, mfu, grad_norm, epoch,
-                    start_time.elapsed().as_secs_f64());
             }
 
             // ALB-068/R-009: Intermediate checkpoint saving at save_interval
@@ -737,7 +713,8 @@ fn train_loop_cuda(
             {
                 save_and_validate_checkpoint(
                     trainer, spec, &val_batches, &model_name,
-                    current_step, epoch, iter_idx, max_checkpoints, &mut jsonl_file,
+                    current_step, epoch, iter_idx, max_checkpoints,
+                    &mut jsonl_file, seed, loss_ema,
                 );
                 last_save_step = current_step;
             }
@@ -751,8 +728,7 @@ fn train_loop_cuda(
             epoch_start.elapsed().as_secs_f64(),
         );
 
-        if trainer.reached_max_steps() {
-            println!("Reached max_steps={}, stopping training.", spec.training.max_steps.unwrap_or(0));
+        if reached_max_steps(spec.training.max_steps, trainer.step()) {
             break;
         }
     }
@@ -814,6 +790,50 @@ fn zclip_update(
             println!("  [ZClip] gradient spike at step {}: z={:.1} gnorm={:.2e} ema={:.2e}",
                 step, z_score, gnorm, *ema);
         }
+    }
+}
+
+/// Push a value to a capped history buffer, removing oldest if at capacity.
+fn push_capped(history: &mut Vec<f32>, value: f32, max_len: usize) {
+    history.push(value);
+    if history.len() > max_len {
+        history.remove(0);
+    }
+}
+
+/// R-016b: Detect loss spikes and log rollback events.
+#[allow(clippy::too_many_arguments)]
+fn detect_loss_spike(
+    loss: f32, step: usize,
+    ema: &mut f64, alpha: f64, threshold: f64,
+    rollback_count: &mut usize, max_rollbacks: usize,
+    jsonl_file: &mut Option<std::fs::File>,
+) {
+    let bl = loss as f64;
+    if *ema > 0.0 && bl > threshold * *ema && *rollback_count < max_rollbacks {
+        *rollback_count += 1;
+        println!("  [ROLLBACK] loss spike at step {}: {:.4} > {:.1}×EMA({:.4}), rollback #{}/{}",
+            step, loss, threshold, *ema, *rollback_count, max_rollbacks);
+        write_jsonl_event(jsonl_file, "rollback", step, loss, *ema as f32);
+    }
+    *ema = alpha * bl + (1.0 - alpha) * *ema;
+}
+
+/// Write a generic event entry to the JSONL experiment log.
+fn write_jsonl_event(
+    jsonl_file: &mut Option<std::fs::File>,
+    event_type: &str, step: usize, loss: f32, loss_ema: f32,
+) {
+    use std::io::Write;
+    if let Some(ref mut f) = jsonl_file {
+        let entry = serde_json::json!({
+            "type": event_type,
+            "step": step,
+            "loss": loss,
+            "loss_ema": loss_ema,
+            "timestamp": now_ms(),
+        });
+        let _ = writeln!(f, "{}", entry);
     }
 }
 
@@ -942,6 +962,8 @@ fn save_and_validate_checkpoint(
     batch_idx: usize,
     max_checkpoints: usize,
     jsonl_file: &mut Option<std::fs::File>,
+    seed: u64,
+    loss_ema: f64,
 ) {
     let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
     // R-011: Async checkpointing — prepare data on main thread, write on background thread
@@ -954,7 +976,7 @@ fn save_and_validate_checkpoint(
         } else {
             verify_checkpoint(&async_path);
             println!("  [checkpoint] step={} saved to {}", step, async_path.display());
-            save_training_state(&async_output_dir, step, epoch, batch_idx);
+            save_training_state(&async_output_dir, step, epoch, batch_idx, seed, loss_ema);
             prune_checkpoints(&async_output_dir, max_checkpoints);
         }
     });
@@ -1015,6 +1037,8 @@ fn handle_graceful_shutdown(
     loss_history: &[f32],
     model_name: &str,
     gpu_name: &str,
+    seed: u64,
+    loss_ema: f64,
 ) {
     println!("[SIGINT] Emergency checkpoint at step {}...", trainer.step());
     let ckpt_path = checkpoint_path(&spec.training.output_dir, trainer.step());
@@ -1022,7 +1046,7 @@ fn handle_graceful_shutdown(
         println!("  [WARN] Emergency save failed: {}", e);
     } else {
         println!("  [checkpoint] emergency save to {}", ckpt_path.display());
-        save_training_state(&spec.training.output_dir, trainer.step(), epoch, iter_idx);
+        save_training_state(&spec.training.output_dir, trainer.step(), epoch, iter_idx, seed, loss_ema);
     }
     let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
     write_training_snapshot(
@@ -1075,6 +1099,67 @@ fn parse_checkpoint_step(filename: &str) -> Option<usize> {
         .ok()
 }
 
+/// Log step metrics: console output, IPC snapshot, SQLite, JSONL.
+#[allow(clippy::too_many_arguments)]
+fn log_step_metrics(
+    trainer: &CudaTransformerTrainer,
+    state: &TrainingState,
+    tracker: &mut PretrainTracker,
+    jsonl_file: &mut Option<std::fs::File>,
+    epoch_start: &std::time::Instant,
+    start_time: &std::time::Instant,
+    step_elapsed: &std::time::Duration,
+    epoch: usize, total_epochs: usize,
+    iter_idx: usize, num_batches: usize,
+    tokens_per_batch: usize, num_params: usize,
+    gpu_peak_tflops: f64, start_ms: u64,
+    batch_loss: f32, loss_history: &[f32],
+    spec: &TrainSpec, gpu_name: &str,
+) {
+    let elapsed = epoch_start.elapsed().as_secs_f64();
+    let batches_done = iter_idx + 1;
+    let tokens_done = batches_done * tokens_per_batch;
+    let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
+    let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
+    let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
+
+    // R-012: Compute MFU
+    let flops_per_step = 6.0 * num_params as f64 * tokens_per_batch as f64;
+    let step_time = elapsed / batches_done as f64;
+    let mfu = (flops_per_step / step_time) / gpu_peak_tflops * 100.0;
+
+    // R-004: Get gradient norm
+    let grad_norm = trainer.last_grad_norm();
+    // R-013: GPU memory usage
+    let (gpu_used_mb, gpu_total_mb) = trainer.gpu_memory_mb();
+    // R-028: Step time in ms
+    let step_ms = step_elapsed.as_secs_f64() * 1000.0;
+
+    println!(
+        "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} mfu={:.1}% gnorm={:.2e} gpu={}/{}MB step={:.0}ms eta={:.0}s",
+        batches_done, num_batches,
+        trainer.step(), batch_loss, trainer.current_lr(),
+        tok_per_sec, mfu, grad_norm, gpu_used_mb, gpu_total_mb, step_ms, remaining,
+    );
+
+    // ALB-045: Write snapshot for `apr monitor`
+    write_training_snapshot(
+        state, start_ms, epoch + 1, total_epochs,
+        trainer.step(), num_batches,
+        batch_loss, loss_history,
+        trainer.current_lr(), tok_per_sec as f32,
+        TrainingStatus::Running, spec, gpu_name,
+    );
+
+    // ALB-055/056: Log step metrics to SQLite
+    tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
+
+    // R-014: Write JSONL log entry
+    write_jsonl_step(jsonl_file, trainer.step(), batch_loss,
+        trainer.current_lr(), tok_per_sec, mfu, grad_norm, epoch,
+        start_time.elapsed().as_secs_f64());
+}
+
 /// R-009: Prune old checkpoints, keeping the most recent `max_keep`.
 fn prune_checkpoints(output_dir: &Path, max_keep: usize) {
     if max_keep == 0 {
@@ -1104,11 +1189,16 @@ fn prune_checkpoints(output_dir: &Path, max_keep: usize) {
 }
 
 /// R-006/R-007: Save training state metadata alongside checkpoint.
-fn save_training_state(output_dir: &Path, step: usize, epoch: usize, batch_idx: usize) {
+fn save_training_state(
+    output_dir: &Path, step: usize, epoch: usize, batch_idx: usize,
+    seed: u64, loss_ema: f64,
+) {
     let state = serde_json::json!({
         "step": step,
         "epoch": epoch,
         "batch_index": batch_idx,
+        "seed": seed,
+        "loss_ema": loss_ema,
         "timestamp": now_ms(),
     });
     let path = output_dir.join("training_state.json");
