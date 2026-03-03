@@ -2,7 +2,7 @@
 //!
 //! This module provides multi-head self-attention with grouped-query attention support.
 
-use crate::autograd::{matmul, BackwardOp};
+use crate::autograd::{matmul, transpose, BackwardOp};
 use crate::Tensor;
 use ndarray::Array1;
 use std::cell::RefCell;
@@ -332,6 +332,153 @@ impl MultiHeadAttention {
         }
 
         // Output projection: (seq_len, q_dim) @ (q_dim, hidden_size) = (seq_len, hidden_size)
+        matmul(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
+    }
+
+    /// Forward pass with LoRA corrections on Q and V projections (KAIZEN-010).
+    ///
+    /// Applies LoRA adapters to Q and V during the forward pass so that
+    /// gradients flow through LoRA A/B matrices on non-CUDA paths.
+    ///
+    /// # Arguments
+    /// * `x` - Input tensor (seq_len * hidden_size)
+    /// * `seq_len` - Sequence length
+    /// * `lora_a_q`, `lora_b_q` - Q projection LoRA matrices (rank×d_in, d_out×rank)
+    /// * `lora_a_v`, `lora_b_v` - V projection LoRA matrices (rank×d_in, d_out×rank)
+    /// * `lora_rank` - LoRA rank
+    /// * `lora_scale` - LoRA scaling factor (alpha/rank)
+    pub fn forward_with_lora(
+        &self,
+        x: &Tensor,
+        seq_len: usize,
+        lora_a_q: &Tensor,
+        lora_b_q: &Tensor,
+        lora_a_v: &Tensor,
+        lora_b_v: &Tensor,
+        lora_rank: usize,
+        lora_scale: f32,
+    ) -> Tensor {
+        let hidden_size = self.config.hidden_size;
+        let num_heads = self.config.num_attention_heads;
+        let num_kv_heads = self.config.num_kv_heads;
+        let head_dim = self.config.head_dim();
+        let q_dim = self.config.q_dim();
+        let kv_hidden_size = num_kv_heads * head_dim;
+
+        // Q projection with LoRA: Q = x @ W_q + scale * (x @ A_q^T) @ B_q^T
+        let q_base = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
+        let lora_a_q_t = Tensor::from_vec(
+            transpose(lora_a_q.data().as_slice().expect("contiguous"), lora_rank, hidden_size),
+            true,
+        );
+        let lora_b_q_t = Tensor::from_vec(
+            transpose(lora_b_q.data().as_slice().expect("contiguous"), q_dim, lora_rank),
+            true,
+        );
+        let q_mid = matmul(x, &lora_a_q_t, seq_len, hidden_size, lora_rank);
+        let q_lora = matmul(&q_mid, &lora_b_q_t, seq_len, lora_rank, q_dim);
+        let q = crate::autograd::add_scaled(&q_base, &q_lora, lora_scale);
+
+        // K projection (no LoRA)
+        let k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
+
+        // V projection with LoRA: V = x @ W_v + scale * (x @ A_v^T) @ B_v^T
+        let v_base = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
+        let lora_a_v_t = Tensor::from_vec(
+            transpose(lora_a_v.data().as_slice().expect("contiguous"), lora_rank, hidden_size),
+            true,
+        );
+        let lora_b_v_t = Tensor::from_vec(
+            transpose(lora_b_v.data().as_slice().expect("contiguous"), kv_hidden_size, lora_rank),
+            true,
+        );
+        let v_mid = matmul(x, &lora_a_v_t, seq_len, hidden_size, lora_rank);
+        let v_lora = matmul(&v_mid, &lora_b_v_t, seq_len, lora_rank, kv_hidden_size);
+        let v = crate::autograd::add_scaled(&v_base, &v_lora, lora_scale);
+
+        let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
+        let heads_per_kv = num_heads / num_kv_heads;
+
+        // Per-head attention (same as forward())
+        let mut head_q_tensors = Vec::with_capacity(num_heads);
+        let mut head_k_tensors = Vec::with_capacity(num_heads);
+        let mut head_v_tensors = Vec::with_capacity(num_heads);
+        let mut head_outputs = Vec::with_capacity(num_heads);
+        let mut head_kv_indices = Vec::with_capacity(num_heads);
+
+        for h in 0..num_heads {
+            let kv_h = h / heads_per_kv;
+            head_kv_indices.push(kv_h);
+
+            let q_head: Vec<f32> = (0..seq_len)
+                .flat_map(|s| {
+                    let start = s * q_dim + h * head_dim;
+                    q.data().as_slice().expect("contiguous Q")[start..start + head_dim].to_vec()
+                })
+                .collect();
+
+            let k_head: Vec<f32> = (0..seq_len)
+                .flat_map(|s| {
+                    let start = s * kv_hidden_size + kv_h * head_dim;
+                    k.data().as_slice().expect("contiguous K")[start..start + head_dim].to_vec()
+                })
+                .collect();
+
+            let v_head: Vec<f32> = (0..seq_len)
+                .flat_map(|s| {
+                    let start = s * kv_hidden_size + kv_h * head_dim;
+                    v.data().as_slice().expect("contiguous V")[start..start + head_dim].to_vec()
+                })
+                .collect();
+
+            let q_tensor = Tensor::from_vec(q_head, requires_grad);
+            let k_tensor = Tensor::from_vec(k_head, requires_grad);
+            let v_tensor = Tensor::from_vec(v_head, requires_grad);
+
+            let attn_out = crate::autograd::attention(
+                &q_tensor, &k_tensor, &v_tensor, seq_len, head_dim, seq_len, head_dim,
+            );
+
+            head_q_tensors.push(q_tensor);
+            head_k_tensors.push(k_tensor);
+            head_v_tensors.push(v_tensor);
+            head_outputs.push(attn_out);
+        }
+
+        // Concatenate heads
+        let mut concat_output = vec![0.0; seq_len * q_dim];
+        for (h, head_out) in head_outputs.iter().enumerate() {
+            let hd = head_out.data();
+            let hdata = hd.as_slice().expect("contiguous attention output");
+            for s in 0..seq_len {
+                for d in 0..head_dim {
+                    concat_output[s * q_dim + h * head_dim + d] = hdata[s * head_dim + d];
+                }
+            }
+        }
+
+        let mut concat_tensor = Tensor::from_vec(concat_output, requires_grad);
+
+        if requires_grad {
+            let backward_op = Rc::new(AttentionBlockBackward {
+                q: q.clone(),
+                k: k.clone(),
+                v: v.clone(),
+                head_q_tensors,
+                head_k_tensors,
+                head_v_tensors,
+                head_outputs,
+                head_kv_indices,
+                seq_len,
+                head_dim,
+                q_dim,
+                kv_hidden_size,
+                result_grad: concat_tensor.grad_cell(),
+            });
+            concat_tensor.set_backward_op(backward_op);
+        }
+
+        // Output projection
         matmul(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
     }
 

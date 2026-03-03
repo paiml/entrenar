@@ -2198,10 +2198,15 @@ impl ClassifyPipeline {
         (total_loss, correct)
     }
 
-    /// Batched wgpu forward pass for train_batch (KAIZEN-008).
+    /// Batched wgpu forward pass for train_batch (KAIZEN-008 + KAIZEN-010).
     ///
     /// Tokenizes all samples, runs a single batched forward through all transformer
     /// layers (uploading FFN weights ONCE per layer), then classifies each sample.
+    ///
+    /// KAIZEN-010: Passes LoRA layers to the batched forward so that LoRA
+    /// corrections are applied to Q/V projections. Without this, only the
+    /// classifier head (5,122 params) trains on the wgpu path.
+    ///
     /// Returns `Some((total_loss, correct))` on success, `None` to fall back.
     #[cfg(feature = "gpu")]
     fn try_train_batch_wgpu(&mut self, samples: &[SafetySample]) -> Option<(f32, usize)> {
@@ -2214,9 +2219,16 @@ impl ClassifyPipeline {
             .map(|s| self.tokenize(&s.input))
             .collect();
 
+        // KAIZEN-010: Pass LoRA layers so gradients flow through Q/V adapters
+        let lora_ref = if self.lora_layers.is_empty() {
+            None
+        } else {
+            Some(self.lora_layers.as_slice())
+        };
+
         let hiddens = self.wgpu_forward_pass.as_ref()
             .expect("checked is_none above")
-            .forward_hidden_batch(&self.model, &batch_token_ids)
+            .forward_hidden_batch(&self.model, &batch_token_ids, lora_ref)
             .map_err(|e| eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}"))
             .ok()?;
 
