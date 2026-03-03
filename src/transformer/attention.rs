@@ -372,25 +372,27 @@ impl MultiHeadAttention {
         let kv_hidden_size = num_kv_heads * head_dim;
 
         // Q projection with LoRA: Q = x @ W_q + scale * (x @ A_q^T) @ B_q^T
-        // KAIZEN-018: Use transpose_tracked to preserve backward chain to original
-        // LoRA parameters. Without this, gradients accumulate on ephemeral transposed
-        // copies and the original LoRA A/B never receive gradient updates.
+        //
+        // KAIZEN-011: Use matmul_nt to compute x @ A^T directly on the ORIGINAL
+        // LoRA tensors. Previous impl created transposed copies via Tensor::from_vec
+        // which broke gradient flow — gradients accumulated on ephemeral copies
+        // instead of the actual trainable LoRA parameters.
+        //
+        // LoRA layout: A is (rank, d_in), B is (d_out, rank)
+        // matmul_nt(x, A, seq, d_in, rank) computes x @ A^T = (seq, d_in) @ (d_in, rank) = (seq, rank)
+        // matmul_nt(mid, B, seq, rank, d_out) computes mid @ B^T = (seq, rank) @ (rank, d_out) = (seq, d_out)
         let q_base = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
-        let lora_a_q_t = transpose_tracked(lora_a_q, lora_rank, hidden_size);
-        let lora_b_q_t = transpose_tracked(lora_b_q, q_dim, lora_rank);
-        let q_mid = matmul(x, &lora_a_q_t, seq_len, hidden_size, lora_rank);
-        let q_lora = matmul(&q_mid, &lora_b_q_t, seq_len, lora_rank, q_dim);
+        let q_mid = crate::autograd::matmul_nt(x, lora_a_q, seq_len, hidden_size, lora_rank);
+        let q_lora = crate::autograd::matmul_nt(&q_mid, lora_b_q, seq_len, lora_rank, q_dim);
         let q = crate::autograd::add_scaled(&q_base, &q_lora, lora_scale);
 
         // K projection (no LoRA)
         let k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
 
-        // V projection with LoRA: V = x @ W_v + scale * (x @ A_v^T) @ B_v^T
+        // V projection with LoRA (same pattern as Q)
         let v_base = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
-        let lora_a_v_t = transpose_tracked(lora_a_v, lora_rank, hidden_size);
-        let lora_b_v_t = transpose_tracked(lora_b_v, kv_hidden_size, lora_rank);
-        let v_mid = matmul(x, &lora_a_v_t, seq_len, hidden_size, lora_rank);
-        let v_lora = matmul(&v_mid, &lora_b_v_t, seq_len, lora_rank, kv_hidden_size);
+        let v_mid = crate::autograd::matmul_nt(x, lora_a_v, seq_len, hidden_size, lora_rank);
+        let v_lora = crate::autograd::matmul_nt(&v_mid, lora_b_v, seq_len, lora_rank, kv_hidden_size);
         let v = crate::autograd::add_scaled(&v_base, &v_lora, lora_scale);
 
         let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();

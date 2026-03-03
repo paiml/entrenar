@@ -529,6 +529,109 @@ impl BackwardOp for MatmulBackward {
     }
 }
 
+/// Matrix multiply with B transposed: C = A @ B^T (KAIZEN-011)
+///
+/// # Contract (C-MATMUL-NT-001)
+///
+/// - **Precondition**: A is (M, K), B is (N, K) — B's second dim matches A's second dim
+/// - **Postcondition**: Output is (M, N) where C(i,j) = Σ_k A(i,k) * B(j,k)
+/// - **Invariant**: Gradients flow to BOTH A and B (not transposed copies)
+///
+/// This is essential for LoRA where A_lora is stored as (rank, d_in) and we need
+/// `x @ A_lora^T` without creating a transposed copy that breaks gradient flow.
+///
+/// # Backward
+///
+/// - `∂L/∂A = ∂L/∂C @ B`  — (M,N) @ (N,K) = (M,K)
+/// - `∂L/∂B = ∂L/∂C^T @ A` — (N,M) @ (M,K) = (N,K)
+pub fn matmul_nt(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor {
+    assert_eq!(a.len(), m * k, "Matrix A size mismatch: expected {}×{} = {}, got {}", m, k, m * k, a.len());
+    assert_eq!(b.len(), n * k, "Matrix B size mismatch: expected {}×{} = {}, got {}", n, k, n * k, b.len());
+
+    let a_slice = a.data();
+    let b_slice = b.data();
+    let a_data = a_slice.as_slice().expect("matrix A must be contiguous");
+    let b_data = b_slice.as_slice().expect("matrix B must be contiguous");
+
+    // C = A @ B^T: C(i,j) = Σ_k A(i,k) * B(j,k)
+    let result_data = matmul_nt_compute(a_data, b_data, m, k, n);
+
+    let requires_grad = a.requires_grad() || b.requires_grad();
+    let mut result = Tensor::new(Array1::from(result_data), requires_grad);
+
+    if requires_grad {
+        let a_clone = a.clone();
+        let b_clone = b.clone();
+        let backward_op = Rc::new(MatmulNtBackward {
+            a: a_clone,
+            b: b_clone,
+            m,
+            k,
+            n,
+            result_grad: result.grad_cell(),
+        });
+        result.set_backward_op(backward_op);
+    }
+
+    result
+}
+
+/// Raw compute for C = A @ B^T using trueno SIMD GEMM
+///
+/// A is (M, K), B is (N, K), output is (M, N)
+pub fn matmul_nt_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    // Transpose B to (K, N) then use standard matmul
+    let b_t = transpose(b, n, k); // (N,K) → (K,N)
+    cpu_matmul(a, &b_t, m, k, n)
+}
+
+struct MatmulNtBackward {
+    a: Tensor,
+    b: Tensor,
+    m: usize,
+    k: usize,
+    n: usize,
+    result_grad: Rc<RefCell<Option<Array1<f32>>>>,
+}
+
+impl BackwardOp for MatmulNtBackward {
+    fn backward(&self) {
+        if let Some(grad_output) = self.result_grad.borrow().as_ref() {
+            // C = A @ B^T where A is (M,K), B is (N,K), C is (M,N)
+            //
+            // ∂L/∂A = ∂L/∂C @ B     (M,N) @ (N,K) = (M,K)
+            // ∂L/∂B = ∂L/∂C^T @ A   (N,M) @ (M,K) = (N,K)
+
+            let grad_c = grad_output.as_slice().expect("gradient output must be contiguous");
+
+            if self.a.requires_grad() {
+                // grad_A = grad_C @ B  (standard matmul)
+                let b_data = self.b.data();
+                let b_slice = b_data.as_slice().expect("matrix B must be contiguous");
+                let grad_a = matmul_compute(grad_c, b_slice, self.m, self.n, self.k);
+                self.a.accumulate_grad(Array1::from(grad_a));
+            }
+
+            if self.b.requires_grad() {
+                // grad_B = grad_C^T @ A
+                let a_data = self.a.data();
+                let a_slice = a_data.as_slice().expect("matrix A must be contiguous");
+                let grad_c_t = transpose(grad_c, self.m, self.n);
+                let grad_b = matmul_compute(&grad_c_t, a_slice, self.n, self.m, self.k);
+                self.b.accumulate_grad(Array1::from(grad_b));
+            }
+
+            // Recursively propagate
+            if let Some(op) = self.a.backward_op() {
+                op.backward();
+            }
+            if let Some(op) = self.b.backward_op() {
+                op.backward();
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -749,6 +852,112 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // matmul_nt tests (KAIZEN-011)
+    // =========================================================================
+
+    #[test]
+    fn test_matmul_nt_compute_2x2() {
+        // A = [[1, 2], [3, 4]] (2x2)
+        // B = [[5, 6], [7, 8]] (2x2)
+        // C = A @ B^T
+        // B^T = [[5, 7], [6, 8]]
+        // C = [[1*5+2*6, 1*7+2*8], [3*5+4*6, 3*7+4*8]]
+        //   = [[17, 23], [39, 53]]
+        let a = vec![1.0, 2.0, 3.0, 4.0];
+        let b = vec![5.0, 6.0, 7.0, 8.0];
+        let c = matmul_nt_compute(&a, &b, 2, 2, 2);
+        assert_eq!(c, vec![17.0, 23.0, 39.0, 53.0]);
+    }
+
+    #[test]
+    fn test_matmul_nt_compute_2x3_4x3() {
+        // A = [[1,2,3],[4,5,6]] (2x3), B = [[1,0,0],[0,1,0],[0,0,1],[1,1,1]] (4x3)
+        // C = A @ B^T (2x4)
+        // B^T cols = rows of B
+        // C(0,0) = 1*1+2*0+3*0 = 1
+        // C(0,1) = 1*0+2*1+3*0 = 2
+        // C(0,2) = 1*0+2*0+3*1 = 3
+        // C(0,3) = 1*1+2*1+3*1 = 6
+        // C(1,0) = 4*1+5*0+6*0 = 4
+        // C(1,1) = 4*0+5*1+6*0 = 5
+        // C(1,2) = 4*0+5*0+6*1 = 6
+        // C(1,3) = 4*1+5*1+6*1 = 15
+        let a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let b = vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+        let c = matmul_nt_compute(&a, &b, 2, 3, 4);
+        assert_eq!(c, vec![1.0, 2.0, 3.0, 6.0, 4.0, 5.0, 6.0, 15.0]);
+    }
+
+    #[test]
+    fn test_matmul_nt_equivalence_to_transpose_matmul() {
+        // Verify: matmul_nt(A, B, m, k, n) == matmul(A, B^T, m, k, n)
+        let a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2x3
+        let b = vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0]; // 2x3
+        let b_t = transpose(&b, 2, 3); // 3x2
+
+        let c_nt = matmul_nt_compute(&a, &b, 2, 3, 2);
+        let c_ref = matmul_compute(&a, &b_t, 2, 3, 2);
+
+        for (i, (&got, &exp)) in c_nt.iter().zip(c_ref.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-5,
+                "matmul_nt[{i}] = {got}, matmul(A, B^T)[{i}] = {exp}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_matmul_nt_backward_grad_flows_to_b() {
+        // KAIZEN-011: Verify gradients flow to the ORIGINAL B tensor (not a copy)
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0, 4.0]), false); // 2x2
+        let b = Tensor::new(Array1::from(vec![5.0, 6.0, 7.0, 8.0]), true);  // 2x2, requires_grad
+
+        let c = matmul_nt(&a, &b, 2, 2, 2);
+        assert!(c.requires_grad());
+
+        c.set_grad(Array1::from(vec![1.0, 1.0, 1.0, 1.0]));
+        if let Some(op) = c.backward_op() {
+            op.backward();
+        }
+
+        // B must have received gradient
+        let b_grad = b.grad().expect("KAIZEN-011: B must receive gradient from matmul_nt");
+
+        // grad_B = grad_C^T @ A = [[1,1],[1,1]]^T @ [[1,2],[3,4]]
+        // = [[1,1],[1,1]] @ [[1,2],[3,4]] = [[4,6],[4,6]]
+        let expected_grad_b = vec![4.0, 6.0, 4.0, 6.0];
+        for (i, (&got, &exp)) in b_grad.iter().zip(expected_grad_b.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-4,
+                "KAIZEN-011: grad_B[{i}] = {got}, expected {exp}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_matmul_nt_backward_grad_flows_to_a() {
+        let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0, 4.0]), true); // 2x2
+        let b = Tensor::new(Array1::from(vec![5.0, 6.0, 7.0, 8.0]), false); // 2x2
+
+        let c = matmul_nt(&a, &b, 2, 2, 2);
+        c.set_grad(Array1::from(vec![1.0, 1.0, 1.0, 1.0]));
+        if let Some(op) = c.backward_op() {
+            op.backward();
+        }
+
+        let a_grad = a.grad().expect("A must receive gradient");
+
+        // grad_A = grad_C @ B = [[1,1],[1,1]] @ [[5,6],[7,8]] = [[12,14],[12,14]]
+        let expected_grad_a = vec![12.0, 14.0, 12.0, 14.0];
+        for (i, (&got, &exp)) in a_grad.iter().zip(expected_grad_a.iter()).enumerate() {
+            assert!(
+                (got - exp).abs() < 1e-4,
+                "grad_A[{i}] = {got}, expected {exp}"
+            );
+        }
+    }
+
     mod mm_proptest_falsify {
         use super::*;
         use proptest::prelude::*;
@@ -790,6 +999,38 @@ mod tests {
                     prop_assert!(
                         (got - exp).abs() < 1e-4,
                         "FALSIFIED MM-005e-prop: (A@I)[{}] = {}, expected {}",
+                        i, got, exp
+                    );
+                }
+            }
+        }
+
+        // FALSIFY-MM-NT-001: matmul_nt equivalence to manual transpose
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(50))]
+
+            #[test]
+            fn falsify_mm_nt_equivalence(
+                m in 1..=6usize,
+                k in 1..=6usize,
+                n in 1..=6usize,
+                seed in 0..500u32,
+            ) {
+                let a: Vec<f32> = (0..m * k)
+                    .map(|i| ((i as f32 + seed as f32) * 0.31).sin())
+                    .collect();
+                let b: Vec<f32> = (0..n * k)
+                    .map(|i| ((i as f32 + seed as f32 + 100.0) * 0.47).cos())
+                    .collect();
+
+                let c_nt = matmul_nt_compute(&a, &b, m, k, n);
+                let b_t = transpose(&b, n, k);
+                let c_ref = matmul_compute(&a, &b_t, m, k, n);
+
+                for (i, (&got, &exp)) in c_nt.iter().zip(c_ref.iter()).enumerate() {
+                    prop_assert!(
+                        (got - exp).abs() < 1e-3,
+                        "matmul_nt[{}] = {}, expected {}",
                         i, got, exp
                     );
                 }

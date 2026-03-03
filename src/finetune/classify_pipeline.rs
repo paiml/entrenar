@@ -2110,8 +2110,12 @@ impl ClassifyPipeline {
             }
         }
 
-        // CPU fallback
-        self.model.forward_hidden(token_ids)
+        // CPU fallback — KAIZEN-011: use LoRA-aware forward when adapters exist
+        if !self.lora_layers.is_empty() {
+            self.model.forward_hidden_with_lora(token_ids, &self.lora_layers)
+        } else {
+            self.model.forward_hidden(token_ids)
+        }
     }
 
     /// Attempt GPU-accelerated forward pass (training or inference).
@@ -2380,10 +2384,15 @@ impl ClassifyPipeline {
         }
 
         // CPU optimizer step
-        // NF4 mode: only classifier head (LoRA trained on GPU)
-        // fp32 mode: LoRA + classifier head
+        // KAIZEN-011: Include LoRA in CPU optimizer when NOT on CUDA
+        let has_cuda_training = {
+            #[cfg(feature = "cuda")]
+            { self.gpu_training.is_some() }
+            #[cfg(not(feature = "cuda"))]
+            { false }
+        };
         let mut params: Vec<&mut Tensor> = Vec::new();
-        if !self.config.quantize_nf4 {
+        if !self.config.quantize_nf4 || !has_cuda_training {
             for lora in &mut self.lora_layers {
                 params.extend(lora.trainable_params());
             }
@@ -2467,10 +2476,18 @@ impl ClassifyPipeline {
         }
 
         // CPU optimizer step
-        // NF4 mode: only classifier head (LoRA trained on GPU)
-        // fp32 mode: LoRA + classifier head
+        // KAIZEN-011: Include LoRA in CPU optimizer when NOT on CUDA.
+        // NF4+CUDA: LoRA trained on GPU (backward_nf4_gpu_blocks), skip here
+        // NF4+non-CUDA: LoRA trained on CPU via autograd, include here
+        // fp32 mode: LoRA + classifier head always on CPU
+        let has_cuda_training = {
+            #[cfg(feature = "cuda")]
+            { self.gpu_training.is_some() }
+            #[cfg(not(feature = "cuda"))]
+            { false }
+        };
         let mut params: Vec<&mut Tensor> = Vec::new();
-        if !self.config.quantize_nf4 {
+        if !self.config.quantize_nf4 || !has_cuda_training {
             for lora in &mut self.lora_layers {
                 params.extend(lora.trainable_params());
             }
