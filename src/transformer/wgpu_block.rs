@@ -185,7 +185,7 @@ impl WgpuForwardPass {
         let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
         eprintln!("[wgpu] GPU-resident FFN weights: {num_layers} layers, {total_mb:.1} MB");
 
-        Ok(Self { device, config, num_layers, ffn_weights, pipeline_cache: PipelineCache::new() })
+        Ok(Self { device, config, num_layers, ffn_weights, pipeline_cache: RefCell::new(PipelineCache::new()) })
     }
 
     /// Execute forward pass through all transformer layers on GPU
