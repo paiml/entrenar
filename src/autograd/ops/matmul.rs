@@ -117,8 +117,11 @@ pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec
     }
 
     // wgpu GPU fallback (AMD/Intel/Apple GPUs via Vulkan/Metal/DX12)
+    // KAIZEN-004: Skip per-op wgpu when batched forward pass is active
     #[cfg(feature = "gpu")]
-    if m * k * n > 32_768 {
+    if !WGPU_BATCH_MODE.load(std::sync::atomic::Ordering::Relaxed)
+        && m * k * n > 32_768
+    {
         if let Some(result) = wgpu_matmul(a, b, m, k, n) {
             return result;
         }
@@ -265,6 +268,29 @@ fn cpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     c
 }
 
+/// KAIZEN-004: When WgpuForwardPass is handling the forward pass in batch mode,
+/// suppress per-op wgpu matmul. Attention matmuls go to CPU SIMD instead,
+/// avoiding buffer upload/download overhead and GPU contention with the batched FFN path.
+#[cfg(feature = "gpu")]
+static WGPU_BATCH_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Suppress per-op wgpu matmul (use CPU SIMD instead).
+///
+/// Call this before running attention on CPU while WgpuForwardPass handles FFN.
+/// Per-op wgpu adds ~3-5ms overhead per matmul (buffer upload/compute/download).
+/// For 144 attention matmuls per sample, that's 430-720ms of pure overhead.
+/// CPU SIMD is equally fast and doesn't compete for GPU bandwidth.
+#[cfg(feature = "gpu")]
+pub fn suppress_per_op_wgpu() {
+    WGPU_BATCH_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Re-enable per-op wgpu matmul.
+#[cfg(feature = "gpu")]
+pub fn unsuppress_per_op_wgpu() {
+    WGPU_BATCH_MODE.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// CPU/wgpu path (no CUDA feature)
 ///
 /// Tries wgpu GPU matmul first (Vulkan/Metal/DX12), falls back to rayon-parallel
@@ -274,8 +300,11 @@ fn cpu_matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
 pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     #[cfg(feature = "gpu")]
     {
-        // Try wgpu GPU matmul for large matrices (amortize transfer overhead)
-        if m * k * n > 32_768 {
+        // KAIZEN-004: Skip per-op wgpu when batched forward pass is active.
+        // Attention matmuls use CPU SIMD instead — equally fast, no buffer overhead.
+        if !WGPU_BATCH_MODE.load(std::sync::atomic::Ordering::Relaxed)
+            && m * k * n > 32_768
+        {
             if let Some(result) = wgpu_matmul(a, b, m, k, n) {
                 return result;
             }
