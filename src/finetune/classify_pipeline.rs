@@ -16,7 +16,7 @@
 
 use super::classification::{
     load_multi_label_corpus, load_safety_corpus, ClassificationHead, MultiLabelSafetySample,
-    SafetySample,
+    SafetySample, TokenizedSample,
 };
 use crate::autograd::matmul;
 use crate::lora::LoRAConfig;
@@ -900,6 +900,194 @@ impl ClassifyPipeline {
             ids.push(0);
         }
         ids
+    }
+
+    /// Pre-tokenize a batch of samples for efficient training (KAIZEN-028).
+    ///
+    /// Tokenizes each sample once and stores the token IDs alongside the label.
+    /// This eliminates redundant BPE encoding across epochs and batches.
+    ///
+    /// # Contract (C-PRETOK-001)
+    ///
+    /// - **Precondition**: All samples have non-empty `input`
+    /// - **Postcondition**: Each `TokenizedSample` has `token_ids.len() in 1..=max_seq_len`
+    /// - **Invariant**: Tokenization is deterministic — same input always produces same IDs
+    pub fn pre_tokenize(&self, samples: &[SafetySample]) -> Vec<TokenizedSample> {
+        let has_tokenizer = self.tokenizer.is_some();
+        samples
+            .iter()
+            .map(|s| {
+                let token_ids = if has_tokenizer {
+                    self.tokenize(&s.input)
+                } else {
+                    // Byte-level fallback for tests without BPE tokenizer
+                    let mut ids = s.input_ids();
+                    ids.truncate(self.config.max_seq_len);
+                    if ids.is_empty() {
+                        ids.push(0);
+                    }
+                    ids
+                };
+                TokenizedSample {
+                    token_ids,
+                    label: s.label,
+                }
+            })
+            .collect()
+    }
+
+    /// Train on a batch of pre-tokenized samples (KAIZEN-028).
+    ///
+    /// Identical to [`train_batch`] but skips tokenization — token IDs are
+    /// pre-computed at dataset construction time.
+    pub fn train_batch_tokenized(&mut self, samples: &[TokenizedSample]) -> BatchResult {
+        if samples.is_empty() {
+            return BatchResult { avg_loss: 0.0, correct: 0, total: 0, grad_norm: 0.0 };
+        }
+
+        let batch_size = samples.len();
+
+        // ── 1. Zero gradients ──────────────────────────────────────────
+        self.zero_all_gradients();
+
+        // ── 2. Accumulate gradients over all samples ───────────────────
+        #[cfg(feature = "gpu")]
+        let (total_loss, correct) = self.try_train_batch_wgpu_tokenized(samples)
+            .unwrap_or_else(|| self.train_batch_per_sample_tokenized(samples));
+
+        #[cfg(not(feature = "gpu"))]
+        let (total_loss, correct) = self.train_batch_per_sample_tokenized(samples);
+
+        // ── 3. Normalize gradients by batch size ───────────────────────
+        self.scale_all_gradients(1.0 / batch_size as f32);
+
+        // ── 4. Gradient clipping (captures pre-clip norm) ────────────
+        let grad_norm = if let Some(max_norm) = self.config.gradient_clip_norm {
+            let mut params = self.trainable_parameters_mut();
+            clip_grad_norm_refs(&mut params, max_norm)
+        } else {
+            self.compute_grad_norm()
+        };
+
+        // ── 5. Optimizer step (once for the whole batch) ───────────────
+        #[cfg(feature = "cuda")]
+        {
+            if self.gpu_training.is_some() && !self.config.quantize_nf4 {
+                let lr = self.optimizer.lr();
+                self.gpu_optimizer_step(lr);
+            }
+        }
+
+        #[cfg(feature = "cuda")]
+        {
+            if self.gpu_training.is_some() && self.config.quantize_nf4 {
+                self.nf4_lora_batch_optimizer_step(batch_size);
+            }
+        }
+
+        let mut params: Vec<&mut Tensor> = Vec::new();
+        if !self.config.quantize_nf4 {
+            for lora in &mut self.lora_layers {
+                params.extend(lora.trainable_params());
+            }
+        }
+        params.extend(self.classifier.parameters_mut());
+        self.optimizer.step_refs(&mut params);
+
+        BatchResult {
+            avg_loss: total_loss / batch_size as f32,
+            correct,
+            total: batch_size,
+            grad_norm,
+        }
+    }
+
+    /// Per-sample forward + backward with pre-tokenized IDs (KAIZEN-028).
+    fn train_batch_per_sample_tokenized(&mut self, samples: &[TokenizedSample]) -> (f32, usize) {
+        let mut total_loss = 0.0f32;
+        let mut correct = 0usize;
+        for sample in samples {
+            let (loss, predicted) = self.forward_backward_single(&sample.token_ids, sample.label);
+            total_loss += loss;
+            if predicted == sample.label {
+                correct += 1;
+            }
+        }
+        (total_loss, correct)
+    }
+
+    /// Batched wgpu forward with pre-tokenized IDs (KAIZEN-028).
+    #[cfg(feature = "gpu")]
+    fn try_train_batch_wgpu_tokenized(&mut self, samples: &[TokenizedSample]) -> Option<(f32, usize)> {
+        if self.wgpu_forward_pass.is_none() {
+            return None;
+        }
+
+        let batch_token_ids: Vec<Vec<u32>> = samples
+            .iter()
+            .map(|s| s.token_ids.clone())
+            .collect();
+
+        let lora_ref = if self.lora_layers.is_empty() {
+            None
+        } else {
+            Some(self.lora_layers.as_slice())
+        };
+
+        let hiddens = self.wgpu_forward_pass.as_ref()
+            .expect("checked is_none above")
+            .forward_hidden_batch(&self.model, &batch_token_ids, lora_ref)
+            .map_err(|e| eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}"))
+            .ok()?;
+
+        let mut total_loss = 0.0f32;
+        let mut correct = 0usize;
+        for (i, hidden) in hiddens.iter().enumerate() {
+            let (loss, predicted) = self.classify_backward_from_hidden(
+                hidden,
+                batch_token_ids[i].len(),
+                samples[i].label,
+            );
+            total_loss += loss;
+            if predicted == samples[i].label {
+                correct += 1;
+            }
+        }
+        Some((total_loss, correct))
+    }
+
+    /// Accumulate gradients with pre-tokenized samples (KAIZEN-028).
+    ///
+    /// Identical to [`accumulate_gradients`] but uses pre-tokenized IDs.
+    pub fn accumulate_gradients_tokenized(&mut self, micro_batch: &[TokenizedSample]) -> BatchResult {
+        if micro_batch.is_empty() {
+            return BatchResult { avg_loss: 0.0, correct: 0, total: 0, grad_norm: 0.0 };
+        }
+
+        let mut total_loss = 0.0f32;
+        let mut correct = 0usize;
+
+        for sample in micro_batch {
+            let (loss, predicted) = self.forward_backward_single(&sample.token_ids, sample.label);
+            total_loss += loss;
+            if predicted == sample.label {
+                correct += 1;
+            }
+        }
+
+        BatchResult {
+            avg_loss: total_loss / micro_batch.len() as f32,
+            correct,
+            total: micro_batch.len(),
+            grad_norm: 0.0,
+        }
+    }
+
+    /// Forward-only inference with pre-tokenized sample (KAIZEN-028).
+    ///
+    /// Used for validation where we need loss + prediction without backward pass.
+    pub fn forward_only_tokenized(&mut self, token_ids: &[u32], label: usize) -> (f32, usize) {
+        self.forward_only(token_ids, label)
     }
 
     /// Build LoRA layers for Q and V projections across all transformer layers.

@@ -43,7 +43,7 @@ mod tests_classification_contract_falsify;
 pub use classification::{
     bce_with_logits_loss, compute_class_weights, corpus_stats, cross_entropy_loss,
     load_multi_label_corpus, load_safety_corpus, ClassWeightStrategy, ClassificationHead,
-    MultiLabelSafetySample, SafetyCorpusStats, SafetySample,
+    MultiLabelSafetySample, SafetyCorpusStats, SafetySample, TokenizedSample,
 };
 pub use classify_pipeline::{
     BatchResult, ClassifyConfig, ClassifyPipeline, DataStats, DiagSeverity,
