@@ -152,17 +152,17 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | # | Practice | Status | Evidence |
 |---|----------|--------|----------|
 | 11 | Automatic crash detection (process heartbeat) | **PASS** | R-003: `heartbeat` file updated every step with timestamp + step number. |
-| 12 | Automatic restart on crash | **FAIL** | No supervisor/watchdog process. Manual restart required. |
+| 12 | Automatic restart on crash | **PASS** | `training-watchdog.py`: auto-restart with configurable max retries and cooldown. |
 | 13 | Graceful shutdown on SIGTERM/SIGINT | **PASS** | R-008: `ctrlc` handler saves emergency checkpoint on SIGINT/SIGTERM. |
 | 14 | NaN/Inf detection in loss | **PASS** | R-018: Non-finite loss detected and skipped with warning. |
 | 15 | Gradient norm monitoring for spike detection | **PASS** | R-017: ZClip EMA-based z-score spike detection for gradient norms. |
 | 16 | Automatic rollback on loss spike | **PASS** | R-016b: EMA-based loss spike detection (3× threshold) with rollback counter. |
-| 17 | Training progress watchdog (detect hangs) | **FAIL** | No hang detection. GPU deadlock = silent failure. |
+| 17 | Training progress watchdog (detect hangs) | **PASS** | `training-watchdog.py`: JSONL log monitoring with configurable hang timeout, SIGTERM→SIGKILL escalation. |
 | 18 | Multiple checkpoint retention for rollback | **PASS** | R-009: Step-numbered checkpoints with configurable `max_checkpoints`. |
 | 19 | Error classification and logging | **PARTIAL** | Rust panics with backtraces. No structured error taxonomy. |
-| 20 | Post-crash diagnostic dump | **FAIL** | No flight recorder, no NCCL-style event capture. |
+| 20 | Post-crash diagnostic dump | **PASS** | `training-watchdog.py`: captures last N stderr/stdout lines, nvidia-smi GPU state, recent JSONL entries, exit code/signal. |
 
-**Score: 6.5/10**
+**Score: 9.5/10**
 
 ### Category 3: Observability & Monitoring (10 practices)
 
@@ -201,14 +201,14 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 37 | Activation gradient clipping at device boundaries | **PASS** | C-EMBED-GRAD-001. ALB-044 fix. Clip before CPU optimizer. |
 | 38 | Gradient accumulation across micro-batches | **PARTIAL** | ALB-066: CPU embedding accumulation works. GPU per-block optimizer runs interleaved (arch limitation). |
 | 39 | Gradient overflow/underflow detection | **PASS** | R-018: NaN/Inf detection in loss + R-017 ZClip gradient spike detection. |
-| 40 | Per-parameter gradient statistics | **FAIL** | No per-parameter gradient norm/mean/std logging. |
+| 40 | Per-parameter gradient statistics | **PASS** | R-040: Per-parameter-group grad norms (LM head, embedding) logged to JSONL every step. |
 | 41 | Gradient noise scale estimation | **PASS** | R-029: B_noise = Var(||g||)/E[||g||]² from rolling window, logged every 100 steps. |
 | 42 | Adaptive gradient clipping (ZClip/SPAM-style) | **PASS** | R-017: EMA-based z-score spike detection with adaptive threshold. |
 | 43 | Gradient checkpointing (activation recomputation) | **FAIL** | No activation checkpointing. Full activation storage. |
 | 44 | Gradient synchronization verification | **PASS** | Single GPU. No sync needed. Trivially satisfied. |
 | 45 | Dead gradient detection (zero grad on trainable param) | **PASS** | CLAUDE.md Rule 4. Verified after ALB-038 fix. |
 
-**Score: 6.5/10**
+**Score: 7.5/10**
 
 ### Category 6: Data Pipeline (10 practices)
 
@@ -244,17 +244,17 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | # | Practice | Status | Evidence |
 |---|----------|--------|----------|
 | 61 | Validation perplexity during training | **PASS** | R-005: `eval_batch()` runs on val set at checkpoint boundaries, logs to JSONL. |
-| 62 | Downstream benchmark suite (HumanEval, MBPP) | **FAIL** | No automated benchmark evaluation. |
+| 62 | Downstream benchmark suite (HumanEval, MBPP) | **PASS** | R-020: `eval-humaneval.py` — 164 HumanEval problems, unbiased pass@k, sandboxed execution. |
 | 63 | Evaluation at checkpoint boundaries | **PASS** | R-005: `run_validation_eval()` runs at every intermediate checkpoint. |
 | 64 | Contamination detection | **PASS** | R-030: `contamination-check.py` — 13-gram exact match (GPT-4 methodology), Parquet/text input, HumanEval built-in. |
 | 65 | Two-tier eval (development + unseen benchmarks) | **FAIL** | No benchmark infrastructure at all. |
 | 66 | Perplexity-benchmark correlation tracking | **FAIL** | No correlation analysis. |
 | 67 | Intermediate checkpoint evaluation | **PASS** | R-005: Validation eval runs at every `save_interval` checkpoint. |
 | 68 | Human evaluation pipeline | **FAIL** | No human eval infrastructure. |
-| 69 | Code execution evaluation (pass@k) | **FAIL** | No code execution sandbox for functional correctness. |
+| 69 | Code execution evaluation (pass@k) | **PASS** | R-020: `eval-humaneval.py` — sandboxed subprocess execution with import guard, timeout, pass@k. |
 | 70 | Model comparison framework (A/B testing) | **PASS** | R-031: `compare-checkpoints.py` side-by-side PPL eval with JSON output. |
 
-**Score: 5.0/10**
+**Score: 7.0/10**
 
 ### Category 9: Distributed Training (10 practices)
 
@@ -328,21 +328,21 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | Category | Score | Max | Pct |
 |----------|-------|-----|-----|
 | 1. Checkpointing & State Persistence | 10.0 | 10 | 100% |
-| 2. Fault Tolerance & Crash Recovery | 6.5 | 10 | 65% |
+| 2. Fault Tolerance & Crash Recovery | 9.5 | 10 | 95% |
 | 3. Observability & Monitoring | 10.0 | 10 | 100% |
 | 4. Mixed Precision Training | 0.5 | 5 | 10% |
-| 5. Gradient Management | 6.5 | 10 | 65% |
+| 5. Gradient Management | 7.5 | 10 | 75% |
 | 6. Data Pipeline | 5.5 | 10 | 55% |
 | 7. Learning Rate & Optimization | 5.0 | 5 | 100% |
-| 8. Evaluation & Benchmarking | 5.0 | 10 | 50% |
+| 8. Evaluation & Benchmarking | 7.0 | 10 | 70% |
 | 9. Distributed Training | 0.0 | 10 | 0% |
 | 10. Reproducibility & Provenance | 3.5 | 5 | 70% |
 | 11. Security & Supply Chain | 3.5 | 5 | 70% |
 | 12. Configuration & Validation | 4.5 | 5 | 90% |
 | 13. Provable Correctness & Contracts | 4.5 | 5 | 90% |
-| **TOTAL** | **65.0** | **100** | **65%** |
+| **TOTAL** | **71.0** | **100** | **71%** |
 
-### Letter Grade: **D**
+### Letter Grade: **C**
 
 | Grade | Range | Meaning |
 |-------|-------|---------|
@@ -361,9 +361,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 ### Critical Weaknesses (Bottom Quartile)
 1. **Distributed training** (0%) -- single GPU only. Every production system supports multi-GPU.
 2. **Mixed precision** (10%) -- no BF16/FP16. 2x-4x throughput left on table.
-3. **Evaluation** (50%) -- val perplexity + contamination detection, but no HumanEval/MBPP code execution eval.
-4. **Data pipeline** (55%) -- shuffling + FIM, but no dedup, quality filtering, or curriculum learning.
-5. **Fault tolerance** (65%) -- loss spike rollback, but no automatic restart on crash, no heartbeat monitoring.
+3. **Data pipeline** (55%) -- shuffling + FIM, but no dedup, quality filtering, or curriculum learning.
 
 ---
 
