@@ -647,7 +647,11 @@ impl CudaTransformerTrainer {
         ).ok()?;
 
         // Clip LM head weight gradient
+        // SYNC: cuMemcpyDtoH doesn't synchronize with CU_STREAM_NON_BLOCKING streams.
+        // Without this, compute_clip_scale reads stale GPU buffers → garbage clip scale.
+        // Root cause of ALB-065 silent crash.
         if let Some(max_norm) = max_grad_norm {
+            stream.synchronize().ok()?;
             let scale = Self::compute_clip_scale(&self.lm_head_grad_gpu, max_norm);
             let n = self.lm_head_grad_gpu.len() as u32;
             let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, scale, n, stream);
@@ -663,8 +667,9 @@ impl CudaTransformerTrainer {
             seq_len as u32, hidden_size as u32, 1e-5_f32, stream,
         ).ok()?;
 
-        // Clip final norm weight gradient
+        // Clip final norm weight gradient (sync for same reason as LM head clip)
         if let Some(max_norm) = max_grad_norm {
+            stream.synchronize().ok()?;
             let scale = Self::compute_clip_scale(&self.gpu_training.grad_final_norm_weight, max_norm);
             let n = self.gpu_training.grad_final_norm_weight.len() as u32;
             let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
@@ -719,8 +724,12 @@ impl CudaTransformerTrainer {
                 &mut self.cuda_grad_workspace,
             ).ok()?;
 
-            // Per-block gradient clipping: estimate L2 norm from workspace, scale if needed
+            // Per-block gradient clipping: estimate L2 norm from workspace, scale if needed.
+            // SYNC required: backward kernels run on CU_STREAM_NON_BLOCKING stream,
+            // but clip_workspace_gradients() uses cuMemcpyDtoH which doesn't wait for
+            // non-blocking streams. Without sync, reads stale GPU data (ALB-065).
             if let Some(max_norm) = max_grad_norm {
+                stream.synchronize().ok()?;
                 clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
             }
 
