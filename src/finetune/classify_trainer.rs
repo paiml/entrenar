@@ -14,6 +14,7 @@
 
 use super::classification::SafetySample;
 use super::classify_pipeline::ClassifyPipeline;
+use super::distributed::DistributedConfig;
 use crate::eval::classification::{ConfusionMatrix, MultiClassMetrics};
 use crate::optim::LRScheduler;
 use crate::optim::WarmupCosineDecayLR;
@@ -50,6 +51,12 @@ pub struct TrainingConfig {
     /// `CudaTransformerBlock`, achieving ~8x VRAM compression on frozen weights.
     /// Only LoRA adapters remain trainable in fp32.
     pub quantize_nf4: bool,
+    /// Distributed training configuration (multi-node TCP gradient AllReduce).
+    ///
+    /// When set, the trainer operates in either coordinator or worker mode:
+    /// - Coordinator: manages epochs, shards data, AllReduces gradients (F-DP-001)
+    /// - Worker: receives shards, computes forward/backward, sends gradients
+    pub distributed: Option<DistributedConfig>,
 }
 
 impl Default for TrainingConfig {
@@ -66,6 +73,7 @@ impl Default for TrainingConfig {
             lr_min: 1e-6,
             oversample_minority: false,
             quantize_nf4: false,
+            distributed: None,
         }
     }
 }
@@ -1248,6 +1256,103 @@ impl ClassifyTrainer {
     /// Get a mutable reference to the underlying pipeline.
     pub fn pipeline_mut(&mut self) -> &mut ClassifyPipeline {
         &mut self.pipeline
+    }
+
+    /// Run as a distributed worker node.
+    ///
+    /// Connects to the coordinator, then enters a loop:
+    /// 1. Receive shard assignment (or shutdown)
+    /// 2. Compute forward/backward on assigned shard
+    /// 3. Collect LoRA gradients and send to coordinator
+    /// 4. Receive averaged gradients and apply optimizer step
+    ///
+    /// # Contract: F-DP-001 (Weight Consistency)
+    ///
+    /// After applying averaged gradients, worker weights match coordinator weights.
+    ///
+    /// # Errors
+    ///
+    /// Returns error on connection failure or protocol violation.
+    pub fn run_worker(&mut self) -> crate::Result<TrainResult> {
+        let dist_config = self.config.distributed.clone().ok_or_else(|| {
+            crate::Error::ConfigError("distributed config required for worker mode".into())
+        })?;
+
+        let gpu_count = 1u32; // single GPU per worker for now
+        let backend = "cpu"; // will be wgpu/cuda when GPU training wired
+
+        let client = super::worker_client::WorkerClient::connect(
+            dist_config, gpu_count, backend,
+        ).map_err(|e| crate::Error::ConfigError(format!("worker connect failed: {e}")))?;
+
+        eprintln!(
+            "[worker {}] Connected (total workers: {})",
+            client.worker_id(),
+            client.total_workers(),
+        );
+
+        let total_start = std::time::Instant::now();
+        let epoch_metrics_vec: Vec<EpochMetrics> = Vec::new();
+        let best_val_loss = f32::INFINITY;
+        let best_epoch = 0usize;
+
+        // Clone training data so we can index into it by shard range
+        let all_samples: Vec<SafetySample> = self.train_data.clone();
+
+        loop {
+            let shard = match client.receive_shard() {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    eprintln!("[worker {}] Received shutdown", client.worker_id());
+                    break;
+                }
+                Err(e) => {
+                    return Err(crate::Error::ConfigError(format!("shard receive failed: {e}")));
+                }
+            };
+
+            let step = shard.step;
+            let shard_start = shard.shard_start.min(all_samples.len());
+            let shard_end = shard.shard_end.min(all_samples.len());
+            let shard_data = &all_samples[shard_start..shard_end];
+
+            // Forward + backward on our shard
+            let batch_result = self.pipeline.train_batch(shard_data);
+
+            // Collect LoRA gradients
+            let gradients = self.pipeline.collect_lora_gradients();
+
+            // Send gradients to coordinator
+            client.send_gradients(
+                step,
+                gradients,
+                batch_result.avg_loss,
+                batch_result.correct,
+                batch_result.total,
+            ).map_err(|e| crate::Error::ConfigError(format!("gradient send failed: {e}")))?;
+
+            // Receive averaged gradients
+            let averaged = client.receive_averaged()
+                .map_err(|e| crate::Error::ConfigError(format!("averaged receive failed: {e}")))?;
+
+            // Apply averaged gradients via optimizer step
+            self.pipeline.apply_lora_gradients(&averaged.gradients);
+
+            eprintln!(
+                "[worker {}] step {step}: loss={:.4}, global_loss={:.4}",
+                client.worker_id(),
+                batch_result.avg_loss,
+                averaged.global_loss,
+            );
+        }
+
+        Ok(TrainResult {
+            epoch_metrics: epoch_metrics_vec,
+            best_epoch,
+            best_val_loss,
+            stopped_early: false,
+            total_time_ms: total_start.elapsed().as_millis() as u64,
+        })
     }
 
     /// Evaluate the model on a dataset, returning structured per-class metrics.
