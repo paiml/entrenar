@@ -2759,9 +2759,9 @@ impl ClassifyPipeline {
         {
             if self.gpu_training.is_some() {
                 if self.config.quantize_nf4 {
-                    self.backward_nf4_gpu_blocks(&grad_logits, seq_len);
+                    self.backward_nf4_gpu_blocks(&grad_logits, orig_seq_len);
                 } else {
-                    self.backward_gpu_blocks(&grad_logits, seq_len);
+                    self.backward_gpu_blocks(&grad_logits, orig_seq_len);
                 }
             }
         }
