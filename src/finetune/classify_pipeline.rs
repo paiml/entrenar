@@ -534,14 +534,24 @@ impl ClassifyPipeline {
             let has_cuda = false;
 
             if !has_cuda {
-                match crate::transformer::WgpuForwardPass::new_default(model_config) {
+                // KAIZEN-015: Pre-upload FFN weights to GPU (zero H2D per forward pass)
+                match crate::transformer::WgpuForwardPass::with_resident_weights(&model) {
                     Ok(pass) => {
-                        eprintln!("[wgpu] GPU forward pass initialized");
+                        eprintln!("[wgpu] GPU forward pass initialized (resident weights)");
                         Some(pass)
                     }
                     Err(e) => {
-                        eprintln!("[wgpu] GPU initialization failed, using CPU: {e}");
-                        None
+                        eprintln!("[wgpu] GPU resident init failed, trying default: {e}");
+                        match crate::transformer::WgpuForwardPass::new_default(model_config) {
+                            Ok(pass) => {
+                                eprintln!("[wgpu] GPU forward pass initialized (upload per call)");
+                                Some(pass)
+                            }
+                            Err(e2) => {
+                                eprintln!("[wgpu] GPU initialization failed, using CPU: {e2}");
+                                None
+                            }
+                        }
                     }
                 }
             } else {
@@ -669,14 +679,24 @@ impl ClassifyPipeline {
             let has_cuda = false;
 
             if !has_cuda {
-                match crate::transformer::WgpuForwardPass::new_default(model_config) {
+                // KAIZEN-015: Pre-upload FFN weights to GPU
+                match crate::transformer::WgpuForwardPass::with_resident_weights(&model) {
                     Ok(pass) => {
-                        eprintln!("[wgpu] Batched forward pass initialized ({} layers)", model_config.num_hidden_layers);
+                        eprintln!("[wgpu] Batched forward pass initialized ({} layers, resident weights)", model_config.num_hidden_layers);
                         Some(pass)
                     }
                     Err(e) => {
-                        eprintln!("[wgpu] GPU init failed, using per-op fallback: {e}");
-                        None
+                        eprintln!("[wgpu] Resident init failed, trying default: {e}");
+                        match crate::transformer::WgpuForwardPass::new_default(model_config) {
+                            Ok(pass) => {
+                                eprintln!("[wgpu] Batched forward pass initialized ({} layers, upload per call)", model_config.num_hidden_layers);
+                                Some(pass)
+                            }
+                            Err(e2) => {
+                                eprintln!("[wgpu] GPU init failed, using CPU: {e2}");
+                                None
+                            }
+                        }
                     }
                 }
             } else {
@@ -813,7 +833,12 @@ impl ClassifyPipeline {
             let has_cuda = false;
 
             if !has_cuda {
-                crate::transformer::WgpuForwardPass::new_default(model_config)
+                // KAIZEN-015: Pre-upload FFN weights to GPU
+                crate::transformer::WgpuForwardPass::with_resident_weights(&model)
+                    .or_else(|e| {
+                        eprintln!("[wgpu] Resident init failed: {e}, trying default");
+                        crate::transformer::WgpuForwardPass::new_default(model_config)
+                    })
                     .map_err(|e| eprintln!("[wgpu] GPU init failed: {e}"))
                     .ok()
             } else {
