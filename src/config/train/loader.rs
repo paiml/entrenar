@@ -1032,6 +1032,10 @@ fn save_and_validate_checkpoint(
     loss_ema: f64,
 ) {
     let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
+    // R-001: Save CPU embedding optimizer state (synchronous, small file)
+    if let Err(e) = trainer.save_optimizer_state(&spec.training.output_dir) {
+        println!("  [WARN] Failed to save optimizer state: {}", e);
+    }
     // R-011: Async checkpointing — prepare data on main thread, write on background thread
     let save_fn = trainer.prepare_async_save(model_name, "LlamaForCausalLM");
     let async_path = ckpt_path.clone();
@@ -1322,6 +1326,13 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
         "✓ Model weights saved ({} bytes)",
         std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
     );
+
+    // R-001: Save CPU embedding optimizer state for resume
+    if let Err(e) = trainer.save_optimizer_state(&spec.training.output_dir) {
+        println!("  [WARN] Failed to save optimizer state: {}", e);
+    } else {
+        println!("✓ Optimizer state saved (CPU embedding m/v buffers)");
+    }
 
     save_config_and_metadata(trainer.model().config(), trainer.step(),
         &trainer.metrics, &weights_path, spec)
