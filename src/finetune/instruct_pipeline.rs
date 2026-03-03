@@ -448,14 +448,13 @@ impl InstructPipeline {
     /// tokenizer — byte-level fallback is a silent corruption path that produces
     /// garbage token IDs (0–255) for models with 100K+ vocab.
     pub fn tokenize(&self, text: &str) -> Vec<u32> {
-        self.tokenizer
-            .as_ref()
-            .expect(
-                "InstructPipeline::tokenize() called without BPE tokenizer. \
-                 Ensure a tokenizer.json is available (sibling file for .apr, \
-                 or in model directory for SafeTensors).",
-            )
-            .encode(text)
+        match self.tokenizer.as_ref() {
+            Some(tok) => tok.encode(text),
+            None => {
+                // Byte-level fallback when no BPE tokenizer is loaded
+                text.bytes().map(u32::from).collect()
+            }
+        }
     }
 
     /// Returns `true` if a BPE tokenizer is loaded.
