@@ -608,6 +608,12 @@ fn train_loop_cuda(
     let shuffle = spec.training.shuffle;
     let seed = spec.training.seed.unwrap_or(42);
 
+    // R-005: Load validation batches if val path exists
+    let val_batches = load_val_batches(spec);
+
+    // R-018: NaN/Inf detection counter
+    let mut nan_skips: usize = 0;
+
     'outer: for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let mut total_loss = 0.0;
@@ -637,7 +643,17 @@ fn train_loop_cuda(
             }
 
             let batch = &batches[batch_idx];
+            // R-028: Per-step timing
+            let step_start = std::time::Instant::now();
             let batch_loss = trainer.train_batch(batch);
+            let step_elapsed = step_start.elapsed();
+
+            // R-018: NaN/Inf detection — skip step if loss is non-finite
+            if !batch_loss.is_finite() {
+                nan_skips += 1;
+                println!("  [WARN] NaN/Inf loss at step {} (skip #{}) — skipping", trainer.step(), nan_skips);
+                continue;
+            }
             total_loss += batch_loss;
             batches_processed += 1;
 
@@ -663,12 +679,16 @@ fn train_loop_cuda(
 
                 // R-004: Get gradient norm
                 let grad_norm = trainer.last_grad_norm();
+                // R-013: GPU memory usage
+                let (gpu_used_mb, gpu_total_mb) = trainer.gpu_memory_mb();
+                // R-028: Step time in ms
+                let step_ms = step_elapsed.as_secs_f64() * 1000.0;
 
                 println!(
-                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} mfu={:.1}% gnorm={:.2e} eta={:.0}s",
+                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} mfu={:.1}% gnorm={:.2e} gpu={}/{}MB step={:.0}ms eta={:.0}s",
                     batches_done, num_batches,
                     trainer.step(), batch_loss, trainer.current_lr(),
-                    tok_per_sec, mfu, grad_norm, remaining,
+                    tok_per_sec, mfu, grad_norm, gpu_used_mb, gpu_total_mb, step_ms, remaining,
                 );
 
                 // ALB-045: Write snapshot for `apr monitor`
@@ -689,22 +709,15 @@ fn train_loop_cuda(
                     start_time.elapsed().as_secs_f64());
             }
 
-            // ALB-068: Intermediate checkpoint saving at save_interval boundaries
-            // R-009: Step-numbered filenames with retention limit
+            // ALB-068/R-009: Intermediate checkpoint saving at save_interval
             let current_step = trainer.step();
             if current_step > 0 && current_step != last_save_step
                 && current_step % save_interval == 0
             {
-                let ckpt_path = checkpoint_path(&spec.training.output_dir, current_step);
-                if let Err(e) = trainer.save(&ckpt_path, &model_name, "LlamaForCausalLM") {
-                    println!("  [WARN] Checkpoint save at step {} failed: {}", current_step, e);
-                } else {
-                    println!("  [checkpoint] step={} saved to {}", current_step, ckpt_path.display());
-                    // R-006/R-007: Save training state alongside checkpoint
-                    save_training_state(&spec.training.output_dir, current_step, epoch, iter_idx);
-                    // R-009: Prune old checkpoints
-                    prune_checkpoints(&spec.training.output_dir, max_checkpoints);
-                }
+                save_and_validate_checkpoint(
+                    trainer, spec, &val_batches, &model_name,
+                    current_step, epoch, iter_idx, max_checkpoints, &mut jsonl_file,
+                );
                 last_save_step = current_step;
             }
         }
@@ -752,6 +765,114 @@ fn train_loop_cuda(
     }
 
     save_trained_model_cuda(trainer, spec)
+}
+
+/// R-005: Load validation batches if val path is configured.
+fn load_val_batches(spec: &TrainSpec) -> Vec<LMBatch> {
+    let val_path = match &spec.data.val {
+        Some(p) if p.exists() => p,
+        _ => return Vec::new(),
+    };
+    let batch_size = spec.data.batch_size;
+    let seq_len = spec.data.seq_len.unwrap_or(128);
+    let tokenizer = load_tokenizer(spec).ok().flatten();
+    let tokenizer_ref = tokenizer.as_ref();
+
+    // Try loading from parquet directory or file
+    if val_path.is_dir() {
+        if let Some(tok) = tokenizer_ref {
+            let column = spec.data.input_column.as_deref().unwrap_or("text");
+            if let Ok(batches) = load_lm_batches_from_parquet(val_path, tok, batch_size, seq_len, column) {
+                println!("  ✓ {} validation batches loaded from {}", batches.len(), val_path.display());
+                return batches;
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// R-005: Run validation evaluation and log results.
+#[cfg(feature = "cuda")]
+fn run_validation_eval(
+    trainer: &mut CudaTransformerTrainer,
+    val_batches: &[LMBatch],
+    step: usize,
+    jsonl_file: &mut Option<std::fs::File>,
+) {
+    if val_batches.is_empty() {
+        return;
+    }
+    let mut total_loss = 0.0;
+    let mut count = 0;
+    for batch in val_batches {
+        let loss = trainer.eval_batch(batch);
+        if loss > 0.0 {
+            total_loss += loss;
+            count += 1;
+        }
+    }
+    if count == 0 {
+        return;
+    }
+    let val_loss = total_loss / count as f32;
+    let val_ppl = crate::train::perplexity(val_loss);
+    println!("  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches)", step, val_loss, val_ppl, count);
+
+    // Log to JSONL
+    use std::io::Write;
+    if let Some(ref mut f) = jsonl_file {
+        let entry = serde_json::json!({
+            "type": "eval",
+            "step": step,
+            "val_loss": val_loss,
+            "val_ppl": val_ppl,
+            "timestamp": now_ms(),
+        });
+        let _ = writeln!(f, "{}", entry);
+    }
+}
+
+/// Save checkpoint with integrity verification, state persistence, pruning, and validation.
+#[cfg(feature = "cuda")]
+#[allow(clippy::too_many_arguments)]
+fn save_and_validate_checkpoint(
+    trainer: &mut CudaTransformerTrainer,
+    spec: &TrainSpec,
+    val_batches: &[LMBatch],
+    model_name: &str,
+    step: usize,
+    epoch: usize,
+    batch_idx: usize,
+    max_checkpoints: usize,
+    jsonl_file: &mut Option<std::fs::File>,
+) {
+    let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
+    if let Err(e) = trainer.save(&ckpt_path, model_name, "LlamaForCausalLM") {
+        println!("  [WARN] Checkpoint save at step {} failed: {}", step, e);
+    } else {
+        verify_checkpoint(&ckpt_path);
+        println!("  [checkpoint] step={} saved to {}", step, ckpt_path.display());
+        save_training_state(&spec.training.output_dir, step, epoch, batch_idx);
+        prune_checkpoints(&spec.training.output_dir, max_checkpoints);
+    }
+    run_validation_eval(trainer, val_batches, step, jsonl_file);
+}
+
+/// R-010: Verify checkpoint file integrity after save.
+fn verify_checkpoint(path: &std::path::Path) {
+    match std::fs::metadata(path) {
+        Ok(meta) => {
+            let size_mb = meta.len() / (1024 * 1024);
+            if meta.len() == 0 {
+                println!("  [WARN] Checkpoint file is empty: {}", path.display());
+            } else {
+                println!("  [verify] checkpoint OK ({} MB)", size_mb);
+            }
+        }
+        Err(e) => {
+            println!("  [WARN] Checkpoint verification failed: {}", e);
+        }
+    }
 }
 
 /// R-015: Generate shuffled or sequential batch indices for an epoch.
