@@ -215,6 +215,8 @@ pub struct CudaTransformerTrainer {
     accumulated_batches: usize,
     /// R-004: Last observed LM head gradient L2 norm (proxy for global grad norm)
     last_grad_norm: f32,
+    /// R-040: Last observed embedding activation gradient L2 norm
+    last_embed_grad_norm: f32,
 }
 
 #[cfg(feature = "cuda")]
@@ -440,6 +442,7 @@ impl CudaTransformerTrainer {
             accumulated_loss: 0.0,
             accumulated_batches: 0,
             last_grad_norm: 0.0,
+            last_embed_grad_norm: 0.0,
         })
     }
 
@@ -824,6 +827,7 @@ impl CudaTransformerTrainer {
         if let Some(max_norm) = self.config.base.max_grad_norm {
             let sq_sum: f64 = embed_grad_data.iter().map(|&x| (x as f64) * (x as f64)).sum();
             let grad_norm = sq_sum.sqrt() as f32;
+            self.last_embed_grad_norm = grad_norm; // R-040: per-parameter-group tracking
             if grad_norm > max_norm {
                 let scale = max_norm / grad_norm;
                 for g in &mut embed_grad_data {
@@ -997,6 +1001,12 @@ impl CudaTransformerTrainer {
     /// R-004: Get last observed gradient L2 norm (LM head proxy).
     pub fn last_grad_norm(&self) -> f32 {
         self.last_grad_norm
+    }
+
+    /// R-040: Get per-parameter-group gradient norms.
+    /// Returns (lm_head_grad_norm, embed_grad_norm).
+    pub fn param_grad_norms(&self) -> (f32, f32) {
+        (self.last_grad_norm, self.last_embed_grad_norm)
     }
 
     /// R-012: Get total trainable parameter count for MFU calculation.

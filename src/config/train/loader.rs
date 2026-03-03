@@ -1135,7 +1135,8 @@ fn handle_graceful_shutdown(
 fn write_jsonl_step(
     jsonl_file: &mut Option<std::fs::File>,
     step: usize, loss: f32, lr: f32, tok_s: f64,
-    mfu: f64, grad_norm: f32, epoch: usize, elapsed_s: f64,
+    mfu: f64, grad_norm: f32, embed_grad_norm: f32,
+    epoch: usize, elapsed_s: f64,
 ) {
     use std::io::Write;
     if let Some(ref mut f) = jsonl_file {
@@ -1147,6 +1148,7 @@ fn write_jsonl_step(
             "tok_s": tok_s,
             "mfu": mfu,
             "grad_norm": grad_norm,
+            "grad_norm_embed": embed_grad_norm,
             "epoch": epoch,
             "elapsed_s": elapsed_s,
             "timestamp": now_ms(),
@@ -1198,8 +1200,8 @@ fn log_step_metrics(
     let step_time = elapsed / batches_done as f64;
     let mfu = (flops_per_step / step_time) / gpu_peak_tflops * 100.0;
 
-    // R-004: Get gradient norm
-    let grad_norm = trainer.last_grad_norm();
+    // R-004/R-040: Get per-parameter-group gradient norms
+    let (grad_norm, embed_grad_norm) = trainer.param_grad_norms();
     // R-013: GPU memory usage
     let (gpu_used_mb, gpu_total_mb) = trainer.gpu_memory_mb();
     // R-028: Step time in ms
@@ -1226,8 +1228,8 @@ fn log_step_metrics(
 
     // R-014: Write JSONL log entry
     write_jsonl_step(jsonl_file, trainer.step(), batch_loss,
-        trainer.current_lr(), tok_per_sec, mfu, grad_norm, epoch,
-        start_time.elapsed().as_secs_f64());
+        trainer.current_lr(), tok_per_sec, mfu, grad_norm, embed_grad_norm,
+        epoch, start_time.elapsed().as_secs_f64());
 }
 
 /// R-009: Prune old checkpoints, keeping the most recent `max_keep`.
