@@ -373,10 +373,16 @@ impl WgpuForwardPass {
 
         // Step 2: Layer-at-a-time processing
         // Attention on CPU SIMD (per-sample), FFN on GPU (all samples concatenated)
+        //
+        // KAIZEN-017: Pre-compute total_tokens once (constant across layers).
+        let total_tokens: usize = batch_token_ids.iter().map(|ids| ids.len()).sum();
+
         crate::autograd::suppress_per_op_wgpu();
         for (layer_idx, layer) in model.layers.iter().enumerate() {
             // Attention on CPU (per-sample, independent)
-            let mut ffn_inputs: Vec<Vec<f32>> = Vec::with_capacity(n);
+            // KAIZEN-017: Keep Tensor references instead of .to_vec() copies.
+            // Eliminates n per-sample Vec allocations per layer (360 MB total for Qwen3-4B).
+            let mut ffn_input_tensors: Vec<Tensor> = Vec::with_capacity(n);
             let mut residuals: Vec<Tensor> = Vec::with_capacity(n);
             for (i, hidden) in hiddens.iter().enumerate() {
                 let seq_len = batch_token_ids[i].len();
@@ -407,22 +413,16 @@ impl WgpuForwardPass {
 
                 let residual1 = crate::autograd::add(hidden, &attn_out);
                 let norm2 = layer.post_attn_norm.forward_batched(&residual1, seq_len, hidden_size);
-                ffn_inputs.push(
-                    norm2
-                        .data()
-                        .as_slice()
-                        .expect("norm2 contiguous")
-                        .to_vec(),
-                );
+                ffn_input_tensors.push(norm2);
                 residuals.push(residual1);
             }
 
             // Concatenate all samples' FFN inputs for single GPU batch
-            let total_tokens: usize = batch_token_ids.iter().map(|ids| ids.len()).sum();
-            let mut concat_input =
-                Vec::with_capacity(total_tokens * hidden_size);
-            for inp in &ffn_inputs {
-                concat_input.extend_from_slice(inp);
+            // KAIZEN-017: Borrow directly from Tensor instead of intermediate Vecs
+            let mut concat_input = Vec::with_capacity(total_tokens * hidden_size);
+            for norm2 in &ffn_input_tensors {
+                let data = norm2.data();
+                concat_input.extend_from_slice(data.as_slice().expect("norm2 contiguous"));
             }
             let concat_tensor = Tensor::from_vec(concat_input, false);
 
