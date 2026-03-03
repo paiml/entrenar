@@ -12,16 +12,18 @@
 | Metric | Value |
 |--------|-------|
 | **Best practices evaluated** | 100 |
-| **PASS** | 34 |
-| **PARTIAL** | 29 |
-| **FAIL** | 37 |
-| **Score** | **34%** |
-| **Letter grade** | **F** |
+| **PASS** | 52 |
+| **PARTIAL** | 23 |
+| **FAIL** | 25 |
+| **Score** | **52%** |
+| **Letter grade** | **D** |
 | **Batuta falsify score** | 79.2% (63/108 pass, 0 fail, 45 partial) |
 
-The sovereign stack (entrenar/albor) excels in areas where investment has been deliberate: provable contracts, structured tracing (renacer), GPU-resident single-device training, and engineering discipline (Five Whys, Andon). It is weakest in distributed training (0/10), mixed precision (0/5), automated fault tolerance (1/5), and evaluation infrastructure (2/10). The 34% score reflects a training system optimized for correctness on a single device but missing the infrastructure that production systems treat as table stakes.
+**Update (2026-03-03)**: 18 quick-win MLOps features implemented and closed, raising score from 34% → 52%. New capabilities: gradient norm logging, MFU calculation, GPU memory monitoring, ZClip spike detection, step timing, NaN/Inf detection, validation perplexity, data shuffling, graceful shutdown, JSONL experiment tracking, config provenance, async checkpointing, heartbeat for crash detection, multi-checkpoint retention with integrity verification.
 
-The remediation plan prioritizes 20 high-impact items that would raise the score to ~65% (D+) with estimated 4-6 weeks of focused engineering, followed by 30 medium-impact items for ~85% (B) over 3 months.
+The sovereign stack (entrenar/albor) excels in areas where investment has been deliberate: provable contracts, structured tracing (renacer), GPU-resident single-device training, and engineering discipline (Five Whys, Andon). Remaining gaps: distributed training (0/10), mixed precision (0/5), optimizer state persistence (1/5), activation checkpointing, and evaluation infrastructure (2/10).
+
+The remaining 6 high-impact items (BF16, optimizer state persistence, activation checkpointing, HumanEval benchmarks, data quality filtering, curriculum learning) would raise the score to ~70% (C-) with ~3 weeks of focused engineering.
 
 ---
 
