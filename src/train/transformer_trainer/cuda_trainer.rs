@@ -920,6 +920,25 @@ impl CudaTransformerTrainer {
         avg_loss
     }
 
+    /// R-005: Evaluate a batch without backward pass or weight updates.
+    /// Returns average cross-entropy loss, or 0.0 if no valid items.
+    pub fn eval_batch(&mut self, batch: &LMBatch) -> f32 {
+        let hidden_size = self.config.model_config.hidden_size;
+        let vocab_size = self.config.model_config.vocab_size;
+        let mut total_loss = 0.0;
+        let mut valid_count = 0;
+        for i in 0..batch.batch_size {
+            let Some(input_ids) = batch.get_input(i) else { continue };
+            let Some(target_ids) = batch.get_target(i) else { continue };
+            let seq_len = input_ids.len();
+            let Some(logits) = self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size) else { continue };
+            let Some((loss, _)) = self.cpu_loss_and_grad(&logits, target_ids, seq_len, vocab_size) else { continue };
+            total_loss += loss;
+            valid_count += 1;
+        }
+        if valid_count > 0 { total_loss / valid_count as f32 } else { 0.0 }
+    }
+
     /// Train for one epoch over batches.
     pub fn train_epoch(&mut self, batches: &[LMBatch]) -> f32 {
         self.train_epoch_with_callback(batches, |_, _, _| {})
@@ -983,6 +1002,18 @@ impl CudaTransformerTrainer {
     /// R-012: Get total trainable parameter count for MFU calculation.
     pub fn num_params(&self) -> usize {
         self.model.parameters().iter().map(|t| t.len()).sum()
+    }
+
+    /// R-013: Query GPU memory usage (used_mb, total_mb).
+    pub fn gpu_memory_mb(&self) -> (u64, u64) {
+        match self.cuda_trainer.context().memory_info() {
+            Ok((free, total)) => {
+                let total_mb = (total / (1024 * 1024)) as u64;
+                let used_mb = ((total - free) / (1024 * 1024)) as u64;
+                (used_mb, total_mb)
+            }
+            Err(_) => (0, 0),
+        }
     }
 
     /// Sync all GPU weights back to CPU model.
