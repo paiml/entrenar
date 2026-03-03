@@ -232,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "aprender"
-version = "0.27.3"
+version = "0.27.4"
 dependencies = [
  "batuta-common",
  "bincode",
@@ -250,7 +250,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2",
- "trueno 0.16.1",
+ "trueno 0.16.2",
  "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "ureq",
 ]
@@ -1214,7 +1214,7 @@ checksum = "fe6d2e5af09e8c8ad56c969f2157a3d4238cebc7c55f0a517728c38f7b200f81"
 dependencies = [
  "serde",
  "termcolor",
- "unicode-width 0.2.2",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -1813,7 +1813,7 @@ version = "0.7.5"
 dependencies = [
  "alimentar",
  "approx",
- "aprender 0.27.3",
+ "aprender 0.27.4",
  "arrow 57.3.0",
  "axum 0.8.8",
  "bytemuck",
@@ -5817,6 +5817,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "trueno"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2676205d0af0b161e0fb1805ed6b5cbfe32d10d3630d3572609c7fa07d53816e"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "hostname",
+ "num_cpus",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "toml",
+ "trueno-quant 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "trueno-db"
 version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6471,7 +6488,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
