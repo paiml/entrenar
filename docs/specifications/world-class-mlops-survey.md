@@ -221,11 +221,11 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 50 | Data quality filtering | **PASS** | R-022: `alimentar filter-text` — composite scoring (alnum ratio, line length, dup lines, entropy). |
 | 51 | FIM augmentation for code models | **PASS** | alimentar FIM at 50% PSM rate. ALB-033 sentinel token gap noted. |
 | 52 | Pre-tokenization pipeline | **PASS** | `scripts/pretokenize.py` produces 2048-length sequences in Parquet. |
-| 53 | Curriculum learning / multi-stage data mixing | **FAIL** | Single-stage training. No data composition changes during training. |
+| 53 | Curriculum learning / multi-stage data mixing | **PASS** | R-023: `training.curriculum` YAML config with step-based stage transitions, JSONL logging. |
 | 54 | Data mixing with configurable weights | **PASS** | `alimentar mix` with per-source weights. |
 | 55 | Validation set separate from training | **PASS** | `data/pretokenized-2048/val/val.parquet` used for perplexity eval. |
 
-**Score: 7.5/10**
+**Score: 8.5/10**
 
 ### Category 7: Learning Rate & Optimization (5 practices)
 
@@ -332,7 +332,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 3. Observability & Monitoring | 10.0 | 10 | 100% |
 | 4. Mixed Precision Training | 0.5 | 5 | 10% |
 | 5. Gradient Management | 7.5 | 10 | 75% |
-| 6. Data Pipeline | 7.5 | 10 | 75% |
+| 6. Data Pipeline | 8.5 | 10 | 85% |
 | 7. Learning Rate & Optimization | 4.5 | 5 | 90% |
 | 8. Evaluation & Benchmarking | 3.5 | 10 | 35% |
 | 9. Distributed Training | 0.0 | 10 | 0% |
@@ -340,7 +340,7 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 11. Security & Supply Chain | 3.5 | 5 | 70% |
 | 12. Configuration & Validation | 4.5 | 5 | 90% |
 | 13. Provable Correctness & Contracts | 4.5 | 5 | 90% |
-| **TOTAL** | **66.0** | **100** | **66%** |
+| **TOTAL** | **67.0** | **100** | **67%** |
 
 ### Letter Grade: **D**
 
