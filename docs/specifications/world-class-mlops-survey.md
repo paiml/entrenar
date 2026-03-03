@@ -152,17 +152,17 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | # | Practice | Status | Evidence |
 |---|----------|--------|----------|
 | 11 | Automatic crash detection (process heartbeat) | **PASS** | R-003: `heartbeat` file updated every step with timestamp + step number. |
-| 12 | Automatic restart on crash | **PASS** | `training-watchdog.py`: auto-restart with configurable max retries and cooldown. |
+| 12 | Automatic restart on crash | **FAIL** | Python prototype removed. Rust `apr train watch` pending. |
 | 13 | Graceful shutdown on SIGTERM/SIGINT | **PASS** | R-008: `ctrlc` handler saves emergency checkpoint on SIGINT/SIGTERM. |
 | 14 | NaN/Inf detection in loss | **PASS** | R-018: Non-finite loss detected and skipped with warning. |
 | 15 | Gradient norm monitoring for spike detection | **PASS** | R-017: ZClip EMA-based z-score spike detection for gradient norms. |
 | 16 | Automatic rollback on loss spike | **PASS** | R-016b: EMA-based loss spike detection (3× threshold) with rollback counter. |
-| 17 | Training progress watchdog (detect hangs) | **PASS** | `training-watchdog.py`: JSONL log monitoring with configurable hang timeout, SIGTERM→SIGKILL escalation. |
+| 17 | Training progress watchdog (detect hangs) | **FAIL** | Python prototype removed. Rust `apr train watch` pending. |
 | 18 | Multiple checkpoint retention for rollback | **PASS** | R-009: Step-numbered checkpoints with configurable `max_checkpoints`. |
 | 19 | Error classification and logging | **PARTIAL** | Rust panics with backtraces. No structured error taxonomy. |
-| 20 | Post-crash diagnostic dump | **PASS** | `training-watchdog.py`: captures last N stderr/stdout lines, nvidia-smi GPU state, recent JSONL entries, exit code/signal. |
+| 20 | Post-crash diagnostic dump | **FAIL** | Python prototype removed. Rust diagnostic dump pending. |
 
-**Score: 9.5/10**
+**Score: 6.5/10**
 
 ### Category 3: Observability & Monitoring (10 practices)
 
@@ -217,15 +217,15 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 46 | Streaming data loading (no full dataset in memory) | **PARTIAL** | Parquet loaded fully into memory. Feasible at current scale (~67K sequences) but won't scale. |
 | 47 | Data shuffling per epoch | **PASS** | R-015: Fisher-Yates shuffle with seed+epoch LCG PRNG. |
 | 48 | Deterministic data ordering (reproducible batches) | **PASS** | R-015: Seed-controlled shuffle produces identical order for same seed+epoch. |
-| 49 | Data deduplication (exact + fuzzy) | **FAIL** | alimentar has no dedup. Raw ingestion only. |
-| 50 | Data quality filtering | **FAIL** | No quality scoring or filtering in pipeline. |
+| 49 | Data deduplication (exact + fuzzy) | **PASS** | R-019: `alimentar dedup` — exact dedup by text column content (Rust, Arrow Unique transform). |
+| 50 | Data quality filtering | **PASS** | R-022: `alimentar filter-text` — composite scoring (alnum ratio, line length, dup lines, entropy). |
 | 51 | FIM augmentation for code models | **PASS** | alimentar FIM at 50% PSM rate. ALB-033 sentinel token gap noted. |
 | 52 | Pre-tokenization pipeline | **PASS** | `scripts/pretokenize.py` produces 2048-length sequences in Parquet. |
 | 53 | Curriculum learning / multi-stage data mixing | **FAIL** | Single-stage training. No data composition changes during training. |
 | 54 | Data mixing with configurable weights | **PASS** | `alimentar mix` with per-source weights. |
 | 55 | Validation set separate from training | **PASS** | `data/pretokenized-2048/val/val.parquet` used for perplexity eval. |
 
-**Score: 5.5/10**
+**Score: 7.5/10**
 
 ### Category 7: Learning Rate & Optimization (5 practices)
 
@@ -234,27 +234,27 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | 56 | Linear warmup | **PASS** | Implemented in LR scheduler. |
 | 57 | Cosine or WSD decay schedule | **PASS** | Cosine, linear, constant, WSD all implemented. |
 | 58 | Weight decay with AdamW | **PASS** | AdamW with configurable weight_decay from YAML. |
-| 59 | Learning rate finder / hyperparameter sweep | **PASS** | R-027: `hyperparam-sweep.py` grid/random search over LR (log-scale), WD, warmup, batch. |
+| 59 | Learning rate finder / hyperparameter sweep | **PARTIAL** | Grid/random sweep implemented (Python prototype removed, Rust `apr sweep` pending). |
 | 60 | Optimizer state warmup on resume | **PASS** | R-001: `load_optimizer_state()` restores m/v buffers + step counter for warm restart. |
 
-**Score: 5.0/5**
+**Score: 4.5/5**
 
 ### Category 8: Evaluation & Benchmarking (10 practices)
 
 | # | Practice | Status | Evidence |
 |---|----------|--------|----------|
 | 61 | Validation perplexity during training | **PASS** | R-005: `eval_batch()` runs on val set at checkpoint boundaries, logs to JSONL. |
-| 62 | Downstream benchmark suite (HumanEval, MBPP) | **PASS** | R-020: `eval-humaneval.py` — 164 HumanEval problems, unbiased pass@k, sandboxed execution. |
+| 62 | Downstream benchmark suite (HumanEval, MBPP) | **FAIL** | Python prototype removed. Rust `apr eval humaneval` pending. |
 | 63 | Evaluation at checkpoint boundaries | **PASS** | R-005: `run_validation_eval()` runs at every intermediate checkpoint. |
-| 64 | Contamination detection | **PASS** | R-030: `contamination-check.py` — 13-gram exact match (GPT-4 methodology), Parquet/text input, HumanEval built-in. |
+| 64 | Contamination detection | **FAIL** | Python prototype removed. Rust `apr eval contamination` pending. |
 | 65 | Two-tier eval (development + unseen benchmarks) | **FAIL** | No benchmark infrastructure at all. |
 | 66 | Perplexity-benchmark correlation tracking | **FAIL** | No correlation analysis. |
 | 67 | Intermediate checkpoint evaluation | **PASS** | R-005: Validation eval runs at every `save_interval` checkpoint. |
 | 68 | Human evaluation pipeline | **FAIL** | No human eval infrastructure. |
-| 69 | Code execution evaluation (pass@k) | **PASS** | R-020: `eval-humaneval.py` — sandboxed subprocess execution with import guard, timeout, pass@k. |
-| 70 | Model comparison framework (A/B testing) | **PASS** | R-031: `compare-checkpoints.py` side-by-side PPL eval with JSON output. |
+| 69 | Code execution evaluation (pass@k) | **FAIL** | Python prototype removed. Rust `apr eval pass-at-k` pending. |
+| 70 | Model comparison framework (A/B testing) | **PARTIAL** | Prototype removed. Rust `apr eval compare` pending. |
 
-**Score: 7.0/10**
+**Score: 3.5/10**
 
 ### Category 9: Distributed Training (10 practices)
 
@@ -328,21 +328,21 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 | Category | Score | Max | Pct |
 |----------|-------|-----|-----|
 | 1. Checkpointing & State Persistence | 10.0 | 10 | 100% |
-| 2. Fault Tolerance & Crash Recovery | 9.5 | 10 | 95% |
+| 2. Fault Tolerance & Crash Recovery | 6.5 | 10 | 65% |
 | 3. Observability & Monitoring | 10.0 | 10 | 100% |
 | 4. Mixed Precision Training | 0.5 | 5 | 10% |
 | 5. Gradient Management | 7.5 | 10 | 75% |
-| 6. Data Pipeline | 5.5 | 10 | 55% |
-| 7. Learning Rate & Optimization | 5.0 | 5 | 100% |
-| 8. Evaluation & Benchmarking | 7.0 | 10 | 70% |
+| 6. Data Pipeline | 7.5 | 10 | 75% |
+| 7. Learning Rate & Optimization | 4.5 | 5 | 90% |
+| 8. Evaluation & Benchmarking | 3.5 | 10 | 35% |
 | 9. Distributed Training | 0.0 | 10 | 0% |
 | 10. Reproducibility & Provenance | 3.5 | 5 | 70% |
 | 11. Security & Supply Chain | 3.5 | 5 | 70% |
 | 12. Configuration & Validation | 4.5 | 5 | 90% |
 | 13. Provable Correctness & Contracts | 4.5 | 5 | 90% |
-| **TOTAL** | **71.0** | **100** | **71%** |
+| **TOTAL** | **66.0** | **100** | **66%** |
 
-### Letter Grade: **C**
+### Letter Grade: **D**
 
 | Grade | Range | Meaning |
 |-------|-------|---------|
@@ -356,12 +356,13 @@ Single GPU target: 40%+ MFU. Primary lever: kernel fusion (fused RMSNorm, SwiGLU
 1. **Checkpointing** (100%) -- full state persistence: weights, optimizer, data loader, RNG, LR, async save, integrity verification, pruning.
 2. **Observability** (100%) -- grad norm, MFU, GPU memory, JSONL+SQLite tracking, real-time TUI dashboard, step timing.
 3. **Provable correctness** (90%) -- unique among all surveyed systems. No other framework has formal kernel contracts.
-4. **LR & optimization** (80%) -- 4 scheduler options, proper AdamW, optimizer state persistence, warm restart.
+4. **LR & optimization** (90%) -- 4 scheduler options, proper AdamW, optimizer state persistence, warm restart.
+5. **Data pipeline** (75%) -- shuffling, FIM, dedup, quality filtering, mixing, pre-tokenization — all in Rust.
 
 ### Critical Weaknesses (Bottom Quartile)
 1. **Distributed training** (0%) -- single GPU only. Every production system supports multi-GPU.
 2. **Mixed precision** (10%) -- no BF16/FP16. 2x-4x throughput left on table.
-3. **Data pipeline** (55%) -- shuffling + FIM, but no dedup, quality filtering, or curriculum learning.
+3. **Evaluation** (35%) -- val PPL + per-param grad norms, but no HumanEval/MBPP, contamination, or comparison in Rust yet.
 
 ---
 
