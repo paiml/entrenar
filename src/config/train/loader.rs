@@ -18,7 +18,9 @@ use crate::monitor::tui::state::{TrainingSnapshot, TrainingState, TrainingStatus
 use crate::storage::{ExperimentStorage, ParameterValue, RunStatus, SqliteBackend};
 use crate::tokenizer::HfTokenizer;
 use crate::trace::TRACER;
-use crate::train::{CudaTransformerTrainer, LMBatch, TransformerTrainConfig, TransformerTrainer};
+#[cfg(feature = "cuda")]
+use crate::train::CudaTransformerTrainer;
+use crate::train::{LMBatch, TransformerTrainConfig, TransformerTrainer};
 use crate::transformer::{load_safetensors_weights, Architecture, Transformer, TransformerConfig};
 use crate::yaml_mode;
 use std::fs;
@@ -614,6 +616,18 @@ fn train_loop_cuda(
     // R-018: NaN/Inf detection counter
     let mut nan_skips: usize = 0;
 
+    // R-017: ZClip adaptive gradient clipping — EMA of gradient norms
+    let mut gnorm_ema: f64 = 0.0;
+    let mut gnorm_ema_sq: f64 = 0.0;
+    let zclip_alpha: f64 = 0.05; // EMA decay rate
+    let zclip_threshold: f64 = 2.0; // z-score threshold for spike detection
+
+    // R-003: Heartbeat file for crash detection
+    let heartbeat_path = spec.training.output_dir.join("heartbeat");
+
+    // R-026: Save training config hash to JSONL for diff tracking
+    write_config_provenance(&mut jsonl_file, spec);
+
     'outer: for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
         let mut total_loss = 0.0;
@@ -635,11 +649,8 @@ fn train_loop_cuda(
             }
 
             // Check max_steps before processing
-            if let Some(max) = spec.training.max_steps {
-                if trainer.step() >= max {
-                    println!("Reached max_steps={}, stopping training.", max);
-                    break 'outer;
-                }
+            if reached_max_steps(spec.training.max_steps, trainer.step()) {
+                break 'outer;
             }
 
             let batch = &batches[batch_idx];
@@ -656,6 +667,15 @@ fn train_loop_cuda(
             }
             total_loss += batch_loss;
             batches_processed += 1;
+
+            // R-017: ZClip — update EMA and detect gradient spikes
+            zclip_update(
+                trainer.last_grad_norm() as f64, trainer.step(),
+                &mut gnorm_ema, &mut gnorm_ema_sq, zclip_alpha, zclip_threshold,
+            );
+
+            // R-003: Write heartbeat for crash detection
+            write_heartbeat(&heartbeat_path, trainer.step());
 
             // Track loss history (keep last 100 for sparkline)
             loss_history.push(batch_loss);
@@ -765,6 +785,82 @@ fn train_loop_cuda(
     }
 
     save_trained_model_cuda(trainer, spec)
+}
+
+/// Check if max_steps has been reached.
+fn reached_max_steps(max_steps: Option<usize>, current_step: usize) -> bool {
+    if let Some(max) = max_steps {
+        if current_step >= max {
+            println!("Reached max_steps={}, stopping training.", max);
+            return true;
+        }
+    }
+    false
+}
+
+/// R-017: ZClip gradient spike detection — update EMA and log spikes.
+fn zclip_update(
+    gnorm: f64, step: usize,
+    ema: &mut f64, ema_sq: &mut f64,
+    alpha: f64, threshold: f64,
+) {
+    *ema = alpha * gnorm + (1.0 - alpha) * *ema;
+    *ema_sq = alpha * gnorm * gnorm + (1.0 - alpha) * *ema_sq;
+    let std = (*ema_sq - *ema * *ema).max(0.0).sqrt();
+    if std > 1e-8 {
+        let z_score = (gnorm - *ema) / std;
+        if z_score > threshold {
+            println!("  [ZClip] gradient spike at step {}: z={:.1} gnorm={:.2e} ema={:.2e}",
+                step, z_score, gnorm, *ema);
+        }
+    }
+}
+
+/// R-003: Write heartbeat timestamp for crash detection.
+fn write_heartbeat(path: &std::path::Path, step: usize) {
+    let data = format!("{}\t{}", now_ms(), step);
+    let _ = std::fs::write(path, data);
+}
+
+/// R-026: Save training config snapshot + R-024: data provenance to JSONL.
+fn write_config_provenance(jsonl_file: &mut Option<std::fs::File>, spec: &TrainSpec) {
+    use std::io::Write;
+    let Some(ref mut f) = jsonl_file else { return };
+
+    // R-024: Data provenance
+    let train_path = spec.data.train.display().to_string();
+    let val_path = spec.data.val.as_ref().map(|p| p.display().to_string());
+    let provenance = serde_json::json!({
+        "type": "provenance",
+        "train_path": train_path,
+        "val_path": val_path,
+        "batch_size": spec.data.batch_size,
+        "seq_len": spec.data.seq_len,
+        "timestamp": now_ms(),
+    });
+    let _ = writeln!(f, "{}", provenance);
+
+    // R-026: Config snapshot for diff tracking
+    let config = serde_json::json!({
+        "type": "config_snapshot",
+        "optimizer": {
+            "name": &spec.optimizer.name,
+            "lr": spec.optimizer.lr,
+            "params": &spec.optimizer.params,
+        },
+        "training": {
+            "epochs": spec.training.epochs,
+            "max_steps": spec.training.max_steps,
+            "grad_clip": spec.training.grad_clip,
+            "save_interval": spec.training.save_interval,
+            "warmup_steps": spec.training.warmup_steps,
+            "gradient_accumulation": spec.training.gradient_accumulation,
+            "seed": spec.training.seed,
+        },
+        "model_path": spec.model.path.display().to_string(),
+        "timestamp": now_ms(),
+    });
+    let _ = writeln!(f, "{}", config);
 }
 
 /// R-005: Load validation batches if val path is configured.
@@ -897,6 +993,7 @@ fn shuffled_batch_order(num_batches: usize, shuffle: bool, seed: u64, epoch: usi
 }
 
 /// R-008: Handle SIGINT/SIGTERM graceful shutdown with emergency checkpoint.
+#[cfg(feature = "cuda")]
 #[allow(clippy::too_many_arguments)]
 fn handle_graceful_shutdown(
     trainer: &mut CudaTransformerTrainer,
