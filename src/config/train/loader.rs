@@ -129,6 +129,17 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
         }
     }
 
+    // R-084: Bitwise deterministic training (C-DETERM-001)
+    if spec.training.deterministic {
+        train_config = train_config.with_deterministic(true);
+    }
+    if let Some(seed) = spec.training.seed {
+        train_config = train_config.with_seed(seed);
+    }
+
+    // Apply deterministic settings before any CUDA operations
+    train_config.apply_deterministic_settings();
+
     // Load training data as LMBatches (supports tokenizer + text data)
     println!("Loading training data...");
     let batches = load_lm_batches(spec)?;

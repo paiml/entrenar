@@ -2,6 +2,7 @@
 
 mod loader;
 mod rebatch;
+pub mod streaming;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod json;
@@ -13,6 +14,7 @@ mod tests;
 
 pub use loader::load_training_batches;
 pub use rebatch::rebatch;
+pub use streaming::{ShardConfig, StreamingParquetLoader};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use json::load_json_batches;

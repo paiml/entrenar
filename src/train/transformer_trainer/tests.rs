@@ -415,3 +415,93 @@ fn falsify_alb038_saved_weights_differ_from_init() {
         "FALSIFIED ALB-038: Saved embedding weights are identical to initialization"
     );
 }
+
+// === R-084: Bitwise deterministic training (C-DETERM-001) ===
+
+#[test]
+fn test_deterministic_config_defaults() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!(!config.deterministic, "deterministic should default to false");
+    assert_eq!(config.seed, 42, "default seed should be 42");
+}
+
+#[test]
+fn test_deterministic_config_builder() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(12345);
+    assert!(config.deterministic);
+    assert_eq!(config.seed, 12345);
+}
+
+#[test]
+fn test_deterministic_env_vars_set() {
+    // O-DET-001: ReproducibilityConfig::apply() sets CUDA env vars
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(99999);
+    config.apply_deterministic_settings();
+
+    assert_eq!(
+        std::env::var("CUBLAS_WORKSPACE_CONFIG").unwrap_or_default(),
+        ":4096:8",
+        "CUBLAS_WORKSPACE_CONFIG must be :4096:8 (I-DET-001)"
+    );
+    assert_eq!(
+        std::env::var("CUDNN_DETERMINISTIC").unwrap_or_default(),
+        "1",
+        "CUDNN_DETERMINISTIC must be 1 (I-DET-002)"
+    );
+    assert_eq!(
+        std::env::var("CUDNN_BENCHMARK").unwrap_or_default(),
+        "0",
+        "CUDNN_BENCHMARK must be 0 (I-DET-003)"
+    );
+}
+
+#[test]
+fn test_deterministic_disabled_no_env_change() {
+    // When deterministic=false, apply_deterministic_settings() is a no-op
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(false);
+    // Clear env first to verify it's not set
+    std::env::remove_var("PYTHONHASHSEED");
+    config.apply_deterministic_settings();
+    // PYTHONHASHSEED should NOT have been set
+    assert!(
+        std::env::var("PYTHONHASHSEED").is_err(),
+        "deterministic=false should not set PYTHONHASHSEED"
+    );
+}
+
+#[test]
+fn test_deterministic_training_reproducibility() {
+    // F-DET-001: Two runs with same seed produce identical loss
+    let config1 = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(42);
+    let config2 = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_deterministic(true)
+        .with_seed(42);
+
+    let mut trainer1 = TransformerTrainer::new(config1);
+    let mut trainer2 = TransformerTrainer::new(config2);
+
+    let batch = LMBatch::single(vec![1, 2, 3, 4, 5], vec![2, 3, 4, 5, 6]);
+
+    let mut losses1 = Vec::new();
+    let mut losses2 = Vec::new();
+
+    for _ in 0..5 {
+        losses1.push(trainer1.train_batch(&batch));
+        losses2.push(trainer2.train_batch(&batch));
+    }
+
+    // CPU training with same init should produce identical losses
+    for (i, (l1, l2)) in losses1.iter().zip(losses2.iter()).enumerate() {
+        assert!(
+            (l1 - l2).abs() < 1e-6,
+            "Step {i}: loss mismatch {l1} vs {l2} (C-DETERM-001 violation)"
+        );
+    }
+}
