@@ -3142,5 +3142,138 @@ mod tests {
         assert_eq!(config.early_stopping_patience, 10);
         assert_eq!(config.seed, 42);
         assert_eq!(config.log_interval, 1);
+        assert!(config.distributed.is_none());
+    }
+
+    #[test]
+    fn test_training_config_with_distributed() {
+        let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 2);
+        let config = TrainingConfig {
+            distributed: Some(dist.clone()),
+            ..TrainingConfig::default()
+        };
+        assert!(config.distributed.is_some());
+        assert_eq!(config.distributed.unwrap().expect_workers, 2);
+    }
+
+    #[test]
+    fn test_is_coordinator_mode() {
+        let pipeline = tiny_pipeline(2);
+        let corpus = make_corpus(20, 2);
+        let config = TrainingConfig {
+            epochs: 1,
+            ..TrainingConfig::default()
+        };
+        let trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        assert!(!trainer.is_coordinator_mode());
+    }
+
+    #[test]
+    fn test_is_coordinator_mode_with_coordinator_config() {
+        let pipeline = tiny_pipeline(2);
+        let corpus = make_corpus(20, 2);
+        let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
+        let config = TrainingConfig {
+            epochs: 1,
+            distributed: Some(dist),
+            ..TrainingConfig::default()
+        };
+        let trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        assert!(trainer.is_coordinator_mode());
+    }
+
+    #[test]
+    fn test_is_coordinator_mode_with_worker_config() {
+        let pipeline = tiny_pipeline(2);
+        let corpus = make_corpus(20, 2);
+        let dist = DistributedConfig::worker("127.0.0.1:9000".parse().unwrap());
+        let config = TrainingConfig {
+            epochs: 1,
+            distributed: Some(dist),
+            ..TrainingConfig::default()
+        };
+        let trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        assert!(!trainer.is_coordinator_mode());
+    }
+
+    #[test]
+    fn test_collect_gradients_layout() {
+        // F-DP-001: Gradient collection produces correct-length vector
+        let pipeline = tiny_pipeline(2);
+        let grads = pipeline.collect_lora_gradients();
+
+        // Should have gradients for all trainable params (LoRA A/B + classifier W/B)
+        let expected_len = pipeline.num_trainable_parameters();
+        assert_eq!(grads.len(), expected_len);
+    }
+
+    #[test]
+    fn test_apply_gradients_preserves_pipeline() {
+        // F-DP-001: Applying averaged gradients doesn't corrupt pipeline state
+        let mut pipeline = tiny_pipeline(2);
+        let num_params = pipeline.num_trainable_parameters();
+
+        // Create synthetic averaged gradients (small values)
+        let avg_grads: Vec<f32> = (0..num_params).map(|i| (i as f32) * 0.001).collect();
+
+        // Apply
+        pipeline.apply_lora_gradients(&avg_grads);
+
+        // Pipeline should still produce valid output
+        let token_ids = vec![1u32, 2, 3, 4];
+        let (loss, _pred) = pipeline.forward_only(&token_ids, 0);
+        assert!(loss.is_finite(), "loss should be finite after applying gradients");
+    }
+
+    #[test]
+    fn test_distributed_coordinator_worker_gradient_exchange() {
+        // Full integration: coordinator + worker via TCP
+        // Validates F-DP-001 (weight consistency via AllReduce)
+        use crate::finetune::gradient_server::GradientServer;
+        use crate::finetune::worker_client::WorkerClient;
+
+        let dist_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
+        let mut server = GradientServer::bind(dist_config).unwrap();
+        let addr = server.local_addr();
+
+        // Spawn worker thread — uses synthetic gradients (no tokenizer needed)
+        let handle = std::thread::spawn(move || {
+            let worker_config = DistributedConfig::worker(addr);
+            let client = WorkerClient::connect(worker_config, 1, "cpu").unwrap();
+
+            // Receive shard assignment
+            let shard = client.receive_shard().unwrap().expect("should get shard");
+            assert_eq!(shard.step, 0);
+
+            // Create a tiny pipeline and generate synthetic gradients
+            let pipe = tiny_pipeline(2);
+            let num_params = pipe.num_trainable_parameters();
+            let grads: Vec<f32> = (0..num_params).map(|i| (i as f32 + 1.0) * 0.01).collect();
+
+            // Send gradients (simulating forward/backward output)
+            client
+                .send_gradients(0, grads, 0.5, 3, 5)
+                .unwrap();
+
+            // Receive averaged gradients
+            let averaged = client.receive_averaged().unwrap();
+            assert!(averaged.global_loss.is_finite());
+            assert!(!averaged.gradients.is_empty());
+            assert_eq!(averaged.gradients.len(), num_params);
+        });
+
+        // Server side
+        server.wait_for_workers().unwrap();
+        server.set_total_samples(10);
+        server.send_shard_assignments(0).unwrap();
+
+        let result = server.collect_and_reduce(0).unwrap();
+        assert!(result.avg_gradients.iter().all(|g| g.is_finite()));
+        assert!(result.global_loss.is_finite());
+        assert_eq!(result.total_correct, 3);
+        assert_eq!(result.total_samples, 5);
+
+        server.broadcast_averaged(0, &result).unwrap();
+        handle.join().unwrap();
     }
 }
