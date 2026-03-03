@@ -208,6 +208,103 @@ impl WgpuForwardPass {
         })
     }
 
+    /// Execute batched forward pass for multiple samples (KAIZEN-008).
+    ///
+    /// Processes all samples through each layer together, uploading FFN weights
+    /// ONCE per layer instead of once per sample. With batch_size=20 × 36 layers,
+    /// this reduces weight uploads from 720 to 36 (20× reduction, ~146 GB saved).
+    ///
+    /// Attention remains per-sample on CPU SIMD. FFN inputs are concatenated
+    /// across samples for a single large matmul per layer.
+    pub fn forward_hidden_batch(
+        &self,
+        model: &Transformer,
+        batch_token_ids: &[Vec<u32>],
+    ) -> Result<Vec<Tensor>, String> {
+        let hidden_size = self.config.hidden_size;
+        let intermediate_size = self.config.intermediate_size;
+        let n = batch_token_ids.len();
+
+        // Step 1: Embed all samples on CPU
+        let mut hiddens: Vec<Tensor> = batch_token_ids
+            .iter()
+            .map(|ids| model.embed_tokens.forward(ids))
+            .collect();
+
+        // Step 2: Layer-at-a-time processing
+        // Attention on CPU SIMD (per-sample), FFN on GPU (all samples concatenated)
+        crate::autograd::suppress_per_op_wgpu();
+        for layer in &model.layers {
+            // Attention on CPU (per-sample, independent)
+            let mut ffn_inputs: Vec<Vec<f32>> = Vec::with_capacity(n);
+            let mut residuals: Vec<Tensor> = Vec::with_capacity(n);
+            for (i, hidden) in hiddens.iter().enumerate() {
+                let seq_len = batch_token_ids[i].len();
+                let norm1 = layer.input_norm.forward_batched(hidden, seq_len, hidden_size);
+                let attn_out = layer.self_attn.forward(&norm1, seq_len);
+                let residual1 = crate::autograd::add(hidden, &attn_out);
+                let norm2 = layer.post_attn_norm.forward_batched(&residual1, seq_len, hidden_size);
+                ffn_inputs.push(
+                    norm2
+                        .data()
+                        .as_slice()
+                        .expect("norm2 contiguous")
+                        .to_vec(),
+                );
+                residuals.push(residual1);
+            }
+
+            // Concatenate all samples' FFN inputs for single GPU batch
+            let total_tokens: usize = batch_token_ids.iter().map(|ids| ids.len()).sum();
+            let mut concat_input =
+                Vec::with_capacity(total_tokens * hidden_size);
+            for inp in &ffn_inputs {
+                concat_input.extend_from_slice(inp);
+            }
+            let concat_tensor = Tensor::from_vec(concat_input, false);
+
+            // FFN on GPU — weights uploaded ONCE for all samples
+            let ffn_out = self.forward_ffn_gpu(
+                &concat_tensor,
+                &layer.ffn.w_gate,
+                &layer.ffn.w_up,
+                &layer.ffn.w_down,
+                total_tokens,
+                hidden_size,
+                intermediate_size,
+            )?;
+
+            // Split FFN output back into per-sample tensors + residual
+            let ffn_data = ffn_out.data();
+            let ffn_slice = ffn_data.as_slice().expect("ffn contiguous");
+            let mut offset = 0;
+            hiddens = residuals
+                .into_iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let len = batch_token_ids[i].len() * hidden_size;
+                    let sample_ffn =
+                        Tensor::from_vec(ffn_slice[offset..offset + len].to_vec(), false);
+                    offset += len;
+                    crate::autograd::add(&r, &sample_ffn)
+                })
+                .collect();
+        }
+        crate::autograd::unsuppress_per_op_wgpu();
+
+        // Step 3: Final normalization (per-sample)
+        let results: Vec<Tensor> = hiddens
+            .into_iter()
+            .enumerate()
+            .map(|(i, h)| {
+                let seq_len = batch_token_ids[i].len();
+                model.norm.forward_batched(&h, seq_len, hidden_size)
+            })
+            .collect();
+
+        Ok(results)
+    }
+
     /// Get the adapter info for display
     pub fn adapter_info(&self) -> String {
         format!("wgpu device ({}x{} model, {} layers)",
