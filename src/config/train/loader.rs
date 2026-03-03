@@ -1172,6 +1172,7 @@ fn parse_checkpoint_step(filename: &str) -> Option<usize> {
 }
 
 /// Log step metrics: console output, IPC snapshot, SQLite, JSONL.
+#[cfg(feature = "cuda")]
 #[allow(clippy::too_many_arguments)]
 fn log_step_metrics(
     trainer: &CudaTransformerTrainer,
