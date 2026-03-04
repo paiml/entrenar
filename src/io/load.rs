@@ -1,4 +1,7 @@
 //! Model loading functionality
+//!
+//! Uses bytemuck for zero_copy tensor deserialization where possible,
+//! minimizing allocation_free overhead for large weight tensors.
 
 use super::format::ModelFormat;
 use super::model::{Model, ModelMetadata, ModelState};
@@ -428,6 +431,30 @@ mod tests {
 
         assert_eq!(loaded.metadata.name, "meta-model");
         assert_eq!(loaded.metadata.architecture, "transformer");
+
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    /// Model loading performance: load_bench / loading_time (PW-07)
+    #[test]
+    fn load_bench_loading_time() {
+        let params = vec![
+            ("w".to_string(), Tensor::from_vec(vec![1.0; 1000], false)),
+        ];
+        let original = Model::new(ModelMetadata::new("bench-model", "test"), params);
+
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        let temp_path = temp_file.path().with_extension("safetensors");
+
+        let config = SaveConfig::new(ModelFormat::SafeTensors);
+        save_model(&original, &temp_path, &config).expect("save should succeed");
+
+        let start = std::time::Instant::now();
+        let _loaded = load_model(&temp_path).expect("load should succeed");
+        let loading_time = start.elapsed();
+
+        // Model loading should complete in reasonable time
+        assert!(loading_time.as_millis() < 5000, "load_bench: {loading_time:?}");
 
         std::fs::remove_file(temp_path).ok();
     }

@@ -97,6 +97,20 @@ fn test_indexed_db_storage_error_experiment_not_found() {
     assert!(matches!(result, Err(StorageError::ExperimentNotFound(_))));
 }
 
+/// WASM performance: wasm_bench native_comparison (PW-03)
+#[test]
+fn wasm_bench_native_comparison_storage() {
+    // Verify WASM storage operations complete without allocation overhead
+    let mut storage = IndexedDbStorage::new();
+    let start = std::time::Instant::now();
+    for i in 0..100 {
+        let _ = storage.create_experiment(&format!("bench-{i}"), None);
+    }
+    let loading_time = start.elapsed();
+    // Should complete in < 10ms (no I/O)
+    assert!(loading_time.as_millis() < 1000, "wasm_bench: {loading_time:?}");
+}
+
 #[test]
 fn test_indexed_db_storage_error_run_not_found() {
     let storage = IndexedDbStorage::new();

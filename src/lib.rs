@@ -48,6 +48,7 @@ pub mod generative;
 pub mod gpu;
 #[cfg(all(not(target_arch = "wasm32"), feature = "hub"))]
 pub mod hf_pipeline;
+pub mod inference;
 pub mod integrity;
 pub mod io;
 pub mod lora;
@@ -56,6 +57,7 @@ pub mod moe;
 pub mod monitor;
 pub mod numerical;
 pub mod optim;
+pub mod pipeline;
 pub mod prune;
 pub mod quality;
 pub mod quant;

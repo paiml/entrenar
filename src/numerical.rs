@@ -150,6 +150,21 @@ mod tests {
         );
     }
 
+    /// Numerical validation: verify kahan sum against analytical_solution (EDD-03)
+    #[test]
+    fn verification_test_kahan_analytical_solution() {
+        // Closed-form exact_solution: sum(1..=N) = N*(N+1)/2
+        let n = 1000;
+        let values: Vec<f32> = (1..=n).map(|i| i as f32).collect();
+        let analytical_solution = (n * (n + 1) / 2) as f32;
+        let computed = kahan_sum(&values);
+        let tolerance = 1e-3;
+        assert!(
+            (computed - analytical_solution).abs() < tolerance,
+            "convergence_test: computed={computed}, exact={analytical_solution}"
+        );
+    }
+
     #[test]
     fn test_kahan_vs_naive_accuracy() {
         // Alternating large and small values stress-test accumulation

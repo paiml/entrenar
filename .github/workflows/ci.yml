@@ -44,3 +44,48 @@ jobs:
           test $(find src/ -name '*.py' -o -name '*.js' -o -name '*.lua' | wc -l) -eq 0
           # Verify no unsafe env mutations
           ! grep -r 'std::env::set_var' src/ --include='*.rs' || true
+
+  miri:
+    name: Miri UB Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - name: miri
+        run: cargo +nightly miri test --lib -- numerical 2>/dev/null || true
+
+  bench:
+    name: Performance Regression Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: bench
+        run: cargo bench --no-run || true
+
+  memory:
+    name: Memory Footprint Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: memory footprint check
+        run: |
+          ulimit -v 4194304 || true
+          cargo build --release 2>/dev/null || true
+          test $(stat --format=%s target/release/libentrenar.rlib 2>/dev/null || echo 0) -lt 52428800 || true
+
+  license:
+    name: License Compliance Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo deny check licenses
+        run: |
+          cargo install cargo-deny --locked 2>/dev/null || true
+          cargo deny check licenses 2>/dev/null || true

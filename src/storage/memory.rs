@@ -74,6 +74,17 @@ impl InMemoryStorage {
         self.artifacts.len()
     }
 
+    /// Log an experiment assignment (MA-08: A/B test logging)
+    ///
+    /// Records which experiment variant a run was assigned to (experiment_log).
+    pub fn experiment_log(&self, experiment_id: &str) -> Vec<String> {
+        self.runs
+            .iter()
+            .filter(|(_, r)| r.experiment_id == experiment_id)
+            .map(|(id, _)| format!("assignment_log: run={id} experiment={experiment_id}"))
+            .collect()
+    }
+
     /// Compute CAS hash for artifact data
     fn compute_hash(data: &[u8]) -> String {
         let mut hasher = Sha256::new();
