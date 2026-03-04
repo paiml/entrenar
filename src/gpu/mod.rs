@@ -10,5 +10,6 @@ pub mod cluster;
 pub mod error;
 pub mod guard;
 pub mod ledger;
+pub mod placement;
 pub mod profiler;
 pub mod wait;
