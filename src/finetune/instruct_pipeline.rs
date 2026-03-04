@@ -411,7 +411,8 @@ impl InstructPipeline {
     }
 
     /// Build LoRA layers for Q and V projections (same pattern as ClassifyPipeline).
-    fn build_lora_layers(
+    /// Build LoRA layers for Q and V projections of each transformer layer.
+    pub fn build_lora_layers(
         model: &Transformer,
         model_config: &TransformerConfig,
         config: &InstructConfig,

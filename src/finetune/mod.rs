@@ -27,6 +27,7 @@ pub mod worker_client;
 pub mod instruct_corpus;
 pub mod instruct_pipeline;
 pub mod instruct_trainer;
+pub mod multi_adapter_pipeline;
 pub mod training_plan;
 pub mod tune_searchers;
 mod corpus;
@@ -68,6 +69,9 @@ pub use instruct_pipeline::{
 pub use instruct_trainer::{
     InstructEpochMetrics, InstructTrainResult, InstructTrainer, InstructTrainingConfig,
 };
+pub use multi_adapter_pipeline::{
+    AdapterConfig, AdapterSchedule, AdapterSlot, MultiAdapterPipeline,
+};
 pub use data_parallel::{DataParallelCoordinator, average_gradients, has_non_finite, shard_samples};
 pub use device::{ComputeDevice, DeviceInfo};
 pub use distributed::{DistributedConfig, NodeRole, WireMessage};
@@ -75,7 +79,9 @@ pub use gradient_server::{
     AllReduceResult, BlockAllReduceResult, GradientServer, NonBlockAllReduceResult,
 };
 pub use ring_allreduce::{allreduce_pair, RingAllReduceWorker};
-pub use worker_client::{AveragedResult, ShardAssignment, WorkerClient};
+pub use worker_client::{
+    AveragedBlockResult, AveragedNonBlockResult, AveragedResult, ShardAssignment, WorkerClient,
+};
 pub use eval::{
     contains_tautology, count_test_functions, has_edge_case_tests, has_meaningful_assertions,
     EvalMetrics, EvalResult, TestEvaluator,
