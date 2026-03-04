@@ -183,7 +183,14 @@ impl InstructTrainer {
         let mut stopped_early = false;
 
         // Pre-tokenize validation data (frozen across epochs)
-        let val_prepared = self.prepare_samples(&self.val_data.clone());
+        // KAIZEN-046: Removed unnecessary .clone() — both borrows are immutable.
+        let val_prepared = self.prepare_samples(&self.val_data);
+
+        // KAIZEN-046: Pre-collect validation token IDs once (was: re-cloned every epoch).
+        let val_prompts: Vec<Vec<u32>> =
+            val_prepared.iter().map(|s| s.prompt_ids.clone()).collect();
+        let val_responses: Vec<Vec<u32>> =
+            val_prepared.iter().map(|s| s.response_ids.clone()).collect();
 
         for epoch in 0..self.config.epochs {
             let epoch_start = std::time::Instant::now();
@@ -191,8 +198,9 @@ impl InstructTrainer {
             // Shuffle training data
             self.shuffle_train(epoch as u64);
 
-            // Pre-tokenize training data for this epoch
-            let train_prepared = self.prepare_samples(&self.train_data.clone());
+            // Pre-tokenize training data for this epoch (after shuffle)
+            // KAIZEN-046: Removed unnecessary .clone() — both borrows are immutable.
+            let train_prepared = self.prepare_samples(&self.train_data);
 
             // ── Train ──
             let mut epoch_loss = 0.0f32;
@@ -218,10 +226,7 @@ impl InstructTrainer {
             };
 
             // ── Validate ──
-            let val_prompts: Vec<Vec<u32>> =
-                val_prepared.iter().map(|s| s.prompt_ids.clone()).collect();
-            let val_responses: Vec<Vec<u32>> =
-                val_prepared.iter().map(|s| s.response_ids.clone()).collect();
+            // KAIZEN-046: val_prompts/val_responses hoisted outside epoch loop.
             let val_result = self.pipeline.evaluate(&val_prompts, &val_responses);
 
             let epoch_time_ms = epoch_start.elapsed().as_millis() as u64;
