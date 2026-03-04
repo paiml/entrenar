@@ -36,6 +36,8 @@ use crate::transformer::{CudaBlock, CudaBlockScratch, CudaLoraGradWorkspace, Cud
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 #[cfg(feature = "cuda")]
+use crate::gpu::guard::VramGuard;
+#[cfg(feature = "cuda")]
 use trueno_gpu::driver::GpuBuffer;
 
 /// Configuration for instruction fine-tuning.
@@ -173,6 +175,11 @@ pub struct InstructPipeline {
     /// NF4 LoRA optimizer step counter
     #[cfg(feature = "cuda")]
     nf4_lora_step: u32,
+    /// VRAM reservation guard (GPU-SHARE-002). Releases ledger entry on Drop.
+    /// Held for RAII — released when pipeline is dropped.
+    #[cfg(feature = "cuda")]
+    #[allow(dead_code)]
+    vram_guard: Option<VramGuard>,
 }
 
 impl InstructPipeline {
@@ -214,6 +221,8 @@ impl InstructPipeline {
             cuda_lora_optimizer_states: None,
             #[cfg(feature = "cuda")]
             nf4_lora_step: 0,
+            #[cfg(feature = "cuda")]
+            vram_guard: None,
         };
 
         #[cfg(feature = "cuda")]
@@ -288,6 +297,8 @@ impl InstructPipeline {
             cuda_lora_optimizer_states: None,
             #[cfg(feature = "cuda")]
             nf4_lora_step: 0,
+            #[cfg(feature = "cuda")]
+            vram_guard: None,
         };
 
         #[cfg(feature = "cuda")]
@@ -387,6 +398,8 @@ impl InstructPipeline {
             cuda_lora_optimizer_states: None,
             #[cfg(feature = "cuda")]
             nf4_lora_step: 0,
+            #[cfg(feature = "cuda")]
+            vram_guard: None,
         };
 
         #[cfg(feature = "cuda")]
@@ -906,10 +919,42 @@ impl InstructPipeline {
     // ── CUDA GPU acceleration ────────────────────────────────────────────
 
     /// Initialize CUDA acceleration: create trainer, upload blocks, init LoRA training.
+    ///
+    /// GPU-SHARE-002: Acquires a VRAM guard from the ledger before allocating GPU
+    /// memory. If the ledger denies the reservation (insufficient VRAM), falls back
+    /// to CPU training. The guard is held for the lifetime of the pipeline and
+    /// released on Drop.
     #[cfg(feature = "cuda")]
     fn init_cuda(&mut self, model_config: &TransformerConfig) {
+        // GPU-SHARE-002: Acquire VRAM reservation before allocating
+        let budget_mb = Self::estimate_vram_mb(model_config, &self.config);
+        let task_label = if self.config.quantize_nf4 {
+            "instruct-qlora"
+        } else {
+            "instruct-lora"
+        };
+        match VramGuard::acquire(budget_mb, task_label) {
+            Ok(guard) => {
+                eprintln!(
+                    "[GPU-SHARE] VRAM reserved: {budget_mb} MB for {task_label} (gpu: {})",
+                    guard.gpu_uuid()
+                );
+                self.vram_guard = Some(guard);
+            }
+            Err(e) => {
+                eprintln!("[GPU-SHARE] VRAM guard denied: {e} — falling back to CPU");
+                return;
+            }
+        }
+
         let (trainer, blocks, scratch) =
             Self::try_init_cuda(&self.model, model_config, &self.config, &self.lora_layers);
+
+        if trainer.is_none() {
+            // CUDA init failed — release the guard
+            self.vram_guard = None;
+            return;
+        }
 
         self.cuda_trainer = trainer;
         self.cuda_blocks = blocks;
@@ -934,6 +979,34 @@ impl InstructPipeline {
             );
             self.cuda_lora_grad_workspace = grad_ws;
             self.cuda_lora_optimizer_states = opt_states;
+        }
+
+        // GPU-SHARE-002: Update actual VRAM usage after all allocations
+        if let Some(ref mut guard) = self.vram_guard {
+            let _ = guard.update_actual(budget_mb);
+        }
+    }
+
+    /// Estimate VRAM usage (MB) for GPU training based on model architecture.
+    ///
+    /// Used by GPU-SHARE-002 to reserve VRAM via the ledger before allocation.
+    #[cfg(feature = "cuda")]
+    fn estimate_vram_mb(model_config: &TransformerConfig, config: &InstructConfig) -> usize {
+        if config.quantize_nf4 {
+            // NF4 QLoRA: weights at 4-bit (~0.5 bytes/param) + FP32 scratch + overhead
+            let weight_elements = model_config.per_layer_weight_elements()
+                * model_config.num_hidden_layers;
+            // NF4 weights: 0.5 bytes/param, LoRA adapters in FP16: ~2% of weights
+            let weight_mb = weight_elements / (2 * 1024 * 1024);
+            // Scratch buffers scale with seq_len * hidden_size
+            let scratch_mb = (config.max_seq_len * model_config.hidden_size * 4 * 10)
+                / (1024 * 1024);
+            // CUDA context + kernel cache + misc overhead
+            let overhead_mb = 512;
+            weight_mb + scratch_mb + overhead_mb
+        } else {
+            // FP32: use TransformerConfig's exact VRAM calculator + overhead
+            model_config.total_training_vram_bytes_shared(config.max_seq_len) / (1024 * 1024) + 256
         }
     }
 

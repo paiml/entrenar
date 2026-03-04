@@ -43,6 +43,8 @@ use crate::transformer::{CudaBlock, CudaBlockScratch, CudaGradWorkspace, CudaLor
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
 #[cfg(feature = "cuda")]
+use crate::gpu::guard::VramGuard;
+#[cfg(feature = "cuda")]
 use trueno_gpu::driver::GpuBuffer;
 
 /// Classification fine-tuning pipeline configuration.
@@ -476,6 +478,11 @@ pub struct ClassifyPipeline {
     /// wgpu-accelerated forward pass (GPU feature, non-CUDA)
     #[cfg(feature = "gpu")]
     wgpu_forward_pass: Option<crate::transformer::WgpuForwardPass>,
+    /// VRAM reservation guard (GPU-SHARE-002). Releases ledger entry on Drop.
+    /// Held for RAII — released when pipeline is dropped.
+    #[cfg(feature = "cuda")]
+    #[allow(dead_code)]
+    vram_guard: Option<VramGuard>,
 }
 
 impl ClassifyPipeline {
@@ -499,9 +506,9 @@ impl ClassifyPipeline {
 
         let optimizer = AdamW::default_params(classify_config.learning_rate);
 
-        // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
+        // ── CUDA initialization (F-CUDA-001..006, GPU-SHARE-002) ─────────
         #[cfg(feature = "cuda")]
-        let (cuda_trainer, cuda_blocks, shared_scratch) =
+        let (cuda_trainer, cuda_blocks, shared_scratch, vram_guard) =
             Self::try_init_cuda(&model, model_config, &classify_config, &lora_layers);
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
@@ -595,6 +602,8 @@ impl ClassifyPipeline {
             nf4_lora_step: 0,
             #[cfg(feature = "gpu")]
             wgpu_forward_pass,
+            #[cfg(feature = "cuda")]
+            vram_guard,
         }
     }
 
@@ -644,9 +653,9 @@ impl ClassifyPipeline {
 
         let optimizer = AdamW::default_params(classify_config.learning_rate);
 
-        // ── CUDA initialization (F-CUDA-001..006) ────────────────────────
+        // ── CUDA initialization (F-CUDA-001..006, GPU-SHARE-002) ─────────
         #[cfg(feature = "cuda")]
-        let (cuda_trainer, cuda_blocks, shared_scratch) =
+        let (cuda_trainer, cuda_blocks, shared_scratch, vram_guard) =
             Self::try_init_cuda(&model, model_config, &classify_config, &lora_layers);
 
         // ── GPU training state (F-CUDA-014) ────────────────────────────
@@ -740,6 +749,8 @@ impl ClassifyPipeline {
             nf4_lora_step: 0,
             #[cfg(feature = "gpu")]
             wgpu_forward_pass,
+            #[cfg(feature = "cuda")]
+            vram_guard,
         })
     }
 
@@ -803,7 +814,7 @@ impl ClassifyPipeline {
         let optimizer = AdamW::default_params(classify_config.learning_rate);
 
         #[cfg(feature = "cuda")]
-        let (cuda_trainer, cuda_blocks, shared_scratch) =
+        let (cuda_trainer, cuda_blocks, shared_scratch, vram_guard) =
             Self::try_init_cuda(&model, model_config, &classify_config, &lora_layers);
 
         #[cfg(feature = "cuda")]
@@ -882,6 +893,8 @@ impl ClassifyPipeline {
             nf4_lora_step: 0,
             #[cfg(feature = "gpu")]
             wgpu_forward_pass,
+            #[cfg(feature = "cuda")]
+            vram_guard,
         })
     }
 
@@ -1231,21 +1244,78 @@ impl ClassifyPipeline {
         true
     }
 
+    /// Estimate VRAM usage (MB) for GPU training based on model architecture.
+    ///
+    /// Used by GPU-SHARE-002 to reserve VRAM via the ledger before allocation.
+    #[cfg(feature = "cuda")]
+    fn estimate_vram_mb(model_config: &TransformerConfig, config: &ClassifyConfig) -> usize {
+        if config.quantize_nf4 {
+            let weight_elements = model_config.per_layer_weight_elements()
+                * model_config.num_hidden_layers;
+            let weight_mb = weight_elements / (2 * 1024 * 1024);
+            let scratch_mb = (config.max_seq_len * model_config.hidden_size * 4 * 10)
+                / (1024 * 1024);
+            let overhead_mb = 512;
+            weight_mb + scratch_mb + overhead_mb
+        } else {
+            model_config.total_training_vram_bytes_shared(config.max_seq_len) / (1024 * 1024) + 256
+        }
+    }
+
+    /// GPU-SHARE-002: Acquire VRAM guard before GPU allocation.
+    ///
+    /// Returns `None` if VRAM is insufficient (C-VRAM-001 enforcement).
+    #[cfg(feature = "cuda")]
+    fn acquire_vram_guard(
+        model_config: &TransformerConfig,
+        classify_config: &ClassifyConfig,
+    ) -> Option<VramGuard> {
+        let budget_mb = Self::estimate_vram_mb(model_config, classify_config);
+        let task_label = if classify_config.quantize_nf4 {
+            "classify-qlora"
+        } else {
+            "classify-lora"
+        };
+        match VramGuard::acquire(budget_mb, task_label) {
+            Ok(guard) => {
+                eprintln!(
+                    "[GPU-SHARE] VRAM reserved: {budget_mb} MB for {task_label} (gpu: {})",
+                    guard.gpu_uuid()
+                );
+                Some(guard)
+            }
+            Err(e) => {
+                eprintln!("[GPU-SHARE] VRAM guard denied: {e} — falling back to CPU");
+                None
+            }
+        }
+    }
+
     /// Attempt to initialize CUDA acceleration.
     ///
     /// Creates `CudaTrainer` and uploads all transformer layer weights to GPU as
-    /// `CudaTransformerBlock`s. Returns `(None, None)` if CUDA is unavailable
-    /// or any initialization step fails (F-CUDA-003: graceful fallback).
+    /// `CudaTransformerBlock`s. Returns `(None, None, None, None)` if CUDA is
+    /// unavailable or any initialization step fails (F-CUDA-003: graceful fallback).
+    ///
+    /// GPU-SHARE-002: Acquires a VRAM guard from the ledger before allocating GPU
+    /// memory. The guard is returned and must be stored in the pipeline struct for
+    /// RAII release on Drop.
     #[cfg(feature = "cuda")]
     fn try_init_cuda(
         model: &Transformer,
         model_config: &TransformerConfig,
         classify_config: &ClassifyConfig,
         lora_layers: &[LoRALayer],
-    ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>, Option<CudaBlockScratch>) {
+    ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>, Option<CudaBlockScratch>, Option<VramGuard>) {
         if !cuda_training_available() {
             eprintln!("[CUDA] No CUDA runtime detected — using CPU");
-            return (None, None, None);
+            return (None, None, None, None);
+        }
+
+        // GPU-SHARE-002: Acquire VRAM reservation before allocating
+        let mut vram_guard = Self::acquire_vram_guard(model_config, classify_config);
+        if vram_guard.is_none() {
+            return (None, None, None, None);
         }
 
         let trainer = match CudaTrainer::new() {
@@ -1259,7 +1329,7 @@ impl ClassifyPipeline {
             }
             Err(e) => {
                 eprintln!("[CUDA] Failed to create trainer: {e} — using CPU");
-                return (None, None, None);
+                return (None, None, None, None);
             }
         };
 
@@ -1268,7 +1338,7 @@ impl ClassifyPipeline {
         let quantize_nf4 = classify_config.quantize_nf4;
 
         if !Self::pre_warm_all_kernels(model_config, classify_config) {
-            return (None, None, None);
+            return (None, None, None, None);
         }
 
         let mut blocks = Vec::with_capacity(model.config.num_hidden_layers);
@@ -1360,7 +1430,7 @@ impl ClassifyPipeline {
                     eprintln!(
                         "[CUDA] Failed to upload layer {i} to GPU: {e} — falling back to CPU"
                     );
-                    return (None, None, None);
+                    return (None, None, None, None);
                 }
             }
         }
@@ -1380,14 +1450,19 @@ impl ClassifyPipeline {
                 Ok(s) => Some(s),
                 Err(e) => {
                     eprintln!("[CUDA] Failed to allocate shared scratch: {e} — using CPU");
-                    return (None, None, None);
+                    return (None, None, None, None);
                 }
             }
         } else {
             None // fp32 blocks own their scratch (needed for backward)
         };
 
-        (Some(trainer), Some(blocks), shared_scratch)
+        // GPU-SHARE-002: Update actual VRAM usage after all allocations
+        if let Some(ref mut guard) = vram_guard {
+            let _ = guard.update_actual(guard.budget_mb());
+        }
+
+        (Some(trainer), Some(blocks), shared_scratch, vram_guard)
     }
 
     /// Initialize GPU training state for full-finetune backward pass (F-CUDA-014).
