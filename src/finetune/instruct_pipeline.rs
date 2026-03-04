@@ -1929,12 +1929,9 @@ impl InstructPipeline {
             return false;
         }
 
-        if stream.synchronize().is_err() {
-            eprintln!("[CUDA] lm_head forward sync failed");
-            return false;
-        }
-
         // KAIZEN-064: No logits download — logits stay in training.logits_buf for fused kernel.
+        // KAIZEN-067: No stream.synchronize() needed — fused_causal_cross_entropy_cuda runs
+        // on the same CUDA stream, so GEMM output is guaranteed complete before kernel reads.
         true
     }
 
