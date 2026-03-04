@@ -249,6 +249,24 @@ impl MultiAdapterPipeline {
             .all(|s| s.cursor >= s.train_samples.len())
     }
 
+    /// Train one synchronized step on all adapters.
+    ///
+    /// In Synchronized mode, all adapters process one sample each per step.
+    /// This method runs train_step on each adapter sequentially, sharing the
+    /// base model's GPU blocks.
+    ///
+    /// Returns per-adapter step results (None for exhausted adapters).
+    pub fn batch_step_synchronized(&mut self) -> Vec<Option<InstructStepResult>> {
+        let n = self.adapters.len();
+        let mut results = Vec::with_capacity(n);
+
+        for i in 0..n {
+            results.push(self.train_step_adapter(i));
+        }
+
+        results
+    }
+
     /// Save a checkpoint for the specified adapter.
     ///
     /// Creates `{checkpoint_dir}/epoch-{epoch}/` with:
