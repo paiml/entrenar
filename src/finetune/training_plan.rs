@@ -1538,7 +1538,7 @@ mod tests {
     #[test]
     fn test_plan_manual_strategy_warns() {
         // Create a temp JSONL file
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         for i in 0..50 {
@@ -1547,7 +1547,7 @@ mod tests {
                 i % 5
             ));
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1572,7 +1572,7 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
         assert_eq!(p.hyperparameters.strategy, "manual");
         assert!(p.issues.iter().any(|i| i.category == "Hyperparameters"));
         assert!(p.hyperparameters.recommendation.is_some());
@@ -1580,7 +1580,7 @@ mod tests {
 
     #[test]
     fn test_plan_tpe_strategy_generates_previews() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         for i in 0..100 {
@@ -1589,7 +1589,7 @@ mod tests {
                 i % 5
             ));
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1614,7 +1614,7 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
         assert_eq!(p.hyperparameters.strategy, "tpe");
         assert_eq!(p.hyperparameters.budget, 20);
         assert!(p.hyperparameters.scout);
@@ -1624,7 +1624,7 @@ mod tests {
 
     #[test]
     fn test_plan_detects_imbalance() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         // 80 class 0, 10 each for classes 1-4 = 8:1 imbalance
@@ -1640,7 +1640,7 @@ mod tests {
                 ));
             }
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1665,7 +1665,7 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
         assert!(p.data.imbalance_ratio > 5.0);
         assert!(p.data.auto_class_weights);
         assert!(p.issues.iter().any(|i| i.message.contains("imbalance")));
@@ -1673,7 +1673,7 @@ mod tests {
 
     #[test]
     fn test_plan_detects_duplicates() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         for i in 0..50 {
@@ -1686,7 +1686,7 @@ mod tests {
         for _ in 0..5 {
             lines.push(r#"{"input": "echo test 0", "label": 0}"#.to_string());
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1711,14 +1711,14 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
         assert!(p.data.duplicates > 0);
         assert!(p.issues.iter().any(|i| i.message.contains("duplicate")));
     }
 
     #[test]
     fn test_plan_serialization_roundtrip() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         for i in 0..20 {
@@ -1727,7 +1727,7 @@ mod tests {
                 i % 5
             ));
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1752,24 +1752,24 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
 
         // JSON roundtrip
         let json = p.to_json();
-        let deserialized: TrainingPlan = serde_json::from_str(&json).unwrap();
+        let deserialized: TrainingPlan = serde_json::from_str(&json).expect("valid");
         assert_eq!(deserialized.version, "1.0");
         assert_eq!(deserialized.task, "classify");
         assert_eq!(deserialized.data.train_samples, p.data.train_samples);
 
         // YAML roundtrip
         let yaml = p.to_yaml();
-        let deserialized_yaml: TrainingPlan = serde_yaml::from_str(&yaml).unwrap();
+        let deserialized_yaml: TrainingPlan = serde_yaml::from_str(&yaml).expect("valid");
         assert_eq!(deserialized_yaml.data.train_samples, p.data.train_samples);
     }
 
     #[test]
     fn test_plan_resource_estimation() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         for i in 0..100 {
@@ -1778,7 +1778,7 @@ mod tests {
                 i % 5
             ));
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1803,7 +1803,7 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
         assert!(p.resources.estimated_vram_gb > 0.0);
         assert!(p.resources.steps_per_epoch > 0);
         assert!(p.resources.estimated_checkpoint_mb > 0.0);
@@ -1811,7 +1811,7 @@ mod tests {
 
     #[test]
     fn test_plan_verdict_ready() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         for i in 0..100 {
@@ -1820,7 +1820,7 @@ mod tests {
                 i % 5
             ));
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1845,14 +1845,14 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
         // Should be WarningsPresent (model_path not specified)
         assert_ne!(p.verdict, PlanVerdict::Blocked);
     }
 
     #[test]
     fn test_plan_model_info_qwen2() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let data_path = dir.path().join("train.jsonl");
         let mut lines = Vec::new();
         for i in 0..20 {
@@ -1861,7 +1861,7 @@ mod tests {
                 i % 5
             ));
         }
-        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        std::fs::write(&data_path, lines.join("\n")).expect("valid");
 
         let config = PlanConfig {
             task: "classify".to_string(),
@@ -1886,7 +1886,7 @@ mod tests {
             manual_class_weights: None,
             manual_target_modules: None,
         };
-        let p = plan(&config).unwrap();
+        let p = plan(&config).expect("valid");
         assert_eq!(p.model.hidden_size, 896);
         assert_eq!(p.model.num_layers, 24);
         assert_eq!(p.model.architecture, "qwen2");
@@ -1972,7 +1972,7 @@ mod tests {
     fn test_resolve_class_weights_sqrt_inverse() {
         let weights = resolve_class_weights("sqrt_inverse", &[100, 200, 300], 3);
         assert!(weights.is_some());
-        let w = weights.unwrap();
+        let w = weights.expect("valid");
         assert_eq!(w.len(), 3);
         // Largest class should have smallest weight
         assert!(w[0] > w[2], "class 0 (100 samples) should have higher weight than class 2 (300 samples)");
@@ -1982,7 +1982,7 @@ mod tests {
     fn test_resolve_class_weights_inverse_freq() {
         let weights = resolve_class_weights("inverse_freq", &[100, 200, 300], 3);
         assert!(weights.is_some());
-        let w = weights.unwrap();
+        let w = weights.expect("valid");
         assert_eq!(w.len(), 3);
         assert!(w[0] > w[2]);
     }

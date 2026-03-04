@@ -403,7 +403,7 @@ nodes:
     max_adapters: 1
 "#,
         )
-        .unwrap()
+        .expect("valid")
     }
 
     fn test_placements() -> Vec<PlacementDecision> {
@@ -452,7 +452,7 @@ nodes:
             CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
 
         // Manually set latest metadata
-        coord.adapters.get_mut(&0).unwrap().latest = Some(CheckpointMetadata {
+        coord.adapters.get_mut(&0).expect("valid").latest = Some(CheckpointMetadata {
             adapter_idx: 0,
             epoch: 3,
             avg_loss: 0.5,
@@ -460,7 +460,7 @@ nodes:
             node_name: Some("desktop".to_string()),
             timestamp: None,
         });
-        coord.adapters.get_mut(&1).unwrap().latest = Some(CheckpointMetadata {
+        coord.adapters.get_mut(&1).expect("valid").latest = Some(CheckpointMetadata {
             adapter_idx: 1,
             epoch: 3,
             avg_loss: 0.8,
@@ -468,7 +468,7 @@ nodes:
             node_name: Some("desktop".to_string()),
             timestamp: None,
         });
-        coord.adapters.get_mut(&2).unwrap().latest = Some(CheckpointMetadata {
+        coord.adapters.get_mut(&2).expect("valid").latest = Some(CheckpointMetadata {
             adapter_idx: 2,
             epoch: 2,
             avg_loss: 0.3,
@@ -484,15 +484,15 @@ nodes:
         assert_eq!(board[1].adapter_idx, 0); // 0.45
         assert_eq!(board[2].adapter_idx, 1); // 0.75
 
-        let best = coord.best_adapter().unwrap();
+        let best = coord.best_adapter().expect("valid");
         assert_eq!(best.adapter_idx, 2);
     }
 
     #[test]
     fn test_poll_local_checkpoint() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("valid");
         let best_dir = dir.path().join("best");
-        fs::create_dir_all(&best_dir).unwrap();
+        fs::create_dir_all(&best_dir).expect("valid");
         let meta = CheckpointMetadata {
             adapter_idx: 0,
             epoch: 5,
@@ -503,9 +503,9 @@ nodes:
         };
         fs::write(
             best_dir.join("metadata.json"),
-            serde_json::to_string(&meta).unwrap(),
+            serde_json::to_string(&meta).expect("valid"),
         )
-        .unwrap();
+        .expect("valid");
 
         let cluster = test_cluster();
         let placements = vec![PlacementDecision {
@@ -590,7 +590,7 @@ nodes:
         let cluster = test_cluster();
         let mut coord =
             CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
-        coord.adapters.get_mut(&0).unwrap().latest = Some(CheckpointMetadata {
+        coord.adapters.get_mut(&0).expect("valid").latest = Some(CheckpointMetadata {
             adapter_idx: 0,
             epoch: 2,
             avg_loss: 0.5,
@@ -654,7 +654,7 @@ nodes:
         );
         // Should successfully spawn even if the command fails
         assert!(result.is_ok(), "local exec_launch should spawn: {:?}", result.err());
-        let mut child = result.unwrap();
+        let mut child = result.expect("valid");
         let _ = child.kill(); // Clean up
     }
 

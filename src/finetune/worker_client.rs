@@ -302,26 +302,26 @@ mod tests {
 
     #[test]
     fn test_worker_connect_and_join() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let mut server = GradientServer::bind(server_config).unwrap();
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
         let handle = thread::spawn(move || {
             let worker_config = DistributedConfig::worker(addr);
-            let client = WorkerClient::connect(worker_config, 1, "cpu").unwrap();
+            let client = WorkerClient::connect(worker_config, 1, "cpu").expect("valid");
             assert_eq!(client.worker_id(), 0);
             assert_eq!(client.total_workers(), 1);
             client
         });
 
-        server.wait_for_workers().unwrap();
-        let _client = handle.join().unwrap();
+        server.wait_for_workers().expect("valid");
+        let _client = handle.join().expect("valid");
     }
 
     #[test]
     fn test_worker_block_gradient_roundtrip() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let mut server = GradientServer::bind(server_config).unwrap();
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
         let component_sizes = vec![4, 2, 2, 4, 8, 8, 8, 1, 1];
@@ -332,13 +332,13 @@ mod tests {
         let sizes_clone = component_sizes.clone();
         let handle = thread::spawn(move || {
             let worker_config = DistributedConfig::worker(addr);
-            let client = WorkerClient::connect(worker_config, 1, "cuda").unwrap();
+            let client = WorkerClient::connect(worker_config, 1, "cuda").expect("valid");
 
             // Send block gradient
-            client.send_block_gradient(0, 5, 24, grads_clone, sizes_clone).unwrap();
+            client.send_block_gradient(0, 5, 24, grads_clone, sizes_clone).expect("valid");
 
             // Receive averaged block gradient
-            let avg = client.receive_averaged_block().unwrap();
+            let avg = client.receive_averaged_block().expect("valid");
             assert_eq!(avg.step, 0);
             assert_eq!(avg.block_idx, 5);
             // Single worker: averaged == original
@@ -346,13 +346,13 @@ mod tests {
             avg
         });
 
-        server.wait_for_workers().unwrap();
-        let result = server.collect_and_reduce_block(0, 5).unwrap();
+        server.wait_for_workers().expect("valid");
+        let result = server.collect_and_reduce_block(0, 5).expect("valid");
         assert_eq!(result.block_idx, 5);
         assert_eq!(result.avg_gradients.len(), total as usize);
-        server.broadcast_averaged_block(0, &result).unwrap();
+        server.broadcast_averaged_block(0, &result).expect("valid");
 
-        let avg = handle.join().unwrap();
+        let avg = handle.join().expect("valid");
         // Single worker: averaged gradients should equal original
         for (a, b) in avg.gradients.iter().zip(grads.iter()) {
             assert!((a - b).abs() < 1e-6, "gradient mismatch: {a} != {b}");
@@ -361,8 +361,8 @@ mod tests {
 
     #[test]
     fn test_worker_non_block_gradient_roundtrip() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let mut server = GradientServer::bind(server_config).unwrap();
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
         let grads = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
@@ -370,24 +370,24 @@ mod tests {
         let grads_clone = grads.clone();
         let handle = thread::spawn(move || {
             let worker_config = DistributedConfig::worker(addr);
-            let client = WorkerClient::connect(worker_config, 1, "cuda").unwrap();
+            let client = WorkerClient::connect(worker_config, 1, "cuda").expect("valid");
 
             // Send non-block gradient (component=0 = lm_head)
-            client.send_non_block_gradient(0, 0, grads_clone).unwrap();
+            client.send_non_block_gradient(0, 0, grads_clone).expect("valid");
 
             // Receive averaged
-            let avg = client.receive_averaged_non_block().unwrap();
+            let avg = client.receive_averaged_non_block().expect("valid");
             assert_eq!(avg.step, 0);
             assert_eq!(avg.component, 0);
             avg
         });
 
-        server.wait_for_workers().unwrap();
-        let result = server.collect_and_reduce_non_block(0, 0).unwrap();
+        server.wait_for_workers().expect("valid");
+        let result = server.collect_and_reduce_non_block(0, 0).expect("valid");
         assert_eq!(result.component, 0);
-        server.broadcast_averaged_non_block(0, &result).unwrap();
+        server.broadcast_averaged_non_block(0, &result).expect("valid");
 
-        let avg = handle.join().unwrap();
+        let avg = handle.join().expect("valid");
         for (a, b) in avg.gradients.iter().zip(grads.iter()) {
             assert!((a - b).abs() < 1e-6, "gradient mismatch: {a} != {b}");
         }
@@ -395,8 +395,8 @@ mod tests {
 
     #[test]
     fn test_two_worker_block_allreduce() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 2);
-        let mut server = GradientServer::bind(server_config).unwrap();
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 2);
+        let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
         let component_sizes = vec![2, 1, 1, 2, 2, 2, 2, 1, 1];
@@ -406,28 +406,28 @@ mod tests {
         let sizes0 = component_sizes.clone();
         let h0 = thread::spawn(move || {
             let cfg = DistributedConfig::worker(addr);
-            let client = WorkerClient::connect(cfg, 1, "cuda").unwrap();
+            let client = WorkerClient::connect(cfg, 1, "cuda").expect("valid");
             let grads = vec![1.0f32; total as usize];
-            client.send_block_gradient(0, 0, 1, grads, sizes0).unwrap();
-            client.receive_averaged_block().unwrap()
+            client.send_block_gradient(0, 0, 1, grads, sizes0).expect("valid");
+            client.receive_averaged_block().expect("valid")
         });
 
         // Worker 1: gradients = [3.0, 3.0, ...]
         let sizes1 = component_sizes.clone();
         let h1 = thread::spawn(move || {
             let cfg = DistributedConfig::worker(addr);
-            let client = WorkerClient::connect(cfg, 1, "cuda").unwrap();
+            let client = WorkerClient::connect(cfg, 1, "cuda").expect("valid");
             let grads = vec![3.0f32; total as usize];
-            client.send_block_gradient(0, 0, 1, grads, sizes1).unwrap();
-            client.receive_averaged_block().unwrap()
+            client.send_block_gradient(0, 0, 1, grads, sizes1).expect("valid");
+            client.receive_averaged_block().expect("valid")
         });
 
-        server.wait_for_workers().unwrap();
-        let result = server.collect_and_reduce_block(0, 0).unwrap();
-        server.broadcast_averaged_block(0, &result).unwrap();
+        server.wait_for_workers().expect("valid");
+        let result = server.collect_and_reduce_block(0, 0).expect("valid");
+        server.broadcast_averaged_block(0, &result).expect("valid");
 
-        let avg0 = h0.join().unwrap();
-        let avg1 = h1.join().unwrap();
+        let avg0 = h0.join().expect("valid");
+        let avg1 = h1.join().expect("valid");
 
         // Average of [1.0, 1.0, ...] and [3.0, 3.0, ...] = [2.0, 2.0, ...]
         for g in &avg0.gradients {
@@ -440,16 +440,16 @@ mod tests {
 
     #[test]
     fn test_worker_full_training_step() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let mut server = GradientServer::bind(server_config).unwrap();
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
         let handle = thread::spawn(move || {
             let worker_config = DistributedConfig::worker(addr);
-            let client = WorkerClient::connect(worker_config, 1, "cpu").unwrap();
+            let client = WorkerClient::connect(worker_config, 1, "cpu").expect("valid");
 
             // Receive shard
-            let shard = client.receive_shard().unwrap().expect("should get shard");
+            let shard = client.receive_shard().expect("valid").expect("should get shard");
             assert_eq!(shard.step, 0);
             assert_eq!(shard.shard_start, 0);
             assert_eq!(shard.shard_end, 50);
@@ -457,10 +457,10 @@ mod tests {
             // Send gradients
             client
                 .send_gradients(0, vec![1.0, 2.0, 3.0], 0.5, 48, 50)
-                .unwrap();
+                .expect("valid");
 
             // Receive averaged
-            let avg = client.receive_averaged().unwrap();
+            let avg = client.receive_averaged().expect("valid");
             assert_eq!(avg.step, 0);
             assert_eq!(avg.gradients, vec![1.0, 2.0, 3.0]); // Single worker, no averaging
             assert!((avg.global_loss - 0.5).abs() < 1e-5);
@@ -468,12 +468,12 @@ mod tests {
             client
         });
 
-        server.wait_for_workers().unwrap();
+        server.wait_for_workers().expect("valid");
         server.set_total_samples(50);
-        server.send_shard_assignments(0).unwrap();
-        let result = server.collect_and_reduce(0).unwrap();
-        server.broadcast_averaged(0, &result).unwrap();
+        server.send_shard_assignments(0).expect("valid");
+        let result = server.collect_and_reduce(0).expect("valid");
+        server.broadcast_averaged(0, &result).expect("valid");
 
-        let _client = handle.join().unwrap();
+        let _client = handle.join().expect("valid");
     }
 }

@@ -521,36 +521,36 @@ mod tests {
     #[test]
     fn test_server_bind() {
         // Bind to random port
-        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
+        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
         let server = GradientServer::bind(config);
         assert!(server.is_ok());
     }
 
     #[test]
     fn test_server_worker_count_initially_zero() {
-        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let server = GradientServer::bind(config).unwrap();
+        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let server = GradientServer::bind(config).expect("valid");
         assert_eq!(server.worker_count(), 0);
     }
 
     #[test]
     fn test_server_accept_worker() {
-        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let mut server = GradientServer::bind(config).unwrap();
+        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let mut server = GradientServer::bind(config).expect("valid");
         let addr = server.local_addr();
 
         // Spawn a worker that sends JoinRequest
         let handle = thread::spawn(move || {
-            let stream = TcpStream::connect(addr).unwrap();
+            let stream = TcpStream::connect(addr).expect("valid");
             let join = WireMessage::JoinRequest {
                 node_id: "test-worker".to_string(),
                 gpu_count: 1,
                 backend: "cpu".to_string(),
             };
-            send_wire_message(&stream, &join).unwrap();
+            send_wire_message(&stream, &join).expect("valid");
 
             // Read JoinAccepted
-            let response = read_wire_message(&stream).unwrap();
+            let response = read_wire_message(&stream).expect("valid");
             match response {
                 WireMessage::JoinAccepted {
                     worker_id,
@@ -564,33 +564,33 @@ mod tests {
             stream
         });
 
-        server.wait_for_workers().unwrap();
+        server.wait_for_workers().expect("valid");
         assert_eq!(server.worker_count(), 1);
 
-        let _stream = handle.join().unwrap();
+        let _stream = handle.join().expect("valid");
     }
 
     #[test]
     fn test_server_shard_and_reduce() {
-        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 2);
-        let mut server = GradientServer::bind(config).unwrap();
+        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 2);
+        let mut server = GradientServer::bind(config).expect("valid");
         let addr = server.local_addr();
 
         // Spawn 2 workers
         let handles: Vec<_> = (0..2)
             .map(|i| {
                 thread::spawn(move || {
-                    let stream = TcpStream::connect(addr).unwrap();
+                    let stream = TcpStream::connect(addr).expect("valid");
                     let join = WireMessage::JoinRequest {
                         node_id: format!("worker-{i}"),
                         gpu_count: 1,
                         backend: "cpu".to_string(),
                     };
-                    send_wire_message(&stream, &join).unwrap();
-                    let _ = read_wire_message(&stream).unwrap(); // JoinAccepted
+                    send_wire_message(&stream, &join).expect("valid");
+                    let _ = read_wire_message(&stream).expect("valid"); // JoinAccepted
 
                     // Read shard assignment
-                    let shard_msg = read_wire_message(&stream).unwrap();
+                    let shard_msg = read_wire_message(&stream).expect("valid");
                     let (shard_start, shard_end) = match shard_msg {
                         WireMessage::ShardAssignment {
                             shard_start,
@@ -609,10 +609,10 @@ mod tests {
                         correct: shard_end - shard_start,
                         total: shard_end - shard_start,
                     };
-                    send_wire_message(&stream, &grad).unwrap();
+                    send_wire_message(&stream, &grad).expect("valid");
 
                     // Read averaged gradient
-                    let avg_msg = read_wire_message(&stream).unwrap();
+                    let avg_msg = read_wire_message(&stream).expect("valid");
                     match avg_msg {
                         WireMessage::AveragedGradient { gradients, .. } => {
                             // Average of [1,2] and [2,3] should be [1.5, 2.5]
@@ -628,41 +628,41 @@ mod tests {
             .collect();
 
         // Server flow
-        server.wait_for_workers().unwrap();
+        server.wait_for_workers().expect("valid");
         server.set_total_samples(100);
-        server.send_shard_assignments(0).unwrap();
-        let result = server.collect_and_reduce(0).unwrap();
+        server.send_shard_assignments(0).expect("valid");
+        let result = server.collect_and_reduce(0).expect("valid");
 
         assert!((result.avg_gradients[0] - 1.5).abs() < 1e-5);
         assert!((result.avg_gradients[1] - 2.5).abs() < 1e-5);
         assert_eq!(result.total_samples, 100);
         assert!(result.allreduce_ms >= 0.0);
 
-        server.broadcast_averaged(0, &result).unwrap();
+        server.broadcast_averaged(0, &result).expect("valid");
 
         for h in handles {
-            let _stream = h.join().unwrap();
+            let _stream = h.join().expect("valid");
         }
     }
 
     #[test]
     fn test_server_jidoka_halt_on_nan() {
-        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let mut server = GradientServer::bind(config).unwrap();
+        let config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let mut server = GradientServer::bind(config).expect("valid");
         let addr = server.local_addr();
 
         let handle = thread::spawn(move || {
-            let stream = TcpStream::connect(addr).unwrap();
+            let stream = TcpStream::connect(addr).expect("valid");
             let join = WireMessage::JoinRequest {
                 node_id: "bad-worker".to_string(),
                 gpu_count: 1,
                 backend: "cpu".to_string(),
             };
-            send_wire_message(&stream, &join).unwrap();
-            let _ = read_wire_message(&stream).unwrap();
+            send_wire_message(&stream, &join).expect("valid");
+            let _ = read_wire_message(&stream).expect("valid");
 
             // Read shard
-            let _ = read_wire_message(&stream).unwrap();
+            let _ = read_wire_message(&stream).expect("valid");
 
             // Send NaN gradient
             let grad = WireMessage::GradientPayload {
@@ -673,17 +673,17 @@ mod tests {
                 correct: 5,
                 total: 10,
             };
-            send_wire_message(&stream, &grad).unwrap();
+            send_wire_message(&stream, &grad).expect("valid");
             stream
         });
 
-        server.wait_for_workers().unwrap();
+        server.wait_for_workers().expect("valid");
         server.set_total_samples(10);
-        server.send_shard_assignments(0).unwrap();
+        server.send_shard_assignments(0).expect("valid");
         let result = server.collect_and_reduce(0);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("JIDOKA HALT"));
 
-        let _stream = handle.join().unwrap();
+        let _stream = handle.join().expect("valid");
     }
 }
