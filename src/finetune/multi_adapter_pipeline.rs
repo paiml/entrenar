@@ -249,19 +249,35 @@ impl MultiAdapterPipeline {
             .all(|s| s.cursor >= s.train_samples.len())
     }
 
-    /// Train one synchronized step on all adapters.
+    /// Batch training step across all non-exhausted adapters (GH-204).
     ///
-    /// In Synchronized mode, all adapters process one sample each per step.
-    /// This method runs train_step on each adapter sequentially, sharing the
-    /// base model's GPU blocks.
+    /// Trains each adapter that still has data, using the scheduling mode.
+    /// In `Synchronized` mode, all adapters train one sample each.
+    /// In `RoundRobin`, only the next scheduled adapter trains.
+    /// In `PriorityValLoss`, the adapter with highest val loss trains.
     ///
-    /// Returns per-adapter step results (None for exhausted adapters).
-    pub fn batch_step_synchronized(&mut self) -> Vec<Option<InstructStepResult>> {
+    /// Returns per-adapter step results (indexed by adapter, None if skipped/exhausted).
+    ///
+    /// NOTE: Current implementation runs sequential forward+backward per adapter
+    /// (swapping LoRA layers). Future optimization: fused BatchLoRA forward
+    /// through shared NF4 blocks with per-adapter LoRA deltas (arXiv:2510.00206).
+    pub fn batch_train_step(&mut self) -> Vec<Option<InstructStepResult>> {
         let n = self.adapters.len();
-        let mut results = Vec::with_capacity(n);
+        let mut results = vec![None; n];
 
-        for i in 0..n {
-            results.push(self.train_step_adapter(i));
+        match self.schedule {
+            AdapterSchedule::Synchronized => {
+                // All adapters train one sample each
+                for i in 0..n {
+                    results[i] = self.train_step_adapter(i);
+                }
+            }
+            AdapterSchedule::RoundRobin | AdapterSchedule::PriorityValLoss => {
+                // Single adapter per step
+                if let Some(idx) = self.select_next_adapter() {
+                    results[idx] = self.train_step_adapter(idx);
+                }
+            }
         }
 
         results
@@ -484,6 +500,35 @@ mod tests {
         for (s1, s2) in samples1.iter().zip(samples2.iter()) {
             assert_eq!(s1.instruction, s2.instruction);
         }
+    }
+
+    #[test]
+    fn test_batch_train_step_synchronized() {
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::Synchronized,
+            global_step: 0,
+        };
+
+        // No tokenizer → all results are None, but batch_train_step returns correct length
+        let results = pipeline.batch_train_step();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_batch_train_step_round_robin() {
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot(), dummy_slot(), dummy_slot()],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+
+        let results = pipeline.batch_train_step();
+        assert_eq!(results.len(), 3);
+        // RoundRobin at step 0 → only adapter 0 would be trained
+        // (but no tokenizer, so all None)
     }
 
     fn create_dummy_pipeline() -> InstructPipeline {
