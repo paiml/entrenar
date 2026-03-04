@@ -41,14 +41,18 @@ pub fn gemm_backward_a(
     })?;
 
     let tile = BACKWARD_TILE_SIZE;
-    // Constructor is tiled_unrolled(m, n, k, tile_size) — n and k must match
-    // trueno semantics: n = reduction dim (forward output dim), k = output cols
+    // Kernel object needed for name(); cheap struct creation, PTX deferred.
     let kernel = GemmBackwardAKernel::tiled_unrolled(m, n, k, tile);
     let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("gemm_backward_a_{m}_{k}_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Tiled launch: block = (TILE, TILE), grid covers output grad_a[M, K]
     let smem = 2 * tile * tile * 4; // 2 tiles of f32
@@ -105,14 +109,18 @@ pub fn gemm_backward_b(
     })?;
 
     let tile = BACKWARD_TILE_SIZE;
-    // Constructor is tiled_unrolled(m, n, k, tile_size) — n and k must match
-    // trueno semantics: n = reduction dim (forward output dim), k = output cols
+    // Kernel object needed for name(); cheap struct creation, PTX deferred.
     let kernel = GemmBackwardBKernel::tiled_unrolled(m, n, k, tile);
     let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("gemm_backward_b_{m}_{k}_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Tiled launch: block = (TILE, TILE), grid covers output grad_b[K, N]
     let smem = 2 * tile * tile * 4;

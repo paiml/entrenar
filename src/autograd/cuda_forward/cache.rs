@@ -59,6 +59,15 @@ impl ForwardKernelCache {
         &self.sm_target
     }
 
+    /// Look up a previously compiled module by key (KAIZEN-058).
+    ///
+    /// Returns `Some` if the module is already cached (post-pre-warm: always).
+    /// Callers should use this before generating PTX to avoid unnecessary
+    /// multi-KB String allocations (~1000 per training step).
+    pub(super) fn get_cached(&mut self, name: &str) -> Option<&mut CudaModule> {
+        self.modules.get_mut(name)
+    }
+
     /// Compile PTX and cache the resulting module.
     ///
     /// # Contract: F-PTX-001 (Target Parity)

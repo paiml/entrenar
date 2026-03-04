@@ -40,6 +40,11 @@ impl KernelCache {
         &self.sm_target
     }
 
+    /// Look up a previously compiled module by key (KAIZEN-058).
+    pub(super) fn get_cached(&mut self, name: &str) -> Option<&mut CudaModule> {
+        self.modules.get_mut(name)
+    }
+
     pub(super) fn get_or_compile(&mut self, name: &str, ptx: &str) -> Result<&mut CudaModule> {
         use std::collections::hash_map::Entry;
 

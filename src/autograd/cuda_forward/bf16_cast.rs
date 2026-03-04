@@ -130,9 +130,14 @@ pub fn cast_f32_to_bf16_gpu(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let ptx = build_cast_f32_to_bf16_ptx(0);
     let key = "cast_f32_to_bf16";
-    let module = cache.get_or_compile(key, &ptx)?;
+    let module = match cache.get_cached(key) {
+        Some(m) => m,
+        None => {
+            let ptx = build_cast_f32_to_bf16_ptx(0);
+            cache.get_or_compile(key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -175,9 +180,14 @@ pub fn cast_bf16_to_f32_gpu(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let ptx = build_cast_bf16_to_f32_ptx(0);
     let key = "cast_bf16_to_f32";
-    let module = cache.get_or_compile(key, &ptx)?;
+    let module = match cache.get_cached(key) {
+        Some(m) => m,
+        None => {
+            let ptx = build_cast_bf16_to_f32_ptx(0);
+            cache.get_or_compile(key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 

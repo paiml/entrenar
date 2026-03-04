@@ -30,11 +30,15 @@ pub fn fused_swiglu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = FusedSwigluKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("fused_swiglu_forward_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = FusedSwigluKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -78,11 +82,15 @@ pub fn gemm_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = GemmKernel::naive(m, n, k);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("gemm_forward_{m}_{k}_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = GemmKernel::naive(m, n, k);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Use 16x16 thread blocks for GEMM
     // Kernel: col = ctaid.x * 16 + tid.x, row = ctaid.y * 16 + tid.y
@@ -149,10 +157,15 @@ pub fn batched_4d_gemm_forward(
 
     let kernel = Batched4DGemmKernel::new(batch, heads, m, n, k);
     let tile_size = kernel.config.tile_size;
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("batched_4d_gemm_{batch}_{heads}_{m}_{n}_{k}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Grid: ((m+tile-1)/tile, (n+tile-1)/tile, batch * heads)
     // Block: (tile_size, tile_size, 1)
@@ -221,10 +234,15 @@ pub fn gemm_nf4_forward(
 
     let kernel = Nf4GemmKernel::new(m, n, k);
     let tile_size = kernel.tile_size;
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("nf4_gemm_forward_{m}_{k}_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Use tile_size × tile_size thread blocks (same as Q4K GEMM)
     let config = LaunchConfig {
@@ -293,9 +311,14 @@ pub fn gemm_forward_bf16(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let ptx = build_gemm_bf16_compute_ptx(cache.sm_target());
     let key = format!("gemm_bf16_compute_{m}_{k}_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = build_gemm_bf16_compute_ptx(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig {
         grid: (n.div_ceil(16), m.div_ceil(16), 1),

@@ -30,11 +30,15 @@ pub fn relu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = ReluKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("relu_forward_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = ReluKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -77,10 +81,15 @@ pub fn softmax_forward(
 
     let kernel = SoftmaxKernel::new(length);
     let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("softmax_forward_{length}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (1, 1, 1), block: (32.min(length), 1, 1), shared_mem: 0 };
 
@@ -119,11 +128,15 @@ pub fn gelu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = GeluKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("gelu_forward_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = GeluKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -162,11 +175,15 @@ pub fn silu_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = SiluKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("silu_forward_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = SiluKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -218,10 +235,15 @@ pub fn batched_softmax_forward(
 
     let kernel = BatchedSoftmaxKernel::new(total_rows, row_size);
     let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("batched_softmax_forward_{total_rows}_{row_size}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // One warp (32 threads) per row, one block per row
     let config =

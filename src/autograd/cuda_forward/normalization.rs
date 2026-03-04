@@ -33,10 +33,15 @@ pub fn layer_norm_forward(
 
     let kernel = LayerNormKernel::new(hidden_size);
     let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("layer_norm_forward_{hidden_size}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig {
         grid: (batch_size, 1, 1),
@@ -91,10 +96,15 @@ pub fn rms_norm_forward(
 
     let kernel = RmsNormKernel::new(hidden_size);
     let kernel_name = kernel.name();
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
     let key = format!("rms_norm_forward_{hidden_size}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Kernel uses warp shuffle and expects exactly 32 threads (one warp)
     let config = LaunchConfig { grid: (1, 1, 1), block: (32, 1, 1), shared_mem: 0 };
