@@ -85,25 +85,7 @@ impl CitlTrainer {
         }
 
         // Validate consistent dimensions
-        for (i, pair) in pairs.iter().enumerate() {
-            if pair.error_features.len() != error_dim {
-                return Err(crate::Error::ShapeMismatch {
-                    expected: vec![error_dim],
-                    got: vec![pair.error_features.len()],
-                });
-            }
-            if pair.fix_features.len() != fix_dim {
-                return Err(crate::Error::ShapeMismatch {
-                    expected: vec![fix_dim],
-                    got: vec![pair.fix_features.len()],
-                });
-            }
-            if i > 0 && pair.error_features.len() != error_dim {
-                return Err(crate::Error::InvalidParameter(format!(
-                    "Inconsistent error feature dimension at pair {i}"
-                )));
-            }
-        }
+        validate_pair_dimensions(pairs, error_dim, fix_dim)?;
 
         let n = pairs.len();
 
@@ -202,6 +184,34 @@ impl CitlTrainer {
     pub fn weights(&self) -> &Array2<f32> {
         &self.weights
     }
+}
+
+/// Validate that all pairs have consistent error/fix feature dimensions.
+fn validate_pair_dimensions(
+    pairs: &[ErrorFixPair],
+    error_dim: usize,
+    fix_dim: usize,
+) -> Result<(), crate::Error> {
+    for (i, pair) in pairs.iter().enumerate() {
+        if pair.error_features.len() != error_dim {
+            return Err(crate::Error::ShapeMismatch {
+                expected: vec![error_dim],
+                got: vec![pair.error_features.len()],
+            });
+        }
+        if pair.fix_features.len() != fix_dim {
+            return Err(crate::Error::ShapeMismatch {
+                expected: vec![fix_dim],
+                got: vec![pair.fix_features.len()],
+            });
+        }
+        if i > 0 && pair.error_features.len() != error_dim {
+            return Err(crate::Error::InvalidParameter(format!(
+                "Inconsistent error feature dimension at pair {i}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Invert a square matrix using Gauss-Jordan elimination.
@@ -309,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn test_predict_fix_output_length() {
+    fn test_predict_suggestion_output_length() {
         let trainer = CitlTrainer::train(&simple_pairs()).expect("operation should succeed");
         let pred = trainer.predict_fix(&[1.0, 0.0]);
         assert_eq!(pred.len(), 2);
