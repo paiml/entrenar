@@ -836,11 +836,12 @@ impl CudaTransformerTrainer {
         ).ok()?;
 
         // Clip LM head weight gradient
-        // KAIZEN-049: GPU norm reduction — ~1KB D2H instead of 128MB.
-        // stream.synchronize() still needed: squared_sum_cuda launches its own kernel
-        // that reads the gradient buffer, so prior GEMM must complete first.
+        // KAIZEN-049: GPU norm reduction.
+        // KAIZEN-051: Removed redundant stream.synchronize() — squared_sum_cuda runs on
+        // the same stream as gemm_backward_b, so CUDA stream ordering guarantees the GEMM
+        // completes before the reduction kernel starts. The sync inside squared_sum_cuda
+        // handles the D2H of partial sums.
         if let Some(max_norm) = max_grad_norm {
-            stream.synchronize().ok()?;
             let (scale, norm) = Self::compute_clip_scale_with_norm(&self.lm_head_grad_gpu, max_norm, stream);
             self.last_grad_norm = norm; // R-004: capture for observability
             let n = self.lm_head_grad_gpu.len() as u32;
@@ -859,9 +860,9 @@ impl CudaTransformerTrainer {
             seq_len as u32, hidden_size as u32, 1e-5_f32, stream,
         ).ok()?;
 
-        // Clip final norm weight gradient (sync for same reason as LM head clip)
+        // Clip final norm weight gradient
+        // KAIZEN-051: No explicit sync needed — same stream ordering as LM head clip.
         if let Some(max_norm) = max_grad_norm {
-            stream.synchronize().ok()?;
             let (scale, _) = Self::compute_clip_scale_with_norm(&self.gpu_training.grad_final_norm_weight, max_norm, stream);
             let n = self.gpu_training.grad_final_norm_weight.len() as u32;
             let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
