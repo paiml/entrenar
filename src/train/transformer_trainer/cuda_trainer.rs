@@ -1449,31 +1449,41 @@ impl CudaTransformerTrainer {
     pub fn eval_batch(&mut self, batch: &LMBatch) -> f32 {
         let hidden_size = self.config.model_config.hidden_size;
         let vocab_size = self.config.model_config.vocab_size;
+        let max_sl = self.config.max_seq_len;
         let mut total_loss = 0.0;
         let mut valid_count = 0;
         for i in 0..batch.batch_size {
-            let Some(input_ids) = batch.get_input(i) else { continue };
-            let Some(target_ids) = batch.get_target(i) else { continue };
-            let seq_len = input_ids.len();
-            if self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size).is_none() { continue; }
-            let stream = self.cuda_trainer.stream();
-            // scale=1/seq_len for eval (no grad_scaler or accumulation)
-            let scale = 1.0 / seq_len as f32;
-            // KAIZEN-052: In-place — logits_buf overwritten with grad (harmless for eval,
-            // next forward overwrites it anyway).
-            let Ok(loss) = fused_cross_entropy_cuda(
-                &mut self.gpu_training.logits_buf,
-                target_ids,
-                seq_len as u32,
-                vocab_size as u32,
-                scale,
-                stream,
-            ) else { continue };
-            if !loss.is_finite() { continue; }
-            total_loss += loss;
-            valid_count += 1;
+            if let Some(loss) = self.eval_single_sequence(batch, i, max_sl, hidden_size, vocab_size) {
+                total_loss += loss;
+                valid_count += 1;
+            }
         }
         if valid_count > 0 { total_loss / valid_count as f32 } else { 0.0 }
+    }
+
+    /// Evaluate a single sequence from a batch. Returns None if invalid.
+    fn eval_single_sequence(
+        &mut self, batch: &LMBatch, i: usize, max_sl: usize,
+        hidden_size: usize, vocab_size: usize,
+    ) -> Option<f32> {
+        let input_ids = batch.get_input(i)?;
+        let target_ids = batch.get_target(i)?;
+        // Truncate to max_seq_len — GPU buffers are pre-allocated for this size
+        let input_ids = if input_ids.len() > max_sl { &input_ids[..max_sl] } else { input_ids };
+        let target_ids = if target_ids.len() > max_sl { &target_ids[..max_sl] } else { target_ids };
+        let seq_len = input_ids.len();
+        self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
+        let stream = self.cuda_trainer.stream();
+        let scale = 1.0 / seq_len as f32;
+        let loss = fused_cross_entropy_cuda(
+            &mut self.gpu_training.logits_buf,
+            target_ids,
+            seq_len as u32,
+            vocab_size as u32,
+            scale,
+            stream,
+        ).ok()?;
+        if loss.is_finite() { Some(loss) } else { None }
     }
 
     /// Train for one epoch over batches.
