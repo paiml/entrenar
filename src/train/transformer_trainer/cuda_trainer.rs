@@ -273,6 +273,9 @@ pub struct CudaTransformerTrainer {
     /// Reused every step — eliminates 2 × cuMemAlloc/Free per training step.
     fwd_scratch_a: GpuBuffer<f32>,
     fwd_scratch_b: GpuBuffer<f32>,
+    /// KAIZEN-056: Pre-allocated CPU staging buffer for H2D hidden state upload.
+    /// Eliminates vec![0.0; max_seq_len * hidden_size] allocation per step.
+    h2d_staging: Vec<f32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -584,6 +587,7 @@ impl CudaTransformerTrainer {
             grad_scaler,
             fwd_scratch_a,
             fwd_scratch_b,
+            h2d_staging: vec![0.0f32; max_seq_len * hidden_size],
         })
     }
 
@@ -684,11 +688,11 @@ impl CudaTransformerTrainer {
         // Upload hidden states to GPU (Transfer 1: H2D)
         // Pad to max_seq_len so D2D copies to pre-allocated layer_inputs match.
         // KAIZEN-053: Reuse pre-allocated scratch buffers instead of cuMemAlloc per step.
+        // KAIZEN-056: Reuse pre-allocated h2d_staging instead of alloc per step.
         self.profiler.begin(StepProfiler::H2D);
-        let max_buf_size = self.config.max_seq_len * hidden_size;
-        let mut padded_hidden = vec![0.0f32; max_buf_size];
-        padded_hidden[..hidden_slice.len()].copy_from_slice(hidden_slice);
-        self.fwd_scratch_a.copy_from_host(&padded_hidden).ok()?;
+        self.h2d_staging[..hidden_slice.len()].copy_from_slice(hidden_slice);
+        self.h2d_staging[hidden_slice.len()..].fill(0.0);
+        self.fwd_scratch_a.copy_from_host(&self.h2d_staging).ok()?;
         self.profiler.end(StepProfiler::H2D);
 
         // Forward through CUDA blocks using pre-allocated ping-pong buffers.
