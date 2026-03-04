@@ -830,21 +830,29 @@ impl InstructPipeline {
             let logit_start = pos * vocab_size;
             let row = &logits_data[logit_start..logit_start + vocab_size];
 
-            // Numerically stable log-softmax
+            // Numerically stable log-softmax + gradient in one pass.
+            // KAIZEN-063: Write exp values directly into grad_logits row instead of
+            // allocating a temporary Vec<f32> per position (~608KB for vocab=151936).
             let max_val = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            let exp_vals: Vec<f32> = row.iter().map(|&v| (v - max_val).exp()).collect();
-            let sum_exp: f32 = exp_vals.iter().sum();
-            let log_sum_exp = sum_exp.ln() + max_val;
+            let grad_row = &mut grad_logits[logit_start..logit_start + vocab_size];
+            let mut sum_exp = 0.0f32;
+            for j in 0..vocab_size {
+                let exp_v = (row[j] - max_val).exp();
+                grad_row[j] = exp_v;
+                sum_exp += exp_v;
+            }
 
+            let log_sum_exp = sum_exp.ln() + max_val;
             let loss_i = -(row[target] - log_sum_exp);
             total_loss += if loss_i.is_finite() { loss_i } else { 100.0 };
 
-            // Gradient: (softmax - one_hot) / num_loss_tokens
+            // Convert exp values to softmax gradient in-place: (exp/sum) / num_loss_tokens
             let inv_n = 1.0 / num_loss_tokens as f32;
+            let scale = inv_n / sum_exp;
             for j in 0..vocab_size {
-                grad_logits[logit_start + j] = (exp_vals[j] / sum_exp) * inv_n;
+                grad_row[j] *= scale;
             }
-            grad_logits[logit_start + target] -= inv_n;
+            grad_row[target] -= inv_n;
         }
 
         let avg_loss = if num_loss_tokens > 0 {
