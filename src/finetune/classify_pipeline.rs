@@ -414,6 +414,10 @@ struct GpuTrainingState {
     /// KAIZEN-045: Pre-allocated upload buffer for gradient H2D transfer in backward
     /// [max_seq_len * hidden_size]. Eliminates per-backward cuMemAlloc/cuMemFree.
     grad_upload_buf: GpuBuffer<f32>,
+    /// KAIZEN-060: Pre-allocated forward ping-pong buffers [max_seq_len * hidden_size].
+    /// Eliminates 2 × cuMemAlloc/Free per forward pass.
+    fwd_scratch_a: GpuBuffer<f32>,
+    fwd_scratch_b: GpuBuffer<f32>,
 }
 
 /// Classification fine-tuning pipeline.
@@ -1583,6 +1587,11 @@ impl ClassifyPipeline {
         let output_scratch = trainer.zeros(buf_size).ok()?;
         let grad_upload_buf = trainer.zeros(buf_size).ok()?;
 
+        // KAIZEN-060: Pre-allocate forward ping-pong buffers to eliminate
+        // 2 × cuMemAlloc/Free per forward pass (was trainer.upload + trainer.zeros per call).
+        let fwd_scratch_a = trainer.zeros(buf_size).ok()?;
+        let fwd_scratch_b = trainer.zeros(buf_size).ok()?;
+
         Some(GpuTrainingState {
             layer_inputs,
             final_norm_weight,
@@ -1594,6 +1603,8 @@ impl ClassifyPipeline {
             step: 0,
             output_scratch,
             grad_upload_buf,
+            fwd_scratch_a,
+            fwd_scratch_b,
         })
     }
 
@@ -1712,41 +1723,58 @@ impl ClassifyPipeline {
         let hidden_data = hidden.data();
         let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
 
-        // Step 2: Upload to GPU
-        let mut gpu_input = trainer.upload(hidden_slice).ok()?;
-        let mut gpu_output = trainer.zeros(seq_len * hidden_size).ok()?;
+        // Step 2: Upload to GPU using pre-allocated fwd_scratch_a (KAIZEN-060)
+        // Pad remaining buffer to match pre-allocated size (kernels use seq_len param).
+        training_state.fwd_scratch_a.copy_from_host_at(hidden_slice, 0).ok()?;
 
         // Step 3: Run through CUDA transformer blocks, saving inputs
+        // KAIZEN-060: Use pre-allocated ping-pong buffers instead of per-call alloc.
         let stream = trainer.stream();
+        let scratch_a_ptr: *mut GpuBuffer<f32> = &mut training_state.fwd_scratch_a;
+        let scratch_b_ptr: *mut GpuBuffer<f32> = &mut training_state.fwd_scratch_b;
+        let mut input_is_a = true;
+
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
+            // SAFETY: scratch_a_ptr and scratch_b_ptr point to disjoint fields.
+            let (input, output) = unsafe {
+                if input_is_a {
+                    (&*scratch_a_ptr, &mut *scratch_b_ptr)
+                } else {
+                    (&*scratch_b_ptr, &mut *scratch_a_ptr)
+                }
+            };
+
             // Save input to this block for backward pass
             // SAFETY: Both buffers are valid GPU allocations with matching sizes.
-            // The copy completes before block.forward() reads from gpu_input.
+            // The copy completes before block.forward() reads from input.
             unsafe {
                 training_state.layer_inputs[i]
-                    .copy_from_buffer_async(&gpu_input, stream)
+                    .copy_from_buffer_async(input, stream)
                     .ok()?;
             }
 
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut()) {
+            if let Err(e) = block.forward(input, output, seq_len, stream, shared_scratch.as_mut()) {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
-            std::mem::swap(&mut gpu_input, &mut gpu_output);
+            input_is_a = !input_is_a;
         }
-        // After loop: gpu_input holds final block output
+        // After loop: the buffer indicated by input_is_a holds the final output
+        let final_output = unsafe {
+            if input_is_a { &*scratch_a_ptr } else { &*scratch_b_ptr }
+        };
 
         // Save blocks output for final norm backward
         // SAFETY: Both buffers valid, copy completes before any read.
         unsafe {
             training_state.blocks_output
-                .copy_from_buffer_async(&gpu_input, stream)
+                .copy_from_buffer_async(final_output, stream)
                 .ok()?;
         }
 
         // Sync and download for CPU classifier path
         stream.synchronize().ok()?;
-        let result_data = trainer.download(&gpu_input).ok()?;
+        let result_data = trainer.download(final_output).ok()?;
 
         // NaN guard
         if result_data.iter().any(|v| !v.is_finite()) {
