@@ -29,6 +29,7 @@ pub use config::{
 pub use grad_accumulator::{BlockGradientSet, PerBlockGradientAccumulator};
 pub use distributed_checkpoint::DistributedCheckpointCoordinator;
 #[cfg(feature = "cuda")]
+#[allow(unused_imports)]
 pub use distributed_trainer::{DistributedCudaTrainer, DistributedComm, GradientMessage};
 pub use distributed_trainer::shard_batches;
 pub use cuda_trainer::CudaTransformerTrainer;

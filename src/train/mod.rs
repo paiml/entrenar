@@ -64,11 +64,15 @@ pub use transformer_trainer::{
     DistributedBackend, DistributedCheckpointCoordinator, DistributedRole,
     DistributedTrainConfig, ElasticCoordinator, LMBatch, PerBlockGradientAccumulator,
     TransformerTrainConfig, TransformerTrainer,
+    // DDP (#133)
+    shard_batches,
     // Parallelism strategies
     CausalMaskType, ColumnParallelShard, OptimizerShard, PipelineAction,
     PipelineActivationBuffer, PipelineStage, RingAttentionSchedule, RowParallelShard,
     SequenceParallelConfig, SpCommCost, TensorParallelConfig, TpCommCost, ZeroShardMap,
 };
+#[cfg(feature = "cuda")]
+pub use transformer_trainer::{DistributedCudaTrainer, DistributedComm};
 pub use transformer_trainer::distributed_checkpoint::{
     checkpoint_path, hash_weights, should_save_checkpoint, verify_weight_consistency,
     CheckpointPhase,
