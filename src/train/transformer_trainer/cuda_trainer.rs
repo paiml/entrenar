@@ -168,6 +168,42 @@ fn compute_workspace_grad_norm(ws: &CudaGradWorkspace, stream: &CudaStream) -> f
     norm
 }
 
+/// ALB-072: Unscale all gradient buffers in the shared workspace by `inv_scale`.
+///
+/// In fp16 AMP, the fused cross-entropy kernel multiplies loss_scale into the
+/// gradient output. All subsequent backward gradients carry this scaling. The
+/// GPU block optimizer (AdamW) must receive unscaled gradients — otherwise the
+/// second moment `v` overflows f32, producing NaN in early layers.
+///
+/// This is the GPU-side equivalent of `GradScaler::unscale_and_check()` used
+/// for CPU embedding gradients.
+#[cfg(feature = "cuda")]
+fn unscale_workspace_gradients(ws: &mut CudaGradWorkspace, inv_scale: f32, stream: &CudaStream) {
+    if (inv_scale - 1.0).abs() < 1e-7 {
+        return;
+    }
+
+    let n_wq = ws.grad_w_q.len() as u32;
+    let n_wk = ws.grad_w_k.len() as u32;
+    let n_wv = ws.grad_w_v.len() as u32;
+    let n_wo = ws.grad_w_o.len() as u32;
+    let n_gate = ws.grad_gate.len() as u32;
+    let n_up = ws.grad_up.len() as u32;
+    let n_down = ws.grad_down.len() as u32;
+    let n_inorm = ws.grad_input_norm.len() as u32;
+    let n_panorm = ws.grad_post_attn_norm.len() as u32;
+
+    let _ = gradient_clip_cuda(&mut ws.grad_w_q, inv_scale, n_wq, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_w_k, inv_scale, n_wk, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_w_v, inv_scale, n_wv, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_w_o, inv_scale, n_wo, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_gate, inv_scale, n_gate, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_up, inv_scale, n_up, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_down, inv_scale, n_down, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_input_norm, inv_scale, n_inorm, stream);
+    let _ = gradient_clip_cuda(&mut ws.grad_post_attn_norm, inv_scale, n_panorm, stream);
+}
+
 /// GPU-resident training state for pretraining.
 ///
 /// # Contract (C-GPUTRAIN-001)
@@ -643,13 +679,18 @@ impl CudaTransformerTrainer {
         self.profiler.begin(StepProfiler::LOSS);
         let stream = self.cuda_trainer.stream();
 
-        // Compute combined scale: (1/seq_len) * grad_scaler * (1/accum_steps)
+        // Compute combined scale: (1/seq_len) * (1/accum_steps)
+        //
+        // ALB-072: Do NOT multiply by grad_scaler.scale() here. All backward
+        // computation uses f32 GpuBuffers — there is no fp16 gradient underflow
+        // risk. The 65536x loss scaling caused gradient overflow in early layers
+        // (blocks 0-1 went NaN). The GradScaler remains active for the CPU
+        // embedding path (unscale_and_check in optimizer_step) as a safety check,
+        // but it operates with scale=1.0 effective for GPU gradients.
         let mut loss_scale = 1.0 / seq_len as f32;
         if self.config.accumulation_steps > 1 {
             loss_scale /= self.config.accumulation_steps as f32;
         }
-        // R-002: Mixed precision gradient scaling (no-op for BF16/FP32, active for FP16)
-        loss_scale *= self.grad_scaler.scale();
 
         // KAIZEN-052: In-place — gradient written directly to logits_buf.
         let loss_val = fused_cross_entropy_cuda(
@@ -889,6 +930,7 @@ impl CudaTransformerTrainer {
         let stream = self.cuda_trainer.stream();
         let max_grad_norm = self.config.base.max_grad_norm;
         let lr = self.current_lr();
+        // ALB-072: No inv_scale needed — loss_scale no longer includes grad_scaler.
         let beta1 = self.config.beta1;
         let beta2 = self.config.beta2;
         let weight_decay = self.config.weight_decay;
@@ -916,15 +958,11 @@ impl CudaTransformerTrainer {
 
         // Clip LM head weight gradient
         // KAIZEN-049: GPU norm reduction.
-        // KAIZEN-051: Removed redundant stream.synchronize() — squared_sum_cuda runs on
-        // the same stream as gemm_backward_b, so CUDA stream ordering guarantees the GEMM
-        // completes before the reduction kernel starts. The sync inside squared_sum_cuda
-        // handles the D2H of partial sums.
-        // ALB-071: Always compute LM head grad norm for observability (R-004),
-        // even when weight grad clipping is disabled (ALB-067).
+        // KAIZEN-051: No explicit sync needed — same stream ordering.
+        // ALB-071: Always compute LM head grad norm for observability (R-004).
         let lm_norm = squared_sum_cuda(&self.lm_head_grad_gpu, self.lm_head_grad_gpu.len() as u32, stream)
             .unwrap_or(0.0);
-        self.last_grad_norm = lm_norm; // R-004: capture for observability
+        self.last_grad_norm = lm_norm; // R-004: capture for observability (now on unscaled grads)
         if let Some(max_norm) = max_grad_norm {
             let clip_scale = if lm_norm > max_norm { max_norm / lm_norm } else { 1.0 };
             let n = self.lm_head_grad_gpu.len() as u32;
@@ -1014,9 +1052,8 @@ impl CudaTransformerTrainer {
             // ALB-067 disabled this due to CPU D2H bottleneck (864 transfers/step);
             // now only 9 tiny partial-sum downloads per block.
             //
-            // No stream.synchronize() needed: backward, clip, and optimizer_step are all
-            // GPU-side operations on the same stream — CUDA stream ordering guarantees
-            // each completes before the next starts.
+            // No stream.synchronize() needed: backward, unscale, clip, and optimizer_step
+            // are all GPU-side operations on the same stream.
             if let Some(max_norm) = max_grad_norm {
                 clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
             }
@@ -1356,20 +1393,10 @@ impl CudaTransformerTrainer {
     /// LM head and final norm optimizer steps also run in `gpu_backward()`.
     /// This method handles only CPU embedding and bookkeeping.
     fn optimizer_step(&mut self) {
-        // R-002: Unscale embedding gradients before optimizer step (mixed precision)
-        if self.grad_scaler.scale() != 1.0 {
-            let embed_weight = &mut self.model.embed_tokens.weight;
-            if let Some(grad) = embed_weight.grad() {
-                let mut unscaled: Vec<f32> = grad.to_vec();
-                let grads_valid = self.grad_scaler.unscale_and_check(&mut unscaled);
-                embed_weight.set_grad(ndarray::Array1::from(unscaled));
-                self.grad_scaler.update(grads_valid);
-            } else {
-                self.grad_scaler.update(true);
-            }
-        } else {
-            self.grad_scaler.update(true);
-        }
+        // ALB-072: Gradients are no longer scaled by grad_scaler (loss_scale excludes
+        // grad_scaler.scale()). All backward computation uses f32 — no fp16 underflow
+        // risk. Skip unscaling; just update scaler as successful.
+        self.grad_scaler.update(true);
 
         // CPU optimizer step for embedding weight
         let mut embed_params = vec![&mut self.model.embed_tokens.weight];
