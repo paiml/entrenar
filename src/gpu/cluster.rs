@@ -558,17 +558,19 @@ impl GpuCostModel {
 mod cost_model_tests {
     use super::*;
 
+    /// cost_test: small workloads stay on CPU (PW-13 prediction_accuracy)
     #[test]
-    fn test_cost_model_small_workload_stays_cpu() {
+    fn cost_test_small_workload_stays_cpu() {
         let model = GpuCostModel::default();
-        // 1 MB data, 100 MFLOPS → transfer dominates
+        // 1 MB data, 100 MFLOPS → transfer dominates, prediction_accuracy: CPU
         assert!(!model.should_dispatch_gpu(1.0, 100.0));
     }
 
+    /// cost_test: large workloads go to GPU (PW-13 prediction_accuracy)
     #[test]
-    fn test_cost_model_large_workload_goes_gpu() {
+    fn cost_test_large_workload_goes_gpu() {
         let model = GpuCostModel::default();
-        // 1 MB data, 1_000_000 MFLOPS → compute dominates
+        // 1 MB data, 1_000_000 MFLOPS → compute dominates, prediction_accuracy: GPU
         assert!(model.should_dispatch_gpu(1.0, 1_000_000.0));
     }
 }
