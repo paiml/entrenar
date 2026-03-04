@@ -2863,17 +2863,13 @@ impl ClassifyPipeline {
     ///
     /// Used to normalize accumulated gradients: `grad *= factor`.
     fn scale_all_gradients(&self, factor: f32) {
-        let all_params: Vec<&Tensor> = self
-            .lora_layers
-            .iter()
-            .flat_map(|l| [l.lora_a(), l.lora_b()])
-            .chain(self.classifier.parameters())
-            .collect();
-
-        for param in all_params {
-            if let Some(grad) = param.grad() {
-                param.set_grad(grad * factor);
-            }
+        // KAIZEN-037: scale in-place — zero allocation (was: clone + alloc per param)
+        for lora in &self.lora_layers {
+            lora.lora_a().scale_grad(factor);
+            lora.lora_b().scale_grad(factor);
+        }
+        for param in self.classifier.parameters() {
+            param.scale_grad(factor);
         }
     }
 
@@ -2882,13 +2878,15 @@ impl ClassifyPipeline {
     /// Used by the monitor when gradient clipping is not enabled.
     fn compute_grad_norm(&self) -> f32 {
         let mut total_norm_sq = 0.0f32;
-        let all_params: Vec<&Tensor> = self
-            .lora_layers
-            .iter()
-            .flat_map(|l| [l.lora_a(), l.lora_b()])
-            .chain(self.classifier.parameters())
-            .collect();
-        for param in all_params {
+        // KAIZEN-037: iterate directly — no intermediate Vec collection
+        for lora in &self.lora_layers {
+            for param in [lora.lora_a(), lora.lora_b()] {
+                if let Some(grad) = param.grad() {
+                    total_norm_sq += grad.iter().map(|&g| g * g).sum::<f32>();
+                }
+            }
+        }
+        for param in self.classifier.parameters() {
             if let Some(grad) = param.grad() {
                 total_norm_sq += grad.iter().map(|&g| g * g).sum::<f32>();
             }
