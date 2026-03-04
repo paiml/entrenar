@@ -676,15 +676,15 @@ impl InstructPipeline {
         // 3. GPU GEMM backward: grad_hidden = grad_logits @ embed
         //    KAIZEN-064: grad_logits already in logits_buf (in-place from fused kernel).
         //    No upload needed — saves ~296MB H2D per step.
+        //    KAIZEN-065: grad_hidden stays GPU-resident in grad_hidden_buf — no D2H download.
         let hidden_size = self.model.config().hidden_size;
         let embed_data = self.model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
-        let grad_hidden = (|| -> Option<Vec<f32>> {
+        let gemm_ok = (|| -> Option<()> {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
             let training = self.gpu_training.as_mut()?;
-            // KAIZEN-064: No grad_logits upload — gradient is already in logits_buf.
             let embed_gpu = trainer.upload(embed_slice).map_err(|e| {
                 eprintln!("[CUDA] lm_head backward: embed upload failed: {e}");
             }).ok()?;
@@ -699,28 +699,27 @@ impl InstructPipeline {
             ).map_err(|e| {
                 eprintln!("[CUDA] lm_head backward GEMM failed: {e}");
             }).ok()?;
-            stream.synchronize().map_err(|e| {
-                eprintln!("[CUDA] lm_head backward sync failed: {e}");
-            }).ok()?;
-            let full_grad = trainer.download(&training.grad_hidden_buf).ok()?;
-            Some(full_grad[..seq_len * hidden_size].to_vec())
+            // KAIZEN-065: No stream.synchronize() needed — GEMM and rms_norm_backward
+            // are on the same CUDA stream, so ordering is guaranteed.
+            // No trainer.download() needed — grad_hidden_buf is read directly by
+            // backward_nf4_gpu_blocks_gpu_resident.
+            Some(())
         })();
 
-        let grad_hidden = match grad_hidden {
-            Some(g) => g,
-            None => {
-                eprintln!("[CUDA] lm_head backward failed — returning loss without weight update");
-                return InstructStepResult {
-                    loss: avg_loss,
-                    num_response_tokens: num_loss_tokens,
-                    perplexity: avg_loss.exp().min(1e6),
-                };
-            }
-        };
+        if gemm_ok.is_none() {
+            eprintln!("[CUDA] lm_head backward failed — returning loss without weight update");
+            return InstructStepResult {
+                loss: avg_loss,
+                num_response_tokens: num_loss_tokens,
+                perplexity: avg_loss.exp().min(1e6),
+            };
+        }
 
-        // 4. GPU backward through NF4 blocks + LoRA optimizer
+        // 4. GPU backward through NF4 blocks + LoRA optimizer (KAIZEN-065: GPU-resident path)
+        //    Gradient flows directly from grad_hidden_buf → rms_norm_backward → block loop.
+        //    Eliminates ~5MB D2H + ~5MB H2D + sync + Vec alloc per step.
         if self.config.quantize_nf4 {
-            self.backward_nf4_gpu_blocks(&grad_hidden, seq_len);
+            self.backward_nf4_gpu_blocks_gpu_resident(seq_len);
         }
 
         InstructStepResult {
@@ -1598,34 +1597,93 @@ impl InstructPipeline {
         grad_final_hidden: &[f32],
         seq_len: usize,
     ) -> Option<()> {
-        let trainer = self.cuda_trainer.as_ref()?;
         let hidden_size = self.model.config.hidden_size;
+
+        // Upload gradient and run RMSNorm backward in a scope to release borrows
+        // before calling the shared block-loop.
+        {
+            let trainer = self.cuda_trainer.as_ref()?;
+            let training_state = self.gpu_training.as_mut()?;
+            let stream = trainer.stream();
+
+            // KAIZEN-062: Upload gradient directly to pre-allocated GPU buffer via partial write.
+            training_state.grad_upload_buf.copy_from_host_at(grad_final_hidden, 0).ok()?;
+
+            // RMSNorm backward on GPU
+            crate::autograd::cuda_backward::rms_norm_backward(
+                &training_state.blocks_output,
+                &training_state.final_norm_weight,
+                &training_state.grad_upload_buf,
+                &mut training_state.grad_buf_a,
+                &mut training_state.grad_final_norm_weight,
+                seq_len as u32,
+                hidden_size as u32,
+                1e-5_f32,
+                stream,
+            ).ok()?;
+        }
+
+        self.backward_nf4_gpu_blocks_loop(seq_len)
+    }
+
+    /// GPU-resident backward: gradient already in grad_hidden_buf from GEMM (KAIZEN-065).
+    ///
+    /// Same as backward_nf4_gpu_blocks but reads gradient directly from
+    /// grad_hidden_buf instead of uploading from CPU. Eliminates:
+    /// - ~5MB D2H download (grad_hidden_buf → CPU)
+    /// - ~5MB H2D upload (CPU → grad_upload_buf)
+    /// - 1× stream.synchronize() GPU drain point
+    /// - 1× Vec<f32> heap allocation (~5MB)
+    #[cfg(feature = "cuda")]
+    #[allow(unsafe_code)]
+    fn backward_nf4_gpu_blocks_gpu_resident(
+        &mut self,
+        seq_len: usize,
+    ) -> Option<()> {
+        let hidden_size = self.model.config.hidden_size;
+
+        // KAIZEN-065: grad_hidden_buf already contains the gradient from lm_head backward GEMM.
+        // No D2H download or H2D upload needed — both are on the same CUDA stream,
+        // so the GEMM output is guaranteed complete before rms_norm_backward reads it.
+        {
+            let trainer = self.cuda_trainer.as_ref()?;
+            let training_state = self.gpu_training.as_mut()?;
+            let stream = trainer.stream();
+
+            // RMSNorm backward on GPU — read gradient directly from grad_hidden_buf
+            crate::autograd::cuda_backward::rms_norm_backward(
+                &training_state.blocks_output,
+                &training_state.final_norm_weight,
+                &training_state.grad_hidden_buf,
+                &mut training_state.grad_buf_a,
+                &mut training_state.grad_final_norm_weight,
+                seq_len as u32,
+                hidden_size as u32,
+                1e-5_f32,
+                stream,
+            ).ok()?;
+        }
+
+        self.backward_nf4_gpu_blocks_loop(seq_len)
+    }
+
+    /// Shared backward loop for NF4 blocks — called by both CPU-upload and
+    /// GPU-resident backward paths after RMSNorm backward completes.
+    #[cfg(feature = "cuda")]
+    #[allow(unsafe_code)]
+    fn backward_nf4_gpu_blocks_loop(
+        &mut self,
+        seq_len: usize,
+    ) -> Option<()> {
+        let trainer = self.cuda_trainer.as_ref()?;
         let lr = self.optimizer.lr();
+        let stream = trainer.stream();
 
         let training_state = self.gpu_training.as_mut()?;
         let blocks = self.cuda_blocks.as_mut()?;
         let shared_scratch = self.shared_scratch.as_mut()?;
         let grad_lora = self.cuda_lora_grad_workspace.as_mut()?;
         let opt_states = self.cuda_lora_optimizer_states.as_mut()?;
-
-        // KAIZEN-062: Upload gradient directly to pre-allocated GPU buffer via partial write.
-        // No CPU vec allocation needed — copy_from_host_at writes only the actual gradient.
-        // Padded positions are irrelevant (rms_norm_backward uses seq_len dimensions).
-        let stream = trainer.stream();
-        training_state.grad_upload_buf.copy_from_host_at(grad_final_hidden, 0).ok()?;
-
-        // RMSNorm backward on GPU
-        crate::autograd::cuda_backward::rms_norm_backward(
-            &training_state.blocks_output,
-            &training_state.final_norm_weight,
-            &training_state.grad_upload_buf,
-            &mut training_state.grad_buf_a,
-            &mut training_state.grad_final_norm_weight,
-            seq_len as u32,
-            hidden_size as u32,
-            1e-5_f32,
-            stream,
-        ).ok()?;
 
         // Backward through blocks in reverse, interleaved with optimizer
         let num_layers = blocks.len();
