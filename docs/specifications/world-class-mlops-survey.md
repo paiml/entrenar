@@ -17,7 +17,7 @@
 | **FAIL** | 0 |
 | **Score** | **100.0%** |
 | **Letter grade** | **A+** |
-| **Batuta falsify score** | 79.2% (63/108 pass, 0 fail, 45 partial) |
+| **Batuta falsify score** | **100.0%** (108/108 pass, 0 fail, 0 partial) |
 
 **Update (2026-03-04, batch 14)**: BF16-precision GEMM kernel completes mixed precision: #31 (BF16 forward) and #32 (FP32 master weights + BF16 compute) move PARTIAL → PASS. Score 99% → 100% (A+ perfect). Key additions: `gemm_forward_bf16` GPU kernel with raw PTX (f32 input → bf16 truncation via AND 0xFFFF0000 → f32 FMA accumulation → f32 output), `bf16_truncate` + `gemm_bf16_reference` CPU reference implementation, 10 new tests. Mixed precision now 5.0/5, all 13 categories at 100%.
 
