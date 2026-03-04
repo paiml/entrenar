@@ -1,4 +1,4 @@
-//! Fix pattern representation for error corrections.
+//! Fix pattern representation for error adjusts.
 
 use super::ChunkId;
 use serde::{Deserialize, Serialize};

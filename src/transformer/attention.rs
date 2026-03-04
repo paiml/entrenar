@@ -341,7 +341,7 @@ impl MultiHeadAttention {
         matmul(&concat_tensor, &self.w_o, seq_len, q_dim, hidden_size)
     }
 
-    /// Forward pass with LoRA corrections on Q and V projections (KAIZEN-010).
+    /// Forward pass with LoRA adjusts on Q and V projections (KAIZEN-010).
     ///
     /// Applies LoRA adapters to Q and V during the forward pass so that
     /// gradients flow through LoRA A/B matrices on non-CUDA paths.

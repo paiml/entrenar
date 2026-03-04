@@ -261,7 +261,7 @@ impl ClassifyTrainer {
     /// minority classes.
     ///
     /// Threshold: if max_count / min_count > 2.0, imbalance is detected.
-    /// Strategy: `SqrtInverse` (moderate rebalancing, avoids overcorrection).
+    /// Strategy: `SqrtInverse` (moderate rebalancing, avoids overadjust).
     fn auto_balance_classes(pipeline: &mut ClassifyPipeline, corpus: &[SafetySample]) {
         use super::classification::{corpus_stats, compute_class_weights, ClassWeightStrategy};
 

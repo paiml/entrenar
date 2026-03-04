@@ -311,7 +311,7 @@ impl Transformer {
         self.norm.forward_batched(&hidden, seq_len, hidden_size)
     }
 
-    /// Forward pass returning hidden states with LoRA corrections (KAIZEN-011)
+    /// Forward pass returning hidden states with LoRA adjusts (KAIZEN-011)
     ///
     /// Like `forward_hidden` but applies LoRA adapters to Q/V projections in
     /// each transformer layer's attention. Enables non-CUDA LoRA training by

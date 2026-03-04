@@ -28,6 +28,13 @@ fn saturating_u32(v: usize) -> u32 {
     v.min(u32::MAX as usize) as u32
 }
 
+/// Consume a value without running its destructor (prevents GPU double-free).
+#[cfg(feature = "cuda")]
+#[inline]
+fn leak<T>(val: T) {
+    let _ = std::mem::ManuallyDrop::new(val);
+}
+
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaContext, CudaStream, GpuBuffer};
 
@@ -654,7 +661,7 @@ impl CudaTransformerBlock {
                 total_scores,
                 stream,
             )?;
-            std::mem::forget(scores_view);
+            leak(scores_view);
         }
 
         // Step 6: Row-wise softmax → attn_weights [num_heads * seq, seq] (in-place)
@@ -676,7 +683,7 @@ impl CudaTransformerBlock {
                 seq,
                 stream,
             )?;
-            std::mem::forget(scores_view);
+            leak(scores_view);
         }
 
         // Step 7: V layout conversion + GQA expansion
@@ -1186,7 +1193,7 @@ impl CudaTransformerBlock {
                 seq,
                 stream,
             )?;
-            std::mem::forget(grad_scores_view);
+            leak(grad_scores_view);
         }
         // grad_attn_scores now contains gradient through softmax
 
@@ -1208,7 +1215,7 @@ impl CudaTransformerBlock {
                 total_scores,
                 stream,
             )?;
-            std::mem::forget(scores_view);
+            leak(scores_view);
         }
 
         // === Step 4.6: Backward through Q @ K^T ===
@@ -1579,9 +1586,9 @@ impl CudaTransformerBlock {
                                 "GQA grad_{label} reduce sum copy failed: {e}"
                             ))
                         })?;
-                    std::mem::forget(dst_view);
-                    std::mem::forget(src_view);
-                    std::mem::forget(sum_view);
+                    leak(dst_view);
+                    leak(src_view);
+                    leak(sum_view);
                 }
             }
         }
@@ -1689,7 +1696,7 @@ impl CudaTransformerBlock {
         stream: &CudaStream,
         grad_ws: &CudaGradWorkspace,
     ) -> Result<()> {
-        debug_assert!(step > 0, "C-OPTSTEP-001: step must be > 0 for bias correction");
+        debug_assert!(step > 0, "C-OPTSTEP-001: step must be > 0 for bias adjust");
 
         // Pre-capture lengths to avoid borrow conflicts (len is immutable borrow,
         // adamw_step_cuda takes mutable borrow on same buffer)
@@ -2525,7 +2532,7 @@ impl CudaNf4TransformerBlock {
             saturating_u32(total_scores),
             stream,
         )?;
-        std::mem::forget(scores_view);
+        leak(scores_view);
 
         // Softmax (in-place: input aliased with output via unsafe view)
         // SAFETY: The softmax kernel reads each row completely into shared memory / registers
@@ -2543,7 +2550,7 @@ impl CudaNf4TransformerBlock {
             s,
             stream,
         )?;
-        std::mem::forget(scores_view);
+        leak(scores_view);
 
         // V: interleaved → batched, then GQA expand
         interleaved_to_batched_forward(
