@@ -443,10 +443,8 @@ impl InstructPipeline {
     /// responsible for budget allocation and truncation of the concatenated
     /// prompt+response sequence.
     ///
-    /// # Panics
-    /// Panics if no BPE tokenizer is loaded. Training pipelines MUST have a
-    /// tokenizer — byte-level fallback is a silent corruption path that produces
-    /// garbage token IDs (0–255) for models with 100K+ vocab.
+    /// Falls back to byte-level encoding (each UTF-8 byte as a u32 token ID)
+    /// when no BPE tokenizer is loaded.
     pub fn tokenize(&self, text: &str) -> Vec<u32> {
         match self.tokenizer.as_ref() {
             Some(tok) => tok.encode(text),

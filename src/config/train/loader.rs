@@ -2369,6 +2369,12 @@ fn load_lm_batches_from_parquet(
     seq_len: usize,
     text_column: &str,
 ) -> Result<Vec<LMBatch>> {
+    if !path.exists() {
+        return Err(Error::Io(format!(
+            "Parquet path does not exist: {}",
+            path.display()
+        )));
+    }
     eprintln!(
         "Warning: Parquet LM loading requires the 'parquet' feature. \
          Build with: cargo build --features parquet"
