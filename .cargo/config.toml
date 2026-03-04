@@ -1,8 +1,3 @@
-# Local development overrides — NOT shipped with `cargo publish`
-# Moved from Cargo.toml [patch.crates-io] for clean-room publishability (PMAT-028)
-[patch.crates-io]
-aprender = { path = "../aprender" }
-realizar = { path = "../realizar" }
-trueno = { path = "../trueno" }
-trueno-gpu = { path = "../trueno/trueno-gpu" }
-trueno-viz = { path = "../trueno-viz" }
+# Local development configuration
+# Note: [patch.crates-io] path overrides were removed — use published crate versions.
+# See: sovereign-stack-protected-branch-strategy.md (Section 5b)
