@@ -197,6 +197,7 @@ hex = "0.4"  # Hex encoding for hashes
 regex = "1.10"  # ORCID/ROR validation
 ed25519-dalek = "2.1"  # Ed25519 signing for pre-registration
 bytemuck = { version = "1.19", features = ["derive"] }  # Safe byte casting for tensor data
+fs4 = "0.13"  # Cross-platform file locking for VRAM ledger (GPU-SHARE-001)
 arrow = { version = "57", default-features = false, optional = true }  # Arrow array types for alimentar integration
 nvml-wrapper = { version = "0.10", optional = true }  # NVIDIA NVML bindings for GPU monitoring
 hostname = "0.4.2"
