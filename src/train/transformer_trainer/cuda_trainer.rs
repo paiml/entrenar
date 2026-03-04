@@ -1272,25 +1272,26 @@ impl CudaTransformerTrainer {
             }
         }
 
-        // Scatter-add into embedding weight gradient
+        // KAIZEN-048: In-place scatter-add via grad_cell().borrow_mut().
+        // Before: 3 × 128MB clones per step (grad() deep-copies Array1).
+        // After: zero clones — mutate existing gradient buffer directly.
         let embed_weight = &mut self.model.embed_tokens.weight;
-        if embed_weight.grad().is_none() {
-            let zeros = ndarray::Array1::zeros(embed_weight.len());
-            embed_weight.set_grad(zeros);
+        let grad_cell = embed_weight.grad_cell();
+        let mut grad_ref = grad_cell.borrow_mut();
+        if grad_ref.is_none() {
+            *grad_ref = Some(ndarray::Array1::zeros(embed_weight.len()));
         }
-        if let Some(existing_grad) = embed_weight.grad() {
-            let mut new_grad = existing_grad.clone();
+        if let Some(grad) = grad_ref.as_mut() {
             for (pos, &token_id) in input_ids.iter().enumerate() {
                 let tid = token_id as usize;
                 if tid < vocab_size {
                     let src = pos * hidden_size;
                     let dst = tid * hidden_size;
                     for h in 0..hidden_size {
-                        new_grad[dst + h] += embed_grad_data[src + h];
+                        grad[dst + h] += embed_grad_data[src + h];
                     }
                 }
             }
-            embed_weight.set_grad(new_grad);
         }
         Some(())
     }
