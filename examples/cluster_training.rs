@@ -1,7 +1,7 @@
-//! Cluster Training Example (GPU-SHARE Phase 3, GH-210/211/212)
+//! Cluster Training Example (GPU-SHARE Phase 3, GH-210/211/212/218)
 //!
 //! Demonstrates multi-node adapter training with cluster config parsing,
-//! job placement, and checkpoint coordination.
+//! job placement, checkpoint coordination, and SSH remote execution.
 //!
 //! ```bash
 //! cargo run --example cluster_training
@@ -10,7 +10,7 @@
 
 use entrenar::gpu::cluster::{ClusterConfig, GpuCostModel};
 use entrenar::gpu::coordinator::{
-    build_launch_command, CheckpointCoordinator, CheckpointMetadata,
+    build_launch_command, exec_launch, CheckpointCoordinator, CheckpointMetadata,
 };
 use entrenar::gpu::mps::{validate_mps_config, MpsConfig};
 use entrenar::gpu::placement::{place_adapters, AdapterJob, PlacementDecision};
@@ -38,6 +38,7 @@ fn main() {
     run_coordinator_demo(&cluster, &placements);
     run_cost_model_demo();
     run_mps_demo();
+    show_exec_launch_api(&cluster, &placements);
 }
 
 fn print_usage() {
@@ -239,6 +240,49 @@ fn run_mps_demo() {
             println!("OK");
         }
     }
+    println!();
+}
+
+fn show_exec_launch_api(cluster: &ClusterConfig, placements: &[PlacementDecision]) {
+    println!("--- Remote Execution API (GH-218) ---");
+    println!();
+    println!("  exec_launch() spawns training on local or SSH nodes.");
+    println!("  SSH uses: ssh -o BatchMode=yes -o ConnectTimeout=5 host bash < script");
+    println!();
+
+    // Show that exec_launch works for local nodes
+    if let Some(p) = placements.iter().find(|p| {
+        cluster
+            .find_node(&p.node_name)
+            .map_or(false, |n| matches!(n.transport, entrenar::gpu::cluster::Transport::Local))
+    }) {
+        if let Some(node) = cluster.find_node(&p.node_name) {
+            // Dry run: show what would happen (don't actually spawn apr)
+            println!(
+                "  Local exec_launch({}, adapter {}): would spawn bash -c 'apr finetune ...'",
+                node.name, p.adapter_idx
+            );
+        }
+    }
+
+    // Show SSH exec_launch behavior
+    if let Some(p) = placements.iter().find(|p| {
+        cluster
+            .find_node(&p.node_name)
+            .map_or(false, |n| matches!(n.transport, entrenar::gpu::cluster::Transport::Ssh))
+    }) {
+        if let Some(node) = cluster.find_node(&p.node_name) {
+            println!(
+                "  SSH exec_launch({}, adapter {}): would run ssh {}@{} bash < script",
+                node.name,
+                p.adapter_idx,
+                node.user.as_deref().unwrap_or("root"),
+                node.host
+            );
+        }
+    }
+    // Suppress unused import warning — exec_launch is demonstrated conceptually
+    let _ = exec_launch as fn(&_, &_, &_, &_, u32, u32) -> _;
     println!();
 }
 
