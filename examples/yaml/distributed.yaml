@@ -17,8 +17,7 @@
 # Or specify distributed config inline in the YAML:
 
 model:
-  path: ./models/pretrain-350m
-  mode: pretrain
+  path: ./models/mock.gguf
   architecture:
     hidden_size: 1024
     num_layers: 24
@@ -28,8 +27,7 @@ model:
     vocab_size: 32768
 
 data:
-  train: ./data/pretokenized-2048/train
-  format: parquet
+  train: ./data/train.parquet
   batch_size: 4
   seq_len: 1024
 
@@ -44,7 +42,7 @@ training:
   epochs: 1
   max_steps: 100
   warmup_steps: 10
-  mode: pretrain
+  mode: causal_lm
   mixed_precision: fp32
   gradient_accumulation: 1
   grad_clip: 1.0

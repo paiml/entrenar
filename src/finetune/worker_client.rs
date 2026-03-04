@@ -40,6 +40,23 @@ pub struct AveragedResult {
     pub global_loss: f32,
 }
 
+/// Averaged block gradient received from coordinator (v2 per-block DDP).
+#[derive(Debug, Clone)]
+pub struct AveragedBlockResult {
+    pub step: u64,
+    pub block_idx: u32,
+    pub gradients: Vec<f32>,
+    pub component_sizes: Vec<u32>,
+}
+
+/// Averaged non-block gradient received from coordinator (v2 DDP).
+#[derive(Debug, Clone)]
+pub struct AveragedNonBlockResult {
+    pub step: u64,
+    pub component: u8,
+    pub gradients: Vec<f32>,
+}
+
 impl WorkerClient {
     /// Connect to the coordinator and complete the join handshake.
     ///
@@ -174,6 +191,94 @@ impl WorkerClient {
         }
     }
 
+    // --- v2 per-block DDP methods ---
+
+    /// Send per-block gradient to coordinator for AllReduce (v2 DDP).
+    ///
+    /// # Arguments
+    /// * `step` - Training step number
+    /// * `block_idx` - Transformer block index (0-based)
+    /// * `num_blocks` - Total number of transformer blocks
+    /// * `gradients` - Flattened gradient vector (9 components concatenated)
+    /// * `component_sizes` - Element count for each of the 9 components
+    pub fn send_block_gradient(
+        &self,
+        step: u64,
+        block_idx: u32,
+        num_blocks: u32,
+        gradients: Vec<f32>,
+        component_sizes: Vec<u32>,
+    ) -> Result<(), String> {
+        let msg = WireMessage::BlockGradientPayload {
+            step,
+            worker_id: self.worker_id,
+            block_idx,
+            num_blocks,
+            gradients,
+            component_sizes,
+        };
+        send_wire_message(&self.stream, &msg)
+    }
+
+    /// Receive averaged block gradient from coordinator after AllReduce (v2 DDP).
+    pub fn receive_averaged_block(&self) -> Result<AveragedBlockResult, String> {
+        let msg = read_wire_message(&self.stream)?;
+        match msg {
+            WireMessage::AveragedBlockGradient {
+                step,
+                block_idx,
+                gradients,
+                component_sizes,
+            } => Ok(AveragedBlockResult {
+                step,
+                block_idx,
+                gradients,
+                component_sizes,
+            }),
+            WireMessage::Shutdown => Err("shutdown during block AllReduce".to_string()),
+            other => Err(format!("expected AveragedBlockGradient, got {other:?}")),
+        }
+    }
+
+    /// Send non-block gradient to coordinator for AllReduce (v2 DDP).
+    ///
+    /// # Arguments
+    /// * `step` - Training step number
+    /// * `component` - 0=lm_head, 1=final_norm, 2=embedding
+    /// * `gradients` - Gradient vector for this component
+    pub fn send_non_block_gradient(
+        &self,
+        step: u64,
+        component: u8,
+        gradients: Vec<f32>,
+    ) -> Result<(), String> {
+        let msg = WireMessage::NonBlockGradientPayload {
+            step,
+            worker_id: self.worker_id,
+            component,
+            gradients,
+        };
+        send_wire_message(&self.stream, &msg)
+    }
+
+    /// Receive averaged non-block gradient from coordinator after AllReduce (v2 DDP).
+    pub fn receive_averaged_non_block(&self) -> Result<AveragedNonBlockResult, String> {
+        let msg = read_wire_message(&self.stream)?;
+        match msg {
+            WireMessage::AveragedNonBlockGradient {
+                step,
+                component,
+                gradients,
+            } => Ok(AveragedNonBlockResult {
+                step,
+                component,
+                gradients,
+            }),
+            WireMessage::Shutdown => Err("shutdown during non-block AllReduce".to_string()),
+            other => Err(format!("expected AveragedNonBlockGradient, got {other:?}")),
+        }
+    }
+
     /// This worker's assigned ID
     #[must_use]
     pub fn worker_id(&self) -> u32 {
@@ -211,6 +316,126 @@ mod tests {
 
         server.wait_for_workers().unwrap();
         let _client = handle.join().unwrap();
+    }
+
+    #[test]
+    fn test_worker_block_gradient_roundtrip() {
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
+        let mut server = GradientServer::bind(server_config).unwrap();
+        let addr = server.local_addr();
+
+        let component_sizes = vec![4, 2, 2, 4, 8, 8, 8, 1, 1];
+        let total: u32 = component_sizes.iter().sum();
+        let grads: Vec<f32> = (0..total).map(|i| i as f32 * 0.1).collect();
+
+        let grads_clone = grads.clone();
+        let sizes_clone = component_sizes.clone();
+        let handle = thread::spawn(move || {
+            let worker_config = DistributedConfig::worker(addr);
+            let client = WorkerClient::connect(worker_config, 1, "cuda").unwrap();
+
+            // Send block gradient
+            client.send_block_gradient(0, 5, 24, grads_clone, sizes_clone).unwrap();
+
+            // Receive averaged block gradient
+            let avg = client.receive_averaged_block().unwrap();
+            assert_eq!(avg.step, 0);
+            assert_eq!(avg.block_idx, 5);
+            // Single worker: averaged == original
+            assert_eq!(avg.gradients.len(), total as usize);
+            avg
+        });
+
+        server.wait_for_workers().unwrap();
+        let result = server.collect_and_reduce_block(0, 5).unwrap();
+        assert_eq!(result.block_idx, 5);
+        assert_eq!(result.avg_gradients.len(), total as usize);
+        server.broadcast_averaged_block(0, &result).unwrap();
+
+        let avg = handle.join().unwrap();
+        // Single worker: averaged gradients should equal original
+        for (a, b) in avg.gradients.iter().zip(grads.iter()) {
+            assert!((a - b).abs() < 1e-6, "gradient mismatch: {a} != {b}");
+        }
+    }
+
+    #[test]
+    fn test_worker_non_block_gradient_roundtrip() {
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
+        let mut server = GradientServer::bind(server_config).unwrap();
+        let addr = server.local_addr();
+
+        let grads = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
+
+        let grads_clone = grads.clone();
+        let handle = thread::spawn(move || {
+            let worker_config = DistributedConfig::worker(addr);
+            let client = WorkerClient::connect(worker_config, 1, "cuda").unwrap();
+
+            // Send non-block gradient (component=0 = lm_head)
+            client.send_non_block_gradient(0, 0, grads_clone).unwrap();
+
+            // Receive averaged
+            let avg = client.receive_averaged_non_block().unwrap();
+            assert_eq!(avg.step, 0);
+            assert_eq!(avg.component, 0);
+            avg
+        });
+
+        server.wait_for_workers().unwrap();
+        let result = server.collect_and_reduce_non_block(0, 0).unwrap();
+        assert_eq!(result.component, 0);
+        server.broadcast_averaged_non_block(0, &result).unwrap();
+
+        let avg = handle.join().unwrap();
+        for (a, b) in avg.gradients.iter().zip(grads.iter()) {
+            assert!((a - b).abs() < 1e-6, "gradient mismatch: {a} != {b}");
+        }
+    }
+
+    #[test]
+    fn test_two_worker_block_allreduce() {
+        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 2);
+        let mut server = GradientServer::bind(server_config).unwrap();
+        let addr = server.local_addr();
+
+        let component_sizes = vec![2, 1, 1, 2, 2, 2, 2, 1, 1];
+        let total: u32 = component_sizes.iter().sum();
+
+        // Worker 0: gradients = [1.0, 1.0, ...]
+        let sizes0 = component_sizes.clone();
+        let h0 = thread::spawn(move || {
+            let cfg = DistributedConfig::worker(addr);
+            let client = WorkerClient::connect(cfg, 1, "cuda").unwrap();
+            let grads = vec![1.0f32; total as usize];
+            client.send_block_gradient(0, 0, 1, grads, sizes0).unwrap();
+            client.receive_averaged_block().unwrap()
+        });
+
+        // Worker 1: gradients = [3.0, 3.0, ...]
+        let sizes1 = component_sizes.clone();
+        let h1 = thread::spawn(move || {
+            let cfg = DistributedConfig::worker(addr);
+            let client = WorkerClient::connect(cfg, 1, "cuda").unwrap();
+            let grads = vec![3.0f32; total as usize];
+            client.send_block_gradient(0, 0, 1, grads, sizes1).unwrap();
+            client.receive_averaged_block().unwrap()
+        });
+
+        server.wait_for_workers().unwrap();
+        let result = server.collect_and_reduce_block(0, 0).unwrap();
+        server.broadcast_averaged_block(0, &result).unwrap();
+
+        let avg0 = h0.join().unwrap();
+        let avg1 = h1.join().unwrap();
+
+        // Average of [1.0, 1.0, ...] and [3.0, 3.0, ...] = [2.0, 2.0, ...]
+        for g in &avg0.gradients {
+            assert!((g - 2.0).abs() < 1e-6, "expected 2.0, got {g}");
+        }
+        for g in &avg1.gradients {
+            assert!((g - 2.0).abs() < 1e-6, "expected 2.0, got {g}");
+        }
     }
 
     #[test]

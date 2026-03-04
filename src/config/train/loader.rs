@@ -118,6 +118,34 @@ fn build_train_config(
         config = config.with_seed(seed);
     }
 
+    // Wire distributed config from YAML (#133)
+    if let Some(ref dist) = spec.training.distributed {
+        use crate::train::{DistributedBackend, DistributedRole, DistributedTrainConfig};
+
+        let role = match dist.role.as_str() {
+            "worker" => DistributedRole::Worker,
+            _ => DistributedRole::Coordinator,
+        };
+        let backend = match dist.backend.as_str() {
+            "cuda" => DistributedBackend::Cuda,
+            "wgpu" => DistributedBackend::Wgpu,
+            _ => DistributedBackend::Auto,
+        };
+        let addr: std::net::SocketAddr = dist
+            .coordinator_addr
+            .parse()
+            .unwrap_or_else(|_| "0.0.0.0:9000".parse().unwrap());
+
+        config = config.with_distributed(DistributedTrainConfig {
+            world_size: dist.world_size,
+            rank: dist.rank,
+            local_rank: dist.local_rank,
+            role,
+            coordinator_addr: addr,
+            backend,
+        });
+    }
+
     config
 }
 
@@ -175,6 +203,10 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
                     "✓ CudaTransformerTrainer initialized (GPU: {})",
                     cuda_trainer.gpu_name()
                 );
+                // #133: Dispatch to distributed training loop if distributed config present
+                if train_config.distributed.is_some() {
+                    return train_loop_cuda_distributed(cuda_trainer, &batches, spec);
+                }
                 return train_loop_cuda(&mut cuda_trainer, &batches, spec);
             }
             Err(e) => {
@@ -802,6 +834,230 @@ fn train_loop_cuda(
     }));
 
     save_trained_model_cuda(trainer, spec)
+}
+
+/// Distributed CUDA training loop (#133).
+///
+/// Multi-process DDP: each process runs this function with its own rank.
+/// Rank 0 spawns the GradientServer in a background thread. All ranks
+/// connect as workers and run the DDP training step in lockstep.
+///
+/// Data is sharded by rank: worker N processes batches N, N+ws, N+2*ws, ...
+#[cfg(feature = "cuda")]
+/// Spawn the coordinator (GradientServer) thread for DDP rank 0.
+fn spawn_coordinator_thread(
+    coord_addr: std::net::SocketAddr,
+    world_size: usize,
+    num_blocks: usize,
+    total_steps: usize,
+) -> Result<std::thread::JoinHandle<()>> {
+    use crate::finetune::GradientServer;
+    use crate::finetune::distributed::DistributedConfig;
+
+    let server_config = DistributedConfig::coordinator(coord_addr, world_size);
+    let mut server = GradientServer::bind(server_config)
+        .map_err(|e| Error::ConfigError(format!("GradientServer bind failed: {e}")))?;
+    println!("  ✓ GradientServer bound on {}", coord_addr);
+
+    Ok(std::thread::spawn(move || {
+        server.wait_for_workers().unwrap();
+        eprintln!("[coordinator] All {} workers connected", world_size);
+
+        for _step in 0..total_steps {
+            for block_idx in (0..num_blocks).rev() {
+                let result = server
+                    .collect_and_reduce_block(_step as u64, block_idx as u32)
+                    .unwrap();
+                server
+                    .broadcast_averaged_block(_step as u64, &result)
+                    .unwrap();
+            }
+            for component in [0u8, 1, 2] {
+                let result = server
+                    .collect_and_reduce_non_block(_step as u64, component)
+                    .unwrap();
+                server
+                    .broadcast_averaged_non_block(_step as u64, &result)
+                    .unwrap();
+            }
+        }
+        eprintln!("[coordinator] Training complete ({total_steps} steps)");
+    }))
+}
+
+#[cfg(feature = "cuda")]
+fn train_loop_cuda_distributed(
+    mut cuda_trainer: CudaTransformerTrainer,
+    batches: &[LMBatch],
+    spec: &TrainSpec,
+) -> Result<()> {
+    use crate::finetune::WorkerClient;
+    use crate::finetune::distributed::DistributedConfig;
+    use crate::train::{DistributedCudaTrainer, DistributedComm, shard_batches};
+
+    let dist_config = cuda_trainer
+        .config()
+        .distributed
+        .clone()
+        .ok_or_else(|| Error::ConfigError("missing distributed config".into()))?;
+
+    let rank = dist_config.rank;
+    let world_size = dist_config.world_size;
+    let coord_addr = dist_config.coordinator_addr;
+
+    println!("Starting distributed training (DDP)...");
+    println!("  rank: {}/{}", rank, world_size);
+    println!("  coordinator: {}", coord_addr);
+
+    cuda_trainer.ensure_grad_accum();
+
+    let num_blocks = cuda_trainer
+        .grad_accum_ref()
+        .map(|a| a.num_blocks())
+        .unwrap_or(0);
+
+    // Step 1: If rank 0, spawn GradientServer in background thread
+    let server_handle = if rank == 0 {
+        let max_steps = spec.training.max_steps.unwrap_or(usize::MAX);
+        let batches_per_worker = (batches.len() + world_size - 1) / world_size;
+        let total_steps = std::cmp::min(spec.training.epochs * batches_per_worker, max_steps);
+        Some(spawn_coordinator_thread(coord_addr, world_size, num_blocks, total_steps)?)
+    } else {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        None
+    };
+
+    // Step 2: Connect as worker (all ranks, including rank 0)
+    let worker_config = DistributedConfig::worker(coord_addr);
+    let client = WorkerClient::connect(worker_config, 1, "cuda")
+        .map_err(|e| Error::ConfigError(format!("WorkerClient connect failed: {e}")))?;
+    println!("  ✓ Connected as worker {} (id={})", rank, client.worker_id());
+
+    // Step 3: Wrap in DistributedCudaTrainer
+    let comm = DistributedComm::Remote { client };
+    let mut ddp_trainer = DistributedCudaTrainer::new(cuda_trainer, comm, dist_config.clone());
+
+    // Step 4: Training loop with data sharding
+    let num_batches = batches.len();
+    let start_time = std::time::Instant::now();
+    let log_interval = std::cmp::max(num_batches / (world_size * 100).max(1), 1);
+    let save_interval = spec.training.save_interval;
+    let max_checkpoints = spec.training.max_checkpoints;
+    let seed = spec.training.seed.unwrap_or(42);
+
+    let model_name = spec
+        .model
+        .path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("entrenar-model")
+        .to_string();
+
+    // R-005: Load validation batches
+    let val_batches = load_val_batches(spec);
+
+    let mut loss_history: Vec<f32> = Vec::new();
+    let mut last_save_step: usize = 0;
+
+    for epoch in 0..spec.training.epochs {
+        let epoch_start = std::time::Instant::now();
+        let mut total_loss = 0.0;
+        let mut batches_processed = 0;
+
+        // Shard batches by rank: worker N gets N, N+ws, N+2*ws, ...
+        let my_batch_indices = shard_batches(num_batches, rank, world_size);
+
+        for (iter_idx, &batch_idx) in my_batch_indices.iter().enumerate() {
+            if ddp_trainer.reached_max_steps() {
+                break;
+            }
+
+            let batch = &batches[batch_idx];
+            let step_start = std::time::Instant::now();
+            let batch_loss = ddp_trainer.train_batch(batch);
+            let step_elapsed = step_start.elapsed();
+
+            if !batch_loss.is_finite() {
+                continue;
+            }
+            total_loss += batch_loss;
+            batches_processed += 1;
+            push_capped(&mut loss_history, batch_loss, 100);
+
+            // Logging (rank 0 only to avoid spam)
+            if rank == 0 && should_log(iter_idx, log_interval) {
+                let step = ddp_trainer.step();
+                let elapsed = epoch_start.elapsed().as_secs_f64();
+                let seq_len = spec.data.seq_len.unwrap_or(128);
+                let tokens_done = (iter_idx + 1) * spec.data.batch_size * seq_len * world_size;
+                let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
+                println!(
+                    "  [DDP rank 0] step={} loss={:.4} tok/s={:.0} step_time={:.1}ms",
+                    step,
+                    batch_loss,
+                    tok_per_sec,
+                    step_elapsed.as_secs_f64() * 1000.0,
+                );
+            }
+
+            // Checkpoint (rank 0 only)
+            if rank == 0 {
+                let current_step = ddp_trainer.step();
+                if should_save_checkpoint(current_step, last_save_step, save_interval) {
+                    save_and_validate_checkpoint(
+                        ddp_trainer.trainer_mut(),
+                        spec,
+                        &val_batches,
+                        &model_name,
+                        current_step,
+                        epoch,
+                        iter_idx,
+                        max_checkpoints,
+                        &mut None,
+                        seed,
+                        0.0,
+                    );
+                    last_save_step = current_step;
+                }
+            }
+        }
+
+        if batches_processed > 0 {
+            let avg_loss = total_loss / batches_processed as f32;
+            let ppl = crate::train::perplexity(avg_loss);
+            if rank == 0 {
+                println!(
+                    "Epoch {}/{}: loss={:.6}, perplexity={:.2}, time={:.1}s",
+                    epoch + 1,
+                    spec.training.epochs,
+                    avg_loss,
+                    ppl,
+                    epoch_start.elapsed().as_secs_f64(),
+                );
+            }
+        }
+
+        if ddp_trainer.reached_max_steps() {
+            break;
+        }
+    }
+
+    let total_time = start_time.elapsed();
+    if rank == 0 {
+        println!("Total distributed training time: {:.1}s", total_time.as_secs_f64());
+    }
+
+    // Save final model (rank 0 only)
+    if rank == 0 {
+        save_trained_model_cuda(ddp_trainer.trainer_mut(), spec)?;
+    }
+
+    // Wait for coordinator thread to finish
+    if let Some(handle) = server_handle {
+        let _: std::result::Result<(), _> = handle.join();
+    }
+
+    Ok(())
 }
 
 /// Check if max_steps has been reached.
