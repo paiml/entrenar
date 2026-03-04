@@ -1966,6 +1966,19 @@ impl ClassifyPipeline {
         self.nf4_lora_step += 1;
         let step = self.nf4_lora_step;
 
+        // KAIZEN-043: Pre-allocate a single zero buffer sized to the largest
+        // accumulator. Reuse via slicing instead of allocating vec![0.0; len]
+        // per buffer per layer (was: 216 allocations/batch for 36 layers × 6 bufs).
+        let max_accum_len = grad_accum.iter().map(|g| {
+            g.grad_lora_a_q.len()
+                .max(g.grad_lora_b_q.len())
+                .max(g.grad_lora_a_v.len())
+                .max(g.grad_lora_b_v.len())
+                .max(g.grad_input_norm.len())
+                .max(g.grad_post_attn_norm.len())
+        }).max().unwrap_or(0);
+        let zeros = vec![0.0f32; max_accum_len];
+
         for layer_idx in 0..blocks.len() {
             let _ = blocks[layer_idx].lora_optimizer_step(
                 &mut opt_states[layer_idx],
@@ -1973,17 +1986,16 @@ impl ClassifyPipeline {
                 &grad_accum[layer_idx],
             );
 
-            // Zero accumulators for next batch
-            let zero_buffer = |buf: &mut GpuBuffer<f32>| {
-                let zeros = vec![0.0f32; buf.len()];
-                let _ = buf.copy_from_host(&zeros);
+            // Zero accumulators for next batch (reuse pre-allocated zero buffer)
+            let zero_buf = |buf: &mut GpuBuffer<f32>| {
+                let _ = buf.copy_from_host(&zeros[..buf.len()]);
             };
-            zero_buffer(&mut grad_accum[layer_idx].grad_lora_a_q);
-            zero_buffer(&mut grad_accum[layer_idx].grad_lora_b_q);
-            zero_buffer(&mut grad_accum[layer_idx].grad_lora_a_v);
-            zero_buffer(&mut grad_accum[layer_idx].grad_lora_b_v);
-            zero_buffer(&mut grad_accum[layer_idx].grad_input_norm);
-            zero_buffer(&mut grad_accum[layer_idx].grad_post_attn_norm);
+            zero_buf(&mut grad_accum[layer_idx].grad_lora_a_q);
+            zero_buf(&mut grad_accum[layer_idx].grad_lora_b_q);
+            zero_buf(&mut grad_accum[layer_idx].grad_lora_a_v);
+            zero_buf(&mut grad_accum[layer_idx].grad_lora_b_v);
+            zero_buf(&mut grad_accum[layer_idx].grad_input_norm);
+            zero_buf(&mut grad_accum[layer_idx].grad_post_attn_norm);
         }
 
         let _ = stream.synchronize();
