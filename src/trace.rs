@@ -25,6 +25,16 @@ pub enum TraceStep {
     Alloc,
     /// Data transfer overhead
     Transfer,
+    /// VRAM ledger reservation (GPU-SHARE-001)
+    LedgerReserve,
+    /// VRAM ledger dead-PID / expired-lease cleanup
+    LedgerCleanup,
+    /// VRAM query (cuMemGetInfo / NVML)
+    VramQuery,
+    /// Wait-for-VRAM poll iteration (GPU-SHARE-003)
+    WaitPoll,
+    /// VRAM ledger release
+    LedgerRelease,
 }
 
 impl fmt::Display for TraceStep {
@@ -216,6 +226,11 @@ mod tests {
         assert_eq!(TraceStep::Transpose.to_string(), "Transpose");
         assert_eq!(TraceStep::Alloc.to_string(), "Alloc");
         assert_eq!(TraceStep::Transfer.to_string(), "Transfer");
+        assert_eq!(TraceStep::LedgerReserve.to_string(), "LedgerReserve");
+        assert_eq!(TraceStep::LedgerCleanup.to_string(), "LedgerCleanup");
+        assert_eq!(TraceStep::VramQuery.to_string(), "VramQuery");
+        assert_eq!(TraceStep::WaitPoll.to_string(), "WaitPoll");
+        assert_eq!(TraceStep::LedgerRelease.to_string(), "LedgerRelease");
     }
 
     #[test]

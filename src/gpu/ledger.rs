@@ -185,7 +185,7 @@ impl VramLedger {
     /// `total_reserved + budget_mb > capacity_mb`.
     pub fn try_reserve(&mut self, budget_mb: usize, task: &str) -> Result<u64, GpuError> {
         TRACER.span(
-            TraceStep::Alloc,
+            TraceStep::LedgerReserve,
             format!("ledger_reserve budget={budget_mb}MB gpu={}", self.gpu_uuid),
             || self.try_reserve_inner(budget_mb, task),
         )
@@ -254,7 +254,7 @@ impl VramLedger {
         };
 
         TRACER.span(
-            TraceStep::Transfer,
+            TraceStep::LedgerRelease,
             format!("ledger_release id={our_id}"),
             || {
                 self.with_lock_write(|data| {
