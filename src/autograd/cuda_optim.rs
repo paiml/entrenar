@@ -438,30 +438,32 @@ pub fn squared_sum_cuda(
     Ok(total.sqrt() as f32)
 }
 
-/// Fused GPU cross-entropy loss + softmax backward (KAIZEN-050).
+/// Fused GPU cross-entropy loss + softmax backward, in-place (KAIZEN-050 + KAIZEN-052).
 ///
-/// Computes cross-entropy loss and writes gradient directly to a GPU buffer,
-/// eliminating the logits D2H (77.8MB) + CPU softmax (40ms) + gradient H2D (77.8MB).
+/// Computes cross-entropy loss and writes gradient **in-place** to the logits buffer,
+/// eliminating both the logits D2H (77.8MB) + CPU softmax (40ms) + gradient H2D (77.8MB)
+/// AND the separate gradient buffer allocation (77.8MB for Qwen3-4B).
 ///
 /// # Returns
 ///
-/// `(loss_value, grad_logits_gpu)` — scalar loss (averaged over seq_len) and
-/// gradient buffer that stays GPU-resident for the backward pass.
+/// Scalar loss (averaged over seq_len). Gradient is written in-place to `logits_buf`.
 ///
-/// # Contract (C-XENT-002)
+/// # Contract (C-XENT-002, updated KAIZEN-052)
 ///
 /// - **Precondition**: `logits_buf` has `seq_len * vocab_size` elements, targets in `[0, vocab_size)`
-/// - **Postcondition**: `grad[i] = (softmax - one_hot) * scale`, `loss = mean(-log(softmax[target]))`
+/// - **Postcondition**: `logits_buf[i] = (softmax - one_hot) * scale` (gradient, in-place)
+/// - **Postcondition**: `loss = mean(-log(softmax[target]))`
 /// - **Transfer**: H2D targets (seq_len×4 bytes) + D2H loss_partials (seq_len×4 bytes)
+/// - **Allocation**: 0 bytes grad buffer (was 77.8MB before KAIZEN-052)
 #[cfg(feature = "cuda")]
 pub fn fused_cross_entropy_cuda(
-    logits_buf: &GpuBuffer<f32>,
+    logits_buf: &mut GpuBuffer<f32>,
     target_ids: &[u32],
     seq_len: u32,
     vocab_size: u32,
     scale: f32,
     stream: &CudaStream,
-) -> Result<(f32, GpuBuffer<f32>)> {
+) -> Result<f32> {
     let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
@@ -482,10 +484,7 @@ pub fn fused_cross_entropy_cuda(
         CudaTensorError::KernelError(format!("Failed to upload targets: {e:?}"))
     })?;
 
-    // Allocate grad output buffer (stays GPU-resident — no D2H)
-    let grad_gpu = GpuBuffer::<f32>::new(&ctx, (seq_len * vocab_size) as usize).map_err(|e| {
-        CudaTensorError::KernelError(format!("Failed to allocate grad output: {e:?}"))
-    })?;
+    // KAIZEN-052: No grad_gpu allocation — gradient written in-place to logits_buf.
 
     // Allocate loss partials buffer (seq_len × f32 — downloaded for scalar average)
     let loss_gpu = GpuBuffer::<f32>::new(&ctx, seq_len as usize).map_err(|e| {
@@ -499,23 +498,22 @@ pub fn fused_cross_entropy_cuda(
         shared_mem: 72,
     };
 
-    let logits_ptr = logits_buf.as_ptr();
+    let logits_grad_ptr = logits_buf.as_ptr();
     let targets_ptr = targets_gpu.as_ptr();
-    let grad_ptr = grad_gpu.as_ptr();
     let loss_ptr = loss_gpu.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 6] = [
-        &logits_ptr as *const _ as *mut _,
+    let mut args: [*mut std::ffi::c_void; 5] = [
+        &logits_grad_ptr as *const _ as *mut _,
         &targets_ptr as *const _ as *mut _,
-        &grad_ptr as *const _ as *mut _,
         &loss_ptr as *const _ as *mut _,
         &vocab_size as *const _ as *mut _,
         &scale as *const _ as *mut _,
     ];
 
-    // SAFETY: Kernel launch requires FFI. logits_buf has seq_len*vocab_size elements,
-    // targets_gpu has seq_len u32 elements, grad_gpu and loss_gpu are freshly allocated.
-    // Parameters match PTX signature (u64, u64, u64, u64, u32, f32).
+    // SAFETY: Kernel launch requires FFI. logits_buf has seq_len*vocab_size elements
+    // (read as logits, overwritten with gradients in-place). targets_gpu has seq_len u32
+    // elements, loss_gpu has seq_len f32 elements. Parameters match PTX signature
+    // (u64 logits_grad_ptr, u64 targets_ptr, u64 loss_ptr, u32 vocab_size, f32 scale).
     unsafe {
         stream.launch_kernel(module, "fused_cross_entropy", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("Fused cross-entropy launch failed: {e:?}"))
@@ -536,7 +534,7 @@ pub fn fused_cross_entropy_cuda(
     let total_loss: f64 = loss_partials.iter().map(|&x| f64::from(x)).sum();
     let avg_loss = (total_loss / f64::from(seq_len)) as f32;
 
-    Ok((avg_loss, grad_gpu))
+    Ok(avg_loss)
 }
 
 #[cfg(test)]
