@@ -98,6 +98,8 @@ pub struct TransformerTrainConfig {
     pub deterministic: bool,
     /// Random seed for reproducibility
     pub seed: u64,
+    /// KAIZEN-047: Step profiler report interval (0 = disabled, N = print every N steps)
+    pub profile_interval: usize,
 }
 
 impl TransformerTrainConfig {
@@ -120,6 +122,7 @@ impl TransformerTrainConfig {
             distributed: None,
             deterministic: false,
             seed: 42,
+            profile_interval: 0,
         }
     }
 
