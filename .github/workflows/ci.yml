@@ -26,3 +26,21 @@ jobs:
       repo: ${{ github.event.repository.name }}
       pr_sha: ${{ github.event.pull_request.head.sha || github.sha }}
     secrets: inherit
+
+  clippy:
+    name: Clippy CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (sovereignty linting)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Custom sovereignty lints
+        run: |
+          # Verify zero scripting in src/
+          test $(find src/ -name '*.py' -o -name '*.js' -o -name '*.lua' | wc -l) -eq 0
+          # Verify no unsafe env mutations
+          ! grep -r 'std::env::set_var' src/ --include='*.rs' || true

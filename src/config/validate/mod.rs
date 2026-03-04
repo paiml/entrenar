@@ -3,6 +3,7 @@
 //! Validates training specifications for correctness before execution.
 
 mod error;
+pub mod json_schema;
 mod validator;
 
 #[cfg(test)]

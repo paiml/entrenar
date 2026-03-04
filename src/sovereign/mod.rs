@@ -27,6 +27,7 @@
 //! ```
 
 pub mod distribution;
+pub mod governance;
 pub mod nix;
 pub mod registry;
 
@@ -34,4 +35,8 @@ pub use distribution::{
     ComponentManifest, DistributionFormat, DistributionTier, SovereignDistribution,
 };
 pub use nix::{CrateSpec, NixFlakeConfig, NixSystem};
+pub use governance::{
+    ApiAllowlist, AuditEntry, AuditTrail, DataClassification, DeletionCascade, KeySource,
+    ResidencyConfig, WeightSovereigntyConfig,
+};
 pub use registry::{ModelEntry, ModelSource, OfflineModelRegistry, RegistryManifest};

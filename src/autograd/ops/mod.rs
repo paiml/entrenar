@@ -7,6 +7,8 @@ mod attention;
 mod basic;
 mod matmul;
 mod normalize;
+#[cfg(test)]
+mod correctness_tests;
 
 // Re-export all public operations
 pub use activations::{gelu, relu, softmax, swish};
