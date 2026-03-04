@@ -68,27 +68,37 @@ use super::config::TransformerTrainConfig;
 #[cfg(feature = "cuda")]
 use super::step_profiler::StepProfiler;
 
-/// Compute exact gradient L2 norm of the shared workspace (downloads all buffers to CPU).
+/// Compute gradient L2 norm of the shared workspace via GPU reduction (KAIZEN-054).
+///
+/// Uses `squared_sum_cuda` per buffer (~1KB D2H each) instead of downloading entire
+/// gradient buffers to CPU (was 58 MB+ per block, disabled in ALB-067).
 ///
 /// Free function to avoid borrow conflicts with `&mut self`.
-/// For 350M model, downloads ~58 MB per block (~1.8ms on PCIe 4.0 x16).
 #[cfg(feature = "cuda")]
-fn compute_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> (f32, f32) {
-    // KAIZEN-044: Pre-allocate a single host buffer for all D2H downloads.
-    // Was allocating vec![0.0f32; buf.len()] per call × 9 buffers (up to 104 MB each).
+fn compute_workspace_clip_scale_gpu(
+    ws: &CudaGradWorkspace,
+    max_norm: f32,
+    stream: &CudaStream,
+) -> (f32, f32) {
     let all_bufs: [&GpuBuffer<f32>; 9] = [
         &ws.grad_w_q, &ws.grad_w_k, &ws.grad_w_v, &ws.grad_w_o,
         &ws.grad_gate, &ws.grad_up, &ws.grad_down,
         &ws.grad_input_norm, &ws.grad_post_attn_norm,
     ];
-    let max_len = all_bufs.iter().map(|b| b.len()).max().unwrap_or(0);
-    let mut host = vec![0.0f32; max_len];
 
+    // Sum squared norms across all 9 workspace buffers.
+    // squared_sum_cuda returns sqrt(sum(x^2)) per buffer; we need combined norm.
     let mut total_sq = 0.0f64;
     for buf in &all_bufs {
-        let slice = &mut host[..buf.len()];
-        if buf.copy_to_host_at(slice, 0).is_ok() {
-            total_sq += slice.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>();
+        let n = buf.len() as u32;
+        if n == 0 {
+            continue;
+        }
+        match squared_sum_cuda(buf, n, stream) {
+            Ok(norm) => {
+                total_sq += f64::from(norm) * f64::from(norm); // norm^2 to accumulate
+            }
+            Err(_) => {} // Skip buffer on error (e.g., if kernel cache not init)
         }
     }
 
@@ -101,12 +111,12 @@ fn compute_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> (f32, 
     (scale, grad_norm)
 }
 
-/// Clip all gradient buffers in the shared workspace using per-block L2 norm estimate.
+/// Clip all gradient buffers in the shared workspace using GPU-computed L2 norm (KAIZEN-054).
 ///
 /// R-004: Returns pre-clip gradient L2 norm for observability logging.
 #[cfg(feature = "cuda")]
 fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &CudaStream) -> f32 {
-    let (scale, grad_norm) = compute_workspace_clip_scale(ws, max_norm);
+    let (scale, grad_norm) = compute_workspace_clip_scale_gpu(ws, max_norm, stream);
     if (scale - 1.0).abs() < 1e-7 {
         return grad_norm;
     }
@@ -135,10 +145,10 @@ fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &
 
 /// R-004: Compute gradient L2 norm without clipping (for observability only).
 ///
-/// Used when grad_clip is disabled to still report gradient norms.
+/// Uses GPU reduction (KAIZEN-054). Only ~9KB D2H per call.
 #[cfg(feature = "cuda")]
-fn compute_workspace_grad_norm(ws: &CudaGradWorkspace) -> f32 {
-    let (_, norm) = compute_workspace_clip_scale(ws, f32::MAX);
+fn compute_workspace_grad_norm(ws: &CudaGradWorkspace, stream: &CudaStream) -> f32 {
+    let (_, norm) = compute_workspace_clip_scale_gpu(ws, f32::MAX, stream);
     norm
 }
 
@@ -956,25 +966,17 @@ impl CudaTransformerTrainer {
                 &mut self.cuda_grad_workspace,
             ).ok()?;
 
-            // Per-block gradient clipping DISABLED (ALB-067: CPU-side L2 norm bottleneck).
+            // KAIZEN-054: Per-block gradient clipping re-enabled via GPU-side norm.
+            // squared_sum_cuda computes L2 norm on GPU (~1KB D2H per buffer, 9 buffers).
+            // ALB-067 disabled this due to CPU D2H bottleneck (864 transfers/step);
+            // now only 9 tiny partial-sum downloads per block.
             //
-            // compute_workspace_clip_scale() downloads 9 gradient buffers per block to
-            // CPU for L2 norm computation. For 24 blocks × 4 sequences/batch: 864 D2H
-            // transfers (~1.4 GB/step) + heap allocation + f64 summation. This pegs CPU
-            // at 100% and GPU at 7%, making each step take minutes instead of seconds.
-            //
-            // SAFETY: Per-block weight gradients are bounded by block activations and
-            // regularized by AdamW second moments. LM head + final norm weight clipping
-            // is preserved (lines 653-676). Activation gradient clipping (C-EMBED-GRAD-001)
-            // in embed_backward() is preserved — this is the critical safety net.
-            //
-            // TODO(ALB-067): Re-enable when GPU-side squared norm reduction is implemented
-            // in trueno. The kernel needs: per-thread x[i]^2, warp shuffle reduction,
-            // shared memory block reduction, single f32 output per buffer.
-            //
-            // No stream.synchronize() needed: backward and optimizer_step are both
+            // No stream.synchronize() needed: backward, clip, and optimizer_step are all
             // GPU-side operations on the same stream — CUDA stream ordering guarantees
-            // the backward completes before optimizer_step reads the workspace.
+            // each completes before the next starts.
+            if let Some(max_norm) = max_grad_norm {
+                clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
+            }
 
             // R-038: Either accumulate workspace grads (CPU-side) or run optimizer per-block.
             if accumulate_only {
