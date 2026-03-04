@@ -21,7 +21,7 @@ fn reference_layer_norm_f64(x: &[f32], gamma: &[f32], beta: &[f32], eps: f32) ->
 }
 
 #[test]
-fn normalization_correctness_matches_reference() {
+fn norm_test_matches_reference() {
     let x_data = vec![1.0_f32, 2.0, 3.0, 4.0, 5.0];
     let gamma_data = vec![1.0_f32; 5];
     let beta_data = vec![0.0_f32; 5];
@@ -38,7 +38,7 @@ fn normalization_correctness_matches_reference() {
 }
 
 #[test]
-fn normalization_correctness_zero_mean() {
+fn norm_test_mean_zero() {
     let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
     let gamma = Tensor::from_vec(vec![1.0; 5], false);
     let beta = Tensor::from_vec(vec![0.0; 5], false);
@@ -48,7 +48,7 @@ fn normalization_correctness_zero_mean() {
 }
 
 #[test]
-fn normalization_correctness_unit_variance() {
+fn norm_test_variance_one() {
     let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0], false);
     let gamma = Tensor::from_vec(vec![1.0; 5], false);
     let beta = Tensor::from_vec(vec![0.0; 5], false);

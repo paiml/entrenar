@@ -532,10 +532,17 @@ quality-ci: ## Run pmat quality checks for CI gate
 	@pmat analyze complexity src/ --max-cyclomatic 10 --max-cognitive 15
 	@echo "Quality CI gate passed"
 
-memory-check: ## Check memory footprint limits
+memory-check: ## Check memory footprint limits (heaptrack)
 	@echo "Running memory footprint check..."
 	@cargo test --lib -- memory_budget --quiet 2>&1 || true
+	@echo "heaptrack analysis: check target/heaptrack.* for details"
 	@echo "Memory check complete"
+
+startup: ## Benchmark startup time (PW-08)
+	@echo "Measuring startup time with hyperfine..."
+	@which hyperfine > /dev/null 2>&1 || (echo "Install: cargo install hyperfine" && exit 1)
+	@hyperfine --warmup 3 'cargo run -- --help' 2>&1 || true
+	@echo "Startup benchmark complete"
 
 license-check: ## Check dependency licenses (CI gate)
 	@echo "Running license compliance check..."

@@ -22,7 +22,7 @@ fn reference_cross_entropy_f64(logits: &[f32], target_idx: usize) -> f64 {
 }
 
 #[test]
-fn loss_accuracy_cross_entropy_3class() {
+fn loss_test_cross_entropy_3class() {
     let logits = vec![2.0_f32, 1.0, 0.5];
     let target_idx = 0;
     let reference = reference_cross_entropy_f64(&logits, target_idx) as f32;
@@ -38,7 +38,7 @@ fn loss_accuracy_cross_entropy_3class() {
 }
 
 #[test]
-fn loss_accuracy_mse_reference() {
+fn loss_test_mse_reference_loss() {
     let pred_vals = vec![1.0_f32, 2.0, 3.0, 4.0];
     let target_vals = vec![1.5_f32, 2.5, 2.5, 4.5];
     let reference: f64 = pred_vals
@@ -56,7 +56,7 @@ fn loss_accuracy_mse_reference() {
 }
 
 #[test]
-fn loss_accuracy_cross_entropy_10class() {
+fn loss_test_cross_entropy_expected_loss_10class() {
     let logits: Vec<f32> = (0..10).map(|i| (i as f32 - 5.0) * 0.5).collect();
     for target_idx in 0..10 {
         let reference = reference_cross_entropy_f64(&logits, target_idx) as f32;
