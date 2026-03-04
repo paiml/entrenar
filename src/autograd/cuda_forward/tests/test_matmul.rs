@@ -351,6 +351,96 @@ fn test_full_forward_0_5b_dims() {
     eprintln!("=== Full forward simulation PASSED ===");
 }
 
+// === BF16-precision GPU GEMM tests ===
+
+#[test]
+#[cfg(feature = "cuda")]
+fn test_gemm_forward_bf16_basic() {
+    use crate::autograd::precision::{bf16_truncate, gemm_bf16_reference};
+    use trueno_gpu::driver::{cuda_available, CudaContext, CudaStream, GpuBuffer};
+    let _ = bf16_truncate; // suppress unused import if not needed directly
+
+    if !cuda_available() {
+        return;
+    }
+
+    let ctx = CudaContext::new(0).expect("operation should succeed");
+    let ctx = std::sync::Arc::new(ctx);
+    init_forward_kernel_cache(ctx.clone()).expect("operation should succeed");
+
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
+
+    // 2x2 @ 2x2 with exact bf16 values
+    let a_data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
+    let b_data: Vec<f32> = vec![5.0, 6.0, 7.0, 8.0];
+    let c_data: Vec<f32> = vec![0.0; 4];
+
+    let a = GpuBuffer::from_host(&ctx, &a_data).expect("operation should succeed");
+    let b = GpuBuffer::from_host(&ctx, &b_data).expect("operation should succeed");
+    let mut c = GpuBuffer::from_host(&ctx, &c_data).expect("operation should succeed");
+
+    gemm_forward_bf16(&a, &b, &mut c, 2, 2, 2, &stream).expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
+
+    let mut result = vec![0.0f32; 4];
+    c.copy_to_host(&mut result).expect("operation should succeed");
+
+    // With exact bf16 values (small integers), result matches fp32
+    let expected = gemm_bf16_reference(&a_data, &b_data, 2, 2, 2);
+    for i in 0..4 {
+        assert!(
+            (result[i] - expected[i]).abs() < 1e-3,
+            "BF16 GEMM GPU vs CPU mismatch at [{i}]: GPU={}, CPU={}",
+            result[i],
+            expected[i]
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "cuda")]
+fn test_gemm_forward_bf16_precision_matches_reference() {
+    use crate::autograd::precision::gemm_bf16_reference;
+    use trueno_gpu::driver::{cuda_available, CudaContext, CudaStream, GpuBuffer};
+
+    if !cuda_available() {
+        return;
+    }
+
+    let ctx = CudaContext::new(0).expect("operation should succeed");
+    let ctx = std::sync::Arc::new(ctx);
+    init_forward_kernel_cache(ctx.clone()).expect("operation should succeed");
+
+    let stream = CudaStream::new(&ctx).expect("operation should succeed");
+
+    // Non-exact values that will exhibit bf16 truncation
+    let m = 4u32;
+    let k = 8u32;
+    let n = 4u32;
+    let a_data: Vec<f32> = (0..m * k).map(|i| 0.01 * (i as f32 + 1.0)).collect();
+    let b_data: Vec<f32> = (0..k * n).map(|i| 0.01 * (i as f32 + 1.0)).collect();
+
+    let a = GpuBuffer::from_host(&ctx, &a_data).expect("operation should succeed");
+    let b = GpuBuffer::from_host(&ctx, &b_data).expect("operation should succeed");
+    let mut c = GpuBuffer::from_host(&ctx, &vec![0.0f32; (m * n) as usize]).expect("operation should succeed");
+
+    gemm_forward_bf16(&a, &b, &mut c, m, k, n, &stream).expect("operation should succeed");
+    stream.synchronize().expect("operation should succeed");
+
+    let mut result = vec![0.0f32; (m * n) as usize];
+    c.copy_to_host(&mut result).expect("operation should succeed");
+
+    let expected = gemm_bf16_reference(&a_data, &b_data, m as usize, k as usize, n as usize);
+    for i in 0..(m * n) as usize {
+        assert!(
+            (result[i] - expected[i]).abs() < 1e-3,
+            "BF16 GEMM GPU/CPU mismatch at [{i}]: GPU={}, CPU={}",
+            result[i],
+            expected[i]
+        );
+    }
+}
+
 /// Test fused SwiGLU with production-sized n (seq_len * intermediate_size).
 /// Reproduces PTX JIT failure seen at n=510720.
 #[test]

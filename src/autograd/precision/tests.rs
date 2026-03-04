@@ -4,8 +4,8 @@
 #[cfg(test)]
 mod tests {
     use crate::autograd::precision::{
-        bf16_to_f32, estimate_memory_savings, f32_to_bf16, f32_to_fp16, fp16_to_f32, GradScaler,
-        MixedPrecisionConfig, Precision,
+        bf16_to_f32, bf16_truncate, estimate_memory_savings, f32_to_bf16, f32_to_fp16, fp16_to_f32,
+        gemm_bf16_reference, GradScaler, MixedPrecisionConfig, Precision,
     };
 
     #[test]
@@ -326,5 +326,147 @@ mod tests {
             estimate_memory_savings(1_000_000, 8, 512, 4096, Precision::Bf16);
         assert!(savings > 0.3, "BF16 should save >30% memory (got {savings})");
         assert!(mixed_bytes < fp32_bytes);
+    }
+
+    // ── R-002 Batch 14: BF16 GEMM reference + truncation tests ─────────
+
+    #[test]
+    fn test_bf16_truncate_basic() {
+        // 1.0 = 0x3F800000 → bf16 = 0x3F80 → f32 = 0x3F800000 (exact)
+        assert_eq!(bf16_truncate(1.0), 1.0);
+
+        // 0.1 = 0x3DCCCCCD → bf16 truncation zeros lower 16 bits → 0x3DCC0000
+        let t = bf16_truncate(0.1);
+        assert_ne!(t, 0.1, "0.1 should lose precision under bf16 truncation");
+        assert!((t - 0.1).abs() < 0.002, "bf16(0.1) should be close: got {t}");
+    }
+
+    #[test]
+    fn test_bf16_truncate_special_values() {
+        assert!(bf16_truncate(f32::NAN).is_nan());
+        assert!(bf16_truncate(f32::INFINITY).is_infinite());
+        assert!(bf16_truncate(f32::NEG_INFINITY).is_infinite());
+        assert_eq!(bf16_truncate(0.0), 0.0);
+        assert_eq!(bf16_truncate(-0.0).to_bits(), (-0.0f32).to_bits());
+    }
+
+    #[test]
+    fn test_bf16_truncate_precision_loss() {
+        // BF16 has 7 mantissa bits → ~2 decimal digits of precision
+        // 1.0 + 2^-8 = 1.00390625 should be distinguishable in f32 but not bf16
+        let val = 1.0f32 + (1.0 / 256.0);
+        let truncated = bf16_truncate(val);
+        assert_eq!(truncated, 1.0, "bf16 should lose the 8th mantissa bit");
+    }
+
+    #[test]
+    fn test_bf16_truncate_matches_roundtrip() {
+        // bf16_truncate(x) must equal bf16_to_f32(f32_to_bf16(x)) for all x
+        let test_values = [0.0, 1.0, -1.0, 0.1, 3.14159, 65504.0, -0.001, 1e38];
+        for &val in &test_values {
+            let truncated = bf16_truncate(val);
+            let roundtrip = bf16_to_f32(f32_to_bf16(val));
+            assert_eq!(
+                truncated.to_bits(),
+                roundtrip.to_bits(),
+                "bf16_truncate({val}) = {truncated} != roundtrip {roundtrip}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bf16_truncate_lower_bits_zeroed() {
+        // C-BF16GEMM-001: lower 16 bits must always be zero
+        let test_values = [0.1, 0.2, 0.3, 1.5, 42.42, -99.99, f32::MAX, f32::MIN_POSITIVE];
+        for &val in &test_values {
+            let truncated = bf16_truncate(val);
+            assert_eq!(
+                truncated.to_bits() & 0x0000FFFF,
+                0,
+                "lower 16 bits not zeroed for {val}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_gemm_bf16_reference_identity() {
+        // A @ I = A (with bf16 precision on elements)
+        let a = vec![1.0, 2.0, 3.0, 4.0];
+        let b = vec![1.0, 0.0, 0.0, 1.0];
+        let c = gemm_bf16_reference(&a, &b, 2, 2, 2);
+        assert!((c[0] - 1.0).abs() < 1e-6);
+        assert!((c[1] - 2.0).abs() < 1e-6);
+        assert!((c[2] - 3.0).abs() < 1e-6);
+        assert!((c[3] - 4.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_gemm_bf16_reference_vs_fp32() {
+        // Compare bf16 GEMM vs fp32 GEMM — should differ but be close
+        let a = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6]; // 2x3
+        let b = vec![0.7, 0.8, 0.9, 1.0, 1.1, 1.2]; // 3x2
+
+        // FP32 reference
+        let mut c_fp32 = vec![0.0f32; 4];
+        for row in 0..2 {
+            for col in 0..2 {
+                let mut acc = 0.0f32;
+                for i in 0..3 {
+                    acc += a[row * 3 + i] * b[i * 2 + col];
+                }
+                c_fp32[row * 2 + col] = acc;
+            }
+        }
+
+        let c_bf16 = gemm_bf16_reference(&a, &b, 2, 3, 2);
+
+        // Results should be close but not identical due to bf16 truncation
+        let mut any_different = false;
+        for i in 0..4 {
+            let diff = (c_fp32[i] - c_bf16[i]).abs();
+            assert!(diff < 0.1, "BF16 vs FP32 diff too large at [{i}]: {diff}");
+            if diff > 1e-7 {
+                any_different = true;
+            }
+        }
+        assert!(any_different, "BF16 GEMM should differ from FP32 due to truncation");
+    }
+
+    #[test]
+    fn test_gemm_bf16_reference_fp32_accumulation() {
+        // Verify accumulation is in f32 (not bf16)
+        // Sum 1024 products of bf16(0.01)^2 — in bf16 accum this would lose precision
+        let k = 1024;
+        let a = vec![0.01f32; k];
+        let b = vec![0.01f32; k];
+        let c = gemm_bf16_reference(&a, &b, 1, k, 1);
+
+        let bf16_val = bf16_truncate(0.01);
+        let expected = bf16_val * bf16_val * k as f32;
+        assert!(
+            (c[0] - expected).abs() < 1e-4,
+            "BF16 GEMM accumulation should be in f32: got {}, expected {expected}",
+            c[0]
+        );
+    }
+
+    #[test]
+    fn test_gemm_bf16_reference_350m_dims() {
+        // Verify BF16 GEMM works with 350M model dimensions (hidden=1024)
+        let m = 4; // seq_len
+        let k = 1024; // hidden_size
+        let n = 1024; // hidden_size (Q projection)
+
+        let a: Vec<f32> = (0..m * k).map(|i| 0.001 * (i as f32 % 100.0)).collect();
+        let b: Vec<f32> = (0..k * n).map(|i| 0.001 * (i as f32 % 100.0)).collect();
+
+        let c = gemm_bf16_reference(&a, &b, m, k, n);
+
+        // Verify output is finite (no NaN/Inf from accumulation)
+        assert!(c.iter().all(|v: &f32| v.is_finite()), "All outputs should be finite");
+        assert_eq!(c.len(), m * n);
+
+        // Verify non-trivial result (not all zeros)
+        assert!(c.iter().any(|&v| v != 0.0), "Output should not be all zeros");
     }
 }

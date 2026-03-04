@@ -32,6 +32,47 @@ pub fn fp16_to_f32(value: u16) -> f32 {
     trueno::f16_to_f32(value)
 }
 
+/// Truncate an f32 value to BF16 precision (zero lower 16 mantissa bits).
+///
+/// Equivalent to f32 → bf16 → f32 round-trip via bit truncation (not rounding).
+/// The result is a valid f32 with only 7 mantissa bits of precision.
+///
+/// # Contract (C-BF16GEMM-001)
+///
+/// - `bf16_truncate(x).to_bits() & 0x0000FFFF == 0` for all x
+/// - `bf16_truncate(NaN).is_nan()` and `bf16_truncate(Inf).is_infinite()`
+/// - `bf16_truncate(x) == bf16_to_f32(f32_to_bf16(x))` for all x
+#[inline]
+pub fn bf16_truncate(val: f32) -> f32 {
+    f32::from_bits(val.to_bits() & 0xFFFF_0000)
+}
+
+/// CPU reference implementation of BF16-precision GEMM.
+///
+/// Computes C = A @ B where A is MxK, B is KxN, but truncates each operand
+/// to BF16 precision before multiply, with FP32 accumulation.
+///
+/// This matches the precision characteristics of hardware BF16 tensor cores:
+/// - BF16 multiply (7-bit mantissa)
+/// - FP32 accumulation (23-bit mantissa)
+///
+/// Used for verification against GPU BF16 GEMM kernels.
+pub fn gemm_bf16_reference(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    let mut c = vec![0.0f32; m * n];
+    for row in 0..m {
+        for col in 0..n {
+            let mut acc = 0.0f32;
+            for i in 0..k {
+                let a_val = bf16_truncate(a[row * k + i]);
+                let b_val = bf16_truncate(b[i * n + col]);
+                acc = a_val.mul_add(b_val, acc);
+            }
+            c[row * n + col] = acc;
+        }
+    }
+    c
+}
+
 /// Estimate memory savings from mixed precision
 ///
 /// # Arguments
