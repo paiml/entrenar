@@ -1478,7 +1478,7 @@ impl InstructPipeline {
         cuda_blocks: &mut [CudaBlock],
         training_state: &mut InstructGpuTrainingState,
         shared_scratch: &mut Option<CudaBlockScratch>,
-    ) -> Option<Vec<f32>> {
+    ) -> Option<()> {
         let seq_len = token_ids.len();
         let hidden_size = model.config.hidden_size;
         let max_seq_len = model.config.max_position_embeddings.min(
@@ -1562,27 +1562,21 @@ impl InstructPipeline {
             }
         }
 
-        if let Err(e) = stream.synchronize() {
-            eprintln!("[CUDA] stream sync failed: {e}");
-            return None;
-        }
-
-        // Download result, then slice to actual seq_len
-        let result_data = trainer.download(final_output).map_err(|e| {
-            eprintln!("[CUDA] download failed: {e}");
+        // KAIZEN-066: GPU RMSNorm forward — output goes directly to lm_head_hidden_buf.
+        // Eliminates ~5MB D2H download + CPU RMSNorm + ~5MB H2D upload.
+        // Same CUDA stream guarantees blocks_output copy and RMSNorm are ordered.
+        crate::autograd::cuda_backward::rms_norm_forward(
+            final_output,
+            &training_state.final_norm_weight,
+            &mut training_state.lm_head_hidden_buf,
+            seq_len as u32,
+            hidden_size as u32,
+            stream,
+        ).map_err(|e| {
+            eprintln!("[CUDA] GPU RMSNorm forward failed: {e}");
         }).ok()?;
-        let actual_data = &result_data[..seq_len * hidden_size];
 
-        if actual_data.iter().any(|v| !v.is_finite()) {
-            return None;
-        }
-
-        // Apply final RMSNorm on CPU (only actual positions)
-        let result_tensor = crate::Tensor::from_vec(actual_data.to_vec(), false);
-        let normed = model.norm.forward_batched(&result_tensor, seq_len, hidden_size);
-        let normed_data = normed.data();
-        let normed_slice = normed_data.as_slice().expect("contiguous normed");
-        Some(normed_slice.to_vec())
+        Some(())
     }
 
     /// NF4 QLoRA backward pass through all GPU transformer blocks.
@@ -1797,8 +1791,9 @@ impl InstructPipeline {
         let vocab_size = self.model.config().vocab_size;
         let hidden_size = self.model.config().hidden_size;
 
-        // Get normed hidden states from GPU
-        let normed_hidden = if self.gpu_training.is_some() {
+        // Get normed hidden states. Training path writes directly to lm_head_hidden_buf (KAIZEN-066).
+        // Inference path returns CPU Vec that needs upload.
+        if self.gpu_training.is_some() {
             let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
                 (Some(ref t), Some(ref mut b)) => (t, b),
                 _ => return None,
@@ -1813,27 +1808,26 @@ impl InstructPipeline {
                 &mut self.shared_scratch,
             );
             self.gpu_training = training;
-            result
+            result?; // lm_head_hidden_buf is ready
         } else {
             let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
                 (Some(ref t), Some(ref mut b)) => (t, b),
                 _ => return None,
             };
-            Self::forward_cuda_inference(&self.model, token_ids, trainer, blocks, &mut self.shared_scratch)
-        };
-
-        let normed_hidden = normed_hidden?;
+            let normed_hidden = Self::forward_cuda_inference(
+                &self.model, token_ids, trainer, blocks, &mut self.shared_scratch,
+            )?;
+            // Inference path: upload CPU normed hidden to GPU
+            let training = self.gpu_training.as_mut()?;
+            training.lm_head_hidden_buf.copy_from_host_at(&normed_hidden, 0).map_err(|e| {
+                eprintln!("[CUDA] lm_head forward: hidden upload failed: {e}");
+            }).ok()?;
+        }
 
         // GPU GEMM: logits[seq, vocab] = hidden[seq, hidden] @ embed_T[hidden, vocab]
         let trainer = self.cuda_trainer.as_ref()?;
         let training = self.gpu_training.as_mut()?;
         let stream = trainer.stream();
-
-        // KAIZEN-062: Upload into pre-allocated lm_head hidden buffer.
-        // Eliminates 1× cuMemAlloc/cuMemFree per forward pass.
-        training.lm_head_hidden_buf.copy_from_host_at(&normed_hidden, 0).map_err(|e| {
-            eprintln!("[CUDA] lm_head forward: hidden upload failed: {e}");
-        }).ok()?;
 
         if let Err(e) = gemm_forward(
             &training.lm_head_hidden_buf,
@@ -1872,8 +1866,9 @@ impl InstructPipeline {
         let vocab_size = self.model.config().vocab_size;
         let hidden_size = self.model.config().hidden_size;
 
-        // Get normed hidden states from GPU (same as forward_logits_gpu)
-        let normed_hidden = if self.gpu_training.is_some() {
+        // KAIZEN-066: Training path writes normed hidden directly to lm_head_hidden_buf (GPU-resident).
+        // Inference path returns CPU Vec that needs upload.
+        if self.gpu_training.is_some() {
             let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
                 (Some(ref t), Some(ref mut b)) => (t, b),
                 _ => return false,
@@ -1888,19 +1883,31 @@ impl InstructPipeline {
                 &mut self.shared_scratch,
             );
             self.gpu_training = training;
-            result
+            if result.is_none() {
+                return false;
+            }
+            // lm_head_hidden_buf is ready
         } else {
             let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
                 (Some(ref t), Some(ref mut b)) => (t, b),
                 _ => return false,
             };
-            Self::forward_cuda_inference(&self.model, token_ids, trainer, blocks, &mut self.shared_scratch)
-        };
-
-        let normed_hidden = match normed_hidden {
-            Some(h) => h,
-            None => return false,
-        };
+            let normed_hidden = match Self::forward_cuda_inference(
+                &self.model, token_ids, trainer, blocks, &mut self.shared_scratch,
+            ) {
+                Some(h) => h,
+                None => return false,
+            };
+            // Inference path: upload CPU normed hidden to GPU
+            let training = match self.gpu_training.as_mut() {
+                Some(t) => t,
+                None => return false,
+            };
+            if training.lm_head_hidden_buf.copy_from_host_at(&normed_hidden, 0).is_err() {
+                eprintln!("[CUDA] lm_head forward: hidden upload failed");
+                return false;
+            }
+        }
 
         // GPU GEMM: logits[seq, vocab] = hidden[seq, hidden] @ embed_T[hidden, vocab]
         let (trainer, training) = match (&self.cuda_trainer, &mut self.gpu_training) {
@@ -1908,12 +1915,6 @@ impl InstructPipeline {
             _ => return false,
         };
         let stream = trainer.stream();
-
-        // KAIZEN-062: Upload into pre-allocated lm_head hidden buffer.
-        if training.lm_head_hidden_buf.copy_from_host_at(&normed_hidden, 0).is_err() {
-            eprintln!("[CUDA] lm_head forward: hidden upload failed");
-            return false;
-        }
 
         if gemm_forward(
             &training.lm_head_hidden_buf,

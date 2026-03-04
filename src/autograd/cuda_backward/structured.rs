@@ -11,6 +11,8 @@ use trueno_gpu::kernels::backward::{
     SoftmaxBackwardKernel,
 };
 #[cfg(feature = "cuda")]
+use trueno_gpu::kernels::BatchedVectorizedRmsNormKernel;
+#[cfg(feature = "cuda")]
 use trueno_gpu::kernels::Kernel;
 
 use super::super::cuda_tensor::{CudaTensorError, Result};
@@ -210,6 +212,74 @@ pub fn rms_norm_backward(
             .launch_kernel(module, "batched_rms_norm_backward", &config, &mut args)
             .map_err(|e| {
                 CudaTensorError::KernelError(format!("RMSNorm backward launch failed: {e:?}"))
+            })?;
+    }
+
+    Ok(())
+}
+
+/// RMSNorm forward pass on GPU (KAIZEN-066).
+///
+/// Computes: output = input * rsqrt(mean(input^2) + eps) * gamma
+///
+/// Uses BatchedVectorizedRmsNormKernel — 8 warps per block, processes
+/// seq_len rows in parallel via Grid.y.
+///
+/// # Contract (C-GPUNORM-001)
+///
+/// - **Precondition**: input has batch_size * hidden_size elements, gamma has hidden_size elements
+/// - **Postcondition**: output contains RMSNorm(input) * gamma
+/// - **Invariant**: Same numerical result as CPU norm.forward_batched (within fp32 precision)
+#[cfg(feature = "cuda")]
+pub fn rms_norm_forward(
+    input: &GpuBuffer<f32>,
+    gamma: &GpuBuffer<f32>,
+    output: &mut GpuBuffer<f32>,
+    batch_size: u32,
+    hidden_size: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("batched_rmsnorm_fwd_{hidden_size}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = BatchedVectorizedRmsNormKernel::new(hidden_size, batch_size);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    // Grid: (1, batch_size, 1) — one block per row, each block processes one row
+    // Block: (256, 1, 1) — 8 warps per block for parallel reduction
+    let config = LaunchConfig {
+        grid: (1, batch_size, 1),
+        block: (256, 1, 1),
+        shared_mem: 8 * 4, // 8 warp partial sums
+    };
+
+    let input_ptr = input.as_ptr();
+    let output_ptr = output.as_ptr();
+    let gamma_ptr = gamma.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &gamma_ptr as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. input has batch_size * hidden_size elements,
+    // output has batch_size * hidden_size elements, gamma has hidden_size elements.
+    // Parameters match PTX signature (u64 input_ptr, u64 output_ptr, u64 gamma_ptr).
+    unsafe {
+        stream
+            .launch_kernel(module, "batched_rmsnorm_vectorized", &config, &mut args)
+            .map_err(|e| {
+                CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
             })?;
     }
 
