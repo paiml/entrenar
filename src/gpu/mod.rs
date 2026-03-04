@@ -7,6 +7,7 @@
 //! - **Profiler**: Brick-phase profiler for GPU sharing ops (GPU-SHARE-005)
 
 pub mod cluster;
+pub mod coordinator;
 pub mod error;
 pub mod guard;
 pub mod ledger;
