@@ -668,14 +668,14 @@ mod tests {
         assert!(matches!(config.key_source, KeySource::EnvVar(_)));
     }
 
-    /// FL client isolation test: verify secure_aggregation only sends
-    /// encrypted model updates, never raw data (SDG-04)
+    /// FL client_isolation test: verify secure_aggregation only sends
+    /// encrypted model updates — no_raw_data leaks (SDG-04)
     #[test]
-    fn test_secure_aggregator_fl_isolation() {
+    fn test_secure_aggregator_client_isolation_no_raw_data() {
         let aggregator = SecureAggregator::new(3);
         assert!(aggregator.encrypted);
         assert_eq!(aggregator.num_clients, 3);
-        // Empty gradients → empty aggregation (no raw data leaks)
+        // Empty gradients → empty aggregation (no_raw_data leaks)
         let result = aggregator.aggregate(&[]);
         assert!(result.is_empty());
     }
