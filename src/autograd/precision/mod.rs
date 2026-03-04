@@ -45,7 +45,8 @@ mod tests;
 // Re-export all public types and functions
 pub use config::MixedPrecisionConfig;
 pub use conversions::{
-    bf16_to_f32, estimate_memory_savings, f32_to_bf16, f32_to_fp16, fp16_to_f32,
+    bf16_to_f32, bf16_truncate, estimate_memory_savings, f32_to_bf16, f32_to_fp16, fp16_to_f32,
+    gemm_bf16_reference,
 };
 pub use precision_types::Precision;
 pub use scaler::GradScaler;

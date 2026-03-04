@@ -45,6 +45,8 @@ pub use elementwise::{
     expand_kv_heads, interleaved_to_batched_forward, residual_add_forward, scale_forward,
 };
 pub use matmul::{batched_4d_gemm_forward, fused_swiglu_forward, gemm_forward, gemm_nf4_backward_a, gemm_nf4_forward};
+#[cfg(feature = "cuda")]
+pub use matmul::gemm_forward_bf16;
 pub use bf16_cast::{bf16_slice_to_f32, f32_slice_to_bf16};
 #[cfg(feature = "cuda")]
 pub use bf16_cast::{cast_bf16_to_f32_gpu, cast_f32_to_bf16_gpu};

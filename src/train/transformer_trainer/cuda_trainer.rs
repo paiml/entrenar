@@ -66,23 +66,23 @@ use super::config::TransformerTrainConfig;
 /// For 350M model, downloads ~58 MB per block (~1.8ms on PCIe 4.0 x16).
 #[cfg(feature = "cuda")]
 fn compute_workspace_clip_scale(ws: &CudaGradWorkspace, max_norm: f32) -> (f32, f32) {
-    fn exact_sq_norm(buf: &GpuBuffer<f32>) -> f64 {
-        let mut host = vec![0.0f32; buf.len()];
-        if buf.copy_to_host_at(&mut host, 0).is_err() {
-            return 0.0;
-        }
-        host.iter().map(|&x| (x as f64) * (x as f64)).sum()
-    }
+    // KAIZEN-044: Pre-allocate a single host buffer for all D2H downloads.
+    // Was allocating vec![0.0f32; buf.len()] per call × 9 buffers (up to 104 MB each).
+    let all_bufs: [&GpuBuffer<f32>; 9] = [
+        &ws.grad_w_q, &ws.grad_w_k, &ws.grad_w_v, &ws.grad_w_o,
+        &ws.grad_gate, &ws.grad_up, &ws.grad_down,
+        &ws.grad_input_norm, &ws.grad_post_attn_norm,
+    ];
+    let max_len = all_bufs.iter().map(|b| b.len()).max().unwrap_or(0);
+    let mut host = vec![0.0f32; max_len];
 
-    let total_sq = exact_sq_norm(&ws.grad_w_q)
-        + exact_sq_norm(&ws.grad_w_k)
-        + exact_sq_norm(&ws.grad_w_v)
-        + exact_sq_norm(&ws.grad_w_o)
-        + exact_sq_norm(&ws.grad_gate)
-        + exact_sq_norm(&ws.grad_up)
-        + exact_sq_norm(&ws.grad_down)
-        + exact_sq_norm(&ws.grad_input_norm)
-        + exact_sq_norm(&ws.grad_post_attn_norm);
+    let mut total_sq = 0.0f64;
+    for buf in &all_bufs {
+        let slice = &mut host[..buf.len()];
+        if buf.copy_to_host_at(slice, 0).is_ok() {
+            total_sq += slice.iter().map(|&x| (x as f64) * (x as f64)).sum::<f64>();
+        }
+    }
 
     let grad_norm = total_sq.sqrt() as f32;
     let scale = if grad_norm > max_norm {
@@ -690,12 +690,18 @@ impl CudaTransformerTrainer {
         let mut grad_logits = vec![0.0f32; seq_len * vocab_size];
         let scale = 1.0 / seq_len as f32;
 
+        // KAIZEN-044: Pre-allocate exp_vals outside loop. Was allocating
+        // vocab_size (151,936) f32 per position = 155 MB churn for seq_len=256.
+        let mut exp_vals = vec![0.0f32; vocab_size];
+
         for pos in 0..seq_len {
             let start = pos * vocab_size;
             let logits_pos = &logits_data[start..start + vocab_size];
 
             let max = logits_pos.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            let exp_vals: Vec<f32> = logits_pos.iter().map(|&x| (x - max).exp()).collect();
+            for (e, &x) in exp_vals.iter_mut().zip(logits_pos) {
+                *e = (x - max).exp();
+            }
             let sum: f32 = exp_vals.iter().sum();
             let target_idx = target_ids[pos] as usize;
 
@@ -1042,6 +1048,8 @@ impl CudaTransformerTrainer {
     ///
     /// Static method to avoid borrow conflicts with `stream` (same pattern as
     /// `recompute_segment`). Must be called after stream.synchronize() (ALB-065 / Rule 6).
+    // KAIZEN-044: Pre-allocate a single host buffer for all D2H downloads
+    // in download_workspace_to_accum. Was allocating vec![0.0f32; len] × 9 buffers.
     fn download_workspace_to_accum(
         ws: &CudaGradWorkspace,
         accum: &mut super::grad_accumulator::PerBlockGradientAccumulator,
@@ -1049,26 +1057,29 @@ impl CudaTransformerTrainer {
     ) -> Option<()> {
         let bg = &mut accum.block_grads[layer_idx];
 
-        // Download each workspace buffer and accumulate into CPU accum
-        fn download_and_add(gpu_buf: &GpuBuffer<f32>, cpu_accum: &mut [f32]) -> Option<()> {
-            let mut host = vec![0.0f32; gpu_buf.len()];
-            gpu_buf.copy_to_host_at(&mut host, 0).ok()?;
-            for (d, s) in cpu_accum.iter_mut().zip(&host) {
+        use super::grad_accumulator::component;
+        let bufs_and_components: [(&GpuBuffer<f32>, usize); 9] = [
+            (&ws.grad_w_q, component::W_Q),
+            (&ws.grad_w_k, component::W_K),
+            (&ws.grad_w_v, component::W_V),
+            (&ws.grad_w_o, component::W_O),
+            (&ws.grad_gate, component::GATE),
+            (&ws.grad_up, component::UP),
+            (&ws.grad_down, component::DOWN),
+            (&ws.grad_input_norm, component::INPUT_NORM),
+            (&ws.grad_post_attn_norm, component::POST_ATTN_NORM),
+        ];
+
+        let max_len = bufs_and_components.iter().map(|(b, _)| b.len()).max().unwrap_or(0);
+        let mut host = vec![0.0f32; max_len];
+
+        for (gpu_buf, comp_idx) in &bufs_and_components {
+            let slice = &mut host[..gpu_buf.len()];
+            gpu_buf.copy_to_host_at(slice, 0).ok()?;
+            for (d, s) in bg.components[*comp_idx].iter_mut().zip(slice.iter()) {
                 *d += s;
             }
-            Some(())
         }
-
-        use super::grad_accumulator::component;
-        download_and_add(&ws.grad_w_q, &mut bg.components[component::W_Q])?;
-        download_and_add(&ws.grad_w_k, &mut bg.components[component::W_K])?;
-        download_and_add(&ws.grad_w_v, &mut bg.components[component::W_V])?;
-        download_and_add(&ws.grad_w_o, &mut bg.components[component::W_O])?;
-        download_and_add(&ws.grad_gate, &mut bg.components[component::GATE])?;
-        download_and_add(&ws.grad_up, &mut bg.components[component::UP])?;
-        download_and_add(&ws.grad_down, &mut bg.components[component::DOWN])?;
-        download_and_add(&ws.grad_input_norm, &mut bg.components[component::INPUT_NORM])?;
-        download_and_add(&ws.grad_post_attn_norm, &mut bg.components[component::POST_ATTN_NORM])?;
         Some(())
     }
 

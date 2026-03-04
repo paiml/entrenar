@@ -58,7 +58,8 @@ pub use graph_opt::{
 };
 pub use ops::*;
 pub use precision::{
-    bf16_to_f32, f32_to_bf16, f32_to_fp16, fp16_to_f32, GradScaler, MixedPrecisionConfig, Precision,
+    bf16_to_f32, bf16_truncate, f32_to_bf16, f32_to_fp16, fp16_to_f32, gemm_bf16_reference,
+    GradScaler, MixedPrecisionConfig, Precision,
 };
 pub use tensor::Tensor;
 
