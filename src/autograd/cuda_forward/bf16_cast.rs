@@ -20,7 +20,7 @@
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::ptx::{PtxKernel, PtxModule, PtxType};
+use trueno_gpu::ptx::{PtxArithmetic, PtxComparison, PtxControl, PtxKernel, PtxModule, PtxType};
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
 
