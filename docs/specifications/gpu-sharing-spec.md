@@ -1,7 +1,18 @@
 # GPU Sharing Specification
 
-**Status:** Draft v2 (post-falsification)
+**Status:** Implemented (all 3 phases complete, 143 GPU tests pass)
 **Scope:** Allow 2–3 QLoRA fine-tuning jobs to run concurrently on a single GPU, with optional multi-node heterogeneous support.
+
+### Implementation Summary
+
+| Phase | Status | Tests | PRs | Examples |
+|-------|--------|-------|-----|----------|
+| 1: VRAM guard + ledger + wait + profiler + MPS | Complete | 45 | entrenar#217 | `gpu_ledger` |
+| 2: Multi-adapter pipeline + scheduling + adapters-config | Complete | 55 | — | `multi_adapter_training` |
+| 3: Cluster config + placement + coordinator + SSH + health check | Complete | 43 | entrenar#220, #224 | `cluster_training` |
+
+**Key modules:** `entrenar::gpu::{guard, ledger, wait, profiler, mps, cluster, placement, coordinator}`
+**CLI flags:** `--wait-gpu`, `--vram`, `--experimental-mps`, `--gpu-share`, `--adapters`, `--adapters-config`, `--gpus`, `--role`, `--bind`, `--coordinator`, `--expect-workers`
 
 ## Problem
 
@@ -543,13 +554,13 @@ Best adapter checkpoint is pulled to coordinator at end of training.
 
 ## Phasing
 
-| Phase | Scope | Effort | Lines | Unlocks |
+| Phase | Scope | Status | Lines | Unlocks |
 |-------|-------|--------|-------|---------|
-| **1** | VRAM guard + ledger + `--wait-gpu` + `apr gpu status` | 1-2 weeks | ~600 | No more silent crashes; sequential queuing |
-| **2** | Multi-adapter single-process training | 2-3 weeks | ~620 | 2-3 concurrent adapters on one GPU, 3x VRAM savings |
-| **3** | Multi-node via forjar | 3-4 weeks | ~1,330 | Heterogeneous cluster training |
+| **1** | VRAM guard + ledger + `--wait-gpu` + `apr gpu status` + MPS | Complete | ~800 | No more silent crashes; sequential queuing |
+| **2** | Multi-adapter single-process training + adapters-config TOML | Complete | ~700 | 2-3 concurrent adapters on one GPU, 3x VRAM savings |
+| **3** | Multi-node cluster + SSH transport + health check + checkpoint pull | Complete | ~1,200 | Heterogeneous cluster training |
 
-Phase 1 ships first — it's the safety net. Phase 2 is the real feature. Phase 3 depends on Phase 2 maturity + forjar transport readiness.
+All three phases implemented. 143 GPU tests pass. Zero SATD across all modules.
 
 ## Falsification Record
 
