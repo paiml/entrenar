@@ -19,12 +19,16 @@
 //! └── config: TransformerTrainConfig
 //! ```
 //!
-//! # Transfer budget (C-GPUTRAIN-002)
+//! # Transfer budget (C-GPUTRAIN-002, updated KAIZEN-050)
 //!
-//! Exactly 3 PCIe transfers per training step:
+//! 1 PCIe transfer per training step (+ tiny control transfers):
 //! 1. H2D: hidden states after embedding (seq×H×4 bytes)
-//! 2. D2H: logits for cross-entropy (seq×V×4 bytes)
-//! 3. H2D: grad_logits from cross-entropy (seq×V×4 bytes)
+//! 2. H2D: target_ids for fused cross-entropy (seq×4 bytes — ~512B)
+//! 3. D2H: loss_partials from fused cross-entropy (seq×4 bytes — ~512B)
+//!
+//! Eliminated by KAIZEN-050:
+//! - D2H logits (was seq×V×4 = 77.8MB for Qwen3-4B)
+//! - H2D grad_logits (was seq×V×4 = 77.8MB)
 
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
@@ -37,7 +41,7 @@ use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward};
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_optim::{adamw_step_cuda, gradient_clip_cuda, squared_sum_cuda};
+use crate::autograd::cuda_optim::{adamw_step_cuda, fused_cross_entropy_cuda, gradient_clip_cuda, squared_sum_cuda};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
@@ -49,7 +53,7 @@ use crate::optim::{AdamW, Optimizer};
 #[cfg(feature = "cuda")]
 use crate::autograd::precision::GradScaler;
 #[cfg(feature = "cuda")]
-use crate::train::{CausalLMLoss, LossFn, MetricsTracker};
+use crate::train::MetricsTracker;
 #[cfg(feature = "cuda")]
 use crate::transformer::{
     BlockWeights, CudaGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState, Transformer,
@@ -211,8 +215,6 @@ pub struct CudaTransformerTrainer {
     final_norm_m: GpuBuffer<f32>,
     /// Final norm weight AdamW second moment [hidden_size]
     final_norm_v: GpuBuffer<f32>,
-    /// CPU loss function (cross-entropy stays on CPU)
-    loss_fn: CausalLMLoss,
     /// CPU optimizer for embedding weights only
     embed_optimizer: AdamW,
     /// Training configuration
@@ -467,7 +469,7 @@ impl CudaTransformerTrainer {
             (vocab_size * hidden_size * 4) as f64 / 1e6
         );
 
-        let loss_fn = CausalLMLoss::new(vocab_size);
+        // KAIZEN-050: loss_fn removed — cross-entropy computed by fused GPU kernel
         // C-EMBED-GRAD-001: CPU optimizer must match YAML hyperparams (not defaults)
         let embed_optimizer = AdamW::new(
             config.lr,
@@ -523,7 +525,6 @@ impl CudaTransformerTrainer {
             lm_head_v,
             final_norm_m,
             final_norm_v,
-            loss_fn,
             embed_optimizer,
             // KAIZEN-047: Read profile_interval before moving config into struct.
             profiler: if config.profile_interval > 0 {
@@ -550,7 +551,7 @@ impl CudaTransformerTrainer {
     /// - Precondition: `input_ids.len() == target_ids.len() <= max_seq_len`
     /// - Postcondition: If `accumulate_only` is false, all GPU weights updated.
     ///   If true, gradients accumulated into CPU buffers (no weight updates).
-    /// - Transfer count: 3 PCIe transfers (+ 24×9 D2H if accumulating)
+    /// - Transfer count: 1 PCIe H2D + ~1KB control (KAIZEN-050, + 24×9 D2H if accumulating)
     fn train_step_single(
         &mut self,
         input_ids: &[u32],
@@ -568,28 +569,43 @@ impl CudaTransformerTrainer {
         let target_ids = if target_ids.len() > max_sl { &target_ids[..max_sl] } else { target_ids };
         let seq_len = input_ids.len();
 
-        // Steps 1-6: GPU forward pass → returns logits on CPU
+        // Steps 1-6: GPU forward pass — logits stay GPU-resident (KAIZEN-050)
         // (sub-phases embed, h2d, forward, norm_lm instrumented inside gpu_forward)
-        let logits_data = self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
+        self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
 
-        // Step 7: Cross-entropy loss + gradient (CPU)
+        // Step 7: Fused GPU cross-entropy loss + softmax backward (KAIZEN-050)
+        // Eliminates: logits D2H (77.8MB) + CPU softmax (40ms) + grad H2D (77.8MB)
         self.profiler.begin(StepProfiler::LOSS);
-        let (loss_val, mut grad_logits) =
-            self.cpu_loss_and_grad(&logits_data, target_ids, seq_len, vocab_size)?;
+        let stream = self.cuda_trainer.stream();
 
-        // R-002: Scale loss gradient for mixed precision (no-op for BF16/FP32, active for FP16)
-        if self.grad_scaler.scale() != 1.0 {
-            let scale = self.grad_scaler.scale();
-            for g in &mut grad_logits {
-                *g *= scale;
-            }
+        // Compute combined scale: (1/seq_len) * grad_scaler * (1/accum_steps)
+        let mut loss_scale = 1.0 / seq_len as f32;
+        if self.config.accumulation_steps > 1 {
+            loss_scale /= self.config.accumulation_steps as f32;
+        }
+        // R-002: Mixed precision gradient scaling (no-op for BF16/FP32, active for FP16)
+        loss_scale *= self.grad_scaler.scale();
+
+        let (loss_val, grad_logits_gpu) = fused_cross_entropy_cuda(
+            &self.gpu_training.logits_buf,
+            target_ids,
+            seq_len as u32,
+            vocab_size as u32,
+            loss_scale,
+            stream,
+        ).ok()?;
+
+        // NaN guard (replaces logits NaN check — NaN logits → NaN loss via kernel)
+        if !loss_val.is_finite() {
+            return None;
         }
         self.profiler.end(StepProfiler::LOSS);
 
         // Steps 8-11: GPU backward pass (with or without optimizer)
-        // (sub-phases grad_h2d, lm_bwd, norm_bwd, blk_bwd instrumented inside gpu_backward)
+        // (sub-phases lm_bwd, norm_bwd, blk_bwd instrumented inside gpu_backward)
+        // KAIZEN-050: grad_logits already on GPU — no GRAD_H2D transfer needed.
         let grad_output_is_a =
-            self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size, accumulate_only)?;
+            self.gpu_backward(grad_logits_gpu, seq_len, hidden_size, vocab_size, accumulate_only)?;
 
         // Step 12: Embedding backward (CPU scatter-add always accumulates)
         self.profiler.begin(StepProfiler::EMBED_BWD);
@@ -601,9 +617,10 @@ impl CudaTransformerTrainer {
         Some(loss_val)
     }
 
-    /// GPU forward pass: embed → blocks → norm → LM head → download logits.
+    /// GPU forward pass: embed → blocks → norm → LM head.
     ///
-    /// Transfers: 1 H2D (hidden states), 1 D2H (logits).
+    /// Logits stay GPU-resident in `self.gpu_training.logits_buf` (KAIZEN-050).
+    /// Transfers: 1 H2D (hidden states). No D2H — logits consumed by fused kernel.
     #[allow(unsafe_code)]
     fn gpu_forward(
         &mut self,
@@ -611,7 +628,7 @@ impl CudaTransformerTrainer {
         seq_len: usize,
         hidden_size: usize,
         vocab_size: usize,
-    ) -> Option<Vec<f32>> {
+    ) -> Option<()> {
         let stream = self.cuda_trainer.stream();
 
         // Embedding lookup (CPU)
@@ -684,75 +701,11 @@ impl CudaTransformerTrainer {
         )
         .ok()?;
 
-        // Download logits (Transfer 2: D2H)
-        // logits_buf is max_seq_len*vocab_size; only download seq_len*vocab_size.
-        stream.synchronize().ok()?;
-        let mut buf = vec![0.0f32; seq_len * vocab_size];
-        self.gpu_training.logits_buf.copy_to_host_at(&mut buf, 0).ok()?;
-
+        // KAIZEN-050: Logits stay GPU-resident — no D2H transfer.
+        // Fused cross-entropy kernel reads logits_buf directly on GPU.
         self.profiler.end(StepProfiler::NORM_LM);
 
-        // NaN guard: bail if logits contain non-finite values
-        if buf.iter().any(|v| !v.is_finite()) {
-            return None;
-        }
-
-        Some(buf)
-    }
-
-    /// Compute cross-entropy loss and gradient on CPU.
-    ///
-    /// Returns (loss_value, grad_logits).
-    fn cpu_loss_and_grad(
-        &self,
-        logits_data: &[f32],
-        target_ids: &[u32],
-        seq_len: usize,
-        vocab_size: usize,
-    ) -> Option<(f32, Vec<f32>)> {
-        let logits_tensor = Tensor::from_vec(logits_data.to_vec(), false);
-        let targets_tensor =
-            Tensor::from_vec(target_ids.iter().map(|&id| id as f32).collect(), false);
-        let loss = self.loss_fn.forward(&logits_tensor, &targets_tensor);
-        let loss_val = loss.data()[0];
-
-        // Softmax backward: grad = (softmax(logits) - one_hot(target)) / seq_len
-        let mut grad_logits = vec![0.0f32; seq_len * vocab_size];
-        let scale = 1.0 / seq_len as f32;
-
-        // KAIZEN-044: Pre-allocate exp_vals outside loop. Was allocating
-        // vocab_size (151,936) f32 per position = 155 MB churn for seq_len=256.
-        let mut exp_vals = vec![0.0f32; vocab_size];
-
-        for pos in 0..seq_len {
-            let start = pos * vocab_size;
-            let logits_pos = &logits_data[start..start + vocab_size];
-
-            let max = logits_pos.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            for (e, &x) in exp_vals.iter_mut().zip(logits_pos) {
-                *e = (x - max).exp();
-            }
-            let sum: f32 = exp_vals.iter().sum();
-            let target_idx = target_ids[pos] as usize;
-
-            if target_idx < vocab_size {
-                for (i, &e) in exp_vals.iter().enumerate() {
-                    let prob = e / sum;
-                    grad_logits[start + i] =
-                        if i == target_idx { (prob - 1.0) * scale } else { prob * scale };
-                }
-            }
-        }
-
-        // Scale by 1/accumulation_steps for gradient accumulation
-        if self.config.accumulation_steps > 1 {
-            let accum_scale = 1.0 / self.config.accumulation_steps as f32;
-            for g in &mut grad_logits {
-                *g *= accum_scale;
-            }
-        }
-
-        Some((loss_val, grad_logits))
+        Some(())
     }
 
     /// GPU backward pass with interleaved per-block optimizer step.
@@ -844,11 +797,11 @@ impl CudaTransformerTrainer {
     /// `gpu_optimizer_from_accum()` is called.
     ///
     /// Returns `grad_output_is_a` flag for embedding backward.
-    /// Transfer: 1 H2D (grad_logits) + 24×9 D2H if accumulating.
+    /// Transfer: 0 H2D (KAIZEN-050: grad already on GPU) + 24×9 D2H if accumulating.
     #[allow(unsafe_code)]
     fn gpu_backward(
         &mut self,
-        grad_logits: &[f32],
+        grad_logits_gpu: GpuBuffer<f32>,
         seq_len: usize,
         hidden_size: usize,
         vocab_size: usize,
@@ -861,10 +814,8 @@ impl CudaTransformerTrainer {
         let beta2 = self.config.beta2;
         let weight_decay = self.config.weight_decay;
 
-        // Upload grad_logits (Transfer 3: H2D)
-        self.profiler.begin(StepProfiler::GRAD_H2D);
-        let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).ok()?;
-        self.profiler.end(StepProfiler::GRAD_H2D);
+        // KAIZEN-050: grad_logits already GPU-resident from fused cross-entropy kernel.
+        // No GRAD_H2D transfer needed — saving 77.8MB H2D for Qwen3-4B.
 
         // LM head GEMM backward
         self.profiler.begin(StepProfiler::LM_BWD);
@@ -1421,6 +1372,7 @@ impl CudaTransformerTrainer {
 
     /// R-005: Evaluate a batch without backward pass or weight updates.
     /// Returns average cross-entropy loss, or 0.0 if no valid items.
+    /// KAIZEN-050: Uses fused GPU cross-entropy (no logits D2H).
     pub fn eval_batch(&mut self, batch: &LMBatch) -> f32 {
         let hidden_size = self.config.model_config.hidden_size;
         let vocab_size = self.config.model_config.vocab_size;
@@ -1430,8 +1382,19 @@ impl CudaTransformerTrainer {
             let Some(input_ids) = batch.get_input(i) else { continue };
             let Some(target_ids) = batch.get_target(i) else { continue };
             let seq_len = input_ids.len();
-            let Some(logits) = self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size) else { continue };
-            let Some((loss, _)) = self.cpu_loss_and_grad(&logits, target_ids, seq_len, vocab_size) else { continue };
+            if self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size).is_none() { continue; }
+            let stream = self.cuda_trainer.stream();
+            // scale=1/seq_len for eval (no grad_scaler or accumulation)
+            let scale = 1.0 / seq_len as f32;
+            let Ok((loss, _grad)) = fused_cross_entropy_cuda(
+                &self.gpu_training.logits_buf,
+                target_ids,
+                seq_len as u32,
+                vocab_size as u32,
+                scale,
+                stream,
+            ) else { continue };
+            if !loss.is_finite() { continue; }
             total_loss += loss;
             valid_count += 1;
         }

@@ -1,12 +1,13 @@
-//! GPU VRAM Ledger Example (GPU-SHARE-001)
+//! GPU VRAM Ledger & Guard Example (GPU-SHARE-001/002)
 //!
-//! Demonstrates the VRAM reservation ledger for GPU sharing.
+//! Demonstrates VRAM reservation ledger and guard for GPU sharing.
 //!
 //! ```bash
 //! cargo run --example gpu_ledger
 //! cargo run --example gpu_ledger -- --reserve 8000 --task "qlora-7b"
 //! cargo run --example gpu_ledger -- --status
-//! cargo run --example gpu_ledger -- --release
+//! cargo run --example gpu_ledger -- --wait <MB>
+//! cargo run --example gpu_ledger -- --guard <MB>
 //! ```
 
 fn main() {
@@ -21,8 +22,12 @@ fn main() {
         println!("  gpu_ledger --reserve <MB> --task <name>  # Reserve VRAM");
         println!("  gpu_ledger --release                # Release our reservation");
         println!("  gpu_ledger --wait <MB>              # Wait for VRAM");
+        println!("  gpu_ledger --guard <MB>             # Guard demo (acquire + update actual)");
         return;
     }
+
+    // Enable layer tracing
+    entrenar::trace::TRACER.enable();
 
     // Auto-detect GPU
     let uuid = entrenar::gpu::ledger::detect_gpu_uuid();
@@ -106,6 +111,40 @@ fn main() {
             }
             Err(e) => eprintln!("Error: {e}"),
         }
+        return;
+    }
+
+    // --guard <MB>: guard demo (acquire, update actual, release)
+    if let Some(pos) = args.iter().position(|a| a == "--guard") {
+        let budget_mb: usize = args
+            .get(pos + 1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| {
+                eprintln!("--guard requires a number (MB)");
+                std::process::exit(1);
+            });
+
+        match ledger.try_reserve(budget_mb, "guard-demo") {
+            Ok(id) => {
+                println!("Guard acquired: {budget_mb} MB (id: {id})");
+                // Simulate actual VRAM measurement (typically less than budget)
+                let actual = budget_mb * 9 / 10;
+                ledger.update_actual(actual).ok();
+                println!("Updated actual: {actual} MB");
+                println!("Status:");
+                if let Ok(status) = entrenar::gpu::ledger::gpu_status_display(&ledger) {
+                    print!("{status}");
+                }
+                ledger.release().ok();
+                println!("Guard released.");
+            }
+            Err(e) => eprintln!("Error: {e}"),
+        }
+
+        // Show trace report
+        let trace_report = entrenar::trace::TRACER.report();
+        println!("{trace_report}");
+        println!("{}", ledger.profiler_report());
         return;
     }
 
