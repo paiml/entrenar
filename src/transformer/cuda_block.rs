@@ -1355,7 +1355,7 @@ impl CudaTransformerBlock {
         )?;
 
         // grad_norm1 += grad_k @ w_k^T
-        // GEMM result stored in grad_attn_scores scratch space
+        // KAIZEN-057: cuda_add_inplace replaces residual_add_forward + D2D copy
         gemm_backward_a(
             &self.scratch.norm2_out, // grad_k interleaved
             &self.w_k,
@@ -1365,26 +1365,7 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        // grad_hidden += grad_attn_scores (through o_proj_out scratch — same hidden_size)
-        let n_hidden = saturating_u32(seq_len * hidden_size);
-        residual_add_forward(
-            &self.scratch.grad_hidden,
-            &self.scratch.grad_attn_scores,
-            &mut self.scratch.o_proj_out, // temp output (hidden_size, matches grad_hidden)
-            n_hidden,
-            stream,
-        )?;
-        // SAFETY: Both buffers are valid GPU allocations with matching sizes.
-        unsafe {
-            self.scratch
-                .grad_hidden
-                .copy_from_buffer_async(&self.scratch.o_proj_out, stream)
-                .map_err(|e| {
-                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                        "Attn backward grad_hidden accumulate K D2D copy failed: {e}"
-                    ))
-                })?;
-        }
+        cuda_add_inplace(&mut self.scratch.grad_hidden, &self.scratch.grad_attn_scores, seq_len * hidden_size, stream)?;
 
         // grad_norm1 += grad_v @ w_v^T
         gemm_backward_a(
@@ -1396,25 +1377,7 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        // grad_hidden += grad_attn_scores (through o_proj_out scratch)
-        residual_add_forward(
-            &self.scratch.grad_hidden,
-            &self.scratch.grad_attn_scores,
-            &mut self.scratch.o_proj_out, // temp output (hidden_size)
-            n_hidden,
-            stream,
-        )?;
-        // SAFETY: Both buffers are valid GPU allocations with matching sizes.
-        unsafe {
-            self.scratch
-                .grad_hidden
-                .copy_from_buffer_async(&self.scratch.o_proj_out, stream)
-                .map_err(|e| {
-                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                        "Attn backward grad_hidden accumulate V D2D copy failed: {e}"
-                    ))
-                })?;
-        }
+        cuda_add_inplace(&mut self.scratch.grad_hidden, &self.scratch.grad_attn_scores, seq_len * hidden_size, stream)?;
 
         // Weight gradients: grad_w_q = norm1_out^T @ grad_q
         gemm_backward_b(
