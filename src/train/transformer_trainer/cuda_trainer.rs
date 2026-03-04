@@ -525,6 +525,12 @@ impl CudaTransformerTrainer {
             final_norm_v,
             loss_fn,
             embed_optimizer,
+            // KAIZEN-047: Read profile_interval before moving config into struct.
+            profiler: if config.profile_interval > 0 {
+                StepProfiler::new(true, config.profile_interval)
+            } else {
+                StepProfiler::disabled()
+            },
             config,
             metrics: MetricsTracker::new(),
             step: 0,
@@ -534,12 +540,6 @@ impl CudaTransformerTrainer {
             last_embed_grad_norm: 0.0,
             grad_accum,
             grad_scaler,
-            // KAIZEN-047: Enable step profiler if configured.
-            profiler: if config.profile_interval > 0 {
-                StepProfiler::new(true, config.profile_interval)
-            } else {
-                StepProfiler::disabled()
-            },
         })
     }
 
