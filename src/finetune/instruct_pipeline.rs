@@ -125,6 +125,9 @@ struct InstructGpuTrainingState {
     grad_final_norm_weight: GpuBuffer<f32>,
     /// Transposed embedding weights on GPU [hidden_size * vocab_size] for lm_head forward GEMM
     embed_transposed: GpuBuffer<f32>,
+    /// KAIZEN-068: Non-transposed embedding weights on GPU [vocab_size * hidden_size] for
+    /// lm_head backward GEMM. Eliminates ~1.45GB H2D upload per training step.
+    embed_original: GpuBuffer<f32>,
     /// GPU scratch for logits [max_seq_len * vocab_size]
     logits_buf: GpuBuffer<f32>,
     /// GPU scratch for grad_hidden [max_seq_len * hidden_size]
@@ -677,20 +680,16 @@ impl InstructPipeline {
         //    KAIZEN-064: grad_logits already in logits_buf (in-place from fused kernel).
         //    No upload needed — saves ~296MB H2D per step.
         //    KAIZEN-065: grad_hidden stays GPU-resident in grad_hidden_buf — no D2H download.
+        //    KAIZEN-068: embed_original is GPU-resident — no per-step H2D upload (~1.45GB saved).
         let hidden_size = self.model.config().hidden_size;
-        let embed_data = self.model.embed_tokens.weight.data();
-        let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
         let gemm_ok = (|| -> Option<()> {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
             let training = self.gpu_training.as_mut()?;
-            let embed_gpu = trainer.upload(embed_slice).map_err(|e| {
-                eprintln!("[CUDA] lm_head backward: embed upload failed: {e}");
-            }).ok()?;
             gemm_forward(
                 &training.logits_buf,
-                &embed_gpu,
+                &training.embed_original,
                 &mut training.grad_hidden_buf,
                 seq_len as u32,
                 vocab_size as u32,
@@ -761,8 +760,6 @@ impl InstructPipeline {
         }
 
         let hidden_size = self.model.config().hidden_size;
-        let embed_data = self.model.embed_tokens.weight.data();
-        let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
         let grad_hidden = (|| -> Option<Vec<f32>> {
             let trainer = self.cuda_trainer.as_ref()?;
@@ -771,12 +768,10 @@ impl InstructPipeline {
             training.logits_buf.copy_from_host_at(&grad_logits, 0).map_err(|e| {
                 eprintln!("[CUDA] lm_head backward: grad_logits upload failed: {e}");
             }).ok()?;
-            let embed_gpu = trainer.upload(embed_slice).map_err(|e| {
-                eprintln!("[CUDA] lm_head backward: embed upload failed: {e}");
-            }).ok()?;
+            // KAIZEN-068: embed_original is GPU-resident — no per-step H2D upload.
             gemm_forward(
                 &training.logits_buf,
-                &embed_gpu,
+                &training.embed_original,
                 &mut training.grad_hidden_buf,
                 seq_len as u32,
                 vocab_size as u32,
@@ -1359,12 +1354,18 @@ impl InstructPipeline {
         let grad_buf_b = trainer.zeros(buf_size).ok()?;
         let grad_final_norm_weight = trainer.zeros(hidden_size).ok()?;
 
-        // Transpose embedding [vocab, hidden] → [hidden, vocab] and upload to GPU.
-        // Only the transposed layout is stored permanently (~2.4 GB for 152K vocab × 4096 hidden).
-        // The original layout is uploaded on-demand during backward (saves ~2.4 GB VRAM).
+        // Upload embedding weights in both layouts:
+        // - embed_transposed [hidden, vocab]: for lm_head forward GEMM (logits = hidden @ embed_T)
+        // - embed_original [vocab, hidden]: for lm_head backward GEMM (grad_hidden = grad_logits @ embed)
+        // KAIZEN-068: Both layouts stored permanently on GPU. Eliminates ~1.45GB H2D upload per step.
+        // VRAM cost: ~1.45GB additional (Qwen3-4B: 151936 × 2560 × 4). Fits in 24GB RTX 4090.
         let vocab_size = model_config.vocab_size;
         let embed_data = model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
+
+        let embed_original = trainer.upload(embed_slice).map_err(|e| {
+            eprintln!("[CUDA] embed_original upload failed: {e}");
+        }).ok()?;
 
         let mut embed_t = vec![0.0f32; hidden_size * vocab_size];
         for v in 0..vocab_size {
@@ -1386,7 +1387,7 @@ impl InstructPipeline {
 
         eprintln!(
             "[CUDA] GPU training state initialized: {num_layers} layers, \
-             {buf_size} buf_size, embed_T=[{hidden_size}x{vocab_size}] on GPU (NF4 QLoRA mode)"
+             {buf_size} buf_size, embed=[{vocab_size}x{hidden_size}]+embed_T=[{hidden_size}x{vocab_size}] on GPU (NF4 QLoRA mode)"
         );
 
         // KAIZEN-045: Pre-allocate backward scratch buffers to eliminate per-backward
@@ -1408,6 +1409,7 @@ impl InstructPipeline {
             grad_buf_b,
             grad_final_norm_weight,
             embed_transposed,
+            embed_original,
             logits_buf,
             grad_hidden_buf,
             output_scratch,
