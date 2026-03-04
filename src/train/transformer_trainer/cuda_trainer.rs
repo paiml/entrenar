@@ -243,6 +243,10 @@ pub struct CudaTransformerTrainer {
     /// KAIZEN-047: Per-step wall-clock profiler.
     /// Reports timing breakdown for each training phase.
     profiler: StepProfiler,
+    /// KAIZEN-053: Pre-allocated forward scratch buffers [max_seq_len * hidden_size].
+    /// Reused every step — eliminates 2 × cuMemAlloc/Free per training step.
+    fwd_scratch_a: GpuBuffer<f32>,
+    fwd_scratch_b: GpuBuffer<f32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -461,6 +465,15 @@ impl CudaTransformerTrainer {
             crate::error::Error::ConfigError(format!("Final norm v alloc failed: {e:?}"))
         })?;
 
+        // KAIZEN-053: Pre-allocate forward scratch buffers (reused every step)
+        let buf_size = max_seq_len * hidden_size;
+        let fwd_scratch_a = GpuBuffer::new(&ctx, buf_size).map_err(|e| {
+            crate::error::Error::ConfigError(format!("Fwd scratch A alloc failed: {e:?}"))
+        })?;
+        let fwd_scratch_b = GpuBuffer::new(&ctx, buf_size).map_err(|e| {
+            crate::error::Error::ConfigError(format!("Fwd scratch B alloc failed: {e:?}"))
+        })?;
+
         // Sync to ensure all uploads completed
         stream.synchronize().map_err(|e| {
             crate::error::Error::ConfigError(format!("Stream sync failed: {e:?}"))
@@ -543,6 +556,8 @@ impl CudaTransformerTrainer {
             last_embed_grad_norm: 0.0,
             grad_accum,
             grad_scaler,
+            fwd_scratch_a,
+            fwd_scratch_b,
         })
     }
 
@@ -642,32 +657,46 @@ impl CudaTransformerTrainer {
 
         // Upload hidden states to GPU (Transfer 1: H2D)
         // Pad to max_seq_len so D2D copies to pre-allocated layer_inputs match.
+        // KAIZEN-053: Reuse pre-allocated scratch buffers instead of cuMemAlloc per step.
         self.profiler.begin(StepProfiler::H2D);
         let max_buf_size = self.config.max_seq_len * hidden_size;
         let mut padded_hidden = vec![0.0f32; max_buf_size];
         padded_hidden[..hidden_slice.len()].copy_from_slice(hidden_slice);
-        let mut gpu_input = self.cuda_trainer.upload(&padded_hidden).ok()?;
-        let mut gpu_output = self.cuda_trainer.zeros(max_buf_size).ok()?;
+        self.fwd_scratch_a.copy_from_host(&padded_hidden).ok()?;
         self.profiler.end(StepProfiler::H2D);
 
-        // Forward through CUDA blocks.
-        // With activation checkpointing, only save layer inputs at checkpoint boundaries.
-        // Non-boundary inputs are recomputed from the nearest checkpoint during backward.
+        // Forward through CUDA blocks using pre-allocated ping-pong buffers.
+        // KAIZEN-053: fwd_scratch_a/b are top-level fields (not in gpu_training)
+        // so borrowing them doesn't conflict with gpu_training.layer_inputs.
         self.profiler.begin(StepProfiler::FORWARD);
+        let mut input_is_a = true; // Track which scratch buffer is "input"
         for (i, block) in self.cuda_blocks.iter_mut().enumerate() {
+            // Use raw pointers for the ping-pong to avoid borrow conflicts
+            // with self.gpu_training.layer_inputs
+            let (input_ptr, output_ptr): (*const GpuBuffer<f32>, *mut GpuBuffer<f32>) = if input_is_a {
+                (std::ptr::from_ref(&self.fwd_scratch_a), std::ptr::from_mut(&mut self.fwd_scratch_b))
+            } else {
+                (std::ptr::from_ref(&self.fwd_scratch_b), std::ptr::from_mut(&mut self.fwd_scratch_a))
+            };
             if self.gpu_training.saved_layer_mask[i] {
                 // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
-                // Copy completes before block.forward() reads from gpu_input (same stream ordering).
+                // Copy completes before block.forward() reads from input (same stream ordering).
                 unsafe {
                     self.gpu_training.layer_inputs[i]
-                        .copy_from_buffer_async(&gpu_input, stream)
+                        .copy_from_buffer_async(&*input_ptr, stream)
                         .ok()?;
                 }
             }
-            block.forward(&gpu_input, &mut gpu_output, seq_len, stream).ok()?;
-            std::mem::swap(&mut gpu_input, &mut gpu_output);
+            // SAFETY: input_ptr and output_ptr point to disjoint fwd_scratch_{a,b}.
+            unsafe {
+                block.forward(&*input_ptr, &mut *output_ptr, seq_len, stream).ok()?;
+            }
+            input_is_a = !input_is_a;
         }
         self.profiler.end(StepProfiler::FORWARD);
+
+        // After the loop, input_is_a tells us which buffer has the final output
+        let final_output: &GpuBuffer<f32> = if input_is_a { &self.fwd_scratch_a } else { &self.fwd_scratch_b };
 
         // Save blocks output for final norm backward
         // SAFETY: Disjoint GPU buffers with matching max_seq_len sizes.
@@ -675,13 +704,13 @@ impl CudaTransformerTrainer {
         unsafe {
             self.gpu_training
                 .blocks_output
-                .copy_from_buffer_async(&gpu_input, stream)
+                .copy_from_buffer_async(final_output, stream)
                 .ok()?;
         }
 
         // Final RMSNorm forward (GPU)
         rms_norm_forward(
-            &gpu_input,
+            final_output,
             &self.gpu_training.final_norm_weight,
             &mut self.gpu_training.norm_output,
             seq_len as u32,
