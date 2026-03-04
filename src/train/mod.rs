@@ -62,8 +62,12 @@ pub use trainer::{TrainResult, Trainer};
 pub use transformer_trainer::{
     perplexity, tokens_per_second, BlockGradientSet, CudaTransformerTrainer,
     DistributedBackend, DistributedCheckpointCoordinator, DistributedRole,
-    DistributedTrainConfig, LMBatch, PerBlockGradientAccumulator, TransformerTrainConfig,
-    TransformerTrainer,
+    DistributedTrainConfig, ElasticCoordinator, LMBatch, PerBlockGradientAccumulator,
+    TransformerTrainConfig, TransformerTrainer,
+    // Parallelism strategies
+    CausalMaskType, ColumnParallelShard, OptimizerShard, PipelineAction,
+    PipelineActivationBuffer, PipelineStage, RingAttentionSchedule, RowParallelShard,
+    SequenceParallelConfig, SpCommCost, TensorParallelConfig, TpCommCost, ZeroShardMap,
 };
 pub use transformer_trainer::distributed_checkpoint::{
     checkpoint_path, hash_weights, should_save_checkpoint, verify_weight_consistency,
