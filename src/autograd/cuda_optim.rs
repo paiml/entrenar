@@ -17,6 +17,7 @@
 //! - `adamw_step_cuda` - Fused AdamW with weight decay
 //! - `adam_step_cuda` - Vanilla Adam without weight decay
 //! - `gradient_clip_cuda` - Apply gradient clipping scale
+//! - `squared_sum_cuda` - GPU-side sum-of-squares for L2 norm (KAIZEN-049)
 
 #![allow(unsafe_code)]
 #![allow(trivial_casts)]
@@ -31,7 +32,9 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaContext, CudaModule, CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::kernels::{AdamStepKernel, AdamWStepKernel, GradientClipKernel, Kernel};
+use trueno_gpu::kernels::{
+    AdamStepKernel, AdamWStepKernel, GradientClipKernel, Kernel, SquaredSumKernel,
+};
 
 use super::cuda_tensor::{CudaTensorError, Result};
 
@@ -354,6 +357,84 @@ pub fn gradient_clip_cuda(
     }
 
     Ok(())
+}
+
+/// GPU-side sum-of-squares reduction (KAIZEN-049).
+///
+/// Computes `sum(input[i]^2)` entirely on GPU, returning only `num_blocks` partial sums
+/// (~1KB) to host. Host finishes with f64 summation and sqrt for the L2 norm.
+///
+/// # Contract (C-SQSUM-002)
+///
+/// - **Precondition**: `n > 0`, `input` has at least `n` elements
+/// - **Postcondition**: returned f32 = sqrt(sum(input[i]^2)) to within O(n × eps_f32)
+/// - **Transfer**: ~1KB D2H instead of n×4 bytes (128MB for 32M elements)
+///
+/// # Errors
+///
+/// Returns `Err` if kernel cache not initialized, kernel compilation fails, or GPU transfer fails.
+#[cfg(feature = "cuda")]
+pub fn squared_sum_cuda(
+    input: &GpuBuffer<f32>,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<f32> {
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = SquaredSumKernel::new(n);
+    let num_blocks = kernel.num_blocks();
+    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+
+    // Clone ctx before mutable borrow via get_or_compile
+    let ctx = std::sync::Arc::clone(&cache.ctx);
+
+    let key = format!("squared_sum_{n}");
+    let module = cache.get_or_compile(&key, &ptx)?;
+
+    // Allocate output buffer for block partial sums (num_blocks × 4 bytes, typically ≤1KB)
+    let output = GpuBuffer::<f32>::new(&ctx, num_blocks as usize).map_err(|e| {
+        CudaTensorError::KernelError(format!("Failed to allocate squared_sum output: {e:?}"))
+    })?;
+
+    let config = LaunchConfig {
+        grid: (num_blocks, 1, 1),
+        block: (kernel.block_size(), 1, 1),
+        shared_mem: 8 * 4, // 8 warp partials × 4 bytes
+    };
+
+    let input_ptr = input.as_ptr();
+    let output_ptr = output.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &n as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. input has n elements, output has num_blocks elements,
+    // parameters match PTX signature (u64 input_ptr, u64 output_ptr, u32 n).
+    unsafe {
+        stream.launch_kernel(module, "squared_sum_reduce", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Squared sum launch failed: {e:?}"))
+        })?;
+    }
+
+    // Synchronize and download partial sums (~1KB instead of 128MB)
+    stream.synchronize().map_err(|e| {
+        CudaTensorError::KernelError(format!("Stream sync failed: {e:?}"))
+    })?;
+
+    let mut partials = vec![0.0f32; num_blocks as usize];
+    output.copy_to_host(&mut partials).map_err(|e| {
+        CudaTensorError::KernelError(format!("Failed to download partial sums: {e:?}"))
+    })?;
+
+    // Sum partials in f64 for precision, then sqrt for L2 norm
+    let total: f64 = partials.iter().map(|&x| f64::from(x)).sum();
+    Ok(total.sqrt() as f32)
 }
 
 #[cfg(test)]
