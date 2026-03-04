@@ -920,11 +920,15 @@ impl CudaTransformerTrainer {
         // the same stream as gemm_backward_b, so CUDA stream ordering guarantees the GEMM
         // completes before the reduction kernel starts. The sync inside squared_sum_cuda
         // handles the D2H of partial sums.
+        // ALB-071: Always compute LM head grad norm for observability (R-004),
+        // even when weight grad clipping is disabled (ALB-067).
+        let lm_norm = squared_sum_cuda(&self.lm_head_grad_gpu, self.lm_head_grad_gpu.len() as u32, stream)
+            .unwrap_or(0.0);
+        self.last_grad_norm = lm_norm; // R-004: capture for observability
         if let Some(max_norm) = max_grad_norm {
-            let (scale, norm) = Self::compute_clip_scale_with_norm(&self.lm_head_grad_gpu, max_norm, stream);
-            self.last_grad_norm = norm; // R-004: capture for observability
+            let clip_scale = if lm_norm > max_norm { max_norm / lm_norm } else { 1.0 };
             let n = self.lm_head_grad_gpu.len() as u32;
-            let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, scale, n, stream);
+            let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, clip_scale, n, stream);
         }
         self.profiler.end(StepProfiler::LM_BWD);
 
@@ -1302,15 +1306,20 @@ impl CudaTransformerTrainer {
         };
         let mut embed_grad_data = self.cuda_trainer.download(embed_grad_buf).ok()?;
 
-        // C-EMBED-GRAD-001: Clip activation gradient before scatter-add.
+        // C-EMBED-GRAD-001: ALWAYS clip activation gradient before scatter-add.
         // Without this, 24-layer random-init backward amplifies gradients to ~1e35,
         // which overflows the CPU AdamW's second moment buffer.
-        if let Some(max_norm) = self.config.base.max_grad_norm {
+        //
+        // ALB-071: Decoupled from general grad_clip config. Embed activation gradient
+        // clipping is a SAFETY constraint (prevents NaN), not a training hyperparameter.
+        // Uses dedicated max_embed_grad_norm (default 1.0) independent of weight grad_clip.
+        let embed_clip_norm = self.config.base.max_grad_norm.unwrap_or(1.0);
+        {
             let sq_sum: f64 = embed_grad_data.iter().map(|&x| (x as f64) * (x as f64)).sum();
             let grad_norm = sq_sum.sqrt() as f32;
             self.last_embed_grad_norm = grad_norm; // R-040: per-parameter-group tracking
-            if grad_norm > max_norm {
-                let scale = max_norm / grad_norm;
+            if grad_norm > embed_clip_norm {
+                let scale = embed_clip_norm / grad_norm;
                 for g in &mut embed_grad_data {
                     *g *= scale;
                 }
