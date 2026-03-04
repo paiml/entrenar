@@ -396,6 +396,11 @@ name = "multi_adapter_training"
 path = "examples/multi_adapter_training.rs"
 required-features = []
 
+[[example]]
+name = "cluster_training"
+path = "examples/cluster_training.rs"
+required-features = []
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--generate-link-to-definition"]

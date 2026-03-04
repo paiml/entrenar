@@ -1,0 +1,219 @@
+//! Cluster Training Example (GPU-SHARE Phase 3, GH-210/211/212)
+//!
+//! Demonstrates multi-node adapter training with cluster config parsing,
+//! job placement, and checkpoint coordination.
+//!
+//! ```bash
+//! cargo run --example cluster_training
+//! cargo run --example cluster_training -- --config cluster.yaml
+//! ```
+
+use entrenar::gpu::cluster::ClusterConfig;
+use entrenar::gpu::coordinator::{
+    build_launch_command, CheckpointCoordinator, CheckpointMetadata,
+};
+use entrenar::gpu::placement::{place_adapters, AdapterJob, PlacementDecision};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_usage();
+        return;
+    }
+
+    let config_path = parse_config_path(&args);
+    let cluster = load_or_default_cluster(config_path.as_deref());
+
+    println!("=== Cluster Training Demo ===");
+    println!();
+    print_cluster_info(&cluster);
+
+    let jobs = create_demo_jobs();
+    let placements = run_placement(&cluster, &jobs);
+    print_launch_commands(&cluster, &placements);
+    run_coordinator_demo(&cluster, &placements);
+}
+
+fn print_usage() {
+    println!("Cluster Training Example (GPU-SHARE Phase 3)");
+    println!();
+    println!("Usage:");
+    println!("  cluster_training                        # use built-in demo cluster");
+    println!("  cluster_training --config cluster.yaml  # use custom cluster config");
+}
+
+fn parse_config_path(args: &[String]) -> Option<PathBuf> {
+    args.iter()
+        .position(|a| a == "--config")
+        .and_then(|i| args.get(i + 1))
+        .map(PathBuf::from)
+}
+
+fn load_or_default_cluster(path: Option<&Path>) -> ClusterConfig {
+    if let Some(p) = path {
+        match ClusterConfig::from_file(p) {
+            Ok(c) => return c,
+            Err(e) => {
+                eprintln!("Failed to load {}: {e}", p.display());
+                eprintln!("Falling back to demo cluster.");
+            }
+        }
+    }
+    demo_cluster()
+}
+
+fn demo_cluster() -> ClusterConfig {
+    ClusterConfig::from_yaml(
+        r#"
+nodes:
+  - name: desktop
+    host: localhost
+    gpus:
+      - uuid: GPU-abcd-1234
+        type: rtx-4090
+        vram_mb: 24564
+        memory_type: discrete
+    max_adapters: 3
+  - name: jetson
+    host: jetson.local
+    transport: ssh
+    gpus:
+      - uuid: GPU-efgh-5678
+        type: jetson-orin
+        vram_mb: 8192
+        memory_type: unified
+    max_adapters: 1
+  - name: intel-box
+    host: 10.0.0.5
+    transport: ssh
+    user: noah
+    gpus: []
+    cpu_cores: 16
+    ram_mb: 65536
+    max_adapters: 1
+"#,
+    )
+    .expect("demo cluster should parse")
+}
+
+fn print_cluster_info(cluster: &ClusterConfig) {
+    println!("{cluster}");
+}
+
+fn create_demo_jobs() -> Vec<AdapterJob> {
+    vec![
+        AdapterJob {
+            adapter_idx: 0,
+            budget_mb: 6000,
+            label: "code-review".to_string(),
+        },
+        AdapterJob {
+            adapter_idx: 1,
+            budget_mb: 6000,
+            label: "bug-fixing".to_string(),
+        },
+        AdapterJob {
+            adapter_idx: 2,
+            budget_mb: 3000,
+            label: "docstring-gen".to_string(),
+        },
+        AdapterJob {
+            adapter_idx: 3,
+            budget_mb: 3000,
+            label: "test-gen".to_string(),
+        },
+    ]
+}
+
+fn run_placement(cluster: &ClusterConfig, jobs: &[AdapterJob]) -> Vec<PlacementDecision> {
+    println!("--- Job Placement ---");
+    println!();
+    let placements = place_adapters(cluster, jobs, &[]);
+
+    for p in &placements {
+        let job = &jobs[p.adapter_idx];
+        println!(
+            "  Adapter {} ({}): -> {} (score: {:.3})",
+            p.adapter_idx, job.label, p.node_name, p.score
+        );
+    }
+
+    let unplaced: Vec<_> = jobs
+        .iter()
+        .filter(|j| !placements.iter().any(|p| p.adapter_idx == j.adapter_idx))
+        .collect();
+    if !unplaced.is_empty() {
+        println!();
+        for j in &unplaced {
+            println!("  Adapter {} ({}): UNPLACED (no eligible node)", j.adapter_idx, j.label);
+        }
+    }
+    println!();
+    placements
+}
+
+fn print_launch_commands(cluster: &ClusterConfig, placements: &[PlacementDecision]) {
+    println!("--- Launch Commands ---");
+    println!();
+    for p in placements {
+        if let Some(node) = cluster.find_node(&p.node_name) {
+            let cmd = build_launch_command(
+                node,
+                Path::new("model.apr"),
+                &PathBuf::from(format!("data/corpus-{}.jsonl", p.adapter_idx)),
+                &PathBuf::from(format!("checkpoints/adapter-{}", p.adapter_idx)),
+                16,
+                3,
+            );
+            println!("  [{}] {cmd}", p.node_name);
+        }
+    }
+    println!();
+}
+
+fn run_coordinator_demo(cluster: &ClusterConfig, placements: &[PlacementDecision]) {
+    println!("--- Checkpoint Coordination ---");
+    println!();
+
+    let dirs = HashMap::new();
+    let mut coord = CheckpointCoordinator::new(cluster.clone(), placements, &dirs, 300);
+
+    // Simulate checkpoint data (would come from polling in real usage)
+    simulate_checkpoints(&mut coord);
+
+    println!("{}", coord.format_leaderboard());
+
+    if let Some(best) = coord.best_adapter() {
+        println!(
+            "Best adapter: {} on node '{}' (loss: {:.4})",
+            best.adapter_idx,
+            best.node_name,
+            best.latest.as_ref().map_or(0.0, |m| m.val_loss.unwrap_or(m.avg_loss))
+        );
+    }
+}
+
+fn simulate_checkpoints(coord: &mut CheckpointCoordinator) {
+    let simulated = vec![
+        (0, 0.42, Some(0.39)),
+        (1, 0.55, Some(0.51)),
+        (2, 0.38, Some(0.35)),
+        (3, 0.65, Some(0.60)),
+    ];
+
+    for (idx, avg_loss, val_loss) in simulated {
+        if let Some(status) = coord.adapters.get_mut(&idx) {
+            status.latest = Some(CheckpointMetadata {
+                adapter_idx: idx,
+                epoch: 3,
+                avg_loss,
+                val_loss,
+                node_name: Some(status.node_name.clone()),
+                timestamp: None,
+            });
+        }
+    }
+}
