@@ -276,6 +276,11 @@ pub struct CudaTransformerTrainer {
     /// KAIZEN-056: Pre-allocated CPU staging buffer for H2D hidden state upload.
     /// Eliminates vec![0.0; max_seq_len * hidden_size] allocation per step.
     h2d_staging: Vec<f32>,
+    /// KAIZEN-059: Pre-allocated CPU staging buffer for D2H gradient downloads
+    /// during gradient accumulation. Sized to max(h*intermediate, vocab*h).
+    /// Eliminates ~15GB of per-step heap churn (36 × vec![0.0; h*i] + vec![0.0; vocab*h]
+    /// per micro-batch × accumulation_steps).
+    d2h_staging: Vec<f32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -546,6 +551,18 @@ impl CudaTransformerTrainer {
             None
         };
 
+        // KAIZEN-059: Pre-allocate D2H staging buffer for gradient accumulation
+        // downloads. Sized to max(largest workspace buffer, lm_head_grad) to cover
+        // both download_workspace_to_accum (36×/micro-batch) and
+        // download_nonblock_grads_to_accum (1×/micro-batch).
+        let d2h_staging = if config.accumulation_steps > 1 {
+            let ws_max = hidden_size * mc.intermediate_size; // gate/up/down are largest
+            let lm_max = vocab_size * hidden_size;
+            vec![0.0f32; ws_max.max(lm_max)]
+        } else {
+            Vec::new()
+        };
+
         // R-002: Initialize gradient scaler from precision config
         let grad_scaler = GradScaler::from_config(&config.precision_config);
         if config.precision_config.is_mixed() {
@@ -588,6 +605,7 @@ impl CudaTransformerTrainer {
             fwd_scratch_a,
             fwd_scratch_b,
             h2d_staging: vec![0.0f32; max_seq_len * hidden_size],
+            d2h_staging,
         })
     }
 
@@ -937,6 +955,7 @@ impl CudaTransformerTrainer {
                 &self.lm_head_grad_gpu,
                 &self.gpu_training.grad_final_norm_weight,
                 &mut self.grad_accum,
+                &mut self.d2h_staging,
             )?;
         } else {
             Self::run_nonblock_optimizer_step(
@@ -1006,6 +1025,7 @@ impl CudaTransformerTrainer {
                 if let Some(accum) = &mut self.grad_accum {
                     Self::download_workspace_to_accum(
                         &self.cuda_grad_workspace, accum, layer_idx,
+                        &mut self.d2h_staging,
                     )?;
                 }
             } else {
@@ -1031,14 +1051,14 @@ impl CudaTransformerTrainer {
     /// Static method to avoid borrow conflicts.
     // KAIZEN-044: Pre-allocate single buffer for LM head + norm D2H downloads.
     // lm_head_grad is vocab×hidden (389M elements = 1.5 GB for Qwen3-4B).
+    // KAIZEN-059: Host buffer now passed in (d2h_staging) — zero per-call allocations.
     fn download_nonblock_grads_to_accum(
         lm_head_grad: &GpuBuffer<f32>,
         final_norm_grad: &GpuBuffer<f32>,
         grad_accum: &mut Option<super::grad_accumulator::PerBlockGradientAccumulator>,
+        host: &mut [f32],
     ) -> Option<()> {
         let accum = grad_accum.as_mut()?;
-        let max_len = lm_head_grad.len().max(final_norm_grad.len());
-        let mut host = vec![0.0f32; max_len];
 
         let lm_slice = &mut host[..lm_head_grad.len()];
         lm_head_grad.copy_to_host_at(lm_slice, 0).ok()?;
@@ -1099,10 +1119,12 @@ impl CudaTransformerTrainer {
     /// `recompute_segment`). Must be called after stream.synchronize() (ALB-065 / Rule 6).
     // KAIZEN-044: Pre-allocate a single host buffer for all D2H downloads
     // in download_workspace_to_accum. Was allocating vec![0.0f32; len] × 9 buffers.
+    // KAIZEN-059: Host buffer now passed in (d2h_staging) — zero per-call allocations.
     fn download_workspace_to_accum(
         ws: &CudaGradWorkspace,
         accum: &mut super::grad_accumulator::PerBlockGradientAccumulator,
         layer_idx: usize,
+        host: &mut [f32],
     ) -> Option<()> {
         let bg = &mut accum.block_grads[layer_idx];
 
@@ -1118,9 +1140,6 @@ impl CudaTransformerTrainer {
             (&ws.grad_input_norm, component::INPUT_NORM),
             (&ws.grad_post_attn_norm, component::POST_ATTN_NORM),
         ];
-
-        let max_len = bufs_and_components.iter().map(|(b, _)| b.len()).max().unwrap_or(0);
-        let mut host = vec![0.0f32; max_len];
 
         for (gpu_buf, comp_idx) in &bufs_and_components {
             let slice = &mut host[..gpu_buf.len()];
