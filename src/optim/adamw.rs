@@ -107,7 +107,7 @@ impl Optimizer for AdamW {
         self.ensure_moments(params);
         self.t += 1;
 
-        // Bias correction factors
+        // Bias adjust factors
         let lr_t = self.lr
             * ((1.0 - self.beta2.powi(self.t as i32)).sqrt()
                 / (1.0 - self.beta1.powi(self.t as i32)));
@@ -185,7 +185,7 @@ impl Optimizer for AdamW {
         }
         self.t += 1;
 
-        // Bias correction factors
+        // Bias adjust factors
         let lr_t = self.lr
             * ((1.0 - self.beta2.powi(self.t as i32)).sqrt()
                 / (1.0 - self.beta1.powi(self.t as i32)));
@@ -459,18 +459,18 @@ mod tests {
     }
 
     #[test]
-    fn test_adamw_bias_correction() {
-        // Test that bias correction is applied correctly
+    fn test_adamw_bias_adjust() {
+        // Test that bias adjust is applied correctly
         let mut params = vec![Tensor::from_vec(vec![0.0], true)];
         let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.0);
 
-        // First step should have large bias correction
+        // First step should have large bias adjust
         params[0].set_grad(ndarray::arr1(&[1.0]));
         optimizer.step(&mut params);
         let after_first = params[0].data()[0];
 
-        // Step size should be close to lr due to bias correction
-        assert!(after_first.abs() > 0.05, "Bias correction not applied");
+        // Step size should be close to lr due to bias adjust
+        assert!(after_first.abs() > 0.05, "Bias adjust not applied");
     }
 
     // =========================================================================
@@ -508,15 +508,15 @@ mod tests {
         }
     }
 
-    /// FALSIFY-AW-003e: Bias correction factor > 1
+    /// FALSIFY-AW-003e: Bias adjust factor > 1
     #[test]
-    fn falsify_aw_003e_bias_correction() {
+    fn falsify_aw_003e_bias_adjust() {
         for &beta in &[0.9_f32, 0.99, 0.999] {
             for t in 1..=100i32 {
-                let correction = 1.0 / (1.0 - beta.powi(t));
+                let adjust = 1.0 / (1.0 - beta.powi(t));
                 assert!(
-                    correction > 1.0,
-                    "FALSIFIED AW-003e: 1/(1-{beta}^{t}) = {correction} not > 1"
+                    adjust > 1.0,
+                    "FALSIFIED AW-003e: 1/(1-{beta}^{t}) = {adjust} not > 1"
                 );
             }
         }

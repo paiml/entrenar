@@ -86,7 +86,7 @@ impl DistillationLoss {
         // Hard targets: Cross-entropy with ground truth
         let ce_loss = self.cross_entropy_loss(student_logits, labels);
 
-        // Combine with temperature correction factor (T²)
+        // Combine with temperature adjust factor (T²)
         self.alpha * kl_loss * self.temperature * self.temperature + (1.0 - self.alpha) * ce_loss
     }
 

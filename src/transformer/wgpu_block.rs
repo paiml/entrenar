@@ -360,7 +360,7 @@ impl WgpuForwardPass {
     /// # KAIZEN-010: LoRA integration
     ///
     /// When `lora_layers` is provided, attention uses `forward_with_lora()` to
-    /// apply LoRA corrections to Q and V projections. Layout: `[Q_0, V_0, Q_1, V_1, ...]`
+    /// apply LoRA adjusts to Q and V projections. Layout: `[Q_0, V_0, Q_1, V_1, ...]`
     /// (2 LoRA layers per transformer layer). Without this, only the classifier
     /// head trains on the wgpu path (5,122 params vs 5.9M with LoRA).
     pub fn forward_hidden_batch(

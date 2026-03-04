@@ -2662,7 +2662,7 @@ impl ClassifyPipeline {
     /// layers (uploading FFN weights ONCE per layer), then classifies each sample.
     ///
     /// KAIZEN-010: Passes LoRA layers to the batched forward so that LoRA
-    /// corrections are applied to Q/V projections. Without this, only the
+    /// adjusts are applied to Q/V projections. Without this, only the
     /// classifier head (5,122 params) trains on the wgpu path.
     ///
     /// Returns `Some((total_loss, correct))` on success, `None` to fall back.

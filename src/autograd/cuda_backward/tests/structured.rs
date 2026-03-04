@@ -258,8 +258,8 @@ fn rms_norm_backward_cpu(
             / hidden_size as f32;
 
         for i in 0..hidden_size {
-            let correction = row[i] / variance_eps * mean_xgg;
-            grad_input[base + i] = (1.0 / rms) * (gamma[i] * grad_output[base + i] - correction);
+            let adjust = row[i] / variance_eps * mean_xgg;
+            grad_input[base + i] = (1.0 / rms) * (gamma[i] * grad_output[base + i] - adjust);
         }
     }
     grad_input

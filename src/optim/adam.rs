@@ -40,7 +40,7 @@ impl Optimizer for Adam {
         self.ensure_moments(params);
         self.t += 1;
 
-        // Bias correction factors
+        // Bias adjust factors
         let lr_t = self.lr
             * ((1.0 - self.beta2.powi(self.t as i32)).sqrt()
                 / (1.0 - self.beta1.powi(self.t as i32)));

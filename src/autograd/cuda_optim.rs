@@ -175,7 +175,7 @@ pub fn pre_warm_lora_adamw_kernels(
 /// - `beta2`: second moment decay (typically 0.999)
 /// - `eps`: numerical stability (typically 1e-8)
 /// - `weight_decay`: L2 penalty coefficient
-/// - `step`: current step number (for bias correction)
+/// - `step`: current step number (for bias adjust)
 /// - `n`: number of parameters
 /// - `stream`: CUDA stream
 #[cfg(feature = "cuda")]
@@ -210,9 +210,9 @@ pub fn adamw_step_cuda(
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
-    // Pre-compute bias correction factors
-    let bias_correction1 = 1.0 / (1.0 - beta1.powi(step as i32));
-    let bias_correction2 = 1.0 / (1.0 - beta2.powi(step as i32));
+    // Pre-compute bias adjust factors
+    let bias_adjust1 = 1.0 / (1.0 - beta1.powi(step as i32));
+    let bias_adjust2 = 1.0 / (1.0 - beta2.powi(step as i32));
 
     let params_ptr = params.as_ptr();
     let grads_ptr = grads.as_ptr();
@@ -229,8 +229,8 @@ pub fn adamw_step_cuda(
         &beta2 as *const _ as *mut _,
         &eps as *const _ as *mut _,
         &weight_decay as *const _ as *mut _,
-        &bias_correction1 as *const _ as *mut _,
-        &bias_correction2 as *const _ as *mut _,
+        &bias_adjust1 as *const _ as *mut _,
+        &bias_adjust2 as *const _ as *mut _,
         &n as *const _ as *mut _,
     ];
 
@@ -279,9 +279,9 @@ pub fn adam_step_cuda(
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
-    // Pre-compute bias correction factors
-    let bias_correction1 = 1.0 / (1.0 - beta1.powi(step as i32));
-    let bias_correction2 = 1.0 / (1.0 - beta2.powi(step as i32));
+    // Pre-compute bias adjust factors
+    let bias_adjust1 = 1.0 / (1.0 - beta1.powi(step as i32));
+    let bias_adjust2 = 1.0 / (1.0 - beta2.powi(step as i32));
 
     let params_ptr = params.as_ptr();
     let grads_ptr = grads.as_ptr();
@@ -297,8 +297,8 @@ pub fn adam_step_cuda(
         &beta1 as *const _ as *mut _,
         &beta2 as *const _ as *mut _,
         &eps as *const _ as *mut _,
-        &bias_correction1 as *const _ as *mut _,
-        &bias_correction2 as *const _ as *mut _,
+        &bias_adjust1 as *const _ as *mut _,
+        &bias_adjust2 as *const _ as *mut _,
         &n as *const _ as *mut _,
     ];
 
@@ -765,8 +765,8 @@ mod tests {
         weight_decay: f32,
         step: u32,
     ) {
-        let bias_correction1 = 1.0 / (1.0 - beta1.powi(step as i32));
-        let bias_correction2 = 1.0 / (1.0 - beta2.powi(step as i32));
+        let bias_adjust1 = 1.0 / (1.0 - beta1.powi(step as i32));
+        let bias_adjust2 = 1.0 / (1.0 - beta2.powi(step as i32));
 
         for i in 0..params.len() {
             // Update biased first moment estimate
@@ -775,8 +775,8 @@ mod tests {
             v[i] = beta2 * v[i] + (1.0 - beta2) * grads[i] * grads[i];
 
             // Compute bias-corrected estimates
-            let m_hat = m[i] * bias_correction1;
-            let v_hat = v[i] * bias_correction2;
+            let m_hat = m[i] * bias_adjust1;
+            let v_hat = v[i] * bias_adjust2;
 
             // AdamW update: weight decay is applied directly to params
             params[i] = params[i] * (1.0 - lr * weight_decay) - lr * m_hat / (v_hat.sqrt() + eps);
@@ -795,8 +795,8 @@ mod tests {
         eps: f32,
         step: u32,
     ) {
-        let bias_correction1 = 1.0 / (1.0 - beta1.powi(step as i32));
-        let bias_correction2 = 1.0 / (1.0 - beta2.powi(step as i32));
+        let bias_adjust1 = 1.0 / (1.0 - beta1.powi(step as i32));
+        let bias_adjust2 = 1.0 / (1.0 - beta2.powi(step as i32));
 
         for i in 0..params.len() {
             // Update biased first moment estimate
@@ -805,8 +805,8 @@ mod tests {
             v[i] = beta2 * v[i] + (1.0 - beta2) * grads[i] * grads[i];
 
             // Compute bias-corrected estimates
-            let m_hat = m[i] * bias_correction1;
-            let v_hat = v[i] * bias_correction2;
+            let m_hat = m[i] * bias_adjust1;
+            let v_hat = v[i] * bias_adjust2;
 
             // Adam update (no weight decay)
             params[i] = params[i] - lr * m_hat / (v_hat.sqrt() + eps);
