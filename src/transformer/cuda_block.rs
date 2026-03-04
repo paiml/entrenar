@@ -1600,31 +1600,16 @@ impl CudaTransformerBlock {
         stream: &CudaStream,
         grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
-        let n = saturating_u32(seq_len * hidden_size);
+        // KAIZEN-057: residual1 = input + o_proj_out; grad_input += grad_residual1
+        // In-place add replaces residual_add_forward + D2D copy back.
+        cuda_add_inplace(grad_input, grad_output, seq_len * hidden_size, stream)?;
 
-        // residual1 = input + o_proj_out; grad_input += grad_residual1
-        // attn_kv_temp holds grad_input + grad_output sum (avoids alias
-        // between input and output in residual_add_forward).
-        residual_add_forward(grad_input, grad_output, &mut self.scratch.attn_kv_temp, n, stream)?;
-
-        // Copy sum back to grad_input
+        // D2D copy grad_input to grad_hidden (rms_norm_backward needs separate input/output)
         // SAFETY: Both buffers are valid GPU allocations with matching sizes.
-        unsafe {
-            grad_input
-                .copy_from_buffer_async(&self.scratch.attn_kv_temp, stream)
-                .map_err(|e| {
-                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                        "Backward residual grad_input D2D copy failed: {e}"
-                    ))
-                })?;
-        }
-
-        // D2D copy grad_input to grad_hidden (avoids aliasing for rms_norm_backward)
-        // SAFETY: Both buffers are valid GPU allocations.
         unsafe {
             self.scratch
                 .grad_hidden
-                .copy_from_buffer_async(&self.scratch.attn_kv_temp, stream)
+                .copy_from_buffer_async(grad_input, stream)
                 .map_err(|e| {
                     crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
                         "Backward residual grad_hidden D2D copy failed: {e}"
