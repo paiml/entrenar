@@ -37,7 +37,7 @@ use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward};
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_optim::{adamw_step_cuda, gradient_clip_cuda};
+use crate::autograd::cuda_optim::{adamw_step_cuda, gradient_clip_cuda, squared_sum_cuda};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
@@ -885,12 +885,12 @@ impl CudaTransformerTrainer {
         ).ok()?;
 
         // Clip LM head weight gradient
-        // SYNC: cuMemcpyDtoH doesn't synchronize with CU_STREAM_NON_BLOCKING streams.
-        // Without this, compute_clip_scale reads stale GPU buffers → garbage clip scale.
-        // Root cause of ALB-065 silent crash.
+        // KAIZEN-049: GPU norm reduction — ~1KB D2H instead of 128MB.
+        // stream.synchronize() still needed: squared_sum_cuda launches its own kernel
+        // that reads the gradient buffer, so prior GEMM must complete first.
         if let Some(max_norm) = max_grad_norm {
             stream.synchronize().ok()?;
-            let (scale, norm) = Self::compute_clip_scale_with_norm(&self.lm_head_grad_gpu, max_norm);
+            let (scale, norm) = Self::compute_clip_scale_with_norm(&self.lm_head_grad_gpu, max_norm, stream);
             self.last_grad_norm = norm; // R-004: capture for observability
             let n = self.lm_head_grad_gpu.len() as u32;
             let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, scale, n, stream);
@@ -911,7 +911,7 @@ impl CudaTransformerTrainer {
         // Clip final norm weight gradient (sync for same reason as LM head clip)
         if let Some(max_norm) = max_grad_norm {
             stream.synchronize().ok()?;
-            let (scale, _) = Self::compute_clip_scale_with_norm(&self.gpu_training.grad_final_norm_weight, max_norm);
+            let (scale, _) = Self::compute_clip_scale_with_norm(&self.gpu_training.grad_final_norm_weight, max_norm, stream);
             let n = self.gpu_training.grad_final_norm_weight.len() as u32;
             let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
         }
@@ -1213,16 +1213,37 @@ impl CudaTransformerTrainer {
         Some(())
     }
 
-    /// Compute exact gradient L2 norm by downloading the full buffer to CPU.
+    /// Compute gradient L2 norm via GPU reduction kernel (KAIZEN-049).
+    ///
+    /// Runs `SquaredSumKernel` on GPU, downloads only `num_blocks` partial sums (~1KB)
+    /// instead of the full buffer (128MB for lm_head). Falls back to CPU download on error.
+    ///
+    /// # Contract (C-CLIPNORM-GPU-001)
+    ///
+    /// - **Precondition**: `buf.len() > 0`, stream is synchronized with prior kernel
+    /// - **Postcondition**: `grad_norm ≈ sqrt(sum(buf[i]^2))`, `scale = min(1, max_norm/norm)`
+    /// - **Transfer**: ~1KB D2H (num_blocks × 4B) vs n×4B (128MB for 32M elements)
     ///
     /// R-004: Returns `(clip_scale, grad_norm)` for observability.
-    fn compute_clip_scale_with_norm(buf: &GpuBuffer<f32>, max_norm: f32) -> (f32, f32) {
-        let mut host = vec![0.0f32; buf.len()];
-        if buf.copy_to_host_at(&mut host, 0).is_err() {
-            return (1.0, 0.0);
-        }
-        let sq_sum: f64 = host.iter().map(|&x| (x as f64) * (x as f64)).sum();
-        let grad_norm = sq_sum.sqrt() as f32;
+    fn compute_clip_scale_with_norm(
+        buf: &GpuBuffer<f32>,
+        max_norm: f32,
+        stream: &CudaStream,
+    ) -> (f32, f32) {
+        let n = buf.len() as u32;
+        // Try GPU reduction first — ~1KB D2H instead of n×4 bytes
+        let grad_norm = match squared_sum_cuda(buf, n, stream) {
+            Ok(norm) => norm,
+            Err(_) => {
+                // Fallback: full D2H (original path)
+                let mut host = vec![0.0f32; buf.len()];
+                if buf.copy_to_host_at(&mut host, 0).is_err() {
+                    return (1.0, 0.0);
+                }
+                let sq_sum: f64 = host.iter().map(|&x| (x as f64) * (x as f64)).sum();
+                sq_sum.sqrt() as f32
+            }
+        };
         let scale = if grad_norm > max_norm {
             max_norm / grad_norm
         } else {
