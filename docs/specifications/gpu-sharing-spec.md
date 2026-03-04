@@ -251,6 +251,105 @@ Requirements when `--experimental-mps` is used:
 
 **Total: ~600 lines** across entrenar + apr-cli.
 
+### 1.7 Design-by-Contract Requirements (Mandatory)
+
+All GPU sharing components MUST be developed using provable contracts, brick profiling, and layer tracing. No implementation may be merged without its corresponding contract, profiler instrumentation, and trace spans.
+
+#### 1.7.1 Provable Contracts (YAML)
+
+Each component requires a YAML contract in `provable-contracts/contracts/entrenar/`:
+
+| Component | Contract | Key Obligations |
+|-----------|----------|-----------------|
+| VRAM Ledger | `vram-ledger-v1.yaml` | TOCTOU prevention (flock), atomic write crash safety, lease expiry correctness, dead PID cleanup |
+| VRAM Guard | `vram-guard-v1.yaml` | C-VRAM-001 (no alloc if over budget), actual vs budget tracking, OOM prevention |
+| Wait Queue | `gpu-wait-queue-v1.yaml` | Timeout guarantee, poll interval bounded, FIFO fairness via lease expiry |
+
+**Contract workflow:**
+```bash
+# 1. Validate contract
+pv validate contracts/entrenar/vram-ledger-v1.yaml
+
+# 2. Generate scaffold + harnesses
+pv generate contracts/entrenar/vram-ledger-v1.yaml -o generated/
+
+# 3. Implement against generated trait
+# 4. Run property tests (probar)
+pv probar contracts/entrenar/vram-ledger-v1.yaml
+
+# 5. Run Kani bounded model checking (where applicable)
+cargo kani --harness verify_ledger_capacity_invariant
+```
+
+**Mandatory contract elements:**
+- `equations:` — Mathematical invariants (capacity arithmetic, timing bounds)
+- `proof_obligations:` — Formal properties to verify (invariant, bound, equivalence)
+- `falsification_tests:` — Popperian tests that attempt to break each obligation
+- `affected_files:` — Exact module paths and function names
+- `qa_gate:` — Gate ID for CI integration
+
+#### 1.7.2 Brick Profiling (StepProfiler Pattern)
+
+GPU sharing operations MUST be instrumented with the `StepProfiler` brick-phase pattern (KAIZEN-047). New phases added to the GPU module's profiler:
+
+```rust
+// New phases for gpu::ledger profiling
+const LEDGER_ACQUIRE: usize = 0;   // flock acquisition time
+const LEDGER_READ: usize = 1;      // JSON parse + PID prune
+const VRAM_QUERY: usize = 2;       // cuMemGetInfo / NVML call
+const LEDGER_WRITE: usize = 3;     // Atomic write (temp + rename)
+const LEDGER_RELEASE: usize = 4;   // flock release
+const WAIT_POLL: usize = 5;        // Single poll iteration
+const NUM_GPU_PHASES: usize = 6;
+
+const GPU_PHASE_NAMES: [&str; NUM_GPU_PHASES] = [
+    "lock_acq", "ledger_rd", "vram_qry", "ledger_wr", "lock_rel", "wait_poll",
+];
+```
+
+**Policy (from KAIZEN-047):** All future GPU sharing optimization tickets MUST cite profiler data, not code-reading estimates. The profiler output is the single source of truth for optimization priority.
+
+**Zero-overhead contract:** When `GpuProfiler` is disabled, all `begin`/`end` calls MUST be no-ops with zero `Instant::now()` calls. Verified by contract C-GPUPROF-001.
+
+#### 1.7.3 Layer Tracing (TraceStep Pattern)
+
+GPU sharing operations MUST emit trace spans via the global `TRACER` (ITP-SPEC-001). New `TraceStep` variants:
+
+```rust
+pub enum TraceStep {
+    // ... existing variants ...
+    /// VRAM ledger lock acquire + reservation
+    LedgerReserve,
+    /// VRAM ledger cleanup (dead PID + lease expiry)
+    LedgerCleanup,
+    /// cuMemGetInfo VRAM query
+    VramQuery,
+    /// Wait-for-VRAM poll iteration
+    WaitPoll,
+    /// VRAM ledger release on Drop
+    LedgerRelease,
+}
+```
+
+**Integration pattern:**
+```rust
+TRACER.span(TraceStep::LedgerReserve, format!("budget={budget_mb}MB"), || {
+    ledger.try_reserve(budget_mb)
+})
+```
+
+**Dr. Popper analysis extension:** The trace report MUST classify GPU sharing overhead (ledger I/O, flock contention, NVML calls) vs productive compute. If sharing overhead > 5% of step time, report flags it as falsification: "GPU sharing overhead exceeds budget."
+
+#### 1.7.4 Implementation Gate
+
+No GPU sharing code may be merged without:
+
+1. **Contract exists:** `pv validate` passes on the component's YAML contract
+2. **Profiler instrumented:** Every I/O and syscall path has `begin`/`end` phase markers
+3. **Tracer spans:** All public functions emit `TRACER.span()` when tracing is enabled
+4. **Falsification tests pass:** `pv probar` property tests + at least one Popperian falsification per proof obligation
+5. **Profiler data reviewed:** First PR must include profiler output showing overhead is < 5% of training step time
+
 ## Phase 2: Multi-Adapter Single-Process (G-SHARE-001, G-SHARE-002)
 
 ### 2.1 Design: Shared Base, Multiple Adapters
