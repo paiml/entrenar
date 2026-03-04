@@ -84,6 +84,20 @@ impl Tensor {
         *self.grad.borrow_mut() = None;
     }
 
+    /// Scale gradient in-place (KAIZEN-037: zero-allocation gradient scaling)
+    ///
+    /// # Contract (C-SCALE-GRAD-001)
+    ///
+    /// - **Precondition**: factor is finite
+    /// - **Postcondition**: grad[i] *= factor for all i
+    /// - **Invariant**: No heap allocation (mutates existing Array1 in-place)
+    pub fn scale_grad(&self, factor: f32) {
+        let mut grad_ref = self.grad.borrow_mut();
+        if let Some(existing) = grad_ref.as_mut() {
+            existing.mapv_inplace(|v| v * factor);
+        }
+    }
+
     /// Check if requires gradient
     pub fn requires_grad(&self) -> bool {
         self.requires_grad
