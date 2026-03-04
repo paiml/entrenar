@@ -248,6 +248,118 @@ impl MultiAdapterPipeline {
             .iter()
             .all(|s| s.cursor >= s.train_samples.len())
     }
+
+    /// Save a checkpoint for the specified adapter.
+    ///
+    /// Creates `{checkpoint_dir}/epoch-{epoch}/` with:
+    /// - `metadata.json`: adapter index, epoch, metrics
+    /// - `model.safetensors`: LoRA A/B weights for this adapter
+    pub fn save_adapter_checkpoint(
+        &self,
+        adapter_idx: usize,
+        epoch: usize,
+        avg_loss: f32,
+    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let slot = &self.adapters[adapter_idx];
+        let ckpt_dir = slot.checkpoint_dir.join(format!("epoch-{epoch}"));
+        std::fs::create_dir_all(&ckpt_dir)?;
+
+        // Metadata
+        let metadata = serde_json::json!({
+            "mode": "multi_adapter",
+            "adapter_index": adapter_idx,
+            "epoch": epoch,
+            "avg_loss": avg_loss,
+            "best_val_loss": slot.best_val_loss,
+            "lora_rank": slot.config.lora_rank,
+            "lora_alpha": slot.config.lora_alpha,
+            "train_samples": slot.train_samples.len(),
+            "global_step": self.global_step,
+        });
+        std::fs::write(
+            ckpt_dir.join("metadata.json"),
+            serde_json::to_string_pretty(&metadata)?,
+        )?;
+
+        // Save LoRA weights as SafeTensors
+        save_adapter_lora_weights(&slot.lora_layers, &ckpt_dir)?;
+
+        Ok(ckpt_dir)
+    }
+
+    /// Save best checkpoint for an adapter (overwrites previous best).
+    pub fn save_best_checkpoint(
+        &self,
+        adapter_idx: usize,
+        epoch: usize,
+        avg_loss: f32,
+    ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let slot = &self.adapters[adapter_idx];
+        let best_dir = slot.checkpoint_dir.join("best");
+        std::fs::create_dir_all(&best_dir)?;
+
+        let metadata = serde_json::json!({
+            "mode": "multi_adapter",
+            "adapter_index": adapter_idx,
+            "epoch": epoch,
+            "avg_loss": avg_loss,
+            "lora_rank": slot.config.lora_rank,
+            "lora_alpha": slot.config.lora_alpha,
+            "global_step": self.global_step,
+        });
+        std::fs::write(
+            best_dir.join("metadata.json"),
+            serde_json::to_string_pretty(&metadata)?,
+        )?;
+
+        save_adapter_lora_weights(&slot.lora_layers, &best_dir)?;
+        Ok(best_dir)
+    }
+}
+
+/// Save LoRA A/B weights to a SafeTensors file in the given directory.
+fn save_adapter_lora_weights(
+    lora_layers: &[LoRALayer],
+    dir: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut tensor_data: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+    for (idx, lora) in lora_layers.iter().enumerate() {
+        let layer = idx / 2;
+        let proj = if idx % 2 == 0 { "q" } else { "v" };
+
+        // LoRA A: [rank, d_in]
+        let a_data = lora.lora_a().data();
+        let a_bytes: Vec<u8> =
+            bytemuck::cast_slice(a_data.as_slice().expect("contiguous lora_a")).to_vec();
+        let a_shape = vec![lora.rank(), lora.d_in()];
+        tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_a"), a_bytes, a_shape));
+
+        // LoRA B: [d_out, rank]
+        let b_data = lora.lora_b().data();
+        let b_bytes: Vec<u8> =
+            bytemuck::cast_slice(b_data.as_slice().expect("contiguous lora_b")).to_vec();
+        let b_shape = vec![lora.d_out(), lora.rank()];
+        tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_b"), b_bytes, b_shape));
+    }
+
+    let views: Vec<(&str, safetensors::tensor::TensorView<'_>)> = tensor_data
+        .iter()
+        .map(|(name, bytes, shape)| {
+            let view = safetensors::tensor::TensorView::new(
+                safetensors::tensor::Dtype::F32,
+                shape.clone(),
+                bytes,
+            )
+            .expect("valid tensor view");
+            (name.as_str(), view)
+        })
+        .collect();
+
+    let safetensor_bytes = safetensors::serialize(views, None)
+        .map_err(|e| format!("SafeTensors serialization failed: {e}"))?;
+    std::fs::write(dir.join("model.safetensors"), safetensor_bytes)?;
+    Ok(())
 }
 
 /// Simple Fisher-Yates shuffle with a deterministic seed.
