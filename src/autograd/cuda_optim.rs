@@ -380,6 +380,41 @@ pub fn squared_sum_cuda(
     n: u32,
     stream: &CudaStream,
 ) -> Result<f32> {
+    let pending = squared_sum_launch_cuda(input, n, stream)?;
+    stream.synchronize().map_err(|e| {
+        CudaTensorError::KernelError(format!("Stream sync failed: {e:?}"))
+    })?;
+    squared_sum_collect(&pending)
+}
+
+/// Launched but not-yet-collected squared sum reduction.
+///
+/// Holds the GPU buffer of partial sums until `squared_sum_collect` downloads them.
+#[cfg(feature = "cuda")]
+pub struct PendingSquaredSum {
+    output: GpuBuffer<f32>,
+    num_blocks: u32,
+}
+
+/// Launch a squared sum reduction kernel without synchronizing (KAIZEN-055).
+///
+/// Returns a `PendingSquaredSum` handle. The caller MUST call `stream.synchronize()`
+/// before calling `squared_sum_collect()` on the handle.
+///
+/// This allows batching multiple reductions with a single sync point:
+/// ```ignore
+/// let p1 = squared_sum_launch_cuda(&buf1, n1, stream)?;
+/// let p2 = squared_sum_launch_cuda(&buf2, n2, stream)?;
+/// stream.synchronize()?;  // single sync for both
+/// let norm1 = squared_sum_collect(&p1)?;
+/// let norm2 = squared_sum_collect(&p2)?;
+/// ```
+#[cfg(feature = "cuda")]
+pub fn squared_sum_launch_cuda(
+    input: &GpuBuffer<f32>,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<PendingSquaredSum> {
     let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
@@ -423,13 +458,16 @@ pub fn squared_sum_cuda(
         })?;
     }
 
-    // Synchronize and download partial sums (~1KB instead of 128MB)
-    stream.synchronize().map_err(|e| {
-        CudaTensorError::KernelError(format!("Stream sync failed: {e:?}"))
-    })?;
+    Ok(PendingSquaredSum { output, num_blocks })
+}
 
-    let mut partials = vec![0.0f32; num_blocks as usize];
-    output.copy_to_host(&mut partials).map_err(|e| {
+/// Collect the result of a previously launched squared sum reduction (KAIZEN-055).
+///
+/// **Precondition**: `stream.synchronize()` must have been called after the launch.
+#[cfg(feature = "cuda")]
+pub fn squared_sum_collect(pending: &PendingSquaredSum) -> Result<f32> {
+    let mut partials = vec![0.0f32; pending.num_blocks as usize];
+    pending.output.copy_to_host(&mut partials).map_err(|e| {
         CudaTensorError::KernelError(format!("Failed to download partial sums: {e:?}"))
     })?;
 

@@ -43,7 +43,10 @@ use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward};
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_optim::{adamw_step_cuda, fused_cross_entropy_cuda, gradient_clip_cuda, squared_sum_cuda};
+use crate::autograd::cuda_optim::{
+    adamw_step_cuda, fused_cross_entropy_cuda, gradient_clip_cuda,
+    squared_sum_cuda, squared_sum_launch_cuda, squared_sum_collect,
+};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
@@ -80,25 +83,38 @@ fn compute_workspace_clip_scale_gpu(
     max_norm: f32,
     stream: &CudaStream,
 ) -> (f32, f32) {
+    use crate::autograd::cuda_optim::PendingSquaredSum;
+
     let all_bufs: [&GpuBuffer<f32>; 9] = [
         &ws.grad_w_q, &ws.grad_w_k, &ws.grad_w_v, &ws.grad_w_o,
         &ws.grad_gate, &ws.grad_up, &ws.grad_down,
         &ws.grad_input_norm, &ws.grad_post_attn_norm,
     ];
 
-    // Sum squared norms across all 9 workspace buffers.
-    // squared_sum_cuda returns sqrt(sum(x^2)) per buffer; we need combined norm.
-    let mut total_sq = 0.0f64;
+    // KAIZEN-055: Launch all 9 squared_sum kernels back-to-back without syncing.
+    // Single sync after all launches — reduces 9 pipeline flushes to 1 per block.
+    let mut pending: Vec<PendingSquaredSum> = Vec::with_capacity(9);
     for buf in &all_bufs {
         let n = buf.len() as u32;
         if n == 0 {
             continue;
         }
-        match squared_sum_cuda(buf, n, stream) {
-            Ok(norm) => {
-                total_sq += f64::from(norm) * f64::from(norm); // norm^2 to accumulate
-            }
+        match squared_sum_launch_cuda(buf, n, stream) {
+            Ok(p) => pending.push(p),
             Err(_) => {} // Skip buffer on error (e.g., if kernel cache not init)
+        }
+    }
+
+    // Single sync point for all 9 kernel launches.
+    if let Err(_) = stream.synchronize() {
+        return (1.0, 0.0);
+    }
+
+    // Collect results: download partial sums (~1KB each) and combine.
+    let mut total_sq = 0.0f64;
+    for p in &pending {
+        if let Ok(norm) = squared_sum_collect(p) {
+            total_sq += f64::from(norm) * f64::from(norm);
         }
     }
 
