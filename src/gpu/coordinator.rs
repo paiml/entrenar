@@ -375,6 +375,145 @@ pub fn build_launch_command(
     }
 }
 
+/// Result of a node health check.
+#[derive(Debug, Clone)]
+pub struct NodeHealth {
+    /// Node name from cluster config.
+    pub node_name: String,
+    /// Whether the node is reachable (SSH or local).
+    pub reachable: bool,
+    /// apr CLI version if detected.
+    pub apr_version: Option<String>,
+    /// Error message if health check failed.
+    pub error: Option<String>,
+}
+
+/// Check health of all nodes in a cluster (GPU-SHARE §3.6).
+///
+/// For local nodes, checks that `apr --version` is available.
+/// For SSH nodes, runs `ssh host 'apr --version'` with timeout.
+pub fn check_cluster_health(cluster: &ClusterConfig) -> Vec<NodeHealth> {
+    cluster
+        .nodes
+        .iter()
+        .map(|node| check_node_health(node))
+        .collect()
+}
+
+fn check_node_health(node: &NodeConfig) -> NodeHealth {
+    let script = "apr --version 2>/dev/null || echo 'apr: not found'";
+    let result = match node.transport {
+        Transport::Local => {
+            std::process::Command::new("bash")
+                .arg("-c")
+                .arg(script)
+                .output()
+                .map_err(|e| format!("failed to check local health: {e}"))
+                .and_then(|out| {
+                    String::from_utf8(out.stdout)
+                        .map_err(|e| format!("invalid UTF-8: {e}"))
+                })
+        }
+        Transport::Ssh => exec_ssh_command(&node.host, node.user.as_deref(), script),
+    };
+
+    match result {
+        Ok(output) => {
+            let trimmed = output.trim().to_string();
+            let has_apr = !trimmed.contains("not found") && !trimmed.is_empty();
+            NodeHealth {
+                node_name: node.name.clone(),
+                reachable: true,
+                apr_version: if has_apr { Some(trimmed) } else { None },
+                error: if has_apr {
+                    None
+                } else {
+                    Some("apr CLI not found on node".to_string())
+                },
+            }
+        }
+        Err(e) => NodeHealth {
+            node_name: node.name.clone(),
+            reachable: false,
+            apr_version: None,
+            error: Some(e),
+        },
+    }
+}
+
+impl CheckpointCoordinator {
+    /// Pull the best adapter's checkpoint from its node to a local directory (§3.4).
+    ///
+    /// For local nodes, copies the checkpoint directory.
+    /// For SSH nodes, uses `scp -r` to fetch the checkpoint.
+    ///
+    /// Returns the local path where the checkpoint was saved.
+    pub fn pull_best_checkpoint(&self, dest: &Path) -> Result<PathBuf, String> {
+        let best = self
+            .best_adapter()
+            .ok_or_else(|| "no adapters with checkpoint data".to_string())?;
+
+        let node = self
+            .cluster
+            .find_node(&best.node_name)
+            .ok_or_else(|| format!("node '{}' not found in cluster", best.node_name))?;
+
+        let source_dir = best.checkpoint_dir.join("best");
+        let dest_dir = dest.join(format!("adapter-{}-best", best.adapter_idx));
+
+        match node.transport {
+            Transport::Local => {
+                copy_dir_recursive(&source_dir, &dest_dir)?;
+                Ok(dest_dir)
+            }
+            Transport::Ssh => {
+                std::fs::create_dir_all(&dest_dir)
+                    .map_err(|e| format!("failed to create {}: {e}", dest_dir.display()))?;
+                let user_prefix = node
+                    .user
+                    .as_ref()
+                    .map_or_else(String::new, |u| format!("{u}@"));
+                let remote = format!(
+                    "{user_prefix}{}:{}/",
+                    node.host,
+                    source_dir.display()
+                );
+                let output = std::process::Command::new("scp")
+                    .args(["-r", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"])
+                    .arg(&remote)
+                    .arg(dest_dir.to_str().unwrap_or("."))
+                    .output()
+                    .map_err(|e| format!("failed to run scp: {e}"))?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(format!("scp failed: {stderr}"));
+                }
+                Ok(dest_dir)
+            }
+        }
+    }
+}
+
+/// Recursively copy a directory tree.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst)
+        .map_err(|e| format!("failed to create {}: {e}", dst.display()))?;
+    let entries = std::fs::read_dir(src)
+        .map_err(|e| format!("failed to read {}: {e}", src.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("failed to read entry: {e}"))?;
+        let dest_path = dst.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_dir_recursive(&entry.path(), &dest_path)?;
+        } else {
+            std::fs::copy(&entry.path(), &dest_path)
+                .map_err(|e| format!("failed to copy {}: {e}", entry.path().display()))?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -680,5 +819,105 @@ nodes:
         );
         assert!(cmd.starts_with("ssh noah@jetson.local"));
         assert!(cmd.contains("apr finetune model.apr"));
+    }
+
+    #[test]
+    fn test_check_node_health_local() {
+        let node = NodeConfig {
+            name: "local".to_string(),
+            host: "localhost".to_string(),
+            transport: Transport::Local,
+            user: None,
+            gpus: vec![],
+            max_adapters: 1,
+            cpu_cores: None,
+            ram_mb: None,
+        };
+        let health = check_node_health(&node);
+        assert_eq!(health.node_name, "local");
+        assert!(health.reachable);
+        // apr may or may not be installed — just verify the check ran
+    }
+
+    #[test]
+    fn test_check_cluster_health() {
+        let cluster = test_cluster();
+        let results = check_cluster_health(&cluster);
+        assert_eq!(results.len(), 2); // desktop + jetson
+        assert_eq!(results[0].node_name, "desktop");
+        assert!(results[0].reachable); // local node should be reachable
+    }
+
+    #[test]
+    fn test_pull_best_checkpoint_local() {
+        let dir = tempfile::tempdir().expect("valid");
+        let ckpt_dir = dir.path().join("adapter-0");
+        let best_dir = ckpt_dir.join("best");
+        fs::create_dir_all(&best_dir).expect("valid");
+
+        // Write metadata + a model file
+        let meta = CheckpointMetadata {
+            adapter_idx: 0,
+            epoch: 3,
+            avg_loss: 0.35,
+            val_loss: Some(0.30),
+            node_name: Some("desktop".to_string()),
+            timestamp: None,
+        };
+        fs::write(
+            best_dir.join("metadata.json"),
+            serde_json::to_string(&meta).expect("valid"),
+        )
+        .expect("valid");
+        fs::write(best_dir.join("adapter.safetensors"), b"fake-weights").expect("valid");
+
+        let cluster = test_cluster();
+        let placements = vec![PlacementDecision {
+            adapter_idx: 0,
+            node_name: "desktop".to_string(),
+            score: 2.5,
+        }];
+        let mut dirs = HashMap::new();
+        dirs.insert(0, ckpt_dir);
+
+        let mut coord = CheckpointCoordinator::new(cluster, &placements, &dirs, 300);
+        // Poll to get metadata
+        let _ = coord.poll_all();
+
+        let dest = tempfile::tempdir().expect("valid");
+        let result = coord.pull_best_checkpoint(dest.path());
+        assert!(result.is_ok(), "pull should succeed: {:?}", result.err());
+
+        let pulled = result.expect("valid");
+        assert!(pulled.join("metadata.json").exists());
+        assert!(pulled.join("adapter.safetensors").exists());
+    }
+
+    #[test]
+    fn test_pull_no_checkpoints_fails() {
+        let cluster = test_cluster();
+        let coord =
+            CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+        let dest = tempfile::tempdir().expect("valid");
+        let result = coord.pull_best_checkpoint(dest.path());
+        assert!(result.is_err());
+        assert!(result.expect_err("should fail").contains("no adapters"));
+    }
+
+    #[test]
+    fn test_copy_dir_recursive() {
+        let src = tempfile::tempdir().expect("valid");
+        let sub = src.path().join("subdir");
+        fs::create_dir_all(&sub).expect("valid");
+        fs::write(src.path().join("a.txt"), "hello").expect("valid");
+        fs::write(sub.join("b.txt"), "world").expect("valid");
+
+        let dst = tempfile::tempdir().expect("valid");
+        let dst_path = dst.path().join("copy");
+        copy_dir_recursive(src.path(), &dst_path).expect("valid");
+
+        assert!(dst_path.join("a.txt").exists());
+        assert!(dst_path.join("subdir").join("b.txt").exists());
+        assert_eq!(fs::read_to_string(dst_path.join("a.txt")).expect("valid"), "hello");
     }
 }

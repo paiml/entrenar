@@ -33,7 +33,8 @@ use super::instruct_corpus::InstructSample;
 use super::instruct_pipeline::{InstructConfig, InstructPipeline, InstructStepResult};
 use super::instruct_trainer::InstructEpochMetrics;
 use crate::lora::LoRALayer;
-use std::path::PathBuf;
+use serde::Deserialize;
+use std::path::{Path, PathBuf};
 
 /// Scheduling strategy for multi-adapter training.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +62,101 @@ pub struct AdapterConfig {
     pub checkpoint_dir: PathBuf,
     /// Per-adapter hyperparameters (lora_rank, lr, epochs, etc.)
     pub instruct_config: InstructConfig,
+}
+
+/// TOML file schema for `--adapters-config adapters.toml` (GPU-SHARE §2.4).
+///
+/// # Example
+///
+/// ```toml
+/// [[adapter]]
+/// data = "data/corpus-a.jsonl"
+/// checkpoint = "checkpoints/adapter-a"
+/// label = "code-review"
+/// rank = 16
+/// learning_rate = 0.0002
+///
+/// [[adapter]]
+/// data = "data/corpus-b.jsonl"
+/// checkpoint = "checkpoints/adapter-b"
+/// label = "bug-fixing"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdaptersConfigFile {
+    /// List of adapter configurations.
+    #[serde(rename = "adapter")]
+    pub adapters: Vec<AdapterEntry>,
+}
+
+/// A single adapter entry in the TOML config file.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdapterEntry {
+    /// Path to training data (JSONL instruct corpus).
+    pub data: PathBuf,
+    /// Directory for adapter checkpoints.
+    pub checkpoint: PathBuf,
+    /// Human-readable label for this adapter.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// LoRA rank override (default: 16).
+    #[serde(default)]
+    pub rank: Option<usize>,
+    /// Learning rate override.
+    #[serde(default)]
+    pub learning_rate: Option<f32>,
+    /// Epochs override.
+    #[serde(default)]
+    pub epochs: Option<usize>,
+    /// Maximum sequence length override.
+    #[serde(default)]
+    pub max_seq_len: Option<usize>,
+}
+
+impl AdaptersConfigFile {
+    /// Parse an adapters config from a TOML file.
+    pub fn from_file(path: &Path) -> Result<Self, String> {
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        Self::from_toml(&contents)
+    }
+
+    /// Parse an adapters config from a TOML string.
+    pub fn from_toml(toml_str: &str) -> Result<Self, String> {
+        let config: Self =
+            toml::from_str(toml_str).map_err(|e| format!("failed to parse adapters TOML: {e}"))?;
+        if config.adapters.is_empty() {
+            return Err("adapters config must have at least one [[adapter]] entry".to_string());
+        }
+        Ok(config)
+    }
+
+    /// Convert to `Vec<AdapterConfig>` using a base `InstructConfig` for defaults.
+    pub fn to_adapter_configs(&self, base: &InstructConfig) -> Vec<AdapterConfig> {
+        self.adapters
+            .iter()
+            .map(|entry| {
+                let mut config = base.clone();
+                if let Some(rank) = entry.rank {
+                    config.lora_rank = rank;
+                    config.lora_alpha = rank as f32 * 2.0;
+                }
+                if let Some(lr) = entry.learning_rate {
+                    config.learning_rate = lr;
+                }
+                if let Some(epochs) = entry.epochs {
+                    config.epochs = epochs;
+                }
+                if let Some(seq_len) = entry.max_seq_len {
+                    config.max_seq_len = seq_len;
+                }
+                AdapterConfig {
+                    data_path: entry.data.clone(),
+                    checkpoint_dir: entry.checkpoint.clone(),
+                    instruct_config: config,
+                }
+            })
+            .collect()
+    }
 }
 
 /// Runtime state for one adapter during training.
@@ -529,6 +625,81 @@ mod tests {
         assert_eq!(results.len(), 3);
         // RoundRobin at step 0 → only adapter 0 would be trained
         // (but no tokenizer, so all None)
+    }
+
+    #[test]
+    fn test_adapters_config_parse() {
+        let toml = r#"
+[[adapter]]
+data = "data/corpus-a.jsonl"
+checkpoint = "checkpoints/adapter-a"
+label = "code-review"
+rank = 16
+learning_rate = 0.0002
+
+[[adapter]]
+data = "data/corpus-b.jsonl"
+checkpoint = "checkpoints/adapter-b"
+label = "bug-fixing"
+rank = 8
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid TOML");
+        assert_eq!(config.adapters.len(), 2);
+        assert_eq!(config.adapters[0].data, PathBuf::from("data/corpus-a.jsonl"));
+        assert_eq!(config.adapters[0].rank, Some(16));
+        assert_eq!(config.adapters[0].learning_rate, Some(0.0002));
+        assert_eq!(config.adapters[1].rank, Some(8));
+        assert!(config.adapters[1].learning_rate.is_none());
+    }
+
+    #[test]
+    fn test_adapters_config_to_adapter_configs() {
+        let toml = r#"
+[[adapter]]
+data = "data/a.jsonl"
+checkpoint = "ckpt/a"
+rank = 32
+learning_rate = 0.001
+epochs = 5
+max_seq_len = 256
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let base = InstructConfig::default();
+        let adapters = config.to_adapter_configs(&base);
+        assert_eq!(adapters.len(), 1);
+        assert_eq!(adapters[0].instruct_config.lora_rank, 32);
+        assert!((adapters[0].instruct_config.learning_rate - 0.001).abs() < f32::EPSILON);
+        assert_eq!(adapters[0].instruct_config.epochs, 5);
+        assert_eq!(adapters[0].instruct_config.max_seq_len, 256);
+    }
+
+    #[test]
+    fn test_adapters_config_empty_fails() {
+        let toml = "";
+        assert!(AdaptersConfigFile::from_toml(toml).is_err());
+    }
+
+    #[test]
+    fn test_adapters_config_defaults_from_base() {
+        let toml = r#"
+[[adapter]]
+data = "data/x.jsonl"
+checkpoint = "ckpt/x"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).expect("valid");
+        let base = InstructConfig {
+            lora_rank: 16,
+            learning_rate: 0.0002,
+            epochs: 3,
+            max_seq_len: 512,
+            ..Default::default()
+        };
+        let adapters = config.to_adapter_configs(&base);
+        // Should inherit base defaults when not overridden
+        assert_eq!(adapters[0].instruct_config.lora_rank, 16);
+        assert!((adapters[0].instruct_config.learning_rate - 0.0002).abs() < f32::EPSILON);
+        assert_eq!(adapters[0].instruct_config.epochs, 3);
+        assert_eq!(adapters[0].instruct_config.max_seq_len, 512);
     }
 
     fn create_dummy_pipeline() -> InstructPipeline {

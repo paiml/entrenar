@@ -8,9 +8,11 @@
 //! cargo run --example cluster_training -- --config cluster.yaml
 //! ```
 
+use entrenar::finetune::multi_adapter_pipeline::AdaptersConfigFile;
 use entrenar::gpu::cluster::{ClusterConfig, GpuCostModel};
 use entrenar::gpu::coordinator::{
-    build_launch_command, exec_launch, CheckpointCoordinator, CheckpointMetadata,
+    build_launch_command, check_cluster_health, exec_launch, CheckpointCoordinator,
+    CheckpointMetadata,
 };
 use entrenar::gpu::mps::{validate_mps_config, MpsConfig};
 use entrenar::gpu::placement::{place_adapters, AdapterJob, PlacementDecision};
@@ -39,6 +41,8 @@ fn main() {
     run_cost_model_demo();
     run_mps_demo();
     show_exec_launch_api(&cluster, &placements);
+    show_adapters_config_demo();
+    show_health_check(&cluster);
 }
 
 fn print_usage() {
@@ -283,6 +287,61 @@ fn show_exec_launch_api(cluster: &ClusterConfig, placements: &[PlacementDecision
     }
     // Suppress unused import warning — exec_launch is demonstrated conceptually
     let _ = exec_launch as fn(&_, &_, &_, &_, u32, u32) -> _;
+    println!();
+}
+
+fn show_adapters_config_demo() {
+    println!("--- Adapters Config TOML (§2.4) ---");
+    println!();
+    let toml = r#"[[adapter]]
+data = "data/corpus-a.jsonl"
+checkpoint = "checkpoints/adapter-a"
+label = "code-review"
+rank = 16
+learning_rate = 0.0002
+
+[[adapter]]
+data = "data/corpus-b.jsonl"
+checkpoint = "checkpoints/adapter-b"
+label = "bug-fixing"
+rank = 8
+"#;
+    match AdaptersConfigFile::from_toml(toml) {
+        Ok(config) => {
+            for (i, entry) in config.adapters.iter().enumerate() {
+                println!(
+                    "  Adapter {i}: {} -> {} (rank={}, lr={})",
+                    entry.data.display(),
+                    entry.checkpoint.display(),
+                    entry.rank.map_or("default".to_string(), |r| r.to_string()),
+                    entry
+                        .learning_rate
+                        .map_or("default".to_string(), |lr| format!("{lr}"))
+                );
+            }
+        }
+        Err(e) => eprintln!("  Parse error: {e}"),
+    }
+    println!();
+}
+
+fn show_health_check(cluster: &ClusterConfig) {
+    println!("--- Cluster Health Check (§3.6) ---");
+    println!();
+    let results = check_cluster_health(cluster);
+    for h in &results {
+        let status = if h.reachable { "OK" } else { "UNREACHABLE" };
+        let apr = h
+            .apr_version
+            .as_deref()
+            .unwrap_or("not found");
+        let err = h.error.as_deref().unwrap_or("");
+        if h.reachable {
+            println!("  {}: {status} (apr: {apr})", h.node_name);
+        } else {
+            println!("  {}: {status} — {err}", h.node_name);
+        }
+    }
     println!();
 }
 
