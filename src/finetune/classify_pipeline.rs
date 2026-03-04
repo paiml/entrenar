@@ -418,6 +418,10 @@ struct GpuTrainingState {
     /// Eliminates 2 × cuMemAlloc/Free per forward pass.
     fwd_scratch_a: GpuBuffer<f32>,
     fwd_scratch_b: GpuBuffer<f32>,
+    /// KAIZEN-061: Pre-allocated CPU staging buffer for backward mean-pool gradient.
+    /// Sized to max_seq_len * hidden_size. Eliminates ~1.25MB heap alloc per sample
+    /// in both backward_gpu_blocks and backward_nf4_gpu_blocks (~17.5GB/epoch).
+    backward_cpu_staging: Vec<f32>,
 }
 
 /// Classification fine-tuning pipeline.
@@ -1592,6 +1596,11 @@ impl ClassifyPipeline {
         let fwd_scratch_a = trainer.zeros(buf_size).ok()?;
         let fwd_scratch_b = trainer.zeros(buf_size).ok()?;
 
+        // KAIZEN-061: Pre-allocate CPU staging buffer for backward mean-pool gradient.
+        // Eliminates vec![0.0; seq_len * hidden_size] (~1.25MB) per sample in both
+        // backward_gpu_blocks and backward_nf4_gpu_blocks.
+        let backward_cpu_staging = vec![0.0f32; buf_size];
+
         Some(GpuTrainingState {
             layer_inputs,
             final_norm_weight,
@@ -1605,6 +1614,7 @@ impl ClassifyPipeline {
             grad_upload_buf,
             fwd_scratch_a,
             fwd_scratch_b,
+            backward_cpu_staging,
         })
     }
 
@@ -1826,20 +1836,20 @@ impl ClassifyPipeline {
             grad_pooled[j] = sum;
         }
 
-        // Step 2: Mean-pool backward on CPU
-        // grad_final_hidden[i][j] = grad_pooled[j] / seq_len
+        // Step 2: Mean-pool backward into pre-allocated CPU staging buffer (KAIZEN-061)
         let scale = 1.0 / seq_len as f32;
-        let mut grad_final_hidden = vec![0.0f32; seq_len * hidden_size];
+        let training_state = self.gpu_training.as_mut()?;
         for i in 0..seq_len {
             for j in 0..hidden_size {
-                grad_final_hidden[i * hidden_size + j] = grad_pooled[j] * scale;
+                training_state.backward_cpu_staging[i * hidden_size + j] = grad_pooled[j] * scale;
             }
         }
 
         // Step 3: Upload gradient to pre-allocated GPU buffer (KAIZEN-045)
         let stream = trainer.stream();
-        let training_state = self.gpu_training.as_mut()?;
-        training_state.grad_upload_buf.copy_from_host_at(&grad_final_hidden, 0).ok()?;
+        training_state.grad_upload_buf.copy_from_host_at(
+            &training_state.backward_cpu_staging[..seq_len * hidden_size], 0
+        ).ok()?;
 
         let blocks = self.cuda_blocks.as_mut()?;
 
@@ -1974,19 +1984,20 @@ impl ClassifyPipeline {
             grad_pooled[j] = sum;
         }
 
-        // Step 2: Mean-pool backward on CPU
+        // Step 2: Mean-pool backward into pre-allocated CPU staging buffer (KAIZEN-061)
         let scale = 1.0 / seq_len as f32;
-        let mut grad_final_hidden = vec![0.0f32; seq_len * hidden_size];
+        let training_state = self.gpu_training.as_mut()?;
         for i in 0..seq_len {
             for j in 0..hidden_size {
-                grad_final_hidden[i * hidden_size + j] = grad_pooled[j] * scale;
+                training_state.backward_cpu_staging[i * hidden_size + j] = grad_pooled[j] * scale;
             }
         }
 
         // Step 3: Upload gradient to pre-allocated GPU buffer (KAIZEN-045)
         let stream = trainer.stream();
-        let training_state = self.gpu_training.as_mut()?;
-        training_state.grad_upload_buf.copy_from_host_at(&grad_final_hidden, 0).ok()?;
+        training_state.grad_upload_buf.copy_from_host_at(
+            &training_state.backward_cpu_staging[..seq_len * hidden_size], 0
+        ).ok()?;
 
         let blocks = self.cuda_blocks.as_mut()?;
         let shared_scratch = self.shared_scratch.as_mut()?;
