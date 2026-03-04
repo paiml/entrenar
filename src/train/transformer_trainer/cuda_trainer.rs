@@ -986,20 +986,26 @@ impl CudaTransformerTrainer {
 
     /// R-038: Download non-block (LM head + final norm) gradients to CPU accumulator.
     /// Static method to avoid borrow conflicts.
+    // KAIZEN-044: Pre-allocate single buffer for LM head + norm D2H downloads.
+    // lm_head_grad is vocab×hidden (389M elements = 1.5 GB for Qwen3-4B).
     fn download_nonblock_grads_to_accum(
         lm_head_grad: &GpuBuffer<f32>,
         final_norm_grad: &GpuBuffer<f32>,
         grad_accum: &mut Option<super::grad_accumulator::PerBlockGradientAccumulator>,
     ) -> Option<()> {
         let accum = grad_accum.as_mut()?;
-        let mut lm_host = vec![0.0f32; lm_head_grad.len()];
-        lm_head_grad.copy_to_host_at(&mut lm_host, 0).ok()?;
-        for (d, s) in accum.lm_head_grad.iter_mut().zip(&lm_host) {
+        let max_len = lm_head_grad.len().max(final_norm_grad.len());
+        let mut host = vec![0.0f32; max_len];
+
+        let lm_slice = &mut host[..lm_head_grad.len()];
+        lm_head_grad.copy_to_host_at(lm_slice, 0).ok()?;
+        for (d, s) in accum.lm_head_grad.iter_mut().zip(lm_slice.iter()) {
             *d += s;
         }
-        let mut norm_host = vec![0.0f32; final_norm_grad.len()];
-        final_norm_grad.copy_to_host_at(&mut norm_host, 0).ok()?;
-        for (d, s) in accum.final_norm_grad.iter_mut().zip(&norm_host) {
+
+        let norm_slice = &mut host[..final_norm_grad.len()];
+        final_norm_grad.copy_to_host_at(norm_slice, 0).ok()?;
+        for (d, s) in accum.final_norm_grad.iter_mut().zip(norm_slice.iter()) {
             *d += s;
         }
         Some(())
