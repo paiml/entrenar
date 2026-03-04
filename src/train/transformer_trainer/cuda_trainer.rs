@@ -59,6 +59,8 @@ use crate::transformer::{
 use super::batch::LMBatch;
 #[cfg(feature = "cuda")]
 use super::config::TransformerTrainConfig;
+#[cfg(feature = "cuda")]
+use super::step_profiler::StepProfiler;
 
 /// Compute exact gradient L2 norm of the shared workspace (downloads all buffers to CPU).
 ///
@@ -234,6 +236,9 @@ pub struct CudaTransformerTrainer {
     /// For BF16: no-op (scale=1.0, dynamic=false).
     /// For FP16: dynamic loss scaling to prevent gradient underflow.
     grad_scaler: GradScaler,
+    /// KAIZEN-047: Per-step wall-clock profiler.
+    /// Reports timing breakdown for each training phase.
+    profiler: StepProfiler,
 }
 
 #[cfg(feature = "cuda")]
@@ -529,6 +534,12 @@ impl CudaTransformerTrainer {
             last_embed_grad_norm: 0.0,
             grad_accum,
             grad_scaler,
+            // KAIZEN-047: Enable step profiler if configured.
+            profiler: if config.profile_interval > 0 {
+                StepProfiler::new(true, config.profile_interval)
+            } else {
+                StepProfiler::disabled()
+            },
         })
     }
 
@@ -546,6 +557,8 @@ impl CudaTransformerTrainer {
         target_ids: &[u32],
         accumulate_only: bool,
     ) -> Option<f32> {
+        self.profiler.begin_step();
+
         let hidden_size = self.config.model_config.hidden_size;
         let vocab_size = self.config.model_config.vocab_size;
 
@@ -556,9 +569,11 @@ impl CudaTransformerTrainer {
         let seq_len = input_ids.len();
 
         // Steps 1-6: GPU forward pass → returns logits on CPU
+        // (sub-phases embed, h2d, forward, norm_lm instrumented inside gpu_forward)
         let logits_data = self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
 
         // Step 7: Cross-entropy loss + gradient (CPU)
+        self.profiler.begin(StepProfiler::LOSS);
         let (loss_val, mut grad_logits) =
             self.cpu_loss_and_grad(&logits_data, target_ids, seq_len, vocab_size)?;
 
@@ -569,13 +584,19 @@ impl CudaTransformerTrainer {
                 *g *= scale;
             }
         }
+        self.profiler.end(StepProfiler::LOSS);
 
         // Steps 8-11: GPU backward pass (with or without optimizer)
+        // (sub-phases grad_h2d, lm_bwd, norm_bwd, blk_bwd instrumented inside gpu_backward)
         let grad_output_is_a =
             self.gpu_backward(&grad_logits, seq_len, hidden_size, vocab_size, accumulate_only)?;
 
         // Step 12: Embedding backward (CPU scatter-add always accumulates)
+        self.profiler.begin(StepProfiler::EMBED_BWD);
         self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a)?;
+        self.profiler.end(StepProfiler::EMBED_BWD);
+
+        self.profiler.finish_step();
 
         Some(loss_val)
     }
@@ -594,20 +615,25 @@ impl CudaTransformerTrainer {
         let stream = self.cuda_trainer.stream();
 
         // Embedding lookup (CPU)
+        self.profiler.begin(StepProfiler::EMBED);
         let hidden = self.model.embed_tokens.forward(input_ids);
         let hidden_slice = hidden.data().as_slice()?;
+        self.profiler.end(StepProfiler::EMBED);
 
         // Upload hidden states to GPU (Transfer 1: H2D)
         // Pad to max_seq_len so D2D copies to pre-allocated layer_inputs match.
+        self.profiler.begin(StepProfiler::H2D);
         let max_buf_size = self.config.max_seq_len * hidden_size;
         let mut padded_hidden = vec![0.0f32; max_buf_size];
         padded_hidden[..hidden_slice.len()].copy_from_slice(hidden_slice);
         let mut gpu_input = self.cuda_trainer.upload(&padded_hidden).ok()?;
         let mut gpu_output = self.cuda_trainer.zeros(max_buf_size).ok()?;
+        self.profiler.end(StepProfiler::H2D);
 
         // Forward through CUDA blocks.
         // With activation checkpointing, only save layer inputs at checkpoint boundaries.
         // Non-boundary inputs are recomputed from the nearest checkpoint during backward.
+        self.profiler.begin(StepProfiler::FORWARD);
         for (i, block) in self.cuda_blocks.iter_mut().enumerate() {
             if self.gpu_training.saved_layer_mask[i] {
                 // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
@@ -621,9 +647,11 @@ impl CudaTransformerTrainer {
             block.forward(&gpu_input, &mut gpu_output, seq_len, stream).ok()?;
             std::mem::swap(&mut gpu_input, &mut gpu_output);
         }
+        self.profiler.end(StepProfiler::FORWARD);
 
         // Save blocks output for final norm backward
         // SAFETY: Disjoint GPU buffers with matching max_seq_len sizes.
+        self.profiler.begin(StepProfiler::NORM_LM);
         unsafe {
             self.gpu_training
                 .blocks_output
@@ -661,6 +689,8 @@ impl CudaTransformerTrainer {
         stream.synchronize().ok()?;
         let mut buf = vec![0.0f32; seq_len * vocab_size];
         self.gpu_training.logits_buf.copy_to_host_at(&mut buf, 0).ok()?;
+
+        self.profiler.end(StepProfiler::NORM_LM);
 
         // NaN guard: bail if logits contain non-finite values
         if buf.iter().any(|v| !v.is_finite()) {
@@ -832,9 +862,12 @@ impl CudaTransformerTrainer {
         let weight_decay = self.config.weight_decay;
 
         // Upload grad_logits (Transfer 3: H2D)
+        self.profiler.begin(StepProfiler::GRAD_H2D);
         let grad_logits_gpu = self.cuda_trainer.upload(grad_logits).ok()?;
+        self.profiler.end(StepProfiler::GRAD_H2D);
 
         // LM head GEMM backward
+        self.profiler.begin(StepProfiler::LM_BWD);
         gemm_backward_a(
             &grad_logits_gpu,
             &self.lm_head_weight_gpu,
@@ -862,8 +895,10 @@ impl CudaTransformerTrainer {
             let n = self.lm_head_grad_gpu.len() as u32;
             let _ = gradient_clip_cuda(&mut self.lm_head_grad_gpu, scale, n, stream);
         }
+        self.profiler.end(StepProfiler::LM_BWD);
 
         // Final RMSNorm backward
+        self.profiler.begin(StepProfiler::NORM_BWD);
         rms_norm_backward(
             &self.gpu_training.blocks_output,
             &self.gpu_training.final_norm_weight,
@@ -880,6 +915,7 @@ impl CudaTransformerTrainer {
             let n = self.gpu_training.grad_final_norm_weight.len() as u32;
             let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
         }
+        self.profiler.end(StepProfiler::NORM_BWD);
 
         // R-038: Either accumulate non-block grads or run non-block optimizer.
         if accumulate_only {
@@ -906,6 +942,7 @@ impl CudaTransformerTrainer {
         //
         // SAFETY: grad_buf_a and grad_buf_b are disjoint fields. Raw pointers
         // allow alternating read/write without violating aliasing rules.
+        self.profiler.begin(StepProfiler::BLK_BWD);
         let grad_a_ptr: *mut GpuBuffer<f32> = &mut self.gpu_training.grad_buf_a;
         let grad_b_ptr: *mut GpuBuffer<f32> = &mut self.gpu_training.grad_buf_b;
         let mut grad_output_is_a = true;
@@ -980,6 +1017,7 @@ impl CudaTransformerTrainer {
         }
 
         stream.synchronize().ok()?;
+        self.profiler.end(StepProfiler::BLK_BWD);
 
         Some(grad_output_is_a)
     }
@@ -1410,7 +1448,114 @@ impl CudaTransformerTrainer {
             on_batch(i, batch_loss, self);
         }
 
+        // KAIZEN-047: Print profiler summary at end of epoch
+        if self.profiler.is_enabled() && self.profiler.step_count() > 0 {
+            self.profiler.print_report();
+        }
+
         total_loss / batches_processed.max(1) as f32
+    }
+
+    // --- DDP (data-parallel) support methods ---
+
+    /// Ensure the per-block gradient accumulator exists.
+    ///
+    /// For DDP, we always need accumulation buffers (even with accumulation_steps=1)
+    /// because gradients must be downloaded to CPU for AllReduce before optimizer step.
+    pub(crate) fn ensure_grad_accum(&mut self) {
+        if self.grad_accum.is_some() {
+            return;
+        }
+        let mc = &self.config.model_config;
+        let hidden_size = mc.hidden_size;
+        let kv_hidden = mc.num_kv_heads * mc.head_dim();
+        let block_sizes = super::grad_accumulator::PerBlockGradientAccumulator::compute_block_sizes(
+            hidden_size, kv_hidden, mc.intermediate_size,
+        );
+        self.grad_accum = Some(super::grad_accumulator::PerBlockGradientAccumulator::new(
+            self.cuda_blocks.len(),
+            block_sizes,
+            mc.vocab_size,
+            hidden_size,
+        ));
+    }
+
+    /// Forward + backward for one batch, always accumulating (no optimizer step).
+    ///
+    /// Used by `DistributedCudaTrainer` to compute local gradients before AllReduce.
+    /// Returns average loss for the batch.
+    pub(crate) fn forward_backward_batch(&mut self, batch: &LMBatch) -> f32 {
+        if batch.batch_size == 0 {
+            return 0.0;
+        }
+
+        if self.accumulated_batches == 0 {
+            self.embed_optimizer
+                .zero_grad_refs(&mut vec![&mut self.model.embed_tokens.weight]);
+        }
+
+        let mut total_loss = 0.0;
+        let mut valid_count = 0;
+
+        for i in 0..batch.batch_size {
+            let Some(input_ids) = batch.get_input(i) else { continue };
+            let Some(target_ids) = batch.get_target(i) else { continue };
+
+            // Always accumulate_only=true: gradients go to CPU accum buffers
+            if let Some(loss) = self.train_step_single(input_ids, target_ids, true) {
+                total_loss += loss;
+                valid_count += 1;
+                if let Some(accum) = &mut self.grad_accum {
+                    accum.accumulated_count += 1;
+                }
+            }
+        }
+
+        if valid_count > 0 {
+            total_loss / valid_count as f32
+        } else {
+            0.0
+        }
+    }
+
+    /// Apply DDP-averaged gradients: upload to GPU and run optimizer step.
+    ///
+    /// Called after AllReduce has written averaged gradients into the grad_accum.
+    /// Runs gpu_optimizer_from_accum() for blocks + LM head + final norm,
+    /// then optimizer_step() for embedding.
+    pub(crate) fn apply_ddp_gradients(&mut self) {
+        self.accumulated_loss = 0.0;
+        self.accumulated_batches = 0;
+        self.gpu_optimizer_from_accum();
+        self.optimizer_step();
+    }
+
+    /// Get a reference to the gradient accumulator (for DDP AllReduce).
+    pub(crate) fn grad_accum_ref(&self) -> Option<&super::grad_accumulator::PerBlockGradientAccumulator> {
+        self.grad_accum.as_ref()
+    }
+
+    /// Get a mutable reference to the gradient accumulator (for DDP AllReduce).
+    pub(crate) fn grad_accum_mut(&mut self) -> Option<&mut super::grad_accumulator::PerBlockGradientAccumulator> {
+        self.grad_accum.as_mut()
+    }
+
+    /// Get the training config.
+    pub(crate) fn config(&self) -> &TransformerTrainConfig {
+        &self.config
+    }
+
+    /// Get CPU embedding gradient as flat Vec for AllReduce.
+    pub(crate) fn embed_grad_vec(&self) -> Option<Vec<f32>> {
+        self.model.embed_tokens.weight.grad().map(|g| g.to_vec())
+    }
+
+    /// Set CPU embedding gradient from AllReduced flat Vec.
+    pub(crate) fn set_embed_grad(&mut self, grad: Vec<f32>) {
+        self.model
+            .embed_tokens
+            .weight
+            .set_grad(ndarray::Array1::from(grad));
     }
 
     /// Returns true if max_steps has been reached.
@@ -1431,6 +1576,25 @@ impl CudaTransformerTrainer {
         } else {
             base_lr
         }
+    }
+
+    /// KAIZEN-047: Enable step profiling with a report every `interval` steps.
+    ///
+    /// When enabled, prints a table of wall-clock timings per training phase
+    /// every `interval` training steps. Use interval=0 for manual-only reporting.
+    ///
+    /// # Contract (C-STEPPROF-001)
+    ///
+    /// - No additional GPU synchronization points (relies on existing syncs)
+    /// - Overhead: ~11 `Instant::now()` calls per step (~1µs total on Linux)
+    /// - Timings include async dispatch overhead (not pure kernel time)
+    pub fn enable_profiler(&mut self, interval: usize) {
+        self.profiler = StepProfiler::new(true, interval);
+    }
+
+    /// Print the profiler report (if profiling is enabled).
+    pub fn print_profiler_report(&self) {
+        self.profiler.print_report();
     }
 
     /// R-004: Get last observed gradient L2 norm (LM head proxy).

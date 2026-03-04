@@ -13,6 +13,7 @@ pub mod grad_accumulator;
 pub mod pipeline;
 pub mod sequence_parallel;
 pub mod tensor_parallel;
+pub mod step_profiler;
 mod trainer;
 mod utils;
 pub mod zero;
@@ -29,6 +30,7 @@ pub use grad_accumulator::{BlockGradientSet, PerBlockGradientAccumulator};
 pub use distributed_checkpoint::DistributedCheckpointCoordinator;
 #[cfg(feature = "cuda")]
 pub use distributed_trainer::{DistributedCudaTrainer, DistributedComm, GradientMessage};
+pub use distributed_trainer::shard_batches;
 pub use cuda_trainer::CudaTransformerTrainer;
 pub use elastic::ElasticCoordinator;
 pub use pipeline::{PipelineAction, PipelineActivationBuffer, PipelineStage};
