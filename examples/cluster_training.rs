@@ -8,10 +8,11 @@
 //! cargo run --example cluster_training -- --config cluster.yaml
 //! ```
 
-use entrenar::gpu::cluster::ClusterConfig;
+use entrenar::gpu::cluster::{ClusterConfig, GpuCostModel};
 use entrenar::gpu::coordinator::{
     build_launch_command, CheckpointCoordinator, CheckpointMetadata,
 };
+use entrenar::gpu::mps::{validate_mps_config, MpsConfig};
 use entrenar::gpu::placement::{place_adapters, AdapterJob, PlacementDecision};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -35,6 +36,8 @@ fn main() {
     let placements = run_placement(&cluster, &jobs);
     print_launch_commands(&cluster, &placements);
     run_coordinator_demo(&cluster, &placements);
+    run_cost_model_demo();
+    run_mps_demo();
 }
 
 fn print_usage() {
@@ -194,6 +197,49 @@ fn run_coordinator_demo(cluster: &ClusterConfig, placements: &[PlacementDecision
             best.latest.as_ref().map_or(0.0, |m| m.val_loss.unwrap_or(m.avg_loss))
         );
     }
+}
+
+fn run_cost_model_demo() {
+    println!("--- GPU Cost Model (PW-01: 5x PCIe Rule) ---");
+    println!();
+    let model = GpuCostModel::default();
+
+    let workloads = [
+        ("Small matmul (1 MB, 100 MFLOPS)", 1.0, 100.0),
+        ("Medium matmul (10 MB, 50k MFLOPS)", 10.0, 50_000.0),
+        ("Large matmul (1 MB, 1M MFLOPS)", 1.0, 1_000_000.0),
+    ];
+
+    for (label, data_mb, mflops) in &workloads {
+        let dispatch = model.should_dispatch_gpu(*data_mb, *mflops);
+        let target = if dispatch { "GPU" } else { "CPU" };
+        println!("  {label}: -> {target}");
+    }
+    println!();
+}
+
+fn run_mps_demo() {
+    println!("--- Experimental MPS Validation (§1.5) ---");
+    println!();
+
+    let configs = [
+        ("50% share + 8GB limit", MpsConfig::with_share(50).with_mem_limit(8000)),
+        ("25% share (no limit)", MpsConfig::with_share(25)),
+        ("5% share (error)", MpsConfig::with_share(5)),
+    ];
+
+    for (label, config) in &configs {
+        let result = validate_mps_config(config);
+        print!("  {label}: ");
+        if result.has_errors() {
+            println!("ERRORS: {}", result.errors.join("; "));
+        } else if !result.warnings.is_empty() {
+            println!("WARNINGS: {}", result.warnings.join("; "));
+        } else {
+            println!("OK");
+        }
+    }
+    println!();
 }
 
 fn simulate_checkpoints(coord: &mut CheckpointCoordinator) {
