@@ -671,15 +671,18 @@ impl InstructPipeline {
         let grad_hidden = (|| -> Option<Vec<f32>> {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
-            let gl_gpu = trainer.upload(&grad_logits).map_err(|e| {
+            let training = self.gpu_training.as_mut()?;
+            // KAIZEN-062: Reuse logits_buf for grad_logits upload. After forward_logits_gpu
+            // downloads logits to CPU, logits_buf is unused until the next forward call.
+            // Saves ~296MB cuMemAlloc/cuMemFree per step (for Qwen3-4B vocab=151936).
+            training.logits_buf.copy_from_host_at(&grad_logits, 0).map_err(|e| {
                 eprintln!("[CUDA] lm_head backward: grad_logits upload failed: {e}");
             }).ok()?;
             let embed_gpu = trainer.upload(embed_slice).map_err(|e| {
                 eprintln!("[CUDA] lm_head backward: embed upload failed: {e}");
             }).ok()?;
-            let training = self.gpu_training.as_mut()?;
             gemm_forward(
-                &gl_gpu,
+                &training.logits_buf,
                 &embed_gpu,
                 &mut training.grad_hidden_buf,
                 seq_len as u32,
@@ -692,7 +695,7 @@ impl InstructPipeline {
             stream.synchronize().map_err(|e| {
                 eprintln!("[CUDA] lm_head backward sync failed: {e}");
             }).ok()?;
-            // gl_gpu and embed_gpu dropped here — frees ~2.4 GB VRAM
+            // embed_gpu dropped here — frees ~1.5 GB VRAM (on-demand, saves permanent VRAM)
             let full_grad = trainer.download(&training.grad_hidden_buf).ok()?;
             Some(full_grad[..seq_len * hidden_size].to_vec())
         })();
