@@ -135,6 +135,14 @@ struct InstructGpuTrainingState {
     /// KAIZEN-045: Pre-allocated upload buffer for gradient H2D transfer in backward
     /// [max_seq_len * hidden_size]. Eliminates per-backward cuMemAlloc/cuMemFree.
     grad_upload_buf: GpuBuffer<f32>,
+    /// KAIZEN-062: Pre-allocated forward ping-pong buffer A [max_seq_len * hidden_size].
+    /// Eliminates per-forward cuMemAlloc/cuMemFree in forward_cuda_training.
+    fwd_scratch_a: GpuBuffer<f32>,
+    /// KAIZEN-062: Pre-allocated forward ping-pong buffer B [max_seq_len * hidden_size].
+    fwd_scratch_b: GpuBuffer<f32>,
+    /// KAIZEN-062: Pre-allocated lm_head hidden input buffer [max_seq_len * hidden_size].
+    /// Eliminates per-forward cuMemAlloc/cuMemFree in forward_logits_gpu.
+    lm_head_hidden_buf: GpuBuffer<f32>,
 }
 
 pub struct InstructPipeline {
@@ -1300,6 +1308,12 @@ impl InstructPipeline {
         let output_scratch = trainer.zeros(buf_size).ok()?;
         let grad_upload_buf = trainer.zeros(buf_size).ok()?;
 
+        // KAIZEN-062: Pre-allocate forward ping-pong buffers + lm_head hidden input.
+        // Eliminates 3× cuMemAlloc/cuMemFree per training step.
+        let fwd_scratch_a = trainer.zeros(buf_size).ok()?;
+        let fwd_scratch_b = trainer.zeros(buf_size).ok()?;
+        let lm_head_hidden_buf = trainer.zeros(buf_size).ok()?;
+
         Some(InstructGpuTrainingState {
             layer_inputs,
             final_norm_weight,
@@ -1312,6 +1326,9 @@ impl InstructPipeline {
             grad_hidden_buf,
             output_scratch,
             grad_upload_buf,
+            fwd_scratch_a,
+            fwd_scratch_b,
+            lm_head_hidden_buf,
         })
     }
 
@@ -1396,27 +1413,37 @@ impl InstructPipeline {
         let hidden_data = hidden.data();
         let hidden_slice = hidden_data.as_slice().expect("contiguous hidden");
 
-        let padded_size = max_seq_len * hidden_size;
-        let mut padded_hidden = vec![0.0f32; padded_size];
-        padded_hidden[..hidden_slice.len()].copy_from_slice(hidden_slice);
-
-        // Upload padded hidden to GPU (matches layer_inputs buffer size)
-        let mut gpu_input = trainer.upload(&padded_hidden).map_err(|e| {
+        // KAIZEN-062: Upload hidden states into pre-allocated GPU buffer.
+        // Partial write via copy_from_host_at — padded positions are irrelevant
+        // (block.forward uses seq_len for attention masking and GEMM dimensions).
+        training_state.fwd_scratch_a.copy_from_host_at(hidden_slice, 0).map_err(|e| {
             eprintln!("[CUDA] upload failed: {e}");
         }).ok()?;
-        let mut gpu_output = trainer.zeros(padded_size).map_err(|e| {
-            eprintln!("[CUDA] zeros alloc failed: {e}");
-        }).ok()?;
+
+        // KAIZEN-062: Ping-pong with pre-allocated forward scratch buffers.
+        // Eliminates 2× cuMemAlloc + 2× cuMemFree per forward pass.
+        let scratch_a_ptr: *mut GpuBuffer<f32> = std::ptr::from_mut(&mut training_state.fwd_scratch_a);
+        let scratch_b_ptr: *mut GpuBuffer<f32> = std::ptr::from_mut(&mut training_state.fwd_scratch_b);
+        let mut input_is_a = true;
 
         // Run through CUDA transformer blocks, saving inputs
         let stream = trainer.stream();
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
+            // SAFETY: scratch_a_ptr and scratch_b_ptr point to disjoint struct fields.
+            // Only one is written (output) while the other is read (input) per iteration.
+            let (gpu_input, gpu_output) = unsafe {
+                if input_is_a {
+                    (&*scratch_a_ptr, &mut *scratch_b_ptr)
+                } else {
+                    (&*scratch_b_ptr, &mut *scratch_a_ptr)
+                }
+            };
+
             // Save input for backward pass
-            // SAFETY: Both buffers are valid GPU allocations with matching sizes
-            // (padded_size == layer_inputs[i].len()).
+            // SAFETY: layer_inputs[i] is a disjoint field from fwd_scratch_a/b.
             unsafe {
                 if let Err(e) = training_state.layer_inputs[i]
-                    .copy_from_buffer_async(&gpu_input, stream)
+                    .copy_from_buffer_async(gpu_input, stream)
                 {
                     eprintln!("[CUDA] Layer {i} input save failed: {e} (src={}, dst={})",
                         gpu_input.len(), training_state.layer_inputs[i].len());
@@ -1426,18 +1453,23 @@ impl InstructPipeline {
 
             // Forward uses actual seq_len for attention masking; padded positions
             // produce zeros that don't affect loss (loss only covers actual tokens).
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut()) {
+            if let Err(e) = block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut()) {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
-            std::mem::swap(&mut gpu_input, &mut gpu_output);
+            input_is_a = !input_is_a;
         }
 
+        // After ping-pong: result is in the buffer that would be "input" for the next iteration
+        let final_output = unsafe {
+            if input_is_a { &*scratch_a_ptr } else { &*scratch_b_ptr }
+        };
+
         // Save blocks output for RMSNorm backward
-        // SAFETY: Both buffers valid, copy completes before any read.
+        // SAFETY: blocks_output is a disjoint field from fwd_scratch_a/b.
         unsafe {
             if let Err(e) = training_state.blocks_output
-                .copy_from_buffer_async(&gpu_input, stream)
+                .copy_from_buffer_async(final_output, stream)
             {
                 eprintln!("[CUDA] blocks_output save failed: {e}");
                 return None;
@@ -1449,8 +1481,8 @@ impl InstructPipeline {
             return None;
         }
 
-        // Download full padded result, then slice to actual seq_len
-        let result_data = trainer.download(&gpu_input).map_err(|e| {
+        // Download result, then slice to actual seq_len
+        let result_data = trainer.download(final_output).map_err(|e| {
             eprintln!("[CUDA] download failed: {e}");
         }).ok()?;
         let actual_data = &result_data[..seq_len * hidden_size];
@@ -1489,15 +1521,11 @@ impl InstructPipeline {
         let grad_lora = self.cuda_lora_grad_workspace.as_mut()?;
         let opt_states = self.cuda_lora_optimizer_states.as_mut()?;
 
-        // Pad gradient to max_seq_len to match GPU buffer sizes
-        let max_seq_len = training_state.layer_inputs.first().map_or(seq_len, |b| b.len() / hidden_size);
-        let padded_size = max_seq_len * hidden_size;
-        let mut padded_grad = vec![0.0f32; padded_size];
-        padded_grad[..grad_final_hidden.len()].copy_from_slice(grad_final_hidden);
-
-        // KAIZEN-045: Upload padded gradient to pre-allocated GPU buffer
+        // KAIZEN-062: Upload gradient directly to pre-allocated GPU buffer via partial write.
+        // No CPU vec allocation needed — copy_from_host_at writes only the actual gradient.
+        // Padded positions are irrelevant (rms_norm_backward uses seq_len dimensions).
         let stream = trainer.stream();
-        training_state.grad_upload_buf.copy_from_host(&padded_grad).ok()?;
+        training_state.grad_upload_buf.copy_from_host_at(grad_final_hidden, 0).ok()?;
 
         // RMSNorm backward on GPU
         crate::autograd::cuda_backward::rms_norm_backward(
@@ -1656,12 +1684,14 @@ impl InstructPipeline {
         let training = self.gpu_training.as_mut()?;
         let stream = trainer.stream();
 
-        let hidden_gpu = trainer.upload(&normed_hidden).map_err(|e| {
+        // KAIZEN-062: Upload into pre-allocated lm_head hidden buffer.
+        // Eliminates 1× cuMemAlloc/cuMemFree per forward pass.
+        training.lm_head_hidden_buf.copy_from_host_at(&normed_hidden, 0).map_err(|e| {
             eprintln!("[CUDA] lm_head forward: hidden upload failed: {e}");
         }).ok()?;
 
         if let Err(e) = gemm_forward(
-            &hidden_gpu,
+            &training.lm_head_hidden_buf,
             &training.embed_transposed,
             &mut training.logits_buf,
             seq_len as u32,
