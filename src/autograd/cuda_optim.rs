@@ -62,6 +62,11 @@ impl OptimKernelCache {
         &self.sm_target
     }
 
+    /// Look up a previously compiled module by key (KAIZEN-058).
+    fn get_cached(&mut self, name: &str) -> Option<&mut CudaModule> {
+        self.modules.get_mut(name)
+    }
+
     fn get_or_compile(&mut self, name: &str, ptx: &str) -> Result<&mut CudaModule> {
         if !self.modules.contains_key(name) {
             let module = CudaModule::from_ptx(&self.ctx, ptx).map_err(|e| {
@@ -193,11 +198,15 @@ pub fn adamw_step_cuda(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = AdamWStepKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("adamw_step_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = AdamWStepKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -258,11 +267,15 @@ pub fn adam_step_cuda(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = AdamStepKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("adam_step_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = AdamStepKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -336,11 +349,15 @@ pub fn gradient_clip_cuda(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = GradientClipKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("gradient_clip_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = GradientClipKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -422,13 +439,18 @@ pub fn squared_sum_launch_cuda(
 
     let kernel = SquaredSumKernel::new(n);
     let num_blocks = kernel.num_blocks();
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
-    // Clone ctx before mutable borrow via get_or_compile
+    // Clone ctx before mutable borrow via get_or_compile/get_cached
     let ctx = std::sync::Arc::clone(&cache.ctx);
 
     let key = format!("squared_sum_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Allocate output buffer for block partial sums (num_blocks × 4 bytes, typically ≤1KB)
     let output = GpuBuffer::<f32>::new(&ctx, num_blocks as usize).map_err(|e| {
@@ -508,13 +530,18 @@ pub fn fused_cross_entropy_cuda(
     })?;
 
     let kernel = FusedCrossEntropyKernel::new(vocab_size);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
 
-    // Clone ctx before mutable borrow via get_or_compile
+    // Clone ctx before mutable borrow via get_or_compile/get_cached
     let ctx = std::sync::Arc::clone(&cache.ctx);
 
     let key = format!("fused_xent_{vocab_size}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Upload targets to GPU (seq_len × u32 = ~512 bytes for seq_len=128)
     let targets_u32: Vec<u32> = target_ids[..seq_len as usize].to_vec();

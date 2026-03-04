@@ -34,11 +34,15 @@ pub fn softmax_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = SoftmaxBackwardKernel::new(batch_size, seq_len);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("softmax_backward_{batch_size}_{seq_len}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = SoftmaxBackwardKernel::new(batch_size, seq_len);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Softmax backward uses warp-parallel reduction
     let config = LaunchConfig {
@@ -96,11 +100,15 @@ pub fn batched_softmax_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = BatchedSoftmaxBackwardKernel::new(total_rows, row_size);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("batched_softmax_backward_{total_rows}_{row_size}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = BatchedSoftmaxBackwardKernel::new(total_rows, row_size);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // One warp (32 threads) per row, one block per row
     let config =
@@ -161,11 +169,15 @@ pub fn rms_norm_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = BatchedRmsNormBackwardKernel::new(batch_size, hidden_size, eps);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("batched_rms_norm_backward_{batch_size}_{hidden_size}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = BatchedRmsNormBackwardKernel::new(batch_size, hidden_size, eps);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // One warp (32 threads) per row, one block per row
     let config = LaunchConfig {
@@ -224,11 +236,15 @@ pub fn layer_norm_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = LayerNormBackwardKernel::new(batch_size, hidden_size);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("layer_norm_backward_{batch_size}_{hidden_size}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = LayerNormBackwardKernel::new(batch_size, hidden_size);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig {
         grid: (batch_size, 1, 1),

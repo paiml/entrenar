@@ -38,11 +38,15 @@ pub fn residual_add_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = ResidualAddKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("residual_add_forward_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = ResidualAddKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -90,11 +94,15 @@ pub fn elementwise_mul_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = ElementwiseMulKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("elementwise_mul_forward_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = ElementwiseMulKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -144,11 +152,15 @@ pub fn scale_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = ScaleKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let key = format!("scale_forward_{n}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = ScaleKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -198,12 +210,16 @@ pub fn interleaved_to_batched_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = InterleavedToBatchedKernel::new(seq_len, n_heads, head_dim);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let total = seq_len * n_heads * head_dim;
     let key = format!("interleaved_to_batched_{seq_len}_{n_heads}_{head_dim}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = InterleavedToBatchedKernel::new(seq_len, n_heads, head_dim);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config =
         LaunchConfig { grid: (total.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
@@ -255,12 +271,16 @@ pub fn batched_transpose_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = BatchedTransposeKernel::new(batch, rows, cols);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let total_per_batch = rows * cols;
     let key = format!("batched_transpose_{batch}_{rows}_{cols}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = BatchedTransposeKernel::new(batch, rows, cols);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     // Grid: (ceil(total_per_batch/256), 1, batch)
     let config = LaunchConfig {
@@ -315,12 +335,16 @@ pub fn batched_to_interleaved_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = BatchedToInterleavedKernel::new(seq_len, n_heads, head_dim);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-
     let total = seq_len * n_heads * head_dim;
     let key = format!("batched_to_interleaved_{seq_len}_{n_heads}_{head_dim}");
-    let module = cache.get_or_compile(&key, &ptx)?;
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = BatchedToInterleavedKernel::new(seq_len, n_heads, head_dim);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
 
     let config =
         LaunchConfig { grid: (total.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };

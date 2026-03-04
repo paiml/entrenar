@@ -37,9 +37,14 @@ pub fn relu_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = ReluBackwardKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-    let module = cache.get_or_compile("relu_backward", &ptx)?;
+    let module = match cache.get_cached("relu_backward") {
+        Some(m) => m,
+        None => {
+            let kernel = ReluBackwardKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile("relu_backward", &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -82,9 +87,14 @@ pub fn gelu_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = GeluBackwardKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-    let module = cache.get_or_compile("gelu_backward", &ptx)?;
+    let module = match cache.get_cached("gelu_backward") {
+        Some(m) => m,
+        None => {
+            let kernel = GeluBackwardKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile("gelu_backward", &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
@@ -127,9 +137,14 @@ pub fn silu_backward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = SiluBackwardKernel::new(n);
-    let ptx = kernel.emit_ptx_for_target(cache.sm_target());
-    let module = cache.get_or_compile("silu_backward", &ptx)?;
+    let module = match cache.get_cached("silu_backward") {
+        Some(m) => m,
+        None => {
+            let kernel = SiluBackwardKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile("silu_backward", &ptx)?
+        }
+    };
 
     let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
 
