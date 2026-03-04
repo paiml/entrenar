@@ -519,3 +519,56 @@ nodes:
         assert_eq!(reparsed.total_adapter_capacity(), config.total_adapter_capacity());
     }
 }
+
+/// GPU dispatch cost_model (PW-01: 5× PCIe Rule)
+///
+/// Determines when GPU dispatch is beneficial based on compute-to-transfer
+/// ratio. The crossover point (dispatch_threshold) is 5× the PCIe transfer cost.
+pub struct GpuCostModel {
+    /// PCIe transfer cost per MB (microseconds)
+    pub pcie_cost_per_mb: f64,
+    /// GPU compute cost per MFLOP (microseconds)
+    pub gpu_compute_per_mflop: f64,
+    /// Dispatch threshold multiplier (default: 5×)
+    pub dispatch_threshold: f64,
+}
+
+impl Default for GpuCostModel {
+    fn default() -> Self {
+        Self {
+            pcie_cost_per_mb: 40.0,       // PCIe 4.0 ~25 GB/s → ~40 µs/MB
+            gpu_compute_per_mflop: 0.01,  // RTX 4090 ~80 TFLOPS → ~0.01 µs/MFLOP
+            dispatch_threshold: 5.0,      // 5× PCIe rule
+        }
+    }
+}
+
+impl GpuCostModel {
+    /// Check if GPU dispatch is beneficial for the given workload.
+    ///
+    /// Returns true when compute time > dispatch_threshold × transfer time (crossover).
+    pub fn should_dispatch_gpu(&self, data_mb: f64, compute_mflops: f64) -> bool {
+        let transfer_cost = data_mb * self.pcie_cost_per_mb;
+        let compute_cost = compute_mflops * self.gpu_compute_per_mflop;
+        compute_cost > self.dispatch_threshold * transfer_cost
+    }
+}
+
+#[cfg(test)]
+mod cost_model_tests {
+    use super::*;
+
+    #[test]
+    fn test_cost_model_small_workload_stays_cpu() {
+        let model = GpuCostModel::default();
+        // 1 MB data, 100 MFLOPS → transfer dominates
+        assert!(!model.should_dispatch_gpu(1.0, 100.0));
+    }
+
+    #[test]
+    fn test_cost_model_large_workload_goes_gpu() {
+        let model = GpuCostModel::default();
+        // 1 MB data, 1_000_000 MFLOPS → compute dominates
+        assert!(model.should_dispatch_gpu(1.0, 1_000_000.0));
+    }
+}

@@ -151,6 +151,7 @@ citl = ["trueno-rag", "tokio", "uuid"]  # Compiler-in-the-Loop training with RAG
 server = ["axum", "tower", "tower-http", "tokio"]  # REST/HTTP API server
 tracing = ["renacer"]  # Renacer distributed tracing integration
 ruchy-sessions = []  # Ruchy session bridge for preserving training history
+kani = []  # Formal verification proofs via kani (cargo kani)
 gpu = ["trueno/gpu", "tokio"]  # GPU-accelerated training via wgpu
 cuda = ["realizar/cuda", "trueno-gpu/cuda", "tokio"]  # NVIDIA CUDA compute via realizar
 nvml = ["nvml-wrapper"]  # Real GPU monitoring via NVIDIA NVML

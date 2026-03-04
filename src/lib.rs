@@ -73,6 +73,7 @@ pub mod tokenizer;
 pub mod trace;
 pub mod tracking;
 pub mod train;
+pub mod training;
 pub mod transformer;
 pub mod yaml_mode;
 
