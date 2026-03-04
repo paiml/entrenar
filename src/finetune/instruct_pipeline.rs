@@ -127,6 +127,12 @@ struct InstructGpuTrainingState {
     logits_buf: GpuBuffer<f32>,
     /// GPU scratch for grad_hidden [max_seq_len * hidden_size]
     grad_hidden_buf: GpuBuffer<f32>,
+    /// KAIZEN-045: Pre-allocated scratch buffer for activation checkpointing in backward
+    /// [max_seq_len * hidden_size]. Eliminates per-backward cuMemAlloc/cuMemFree.
+    output_scratch: GpuBuffer<f32>,
+    /// KAIZEN-045: Pre-allocated upload buffer for gradient H2D transfer in backward
+    /// [max_seq_len * hidden_size]. Eliminates per-backward cuMemAlloc/cuMemFree.
+    grad_upload_buf: GpuBuffer<f32>,
 }
 
 pub struct InstructPipeline {
@@ -1215,6 +1221,11 @@ impl InstructPipeline {
              {buf_size} buf_size, embed_T=[{hidden_size}x{vocab_size}] on GPU (NF4 QLoRA mode)"
         );
 
+        // KAIZEN-045: Pre-allocate backward scratch buffers to eliminate per-backward
+        // cuMemAlloc/cuMemFree. Each cuMemAlloc costs ~10-100µs.
+        let output_scratch = trainer.zeros(buf_size).ok()?;
+        let grad_upload_buf = trainer.zeros(buf_size).ok()?;
+
         Some(InstructGpuTrainingState {
             layer_inputs,
             final_norm_weight,
@@ -1225,6 +1236,8 @@ impl InstructPipeline {
             embed_transposed,
             logits_buf,
             grad_hidden_buf,
+            output_scratch,
+            grad_upload_buf,
         })
     }
 
@@ -1408,15 +1421,15 @@ impl InstructPipeline {
         let mut padded_grad = vec![0.0f32; padded_size];
         padded_grad[..grad_final_hidden.len()].copy_from_slice(grad_final_hidden);
 
-        // Upload padded gradient to GPU
+        // KAIZEN-045: Upload padded gradient to pre-allocated GPU buffer
         let stream = trainer.stream();
-        let gpu_grad = trainer.upload(&padded_grad).ok()?;
+        training_state.grad_upload_buf.copy_from_host(&padded_grad).ok()?;
 
         // RMSNorm backward on GPU
         crate::autograd::cuda_backward::rms_norm_backward(
             &training_state.blocks_output,
             &training_state.final_norm_weight,
-            &gpu_grad,
+            &training_state.grad_upload_buf,
             &mut training_state.grad_buf_a,
             &mut training_state.grad_final_norm_weight,
             seq_len as u32,
@@ -1435,7 +1448,8 @@ impl InstructPipeline {
         self.nf4_lora_step += 1;
         let step = self.nf4_lora_step;
 
-        let mut output_scratch = trainer.zeros(padded_size).ok()?;
+        // KAIZEN-045: Use pre-allocated output_scratch from training state
+        let output_scratch_ptr: *mut GpuBuffer<f32> = std::ptr::from_mut(&mut training_state.output_scratch);
 
         for layer_idx in (0..num_layers).rev() {
             // SAFETY: grad_a_ptr and grad_b_ptr point to disjoint fields.
@@ -1447,11 +1461,12 @@ impl InstructPipeline {
                 }
             };
 
+            // SAFETY: output_scratch_ptr points to a disjoint field of training_state.
             blocks[layer_idx].backward_nf4(
                 &training_state.layer_inputs[layer_idx],
                 grad_output,
                 grad_input,
-                &mut output_scratch,
+                unsafe { &mut *output_scratch_ptr },
                 seq_len,
                 stream,
                 shared_scratch,

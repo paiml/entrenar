@@ -406,6 +406,12 @@ struct GpuTrainingState {
     optimizer_states: Vec<GpuBlockOptimizerState>,
     /// Global optimizer step counter
     step: u32,
+    /// KAIZEN-045: Pre-allocated scratch buffer for activation checkpointing in backward
+    /// [max_seq_len * hidden_size]. Eliminates per-backward cuMemAlloc/cuMemFree.
+    output_scratch: GpuBuffer<f32>,
+    /// KAIZEN-045: Pre-allocated upload buffer for gradient H2D transfer in backward
+    /// [max_seq_len * hidden_size]. Eliminates per-backward cuMemAlloc/cuMemFree.
+    grad_upload_buf: GpuBuffer<f32>,
 }
 
 /// Classification fine-tuning pipeline.
@@ -1496,6 +1502,12 @@ impl ClassifyPipeline {
             }
         );
 
+        // KAIZEN-045: Pre-allocate backward scratch buffers to eliminate per-backward
+        // cuMemAlloc/cuMemFree. Each cuMemAlloc costs ~10-100µs; over 14K samples this
+        // saves 28K+ CUDA memory operations per epoch.
+        let output_scratch = trainer.zeros(buf_size).ok()?;
+        let grad_upload_buf = trainer.zeros(buf_size).ok()?;
+
         Some(GpuTrainingState {
             layer_inputs,
             final_norm_weight,
@@ -1505,6 +1517,8 @@ impl ClassifyPipeline {
             grad_final_norm_weight,
             optimizer_states,
             step: 0,
+            output_scratch,
+            grad_upload_buf,
         })
     }
 
@@ -1719,21 +1733,20 @@ impl ClassifyPipeline {
             }
         }
 
-        // Step 3: Upload gradient to GPU
+        // Step 3: Upload gradient to pre-allocated GPU buffer (KAIZEN-045)
         let stream = trainer.stream();
-        let gpu_grad = trainer.upload(&grad_final_hidden).ok()?;
-
-        // Need mutable access to training state and blocks separately
         let training_state = self.gpu_training.as_mut()?;
+        training_state.grad_upload_buf.copy_from_host_at(&grad_final_hidden, 0).ok()?;
+
         let blocks = self.cuda_blocks.as_mut()?;
 
         // Step 4: RMSNorm backward on GPU (final norm)
         // input = blocks_output, gamma = final_norm_weight
-        // grad_output = gpu_grad, grad_input = grad_buf_a, grad_gamma = grad_final_norm_weight
+        // grad_output = grad_upload_buf, grad_input = grad_buf_a, grad_gamma = grad_final_norm_weight
         crate::autograd::cuda_backward::rms_norm_backward(
             &training_state.blocks_output,
             &training_state.final_norm_weight,
-            &gpu_grad,
+            &training_state.grad_upload_buf,
             &mut training_state.grad_buf_a,
             &mut training_state.grad_final_norm_weight,
             seq_len as u32,
@@ -1867,12 +1880,11 @@ impl ClassifyPipeline {
             }
         }
 
-        // Step 3: Upload gradient to GPU
+        // Step 3: Upload gradient to pre-allocated GPU buffer (KAIZEN-045)
         let stream = trainer.stream();
-        let gpu_grad = trainer.upload(&grad_final_hidden).ok()?;
-
-        // Borrow check: take mutable references to all needed fields
         let training_state = self.gpu_training.as_mut()?;
+        training_state.grad_upload_buf.copy_from_host_at(&grad_final_hidden, 0).ok()?;
+
         let blocks = self.cuda_blocks.as_mut()?;
         let shared_scratch = self.shared_scratch.as_mut()?;
         let grad_lora = self.cuda_lora_grad_workspace.as_mut()?;
@@ -1882,7 +1894,7 @@ impl ClassifyPipeline {
         crate::autograd::cuda_backward::rms_norm_backward(
             &training_state.blocks_output,
             &training_state.final_norm_weight,
-            &gpu_grad,
+            &training_state.grad_upload_buf,
             &mut training_state.grad_buf_a,
             &mut training_state.grad_final_norm_weight,
             seq_len as u32,
@@ -1899,8 +1911,8 @@ impl ClassifyPipeline {
         let grad_b_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_b;
         let mut grad_output_is_a = true;
 
-        // Temp buffer for forward recompute during activation checkpointing
-        let mut output_scratch = trainer.zeros(seq_len * hidden_size).ok()?;
+        // KAIZEN-045: Use pre-allocated output_scratch from training state
+        let output_scratch_ptr: *mut GpuBuffer<f32> = &mut training_state.output_scratch;
 
         for layer_idx in (0..num_layers).rev() {
             // SAFETY: grad_a_ptr and grad_b_ptr point to disjoint fields.
@@ -1913,11 +1925,12 @@ impl ClassifyPipeline {
             };
 
             // NF4 backward: activation checkpointing + LoRA gradient computation
+            // SAFETY: output_scratch_ptr points to a disjoint field of training_state.
             blocks[layer_idx].backward_nf4(
                 &training_state.layer_inputs[layer_idx],
                 grad_output,
                 grad_input,
-                &mut output_scratch,
+                unsafe { &mut *output_scratch_ptr },
                 seq_len,
                 stream,
                 shared_scratch,
