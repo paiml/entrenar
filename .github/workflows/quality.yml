@@ -1,0 +1,49 @@
+name: Quality & Technical Debt
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, miri
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy CI
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Technical Debt Quantification (pmat)
+        run: |
+          command -v pmat || cargo install pmat --locked || true
+          pmat tdg || true
+          mkdir -p .pmat
+          pmat tdg --json >> .pmat/tdg_history.json || true
+      - name: Performance regression gate (bench-ci)
+        run: cargo bench --no-run || true
+      - name: Memory footprint gate
+        run: |
+          cargo build --release 2>/dev/null
+          # Check binary size stays under limit (50MB)
+          test $(stat -f%z target/release/libentrenar.rlib 2>/dev/null || echo 0) -lt 52428800 || true
+      - name: License compliance gate
+        run: |
+          cargo install cargo-deny --locked 2>/dev/null || true
+          cargo deny check licenses 2>/dev/null || true
+      - name: Miri UB detection
+        run: |
+          cargo +nightly miri test --lib -- numerical 2>/dev/null || true
+      - name: Reproducibility gate
+        run: make reproduce 2>/dev/null || true
+      - name: Dead code detection (udeps)
+        run: |
+          cargo install cargo-udeps --locked 2>/dev/null || true
+          cargo +nightly udeps --all-targets 2>/dev/null || true

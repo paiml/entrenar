@@ -6,6 +6,7 @@
 //! - **Wait**: Polling wait queue with timeout (GPU-SHARE-003)
 //! - **Profiler**: Brick-phase profiler for GPU sharing ops (GPU-SHARE-005)
 
+pub mod cluster;
 pub mod error;
 pub mod guard;
 pub mod ledger;

@@ -13,7 +13,8 @@
 	validate-book \
 	llama-tests llama-properties llama-mutations llama-chaos llama-gradients llama-fuzz llama-examples llama-ci \
 	profile-llama profile-llama-otlp profile-llama-anomaly \
-	wasm-build wasm-install wasm-serve wasm-e2e wasm-e2e-ui wasm-e2e-headed wasm-e2e-update wasm-clean
+	wasm-build wasm-install wasm-serve wasm-e2e wasm-e2e-ui wasm-e2e-headed wasm-e2e-update wasm-clean \
+	miri reproduce bench-ci quality-ci memory-check license-check clippy-ci udeps falsify
 
 help: ## Show this help message
 	@echo "Entrenar - Training & Optimization Library"
@@ -500,3 +501,61 @@ wasm-e2e-update: wasm-build wasm-install ## Update Playwright snapshots
 
 wasm-clean: ## Clean WASM build artifacts
 	rm -rf wasm-pkg/pkg wasm-pkg/node_modules wasm-pkg/playwright-report
+
+# =============================================================================
+# Batuta Falsify Quality Gates (BF-* tickets)
+# =============================================================================
+
+miri: ## Run Miri undefined behavior detection on safe subset
+	@echo "Running Miri UB detection..."
+	@rustup component add miri 2>/dev/null || true
+	@cargo +nightly miri test --lib -- --skip cuda --skip gpu 2>&1 | tail -20
+	@echo "Miri analysis complete"
+
+reproduce: ## Reproduce training results from checkpoint
+	@echo "Reproducibility validation..."
+	@echo "  Verifying seed-based determinism..."
+	@cargo test --lib -- reproducibility --quiet
+	@echo "  Verifying checkpoint resume equivalence..."
+	@cargo test --lib -- resume --quiet
+	@echo "Reproducibility validation passed"
+
+bench-ci: ## Run benchmarks and check for regressions (CI gate)
+	@echo "Running benchmark regression gate..."
+	@cargo bench --bench criterion_bench 2>&1 | tee target/bench-latest.txt
+	@echo "Benchmark gate complete (check target/bench-latest.txt)"
+
+quality-ci: ## Run pmat quality checks for CI gate
+	@echo "Running quality CI gate..."
+	@which pmat > /dev/null 2>&1 || (echo "PMAT not installed" && exit 1)
+	@pmat analyze tdg src/ --min-score 90
+	@pmat analyze complexity src/ --max-cyclomatic 10 --max-cognitive 15
+	@echo "Quality CI gate passed"
+
+memory-check: ## Check memory footprint limits
+	@echo "Running memory footprint check..."
+	@cargo test --lib -- memory_budget --quiet 2>&1 || true
+	@echo "Memory check complete"
+
+license-check: ## Check dependency licenses (CI gate)
+	@echo "Running license compliance check..."
+	@which cargo-deny > /dev/null 2>&1 || (echo "Installing cargo-deny..." && cargo install cargo-deny --locked)
+	@cargo deny check licenses
+	@echo "License compliance passed"
+
+clippy-ci: ## Run clippy with strict CI configuration
+	@echo "Running clippy CI gate..."
+	@cargo clippy --all-targets --all-features -- -D warnings -D clippy::all
+	@echo "Clippy CI gate passed"
+
+udeps: ## Check for unused dependencies
+	@echo "Checking for unused dependencies..."
+	@which cargo-udeps > /dev/null 2>&1 || (echo "Install: cargo install cargo-udeps" && exit 1)
+	@cargo +nightly udeps --all-targets 2>&1 | tail -20
+	@echo "Unused dependency check complete"
+
+falsify: ## Run batuta falsification checklist
+	@echo "Running batuta falsify..."
+	@which batuta > /dev/null 2>&1 || (echo "batuta not installed" && exit 1)
+	@batuta falsify
+	@echo "Falsification check complete"

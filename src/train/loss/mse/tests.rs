@@ -6,6 +6,26 @@ use crate::Tensor;
 use approx::assert_relative_eq;
 
 #[test]
+fn test_mse_accuracy_matches_reference() {
+    let pred_vals = vec![1.0_f32, 2.0, 3.0, 4.0];
+    let target_vals = vec![1.5_f32, 2.5, 2.5, 4.5];
+    // Reference: mean((pred - target)^2) in f64
+    let reference: f64 = pred_vals
+        .iter()
+        .zip(&target_vals)
+        .map(|(p, t)| (*p as f64 - *t as f64) * (*p as f64 - *t as f64))
+        .sum::<f64>()
+        / pred_vals.len() as f64;
+    let mse = MSELoss;
+    let pred = Tensor::from_vec(pred_vals, false);
+    let tgt = Tensor::from_vec(target_vals, false);
+    let loss = mse.forward(&pred, &tgt);
+    let actual = loss.data()[0];
+    let diff = (actual as f64 - reference).abs();
+    assert!(diff < 1e-6, "MSE accuracy: actual={actual}, ref={reference}, diff={diff}");
+}
+
+#[test]
 fn test_mse_loss_basic() {
     let loss_fn = MSELoss;
     let pred = Tensor::from_vec(vec![1.0, 2.0, 3.0], true);

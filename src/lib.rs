@@ -61,6 +61,7 @@ pub mod quality;
 pub mod quant;
 pub mod research;
 pub mod run;
+pub mod safety;
 pub mod search;
 pub mod server;
 pub mod sovereign;

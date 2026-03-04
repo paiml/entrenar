@@ -1200,3 +1200,51 @@ roadmap:
   estimated_effort: null
   labels: []
   notes: null
+- id: GH-148
+  github_issue: null
+  item_type: task
+  title: 'New task: GH-148'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-03-04T10:47:19.823681408+00:00
+  updated: 2026-03-04T10:47:19.823681408+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: GH-153
+  github_issue: null
+  item_type: task
+  title: 'New task: GH-153'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-03-04T11:13:55.942159603+00:00
+  updated: 2026-03-04T11:13:55.942159603+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null
+- id: GH-202
+  github_issue: null
+  item_type: task
+  title: 'New task: GH-202'
+  status: inprogress
+  priority: medium
+  assigned_to: null
+  created: 2026-03-04T11:54:54.119702197+00:00
+  updated: 2026-03-04T11:54:54.119702197+00:00
+  spec: null
+  acceptance_criteria: []
+  phases: []
+  subtasks: []
+  estimated_effort: null
+  labels: []
+  notes: null

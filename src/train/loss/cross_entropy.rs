@@ -98,6 +98,54 @@ mod tests {
     use super::*;
     use approx::assert_relative_eq;
 
+    /// Reference softmax (f64 precision) for accuracy verification
+    fn reference_softmax_f64(logits: &[f32]) -> Vec<f64> {
+        let logits_f64: Vec<f64> = logits.iter().map(|&x| x as f64).collect();
+        let max = logits_f64.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let exp_vals: Vec<f64> = logits_f64.iter().map(|&x| (x - max).exp()).collect();
+        let sum: f64 = exp_vals.iter().sum();
+        exp_vals.iter().map(|&e| e / sum).collect()
+    }
+
+    /// Reference cross-entropy (f64 precision) for accuracy verification
+    fn reference_cross_entropy_f64(logits: &[f32], target_idx: usize) -> f64 {
+        let probs = reference_softmax_f64(logits);
+        -probs[target_idx].max(1e-30).ln()
+    }
+
+    #[test]
+    fn test_cross_entropy_accuracy_matches_reference() {
+        let logits = vec![2.0_f32, 1.0, 0.5];
+        let target_idx = 0;
+        let reference = reference_cross_entropy_f64(&logits, target_idx) as f32;
+        let ce = CrossEntropyLoss;
+        let pred = Tensor::from_vec(logits, false);
+        let mut one_hot = vec![0.0_f32; 3];
+        one_hot[target_idx] = 1.0;
+        let tgt = Tensor::from_vec(one_hot, false);
+        let loss = ce.forward(&pred, &tgt);
+        let actual = loss.data()[0];
+        let diff = (actual - reference).abs();
+        assert!(diff < 1e-5, "CE accuracy: actual={actual}, ref={reference}, diff={diff}");
+    }
+
+    #[test]
+    fn test_cross_entropy_accuracy_10class() {
+        let logits: Vec<f32> = (0..10).map(|i| (i as f32 - 5.0) * 0.5).collect();
+        for target_idx in 0..10 {
+            let reference = reference_cross_entropy_f64(&logits, target_idx) as f32;
+            let ce = CrossEntropyLoss;
+            let pred = Tensor::from_vec(logits.clone(), false);
+            let mut one_hot = vec![0.0_f32; 10];
+            one_hot[target_idx] = 1.0;
+            let tgt = Tensor::from_vec(one_hot, false);
+            let loss = ce.forward(&pred, &tgt);
+            let actual = loss.data()[0];
+            let diff = (actual - reference).abs();
+            assert!(diff < 1e-4, "CE accuracy 10-class[{target_idx}]: diff={diff}");
+        }
+    }
+
     #[test]
     fn test_cross_entropy_loss() {
         let loss_fn = CrossEntropyLoss;
