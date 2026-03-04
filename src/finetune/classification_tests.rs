@@ -276,21 +276,21 @@ fn test_class_weights_all_equal_classes() {
 fn test_load_safety_corpus_valid() {
     use std::io::Write;
     let dir = std::env::temp_dir().join("entrenar_test_corpus");
-    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(&dir).expect("valid");
     let path = dir.join("valid.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"input":"echo hello","label":0}}"#).unwrap();
-        writeln!(f, r#"{{"input":"eval $x","label":4}}"#).unwrap();
-        writeln!(f, "").unwrap(); // empty line should be skipped
-        writeln!(f, r#"{{"input":"ls","label":1}}"#).unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, r#"{{"input":"echo hello","label":0}}"#).expect("valid");
+        writeln!(f, r#"{{"input":"eval $x","label":4}}"#).expect("valid");
+        writeln!(f, "").expect("valid"); // empty line should be skipped
+        writeln!(f, r#"{{"input":"ls","label":1}}"#).expect("valid");
     }
-    let samples = load_safety_corpus(&path, 5).unwrap();
+    let samples = load_safety_corpus(&path, 5).expect("valid");
     assert_eq!(samples.len(), 3);
     assert_eq!(samples[0].label, 0);
     assert_eq!(samples[1].label, 4);
     assert_eq!(samples[2].label, 1);
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]
@@ -298,14 +298,14 @@ fn test_load_safety_corpus_label_out_of_range() {
     use std::io::Write;
     let path = std::env::temp_dir().join("entrenar_test_corpus_oor.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"input":"bad","label":10}}"#).unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, r#"{{"input":"bad","label":10}}"#).expect("valid");
     }
     let result = load_safety_corpus(&path, 5);
     assert!(result.is_err());
     let err = format!("{}", result.unwrap_err());
     assert!(err.contains("F-CLASS-002"), "Expected F-CLASS-002 error, got: {err}");
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]
@@ -319,12 +319,12 @@ fn test_load_safety_corpus_invalid_json() {
     use std::io::Write;
     let path = std::env::temp_dir().join("entrenar_test_corpus_badjson.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, "not json at all").unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, "not json at all").expect("valid");
     }
     let result = load_safety_corpus(&path, 5);
     assert!(result.is_err());
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]
@@ -332,13 +332,13 @@ fn test_load_multi_label_corpus_single_label_format() {
     use std::io::Write;
     let path = std::env::temp_dir().join("entrenar_test_ml_single.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"input":"echo hi","label":2}}"#).unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, r#"{{"input":"echo hi","label":2}}"#).expect("valid");
     }
-    let samples = load_multi_label_corpus(&path, 5).unwrap();
+    let samples = load_multi_label_corpus(&path, 5).expect("valid");
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].labels, vec![0.0, 0.0, 1.0, 0.0, 0.0]);
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]
@@ -346,13 +346,13 @@ fn test_load_multi_label_corpus_multi_label_format() {
     use std::io::Write;
     let path = std::env::temp_dir().join("entrenar_test_ml_multi.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"input":"eval $RANDOM","labels":[0.0,1.0,1.0,0.0,0.0]}}"#).unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, r#"{{"input":"eval $RANDOM","labels":[0.0,1.0,1.0,0.0,0.0]}}"#).expect("valid");
     }
-    let samples = load_multi_label_corpus(&path, 5).unwrap();
+    let samples = load_multi_label_corpus(&path, 5).expect("valid");
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].active_classes(), vec![1, 2]);
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]
@@ -360,14 +360,14 @@ fn test_load_multi_label_corpus_wrong_label_length() {
     use std::io::Write;
     let path = std::env::temp_dir().join("entrenar_test_ml_wronglen.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"input":"x","labels":[1.0,0.0]}}"#).unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, r#"{{"input":"x","labels":[1.0,0.0]}}"#).expect("valid");
     }
     let result = load_multi_label_corpus(&path, 5);
     assert!(result.is_err());
     let err = format!("{}", result.unwrap_err());
     assert!(err.contains("F-CLASS-001"), "Expected F-CLASS-001 error, got: {err}");
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]
@@ -375,14 +375,14 @@ fn test_load_multi_label_corpus_single_label_out_of_range() {
     use std::io::Write;
     let path = std::env::temp_dir().join("entrenar_test_ml_oor.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"input":"bad","label":99}}"#).unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, r#"{{"input":"bad","label":99}}"#).expect("valid");
     }
     let result = load_multi_label_corpus(&path, 5);
     assert!(result.is_err());
     let err = format!("{}", result.unwrap_err());
     assert!(err.contains("F-CLASS-002"), "Expected F-CLASS-002 error, got: {err}");
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]
@@ -390,12 +390,12 @@ fn test_load_multi_label_corpus_invalid_format() {
     use std::io::Write;
     let path = std::env::temp_dir().join("entrenar_test_ml_badfmt.jsonl");
     {
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"foo":"bar"}}"#).unwrap();
+        let mut f = std::fs::File::create(&path).expect("valid");
+        writeln!(f, r#"{{"foo":"bar"}}"#).expect("valid");
     }
     let result = load_multi_label_corpus(&path, 5);
     assert!(result.is_err());
-    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_file(&path).expect("valid");
 }
 
 #[test]

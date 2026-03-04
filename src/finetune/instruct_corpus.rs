@@ -170,19 +170,19 @@ mod tests {
 
     #[test]
     fn test_load_instruct_corpus() {
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = NamedTempFile::new().expect("valid");
         writeln!(
             f,
             r#"{{"instruction": "Write hello world", "response": "print('hello world')"}}"#
         )
-        .unwrap();
+        .expect("valid");
         writeln!(
             f,
             r#"{{"instruction": "Sort a list", "response": "sorted(lst)"}}"#
         )
-        .unwrap();
+        .expect("valid");
 
-        let samples = load_instruct_corpus(f.path()).unwrap();
+        let samples = load_instruct_corpus(f.path()).expect("valid");
         assert_eq!(samples.len(), 2);
         assert_eq!(samples[0].instruction, "Write hello world");
         assert_eq!(samples[1].response, "sorted(lst)");
@@ -190,12 +190,12 @@ mod tests {
 
     #[test]
     fn test_empty_instruction_rejected() {
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = NamedTempFile::new().expect("valid");
         writeln!(
             f,
             r#"{{"instruction": "", "response": "some code"}}"#
         )
-        .unwrap();
+        .expect("valid");
 
         let result = load_instruct_corpus(f.path());
         assert!(result.is_err());
@@ -204,12 +204,12 @@ mod tests {
 
     #[test]
     fn test_empty_response_rejected() {
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = NamedTempFile::new().expect("valid");
         writeln!(
             f,
             r#"{{"instruction": "Do something", "response": "  "}}"#
         )
-        .unwrap();
+        .expect("valid");
 
         let result = load_instruct_corpus(f.path());
         assert!(result.is_err());
@@ -275,27 +275,27 @@ mod tests {
 
     #[test]
     fn test_skip_empty_lines() {
-        let mut f = NamedTempFile::new().unwrap();
+        let mut f = NamedTempFile::new().expect("valid");
         writeln!(
             f,
             r#"{{"instruction": "a", "response": "b"}}"#
         )
-        .unwrap();
-        writeln!(f).unwrap(); // empty line
+        .expect("valid");
+        writeln!(f).expect("valid"); // empty line
         writeln!(
             f,
             r#"{{"instruction": "c", "response": "d"}}"#
         )
-        .unwrap();
+        .expect("valid");
 
-        let samples = load_instruct_corpus(f.path()).unwrap();
+        let samples = load_instruct_corpus(f.path()).expect("valid");
         assert_eq!(samples.len(), 2);
     }
 
     #[test]
     fn test_invalid_json_rejected() {
-        let mut f = NamedTempFile::new().unwrap();
-        writeln!(f, "not json").unwrap();
+        let mut f = NamedTempFile::new().expect("valid");
+        writeln!(f, "not json").expect("valid");
 
         let result = load_instruct_corpus(f.path());
         assert!(result.is_err());

@@ -94,41 +94,41 @@ mod tests {
 
     #[test]
     fn test_plain_numbers() {
-        assert_eq!(parse_human_usize("1024").unwrap(), 1024);
-        assert_eq!(parse_human_usize("0").unwrap(), 0);
-        assert_eq!(parse_human_usize("32768").unwrap(), 32768);
+        assert_eq!(parse_human_usize("1024").expect("valid"), 1024);
+        assert_eq!(parse_human_usize("0").expect("valid"), 0);
+        assert_eq!(parse_human_usize("32768").expect("valid"), 32768);
     }
 
     #[test]
     fn test_si_suffix_binary() {
-        assert_eq!(parse_human_usize("32K").unwrap(), 32 * 1024);
-        assert_eq!(parse_human_usize("1M").unwrap(), 1024 * 1024);
-        assert_eq!(parse_human_usize("1G").unwrap(), 1024 * 1024 * 1024);
+        assert_eq!(parse_human_usize("32K").expect("valid"), 32 * 1024);
+        assert_eq!(parse_human_usize("1M").expect("valid"), 1024 * 1024);
+        assert_eq!(parse_human_usize("1G").expect("valid"), 1024 * 1024 * 1024);
     }
 
     #[test]
     fn test_si_suffix_lowercase() {
-        assert_eq!(parse_human_usize("32k").unwrap(), 32 * 1024);
-        assert_eq!(parse_human_usize("1m").unwrap(), 1024 * 1024);
+        assert_eq!(parse_human_usize("32k").expect("valid"), 32 * 1024);
+        assert_eq!(parse_human_usize("1m").expect("valid"), 1024 * 1024);
     }
 
     #[test]
     fn test_si_suffix_decimal() {
-        assert_eq!(parse_human_usize("10B").unwrap(), 10_000_000_000);
-        assert_eq!(parse_human_usize("1T").unwrap(), 1_000_000_000_000);
+        assert_eq!(parse_human_usize("10B").expect("valid"), 10_000_000_000);
+        assert_eq!(parse_human_usize("1T").expect("valid"), 1_000_000_000_000);
     }
 
     #[test]
     fn test_scientific_notation() {
-        assert_eq!(parse_human_usize("1e6").unwrap(), 1_000_000);
-        assert_eq!(parse_human_usize("3.2e4").unwrap(), 32000);
-        assert_eq!(parse_human_usize("1E5").unwrap(), 100_000);
+        assert_eq!(parse_human_usize("1e6").expect("valid"), 1_000_000);
+        assert_eq!(parse_human_usize("3.2e4").expect("valid"), 32000);
+        assert_eq!(parse_human_usize("1E5").expect("valid"), 100_000);
     }
 
     #[test]
     fn test_fractional_suffix() {
-        assert_eq!(parse_human_usize("1.5K").unwrap(), 1536); // 1.5 * 1024
-        assert_eq!(parse_human_usize("0.5M").unwrap(), 524_288); // 0.5 * 1M
+        assert_eq!(parse_human_usize("1.5K").expect("valid"), 1536); // 1.5 * 1024
+        assert_eq!(parse_human_usize("0.5M").expect("valid"), 524_288); // 0.5 * 1M
     }
 
     #[test]
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_whitespace_trimmed() {
-        assert_eq!(parse_human_usize("  32K  ").unwrap(), 32 * 1024);
+        assert_eq!(parse_human_usize("  32K  ").expect("valid"), 32 * 1024);
     }
 
     #[test]

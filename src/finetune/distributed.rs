@@ -595,7 +595,7 @@ mod tests {
 
     #[test]
     fn test_coordinator_config() {
-        let config = DistributedConfig::coordinator("0.0.0.0:9000".parse().unwrap(), 3);
+        let config = DistributedConfig::coordinator("0.0.0.0:9000".parse().expect("valid"), 3);
         assert!(config.is_coordinator());
         assert_eq!(config.role, NodeRole::Coordinator);
         assert_eq!(config.expect_workers, 3);
@@ -604,12 +604,12 @@ mod tests {
 
     #[test]
     fn test_worker_config() {
-        let config = DistributedConfig::worker("192.168.50.100:9000".parse().unwrap());
+        let config = DistributedConfig::worker("192.168.50.100:9000".parse().expect("valid"));
         assert!(!config.is_coordinator());
         assert_eq!(config.role, NodeRole::Worker);
         assert_eq!(
             config.coordinator_addr,
-            Some("192.168.50.100:9000".parse().unwrap())
+            Some("192.168.50.100:9000".parse().expect("valid"))
         );
     }
 
@@ -644,7 +644,7 @@ mod tests {
         let bytes = msg.to_bytes();
         // Skip 4-byte length prefix
         let payload = &bytes[4..];
-        let decoded = WireMessage::from_payload(payload).unwrap();
+        let decoded = WireMessage::from_payload(payload).expect("valid");
         match decoded {
             WireMessage::JoinRequest {
                 node_id,
@@ -666,7 +666,7 @@ mod tests {
             total_workers: 3,
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::JoinAccepted {
                 worker_id,
@@ -687,7 +687,7 @@ mod tests {
             shard_end: 200,
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::ShardAssignment {
                 step,
@@ -714,7 +714,7 @@ mod tests {
             total: 10,
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::GradientPayload {
                 step,
@@ -744,7 +744,7 @@ mod tests {
             global_loss: 0.789,
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::AveragedGradient {
                 step,
@@ -766,7 +766,7 @@ mod tests {
             timestamp_ms: 1_709_000_000_000,
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::Heartbeat {
                 node_id,
@@ -783,7 +783,7 @@ mod tests {
     fn test_wire_shutdown_roundtrip() {
         let msg = WireMessage::Shutdown;
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         assert!(matches!(decoded, WireMessage::Shutdown));
     }
 
@@ -815,7 +815,7 @@ mod tests {
             component_sizes: component_sizes.clone(),
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::BlockGradientPayload {
                 step,
@@ -848,7 +848,7 @@ mod tests {
             component_sizes: component_sizes.clone(),
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::AveragedBlockGradient {
                 step,
@@ -875,7 +875,7 @@ mod tests {
             gradients: grads.clone(),
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::NonBlockGradientPayload {
                 step,
@@ -901,7 +901,7 @@ mod tests {
             gradients: grads.clone(),
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::AveragedNonBlockGradient {
                 step,
@@ -934,7 +934,7 @@ mod tests {
             gradients: grads,
         };
         let bytes = msg.to_bytes();
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::NonBlockGradientPayload { gradients, .. } => {
                 assert!(gradients[0].is_nan());
@@ -966,7 +966,7 @@ mod tests {
         let expected_size = 4 + 1 + 8 + 4 + 8 + grad_len * 4 + 4 + 8 + 8;
         assert_eq!(bytes.len(), expected_size);
 
-        let decoded = WireMessage::from_payload(&bytes[4..]).unwrap();
+        let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
             WireMessage::GradientPayload {
                 gradients, loss, ..

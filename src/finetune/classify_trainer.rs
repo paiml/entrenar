@@ -3186,13 +3186,13 @@ mod tests {
 
     #[test]
     fn test_training_config_with_distributed() {
-        let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 2);
+        let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 2);
         let config = TrainingConfig {
             distributed: Some(dist.clone()),
             ..TrainingConfig::default()
         };
         assert!(config.distributed.is_some());
-        assert_eq!(config.distributed.unwrap().expect_workers, 2);
+        assert_eq!(config.distributed.expect("valid").expect_workers, 2);
     }
 
     #[test]
@@ -3203,7 +3203,7 @@ mod tests {
             epochs: 1,
             ..TrainingConfig::default()
         };
-        let trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let trainer = ClassifyTrainer::new(pipeline, corpus, config).expect("valid");
         assert!(!trainer.is_coordinator_mode());
     }
 
@@ -3211,13 +3211,13 @@ mod tests {
     fn test_is_coordinator_mode_with_coordinator_config() {
         let pipeline = tiny_pipeline(2);
         let corpus = make_corpus(20, 2);
-        let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
+        let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
         let config = TrainingConfig {
             epochs: 1,
             distributed: Some(dist),
             ..TrainingConfig::default()
         };
-        let trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let trainer = ClassifyTrainer::new(pipeline, corpus, config).expect("valid");
         assert!(trainer.is_coordinator_mode());
     }
 
@@ -3225,13 +3225,13 @@ mod tests {
     fn test_is_coordinator_mode_with_worker_config() {
         let pipeline = tiny_pipeline(2);
         let corpus = make_corpus(20, 2);
-        let dist = DistributedConfig::worker("127.0.0.1:9000".parse().unwrap());
+        let dist = DistributedConfig::worker("127.0.0.1:9000".parse().expect("valid"));
         let config = TrainingConfig {
             epochs: 1,
             distributed: Some(dist),
             ..TrainingConfig::default()
         };
-        let trainer = ClassifyTrainer::new(pipeline, corpus, config).unwrap();
+        let trainer = ClassifyTrainer::new(pipeline, corpus, config).expect("valid");
         assert!(!trainer.is_coordinator_mode());
     }
 
@@ -3271,17 +3271,17 @@ mod tests {
         use crate::finetune::gradient_server::GradientServer;
         use crate::finetune::worker_client::WorkerClient;
 
-        let dist_config = DistributedConfig::coordinator("127.0.0.1:0".parse().unwrap(), 1);
-        let mut server = GradientServer::bind(dist_config).unwrap();
+        let dist_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let mut server = GradientServer::bind(dist_config).expect("valid");
         let addr = server.local_addr();
 
         // Spawn worker thread — uses synthetic gradients (no tokenizer needed)
         let handle = std::thread::spawn(move || {
             let worker_config = DistributedConfig::worker(addr);
-            let client = WorkerClient::connect(worker_config, 1, "cpu").unwrap();
+            let client = WorkerClient::connect(worker_config, 1, "cpu").expect("valid");
 
             // Receive shard assignment
-            let shard = client.receive_shard().unwrap().expect("should get shard");
+            let shard = client.receive_shard().expect("valid").expect("should get shard");
             assert_eq!(shard.step, 0);
 
             // Create a tiny pipeline and generate synthetic gradients
@@ -3292,27 +3292,27 @@ mod tests {
             // Send gradients (simulating forward/backward output)
             client
                 .send_gradients(0, grads, 0.5, 3, 5)
-                .unwrap();
+                .expect("valid");
 
             // Receive averaged gradients
-            let averaged = client.receive_averaged().unwrap();
+            let averaged = client.receive_averaged().expect("valid");
             assert!(averaged.global_loss.is_finite());
             assert!(!averaged.gradients.is_empty());
             assert_eq!(averaged.gradients.len(), num_params);
         });
 
         // Server side
-        server.wait_for_workers().unwrap();
+        server.wait_for_workers().expect("valid");
         server.set_total_samples(10);
-        server.send_shard_assignments(0).unwrap();
+        server.send_shard_assignments(0).expect("valid");
 
-        let result = server.collect_and_reduce(0).unwrap();
+        let result = server.collect_and_reduce(0).expect("valid");
         assert!(result.avg_gradients.iter().all(|g| g.is_finite()));
         assert!(result.global_loss.is_finite());
         assert_eq!(result.total_correct, 3);
         assert_eq!(result.total_samples, 5);
 
-        server.broadcast_averaged(0, &result).unwrap();
-        handle.join().unwrap();
+        server.broadcast_averaged(0, &result).expect("valid");
+        handle.join().expect("valid");
     }
 }

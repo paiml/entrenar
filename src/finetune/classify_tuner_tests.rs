@@ -18,7 +18,7 @@ fn test_tune_config_default() {
 #[test]
 fn test_classify_tuner_new() {
     let config = TuneConfig::default();
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     assert!(tuner.leaderboard.is_empty());
     assert!(!tuner.space.is_empty());
     assert_eq!(tuner.space.len(), 9); // 9 search parameters
@@ -48,11 +48,11 @@ fn test_tpe_searcher_suggest_and_record() {
     let mut searcher = TpeSearcher::new(space, 3);
 
     // Should be able to suggest multiple trials
-    let trial1 = searcher.suggest().unwrap();
+    let trial1 = searcher.suggest().expect("valid");
     assert_eq!(trial1.id, 0);
     assert!(!trial1.config.is_empty());
 
-    let trial2 = searcher.suggest().unwrap();
+    let trial2 = searcher.suggest().expect("valid");
     assert_eq!(trial2.id, 1);
 
     // Record results
@@ -60,7 +60,7 @@ fn test_tpe_searcher_suggest_and_record() {
     searcher.record(trial2, 0.3, 1);
 
     // Best should be trial2 (lower score)
-    let best = searcher.best().unwrap();
+    let best = searcher.best().expect("valid");
     assert_eq!(best.id, 1);
     assert!((best.score - 0.3).abs() < 1e-10);
 }
@@ -94,14 +94,14 @@ fn test_random_searcher() {
     let space = default_classify_search_space();
     let mut searcher = RandomSearcher::new(space);
 
-    let t1 = searcher.suggest().unwrap();
-    let t2 = searcher.suggest().unwrap();
+    let t1 = searcher.suggest().expect("valid");
+    let t2 = searcher.suggest().expect("valid");
     assert_ne!(t1.id, t2.id);
 
     searcher.record(t1, 1.0, 1);
     searcher.record(t2, 0.5, 1);
 
-    let best = searcher.best().unwrap();
+    let best = searcher.best().expect("valid");
     assert!((best.score - 0.5).abs() < 1e-10);
 }
 
@@ -129,18 +129,18 @@ fn test_median_scheduler_warmup() {
 
 #[test]
 fn test_strategy_parse() {
-    assert_eq!("tpe".parse::<TuneStrategy>().unwrap(), TuneStrategy::Tpe);
-    assert_eq!("grid".parse::<TuneStrategy>().unwrap(), TuneStrategy::Grid);
-    assert_eq!("random".parse::<TuneStrategy>().unwrap(), TuneStrategy::Random);
-    assert_eq!("bayesian".parse::<TuneStrategy>().unwrap(), TuneStrategy::Tpe);
+    assert_eq!("tpe".parse::<TuneStrategy>().expect("valid"), TuneStrategy::Tpe);
+    assert_eq!("grid".parse::<TuneStrategy>().expect("valid"), TuneStrategy::Grid);
+    assert_eq!("random".parse::<TuneStrategy>().expect("valid"), TuneStrategy::Random);
+    assert_eq!("bayesian".parse::<TuneStrategy>().expect("valid"), TuneStrategy::Tpe);
     assert!("invalid".parse::<TuneStrategy>().is_err());
 }
 
 #[test]
 fn test_scheduler_kind_parse() {
-    assert_eq!("asha".parse::<SchedulerKind>().unwrap(), SchedulerKind::Asha);
-    assert_eq!("median".parse::<SchedulerKind>().unwrap(), SchedulerKind::Median);
-    assert_eq!("none".parse::<SchedulerKind>().unwrap(), SchedulerKind::None);
+    assert_eq!("asha".parse::<SchedulerKind>().expect("valid"), SchedulerKind::Asha);
+    assert_eq!("median".parse::<SchedulerKind>().expect("valid"), SchedulerKind::Median);
+    assert_eq!("none".parse::<SchedulerKind>().expect("valid"), SchedulerKind::None);
     assert!("invalid".parse::<SchedulerKind>().is_err());
 }
 
@@ -180,7 +180,7 @@ fn test_extract_trial_params() {
 #[test]
 fn test_tuner_leaderboard() {
     let config = TuneConfig { budget: 3, ..TuneConfig::default() };
-    let mut tuner = ClassifyTuner::new(config).unwrap();
+    let mut tuner = ClassifyTuner::new(config).expect("valid");
 
     // Add trials out of order
     tuner.record_trial(TrialSummary {
@@ -222,7 +222,7 @@ fn test_tuner_leaderboard() {
     assert_eq!(tuner.leaderboard[1].id, 2);
     assert_eq!(tuner.leaderboard[2].id, 0);
 
-    let best = tuner.best_trial().unwrap();
+    let best = tuner.best_trial().expect("valid");
     assert_eq!(best.id, 1);
     assert!((best.val_loss - 0.8).abs() < 1e-10);
 }
@@ -230,7 +230,7 @@ fn test_tuner_leaderboard() {
 #[test]
 fn test_tuner_into_result() {
     let config = TuneConfig { budget: 2, scout: true, ..TuneConfig::default() };
-    let mut tuner = ClassifyTuner::new(config).unwrap();
+    let mut tuner = ClassifyTuner::new(config).expect("valid");
 
     tuner.record_trial(TrialSummary {
         id: 0,
@@ -273,9 +273,9 @@ fn test_default_search_space() {
 #[test]
 fn test_build_searcher_tpe() {
     let config = TuneConfig { strategy: TuneStrategy::Tpe, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     let mut searcher = tuner.build_searcher();
-    let trial = searcher.suggest().unwrap();
+    let trial = searcher.suggest().expect("valid");
     assert_eq!(trial.id, 0);
 }
 
@@ -283,7 +283,7 @@ fn test_build_searcher_tpe() {
 fn test_build_scheduler_scout_uses_none() {
     let config =
         TuneConfig { scout: true, scheduler: SchedulerKind::Asha, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     let scheduler = tuner.build_scheduler();
     // Scout mode always uses NoScheduler
     assert!(!scheduler.should_stop(0, 100, 999.0));
@@ -383,15 +383,15 @@ fn test_grid_searcher_record_and_best() {
     space.add("lr", ParameterDomain::Continuous { low: 0.01, high: 0.1, log_scale: false });
     let mut searcher = GridSearcher::new(space, 3);
 
-    let t1 = searcher.suggest().unwrap();
-    let t2 = searcher.suggest().unwrap();
-    let t3 = searcher.suggest().unwrap();
+    let t1 = searcher.suggest().expect("valid");
+    let t2 = searcher.suggest().expect("valid");
+    let t3 = searcher.suggest().expect("valid");
 
     searcher.record(t1, 2.0, 5);
     searcher.record(t2, 0.5, 5);
     searcher.record(t3, 1.0, 5);
 
-    let best = searcher.best().unwrap();
+    let best = searcher.best().expect("valid");
     assert!((best.score - 0.5).abs() < 1e-10);
 }
 
@@ -433,7 +433,7 @@ fn test_strategy_display() {
 fn test_build_scheduler_median() {
     let config =
         TuneConfig { scheduler: SchedulerKind::Median, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     let scheduler = tuner.build_scheduler();
     // Median scheduler with no history should not prune
     assert!(!scheduler.should_stop(0, 10, 999.0));
@@ -443,7 +443,7 @@ fn test_build_scheduler_median() {
 fn test_build_scheduler_none() {
     let config =
         TuneConfig { scheduler: SchedulerKind::None, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     let scheduler = tuner.build_scheduler();
     assert!(!scheduler.should_stop(0, 100, 999.0));
 }
@@ -451,18 +451,18 @@ fn test_build_scheduler_none() {
 #[test]
 fn test_build_searcher_grid() {
     let config = TuneConfig { strategy: TuneStrategy::Grid, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     let mut searcher = tuner.build_searcher();
-    let trial = searcher.suggest().unwrap();
+    let trial = searcher.suggest().expect("valid");
     assert_eq!(trial.id, 0);
 }
 
 #[test]
 fn test_build_searcher_random() {
     let config = TuneConfig { strategy: TuneStrategy::Random, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     let mut searcher = tuner.build_searcher();
-    let trial = searcher.suggest().unwrap();
+    let trial = searcher.suggest().expect("valid");
     assert_eq!(trial.id, 0);
 }
 
@@ -520,14 +520,14 @@ fn test_falsify_tune_005_invalid_scheduler() {
 #[test]
 fn test_falsify_empty_leaderboard() {
     let config = TuneConfig { budget: 1, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     assert!(tuner.best_trial().is_none(), "Empty leaderboard should return None");
 }
 
 #[test]
 fn test_falsify_into_result_empty() {
     let config = TuneConfig { budget: 1, ..TuneConfig::default() };
-    let tuner = ClassifyTuner::new(config).unwrap();
+    let tuner = ClassifyTuner::new(config).expect("valid");
     let result = tuner.into_result(0);
     assert_eq!(result.trials.len(), 0);
     assert_eq!(result.best_trial_id, 0); // default when empty
@@ -535,14 +535,14 @@ fn test_falsify_into_result_empty() {
 
 #[test]
 fn test_falsify_strategy_case_insensitive() {
-    assert_eq!("TPE".parse::<TuneStrategy>().unwrap(), TuneStrategy::Tpe);
-    assert_eq!("Grid".parse::<TuneStrategy>().unwrap(), TuneStrategy::Grid);
-    assert_eq!("RANDOM".parse::<TuneStrategy>().unwrap(), TuneStrategy::Random);
+    assert_eq!("TPE".parse::<TuneStrategy>().expect("valid"), TuneStrategy::Tpe);
+    assert_eq!("Grid".parse::<TuneStrategy>().expect("valid"), TuneStrategy::Grid);
+    assert_eq!("RANDOM".parse::<TuneStrategy>().expect("valid"), TuneStrategy::Random);
 }
 
 #[test]
 fn test_falsify_scheduler_case_insensitive() {
-    assert_eq!("ASHA".parse::<SchedulerKind>().unwrap(), SchedulerKind::Asha);
-    assert_eq!("Median".parse::<SchedulerKind>().unwrap(), SchedulerKind::Median);
-    assert_eq!("NONE".parse::<SchedulerKind>().unwrap(), SchedulerKind::None);
+    assert_eq!("ASHA".parse::<SchedulerKind>().expect("valid"), SchedulerKind::Asha);
+    assert_eq!("Median".parse::<SchedulerKind>().expect("valid"), SchedulerKind::Median);
+    assert_eq!("NONE".parse::<SchedulerKind>().expect("valid"), SchedulerKind::None);
 }
