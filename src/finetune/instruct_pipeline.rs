@@ -28,7 +28,7 @@ use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, pre_
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_backward::pre_warm_lora_backward_kernels as pre_warm_backward_cache_kernels;
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_optim::pre_warm_lora_adamw_kernels;
+use crate::autograd::cuda_optim::{fused_causal_cross_entropy_cuda, pre_warm_lora_adamw_kernels};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
@@ -614,7 +614,6 @@ impl InstructPipeline {
         let loss_end = seq_len - 1;
         let num_loss_tokens = loss_end.saturating_sub(loss_start);
 
-
         if num_loss_tokens == 0 {
             return InstructStepResult {
                 loss: 0.0,
@@ -623,48 +622,61 @@ impl InstructPipeline {
             };
         }
 
-        // 1. GPU forward → logits on CPU
-        let logits_data = match self.forward_logits_gpu(full_ids) {
-            Some(data) => data,
+        // 1. GPU forward → logits stay GPU-resident in training.logits_buf (KAIZEN-064)
+        //    Eliminates ~296MB logits D2H download per step.
+        if !self.forward_logits_gpu_resident(full_ids) {
+            // Fallback: GPU forward failed, use CPU path with D2H
+            eprintln!("[CUDA] GPU forward failed, falling back to CPU for this step");
+            return self.cuda_train_step_cpu_loss(full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size);
+        }
+
+        // 2. Fused GPU causal cross-entropy loss + softmax backward (KAIZEN-064)
+        //    Gradient computed in-place in logits_buf. Eliminates:
+        //    - CPU softmax computation
+        //    - ~296MB grad_logits H2D upload
+        //    Prepare shifted targets: position pos predicts full_ids[pos + 1]
+        let targets: Vec<u32> = (0..seq_len).map(|pos| {
+            if pos + 1 < full_ids.len() { full_ids[pos + 1] } else { 0 }
+        }).collect();
+
+        let scale = 1.0 / num_loss_tokens as f32;
+
+        let avg_loss = (|| -> Option<f32> {
+            let trainer = self.cuda_trainer.as_ref()?;
+            let stream = trainer.stream();
+            let training = self.gpu_training.as_mut()?;
+            fused_causal_cross_entropy_cuda(
+                &mut training.logits_buf,
+                &targets,
+                seq_len as u32,
+                vocab_size as u32,
+                loss_start as u32,
+                loss_end as u32,
+                scale,
+                stream,
+            ).ok()
+        })();
+
+        let avg_loss = match avg_loss {
+            Some(l) if l.is_finite() => l,
+            Some(_) => {
+                eprintln!("[CUDA] NaN/Inf loss detected — skipping backward pass");
+                return InstructStepResult {
+                    loss: 100.0,
+                    num_response_tokens: num_loss_tokens,
+                    perplexity: 1e6,
+                };
+            }
             None => {
-                // Fallback: GPU forward failed, use CPU
-                eprintln!("[CUDA] GPU forward failed, falling back to CPU for this step");
-                let logits = self.model.forward(full_ids);
-                logits.data().as_slice().expect("contiguous logits").to_vec()
+                eprintln!("[CUDA] fused causal cross-entropy failed — falling back to CPU");
+                return self.cuda_train_step_cpu_loss(full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size);
             }
         };
 
-
-        // 2. Causal LM loss on response tokens only (CPU)
-        let (avg_loss, grad_logits) =
-            Self::compute_causal_lm_loss(&logits_data, full_ids, loss_start, loss_end, vocab_size);
-
-        // Jidoka: stop-the-line on NaN loss
-        if !avg_loss.is_finite() {
-            eprintln!("[CUDA] NaN/Inf loss detected — skipping backward pass");
-            return InstructStepResult {
-                loss: 100.0,
-                num_response_tokens: num_loss_tokens,
-                perplexity: 1e6,
-            };
-        }
-
-        // 3. Sync after forward GEMM to check for corruption before backward
+        // 3. GPU GEMM backward: grad_hidden = grad_logits @ embed
+        //    KAIZEN-064: grad_logits already in logits_buf (in-place from fused kernel).
+        //    No upload needed — saves ~296MB H2D per step.
         let hidden_size = self.model.config().hidden_size;
-        {
-            let trainer = self.cuda_trainer.as_ref().expect("cuda_blocks implies cuda_trainer");
-            if let Err(e) = trainer.stream().synchronize() {
-                eprintln!("[CUDA] post-forward sync FAILED: {e} — GPU state corrupted by forward GEMM");
-                return InstructStepResult {
-                    loss: avg_loss,
-                    num_response_tokens: num_loss_tokens,
-                    perplexity: avg_loss.exp().min(1e6),
-                };
-            }
-        }
-
-        // 4. GPU GEMM backward: grad_hidden[seq, hidden] = grad_logits[seq, vocab] @ embed[vocab, hidden]
-        //    Upload embed in original layout on-demand (saves ~2.4 GB permanent VRAM).
         let embed_data = self.model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
@@ -672,12 +684,7 @@ impl InstructPipeline {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
             let training = self.gpu_training.as_mut()?;
-            // KAIZEN-062: Reuse logits_buf for grad_logits upload. After forward_logits_gpu
-            // downloads logits to CPU, logits_buf is unused until the next forward call.
-            // Saves ~296MB cuMemAlloc/cuMemFree per step (for Qwen3-4B vocab=151936).
-            training.logits_buf.copy_from_host_at(&grad_logits, 0).map_err(|e| {
-                eprintln!("[CUDA] lm_head backward: grad_logits upload failed: {e}");
-            }).ok()?;
+            // KAIZEN-064: No grad_logits upload — gradient is already in logits_buf.
             let embed_gpu = trainer.upload(embed_slice).map_err(|e| {
                 eprintln!("[CUDA] lm_head backward: embed upload failed: {e}");
             }).ok()?;
@@ -695,7 +702,6 @@ impl InstructPipeline {
             stream.synchronize().map_err(|e| {
                 eprintln!("[CUDA] lm_head backward sync failed: {e}");
             }).ok()?;
-            // embed_gpu dropped here — frees ~1.5 GB VRAM (on-demand, saves permanent VRAM)
             let full_grad = trainer.download(&training.grad_hidden_buf).ok()?;
             Some(full_grad[..seq_len * hidden_size].to_vec())
         })();
@@ -712,20 +718,90 @@ impl InstructPipeline {
             }
         };
 
-        // 5. Sync after backward GEMM to isolate corruption source
-        {
-            let trainer = self.cuda_trainer.as_ref().expect("cuda_blocks implies cuda_trainer");
-            if let Err(e) = trainer.stream().synchronize() {
-                eprintln!("[CUDA] post-backward-GEMM sync FAILED: {e} — backward GEMM corrupted GPU");
+        // 4. GPU backward through NF4 blocks + LoRA optimizer
+        if self.config.quantize_nf4 {
+            self.backward_nf4_gpu_blocks(&grad_hidden, seq_len);
+        }
+
+        InstructStepResult {
+            loss: avg_loss,
+            num_response_tokens: num_loss_tokens,
+            perplexity: avg_loss.exp().min(1e6),
+        }
+    }
+
+    /// CPU fallback for causal LM loss when GPU fused kernel is unavailable.
+    /// Used when forward_logits_gpu_resident or fused_causal_cross_entropy_cuda fails.
+    #[cfg(feature = "cuda")]
+    fn cuda_train_step_cpu_loss(
+        &mut self,
+        full_ids: &[u32],
+        loss_start: usize,
+        loss_end: usize,
+        num_loss_tokens: usize,
+        seq_len: usize,
+        vocab_size: usize,
+    ) -> InstructStepResult {
+        let logits_data = match self.forward_logits_gpu(full_ids) {
+            Some(data) => data,
+            None => {
+                let logits = self.model.forward(full_ids);
+                logits.data().as_slice().expect("contiguous logits").to_vec()
+            }
+        };
+
+        let (avg_loss, grad_logits) =
+            Self::compute_causal_lm_loss(&logits_data, full_ids, loss_start, loss_end, vocab_size);
+
+        if !avg_loss.is_finite() {
+            return InstructStepResult {
+                loss: 100.0,
+                num_response_tokens: num_loss_tokens,
+                perplexity: 1e6,
+            };
+        }
+
+        let hidden_size = self.model.config().hidden_size;
+        let embed_data = self.model.embed_tokens.weight.data();
+        let embed_slice = embed_data.as_slice().expect("contiguous embed");
+
+        let grad_hidden = (|| -> Option<Vec<f32>> {
+            let trainer = self.cuda_trainer.as_ref()?;
+            let stream = trainer.stream();
+            let training = self.gpu_training.as_mut()?;
+            training.logits_buf.copy_from_host_at(&grad_logits, 0).map_err(|e| {
+                eprintln!("[CUDA] lm_head backward: grad_logits upload failed: {e}");
+            }).ok()?;
+            let embed_gpu = trainer.upload(embed_slice).map_err(|e| {
+                eprintln!("[CUDA] lm_head backward: embed upload failed: {e}");
+            }).ok()?;
+            gemm_forward(
+                &training.logits_buf,
+                &embed_gpu,
+                &mut training.grad_hidden_buf,
+                seq_len as u32,
+                vocab_size as u32,
+                hidden_size as u32,
+                stream,
+            ).map_err(|e| {
+                eprintln!("[CUDA] lm_head backward GEMM failed: {e}");
+            }).ok()?;
+            stream.synchronize().ok()?;
+            let full_grad = trainer.download(&training.grad_hidden_buf).ok()?;
+            Some(full_grad[..seq_len * hidden_size].to_vec())
+        })();
+
+        let grad_hidden = match grad_hidden {
+            Some(g) => g,
+            None => {
                 return InstructStepResult {
                     loss: avg_loss,
                     num_response_tokens: num_loss_tokens,
                     perplexity: avg_loss.exp().min(1e6),
                 };
             }
-        }
+        };
 
-        // 6. GPU backward through NF4 blocks + LoRA optimizer
         if self.config.quantize_nf4 {
             self.backward_nf4_gpu_blocks(&grad_hidden, seq_len);
         }
@@ -1725,6 +1801,82 @@ impl InstructPipeline {
         }).ok()?;
 
         Some(full_logits[..seq_len * vocab_size].to_vec())
+    }
+
+    /// GPU forward pass with logits staying GPU-resident (KAIZEN-064).
+    ///
+    /// Same as `forward_logits_gpu` but skips the logits D2H download (~296MB for Qwen3-4B).
+    /// After this call, `training.logits_buf` contains logits[seq_len, vocab_size] on GPU.
+    /// Returns true on success, false on failure.
+    #[cfg(feature = "cuda")]
+    fn forward_logits_gpu_resident(&mut self, token_ids: &[u32]) -> bool {
+        let seq_len = token_ids.len();
+        let vocab_size = self.model.config().vocab_size;
+        let hidden_size = self.model.config().hidden_size;
+
+        // Get normed hidden states from GPU (same as forward_logits_gpu)
+        let normed_hidden = if self.gpu_training.is_some() {
+            let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
+                (Some(ref t), Some(ref mut b)) => (t, b),
+                _ => return false,
+            };
+            let mut training = self.gpu_training.take();
+            let result = Self::forward_cuda_training(
+                &self.model,
+                token_ids,
+                trainer,
+                blocks,
+                training.as_mut().expect("gpu_training was Some"),
+                &mut self.shared_scratch,
+            );
+            self.gpu_training = training;
+            result
+        } else {
+            let (trainer, blocks) = match (&self.cuda_trainer, &mut self.cuda_blocks) {
+                (Some(ref t), Some(ref mut b)) => (t, b),
+                _ => return false,
+            };
+            Self::forward_cuda_inference(&self.model, token_ids, trainer, blocks, &mut self.shared_scratch)
+        };
+
+        let normed_hidden = match normed_hidden {
+            Some(h) => h,
+            None => return false,
+        };
+
+        // GPU GEMM: logits[seq, vocab] = hidden[seq, hidden] @ embed_T[hidden, vocab]
+        let (trainer, training) = match (&self.cuda_trainer, &mut self.gpu_training) {
+            (Some(ref t), Some(ref mut tr)) => (t, tr),
+            _ => return false,
+        };
+        let stream = trainer.stream();
+
+        // KAIZEN-062: Upload into pre-allocated lm_head hidden buffer.
+        if training.lm_head_hidden_buf.copy_from_host_at(&normed_hidden, 0).is_err() {
+            eprintln!("[CUDA] lm_head forward: hidden upload failed");
+            return false;
+        }
+
+        if gemm_forward(
+            &training.lm_head_hidden_buf,
+            &training.embed_transposed,
+            &mut training.logits_buf,
+            seq_len as u32,
+            hidden_size as u32,
+            vocab_size as u32,
+            stream,
+        ).is_err() {
+            eprintln!("[CUDA] lm_head forward GEMM failed");
+            return false;
+        }
+
+        if stream.synchronize().is_err() {
+            eprintln!("[CUDA] lm_head forward sync failed");
+            return false;
+        }
+
+        // KAIZEN-064: No logits download — logits stay in training.logits_buf for fused kernel.
+        true
     }
 
     /// Check if this pipeline is using CUDA acceleration.

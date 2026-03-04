@@ -32,7 +32,7 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaContext, CudaModule, CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::kernels::backward::FusedCrossEntropyKernel;
+use trueno_gpu::kernels::backward::{FusedCausalCrossEntropyKernel, FusedCrossEntropyKernel};
 use trueno_gpu::kernels::{
     AdamStepKernel, AdamWStepKernel, GradientClipKernel, Kernel, SquaredSumKernel,
 };
@@ -598,6 +598,116 @@ pub fn fused_cross_entropy_cuda(
     // Average loss across sequence positions (f64 for precision)
     let total_loss: f64 = loss_partials.iter().map(|&x| f64::from(x)).sum();
     let avg_loss = (total_loss / f64::from(seq_len)) as f32;
+
+    Ok(avg_loss)
+}
+
+/// Fused GPU causal cross-entropy loss + softmax backward, in-place (KAIZEN-064).
+///
+/// Like `fused_cross_entropy_cuda` but with causal LM masking: only positions
+/// `[loss_start, loss_end)` contribute to loss and gradient. Positions outside
+/// this range get zero gradient. Eliminates:
+/// - Logits D2H download (~296MB for Qwen3-4B)
+/// - CPU softmax computation
+/// - Gradient H2D upload (~296MB for Qwen3-4B)
+///
+/// # Contract (C-CAUSALXENT-001)
+///
+/// - **Precondition**: logits_buf has `seq_len * vocab_size` valid elements
+/// - **Precondition**: `loss_start < loss_end <= seq_len`
+/// - **Postcondition**: logits_buf overwritten with gradient (in-place)
+/// - **Postcondition**: Returns average loss over `[loss_start, loss_end)` only
+#[cfg(feature = "cuda")]
+pub fn fused_causal_cross_entropy_cuda(
+    logits_buf: &mut GpuBuffer<f32>,
+    target_ids: &[u32],
+    seq_len: u32,
+    vocab_size: u32,
+    loss_start: u32,
+    loss_end: u32,
+    scale: f32,
+    stream: &CudaStream,
+) -> Result<f32> {
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = FusedCausalCrossEntropyKernel::new(vocab_size);
+
+    let ctx = std::sync::Arc::clone(&cache.ctx);
+
+    let key = format!("fused_causal_xent_{vocab_size}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    // Upload targets to GPU (seq_len × u32 = ~2KB for seq_len=512)
+    let targets_u32: Vec<u32> = target_ids[..seq_len as usize].to_vec();
+    let targets_gpu = GpuBuffer::<u32>::from_host(&ctx, &targets_u32).map_err(|e| {
+        CudaTensorError::KernelError(format!("Failed to upload targets: {e:?}"))
+    })?;
+
+    // Allocate loss partials buffer (seq_len × f32)
+    let loss_gpu = GpuBuffer::<f32>::new(&ctx, seq_len as usize).map_err(|e| {
+        CudaTensorError::KernelError(format!("Failed to allocate loss partials: {e:?}"))
+    })?;
+
+    // Shared memory: 72 bytes (same as base kernel)
+    let config = LaunchConfig {
+        grid: (seq_len, 1, 1),
+        block: (kernel.block_size(), 1, 1),
+        shared_mem: 72,
+    };
+
+    let logits_grad_ptr = logits_buf.as_ptr();
+    let targets_ptr = targets_gpu.as_ptr();
+    let loss_ptr = loss_gpu.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 7] = [
+        &logits_grad_ptr as *const _ as *mut _,
+        &targets_ptr as *const _ as *mut _,
+        &loss_ptr as *const _ as *mut _,
+        &vocab_size as *const _ as *mut _,
+        &scale as *const _ as *mut _,
+        &loss_start as *const _ as *mut _,
+        &loss_end as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. logits_buf has seq_len*vocab_size elements
+    // (read as logits, overwritten with gradients in-place). targets_gpu has seq_len u32
+    // elements. loss_gpu has seq_len f32 elements. Parameters match PTX signature.
+    // Positions outside [loss_start, loss_end) get zero gradient and zero loss.
+    unsafe {
+        stream.launch_kernel(module, "fused_causal_cross_entropy", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Fused causal cross-entropy launch failed: {e:?}"))
+        })?;
+    }
+
+    // Synchronize and download loss partials (~2KB)
+    stream.synchronize().map_err(|e| {
+        CudaTensorError::KernelError(format!("Stream sync failed: {e:?}"))
+    })?;
+
+    let mut loss_partials = vec![0.0f32; seq_len as usize];
+    loss_gpu.copy_to_host(&mut loss_partials).map_err(|e| {
+        CudaTensorError::KernelError(format!("Failed to download loss partials: {e:?}"))
+    })?;
+
+    // Average loss across loss positions only (f64 for precision)
+    let num_loss_tokens = loss_end.saturating_sub(loss_start) as usize;
+    if num_loss_tokens == 0 {
+        return Ok(0.0);
+    }
+    let total_loss: f64 = loss_partials[loss_start as usize..loss_end as usize]
+        .iter()
+        .map(|&x| f64::from(x))
+        .sum();
+    let avg_loss = (total_loss / num_loss_tokens as f64) as f32;
 
     Ok(avg_loss)
 }
