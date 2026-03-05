@@ -119,6 +119,11 @@ fn build_train_config(
         config = config.with_seed(seed);
     }
 
+    // KAIZEN-047: Step profiler (0 = disabled)
+    if spec.training.profile_interval > 0 {
+        config = config.with_profile_interval(spec.training.profile_interval);
+    }
+
     // Wire distributed config from YAML (#133)
     if let Some(ref dist) = spec.training.distributed {
         use crate::train::{DistributedBackend, DistributedRole, DistributedTrainConfig};
@@ -928,6 +933,9 @@ fn train_loop_cuda(
 
     let total_time = start_time.elapsed();
     println!("Total training time: {:.1}s", total_time.as_secs_f64());
+
+    // KAIZEN-047: Print step profiler report at end of training
+    trainer.print_profiler_report();
 
     // ALB-045: Write final "Completed" snapshot
     let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
