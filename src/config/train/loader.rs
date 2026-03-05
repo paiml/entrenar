@@ -250,7 +250,7 @@ fn train_loop_cpu(
 
     let num_batches = batches.len();
     let start_time = std::time::Instant::now();
-    let log_interval = std::cmp::max(num_batches / 100, 1);
+    let log_interval = std::cmp::min(std::cmp::max(num_batches / 100, 1), 100);
 
     // ALB-045: Initialize training state IPC for `apr monitor`
     let state = TrainingState::new(&spec.training.output_dir);
@@ -596,7 +596,10 @@ fn train_loop_cuda(
 
     let num_batches = batches.len();
     let start_time = std::time::Instant::now();
-    let log_interval = std::cmp::max(num_batches / 100, 1);
+    // Cap log_interval so training_state.json updates at least every 100 steps
+    // (enables real-time monitoring via `apr monitor`). Previously num_batches/100
+    // gave 12905 for large datasets — too infrequent for a 12-day run.
+    let log_interval = std::cmp::min(std::cmp::max(num_batches / 100, 1), 100);
     let save_interval = spec.training.save_interval;
     let max_checkpoints = spec.training.max_checkpoints;
 
