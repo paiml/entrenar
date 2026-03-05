@@ -30,7 +30,7 @@ impl Default for WaitConfig {
         Self {
             timeout: Duration::from_secs(3600),     // 1 hour
             base_interval: Duration::from_secs(30), // 30 seconds
-            max_interval: Duration::from_secs(300),  // 5 minutes
+            max_interval: Duration::from_secs(300), // 5 minutes
         }
     }
 }
@@ -38,10 +38,7 @@ impl Default for WaitConfig {
 impl WaitConfig {
     /// Create config with custom timeout in seconds.
     pub fn with_timeout_secs(secs: u64) -> Self {
-        Self {
-            timeout: Duration::from_secs(secs),
-            ..Default::default()
-        }
+        Self { timeout: Duration::from_secs(secs), ..Default::default() }
     }
 
     /// Compute the sleep interval for a given attempt number.
@@ -69,10 +66,7 @@ pub fn wait_for_vram(
     loop {
         // Check timeout BEFORE trying (not after sleep)
         if start.elapsed() > config.timeout {
-            return Err(GpuError::Timeout {
-                budget_mb,
-                timeout_secs: config.timeout.as_secs(),
-            });
+            return Err(GpuError::Timeout { budget_mb, timeout_secs: config.timeout.as_secs() });
         }
 
         // Phase: wait_poll
@@ -133,8 +127,7 @@ mod tests {
     #[test]
     fn test_immediate_success() {
         let path = test_ledger_path();
-        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85)
-            .with_path(path.clone());
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
         let mut profiler = GpuProfiler::disabled();
         let config = WaitConfig::with_timeout_secs(5);
 
@@ -147,8 +140,7 @@ mod tests {
     #[test]
     fn test_timeout_when_full() {
         let path = test_ledger_path();
-        let mut ledger = VramLedger::new("GPU-test".into(), 10000, 0.85)
-            .with_path(path.clone());
+        let mut ledger = VramLedger::new("GPU-test".into(), 10000, 0.85).with_path(path.clone());
 
         // Fill the ledger
         ledger.try_reserve(8000, "blocker").unwrap();
@@ -203,8 +195,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
 
         // Waiter should succeed because the lease expired
-        let mut waiter = VramLedger::new("GPU-test".into(), 10000, 0.85)
-            .with_path(path.clone());
+        let mut waiter = VramLedger::new("GPU-test".into(), 10000, 0.85).with_path(path.clone());
         let mut profiler = GpuProfiler::disabled();
         let config = WaitConfig::with_timeout_secs(5);
 

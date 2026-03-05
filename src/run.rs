@@ -101,12 +101,8 @@ pub struct Run<S: ExperimentStorage> {
 
 impl<S: ExperimentStorage> Run<S> {
     /// Acquire the storage mutex, mapping poison errors to `StorageError::Backend`.
-    fn lock_storage(
-        storage: &Arc<Mutex<S>>,
-    ) -> Result<std::sync::MutexGuard<'_, S>> {
-        storage
-            .lock()
-            .map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))
+    fn lock_storage(storage: &Arc<Mutex<S>>) -> Result<std::sync::MutexGuard<'_, S>> {
+        storage.lock().map_err(|e| StorageError::Backend(format!("mutex poisoned: {e}")))
     }
 
     /// Acquire the storage mutex on `self`, mapping poison errors to `StorageError::Backend`.

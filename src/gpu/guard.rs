@@ -34,23 +34,15 @@ impl VramGuard {
     /// Checks the ledger and reserves `budget_mb` of VRAM.
     /// Returns `GpuError::InsufficientMemory` if not enough VRAM available.
     pub fn acquire(budget_mb: usize, task: &str) -> Result<Self, GpuError> {
-        TRACER.span(
-            TraceStep::VramQuery,
-            format!("guard_acquire budget={budget_mb}MB"),
-            || {
-                let mut ledger = super::ledger::auto_ledger();
-                ledger.try_reserve(budget_mb, task)?;
-                Ok(Self { ledger, budget_mb })
-            },
-        )
+        TRACER.span(TraceStep::VramQuery, format!("guard_acquire budget={budget_mb}MB"), || {
+            let mut ledger = super::ledger::auto_ledger();
+            ledger.try_reserve(budget_mb, task)?;
+            Ok(Self { ledger, budget_mb })
+        })
     }
 
     /// Acquire with waiting: poll until VRAM is available or timeout.
-    pub fn acquire_wait(
-        budget_mb: usize,
-        task: &str,
-        timeout_secs: u64,
-    ) -> Result<Self, GpuError> {
+    pub fn acquire_wait(budget_mb: usize, task: &str, timeout_secs: u64) -> Result<Self, GpuError> {
         TRACER.span(
             TraceStep::WaitPoll,
             format!("guard_wait budget={budget_mb}MB timeout={timeout_secs}s"),
@@ -91,7 +83,7 @@ impl VramGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);

@@ -25,29 +25,27 @@ pub fn run_finetune(args: FinetuneArgs, level: LogLevel) -> Result<(), String> {
             lr_min_ratio,
             class_weights,
             target_modules,
-        } => {
-            run_plan(
-                data,
-                model_path,
-                model_size,
-                num_classes,
-                output_dir,
-                strategy,
-                budget,
-                scout,
-                max_epochs,
-                lr,
-                lora_rank,
-                batch_size,
-                lora_alpha,
-                warmup,
-                gradient_clip,
-                lr_min_ratio,
-                class_weights,
-                target_modules,
-                level,
-            )
-        }
+        } => run_plan(
+            data,
+            model_path,
+            model_size,
+            num_classes,
+            output_dir,
+            strategy,
+            budget,
+            scout,
+            max_epochs,
+            lr,
+            lora_rank,
+            batch_size,
+            lora_alpha,
+            warmup,
+            gradient_clip,
+            lr_min_ratio,
+            class_weights,
+            target_modules,
+            level,
+        ),
         FinetuneCommand::Apply { plan, model_path, data, output_dir } => {
             run_apply(plan, model_path, data, output_dir, level)
         }
@@ -203,10 +201,7 @@ fn run_apply(
     Ok(())
 }
 
-fn print_plan_summary(
-    plan: &crate::finetune::training_plan::TrainingPlan,
-    level: LogLevel,
-) {
+fn print_plan_summary(plan: &crate::finetune::training_plan::TrainingPlan, level: LogLevel) {
     let (pass, warn, fail) = plan.check_counts();
 
     log(level, LogLevel::Normal, &format!("Plan: {} v{}", plan.task, plan.version));
@@ -258,14 +253,6 @@ fn print_plan_summary(
             plan.resources.estimated_total_minutes,
         ),
     );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Pre-flight: {pass} pass, {warn} warn, {fail} fail"),
-    );
-    log(
-        level,
-        LogLevel::Normal,
-        &format!("  Verdict: {:?}", plan.verdict),
-    );
+    log(level, LogLevel::Normal, &format!("  Pre-flight: {pass} pass, {warn} warn, {fail} fail"));
+    log(level, LogLevel::Normal, &format!("  Verdict: {:?}", plan.verdict));
 }

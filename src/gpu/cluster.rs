@@ -67,7 +67,6 @@ pub enum Transport {
     Ssh,
 }
 
-
 /// Configuration for a single GPU on a node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpuConfig {
@@ -94,7 +93,6 @@ pub enum MemoryType {
     /// Unified memory shared with CPU (60% reserve factor).
     Unified,
 }
-
 
 impl MemoryType {
     /// Reserve factor: fraction of VRAM usable for training.
@@ -162,21 +160,15 @@ impl ClusterConfig {
         let mut names = HashSet::new();
         for node in &self.nodes {
             if !names.insert(&node.name) {
-                return Err(ClusterValidationError::DuplicateNodeName(
-                    node.name.clone(),
-                ));
+                return Err(ClusterValidationError::DuplicateNodeName(node.name.clone()));
             }
             if node.max_adapters == 0 {
-                return Err(ClusterValidationError::ZeroMaxAdapters {
-                    name: node.name.clone(),
-                });
+                return Err(ClusterValidationError::ZeroMaxAdapters { name: node.name.clone() });
             }
             if node.transport == Transport::Ssh
                 && (node.host == "localhost" || node.host == "127.0.0.1")
             {
-                return Err(ClusterValidationError::SshLocalhost {
-                    node: node.name.clone(),
-                });
+                return Err(ClusterValidationError::SshLocalhost { node: node.name.clone() });
             }
             validate_node_gpus(node)?;
         }
@@ -254,16 +246,19 @@ impl GpuConfig {
 
 impl std::fmt::Display for ClusterConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Cluster: {} node(s), {} adapter slots",
-            self.nodes.len(), self.total_adapter_capacity())?;
+        writeln!(
+            f,
+            "Cluster: {} node(s), {} adapter slots",
+            self.nodes.len(),
+            self.total_adapter_capacity()
+        )?;
         for node in &self.nodes {
             write!(f, "  {}: {} ({})", node.name, node.host, node.transport)?;
             if node.gpus.is_empty() {
                 write!(f, " [CPU-only]")?;
             } else {
                 for gpu in &node.gpus {
-                    write!(f, " [{} {} MB {:?}]",
-                        gpu.gpu_type, gpu.vram_mb, gpu.memory_type)?;
+                    write!(f, " [{} {} MB {:?}]", gpu.gpu_type, gpu.vram_mb, gpu.memory_type)?;
                 }
             }
             writeln!(f, " max_adapters={}", node.max_adapters)?;
@@ -530,9 +525,9 @@ pub struct GpuCostModel {
 impl Default for GpuCostModel {
     fn default() -> Self {
         Self {
-            pcie_cost_per_mb: 40.0,       // PCIe 4.0 ~25 GB/s → ~40 µs/MB
-            gpu_compute_per_mflop: 0.01,  // RTX 4090 ~80 TFLOPS → ~0.01 µs/MFLOP
-            dispatch_threshold: 5.0,      // 5× PCIe rule
+            pcie_cost_per_mb: 40.0,      // PCIe 4.0 ~25 GB/s → ~40 µs/MB
+            gpu_compute_per_mflop: 0.01, // RTX 4090 ~80 TFLOPS → ~0.01 µs/MFLOP
+            dispatch_threshold: 5.0,     // 5× PCIe rule
         }
     }
 }

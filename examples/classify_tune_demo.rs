@@ -174,8 +174,7 @@ fn main() {
             // Quick forward pass for accuracy
             let hidden = pipeline.model.forward_hidden(&token_ids);
             let logits = pipeline.classifier.forward(&hidden, token_ids.len());
-            let logits_slice: Vec<f32> =
-                logits.data().as_slice().expect("contiguous").to_vec();
+            let logits_slice: Vec<f32> = logits.data().as_slice().expect("contiguous").to_vec();
             let pred = logits_slice
                 .iter()
                 .enumerate()
@@ -190,10 +189,7 @@ fn main() {
         let accuracy = correct as f64 / samples.len() as f64;
         let elapsed_ms = trial_start.elapsed().as_millis() as u64;
 
-        println!(
-            "  -> loss={avg_loss:.4}, accuracy={:.1}%, time={elapsed_ms}ms",
-            accuracy * 100.0
-        );
+        println!("  -> loss={avg_loss:.4}, accuracy={:.1}%, time={elapsed_ms}ms", accuracy * 100.0);
 
         // Record trial in tuner leaderboard
         let summary = TrialSummary {
@@ -227,7 +223,13 @@ fn main() {
         let (lr, rank, alpha, ..) = extract_trial_params(&trial.config);
         println!(
             "  {:<6} {:<10.4} {:<10.1}% {:<8.2e} {:<6} {:<8.1} {:<10}ms",
-            trial.id, trial.val_loss, trial.val_accuracy * 100.0, lr, rank, alpha, trial.time_ms
+            trial.id,
+            trial.val_loss,
+            trial.val_accuracy * 100.0,
+            lr,
+            rank,
+            alpha,
+            trial.time_ms
         );
     }
 

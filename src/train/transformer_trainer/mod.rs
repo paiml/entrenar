@@ -12,8 +12,8 @@ pub mod elastic;
 pub mod grad_accumulator;
 pub mod pipeline;
 pub mod sequence_parallel;
-pub mod tensor_parallel;
 pub mod step_profiler;
+pub mod tensor_parallel;
 mod trainer;
 mod utils;
 pub mod zero;
@@ -26,14 +26,14 @@ pub use batch::LMBatch;
 pub use config::{
     DistributedBackend, DistributedRole, DistributedTrainConfig, TransformerTrainConfig,
 };
-pub use grad_accumulator::{BlockGradientSet, PerBlockGradientAccumulator};
+pub use cuda_trainer::CudaTransformerTrainer;
 pub use distributed_checkpoint::DistributedCheckpointCoordinator;
+pub use distributed_trainer::shard_batches;
 #[cfg(feature = "cuda")]
 #[allow(unused_imports)]
-pub use distributed_trainer::{DistributedCudaTrainer, DistributedComm, GradientMessage};
-pub use distributed_trainer::shard_batches;
-pub use cuda_trainer::CudaTransformerTrainer;
+pub use distributed_trainer::{DistributedComm, DistributedCudaTrainer, GradientMessage};
 pub use elastic::ElasticCoordinator;
+pub use grad_accumulator::{BlockGradientSet, PerBlockGradientAccumulator};
 pub use pipeline::{PipelineAction, PipelineActivationBuffer, PipelineStage};
 pub use sequence_parallel::{
     CausalMaskType, RingAttentionSchedule, SequenceParallelConfig, SpCommCost,

@@ -100,7 +100,9 @@ impl BlockGradientSet {
     /// Zero all gradient components (reuse buffers).
     pub fn zero(&mut self) {
         for comp in &mut self.components {
-            for x in comp.iter_mut() { *x = 0.0; }
+            for x in comp.iter_mut() {
+                *x = 0.0;
+            }
         }
     }
 
@@ -176,9 +178,7 @@ impl PerBlockGradientAccumulator {
         vocab_size: usize,
         hidden_size: usize,
     ) -> Self {
-        let block_grads = (0..num_blocks)
-            .map(|_| BlockGradientSet::zeroed(&block_sizes))
-            .collect();
+        let block_grads = (0..num_blocks).map(|_| BlockGradientSet::zeroed(&block_sizes)).collect();
 
         Self {
             block_grads,
@@ -202,15 +202,15 @@ impl PerBlockGradientAccumulator {
         intermediate_size: usize,
     ) -> [usize; BLOCK_GRAD_COMPONENTS] {
         [
-            hidden_size * hidden_size,         // w_q
-            hidden_size * kv_hidden_size,      // w_k
-            hidden_size * kv_hidden_size,      // w_v
-            hidden_size * hidden_size,         // w_o
-            hidden_size * intermediate_size,   // gate
-            hidden_size * intermediate_size,   // up
-            intermediate_size * hidden_size,   // down
-            hidden_size,                       // input_norm
-            hidden_size,                       // post_attn_norm
+            hidden_size * hidden_size,       // w_q
+            hidden_size * kv_hidden_size,    // w_k
+            hidden_size * kv_hidden_size,    // w_v
+            hidden_size * hidden_size,       // w_o
+            hidden_size * intermediate_size, // gate
+            hidden_size * intermediate_size, // up
+            intermediate_size * hidden_size, // down
+            hidden_size,                     // input_norm
+            hidden_size,                     // post_attn_norm
         ]
     }
 
@@ -337,13 +337,13 @@ mod tests {
     fn test_accumulator_compute_block_sizes_350m() {
         // 350M: H=1024, num_heads=16, num_kv_heads=4, kv_dim=256, I=4096
         let sizes = PerBlockGradientAccumulator::compute_block_sizes(1024, 256, 4096);
-        assert_eq!(sizes[component::W_Q], 1024 * 1024);       // 1M
-        assert_eq!(sizes[component::W_K], 1024 * 256);        // 256K
-        assert_eq!(sizes[component::W_V], 1024 * 256);        // 256K
-        assert_eq!(sizes[component::W_O], 1024 * 1024);       // 1M
-        assert_eq!(sizes[component::GATE], 1024 * 4096);      // 4M
-        assert_eq!(sizes[component::UP], 1024 * 4096);        // 4M
-        assert_eq!(sizes[component::DOWN], 4096 * 1024);      // 4M
+        assert_eq!(sizes[component::W_Q], 1024 * 1024); // 1M
+        assert_eq!(sizes[component::W_K], 1024 * 256); // 256K
+        assert_eq!(sizes[component::W_V], 1024 * 256); // 256K
+        assert_eq!(sizes[component::W_O], 1024 * 1024); // 1M
+        assert_eq!(sizes[component::GATE], 1024 * 4096); // 4M
+        assert_eq!(sizes[component::UP], 1024 * 4096); // 4M
+        assert_eq!(sizes[component::DOWN], 4096 * 1024); // 4M
         assert_eq!(sizes[component::INPUT_NORM], 1024);
         assert_eq!(sizes[component::POST_ATTN_NORM], 1024);
     }

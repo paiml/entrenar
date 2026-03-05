@@ -54,10 +54,8 @@ fn main() {
 
     // --reserve <MB> --task <name>: create a reservation
     if let Some(pos) = args.iter().position(|a| a == "--reserve") {
-        let budget_mb: usize = args
-            .get(pos + 1)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| {
+        let budget_mb: usize =
+            args.get(pos + 1).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
                 eprintln!("--reserve requires a number (MB)");
                 std::process::exit(1);
             });
@@ -86,10 +84,8 @@ fn main() {
 
     // --wait <MB>: wait for VRAM availability
     if let Some(pos) = args.iter().position(|a| a == "--wait") {
-        let budget_mb: usize = args
-            .get(pos + 1)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| {
+        let budget_mb: usize =
+            args.get(pos + 1).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
                 eprintln!("--wait requires a number (MB)");
                 std::process::exit(1);
             });
@@ -115,10 +111,8 @@ fn main() {
 
     // --guard <MB>: guard demo (acquire, update actual, release)
     if let Some(pos) = args.iter().position(|a| a == "--guard") {
-        let budget_mb: usize = args
-            .get(pos + 1)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| {
+        let budget_mb: usize =
+            args.get(pos + 1).and_then(|s| s.parse().ok()).unwrap_or_else(|| {
                 eprintln!("--guard requires a number (MB)");
                 std::process::exit(1);
             });

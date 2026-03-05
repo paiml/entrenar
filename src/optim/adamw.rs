@@ -514,10 +514,7 @@ mod tests {
         for &beta in &[0.9_f32, 0.99, 0.999] {
             for t in 1..=100i32 {
                 let adjust = 1.0 / (1.0 - beta.powi(t));
-                assert!(
-                    adjust > 1.0,
-                    "FALSIFIED AW-003e: 1/(1-{beta}^{t}) = {adjust} not > 1"
-                );
+                assert!(adjust > 1.0, "FALSIFIED AW-003e: 1/(1-{beta}^{t}) = {adjust} not > 1");
             }
         }
     }

@@ -33,11 +33,9 @@ impl SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
@@ -57,16 +55,18 @@ impl SqliteBackend {
     }
 
     /// Log multiple parameters for a run
-    pub fn log_params(&self, run_id: &str, params_map: HashMap<String, ParameterValue>) -> Result<()> {
+    pub fn log_params(
+        &self,
+        run_id: &str,
+        params_map: HashMap<String, ParameterValue>,
+    ) -> Result<()> {
         let conn = self.lock_conn()?;
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
@@ -93,11 +93,9 @@ impl SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {

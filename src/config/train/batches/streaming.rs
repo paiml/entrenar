@@ -31,11 +31,7 @@ pub struct ShardConfig {
 impl ShardConfig {
     /// Create a single-worker (no sharding) config.
     pub fn single() -> Self {
-        Self {
-            rank: 0,
-            world_size: 1,
-            seed: 42,
-        }
+        Self { rank: 0, world_size: 1, seed: 42 }
     }
 }
 
@@ -300,7 +296,8 @@ mod tests {
     fn test_streaming_loader_basic() {
         let (dir, _) = create_temp_dir_with_files(4);
         let config = ShardConfig { rank: 0, world_size: 2, seed: 42 };
-        let loader = StreamingParquetLoader::new(dir.path(), config, 4, 2048).expect("create loader");
+        let loader =
+            StreamingParquetLoader::new(dir.path(), config, 4, 2048).expect("create loader");
         assert_eq!(loader.num_files(), 2);
         assert_eq!(loader.total_files(), 4);
     }

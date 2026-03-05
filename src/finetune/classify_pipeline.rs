@@ -29,21 +29,24 @@ use crate::Tensor;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_forward::{pre_warm_forward_kernels, pre_warm_lora_backward_kernels};
-#[cfg(feature = "cuda")]
 use crate::autograd::cuda_backward::pre_warm_lora_backward_kernels as pre_warm_backward_cache_kernels;
+#[cfg(feature = "cuda")]
+use crate::autograd::cuda_forward::{pre_warm_forward_kernels, pre_warm_lora_backward_kernels};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::pre_warm_lora_adamw_kernels;
 #[cfg(feature = "cuda")]
-use crate::autograd::ops::pre_warm_realizador_gemm;
-#[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
-use crate::transformer::{CudaBlock, CudaBlockScratch, CudaGradWorkspace, CudaLoraGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState, GpuLoraOptimizerState};
-#[cfg(feature = "cuda")]
-use std::sync::Arc;
+use crate::autograd::ops::pre_warm_realizador_gemm;
 #[cfg(feature = "cuda")]
 use crate::gpu::guard::VramGuard;
+#[cfg(feature = "cuda")]
+use crate::transformer::{
+    CudaBlock, CudaBlockScratch, CudaGradWorkspace, CudaLoraGradWorkspace, CudaTransformerBlock,
+    GpuBlockOptimizerState, GpuLoraOptimizerState,
+};
+#[cfg(feature = "cuda")]
+use std::sync::Arc;
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::GpuBuffer;
 
@@ -144,8 +147,10 @@ pub struct HyperparamDiagnostics {
 impl HyperparamDiagnostics {
     /// Check if any diagnostic matches a contract ID.
     pub fn has_warning(&self, contract_id: &str) -> bool {
-        self.items.iter().any(|d| d.contract_id == contract_id
-            && matches!(d.severity, DiagSeverity::Warn | DiagSeverity::Error))
+        self.items.iter().any(|d| {
+            d.contract_id == contract_id
+                && matches!(d.severity, DiagSeverity::Warn | DiagSeverity::Error)
+        })
     }
 
     /// Check if there are any blocking errors.
@@ -195,11 +200,7 @@ impl ClassifyConfig {
     /// Contract: provable-contracts/contracts/entrenar/qlora-hyperparameters-v1.yaml
     pub fn qlora_default(model_params: u64) -> Self {
         // C-HP-001: lr scales with model size (Dettmers 2023 Table 9)
-        let learning_rate = if model_params <= 13_000_000_000 {
-            2e-4
-        } else {
-            1e-4
-        };
+        let learning_rate = if model_params <= 13_000_000_000 { 2e-4 } else { 1e-4 };
         let lora_rank = 16;
         Self {
             num_classes: 2,
@@ -239,7 +240,8 @@ impl ClassifyConfig {
                 severity: DiagSeverity::Warn,
                 message: format!(
                     "lr={:.0e} too low for {}B model (Dettmers 2023: use 2e-4 for ≤13B)",
-                    self.learning_rate, model_params / 1_000_000_000
+                    self.learning_rate,
+                    model_params / 1_000_000_000
                 ),
                 recommendation: "learning_rate: 0.0002".to_string(),
             });
@@ -257,7 +259,8 @@ impl ClassifyConfig {
                 ),
                 recommendation: format!(
                     "batch_size: {}, accumulation_steps: {}",
-                    self.batch_size, 16 / self.batch_size.max(1)
+                    self.batch_size,
+                    16 / self.batch_size.max(1)
                 ),
             });
         }
@@ -344,7 +347,9 @@ impl ClassifyConfig {
                 severity: DiagSeverity::Warn,
                 message: format!(
                     "epochs={} with {:.1}:1 imbalance — minority gets only {} gradient updates",
-                    self.epochs, stats.imbalance_ratio, updates_per_epoch * self.epochs
+                    self.epochs,
+                    stats.imbalance_ratio,
+                    updates_per_epoch * self.epochs
                 ),
                 recommendation: format!(
                     "epochs: 3 (minority gets {} updates)",
@@ -522,8 +527,11 @@ impl ClassifyPipeline {
         // ── GPU training state (F-CUDA-014) ────────────────────────────
         #[cfg(feature = "cuda")]
         let gpu_training = Self::try_init_gpu_training(
-            &model, model_config, classify_config.max_seq_len,
-            &cuda_trainer, &cuda_blocks,
+            &model,
+            model_config,
+            classify_config.max_seq_len,
+            &cuda_trainer,
+            &cuda_blocks,
         );
 
         // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
@@ -540,11 +548,17 @@ impl ClassifyPipeline {
 
         // ── NF4 LoRA training state (ENT-153) ──────────────────────────
         #[cfg(feature = "cuda")]
-        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) = if classify_config.quantize_nf4 {
-            Self::try_init_nf4_lora_training(&cuda_trainer, &cuda_blocks, model_config, &classify_config)
-        } else {
-            (None, None, None)
-        };
+        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) =
+            if classify_config.quantize_nf4 {
+                Self::try_init_nf4_lora_training(
+                    &cuda_trainer,
+                    &cuda_blocks,
+                    model_config,
+                    &classify_config,
+                )
+            } else {
+                (None, None, None)
+            };
 
         // ── wgpu initialization (when CUDA unavailable) ──────────────────
         #[cfg(feature = "gpu")]
@@ -669,14 +683,17 @@ impl ClassifyPipeline {
         // ── GPU training state (F-CUDA-014) ────────────────────────────
         #[cfg(feature = "cuda")]
         let gpu_training = Self::try_init_gpu_training(
-            &model, model_config, classify_config.max_seq_len,
-            &cuda_trainer, &cuda_blocks,
+            &model,
+            model_config,
+            classify_config.max_seq_len,
+            &cuda_trainer,
+            &cuda_blocks,
         );
 
         // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
         #[cfg(feature = "cuda")]
         let cuda_grad_workspace = if classify_config.quantize_nf4 {
-            None  // No grad workspace needed for frozen NF4 weights
+            None // No grad workspace needed for frozen NF4 weights
         } else {
             cuda_trainer.as_ref().and_then(|t| {
                 CudaGradWorkspace::new(t.context(), model_config)
@@ -687,11 +704,17 @@ impl ClassifyPipeline {
 
         // ── NF4 LoRA training state (ENT-153) ──────────────────────────
         #[cfg(feature = "cuda")]
-        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) = if classify_config.quantize_nf4 {
-            Self::try_init_nf4_lora_training(&cuda_trainer, &cuda_blocks, model_config, &classify_config)
-        } else {
-            (None, None, None)
-        };
+        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) =
+            if classify_config.quantize_nf4 {
+                Self::try_init_nf4_lora_training(
+                    &cuda_trainer,
+                    &cuda_blocks,
+                    model_config,
+                    &classify_config,
+                )
+            } else {
+                (None, None, None)
+            };
 
         // ── wgpu initialization (when CUDA unavailable) ──────────────────
         #[cfg(feature = "gpu")]
@@ -705,7 +728,10 @@ impl ClassifyPipeline {
                 // KAIZEN-015: Pre-upload FFN weights to GPU
                 match crate::transformer::WgpuForwardPass::with_resident_weights(&model) {
                     Ok(pass) => {
-                        eprintln!("[wgpu] Batched forward pass initialized ({} layers, resident weights)", model_config.num_hidden_layers);
+                        eprintln!(
+                            "[wgpu] Batched forward pass initialized ({} layers, resident weights)",
+                            model_config.num_hidden_layers
+                        );
                         Some(pass)
                     }
                     Err(e) => {
@@ -788,13 +814,11 @@ impl ClassifyPipeline {
 
         // CONTRACT: Training requires a BPE tokenizer — byte-fallback is not acceptable.
         let tokenizer = {
-            let sibling = apr_path
-                .file_stem()
-                .and_then(|stem| {
-                    apr_path
-                        .parent()
-                        .map(|p| p.join(format!("{}.tokenizer.json", stem.to_str().unwrap_or(""))))
-                });
+            let sibling = apr_path.file_stem().and_then(|stem| {
+                apr_path
+                    .parent()
+                    .map(|p| p.join(format!("{}.tokenizer.json", stem.to_str().unwrap_or(""))))
+            });
 
             match sibling {
                 Some(ref path) if path.exists() => {
@@ -827,8 +851,11 @@ impl ClassifyPipeline {
 
         #[cfg(feature = "cuda")]
         let gpu_training = Self::try_init_gpu_training(
-            &model, model_config, classify_config.max_seq_len,
-            &cuda_trainer, &cuda_blocks,
+            &model,
+            model_config,
+            classify_config.max_seq_len,
+            &cuda_trainer,
+            &cuda_blocks,
         );
 
         #[cfg(feature = "cuda")]
@@ -843,11 +870,17 @@ impl ClassifyPipeline {
         };
 
         #[cfg(feature = "cuda")]
-        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) = if classify_config.quantize_nf4 {
-            Self::try_init_nf4_lora_training(&cuda_trainer, &cuda_blocks, model_config, &classify_config)
-        } else {
-            (None, None, None)
-        };
+        let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) =
+            if classify_config.quantize_nf4 {
+                Self::try_init_nf4_lora_training(
+                    &cuda_trainer,
+                    &cuda_blocks,
+                    model_config,
+                    &classify_config,
+                )
+            } else {
+                (None, None, None)
+            };
 
         // ── wgpu initialization ──────────────────────────────────────────
         #[cfg(feature = "gpu")]
@@ -954,10 +987,7 @@ impl ClassifyPipeline {
                     }
                     ids
                 };
-                TokenizedSample {
-                    token_ids,
-                    label: s.label,
-                }
+                TokenizedSample { token_ids, label: s.label }
             })
             .collect()
     }
@@ -978,7 +1008,8 @@ impl ClassifyPipeline {
 
         // ── 2. Accumulate gradients over all samples ───────────────────
         #[cfg(feature = "gpu")]
-        let (total_loss, correct) = self.try_train_batch_wgpu_tokenized(samples)
+        let (total_loss, correct) = self
+            .try_train_batch_wgpu_tokenized(samples)
             .unwrap_or_else(|| self.train_batch_per_sample_tokenized(samples));
 
         #[cfg(not(feature = "gpu"))]
@@ -1044,26 +1075,27 @@ impl ClassifyPipeline {
 
     /// Batched wgpu forward with pre-tokenized IDs (KAIZEN-028).
     #[cfg(feature = "gpu")]
-    fn try_train_batch_wgpu_tokenized(&mut self, samples: &[TokenizedSample]) -> Option<(f32, usize)> {
+    fn try_train_batch_wgpu_tokenized(
+        &mut self,
+        samples: &[TokenizedSample],
+    ) -> Option<(f32, usize)> {
         if self.wgpu_forward_pass.is_none() {
             return None;
         }
 
-        let batch_token_ids: Vec<Vec<u32>> = samples
-            .iter()
-            .map(|s| s.token_ids.clone())
-            .collect();
+        let batch_token_ids: Vec<Vec<u32>> = samples.iter().map(|s| s.token_ids.clone()).collect();
 
-        let lora_ref = if self.lora_layers.is_empty() {
-            None
-        } else {
-            Some(self.lora_layers.as_slice())
-        };
+        let lora_ref =
+            if self.lora_layers.is_empty() { None } else { Some(self.lora_layers.as_slice()) };
 
-        let hiddens = self.wgpu_forward_pass.as_ref()
+        let hiddens = self
+            .wgpu_forward_pass
+            .as_ref()
             .expect("checked is_none above")
             .forward_hidden_batch(&self.model, &batch_token_ids, lora_ref)
-            .map_err(|e| eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}"))
+            .map_err(|e| {
+                eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}")
+            })
             .ok()?;
 
         let mut total_loss = 0.0f32;
@@ -1085,7 +1117,10 @@ impl ClassifyPipeline {
     /// Accumulate gradients with pre-tokenized samples (KAIZEN-028).
     ///
     /// Identical to [`accumulate_gradients`] but uses pre-tokenized IDs.
-    pub fn accumulate_gradients_tokenized(&mut self, micro_batch: &[TokenizedSample]) -> BatchResult {
+    pub fn accumulate_gradients_tokenized(
+        &mut self,
+        micro_batch: &[TokenizedSample],
+    ) -> BatchResult {
         if micro_batch.is_empty() {
             return BatchResult { avg_loss: 0.0, correct: 0, total: 0, grad_norm: 0.0 };
         }
@@ -1196,7 +1231,9 @@ impl ClassifyPipeline {
         }
 
         if quantize_nf4 {
-            eprintln!("[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)");
+            eprintln!(
+                "[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)"
+            );
         }
 
         if let Err(e) = pre_warm_lora_backward_kernels(
@@ -1206,7 +1243,9 @@ impl ClassifyPipeline {
             max_seq_len,
             classify_config.lora_rank,
         ) {
-            eprintln!("[CUDA] Failed to pre-warm LoRA forward-cache backward kernels: {e} — using CPU");
+            eprintln!(
+                "[CUDA] Failed to pre-warm LoRA forward-cache backward kernels: {e} — using CPU"
+            );
             return false;
         }
 
@@ -1258,11 +1297,11 @@ impl ClassifyPipeline {
     #[cfg(feature = "cuda")]
     fn estimate_vram_mb(model_config: &TransformerConfig, config: &ClassifyConfig) -> usize {
         if config.quantize_nf4 {
-            let weight_elements = model_config.per_layer_weight_elements()
-                * model_config.num_hidden_layers;
+            let weight_elements =
+                model_config.per_layer_weight_elements() * model_config.num_hidden_layers;
             let weight_mb = weight_elements / (2 * 1024 * 1024);
-            let scratch_mb = (config.max_seq_len * model_config.hidden_size * 4 * 10)
-                / (1024 * 1024);
+            let scratch_mb =
+                (config.max_seq_len * model_config.hidden_size * 4 * 10) / (1024 * 1024);
             let overhead_mb = 512;
             weight_mb + scratch_mb + overhead_mb
         } else {
@@ -1279,11 +1318,8 @@ impl ClassifyPipeline {
         classify_config: &ClassifyConfig,
     ) -> Option<VramGuard> {
         let budget_mb = Self::estimate_vram_mb(model_config, classify_config);
-        let task_label = if classify_config.quantize_nf4 {
-            "classify-qlora"
-        } else {
-            "classify-lora"
-        };
+        let task_label =
+            if classify_config.quantize_nf4 { "classify-qlora" } else { "classify-lora" };
         match VramGuard::acquire(budget_mb, task_label) {
             Ok(guard) => {
                 eprintln!(
@@ -1314,7 +1350,8 @@ impl ClassifyPipeline {
         model_config: &TransformerConfig,
         classify_config: &ClassifyConfig,
         lora_layers: &[LoRALayer],
-    ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>, Option<CudaBlockScratch>, Option<VramGuard>) {
+    ) -> (Option<CudaTrainer>, Option<Vec<CudaBlock>>, Option<CudaBlockScratch>, Option<VramGuard>)
+    {
         if !cuda_training_available() {
             eprintln!("[CUDA] No CUDA runtime detected — using CPU");
             return (None, None, None, None);
@@ -1413,12 +1450,20 @@ impl ClassifyPipeline {
                     Arc::clone(&ctx),
                     input_norm,
                     post_attn_norm,
-                    w_q, w_k, w_v, w_o,
-                    w_gate, w_up, w_down,
+                    w_q,
+                    w_k,
+                    w_v,
+                    w_o,
+                    w_gate,
+                    w_up,
+                    w_down,
                     max_seq_len,
-                    q_lora, v_lora,
-                    lora_scale, lora_rank,
-                ).map(CudaBlock::Nf4)
+                    q_lora,
+                    v_lora,
+                    lora_scale,
+                    lora_rank,
+                )
+                .map(CudaBlock::Nf4)
             } else {
                 CudaTransformerBlock::new(
                     model_config,
@@ -1426,10 +1471,16 @@ impl ClassifyPipeline {
                     Arc::clone(&ctx),
                     input_norm,
                     post_attn_norm,
-                    w_q, w_k, w_v, w_o,
-                    w_gate, w_up, w_down,
+                    w_q,
+                    w_k,
+                    w_v,
+                    w_o,
+                    w_gate,
+                    w_up,
+                    w_down,
                     max_seq_len,
-                ).map(CudaBlock::Fp32)
+                )
+                .map(CudaBlock::Fp32)
             };
 
             match result {
@@ -1454,7 +1505,8 @@ impl ClassifyPipeline {
 
         // C-SCRATCH-001: Allocate one shared scratch for NF4 (saves 7.5 GB for Qwen3-4B)
         let shared_scratch = if quantize_nf4 {
-            match CudaBlockScratch::new(model_config, max_seq_len, &ctx, classify_config.lora_rank) {
+            match CudaBlockScratch::new(model_config, max_seq_len, &ctx, classify_config.lora_rank)
+            {
                 Ok(s) => Some(s),
                 Err(e) => {
                     eprintln!("[CUDA] Failed to allocate shared scratch: {e} — using CPU");
@@ -1568,7 +1620,9 @@ impl ClassifyPipeline {
                 match block.init_optimizer_state() {
                     Ok(state) => optimizer_states.push(state),
                     Err(e) => {
-                        eprintln!("[CUDA] GPU training init failed (optimizer state layer {i}): {e}");
+                        eprintln!(
+                            "[CUDA] GPU training init failed (optimizer state layer {i}): {e}"
+                        );
                         return None;
                     }
                 }
@@ -1581,7 +1635,10 @@ impl ClassifyPipeline {
             if is_nf4 {
                 " (NF4 QLoRA mode — LoRA optimizer separate)".to_string()
             } else {
-                format!(" ({:.1} MB optimizer state)", (optimizer_states.len() * 18 * buf_size * 4) as f64 / 1e6)
+                format!(
+                    " ({:.1} MB optimizer state)",
+                    (optimizer_states.len() * 18 * buf_size * 4) as f64 / 1e6
+                )
             }
         );
 
@@ -1632,7 +1689,11 @@ impl ClassifyPipeline {
         cuda_blocks: &Option<Vec<CudaBlock>>,
         model_config: &TransformerConfig,
         classify_config: &ClassifyConfig,
-    ) -> (Option<CudaLoraGradWorkspace>, Option<Vec<GpuLoraOptimizerState>>, Option<Vec<CudaLoraGradWorkspace>>) {
+    ) -> (
+        Option<CudaLoraGradWorkspace>,
+        Option<Vec<GpuLoraOptimizerState>>,
+        Option<Vec<CudaLoraGradWorkspace>>,
+    ) {
         let trainer = match cuda_trainer.as_ref() {
             Some(t) => t,
             None => return (None, None, None),
@@ -1644,7 +1705,9 @@ impl ClassifyPipeline {
 
         // Allocate shared LoRA gradient workspace
         let grad_ws = match CudaLoraGradWorkspace::new(
-            trainer.context(), model_config, classify_config.lora_rank,
+            trainer.context(),
+            model_config,
+            classify_config.lora_rank,
         ) {
             Ok(ws) => ws,
             Err(e) => {
@@ -1669,7 +1732,9 @@ impl ClassifyPipeline {
         let mut grad_accum = Vec::with_capacity(blocks.len());
         for i in 0..blocks.len() {
             match CudaLoraGradWorkspace::new(
-                trainer.context(), model_config, classify_config.lora_rank,
+                trainer.context(),
+                model_config,
+                classify_config.lora_rank,
             ) {
                 Ok(ws) => grad_accum.push(ws),
                 Err(e) => {
@@ -1758,9 +1823,7 @@ impl ClassifyPipeline {
             // SAFETY: Both buffers are valid GPU allocations with matching sizes.
             // The copy completes before block.forward() reads from input.
             unsafe {
-                training_state.layer_inputs[i]
-                    .copy_from_buffer_async(input, stream)
-                    .ok()?;
+                training_state.layer_inputs[i].copy_from_buffer_async(input, stream).ok()?;
             }
 
             if let Err(e) = block.forward(input, output, seq_len, stream, shared_scratch.as_mut()) {
@@ -1771,15 +1834,17 @@ impl ClassifyPipeline {
         }
         // After loop: the buffer indicated by input_is_a holds the final output
         let final_output = unsafe {
-            if input_is_a { &*scratch_a_ptr } else { &*scratch_b_ptr }
+            if input_is_a {
+                &*scratch_a_ptr
+            } else {
+                &*scratch_b_ptr
+            }
         };
 
         // Save blocks output for final norm backward
         // SAFETY: Both buffers valid, copy completes before any read.
         unsafe {
-            training_state.blocks_output
-                .copy_from_buffer_async(final_output, stream)
-                .ok()?;
+            training_state.blocks_output.copy_from_buffer_async(final_output, stream).ok()?;
         }
 
         // Sync and download for CPU classifier path
@@ -1813,11 +1878,7 @@ impl ClassifyPipeline {
     /// - **Invariant**: Zero GPU memory allocation during backward; all buffers preallocated
     #[cfg(feature = "cuda")]
     #[allow(unsafe_code)]
-    fn backward_gpu_blocks(
-        &mut self,
-        grad_logits: &[f32],
-        seq_len: usize,
-    ) -> Option<()> {
+    fn backward_gpu_blocks(&mut self, grad_logits: &[f32], seq_len: usize) -> Option<()> {
         let grad_ws = self.cuda_grad_workspace.as_mut()?;
         let trainer = self.cuda_trainer.as_ref()?;
         let hidden_size = self.model.config.hidden_size;
@@ -1847,9 +1908,10 @@ impl ClassifyPipeline {
 
         // Step 3: Upload gradient to pre-allocated GPU buffer (KAIZEN-045)
         let stream = trainer.stream();
-        training_state.grad_upload_buf.copy_from_host_at(
-            &training_state.backward_cpu_staging[..seq_len * hidden_size], 0
-        ).ok()?;
+        training_state
+            .grad_upload_buf
+            .copy_from_host_at(&training_state.backward_cpu_staging[..seq_len * hidden_size], 0)
+            .ok()?;
 
         let blocks = self.cuda_blocks.as_mut()?;
 
@@ -1866,7 +1928,8 @@ impl ClassifyPipeline {
             hidden_size as u32,
             1e-5_f32,
             stream,
-        ).ok()?;
+        )
+        .ok()?;
 
         // Step 5: Backward through blocks in reverse
         // grad_buf_a has the gradient w.r.t. blocks_output (= grad for last block's output)
@@ -1892,14 +1955,16 @@ impl ClassifyPipeline {
                 }
             };
 
-            blocks[layer_idx].backward(
-                &training_state.layer_inputs[layer_idx],
-                grad_output,
-                grad_input,
-                seq_len,
-                stream,
-                grad_ws,
-            ).ok()?;
+            blocks[layer_idx]
+                .backward(
+                    &training_state.layer_inputs[layer_idx],
+                    grad_output,
+                    grad_input,
+                    seq_len,
+                    stream,
+                    grad_ws,
+                )
+                .ok()?;
 
             grad_output_is_a = !grad_output_is_a;
         }
@@ -1928,16 +1993,17 @@ impl ClassifyPipeline {
         training_state.step += 1;
         let step = training_state.step;
 
-        for (block, opt_state) in blocks.iter_mut().zip(training_state.optimizer_states.iter_mut()) {
-            block.optimizer_step(
-                opt_state, step, lr,
-                0.9,    // beta1
-                0.999,  // beta2
-                1e-8,   // eps
-                0.01,   // weight_decay
-                stream,
-                grad_ws,
-            ).ok()?;
+        for (block, opt_state) in blocks.iter_mut().zip(training_state.optimizer_states.iter_mut())
+        {
+            block
+                .optimizer_step(
+                    opt_state, step, lr, 0.9,   // beta1
+                    0.999, // beta2
+                    1e-8,  // eps
+                    0.01,  // weight_decay
+                    stream, grad_ws,
+                )
+                .ok()?;
         }
 
         // Sync to ensure all optimizer kernels completed
@@ -1961,11 +2027,7 @@ impl ClassifyPipeline {
     /// - **Invariant**: Zero GPU memory allocation during backward
     #[cfg(feature = "cuda")]
     #[allow(unsafe_code)]
-    fn backward_nf4_gpu_blocks(
-        &mut self,
-        grad_logits: &[f32],
-        seq_len: usize,
-    ) -> Option<()> {
+    fn backward_nf4_gpu_blocks(&mut self, grad_logits: &[f32], seq_len: usize) -> Option<()> {
         use crate::transformer::cuda_block::cuda_add_inplace;
 
         let trainer = self.cuda_trainer.as_ref()?;
@@ -1995,9 +2057,10 @@ impl ClassifyPipeline {
 
         // Step 3: Upload gradient to pre-allocated GPU buffer (KAIZEN-045)
         let stream = trainer.stream();
-        training_state.grad_upload_buf.copy_from_host_at(
-            &training_state.backward_cpu_staging[..seq_len * hidden_size], 0
-        ).ok()?;
+        training_state
+            .grad_upload_buf
+            .copy_from_host_at(&training_state.backward_cpu_staging[..seq_len * hidden_size], 0)
+            .ok()?;
 
         let blocks = self.cuda_blocks.as_mut()?;
         let shared_scratch = self.shared_scratch.as_mut()?;
@@ -2015,7 +2078,8 @@ impl ClassifyPipeline {
             hidden_size as u32,
             1e-5_f32,
             stream,
-        ).ok()?;
+        )
+        .ok()?;
 
         // Step 5: Backward through blocks in reverse, accumulate gradients (KAIZEN-014)
         let num_layers = blocks.len();
@@ -2040,26 +2104,64 @@ impl ClassifyPipeline {
 
             // NF4 backward: activation checkpointing + LoRA gradient computation
             // SAFETY: output_scratch_ptr points to a disjoint field of training_state.
-            blocks[layer_idx].backward_nf4(
-                &training_state.layer_inputs[layer_idx],
-                grad_output,
-                grad_input,
-                unsafe { &mut *output_scratch_ptr },
-                seq_len,
-                stream,
-                shared_scratch,
-                grad_lora,
-            ).ok()?;
+            blocks[layer_idx]
+                .backward_nf4(
+                    &training_state.layer_inputs[layer_idx],
+                    grad_output,
+                    grad_input,
+                    unsafe { &mut *output_scratch_ptr },
+                    seq_len,
+                    stream,
+                    shared_scratch,
+                    grad_lora,
+                )
+                .ok()?;
 
             // KAIZEN-014: Accumulate gradients into per-layer accumulators
             // (grad_lora workspace is shared — must consume before next layer overwrites)
             let accum = &mut grad_accum[layer_idx];
-            cuda_add_inplace(&mut accum.grad_lora_a_q, &grad_lora.grad_lora_a_q, grad_lora.grad_lora_a_q.len(), stream).ok()?;
-            cuda_add_inplace(&mut accum.grad_lora_b_q, &grad_lora.grad_lora_b_q, grad_lora.grad_lora_b_q.len(), stream).ok()?;
-            cuda_add_inplace(&mut accum.grad_lora_a_v, &grad_lora.grad_lora_a_v, grad_lora.grad_lora_a_v.len(), stream).ok()?;
-            cuda_add_inplace(&mut accum.grad_lora_b_v, &grad_lora.grad_lora_b_v, grad_lora.grad_lora_b_v.len(), stream).ok()?;
-            cuda_add_inplace(&mut accum.grad_input_norm, &grad_lora.grad_input_norm, grad_lora.grad_input_norm.len(), stream).ok()?;
-            cuda_add_inplace(&mut accum.grad_post_attn_norm, &grad_lora.grad_post_attn_norm, grad_lora.grad_post_attn_norm.len(), stream).ok()?;
+            cuda_add_inplace(
+                &mut accum.grad_lora_a_q,
+                &grad_lora.grad_lora_a_q,
+                grad_lora.grad_lora_a_q.len(),
+                stream,
+            )
+            .ok()?;
+            cuda_add_inplace(
+                &mut accum.grad_lora_b_q,
+                &grad_lora.grad_lora_b_q,
+                grad_lora.grad_lora_b_q.len(),
+                stream,
+            )
+            .ok()?;
+            cuda_add_inplace(
+                &mut accum.grad_lora_a_v,
+                &grad_lora.grad_lora_a_v,
+                grad_lora.grad_lora_a_v.len(),
+                stream,
+            )
+            .ok()?;
+            cuda_add_inplace(
+                &mut accum.grad_lora_b_v,
+                &grad_lora.grad_lora_b_v,
+                grad_lora.grad_lora_b_v.len(),
+                stream,
+            )
+            .ok()?;
+            cuda_add_inplace(
+                &mut accum.grad_input_norm,
+                &grad_lora.grad_input_norm,
+                grad_lora.grad_input_norm.len(),
+                stream,
+            )
+            .ok()?;
+            cuda_add_inplace(
+                &mut accum.grad_post_attn_norm,
+                &grad_lora.grad_post_attn_norm,
+                grad_lora.grad_post_attn_norm.len(),
+                stream,
+            )
+            .ok()?;
 
             grad_output_is_a = !grad_output_is_a;
         }
@@ -2096,20 +2198,31 @@ impl ClassifyPipeline {
         // KAIZEN-043: Pre-allocate a single zero buffer sized to the largest
         // accumulator. Reuse via slicing instead of allocating vec![0.0; len]
         // per buffer per layer (was: 216 allocations/batch for 36 layers × 6 bufs).
-        let max_accum_len = grad_accum.iter().map(|g| {
-            g.grad_lora_a_q.len()
-                .max(g.grad_lora_b_q.len())
-                .max(g.grad_lora_a_v.len())
-                .max(g.grad_lora_b_v.len())
-                .max(g.grad_input_norm.len())
-                .max(g.grad_post_attn_norm.len())
-        }).max().unwrap_or(0);
+        let max_accum_len = grad_accum
+            .iter()
+            .map(|g| {
+                g.grad_lora_a_q
+                    .len()
+                    .max(g.grad_lora_b_q.len())
+                    .max(g.grad_lora_a_v.len())
+                    .max(g.grad_lora_b_v.len())
+                    .max(g.grad_input_norm.len())
+                    .max(g.grad_post_attn_norm.len())
+            })
+            .max()
+            .unwrap_or(0);
         let zeros = vec![0.0f32; max_accum_len];
 
         for layer_idx in 0..blocks.len() {
             let _ = blocks[layer_idx].lora_optimizer_step(
                 &mut opt_states[layer_idx],
-                step, lr, 0.9, 0.999, 1e-8, 0.01, stream,
+                step,
+                lr,
+                0.9,
+                0.999,
+                1e-8,
+                0.01,
+                stream,
                 &grad_accum[layer_idx],
             );
 
@@ -2201,11 +2314,13 @@ impl ClassifyPipeline {
 
                 if q_lora_idx < self.lora_layers.len() {
                     *self.lora_layers[q_lora_idx].lora_a_mut() = Tensor::from_vec(a_q, true);
-                    *self.lora_layers[q_lora_idx].lora_b_mut() = Tensor::from_vec(b_q_unscaled, true);
+                    *self.lora_layers[q_lora_idx].lora_b_mut() =
+                        Tensor::from_vec(b_q_unscaled, true);
                 }
                 if v_lora_idx < self.lora_layers.len() {
                     *self.lora_layers[v_lora_idx].lora_a_mut() = Tensor::from_vec(a_v, true);
-                    *self.lora_layers[v_lora_idx].lora_b_mut() = Tensor::from_vec(b_v_unscaled, true);
+                    *self.lora_layers[v_lora_idx].lora_b_mut() =
+                        Tensor::from_vec(b_v_unscaled, true);
                 }
             }
         }
@@ -2269,7 +2384,10 @@ impl ClassifyPipeline {
             };
             let mut training = self.gpu_training.take();
             let result = Self::forward_hidden_cuda_training(
-                &self.model, token_ids, trainer, blocks,
+                &self.model,
+                token_ids,
+                trainer,
+                blocks,
                 training.as_mut().expect("gpu_training was Some"),
                 &mut self.shared_scratch,
             );
@@ -2286,7 +2404,13 @@ impl ClassifyPipeline {
             (Some(ref t), Some(ref mut b)) => (t, b),
             _ => return None,
         };
-        match Self::forward_hidden_cuda_impl(&self.model, token_ids, trainer, blocks, &mut self.shared_scratch) {
+        match Self::forward_hidden_cuda_impl(
+            &self.model,
+            token_ids,
+            trainer,
+            blocks,
+            &mut self.shared_scratch,
+        ) {
             Some(tensor) => Some(tensor),
             None => {
                 self.cuda_nan_count += 1;
@@ -2335,7 +2459,9 @@ impl ClassifyPipeline {
         // Step 3: Run through CUDA transformer blocks
         let stream = trainer.stream();
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut()) {
+            if let Err(e) =
+                block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut())
+            {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
@@ -2395,7 +2521,9 @@ impl ClassifyPipeline {
     pub fn gpu_total_memory(&self) -> Option<usize> {
         #[cfg(feature = "cuda")]
         {
-            self.cuda_trainer.as_ref().map(crate::autograd::cuda_training::CudaTrainer::total_memory)
+            self.cuda_trainer
+                .as_ref()
+                .map(crate::autograd::cuda_training::CudaTrainer::total_memory)
         }
         #[cfg(not(feature = "cuda"))]
         {
@@ -2525,9 +2653,13 @@ impl ClassifyPipeline {
         // KAIZEN-011: Include LoRA in CPU optimizer when NOT on CUDA
         let has_cuda_training = {
             #[cfg(feature = "cuda")]
-            { self.gpu_training.is_some() }
+            {
+                self.gpu_training.is_some()
+            }
             #[cfg(not(feature = "cuda"))]
-            { false }
+            {
+                false
+            }
         };
         let mut params: Vec<&mut Tensor> = Vec::new();
         if !self.config.quantize_nf4 || !has_cuda_training {
@@ -2577,7 +2709,8 @@ impl ClassifyPipeline {
         // ── 2. Accumulate gradients over all samples ───────────────────
         // KAIZEN-008: try batched wgpu forward (uploads FFN weights ONCE per layer)
         #[cfg(feature = "gpu")]
-        let (total_loss, correct) = self.try_train_batch_wgpu(samples)
+        let (total_loss, correct) = self
+            .try_train_batch_wgpu(samples)
             .unwrap_or_else(|| self.train_batch_per_sample(samples));
 
         #[cfg(not(feature = "gpu"))]
@@ -2620,9 +2753,13 @@ impl ClassifyPipeline {
         // fp32 mode: LoRA + classifier head always on CPU
         let has_cuda_training = {
             #[cfg(feature = "cuda")]
-            { self.gpu_training.is_some() }
+            {
+                self.gpu_training.is_some()
+            }
             #[cfg(not(feature = "cuda"))]
-            { false }
+            {
+                false
+            }
         };
         let mut params: Vec<&mut Tensor> = Vec::new();
         if !self.config.quantize_nf4 || !has_cuda_training {
@@ -2672,22 +2809,21 @@ impl ClassifyPipeline {
             return None;
         }
 
-        let batch_token_ids: Vec<Vec<u32>> = samples
-            .iter()
-            .map(|s| self.tokenize(&s.input))
-            .collect();
+        let batch_token_ids: Vec<Vec<u32>> =
+            samples.iter().map(|s| self.tokenize(&s.input)).collect();
 
         // KAIZEN-010: Pass LoRA layers so gradients flow through Q/V adapters
-        let lora_ref = if self.lora_layers.is_empty() {
-            None
-        } else {
-            Some(self.lora_layers.as_slice())
-        };
+        let lora_ref =
+            if self.lora_layers.is_empty() { None } else { Some(self.lora_layers.as_slice()) };
 
-        let hiddens = self.wgpu_forward_pass.as_ref()
+        let hiddens = self
+            .wgpu_forward_pass
+            .as_ref()
             .expect("checked is_none above")
             .forward_hidden_batch(&self.model, &batch_token_ids, lora_ref)
-            .map_err(|e| eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}"))
+            .map_err(|e| {
+                eprintln!("[wgpu] Batched forward failed, falling back to per-sample: {e}")
+            })
             .ok()?;
 
         let mut total_loss = 0.0f32;
@@ -2817,9 +2953,13 @@ impl ClassifyPipeline {
         let orig_seq_len = token_ids.len().min(self.config.max_seq_len);
         let has_gpu_training = {
             #[cfg(feature = "cuda")]
-            { self.gpu_training.is_some() }
+            {
+                self.gpu_training.is_some()
+            }
             #[cfg(not(feature = "cuda"))]
-            { false }
+            {
+                false
+            }
         };
         // KAIZEN-035: Avoid token_ids.to_vec() on CPU path — borrow directly.
         let hidden = if has_gpu_training {
@@ -3051,9 +3191,13 @@ impl ClassifyPipeline {
         let orig_seq_len = token_ids.len().min(self.config.max_seq_len);
         let has_gpu_training = {
             #[cfg(feature = "cuda")]
-            { self.gpu_training.is_some() }
+            {
+                self.gpu_training.is_some()
+            }
             #[cfg(not(feature = "cuda"))]
-            { false }
+            {
+                false
+            }
         };
         // KAIZEN-035: Avoid token_ids.to_vec() on CPU path — borrow directly.
         let hidden = if has_gpu_training {
@@ -3387,34 +3531,34 @@ impl ClassifyPipeline {
         for lora in &self.lora_layers {
             let a_len = lora.lora_a().data().len();
             if offset + a_len <= averaged_grads.len() {
-                lora.lora_a().set_grad(
-                    ndarray::Array1::from_vec(averaged_grads[offset..offset + a_len].to_vec()),
-                );
+                lora.lora_a().set_grad(ndarray::Array1::from_vec(
+                    averaged_grads[offset..offset + a_len].to_vec(),
+                ));
             }
             offset += a_len;
 
             let b_len = lora.lora_b().data().len();
             if offset + b_len <= averaged_grads.len() {
-                lora.lora_b().set_grad(
-                    ndarray::Array1::from_vec(averaged_grads[offset..offset + b_len].to_vec()),
-                );
+                lora.lora_b().set_grad(ndarray::Array1::from_vec(
+                    averaged_grads[offset..offset + b_len].to_vec(),
+                ));
             }
             offset += b_len;
         }
 
         let w_len = self.classifier.weight.data().len();
         if offset + w_len <= averaged_grads.len() {
-            self.classifier.weight.set_grad(
-                ndarray::Array1::from_vec(averaged_grads[offset..offset + w_len].to_vec()),
-            );
+            self.classifier.weight.set_grad(ndarray::Array1::from_vec(
+                averaged_grads[offset..offset + w_len].to_vec(),
+            ));
         }
         offset += w_len;
 
         let b_len = self.classifier.bias.data().len();
         if offset + b_len <= averaged_grads.len() {
-            self.classifier.bias.set_grad(
-                ndarray::Array1::from_vec(averaged_grads[offset..offset + b_len].to_vec()),
-            );
+            self.classifier.bias.set_grad(ndarray::Array1::from_vec(
+                averaged_grads[offset..offset + b_len].to_vec(),
+            ));
         }
 
         // Now run optimizer step with the averaged gradients

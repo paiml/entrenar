@@ -28,11 +28,7 @@ pub struct MpsConfig {
 
 impl Default for MpsConfig {
     fn default() -> Self {
-        Self {
-            thread_percentage: 50,
-            pinned_mem_limit_mb: None,
-            checkpoint_every_steps: 100,
-        }
+        Self { thread_percentage: 50, pinned_mem_limit_mb: None, checkpoint_every_steps: 100 }
     }
 }
 
@@ -44,10 +40,7 @@ impl MpsConfig {
     #[must_use]
     pub fn with_share(thread_pct: u32) -> Self {
         assert!(thread_pct > 0 && thread_pct <= 100, "thread_pct must be 1-100");
-        Self {
-            thread_percentage: thread_pct,
-            ..Default::default()
-        }
+        Self { thread_percentage: thread_pct, ..Default::default() }
     }
 
     /// Set pinned device memory limit (MB) to prevent OOM cascades.
@@ -94,7 +87,10 @@ pub fn print_mps_warning(config: &MpsConfig) {
     if let Some(limit) = config.pinned_mem_limit_mb {
         eprintln!("  Pinned memory limit: {limit} MB");
     }
-    eprintln!("  Checkpoint frequency: every {} steps (blast radius limit)", config.checkpoint_every_steps);
+    eprintln!(
+        "  Checkpoint frequency: every {} steps (blast radius limit)",
+        config.checkpoint_every_steps
+    );
     eprintln!("  Use --experimental-mps only if you understand the risks.");
     eprintln!();
 }
@@ -123,9 +119,8 @@ pub fn validate_mps_config(config: &MpsConfig) -> MpsValidation {
     }
 
     if config.thread_percentage < 10 {
-        errors.push(
-            "Thread percentage below 10% causes severe performance degradation.".to_string(),
-        );
+        errors
+            .push("Thread percentage below 10% causes severe performance degradation.".to_string());
     }
 
     if config.pinned_mem_limit_mb.is_none() {
@@ -202,7 +197,9 @@ mod tests {
     fn test_setup_mps_env_sets_mem_limit() {
         let config = MpsConfig::with_share(50).with_mem_limit(8000);
         let vars = setup_mps_env(&config);
-        assert!(vars.iter().any(|(k, v)| k == "CUDA_MPS_PINNED_DEVICE_MEM_LIMIT" && v == "0=8000MB"));
+        assert!(vars
+            .iter()
+            .any(|(k, v)| k == "CUDA_MPS_PINNED_DEVICE_MEM_LIMIT" && v == "0=8000MB"));
     }
 
     #[test]

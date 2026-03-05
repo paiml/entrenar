@@ -75,12 +75,7 @@ pub fn place_adapters(
         .nodes
         .iter()
         .enumerate()
-        .map(|(i, _)| {
-            initial_load
-                .get(i)
-                .cloned()
-                .unwrap_or_default()
-        })
+        .map(|(i, _)| initial_load.get(i).cloned().unwrap_or_default())
         .collect();
 
     let mut placements = Vec::new();
@@ -165,10 +160,7 @@ fn node_flops_factor(node: &NodeConfig) -> f64 {
     if node.gpus.is_empty() {
         return 0.01; // CPU-only
     }
-    node.gpus
-        .iter()
-        .map(|g| gpu_flops_factor(&g.gpu_type))
-        .fold(0.0_f64, f64::max)
+    node.gpus.iter().map(|g| gpu_flops_factor(&g.gpu_type)).fold(0.0_f64, f64::max)
 }
 
 #[cfg(test)]
@@ -245,10 +237,7 @@ nodes:
     fn test_score_node_with_load() {
         let cluster = test_cluster();
         let desktop = &cluster.nodes[0];
-        let load = NodeLoad {
-            active_adapters: 1,
-            reserved_vram_mb: 8000,
-        };
+        let load = NodeLoad { active_adapters: 1, reserved_vram_mb: 8000 };
         // free = 20879 - 8000 = 12879
         // score = (12879 / 8000) * 1.0 * (1 / 2) = 0.804
         let score = score_node(desktop, 8000, &load);
@@ -269,11 +258,8 @@ nodes:
     #[test]
     fn test_place_single_adapter() {
         let cluster = test_cluster();
-        let jobs = vec![AdapterJob {
-            adapter_idx: 0,
-            budget_mb: 8000,
-            label: "adapter-0".to_string(),
-        }];
+        let jobs =
+            vec![AdapterJob { adapter_idx: 0, budget_mb: 8000, label: "adapter-0".to_string() }];
         let placements = place_adapters(&cluster, &jobs, &[]);
         assert_eq!(placements.len(), 1);
         assert_eq!(placements[0].node_name, "desktop"); // highest score
@@ -284,11 +270,7 @@ nodes:
     fn test_place_multiple_adapters_greedy() {
         let cluster = test_cluster();
         let jobs: Vec<AdapterJob> = (0..4)
-            .map(|i| AdapterJob {
-                adapter_idx: i,
-                budget_mb: 6000,
-                label: format!("adapter-{i}"),
-            })
+            .map(|i| AdapterJob { adapter_idx: i, budget_mb: 6000, label: format!("adapter-{i}") })
             .collect();
         let placements = place_adapters(&cluster, &jobs, &[]);
 
@@ -336,17 +318,11 @@ nodes:
     #[test]
     fn test_place_with_initial_load() {
         let cluster = test_cluster();
-        let jobs = vec![AdapterJob {
-            adapter_idx: 0,
-            budget_mb: 6000,
-            label: "adapter-0".to_string(),
-        }];
+        let jobs =
+            vec![AdapterJob { adapter_idx: 0, budget_mb: 6000, label: "adapter-0".to_string() }];
         // Desktop already has 3 adapters (full)
         let load = vec![
-            NodeLoad {
-                active_adapters: 3,
-                reserved_vram_mb: 18000,
-            },
+            NodeLoad { active_adapters: 3, reserved_vram_mb: 18000 },
             NodeLoad::default(),
             NodeLoad::default(),
         ];

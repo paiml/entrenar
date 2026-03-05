@@ -127,39 +127,60 @@ pub mod estimators {
 
     /// LinearRegression: OLS linear regression
     #[derive(Debug, Default)]
-    pub struct LinearRegression { pub weights: Vec<f32> }
+    pub struct LinearRegression {
+        pub weights: Vec<f32>,
+    }
 
     /// LogisticRegression: logistic classifier
     #[derive(Debug, Default)]
-    pub struct LogisticRegression { pub weights: Vec<f32> }
+    pub struct LogisticRegression {
+        pub weights: Vec<f32>,
+    }
 
     /// Ridge regression (L2 regularization)
     #[derive(Debug, Default)]
-    pub struct Ridge { pub alpha: f32, pub weights: Vec<f32> }
+    pub struct Ridge {
+        pub alpha: f32,
+        pub weights: Vec<f32>,
+    }
 
     /// Lasso regression (L1 regularization)
     #[derive(Debug, Default)]
-    pub struct Lasso { pub alpha: f32, pub weights: Vec<f32> }
+    pub struct Lasso {
+        pub alpha: f32,
+        pub weights: Vec<f32>,
+    }
 
     /// DecisionTree classifier/regressor
     #[derive(Debug, Default)]
-    pub struct DecisionTree { pub max_depth: usize }
+    pub struct DecisionTree {
+        pub max_depth: usize,
+    }
 
     /// RandomForest ensemble
     #[derive(Debug, Default)]
-    pub struct RandomForest { pub n_trees: usize }
+    pub struct RandomForest {
+        pub n_trees: usize,
+    }
 
     /// GradientBoosting ensemble
     #[derive(Debug, Default)]
-    pub struct GradientBoosting { pub n_estimators: usize, pub learning_rate: f32 }
+    pub struct GradientBoosting {
+        pub n_estimators: usize,
+        pub learning_rate: f32,
+    }
 
     /// SVM: Support Vector Machine
     #[derive(Debug, Default)]
-    pub struct SVM { pub kernel: String }
+    pub struct SVM {
+        pub kernel: String,
+    }
 
     /// KNeighbors: k-Nearest Neighbors
     #[derive(Debug, Default)]
-    pub struct KNeighbors { pub k: usize }
+    pub struct KNeighbors {
+        pub k: usize,
+    }
 
     /// NaiveBayes classifier
     #[derive(Debug, Default)]
@@ -167,17 +188,27 @@ pub mod estimators {
 
     /// KMeans clustering
     #[derive(Debug, Default)]
-    pub struct KMeans { pub k: usize }
+    pub struct KMeans {
+        pub k: usize,
+    }
 
     /// DBSCAN density-based clustering
     #[derive(Debug, Default)]
-    pub struct DBSCAN { pub eps: f32, pub min_points: usize }
+    pub struct DBSCAN {
+        pub eps: f32,
+        pub min_points: usize,
+    }
 
     /// PCA: Principal Component Analysis
     #[derive(Debug, Default)]
-    pub struct PCA { pub n_components: usize }
+    pub struct PCA {
+        pub n_components: usize,
+    }
 
     /// StandardScaler: feature standardization
     #[derive(Debug, Clone, Default)]
-    pub struct StandardScaler { pub mean: Vec<f32>, pub std: Vec<f32> }
+    pub struct StandardScaler {
+        pub mean: Vec<f32>,
+        pub std: Vec<f32>,
+    }
 }

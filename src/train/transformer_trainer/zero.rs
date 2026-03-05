@@ -58,19 +58,10 @@ impl OptimizerShard {
             remainder * (shard_size + 1) + (rank - remainder) * shard_size
         };
 
-        let param_end = if rank < remainder {
-            param_start + shard_size + 1
-        } else {
-            param_start + shard_size
-        };
+        let param_end =
+            if rank < remainder { param_start + shard_size + 1 } else { param_start + shard_size };
 
-        Self {
-            rank,
-            world_size,
-            param_start,
-            param_end,
-            total_params,
-        }
+        Self { rank, world_size, param_start, param_end, total_params }
     }
 
     /// Number of parameters in this shard.
@@ -130,17 +121,9 @@ impl ZeroShardMap {
     /// Non-block components (LM head, final norm, embedding) are assigned
     /// to rank 0 by default since they're relatively small.
     pub fn round_robin(num_blocks: usize, world_size: usize) -> Self {
-        let block_owners: Vec<usize> = (0..num_blocks)
-            .map(|i| i % world_size)
-            .collect();
+        let block_owners: Vec<usize> = (0..num_blocks).map(|i| i % world_size).collect();
 
-        Self {
-            block_owners,
-            lm_head_owner: 0,
-            final_norm_owner: 0,
-            embedding_owner: 0,
-            world_size,
-        }
+        Self { block_owners, lm_head_owner: 0, final_norm_owner: 0, embedding_owner: 0, world_size }
     }
 
     /// Create a shard map distributing blocks in contiguous chunks.
@@ -159,13 +142,7 @@ impl ZeroShardMap {
             }
         }
 
-        Self {
-            block_owners,
-            lm_head_owner: 0,
-            final_norm_owner: 0,
-            embedding_owner: 0,
-            world_size,
-        }
+        Self { block_owners, lm_head_owner: 0, final_norm_owner: 0, embedding_owner: 0, world_size }
     }
 
     /// Get the owning rank for a given block index.

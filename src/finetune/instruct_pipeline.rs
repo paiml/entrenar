@@ -24,19 +24,23 @@ use crate::Tensor;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, pre_warm_lora_backward_kernels};
-#[cfg(feature = "cuda")]
 use crate::autograd::cuda_backward::pre_warm_lora_backward_kernels as pre_warm_backward_cache_kernels;
+#[cfg(feature = "cuda")]
+use crate::autograd::cuda_forward::{
+    gemm_forward, pre_warm_forward_kernels, pre_warm_lora_backward_kernels,
+};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::{fused_causal_cross_entropy_cuda, pre_warm_lora_adamw_kernels};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
 #[cfg(feature = "cuda")]
-use crate::transformer::{CudaBlock, CudaBlockScratch, CudaLoraGradWorkspace, CudaTransformerBlock, GpuLoraOptimizerState};
+use crate::gpu::guard::VramGuard;
+#[cfg(feature = "cuda")]
+use crate::transformer::{
+    CudaBlock, CudaBlockScratch, CudaLoraGradWorkspace, CudaTransformerBlock, GpuLoraOptimizerState,
+};
 #[cfg(feature = "cuda")]
 use std::sync::Arc;
-#[cfg(feature = "cuda")]
-use crate::gpu::guard::VramGuard;
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::GpuBuffer;
 
@@ -197,8 +201,7 @@ impl InstructPipeline {
     /// Create a new pipeline with random weights.
     pub fn new(model_config: &TransformerConfig, instruct_config: InstructConfig) -> Self {
         let model = Transformer::new(model_config);
-        let mut lora_layers =
-            Self::build_lora_layers(&model, model_config, &instruct_config);
+        let mut lora_layers = Self::build_lora_layers(&model, model_config, &instruct_config);
 
         for lora in &mut lora_layers {
             for param in lora.trainable_params() {
@@ -256,8 +259,7 @@ impl InstructPipeline {
         instruct_config: InstructConfig,
     ) -> crate::Result<Self> {
         let model = Transformer::from_safetensors(model_dir, model_config)?;
-        let mut lora_layers =
-            Self::build_lora_layers(&model, model_config, &instruct_config);
+        let mut lora_layers = Self::build_lora_layers(&model, model_config, &instruct_config);
 
         for lora in &mut lora_layers {
             for param in lora.trainable_params() {
@@ -334,8 +336,7 @@ impl InstructPipeline {
         instruct_config: InstructConfig,
     ) -> crate::Result<Self> {
         let model = Transformer::from_apr(apr_path, model_config)?;
-        let mut lora_layers =
-            Self::build_lora_layers(&model, model_config, &instruct_config);
+        let mut lora_layers = Self::build_lora_layers(&model, model_config, &instruct_config);
 
         for lora in &mut lora_layers {
             for param in lora.trainable_params() {
@@ -348,13 +349,11 @@ impl InstructPipeline {
         // Sibling tokenizer: {stem}.tokenizer.json next to the .apr file
         // CONTRACT: Training requires a BPE tokenizer — byte-fallback is not acceptable.
         let tokenizer = {
-            let sibling = apr_path
-                .file_stem()
-                .and_then(|stem| {
-                    apr_path
-                        .parent()
-                        .map(|p| p.join(format!("{}.tokenizer.json", stem.to_str().unwrap_or(""))))
-                });
+            let sibling = apr_path.file_stem().and_then(|stem| {
+                apr_path
+                    .parent()
+                    .map(|p| p.join(format!("{}.tokenizer.json", stem.to_str().unwrap_or(""))))
+            });
 
             match sibling {
                 Some(ref path) if path.exists() => {
@@ -499,27 +498,14 @@ impl InstructPipeline {
     ///
     /// When CUDA NF4 blocks are available, dispatches to GPU forward pass
     /// with CPU loss computation and GPU backward/optimizer.
-    pub fn train_step(
-        &mut self,
-        prompt_ids: &[u32],
-        response_ids: &[u32],
-    ) -> InstructStepResult {
-        let full_ids: Vec<u32> = prompt_ids
-            .iter()
-            .chain(response_ids.iter())
-            .copied()
-            .collect();
+    pub fn train_step(&mut self, prompt_ids: &[u32], response_ids: &[u32]) -> InstructStepResult {
+        let full_ids: Vec<u32> = prompt_ids.iter().chain(response_ids.iter()).copied().collect();
 
         let prompt_len = prompt_ids.len();
         let response_len = response_ids.len();
 
-
         if response_len == 0 || full_ids.len() < 2 {
-            return InstructStepResult {
-                loss: 0.0,
-                num_response_tokens: 0,
-                perplexity: 1.0,
-            };
+            return InstructStepResult { loss: 0.0, num_response_tokens: 0, perplexity: 1.0 };
         }
 
         let full_ids = if full_ids.len() > self.config.max_seq_len {
@@ -551,11 +537,7 @@ impl InstructPipeline {
 
         // 2. Forward pass → logits [seq_len, vocab_size]
         let logits = self.model.forward(&full_ids);
-        let logits_data = logits
-            .data()
-            .as_slice()
-            .expect("contiguous logits")
-            .to_vec();
+        let logits_data = logits.data().as_slice().expect("contiguous logits").to_vec();
 
         // 3. Causal LM loss on response tokens only
         let loss_start = prompt_len.saturating_sub(1);
@@ -563,11 +545,7 @@ impl InstructPipeline {
         let num_loss_tokens = loss_end.saturating_sub(loss_start);
 
         if num_loss_tokens == 0 {
-            return InstructStepResult {
-                loss: 0.0,
-                num_response_tokens: 0,
-                perplexity: 1.0,
-            };
+            return InstructStepResult { loss: 0.0, num_response_tokens: 0, perplexity: 1.0 };
         }
 
         let (avg_loss, grad_logits) =
@@ -618,11 +596,7 @@ impl InstructPipeline {
         let num_loss_tokens = loss_end.saturating_sub(loss_start);
 
         if num_loss_tokens == 0 {
-            return InstructStepResult {
-                loss: 0.0,
-                num_response_tokens: 0,
-                perplexity: 1.0,
-            };
+            return InstructStepResult { loss: 0.0, num_response_tokens: 0, perplexity: 1.0 };
         }
 
         // 1. GPU forward → logits stay GPU-resident in training.logits_buf (KAIZEN-064)
@@ -630,7 +604,14 @@ impl InstructPipeline {
         if !self.forward_logits_gpu_resident(full_ids) {
             // Fallback: GPU forward failed, use CPU path with D2H
             eprintln!("[CUDA] GPU forward failed, falling back to CPU for this step");
-            return self.cuda_train_step_cpu_loss(full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size);
+            return self.cuda_train_step_cpu_loss(
+                full_ids,
+                loss_start,
+                loss_end,
+                num_loss_tokens,
+                seq_len,
+                vocab_size,
+            );
         }
 
         // 2. Fused GPU causal cross-entropy loss + softmax backward (KAIZEN-064)
@@ -638,9 +619,9 @@ impl InstructPipeline {
         //    - CPU softmax computation
         //    - ~296MB grad_logits H2D upload
         //    Prepare shifted targets: position pos predicts full_ids[pos + 1]
-        let targets: Vec<u32> = (0..seq_len).map(|pos| {
-            if pos + 1 < full_ids.len() { full_ids[pos + 1] } else { 0 }
-        }).collect();
+        let targets: Vec<u32> = (0..seq_len)
+            .map(|pos| if pos + 1 < full_ids.len() { full_ids[pos + 1] } else { 0 })
+            .collect();
 
         let scale = 1.0 / num_loss_tokens as f32;
 
@@ -657,7 +638,8 @@ impl InstructPipeline {
                 loss_end as u32,
                 scale,
                 stream,
-            ).ok()
+            )
+            .ok()
         })();
 
         let avg_loss = match avg_loss {
@@ -672,7 +654,14 @@ impl InstructPipeline {
             }
             None => {
                 eprintln!("[CUDA] fused causal cross-entropy failed — falling back to CPU");
-                return self.cuda_train_step_cpu_loss(full_ids, loss_start, loss_end, num_loss_tokens, seq_len, vocab_size);
+                return self.cuda_train_step_cpu_loss(
+                    full_ids,
+                    loss_start,
+                    loss_end,
+                    num_loss_tokens,
+                    seq_len,
+                    vocab_size,
+                );
             }
         };
 
@@ -695,9 +684,11 @@ impl InstructPipeline {
                 vocab_size as u32,
                 hidden_size as u32,
                 stream,
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 eprintln!("[CUDA] lm_head backward GEMM failed: {e}");
-            }).ok()?;
+            })
+            .ok()?;
             // KAIZEN-065: No stream.synchronize() needed — GEMM and rms_norm_backward
             // are on the same CUDA stream, so ordering is guaranteed.
             // No trainer.download() needed — grad_hidden_buf is read directly by
@@ -765,9 +756,13 @@ impl InstructPipeline {
             let trainer = self.cuda_trainer.as_ref()?;
             let stream = trainer.stream();
             let training = self.gpu_training.as_mut()?;
-            training.logits_buf.copy_from_host_at(&grad_logits, 0).map_err(|e| {
-                eprintln!("[CUDA] lm_head backward: grad_logits upload failed: {e}");
-            }).ok()?;
+            training
+                .logits_buf
+                .copy_from_host_at(&grad_logits, 0)
+                .map_err(|e| {
+                    eprintln!("[CUDA] lm_head backward: grad_logits upload failed: {e}");
+                })
+                .ok()?;
             // KAIZEN-068: embed_original is GPU-resident — no per-step H2D upload.
             gemm_forward(
                 &training.logits_buf,
@@ -777,9 +772,11 @@ impl InstructPipeline {
                 vocab_size as u32,
                 hidden_size as u32,
                 stream,
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 eprintln!("[CUDA] lm_head backward GEMM failed: {e}");
-            }).ok()?;
+            })
+            .ok()?;
             stream.synchronize().ok()?;
             let full_grad = trainer.download(&training.grad_hidden_buf).ok()?;
             Some(full_grad[..seq_len * hidden_size].to_vec())
@@ -816,14 +813,9 @@ impl InstructPipeline {
         let mut total_loss = 0.0f32;
         let mut total_response_tokens = 0usize;
 
-        for (prompt_ids, response_ids) in
-            prompt_ids_batch.iter().zip(response_ids_batch.iter())
-        {
-            let full_ids: Vec<u32> = prompt_ids
-                .iter()
-                .chain(response_ids.iter())
-                .copied()
-                .collect();
+        for (prompt_ids, response_ids) in prompt_ids_batch.iter().zip(response_ids_batch.iter()) {
+            let full_ids: Vec<u32> =
+                prompt_ids.iter().chain(response_ids.iter()).copied().collect();
 
             let prompt_len = prompt_ids.len();
             if response_ids.is_empty() || full_ids.len() < 2 {
@@ -840,11 +832,7 @@ impl InstructPipeline {
             let prompt_len = prompt_len.min(seq_len);
 
             let logits = self.model.forward(&full_ids);
-            let logits_data = logits
-                .data()
-                .as_slice()
-                .expect("contiguous logits")
-                .to_vec();
+            let logits_data = logits.data().as_slice().expect("contiguous logits").to_vec();
 
             let loss_start = prompt_len.saturating_sub(1);
             let loss_end = seq_len - 1;
@@ -862,11 +850,8 @@ impl InstructPipeline {
             total_response_tokens += num_loss_tokens;
         }
 
-        let avg_loss = if total_response_tokens > 0 {
-            total_loss / total_response_tokens as f32
-        } else {
-            0.0
-        };
+        let avg_loss =
+            if total_response_tokens > 0 { total_loss / total_response_tokens as f32 } else { 0.0 };
 
         InstructBatchResult {
             avg_loss,
@@ -925,11 +910,7 @@ impl InstructPipeline {
             grad_row[target] -= inv_n;
         }
 
-        let avg_loss = if num_loss_tokens > 0 {
-            total_loss / num_loss_tokens as f32
-        } else {
-            0.0
-        };
+        let avg_loss = if num_loss_tokens > 0 { total_loss / num_loss_tokens as f32 } else { 0.0 };
 
         (avg_loss, grad_logits)
     }
@@ -938,7 +919,9 @@ impl InstructPipeline {
     #[must_use]
     pub fn num_trainable_parameters(&self) -> usize {
         // LoRA layers store weight + lora_a + lora_b; we count lora_a + lora_b
-        self.lora_layers.len() * 2 * self.config.lora_rank
+        self.lora_layers.len()
+            * 2
+            * self.config.lora_rank
             * (self.lora_layers.first().map_or(0, |_| {
                 // Approximate: each LoRA pair has rank * (rows + cols) params
                 // This is a rough estimate since layers may differ in size
@@ -991,14 +974,12 @@ impl InstructPipeline {
                 let b_v_unscaled: Vec<f32> = b_v.iter().map(|&v| v * inv_scale).collect();
 
                 if q_lora_idx < self.lora_layers.len() {
-                    *self.lora_layers[q_lora_idx].lora_a_mut() =
-                        crate::Tensor::from_vec(a_q, true);
+                    *self.lora_layers[q_lora_idx].lora_a_mut() = crate::Tensor::from_vec(a_q, true);
                     *self.lora_layers[q_lora_idx].lora_b_mut() =
                         crate::Tensor::from_vec(b_q_unscaled, true);
                 }
                 if v_lora_idx < self.lora_layers.len() {
-                    *self.lora_layers[v_lora_idx].lora_a_mut() =
-                        crate::Tensor::from_vec(a_v, true);
+                    *self.lora_layers[v_lora_idx].lora_a_mut() = crate::Tensor::from_vec(a_v, true);
                     *self.lora_layers[v_lora_idx].lora_b_mut() =
                         crate::Tensor::from_vec(b_v_unscaled, true);
                 }
@@ -1018,11 +999,7 @@ impl InstructPipeline {
     fn init_cuda(&mut self, model_config: &TransformerConfig) {
         // GPU-SHARE-002: Acquire VRAM reservation before allocating
         let budget_mb = Self::estimate_vram_mb(model_config, &self.config);
-        let task_label = if self.config.quantize_nf4 {
-            "instruct-qlora"
-        } else {
-            "instruct-lora"
-        };
+        let task_label = if self.config.quantize_nf4 { "instruct-qlora" } else { "instruct-lora" };
         match VramGuard::acquire(budget_mb, task_label) {
             Ok(guard) => {
                 eprintln!(
@@ -1084,13 +1061,13 @@ impl InstructPipeline {
     fn estimate_vram_mb(model_config: &TransformerConfig, config: &InstructConfig) -> usize {
         if config.quantize_nf4 {
             // NF4 QLoRA: weights at 4-bit (~0.5 bytes/param) + FP32 scratch + overhead
-            let weight_elements = model_config.per_layer_weight_elements()
-                * model_config.num_hidden_layers;
+            let weight_elements =
+                model_config.per_layer_weight_elements() * model_config.num_hidden_layers;
             // NF4 weights: 0.5 bytes/param, LoRA adapters in FP16: ~2% of weights
             let weight_mb = weight_elements / (2 * 1024 * 1024);
             // Scratch buffers scale with seq_len * hidden_size
-            let scratch_mb = (config.max_seq_len * model_config.hidden_size * 4 * 10)
-                / (1024 * 1024);
+            let scratch_mb =
+                (config.max_seq_len * model_config.hidden_size * 4 * 10) / (1024 * 1024);
             // CUDA context + kernel cache + misc overhead
             let overhead_mb = 512;
             weight_mb + scratch_mb + overhead_mb
@@ -1149,7 +1126,9 @@ impl InstructPipeline {
 
         let quantize_nf4 = config.quantize_nf4;
         if quantize_nf4 {
-            eprintln!("[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)");
+            eprintln!(
+                "[CUDA] NF4 quantization enabled — frozen weights will be 4-bit (~8x compression)"
+            );
         }
 
         // C-PREWARM-001: Pre-warm ALL training kernels BEFORE block upload.
@@ -1255,12 +1234,20 @@ impl InstructPipeline {
                     Arc::clone(&ctx),
                     input_norm,
                     post_attn_norm,
-                    w_q, w_k, w_v, w_o,
-                    w_gate, w_up, w_down,
+                    w_q,
+                    w_k,
+                    w_v,
+                    w_o,
+                    w_gate,
+                    w_up,
+                    w_down,
                     max_seq_len,
-                    q_lora, v_lora,
-                    lora_scale, lora_rank,
-                ).map(CudaBlock::Nf4)
+                    q_lora,
+                    v_lora,
+                    lora_scale,
+                    lora_rank,
+                )
+                .map(CudaBlock::Nf4)
             } else {
                 CudaTransformerBlock::new(
                     model_config,
@@ -1268,10 +1255,16 @@ impl InstructPipeline {
                     Arc::clone(&ctx),
                     input_norm,
                     post_attn_norm,
-                    w_q, w_k, w_v, w_o,
-                    w_gate, w_up, w_down,
+                    w_q,
+                    w_k,
+                    w_v,
+                    w_o,
+                    w_gate,
+                    w_up,
+                    w_down,
                     max_seq_len,
-                ).map(CudaBlock::Fp32)
+                )
+                .map(CudaBlock::Fp32)
             };
 
             match result {
@@ -1363,9 +1356,12 @@ impl InstructPipeline {
         let embed_data = model.embed_tokens.weight.data();
         let embed_slice = embed_data.as_slice().expect("contiguous embed");
 
-        let embed_original = trainer.upload(embed_slice).map_err(|e| {
-            eprintln!("[CUDA] embed_original upload failed: {e}");
-        }).ok()?;
+        let embed_original = trainer
+            .upload(embed_slice)
+            .map_err(|e| {
+                eprintln!("[CUDA] embed_original upload failed: {e}");
+            })
+            .ok()?;
 
         let mut embed_t = vec![0.0f32; hidden_size * vocab_size];
         for v in 0..vocab_size {
@@ -1373,14 +1369,20 @@ impl InstructPipeline {
                 embed_t[k * vocab_size + v] = embed_slice[v * hidden_size + k];
             }
         }
-        let embed_transposed = trainer.upload(&embed_t).map_err(|e| {
-            eprintln!("[CUDA] embed_transposed upload failed: {e}");
-        }).ok()?;
+        let embed_transposed = trainer
+            .upload(&embed_t)
+            .map_err(|e| {
+                eprintln!("[CUDA] embed_transposed upload failed: {e}");
+            })
+            .ok()?;
 
         // Logits scratch: [max_seq_len, vocab_size]
-        let logits_buf = trainer.zeros(max_seq_len * vocab_size).map_err(|e| {
-            eprintln!("[CUDA] logits_buf alloc failed: {e}");
-        }).ok()?;
+        let logits_buf = trainer
+            .zeros(max_seq_len * vocab_size)
+            .map_err(|e| {
+                eprintln!("[CUDA] logits_buf alloc failed: {e}");
+            })
+            .ok()?;
 
         // Grad-hidden scratch: [max_seq_len, hidden_size]
         let grad_hidden_buf = trainer.zeros(buf_size).ok()?;
@@ -1437,17 +1439,14 @@ impl InstructPipeline {
             None => return (None, None),
         };
 
-        let grad_ws = match CudaLoraGradWorkspace::new(
-            trainer.context(),
-            model_config,
-            config.lora_rank,
-        ) {
-            Ok(ws) => ws,
-            Err(e) => {
-                eprintln!("[CUDA] NF4 LoRA grad workspace alloc failed: {e}");
-                return (None, None);
-            }
-        };
+        let grad_ws =
+            match CudaLoraGradWorkspace::new(trainer.context(), model_config, config.lora_rank) {
+                Ok(ws) => ws,
+                Err(e) => {
+                    eprintln!("[CUDA] NF4 LoRA grad workspace alloc failed: {e}");
+                    return (None, None);
+                }
+            };
 
         let mut opt_states = Vec::with_capacity(blocks.len());
         for (i, block) in blocks.iter().enumerate() {
@@ -1483,14 +1482,13 @@ impl InstructPipeline {
     ) -> Option<()> {
         let seq_len = token_ids.len();
         let hidden_size = model.config.hidden_size;
-        let max_seq_len = model.config.max_position_embeddings.min(
-            training_state.layer_inputs.first().map_or(seq_len, |b| b.len() / hidden_size)
-        );
+        let max_seq_len = model
+            .config
+            .max_position_embeddings
+            .min(training_state.layer_inputs.first().map_or(seq_len, |b| b.len() / hidden_size));
 
         if seq_len > max_seq_len {
-            eprintln!(
-                "[CUDA] seq_len ({seq_len}) > max_seq_len ({max_seq_len}), truncating"
-            );
+            eprintln!("[CUDA] seq_len ({seq_len}) > max_seq_len ({max_seq_len}), truncating");
             return None;
         }
 
@@ -1504,14 +1502,20 @@ impl InstructPipeline {
         // KAIZEN-062: Upload hidden states into pre-allocated GPU buffer.
         // Partial write via copy_from_host_at — padded positions are irrelevant
         // (block.forward uses seq_len for attention masking and GEMM dimensions).
-        training_state.fwd_scratch_a.copy_from_host_at(hidden_slice, 0).map_err(|e| {
-            eprintln!("[CUDA] upload failed: {e}");
-        }).ok()?;
+        training_state
+            .fwd_scratch_a
+            .copy_from_host_at(hidden_slice, 0)
+            .map_err(|e| {
+                eprintln!("[CUDA] upload failed: {e}");
+            })
+            .ok()?;
 
         // KAIZEN-062: Ping-pong with pre-allocated forward scratch buffers.
         // Eliminates 2× cuMemAlloc + 2× cuMemFree per forward pass.
-        let scratch_a_ptr: *mut GpuBuffer<f32> = std::ptr::from_mut(&mut training_state.fwd_scratch_a);
-        let scratch_b_ptr: *mut GpuBuffer<f32> = std::ptr::from_mut(&mut training_state.fwd_scratch_b);
+        let scratch_a_ptr: *mut GpuBuffer<f32> =
+            std::ptr::from_mut(&mut training_state.fwd_scratch_a);
+        let scratch_b_ptr: *mut GpuBuffer<f32> =
+            std::ptr::from_mut(&mut training_state.fwd_scratch_b);
         let mut input_is_a = true;
 
         // Run through CUDA transformer blocks, saving inputs
@@ -1530,18 +1534,23 @@ impl InstructPipeline {
             // Save input for backward pass
             // SAFETY: layer_inputs[i] is a disjoint field from fwd_scratch_a/b.
             unsafe {
-                if let Err(e) = training_state.layer_inputs[i]
-                    .copy_from_buffer_async(gpu_input, stream)
+                if let Err(e) =
+                    training_state.layer_inputs[i].copy_from_buffer_async(gpu_input, stream)
                 {
-                    eprintln!("[CUDA] Layer {i} input save failed: {e} (src={}, dst={})",
-                        gpu_input.len(), training_state.layer_inputs[i].len());
+                    eprintln!(
+                        "[CUDA] Layer {i} input save failed: {e} (src={}, dst={})",
+                        gpu_input.len(),
+                        training_state.layer_inputs[i].len()
+                    );
                     return None;
                 }
             }
 
             // Forward uses actual seq_len for attention masking; padded positions
             // produce zeros that don't affect loss (loss only covers actual tokens).
-            if let Err(e) = block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut()) {
+            if let Err(e) =
+                block.forward(gpu_input, gpu_output, seq_len, stream, shared_scratch.as_mut())
+            {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
@@ -1550,14 +1559,18 @@ impl InstructPipeline {
 
         // After ping-pong: result is in the buffer that would be "input" for the next iteration
         let final_output = unsafe {
-            if input_is_a { &*scratch_a_ptr } else { &*scratch_b_ptr }
+            if input_is_a {
+                &*scratch_a_ptr
+            } else {
+                &*scratch_b_ptr
+            }
         };
 
         // Save blocks output for RMSNorm backward
         // SAFETY: blocks_output is a disjoint field from fwd_scratch_a/b.
         unsafe {
-            if let Err(e) = training_state.blocks_output
-                .copy_from_buffer_async(final_output, stream)
+            if let Err(e) =
+                training_state.blocks_output.copy_from_buffer_async(final_output, stream)
             {
                 eprintln!("[CUDA] blocks_output save failed: {e}");
                 return None;
@@ -1574,9 +1587,11 @@ impl InstructPipeline {
             seq_len as u32,
             hidden_size as u32,
             stream,
-        ).map_err(|e| {
+        )
+        .map_err(|e| {
             eprintln!("[CUDA] GPU RMSNorm forward failed: {e}");
-        }).ok()?;
+        })
+        .ok()?;
 
         Some(())
     }
@@ -1588,11 +1603,7 @@ impl InstructPipeline {
     /// step (grad workspace is shared across layers).
     #[cfg(feature = "cuda")]
     #[allow(unsafe_code)]
-    fn backward_nf4_gpu_blocks(
-        &mut self,
-        grad_final_hidden: &[f32],
-        seq_len: usize,
-    ) -> Option<()> {
+    fn backward_nf4_gpu_blocks(&mut self, grad_final_hidden: &[f32], seq_len: usize) -> Option<()> {
         let hidden_size = self.model.config.hidden_size;
 
         // Upload gradient and run RMSNorm backward in a scope to release borrows
@@ -1616,7 +1627,8 @@ impl InstructPipeline {
                 hidden_size as u32,
                 1e-5_f32,
                 stream,
-            ).ok()?;
+            )
+            .ok()?;
         }
 
         self.backward_nf4_gpu_blocks_loop(seq_len)
@@ -1632,10 +1644,7 @@ impl InstructPipeline {
     /// - 1× Vec<f32> heap allocation (~5MB)
     #[cfg(feature = "cuda")]
     #[allow(unsafe_code)]
-    fn backward_nf4_gpu_blocks_gpu_resident(
-        &mut self,
-        seq_len: usize,
-    ) -> Option<()> {
+    fn backward_nf4_gpu_blocks_gpu_resident(&mut self, seq_len: usize) -> Option<()> {
         let hidden_size = self.model.config.hidden_size;
 
         // KAIZEN-065: grad_hidden_buf already contains the gradient from lm_head backward GEMM.
@@ -1657,7 +1666,8 @@ impl InstructPipeline {
                 hidden_size as u32,
                 1e-5_f32,
                 stream,
-            ).ok()?;
+            )
+            .ok()?;
         }
 
         self.backward_nf4_gpu_blocks_loop(seq_len)
@@ -1667,10 +1677,7 @@ impl InstructPipeline {
     /// GPU-resident backward paths after RMSNorm backward completes.
     #[cfg(feature = "cuda")]
     #[allow(unsafe_code)]
-    fn backward_nf4_gpu_blocks_loop(
-        &mut self,
-        seq_len: usize,
-    ) -> Option<()> {
+    fn backward_nf4_gpu_blocks_loop(&mut self, seq_len: usize) -> Option<()> {
         let trainer = self.cuda_trainer.as_ref()?;
         let lr = self.optimizer.lr();
         let stream = trainer.stream();
@@ -1692,7 +1699,8 @@ impl InstructPipeline {
         let step = self.nf4_lora_step;
 
         // KAIZEN-045: Use pre-allocated output_scratch from training state
-        let output_scratch_ptr: *mut GpuBuffer<f32> = std::ptr::from_mut(&mut training_state.output_scratch);
+        let output_scratch_ptr: *mut GpuBuffer<f32> =
+            std::ptr::from_mut(&mut training_state.output_scratch);
 
         for layer_idx in (0..num_layers).rev() {
             // SAFETY: grad_a_ptr and grad_b_ptr point to disjoint fields.
@@ -1705,29 +1713,33 @@ impl InstructPipeline {
             };
 
             // SAFETY: output_scratch_ptr points to a disjoint field of training_state.
-            blocks[layer_idx].backward_nf4(
-                &training_state.layer_inputs[layer_idx],
-                grad_output,
-                grad_input,
-                unsafe { &mut *output_scratch_ptr },
-                seq_len,
-                stream,
-                shared_scratch,
-                grad_lora,
-            ).ok()?;
+            blocks[layer_idx]
+                .backward_nf4(
+                    &training_state.layer_inputs[layer_idx],
+                    grad_output,
+                    grad_input,
+                    unsafe { &mut *output_scratch_ptr },
+                    seq_len,
+                    stream,
+                    shared_scratch,
+                    grad_lora,
+                )
+                .ok()?;
 
             // Immediately apply LoRA optimizer step
-            blocks[layer_idx].lora_optimizer_step(
-                &mut opt_states[layer_idx],
-                step,
-                lr,
-                0.9,    // beta1
-                0.999,  // beta2
-                1e-8,   // eps
-                0.01,   // weight_decay
-                stream,
-                grad_lora,
-            ).ok()?;
+            blocks[layer_idx]
+                .lora_optimizer_step(
+                    &mut opt_states[layer_idx],
+                    step,
+                    lr,
+                    0.9,   // beta1
+                    0.999, // beta2
+                    1e-8,  // eps
+                    0.01,  // weight_decay
+                    stream,
+                    grad_lora,
+                )
+                .ok()?;
 
             grad_output_is_a = !grad_output_is_a;
         }
@@ -1758,7 +1770,9 @@ impl InstructPipeline {
 
         let stream = trainer.stream();
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
-            if let Err(e) = block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut()) {
+            if let Err(e) =
+                block.forward(&gpu_input, &mut gpu_output, seq_len, stream, shared_scratch.as_mut())
+            {
                 eprintln!("[CUDA] Layer {i} forward failed: {e}");
                 return None;
             }
@@ -1817,13 +1831,21 @@ impl InstructPipeline {
                 _ => return None,
             };
             let normed_hidden = Self::forward_cuda_inference(
-                &self.model, token_ids, trainer, blocks, &mut self.shared_scratch,
+                &self.model,
+                token_ids,
+                trainer,
+                blocks,
+                &mut self.shared_scratch,
             )?;
             // Inference path: upload CPU normed hidden to GPU
             let training = self.gpu_training.as_mut()?;
-            training.lm_head_hidden_buf.copy_from_host_at(&normed_hidden, 0).map_err(|e| {
-                eprintln!("[CUDA] lm_head forward: hidden upload failed: {e}");
-            }).ok()?;
+            training
+                .lm_head_hidden_buf
+                .copy_from_host_at(&normed_hidden, 0)
+                .map_err(|e| {
+                    eprintln!("[CUDA] lm_head forward: hidden upload failed: {e}");
+                })
+                .ok()?;
         }
 
         // GPU GEMM: logits[seq, vocab] = hidden[seq, hidden] @ embed_T[hidden, vocab]
@@ -1850,9 +1872,12 @@ impl InstructPipeline {
         }
 
         // Download only the logits we need (seq_len * vocab_size), not the full max_seq_len buffer
-        let full_logits = trainer.download(&training.logits_buf).map_err(|e| {
-            eprintln!("[CUDA] lm_head forward: logits download failed: {e}");
-        }).ok()?;
+        let full_logits = trainer
+            .download(&training.logits_buf)
+            .map_err(|e| {
+                eprintln!("[CUDA] lm_head forward: logits download failed: {e}");
+            })
+            .ok()?;
 
         Some(full_logits[..seq_len * vocab_size].to_vec())
     }
@@ -1895,7 +1920,11 @@ impl InstructPipeline {
                 _ => return false,
             };
             let normed_hidden = match Self::forward_cuda_inference(
-                &self.model, token_ids, trainer, blocks, &mut self.shared_scratch,
+                &self.model,
+                token_ids,
+                trainer,
+                blocks,
+                &mut self.shared_scratch,
             ) {
                 Some(h) => h,
                 None => return false,
@@ -1926,7 +1955,9 @@ impl InstructPipeline {
             hidden_size as u32,
             vocab_size as u32,
             stream,
-        ).is_err() {
+        )
+        .is_err()
+        {
             eprintln!("[CUDA] lm_head forward GEMM failed");
             return false;
         }
@@ -1996,10 +2027,7 @@ mod tests {
     #[test]
     fn test_instruct_pipeline_new() {
         let model_config = TransformerConfig::tiny();
-        let instruct_config = InstructConfig {
-            lora_rank: 4,
-            ..InstructConfig::default()
-        };
+        let instruct_config = InstructConfig { lora_rank: 4, ..InstructConfig::default() };
         let pipeline = InstructPipeline::new(&model_config, instruct_config);
         // 2 layers * 2 (Q+V) = 4 LoRA layers for tiny config
         assert_eq!(pipeline.lora_layers.len(), 4);
@@ -2008,11 +2036,8 @@ mod tests {
     #[test]
     fn test_instruct_train_step() {
         let model_config = TransformerConfig::tiny();
-        let instruct_config = InstructConfig {
-            lora_rank: 4,
-            max_seq_len: 64,
-            ..InstructConfig::default()
-        };
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
         let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
 
         let prompt_ids: Vec<u32> = (0..10).collect();
@@ -2027,11 +2052,8 @@ mod tests {
     #[test]
     fn test_instruct_evaluate() {
         let model_config = TransformerConfig::tiny();
-        let instruct_config = InstructConfig {
-            lora_rank: 4,
-            max_seq_len: 64,
-            ..InstructConfig::default()
-        };
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
         let pipeline = InstructPipeline::new(&model_config, instruct_config);
 
         let prompts = vec![vec![0u32, 1, 2, 3, 4]];
@@ -2045,11 +2067,8 @@ mod tests {
     #[test]
     fn test_empty_response_noop() {
         let model_config = TransformerConfig::tiny();
-        let instruct_config = InstructConfig {
-            lora_rank: 4,
-            max_seq_len: 64,
-            ..InstructConfig::default()
-        };
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
         let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
 
         let result = pipeline.train_step(&[0, 1, 2], &[]);

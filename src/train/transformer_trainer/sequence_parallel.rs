@@ -71,14 +71,7 @@ impl SequenceParallelConfig {
 
         let head_dim = hidden_size / num_heads;
 
-        Self {
-            sp_rank,
-            sp_size,
-            full_seq_len,
-            hidden_size,
-            num_heads,
-            head_dim,
-        }
+        Self { sp_rank, sp_size, full_seq_len, hidden_size, num_heads, head_dim }
     }
 
     /// Local sequence length on this GPU.
@@ -153,12 +146,7 @@ impl RingAttentionSchedule {
             // After `step` rotations, we have K,V from rank (rank - step - 1) mod N
             let kv_chunk_source = (rank + world_size - step - 1) % world_size;
 
-            steps.push(RingStep {
-                step,
-                send_to,
-                recv_from,
-                kv_chunk_source,
-            });
+            steps.push(RingStep { step, send_to, recv_from, kv_chunk_source });
         }
 
         Self { steps, rank, world_size }
@@ -222,11 +210,7 @@ impl SpCommCost {
         let kv_bytes_per_send =
             2 * local_seq_len * head_dim * num_kv_heads * std::mem::size_of::<f32>();
 
-        Self {
-            kv_bytes_per_send,
-            ring_steps: sp_size - 1,
-            num_blocks,
-        }
+        Self { kv_bytes_per_send, ring_steps: sp_size - 1, num_blocks }
     }
 
     /// Total bytes communicated per training step.

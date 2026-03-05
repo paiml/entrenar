@@ -12,10 +12,9 @@ use std::sync::{Mutex, OnceLock};
 use trueno_gpu::driver::{CudaContext, CudaModule};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
-    Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel,
-    BatchedTransposeKernel, ElementwiseMulKernel, FusedSwigluKernel, GemmKernel,
-    InterleavedToBatchedKernel, Kernel, Nf4GemmKernel,
-    ResidualAddKernel, RmsNormKernel, ScaleKernel, SiluKernel,
+    Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel, BatchedTransposeKernel,
+    ElementwiseMulKernel, FusedSwigluKernel, GemmKernel, InterleavedToBatchedKernel, Kernel,
+    Nf4GemmKernel, ResidualAddKernel, RmsNormKernel, ScaleKernel, SiluKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -128,8 +127,8 @@ impl ForwardKernelCache {
         let nh = num_heads as u32;
         let nkv = num_kv_heads as u32;
         let hd = head_dim as u32;
-        let sh = s * h;   // seq_len * hidden_size
-        let si = s * i;   // seq_len * intermediate_size
+        let sh = s * h; // seq_len * hidden_size
+        let si = s * i; // seq_len * intermediate_size
 
         let mut count = 0u32;
         let target = self.sm_target.clone();
@@ -179,16 +178,10 @@ impl ForwardKernelCache {
         }
 
         // 9. Batched transpose: K^T (NH, S, HD)
-        warm!(
-            format!("batched_transpose_{nh}_{s}_{hd}"),
-            BatchedTransposeKernel::new(nh, s, hd)
-        );
+        warm!(format!("batched_transpose_{nh}_{s}_{hd}"), BatchedTransposeKernel::new(nh, s, hd));
 
         // 9b. Batched transpose: backward reverse (NH, HD, S)
-        warm!(
-            format!("batched_transpose_{nh}_{hd}_{s}"),
-            BatchedTransposeKernel::new(nh, hd, s)
-        );
+        warm!(format!("batched_transpose_{nh}_{hd}_{s}"), BatchedTransposeKernel::new(nh, hd, s));
 
         // 10. Batched 4D GEMM: Q@K^T (1, NH, S, S, HD)
         warm!(
@@ -350,9 +343,7 @@ pub fn pre_warm_forward_kernels(
     head_dim: usize,
     max_seq_len: usize,
 ) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
@@ -378,17 +369,9 @@ pub fn pre_warm_lora_backward_kernels(
     max_seq_len: usize,
     lora_rank: usize,
 ) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
-    cache.pre_warm_lora_backward(
-        hidden_size,
-        q_dim,
-        kv_hidden_size,
-        max_seq_len,
-        lora_rank,
-    )
+    cache.pre_warm_lora_backward(hidden_size, q_dim, kv_hidden_size, max_seq_len, lora_rank)
 }

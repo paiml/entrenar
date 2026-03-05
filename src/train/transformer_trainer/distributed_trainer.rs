@@ -61,27 +61,13 @@ pub enum DistributedComm {
 #[derive(Debug)]
 pub enum GradientMessage {
     /// Per-block gradient from a worker
-    BlockGradient {
-        block_idx: usize,
-        gradients: Vec<f32>,
-        component_sizes: Vec<u32>,
-    },
+    BlockGradient { block_idx: usize, gradients: Vec<f32>, component_sizes: Vec<u32> },
     /// Averaged per-block gradient from coordinator
-    AveragedBlockGradient {
-        block_idx: usize,
-        gradients: Vec<f32>,
-        component_sizes: Vec<u32>,
-    },
+    AveragedBlockGradient { block_idx: usize, gradients: Vec<f32>, component_sizes: Vec<u32> },
     /// Non-block gradient (LM head, final norm, embedding)
-    NonBlockGradient {
-        component: u8,
-        gradients: Vec<f32>,
-    },
+    NonBlockGradient { component: u8, gradients: Vec<f32> },
     /// Averaged non-block gradient
-    AveragedNonBlockGradient {
-        component: u8,
-        gradients: Vec<f32>,
-    },
+    AveragedNonBlockGradient { component: u8, gradients: Vec<f32> },
     /// Synchronization barrier
     Barrier,
 }
@@ -133,12 +119,7 @@ impl DistributedCudaTrainer {
         // DDP always needs grad accum buffers for CPU-side AllReduce
         trainer.ensure_grad_accum();
 
-        Self {
-            trainer,
-            comm,
-            dist_config,
-            step: 0,
-        }
+        Self { trainer, comm, dist_config, step: 0 }
     }
 
     /// DDP training step: forward+backward → AllReduce → optimizer.
@@ -219,17 +200,9 @@ impl DistributedCudaTrainer {
                 let flat = accum.block_grads[block_idx].flatten();
                 let sizes = accum.block_grads[block_idx].component_sizes_u32();
                 client
-                    .send_block_gradient(
-                        step,
-                        block_idx as u32,
-                        num_blocks as u32,
-                        flat,
-                        sizes,
-                    )
+                    .send_block_gradient(step, block_idx as u32, num_blocks as u32, flat, sizes)
                     .expect("block gradient send failed");
-                let avg = client
-                    .receive_averaged_block()
-                    .expect("block gradient receive failed");
+                let avg = client.receive_averaged_block().expect("block gradient receive failed");
                 accum.block_grads[block_idx] =
                     BlockGradientSet::from_flat(&avg.gradients, &avg.component_sizes);
             }
@@ -241,12 +214,8 @@ impl DistributedCudaTrainer {
 
             // LM head (component=0)
             let lm_grad = accum.lm_head_grad.clone();
-            client
-                .send_non_block_gradient(step, 0, lm_grad)
-                .expect("lm_head gradient send failed");
-            let avg = client
-                .receive_averaged_non_block()
-                .expect("lm_head gradient receive failed");
+            client.send_non_block_gradient(step, 0, lm_grad).expect("lm_head gradient send failed");
+            let avg = client.receive_averaged_non_block().expect("lm_head gradient receive failed");
             accum.lm_head_grad = avg.gradients;
 
             // Final norm (component=1)
@@ -254,9 +223,8 @@ impl DistributedCudaTrainer {
             client
                 .send_non_block_gradient(step, 1, norm_grad)
                 .expect("final_norm gradient send failed");
-            let avg = client
-                .receive_averaged_non_block()
-                .expect("final_norm gradient receive failed");
+            let avg =
+                client.receive_averaged_non_block().expect("final_norm gradient receive failed");
             accum.final_norm_grad = avg.gradients;
 
             // Prevent re-averaging in gpu_optimizer_from_accum
@@ -269,9 +237,8 @@ impl DistributedCudaTrainer {
             client
                 .send_non_block_gradient(step, 2, embed_grad)
                 .expect("embedding gradient send failed");
-            let avg = client
-                .receive_averaged_non_block()
-                .expect("embedding gradient receive failed");
+            let avg =
+                client.receive_averaged_non_block().expect("embedding gradient receive failed");
             trainer.set_embed_grad(avg.gradients);
         }
     }
@@ -301,9 +268,7 @@ impl DistributedCudaTrainer {
 
                 match rx.recv().expect("channel recv failed") {
                     GradientMessage::AveragedBlockGradient {
-                        gradients,
-                        component_sizes,
-                        ..
+                        gradients, component_sizes, ..
                     } => {
                         accum.block_grads[block_idx] =
                             BlockGradientSet::from_flat(&gradients, &component_sizes);
@@ -319,11 +284,8 @@ impl DistributedCudaTrainer {
 
             // LM head
             let lm_grad = accum.lm_head_grad.clone();
-            tx.send(GradientMessage::NonBlockGradient {
-                component: 0,
-                gradients: lm_grad,
-            })
-            .expect("channel send failed");
+            tx.send(GradientMessage::NonBlockGradient { component: 0, gradients: lm_grad })
+                .expect("channel send failed");
             match rx.recv().expect("channel recv failed") {
                 GradientMessage::AveragedNonBlockGradient { gradients, .. } => {
                     accum.lm_head_grad = gradients;
@@ -333,11 +295,8 @@ impl DistributedCudaTrainer {
 
             // Final norm
             let norm_grad = accum.final_norm_grad.clone();
-            tx.send(GradientMessage::NonBlockGradient {
-                component: 1,
-                gradients: norm_grad,
-            })
-            .expect("channel send failed");
+            tx.send(GradientMessage::NonBlockGradient { component: 1, gradients: norm_grad })
+                .expect("channel send failed");
             match rx.recv().expect("channel recv failed") {
                 GradientMessage::AveragedNonBlockGradient { gradients, .. } => {
                     accum.final_norm_grad = gradients;
@@ -351,11 +310,8 @@ impl DistributedCudaTrainer {
         // Phase 3: Embedding AllReduce
         {
             let embed_grad = trainer.embed_grad_vec().unwrap_or_default();
-            tx.send(GradientMessage::NonBlockGradient {
-                component: 2,
-                gradients: embed_grad,
-            })
-            .expect("channel send failed");
+            tx.send(GradientMessage::NonBlockGradient { component: 2, gradients: embed_grad })
+                .expect("channel send failed");
             match rx.recv().expect("channel recv failed") {
                 GradientMessage::AveragedNonBlockGradient { gradients, .. } => {
                     trainer.set_embed_grad(gradients);
@@ -470,12 +426,8 @@ mod tests {
         assert_eq!(shard1, vec![1, 4]);
         assert_eq!(shard2, vec![2, 5]);
 
-        let mut all: Vec<usize> = shard0
-            .iter()
-            .chain(shard1.iter())
-            .chain(shard2.iter())
-            .copied()
-            .collect();
+        let mut all: Vec<usize> =
+            shard0.iter().chain(shard1.iter()).chain(shard2.iter()).copied().collect();
         all.sort_unstable();
         assert_eq!(all, (0..7).collect::<Vec<_>>());
     }

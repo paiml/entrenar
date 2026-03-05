@@ -422,7 +422,8 @@ fn test_gemm_forward_bf16_precision_matches_reference() {
 
     let a = GpuBuffer::from_host(&ctx, &a_data).expect("operation should succeed");
     let b = GpuBuffer::from_host(&ctx, &b_data).expect("operation should succeed");
-    let mut c = GpuBuffer::from_host(&ctx, &vec![0.0f32; (m * n) as usize]).expect("operation should succeed");
+    let mut c = GpuBuffer::from_host(&ctx, &vec![0.0f32; (m * n) as usize])
+        .expect("operation should succeed");
 
     gemm_forward_bf16(&a, &b, &mut c, m, k, n, &stream).expect("operation should succeed");
     stream.synchronize().expect("operation should succeed");

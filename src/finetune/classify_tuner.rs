@@ -163,67 +163,71 @@ pub fn default_classify_search_space() -> HyperparameterSpace {
     let mut space = HyperparameterSpace::new();
 
     // Learning rate: 5e-6 .. 5e-4 (log-scale)
-    space.add("learning_rate", ParameterDomain::Continuous {
-        low: 5e-6,
-        high: 5e-4,
-        log_scale: true,
-    });
+    space.add(
+        "learning_rate",
+        ParameterDomain::Continuous { low: 5e-6, high: 5e-4, log_scale: true },
+    );
 
     // LoRA rank: 4 .. 64 (discrete, step of 4 → 4,8,12,...,64)
     space.add("lora_rank", ParameterDomain::Discrete { low: 1, high: 16 });
 
     // Alpha ratio: 0.5 .. 2.0 (ties alpha to rank)
-    space.add("lora_alpha_ratio", ParameterDomain::Continuous {
-        low: 0.5,
-        high: 2.0,
-        log_scale: false,
-    });
+    space.add(
+        "lora_alpha_ratio",
+        ParameterDomain::Continuous { low: 0.5, high: 2.0, log_scale: false },
+    );
 
     // Batch size: categorical [8, 16, 32, 64, 128]
-    space.add("batch_size", ParameterDomain::Categorical {
-        choices: vec![
-            "8".to_string(),
-            "16".to_string(),
-            "32".to_string(),
-            "64".to_string(),
-            "128".to_string(),
-        ],
-    });
+    space.add(
+        "batch_size",
+        ParameterDomain::Categorical {
+            choices: vec![
+                "8".to_string(),
+                "16".to_string(),
+                "32".to_string(),
+                "64".to_string(),
+                "128".to_string(),
+            ],
+        },
+    );
 
     // Warmup fraction: 0.01 .. 0.2
-    space.add("warmup_fraction", ParameterDomain::Continuous {
-        low: 0.01,
-        high: 0.2,
-        log_scale: false,
-    });
+    space.add(
+        "warmup_fraction",
+        ParameterDomain::Continuous { low: 0.01, high: 0.2, log_scale: false },
+    );
 
     // Gradient clip norm: 0.5 .. 5.0
-    space.add("gradient_clip_norm", ParameterDomain::Continuous {
-        low: 0.5,
-        high: 5.0,
-        log_scale: false,
-    });
+    space.add(
+        "gradient_clip_norm",
+        ParameterDomain::Continuous { low: 0.5, high: 5.0, log_scale: false },
+    );
 
     // Class weights strategy
-    space.add("class_weights", ParameterDomain::Categorical {
-        choices: vec![
-            "uniform".to_string(),
-            "inverse_freq".to_string(),
-            "sqrt_inverse".to_string(),
-        ],
-    });
+    space.add(
+        "class_weights",
+        ParameterDomain::Categorical {
+            choices: vec![
+                "uniform".to_string(),
+                "inverse_freq".to_string(),
+                "sqrt_inverse".to_string(),
+            ],
+        },
+    );
 
     // Target modules
-    space.add("target_modules", ParameterDomain::Categorical {
-        choices: vec!["qv".to_string(), "qkv".to_string(), "all_linear".to_string()],
-    });
+    space.add(
+        "target_modules",
+        ParameterDomain::Categorical {
+            choices: vec!["qv".to_string(), "qkv".to_string(), "all_linear".to_string()],
+        },
+    );
 
     // LR min ratio (cosine decay floor = lr * ratio)
-    space.add("lr_min_ratio", ParameterDomain::Continuous {
-        low: 0.001,
-        high: 0.1,
-        log_scale: true,
-    });
+    space.add(
+        "lr_min_ratio",
+        ParameterDomain::Continuous { low: 0.001, high: 0.1, log_scale: true },
+    );
 
     space
 }
@@ -236,22 +240,14 @@ pub fn default_classify_search_space() -> HyperparameterSpace {
 pub fn extract_trial_params(
     config: &HashMap<String, ParameterValue>,
 ) -> (f32, usize, f32, usize, f32, f32, String, String, f32) {
-    let lr = config
-        .get("learning_rate")
-        .and_then(ParameterValue::as_float)
-        .unwrap_or(1e-4) as f32;
+    let lr = config.get("learning_rate").and_then(ParameterValue::as_float).unwrap_or(1e-4) as f32;
 
     // lora_rank: discrete 1-16 maps to rank * 4 → 4,8,...,64
-    let rank_raw = config
-        .get("lora_rank")
-        .and_then(ParameterValue::as_int)
-        .unwrap_or(4) as usize;
+    let rank_raw = config.get("lora_rank").and_then(ParameterValue::as_int).unwrap_or(4) as usize;
     let rank = (rank_raw * 4).clamp(4, 64);
 
-    let alpha_ratio = config
-        .get("lora_alpha_ratio")
-        .and_then(ParameterValue::as_float)
-        .unwrap_or(1.0) as f32;
+    let alpha_ratio =
+        config.get("lora_alpha_ratio").and_then(ParameterValue::as_float).unwrap_or(1.0) as f32;
     let alpha = rank as f32 * alpha_ratio;
 
     let batch_size = config
@@ -260,15 +256,11 @@ pub fn extract_trial_params(
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(32);
 
-    let warmup = config
-        .get("warmup_fraction")
-        .and_then(ParameterValue::as_float)
-        .unwrap_or(0.1) as f32;
+    let warmup =
+        config.get("warmup_fraction").and_then(ParameterValue::as_float).unwrap_or(0.1) as f32;
 
-    let clip = config
-        .get("gradient_clip_norm")
-        .and_then(ParameterValue::as_float)
-        .unwrap_or(1.0) as f32;
+    let clip =
+        config.get("gradient_clip_norm").and_then(ParameterValue::as_float).unwrap_or(1.0) as f32;
 
     let weights_strategy = config
         .get("class_weights")
@@ -276,16 +268,11 @@ pub fn extract_trial_params(
         .unwrap_or("uniform")
         .to_string();
 
-    let targets = config
-        .get("target_modules")
-        .and_then(ParameterValue::as_str)
-        .unwrap_or("qv")
-        .to_string();
+    let targets =
+        config.get("target_modules").and_then(ParameterValue::as_str).unwrap_or("qv").to_string();
 
-    let lr_min_ratio = config
-        .get("lr_min_ratio")
-        .and_then(ParameterValue::as_float)
-        .unwrap_or(0.01) as f32;
+    let lr_min_ratio =
+        config.get("lr_min_ratio").and_then(ParameterValue::as_float).unwrap_or(0.01) as f32;
 
     (lr, rank, alpha, batch_size, warmup, clip, weights_strategy, targets, lr_min_ratio)
 }
@@ -357,9 +344,7 @@ impl ClassifyTuner {
         self.leaderboard.push(summary);
         // Sort leaderboard by val_loss ascending (best first)
         self.leaderboard.sort_by(|a, b| {
-            a.val_loss
-                .partial_cmp(&b.val_loss)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            a.val_loss.partial_cmp(&b.val_loss).unwrap_or(std::cmp::Ordering::Equal)
         });
     }
 

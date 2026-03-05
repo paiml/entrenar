@@ -27,9 +27,8 @@ pub const LOCK_REL: usize = 4;
 pub const WAIT_POLL: usize = 5;
 const NUM_GPU_PHASES: usize = 6;
 
-const GPU_PHASE_NAMES: [&str; NUM_GPU_PHASES] = [
-    "lock_acq", "ledger_rd", "vram_qry", "ledger_wr", "lock_rel", "wait_poll",
-];
+const GPU_PHASE_NAMES: [&str; NUM_GPU_PHASES] =
+    ["lock_acq", "ledger_rd", "vram_qry", "ledger_wr", "lock_rel", "wait_poll"];
 
 /// Brick-phase profiler for GPU sharing operations.
 pub struct GpuProfiler {
@@ -126,10 +125,7 @@ impl GpuProfiler {
             "│ {:>10} │ {:>6} │ {:>8} │ {:>6} │\n",
             "phase", "count", "total_ms", "pct"
         ));
-        out.push_str(&format!(
-            "│ {:-<10} │ {:-<6} │ {:-<8} │ {:-<6} │\n",
-            "", "", "", ""
-        ));
+        out.push_str(&format!("│ {:-<10} │ {:-<6} │ {:-<8} │ {:-<6} │\n", "", "", "", ""));
 
         for i in 0..NUM_GPU_PHASES {
             let ms = self.totals[i].as_micros() as f64 / 1000.0;
