@@ -665,7 +665,7 @@ fn train_loop_cuda(
     let num_params = trainer.num_params();
     let seq_len = spec.data.seq_len.unwrap_or(128);
     let tokens_per_batch = spec.data.batch_size * seq_len;
-    // RTX 4090: 82.6 TFLOPS fp32. TODO: query via cuDeviceGetAttribute
+    // RTX 4090: 82.6 TFLOPS fp32 (query via cuDeviceGetAttribute when available)
     let gpu_peak_tflops: f64 = 82.58e12;
 
     // R-014: Open JSONL experiment log

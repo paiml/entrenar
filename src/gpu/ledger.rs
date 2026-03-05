@@ -333,7 +333,7 @@ impl VramLedger {
 
         let result = f(&mut data)?;
 
-        // Phase: ledger_wr (atomic: write temp, fsync, rename)
+        // Atomic write: temp file, fsync, rename
         self.profiler.begin(GpuProfiler::LEDGER_WR);
         atomic_write_ledger(&self.path, &data)?;
         self.profiler.end(GpuProfiler::LEDGER_WR);

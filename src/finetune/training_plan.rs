@@ -371,7 +371,7 @@ pub fn plan(config: &PlanConfig) -> crate::Result<TrainingPlan> {
         });
     }
 
-    // Class weights persistence check (the bug we just fixed)
+    // Class weights persistence check
     pre_flight.push(PreFlightCheck {
         name: "class_weights_persist".to_string(),
         status: CheckStatus::Pass,

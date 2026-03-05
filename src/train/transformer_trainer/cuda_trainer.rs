@@ -1048,7 +1048,7 @@ impl CudaTransformerTrainer {
         // Backward through blocks in reverse, with interleaved clip + optimizer.
         //
         // Each block's backward writes weight gradients to the shared CudaGradWorkspace.
-        // We immediately clip and optimize before the next block overwrites the workspace.
+        // Immediately clip and optimize before the next block overwrites the workspace.
         //
         // SAFETY: grad_buf_a and grad_buf_b are disjoint fields. Raw pointers
         // allow alternating read/write without violating aliasing rules.
@@ -1281,7 +1281,7 @@ impl CudaTransformerTrainer {
         self.gpu_training.step += 1;
         let step = self.gpu_training.step;
 
-        // Upload and optimize each block
+        // Upload accumulated gradients and run optimizer for each block
         use super::grad_accumulator::component;
         for layer_idx in 0..self.cuda_blocks.len() {
             let bg = &accum.block_grads[layer_idx];
@@ -1340,7 +1340,7 @@ impl CudaTransformerTrainer {
             );
         }
 
-        // Upload and optimize LM head
+        // Upload accumulated LM head gradients and run AdamW step
         unsafe {
             self.lm_head_grad_gpu.copy_from_host_async(&accum.lm_head_grad, stream).ok()?;
         }
@@ -1360,7 +1360,7 @@ impl CudaTransformerTrainer {
             stream,
         );
 
-        // Upload and optimize final norm
+        // Upload accumulated final norm gradients and run AdamW step
         unsafe {
             self.gpu_training
                 .grad_final_norm_weight
