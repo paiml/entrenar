@@ -14,7 +14,7 @@ use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel, BatchedTransposeKernel,
     ElementwiseMulKernel, FusedSwigluKernel, GemmKernel, InterleavedToBatchedKernel, Kernel,
-    Nf4GemmKernel, ResidualAddKernel, RmsNormKernel, ScaleKernel, SiluKernel,
+    BatchedVectorizedRmsNormKernel, Nf4GemmKernel, ResidualAddKernel, ScaleKernel, SiluKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -172,8 +172,9 @@ impl ForwardKernelCache {
             }};
         }
 
-        // 1. RMSNorm (called with hidden_size)
-        warm!(format!("rms_norm_forward_{h}"), RmsNormKernel::new(h));
+        // 1. RMSNorm (batched: single launch for all rows via grid.y)
+        // ALB-076: Use BatchedVectorizedRmsNormKernel instead of per-row RmsNormKernel
+        warm!(format!("batched_rmsnorm_fwd_{h}"), BatchedVectorizedRmsNormKernel::new(h, 1));
 
         // 2. GEMM: Q/O projections (S, H, H)
         warm!(format!("gemm_forward_{s}_{h}_{h}"), GemmKernel::naive(s, h, h));

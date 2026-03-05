@@ -6,7 +6,7 @@
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::kernels::{Kernel, LayerNormKernel, RmsNormKernel};
+use trueno_gpu::kernels::{BatchedVectorizedRmsNormKernel, Kernel, LayerNormKernel};
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
 
@@ -78,8 +78,12 @@ pub fn layer_norm_forward(
 ///
 /// Computes: output = gamma * input / sqrt(mean(input^2) + eps)
 ///
-/// Note: The kernel uses warp shuffle and requires 32 threads per block.
-/// For batched input, each row is processed sequentially.
+/// Uses BatchedVectorizedRmsNormKernel: single kernel launch processes all
+/// batch_size rows in parallel via grid.y = batch_size, 256 threads per block.
+///
+/// ALB-076: Previously launched one 32-thread kernel per row (2048 launches for
+/// batch=4, seq=512). nsys profiling showed this was 97.1% of all GPU time.
+/// Single batched launch eliminates 100K+ kernel launches per step.
 #[cfg(feature = "cuda")]
 pub fn rms_norm_forward(
     input: &GpuBuffer<f32>,
@@ -94,10 +98,9 @@ pub fn rms_norm_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    let kernel = RmsNormKernel::new(hidden_size);
-    let kernel_name = kernel.name();
+    let kernel = BatchedVectorizedRmsNormKernel::new(hidden_size, batch_size);
 
-    let key = format!("rms_norm_forward_{hidden_size}");
+    let key = format!("batched_rmsnorm_fwd_{hidden_size}");
     let module = match cache.get_cached(&key) {
         Some(m) => m,
         None => {
@@ -106,33 +109,33 @@ pub fn rms_norm_forward(
         }
     };
 
-    // Kernel uses warp shuffle and expects exactly 32 threads (one warp)
-    let config = LaunchConfig { grid: (1, 1, 1), block: (32, 1, 1), shared_mem: 0 };
+    // Grid: (1, batch_size, 1) — one block per row, all rows in parallel
+    // Block: (256, 1, 1) — 8 warps per block for parallel reduction
+    let config = LaunchConfig {
+        grid: (1, batch_size, 1),
+        block: (256, 1, 1),
+        shared_mem: 8 * 4, // 8 warp partial sums (f32)
+    };
 
-    // Process each batch row sequentially (kernel handles single row)
-    for batch_idx in 0..batch_size {
-        let row_offset = u64::from(batch_idx * hidden_size);
-        let byte_offset = row_offset * std::mem::size_of::<f32>() as u64;
+    let input_ptr = input.as_ptr();
+    let output_ptr = output.as_ptr();
+    let gamma_ptr = gamma.as_ptr();
 
-        // Calculate pointer offsets for this batch row
-        let input_ptr = input.as_ptr() + byte_offset;
-        let output_ptr = output.as_ptr() + byte_offset;
-        let gamma_ptr = gamma.as_ptr();
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &gamma_ptr as *const _ as *mut _,
+    ];
 
-        // Kernel signature: (input_ptr, output_ptr, gamma_ptr)
-        let mut args: [*mut std::ffi::c_void; 3] = [
-            &input_ptr as *const _ as *mut _,
-            &output_ptr as *const _ as *mut _,
-            &gamma_ptr as *const _ as *mut _,
-        ];
-
-        // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
-        // matching sizes, and the kernel parameters match the expected PTX signature.
-        unsafe {
-            stream.launch_kernel(module, kernel_name, &config, &mut args).map_err(|e| {
+    // SAFETY: Kernel launch requires FFI. input has batch_size * hidden_size elements,
+    // output has batch_size * hidden_size elements, gamma has hidden_size elements.
+    // Parameters match PTX signature (u64 input_ptr, u64 output_ptr, u64 gamma_ptr).
+    unsafe {
+        stream
+            .launch_kernel(module, "batched_rmsnorm_vectorized", &config, &mut args)
+            .map_err(|e| {
                 CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
             })?;
-        }
     }
 
     Ok(())
