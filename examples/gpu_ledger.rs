@@ -66,8 +66,7 @@ fn main() {
             .iter()
             .position(|a| a == "--task")
             .and_then(|p| args.get(p + 1))
-            .map(String::as_str)
-            .unwrap_or("example");
+            .map_or("example", String::as_str);
 
         match ledger.try_reserve(budget_mb, task) {
             Ok(id) => {

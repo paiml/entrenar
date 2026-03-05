@@ -146,8 +146,7 @@ impl ComputeDevice {
             .output()
             .ok()
             .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
-            .unwrap_or(0)
+            .map_or(0, |o| String::from_utf8_lossy(&o.stdout).lines().count())
     }
 
     /// Count wgpu adapters.

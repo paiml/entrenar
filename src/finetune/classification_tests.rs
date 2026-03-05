@@ -282,7 +282,7 @@ fn test_load_safety_corpus_valid() {
         let mut f = std::fs::File::create(&path).expect("valid");
         writeln!(f, r#"{{"input":"echo hello","label":0}}"#).expect("valid");
         writeln!(f, r#"{{"input":"eval $x","label":4}}"#).expect("valid");
-        writeln!(f, "").expect("valid"); // empty line should be skipped
+        writeln!(f).expect("valid"); // empty line should be skipped
         writeln!(f, r#"{{"input":"ls","label":1}}"#).expect("valid");
     }
     let samples = load_safety_corpus(&path, 5).expect("valid");

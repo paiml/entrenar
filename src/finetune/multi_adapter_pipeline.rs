@@ -38,20 +38,17 @@ use std::path::{Path, PathBuf};
 
 /// Scheduling strategy for multi-adapter training.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum AdapterSchedule {
     /// All adapters process one sample each per step (synchronized).
     Synchronized,
     /// Round-robin: each step trains one adapter.
+    #[default]
     RoundRobin,
     /// Priority: adapter with highest validation loss gets the next step.
     PriorityValLoss,
 }
 
-impl Default for AdapterSchedule {
-    fn default() -> Self {
-        Self::RoundRobin
-    }
-}
 
 /// Configuration for a single adapter slot.
 #[derive(Debug, Clone)]

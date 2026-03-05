@@ -16,7 +16,7 @@
 //! For N=2, this degenerates to a simple send-and-average:
 //! - Each worker sends its full vector to the other
 //! - Each worker averages its local vector with the received one
-//! This is correct but not bandwidth-optimal for N=2 (ring is equivalent).
+//!   This is correct but not bandwidth-optimal for N=2 (ring is equivalent).
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -83,7 +83,7 @@ impl RingAllReduceWorker {
         let chunks: Vec<(usize, usize)> = (0..n)
             .map(|i| {
                 let start = i * chunk_size + i.min(remainder);
-                let len = chunk_size + if i < remainder { 1 } else { 0 };
+                let len = chunk_size + usize::from(i < remainder);
                 (start, len)
             })
             .collect();
@@ -424,8 +424,8 @@ mod tests {
         let addr = listener.local_addr().expect("addr");
 
         let h = thread::spawn(move || {
-            let (mut recv, _) = listener.accept().expect("accept");
-            let mut send = TcpStream::connect(addr).expect("connect");
+            let (recv, _) = listener.accept().expect("accept");
+            let send = TcpStream::connect(addr).expect("connect");
             // This won't work — need bidirectional setup
             // For the pair test, use a simpler setup
             (recv, send)

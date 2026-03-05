@@ -70,12 +70,14 @@ pub fn setup_mps_env(config: &MpsConfig) -> Vec<(String, String)> {
 
     // Thread percentage: controls SM allocation for this MPS client
     let thread_pct = config.thread_percentage.to_string();
+    #[allow(clippy::disallowed_methods)]
     env::set_var("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE", &thread_pct);
     vars.push(("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE".to_string(), thread_pct));
 
     // Pinned memory limit: prevents OOM cascades across MPS clients
     if let Some(limit_mb) = config.pinned_mem_limit_mb {
         let limit_str = format!("0={limit_mb}MB");
+        #[allow(clippy::disallowed_methods)]
         env::set_var("CUDA_MPS_PINNED_DEVICE_MEM_LIMIT", &limit_str);
         vars.push(("CUDA_MPS_PINNED_DEVICE_MEM_LIMIT".to_string(), limit_str));
     }
@@ -90,7 +92,7 @@ pub fn print_mps_warning(config: &MpsConfig) {
     eprintln!("WARNING: MPS enabled — a GPU fault in any job will crash ALL jobs on this GPU.");
     eprintln!("  Thread allocation: {}%", config.thread_percentage);
     if let Some(limit) = config.pinned_mem_limit_mb {
-        eprintln!("  Pinned memory limit: {} MB", limit);
+        eprintln!("  Pinned memory limit: {limit} MB");
     }
     eprintln!("  Checkpoint frequency: every {} steps (blast radius limit)", config.checkpoint_every_steps);
     eprintln!("  Use --experimental-mps only if you understand the risks.");
@@ -180,13 +182,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "thread_pct must be 1-100")]
     fn test_zero_thread_pct_panics() {
-        MpsConfig::with_share(0);
+        let _ = MpsConfig::with_share(0);
     }
 
     #[test]
     #[should_panic(expected = "thread_pct must be 1-100")]
     fn test_over_100_thread_pct_panics() {
-        MpsConfig::with_share(101);
+        let _ = MpsConfig::with_share(101);
     }
 
     #[test]

@@ -13,7 +13,7 @@ fn test_mse_accuracy_matches_reference() {
     let reference: f64 = pred_vals
         .iter()
         .zip(&target_vals)
-        .map(|(p, t)| (*p as f64 - *t as f64) * (*p as f64 - *t as f64))
+        .map(|(p, t)| (f64::from(*p) - f64::from(*t)) * (f64::from(*p) - f64::from(*t)))
         .sum::<f64>()
         / pred_vals.len() as f64;
     let mse = MSELoss;
@@ -21,7 +21,7 @@ fn test_mse_accuracy_matches_reference() {
     let tgt = Tensor::from_vec(target_vals, false);
     let loss = mse.forward(&pred, &tgt);
     let actual = loss.data()[0];
-    let diff = (actual as f64 - reference).abs();
+    let diff = (f64::from(actual) - reference).abs();
     assert!(diff < 1e-6, "MSE accuracy: actual={actual}, ref={reference}, diff={diff}");
 }
 

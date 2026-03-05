@@ -72,15 +72,15 @@ impl TensorParallelConfig {
         num_kv_heads: usize,
     ) -> Self {
         assert!(
-            num_heads % tp_size == 0,
+            num_heads.is_multiple_of(tp_size),
             "num_heads ({num_heads}) must be divisible by tp_size ({tp_size})"
         );
         assert!(
-            num_kv_heads % tp_size == 0,
+            num_kv_heads.is_multiple_of(tp_size),
             "num_kv_heads ({num_kv_heads}) must be divisible by tp_size ({tp_size})"
         );
         assert!(
-            intermediate_size % tp_size == 0,
+            intermediate_size.is_multiple_of(tp_size),
             "intermediate_size ({intermediate_size}) must be divisible by tp_size ({tp_size})"
         );
 

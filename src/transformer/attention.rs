@@ -2,7 +2,7 @@
 //!
 //! This module provides multi-head self-attention with grouped-query attention support.
 
-use crate::autograd::{matmul, transpose_tracked, BackwardOp};
+use crate::autograd::{matmul, BackwardOp};
 use crate::Tensor;
 use ndarray::Array1;
 use std::cell::RefCell;

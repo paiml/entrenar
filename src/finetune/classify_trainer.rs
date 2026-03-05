@@ -242,14 +242,14 @@ impl ClassifyTrainer {
         let mut hasher = Sha256::new();
         let mut sorted: Vec<(&str, usize)> =
             corpus.iter().map(|s| (s.input.as_str(), s.label)).collect();
-        sorted.sort();
+        sorted.sort_unstable();
         for (input, label) in &sorted {
             hasher.update(input.as_bytes());
-            hasher.update(&[0u8]); // separator
-            hasher.update(&label.to_le_bytes());
+            hasher.update([0u8]); // separator
+            hasher.update(label.to_le_bytes());
         }
         let result = hasher.finalize();
-        format!("sha256:{:x}", result)
+        format!("sha256:{result:x}")
     }
 
     /// Auto-detect class imbalance and apply sqrt-inverse weights when no
@@ -319,11 +319,11 @@ impl ClassifyTrainer {
             class_indices.entry(sample.label).or_default().push(i);
         }
 
-        let majority_count = class_indices.values().map(|v| v.len()).max().unwrap_or(0);
+        let majority_count = class_indices.values().map(std::vec::Vec::len).max().unwrap_or(0);
         let before = train_data.len();
 
         // Duplicate minority samples (cycling) to match majority
-        for (_label, indices) in &class_indices {
+        for indices in class_indices.values() {
             let count = indices.len();
             if count < majority_count {
                 let deficit = majority_count - count;
@@ -1384,9 +1384,8 @@ impl ClassifyTrainer {
             // Fall back to metadata
             reader
                 .get_metadata("epoch")
-                .and_then(|v| v.as_u64())
-                .map(|e| e as usize)
-                .unwrap_or(0)
+                .and_then(serde_json::Value::as_u64)
+                .map_or(0, |e| e as usize)
         };
 
         if let Ok(lr_data) = reader.read_tensor_f32("__training__.learning_rate") {
@@ -1703,7 +1702,7 @@ impl ClassifyEvalReport {
 
         let confidences: Vec<f64> = all_probs
             .iter()
-            .map(|p| p.iter().copied().fold(0.0f32, f32::max) as f64)
+            .map(|p| f64::from(p.iter().copied().fold(0.0f32, f32::max)))
             .collect();
 
         let (mean_confidence, mean_confidence_correct, mean_confidence_wrong) =
@@ -1934,7 +1933,7 @@ impl ClassifyEvalReport {
             .map(|(probs, &true_label)| {
                 (0..num_classes)
                     .map(|k| {
-                        let p = *probs.get(k).unwrap_or(&0.0) as f64;
+                        let p = f64::from(*probs.get(k).unwrap_or(&0.0));
                         let y = if k == true_label { 1.0 } else { 0.0 };
                         (p - y) * (p - y)
                     })
@@ -1954,7 +1953,7 @@ impl ClassifyEvalReport {
             .iter()
             .zip(y_true.iter())
             .map(|(probs, &true_label)| {
-                let p = probs.get(true_label).copied().unwrap_or(0.0) as f64;
+                let p = f64::from(probs.get(true_label).copied().unwrap_or(0.0));
                 -p.clamp(eps, 1.0 - eps).ln()
             })
             .sum();
@@ -2078,7 +2077,7 @@ impl ClassifyEvalReport {
             let name = self
                 .label_names
                 .get(i)
-                .map_or_else(|| format!("Class {i}"), |n| n.clone());
+                .map_or_else(|| format!("Class {i}"), std::clone::Clone::clone);
             out.push_str(&format!(
                 "{:>18} {:>10.4} {:>10.4} {:>10.4} {:>10}\n",
                 name,
@@ -2139,7 +2138,7 @@ impl ClassifyEvalReport {
         out.push_str(&format!("  correct preds:   {:.4}\n", self.mean_confidence_correct));
         out.push_str(&format!("  wrong preds:     {:.4}\n", self.mean_confidence_wrong));
         let gap = self.mean_confidence_correct - self.mean_confidence_wrong;
-        out.push_str(&format!("  gap (higher=better): {:.4}\n", gap));
+        out.push_str(&format!("  gap (higher=better): {gap:.4}\n"));
     }
 
     fn report_scoring_rules(&self, out: &mut String) {
@@ -2221,7 +2220,7 @@ impl ClassifyEvalReport {
                 let name = self
                     .label_names
                     .get(i)
-                    .map_or_else(|| format!("class_{i}"), |n| n.clone());
+                    .map_or_else(|| format!("class_{i}"), std::clone::Clone::clone);
                 serde_json::json!({
                     "label": name,
                     "precision": self.per_class_precision[i],
@@ -2418,7 +2417,7 @@ impl ClassifyEvalReport {
             let name = self
                 .label_names
                 .get(i)
-                .map_or_else(|| format!("class_{i}"), |n| n.clone());
+                .map_or_else(|| format!("class_{i}"), std::clone::Clone::clone);
             out.push_str(&format!(
                 "| {} | {:.4} | {:.4} | {:.4} | {} |\n",
                 name,
@@ -2443,7 +2442,7 @@ impl ClassifyEvalReport {
         for (i, row) in self.confusion_matrix.iter().enumerate() {
             self.card_confusion_row_label(out, i);
             for val in row {
-                out.push_str(&format!(" {:>8}", val));
+                out.push_str(&format!(" {val:>8}"));
             }
             out.push('\n');
         }
@@ -2472,15 +2471,15 @@ impl ClassifyEvalReport {
         out.push_str(&format!("{:>18}", "Predicted →"));
         for name in &self.label_names {
             let short = if name.len() > 8 { &name[..8] } else { name.as_str() };
-            out.push_str(&format!(" {:>8}", short));
+            out.push_str(&format!(" {short:>8}"));
         }
         out.push('\n');
     }
 
     fn card_confusion_row_label(&self, out: &mut String, i: usize) {
-        let name = self.label_names.get(i).map_or_else(|| format!("class_{i}"), |n| n.clone());
+        let name = self.label_names.get(i).map_or_else(|| format!("class_{i}"), std::clone::Clone::clone);
         let short = if name.len() > 18 { &name[..18] } else { name.as_str() };
-        out.push_str(&format!("{:>18}", short));
+        out.push_str(&format!("{short:>18}"));
     }
 
     fn card_calibration(&self, out: &mut String) {
@@ -2491,7 +2490,7 @@ impl ClassifyEvalReport {
         out.push_str(&format!("| Confidence (correct) | {:.4} |\n", self.mean_confidence_correct));
         out.push_str(&format!("| Confidence (wrong) | {:.4} |\n", self.mean_confidence_wrong));
         let gap = self.mean_confidence_correct - self.mean_confidence_wrong;
-        out.push_str(&format!("| Confidence gap | {:.4} |\n", gap));
+        out.push_str(&format!("| Confidence gap | {gap:.4} |\n"));
         out.push_str(&format!("| ECE | {:.4} |\n\n", self.ece));
 
         out.push_str("**Calibration curve** (reliability diagram):\n\n");
@@ -2502,8 +2501,7 @@ impl ClassifyEvalReport {
                 let lo = i as f64 * 0.1;
                 let hi = lo + 0.1;
                 out.push_str(&format!(
-                    "[{:.1}-{:.1})   {:.3}   {:.3}   {:>5}\n",
-                    lo, hi, conf, acc, count,
+                    "[{lo:.1}-{hi:.1})   {conf:.3}   {acc:.3}   {count:>5}\n",
                 ));
             }
         }

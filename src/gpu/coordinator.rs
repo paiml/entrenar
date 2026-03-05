@@ -507,7 +507,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
         if entry.path().is_dir() {
             copy_dir_recursive(&entry.path(), &dest_path)?;
         } else {
-            std::fs::copy(&entry.path(), &dest_path)
+            std::fs::copy(entry.path(), &dest_path)
                 .map_err(|e| format!("failed to copy {}: {e}", entry.path().display()))?;
         }
     }
@@ -522,7 +522,7 @@ mod tests {
 
     fn test_cluster() -> ClusterConfig {
         ClusterConfig::from_yaml(
-            r#"
+            r"
 nodes:
   - name: desktop
     host: localhost
@@ -540,7 +540,7 @@ nodes:
         vram_mb: 8192
         memory_type: unified
     max_adapters: 1
-"#,
+",
         )
         .expect("valid")
     }
@@ -795,6 +795,7 @@ nodes:
         assert!(result.is_ok(), "local exec_launch should spawn: {:?}", result.err());
         let mut child = result.expect("valid");
         let _ = child.kill(); // Clean up
+        let _ = child.wait(); // Reap zombie
     }
 
     #[test]
