@@ -376,6 +376,15 @@ impl CudaTransformerTrainer {
         )
         .map_err(|e| crate::error::Error::ConfigError(format!("Kernel pre-warm failed: {e:?}")))?;
 
+        // Step 2b: Bind cuBLAS handles to training stream (ALB-075)
+        // Must happen after kernel cache init, before any GEMM calls.
+        if let Err(e) = crate::autograd::cuda_forward::set_forward_cublas_stream(stream) {
+            println!("[WARN] cuBLAS forward stream bind failed: {e:?} — falling back to PTX");
+        }
+        if let Err(e) = crate::autograd::cuda_backward::set_backward_cublas_stream(stream) {
+            println!("[WARN] cuBLAS backward stream bind failed: {e:?} — falling back to PTX");
+        }
+
         // Step 3: Upload transformer blocks to GPU
         let mut cuda_blocks = Vec::with_capacity(num_layers);
         for (i, layer) in model.layers.iter().enumerate() {
