@@ -6068,9 +6068,9 @@ dependencies = [
 
 [[package]]
 name = "trueno-gpu"
-version = "0.4.24"
+version = "0.4.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "920ca97ec27a48babe0e9729565ea5e41a17f4ea5e2b77460080403849a2c113"
+checksum = "dd5e0ef5c33fa1806107a67d27b30316f1b57a27c6477f1cb97530ef7930c790"
 dependencies = [
  "batuta-common",
  "libloading",
