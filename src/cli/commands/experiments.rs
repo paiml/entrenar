@@ -133,9 +133,7 @@ fn list_runs(
             println!("{}", "-".repeat(80));
             for run in &runs {
                 let end = run
-                    .end_time
-                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_else(|| "-".to_string());
+                    .end_time.map_or_else(|| "-".to_string(), |t| t.format("%Y-%m-%d %H:%M:%S").to_string());
                 println!(
                     "{:<20} {:<12} {:<24} {:<24}",
                     truncate(&run.id, 18),

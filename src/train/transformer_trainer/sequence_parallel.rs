@@ -65,7 +65,7 @@ impl SequenceParallelConfig {
         num_heads: usize,
     ) -> Self {
         assert!(
-            full_seq_len % sp_size == 0,
+            full_seq_len.is_multiple_of(sp_size),
             "seq_len ({full_seq_len}) must be divisible by sp_size ({sp_size})"
         );
 
@@ -299,7 +299,7 @@ mod tests {
             let sched = RingAttentionSchedule::new(rank, world_size);
             let mut seen: Vec<usize> = sched.steps.iter().map(|s| s.kv_chunk_source).collect();
             seen.push(rank); // own chunk (processed locally)
-            seen.sort();
+            seen.sort_unstable();
             assert_eq!(seen, vec![0, 1, 2, 3], "rank {rank} didn't see all chunks");
         }
     }

@@ -58,18 +58,15 @@ pub struct NodeConfig {
 /// Transport method for connecting to a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Transport {
     /// Local node (no transport needed).
+    #[default]
     Local,
     /// SSH transport via forjar.
     Ssh,
 }
 
-impl Default for Transport {
-    fn default() -> Self {
-        Self::Local
-    }
-}
 
 /// Configuration for a single GPU on a node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,18 +86,15 @@ pub struct GpuConfig {
 /// GPU memory architecture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MemoryType {
     /// Discrete GPU memory (85% reserve factor).
+    #[default]
     Discrete,
     /// Unified memory shared with CPU (60% reserve factor).
     Unified,
 }
 
-impl Default for MemoryType {
-    fn default() -> Self {
-        Self::Discrete
-    }
-}
 
 impl MemoryType {
     /// Reserve factor: fraction of VRAM usable for training.
@@ -293,7 +287,7 @@ mod tests {
     use super::*;
 
     fn sample_yaml() -> &'static str {
-        r#"
+        r"
 nodes:
   - name: desktop
     host: localhost
@@ -322,7 +316,7 @@ nodes:
     cpu_cores: 16
     ram_mb: 65536
     max_adapters: 1
-"#
+"
     }
 
     #[test]
@@ -401,7 +395,7 @@ nodes:
 
     #[test]
     fn test_validation_duplicate_names() {
-        let yaml = r#"
+        let yaml = r"
 nodes:
   - name: box1
     host: localhost
@@ -410,7 +404,7 @@ nodes:
     host: 10.0.0.2
     transport: ssh
     max_adapters: 1
-"#;
+";
         let result = ClusterConfig::from_yaml(yaml);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("duplicate node name"));
@@ -418,12 +412,12 @@ nodes:
 
     #[test]
     fn test_validation_zero_max_adapters() {
-        let yaml = r#"
+        let yaml = r"
 nodes:
   - name: bad
     host: localhost
     max_adapters: 0
-"#;
+";
         let result = ClusterConfig::from_yaml(yaml);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("max_adapters"));
@@ -431,7 +425,7 @@ nodes:
 
     #[test]
     fn test_validation_zero_vram() {
-        let yaml = r#"
+        let yaml = r"
 nodes:
   - name: bad
     host: localhost
@@ -440,7 +434,7 @@ nodes:
         type: unknown
         vram_mb: 0
     max_adapters: 1
-"#;
+";
         let result = ClusterConfig::from_yaml(yaml);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("zero VRAM"));
@@ -448,7 +442,7 @@ nodes:
 
     #[test]
     fn test_validation_duplicate_gpu_uuid() {
-        let yaml = r#"
+        let yaml = r"
 nodes:
   - name: dupes
     host: localhost
@@ -460,7 +454,7 @@ nodes:
         type: rtx-4090
         vram_mb: 24000
     max_adapters: 2
-"#;
+";
         let result = ClusterConfig::from_yaml(yaml);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("duplicate GPU UUID"));
@@ -468,13 +462,13 @@ nodes:
 
     #[test]
     fn test_validation_ssh_localhost() {
-        let yaml = r#"
+        let yaml = r"
 nodes:
   - name: bad-ssh
     host: localhost
     transport: ssh
     max_adapters: 1
-"#;
+";
         let result = ClusterConfig::from_yaml(yaml);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("SSH transport"));
@@ -499,11 +493,11 @@ nodes:
 
     #[test]
     fn test_minimal_config() {
-        let yaml = r#"
+        let yaml = r"
 nodes:
   - name: single
     host: localhost
-"#;
+";
         let config = ClusterConfig::from_yaml(yaml).unwrap();
         assert_eq!(config.nodes.len(), 1);
         assert_eq!(config.nodes[0].max_adapters, 1); // default

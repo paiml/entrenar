@@ -1099,9 +1099,9 @@ mod tests {
 
         // Verify gradient is finite and non-zero
         for (i, &val) in grad.as_slice().expect("contiguous").iter().enumerate() {
-            assert!(val.is_finite(), "Gradient element {} is not finite: {}", i, val);
+            assert!(val.is_finite(), "Gradient element {i} is not finite: {val}");
         }
         let grad_sum: f32 = grad.iter().sum();
-        assert!(grad_sum.abs() > 1e-6, "Gradient should be non-zero, got sum={}", grad_sum);
+        assert!(grad_sum.abs() > 1e-6, "Gradient should be non-zero, got sum={grad_sum}");
     }
 }

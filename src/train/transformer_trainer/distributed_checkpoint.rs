@@ -167,7 +167,7 @@ pub fn should_save_checkpoint(
     }
 
     // Save at regular intervals
-    if step > 0 && step % save_interval == 0 {
+    if step > 0 && step.is_multiple_of(save_interval) {
         return true;
     }
 

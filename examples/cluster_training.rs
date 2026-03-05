@@ -75,7 +75,7 @@ fn load_or_default_cluster(path: Option<&Path>) -> ClusterConfig {
 
 fn demo_cluster() -> ClusterConfig {
     ClusterConfig::from_yaml(
-        r#"
+        r"
 nodes:
   - name: desktop
     host: localhost
@@ -102,7 +102,7 @@ nodes:
     cpu_cores: 16
     ram_mb: 65536
     max_adapters: 1
-"#,
+",
     )
     .expect("demo cluster should parse")
 }
@@ -258,7 +258,7 @@ fn show_exec_launch_api(cluster: &ClusterConfig, placements: &[PlacementDecision
     if let Some(p) = placements.iter().find(|p| {
         cluster
             .find_node(&p.node_name)
-            .map_or(false, |n| matches!(n.transport, entrenar::gpu::cluster::Transport::Local))
+            .is_some_and(|n| matches!(n.transport, entrenar::gpu::cluster::Transport::Local))
     }) {
         if let Some(node) = cluster.find_node(&p.node_name) {
             // Dry run: show what would happen (don't actually spawn apr)
@@ -273,7 +273,7 @@ fn show_exec_launch_api(cluster: &ClusterConfig, placements: &[PlacementDecision
     if let Some(p) = placements.iter().find(|p| {
         cluster
             .find_node(&p.node_name)
-            .map_or(false, |n| matches!(n.transport, entrenar::gpu::cluster::Transport::Ssh))
+            .is_some_and(|n| matches!(n.transport, entrenar::gpu::cluster::Transport::Ssh))
     }) {
         if let Some(node) = cluster.find_node(&p.node_name) {
             println!(
@@ -285,8 +285,8 @@ fn show_exec_launch_api(cluster: &ClusterConfig, placements: &[PlacementDecision
             );
         }
     }
-    // Suppress unused import warning — exec_launch is demonstrated conceptually
-    let _ = exec_launch as fn(&_, &_, &_, &_, u32, u32) -> _;
+    // Reference exec_launch to suppress unused import warning
+    _ = exec_launch;
     println!();
 }
 

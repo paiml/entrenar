@@ -100,8 +100,8 @@ mod tests {
 
     /// Reference softmax (f64 precision) for accuracy verification
     fn reference_softmax_f64(logits: &[f32]) -> Vec<f64> {
-        let logits_f64: Vec<f64> = logits.iter().map(|&x| x as f64).collect();
-        let max = logits_f64.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let logits_f64: Vec<f64> = logits.iter().map(|&x| f64::from(x)).collect();
+        let max = logits_f64.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let exp_vals: Vec<f64> = logits_f64.iter().map(|&x| (x - max).exp()).collect();
         let sum: f64 = exp_vals.iter().sum();
         exp_vals.iter().map(|&e| e / sum).collect()

@@ -107,7 +107,9 @@ fn run_training(multi: &mut MultiAdapterPipeline, epochs: usize, schedule: Adapt
     // Note: tiny model has no tokenizer, so train_step_adapter returns None.
     // With a real model (from_pretrained or from_apr), actual training occurs.
     println!("--- Training ---");
-    if !multi.base_pipeline.has_tokenizer() {
+    if multi.base_pipeline.has_tokenizer() {
+        run_real_training(multi, epochs);
+    } else {
         println!("(Tiny model has no tokenizer — demonstrating pipeline orchestration only)");
         println!();
         for epoch in 0..epochs {
@@ -117,8 +119,6 @@ fn run_training(multi: &mut MultiAdapterPipeline, epochs: usize, schedule: Adapt
                 println!("  Adapter {i}: {} train samples, cursor=0", multi.adapters[i].train_samples.len());
             }
         }
-    } else {
-        run_real_training(multi, epochs);
     }
 }
 
@@ -170,8 +170,8 @@ fn save_checkpoints(multi: &MultiAdapterPipeline, epochs: usize) {
 fn generate_synthetic_samples(seed: usize, count: usize) -> Vec<InstructSample> {
     (0..count)
         .map(|i| InstructSample {
-            instruction: format!("Explain concept {}-{i} in simple terms", seed),
-            response: format!("Concept {}-{i} is a fundamental idea that relates to...", seed),
+            instruction: format!("Explain concept {seed}-{i} in simple terms"),
+            response: format!("Concept {seed}-{i} is a fundamental idea that relates to..."),
             system: None,
             metadata: None,
         })
@@ -190,7 +190,7 @@ fn parse_schedule(args: &[String]) -> AdapterSchedule {
         .iter()
         .position(|a| a == "--schedule")
         .and_then(|i| args.get(i + 1))
-        .map(|s| s.as_str());
+        .map(std::string::String::as_str);
     match val {
         Some("priority") => AdapterSchedule::PriorityValLoss,
         Some("sync") => AdapterSchedule::Synchronized,

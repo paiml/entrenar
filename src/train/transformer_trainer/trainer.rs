@@ -215,7 +215,7 @@ impl TransformerTrainer {
     pub fn reached_max_steps(&self) -> bool {
         self.config
             .max_steps
-            .map_or(false, |max| self.step >= max)
+            .is_some_and(|max| self.step >= max)
     }
 
     /// Get current step count

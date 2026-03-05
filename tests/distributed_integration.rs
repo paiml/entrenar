@@ -9,7 +9,7 @@
 //!
 //! # Ticket: entrenar #145
 
-use entrenar::finetune::{allreduce_pair, ComputeDevice, RingAllReduceWorker};
+use entrenar::finetune::RingAllReduceWorker;
 use entrenar::train::{
     checkpoint_path, hash_weights, should_save_checkpoint, verify_weight_consistency,
     BlockGradientSet, CheckpointPhase, DistributedBackend, DistributedCheckpointCoordinator,
@@ -201,7 +201,7 @@ fn test_ddp_per_block_allreduce_reverse_order() {
                 .map(|i| {
                     let w0 = (b * 100 + i) as f32;
                     let w1 = w0 * 2.0;
-                    (w0 + w1) / 2.0
+                    f32::midpoint(w0, w1)
                 })
                 .collect()
         })
@@ -317,9 +317,7 @@ fn test_communication_computation_overlap() {
     // The key property is that compute happened during AllReduce
     assert!(
         overlapped_time.as_millis() <= sequential_time.as_millis() + 10,
-        "Overlap not faster: sequential={:?}, overlapped={:?}",
-        sequential_time,
-        overlapped_time
+        "Overlap not faster: sequential={sequential_time:?}, overlapped={overlapped_time:?}"
     );
 }
 
@@ -704,7 +702,7 @@ fn test_accumulator_micro_batch_cycle() {
             accum.block_grads[b].accumulate(&grad);
         }
         // LM head gradient
-        for x in accum.lm_head_grad.iter_mut() {
+        for x in &mut accum.lm_head_grad {
             *x += (mb as f32 + 1.0);
         }
         accum.accumulated_count += 1;

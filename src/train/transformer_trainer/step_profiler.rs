@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Per-step wall-clock profiler for CUDA training (KAIZEN-047).
 //!
 //! Collects `Instant`-based timings for each phase of `train_step_single()`.
@@ -137,7 +138,7 @@ impl StepProfiler {
         self.step_count += 1;
         self.step_durations.push(step_wall);
 
-        if self.report_interval > 0 && self.step_count % self.report_interval == 0 {
+        if self.report_interval > 0 && self.step_count.is_multiple_of(self.report_interval) {
             self.print_report();
         }
     }
@@ -174,7 +175,7 @@ impl StepProfiler {
 
         // Percentiles for step wall-clock
         if self.step_durations.len() >= 10 {
-            let mut sorted: Vec<u128> = self.step_durations.iter().map(|d| d.as_micros()).collect();
+            let mut sorted: Vec<u128> = self.step_durations.iter().map(std::time::Duration::as_micros).collect();
             sorted.sort_unstable();
             let p50 = sorted[sorted.len() / 2];
             let p95 = sorted[sorted.len() * 95 / 100];

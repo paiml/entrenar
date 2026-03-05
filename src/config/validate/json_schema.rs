@@ -8,6 +8,7 @@
 use serde_json::{json, Value};
 
 /// Generate a JSON schema for the training configuration
+#[allow(dead_code)]
 ///
 /// This schema can be used by:
 /// - IDE YAML plugins for autocompletion
@@ -115,6 +116,7 @@ pub fn training_config_json_schema() -> Value {
 }
 
 /// Validate a YAML config string against the JSON schema using jsonschema crate
+#[allow(dead_code)]
 pub fn validate_yaml_against_schema(yaml_str: &str) -> Result<(), Vec<String>> {
     let value: serde_json::Value = match serde_yaml::from_str(yaml_str) {
         Ok(v) => v,
@@ -148,6 +150,7 @@ pub fn validate_yaml_against_schema(yaml_str: &str) -> Result<(), Vec<String>> {
 }
 
 /// Semantic validation checks that go beyond what JSON Schema can express.
+#[allow(dead_code)]
 fn semantic_checks(value: &serde_json::Value, errors: &mut Vec<String>) {
     let Some(obj) = value.as_object() else {
         return;
@@ -156,7 +159,7 @@ fn semantic_checks(value: &serde_json::Value, errors: &mut Vec<String>) {
     if let Some(lr) = obj
         .get("optimizer")
         .and_then(|o| o.get("lr"))
-        .and_then(|v| v.as_f64())
+        .and_then(serde_json::Value::as_f64)
     {
         if lr <= 0.0 || lr > 1.0 {
             errors.push(format!("optimizer.lr must be in (0, 1], got {lr}"));
@@ -166,7 +169,7 @@ fn semantic_checks(value: &serde_json::Value, errors: &mut Vec<String>) {
     if let Some(epochs) = obj
         .get("training")
         .and_then(|t| t.get("epochs"))
-        .and_then(|v| v.as_u64())
+        .and_then(serde_json::Value::as_u64)
     {
         if epochs == 0 {
             errors.push("training.epochs must be >= 1".to_string());
@@ -176,7 +179,7 @@ fn semantic_checks(value: &serde_json::Value, errors: &mut Vec<String>) {
     if let Some(bs) = obj
         .get("data")
         .and_then(|d| d.get("batch_size"))
-        .and_then(|v| v.as_u64())
+        .and_then(serde_json::Value::as_u64)
     {
         if bs == 0 {
             errors.push("data.batch_size must be >= 1".to_string());
@@ -207,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_validate_valid_yaml() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: /tmp/model
 data:
@@ -218,16 +221,16 @@ optimizer:
   lr: 0.001
 training:
   epochs: 10
-"#;
+";
         assert!(validate_yaml_against_schema(yaml).is_ok());
     }
 
     #[test]
     fn test_validate_missing_required() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: /tmp/model
-"#;
+";
         let result = validate_yaml_against_schema(yaml);
         assert!(result.is_err());
         let errors = result.unwrap_err();
@@ -236,7 +239,7 @@ model:
 
     #[test]
     fn test_validate_invalid_lr() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: /tmp/model
 data:
@@ -247,14 +250,14 @@ optimizer:
   lr: -0.1
 training:
   epochs: 10
-"#;
+";
         let result = validate_yaml_against_schema(yaml);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_zero_epochs() {
-        let yaml = r#"
+        let yaml = r"
 model:
   path: /tmp/model
 data:
@@ -265,7 +268,7 @@ optimizer:
   lr: 0.001
 training:
   epochs: 0
-"#;
+";
         let result = validate_yaml_against_schema(yaml);
         assert!(result.is_err());
     }

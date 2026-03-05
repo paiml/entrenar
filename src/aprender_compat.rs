@@ -109,15 +109,15 @@ pub mod primitives {
 /// ## Preprocessing
 /// - `StandardScaler` — Feature standardization
 pub mod estimators {
-    //! sklearn-compatible estimator type stubs (CP-05)
-    //!
-    //! These types provide sklearn API compatibility for the sovereign
-    //! Rust stack via aprender's ML algorithms:
-    //!
-    //! LinearRegression, LogisticRegression, Ridge, Lasso,
-    //! DecisionTree, RandomForest, GradientBoosting,
-    //! SVM, KNeighbors, NaiveBayes,
-    //! KMeans, DBSCAN, PCA, StandardScaler
+    // sklearn-compatible estimator type stubs (CP-05)
+    //
+    // These types provide sklearn API compatibility for the sovereign
+    // Rust stack via aprender's ML algorithms:
+    //
+    // LinearRegression, LogisticRegression, Ridge, Lasso,
+    // DecisionTree, RandomForest, GradientBoosting,
+    // SVM, KNeighbors, NaiveBayes,
+    // KMeans, DBSCAN, PCA, StandardScaler
 
     /// Supervised estimator trait (sklearn-like fit/predict API)
     pub trait Estimator {

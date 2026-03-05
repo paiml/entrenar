@@ -218,7 +218,7 @@ impl TransformerConfig {
             Some(a) if a.starts_with("qwen3") => {
                 // Qwen3: no bias, explicit head_dim=128 when hidden/heads != 128
                 let computed = hidden / heads;
-                let override_dim = if computed != 128 { Some(128) } else { None };
+                let override_dim = if computed == 128 { None } else { Some(128) };
                 (false, override_dim)
             }
             Some(a) if a.starts_with("qwen2") => (true, None),
@@ -433,7 +433,7 @@ impl TransformerConfig {
         let mut hi: usize = self.max_position_embeddings;
 
         while lo < hi {
-            let mid = lo + (hi - lo + 1) / 2;
+            let mid = lo + (hi - lo).div_ceil(2);
             if self.total_training_vram_bytes_shared(mid) <= vram_bytes {
                 lo = mid;
             } else {
@@ -460,7 +460,7 @@ impl TransformerConfig {
         let mut hi: usize = self.max_position_embeddings;
 
         while lo < hi {
-            let mid = lo + (hi - lo + 1) / 2;
+            let mid = lo + (hi - lo).div_ceil(2);
             if self.total_training_vram_bytes(mid) <= vram_bytes {
                 lo = mid;
             } else {
@@ -721,7 +721,7 @@ mod tests {
         eprintln!("  36 layers S=512 (per-layer scratch): {:.1} GB", vram_512 as f64 / 1e9);
         eprintln!("  36 layers S=128 (SHARED scratch):    {:.1} GB", shared_128 as f64 / 1e9);
         eprintln!("  36 layers S=512 (SHARED scratch):    {:.1} GB", shared_512 as f64 / 1e9);
-        eprintln!("  Max seq_len for 24 GB (shared):      {:?}", solved);
+        eprintln!("  Max seq_len for 24 GB (shared):      {solved:?}");
 
         assert!(
             vram_512 > usable_vram,
