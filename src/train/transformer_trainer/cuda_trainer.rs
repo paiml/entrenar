@@ -734,23 +734,9 @@ impl CudaTransformerTrainer {
         })
     }
 
-    /// ALB-078: Clip workspace gradients using fused GPU pipeline when available.
-    fn clip_workspace(&mut self, max_norm: f32, stream: &CudaStream) {
-        if let Some(ref fused_state) = self.fused_clip {
-            fused_clip_workspace_gradients(
-                &mut self.cuda_grad_workspace,
-                max_norm,
-                fused_state,
-                stream,
-            );
-        } else {
-            clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
-        }
-    }
-
     /// ALB-078: Initialize fused gradient clipping state (extracted for complexity).
     fn init_fused_clip(
-        ctx: &std::sync::Arc<CudaContext>,
+        ctx: &std::sync::Arc<trueno_gpu::driver::CudaContext>,
         config: &TransformerTrainConfig,
         hidden_size: usize,
         kv_hidden: usize,
@@ -1231,7 +1217,20 @@ impl CudaTransformerTrainer {
             // are all GPU-side operations on the same stream.
             // ALB-078: Fused GPU clip (zero sync) or sync-based fallback.
             if let Some(max_norm) = max_grad_norm {
-                self.clip_workspace(max_norm, stream);
+                if let Some(ref state) = self.fused_clip {
+                    fused_clip_workspace_gradients(
+                        &mut self.cuda_grad_workspace,
+                        max_norm,
+                        state,
+                        stream,
+                    );
+                } else {
+                    clip_workspace_gradients(
+                        &mut self.cuda_grad_workspace,
+                        max_norm,
+                        stream,
+                    );
+                }
             }
 
             // R-038: Either accumulate workspace grads (CPU-side) or run optimizer per-block.
