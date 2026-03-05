@@ -21,10 +21,6 @@ pub struct InferenceConfig {
 
 impl Default for InferenceConfig {
     fn default() -> Self {
-        Self {
-            model_path: String::new(),
-            max_seq_len: 2048,
-            greedy: true,
-        }
+        Self { model_path: String::new(), max_seq_len: 2048, greedy: true }
     }
 }

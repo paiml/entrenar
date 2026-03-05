@@ -84,11 +84,7 @@ impl CheckpointCoordinator {
                 },
             );
         }
-        Self {
-            adapters,
-            poll_interval_secs,
-            cluster,
-        }
+        Self { adapters, poll_interval_secs, cluster }
     }
 
     /// Poll all adapters for their latest checkpoint metadata.
@@ -133,16 +129,9 @@ impl CheckpointCoordinator {
                 if let Some(status) = self.adapters.get_mut(&adapter_idx) {
                     status.latest = Some(meta.clone());
                 }
-                PollResult::Ok {
-                    adapter_idx,
-                    metadata: meta,
-                }
+                PollResult::Ok { adapter_idx, metadata: meta }
             }
-            Err(e) => PollResult::Error {
-                adapter_idx,
-                node_name: node_name.to_string(),
-                error: e,
-            },
+            Err(e) => PollResult::Error { adapter_idx, node_name: node_name.to_string(), error: e },
         }
     }
 
@@ -172,9 +161,7 @@ impl CheckpointCoordinator {
     /// Find the best adapter (lowest loss).
     pub fn best_adapter(&self) -> Option<&AdapterStatus> {
         let board = self.leaderboard();
-        board
-            .first()
-            .and_then(|entry| self.adapters.get(&entry.adapter_idx))
+        board.first().and_then(|entry| self.adapters.get(&entry.adapter_idx))
     }
 
     /// Format leaderboard as a human-readable string.
@@ -199,15 +186,8 @@ impl CheckpointCoordinator {
 /// Result of polling a single adapter's checkpoint.
 #[derive(Debug)]
 pub enum PollResult {
-    Ok {
-        adapter_idx: usize,
-        metadata: CheckpointMetadata,
-    },
-    Error {
-        adapter_idx: usize,
-        node_name: String,
-        error: String,
-    },
+    Ok { adapter_idx: usize, metadata: CheckpointMetadata },
+    Error { adapter_idx: usize, node_name: String, error: String },
 }
 
 /// Read checkpoint metadata from a local path.
@@ -223,12 +203,15 @@ fn read_local_metadata(checkpoint_dir: &Path) -> Result<CheckpointMetadata, Stri
 ///
 /// Executes `ssh [-l user] host cat <checkpoint_dir>/best/metadata.json`
 /// and parses the JSON output. Timeout: 10 seconds.
-fn read_ssh_metadata(host: &str, user: Option<&str>, checkpoint_dir: &Path) -> Result<CheckpointMetadata, String> {
+fn read_ssh_metadata(
+    host: &str,
+    user: Option<&str>,
+    checkpoint_dir: &Path,
+) -> Result<CheckpointMetadata, String> {
     let remote_path = checkpoint_dir.join("best").join("metadata.json");
     let cat_cmd = format!("cat {}", remote_path.display());
     let output = exec_ssh_command(host, user, &cat_cmd)?;
-    serde_json::from_str(&output)
-        .map_err(|e| format!("failed to parse metadata from {host}: {e}"))
+    serde_json::from_str(&output).map_err(|e| format!("failed to parse metadata from {host}: {e}"))
 }
 
 /// Execute a command on a remote host via SSH.
@@ -253,9 +236,7 @@ fn exec_ssh_command(host: &str, user: Option<&str>, script: &str) -> Result<Stri
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to spawn ssh to {host}: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| format!("failed to spawn ssh to {host}: {e}"))?;
 
     // Pipe script via stdin (safe against injection)
     if let Some(stdin) = child.stdin.take() {
@@ -265,9 +246,7 @@ fn exec_ssh_command(host: &str, user: Option<&str>, script: &str) -> Result<Stri
         // stdin is dropped here, sending EOF
     }
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("ssh to {host} failed: {e}"))?;
+    let output = child.wait_with_output().map_err(|e| format!("ssh to {host} failed: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -277,8 +256,7 @@ fn exec_ssh_command(host: &str, user: Option<&str>, script: &str) -> Result<Stri
         ));
     }
 
-    String::from_utf8(output.stdout)
-        .map_err(|e| format!("invalid UTF-8 from ssh to {host}: {e}"))
+    String::from_utf8(output.stdout).map_err(|e| format!("invalid UTF-8 from ssh to {host}: {e}"))
 }
 
 /// Execute a training job on a remote or local node.
@@ -304,16 +282,14 @@ pub fn exec_launch(
     );
 
     match node.transport {
-        Transport::Local => {
-            std::process::Command::new("bash")
-                .arg("-c")
-                .arg(&script)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .map_err(|e| format!("failed to launch local training: {e}"))
-        }
+        Transport::Local => std::process::Command::new("bash")
+            .arg("-c")
+            .arg(&script)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to launch local training: {e}")),
         Transport::Ssh => {
             let mut cmd = std::process::Command::new("ssh");
             cmd.args(["-o", "ConnectTimeout=5"]);
@@ -328,9 +304,8 @@ pub fn exec_launch(
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::piped());
 
-            let mut child = cmd
-                .spawn()
-                .map_err(|e| format!("failed to ssh to {}: {e}", node.host))?;
+            let mut child =
+                cmd.spawn().map_err(|e| format!("failed to ssh to {}: {e}", node.host))?;
 
             if let Some(stdin) = child.stdin.take() {
                 use std::io::Write;
@@ -366,10 +341,7 @@ pub fn build_launch_command(
     match node.transport {
         Transport::Local => base,
         Transport::Ssh => {
-            let user_prefix = node
-                .user
-                .as_ref()
-                .map_or_else(String::new, |u| format!("{u}@"));
+            let user_prefix = node.user.as_ref().map_or_else(String::new, |u| format!("{u}@"));
             format!("ssh {user_prefix}{} '{base}'", node.host)
         }
     }
@@ -393,27 +365,20 @@ pub struct NodeHealth {
 /// For local nodes, checks that `apr --version` is available.
 /// For SSH nodes, runs `ssh host 'apr --version'` with timeout.
 pub fn check_cluster_health(cluster: &ClusterConfig) -> Vec<NodeHealth> {
-    cluster
-        .nodes
-        .iter()
-        .map(|node| check_node_health(node))
-        .collect()
+    cluster.nodes.iter().map(|node| check_node_health(node)).collect()
 }
 
 fn check_node_health(node: &NodeConfig) -> NodeHealth {
     let script = "apr --version 2>/dev/null || echo 'apr: not found'";
     let result = match node.transport {
-        Transport::Local => {
-            std::process::Command::new("bash")
-                .arg("-c")
-                .arg(script)
-                .output()
-                .map_err(|e| format!("failed to check local health: {e}"))
-                .and_then(|out| {
-                    String::from_utf8(out.stdout)
-                        .map_err(|e| format!("invalid UTF-8: {e}"))
-                })
-        }
+        Transport::Local => std::process::Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .output()
+            .map_err(|e| format!("failed to check local health: {e}"))
+            .and_then(|out| {
+                String::from_utf8(out.stdout).map_err(|e| format!("invalid UTF-8: {e}"))
+            }),
         Transport::Ssh => exec_ssh_command(&node.host, node.user.as_deref(), script),
     };
 
@@ -425,11 +390,7 @@ fn check_node_health(node: &NodeConfig) -> NodeHealth {
                 node_name: node.name.clone(),
                 reachable: true,
                 apr_version: if has_apr { Some(trimmed) } else { None },
-                error: if has_apr {
-                    None
-                } else {
-                    Some("apr CLI not found on node".to_string())
-                },
+                error: if has_apr { None } else { Some("apr CLI not found on node".to_string()) },
             }
         }
         Err(e) => NodeHealth {
@@ -449,9 +410,8 @@ impl CheckpointCoordinator {
     ///
     /// Returns the local path where the checkpoint was saved.
     pub fn pull_best_checkpoint(&self, dest: &Path) -> Result<PathBuf, String> {
-        let best = self
-            .best_adapter()
-            .ok_or_else(|| "no adapters with checkpoint data".to_string())?;
+        let best =
+            self.best_adapter().ok_or_else(|| "no adapters with checkpoint data".to_string())?;
 
         let node = self
             .cluster
@@ -469,15 +429,8 @@ impl CheckpointCoordinator {
             Transport::Ssh => {
                 std::fs::create_dir_all(&dest_dir)
                     .map_err(|e| format!("failed to create {}: {e}", dest_dir.display()))?;
-                let user_prefix = node
-                    .user
-                    .as_ref()
-                    .map_or_else(String::new, |u| format!("{u}@"));
-                let remote = format!(
-                    "{user_prefix}{}:{}/",
-                    node.host,
-                    source_dir.display()
-                );
+                let user_prefix = node.user.as_ref().map_or_else(String::new, |u| format!("{u}@"));
+                let remote = format!("{user_prefix}{}:{}/", node.host, source_dir.display());
                 let output = std::process::Command::new("scp")
                     .args(["-r", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes"])
                     .arg(&remote)
@@ -497,10 +450,9 @@ impl CheckpointCoordinator {
 
 /// Recursively copy a directory tree.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dst)
-        .map_err(|e| format!("failed to create {}: {e}", dst.display()))?;
-    let entries = std::fs::read_dir(src)
-        .map_err(|e| format!("failed to read {}: {e}", src.display()))?;
+    std::fs::create_dir_all(dst).map_err(|e| format!("failed to create {}: {e}", dst.display()))?;
+    let entries =
+        std::fs::read_dir(src).map_err(|e| format!("failed to read {}: {e}", src.display()))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("failed to read entry: {e}"))?;
         let dest_path = dst.join(entry.file_name());
@@ -547,21 +499,9 @@ nodes:
 
     fn test_placements() -> Vec<PlacementDecision> {
         vec![
-            PlacementDecision {
-                adapter_idx: 0,
-                node_name: "desktop".to_string(),
-                score: 2.5,
-            },
-            PlacementDecision {
-                adapter_idx: 1,
-                node_name: "desktop".to_string(),
-                score: 1.2,
-            },
-            PlacementDecision {
-                adapter_idx: 2,
-                node_name: "jetson".to_string(),
-                score: 0.3,
-            },
+            PlacementDecision { adapter_idx: 0, node_name: "desktop".to_string(), score: 2.5 },
+            PlacementDecision { adapter_idx: 1, node_name: "desktop".to_string(), score: 1.2 },
+            PlacementDecision { adapter_idx: 2, node_name: "jetson".to_string(), score: 0.3 },
         ]
     }
 
@@ -640,11 +580,8 @@ nodes:
             node_name: Some("desktop".to_string()),
             timestamp: None,
         };
-        fs::write(
-            best_dir.join("metadata.json"),
-            serde_json::to_string(&meta).expect("valid"),
-        )
-        .expect("valid");
+        fs::write(best_dir.join("metadata.json"), serde_json::to_string(&meta).expect("valid"))
+            .expect("valid");
 
         let cluster = test_cluster();
         let placements = vec![PlacementDecision {
@@ -660,10 +597,7 @@ nodes:
 
         assert_eq!(results.len(), 1);
         match &results[0] {
-            PollResult::Ok {
-                adapter_idx,
-                metadata,
-            } => {
+            PollResult::Ok { adapter_idx, metadata } => {
                 assert_eq!(*adapter_idx, 0);
                 assert_eq!(metadata.epoch, 5);
                 assert!((metadata.avg_loss - 0.42).abs() < f32::EPSILON);
@@ -676,13 +610,9 @@ nodes:
     fn test_poll_ssh_attempts_real_ssh() {
         // SSH poll now attempts real SSH (will fail on missing host, not with stub error)
         let cluster = test_cluster();
-        let placements = vec![PlacementDecision {
-            adapter_idx: 2,
-            node_name: "jetson".to_string(),
-            score: 0.3,
-        }];
-        let mut coord =
-            CheckpointCoordinator::new(cluster, &placements, &HashMap::new(), 300);
+        let placements =
+            vec![PlacementDecision { adapter_idx: 2, node_name: "jetson".to_string(), score: 0.3 }];
+        let mut coord = CheckpointCoordinator::new(cluster, &placements, &HashMap::new(), 300);
         let results = coord.poll_all();
 
         assert_eq!(results.len(), 1);
@@ -709,9 +639,13 @@ nodes:
         let err = result.unwrap_err();
         // Should be a real SSH/network error
         assert!(
-            err.contains("ssh") || err.contains("Connection") || err.contains("timed out")
-                || err.contains("refused") || err.contains("resolve")
-                || err.contains("No route") || err.contains("exited"),
+            err.contains("ssh")
+                || err.contains("Connection")
+                || err.contains("timed out")
+                || err.contains("refused")
+                || err.contains("resolve")
+                || err.contains("No route")
+                || err.contains("exited"),
             "expected real SSH error, got: {err}"
         );
     }
@@ -865,11 +799,8 @@ nodes:
             node_name: Some("desktop".to_string()),
             timestamp: None,
         };
-        fs::write(
-            best_dir.join("metadata.json"),
-            serde_json::to_string(&meta).expect("valid"),
-        )
-        .expect("valid");
+        fs::write(best_dir.join("metadata.json"), serde_json::to_string(&meta).expect("valid"))
+            .expect("valid");
         fs::write(best_dir.join("adapter.safetensors"), b"fake-weights").expect("valid");
 
         let cluster = test_cluster();
@@ -897,8 +828,7 @@ nodes:
     #[test]
     fn test_pull_no_checkpoints_fails() {
         let cluster = test_cluster();
-        let coord =
-            CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+        let coord = CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
         let dest = tempfile::tempdir().expect("valid");
         let result = coord.pull_best_checkpoint(dest.path());
         assert!(result.is_err());

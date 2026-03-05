@@ -13,10 +13,7 @@ pub enum GpuError {
         total_mb: usize,
     },
     /// Wait-for-VRAM timed out.
-    Timeout {
-        budget_mb: usize,
-        timeout_secs: u64,
-    },
+    Timeout { budget_mb: usize, timeout_secs: u64 },
     /// Ledger file is corrupt or unreadable.
     LedgerCorrupt(String),
     /// I/O error accessing ledger.

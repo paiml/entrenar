@@ -124,9 +124,7 @@ impl InstructTrainer {
         config: InstructTrainingConfig,
     ) -> crate::Result<Self> {
         if corpus.is_empty() {
-            return Err(crate::Error::ConfigError(
-                "GH-371: corpus must not be empty".to_string(),
-            ));
+            return Err(crate::Error::ConfigError("GH-371: corpus must not be empty".to_string()));
         }
         if config.val_split <= 0.0 || config.val_split > 0.5 {
             return Err(crate::Error::ConfigError(format!(
@@ -135,13 +133,10 @@ impl InstructTrainer {
             )));
         }
         if config.epochs == 0 {
-            return Err(crate::Error::ConfigError(
-                "GH-371: epochs must be > 0".to_string(),
-            ));
+            return Err(crate::Error::ConfigError("GH-371: epochs must be > 0".to_string()));
         }
 
-        let (train_data, val_data) =
-            Self::split_dataset(&corpus, config.val_split, config.seed);
+        let (train_data, val_data) = Self::split_dataset(&corpus, config.val_split, config.seed);
 
         if train_data.is_empty() || val_data.is_empty() {
             return Err(crate::Error::ConfigError(format!(
@@ -154,14 +149,7 @@ impl InstructTrainer {
         let rng_seed = config.seed;
         let data_hash = Self::compute_data_hash(&corpus);
 
-        Ok(Self {
-            pipeline,
-            config,
-            train_data,
-            val_data,
-            rng_seed,
-            data_hash,
-        })
+        Ok(Self { pipeline, config, train_data, val_data, rng_seed, data_hash })
     }
 
     /// Run the full training loop.
@@ -210,20 +198,13 @@ impl InstructTrainer {
                 let lr = scheduler.get_lr();
                 self.pipeline.set_learning_rate(lr);
 
-                let result = self.pipeline.train_step(
-                    &sample.prompt_ids,
-                    &sample.response_ids,
-                );
+                let result = self.pipeline.train_step(&sample.prompt_ids, &sample.response_ids);
                 epoch_loss += result.loss * result.num_response_tokens as f32;
                 epoch_tokens += result.num_response_tokens;
                 scheduler.step();
             }
 
-            let train_loss = if epoch_tokens > 0 {
-                epoch_loss / epoch_tokens as f32
-            } else {
-                0.0
-            };
+            let train_loss = if epoch_tokens > 0 { epoch_loss / epoch_tokens as f32 } else { 0.0 };
 
             // ── Validate ──
             // KAIZEN-046: val_prompts/val_responses hoisted outside epoch loop.
@@ -396,10 +377,7 @@ impl InstructTrainer {
         self.pipeline.sync_lora_to_cpu();
 
         std::fs::create_dir_all(path).map_err(|e| {
-            crate::Error::Io(format!(
-                "Failed to create checkpoint dir {}: {e}",
-                path.display()
-            ))
+            crate::Error::Io(format!("Failed to create checkpoint dir {}: {e}", path.display()))
         })?;
 
         // Save metadata.json
@@ -435,22 +413,14 @@ impl InstructTrainer {
             let a_bytes: Vec<u8> =
                 bytemuck::cast_slice(a_data.as_slice().expect("contiguous lora_a")).to_vec();
             let a_shape = vec![lora.rank(), lora.d_in()];
-            tensor_data.push((
-                format!("lora.{layer}.{proj}_proj.lora_a"),
-                a_bytes,
-                a_shape,
-            ));
+            tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_a"), a_bytes, a_shape));
 
             // LoRA B: [d_out, rank]
             let b_data = lora.lora_b().data();
             let b_bytes: Vec<u8> =
                 bytemuck::cast_slice(b_data.as_slice().expect("contiguous lora_b")).to_vec();
             let b_shape = vec![lora.d_out(), lora.rank()];
-            tensor_data.push((
-                format!("lora.{layer}.{proj}_proj.lora_b"),
-                b_bytes,
-                b_shape,
-            ));
+            tensor_data.push((format!("lora.{layer}.{proj}_proj.lora_b"), b_bytes, b_shape));
         }
 
         let views: Vec<(&str, safetensors::tensor::TensorView<'_>)> = tensor_data
@@ -468,17 +438,11 @@ impl InstructTrainer {
 
         let mut st_metadata = std::collections::HashMap::new();
         st_metadata.insert("epoch".to_string(), epoch.to_string());
-        st_metadata.insert(
-            "val_loss".to_string(),
-            format!("{:.6}", metrics.val_loss),
-        );
+        st_metadata.insert("val_loss".to_string(), format!("{:.6}", metrics.val_loss));
 
-        let safetensor_bytes =
-            safetensors::serialize(views, Some(st_metadata)).map_err(|e| {
-                crate::Error::Serialization(format!(
-                    "SafeTensors serialization failed: {e}"
-                ))
-            })?;
+        let safetensor_bytes = safetensors::serialize(views, Some(st_metadata)).map_err(|e| {
+            crate::Error::Serialization(format!("SafeTensors serialization failed: {e}"))
+        })?;
         std::fs::write(path.join("model.safetensors"), safetensor_bytes)?;
 
         Ok(())
@@ -505,17 +469,11 @@ mod tests {
     #[test]
     fn test_trainer_creation() {
         let model_config = TransformerConfig::tiny();
-        let instruct_config = InstructConfig {
-            lora_rank: 4,
-            max_seq_len: 32,
-            ..InstructConfig::default()
-        };
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 32, ..InstructConfig::default() };
         let pipeline = InstructPipeline::new(&model_config, instruct_config);
         let corpus = make_corpus(20);
-        let config = InstructTrainingConfig {
-            epochs: 2,
-            ..Default::default()
-        };
+        let config = InstructTrainingConfig { epochs: 2, ..Default::default() };
 
         let trainer = InstructTrainer::new(pipeline, corpus, config);
         assert!(trainer.is_ok());
@@ -539,18 +497,11 @@ mod tests {
     #[test]
     fn test_trainer_train() {
         let model_config = TransformerConfig::tiny();
-        let instruct_config = InstructConfig {
-            lora_rank: 4,
-            max_seq_len: 32,
-            ..InstructConfig::default()
-        };
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 32, ..InstructConfig::default() };
         let pipeline = InstructPipeline::new(&model_config, instruct_config);
         let corpus = make_corpus(10);
-        let config = InstructTrainingConfig {
-            epochs: 2,
-            save_every: 1,
-            ..Default::default()
-        };
+        let config = InstructTrainingConfig { epochs: 2, save_every: 1, ..Default::default() };
 
         let mut trainer = InstructTrainer::new(pipeline, corpus, config).unwrap();
         let result = trainer.train();

@@ -156,7 +156,10 @@ mod normalization_correctness_tests {
         let result = layer_norm(&x, &gamma, &beta, eps);
         for (i, (&actual, &expected)) in result.data().iter().zip(reference.iter()).enumerate() {
             let diff = (actual - expected).abs();
-            assert!(diff < 1e-5, "LayerNorm correctness[{i}]: actual={actual}, ref={expected}, diff={diff}");
+            assert!(
+                diff < 1e-5,
+                "LayerNorm correctness[{i}]: actual={actual}, ref={expected}, diff={diff}"
+            );
         }
     }
 

@@ -195,7 +195,8 @@ impl ClassifyTrainer {
             Self::auto_balance_classes(&mut pipeline, &corpus);
         }
 
-        let (mut train_data, val_data) = Self::split_dataset(&corpus, config.val_split, config.seed);
+        let (mut train_data, val_data) =
+            Self::split_dataset(&corpus, config.val_split, config.seed);
 
         if config.oversample_minority {
             Self::oversample_training_data(&mut train_data, config.seed);
@@ -263,7 +264,7 @@ impl ClassifyTrainer {
     /// Threshold: if max_count / min_count > 2.0, imbalance is detected.
     /// Strategy: `SqrtInverse` (moderate rebalancing, avoids overadjust).
     fn auto_balance_classes(pipeline: &mut ClassifyPipeline, corpus: &[SafetySample]) {
-        use super::classification::{corpus_stats, compute_class_weights, ClassWeightStrategy};
+        use super::classification::{compute_class_weights, corpus_stats, ClassWeightStrategy};
 
         // Skip if user explicitly configured weights
         if pipeline.config.class_weights.is_some() {
@@ -288,20 +289,16 @@ impl ClassifyTrainer {
         let imbalance_ratio = max_count as f64 / min_count as f64;
 
         if imbalance_ratio > 2.0 {
-            let weights = compute_class_weights(&stats, ClassWeightStrategy::SqrtInverse, num_classes);
+            let weights =
+                compute_class_weights(&stats, ClassWeightStrategy::SqrtInverse, num_classes);
             println!(
                 "  Auto-detected class imbalance (ratio {imbalance_ratio:.1}:1), \
                  applying sqrt-inverse weights: {weights:?}"
             );
-            println!(
-                "  Class counts: {:?} (total: {})",
-                stats.class_counts, stats.total
-            );
+            println!("  Class counts: {:?} (total: {})", stats.class_counts, stats.total);
             pipeline.config.class_weights = Some(weights);
         } else {
-            println!(
-                "  Class balance OK (ratio {imbalance_ratio:.1}:1), using uniform weights"
-            );
+            println!("  Class balance OK (ratio {imbalance_ratio:.1}:1), using uniform weights");
         }
     }
 
@@ -338,7 +335,8 @@ impl ClassifyTrainer {
         let n = train_data.len();
         let mut rng_state: u64 = seed.wrapping_mul(0x517cc1b727220a95).wrapping_add(1);
         for i in (1..n).rev() {
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng_state =
+                rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             let j = (rng_state >> 33) as usize % (i + 1);
             train_data.swap(i, j);
         }
@@ -516,7 +514,10 @@ impl ClassifyTrainer {
     fn train_as_coordinator(&mut self) -> TrainResult {
         use super::gradient_server::GradientServer;
 
-        let dist_config = self.config.distributed.clone()
+        let dist_config = self
+            .config
+            .distributed
+            .clone()
             .expect("train_as_coordinator requires distributed config");
 
         let total_start = std::time::Instant::now();
@@ -553,7 +554,9 @@ impl ClassifyTrainer {
 
         eprintln!(
             "[coordinator] Starting training: {} epochs, {} workers, {} samples",
-            self.config.epochs, num_workers, self.train_data.len(),
+            self.config.epochs,
+            num_workers,
+            self.train_data.len(),
         );
 
         let mut epoch_metrics_vec: Vec<EpochMetrics> = Vec::with_capacity(self.config.epochs);
@@ -573,8 +576,8 @@ impl ClassifyTrainer {
 
             // KAIZEN-032: Borrow pre-tokenized data directly — no per-epoch clone.
             for (step_idx, chunk) in self.train_tokens.chunks(batch_size).enumerate() {
-                let step = epoch as u64 * (self.train_tokens.len() / batch_size) as u64
-                    + step_idx as u64;
+                let step =
+                    epoch as u64 * (self.train_tokens.len() / batch_size) as u64 + step_idx as u64;
 
                 // Send shard assignments to workers
                 if let Err(e) = server.send_shard_assignments(step) {
@@ -615,12 +618,9 @@ impl ClassifyTrainer {
                 break;
             }
 
-            let avg_loss = if total_samples > 0 {
-                total_loss / total_samples as f32
-            } else { 0.0 };
-            let accuracy = if total_samples > 0 {
-                total_correct as f32 / total_samples as f32
-            } else { 0.0 };
+            let avg_loss = if total_samples > 0 { total_loss / total_samples as f32 } else { 0.0 };
+            let accuracy =
+                if total_samples > 0 { total_correct as f32 / total_samples as f32 } else { 0.0 };
 
             // Validate on coordinator's local val set
             let (val_loss, val_accuracy) = self.validate();
@@ -628,7 +628,9 @@ impl ClassifyTrainer {
             let epoch_time_ms = epoch_start.elapsed().as_millis() as u64;
             let samples_per_sec = if epoch_time_ms > 0 {
                 total_samples as f32 / (epoch_time_ms as f32 / 1000.0)
-            } else { 0.0 };
+            } else {
+                0.0
+            };
 
             let metrics = EpochMetrics {
                 epoch,
@@ -643,7 +645,11 @@ impl ClassifyTrainer {
 
             eprintln!(
                 "[coordinator] Epoch {}: loss={:.4}, acc={:.1}%, val_loss={:.4}, val_acc={:.1}%",
-                epoch + 1, avg_loss, accuracy * 100.0, val_loss, val_accuracy * 100.0,
+                epoch + 1,
+                avg_loss,
+                accuracy * 100.0,
+                val_loss,
+                val_accuracy * 100.0,
             );
 
             if val_loss < best_val_loss {
@@ -696,11 +702,8 @@ impl ClassifyTrainer {
             let current_lr = scheduler.get_lr();
 
             let step = batch_idx + 1;
-            let acc = if total_samples > 0 {
-                total_correct as f32 / total_samples as f32
-            } else {
-                0.0
-            };
+            let acc =
+                if total_samples > 0 { total_correct as f32 / total_samples as f32 } else { 0.0 };
 
             // Emit per-batch metrics to monitor (JSON state file + optional console)
             if let Some(ref mut writer) = self.monitor_writer {
@@ -752,7 +755,10 @@ impl ClassifyTrainer {
                 let running_acc = if i > 0 { correct as f32 / (i + 1) as f32 * 100.0 } else { 0.0 };
                 eprint!(
                     "\r  Validating: {}/{} ({:.1} sam/s, acc={:.1}%)   ",
-                    i + 1, total, sam_per_sec, running_acc,
+                    i + 1,
+                    total,
+                    sam_per_sec,
+                    running_acc,
                 );
             }
         }
@@ -765,7 +771,9 @@ impl ClassifyTrainer {
         };
         eprintln!(
             "\r  Validation complete: {} samples in {:.1}s ({:.1} sam/s)              ",
-            total, val_elapsed.as_secs_f32(), val_sam_per_sec,
+            total,
+            val_elapsed.as_secs_f32(),
+            val_sam_per_sec,
         );
 
         let avg_loss = if total > 0 { total_loss / total as f32 } else { 0.0 };
@@ -940,10 +948,7 @@ impl ClassifyTrainer {
         )
         .target_qv_projections();
 
-        let base_model = self
-            .pipeline
-            .model_dir()
-            .map(|p| p.display().to_string());
+        let base_model = self.pipeline.model_dir().map(|p| p.display().to_string());
 
         let peft_config =
             crate::lora::PeftAdapterConfig::from_lora_config(&lora_config, base_model.as_deref())
@@ -958,9 +963,8 @@ impl ClassifyTrainer {
         if let Some(model_dir) = self.pipeline.model_dir() {
             let src = model_dir.join("tokenizer.json");
             if src.exists() {
-                std::fs::copy(&src, path.join("tokenizer.json")).map_err(|e| {
-                    crate::Error::Io(format!("Failed to copy tokenizer.json: {e}"))
-                })?;
+                std::fs::copy(&src, path.join("tokenizer.json"))
+                    .map_err(|e| crate::Error::Io(format!("Failed to copy tokenizer.json: {e}")))?;
             }
         }
 
@@ -987,10 +991,8 @@ impl ClassifyTrainer {
         let mut writer = AprWriter::new();
 
         // ── Schema version (F-CKPT-002) ─────────────────────────────────
-        writer.set_metadata(
-            "__checkpoint__.schema_version".to_string(),
-            serde_json::json!("1.2.0"),
-        );
+        writer
+            .set_metadata("__checkpoint__.schema_version".to_string(), serde_json::json!("1.2.0"));
 
         // ── Rich metadata ────────────────────────────────────────────────
         writer.set_metadata("model_type".to_string(), serde_json::json!("adapter"));
@@ -998,14 +1000,9 @@ impl ClassifyTrainer {
         writer.set_metadata("val_loss".to_string(), serde_json::json!(metrics.val_loss));
         writer.set_metadata("val_accuracy".to_string(), serde_json::json!(metrics.val_accuracy));
         writer.set_metadata("train_loss".to_string(), serde_json::json!(metrics.train_loss));
-        writer.set_metadata(
-            "train_accuracy".to_string(),
-            serde_json::json!(metrics.train_accuracy),
-        );
-        writer.set_metadata(
-            "architecture".to_string(),
-            serde_json::json!("qwen2_classify"),
-        );
+        writer
+            .set_metadata("train_accuracy".to_string(), serde_json::json!(metrics.train_accuracy));
+        writer.set_metadata("architecture".to_string(), serde_json::json!("qwen2_classify"));
         writer.set_metadata(
             "num_classes".to_string(),
             serde_json::json!(self.pipeline.config.num_classes),
@@ -1087,11 +1084,8 @@ impl ClassifyTrainer {
         );
 
         // Save first moments (m) and second moments (v)
-        for (i, (m_opt, v_opt)) in optimizer
-            .first_moments()
-            .iter()
-            .zip(optimizer.second_moments().iter())
-            .enumerate()
+        for (i, (m_opt, v_opt)) in
+            optimizer.first_moments().iter().zip(optimizer.second_moments().iter()).enumerate()
         {
             if let Some(m) = m_opt {
                 let m_slice = m.as_slice().expect("contiguous moment m");
@@ -1113,11 +1107,7 @@ impl ClassifyTrainer {
 
         // ── Training metadata (F-CKPT-005) ──────────────────────────────
         writer.add_tensor_f32("__training__.epoch", vec![1], &[epoch as f32]);
-        writer.add_tensor_f32(
-            "__training__.learning_rate",
-            vec![1],
-            &[metrics.learning_rate],
-        );
+        writer.add_tensor_f32("__training__.learning_rate", vec![1], &[metrics.learning_rate]);
 
         // ── NaN/Inf check (F-CKPT-007) ──────────────────────────────────
         if !weight_slice.iter().all(|v| v.is_finite()) {
@@ -1146,8 +1136,8 @@ impl ClassifyTrainer {
         }
 
         // ── Shape validation (F-CKPT-008) ────────────────────────────────
-        let expected_weight_len = self.pipeline.config.num_classes
-            * self.pipeline.model.config.hidden_size;
+        let expected_weight_len =
+            self.pipeline.config.num_classes * self.pipeline.model.config.hidden_size;
         if weight_slice.len() != expected_weight_len {
             return Err(crate::Error::Serialization(format!(
                 "F-CKPT-008: classifier.weight shape mismatch: \
@@ -1179,23 +1169,23 @@ impl ClassifyTrainer {
     ///
     /// Produces a `.adapter.apr` with zero `__training__.*` tensors.
     /// Used for publishing and inference deployment.
-    fn save_adapter_apr(&self, path: &Path, epoch: usize, metrics: &EpochMetrics) -> crate::Result<()> {
+    fn save_adapter_apr(
+        &self,
+        path: &Path,
+        epoch: usize,
+        metrics: &EpochMetrics,
+    ) -> crate::Result<()> {
         use aprender::serialization::apr::AprWriter;
 
         let mut writer = AprWriter::new();
 
-        writer.set_metadata(
-            "__checkpoint__.schema_version".to_string(),
-            serde_json::json!("1.3.0"),
-        );
+        writer
+            .set_metadata("__checkpoint__.schema_version".to_string(), serde_json::json!("1.3.0"));
         writer.set_metadata("model_type".to_string(), serde_json::json!("adapter"));
         writer.set_metadata("epoch".to_string(), serde_json::json!(epoch));
         writer.set_metadata("val_loss".to_string(), serde_json::json!(metrics.val_loss));
         writer.set_metadata("val_accuracy".to_string(), serde_json::json!(metrics.val_accuracy));
-        writer.set_metadata(
-            "architecture".to_string(),
-            serde_json::json!("qwen2_classify"),
-        );
+        writer.set_metadata("architecture".to_string(), serde_json::json!("qwen2_classify"));
         writer.set_metadata(
             "num_classes".to_string(),
             serde_json::json!(self.pipeline.config.num_classes),
@@ -1292,22 +1282,22 @@ impl ClassifyTrainer {
         }
 
         // ── Shape-config validation (F-CKPT-014) ────────────────────────
-        let expected_weight = self.pipeline.config.num_classes
-            * self.pipeline.model.config.hidden_size;
-        reader.validate_tensor_shape("classifier.weight", expected_weight).map_err(|e| {
-            crate::Error::Serialization(e)
-        })?;
-        reader.validate_tensor_shape("classifier.bias", self.pipeline.config.num_classes).map_err(|e| {
-            crate::Error::Serialization(e)
-        })?;
+        let expected_weight =
+            self.pipeline.config.num_classes * self.pipeline.model.config.hidden_size;
+        reader
+            .validate_tensor_shape("classifier.weight", expected_weight)
+            .map_err(|e| crate::Error::Serialization(e))?;
+        reader
+            .validate_tensor_shape("classifier.bias", self.pipeline.config.num_classes)
+            .map_err(|e| crate::Error::Serialization(e))?;
 
         // ── Restore classifier head (F-CKPT-013: NaN scan) ──────────────
-        let weight_data = reader.read_tensor_f32_checked("classifier.weight").map_err(|e| {
-            crate::Error::Serialization(e)
-        })?;
-        let bias_data = reader.read_tensor_f32_checked("classifier.bias").map_err(|e| {
-            crate::Error::Serialization(e)
-        })?;
+        let weight_data = reader
+            .read_tensor_f32_checked("classifier.weight")
+            .map_err(|e| crate::Error::Serialization(e))?;
+        let bias_data = reader
+            .read_tensor_f32_checked("classifier.bias")
+            .map_err(|e| crate::Error::Serialization(e))?;
 
         self.pipeline
             .classifier
@@ -1335,18 +1325,12 @@ impl ClassifyTrainer {
             if let Ok(a_data) = reader.read_tensor_f32(&a_name) {
                 let a_tensor = lora.lora_a_mut();
                 let a_buf = a_tensor.data_mut();
-                a_buf
-                    .as_slice_mut()
-                    .expect("contiguous lora_a")
-                    .copy_from_slice(&a_data);
+                a_buf.as_slice_mut().expect("contiguous lora_a").copy_from_slice(&a_data);
             }
             if let Ok(b_data) = reader.read_tensor_f32(&b_name) {
                 let b_tensor = lora.lora_b_mut();
                 let b_buf = b_tensor.data_mut();
-                b_buf
-                    .as_slice_mut()
-                    .expect("contiguous lora_b")
-                    .copy_from_slice(&b_data);
+                b_buf.as_slice_mut().expect("contiguous lora_b").copy_from_slice(&b_data);
             }
         }
 
@@ -1368,10 +1352,8 @@ impl ClassifyTrainer {
 
             match (m_exists, v_exists) {
                 (Ok(m_data), Ok(v_data)) => {
-                    optimizer
-                        .set_first_moment(i, ndarray::Array1::from_vec(m_data));
-                    optimizer
-                        .set_second_moment(i, ndarray::Array1::from_vec(v_data));
+                    optimizer.set_first_moment(i, ndarray::Array1::from_vec(m_data));
+                    optimizer.set_second_moment(i, ndarray::Array1::from_vec(v_data));
                 }
                 _ => break, // No more moment buffers
             }
@@ -1497,9 +1479,9 @@ impl ClassifyTrainer {
         let gpu_count = 1u32; // single GPU per worker for now
         let backend = "cpu"; // will be wgpu/cuda when GPU training wired
 
-        let client = super::worker_client::WorkerClient::connect(
-            dist_config, gpu_count, backend,
-        ).map_err(|e| crate::Error::ConfigError(format!("worker connect failed: {e}")))?;
+        let client =
+            super::worker_client::WorkerClient::connect(dist_config, gpu_count, backend)
+                .map_err(|e| crate::Error::ConfigError(format!("worker connect failed: {e}")))?;
 
         eprintln!(
             "[worker {}] Connected (total workers: {})",
@@ -1539,16 +1521,19 @@ impl ClassifyTrainer {
             let gradients = self.pipeline.collect_lora_gradients();
 
             // Send gradients to coordinator
-            client.send_gradients(
-                step,
-                gradients,
-                batch_result.avg_loss,
-                batch_result.correct,
-                batch_result.total,
-            ).map_err(|e| crate::Error::ConfigError(format!("gradient send failed: {e}")))?;
+            client
+                .send_gradients(
+                    step,
+                    gradients,
+                    batch_result.avg_loss,
+                    batch_result.correct,
+                    batch_result.total,
+                )
+                .map_err(|e| crate::Error::ConfigError(format!("gradient send failed: {e}")))?;
 
             // Receive averaged gradients
-            let averaged = client.receive_averaged()
+            let averaged = client
+                .receive_averaged()
                 .map_err(|e| crate::Error::ConfigError(format!("averaged receive failed: {e}")))?;
 
             // Apply averaged gradients via optimizer step
@@ -1579,7 +1564,11 @@ impl ClassifyTrainer {
     /// # Arguments
     /// * `data` - Labeled samples to evaluate on
     /// * `label_names` - Human-readable class names (length must match num_classes)
-    pub fn evaluate(&mut self, data: &[SafetySample], label_names: &[String]) -> ClassifyEvalReport {
+    pub fn evaluate(
+        &mut self,
+        data: &[SafetySample],
+        label_names: &[String],
+    ) -> ClassifyEvalReport {
         let start = std::time::Instant::now();
         let num_classes = self.pipeline.config.num_classes;
 
@@ -1590,7 +1579,8 @@ impl ClassifyTrainer {
 
         for sample in data {
             let ids = self.pipeline.tokenize(&sample.input);
-            let (loss, predicted, probs) = self.pipeline.forward_only_with_probs(&ids, sample.label);
+            let (loss, predicted, probs) =
+                self.pipeline.forward_only_with_probs(&ids, sample.label);
             total_loss += loss;
             y_true.push(sample.label);
             y_pred.push(predicted);
@@ -1686,11 +1676,7 @@ impl ClassifyEvalReport {
         eval_time_ms: u64,
     ) -> Self {
         let total_samples = y_pred.len();
-        let avg_loss = if total_samples > 0 {
-            total_loss / total_samples as f32
-        } else {
-            0.0
-        };
+        let avg_loss = if total_samples > 0 { total_loss / total_samples as f32 } else { 0.0 };
 
         let cm = ConfusionMatrix::from_predictions_with_min_classes(y_pred, y_true, num_classes);
         let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
@@ -1700,10 +1686,8 @@ impl ClassifyEvalReport {
         let mcc = Self::compute_mcc(&cm, cm.n_classes(), total_samples);
         let top2_accuracy = Self::compute_top2_accuracy(all_probs, y_true, total_samples);
 
-        let confidences: Vec<f64> = all_probs
-            .iter()
-            .map(|p| f64::from(p.iter().copied().fold(0.0f32, f32::max)))
-            .collect();
+        let confidences: Vec<f64> =
+            all_probs.iter().map(|p| f64::from(p.iter().copied().fold(0.0f32, f32::max))).collect();
 
         let (mean_confidence, mean_confidence_correct, mean_confidence_wrong) =
             Self::compute_confidence_stats(&confidences, y_pred, y_true);
@@ -1769,11 +1753,9 @@ impl ClassifyEvalReport {
             .iter()
             .zip(y_true.iter())
             .filter(|(probs, &true_label)| {
-                let mut indexed: Vec<(usize, f32)> =
-                    probs.iter().copied().enumerate().collect();
+                let mut indexed: Vec<(usize, f32)> = probs.iter().copied().enumerate().collect();
                 indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                indexed.len() >= 2
-                    && (indexed[0].0 == true_label || indexed[1].0 == true_label)
+                indexed.len() >= 2 && (indexed[0].0 == true_label || indexed[1].0 == true_label)
             })
             .count();
         correct as f64 / total as f64
@@ -1899,14 +1881,11 @@ impl ClassifyEvalReport {
         let c: f64 = (0..num_classes).map(|k| mat[k][k] as f64).sum();
 
         // p_k = column sums (predicted counts per class)
-        let p: Vec<f64> = (0..num_classes)
-            .map(|k| mat.iter().map(|row| row[k] as f64).sum())
-            .collect();
+        let p: Vec<f64> =
+            (0..num_classes).map(|k| mat.iter().map(|row| row[k] as f64).sum()).collect();
 
         // t_k = row sums (true counts per class)
-        let t: Vec<f64> = (0..num_classes)
-            .map(|k| mat[k].iter().sum::<usize>() as f64)
-            .collect();
+        let t: Vec<f64> = (0..num_classes).map(|k| mat[k].iter().sum::<usize>() as f64).collect();
 
         let sum_pk_tk: f64 = p.iter().zip(t.iter()).map(|(pk, tk)| pk * tk).sum();
         let sum_pk_sq: f64 = p.iter().map(|pk| pk * pk).sum();
@@ -1996,7 +1975,11 @@ impl ClassifyEvalReport {
                 boot_true.push(y_true[idx]);
             }
 
-            let cm = ConfusionMatrix::from_predictions_with_min_classes(&boot_pred, &boot_true, num_classes);
+            let cm = ConfusionMatrix::from_predictions_with_min_classes(
+                &boot_pred,
+                &boot_true,
+                num_classes,
+            );
             let metrics = MultiClassMetrics::from_confusion_matrix(&cm);
 
             accs.push(cm.accuracy());
@@ -2025,16 +2008,8 @@ impl ClassifyEvalReport {
     }
 
     /// Compute baseline accuracies: random and majority-class.
-    fn compute_baselines(
-        support: &[usize],
-        total: usize,
-        num_classes: usize,
-    ) -> (f64, f64) {
-        let random = if num_classes > 0 {
-            1.0 / num_classes as f64
-        } else {
-            0.0
-        };
+    fn compute_baselines(support: &[usize], total: usize, num_classes: usize) -> (f64, f64) {
+        let random = if num_classes > 0 { 1.0 / num_classes as f64 } else { 0.0 };
         let majority = if total > 0 {
             support.iter().copied().max().unwrap_or(0) as f64 / total as f64
         } else {
@@ -2122,14 +2097,33 @@ impl ClassifyEvalReport {
     }
 
     fn report_summary(&self, out: &mut String) {
-        out.push_str(&format!("\nAccuracy:       {:.4}  ({:.1}%)  95% CI [{:.4}, {:.4}]\n",
-            self.accuracy, self.accuracy * 100.0, self.ci_accuracy.0, self.ci_accuracy.1));
-        out.push_str(&format!("Top-2 accuracy: {:.4}  ({:.1}%)\n", self.top2_accuracy, self.top2_accuracy * 100.0));
-        out.push_str(&format!("Cohen's kappa:  {:.4}  ({})\n", self.cohens_kappa, Self::kappa_interpretation(self.cohens_kappa)));
-        out.push_str(&format!("MCC:            {:.4}  95% CI [{:.4}, {:.4}]\n", self.mcc, self.ci_mcc.0, self.ci_mcc.1));
-        out.push_str(&format!("Macro F1:       {:.4}  95% CI [{:.4}, {:.4}]\n",
+        out.push_str(&format!(
+            "\nAccuracy:       {:.4}  ({:.1}%)  95% CI [{:.4}, {:.4}]\n",
+            self.accuracy,
+            self.accuracy * 100.0,
+            self.ci_accuracy.0,
+            self.ci_accuracy.1
+        ));
+        out.push_str(&format!(
+            "Top-2 accuracy: {:.4}  ({:.1}%)\n",
+            self.top2_accuracy,
+            self.top2_accuracy * 100.0
+        ));
+        out.push_str(&format!(
+            "Cohen's kappa:  {:.4}  ({})\n",
+            self.cohens_kappa,
+            Self::kappa_interpretation(self.cohens_kappa)
+        ));
+        out.push_str(&format!(
+            "MCC:            {:.4}  95% CI [{:.4}, {:.4}]\n",
+            self.mcc, self.ci_mcc.0, self.ci_mcc.1
+        ));
+        out.push_str(&format!(
+            "Macro F1:       {:.4}  95% CI [{:.4}, {:.4}]\n",
             self.avg_metric(&self.per_class_f1, crate::eval::classification::Average::Macro),
-            self.ci_macro_f1.0, self.ci_macro_f1.1));
+            self.ci_macro_f1.0,
+            self.ci_macro_f1.1
+        ));
         out.push_str(&format!("Avg loss:       {:.4}\n", self.avg_loss));
     }
 
@@ -2142,10 +2136,16 @@ impl ClassifyEvalReport {
     }
 
     fn report_scoring_rules(&self, out: &mut String) {
-        out.push_str(&format!("\nBrier score:    {:.4}  (perfect=0, random={:.4})\n",
-            self.brier_score, 1.0 - 1.0 / self.num_classes as f64));
-        out.push_str(&format!("Log loss:       {:.4}  (random={:.4})\n",
-            self.log_loss, (self.num_classes as f64).ln()));
+        out.push_str(&format!(
+            "\nBrier score:    {:.4}  (perfect=0, random={:.4})\n",
+            self.brier_score,
+            1.0 - 1.0 / self.num_classes as f64
+        ));
+        out.push_str(&format!(
+            "Log loss:       {:.4}  (random={:.4})\n",
+            self.log_loss,
+            (self.num_classes as f64).ln()
+        ));
     }
 
     fn report_calibration(&self, out: &mut String) {
@@ -2159,7 +2159,11 @@ impl ClassifyEvalReport {
                 let overconf = if conf > acc { "+" } else { "" };
                 out.push_str(&format!(
                     "  [{:.1}-{:.1})  {:.4}      {:.4}      {:>5}  {overconf}{:.3}\n",
-                    lo, hi, conf, acc, count,
+                    lo,
+                    hi,
+                    conf,
+                    acc,
+                    count,
                     conf - acc,
                 ));
             }
@@ -2167,7 +2171,8 @@ impl ClassifyEvalReport {
     }
 
     fn report_baselines(&self, out: &mut String) {
-        out.push_str(&format!("\nBaselines:  random={:.1}%  majority={:.1}%  model={:.1}%  lift={:.1}x\n",
+        out.push_str(&format!(
+            "\nBaselines:  random={:.1}%  majority={:.1}%  model={:.1}%  lift={:.1}x\n",
             self.baseline_random * 100.0,
             self.baseline_majority * 100.0,
             self.accuracy * 100.0,
@@ -2189,7 +2194,10 @@ impl ClassifyEvalReport {
 
     fn report_throughput(&self, out: &mut String) {
         out.push_str(&format!("\nSamples:   {}\n", self.total_samples));
-        out.push_str(&format!("Time:      {}ms ({:.1} samples/sec)\n", self.eval_time_ms, self.samples_per_sec));
+        out.push_str(&format!(
+            "Time:      {}ms ({:.1} samples/sec)\n",
+            self.eval_time_ms, self.samples_per_sec
+        ));
     }
 
     /// Interpret Cohen's kappa value.
@@ -2336,7 +2344,9 @@ impl ClassifyEvalReport {
         out.push_str("---\n");
         out.push_str("license: apache-2.0\n");
         out.push_str("language:\n- en\n");
-        out.push_str("tags:\n- shell-safety\n- code-classification\n- lora\n- entrenar\n- security\n");
+        out.push_str(
+            "tags:\n- shell-safety\n- code-classification\n- lora\n- entrenar\n- security\n",
+        );
         if let Some(base) = base_model {
             out.push_str(&format!("base_model: {base}\n"));
         }
@@ -2349,8 +2359,12 @@ impl ClassifyEvalReport {
         out.push_str("      name: Shell Safety Classification\n");
         out.push_str("    metrics:\n");
         out.push_str(&format!("    - type: accuracy\n      value: {:.4}\n", self.accuracy));
-        out.push_str(&format!("    - type: f1\n      value: {macro_f1:.4}\n      name: Macro F1\n"));
-        out.push_str(&format!("    - type: f1\n      value: {weighted_f1:.4}\n      name: Weighted F1\n"));
+        out.push_str(&format!(
+            "    - type: f1\n      value: {macro_f1:.4}\n      name: Macro F1\n"
+        ));
+        out.push_str(&format!(
+            "    - type: f1\n      value: {weighted_f1:.4}\n      name: Weighted F1\n"
+        ));
         out.push_str(&format!("    - type: mcc\n      value: {:.4}\n", self.mcc));
         out.push_str(&format!("    - type: cohens_kappa\n      value: {:.4}\n", self.cohens_kappa));
         out.push_str("---\n\n");
@@ -2360,7 +2374,9 @@ impl ClassifyEvalReport {
         out.push_str(&format!("# {model_name}\n\n"));
         out.push_str("A shell command safety classifier that categorizes shell commands into safety classes, ");
         out.push_str("enabling automated triage of commands before execution.\n\n");
-        out.push_str("Trained with [entrenar](https://github.com/paiml/entrenar) using LoRA fine-tuning");
+        out.push_str(
+            "Trained with [entrenar](https://github.com/paiml/entrenar) using LoRA fine-tuning",
+        );
         if let Some(base) = base_model {
             out.push_str(&format!(" on [`{base}`](https://huggingface.co/{base})"));
         }
@@ -2371,13 +2387,27 @@ impl ClassifyEvalReport {
         out.push_str("## Summary\n\n");
         out.push_str("| Metric | Value | 95% CI |\n");
         out.push_str("|--------|-------|--------|\n");
-        out.push_str(&format!("| Accuracy | {:.2}% | [{:.2}%, {:.2}%] |\n",
-            self.accuracy * 100.0, self.ci_accuracy.0 * 100.0, self.ci_accuracy.1 * 100.0));
+        out.push_str(&format!(
+            "| Accuracy | {:.2}% | [{:.2}%, {:.2}%] |\n",
+            self.accuracy * 100.0,
+            self.ci_accuracy.0 * 100.0,
+            self.ci_accuracy.1 * 100.0
+        ));
         out.push_str(&format!("| Top-2 Accuracy | {:.2}% | — |\n", self.top2_accuracy * 100.0));
-        out.push_str(&format!("| Macro F1 | {macro_f1:.4} | [{:.4}, {:.4}] |\n", self.ci_macro_f1.0, self.ci_macro_f1.1));
+        out.push_str(&format!(
+            "| Macro F1 | {macro_f1:.4} | [{:.4}, {:.4}] |\n",
+            self.ci_macro_f1.0, self.ci_macro_f1.1
+        ));
         out.push_str(&format!("| Weighted F1 | {weighted_f1:.4} | — |\n"));
-        out.push_str(&format!("| Cohen's Kappa | {:.4} ({}) | — |\n", self.cohens_kappa, Self::kappa_interpretation(self.cohens_kappa)));
-        out.push_str(&format!("| MCC | {:.4} | [{:.4}, {:.4}] |\n", self.mcc, self.ci_mcc.0, self.ci_mcc.1));
+        out.push_str(&format!(
+            "| Cohen's Kappa | {:.4} ({}) | — |\n",
+            self.cohens_kappa,
+            Self::kappa_interpretation(self.cohens_kappa)
+        ));
+        out.push_str(&format!(
+            "| MCC | {:.4} | [{:.4}, {:.4}] |\n",
+            self.mcc, self.ci_mcc.0, self.ci_mcc.1
+        ));
         out.push_str(&format!("| Brier Score | {:.4} | — |\n", self.brier_score));
         out.push_str(&format!("| Log Loss | {:.4} | — |\n", self.log_loss));
         out.push_str(&format!("| ECE | {:.4} | — |\n", self.ece));
@@ -2385,10 +2415,16 @@ impl ClassifyEvalReport {
         out.push_str(&format!("| Eval Samples | {} | — |\n", self.total_samples));
         out.push_str(&format!("| Throughput | {:.1} samples/sec | — |\n\n", self.samples_per_sec));
 
-        let lift = if self.baseline_majority > 0.0 { self.accuracy / self.baseline_majority } else { 0.0 };
+        let lift =
+            if self.baseline_majority > 0.0 { self.accuracy / self.baseline_majority } else { 0.0 };
         out.push_str("**Baselines**: ");
-        out.push_str(&format!("random={:.1}%, majority={:.1}%, model={:.1}% ({:.1}x lift over majority)\n\n",
-            self.baseline_random * 100.0, self.baseline_majority * 100.0, self.accuracy * 100.0, lift));
+        out.push_str(&format!(
+            "random={:.1}%, majority={:.1}%, model={:.1}% ({:.1}x lift over majority)\n\n",
+            self.baseline_random * 100.0,
+            self.baseline_majority * 100.0,
+            self.accuracy * 100.0,
+            lift
+        ));
     }
 
     fn card_labels(&self, out: &mut String) {
@@ -2477,7 +2513,8 @@ impl ClassifyEvalReport {
     }
 
     fn card_confusion_row_label(&self, out: &mut String, i: usize) {
-        let name = self.label_names.get(i).map_or_else(|| format!("class_{i}"), std::clone::Clone::clone);
+        let name =
+            self.label_names.get(i).map_or_else(|| format!("class_{i}"), std::clone::Clone::clone);
         let short = if name.len() > 18 { &name[..18] } else { name.as_str() };
         out.push_str(&format!("{short:>18}"));
     }
@@ -2500,9 +2537,7 @@ impl ClassifyEvalReport {
             if count > 0 {
                 let lo = i as f64 * 0.1;
                 let hi = lo + 0.1;
-                out.push_str(&format!(
-                    "[{lo:.1}-{hi:.1})   {conf:.3}   {acc:.3}   {count:>5}\n",
-                ));
+                out.push_str(&format!("[{lo:.1}-{hi:.1})   {conf:.3}   {acc:.3}   {count:>5}\n",));
             }
         }
         out.push_str("```\n\n");
@@ -2526,10 +2561,16 @@ impl ClassifyEvalReport {
 
     fn card_intended_use(out: &mut String) {
         out.push_str("## Intended Use\n\n");
-        out.push_str("This model is designed for **automated shell command safety triage** in:\n\n");
-        out.push_str("- **CI/CD pipelines**: Pre-flight safety check before executing generated scripts\n");
+        out.push_str(
+            "This model is designed for **automated shell command safety triage** in:\n\n",
+        );
+        out.push_str(
+            "- **CI/CD pipelines**: Pre-flight safety check before executing generated scripts\n",
+        );
         out.push_str("- **Shell purification tools**: Classify commands to determine transformation strategy\n");
-        out.push_str("- **Code review**: Flag potentially unsafe shell commands in pull requests\n");
+        out.push_str(
+            "- **Code review**: Flag potentially unsafe shell commands in pull requests\n",
+        );
         out.push_str("- **Interactive shells**: Warn users before executing risky commands\n\n");
     }
 
@@ -2538,13 +2579,18 @@ impl ClassifyEvalReport {
         out.push_str("- **Not a security oracle**: This model provides *classification hints*, not security guarantees\n");
         out.push_str("- **Context-blind**: Cannot assess safety based on the execution environment or user permissions\n");
         out.push_str("- **Training distribution**: Trained on synthetic shell scripts; may underperform on novel patterns\n");
-        out.push_str("- **English only**: Command names and variable patterns are English-centric\n");
+        out.push_str(
+            "- **English only**: Command names and variable patterns are English-centric\n",
+        );
         self.card_weak_classes(out);
         out.push('\n');
     }
 
     fn card_weak_classes(&self, out: &mut String) {
-        let min_f1_idx = self.per_class_f1.iter().enumerate()
+        let min_f1_idx = self
+            .per_class_f1
+            .iter()
+            .enumerate()
             .min_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(i, _)| i);
         if let Some(idx) = min_f1_idx {
@@ -2612,13 +2658,8 @@ impl ClassifyEvalReport {
 }
 
 /// SSC label names used across the shell safety classifier.
-pub const SSC_LABELS: [&str; 5] = [
-    "safe",
-    "needs-quoting",
-    "non-deterministic",
-    "non-idempotent",
-    "unsafe",
-];
+pub const SSC_LABELS: [&str; 5] =
+    ["safe", "needs-quoting", "non-deterministic", "non-idempotent", "unsafe"];
 
 /// Evaluate a saved checkpoint against a test JSONL dataset.
 ///
@@ -2638,10 +2679,7 @@ fn restore_class_weights_from_metadata(
     let meta_str = std::fs::read_to_string(checkpoint_dir.join("metadata.json")).ok()?;
     let meta: serde_json::Value = serde_json::from_str(&meta_str).ok()?;
     let arr = meta.get("class_weights")?.as_array()?;
-    let weights: Vec<f32> = arr
-        .iter()
-        .filter_map(|v| v.as_f64().map(|f| f as f32))
-        .collect();
+    let weights: Vec<f32> = arr.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect();
     (weights.len() == num_classes).then_some(weights)
 }
 
@@ -2681,11 +2719,10 @@ pub fn evaluate_checkpoint(
     let adapter_config_path = checkpoint_dir.join("adapter_config.json");
     let mut pipeline = if adapter_config_path.exists() {
         // LoRA adapter checkpoint: load base model, then restore adapter weights
-        let adapter_json = std::fs::read_to_string(&adapter_config_path).map_err(|e| {
-            crate::Error::Io(format!("Failed to read adapter_config.json: {e}"))
-        })?;
-        let peft_config: crate::lora::PeftAdapterConfig =
-            serde_json::from_str(&adapter_json).map_err(|e| {
+        let adapter_json = std::fs::read_to_string(&adapter_config_path)
+            .map_err(|e| crate::Error::Io(format!("Failed to read adapter_config.json: {e}")))?;
+        let peft_config: crate::lora::PeftAdapterConfig = serde_json::from_str(&adapter_json)
+            .map_err(|e| {
                 crate::Error::Serialization(format!("Invalid adapter_config.json: {e}"))
             })?;
 
@@ -2716,9 +2753,7 @@ pub fn evaluate_checkpoint(
                 )?
             }
             Some(base_model_path) => {
-                println!(
-                    "Base model path is not a SafeTensors directory: {base_model_path}"
-                );
+                println!("Base model path is not a SafeTensors directory: {base_model_path}");
                 println!("Using random-init base model (adapter weights will be restored from checkpoint)");
                 ClassifyPipeline::new(model_config, classify_config.clone())
             }
@@ -2732,9 +2767,7 @@ pub fn evaluate_checkpoint(
         // Load trained LoRA + classifier weights from checkpoint
         let st_path = checkpoint_dir.join("model.safetensors");
         let st_data = std::fs::read(&st_path).map_err(|e| {
-            crate::Error::Io(format!(
-                "Failed to read checkpoint model.safetensors: {e}"
-            ))
+            crate::Error::Io(format!("Failed to read checkpoint model.safetensors: {e}"))
         })?;
         let tensors = safetensors::SafeTensors::deserialize(&st_data).map_err(|e| {
             crate::Error::Serialization(format!("Failed to deserialize checkpoint: {e}"))
@@ -3185,10 +3218,8 @@ mod tests {
     #[test]
     fn test_training_config_with_distributed() {
         let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 2);
-        let config = TrainingConfig {
-            distributed: Some(dist.clone()),
-            ..TrainingConfig::default()
-        };
+        let config =
+            TrainingConfig { distributed: Some(dist.clone()), ..TrainingConfig::default() };
         assert!(config.distributed.is_some());
         assert_eq!(config.distributed.expect("valid").expect_workers, 2);
     }
@@ -3197,10 +3228,7 @@ mod tests {
     fn test_is_coordinator_mode() {
         let pipeline = tiny_pipeline(2);
         let corpus = make_corpus(20, 2);
-        let config = TrainingConfig {
-            epochs: 1,
-            ..TrainingConfig::default()
-        };
+        let config = TrainingConfig { epochs: 1, ..TrainingConfig::default() };
         let trainer = ClassifyTrainer::new(pipeline, corpus, config).expect("valid");
         assert!(!trainer.is_coordinator_mode());
     }
@@ -3210,11 +3238,8 @@ mod tests {
         let pipeline = tiny_pipeline(2);
         let corpus = make_corpus(20, 2);
         let dist = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
-        let config = TrainingConfig {
-            epochs: 1,
-            distributed: Some(dist),
-            ..TrainingConfig::default()
-        };
+        let config =
+            TrainingConfig { epochs: 1, distributed: Some(dist), ..TrainingConfig::default() };
         let trainer = ClassifyTrainer::new(pipeline, corpus, config).expect("valid");
         assert!(trainer.is_coordinator_mode());
     }
@@ -3224,11 +3249,8 @@ mod tests {
         let pipeline = tiny_pipeline(2);
         let corpus = make_corpus(20, 2);
         let dist = DistributedConfig::worker("127.0.0.1:9000".parse().expect("valid"));
-        let config = TrainingConfig {
-            epochs: 1,
-            distributed: Some(dist),
-            ..TrainingConfig::default()
-        };
+        let config =
+            TrainingConfig { epochs: 1, distributed: Some(dist), ..TrainingConfig::default() };
         let trainer = ClassifyTrainer::new(pipeline, corpus, config).expect("valid");
         assert!(!trainer.is_coordinator_mode());
     }
@@ -3288,9 +3310,7 @@ mod tests {
             let grads: Vec<f32> = (0..num_params).map(|i| (i as f32 + 1.0) * 0.01).collect();
 
             // Send gradients (simulating forward/backward output)
-            client
-                .send_gradients(0, grads, 0.5, 3, 5)
-                .expect("valid");
+            client.send_gradients(0, grads, 0.5, 3, 5).expect("valid");
 
             // Receive averaged gradients
             let averaged = client.receive_averaged().expect("valid");

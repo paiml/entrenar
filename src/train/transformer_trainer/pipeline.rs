@@ -206,17 +206,25 @@ impl PipelineActivationBuffer {
 
     /// Store forward activation for a micro-batch.
     pub fn store_activation(&mut self, micro_batch: usize, activation: Vec<f32>) {
-        assert_eq!(activation.len(), self.activation_size,
+        assert_eq!(
+            activation.len(),
+            self.activation_size,
             "activation size mismatch: expected {}, got {}",
-            self.activation_size, activation.len());
+            self.activation_size,
+            activation.len()
+        );
         self.forward_activations[micro_batch] = activation;
     }
 
     /// Store backward gradient for a micro-batch.
     pub fn store_gradient(&mut self, micro_batch: usize, gradient: Vec<f32>) {
-        assert_eq!(gradient.len(), self.activation_size,
+        assert_eq!(
+            gradient.len(),
+            self.activation_size,
             "gradient size mismatch: expected {}, got {}",
-            self.activation_size, gradient.len());
+            self.activation_size,
+            gradient.len()
+        );
         self.backward_gradients[micro_batch] = gradient;
     }
 
@@ -311,16 +319,20 @@ mod tests {
 
         // Count forwards and backwards
         let fwd_count = schedule.iter().filter(|a| matches!(a, PipelineAction::Forward(_))).count();
-        let bwd_count = schedule.iter().filter(|a| matches!(a, PipelineAction::Backward(_))).count();
+        let bwd_count =
+            schedule.iter().filter(|a| matches!(a, PipelineAction::Backward(_))).count();
 
         assert_eq!(fwd_count, 4, "should have 4 forwards");
         assert_eq!(bwd_count, 4, "should have 4 backwards");
 
         // All micro-batches covered
-        let mut fwd_ids: Vec<_> = schedule.iter().filter_map(|a| match a {
-            PipelineAction::Forward(id) => Some(*id),
-            _ => None,
-        }).collect();
+        let mut fwd_ids: Vec<_> = schedule
+            .iter()
+            .filter_map(|a| match a {
+                PipelineAction::Forward(id) => Some(*id),
+                _ => None,
+            })
+            .collect();
         fwd_ids.sort_unstable();
         assert_eq!(fwd_ids, vec![0, 1, 2, 3]);
     }

@@ -48,14 +48,11 @@ pub fn parse_human_usize(s: &str) -> Result<usize, String> {
 
     // Parse the numeric part (allow float for "1.5K" etc.)
     if num_str.contains('.') {
-        let v: f64 =
-            num_str.parse().map_err(|e| format!("invalid number '{num_str}': {e}"))?;
+        let v: f64 = num_str.parse().map_err(|e| format!("invalid number '{num_str}': {e}"))?;
         Ok((v * multiplier as f64) as usize)
     } else {
-        let v: usize =
-            num_str.parse().map_err(|e| format!("invalid number '{num_str}': {e}"))?;
-        v.checked_mul(multiplier)
-            .ok_or_else(|| format!("overflow: {v} * {multiplier}"))
+        let v: usize = num_str.parse().map_err(|e| format!("invalid number '{num_str}': {e}"))?;
+        v.checked_mul(multiplier).ok_or_else(|| format!("overflow: {v} * {multiplier}"))
     }
 }
 

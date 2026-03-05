@@ -29,11 +29,7 @@ fn reference_rms_norm_f64(x: &[f32], gamma: &[f32], eps: f32) -> Vec<f32> {
 
     let rms: f64 = (x_f64.iter().map(|&v| v * v).sum::<f64>() / n + f64::from(eps)).sqrt();
 
-    x_f64
-        .iter()
-        .enumerate()
-        .map(|(i, &v)| (v / rms * f64::from(gamma[i])) as f32)
-        .collect()
+    x_f64.iter().enumerate().map(|(i, &v)| (v / rms * f64::from(gamma[i])) as f32).collect()
 }
 
 #[test]
@@ -75,10 +71,7 @@ fn test_layer_norm_zero_mean() {
 
     // With gamma=1 and beta=0, output mean should be ~0
     let mean: f32 = result.data().iter().sum::<f32>() / result.len() as f32;
-    assert!(
-        mean.abs() < 1e-5,
-        "LayerNorm output mean should be ~0, got {mean}"
-    );
+    assert!(mean.abs() < 1e-5, "LayerNorm output mean should be ~0, got {mean}");
 }
 
 #[test]
@@ -96,8 +89,8 @@ fn test_layer_norm_unit_variance() {
 
     // With gamma=1 and beta=0, output variance should be ~1
     let mean: f32 = result.data().iter().sum::<f32>() / result.len() as f32;
-    let variance: f32 = result.data().iter().map(|&v| (v - mean) * (v - mean)).sum::<f32>()
-        / result.len() as f32;
+    let variance: f32 =
+        result.data().iter().map(|&v| (v - mean) * (v - mean)).sum::<f32>() / result.len() as f32;
     assert!(
         (variance - 1.0).abs() < 1e-4,
         "LayerNorm output variance should be ~1, got {variance}"
@@ -121,10 +114,7 @@ fn test_layer_norm_gamma_scaling() {
 
     for (i, (&actual, &expected)) in result.data().iter().zip(reference.iter()).enumerate() {
         let diff = (actual - expected).abs();
-        assert!(
-            diff < 1e-5,
-            "LayerNorm gamma=2 mismatch at {i}: actual={actual}, ref={expected}"
-        );
+        assert!(diff < 1e-5, "LayerNorm gamma=2 mismatch at {i}: actual={actual}, ref={expected}");
     }
 }
 
@@ -145,17 +135,11 @@ fn test_layer_norm_beta_shift() {
 
     // Mean of output should be ~5 (beta shift)
     let mean: f32 = result.data().iter().sum::<f32>() / result.len() as f32;
-    assert!(
-        (mean - 5.0).abs() < 1e-4,
-        "LayerNorm with beta=5 should have mean ~5, got {mean}"
-    );
+    assert!((mean - 5.0).abs() < 1e-4, "LayerNorm with beta=5 should have mean ~5, got {mean}");
 
     for (i, (&actual, &expected)) in result.data().iter().zip(reference.iter()).enumerate() {
         let diff = (actual - expected).abs();
-        assert!(
-            diff < 1e-5,
-            "LayerNorm beta=5 mismatch at {i}: actual={actual}, ref={expected}"
-        );
+        assert!(diff < 1e-5, "LayerNorm beta=5 mismatch at {i}: actual={actual}, ref={expected}");
     }
 }
 
@@ -208,10 +192,7 @@ fn test_rms_norm_reference_correctness() {
     // Verify: rms = sqrt((1+4+9+16+25)/5 + eps) = sqrt(11 + eps) ≈ 3.3166
     let rms_sq: f32 = x.iter().map(|&v| v * v).sum::<f32>() / 5.0 + eps;
     let rms = rms_sq.sqrt();
-    assert!(
-        (rms - 3.3166).abs() < 0.01,
-        "RMS should be ~3.3166, got {rms}"
-    );
+    assert!((rms - 3.3166).abs() < 0.01, "RMS should be ~3.3166, got {rms}");
 
     // Check reference output
     for (i, (&xi, &ref_out)) in x.iter().zip(reference.iter()).enumerate() {
@@ -261,10 +242,7 @@ fn test_layer_norm_constant_input_produces_beta() {
 
     // When all inputs are equal, variance ≈ 0, normalized ≈ 0, output ≈ beta
     for (i, &v) in result.data().iter().enumerate() {
-        assert!(
-            (v - 3.0).abs() < 1e-2,
-            "Constant input: output[{i}] = {v}, expected ~3.0 (beta)"
-        );
+        assert!((v - 3.0).abs() < 1e-2, "Constant input: output[{i}] = {v}, expected ~3.0 (beta)");
     }
 }
 

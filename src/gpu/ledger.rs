@@ -253,16 +253,12 @@ impl VramLedger {
             return Ok(());
         };
 
-        TRACER.span(
-            TraceStep::LedgerRelease,
-            format!("ledger_release id={our_id}"),
-            || {
-                self.with_lock_write(|data| {
-                    data.reservations.retain(|r| r.id != our_id);
-                    Ok(())
-                })
-            },
-        )
+        TRACER.span(TraceStep::LedgerRelease, format!("ledger_release id={our_id}"), || {
+            self.with_lock_write(|data| {
+                data.reservations.retain(|r| r.id != our_id);
+                Ok(())
+            })
+        })
     }
 
     /// Read all reservations for our GPU (pruned).
@@ -305,8 +301,7 @@ impl VramLedger {
         let result = f(&data);
 
         #[allow(clippy::incompatible_msrv)]
-        file.unlock()
-            .map_err(|e| GpuError::Io(std::io::Error::other(format!("funlock: {e}"))))?;
+        file.unlock().map_err(|e| GpuError::Io(std::io::Error::other(format!("funlock: {e}"))))?;
 
         Ok(result)
     }
@@ -346,8 +341,7 @@ impl VramLedger {
         // Phase: lock_rel
         self.profiler.begin(GpuProfiler::LOCK_REL);
         #[allow(clippy::incompatible_msrv)]
-        file.unlock()
-            .map_err(|e| GpuError::Io(std::io::Error::other(format!("funlock: {e}"))))?;
+        file.unlock().map_err(|e| GpuError::Io(std::io::Error::other(format!("funlock: {e}"))))?;
         self.profiler.end(GpuProfiler::LOCK_REL);
 
         Ok(result)
@@ -379,8 +373,7 @@ fn read_ledger(file: &File) -> Result<LedgerData, GpuError> {
     if reader.read_to_string(&mut contents).is_err() || contents.trim().is_empty() {
         return Ok(LedgerData::default());
     }
-    serde_json::from_str(&contents)
-        .map_err(|e| GpuError::LedgerCorrupt(format!("JSON parse: {e}")))
+    serde_json::from_str(&contents).map_err(|e| GpuError::LedgerCorrupt(format!("JSON parse: {e}")))
 }
 
 /// Atomic write: write to temp file, fsync, rename over ledger.
@@ -482,10 +475,7 @@ pub fn auto_ledger() -> VramLedger {
 /// Human-readable GPU status display.
 pub fn gpu_status_display(ledger: &VramLedger) -> Result<String, GpuError> {
     let reservations = ledger.read_reservations()?;
-    let reserved: usize = reservations
-        .iter()
-        .map(|r| r.actual_mb.unwrap_or(r.budget_mb))
-        .sum();
+    let reserved: usize = reservations.iter().map(|r| r.actual_mb.unwrap_or(r.budget_mb)).sum();
 
     let mut out = String::new();
     out.push_str(&format!(
@@ -507,7 +497,8 @@ pub fn gpu_status_display(ledger: &VramLedger) -> Result<String, GpuError> {
         out.push_str(&format!("  Reservations: {}\n", reservations.len()));
         for r in &reservations {
             let actual = r
-                .actual_mb.map_or_else(|| "measuring...".to_string(), |a| format!("{a} MB actual"));
+                .actual_mb
+                .map_or_else(|| "measuring...".to_string(), |a| format!("{a} MB actual"));
             let elapsed = Utc::now().signed_duration_since(r.started);
             let hours = elapsed.num_hours();
             let mins = elapsed.num_minutes() % 60;
@@ -544,8 +535,7 @@ mod tests {
     #[test]
     fn test_empty_ledger_has_full_capacity() {
         let path = test_ledger_path();
-        let ledger =
-            VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+        let ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
 
         assert_eq!(ledger.capacity_mb(), 20400);
         assert_eq!(ledger.total_reserved().expect("should succeed"), 0);
@@ -557,8 +547,7 @@ mod tests {
     #[test]
     fn test_reserve_and_release() {
         let path = test_ledger_path();
-        let mut ledger =
-            VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
 
         let id = ledger.try_reserve(8000, "test-job").expect("should succeed");
         assert!(id != 0);
@@ -574,19 +563,14 @@ mod tests {
     #[test]
     fn test_capacity_invariant_prevents_overallocation() {
         let path = test_ledger_path();
-        let mut ledger =
-            VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
 
         ledger.try_reserve(15000, "job-1").expect("should succeed");
 
         let result = ledger.try_reserve(10000, "job-2");
         assert!(result.is_err());
         match result.expect_err("should be InsufficientMemory") {
-            GpuError::InsufficientMemory {
-                budget_mb,
-                available_mb,
-                ..
-            } => {
+            GpuError::InsufficientMemory { budget_mb, available_mb, .. } => {
                 assert_eq!(budget_mb, 10000);
                 assert_eq!(available_mb, 5400);
             }
@@ -599,8 +583,7 @@ mod tests {
     #[test]
     fn test_reserve_factor_limits_total() {
         let path = test_ledger_path();
-        let mut ledger =
-            VramLedger::new("GPU-test".into(), 10000, 0.85).with_path(path.clone());
+        let mut ledger = VramLedger::new("GPU-test".into(), 10000, 0.85).with_path(path.clone());
 
         let result = ledger.try_reserve(9000, "too-big");
         assert!(result.is_err());
@@ -611,8 +594,7 @@ mod tests {
     #[test]
     fn test_update_actual() {
         let path = test_ledger_path();
-        let mut ledger =
-            VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
 
         ledger.try_reserve(8000, "test-job").expect("should succeed");
         ledger.update_actual(7300).expect("should succeed");
@@ -629,9 +611,7 @@ mod tests {
             .with_path(path.clone())
             .with_lease_hours(0);
 
-        ledger
-            .try_reserve(8000, "expiring-job")
-            .expect("should succeed");
+        ledger.try_reserve(8000, "expiring-job").expect("should succeed");
 
         std::thread::sleep(Duration::from_millis(10));
 
@@ -643,14 +623,12 @@ mod tests {
     #[test]
     fn test_atomic_write_produces_valid_json() {
         let path = test_ledger_path();
-        let mut ledger =
-            VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
 
         ledger.try_reserve(5000, "json-test").expect("should succeed");
 
         let contents = fs::read_to_string(&path).expect("should read");
-        let data: LedgerData =
-            serde_json::from_str(&contents).expect("should parse");
+        let data: LedgerData = serde_json::from_str(&contents).expect("should parse");
         assert_eq!(data.reservations.len(), 1);
         assert_eq!(data.reservations[0].budget_mb, 5000);
 
@@ -660,12 +638,10 @@ mod tests {
     #[test]
     fn test_gpu_status_display() {
         let path = test_ledger_path();
-        let mut ledger = VramLedger::new("GPU-test-display".into(), 24000, 0.85)
-            .with_path(path.clone());
+        let mut ledger =
+            VramLedger::new("GPU-test-display".into(), 24000, 0.85).with_path(path.clone());
 
-        ledger
-            .try_reserve(7000, "display-test")
-            .expect("should succeed");
+        ledger.try_reserve(7000, "display-test").expect("should succeed");
 
         let status = gpu_status_display(&ledger).expect("should succeed");
         assert!(status.contains("GPU-test-display"));
@@ -701,8 +677,7 @@ mod tests {
     #[test]
     fn test_profiling_disabled_by_default() {
         let path = test_ledger_path();
-        let ledger =
-            VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+        let ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
 
         assert!(!ledger.profiler.is_enabled());
         let report = ledger.profiler_report();
@@ -718,9 +693,7 @@ mod tests {
             .with_path(path.clone())
             .with_profiling(true);
 
-        ledger
-            .try_reserve(5000, "profiled-job")
-            .expect("should succeed");
+        ledger.try_reserve(5000, "profiled-job").expect("should succeed");
 
         let report = ledger.profiler_report();
         assert!(report.contains("lock_acq"));

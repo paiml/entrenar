@@ -130,15 +130,15 @@ pub fn pre_warm_lora_adamw_kernels(
     let mut sizes: Vec<u32> = Vec::new();
 
     // LoRA parameter sizes (always needed)
-    sizes.push((hidden_size * lora_rank) as u32);    // A_q, A_v
-    sizes.push((lora_rank * q_dim) as u32);          // B_q
+    sizes.push((hidden_size * lora_rank) as u32); // A_q, A_v
+    sizes.push((lora_rank * q_dim) as u32); // B_q
     sizes.push((lora_rank * kv_hidden_size) as u32); // B_v
-    sizes.push(hidden_size as u32);                   // norm weights
+    sizes.push(hidden_size as u32); // norm weights
 
     // Full fp32 weight sizes (non-NF4 mode: optimizer runs on all block weights)
     if !quantize_nf4 {
-        sizes.push((hidden_size * hidden_size) as u32);       // w_q, w_o
-        sizes.push((hidden_size * kv_hidden_size) as u32);    // w_k, w_v
+        sizes.push((hidden_size * hidden_size) as u32); // w_q, w_o
+        sizes.push((hidden_size * kv_hidden_size) as u32); // w_k, w_v
         sizes.push((hidden_size * intermediate_size) as u32); // w_gate, w_up, w_down
     }
 
@@ -392,15 +392,11 @@ pub fn gradient_clip_cuda(
 ///
 /// Returns `Err` if kernel cache not initialized, kernel compilation fails, or GPU transfer fails.
 #[cfg(feature = "cuda")]
-pub fn squared_sum_cuda(
-    input: &GpuBuffer<f32>,
-    n: u32,
-    stream: &CudaStream,
-) -> Result<f32> {
+pub fn squared_sum_cuda(input: &GpuBuffer<f32>, n: u32, stream: &CudaStream) -> Result<f32> {
     let pending = squared_sum_launch_cuda(input, n, stream)?;
-    stream.synchronize().map_err(|e| {
-        CudaTensorError::KernelError(format!("Stream sync failed: {e:?}"))
-    })?;
+    stream
+        .synchronize()
+        .map_err(|e| CudaTensorError::KernelError(format!("Stream sync failed: {e:?}")))?;
     squared_sum_collect(&pending)
 }
 
@@ -545,9 +541,8 @@ pub fn fused_cross_entropy_cuda(
 
     // Upload targets to GPU (seq_len × u32 = ~512 bytes for seq_len=128)
     let targets_u32: Vec<u32> = target_ids[..seq_len as usize].to_vec();
-    let targets_gpu = GpuBuffer::<u32>::from_host(&ctx, &targets_u32).map_err(|e| {
-        CudaTensorError::KernelError(format!("Failed to upload targets: {e:?}"))
-    })?;
+    let targets_gpu = GpuBuffer::<u32>::from_host(&ctx, &targets_u32)
+        .map_err(|e| CudaTensorError::KernelError(format!("Failed to upload targets: {e:?}")))?;
 
     // KAIZEN-052: No grad_gpu allocation — gradient written in-place to logits_buf.
 
@@ -557,11 +552,8 @@ pub fn fused_cross_entropy_cuda(
     })?;
 
     // Shared memory: 72 bytes (8 warp maxes + global max + 8 warp sums + global sum)
-    let config = LaunchConfig {
-        grid: (seq_len, 1, 1),
-        block: (kernel.block_size(), 1, 1),
-        shared_mem: 72,
-    };
+    let config =
+        LaunchConfig { grid: (seq_len, 1, 1), block: (kernel.block_size(), 1, 1), shared_mem: 72 };
 
     let logits_grad_ptr = logits_buf.as_ptr();
     let targets_ptr = targets_gpu.as_ptr();
@@ -586,9 +578,9 @@ pub fn fused_cross_entropy_cuda(
     }
 
     // Synchronize and download loss partials (~512 bytes)
-    stream.synchronize().map_err(|e| {
-        CudaTensorError::KernelError(format!("Stream sync failed: {e:?}"))
-    })?;
+    stream
+        .synchronize()
+        .map_err(|e| CudaTensorError::KernelError(format!("Stream sync failed: {e:?}")))?;
 
     let mut loss_partials = vec![0.0f32; seq_len as usize];
     loss_gpu.copy_to_host(&mut loss_partials).map_err(|e| {
@@ -648,9 +640,8 @@ pub fn fused_causal_cross_entropy_cuda(
 
     // Upload targets to GPU (seq_len × u32 = ~2KB for seq_len=512)
     let targets_u32: Vec<u32> = target_ids[..seq_len as usize].to_vec();
-    let targets_gpu = GpuBuffer::<u32>::from_host(&ctx, &targets_u32).map_err(|e| {
-        CudaTensorError::KernelError(format!("Failed to upload targets: {e:?}"))
-    })?;
+    let targets_gpu = GpuBuffer::<u32>::from_host(&ctx, &targets_u32)
+        .map_err(|e| CudaTensorError::KernelError(format!("Failed to upload targets: {e:?}")))?;
 
     // Allocate loss partials buffer (seq_len × f32)
     let loss_gpu = GpuBuffer::<f32>::new(&ctx, seq_len as usize).map_err(|e| {
@@ -658,11 +649,8 @@ pub fn fused_causal_cross_entropy_cuda(
     })?;
 
     // Shared memory: 72 bytes (same as base kernel)
-    let config = LaunchConfig {
-        grid: (seq_len, 1, 1),
-        block: (kernel.block_size(), 1, 1),
-        shared_mem: 72,
-    };
+    let config =
+        LaunchConfig { grid: (seq_len, 1, 1), block: (kernel.block_size(), 1, 1), shared_mem: 72 };
 
     let logits_grad_ptr = logits_buf.as_ptr();
     let targets_ptr = targets_gpu.as_ptr();
@@ -683,15 +671,19 @@ pub fn fused_causal_cross_entropy_cuda(
     // elements. loss_gpu has seq_len f32 elements. Parameters match PTX signature.
     // Positions outside [loss_start, loss_end) get zero gradient and zero loss.
     unsafe {
-        stream.launch_kernel(module, "fused_causal_cross_entropy", &config, &mut args).map_err(|e| {
-            CudaTensorError::KernelError(format!("Fused causal cross-entropy launch failed: {e:?}"))
-        })?;
+        stream.launch_kernel(module, "fused_causal_cross_entropy", &config, &mut args).map_err(
+            |e| {
+                CudaTensorError::KernelError(format!(
+                    "Fused causal cross-entropy launch failed: {e:?}"
+                ))
+            },
+        )?;
     }
 
     // Synchronize and download loss partials (~2KB)
-    stream.synchronize().map_err(|e| {
-        CudaTensorError::KernelError(format!("Stream sync failed: {e:?}"))
-    })?;
+    stream
+        .synchronize()
+        .map_err(|e| CudaTensorError::KernelError(format!("Stream sync failed: {e:?}")))?;
 
     let mut loss_partials = vec![0.0f32; seq_len as usize];
     loss_gpu.copy_to_host(&mut loss_partials).map_err(|e| {
@@ -703,10 +695,8 @@ pub fn fused_causal_cross_entropy_cuda(
     if num_loss_tokens == 0 {
         return Ok(0.0);
     }
-    let total_loss: f64 = loss_partials[loss_start as usize..loss_end as usize]
-        .iter()
-        .map(|&x| f64::from(x))
-        .sum();
+    let total_loss: f64 =
+        loss_partials[loss_start as usize..loss_end as usize].iter().map(|&x| f64::from(x)).sum();
     let avg_loss = (total_loss / num_loss_tokens as f64) as f32;
 
     Ok(avg_loss)

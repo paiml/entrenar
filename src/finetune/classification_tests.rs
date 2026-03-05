@@ -217,18 +217,12 @@ fn test_class_weights_sqrt_inverse() {
     let inv_weights = compute_class_weights(&stats, ClassWeightStrategy::InverseFreq, 5);
     let inv_ratio = inv_weights[1] / inv_weights[0];
     let sqrt_ratio = weights[1] / weights[0];
-    assert!(
-        sqrt_ratio < inv_ratio,
-        "sqrt_inverse should be less extreme than inverse_freq"
-    );
+    assert!(sqrt_ratio < inv_ratio, "sqrt_inverse should be less extreme than inverse_freq");
 }
 
 #[test]
 fn test_class_weights_strategy_parse() {
-    assert_eq!(
-        "uniform".parse::<ClassWeightStrategy>().ok(),
-        Some(ClassWeightStrategy::Uniform)
-    );
+    assert_eq!("uniform".parse::<ClassWeightStrategy>().ok(), Some(ClassWeightStrategy::Uniform));
     assert_eq!(
         "inverse_freq".parse::<ClassWeightStrategy>().ok(),
         Some(ClassWeightStrategy::InverseFreq)
@@ -246,10 +240,7 @@ fn test_class_weights_strategy_aliases() {
         "inverse".parse::<ClassWeightStrategy>().ok(),
         Some(ClassWeightStrategy::InverseFreq)
     );
-    assert_eq!(
-        "sqrt".parse::<ClassWeightStrategy>().ok(),
-        Some(ClassWeightStrategy::SqrtInverse)
-    );
+    assert_eq!("sqrt".parse::<ClassWeightStrategy>().ok(), Some(ClassWeightStrategy::SqrtInverse));
 }
 
 #[test]
@@ -400,8 +391,7 @@ fn test_load_multi_label_corpus_invalid_format() {
 
 #[test]
 fn test_load_multi_label_corpus_file_not_found() {
-    let result =
-        load_multi_label_corpus(std::path::Path::new("/tmp/nonexistent_ml_xyz.jsonl"), 5);
+    let result = load_multi_label_corpus(std::path::Path::new("/tmp/nonexistent_ml_xyz.jsonl"), 5);
     assert!(result.is_err());
 }
 

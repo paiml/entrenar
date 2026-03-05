@@ -438,9 +438,7 @@ mod tests {
     /// Model loading performance: load_bench / loading_time (PW-07)
     #[test]
     fn load_bench_loading_time() {
-        let params = vec![
-            ("w".to_string(), Tensor::from_vec(vec![1.0; 1000], false)),
-        ];
+        let params = vec![("w".to_string(), Tensor::from_vec(vec![1.0; 1000], false))];
         let original = Model::new(ModelMetadata::new("bench-model", "test"), params);
 
         let temp_file = NamedTempFile::new().expect("temp file creation should succeed");

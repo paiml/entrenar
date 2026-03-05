@@ -29,8 +29,7 @@ fn test_contract_residual_add_gpu_equals_cpu() {
     let b = GpuBuffer::from_host(&ctx, &b_data).expect("operation should succeed");
     let mut output = GpuBuffer::new(&ctx, n).expect("operation should succeed");
 
-    residual_add_forward(&a, &b, &mut output, n as u32, &stream)
-        .expect("operation should succeed");
+    residual_add_forward(&a, &b, &mut output, n as u32, &stream).expect("operation should succeed");
     stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; n];
@@ -68,18 +67,14 @@ fn test_contract_residual_add_large() {
     let b = GpuBuffer::from_host(&ctx, &b_data).expect("operation should succeed");
     let mut output = GpuBuffer::new(&ctx, n).expect("operation should succeed");
 
-    residual_add_forward(&a, &b, &mut output, n as u32, &stream)
-        .expect("operation should succeed");
+    residual_add_forward(&a, &b, &mut output, n as u32, &stream).expect("operation should succeed");
     stream.synchronize().expect("operation should succeed");
 
     let mut result = vec![0.0f32; n];
     output.copy_to_host(&mut result).expect("operation should succeed");
 
-    let max_err: f32 = result
-        .iter()
-        .zip(expected.iter())
-        .map(|(g, e)| (g - e).abs())
-        .fold(0.0f32, f32::max);
+    let max_err: f32 =
+        result.iter().zip(expected.iter()).map(|(g, e)| (g - e).abs()).fold(0.0f32, f32::max);
     assert!(max_err < 1e-5, "residual_add large max error: {max_err}");
 }
 
@@ -161,10 +156,7 @@ fn test_contract_scale_gpu_equals_cpu() {
     output.copy_to_host(&mut result).expect("operation should succeed");
 
     for (i, (&got, &exp)) in result.iter().zip(expected.iter()).enumerate() {
-        assert!(
-            (got - exp).abs() < 1e-6,
-            "scale mismatch at {i}: got {got}, expected {exp}"
-        );
+        assert!((got - exp).abs() < 1e-6, "scale mismatch at {i}: got {got}, expected {exp}");
     }
 }
 
@@ -325,10 +317,7 @@ fn test_contract_batched_to_interleaved_roundtrip() {
     roundtrip.copy_to_host(&mut result).expect("operation should succeed");
 
     for (i, (&got, &exp)) in result.iter().zip(original.iter()).enumerate() {
-        assert!(
-            (got - exp).abs() < 1e-6,
-            "roundtrip mismatch at {i}: got {got}, expected {exp}"
-        );
+        assert!((got - exp).abs() < 1e-6, "roundtrip mismatch at {i}: got {got}, expected {exp}");
     }
 }
 
@@ -372,7 +361,8 @@ fn test_contract_expand_kv_heads() {
     ];
 
     let src = GpuBuffer::from_host(&ctx, &src_data).expect("operation should succeed");
-    let mut dst = GpuBuffer::new(&ctx, num_heads * elems_per_head).expect("operation should succeed");
+    let mut dst =
+        GpuBuffer::new(&ctx, num_heads * elems_per_head).expect("operation should succeed");
 
     expand_kv_heads(&src, &mut dst, num_kv_heads, heads_per_kv, elems_per_head, &stream)
         .expect("operation should succeed");
@@ -539,10 +529,7 @@ fn test_contract_batched_softmax_rows_sum_to_one() {
     for r in 0..total_rows as usize {
         let row_start = r * row_size as usize;
         let row_sum: f32 = result[row_start..row_start + row_size as usize].iter().sum();
-        assert!(
-            (row_sum - 1.0).abs() < 1e-4,
-            "softmax row {r} sums to {row_sum}, expected 1.0"
-        );
+        assert!((row_sum - 1.0).abs() < 1e-4, "softmax row {r} sums to {row_sum}, expected 1.0");
 
         // All values should be positive
         for j in 0..row_size as usize {
@@ -646,7 +633,8 @@ fn test_contract_attention_pipeline_layout_roundtrip() {
     let mut batched = GpuBuffer::new(&ctx, total).expect("operation should succeed");
     let mut transposed = GpuBuffer::new(&ctx, total).expect("operation should succeed");
     let mut transposed_back = GpuBuffer::new(&ctx, total).expect("operation should succeed");
-    let _batched_back: GpuBuffer<f32> = GpuBuffer::new(&ctx, total).expect("operation should succeed");
+    let _batched_back: GpuBuffer<f32> =
+        GpuBuffer::new(&ctx, total).expect("operation should succeed");
     let mut roundtrip = GpuBuffer::new(&ctx, total).expect("operation should succeed");
 
     // interleaved → batched [n_heads, seq, head_dim]
@@ -673,9 +661,7 @@ fn test_contract_attention_pipeline_layout_roundtrip() {
     let mut batched_data = vec![0.0f32; total];
     let mut transposed_back_data = vec![0.0f32; total];
     batched.copy_to_host(&mut batched_data).expect("operation should succeed");
-    transposed_back
-        .copy_to_host(&mut transposed_back_data)
-        .expect("operation should succeed");
+    transposed_back.copy_to_host(&mut transposed_back_data).expect("operation should succeed");
 
     for (i, (&got, &exp)) in transposed_back_data.iter().zip(batched_data.iter()).enumerate() {
         assert!(

@@ -40,11 +40,10 @@ pub use cli::{
     apply_overrides, parse_args, ArchiveProviderArg, ArtifactTypeArg, AuditArgs, AuditType,
     BenchArgs, BundleArgs, CitationFormat, CiteArgs, Cli, Command, CompletionArgs, DepositArgs,
     ExperimentsArgs, ExperimentsCommand, ExportArgs, ExportFormat, FinetuneArgs, FinetuneCommand,
-    InfoArgs, InitArgs,
-    InitTemplate, InspectArgs, InspectMode, LicenseArg, MergeArgs, MergeMethod, MonitorArgs,
-    OutputFormat, PreregisterArgs, PublishArgs, QuantMethod, QuantizeArgs, ResearchArgs,
-    ResearchCommand, ResearchInitArgs, ShellType, TrainArgs, TrainingMethod, ValidateArgs,
-    VerifyArgs,
+    InfoArgs, InitArgs, InitTemplate, InspectArgs, InspectMode, LicenseArg, MergeArgs, MergeMethod,
+    MonitorArgs, OutputFormat, PreregisterArgs, PublishArgs, QuantMethod, QuantizeArgs,
+    ResearchArgs, ResearchCommand, ResearchInitArgs, ShellType, TrainArgs, TrainingMethod,
+    ValidateArgs, VerifyArgs,
 };
 pub use infer::{
     collect_stats_from_samples, infer_schema, infer_schema_from_path, infer_type, ColumnStats,
@@ -52,7 +51,8 @@ pub use infer::{
 };
 pub use schema::{
     is_hf_repo_id, ArchitectureOverrides, CurriculumStage, DataConfig, LoRASpec, MergeSpec,
-    ModelMode, ModelRef, OptimSpec, PublishSpec, QuantSpec, TrainSpec, TrainingMode, TrainingParams,
+    ModelMode, ModelRef, OptimSpec, PublishSpec, QuantSpec, TrainSpec, TrainingMode,
+    TrainingParams,
 };
 pub use train::{load_config, train_from_yaml};
 pub use validate::{validate_config, ValidationError};

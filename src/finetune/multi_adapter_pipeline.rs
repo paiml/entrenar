@@ -37,8 +37,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 /// Scheduling strategy for multi-adapter training.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AdapterSchedule {
     /// All adapters process one sample each per step (synchronized).
     Synchronized,
@@ -48,7 +47,6 @@ pub enum AdapterSchedule {
     /// Priority: adapter with highest validation loss gets the next step.
     PriorityValLoss,
 }
-
 
 /// Configuration for a single adapter slot.
 #[derive(Debug, Clone)]
@@ -206,12 +204,7 @@ impl MultiAdapterPipeline {
     /// (with CUDA blocks uploaded if GPU training is desired). Adapter slots
     /// are initially empty — call `add_adapter()` to register each one.
     pub fn new(base_pipeline: InstructPipeline, schedule: AdapterSchedule) -> Self {
-        Self {
-            base_pipeline,
-            adapters: Vec::new(),
-            schedule,
-            global_step: 0,
-        }
+        Self { base_pipeline, adapters: Vec::new(), schedule, global_step: 0 }
     }
 
     /// Add an adapter slot with its own training data and checkpoint directory.
@@ -261,9 +254,7 @@ impl MultiAdapterPipeline {
                 // All adapters train — caller should iterate all
                 Some(0)
             }
-            AdapterSchedule::RoundRobin => {
-                Some(self.global_step % self.adapters.len())
-            }
+            AdapterSchedule::RoundRobin => Some(self.global_step % self.adapters.len()),
             AdapterSchedule::PriorityValLoss => {
                 // Pick adapter with highest (worst) validation loss
                 self.adapters
@@ -314,9 +305,7 @@ impl MultiAdapterPipeline {
         std::mem::swap(&mut slot.lora_layers, &mut self.base_pipeline.lora_layers);
 
         // Run training step through base pipeline (uses shared CUDA blocks)
-        let result = self
-            .base_pipeline
-            .train_step(&prompt_ids, &response_ids);
+        let result = self.base_pipeline.train_step(&prompt_ids, &response_ids);
 
         // Swap LoRA layers back
         std::mem::swap(&mut slot.lora_layers, &mut self.base_pipeline.lora_layers);
@@ -337,9 +326,7 @@ impl MultiAdapterPipeline {
 
     /// Check if all adapters have exhausted their training data.
     pub fn all_exhausted(&self) -> bool {
-        self.adapters
-            .iter()
-            .all(|s| s.cursor >= s.train_samples.len())
+        self.adapters.iter().all(|s| s.cursor >= s.train_samples.len())
     }
 
     /// Batch training step across all non-exhausted adapters (GH-204).
@@ -403,10 +390,7 @@ impl MultiAdapterPipeline {
             "train_samples": slot.train_samples.len(),
             "global_step": self.global_step,
         });
-        std::fs::write(
-            ckpt_dir.join("metadata.json"),
-            serde_json::to_string_pretty(&metadata)?,
-        )?;
+        std::fs::write(ckpt_dir.join("metadata.json"), serde_json::to_string_pretty(&metadata)?)?;
 
         // Save LoRA weights as SafeTensors
         save_adapter_lora_weights(&slot.lora_layers, &ckpt_dir)?;
@@ -434,10 +418,7 @@ impl MultiAdapterPipeline {
             "lora_alpha": slot.config.lora_alpha,
             "global_step": self.global_step,
         });
-        std::fs::write(
-            best_dir.join("metadata.json"),
-            serde_json::to_string_pretty(&metadata)?,
-        )?;
+        std::fs::write(best_dir.join("metadata.json"), serde_json::to_string_pretty(&metadata)?)?;
 
         save_adapter_lora_weights(&slot.lora_layers, &best_dir)?;
         Ok(best_dir)
@@ -518,16 +499,10 @@ mod tests {
 
         assert_eq!(pipeline.select_next_adapter(), Some(0));
 
-        let pipeline = MultiAdapterPipeline {
-            global_step: 1,
-            ..pipeline
-        };
+        let pipeline = MultiAdapterPipeline { global_step: 1, ..pipeline };
         assert_eq!(pipeline.select_next_adapter(), Some(1));
 
-        let pipeline = MultiAdapterPipeline {
-            global_step: 5,
-            ..pipeline
-        };
+        let pipeline = MultiAdapterPipeline { global_step: 5, ..pipeline };
         assert_eq!(pipeline.select_next_adapter(), Some(2));
     }
 

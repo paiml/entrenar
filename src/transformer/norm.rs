@@ -322,7 +322,8 @@ mod tests {
             assert!(
                 (wgrad1[i] - wgrad2[i]).abs() < 1e-5,
                 "Weight grad mismatch at [{i}]: unbatched={}, batched={}",
-                wgrad1[i], wgrad2[i]
+                wgrad1[i],
+                wgrad2[i]
             );
         }
     }

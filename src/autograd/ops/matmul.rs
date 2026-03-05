@@ -175,9 +175,7 @@ pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec
     // wgpu GPU fallback (AMD/Intel/Apple GPUs via Vulkan/Metal/DX12)
     // KAIZEN-004: Skip per-op wgpu when batched forward pass is active
     #[cfg(feature = "gpu")]
-    if !WGPU_BATCH_MODE.load(std::sync::atomic::Ordering::Relaxed)
-        && m * k * n > 32_768
-    {
+    if !WGPU_BATCH_MODE.load(std::sync::atomic::Ordering::Relaxed) && m * k * n > 32_768 {
         if let Some(result) = wgpu_matmul(a, b, m, k, n) {
             return result;
         }
@@ -228,31 +226,31 @@ pub fn pre_warm_realizador_gemm(
 
     let mut shapes: Vec<(usize, usize, usize)> = vec![
         // Forward linear projections
-        (s, h, h),   // Q, O projections
-        (s, h, kv),  // K, V projections
-        (s, h, i),   // FFN gate, up
-        (s, i, h),   // FFN down
+        (s, h, h),  // Q, O projections
+        (s, h, kv), // K, V projections
+        (s, h, i),  // FFN gate, up
+        (s, i, h),  // FFN down
         // LoRA forward
-        (s, h, r),   // LoRA A (Q/O/gate/up)
-        (s, r, h),   // LoRA B (Q/O)
-        (s, kv, r),  // LoRA A (K/V) — if kv != h
-        (s, r, kv),  // LoRA B (K/V)
+        (s, h, r),  // LoRA A (Q/O/gate/up)
+        (s, r, h),  // LoRA B (Q/O)
+        (s, kv, r), // LoRA A (K/V) — if kv != h
+        (s, r, kv), // LoRA B (K/V)
         // Backward: grad_A = grad_C @ B^T → (M, N_fwd, K_fwd)
         // For (s,h,h): grad_A is (s,h,h) — same
-        (s, kv, h),  // K/V backward grad_A: (s, kv) @ (kv, h)
-        (s, i, h),   // Gate/Up backward grad_A — same as FFN down forward
-        (s, h, i),   // Down backward grad_A — same as FFN gate forward
+        (s, kv, h), // K/V backward grad_A: (s, kv) @ (kv, h)
+        (s, i, h),  // Gate/Up backward grad_A — same as FFN down forward
+        (s, h, i),  // Down backward grad_A — same as FFN gate forward
         // Backward: grad_B = A^T @ grad_C → (K_fwd, M, N_fwd)
-        (h, s, h),   // Q/O backward grad_B: (h, s) @ (s, h)
-        (h, s, kv),  // K/V backward grad_B: (h, s) @ (s, kv)
-        (h, s, i),   // Gate/Up backward grad_B: (h, s) @ (s, i)
-        (i, s, h),   // Down backward grad_B: (i, s) @ (s, h)
+        (h, s, h),  // Q/O backward grad_B: (h, s) @ (s, h)
+        (h, s, kv), // K/V backward grad_B: (h, s) @ (s, kv)
+        (h, s, i),  // Gate/Up backward grad_B: (h, s) @ (s, i)
+        (i, s, h),  // Down backward grad_B: (i, s) @ (s, h)
         // LoRA backward
-        (s, r, h),   // LoRA A backward grad_A — same as LoRA B forward
-        (h, s, r),   // LoRA A backward grad_B
-        (s, h, r),   // LoRA B backward grad_A — same as LoRA A forward
-        (r, s, h),   // LoRA B backward grad_B
-        (r, s, kv),  // LoRA B (K/V) backward grad_B
+        (s, r, h),  // LoRA A backward grad_A — same as LoRA B forward
+        (h, s, r),  // LoRA A backward grad_B
+        (s, h, r),  // LoRA B backward grad_A — same as LoRA A forward
+        (r, s, h),  // LoRA B backward grad_B
+        (r, s, kv), // LoRA B (K/V) backward grad_B
         // Classifier head
         (1, h, num_classes),
     ];
@@ -270,9 +268,7 @@ pub fn pre_warm_realizador_gemm(
         match cuda_matmul(&mut executor, &a, &b, m, k, n) {
             Ok(_) => warmed += 1,
             Err(e) => {
-                eprintln!(
-                    "[CUDA] realizador GEMM pre-warm failed for ({m},{k},{n}): {e}"
-                );
+                eprintln!("[CUDA] realizador GEMM pre-warm failed for ({m},{k},{n}): {e}");
             }
         }
     }
@@ -358,9 +354,7 @@ pub fn matmul_compute(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec
     {
         // KAIZEN-004: Skip per-op wgpu when batched forward pass is active.
         // Attention matmuls use CPU SIMD instead — equally fast, no buffer overhead.
-        if !WGPU_BATCH_MODE.load(std::sync::atomic::Ordering::Relaxed)
-            && m * k * n > 32_768
-        {
+        if !WGPU_BATCH_MODE.load(std::sync::atomic::Ordering::Relaxed) && m * k * n > 32_768 {
             if let Some(result) = wgpu_matmul(a, b, m, k, n) {
                 return result;
             }
@@ -545,8 +539,24 @@ impl BackwardOp for MatmulBackward {
 /// - `∂L/∂A = ∂L/∂C @ B`  — (M,N) @ (N,K) = (M,K)
 /// - `∂L/∂B = ∂L/∂C^T @ A` — (N,M) @ (M,K) = (N,K)
 pub fn matmul_nt(a: &Tensor, b: &Tensor, m: usize, k: usize, n: usize) -> Tensor {
-    assert_eq!(a.len(), m * k, "Matrix A size mismatch: expected {}×{} = {}, got {}", m, k, m * k, a.len());
-    assert_eq!(b.len(), n * k, "Matrix B size mismatch: expected {}×{} = {}, got {}", n, k, n * k, b.len());
+    assert_eq!(
+        a.len(),
+        m * k,
+        "Matrix A size mismatch: expected {}×{} = {}, got {}",
+        m,
+        k,
+        m * k,
+        a.len()
+    );
+    assert_eq!(
+        b.len(),
+        n * k,
+        "Matrix B size mismatch: expected {}×{} = {}, got {}",
+        n,
+        k,
+        n * k,
+        b.len()
+    );
 
     let a_slice = a.data();
     let b_slice = b.data();
@@ -911,7 +921,7 @@ mod tests {
     fn test_matmul_nt_backward_grad_flows_to_b() {
         // KAIZEN-011: Verify gradients flow to the ORIGINAL B tensor (not a copy)
         let a = Tensor::new(Array1::from(vec![1.0, 2.0, 3.0, 4.0]), false); // 2x2
-        let b = Tensor::new(Array1::from(vec![5.0, 6.0, 7.0, 8.0]), true);  // 2x2, requires_grad
+        let b = Tensor::new(Array1::from(vec![5.0, 6.0, 7.0, 8.0]), true); // 2x2, requires_grad
 
         let c = matmul_nt(&a, &b, 2, 2, 2);
         assert!(c.requires_grad());
@@ -928,10 +938,7 @@ mod tests {
         // = [[1,1],[1,1]] @ [[1,2],[3,4]] = [[4,6],[4,6]]
         let expected_grad_b = vec![4.0, 6.0, 4.0, 6.0];
         for (i, (&got, &exp)) in b_grad.iter().zip(expected_grad_b.iter()).enumerate() {
-            assert!(
-                (got - exp).abs() < 1e-4,
-                "KAIZEN-011: grad_B[{i}] = {got}, expected {exp}"
-            );
+            assert!((got - exp).abs() < 1e-4, "KAIZEN-011: grad_B[{i}] = {got}, expected {exp}");
         }
     }
 
@@ -951,10 +958,7 @@ mod tests {
         // grad_A = grad_C @ B = [[1,1],[1,1]] @ [[5,6],[7,8]] = [[12,14],[12,14]]
         let expected_grad_a = vec![12.0, 14.0, 12.0, 14.0];
         for (i, (&got, &exp)) in a_grad.iter().zip(expected_grad_a.iter()).enumerate() {
-            assert!(
-                (got - exp).abs() < 1e-4,
-                "grad_A[{i}] = {got}, expected {exp}"
-            );
+            assert!((got - exp).abs() < 1e-4, "grad_A[{i}] = {got}, expected {exp}");
         }
     }
 

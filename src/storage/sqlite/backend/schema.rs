@@ -24,16 +24,9 @@ pub fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(SCHEMA_SQL)?;
 
     // Insert schema version if not present
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM schema_version",
-        [],
-        |row| row.get(0),
-    )?;
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM schema_version", [], |row| row.get(0))?;
     if count == 0 {
-        conn.execute(
-            "INSERT INTO schema_version (version) VALUES (?1)",
-            [CURRENT_VERSION],
-        )?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (?1)", [CURRENT_VERSION])?;
     }
 
     Ok(())

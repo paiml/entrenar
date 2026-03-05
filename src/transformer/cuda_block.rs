@@ -43,14 +43,14 @@ use crate::autograd::cuda_backward::{
     batched_softmax_backward, gemm_backward_a, gemm_backward_b, rms_norm_backward, silu_backward,
 };
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_optim::adamw_step_cuda;
-#[cfg(feature = "cuda")]
 use crate::autograd::cuda_forward::{
     batched_4d_gemm_forward, batched_softmax_forward, batched_to_interleaved_forward,
     batched_transpose_forward, elementwise_mul_forward, expand_kv_heads, fused_swiglu_forward,
     gemm_forward, interleaved_to_batched_forward, residual_add_forward, rms_norm_forward,
     scale_forward, silu_forward,
 };
+#[cfg(feature = "cuda")]
+use crate::autograd::cuda_optim::adamw_step_cuda;
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_tensor::Result;
 
@@ -159,7 +159,12 @@ impl CudaBlockScratch {
     /// # Contract (C-SCRATCH-001)
     ///
     /// All buffer sizes are deterministic from (config, max_seq_len).
-    pub(crate) fn new(config: &TransformerConfig, max_seq_len: usize, ctx: &Arc<CudaContext>, lora_rank: usize) -> Result<Self> {
+    pub(crate) fn new(
+        config: &TransformerConfig,
+        max_seq_len: usize,
+        ctx: &Arc<CudaContext>,
+        lora_rank: usize,
+    ) -> Result<Self> {
         let hidden_size = config.hidden_size;
         let q_dim = config.q_dim();
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
@@ -887,12 +892,7 @@ impl CudaTransformerBlock {
         // up_out now holds grad_gate [S,I]
 
         // Step 5: silu_gate = silu(gate_out) → swiglu_out [S,I]
-        silu_forward(
-            &self.scratch.gate_out,
-            &mut self.scratch.swiglu_out,
-            n_inter,
-            stream,
-        )?;
+        silu_forward(&self.scratch.gate_out, &mut self.scratch.swiglu_out, n_inter, stream)?;
 
         // Step 6: grad_up = grad_swiglu * silu_gate → gate_out [S,I]
         elementwise_mul_forward(
@@ -1149,8 +1149,8 @@ impl CudaTransformerBlock {
         // Step B: GEMM [H,hd,S] @ [H,S,S] → [H,hd,S] (= grad_V^T)
         batched_4d_gemm_forward(
             &self.scratch.attn_kv_temp,      // grad_attn_batched^T [H, hd, S]
-            &self.scratch.attn_scores,        // attn_weights [H, S, S]
-            &mut self.scratch.attn_kv_temp2,  // grad_V^T [H, hd, S]
+            &self.scratch.attn_scores,       // attn_weights [H, S, S]
+            &mut self.scratch.attn_kv_temp2, // grad_V^T [H, hd, S]
             1,
             nh,
             hd,  // m
@@ -1372,7 +1372,12 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        cuda_add_inplace(&mut self.scratch.grad_hidden, &self.scratch.grad_attn_scores, seq_len * hidden_size, stream)?;
+        cuda_add_inplace(
+            &mut self.scratch.grad_hidden,
+            &self.scratch.grad_attn_scores,
+            seq_len * hidden_size,
+            stream,
+        )?;
 
         // grad_norm1 += grad_v @ w_v^T
         gemm_backward_a(
@@ -1384,7 +1389,12 @@ impl CudaTransformerBlock {
             saturating_u32(kv_hidden_size),
             stream,
         )?;
-        cuda_add_inplace(&mut self.scratch.grad_hidden, &self.scratch.grad_attn_scores, seq_len * hidden_size, stream)?;
+        cuda_add_inplace(
+            &mut self.scratch.grad_hidden,
+            &self.scratch.grad_attn_scores,
+            seq_len * hidden_size,
+            stream,
+        )?;
 
         // Weight gradients: grad_w_q = norm1_out^T @ grad_q
         gemm_backward_b(
@@ -1422,13 +1432,11 @@ impl CudaTransformerBlock {
         // Copy grad_hidden → grad_input for downstream (residual backward)
         // SAFETY: Both buffers are valid GPU allocations with matching sizes.
         unsafe {
-            grad_input
-                .copy_from_buffer_async(&self.scratch.grad_hidden, stream)
-                .map_err(|e| {
-                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                        "Attn backward grad_hidden → grad_input D2D copy failed: {e}"
-                    ))
-                })?;
+            grad_input.copy_from_buffer_async(&self.scratch.grad_hidden, stream).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "Attn backward grad_hidden → grad_input D2D copy failed: {e}"
+                ))
+            })?;
         }
 
         Ok(())
@@ -1452,14 +1460,10 @@ impl CudaTransformerBlock {
         let elems_per_head = seq_len * head_dim;
 
         // Reduce grad_K: attn_kv_temp2 [H] → grad_attn_scores [nkv]
-        self.reduce_single_gqa_gradient(
-            true, num_kv_heads, heads_per_kv, elems_per_head, stream,
-        )?;
+        self.reduce_single_gqa_gradient(true, num_kv_heads, heads_per_kv, elems_per_head, stream)?;
 
         // Reduce grad_V: attn_kv_temp [H] → ffn_out [nkv]
-        self.reduce_single_gqa_gradient(
-            false, num_kv_heads, heads_per_kv, elems_per_head, stream,
-        )?;
+        self.reduce_single_gqa_gradient(false, num_kv_heads, heads_per_kv, elems_per_head, stream)?;
 
         // Copy reduced results to known locations for step 4.8
         let kv_elems = num_kv_heads * elems_per_head;
@@ -1529,11 +1533,8 @@ impl CudaTransformerBlock {
                 // Head extraction into o_proj_out buffer
                 // SAFETY: Valid GPU allocations with sufficient size.
                 unsafe {
-                    let src = if is_k {
-                        &self.scratch.attn_kv_temp2
-                    } else {
-                        &self.scratch.attn_kv_temp
-                    };
+                    let src =
+                        if is_k { &self.scratch.attn_kv_temp2 } else { &self.scratch.attn_kv_temp };
                     self.scratch
                         .o_proj_out
                         .copy_from_buffer_at_async(src, 0, h_offset, elems_per_head, stream)
@@ -1547,11 +1548,8 @@ impl CudaTransformerBlock {
                 // Add: dst[dst_offset..] += o_proj_out[0..elems_per_head]
                 // SAFETY: Creating non-owning views for arithmetic; forgotten to prevent double-free.
                 unsafe {
-                    let dst_buf = if is_k {
-                        &self.scratch.grad_attn_scores
-                    } else {
-                        &self.scratch.ffn_out
-                    };
+                    let dst_buf =
+                        if is_k { &self.scratch.grad_attn_scores } else { &self.scratch.ffn_out };
                     let dst_view = GpuBuffer::<f32>::from_raw_parts(
                         dst_buf.as_ptr() + (dst_offset as u64 * 4),
                         elems_per_head,
@@ -1579,7 +1577,11 @@ impl CudaTransformerBlock {
                     };
                     dst_buf
                         .copy_from_buffer_at_async(
-                            &self.scratch.grad_hidden, dst_offset, 0, elems_per_head, stream,
+                            &self.scratch.grad_hidden,
+                            dst_offset,
+                            0,
+                            elems_per_head,
+                            stream,
                         )
                         .map_err(|e| {
                             crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
@@ -1614,14 +1616,11 @@ impl CudaTransformerBlock {
         // D2D copy grad_input to grad_hidden (rms_norm_backward needs separate input/output)
         // SAFETY: Both buffers are valid GPU allocations with matching sizes.
         unsafe {
-            self.scratch
-                .grad_hidden
-                .copy_from_buffer_async(grad_input, stream)
-                .map_err(|e| {
-                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                        "Backward residual grad_hidden D2D copy failed: {e}"
-                    ))
-                })?;
+            self.scratch.grad_hidden.copy_from_buffer_async(grad_input, stream).map_err(|e| {
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "Backward residual grad_hidden D2D copy failed: {e}"
+                ))
+            })?;
         }
 
         rms_norm_backward(
@@ -1660,15 +1659,24 @@ impl CudaTransformerBlock {
             Ok(GpuBuffer::from_host(&self.ctx, &vec![0.0f32; n])?)
         };
         Ok(GpuBlockOptimizerState {
-            m_w_q: z(hidden * hidden)?,       v_w_q: z(hidden * hidden)?,
-            m_w_k: z(hidden * kv_hidden)?,    v_w_k: z(hidden * kv_hidden)?,
-            m_w_v: z(hidden * kv_hidden)?,    v_w_v: z(hidden * kv_hidden)?,
-            m_w_o: z(hidden * hidden)?,       v_w_o: z(hidden * hidden)?,
-            m_w_gate: z(hidden * intermediate)?, v_w_gate: z(hidden * intermediate)?,
-            m_w_up: z(hidden * intermediate)?,   v_w_up: z(hidden * intermediate)?,
-            m_w_down: z(intermediate * hidden)?, v_w_down: z(intermediate * hidden)?,
-            m_input_norm: z(hidden)?,         v_input_norm: z(hidden)?,
-            m_post_attn_norm: z(hidden)?,     v_post_attn_norm: z(hidden)?,
+            m_w_q: z(hidden * hidden)?,
+            v_w_q: z(hidden * hidden)?,
+            m_w_k: z(hidden * kv_hidden)?,
+            v_w_k: z(hidden * kv_hidden)?,
+            m_w_v: z(hidden * kv_hidden)?,
+            v_w_v: z(hidden * kv_hidden)?,
+            m_w_o: z(hidden * hidden)?,
+            v_w_o: z(hidden * hidden)?,
+            m_w_gate: z(hidden * intermediate)?,
+            v_w_gate: z(hidden * intermediate)?,
+            m_w_up: z(hidden * intermediate)?,
+            v_w_up: z(hidden * intermediate)?,
+            m_w_down: z(intermediate * hidden)?,
+            v_w_down: z(intermediate * hidden)?,
+            m_input_norm: z(hidden)?,
+            v_input_norm: z(hidden)?,
+            m_post_attn_norm: z(hidden)?,
+            v_post_attn_norm: z(hidden)?,
         })
     }
 
@@ -1712,53 +1720,134 @@ impl CudaTransformerBlock {
 
         // Attention projection weights
         adamw_step_cuda(
-            &mut self.w_q, &grad_ws.grad_w_q,
-            &mut state.m_w_q, &mut state.v_w_q,
-            lr, beta1, beta2, eps, weight_decay, step, n_wq, stream,
+            &mut self.w_q,
+            &grad_ws.grad_w_q,
+            &mut state.m_w_q,
+            &mut state.v_w_q,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_wq,
+            stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_k, &grad_ws.grad_w_k,
-            &mut state.m_w_k, &mut state.v_w_k,
-            lr, beta1, beta2, eps, weight_decay, step, n_wk, stream,
+            &mut self.w_k,
+            &grad_ws.grad_w_k,
+            &mut state.m_w_k,
+            &mut state.v_w_k,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_wk,
+            stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_v, &grad_ws.grad_w_v,
-            &mut state.m_w_v, &mut state.v_w_v,
-            lr, beta1, beta2, eps, weight_decay, step, n_wv, stream,
+            &mut self.w_v,
+            &grad_ws.grad_w_v,
+            &mut state.m_w_v,
+            &mut state.v_w_v,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_wv,
+            stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_o, &grad_ws.grad_w_o,
-            &mut state.m_w_o, &mut state.v_w_o,
-            lr, beta1, beta2, eps, weight_decay, step, n_wo, stream,
+            &mut self.w_o,
+            &grad_ws.grad_w_o,
+            &mut state.m_w_o,
+            &mut state.v_w_o,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_wo,
+            stream,
         )?;
 
         // FFN projection weights
         adamw_step_cuda(
-            &mut self.w_gate, &grad_ws.grad_gate,
-            &mut state.m_w_gate, &mut state.v_w_gate,
-            lr, beta1, beta2, eps, weight_decay, step, n_gate, stream,
+            &mut self.w_gate,
+            &grad_ws.grad_gate,
+            &mut state.m_w_gate,
+            &mut state.v_w_gate,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_gate,
+            stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_up, &grad_ws.grad_up,
-            &mut state.m_w_up, &mut state.v_w_up,
-            lr, beta1, beta2, eps, weight_decay, step, n_up, stream,
+            &mut self.w_up,
+            &grad_ws.grad_up,
+            &mut state.m_w_up,
+            &mut state.v_w_up,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_up,
+            stream,
         )?;
         adamw_step_cuda(
-            &mut self.w_down, &grad_ws.grad_down,
-            &mut state.m_w_down, &mut state.v_w_down,
-            lr, beta1, beta2, eps, weight_decay, step, n_down, stream,
+            &mut self.w_down,
+            &grad_ws.grad_down,
+            &mut state.m_w_down,
+            &mut state.v_w_down,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_down,
+            stream,
         )?;
 
         // RMSNorm weights
         adamw_step_cuda(
-            &mut self.input_norm_weight, &grad_ws.grad_input_norm,
-            &mut state.m_input_norm, &mut state.v_input_norm,
-            lr, beta1, beta2, eps, weight_decay, step, n_inorm, stream,
+            &mut self.input_norm_weight,
+            &grad_ws.grad_input_norm,
+            &mut state.m_input_norm,
+            &mut state.v_input_norm,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_inorm,
+            stream,
         )?;
         adamw_step_cuda(
-            &mut self.post_attn_norm_weight, &grad_ws.grad_post_attn_norm,
-            &mut state.m_post_attn_norm, &mut state.v_post_attn_norm,
-            lr, beta1, beta2, eps, weight_decay, step, n_panorm, stream,
+            &mut self.post_attn_norm_weight,
+            &grad_ws.grad_post_attn_norm,
+            &mut state.m_post_attn_norm,
+            &mut state.v_post_attn_norm,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            n_panorm,
+            stream,
         )?;
 
         Ok(())
@@ -1862,13 +1951,7 @@ fn cuda_mul(
     n: usize,
     stream: &CudaStream,
 ) -> Result<()> {
-    crate::autograd::cuda_forward::elementwise_mul_forward(
-        a,
-        b,
-        output,
-        saturating_u32(n),
-        stream,
-    )
+    crate::autograd::cuda_forward::elementwise_mul_forward(a, b, output, saturating_u32(n), stream)
 }
 
 // CPU fallback stub
@@ -1915,7 +1998,8 @@ impl CudaBlock {
         match self {
             CudaBlock::Fp32(b) => b.forward(input, output, seq_len, stream),
             CudaBlock::Nf4(b) => {
-                let scratch = shared_scratch.expect("C-SCRATCH-001: NF4 blocks require shared scratch");
+                let scratch =
+                    shared_scratch.expect("C-SCRATCH-001: NF4 blocks require shared scratch");
                 b.forward(input, output, seq_len, stream, scratch)
             }
         }
@@ -1943,8 +2027,12 @@ impl CudaBlock {
         grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
         match self {
-            CudaBlock::Fp32(b) => b.backward(input, grad_output, grad_input, seq_len, stream, grad_ws),
-            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("backward not supported on NF4 blocks (frozen weights)".into())),
+            CudaBlock::Fp32(b) => {
+                b.backward(input, grad_output, grad_input, seq_len, stream, grad_ws)
+            }
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
+                "backward not supported on NF4 blocks (frozen weights)".into(),
+            )),
         }
     }
 
@@ -1952,7 +2040,9 @@ impl CudaBlock {
     pub fn init_optimizer_state(&self) -> Result<GpuBlockOptimizerState> {
         match self {
             CudaBlock::Fp32(b) => b.init_optimizer_state(),
-            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("init_optimizer_state not supported on NF4 blocks".into())),
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
+                "init_optimizer_state not supported on NF4 blocks".into(),
+            )),
         }
     }
 
@@ -1960,7 +2050,9 @@ impl CudaBlock {
     pub fn download_weights(&self) -> Result<BlockWeights> {
         match self {
             CudaBlock::Fp32(b) => b.download_weights(),
-            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("download_weights not supported on NF4 blocks".into())),
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
+                "download_weights not supported on NF4 blocks".into(),
+            )),
         }
     }
 
@@ -1978,8 +2070,12 @@ impl CudaBlock {
         grad_ws: &CudaGradWorkspace,
     ) -> Result<()> {
         match self {
-            CudaBlock::Fp32(b) => b.optimizer_step(state, step, lr, beta1, beta2, eps, weight_decay, stream, grad_ws),
-            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError("optimizer_step not supported on NF4 blocks (frozen weights)".into())),
+            CudaBlock::Fp32(b) => {
+                b.optimizer_step(state, step, lr, beta1, beta2, eps, weight_decay, stream, grad_ws)
+            }
+            CudaBlock::Nf4(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
+                "optimizer_step not supported on NF4 blocks (frozen weights)".into(),
+            )),
         }
     }
 
@@ -2000,11 +2096,17 @@ impl CudaBlock {
     ) -> Result<()> {
         match self {
             CudaBlock::Nf4(b) => b.backward(
-                layer_input, grad_output, grad_input, output_scratch,
-                seq_len, stream, shared_scratch, grad_lora,
+                layer_input,
+                grad_output,
+                grad_input,
+                output_scratch,
+                seq_len,
+                stream,
+                shared_scratch,
+                grad_lora,
             ),
             CudaBlock::Fp32(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
-                "backward_nf4 only supported on NF4 blocks".into()
+                "backward_nf4 only supported on NF4 blocks".into(),
             )),
         }
     }
@@ -2014,7 +2116,7 @@ impl CudaBlock {
         match self {
             CudaBlock::Nf4(b) => b.init_lora_optimizer_state(),
             CudaBlock::Fp32(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
-                "init_lora_optimizer_state only supported on NF4 blocks".into()
+                "init_lora_optimizer_state only supported on NF4 blocks".into(),
             )),
         }
     }
@@ -2035,10 +2137,18 @@ impl CudaBlock {
     ) -> Result<()> {
         match self {
             CudaBlock::Nf4(b) => b.lora_optimizer_step(
-                state, step, lr, beta1, beta2, eps, weight_decay, stream, grad_lora,
+                state,
+                step,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                stream,
+                grad_lora,
             ),
             CudaBlock::Fp32(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
-                "lora_optimizer_step only supported on NF4 blocks".into()
+                "lora_optimizer_step only supported on NF4 blocks".into(),
             )),
         }
     }
@@ -2048,7 +2158,7 @@ impl CudaBlock {
         match self {
             CudaBlock::Nf4(b) => b.download_lora_weights(),
             CudaBlock::Fp32(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
-                "download_lora_weights only supported on NF4 blocks".into()
+                "download_lora_weights only supported on NF4 blocks".into(),
             )),
         }
     }
@@ -2104,10 +2214,10 @@ pub struct CudaNf4TransformerBlock {
     w_down_scales: GpuBuffer<f32>,
     // LoRA adapters for Q and V projections (ENT-153: QLoRA backward)
     // None when LoRA is not active (inference-only or non-QLoRA training)
-    lora_a_q: Option<GpuBuffer<f32>>,    // [hidden_size, rank]
-    lora_b_q: Option<GpuBuffer<f32>>,    // [rank, q_dim]
-    lora_a_v: Option<GpuBuffer<f32>>,    // [hidden_size, rank]
-    lora_b_v: Option<GpuBuffer<f32>>,    // [rank, kv_hidden]
+    lora_a_q: Option<GpuBuffer<f32>>, // [hidden_size, rank]
+    lora_b_q: Option<GpuBuffer<f32>>, // [rank, q_dim]
+    lora_a_v: Option<GpuBuffer<f32>>, // [hidden_size, rank]
+    lora_b_v: Option<GpuBuffer<f32>>, // [rank, kv_hidden]
     lora_scale: f32,
     lora_rank: usize,
     ctx: Arc<CudaContext>,
@@ -2152,21 +2262,55 @@ impl CudaNf4TransformerBlock {
         // Ground truth: PMAT-331 validation in attention.rs from_pretrained()
         //   Q: [q_dim, hidden], K: [kv_hidden, hidden], V: [kv_hidden, hidden], O: [hidden, q_dim]
         //   gate: [intermediate, hidden], up: [intermediate, hidden], down: [hidden, intermediate]
-        assert_eq!(w_q.len(), q_dim * hidden_size,
+        assert_eq!(
+            w_q.len(),
+            q_dim * hidden_size,
             "C-NF4SHAPE-001: w_q expected {}, got {} (q_dim={q_dim}, hidden={hidden_size})",
-            q_dim * hidden_size, w_q.len());
-        assert_eq!(w_k.len(), kv_hidden_size * hidden_size,
-            "C-NF4SHAPE-001: w_k expected {}, got {}", kv_hidden_size * hidden_size, w_k.len());
-        assert_eq!(w_v.len(), kv_hidden_size * hidden_size,
-            "C-NF4SHAPE-001: w_v expected {}, got {}", kv_hidden_size * hidden_size, w_v.len());
-        assert_eq!(w_o.len(), hidden_size * q_dim,
-            "C-NF4SHAPE-001: w_o expected {}, got {}", hidden_size * q_dim, w_o.len());
-        assert_eq!(w_gate.len(), intermediate_size * hidden_size,
-            "C-NF4SHAPE-001: w_gate expected {}, got {}", intermediate_size * hidden_size, w_gate.len());
-        assert_eq!(w_up.len(), intermediate_size * hidden_size,
-            "C-NF4SHAPE-001: w_up expected {}, got {}", intermediate_size * hidden_size, w_up.len());
-        assert_eq!(w_down.len(), hidden_size * intermediate_size,
-            "C-NF4SHAPE-001: w_down expected {}, got {}", hidden_size * intermediate_size, w_down.len());
+            q_dim * hidden_size,
+            w_q.len()
+        );
+        assert_eq!(
+            w_k.len(),
+            kv_hidden_size * hidden_size,
+            "C-NF4SHAPE-001: w_k expected {}, got {}",
+            kv_hidden_size * hidden_size,
+            w_k.len()
+        );
+        assert_eq!(
+            w_v.len(),
+            kv_hidden_size * hidden_size,
+            "C-NF4SHAPE-001: w_v expected {}, got {}",
+            kv_hidden_size * hidden_size,
+            w_v.len()
+        );
+        assert_eq!(
+            w_o.len(),
+            hidden_size * q_dim,
+            "C-NF4SHAPE-001: w_o expected {}, got {}",
+            hidden_size * q_dim,
+            w_o.len()
+        );
+        assert_eq!(
+            w_gate.len(),
+            intermediate_size * hidden_size,
+            "C-NF4SHAPE-001: w_gate expected {}, got {}",
+            intermediate_size * hidden_size,
+            w_gate.len()
+        );
+        assert_eq!(
+            w_up.len(),
+            intermediate_size * hidden_size,
+            "C-NF4SHAPE-001: w_up expected {}, got {}",
+            intermediate_size * hidden_size,
+            w_up.len()
+        );
+        assert_eq!(
+            w_down.len(),
+            hidden_size * intermediate_size,
+            "C-NF4SHAPE-001: w_down expected {}, got {}",
+            hidden_size * intermediate_size,
+            w_down.len()
+        );
 
         // Upload norm weights as fp32
         let input_norm_weight = GpuBuffer::from_host(&ctx, input_norm_weight)?;
@@ -2197,8 +2341,7 @@ impl CudaNf4TransformerBlock {
         let (w_o_nf4, w_o_scales) = quantize_and_upload(w_o, hidden_size * q_dim)?;
         let (w_gate_nf4, w_gate_scales) =
             quantize_and_upload(w_gate, intermediate_size * hidden_size)?;
-        let (w_up_nf4, w_up_scales) =
-            quantize_and_upload(w_up, intermediate_size * hidden_size)?;
+        let (w_up_nf4, w_up_scales) = quantize_and_upload(w_up, intermediate_size * hidden_size)?;
         let (w_down_nf4, w_down_scales) =
             quantize_and_upload(w_down, hidden_size * intermediate_size)?;
 
@@ -2428,13 +2571,7 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // === Final Residual Add ===
-        cuda_add(
-            &scratch.residual1,
-            &scratch.ffn_out,
-            output,
-            seq_len * hidden_size,
-            stream,
-        )?;
+        cuda_add(&scratch.residual1, &scratch.ffn_out, output, seq_len * hidden_size, stream)?;
 
         Ok(())
     }
@@ -2451,7 +2588,12 @@ impl CudaNf4TransformerBlock {
 /// since attention operates on fp32 activations (Q/K/V are already dequantized by GEMM).
 #[cfg(feature = "cuda")]
 impl CudaNf4TransformerBlock {
-    fn compute_attention_cuda(&self, seq_len: usize, stream: &CudaStream, scratch: &mut CudaBlockScratch) -> Result<()> {
+    fn compute_attention_cuda(
+        &self,
+        seq_len: usize,
+        stream: &CudaStream,
+        scratch: &mut CudaBlockScratch,
+    ) -> Result<()> {
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;
         let head_dim = self.config.head_dim();
@@ -2463,38 +2605,30 @@ impl CudaNf4TransformerBlock {
         let hd = saturating_u32(head_dim);
 
         // Q: interleaved → batched layout
-        interleaved_to_batched_forward(
-            &scratch.q,
-            &mut scratch.attn_q_batched,
-            s, nh, hd,
-            stream,
-        )?;
+        interleaved_to_batched_forward(&scratch.q, &mut scratch.attn_q_batched, s, nh, hd, stream)?;
 
         // K: interleaved → batched, then GQA expand if needed
-        interleaved_to_batched_forward(
-            &scratch.k,
-            &mut scratch.attn_kv_temp,
-            s, nkv, hd,
-            stream,
-        )?;
+        interleaved_to_batched_forward(&scratch.k, &mut scratch.attn_kv_temp, s, nkv, hd, stream)?;
 
         if heads_per_kv > 1 {
             expand_kv_heads(
                 &scratch.attn_kv_temp,
                 &mut scratch.attn_kv_temp2,
-                num_kv_heads, heads_per_kv,
+                num_kv_heads,
+                heads_per_kv,
                 seq_len * head_dim,
                 stream,
             )?;
         } else {
             // SAFETY: D2D copy with matching buffer sizes
             unsafe {
-                scratch.attn_kv_temp2
+                scratch
+                    .attn_kv_temp2
                     .copy_from_buffer_async(&scratch.attn_kv_temp, stream)
                     .map_err(|e| {
-                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                            format!("K copy failed: {e:?}"),
-                        )
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "K copy failed: {e:?}"
+                        ))
                     })?;
             }
         }
@@ -2503,7 +2637,9 @@ impl CudaNf4TransformerBlock {
         batched_transpose_forward(
             &scratch.attn_kv_temp2,
             &mut scratch.attn_kv_temp,
-            nh, s, hd,
+            nh,
+            s,
+            hd,
             stream,
         )?;
 
@@ -2512,7 +2648,11 @@ impl CudaNf4TransformerBlock {
             &scratch.attn_q_batched,
             &scratch.attn_kv_temp,
             &mut scratch.attn_scores,
-            1, nh, s, s, hd,
+            1,
+            nh,
+            s,
+            s,
+            hd,
             stream,
         )?;
 
@@ -2553,29 +2693,26 @@ impl CudaNf4TransformerBlock {
         leak(scores_view);
 
         // V: interleaved → batched, then GQA expand
-        interleaved_to_batched_forward(
-            &scratch.v,
-            &mut scratch.attn_kv_temp,
-            s, nkv, hd,
-            stream,
-        )?;
+        interleaved_to_batched_forward(&scratch.v, &mut scratch.attn_kv_temp, s, nkv, hd, stream)?;
 
         if heads_per_kv > 1 {
             expand_kv_heads(
                 &scratch.attn_kv_temp,
                 &mut scratch.attn_kv_temp2,
-                num_kv_heads, heads_per_kv,
+                num_kv_heads,
+                heads_per_kv,
                 seq_len * head_dim,
                 stream,
             )?;
         } else {
             unsafe {
-                scratch.attn_kv_temp2
+                scratch
+                    .attn_kv_temp2
                     .copy_from_buffer_async(&scratch.attn_kv_temp, stream)
                     .map_err(|e| {
-                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                            format!("V copy failed: {e:?}"),
-                        )
+                        crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                            "V copy failed: {e:?}"
+                        ))
                     })?;
             }
         }
@@ -2585,7 +2722,11 @@ impl CudaNf4TransformerBlock {
             &scratch.attn_scores,
             &scratch.attn_kv_temp2,
             &mut scratch.attn_q_batched,
-            1, nh, s, hd, s,
+            1,
+            nh,
+            s,
+            hd,
+            s,
             stream,
         )?;
 
@@ -2593,7 +2734,9 @@ impl CudaNf4TransformerBlock {
         batched_to_interleaved_forward(
             &scratch.attn_q_batched,
             &mut scratch.attn_out,
-            s, nh, hd,
+            s,
+            nh,
+            hd,
             stream,
         )?;
 
@@ -2701,12 +2844,18 @@ impl GpuLoraOptimizerState {
             Ok(GpuBuffer::from_host(ctx, &vec![0.0f32; n])?)
         };
         Ok(Self {
-            m_lora_a_q: z(h * r)?,  v_lora_a_q: z(h * r)?,
-            m_lora_b_q: z(r * q_dim)?,  v_lora_b_q: z(r * q_dim)?,
-            m_lora_a_v: z(h * r)?,  v_lora_a_v: z(h * r)?,
-            m_lora_b_v: z(r * kv)?,  v_lora_b_v: z(r * kv)?,
-            m_input_norm: z(h)?,  v_input_norm: z(h)?,
-            m_post_attn_norm: z(h)?,  v_post_attn_norm: z(h)?,
+            m_lora_a_q: z(h * r)?,
+            v_lora_a_q: z(h * r)?,
+            m_lora_b_q: z(r * q_dim)?,
+            v_lora_b_q: z(r * q_dim)?,
+            m_lora_a_v: z(h * r)?,
+            v_lora_a_v: z(h * r)?,
+            m_lora_b_v: z(r * kv)?,
+            v_lora_b_v: z(r * kv)?,
+            m_input_norm: z(h)?,
+            v_input_norm: z(h)?,
+            m_post_attn_norm: z(h)?,
+            v_post_attn_norm: z(h)?,
         })
     }
 }
@@ -2764,7 +2913,12 @@ impl CudaNf4TransformerBlock {
 
         // === Step 1: FFN backward (NF4 transpose, no weight grads for frozen projections) ===
         self.backward_nf4_ffn(
-            grad_output, seq_len, hidden_size, intermediate_size, stream, scratch,
+            grad_output,
+            seq_len,
+            hidden_size,
+            intermediate_size,
+            stream,
+            scratch,
         )?;
 
         // === Step 2: Post-attn norm backward ===
@@ -2772,8 +2926,8 @@ impl CudaNf4TransformerBlock {
         rms_norm_backward(
             &scratch.residual1,
             &self.post_attn_norm_weight,
-            &scratch.grad_hidden,  // grad_from_ffn is accumulated in grad_hidden by backward_nf4_ffn
-            grad_input,            // temporarily store post-attn-norm grad here
+            &scratch.grad_hidden, // grad_from_ffn is accumulated in grad_hidden by backward_nf4_ffn
+            grad_input,           // temporarily store post-attn-norm grad here
             &mut grad_lora.grad_post_attn_norm,
             saturating_u32(seq_len),
             saturating_u32(hidden_size),
@@ -2787,7 +2941,7 @@ impl CudaNf4TransformerBlock {
 
         // === Step 3: Attention backward (NF4 + LoRA for Q/V) ===
         self.backward_nf4_attention(
-            grad_input,    // grad coming into attention (from residual1)
+            grad_input, // grad coming into attention (from residual1)
             seq_len, stream, scratch, grad_lora,
         )?;
 
@@ -2868,7 +3022,9 @@ impl CudaNf4TransformerBlock {
             &self.w_down_nf4,
             &self.w_down_scales,
             &mut scratch.grad_swiglu,
-            s, h, i_size,  // m=S, n=H (reduction), k=I (output cols)
+            s,
+            h,
+            i_size, // m=S, n=H (reduction), k=I (output cols)
             stream,
         )?;
 
@@ -2881,7 +3037,8 @@ impl CudaNf4TransformerBlock {
             &scratch.grad_swiglu,
             &scratch.up_out,
             &mut scratch.swiglu_out,
-            n_inter, stream,
+            n_inter,
+            stream,
         )?;
 
         // silu_backward: d_gate_raw = temp1 * silu'(gate_out)
@@ -2890,50 +3047,56 @@ impl CudaNf4TransformerBlock {
         silu_backward(
             &scratch.gate_out,
             &scratch.swiglu_out,
-            &mut scratch.up_out,   // d_gate stored here
+            &mut scratch.up_out, // d_gate stored here
             stream,
         )?;
 
         // d_up = d_swiglu * silu(gate) → store in gate_out (reuse)
         // First compute silu(gate) into ffn_out (temp)
-        silu_forward(
-            &scratch.gate_out,
-            &mut scratch.ffn_out,
-            n_inter, stream,
-        )?;
+        silu_forward(&scratch.gate_out, &mut scratch.ffn_out, n_inter, stream)?;
         // d_up = d_swiglu * silu(gate)
         elementwise_mul_forward(
             &scratch.grad_swiglu,
             &scratch.ffn_out,
-            &mut scratch.gate_out,  // d_up stored here
-            n_inter, stream,
+            &mut scratch.gate_out, // d_up stored here
+            n_inter,
+            stream,
         )?;
 
         // Step 3: Propagate through gate/up projections (NF4 transpose)
         // grad_norm2_gate = d_gate @ w_gate^T  [S,H]
         // W_gate is [I, H] in NF4
         gemm_nf4_backward_a(
-            &scratch.up_out,       // d_gate
+            &scratch.up_out, // d_gate
             &self.w_gate_nf4,
             &self.w_gate_scales,
-            &mut scratch.ffn_out,  // grad_norm2 part 1
-            s, i_size, h,          // m=S, n=I (reduction), k=H (output cols)
+            &mut scratch.ffn_out, // grad_norm2 part 1
+            s,
+            i_size,
+            h, // m=S, n=I (reduction), k=H (output cols)
             stream,
         )?;
 
         // grad_norm2_up = d_up @ w_up^T  [S,H]
         // W_up is [I, H] in NF4
         gemm_nf4_backward_a(
-            &scratch.gate_out,     // d_up
+            &scratch.gate_out, // d_up
             &self.w_up_nf4,
             &self.w_up_scales,
             &mut scratch.grad_hidden, // grad_norm2 part 2
-            s, i_size, h,
+            s,
+            i_size,
+            h,
             stream,
         )?;
 
         // Accumulate: grad_hidden = grad_norm2_gate + grad_norm2_up
-        cuda_add_inplace(&mut scratch.grad_hidden, &scratch.ffn_out, seq_len * hidden_size, stream)?;
+        cuda_add_inplace(
+            &mut scratch.grad_hidden,
+            &scratch.ffn_out,
+            seq_len * hidden_size,
+            stream,
+        )?;
 
         Ok(())
     }
@@ -2970,17 +3133,17 @@ impl CudaNf4TransformerBlock {
             grad_residual1,
             &self.w_o_nf4,
             &self.w_o_scales,
-            &mut scratch.attn_out,  // reuse as grad_attn_out [S, q_dim]
-            s, h, qd,
+            &mut scratch.attn_out, // reuse as grad_attn_out [S, q_dim]
+            s,
+            h,
+            qd,
             stream,
         )?;
 
         // Step 2: Attention mechanism backward
         // This is complex (softmax backward, batched GEMMs) — reuse the fp32 attention backward
         // infrastructure since attention operates on fp32 activations.
-        self.backward_nf4_attention_mechanism(
-            seq_len, num_heads, head_dim, stream, scratch,
-        )?;
+        self.backward_nf4_attention_mechanism(seq_len, num_heads, head_dim, stream, scratch)?;
 
         // After attention backward: scratch.norm1_out-related grads are accumulated.
         // grad_q is in scratch.q, grad_k in scratch.k, grad_v in scratch.v
@@ -2989,11 +3152,13 @@ impl CudaNf4TransformerBlock {
         // Base: grad_norm1_q = grad_q @ w_q^T  [S, H]
         // W_q is [q_dim, H] in NF4
         gemm_nf4_backward_a(
-            &scratch.q,             // grad_q [S, q_dim]
+            &scratch.q, // grad_q [S, q_dim]
             &self.w_q_nf4,
             &self.w_q_scales,
             &mut scratch.o_proj_out, // grad_norm1 (partial) [S, H]
-            s, qd, h,
+            s,
+            qd,
+            h,
             stream,
         )?;
 
@@ -3010,7 +3175,9 @@ impl CudaNf4TransformerBlock {
                 &scratch.lora_inter,
                 &scratch.q,
                 &mut grad_lora.grad_lora_b_q,
-                s, r, qd,
+                s,
+                r,
+                qd,
                 stream,
             )?;
 
@@ -3019,7 +3186,9 @@ impl CudaNf4TransformerBlock {
                 &scratch.q,
                 b_q,
                 &mut scratch.lora_inter, // reuse for grad_lora_inter
-                s, qd, r,
+                s,
+                qd,
+                r,
                 stream,
             )?;
 
@@ -3028,7 +3197,9 @@ impl CudaNf4TransformerBlock {
                 &scratch.norm1_out,
                 &scratch.lora_inter,
                 &mut grad_lora.grad_lora_a_q,
-                s, h, r,
+                s,
+                h,
+                r,
                 stream,
             )?;
 
@@ -3036,22 +3207,31 @@ impl CudaNf4TransformerBlock {
             gemm_backward_a(
                 &scratch.lora_inter,
                 a_q,
-                &mut scratch.lora_temp,  // [S, H]
-                s, r, h,
+                &mut scratch.lora_temp, // [S, H]
+                s,
+                r,
+                h,
                 stream,
             )?;
-            cuda_add_inplace(&mut scratch.o_proj_out, &scratch.lora_temp, seq_len * hidden_size, stream)?;
+            cuda_add_inplace(
+                &mut scratch.o_proj_out,
+                &scratch.lora_temp,
+                seq_len * hidden_size,
+                stream,
+            )?;
         }
 
         // Step 4: K projection backward (no LoRA on K)
         // grad_norm1_k = grad_k @ w_k^T  [S, H]
         // W_k is [kv_hidden, H] in NF4
         gemm_nf4_backward_a(
-            &scratch.k,           // grad_k [S, kv_hidden]
+            &scratch.k, // grad_k [S, kv_hidden]
             &self.w_k_nf4,
             &self.w_k_scales,
             &mut scratch.ffn_out, // temp [S, H]
-            s, kvh, h,
+            s,
+            kvh,
+            h,
             stream,
         )?;
         // Accumulate: grad_norm1 += grad_norm1_k
@@ -3061,11 +3241,13 @@ impl CudaNf4TransformerBlock {
         // Base: grad_norm1_v = grad_v @ w_v^T  [S, H]
         // W_v is [kv_hidden, H] in NF4
         gemm_nf4_backward_a(
-            &scratch.v,           // grad_v [S, kv_hidden]
+            &scratch.v, // grad_v [S, kv_hidden]
             &self.w_v_nf4,
             &self.w_v_scales,
             &mut scratch.ffn_out, // temp [S, H]
-            s, kvh, h,
+            s,
+            kvh,
+            h,
             stream,
         )?;
         cuda_add_inplace(&mut scratch.o_proj_out, &scratch.ffn_out, seq_len * hidden_size, stream)?;
@@ -3082,48 +3264,47 @@ impl CudaNf4TransformerBlock {
                 &scratch.lora_inter,
                 &scratch.v,
                 &mut grad_lora.grad_lora_b_v,
-                s, r, kvh,
+                s,
+                r,
+                kvh,
                 stream,
             )?;
 
             // grad_lora_inter = grad_v @ B_v^T  [S, rank]
-            gemm_backward_a(
-                &scratch.v,
-                b_v,
-                &mut scratch.lora_inter,
-                s, kvh, r,
-                stream,
-            )?;
+            gemm_backward_a(&scratch.v, b_v, &mut scratch.lora_inter, s, kvh, r, stream)?;
 
             // grad_A_v = norm1_out^T @ grad_lora_inter  [H, rank]
             gemm_backward_b(
                 &scratch.norm1_out,
                 &scratch.lora_inter,
                 &mut grad_lora.grad_lora_a_v,
-                s, h, r,
+                s,
+                h,
+                r,
                 stream,
             )?;
 
             // Add LoRA V's contribution to grad_norm1
-            gemm_backward_a(
-                &scratch.lora_inter,
-                a_v,
-                &mut scratch.lora_temp,
-                s, r, h,
+            gemm_backward_a(&scratch.lora_inter, a_v, &mut scratch.lora_temp, s, r, h, stream)?;
+            cuda_add_inplace(
+                &mut scratch.o_proj_out,
+                &scratch.lora_temp,
+                seq_len * hidden_size,
                 stream,
             )?;
-            cuda_add_inplace(&mut scratch.o_proj_out, &scratch.lora_temp, seq_len * hidden_size, stream)?;
         }
 
         // Step 6: Accumulated grad_norm1 is in scratch.o_proj_out → move to scratch.grad_hidden
         // for norm backward in the caller
         // SAFETY: D2D copy between same-sized GPU buffers
         unsafe {
-            scratch.grad_hidden.copy_from_buffer_async(&scratch.o_proj_out, stream).map_err(|e| {
-                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
-                    "grad_norm1 copy failed: {e}"
-                ))
-            })?;
+            scratch.grad_hidden.copy_from_buffer_async(&scratch.o_proj_out, stream).map_err(
+                |e| {
+                    crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                        "grad_norm1 copy failed: {e}"
+                    ))
+                },
+            )?;
         }
 
         Ok(())
@@ -3152,8 +3333,11 @@ impl CudaNf4TransformerBlock {
         // Convert to batched layout [NH, S, HD]
         interleaved_to_batched_forward(
             &scratch.attn_out,
-            &mut scratch.attn_q_batched,  // grad_attn_batched [NH, S, HD]
-            s, nh, hd, stream,
+            &mut scratch.attn_q_batched, // grad_attn_batched [NH, S, HD]
+            s,
+            nh,
+            hd,
+            stream,
         )?;
 
         // Attention backward: attn_out = softmax(Q@K^T/√d) @ V
@@ -3248,48 +3432,96 @@ impl CudaNf4TransformerBlock {
         // AdamW step for each LoRA weight
         if let Some(ref mut a_q) = self.lora_a_q {
             adamw_step_cuda(
-                a_q, &grad_lora.grad_lora_a_q,
-                &mut state.m_lora_a_q, &mut state.v_lora_a_q,
-                lr, beta1, beta2, eps, weight_decay, step, saturating_u32(h * r),
+                a_q,
+                &grad_lora.grad_lora_a_q,
+                &mut state.m_lora_a_q,
+                &mut state.v_lora_a_q,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+                saturating_u32(h * r),
                 stream,
             )?;
         }
         if let Some(ref mut b_q) = self.lora_b_q {
             adamw_step_cuda(
-                b_q, &grad_lora.grad_lora_b_q,
-                &mut state.m_lora_b_q, &mut state.v_lora_b_q,
-                lr, beta1, beta2, eps, weight_decay, step, saturating_u32(r * q_dim),
+                b_q,
+                &grad_lora.grad_lora_b_q,
+                &mut state.m_lora_b_q,
+                &mut state.v_lora_b_q,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+                saturating_u32(r * q_dim),
                 stream,
             )?;
         }
         if let Some(ref mut a_v) = self.lora_a_v {
             adamw_step_cuda(
-                a_v, &grad_lora.grad_lora_a_v,
-                &mut state.m_lora_a_v, &mut state.v_lora_a_v,
-                lr, beta1, beta2, eps, weight_decay, step, saturating_u32(h * r),
+                a_v,
+                &grad_lora.grad_lora_a_v,
+                &mut state.m_lora_a_v,
+                &mut state.v_lora_a_v,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+                saturating_u32(h * r),
                 stream,
             )?;
         }
         if let Some(ref mut b_v) = self.lora_b_v {
             adamw_step_cuda(
-                b_v, &grad_lora.grad_lora_b_v,
-                &mut state.m_lora_b_v, &mut state.v_lora_b_v,
-                lr, beta1, beta2, eps, weight_decay, step, saturating_u32(r * kv),
+                b_v,
+                &grad_lora.grad_lora_b_v,
+                &mut state.m_lora_b_v,
+                &mut state.v_lora_b_v,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                weight_decay,
+                step,
+                saturating_u32(r * kv),
                 stream,
             )?;
         }
 
         // AdamW step for norm weights
         adamw_step_cuda(
-            &mut self.input_norm_weight, &grad_lora.grad_input_norm,
-            &mut state.m_input_norm, &mut state.v_input_norm,
-            lr, beta1, beta2, eps, weight_decay, step, saturating_u32(h),
+            &mut self.input_norm_weight,
+            &grad_lora.grad_input_norm,
+            &mut state.m_input_norm,
+            &mut state.v_input_norm,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            saturating_u32(h),
             stream,
         )?;
         adamw_step_cuda(
-            &mut self.post_attn_norm_weight, &grad_lora.grad_post_attn_norm,
-            &mut state.m_post_attn_norm, &mut state.v_post_attn_norm,
-            lr, beta1, beta2, eps, weight_decay, step, saturating_u32(h),
+            &mut self.post_attn_norm_weight,
+            &grad_lora.grad_post_attn_norm,
+            &mut state.m_post_attn_norm,
+            &mut state.v_post_attn_norm,
+            lr,
+            beta1,
+            beta2,
+            eps,
+            weight_decay,
+            step,
+            saturating_u32(h),
             stream,
         )?;
 
@@ -3305,28 +3537,16 @@ impl CudaNf4TransformerBlock {
         let download = |buf: &GpuBuffer<f32>| -> Result<Vec<f32>> {
             let mut host = vec![0.0f32; buf.len()];
             buf.copy_to_host(&mut host).map_err(|e| {
-                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                    format!("LoRA weight download failed: {e}")
-                )
+                crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                    "LoRA weight download failed: {e}"
+                ))
             })?;
             Ok(host)
         };
-        let a_q = self.lora_a_q.as_ref()
-            .map(&download)
-            .transpose()?
-            .unwrap_or_default();
-        let b_q = self.lora_b_q.as_ref()
-            .map(&download)
-            .transpose()?
-            .unwrap_or_default();
-        let a_v = self.lora_a_v.as_ref()
-            .map(&download)
-            .transpose()?
-            .unwrap_or_default();
-        let b_v = self.lora_b_v.as_ref()
-            .map(&download)
-            .transpose()?
-            .unwrap_or_default();
+        let a_q = self.lora_a_q.as_ref().map(&download).transpose()?.unwrap_or_default();
+        let b_q = self.lora_b_q.as_ref().map(&download).transpose()?.unwrap_or_default();
+        let a_v = self.lora_a_v.as_ref().map(&download).transpose()?.unwrap_or_default();
+        let b_v = self.lora_b_v.as_ref().map(&download).transpose()?.unwrap_or_default();
         Ok((a_q, b_q, a_v, b_v))
     }
 }

@@ -132,10 +132,7 @@ mod tests {
         let values = vec![2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
         let var = kahan_variance(&values);
         // Known variance for this dataset: 4.0
-        assert!(
-            (var - 4.0).abs() < 1e-5,
-            "Kahan variance = {var}, expected 4.0"
-        );
+        assert!((var - 4.0).abs() < 1e-5, "Kahan variance = {var}, expected 4.0");
     }
 
     #[test]
@@ -169,9 +166,7 @@ mod tests {
     fn test_kahan_vs_naive_accuracy() {
         // Alternating large and small values stress-test accumulation
         let n = 10_000;
-        let values: Vec<f32> = (0..n)
-            .map(|i| if i % 2 == 0 { 1e6 } else { 1e-6 })
-            .collect();
+        let values: Vec<f32> = (0..n).map(|i| if i % 2 == 0 { 1e6 } else { 1e-6 }).collect();
 
         let kahan = kahan_sum(&values);
         let naive: f32 = values.iter().sum();

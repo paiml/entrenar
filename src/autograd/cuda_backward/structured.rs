@@ -131,13 +131,13 @@ pub fn batched_softmax_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "batched_softmax_backward", &config, &mut args)
-            .map_err(|e| {
+        stream.launch_kernel(module, "batched_softmax_backward", &config, &mut args).map_err(
+            |e| {
                 CudaTensorError::KernelError(format!(
                     "Batched softmax backward launch failed: {e:?}"
                 ))
-            })?;
+            },
+        )?;
     }
 
     Ok(())
@@ -208,11 +208,9 @@ pub fn rms_norm_backward(
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
-        stream
-            .launch_kernel(module, "batched_rms_norm_backward", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("RMSNorm backward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "batched_rms_norm_backward", &config, &mut args).map_err(
+            |e| CudaTensorError::KernelError(format!("RMSNorm backward launch failed: {e:?}")),
+        )?;
     }
 
     Ok(())
@@ -276,11 +274,9 @@ pub fn rms_norm_forward(
     // output has batch_size * hidden_size elements, gamma has hidden_size elements.
     // Parameters match PTX signature (u64 input_ptr, u64 output_ptr, u64 gamma_ptr).
     unsafe {
-        stream
-            .launch_kernel(module, "batched_rmsnorm_vectorized", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "batched_rmsnorm_vectorized", &config, &mut args).map_err(
+            |e| CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}")),
+        )?;
     }
 
     Ok(())

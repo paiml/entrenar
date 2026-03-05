@@ -93,12 +93,7 @@ impl GradientServer {
             "[coordinator] Listening on {} (expecting {} workers)",
             config.bind_addr, config.expect_workers
         );
-        Ok(Self {
-            config,
-            listener,
-            workers: Vec::new(),
-            total_samples: 0,
-        })
+        Ok(Self { config, listener, workers: Vec::new(), total_samples: 0 })
     }
 
     /// Wait for all expected workers to connect.
@@ -112,30 +107,22 @@ impl GradientServer {
         eprintln!("[coordinator] Waiting for {expected} workers to connect...");
 
         while self.workers.len() < expected {
-            let (stream, addr) = self
-                .listener
-                .accept()
-                .map_err(|e| format!("accept failed: {e}"))?;
+            let (stream, addr) =
+                self.listener.accept().map_err(|e| format!("accept failed: {e}"))?;
             eprintln!("[coordinator] Connection from {addr}");
 
             // Read JoinRequest
             let msg = read_wire_message(&stream)?;
             match msg {
-                WireMessage::JoinRequest {
-                    node_id,
-                    gpu_count,
-                    backend,
-                } => {
+                WireMessage::JoinRequest { node_id, gpu_count, backend } => {
                     let worker_id = self.workers.len() as u32;
                     eprintln!(
                         "[coordinator] Worker {worker_id} joined: {node_id} ({gpu_count} GPUs, {backend})"
                     );
 
                     // Send JoinAccepted
-                    let response = WireMessage::JoinAccepted {
-                        worker_id,
-                        total_workers: expected as u32,
-                    };
+                    let response =
+                        WireMessage::JoinAccepted { worker_id, total_workers: expected as u32 };
                     send_wire_message(&stream, &response)?;
 
                     self.workers.push(WorkerConnection {
@@ -171,16 +158,8 @@ impl GradientServer {
 
         for (i, worker) in self.workers.iter().enumerate() {
             let start = i * shard_size;
-            let end = if i == n - 1 {
-                self.total_samples
-            } else {
-                start + shard_size
-            };
-            let msg = WireMessage::ShardAssignment {
-                step,
-                shard_start: start,
-                shard_end: end,
-            };
+            let end = if i == n - 1 { self.total_samples } else { start + shard_size };
+            let msg = WireMessage::ShardAssignment { step, shard_start: start, shard_end: end };
             send_wire_message(&worker.stream, &msg)?;
         }
         Ok(())
@@ -214,9 +193,7 @@ impl GradientServer {
                     ..
                 } => {
                     if recv_step != step {
-                        return Err(format!(
-                            "step mismatch: expected {step}, got {recv_step}"
-                        ));
+                        return Err(format!("step mismatch: expected {step}, got {recv_step}"));
                     }
 
                     // Jidoka: halt on NaN/Inf (F-DP-003)
@@ -243,11 +220,7 @@ impl GradientServer {
 
         // AllReduce: average gradients (F-DP-001)
         let avg_gradients = average_gradients(&all_grads);
-        let global_loss = if total_samples > 0 {
-            total_loss / total_samples as f32
-        } else {
-            0.0
-        };
+        let global_loss = if total_samples > 0 { total_loss / total_samples as f32 } else { 0.0 };
 
         let allreduce_ms = start.elapsed().as_secs_f64() * 1000.0;
 
@@ -327,9 +300,7 @@ impl GradientServer {
                     ..
                 } => {
                     if recv_step != step {
-                        return Err(format!(
-                            "step mismatch: expected {step}, got {recv_step}"
-                        ));
+                        return Err(format!("step mismatch: expected {step}, got {recv_step}"));
                     }
                     if recv_block_idx != block_idx {
                         return Err(format!(
@@ -359,12 +330,7 @@ impl GradientServer {
         let avg_gradients = average_gradients(&all_grads);
         let allreduce_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-        Ok(BlockAllReduceResult {
-            block_idx,
-            avg_gradients,
-            component_sizes,
-            allreduce_ms,
-        })
+        Ok(BlockAllReduceResult { block_idx, avg_gradients, component_sizes, allreduce_ms })
     }
 
     /// Broadcast averaged block gradient to all workers.
@@ -413,9 +379,7 @@ impl GradientServer {
                     ..
                 } => {
                     if recv_step != step {
-                        return Err(format!(
-                            "step mismatch: expected {step}, got {recv_step}"
-                        ));
+                        return Err(format!("step mismatch: expected {step}, got {recv_step}"));
                     }
                     if component != expected_component {
                         return Err(format!(
@@ -442,11 +406,7 @@ impl GradientServer {
         let avg_gradients = average_gradients(&all_grads);
         let allreduce_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-        Ok(NonBlockAllReduceResult {
-            component: expected_component,
-            avg_gradients,
-            allreduce_ms,
-        })
+        Ok(NonBlockAllReduceResult { component: expected_component, avg_gradients, allreduce_ms })
     }
 
     /// Broadcast averaged non-block gradient to all workers.
@@ -472,9 +432,7 @@ impl GradientServer {
 /// Read a length-prefixed wire message from a TCP stream.
 pub(crate) fn read_wire_message(stream: &TcpStream) -> Result<WireMessage, String> {
     let mut len_buf = [0u8; 4];
-    (&*stream)
-        .read_exact(&mut len_buf)
-        .map_err(|e| format!("read length failed: {e}"))?;
+    (&*stream).read_exact(&mut len_buf).map_err(|e| format!("read length failed: {e}"))?;
     let len = u32::from_be_bytes(len_buf) as usize;
 
     if len > 100_000_000 {
@@ -482,9 +440,7 @@ pub(crate) fn read_wire_message(stream: &TcpStream) -> Result<WireMessage, Strin
     }
 
     let mut payload = vec![0u8; len];
-    (&*stream)
-        .read_exact(&mut payload)
-        .map_err(|e| format!("read payload failed: {e}"))?;
+    (&*stream).read_exact(&mut payload).map_err(|e| format!("read payload failed: {e}"))?;
 
     WireMessage::from_payload(&payload)
 }
@@ -492,12 +448,8 @@ pub(crate) fn read_wire_message(stream: &TcpStream) -> Result<WireMessage, Strin
 /// Send a wire message to a TCP stream.
 pub(crate) fn send_wire_message(stream: &TcpStream, msg: &WireMessage) -> Result<(), String> {
     let bytes = msg.to_bytes();
-    (&*stream)
-        .write_all(&bytes)
-        .map_err(|e| format!("send failed: {e}"))?;
-    (&*stream)
-        .flush()
-        .map_err(|e| format!("flush failed: {e}"))?;
+    (&*stream).write_all(&bytes).map_err(|e| format!("send failed: {e}"))?;
+    (&*stream).flush().map_err(|e| format!("flush failed: {e}"))?;
     Ok(())
 }
 
@@ -552,10 +504,7 @@ mod tests {
             // Read JoinAccepted
             let response = read_wire_message(&stream).expect("valid");
             match response {
-                WireMessage::JoinAccepted {
-                    worker_id,
-                    total_workers,
-                } => {
+                WireMessage::JoinAccepted { worker_id, total_workers } => {
                     assert_eq!(worker_id, 0);
                     assert_eq!(total_workers, 1);
                 }
@@ -592,11 +541,9 @@ mod tests {
                     // Read shard assignment
                     let shard_msg = read_wire_message(&stream).expect("valid");
                     let (shard_start, shard_end) = match shard_msg {
-                        WireMessage::ShardAssignment {
-                            shard_start,
-                            shard_end,
-                            ..
-                        } => (shard_start, shard_end),
+                        WireMessage::ShardAssignment { shard_start, shard_end, .. } => {
+                            (shard_start, shard_end)
+                        }
                         other => panic!("expected ShardAssignment, got {other:?}"),
                     };
 

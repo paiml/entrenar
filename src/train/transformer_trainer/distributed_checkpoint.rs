@@ -48,12 +48,7 @@ pub struct DistributedCheckpointCoordinator {
 impl DistributedCheckpointCoordinator {
     /// Create a new coordinator.
     pub fn new(world_size: usize) -> Self {
-        Self {
-            phase: CheckpointPhase::Training,
-            acks_received: 0,
-            world_size,
-            checkpoint_step: 0,
-        }
+        Self { phase: CheckpointPhase::Training, acks_received: 0, world_size, checkpoint_step: 0 }
     }
 
     /// Request a checkpoint save at the given step.
@@ -157,11 +152,7 @@ pub fn hash_weights(weights: &[f32]) -> [u8; 32] {
 ///
 /// Follows the `save_interval` logic from the training config,
 /// accounting for the distributed checkpoint overhead.
-pub fn should_save_checkpoint(
-    step: usize,
-    save_interval: usize,
-    max_steps: Option<usize>,
-) -> bool {
+pub fn should_save_checkpoint(step: usize, save_interval: usize, max_steps: Option<usize>) -> bool {
     if save_interval == 0 {
         return false;
     }
@@ -206,7 +197,7 @@ mod tests {
         // Workers acknowledge
         assert!(!coord.worker_ready()); // 1 of 3
         assert!(!coord.worker_ready()); // 2 of 3
-        assert!(coord.worker_ready());  // 3 of 3 — barrier complete
+        assert!(coord.worker_ready()); // 3 of 3 — barrier complete
         assert_eq!(coord.phase(), CheckpointPhase::WeightsSynced);
 
         // Write

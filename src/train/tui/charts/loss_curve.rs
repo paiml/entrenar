@@ -50,11 +50,11 @@ impl LossCurveDisplay {
             width,
             height,
         )
-            .margin(2)
-            .best_markers(true)
-            .lower_is_better(true)
-            .build()
-            .expect("LossCurve build should succeed");
+        .margin(2)
+        .best_markers(true)
+        .lower_is_better(true)
+        .build()
+        .expect("LossCurve build should succeed");
         Self { loss_curve, width, height, terminal_mode: TerminalMode::Unicode }
     }
 
@@ -74,11 +74,11 @@ impl LossCurveDisplay {
             self.width,
             self.height,
         )
-            .margin(2)
-            .best_markers(true)
-            .lower_is_better(true)
-            .build()
-            .expect("LossCurve build should succeed");
+        .margin(2)
+        .best_markers(true)
+        .lower_is_better(true)
+        .build()
+        .expect("LossCurve build should succeed");
         self
     }
 

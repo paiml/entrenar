@@ -121,9 +121,7 @@ pub fn elementwise_mul_forward(
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream.launch_kernel(module, "elementwise_mul", &config, &mut args).map_err(|e| {
-            CudaTensorError::KernelError(format!(
-                "Elementwise mul forward launch failed: {e:?}"
-            ))
+            CudaTensorError::KernelError(format!("Elementwise mul forward launch failed: {e:?}"))
         })?;
     }
 
@@ -227,20 +225,16 @@ pub fn interleaved_to_batched_forward(
     let input_ptr = input.as_ptr();
     let output_ptr = output.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 2] = [
-        &input_ptr as *const _ as *mut _,
-        &output_ptr as *const _ as *mut _,
-    ];
+    let mut args: [*mut std::ffi::c_void; 2] =
+        [&input_ptr as *const _ as *mut _, &output_ptr as *const _ as *mut _];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations.
     unsafe {
-        stream
-            .launch_kernel(module, "interleaved_to_batched", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!(
-                    "Interleaved-to-batched launch failed: {e:?}"
-                ))
-            })?;
+        stream.launch_kernel(module, "interleaved_to_batched", &config, &mut args).map_err(
+            |e| {
+                CudaTensorError::KernelError(format!("Interleaved-to-batched launch failed: {e:?}"))
+            },
+        )?;
     }
 
     Ok(())
@@ -352,20 +346,16 @@ pub fn batched_to_interleaved_forward(
     let input_ptr = input.as_ptr();
     let output_ptr = output.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 2] = [
-        &input_ptr as *const _ as *mut _,
-        &output_ptr as *const _ as *mut _,
-    ];
+    let mut args: [*mut std::ffi::c_void; 2] =
+        [&input_ptr as *const _ as *mut _, &output_ptr as *const _ as *mut _];
 
     // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations.
     unsafe {
-        stream
-            .launch_kernel(module, "batched_to_interleaved", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!(
-                    "Batched-to-interleaved launch failed: {e:?}"
-                ))
-            })?;
+        stream.launch_kernel(module, "batched_to_interleaved", &config, &mut args).map_err(
+            |e| {
+                CudaTensorError::KernelError(format!("Batched-to-interleaved launch failed: {e:?}"))
+            },
+        )?;
     }
 
     Ok(())

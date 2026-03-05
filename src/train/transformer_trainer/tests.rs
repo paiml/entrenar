@@ -328,12 +328,8 @@ fn falsify_alb038_training_changes_weights() {
     let mut trainer = TransformerTrainer::new(config);
 
     // Snapshot initial weights
-    let init_params: Vec<Vec<f32>> = trainer
-        .model()
-        .parameters()
-        .iter()
-        .map(|p| p.data().to_vec())
-        .collect();
+    let init_params: Vec<Vec<f32>> =
+        trainer.model().parameters().iter().map(|p| p.data().to_vec()).collect();
 
     // Train for several steps
     let batch = LMBatch::single(vec![1, 2, 3, 4], vec![2, 3, 4, 5]);
@@ -342,18 +338,17 @@ fn falsify_alb038_training_changes_weights() {
     }
 
     // Check that at least some weights changed
-    let final_params: Vec<Vec<f32>> = trainer
-        .model()
-        .parameters()
-        .iter()
-        .map(|p| p.data().to_vec())
-        .collect();
+    let final_params: Vec<Vec<f32>> =
+        trainer.model().parameters().iter().map(|p| p.data().to_vec()).collect();
 
     let mut changed_count = 0;
     for (i, (init, final_p)) in init_params.iter().zip(final_params.iter()).enumerate() {
         if init == final_p {
             // Log which parameter didn't change (for debugging)
-            eprintln!("ALB-038 WARNING: parameter {i} unchanged after training (len={})", init.len());
+            eprintln!(
+                "ALB-038 WARNING: parameter {i} unchanged after training (len={})",
+                init.len()
+            );
         } else {
             changed_count += 1;
         }
@@ -398,9 +393,7 @@ fn falsify_alb038_saved_weights_differ_from_init() {
 
     // Save to temp file
     let temp = NamedTempFile::new().expect("temp file creation should succeed");
-    trainer
-        .save(temp.path(), "alb038-test", "test")
-        .expect("save should succeed");
+    trainer.save(temp.path(), "alb038-test", "test").expect("save should succeed");
 
     // Load back and verify weights differ from init
     let data = std::fs::read(temp.path()).expect("file read should succeed");
@@ -411,7 +404,8 @@ fn falsify_alb038_saved_weights_differ_from_init() {
 
     // Saved embed weights must differ from init
     assert_ne!(
-        saved_data, &init_embed[..],
+        saved_data,
+        &init_embed[..],
         "FALSIFIED ALB-038: Saved embedding weights are identical to initialization"
     );
 }
@@ -462,12 +456,13 @@ fn test_deterministic_env_vars_set() {
 #[test]
 fn test_deterministic_disabled_no_env_change() {
     // When deterministic=false, apply_deterministic_settings() is a no-op
-    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
-        .with_deterministic(false);
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_deterministic(false);
     // Clear env first to verify it's not set
     // SAFETY: test runs single-threaded; remove_var needed to verify no-op behavior
     #[allow(clippy::disallowed_methods, unsafe_code)]
-    unsafe { std::env::remove_var("PYTHONHASHSEED") };
+    unsafe {
+        std::env::remove_var("PYTHONHASHSEED")
+    };
     config.apply_deterministic_settings();
     // PYTHONHASHSEED should NOT have been set
     assert!(
@@ -514,8 +509,7 @@ fn test_deterministic_training_reproducibility() {
 fn test_checkpoint_config_segment_calculation() {
     // Verify checkpoint boundary mask calculation
     // tiny has 2 layers, 2 segments → segment_size = 1 → all layers are checkpoints
-    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
-        .with_checkpointing(2);
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_checkpointing(2);
 
     assert!(config.checkpoint_config.enabled);
     assert_eq!(config.checkpoint_config.num_segments, 2);
@@ -525,9 +519,7 @@ fn test_checkpoint_config_segment_calculation() {
     let ns = config.checkpoint_config.num_segments.max(1);
     let segment_size = num_layers.div_ceil(ns);
     assert_eq!(segment_size, 1);
-    let mask: Vec<bool> = (0..num_layers)
-        .map(|i| i % segment_size == 0)
-        .collect();
+    let mask: Vec<bool> = (0..num_layers).map(|i| i % segment_size == 0).collect();
     assert_eq!(mask, vec![true, true]);
 }
 
@@ -537,17 +529,14 @@ fn test_checkpoint_config_fewer_segments() {
     // Checkpoint boundary layers: 0, 6, 12, 18
     let mut model_config = TransformerConfig::tiny();
     model_config.num_hidden_layers = 24;
-    let config = TransformerTrainConfig::new(model_config)
-        .with_checkpointing(4);
+    let config = TransformerTrainConfig::new(model_config).with_checkpointing(4);
 
     let num_layers = config.model_config.num_hidden_layers;
     assert_eq!(num_layers, 24);
     let ns = config.checkpoint_config.num_segments.max(1);
     let segment_size = num_layers.div_ceil(ns);
     assert_eq!(segment_size, 6);
-    let mask: Vec<bool> = (0..num_layers)
-        .map(|i| i % segment_size == 0)
-        .collect();
+    let mask: Vec<bool> = (0..num_layers).map(|i| i % segment_size == 0).collect();
     // Only layers 0, 6, 12, 18 are checkpoints
     let expected: Vec<bool> = (0..24).map(|i| i % 6 == 0).collect();
     assert_eq!(mask, expected);
@@ -600,15 +589,14 @@ fn test_gradient_accumulation_produces_different_weights_than_no_accum() {
     let batch = LMBatch::from_sequences(&[seq.clone()], 0, 0);
 
     // Train with accum=1 (immediate optimizer step)
-    let config_no_accum = TransformerTrainConfig::new(model_config.clone())
-        .with_lr(0.01)
-        .with_max_seq_len(32);
+    let config_no_accum =
+        TransformerTrainConfig::new(model_config.clone()).with_lr(0.01).with_max_seq_len(32);
     let model1 = Transformer::new(&model_config);
     let mut trainer1 = TransformerTrainer::with_model(model1, config_no_accum);
     trainer1.train_batch(&batch);
     trainer1.train_batch(&batch);
-    let weights1: Vec<f32> = trainer1.model().embed_tokens.weight.data()
-        .as_slice().unwrap().to_vec();
+    let weights1: Vec<f32> =
+        trainer1.model().embed_tokens.weight.data().as_slice().unwrap().to_vec();
 
     // Train with accum=2 (deferred optimizer step)
     let config_accum = TransformerTrainConfig::new(model_config.clone())
@@ -619,11 +607,12 @@ fn test_gradient_accumulation_produces_different_weights_than_no_accum() {
     let mut trainer2 = TransformerTrainer::with_model(model2, config_accum);
     trainer2.train_batch(&batch);
     trainer2.train_batch(&batch);
-    let weights2: Vec<f32> = trainer2.model().embed_tokens.weight.data()
-        .as_slice().unwrap().to_vec();
+    let weights2: Vec<f32> =
+        trainer2.model().embed_tokens.weight.data().as_slice().unwrap().to_vec();
 
     // Weights should differ (different optimizer dynamics)
-    let diff: f64 = weights1.iter().zip(&weights2).map(|(a, b)| (f64::from(*a) - f64::from(*b)).abs()).sum();
+    let diff: f64 =
+        weights1.iter().zip(&weights2).map(|(a, b)| (f64::from(*a) - f64::from(*b)).abs()).sum();
     assert!(diff > 1e-6, "Gradient accumulation should produce different weights (diff={diff})");
 }
 
@@ -638,8 +627,10 @@ fn test_per_block_gradient_accumulator_sizes() {
     let i = model_config.intermediate_size;
     let sizes = PerBlockGradientAccumulator::compute_block_sizes(h, kv, i);
     let accum = PerBlockGradientAccumulator::new(
-        model_config.num_hidden_layers, sizes,
-        model_config.vocab_size, h,
+        model_config.num_hidden_layers,
+        sizes,
+        model_config.vocab_size,
+        h,
     );
     assert_eq!(accum.num_blocks(), model_config.num_hidden_layers);
     assert_eq!(accum.lm_head_grad.len(), model_config.vocab_size * h);

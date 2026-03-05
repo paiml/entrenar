@@ -11,14 +11,14 @@
 //! - [`WeightedLoss`] - Scalar weighting wrapper
 //! - [`SampleWeightedLoss`] - Per-sample weighting for curriculum learning
 
+#[cfg(test)]
+mod accuracy_tests;
 mod bce_with_logits;
 mod causal_lm;
 mod cross_entropy;
 mod mse;
 mod traits;
 mod weighted;
-#[cfg(test)]
-mod accuracy_tests;
 
 pub use bce_with_logits::BCEWithLogitsLoss;
 pub use causal_lm::CausalLMLoss;

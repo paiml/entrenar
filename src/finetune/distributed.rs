@@ -107,7 +107,8 @@ impl DistributedConfig {
     }
 
     fn default_node_id() -> String {
-        let hostname = hostname::get().map_or_else(|_| "unknown".to_string(), |h| h.to_string_lossy().to_string());
+        let hostname = hostname::get()
+            .map_or_else(|_| "unknown".to_string(), |h| h.to_string_lossy().to_string());
         let pid = std::process::id();
         format!("{hostname}-{pid}")
     }
@@ -128,22 +129,11 @@ impl Default for DistributedConfig {
 #[derive(Debug, Clone)]
 pub enum WireMessage {
     /// Worker → Coordinator: request to join training
-    JoinRequest {
-        node_id: String,
-        gpu_count: u32,
-        backend: String,
-    },
+    JoinRequest { node_id: String, gpu_count: u32, backend: String },
     /// Coordinator → Worker: join accepted with assigned worker ID
-    JoinAccepted {
-        worker_id: u32,
-        total_workers: u32,
-    },
+    JoinAccepted { worker_id: u32, total_workers: u32 },
     /// Coordinator → Worker: here is your shard for this step
-    ShardAssignment {
-        step: u64,
-        shard_start: usize,
-        shard_end: usize,
-    },
+    ShardAssignment { step: u64, shard_start: usize, shard_end: usize },
     /// Worker → Coordinator: gradient data for this step
     GradientPayload {
         step: u64,
@@ -155,21 +145,13 @@ pub enum WireMessage {
         total: usize,
     },
     /// Coordinator → Worker: averaged gradient for optimizer step
-    AveragedGradient {
-        step: u64,
-        gradients: Vec<f32>,
-        global_loss: f32,
-    },
+    AveragedGradient { step: u64, gradients: Vec<f32>, global_loss: f32 },
     /// Bidirectional: heartbeat ping/pong
-    Heartbeat {
-        node_id: String,
-        timestamp_ms: u64,
-    },
+    Heartbeat { node_id: String, timestamp_ms: u64 },
     /// Coordinator → Worker: training complete, shut down
     Shutdown,
 
     // === v2: Per-block gradient messages for DDP pretraining (tags 0x08-0x0B) ===
-
     /// Worker → Coordinator: gradient data for a single transformer block
     ///
     /// Sent after backward pass for block[block_idx]. Contains 9 gradient
@@ -276,14 +258,32 @@ impl WireMessage {
                 buf.extend_from_slice(&timestamp_ms.to_le_bytes());
             }
             Self::Shutdown => buf.push(0x07),
-            Self::BlockGradientPayload { step, worker_id, block_idx, num_blocks, gradients, component_sizes } =>
-                serialize_block_grad(&mut buf, 0x08, *step, *worker_id, *block_idx, *num_blocks, gradients, component_sizes),
-            Self::AveragedBlockGradient { step, block_idx, gradients, component_sizes } =>
-                serialize_averaged_block(&mut buf, *step, *block_idx, gradients, component_sizes),
-            Self::NonBlockGradientPayload { step, worker_id, component, gradients } =>
-                serialize_non_block_grad(&mut buf, *step, *worker_id, *component, gradients),
-            Self::AveragedNonBlockGradient { step, component, gradients } =>
-                serialize_averaged_non_block(&mut buf, *step, *component, gradients),
+            Self::BlockGradientPayload {
+                step,
+                worker_id,
+                block_idx,
+                num_blocks,
+                gradients,
+                component_sizes,
+            } => serialize_block_grad(
+                &mut buf,
+                0x08,
+                *step,
+                *worker_id,
+                *block_idx,
+                *num_blocks,
+                gradients,
+                component_sizes,
+            ),
+            Self::AveragedBlockGradient { step, block_idx, gradients, component_sizes } => {
+                serialize_averaged_block(&mut buf, *step, *block_idx, gradients, component_sizes)
+            }
+            Self::NonBlockGradientPayload { step, worker_id, component, gradients } => {
+                serialize_non_block_grad(&mut buf, *step, *worker_id, *component, gradients)
+            }
+            Self::AveragedNonBlockGradient { step, component, gradients } => {
+                serialize_averaged_non_block(&mut buf, *step, *component, gradients)
+            }
         }
         buf
     }
@@ -370,9 +370,8 @@ fn decode_averaged_gradient(rest: &[u8]) -> Result<WireMessage, String> {
         return Err("truncated AveragedGradient data".to_string());
     }
     let gradients = read_f32_vec(rest, 16, grad_len);
-    let global_loss = f32::from_le_bytes(
-        rest[16 + grad_bytes..16 + grad_bytes + 4].try_into().expect("4 bytes"),
-    );
+    let global_loss =
+        f32::from_le_bytes(rest[16 + grad_bytes..16 + grad_bytes + 4].try_into().expect("4 bytes"));
     Ok(WireMessage::AveragedGradient { step, gradients, global_loss })
 }
 
@@ -403,10 +402,12 @@ fn decode_block_gradient_payload(rest: &[u8]) -> Result<WireMessage, String> {
     let mut component_sizes = Vec::with_capacity(num_components);
     for i in 0..num_components {
         let start = 24 + i * 4;
-        component_sizes.push(u32::from_le_bytes(rest[start..start + 4].try_into().expect("4 bytes")));
+        component_sizes
+            .push(u32::from_le_bytes(rest[start..start + 4].try_into().expect("4 bytes")));
     }
 
-    let grad_len = u64::from_le_bytes(rest[comp_end..comp_end + 8].try_into().expect("8 bytes")) as usize;
+    let grad_len =
+        u64::from_le_bytes(rest[comp_end..comp_end + 8].try_into().expect("8 bytes")) as usize;
     let grad_start = comp_end + 8;
     if rest.len() < grad_start + grad_len * 4 {
         return Err("truncated BlockGradientPayload gradients".to_string());
@@ -439,22 +440,19 @@ fn decode_averaged_block_gradient(rest: &[u8]) -> Result<WireMessage, String> {
     let mut component_sizes = Vec::with_capacity(num_components);
     for i in 0..num_components {
         let start = 16 + i * 4;
-        component_sizes.push(u32::from_le_bytes(rest[start..start + 4].try_into().expect("4 bytes")));
+        component_sizes
+            .push(u32::from_le_bytes(rest[start..start + 4].try_into().expect("4 bytes")));
     }
 
-    let grad_len = u64::from_le_bytes(rest[comp_end..comp_end + 8].try_into().expect("8 bytes")) as usize;
+    let grad_len =
+        u64::from_le_bytes(rest[comp_end..comp_end + 8].try_into().expect("8 bytes")) as usize;
     let grad_start = comp_end + 8;
     if rest.len() < grad_start + grad_len * 4 {
         return Err("truncated AveragedBlockGradient gradients".to_string());
     }
     let gradients = read_f32_vec(rest, grad_start, grad_len);
 
-    Ok(WireMessage::AveragedBlockGradient {
-        step,
-        block_idx,
-        gradients,
-        component_sizes,
-    })
+    Ok(WireMessage::AveragedBlockGradient { step, block_idx, gradients, component_sizes })
 }
 
 fn decode_non_block_gradient_payload(rest: &[u8]) -> Result<WireMessage, String> {
@@ -471,12 +469,7 @@ fn decode_non_block_gradient_payload(rest: &[u8]) -> Result<WireMessage, String>
     }
     let gradients = read_f32_vec(rest, 21, grad_len);
 
-    Ok(WireMessage::NonBlockGradientPayload {
-        step,
-        worker_id,
-        component,
-        gradients,
-    })
+    Ok(WireMessage::NonBlockGradientPayload { step, worker_id, component, gradients })
 }
 
 fn decode_averaged_non_block_gradient(rest: &[u8]) -> Result<WireMessage, String> {
@@ -492,11 +485,7 @@ fn decode_averaged_non_block_gradient(rest: &[u8]) -> Result<WireMessage, String
     }
     let gradients = read_f32_vec(rest, 17, grad_len);
 
-    Ok(WireMessage::AveragedNonBlockGradient {
-        step,
-        component,
-        gradients,
-    })
+    Ok(WireMessage::AveragedNonBlockGradient { step, component, gradients })
 }
 
 fn read_f32_vec(data: &[u8], offset: usize, count: usize) -> Vec<f32> {
@@ -527,8 +516,14 @@ fn write_component_sizes(buf: &mut Vec<u8>, sizes: &[u32]) {
 
 /// Serialize a BlockGradientPayload (tag 0x08).
 fn serialize_block_grad(
-    buf: &mut Vec<u8>, tag: u8, step: u64, worker_id: u32,
-    block_idx: u32, num_blocks: u32, gradients: &[f32], component_sizes: &[u32],
+    buf: &mut Vec<u8>,
+    tag: u8,
+    step: u64,
+    worker_id: u32,
+    block_idx: u32,
+    num_blocks: u32,
+    gradients: &[f32],
+    component_sizes: &[u32],
 ) {
     buf.push(tag);
     buf.extend_from_slice(&step.to_le_bytes());
@@ -541,7 +536,11 @@ fn serialize_block_grad(
 
 /// Serialize an AveragedBlockGradient (tag 0x09).
 fn serialize_averaged_block(
-    buf: &mut Vec<u8>, step: u64, block_idx: u32, gradients: &[f32], component_sizes: &[u32],
+    buf: &mut Vec<u8>,
+    step: u64,
+    block_idx: u32,
+    gradients: &[f32],
+    component_sizes: &[u32],
 ) {
     buf.push(0x09);
     buf.extend_from_slice(&step.to_le_bytes());
@@ -551,7 +550,13 @@ fn serialize_averaged_block(
 }
 
 /// Serialize a NonBlockGradientPayload (tag 0x0A).
-fn serialize_non_block_grad(buf: &mut Vec<u8>, step: u64, worker_id: u32, component: u8, gradients: &[f32]) {
+fn serialize_non_block_grad(
+    buf: &mut Vec<u8>,
+    step: u64,
+    worker_id: u32,
+    component: u8,
+    gradients: &[f32],
+) {
     buf.push(0x0A);
     buf.extend_from_slice(&step.to_le_bytes());
     buf.extend_from_slice(&worker_id.to_le_bytes());
@@ -581,8 +586,8 @@ fn read_string(data: &[u8]) -> Result<(String, &[u8]), String> {
     if data.len() < 4 + len {
         return Err("truncated string data".to_string());
     }
-    let s = String::from_utf8(data[4..4 + len].to_vec())
-        .map_err(|e| format!("invalid utf8: {e}"))?;
+    let s =
+        String::from_utf8(data[4..4 + len].to_vec()).map_err(|e| format!("invalid utf8: {e}"))?;
     Ok((s, &data[4 + len..]))
 }
 
@@ -605,10 +610,7 @@ mod tests {
         let config = DistributedConfig::worker("192.168.50.100:9000".parse().expect("valid"));
         assert!(!config.is_coordinator());
         assert_eq!(config.role, NodeRole::Worker);
-        assert_eq!(
-            config.coordinator_addr,
-            Some("192.168.50.100:9000".parse().expect("valid"))
-        );
+        assert_eq!(config.coordinator_addr, Some("192.168.50.100:9000".parse().expect("valid")));
     }
 
     #[test]
@@ -644,11 +646,7 @@ mod tests {
         let payload = &bytes[4..];
         let decoded = WireMessage::from_payload(payload).expect("valid");
         match decoded {
-            WireMessage::JoinRequest {
-                node_id,
-                gpu_count,
-                backend,
-            } => {
+            WireMessage::JoinRequest { node_id, gpu_count, backend } => {
                 assert_eq!(node_id, "intel-1234");
                 assert_eq!(gpu_count, 2);
                 assert_eq!(backend, "wgpu");
@@ -659,17 +657,11 @@ mod tests {
 
     #[test]
     fn test_wire_join_accepted_roundtrip() {
-        let msg = WireMessage::JoinAccepted {
-            worker_id: 1,
-            total_workers: 3,
-        };
+        let msg = WireMessage::JoinAccepted { worker_id: 1, total_workers: 3 };
         let bytes = msg.to_bytes();
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::JoinAccepted {
-                worker_id,
-                total_workers,
-            } => {
+            WireMessage::JoinAccepted { worker_id, total_workers } => {
                 assert_eq!(worker_id, 1);
                 assert_eq!(total_workers, 3);
             }
@@ -679,19 +671,11 @@ mod tests {
 
     #[test]
     fn test_wire_shard_assignment_roundtrip() {
-        let msg = WireMessage::ShardAssignment {
-            step: 42,
-            shard_start: 100,
-            shard_end: 200,
-        };
+        let msg = WireMessage::ShardAssignment { step: 42, shard_start: 100, shard_end: 200 };
         let bytes = msg.to_bytes();
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::ShardAssignment {
-                step,
-                shard_start,
-                shard_end,
-            } => {
+            WireMessage::ShardAssignment { step, shard_start, shard_end } => {
                 assert_eq!(step, 42);
                 assert_eq!(shard_start, 100);
                 assert_eq!(shard_end, 200);
@@ -714,14 +698,7 @@ mod tests {
         let bytes = msg.to_bytes();
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::GradientPayload {
-                step,
-                worker_id,
-                gradients,
-                loss,
-                correct,
-                total,
-            } => {
+            WireMessage::GradientPayload { step, worker_id, gradients, loss, correct, total } => {
                 assert_eq!(step, 10);
                 assert_eq!(worker_id, 2);
                 assert_eq!(gradients, grads);
@@ -736,19 +713,12 @@ mod tests {
     #[test]
     fn test_wire_averaged_gradient_roundtrip() {
         let grads = vec![0.5f32, 1.0, 1.5];
-        let msg = WireMessage::AveragedGradient {
-            step: 5,
-            gradients: grads.clone(),
-            global_loss: 0.789,
-        };
+        let msg =
+            WireMessage::AveragedGradient { step: 5, gradients: grads.clone(), global_loss: 0.789 };
         let bytes = msg.to_bytes();
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::AveragedGradient {
-                step,
-                gradients,
-                global_loss,
-            } => {
+            WireMessage::AveragedGradient { step, gradients, global_loss } => {
                 assert_eq!(step, 5);
                 assert_eq!(gradients, grads);
                 assert!((global_loss - 0.789).abs() < 1e-6);
@@ -766,10 +736,7 @@ mod tests {
         let bytes = msg.to_bytes();
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::Heartbeat {
-                node_id,
-                timestamp_ms,
-            } => {
+            WireMessage::Heartbeat { node_id, timestamp_ms } => {
                 assert_eq!(node_id, "lambda-5678");
                 assert_eq!(timestamp_ms, 1_709_000_000_000);
             }
@@ -875,12 +842,7 @@ mod tests {
         let bytes = msg.to_bytes();
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::NonBlockGradientPayload {
-                step,
-                worker_id,
-                component,
-                gradients,
-            } => {
+            WireMessage::NonBlockGradientPayload { step, worker_id, component, gradients } => {
                 assert_eq!(step, 10);
                 assert_eq!(worker_id, 0);
                 assert_eq!(component, 2);
@@ -901,11 +863,7 @@ mod tests {
         let bytes = msg.to_bytes();
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::AveragedNonBlockGradient {
-                step,
-                component,
-                gradients,
-            } => {
+            WireMessage::AveragedNonBlockGradient { step, component, gradients } => {
                 assert_eq!(step, 50);
                 assert_eq!(component, 0);
                 assert_eq!(gradients, grads);
@@ -966,9 +924,7 @@ mod tests {
 
         let decoded = WireMessage::from_payload(&bytes[4..]).expect("valid");
         match decoded {
-            WireMessage::GradientPayload {
-                gradients, loss, ..
-            } => {
+            WireMessage::GradientPayload { gradients, loss, .. } => {
                 assert_eq!(gradients.len(), grad_len);
                 assert!((loss - 0.123).abs() < 1e-6);
             }

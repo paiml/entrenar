@@ -94,8 +94,10 @@ fn convert_model(
     }
 
     // Convert architecture params to overrides
-    let architecture = model_cfg.architecture.as_ref().map(|arch| {
-        ArchitectureOverrides {
+    let architecture = model_cfg
+        .architecture
+        .as_ref()
+        .map(|arch| ArchitectureOverrides {
             hidden_size: arch.hidden_size,
             num_hidden_layers: arch.num_layers,
             num_attention_heads: arch.num_heads,
@@ -106,10 +108,16 @@ fn convert_model(
             rms_norm_eps: arch.rms_norm_eps,
             rope_theta: arch.rope_theta,
             use_bias: arch.use_bias,
-        }
-    }).filter(|o| !o.is_empty());
+        })
+        .filter(|o| !o.is_empty());
 
-    Ok(ModelRef { path: PathBuf::from(&model_cfg.source), layers, mode, config: None, architecture })
+    Ok(ModelRef {
+        path: PathBuf::from(&model_cfg.source),
+        layers,
+        mode,
+        config: None,
+        architecture,
+    })
 }
 
 /// Resolve the training data path from manifest data config.
@@ -323,9 +331,7 @@ fn convert_training(
 
     warn_unsupported_training_fields(training_cfg, warnings);
 
-    let deterministic = training_cfg
-        .and_then(|t| t.deterministic)
-        .unwrap_or(false);
+    let deterministic = training_cfg.and_then(|t| t.deterministic).unwrap_or(false);
 
     TrainingParams {
         epochs,
@@ -1319,8 +1325,7 @@ optimizer:
   name: adamw
   lr: 0.0003
 "#;
-        let manifest: TrainingManifest =
-            serde_yaml::from_str(yaml).expect("YAML should parse");
+        let manifest: TrainingManifest = serde_yaml::from_str(yaml).expect("YAML should parse");
         let result = manifest_to_spec(&manifest).expect("bridge should succeed");
         assert_eq!(result.spec.model.mode, ModelMode::Transformer);
         let arch = result.spec.model.architecture.expect("overrides should be set");

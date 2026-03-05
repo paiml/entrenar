@@ -251,9 +251,9 @@ impl TransformerConfig {
             "7B" | "qwen2.5-7b" => Ok(Self::qwen2_7b()),
             "4B" | "qwen3-4b" | "qwen3" => Ok(Self::qwen3_4b()),
             "9B" | "qwen3.5-9b" | "qwen3_5" | "qwen3.5" => Ok(Self::qwen3_5_9b()),
-            unknown => Err(format!(
-                "Unknown model size '{unknown}'. Known sizes: 0.5B, 4B, 7B, 9B"
-            )),
+            unknown => {
+                Err(format!("Unknown model size '{unknown}'. Known sizes: 0.5B, 4B, 7B, 9B"))
+            }
         }
     }
 
@@ -279,8 +279,7 @@ impl TransformerConfig {
     /// Uses explicit override when set (Qwen3: head_dim=128 with hidden=2560, 32 heads).
     /// Falls back to hidden_size / num_heads for standard architectures.
     pub fn head_dim(&self) -> usize {
-        self.head_dim_override
-            .unwrap_or(self.hidden_size / self.num_attention_heads)
+        self.head_dim_override.unwrap_or(self.hidden_size / self.num_attention_heads)
     }
 
     /// Total Q/O projection dimension = num_heads * head_dim.
@@ -378,11 +377,8 @@ impl TransformerConfig {
         let linear_per_layer = self.per_layer_scratch_linear_coeff() * s;
 
         let (n_quad, n_hd_linear) = self.per_layer_scratch_quadratic_coeff();
-        let quadratic_per_layer = if s >= hd {
-            2 * n_quad * s * s
-        } else {
-            n_quad * s * s + n_hd_linear * s
-        };
+        let quadratic_per_layer =
+            if s >= hd { 2 * n_quad * s * s } else { n_quad * s * s + n_hd_linear * s };
 
         let elements_per_layer = constant_per_layer + linear_per_layer + quadratic_per_layer;
         l * elements_per_layer * 4 // f32 = 4 bytes
@@ -408,14 +404,10 @@ impl TransformerConfig {
         // Seq-len-dependent scratch: SHARED (one set)
         let linear_shared = self.per_layer_scratch_linear_coeff() * s;
         let (n_quad, n_hd_linear) = self.per_layer_scratch_quadratic_coeff();
-        let quadratic_shared = if s >= hd {
-            2 * n_quad * s * s
-        } else {
-            n_quad * s * s + n_hd_linear * s
-        };
+        let quadratic_shared =
+            if s >= hd { 2 * n_quad * s * s } else { n_quad * s * s + n_hd_linear * s };
 
-        let total_elements =
-            weights_total + grad_weights_shared + linear_shared + quadratic_shared;
+        let total_elements = weights_total + grad_weights_shared + linear_shared + quadratic_shared;
         total_elements * 4 // f32 = 4 bytes
     }
 
@@ -633,15 +625,33 @@ mod tests {
     fn test_from_apr_metadata_missing_required_returns_none() {
         // Missing hidden_size — must return None, not silently degrade
         assert!(TransformerConfig::from_apr_metadata(
-            None, Some(32), Some(8), Some(12288), Some(36), Some(151936),
-            Some(40960), Some(1e-6), Some(1e6), Some("qwen3"),
-        ).is_none());
+            None,
+            Some(32),
+            Some(8),
+            Some(12288),
+            Some(36),
+            Some(151936),
+            Some(40960),
+            Some(1e-6),
+            Some(1e6),
+            Some("qwen3"),
+        )
+        .is_none());
 
         // Missing num_layers
         assert!(TransformerConfig::from_apr_metadata(
-            Some(4096), Some(32), Some(8), Some(12288), None, Some(151936),
-            Some(40960), Some(1e-6), Some(1e6), Some("qwen3"),
-        ).is_none());
+            Some(4096),
+            Some(32),
+            Some(8),
+            Some(12288),
+            None,
+            Some(151936),
+            Some(40960),
+            Some(1e-6),
+            Some(1e6),
+            Some("qwen3"),
+        )
+        .is_none());
     }
 
     // =========================================================================
@@ -714,8 +724,14 @@ mod tests {
         let shared_512 = config.total_training_vram_bytes_shared(512);
         let solved = config.max_seq_len_for_vram_shared(24 * 1024 * 1024 * 1024);
         eprintln!("=== Qwen3-4B VRAM Budget ===");
-        eprintln!("  Per-layer weights:    {:.1} MB", config.per_layer_weight_elements() as f64 * 4.0 / 1e6);
-        eprintln!("  Per-layer grad scratch: {:.1} MB", config.per_layer_grad_weight_elements() as f64 * 4.0 / 1e6);
+        eprintln!(
+            "  Per-layer weights:    {:.1} MB",
+            config.per_layer_weight_elements() as f64 * 4.0 / 1e6
+        );
+        eprintln!(
+            "  Per-layer grad scratch: {:.1} MB",
+            config.per_layer_grad_weight_elements() as f64 * 4.0 / 1e6
+        );
         eprintln!("  Per-layer (S=512): {:.1} MB", (vram_512 / 36) as f64 / 1e6);
         eprintln!("  36 layers S=1 (per-layer scratch): {:.1} GB", vram_1 as f64 / 1e9);
         eprintln!("  36 layers S=512 (per-layer scratch): {:.1} GB", vram_512 as f64 / 1e9);
@@ -752,8 +768,8 @@ mod tests {
         // Per-layer weights: q(4096*2560) + k(1024*2560) + v(1024*2560)
         //   + o(2560*4096) + gate(9728*2560) + up(9728*2560) + down(2560*9728)
         //   + norms(2560*2)
-        let expected_weights = 4096 * 2560 + 1024 * 2560 * 2 + 2560 * 4096
-            + 9728 * 2560 * 3 + 2560 * 2;
+        let expected_weights =
+            4096 * 2560 + 1024 * 2560 * 2 + 2560 * 4096 + 9728 * 2560 * 3 + 2560 * 2;
         assert_eq!(config.per_layer_weight_elements(), expected_weights);
 
         // With PER-LAYER gradient scratch (current cuda_block.rs layout),
