@@ -39,9 +39,9 @@ use std::sync::Arc;
 use trueno_gpu::driver::{CudaStream, GpuBuffer};
 
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_backward};
+use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_backward, set_backward_cublas_stream};
 #[cfg(feature = "cuda")]
-use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward};
+use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward, set_forward_cublas_stream};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::{
     adamw_step_cuda, fused_cross_entropy_cuda, gradient_clip_cuda,
@@ -737,6 +737,11 @@ impl CudaTransformerTrainer {
         vocab_size: usize,
     ) -> Option<()> {
         let stream = self.cuda_trainer.stream();
+
+        // Bind cuBLAS handles to this stream for the step (ALB-075).
+        // No-op if cuBLAS is not available — falls back to PTX GEMMs.
+        set_forward_cublas_stream(stream).ok();
+        set_backward_cublas_stream(stream).ok();
 
         // Embedding lookup (CPU)
         self.profiler.begin(StepProfiler::EMBED);

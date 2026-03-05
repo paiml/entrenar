@@ -40,11 +40,15 @@ pub use activations::{
     batched_softmax_forward, gelu_forward, relu_forward, silu_forward, softmax_forward,
 };
 pub use cache::{init_forward_kernel_cache, pre_warm_forward_kernels, pre_warm_lora_backward_kernels};
+#[cfg(feature = "cuda")]
+pub(crate) use cache::set_forward_cublas_stream;
 pub use elementwise::{
     batched_to_interleaved_forward, batched_transpose_forward, elementwise_mul_forward,
     expand_kv_heads, interleaved_to_batched_forward, residual_add_forward, scale_forward,
 };
 pub use matmul::{batched_4d_gemm_forward, fused_swiglu_forward, gemm_forward, gemm_nf4_backward_a, gemm_nf4_forward};
+#[cfg(feature = "cuda")]
+pub(crate) use matmul::{cublas_gemm_backward_a, cublas_gemm_backward_b};
 #[cfg(feature = "cuda")]
 pub use matmul::gemm_forward_bf16;
 pub use bf16_cast::{bf16_slice_to_f32, f32_slice_to_bf16};

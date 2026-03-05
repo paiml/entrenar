@@ -4,7 +4,7 @@
 #![allow(clippy::ref_as_ptr)]
 
 #[cfg(feature = "cuda")]
-use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
+use trueno_gpu::driver::{CublasHandle, CudaStream, GemmOp, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel};
 
@@ -67,6 +67,9 @@ pub fn fused_swiglu_forward(
 /// GEMM forward pass on GPU
 ///
 /// Computes: C = A @ B where A is MxK, B is KxN, C is MxN
+///
+/// Dispatches to cuBLAS tensor cores when available (ALB-075), falling back
+/// to hand-written PTX naive GEMM otherwise.
 #[cfg(feature = "cuda")]
 pub fn gemm_forward(
     a: &GpuBuffer<f32>,
@@ -82,6 +85,12 @@ pub fn gemm_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    // cuBLAS fast path: tensor core GEMM (ALB-075)
+    if let Some(cublas) = cache.cublas() {
+        return cublas_gemm_forward(cublas, a, b, c, m, k, n);
+    }
+
+    // PTX fallback: hand-written naive GEMM
     let key = format!("gemm_forward_{m}_{k}_{n}");
     let module = match cache.get_cached(&key) {
         Some(m) => m,
@@ -92,9 +101,6 @@ pub fn gemm_forward(
         }
     };
 
-    // Use 16x16 thread blocks for GEMM
-    // Kernel: col = ctaid.x * 16 + tid.x, row = ctaid.y * 16 + tid.y
-    // So grid.x = ceil(N/16) for columns, grid.y = ceil(M/16) for rows
     let config = LaunchConfig {
         grid: (n.div_ceil(16), m.div_ceil(16), 1),
         block: (16, 16, 1),
@@ -105,8 +111,6 @@ pub fn gemm_forward(
     let b_ptr = b.as_ptr();
     let c_ptr = c.as_ptr();
 
-    // PTX kernel signature: (a_ptr, b_ptr, c_ptr, m, n, k)
-    // CRITICAL: must match param declaration order in GemmKernel::build_naive()
     let mut args: [*mut std::ffi::c_void; 6] = [
         &a_ptr as *const _ as *mut _,
         &b_ptr as *const _ as *mut _,
@@ -116,8 +120,6 @@ pub fn gemm_forward(
         &k as *const _ as *mut _,
     ];
 
-    // SAFETY: Kernel launch requires FFI. All buffers are valid GPU allocations with
-    // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream.launch_kernel(module, "gemm_naive", &config, &mut args).map_err(|e| {
             CudaTensorError::KernelError(format!("GEMM forward launch failed: {e:?}"))
@@ -125,6 +127,122 @@ pub fn gemm_forward(
     }
 
     Ok(())
+}
+
+/// cuBLAS GEMM forward: C[M,N] = A[M,K] @ B[K,N] (row-major)
+///
+/// Uses the B^T @ A^T identity: cuBLAS column-major C_col = B_col @ A_col
+/// with no transpose flags, mapping row-major naturally.
+///
+/// # Contract: C-CUBLAS-001 (Numerical Parity)
+///
+/// `|cublas_result - ptx_result| < 1e-3` for all training shapes.
+/// cuBLAS uses TF32 tensor cores on sm_89 (10-bit mantissa vs FP32's 23-bit),
+/// which is standard for training but not bit-exact with IEEE FP32.
+#[cfg(feature = "cuda")]
+fn cublas_gemm_forward(
+    cublas: &CublasHandle,
+    a: &GpuBuffer<f32>,
+    b: &GpuBuffer<f32>,
+    c: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+) -> Result<()> {
+    // Row-major C[M,N] = A[M,K] @ B[K,N]
+    // cuBLAS (col-major): C_col[N,M] = B_col[N,K] @ A_col[K,M]
+    // Both B and A are passed as-is (row-major memory = transposed col-major)
+    cublas
+        .gemm_f32(
+            GemmOp::NoTrans, // B_col (row-major B viewed as col-major)
+            GemmOp::NoTrans, // A_col (row-major A viewed as col-major)
+            n as i32,        // m_cublas = N (output cols in row-major = rows in col-major)
+            m as i32,        // n_cublas = M
+            k as i32,        // k_cublas = K
+            1.0,             // alpha
+            b.as_ptr(),
+            n as i32, // lda = N (row stride of B[K,N])
+            a.as_ptr(),
+            k as i32, // ldb = K (row stride of A[M,K])
+            0.0,      // beta
+            c.as_ptr(),
+            n as i32, // ldc = N (row stride of C[M,N])
+        )
+        .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS GEMM forward failed: {e:?}")))
+}
+
+/// cuBLAS GEMM backward A: grad_A[M,K] = grad_C[M,N] @ B[K,N]^T (row-major)
+///
+/// Using the transpose identity for cuBLAS column-major:
+/// C_col[K,M] = T(B_col)[K,N] @ N(A_col)[N,M]
+#[cfg(feature = "cuda")]
+pub(crate) fn cublas_gemm_backward_a(
+    cublas: &CublasHandle,
+    grad_output: &GpuBuffer<f32>,
+    b: &GpuBuffer<f32>,
+    grad_a: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+) -> Result<()> {
+    // Row-major: grad_A[M,K] = grad_C[M,N] @ B[K,N]^T
+    // cuBLAS: grad_A_col[K,M] = T(B_col)[K,N] @ N(grad_C_col)[N,M]
+    cublas
+        .gemm_f32(
+            GemmOp::Trans,   // B needs transpose (row-major B[K,N] → col B^T[N,K] → T gives [K,N])
+            GemmOp::NoTrans, // grad_C as-is (row-major [M,N] → col [N,M])
+            k as i32,        // m_cublas = K
+            m as i32,        // n_cublas = M
+            n as i32,        // k_cublas = N
+            1.0,
+            b.as_ptr(),
+            n as i32, // lda = N (stride of B[K,N])
+            grad_output.as_ptr(),
+            n as i32, // ldb = N (stride of grad_C[M,N])
+            0.0,
+            grad_a.as_ptr(),
+            k as i32, // ldc = K (stride of grad_A[M,K])
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS GEMM backward A failed: {e:?}"))
+        })
+}
+
+/// cuBLAS GEMM backward B: grad_B[K,N] = A[M,K]^T @ grad_C[M,N] (row-major)
+///
+/// Using the transpose identity for cuBLAS column-major:
+/// C_col[N,K] = N(grad_C_col)[N,M] @ T(A_col)[M,K]
+#[cfg(feature = "cuda")]
+pub(crate) fn cublas_gemm_backward_b(
+    cublas: &CublasHandle,
+    a: &GpuBuffer<f32>,
+    grad_output: &GpuBuffer<f32>,
+    grad_b: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+) -> Result<()> {
+    // Row-major: grad_B[K,N] = A[M,K]^T @ grad_C[M,N]
+    // cuBLAS: grad_B_col[N,K] = N(grad_C_col)[N,M] @ T(A_col)[M,K]
+    cublas
+        .gemm_f32(
+            GemmOp::NoTrans, // grad_C as-is (row-major [M,N] → col [N,M])
+            GemmOp::Trans,   // A needs transpose (row-major [M,K] → col [K,M] → T gives [M,K])
+            n as i32,        // m_cublas = N
+            k as i32,        // n_cublas = K
+            m as i32,        // k_cublas = M
+            1.0,
+            grad_output.as_ptr(),
+            n as i32, // lda = N (stride of grad_C[M,N])
+            a.as_ptr(),
+            k as i32, // ldb = K (stride of A[M,K])
+            0.0,
+            grad_b.as_ptr(),
+            n as i32, // ldc = N (stride of grad_B[K,N])
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS GEMM backward B failed: {e:?}"))
+        })
 }
 
 /// Batched 4D GEMM forward pass on GPU for multi-head attention

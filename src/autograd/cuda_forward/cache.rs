@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 #[cfg(feature = "cuda")]
-use trueno_gpu::driver::{CudaContext, CudaModule};
+use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel,
@@ -39,6 +39,8 @@ pub(super) struct ForwardKernelCache {
     modules: HashMap<String, CudaModule>,
     /// Device SM target string (e.g. "sm_89" for RTX 4090)
     sm_target: String,
+    /// cuBLAS handle for tensor core GEMMs (ALB-075)
+    cublas: Option<CublasHandle>,
 }
 
 #[cfg(feature = "cuda")]
@@ -48,8 +50,39 @@ impl ForwardKernelCache {
         // Falls back to sm_70 if detection fails (should never happen
         // since we already have a valid CudaContext).
         let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
+
+        // Initialize cuBLAS handle for tensor core GEMMs (ALB-075).
+        // Falls back to PTX kernels if cuBLAS is not available.
+        let cublas = match CublasHandle::new(&ctx) {
+            Ok(handle) => {
+                eprintln!("[CUDA] cuBLAS initialized — tensor core GEMMs enabled");
+                Some(handle)
+            }
+            Err(e) => {
+                eprintln!("[CUDA] cuBLAS not available ({e:?}), using PTX GEMMs");
+                None
+            }
+        };
+
         eprintln!("[CUDA] Kernel cache initialized for target: {sm_target}");
-        Self { ctx, modules: HashMap::new(), sm_target }
+        Self { ctx, modules: HashMap::new(), sm_target, cublas }
+    }
+
+    /// Get a reference to the cuBLAS handle, if available.
+    pub(super) fn cublas(&self) -> Option<&CublasHandle> {
+        self.cublas.as_ref()
+    }
+
+    /// Bind cuBLAS to a stream for the current training step.
+    ///
+    /// Must be called once per step before any cuBLAS GEMM dispatch.
+    pub(super) fn set_cublas_stream(&self, stream: &CudaStream) -> Result<()> {
+        if let Some(ref handle) = self.cublas {
+            handle.set_stream(stream).map_err(|e| {
+                CudaTensorError::KernelError(format!("cuBLAS set_stream failed: {e:?}"))
+            })?;
+        }
+        Ok(())
     }
 
     /// Get the device SM target for PTX emission.
@@ -332,6 +365,19 @@ impl ForwardKernelCache {
 pub fn init_forward_kernel_cache(ctx: std::sync::Arc<CudaContext>) -> Result<()> {
     FORWARD_KERNEL_CACHE.get_or_init(|| Mutex::new(ForwardKernelCache::new(ctx)));
     Ok(())
+}
+
+/// Bind cuBLAS handle in the forward cache to a stream (ALB-075).
+///
+/// Must be called once per training step before any cuBLAS GEMM dispatch.
+/// No-op if cuBLAS is not available.
+#[cfg(feature = "cuda")]
+pub fn set_forward_cublas_stream(stream: &CudaStream) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+    cache.set_cublas_stream(stream)
 }
 
 /// Pre-warm forward kernels for a specific model configuration.
