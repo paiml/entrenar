@@ -44,7 +44,9 @@ pub fn gemm_backward_a(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    // ALB-075: cuBLAS tensor core fast path (12-27x faster than PTX)
+    // ALB-075: cuBLAS SIMD fast path (6-14x faster than PTX)
+    // ALB-076: Uses CUBLAS_DEFAULT_MATH (no tensor cores) — tensor core
+    // algorithms produce NaN for transposed GEMMs with gradient magnitudes ~1e5.
     if let Some(cublas) = cache.cublas() {
         return cublas_gemm_backward_a(cublas, grad_output, b, grad_a, m, k, n);
     }
@@ -117,7 +119,9 @@ pub fn gemm_backward_b(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
-    // ALB-075: cuBLAS tensor core fast path (12-27x faster than PTX)
+    // ALB-075: cuBLAS SIMD fast path (6-14x faster than PTX)
+    // ALB-076: Uses CUBLAS_DEFAULT_MATH (no tensor cores) — tensor core
+    // algorithms produce NaN for transposed GEMMs with gradient magnitudes ~1e5.
     if let Some(cublas) = cache.cublas() {
         return cublas_gemm_backward_b(cublas, a, grad_output, grad_b, m, k, n);
     }
