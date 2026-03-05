@@ -2964,7 +2964,7 @@ impl CudaNf4TransformerBlock {
         // The attention backward already accumulated the attention-path gradient.
         // The residual skip from input → residual1 adds grad_residual1 to grad_input.
         // grad_input currently has norm backward result; need to add the residual skip grad.
-        // At this point, `ffn_out` buffer is free — use it as temp to hold residual grad
+        // The `ffn_out` buffer is free — use it as temp to hold residual grad
         // Actually, the residual skip from input: residual1 = input + o_proj_out
         // So d_input = d_residual1 + d_norm1_backward
         // We already have d_residual1 accumulated in the intermediate `grad_input` from step 2,
@@ -2976,7 +2976,7 @@ impl CudaNf4TransformerBlock {
         // Then: grad_input = d_norm1 + d_residual1 (residual skip from input).
         // But d_residual1 was in grad_input before step 4 overwrote it...
         //
-        // Fix: save d_residual1 into a temp buffer before step 4.
+        // Save d_residual1 into a temp buffer before step 4.
 
         // This is handled by the structure: we use alternating gradient buffers.
         // The pipeline handles this with grad_buf_a/b alternation.
@@ -3052,7 +3052,7 @@ impl CudaNf4TransformerBlock {
         )?;
 
         // d_up = d_swiglu * silu(gate) → store in gate_out (reuse)
-        // First compute silu(gate) into ffn_out (temp)
+        // Compute silu(gate) into ffn_out (temp)
         silu_forward(&scratch.gate_out, &mut scratch.ffn_out, n_inter, stream)?;
         // d_up = d_swiglu * silu(gate)
         elementwise_mul_forward(

@@ -168,84 +168,18 @@ pub fn execute_plan(
 
         let trial_time_ms = trial_start.elapsed().as_millis() as u64;
 
-        match trial_result {
-            Ok(result) => {
-                let val_loss = result.best_val_loss as f64;
-                let val_accuracy = result
-                    .epoch_metrics
-                    .get(result.best_epoch)
-                    .map_or(0.0, |m| m.val_accuracy as f64);
-
-                // ── Check scheduler for early stopping ─────────────────
-                let was_pruned = scheduler.should_stop(
-                    trial_idx,
-                    result.best_epoch,
-                    val_loss,
-                );
-
-                let status = if was_pruned {
-                    "pruned"
-                } else if result.stopped_early {
-                    "stopped_early"
-                } else {
-                    "completed"
-                };
-
-                let summary = TrialSummary {
-                    id: trial_idx,
-                    val_loss,
-                    val_accuracy,
-                    train_loss: result
-                        .epoch_metrics
-                        .last()
-                        .map_or(0.0, |m| m.train_loss as f64),
-                    train_accuracy: result
-                        .epoch_metrics
-                        .last()
-                        .map_or(0.0, |m| m.train_accuracy as f64),
-                    epochs_run: result.epoch_metrics.len(),
-                    time_ms: trial_time_ms,
-                    config: suggestion.config.clone(),
-                    status: status.to_string(),
-                };
-
-                eprintln!(
-                    "    => val_loss={:.4} val_acc={:.1}% epochs={} [{}]",
-                    val_loss,
-                    val_accuracy * 100.0,
-                    result.epoch_metrics.len(),
-                    status,
-                );
-
-                tracker.log_hpo_trial(&suggestion.config, &result, was_pruned);
-
-                // Record for Bayesian learner
-                searcher.record(suggestion.clone(), val_loss, result.epoch_metrics.len());
-                tuner.record_trial(summary.clone());
-
-                if let Some(cb) = apply.on_trial_complete {
-                    cb(trial_idx, budget, &summary);
-                }
-            }
-            Err(e) => {
-                eprintln!("    => FAILED: {e}");
-                tracker.log_failed_trial();
-
-                let summary = TrialSummary {
-                    id: trial_idx,
-                    val_loss: f64::INFINITY,
-                    val_accuracy: 0.0,
-                    train_loss: f64::INFINITY,
-                    train_accuracy: 0.0,
-                    epochs_run: 0,
-                    time_ms: trial_time_ms,
-                    config: suggestion.config.clone(),
-                    status: "failed".to_string(),
-                };
-                searcher.record(suggestion, f64::INFINITY, 0);
-                tuner.record_trial(summary);
-            }
-        }
+        record_hpo_trial_outcome(
+            trial_result,
+            trial_idx,
+            budget,
+            trial_time_ms,
+            &suggestion,
+            &scheduler,
+            &mut searcher,
+            &mut tuner,
+            &mut tracker,
+            apply.on_trial_complete,
+        );
     }
 
     let total_time_ms = total_start.elapsed().as_millis() as u64;
@@ -259,6 +193,86 @@ pub fn execute_plan(
     );
 
     Ok(result)
+}
+
+/// Record the outcome of a single HPO trial (success or failure) into the
+/// searcher, tuner, and experiment tracker.
+fn record_hpo_trial_outcome(
+    trial_result: crate::Result<super::classify_trainer::TrainResult>,
+    trial_idx: usize,
+    budget: usize,
+    trial_time_ms: u64,
+    suggestion: &crate::optim::hpo::types::trial::Trial,
+    scheduler: &dyn super::tune_searchers::TuneScheduler,
+    searcher: &mut Box<dyn super::tune_searchers::TuneSearcher>,
+    tuner: &mut super::classify_tuner::ClassifyTuner,
+    tracker: &mut ExperimentTracker,
+    on_trial_complete: Option<fn(usize, usize, &super::classify_tuner::TrialSummary)>,
+) {
+    use super::classify_tuner::TrialSummary;
+
+    match trial_result {
+        Ok(result) => {
+            let val_loss = result.best_val_loss as f64;
+            let val_accuracy = result
+                .epoch_metrics
+                .get(result.best_epoch)
+                .map_or(0.0, |m| m.val_accuracy as f64);
+
+            let was_pruned = scheduler.should_stop(trial_idx, result.best_epoch, val_loss);
+
+            let status = if was_pruned {
+                "pruned"
+            } else if result.stopped_early {
+                "stopped_early"
+            } else {
+                "completed"
+            };
+
+            let summary = TrialSummary {
+                id: trial_idx,
+                val_loss,
+                val_accuracy,
+                train_loss: result.epoch_metrics.last().map_or(0.0, |m| m.train_loss as f64),
+                train_accuracy: result.epoch_metrics.last().map_or(0.0, |m| m.train_accuracy as f64),
+                epochs_run: result.epoch_metrics.len(),
+                time_ms: trial_time_ms,
+                config: suggestion.config.clone(),
+                status: status.to_string(),
+            };
+
+            eprintln!(
+                "    => val_loss={:.4} val_acc={:.1}% epochs={} [{}]",
+                val_loss, val_accuracy * 100.0, result.epoch_metrics.len(), status,
+            );
+
+            tracker.log_hpo_trial(&suggestion.config, &result, was_pruned);
+            searcher.record(suggestion.clone(), val_loss, result.epoch_metrics.len());
+            tuner.record_trial(summary.clone());
+
+            if let Some(cb) = on_trial_complete {
+                cb(trial_idx, budget, &summary);
+            }
+        }
+        Err(e) => {
+            eprintln!("    => FAILED: {e}");
+            tracker.log_failed_trial();
+
+            let summary = TrialSummary {
+                id: trial_idx,
+                val_loss: f64::INFINITY,
+                val_accuracy: 0.0,
+                train_loss: f64::INFINITY,
+                train_accuracy: 0.0,
+                epochs_run: 0,
+                time_ms: trial_time_ms,
+                config: suggestion.config.clone(),
+                status: "failed".to_string(),
+            };
+            searcher.record(suggestion.clone(), f64::INFINITY, 0);
+            tuner.record_trial(summary);
+        }
+    }
 }
 
 /// Execute the manual strategy (single trial with explicit hyperparameters).

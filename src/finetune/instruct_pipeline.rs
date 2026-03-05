@@ -886,7 +886,7 @@ impl InstructPipeline {
             let row = &logits_data[logit_start..logit_start + vocab_size];
 
             // Numerically stable log-softmax + gradient in one pass.
-            // KAIZEN-063: Write exp values directly into grad_logits row instead of
+            // Writes exp values directly into grad_logits row instead of
             // allocating a temporary Vec<f32> per position (~608KB for vocab=151936).
             let max_val = row.iter().copied().fold(f32::NEG_INFINITY, f32::max);
             let grad_row = &mut grad_logits[logit_start..logit_start + vocab_size];

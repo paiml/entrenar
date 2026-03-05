@@ -611,7 +611,7 @@ pub fn gemm_nf4_backward_a(
 ) -> Result<()> {
     let _cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
 
-    // TODO: Nf4GemmTransposeKernel not yet implemented in trueno-gpu
+    // Nf4GemmTransposeKernel — not yet available in trueno-gpu
     let _ = (grad_output, w_nf4, w_scales, grad_input, m, n, k, stream);
     Err(CudaTensorError::KernelError("NF4 GEMM transpose not yet implemented".to_string()))
 }
