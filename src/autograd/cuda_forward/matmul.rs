@@ -195,9 +195,7 @@ pub(crate) fn cublas_gemm_backward_a(
             grad_a.as_ptr(),
             k as i32,
         )
-        .map_err(|e| {
-            CudaTensorError::KernelError(format!("cuBLAS GEMM backward_a failed: {e:?}"))
-        })
+        .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS GEMM backward_a failed: {e:?}")))
 }
 
 /// cuBLAS backward B: grad_B[K,N] = A[M,K]^T @ grad_C[M,N]
@@ -227,9 +225,7 @@ pub(crate) fn cublas_gemm_backward_b(
             grad_b.as_ptr(),
             n as i32,
         )
-        .map_err(|e| {
-            CudaTensorError::KernelError(format!("cuBLAS GEMM backward_b failed: {e:?}"))
-        })
+        .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS GEMM backward_b failed: {e:?}")))
 }
 
 /// Batched 4D GEMM forward pass on GPU for multi-head attention
@@ -282,9 +278,7 @@ pub fn batched_4d_gemm_forward(
                 batch_count,
             )
             .map_err(|e| {
-                CudaTensorError::KernelError(format!(
-                    "cuBLAS batched 4D GEMM failed: {e:?}"
-                ))
+                CudaTensorError::KernelError(format!("cuBLAS batched 4D GEMM failed: {e:?}"))
             });
     }
 

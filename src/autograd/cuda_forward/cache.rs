@@ -13,8 +13,8 @@ use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, BatchedSoftmaxKernel, BatchedToInterleavedKernel, BatchedTransposeKernel,
-    ElementwiseMulKernel, FusedSwigluKernel, GemmKernel, InterleavedToBatchedKernel, Kernel,
-    BatchedVectorizedRmsNormKernel, Nf4GemmKernel, ResidualAddKernel, ScaleKernel, SiluKernel,
+    BatchedVectorizedRmsNormKernel, ElementwiseMulKernel, FusedSwigluKernel, GemmKernel,
+    InterleavedToBatchedKernel, Kernel, Nf4GemmKernel, ResidualAddKernel, ScaleKernel, SiluKernel,
 };
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
@@ -361,9 +361,7 @@ pub fn init_forward_kernel_cache(ctx: std::sync::Arc<CudaContext>) -> Result<()>
 /// Bind cuBLAS handle in the forward cache to a stream (ALB-075).
 #[cfg(feature = "cuda")]
 pub fn set_forward_cublas_stream(stream: &CudaStream) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
