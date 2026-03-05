@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(feature = "cuda")]
-use trueno_gpu::driver::{CudaContext, CudaModule};
+use trueno_gpu::driver::{CublasHandle, CudaContext, CudaModule, CudaStream};
 
 use super::super::cuda_tensor::{CudaTensorError, Result};
 
@@ -27,13 +27,31 @@ pub(super) struct KernelCache {
     ctx: Arc<CudaContext>,
     modules: HashMap<String, CudaModule>,
     sm_target: String,
+    /// cuBLAS handle for tensor core GEMMs (ALB-075)
+    cublas: Option<CublasHandle>,
 }
 
 #[cfg(feature = "cuda")]
 impl KernelCache {
     pub(super) fn new(ctx: Arc<CudaContext>) -> Self {
         let sm_target = ctx.sm_target().unwrap_or_else(|_| "sm_70".to_string());
-        Self { ctx, modules: HashMap::new(), sm_target }
+        let cublas = CublasHandle::new(&ctx).ok();
+        Self { ctx, modules: HashMap::new(), sm_target, cublas }
+    }
+
+    /// Get a reference to the cuBLAS handle, if available.
+    pub(super) fn cublas(&self) -> Option<&CublasHandle> {
+        self.cublas.as_ref()
+    }
+
+    /// Bind cuBLAS to a stream for the current training step.
+    pub(super) fn set_cublas_stream(&self, stream: &CudaStream) -> Result<()> {
+        if let Some(ref handle) = self.cublas {
+            handle.set_stream(stream).map_err(|e| {
+                CudaTensorError::KernelError(format!("cuBLAS set_stream failed: {e:?}"))
+            })?;
+        }
+        Ok(())
     }
 
     pub(super) fn sm_target(&self) -> &str {
@@ -76,6 +94,18 @@ impl KernelCache {
 pub fn init_kernel_cache(ctx: Arc<CudaContext>) -> Result<()> {
     KERNEL_CACHE.get_or_init(|| Mutex::new(KernelCache::new(ctx)));
     Ok(())
+}
+
+/// Bind cuBLAS handle in the backward cache to a stream (ALB-075).
+#[cfg(feature = "cuda")]
+pub fn set_backward_cublas_stream(stream: &CudaStream) -> Result<()> {
+    let cache = KERNEL_CACHE
+        .get()
+        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire backward kernel cache lock".to_string())
+    })?;
+    cache.set_cublas_stream(stream)
 }
 
 /// Pre-warm backward GEMM kernels for training gradient computation (ENT-153).
