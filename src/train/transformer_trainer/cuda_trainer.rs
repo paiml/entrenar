@@ -665,7 +665,18 @@ impl CudaTransformerTrainer {
         accumulate_only: bool,
     ) -> Option<f32> {
         self.profiler.begin_step();
+        let result = self.train_step_inner(input_ids, target_ids, accumulate_only);
+        self.profiler.finish_step();
+        result
+    }
 
+    /// Inner training step — separated so profiler always records the step.
+    fn train_step_inner(
+        &mut self,
+        input_ids: &[u32],
+        target_ids: &[u32],
+        accumulate_only: bool,
+    ) -> Option<f32> {
         let hidden_size = self.config.model_config.hidden_size;
         let vocab_size = self.config.model_config.vocab_size;
 
@@ -724,8 +735,6 @@ impl CudaTransformerTrainer {
         self.profiler.begin(StepProfiler::EMBED_BWD);
         self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a)?;
         self.profiler.end(StepProfiler::EMBED_BWD);
-
-        self.profiler.finish_step();
 
         Some(loss_val)
     }
