@@ -1,22 +1,20 @@
-# cargo-deny configuration for Entrenar
-# Dependency security and license checking
+# cargo-deny configuration
+# Deployed from paiml/infra — do not edit manually.
+# Spec: docs/specifications/unified-ci-pipeline.md
 
 [graph]
-all-features = true
+targets = []
+all-features = false
+no-default-features = false
 
 [advisories]
-version = 2
-ignore = [
-    # Transitive deps with no safe upgrade available
-    "RUSTSEC-2025-0141", # bincode unmaintained (via aprender)
-    "RUSTSEC-2024-0384", # instant unmaintained (transitive)
-    "RUSTSEC-2025-0119", # number_prefix unmaintained (transitive)
-    "RUSTSEC-2024-0436", # paste unmaintained (transitive)
-]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+ignore = []
 
 [licenses]
-# We use MIT license
-version = 2
 allow = [
     "MIT",
     "Apache-2.0",
@@ -24,29 +22,24 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
+    "Unicode-DFS-2016",
     "Zlib",
+    "BSL-1.0",
+    "OpenSSL",
+    "0BSD",
     "CC0-1.0",
     "MPL-2.0",
-    "CDLA-Permissive-2.0",
-    "NCSA",
 ]
 confidence-threshold = 0.8
 
-[[licenses.clarify]]
-name = "ring"
-expression = "ISC"
-license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
-
 [bans]
-# Warn about multiple versions of same crate
 multiple-versions = "warn"
-# Deny specific crates (none for now)
-deny = []
+wildcards = "deny"
+highlight = "all"
 
 [sources]
-# Only allow crates.io
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
