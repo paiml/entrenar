@@ -14,6 +14,10 @@ use super::super::cuda_tensor::{CudaTensorError, Result};
 #[cfg(feature = "cuda")]
 use super::cache::KERNEL_CACHE;
 
+// cuBLAS backward dispatch (ALB-075)
+#[cfg(feature = "cuda")]
+use crate::autograd::cuda_forward::{cublas_gemm_backward_a, cublas_gemm_backward_b};
+
 /// Tile size for backward GEMM kernels (C-TILE-BWD-001).
 ///
 /// Must be divisible by 4 (unroll factor). Shared memory per block = 2 * TILE^2 * 4 bytes.
@@ -39,6 +43,11 @@ pub fn gemm_backward_a(
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    // ALB-075: cuBLAS tensor core fast path (12-27x faster than PTX)
+    if let Some(cublas) = cache.cublas() {
+        return cublas_gemm_backward_a(cublas, grad_output, b, grad_a, m, k, n);
+    }
 
     let tile = BACKWARD_TILE_SIZE;
     // Kernel object needed for name(); cheap struct creation, PTX deferred.
@@ -107,6 +116,11 @@ pub fn gemm_backward_b(
     let mut cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
+
+    // ALB-075: cuBLAS tensor core fast path (12-27x faster than PTX)
+    if let Some(cublas) = cache.cublas() {
+        return cublas_gemm_backward_b(cublas, a, grad_output, grad_b, m, k, n);
+    }
 
     let tile = BACKWARD_TILE_SIZE;
     // Kernel object needed for name(); cheap struct creation, PTX deferred.
