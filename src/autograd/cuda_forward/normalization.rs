@@ -131,11 +131,9 @@ pub fn rms_norm_forward(
     // output has batch_size * hidden_size elements, gamma has hidden_size elements.
     // Parameters match PTX signature (u64 input_ptr, u64 output_ptr, u64 gamma_ptr).
     unsafe {
-        stream
-            .launch_kernel(module, "batched_rmsnorm_vectorized", &config, &mut args)
-            .map_err(|e| {
-                CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}"))
-            })?;
+        stream.launch_kernel(module, "batched_rmsnorm_vectorized", &config, &mut args).map_err(
+            |e| CudaTensorError::KernelError(format!("RMSNorm forward launch failed: {e:?}")),
+        )?;
     }
 
     Ok(())

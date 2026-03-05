@@ -99,9 +99,7 @@ pub fn init_kernel_cache(ctx: Arc<CudaContext>) -> Result<()> {
 /// Bind cuBLAS handle in the backward cache to a stream (ALB-075).
 #[cfg(feature = "cuda")]
 pub fn set_backward_cublas_stream(stream: &CudaStream) -> Result<()> {
-    let cache = KERNEL_CACHE
-        .get()
-        .ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let cache = KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
     let cache = cache.lock().map_err(|_err| {
         CudaTensorError::KernelError("Failed to acquire backward kernel cache lock".to_string())
     })?;
