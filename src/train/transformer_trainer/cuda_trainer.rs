@@ -44,8 +44,9 @@ use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_
 use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::{
-    adamw_step_cuda, fused_cross_entropy_cuda, gradient_clip_cuda, squared_sum_collect,
-    squared_sum_cuda, squared_sum_launch_cuda,
+    adamw_step_cuda, clip_scale_reduce_cuda, fused_cross_entropy_cuda, gradient_clip_cuda,
+    gradient_clip_gpu_scale_cuda, squared_sum_collect, squared_sum_cuda, squared_sum_launch_cuda,
+    squared_sum_launch_into, FusedClipState,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
@@ -159,6 +160,80 @@ fn clip_workspace_gradients(ws: &mut CudaGradWorkspace, max_norm: f32, stream: &
     let _ = gradient_clip_cuda(&mut ws.grad_input_norm, scale, n_inorm, stream);
     let _ = gradient_clip_cuda(&mut ws.grad_post_attn_norm, scale, n_panorm, stream);
     grad_norm
+}
+
+/// ALB-078: Fused gradient clipping — entire pipeline stays on GPU.
+///
+/// Replaces `clip_workspace_gradients` by eliminating the stream.synchronize()
+/// and D2H partial-sum download. All computation happens on GPU:
+///
+/// 1. 9× SquaredSumKernel → write partials to pre-allocated contiguous buffer
+/// 2. 1× ClipScaleReduceKernel → reduce partials, compute scale on GPU
+/// 3. 9× GradientClipGpuScaleKernel → read scale from GPU, apply to gradients
+///
+/// Zero sync points, zero D2H transfers per block.
+#[cfg(feature = "cuda")]
+fn fused_clip_workspace_gradients(
+    ws: &mut CudaGradWorkspace,
+    max_norm: f32,
+    state: &FusedClipState,
+    stream: &CudaStream,
+) {
+    let all_bufs: [&GpuBuffer<f32>; 9] = [
+        &ws.grad_w_q,
+        &ws.grad_w_k,
+        &ws.grad_w_v,
+        &ws.grad_w_o,
+        &ws.grad_gate,
+        &ws.grad_up,
+        &ws.grad_down,
+        &ws.grad_input_norm,
+        &ws.grad_post_attn_norm,
+    ];
+
+    // Phase 1: Launch 9 squared_sum kernels into contiguous partials buffer.
+    // Each writes to state.partials_buf at its pre-computed offset.
+    for (i, buf) in all_bufs.iter().enumerate() {
+        let n = buf.len() as u32;
+        if n == 0 {
+            continue;
+        }
+        let output_ptr =
+            state.partials_buf.as_ptr() + u64::from(state.offsets[i]) * 4;
+        let _ = squared_sum_launch_into(buf, n, output_ptr, stream);
+    }
+
+    // Phase 2: Reduce all partials and compute clip_scale on GPU.
+    // Stream ordering guarantees all squared_sum kernels complete before this runs.
+    let _ = clip_scale_reduce_cuda(
+        &state.partials_buf,
+        state.total_partials,
+        max_norm,
+        &state.scale_buf,
+        stream,
+    );
+
+    // Phase 3: Apply clip scale to all 9 gradient buffers.
+    // Scale is read from GPU memory — no D2H needed.
+    let scale_ptr = state.scale_buf.as_ptr(); // output[0] = clip_scale
+    let mut all_bufs_mut: [&mut GpuBuffer<f32>; 9] = [
+        &mut ws.grad_w_q,
+        &mut ws.grad_w_k,
+        &mut ws.grad_w_v,
+        &mut ws.grad_w_o,
+        &mut ws.grad_gate,
+        &mut ws.grad_up,
+        &mut ws.grad_down,
+        &mut ws.grad_input_norm,
+        &mut ws.grad_post_attn_norm,
+    ];
+    for buf in &mut all_bufs_mut {
+        let n = buf.len() as u32;
+        if n == 0 {
+            continue;
+        }
+        let _ = gradient_clip_gpu_scale_cuda(buf, scale_ptr, n, stream);
+    }
 }
 
 /// R-004: Compute gradient L2 norm without clipping (for observability only).
@@ -319,6 +394,9 @@ pub struct CudaTransformerTrainer {
     /// Eliminates ~15GB of per-step heap churn (36 × vec![0.0; h*i] + vec![0.0; vocab*h]
     /// per micro-batch × accumulation_steps).
     d2h_staging: Vec<f32>,
+    /// ALB-078: Pre-allocated state for fused gradient clipping pipeline.
+    /// Eliminates 24 stream.synchronize() calls per step.
+    fused_clip: Option<FusedClipState>,
 }
 
 #[cfg(feature = "cuda")]
@@ -604,6 +682,11 @@ impl CudaTransformerTrainer {
             Vec::new()
         };
 
+        // ALB-078: Pre-allocate fused gradient clipping state.
+        // Eliminates 24 stream syncs per step by keeping norm+clip on GPU.
+        let kv_hidden = mc.num_kv_heads * mc.head_dim();
+        let fused_clip = Self::init_fused_clip(&ctx, &config, hidden_size, kv_hidden, mc);
+
         // R-002: Initialize gradient scaler from precision config
         let grad_scaler = GradScaler::from_config(&config.precision_config);
         if config.precision_config.is_mixed() {
@@ -647,7 +730,58 @@ impl CudaTransformerTrainer {
             fwd_scratch_b,
             h2d_staging: vec![0.0f32; max_seq_len * hidden_size],
             d2h_staging,
+            fused_clip,
         })
+    }
+
+    /// ALB-078: Clip workspace gradients using fused GPU pipeline when available.
+    fn clip_workspace(&mut self, max_norm: f32, stream: &CudaStream) {
+        if let Some(ref fused_state) = self.fused_clip {
+            fused_clip_workspace_gradients(
+                &mut self.cuda_grad_workspace,
+                max_norm,
+                fused_state,
+                stream,
+            );
+        } else {
+            clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
+        }
+    }
+
+    /// ALB-078: Initialize fused gradient clipping state (extracted for complexity).
+    fn init_fused_clip(
+        ctx: &std::sync::Arc<CudaContext>,
+        config: &TransformerTrainConfig,
+        hidden_size: usize,
+        kv_hidden: usize,
+        mc: &crate::transformer::TransformerConfig,
+    ) -> Option<FusedClipState> {
+        config.base.max_grad_norm?;
+        let grad_sizes: [u32; 9] = [
+            (hidden_size * hidden_size) as u32,
+            (hidden_size * kv_hidden) as u32,
+            (hidden_size * kv_hidden) as u32,
+            (hidden_size * hidden_size) as u32,
+            (hidden_size * mc.intermediate_size) as u32,
+            (hidden_size * mc.intermediate_size) as u32,
+            (mc.intermediate_size * hidden_size) as u32,
+            hidden_size as u32,
+            hidden_size as u32,
+        ];
+        match FusedClipState::new(ctx, &grad_sizes) {
+            Ok(state) => {
+                println!(
+                    "  ✓ Fused gradient clipping: {} partials ({:.1} KB)",
+                    state.total_partials,
+                    state.total_partials as f64 * 4.0 / 1024.0,
+                );
+                Some(state)
+            }
+            Err(e) => {
+                println!("  ⚠ Fused clip alloc failed ({e:?}), using sync fallback");
+                None
+            }
+        }
     }
 
     /// Run one forward+backward step for a single sequence.
@@ -1095,8 +1229,9 @@ impl CudaTransformerTrainer {
             //
             // No stream.synchronize() needed: backward, unscale, clip, and optimizer_step
             // are all GPU-side operations on the same stream.
+            // ALB-078: Fused GPU clip (zero sync) or sync-based fallback.
             if let Some(max_norm) = max_grad_norm {
-                clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
+                self.clip_workspace(max_norm, stream);
             }
 
             // R-038: Either accumulate workspace grads (CPU-side) or run optimizer per-block.
