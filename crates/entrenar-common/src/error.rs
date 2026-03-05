@@ -116,23 +116,23 @@ mod tests {
     fn test_error_codes_are_unique() {
         let errors = vec![
             EntrenarError::ConfigNotFound { path: "".into() },
-            EntrenarError::ConfigParsing { path: "".into(), message: "".into() },
+            EntrenarError::ConfigParsing { path: "".into(), message: String::new() },
             EntrenarError::ConfigValue {
-                field: "".into(),
-                message: "".into(),
-                suggestion: "".into(),
+                field: String::new(),
+                message: String::new(),
+                suggestion: String::new(),
             },
             EntrenarError::ModelNotFound { path: "".into() },
-            EntrenarError::UnsupportedFormat { format: "".into() },
-            EntrenarError::HuggingFace { message: "".into() },
+            EntrenarError::UnsupportedFormat { format: String::new() },
+            EntrenarError::HuggingFace { message: String::new() },
             EntrenarError::InsufficientMemory { required: 0.0, available: 0.0 },
             EntrenarError::ShapeMismatch { expected: vec![], actual: vec![] },
-            EntrenarError::Serialization { message: "".into() },
+            EntrenarError::Serialization { message: String::new() },
             EntrenarError::Cancelled,
-            EntrenarError::Internal { message: "".into() },
+            EntrenarError::Internal { message: String::new() },
         ];
 
-        let codes: Vec<_> = errors.iter().map(|e| e.code()).collect();
+        let codes: Vec<_> = errors.iter().map(super::EntrenarError::code).collect();
         let unique: std::collections::HashSet<_> = codes.iter().collect();
 
         // All codes except E050 and E051 should be unique
@@ -144,7 +144,7 @@ mod tests {
     fn test_user_errors_are_recoverable() {
         assert!(EntrenarError::ConfigNotFound { path: "".into() }.is_user_error());
         assert!(EntrenarError::Cancelled.is_user_error());
-        assert!(!EntrenarError::Internal { message: "".into() }.is_user_error());
+        assert!(!EntrenarError::Internal { message: String::new() }.is_user_error());
     }
 
     #[test]
@@ -224,7 +224,7 @@ mod tests {
         let errors: Vec<EntrenarError> = vec![
             EntrenarError::ConfigNotFound { path: "".into() },
             EntrenarError::Cancelled,
-            EntrenarError::Internal { message: "".into() },
+            EntrenarError::Internal { message: String::new() },
         ];
 
         for err in errors {

@@ -418,11 +418,11 @@ output:
 
     #[test]
     fn test_progressive_config() {
-        let yaml = r#"
+        let yaml = r"
 enabled: true
 layer_mapping: [[0, 3], [1, 7], [2, 11]]
 weight: 0.3
-"#;
+";
         let config: ProgressiveConfig = serde_yaml::from_str(yaml).expect("config should be valid");
         assert!(config.enabled);
         assert_eq!(config.layer_mapping.len(), 3);

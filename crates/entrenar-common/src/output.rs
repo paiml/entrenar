@@ -244,8 +244,8 @@ mod tests {
         assert!(rendered.contains('┌'));
         assert!(rendered.contains('│'));
         assert!(rendered.contains('└'));
-        assert!(rendered.contains("A"));
-        assert!(rendered.contains("1"));
+        assert!(rendered.contains('A'));
+        assert!(rendered.contains('1'));
     }
 
     #[test]
@@ -309,8 +309,8 @@ mod tests {
         let table = TableBuilder::new().headers(vec!["A", "B"]).build();
 
         let rendered = table.render();
-        assert!(rendered.contains("A"));
-        assert!(rendered.contains("B"));
+        assert!(rendered.contains('A'));
+        assert!(rendered.contains('B'));
         // Should still have borders
         assert!(rendered.contains('┌'));
         assert!(rendered.contains('└'));
