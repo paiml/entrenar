@@ -4,7 +4,7 @@
 #![allow(clippy::ref_as_ptr)]
 
 #[cfg(feature = "cuda")]
-use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
+use trueno_gpu::driver::{CublasHandle, CudaStream, GemmOp, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::{
     Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel,
@@ -69,6 +69,9 @@ pub fn fused_swiglu_forward(
 /// GEMM forward pass on GPU
 ///
 /// Computes: C = A @ B where A is MxK, B is KxN, C is MxN
+///
+/// Dispatches to cuBLAS tensor cores when available (ALB-075), falling back
+/// to hand-written PTX naive GEMM otherwise.
 #[cfg(feature = "cuda")]
 pub fn gemm_forward(
     a: &GpuBuffer<f32>,
@@ -84,6 +87,12 @@ pub fn gemm_forward(
         CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
     })?;
 
+    // cuBLAS fast path: tensor core GEMM (ALB-075)
+    if let Some(cublas) = cache.cublas() {
+        return cublas_gemm_forward(cublas, a, b, c, m, k, n);
+    }
+
+    // PTX fallback
     let key = format!("gemm_forward_{m}_{k}_{n}");
     let module = match cache.get_cached(&key) {
         Some(m) => m,
@@ -127,6 +136,100 @@ pub fn gemm_forward(
     }
 
     Ok(())
+}
+
+/// cuBLAS GEMM forward: C[M,N] = A[M,K] @ B[K,N] (row-major via B^T@A^T identity)
+#[cfg(feature = "cuda")]
+fn cublas_gemm_forward(
+    cublas: &CublasHandle,
+    a: &GpuBuffer<f32>,
+    b: &GpuBuffer<f32>,
+    c: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+) -> Result<()> {
+    cublas
+        .gemm_f32(
+            GemmOp::NoTrans,
+            GemmOp::NoTrans,
+            n as i32,
+            m as i32,
+            k as i32,
+            1.0,
+            b.as_ptr(),
+            n as i32,
+            a.as_ptr(),
+            k as i32,
+            0.0,
+            c.as_ptr(),
+            n as i32,
+        )
+        .map_err(|e| CudaTensorError::KernelError(format!("cuBLAS GEMM forward failed: {e:?}")))
+}
+
+/// cuBLAS backward A: grad_A[M,K] = grad_C[M,N] @ B[K,N]^T
+#[cfg(feature = "cuda")]
+pub(crate) fn cublas_gemm_backward_a(
+    cublas: &CublasHandle,
+    grad_output: &GpuBuffer<f32>,
+    b: &GpuBuffer<f32>,
+    grad_a: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+) -> Result<()> {
+    cublas
+        .gemm_f32(
+            GemmOp::Trans,
+            GemmOp::NoTrans,
+            k as i32,
+            m as i32,
+            n as i32,
+            1.0,
+            b.as_ptr(),
+            n as i32,
+            grad_output.as_ptr(),
+            n as i32,
+            0.0,
+            grad_a.as_ptr(),
+            k as i32,
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS GEMM backward_a failed: {e:?}"))
+        })
+}
+
+/// cuBLAS backward B: grad_B[K,N] = A[M,K]^T @ grad_C[M,N]
+#[cfg(feature = "cuda")]
+pub(crate) fn cublas_gemm_backward_b(
+    cublas: &CublasHandle,
+    a: &GpuBuffer<f32>,
+    grad_output: &GpuBuffer<f32>,
+    grad_b: &mut GpuBuffer<f32>,
+    m: u32,
+    k: u32,
+    n: u32,
+) -> Result<()> {
+    cublas
+        .gemm_f32(
+            GemmOp::NoTrans,
+            GemmOp::Trans,
+            n as i32,
+            k as i32,
+            m as i32,
+            1.0,
+            grad_output.as_ptr(),
+            n as i32,
+            a.as_ptr(),
+            k as i32,
+            0.0,
+            grad_b.as_ptr(),
+            n as i32,
+        )
+        .map_err(|e| {
+            CudaTensorError::KernelError(format!("cuBLAS GEMM backward_b failed: {e:?}"))
+        })
 }
 
 /// Batched 4D GEMM forward pass on GPU for multi-head attention
@@ -484,10 +587,7 @@ pub fn gemm_nf4_backward_a(
     k: u32,
     stream: &CudaStream,
 ) -> Result<()> {
-    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
-    let mut cache = cache.lock().map_err(|_err| {
-        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
-    })?;
+    let _cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
 
     // TODO: Nf4GemmTransposeKernel not yet implemented in trueno-gpu
     let _ = (grad_output, w_nf4, w_scales, grad_input, m, n, k, stream);
