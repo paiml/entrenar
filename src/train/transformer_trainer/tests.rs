@@ -461,7 +461,7 @@ fn test_deterministic_disabled_no_env_change() {
     // SAFETY: test runs single-threaded; remove_var needed to verify no-op behavior
     #[allow(clippy::disallowed_methods, unsafe_code)]
     unsafe {
-        std::env::remove_var("PYTHONHASHSEED")
+        std::env::remove_var("PYTHONHASHSEED");
     };
     config.apply_deterministic_settings();
     // PYTHONHASHSEED should NOT have been set

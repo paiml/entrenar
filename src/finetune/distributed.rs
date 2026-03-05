@@ -276,13 +276,13 @@ impl WireMessage {
                 component_sizes,
             ),
             Self::AveragedBlockGradient { step, block_idx, gradients, component_sizes } => {
-                serialize_averaged_block(&mut buf, *step, *block_idx, gradients, component_sizes)
+                serialize_averaged_block(&mut buf, *step, *block_idx, gradients, component_sizes);
             }
             Self::NonBlockGradientPayload { step, worker_id, component, gradients } => {
-                serialize_non_block_grad(&mut buf, *step, *worker_id, *component, gradients)
+                serialize_non_block_grad(&mut buf, *step, *worker_id, *component, gradients);
             }
             Self::AveragedNonBlockGradient { step, component, gradients } => {
-                serialize_averaged_non_block(&mut buf, *step, *component, gradients)
+                serialize_averaged_non_block(&mut buf, *step, *component, gradients);
             }
         }
         buf
