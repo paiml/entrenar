@@ -17,8 +17,8 @@ use presentar_core::{
     LayoutResult, Point, Rect, Size, TextStyle, TypeId, Widget,
 };
 use presentar_terminal::widgets::{
-    Border, GpuDevice, GpuPanel as PresentarGpuPanel, GpuProcess as PresentarGpuProcess,
-    GpuVendor, Layout, LayoutItem, Meter, Sparkline, Text,
+    Border, GpuDevice, GpuPanel as PresentarGpuPanel, GpuProcess as PresentarGpuProcess, GpuVendor,
+    Layout, LayoutItem, Meter, Sparkline, Text,
 };
 use std::any::Any;
 use std::path::PathBuf;
@@ -56,12 +56,7 @@ impl TrainingDashboard {
     /// Create a new training dashboard for an experiment directory.
     #[must_use]
     pub fn new(experiment_dir: PathBuf) -> Self {
-        Self {
-            snapshot: None,
-            experiment_dir,
-            bounds: Rect::default(),
-            widget_tree: None,
-        }
+        Self { snapshot: None, experiment_dir, bounds: Rect::default(), widget_tree: None }
     }
 
     /// Refresh the snapshot from training_state.json.
@@ -75,10 +70,7 @@ impl TrainingDashboard {
     /// Check if training is done (for app quit logic).
     pub fn is_finished(&self) -> bool {
         self.snapshot.as_ref().is_some_and(|s| {
-            matches!(
-                s.status,
-                TrainingStatus::Completed | TrainingStatus::Failed(_)
-            )
+            matches!(s.status, TrainingStatus::Completed | TrainingStatus::Failed(_))
         })
     }
 
@@ -112,8 +104,7 @@ impl TrainingDashboard {
 
         // Error message if failed
         if let TrainingStatus::Failed(msg) = &snap.status {
-            let err =
-                Text::new(format!("ERROR: {msg}")).with_color(Color::new(1.0, 0.3, 0.3, 1.0));
+            let err = Text::new(format!("ERROR: {msg}")).with_color(Color::new(1.0, 0.3, 0.3, 1.0));
             items.push(LayoutItem::new(err).fixed(1.0));
         }
 
@@ -129,19 +120,14 @@ impl TrainingDashboard {
 fn build_header(snap: &TrainingSnapshot) -> Layout {
     let (status_str, status_color) = status_display(&snap.status);
 
-    let title = Text::new(format!(
-        "apr monitor — {}",
-        truncate_str(&snap.experiment_id, 30)
-    ))
-    .with_color(Color::WHITE)
-    .bold();
+    let title = Text::new(format!("apr monitor — {}", truncate_str(&snap.experiment_id, 30)))
+        .with_color(Color::WHITE)
+        .bold();
 
     let status = Text::new(status_str).with_color(status_color).right();
 
-    let title_row = Layout::columns([
-        LayoutItem::new(title).expanded(),
-        LayoutItem::new(status).fixed(10.0),
-    ]);
+    let title_row =
+        Layout::columns([LayoutItem::new(title).expanded(), LayoutItem::new(status).fixed(10.0)]);
 
     let info = Text::new(format!(
         "Model: {} | Opt: {} | Batch: {}",
@@ -151,10 +137,7 @@ fn build_header(snap: &TrainingSnapshot) -> Layout {
     ))
     .with_color(Color::new(0.6, 0.6, 0.6, 1.0));
 
-    Layout::rows([
-        title_row.into_item().fixed(1.0),
-        LayoutItem::new(info).fixed(1.0),
-    ])
+    Layout::rows([title_row.into_item().fixed(1.0), LayoutItem::new(info).fixed(1.0)])
 }
 
 /// Build metrics panel: progress bar, loss, timing — inside a rounded border.
@@ -203,9 +186,8 @@ fn build_metrics_panel(snap: &TrainingSnapshot) -> Border {
 /// Build GPU panel: utilization, VRAM, temp/power — inside a rounded border.
 fn build_gpu_panel(snap: &TrainingSnapshot) -> Border {
     let Some(gpu) = &snap.gpu else {
-        return Border::rounded("GPU").child(
-            Text::new("N/A (CPU training)").with_color(Color::new(0.5, 0.5, 0.5, 1.0)),
-        );
+        return Border::rounded("GPU")
+            .child(Text::new("N/A (CPU training)").with_color(Color::new(0.5, 0.5, 0.5, 1.0)));
     };
 
     let device = convert_gpu_device(gpu);
@@ -225,17 +207,14 @@ fn build_loss_panel(snap: &TrainingSnapshot) -> Border {
     let first = snap.loss_history.first().copied().unwrap_or(0.0);
     let last = snap.loss_history.last().copied().unwrap_or(0.0);
 
-    let sparkline = Sparkline::new(values)
-        .with_color(Color::new(0.3, 0.7, 1.0, 1.0))
-        .with_trend(true);
+    let sparkline =
+        Sparkline::new(values).with_color(Color::new(0.3, 0.7, 1.0, 1.0)).with_trend(true);
 
     let range =
         Text::new(format!("{first:.4} → {last:.4}")).with_color(Color::new(0.5, 0.5, 0.5, 1.0));
 
-    let content = Layout::rows([
-        LayoutItem::new(sparkline).fixed(1.0),
-        LayoutItem::new(range).fixed(1.0),
-    ]);
+    let content =
+        Layout::rows([LayoutItem::new(sparkline).fixed(1.0), LayoutItem::new(range).fixed(1.0)]);
 
     Border::rounded("Loss History").child(content)
 }
@@ -258,9 +237,7 @@ fn convert_gpu_device(gpu: &super::state::GpuTelemetry) -> GpuDevice {
 }
 
 /// Convert entrenar `GpuProcessInfo` to presentar `GpuProcess`.
-fn convert_gpu_processes(
-    processes: &[super::state::GpuProcessInfo],
-) -> Vec<PresentarGpuProcess> {
+fn convert_gpu_processes(processes: &[super::state::GpuProcessInfo]) -> Vec<PresentarGpuProcess> {
     processes
         .iter()
         .map(|p| {
@@ -294,12 +271,7 @@ fn truncate_str(s: &str, max: usize) -> &str {
 fn format_duration(d: Duration) -> String {
     let secs = d.as_secs();
     if secs > 3600 {
-        format!(
-            "{}h {}m {}s",
-            secs / 3600,
-            (secs % 3600) / 60,
-            secs % 60
-        )
+        format!("{}h {}m {}s", secs / 3600, (secs % 3600) / 60, secs % 60)
     } else if secs > 60 {
         format!("{}m {}s", secs / 60, secs % 60)
     } else {
@@ -367,10 +339,7 @@ impl Widget for TrainingDashboard {
     }
 
     fn measure(&self, constraints: Constraints) -> Size {
-        Size {
-            width: constraints.max_width,
-            height: constraints.max_height,
-        }
+        Size { width: constraints.max_width, height: constraints.max_height }
     }
 
     fn layout(&mut self, bounds: Rect) -> LayoutResult {
@@ -384,12 +353,7 @@ impl Widget for TrainingDashboard {
             tree.layout(bounds);
         }
 
-        LayoutResult {
-            size: Size {
-                width: bounds.width,
-                height: bounds.height,
-            },
-        }
+        LayoutResult { size: Size { width: bounds.width, height: bounds.height } }
     }
 
     fn paint(&self, canvas: &mut dyn Canvas) {
@@ -400,15 +364,8 @@ impl Widget for TrainingDashboard {
         }
 
         // Fallback: waiting state
-        let dim = TextStyle {
-            color: Color::new(0.5, 0.5, 0.5, 1.0),
-            ..Default::default()
-        };
-        canvas.draw_text(
-            "Waiting for training data...",
-            Point { x: 1.0, y: 1.0 },
-            &dim,
-        );
+        let dim = TextStyle { color: Color::new(0.5, 0.5, 0.5, 1.0), ..Default::default() };
+        canvas.draw_text("Waiting for training data...", Point { x: 1.0, y: 1.0 }, &dim);
     }
 
     fn event(&mut self, event: &Event) -> Option<Box<dyn Any + Send>> {

@@ -59,25 +59,44 @@ pub use loss::{
 };
 pub use metrics::{Accuracy, F1Score, Metric, Precision, R2Score, Recall, MAE, RMSE};
 pub use trainer::{TrainResult, Trainer};
-pub use transformer_trainer::{
-    perplexity, tokens_per_second, BlockGradientSet, CudaTransformerTrainer,
-    DistributedBackend, DistributedCheckpointCoordinator, DistributedRole,
-    DistributedTrainConfig, ElasticCoordinator, LMBatch, PerBlockGradientAccumulator,
-    TransformerTrainConfig, TransformerTrainer,
-    // DDP (#133)
-    shard_batches,
-    // Parallelism strategies
-    CausalMaskType, ColumnParallelShard, OptimizerShard, PipelineAction,
-    PipelineActivationBuffer, PipelineStage, RingAttentionSchedule, RowParallelShard,
-    SequenceParallelConfig, SpCommCost, TensorParallelConfig, TpCommCost, ZeroShardMap,
-};
-#[cfg(feature = "cuda")]
-pub use transformer_trainer::{DistributedCudaTrainer, DistributedComm};
 pub use transformer_trainer::distributed_checkpoint::{
     checkpoint_path, hash_weights, should_save_checkpoint, verify_weight_consistency,
     CheckpointPhase,
 };
 pub use transformer_trainer::grad_accumulator::BLOCK_GRAD_COMPONENTS;
+pub use transformer_trainer::{
+    perplexity,
+    // DDP (#133)
+    shard_batches,
+    tokens_per_second,
+    BlockGradientSet,
+    // Parallelism strategies
+    CausalMaskType,
+    ColumnParallelShard,
+    CudaTransformerTrainer,
+    DistributedBackend,
+    DistributedCheckpointCoordinator,
+    DistributedRole,
+    DistributedTrainConfig,
+    ElasticCoordinator,
+    LMBatch,
+    OptimizerShard,
+    PerBlockGradientAccumulator,
+    PipelineAction,
+    PipelineActivationBuffer,
+    PipelineStage,
+    RingAttentionSchedule,
+    RowParallelShard,
+    SequenceParallelConfig,
+    SpCommCost,
+    TensorParallelConfig,
+    TpCommCost,
+    TransformerTrainConfig,
+    TransformerTrainer,
+    ZeroShardMap,
+};
+#[cfg(feature = "cuda")]
+pub use transformer_trainer::{DistributedComm, DistributedCudaTrainer};
 pub use tui::{
     format_duration, sparkline, sparkline_range, Alert, AlertLevel, AndonSystem, DashboardLayout,
     FeatureImportanceChart, GradientFlowHeatmap, KalmanEta, LossCurveDisplay, MetricsBuffer,

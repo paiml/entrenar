@@ -10,7 +10,7 @@
 
 #[cfg(feature = "cuda")]
 fn main() {
-    use entrenar::train::{CudaTransformerTrainer, TransformerTrainConfig, LMBatch};
+    use entrenar::train::{CudaTransformerTrainer, LMBatch, TransformerTrainConfig};
     use entrenar::transformer::TransformerConfig;
 
     println!("=== KAIZEN-047: CUDA Trainer Step Profiler ===\n");
@@ -22,30 +22,40 @@ fn main() {
     let (model_config, max_seq, num_steps, vocab) = if large {
         // 350M-class: 24 layers, 1024 hidden, 128 seq_len
         println!("Mode: LARGE (24L, 1024H, seq=128, vocab=32000, 20 steps)");
-        (TransformerConfig {
-            hidden_size: 1024,
-            intermediate_size: 4096,
-            num_hidden_layers: 24,
-            num_attention_heads: 16,
-            num_kv_heads: 16,
-            vocab_size: 32000,
-            max_position_embeddings: 512,
-            ..TransformerConfig::tiny()
-        }, 128_usize, 20_usize, 32000_usize)
+        (
+            TransformerConfig {
+                hidden_size: 1024,
+                intermediate_size: 4096,
+                num_hidden_layers: 24,
+                num_attention_heads: 16,
+                num_kv_heads: 16,
+                vocab_size: 32000,
+                max_position_embeddings: 512,
+                ..TransformerConfig::tiny()
+            },
+            128_usize,
+            20_usize,
+            32000_usize,
+        )
     } else {
         // Tiny model for quick smoke test
         println!("Mode: TINY (2L, 128H, seq=32, vocab=1000, 20 steps)");
         println!("  Use --large for production-scale profiling");
-        (TransformerConfig {
-            hidden_size: 128,
-            intermediate_size: 512,
-            num_hidden_layers: 2,
-            num_attention_heads: 4,
-            num_kv_heads: 4,
-            vocab_size: 1000,
-            max_position_embeddings: 64,
-            ..TransformerConfig::tiny()
-        }, 32_usize, 20_usize, 1000_usize)
+        (
+            TransformerConfig {
+                hidden_size: 128,
+                intermediate_size: 512,
+                num_hidden_layers: 2,
+                num_attention_heads: 4,
+                num_kv_heads: 4,
+                vocab_size: 1000,
+                max_position_embeddings: 64,
+                ..TransformerConfig::tiny()
+            },
+            32_usize,
+            20_usize,
+            1000_usize,
+        )
     };
 
     let mut train_config = TransformerTrainConfig::new(model_config);

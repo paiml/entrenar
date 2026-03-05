@@ -55,10 +55,7 @@ pub struct TuiMonitor {
 impl TuiMonitor {
     /// Create a new TUI monitor for an experiment
     pub fn new<P: AsRef<Path>>(experiment_dir: P, config: TuiMonitorConfig) -> Self {
-        Self {
-            config,
-            state: TrainingState::new(experiment_dir),
-        }
+        Self { config, state: TrainingState::new(experiment_dir) }
     }
 
     /// Run the TUI monitor loop using presentar-terminal (ALB-047/048).
@@ -81,7 +78,8 @@ impl TuiMonitor {
         eprintln!("Connected to training session. Press 'q' or Ctrl+C to detach.\n");
 
         // Create presentar dashboard widget
-        let experiment_dir = self.state.path().parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+        let experiment_dir =
+            self.state.path().parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
         let dashboard = super::dashboard::TrainingDashboard::new(experiment_dir);
 
         // Launch presentar TuiApp — handles resize, Ctrl+C, cursor, smart diffing
@@ -93,13 +91,11 @@ impl TuiMonitor {
             .map_err(|e| io::Error::other(e.to_string()))?
             .with_config(config);
 
-        app.run()
-            .map_err(|e| io::Error::other(e.to_string()))?;
+        app.run().map_err(|e| io::Error::other(e.to_string()))?;
 
         eprintln!("\nDetached from training session. Training continues in background.");
         Ok(())
     }
-
 }
 
 #[cfg(test)]
@@ -293,7 +289,8 @@ impl TrainingStateWriter {
             let log_every = (self.snapshot.steps_per_epoch / 10)
                 .max(10)
                 .min(self.snapshot.steps_per_epoch.max(1));
-            if step == 1 || step.is_multiple_of(log_every) || step == self.snapshot.steps_per_epoch {
+            if step == 1 || step.is_multiple_of(log_every) || step == self.snapshot.steps_per_epoch
+            {
                 self.refresh_gpu_telemetry();
                 self.emit_console_progress();
             }
@@ -432,7 +429,9 @@ mod state_writer_tests {
         writer.set_epochs(10, 100);
         writer.start().expect("file write should succeed");
 
-        writer.update_step(1, 10, 0.5, 0.0002, 1.5, 1200.0, 0.75).expect("file write should succeed");
+        writer
+            .update_step(1, 10, 0.5, 0.0002, 1.5, 1200.0, 0.75)
+            .expect("file write should succeed");
 
         // Verify state was written
         let mut state = TrainingState::new(temp_dir.path());

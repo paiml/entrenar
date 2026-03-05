@@ -90,12 +90,8 @@ pub struct InstructCorpusStats {
 /// # Errors
 /// Returns error if file cannot be read or contains invalid samples.
 pub fn load_instruct_corpus(path: &Path) -> crate::Result<Vec<InstructSample>> {
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        crate::Error::Io(format!(
-            "Corpus file not found: {}: {e}",
-            path.display()
-        ))
-    })?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| crate::Error::Io(format!("Corpus file not found: {}: {e}", path.display())))?;
 
     let mut samples = Vec::new();
     for (line_num, line) in content.lines().enumerate() {
@@ -104,10 +100,7 @@ pub fn load_instruct_corpus(path: &Path) -> crate::Result<Vec<InstructSample>> {
             continue;
         }
         let sample: InstructSample = serde_json::from_str(line).map_err(|e| {
-            crate::Error::ConfigError(format!(
-                "Invalid JSONL at line {}: {e}",
-                line_num + 1
-            ))
+            crate::Error::ConfigError(format!("Invalid JSONL at line {}: {e}", line_num + 1))
         })?;
 
         // F-INST-001: non-empty validation
@@ -146,10 +139,8 @@ pub fn instruct_corpus_stats(samples: &[InstructSample]) -> InstructCorpusStats 
     let total_resp_len: usize = samples.iter().map(|s| s.response.len()).sum();
     let with_system = samples.iter().filter(|s| s.system.is_some()).count();
 
-    let mut sources: Vec<String> = samples
-        .iter()
-        .filter_map(|s| s.metadata.as_ref()?.source.clone())
-        .collect();
+    let mut sources: Vec<String> =
+        samples.iter().filter_map(|s| s.metadata.as_ref()?.source.clone()).collect();
     sources.sort();
     sources.dedup();
 
@@ -176,11 +167,8 @@ mod tests {
             r#"{{"instruction": "Write hello world", "response": "print('hello world')"}}"#
         )
         .expect("valid");
-        writeln!(
-            f,
-            r#"{{"instruction": "Sort a list", "response": "sorted(lst)"}}"#
-        )
-        .expect("valid");
+        writeln!(f, r#"{{"instruction": "Sort a list", "response": "sorted(lst)"}}"#)
+            .expect("valid");
 
         let samples = load_instruct_corpus(f.path()).expect("valid");
         assert_eq!(samples.len(), 2);
@@ -191,11 +179,7 @@ mod tests {
     #[test]
     fn test_empty_instruction_rejected() {
         let mut f = NamedTempFile::new().expect("valid");
-        writeln!(
-            f,
-            r#"{{"instruction": "", "response": "some code"}}"#
-        )
-        .expect("valid");
+        writeln!(f, r#"{{"instruction": "", "response": "some code"}}"#).expect("valid");
 
         let result = load_instruct_corpus(f.path());
         assert!(result.is_err());
@@ -205,11 +189,7 @@ mod tests {
     #[test]
     fn test_empty_response_rejected() {
         let mut f = NamedTempFile::new().expect("valid");
-        writeln!(
-            f,
-            r#"{{"instruction": "Do something", "response": "  "}}"#
-        )
-        .expect("valid");
+        writeln!(f, r#"{{"instruction": "Do something", "response": "  "}}"#).expect("valid");
 
         let result = load_instruct_corpus(f.path());
         assert!(result.is_err());
@@ -276,17 +256,9 @@ mod tests {
     #[test]
     fn test_skip_empty_lines() {
         let mut f = NamedTempFile::new().expect("valid");
-        writeln!(
-            f,
-            r#"{{"instruction": "a", "response": "b"}}"#
-        )
-        .expect("valid");
+        writeln!(f, r#"{{"instruction": "a", "response": "b"}}"#).expect("valid");
         writeln!(f).expect("valid"); // empty line
-        writeln!(
-            f,
-            r#"{{"instruction": "c", "response": "d"}}"#
-        )
-        .expect("valid");
+        writeln!(f, r#"{{"instruction": "c", "response": "d"}}"#).expect("valid");
 
         let samples = load_instruct_corpus(f.path()).expect("valid");
         assert_eq!(samples.len(), 2);

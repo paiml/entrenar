@@ -263,9 +263,7 @@ pub fn batched_softmax_forward(
     // matching sizes, and the kernel parameters match the expected PTX signature.
     unsafe {
         stream.launch_kernel(module, kernel_name, &config, &mut args).map_err(|e| {
-            CudaTensorError::KernelError(format!(
-                "Batched softmax forward launch failed: {e:?}"
-            ))
+            CudaTensorError::KernelError(format!("Batched softmax forward launch failed: {e:?}"))
         })?;
     }
 

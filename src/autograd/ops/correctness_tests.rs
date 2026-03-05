@@ -3,8 +3,8 @@
 //!
 //! Batuta: NR-14 (Normalization Layer Correctness)
 
-use crate::autograd::Tensor;
 use super::layer_norm;
+use crate::autograd::Tensor;
 
 /// Reference LayerNorm (f64 precision)
 fn reference_layer_norm_f64(x: &[f32], gamma: &[f32], beta: &[f32], eps: f32) -> Vec<f32> {
@@ -54,7 +54,7 @@ fn norm_test_variance_one() {
     let beta = Tensor::from_vec(vec![0.0; 5], false);
     let result = layer_norm(&x, &gamma, &beta, 1e-5);
     let mean: f32 = result.data().iter().sum::<f32>() / result.len() as f32;
-    let variance: f32 = result.data().iter().map(|&v| (v - mean) * (v - mean)).sum::<f32>()
-        / result.len() as f32;
+    let variance: f32 =
+        result.data().iter().map(|&v| (v - mean) * (v - mean)).sum::<f32>() / result.len() as f32;
     assert!((variance - 1.0).abs() < 1e-4, "Output variance should be ~1, got {variance}");
 }

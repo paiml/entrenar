@@ -83,9 +83,7 @@ impl ExperimentStorage for SqliteBackend {
         let conn = self.lock_conn()?;
 
         let current_status: String = conn
-            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| {
-                row.get(0)
-            })
+            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| row.get(0))
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
                     StorageError::RunNotFound(run_id.to_string())
@@ -113,9 +111,7 @@ impl ExperimentStorage for SqliteBackend {
         let conn = self.lock_conn()?;
 
         let current_status: String = conn
-            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| {
-                row.get(0)
-            })
+            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| row.get(0))
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
                     StorageError::RunNotFound(run_id.to_string())
@@ -144,11 +140,9 @@ impl ExperimentStorage for SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
@@ -170,11 +164,9 @@ impl ExperimentStorage for SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
@@ -203,11 +195,9 @@ impl ExperimentStorage for SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
@@ -223,9 +213,7 @@ impl ExperimentStorage for SqliteBackend {
                 let step: i64 = row.get(0)?;
                 let value: f64 = row.get(1)?;
                 let ts_str: String = row.get(2)?;
-                let timestamp: DateTime<Utc> = ts_str
-                    .parse()
-                    .unwrap_or_else(|_| Utc::now());
+                let timestamp: DateTime<Utc> = ts_str.parse().unwrap_or_else(|_| Utc::now());
                 Ok(MetricPoint::with_timestamp(step as u64, value, timestamp))
             })
             .map_err(|e| StorageError::Backend(format!("Failed to query metrics: {e}")))?
@@ -239,9 +227,7 @@ impl ExperimentStorage for SqliteBackend {
         let conn = self.lock_conn()?;
 
         let status_str: String = conn
-            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| {
-                row.get(0)
-            })
+            .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| row.get(0))
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
                     StorageError::RunNotFound(run_id.to_string())
@@ -257,11 +243,9 @@ impl ExperimentStorage for SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
@@ -282,22 +266,19 @@ impl ExperimentStorage for SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
             return Err(StorageError::RunNotFound(run_id.to_string()));
         }
 
-        let result = conn.query_row(
-            "SELECT span_id FROM span_ids WHERE run_id = ?1",
-            [run_id],
-            |row| row.get(0),
-        );
+        let result =
+            conn.query_row("SELECT span_id FROM span_ids WHERE run_id = ?1", [run_id], |row| {
+                row.get(0)
+            });
 
         match result {
             Ok(span_id) => Ok(Some(span_id)),

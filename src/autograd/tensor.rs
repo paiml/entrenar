@@ -26,7 +26,12 @@ pub struct Tensor {
 impl Tensor {
     /// Create a new tensor with data
     pub fn new(data: Array1<f32>, requires_grad: bool) -> Self {
-        Self { data: Rc::new(data), grad: Rc::new(RefCell::new(None)), backward_op: None, requires_grad }
+        Self {
+            data: Rc::new(data),
+            grad: Rc::new(RefCell::new(None)),
+            backward_op: None,
+            requires_grad,
+        }
     }
 
     /// Create a tensor from a vector

@@ -75,10 +75,7 @@ impl DataParallelCoordinator {
             pipelines.push(pipeline);
         }
 
-        Ok(Self {
-            pipelines,
-            gpu_indices: gpu_indices.to_vec(),
-        })
+        Ok(Self { pipelines, gpu_indices: gpu_indices.to_vec() })
     }
 
     /// Number of GPUs in the pool
@@ -143,8 +140,7 @@ impl DataParallelCoordinator {
         let total_correct: usize = results.iter().map(|r| r.correct).sum();
         let avg_loss: f32 =
             results.iter().map(|r| r.avg_loss * r.total as f32).sum::<f32>() / total_samples as f32;
-        let avg_grad_norm: f32 =
-            results.iter().map(|r| r.grad_norm).sum::<f32>() / num_gpus as f32;
+        let avg_grad_norm: f32 = results.iter().map(|r| r.grad_norm).sum::<f32>() / num_gpus as f32;
 
         // ── 4. Sync LoRA weights from primary to replicas ─────────────────
         // After each GPU's optimizer step, weights diverge slightly.
@@ -180,7 +176,9 @@ impl DataParallelCoordinator {
 
         for replica in replicas.iter_mut() {
             // Copy LoRA weights directly via assign (single memcpy per matrix)
-            for (src_lora, dst_lora) in primary.lora_layers.iter().zip(replica.lora_layers.iter_mut()) {
+            for (src_lora, dst_lora) in
+                primary.lora_layers.iter().zip(replica.lora_layers.iter_mut())
+            {
                 dst_lora.lora_a_mut().data_mut().assign(src_lora.lora_a().data());
                 dst_lora.lora_b_mut().data_mut().assign(src_lora.lora_b().data());
             }
@@ -208,11 +206,7 @@ pub fn shard_samples<T>(samples: &[T], num_workers: usize) -> Vec<&[T]> {
     (0..num_workers)
         .map(|i| {
             let start = i * shard_size;
-            let end = if i == num_workers - 1 {
-                samples.len()
-            } else {
-                start + shard_size
-            };
+            let end = if i == num_workers - 1 { samples.len() } else { start + shard_size };
             &samples[start..end]
         })
         .collect()
@@ -269,11 +263,8 @@ mod tests {
             head_dim_override: None,
         };
 
-        let classify_config = ClassifyConfig {
-            num_classes: 2,
-            lora_rank: 4,
-            ..ClassifyConfig::default()
-        };
+        let classify_config =
+            ClassifyConfig { num_classes: 2, lora_rank: 4, ..ClassifyConfig::default() };
 
         (model_config, classify_config)
     }
@@ -281,13 +272,12 @@ mod tests {
     #[test]
     fn test_coordinator_creation() {
         let (model_config, classify_config) = test_config();
-        let coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0],
-        );
+        let coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0]);
         assert!(coordinator.is_ok());
-        assert_eq!(coordinator.as_ref().map(super::DataParallelCoordinator::num_gpus).unwrap_or(0), 1);
+        assert_eq!(
+            coordinator.as_ref().map(super::DataParallelCoordinator::num_gpus).unwrap_or(0),
+            1
+        );
     }
 
     #[test]
@@ -300,12 +290,8 @@ mod tests {
     #[test]
     fn test_multi_gpu_coordinator_accessors() {
         let (model_config, classify_config) = test_config();
-        let mut coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0],
-        )
-        .expect("creation should succeed");
+        let mut coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0])
+            .expect("creation should succeed");
 
         // Verify pipeline accessors work
         assert_eq!(coordinator.num_gpus(), 1);
@@ -320,12 +306,8 @@ mod tests {
     #[test]
     fn test_single_gpu_fallback_path() {
         let (model_config, classify_config) = test_config();
-        let coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0],
-        )
-        .expect("creation should succeed");
+        let coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0])
+            .expect("creation should succeed");
 
         assert_eq!(coordinator.num_gpus(), 1);
     }
@@ -333,12 +315,8 @@ mod tests {
     #[test]
     fn test_weight_sync_noop_single_gpu() {
         let (model_config, classify_config) = test_config();
-        let mut coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0],
-        )
-        .expect("creation should succeed");
+        let mut coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0])
+            .expect("creation should succeed");
 
         coordinator.sync_lora_weights_from_primary();
     }
@@ -351,16 +329,11 @@ mod tests {
     #[test]
     fn falsify_dp_001_weight_sync_makes_replicas_identical() {
         let (model_config, classify_config) = test_config();
-        let mut coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0, 1],
-        )
-        .expect("creation should succeed");
+        let mut coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0, 1])
+            .expect("creation should succeed");
 
         // Manually perturb replica 1's weights so they differ
-        let perturbed: Vec<f32> = coordinator.pipelines[1]
-            .lora_layers[0]
+        let perturbed: Vec<f32> = coordinator.pipelines[1].lora_layers[0]
             .lora_a()
             .data()
             .iter()
@@ -386,16 +359,11 @@ mod tests {
     #[test]
     fn falsify_dp_001_weights_diverge_without_sync() {
         let (model_config, classify_config) = test_config();
-        let mut coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0, 1],
-        )
-        .expect("creation should succeed");
+        let mut coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0, 1])
+            .expect("creation should succeed");
 
         // Perturb replica 1 (simulating independent optimizer step)
-        let perturbed: Vec<f32> = coordinator.pipelines[1]
-            .lora_layers[0]
+        let perturbed: Vec<f32> = coordinator.pipelines[1].lora_layers[0]
             .lora_a()
             .data()
             .iter()
@@ -417,7 +385,11 @@ mod tests {
 
         for num_workers in [1, 2, 3, 4, 7, 10] {
             let shards = shard_samples(&samples, num_workers);
-            assert_eq!(shards.len(), num_workers, "Wrong number of shards for {num_workers} workers");
+            assert_eq!(
+                shards.len(),
+                num_workers,
+                "Wrong number of shards for {num_workers} workers"
+            );
 
             // All samples covered
             let total: usize = shards.iter().map(|s| s.len()).sum();
@@ -427,7 +399,10 @@ mod tests {
             let mut seen = std::collections::HashSet::new();
             for shard in &shards {
                 for &s in *shard {
-                    assert!(seen.insert(s), "F-DP-002: duplicate sample {s} with {num_workers} workers");
+                    assert!(
+                        seen.insert(s),
+                        "F-DP-002: duplicate sample {s} with {num_workers} workers"
+                    );
                 }
             }
             assert_eq!(seen.len(), 100);
@@ -450,10 +425,7 @@ mod tests {
     // FALSIFY-DP-003: NaN propagation through gradient averaging
     #[test]
     fn falsify_dp_003_nan_gradient_propagates() {
-        let grads = vec![
-            vec![1.0, 2.0, 3.0],
-            vec![f32::NAN, 2.0, 3.0],
-        ];
+        let grads = vec![vec![1.0, 2.0, 3.0], vec![f32::NAN, 2.0, 3.0]];
         let avg = average_gradients(&grads);
         assert!(avg[0].is_nan(), "F-DP-003: NaN MUST propagate through averaging (Jidoka)");
         // Non-NaN elements should still average correctly
@@ -464,10 +436,7 @@ mod tests {
     // FALSIFY-DP-003: Inf propagation
     #[test]
     fn falsify_dp_003_inf_gradient_propagates() {
-        let grads = vec![
-            vec![1.0, 2.0],
-            vec![f32::INFINITY, 2.0],
-        ];
+        let grads = vec![vec![1.0, 2.0], vec![f32::INFINITY, 2.0]];
         let avg = average_gradients(&grads);
         assert!(avg[0].is_infinite(), "F-DP-003: Inf MUST propagate through averaging");
     }
@@ -484,11 +453,7 @@ mod tests {
     // Gradient averaging correctness
     #[test]
     fn test_average_gradients_correct() {
-        let grads = vec![
-            vec![2.0, 4.0, 6.0],
-            vec![4.0, 6.0, 8.0],
-            vec![6.0, 8.0, 10.0],
-        ];
+        let grads = vec![vec![2.0, 4.0, 6.0], vec![4.0, 6.0, 8.0], vec![6.0, 8.0, 10.0]];
         let avg = average_gradients(&grads);
         assert!((avg[0] - 4.0).abs() < 1e-6);
         assert!((avg[1] - 6.0).abs() < 1e-6);
@@ -537,21 +502,12 @@ mod tests {
     #[test]
     fn test_weight_sync_covers_classifier_head() {
         let (model_config, classify_config) = test_config();
-        let mut coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0, 1],
-        )
-        .expect("creation should succeed");
+        let mut coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0, 1])
+            .expect("creation should succeed");
 
         // Perturb replica 1's classifier weight
-        let perturbed: Vec<f32> = coordinator.pipelines[1]
-            .classifier
-            .weight
-            .data()
-            .iter()
-            .map(|v| v + 99.0)
-            .collect();
+        let perturbed: Vec<f32> =
+            coordinator.pipelines[1].classifier.weight.data().iter().map(|v| v + 99.0).collect();
         let arr = ndarray::Array1::from(perturbed);
         *coordinator.pipelines[1].classifier.weight.data_mut() = arr;
 
@@ -569,12 +525,9 @@ mod tests {
         let (model_config, classify_config) = test_config();
         for n in [1, 2, 3, 4] {
             let indices: Vec<u32> = (0..n).collect();
-            let coordinator = DataParallelCoordinator::new(
-                &model_config,
-                classify_config.clone(),
-                &indices,
-            )
-            .expect("creation should succeed");
+            let coordinator =
+                DataParallelCoordinator::new(&model_config, classify_config.clone(), &indices)
+                    .expect("creation should succeed");
             assert_eq!(coordinator.num_gpus(), n as usize);
         }
     }
@@ -584,12 +537,8 @@ mod tests {
     #[test]
     fn falsify_dp_001_weight_sync_all_layers_and_classifier() {
         let (model_config, classify_config) = test_config();
-        let mut coordinator = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0, 1],
-        )
-        .expect("creation should succeed");
+        let mut coordinator = DataParallelCoordinator::new(&model_config, classify_config, &[0, 1])
+            .expect("creation should succeed");
 
         // Perturb ALL lora_a/lora_b of replica 1 and classifier
         for lora in &mut coordinator.pipelines[1].lora_layers {
@@ -598,10 +547,9 @@ mod tests {
             let perturbed_b: Vec<f32> = lora.lora_b().data().iter().map(|v| v + 7.0).collect();
             *lora.lora_b_mut().data_mut() = ndarray::Array1::from(perturbed_b);
         }
-        let perturbed_w: Vec<f32> = coordinator.pipelines[1]
-            .classifier.weight.data().iter().map(|v| v + 99.0).collect();
-        *coordinator.pipelines[1].classifier.weight.data_mut() =
-            ndarray::Array1::from(perturbed_w);
+        let perturbed_w: Vec<f32> =
+            coordinator.pipelines[1].classifier.weight.data().iter().map(|v| v + 99.0).collect();
+        *coordinator.pipelines[1].classifier.weight.data_mut() = ndarray::Array1::from(perturbed_w);
 
         // Sync from primary
         coordinator.sync_lora_weights_from_primary();
@@ -649,10 +597,7 @@ mod tests {
 
         // Create samples
         let samples: Vec<SafetySample> = (0..20)
-            .map(|i| SafetySample {
-                input: format!("test_sample_{i}"),
-                label: i % 2,
-            })
+            .map(|i| SafetySample { input: format!("test_sample_{i}"), label: i % 2 })
             .collect();
 
         // ── Single GPU: train locally ──
@@ -674,18 +619,12 @@ mod tests {
         let single_avg_loss = single_loss / samples.len() as f32;
 
         // ── Multi GPU (2 replicas): shard and average ──
-        let mut multi = DataParallelCoordinator::new(
-            &model_config,
-            classify_config,
-            &[0, 1],
-        )
-        .expect("creation should succeed");
+        let mut multi = DataParallelCoordinator::new(&model_config, classify_config, &[0, 1])
+            .expect("creation should succeed");
 
         // Pair token IDs with labels so sharding preserves the mapping
-        let id_label_pairs: Vec<(&Vec<u32>, usize)> = token_ids_batch
-            .iter()
-            .zip(samples.iter().map(|s| s.label))
-            .collect();
+        let id_label_pairs: Vec<(&Vec<u32>, usize)> =
+            token_ids_batch.iter().zip(samples.iter().map(|s| s.label)).collect();
         let shards = shard_samples(&id_label_pairs, 2);
         let mut multi_loss = 0.0f32;
         let mut multi_count = 0usize;
@@ -816,10 +755,7 @@ mod tests {
         assert!(has_non_finite(&[f32::NEG_INFINITY]));
 
         // Averaging NaN+Inf produces NaN
-        let grads = vec![
-            vec![f32::NAN, 1.0],
-            vec![f32::INFINITY, 2.0],
-        ];
+        let grads = vec![vec![f32::NAN, 1.0], vec![f32::INFINITY, 2.0]];
         let avg = average_gradients(&grads);
         assert!(avg[0].is_nan(), "NaN + Inf average should be NaN");
         assert!(has_non_finite(&avg));

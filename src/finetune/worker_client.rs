@@ -92,20 +92,12 @@ impl WorkerClient {
         // Read JoinAccepted
         let response = read_wire_message(&stream)?;
         match response {
-            WireMessage::JoinAccepted {
-                worker_id,
-                total_workers,
-            } => {
+            WireMessage::JoinAccepted { worker_id, total_workers } => {
                 eprintln!(
                     "[worker {}] Joined as worker {worker_id}/{total_workers}",
                     config.node_id
                 );
-                Ok(Self {
-                    config,
-                    stream,
-                    worker_id,
-                    total_workers,
-                })
+                Ok(Self { config, stream, worker_id, total_workers })
             }
             other => Err(format!("expected JoinAccepted, got {other:?}")),
         }
@@ -120,20 +112,11 @@ impl WorkerClient {
     pub fn receive_shard(&self) -> Result<Option<ShardAssignment>, String> {
         let msg = read_wire_message(&self.stream)?;
         match msg {
-            WireMessage::ShardAssignment {
-                step,
-                shard_start,
-                shard_end,
-            } => Ok(Some(ShardAssignment {
-                step,
-                shard_start,
-                shard_end,
-            })),
+            WireMessage::ShardAssignment { step, shard_start, shard_end } => {
+                Ok(Some(ShardAssignment { step, shard_start, shard_end }))
+            }
             WireMessage::Shutdown => {
-                eprintln!(
-                    "[worker {}] Received shutdown from coordinator",
-                    self.config.node_id
-                );
+                eprintln!("[worker {}] Received shutdown from coordinator", self.config.node_id);
                 Ok(None)
             }
             other => Err(format!("expected ShardAssignment or Shutdown, got {other:?}")),
@@ -177,15 +160,9 @@ impl WorkerClient {
     pub fn receive_averaged(&self) -> Result<AveragedResult, String> {
         let msg = read_wire_message(&self.stream)?;
         match msg {
-            WireMessage::AveragedGradient {
-                step,
-                gradients,
-                global_loss,
-            } => Ok(AveragedResult {
-                step,
-                gradients,
-                global_loss,
-            }),
+            WireMessage::AveragedGradient { step, gradients, global_loss } => {
+                Ok(AveragedResult { step, gradients, global_loss })
+            }
             WireMessage::Shutdown => Err("shutdown during AllReduce".to_string()),
             other => Err(format!("expected AveragedGradient, got {other:?}")),
         }
@@ -224,17 +201,9 @@ impl WorkerClient {
     pub fn receive_averaged_block(&self) -> Result<AveragedBlockResult, String> {
         let msg = read_wire_message(&self.stream)?;
         match msg {
-            WireMessage::AveragedBlockGradient {
-                step,
-                block_idx,
-                gradients,
-                component_sizes,
-            } => Ok(AveragedBlockResult {
-                step,
-                block_idx,
-                gradients,
-                component_sizes,
-            }),
+            WireMessage::AveragedBlockGradient { step, block_idx, gradients, component_sizes } => {
+                Ok(AveragedBlockResult { step, block_idx, gradients, component_sizes })
+            }
             WireMessage::Shutdown => Err("shutdown during block AllReduce".to_string()),
             other => Err(format!("expected AveragedBlockGradient, got {other:?}")),
         }
@@ -265,15 +234,9 @@ impl WorkerClient {
     pub fn receive_averaged_non_block(&self) -> Result<AveragedNonBlockResult, String> {
         let msg = read_wire_message(&self.stream)?;
         match msg {
-            WireMessage::AveragedNonBlockGradient {
-                step,
-                component,
-                gradients,
-            } => Ok(AveragedNonBlockResult {
-                step,
-                component,
-                gradients,
-            }),
+            WireMessage::AveragedNonBlockGradient { step, component, gradients } => {
+                Ok(AveragedNonBlockResult { step, component, gradients })
+            }
             WireMessage::Shutdown => Err("shutdown during non-block AllReduce".to_string()),
             other => Err(format!("expected AveragedNonBlockGradient, got {other:?}")),
         }
@@ -295,14 +258,15 @@ impl WorkerClient {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
-    use super::*;
     use super::super::distributed::DistributedConfig;
     use super::super::gradient_server::GradientServer;
+    use super::*;
     use std::thread;
 
     #[test]
     fn test_worker_connect_and_join() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let server_config =
+            DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
         let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
@@ -320,7 +284,8 @@ mod tests {
 
     #[test]
     fn test_worker_block_gradient_roundtrip() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let server_config =
+            DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
         let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
@@ -361,7 +326,8 @@ mod tests {
 
     #[test]
     fn test_worker_non_block_gradient_roundtrip() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let server_config =
+            DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
         let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
@@ -395,7 +361,8 @@ mod tests {
 
     #[test]
     fn test_two_worker_block_allreduce() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 2);
+        let server_config =
+            DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 2);
         let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
@@ -440,7 +407,8 @@ mod tests {
 
     #[test]
     fn test_worker_full_training_step() {
-        let server_config = DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
+        let server_config =
+            DistributedConfig::coordinator("127.0.0.1:0".parse().expect("valid"), 1);
         let mut server = GradientServer::bind(server_config).expect("valid");
         let addr = server.local_addr();
 
@@ -455,9 +423,7 @@ mod tests {
             assert_eq!(shard.shard_end, 50);
 
             // Send gradients
-            client
-                .send_gradients(0, vec![1.0, 2.0, 3.0], 0.5, 48, 50)
-                .expect("valid");
+            client.send_gradients(0, vec![1.0, 2.0, 3.0], 0.5, 48, 50).expect("valid");
 
             // Receive averaged
             let avg = client.receive_averaged().expect("valid");

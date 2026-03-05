@@ -54,10 +54,7 @@ fn print_usage() {
 }
 
 fn parse_config_path(args: &[String]) -> Option<PathBuf> {
-    args.iter()
-        .position(|a| a == "--config")
-        .and_then(|i| args.get(i + 1))
-        .map(PathBuf::from)
+    args.iter().position(|a| a == "--config").and_then(|i| args.get(i + 1)).map(PathBuf::from)
 }
 
 fn load_or_default_cluster(path: Option<&Path>) -> ClusterConfig {
@@ -113,26 +110,10 @@ fn print_cluster_info(cluster: &ClusterConfig) {
 
 fn create_demo_jobs() -> Vec<AdapterJob> {
     vec![
-        AdapterJob {
-            adapter_idx: 0,
-            budget_mb: 6000,
-            label: "code-review".to_string(),
-        },
-        AdapterJob {
-            adapter_idx: 1,
-            budget_mb: 6000,
-            label: "bug-fixing".to_string(),
-        },
-        AdapterJob {
-            adapter_idx: 2,
-            budget_mb: 3000,
-            label: "docstring-gen".to_string(),
-        },
-        AdapterJob {
-            adapter_idx: 3,
-            budget_mb: 3000,
-            label: "test-gen".to_string(),
-        },
+        AdapterJob { adapter_idx: 0, budget_mb: 6000, label: "code-review".to_string() },
+        AdapterJob { adapter_idx: 1, budget_mb: 6000, label: "bug-fixing".to_string() },
+        AdapterJob { adapter_idx: 2, budget_mb: 3000, label: "docstring-gen".to_string() },
+        AdapterJob { adapter_idx: 3, budget_mb: 3000, label: "test-gen".to_string() },
     ]
 }
 
@@ -314,9 +295,7 @@ rank = 8
                     entry.data.display(),
                     entry.checkpoint.display(),
                     entry.rank.map_or("default".to_string(), |r| r.to_string()),
-                    entry
-                        .learning_rate
-                        .map_or("default".to_string(), |lr| format!("{lr}"))
+                    entry.learning_rate.map_or("default".to_string(), |lr| format!("{lr}"))
                 );
             }
         }
@@ -331,10 +310,7 @@ fn show_health_check(cluster: &ClusterConfig) {
     let results = check_cluster_health(cluster);
     for h in &results {
         let status = if h.reachable { "OK" } else { "UNREACHABLE" };
-        let apr = h
-            .apr_version
-            .as_deref()
-            .unwrap_or("not found");
+        let apr = h.apr_version.as_deref().unwrap_or("not found");
         let err = h.error.as_deref().unwrap_or("");
         if h.reachable {
             println!("  {}: {status} (apr: {apr})", h.node_name);

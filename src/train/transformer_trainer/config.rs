@@ -6,8 +6,7 @@ use crate::transformer::TransformerConfig;
 use std::net::SocketAddr;
 
 /// Role of a node in distributed pretraining.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DistributedRole {
     /// Coordinates training: AllReduces gradients, manages checkpoints
     #[default]
@@ -16,10 +15,8 @@ pub enum DistributedRole {
     Worker,
 }
 
-
 /// Compute backend for a distributed worker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DistributedBackend {
     /// NVIDIA CUDA
     Cuda,
@@ -29,7 +26,6 @@ pub enum DistributedBackend {
     #[default]
     Auto,
 }
-
 
 /// Configuration for distributed pretraining (DDP).
 ///

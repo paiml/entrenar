@@ -83,10 +83,7 @@ pub struct ApiAllowlist {
 
 impl Default for ApiAllowlist {
     fn default() -> Self {
-        Self {
-            allowed_endpoints: HashSet::new(),
-            offline_mode: true,
-        }
+        Self { allowed_endpoints: HashSet::new(), offline_mode: true }
     }
 }
 
@@ -101,10 +98,7 @@ impl ApiAllowlist {
 
     /// Create a fully offline allowlist (SDG-14)
     pub fn offline() -> Self {
-        Self {
-            allowed_endpoints: HashSet::new(),
-            offline_mode: true,
-        }
+        Self { allowed_endpoints: HashSet::new(), offline_mode: true }
     }
 }
 
@@ -142,10 +136,7 @@ pub struct AuditTrail {
 impl AuditTrail {
     /// Create a new empty audit trail
     pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-            next_sequence: 0,
-        }
+        Self { entries: Vec::new(), next_sequence: 0 }
     }
 
     /// Append an entry to the audit trail (append-only)
@@ -155,9 +146,8 @@ impl AuditTrail {
         data: &str,
         classification: DataClassification,
     ) -> &AuditEntry {
-        let prev_hash = self
-            .entries
-            .last().map_or_else(|| "genesis".to_string(), |e| e.hash.clone());
+        let prev_hash =
+            self.entries.last().map_or_else(|| "genesis".to_string(), |e| e.hash.clone());
 
         let sequence = self.next_sequence;
         self.next_sequence += 1;
@@ -291,10 +281,7 @@ pub struct DeletionCascade {
 impl DeletionCascade {
     /// Create a deletion cascade for all storage locations
     pub fn full(targets: Vec<String>) -> Self {
-        Self {
-            targets,
-            requires_unlearning: true,
-        }
+        Self { targets, requires_unlearning: true }
     }
 
     /// Execute the cascade (dry run — returns list of actions)
@@ -324,10 +311,7 @@ pub struct SecureAggregator {
 impl SecureAggregator {
     /// Create a secure aggregation coordinator
     pub fn new(num_clients: usize) -> Self {
-        Self {
-            num_clients,
-            encrypted: true,
-        }
+        Self { num_clients, encrypted: true }
     }
 
     /// Aggregate encrypted gradients (secure_aggregation protocol)
@@ -359,10 +343,7 @@ pub fn enforce_tier(data_class: DataClassification) -> bool {
 }
 
 /// Validate access level against required classification (SDG-07)
-pub fn validate_access_level(
-    actual: DataClassification,
-    required: DataClassification,
-) -> bool {
+pub fn validate_access_level(actual: DataClassification, required: DataClassification) -> bool {
     let level = |c: &DataClassification| match c {
         DataClassification::Public => 0,
         DataClassification::Internal => 1,
@@ -395,9 +376,7 @@ pub struct DataUsageAgreement {
 impl DataUsageAgreement {
     /// Create empty agreement tracker
     pub fn new() -> Self {
-        Self {
-            records: Vec::new(),
-        }
+        Self { records: Vec::new() }
     }
 
     /// Add consent record
@@ -455,9 +434,7 @@ pub struct TransferLogEntry {
 impl TransferLog {
     /// Create a new transfer log
     pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+        Self { entries: Vec::new() }
     }
 
     /// Log a data_export / international_transfer event
@@ -493,10 +470,7 @@ pub fn weight_access(model_acl: &[String], requester: &str) -> bool {
 /// Encrypt weights for sovereign_model protection (SDG-11)
 pub fn encrypt_weights(weights: &[f32], _key: &[u8]) -> Vec<u8> {
     // Placeholder: XOR-based sealed_model (encrypted_model format)
-    let bytes: Vec<u8> = weights
-        .iter()
-        .flat_map(|w| w.to_le_bytes())
-        .collect();
+    let bytes: Vec<u8> = weights.iter().flat_map(|w| w.to_le_bytes()).collect();
     bytes
 }
 
@@ -511,10 +485,7 @@ pub struct KeyManagement {
 
 impl Default for KeyManagement {
     fn default() -> Self {
-        Self {
-            key_rotation_interval: 86400,
-            kms_provider: "local".to_string(),
-        }
+        Self { key_rotation_interval: 86400, kms_provider: "local".to_string() }
     }
 }
 
@@ -588,11 +559,7 @@ mod tests {
         let mut trail = AuditTrail::new();
 
         trail.append("training_start", "model=350M", DataClassification::Internal);
-        trail.append(
-            "checkpoint_save",
-            "step=100",
-            DataClassification::Sovereign,
-        );
+        trail.append("checkpoint_save", "step=100", DataClassification::Sovereign);
         trail.append("training_end", "loss=5.92", DataClassification::Internal);
 
         assert_eq!(trail.len(), 3);
@@ -640,19 +607,14 @@ mod tests {
     #[test]
     fn test_classification_inheritance() {
         // Sovereign input should produce sovereign output
-        let result = inherit_classification(
-            DataClassification::Sovereign,
-            DataClassification::Internal,
-        );
+        let result =
+            inherit_classification(DataClassification::Sovereign, DataClassification::Internal);
         assert_eq!(result, DataClassification::Sovereign);
     }
 
     #[test]
     fn test_deletion_cascade_plan() {
-        let cascade = DeletionCascade::full(vec![
-            "checkpoints/".to_string(),
-            "logs/".to_string(),
-        ]);
+        let cascade = DeletionCascade::full(vec!["checkpoints/".to_string(), "logs/".to_string()]);
         let plan = cascade.plan();
         assert_eq!(plan.len(), 3); // 2 deletes + 1 unlearning
         assert!(plan[0].contains("checkpoints"));

@@ -42,8 +42,17 @@ const OPT: usize = 10;
 const NUM_PHASES: usize = 11;
 
 const PHASE_NAMES: [&str; NUM_PHASES] = [
-    "embed", "h2d", "forward", "norm_lm", "loss",
-    "grad_h2d", "lm_bwd", "norm_bwd", "blk_bwd", "embed_bwd", "opt",
+    "embed",
+    "h2d",
+    "forward",
+    "norm_lm",
+    "loss",
+    "grad_h2d",
+    "lm_bwd",
+    "norm_bwd",
+    "blk_bwd",
+    "embed_bwd",
+    "opt",
 ];
 
 /// Per-step timing accumulator.
@@ -152,7 +161,11 @@ impl StepProfiler {
         let total_us = self.total_wall.as_micros() as f64;
         let avg_step_us = total_us / self.step_count as f64;
 
-        println!("\n┌─ Step Profiler ({} steps, avg {:.1} ms/step) ─┐", self.step_count, avg_step_us / 1000.0);
+        println!(
+            "\n┌─ Step Profiler ({} steps, avg {:.1} ms/step) ─┐",
+            self.step_count,
+            avg_step_us / 1000.0
+        );
         println!("│ {:>10} │ {:>8} │ {:>6} │ {:>8} │", "phase", "total_ms", "pct", "avg_ms");
         println!("│ {:-<10} │ {:-<8} │ {:-<6} │ {:-<8} │", "", "", "", "");
 
@@ -167,21 +180,39 @@ impl StepProfiler {
         }
 
         let unaccounted = self.total_wall.saturating_sub(accounted);
-        let unaccounted_pct = if total_us > 0.0 { unaccounted.as_micros() as f64 / total_us * 100.0 } else { 0.0 };
-        println!("│ {:>10} │ {:>8.1} │ {:>5.1}% │ {:>8.2} │", "other", unaccounted.as_micros() as f64 / 1000.0, unaccounted_pct, unaccounted.as_micros() as f64 / 1000.0 / self.step_count as f64);
+        let unaccounted_pct =
+            if total_us > 0.0 { unaccounted.as_micros() as f64 / total_us * 100.0 } else { 0.0 };
+        println!(
+            "│ {:>10} │ {:>8.1} │ {:>5.1}% │ {:>8.2} │",
+            "other",
+            unaccounted.as_micros() as f64 / 1000.0,
+            unaccounted_pct,
+            unaccounted.as_micros() as f64 / 1000.0 / self.step_count as f64
+        );
 
-        println!("│ {:>10} │ {:>8.1} │ {:>5}  │ {:>8.2} │", "TOTAL", total_us / 1000.0, "100%", avg_step_us / 1000.0);
+        println!(
+            "│ {:>10} │ {:>8.1} │ {:>5}  │ {:>8.2} │",
+            "TOTAL",
+            total_us / 1000.0,
+            "100%",
+            avg_step_us / 1000.0
+        );
         println!("└────────────┴──────────┴────────┴──────────┘");
 
         // Percentiles for step wall-clock
         if self.step_durations.len() >= 10 {
-            let mut sorted: Vec<u128> = self.step_durations.iter().map(std::time::Duration::as_micros).collect();
+            let mut sorted: Vec<u128> =
+                self.step_durations.iter().map(std::time::Duration::as_micros).collect();
             sorted.sort_unstable();
             let p50 = sorted[sorted.len() / 2];
             let p95 = sorted[sorted.len() * 95 / 100];
             let p99 = sorted[sorted.len() * 99 / 100];
-            println!("  Step latency: p50={:.1}ms p95={:.1}ms p99={:.1}ms",
-                p50 as f64 / 1000.0, p95 as f64 / 1000.0, p99 as f64 / 1000.0);
+            println!(
+                "  Step latency: p50={:.1}ms p95={:.1}ms p99={:.1}ms",
+                p50 as f64 / 1000.0,
+                p95 as f64 / 1000.0,
+                p99 as f64 / 1000.0
+            );
         }
     }
 

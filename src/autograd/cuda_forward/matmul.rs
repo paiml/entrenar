@@ -6,7 +6,9 @@
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer, LaunchConfig};
 #[cfg(feature = "cuda")]
-use trueno_gpu::kernels::{Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel};
+use trueno_gpu::kernels::{
+    Batched4DGemmKernel, FusedSwigluKernel, GemmKernel, Kernel, Nf4GemmKernel,
+};
 
 use crate::autograd::cuda_tensor::{CudaTensorError, Result};
 

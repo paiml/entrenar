@@ -71,9 +71,7 @@ fn test_grid_searcher() {
     space.add("lr", ParameterDomain::Continuous { low: 1e-4, high: 1e-2, log_scale: true });
     space.add(
         "act",
-        ParameterDomain::Categorical {
-            choices: vec!["relu".to_string(), "gelu".to_string()],
-        },
+        ParameterDomain::Categorical { choices: vec!["relu".to_string(), "gelu".to_string()] },
     );
 
     let mut searcher = GridSearcher::new(space, 3);
@@ -157,10 +155,7 @@ fn test_extract_trial_params() {
         "class_weights".to_string(),
         ParameterValue::Categorical("sqrt_inverse".to_string()),
     );
-    config.insert(
-        "target_modules".to_string(),
-        ParameterValue::Categorical("qv".to_string()),
-    );
+    config.insert("target_modules".to_string(), ParameterValue::Categorical("qv".to_string()));
     config.insert("lr_min_ratio".to_string(), ParameterValue::Float(0.01));
 
     let (lr, rank, alpha, batch, warmup, clip, weights, targets, lr_min) =
@@ -398,10 +393,7 @@ fn test_grid_searcher_record_and_best() {
 #[test]
 fn test_grid_searcher_exhausted() {
     let mut space = HyperparameterSpace::new();
-    space.add(
-        "act",
-        ParameterDomain::Categorical { choices: vec!["relu".to_string()] },
-    );
+    space.add("act", ParameterDomain::Categorical { choices: vec!["relu".to_string()] });
     let mut searcher = GridSearcher::new(space, 1);
 
     // Only 1 config: should succeed once, then fail
@@ -431,8 +423,7 @@ fn test_strategy_display() {
 
 #[test]
 fn test_build_scheduler_median() {
-    let config =
-        TuneConfig { scheduler: SchedulerKind::Median, ..TuneConfig::default() };
+    let config = TuneConfig { scheduler: SchedulerKind::Median, ..TuneConfig::default() };
     let tuner = ClassifyTuner::new(config).expect("valid");
     let scheduler = tuner.build_scheduler();
     // Median scheduler with no history should not prune
@@ -441,8 +432,7 @@ fn test_build_scheduler_median() {
 
 #[test]
 fn test_build_scheduler_none() {
-    let config =
-        TuneConfig { scheduler: SchedulerKind::None, ..TuneConfig::default() };
+    let config = TuneConfig { scheduler: SchedulerKind::None, ..TuneConfig::default() };
     let tuner = ClassifyTuner::new(config).expect("valid");
     let scheduler = tuner.build_scheduler();
     assert!(!scheduler.should_stop(0, 100, 999.0));

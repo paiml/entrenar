@@ -252,10 +252,9 @@ fn rms_norm_backward_cpu(
         let variance_eps = mean_sq + eps;
         let rms = variance_eps.sqrt();
 
-        let mean_xgg: f32 = (0..hidden_size)
-            .map(|i| row[i] * grad_output[base + i] * gamma[i])
-            .sum::<f32>()
-            / hidden_size as f32;
+        let mean_xgg: f32 =
+            (0..hidden_size).map(|i| row[i] * grad_output[base + i] * gamma[i]).sum::<f32>()
+                / hidden_size as f32;
 
         for i in 0..hidden_size {
             let adjust = row[i] / variance_eps * mean_xgg;
@@ -295,8 +294,15 @@ fn test_rms_norm_backward_finite_difference_small() {
         GpuBuffer::from_host(&ctx, &vec![0.0f32; hidden_size]).expect("upload");
 
     rms_norm_backward(
-        &input_gpu, &gamma_gpu, &grad_out_gpu, &mut grad_in_gpu, &mut grad_gamma_gpu,
-        num_rows, hidden_size as u32, eps, &stream,
+        &input_gpu,
+        &gamma_gpu,
+        &grad_out_gpu,
+        &mut grad_in_gpu,
+        &mut grad_gamma_gpu,
+        num_rows,
+        hidden_size as u32,
+        eps,
+        &stream,
     )
     .expect("rms_norm_backward");
     stream.synchronize().expect("sync");
@@ -305,7 +311,8 @@ fn test_rms_norm_backward_finite_difference_small() {
     grad_in_gpu.copy_to_host(&mut gpu_grad).expect("download");
 
     // CPU analytical backward
-    let cpu_grad = rms_norm_backward_cpu(&input_data, &gamma_data, &grad_output_data, hidden_size, eps);
+    let cpu_grad =
+        rms_norm_backward_cpu(&input_data, &gamma_data, &grad_output_data, hidden_size, eps);
 
     // Finite-difference numerical gradient
     let h = 1e-3f32;
@@ -327,7 +334,9 @@ fn test_rms_norm_backward_finite_difference_small() {
     for i in 0..n {
         assert!(
             (gpu_grad[i] - cpu_grad[i]).abs() < 1e-3,
-            "GPU vs CPU mismatch at {i}: gpu={}, cpu={}", gpu_grad[i], cpu_grad[i],
+            "GPU vs CPU mismatch at {i}: gpu={}, cpu={}",
+            gpu_grad[i],
+            cpu_grad[i],
         );
     }
 
@@ -335,7 +344,9 @@ fn test_rms_norm_backward_finite_difference_small() {
     for i in 0..n {
         assert!(
             (gpu_grad[i] - fd_grad[i]).abs() < 1e-2,
-            "GPU vs FD mismatch at {i}: gpu={}, fd={}", gpu_grad[i], fd_grad[i],
+            "GPU vs FD mismatch at {i}: gpu={}, fd={}",
+            gpu_grad[i],
+            fd_grad[i],
         );
     }
 }
@@ -372,8 +383,15 @@ fn test_rms_norm_backward_large_hidden() {
         GpuBuffer::from_host(&ctx, &vec![0.0f32; hidden_size]).expect("upload");
 
     rms_norm_backward(
-        &input_gpu, &gamma_gpu, &grad_out_gpu, &mut grad_in_gpu, &mut grad_gamma_gpu,
-        num_rows, hidden_size as u32, eps, &stream,
+        &input_gpu,
+        &gamma_gpu,
+        &grad_out_gpu,
+        &mut grad_in_gpu,
+        &mut grad_gamma_gpu,
+        num_rows,
+        hidden_size as u32,
+        eps,
+        &stream,
     )
     .expect("rms_norm_backward");
     stream.synchronize().expect("sync");
@@ -382,21 +400,14 @@ fn test_rms_norm_backward_large_hidden() {
     grad_in_gpu.copy_to_host(&mut gpu_grad).expect("download");
 
     // CPU analytical reference
-    let cpu_grad = rms_norm_backward_cpu(
-        &input_data, &gamma_data, &grad_output_data, hidden_size, eps,
-    );
+    let cpu_grad =
+        rms_norm_backward_cpu(&input_data, &gamma_data, &grad_output_data, hidden_size, eps);
 
     // Compare GPU vs CPU
-    let max_diff = gpu_grad
-        .iter()
-        .zip(cpu_grad.iter())
-        .map(|(g, c)| (g - c).abs())
-        .fold(0.0f32, f32::max);
+    let max_diff =
+        gpu_grad.iter().zip(cpu_grad.iter()).map(|(g, c)| (g - c).abs()).fold(0.0f32, f32::max);
 
-    assert!(
-        max_diff < 1e-2,
-        "RMSNorm backward hidden=64: max diff {max_diff} exceeds 1e-2"
-    );
+    assert!(max_diff < 1e-2, "RMSNorm backward hidden=64: max diff {max_diff} exceeds 1e-2");
 
     // Finite-difference spot-check (first 8 elements only for speed)
     let h = 1e-3f32;
@@ -413,7 +424,9 @@ fn test_rms_norm_backward_large_hidden() {
 
         assert!(
             (gpu_grad[i] - fd).abs() < 1e-2,
-            "RMSNorm FD check at {i}: gpu={}, fd={}", gpu_grad[i], fd,
+            "RMSNorm FD check at {i}: gpu={}, fd={}",
+            gpu_grad[i],
+            fd,
         );
     }
 }
@@ -455,8 +468,12 @@ fn test_batched_softmax_backward_finite_difference() {
     let mut grad_in_gpu = GpuBuffer::from_host(&ctx, &vec![0.0f32; n]).expect("upload");
 
     batched_softmax_backward(
-        &softmax_gpu, &grad_out_gpu, &mut grad_in_gpu,
-        total_rows, row_size, &stream,
+        &softmax_gpu,
+        &grad_out_gpu,
+        &mut grad_in_gpu,
+        total_rows,
+        row_size,
+        &stream,
     )
     .expect("batched_softmax_backward");
     stream.synchronize().expect("sync");
@@ -472,19 +489,12 @@ fn test_batched_softmax_backward_finite_difference() {
             .map(|i| softmax_data[base + i] * grad_output_data[base + i])
             .sum();
         for i in 0..row_size as usize {
-            cpu_grad[base + i] =
-                softmax_data[base + i] * (grad_output_data[base + i] - dot);
+            cpu_grad[base + i] = softmax_data[base + i] * (grad_output_data[base + i] - dot);
         }
     }
 
-    let max_diff = gpu_grad
-        .iter()
-        .zip(cpu_grad.iter())
-        .map(|(g, c)| (g - c).abs())
-        .fold(0.0f32, f32::max);
+    let max_diff =
+        gpu_grad.iter().zip(cpu_grad.iter()).map(|(g, c)| (g - c).abs()).fold(0.0f32, f32::max);
 
-    assert!(
-        max_diff < 1e-3,
-        "Batched softmax backward: max diff {max_diff} exceeds 1e-3"
-    );
+    assert!(max_diff < 1e-3, "Batched softmax backward: max diff {max_diff} exceeds 1e-3");
 }

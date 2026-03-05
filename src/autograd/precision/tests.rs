@@ -312,10 +312,7 @@ mod tests {
             let bf16 = f32_to_bf16(val);
             let back = bf16_to_f32(bf16);
             let rel_err = (back - val).abs() / val.abs();
-            assert!(
-                rel_err < 0.008,
-                "BF16 relative error {rel_err} too large for {val}"
-            );
+            assert!(rel_err < 0.008, "BF16 relative error {rel_err} too large for {val}");
         }
     }
 
@@ -380,11 +377,7 @@ mod tests {
         let test_values = [0.1, 0.2, 0.3, 1.5, 42.42, -99.99, f32::MAX, f32::MIN_POSITIVE];
         for &val in &test_values {
             let truncated = bf16_truncate(val);
-            assert_eq!(
-                truncated.to_bits() & 0x0000FFFF,
-                0,
-                "lower 16 bits not zeroed for {val}"
-            );
+            assert_eq!(truncated.to_bits() & 0x0000FFFF, 0, "lower 16 bits not zeroed for {val}");
         }
     }
 

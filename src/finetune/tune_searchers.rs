@@ -194,11 +194,8 @@ impl TuneScheduler for AshaScheduler {
         }
 
         // Collect all completed trials' val_loss at this epoch
-        let mut losses_at_epoch: Vec<f64> = self
-            .history
-            .iter()
-            .filter_map(|h| h.get(epoch).copied())
-            .collect();
+        let mut losses_at_epoch: Vec<f64> =
+            self.history.iter().filter_map(|h| h.get(epoch).copied()).collect();
 
         if losses_at_epoch.is_empty() {
             return false;
@@ -208,8 +205,7 @@ impl TuneScheduler for AshaScheduler {
 
         // Keep top 1/eta — prune if val_loss is above the cutoff
         let keep_fraction = 1.0 / self.reduction_factor;
-        let cutoff_idx =
-            ((losses_at_epoch.len() as f64 * keep_fraction).ceil() as usize).max(1);
+        let cutoff_idx = ((losses_at_epoch.len() as f64 * keep_fraction).ceil() as usize).max(1);
         if cutoff_idx >= losses_at_epoch.len() {
             return false;
         }
@@ -247,11 +243,8 @@ impl TuneScheduler for MedianScheduler {
             return false;
         }
 
-        let mut losses: Vec<f64> = self
-            .history
-            .iter()
-            .filter_map(|h| h.get(epoch).copied())
-            .collect();
+        let mut losses: Vec<f64> =
+            self.history.iter().filter_map(|h| h.get(epoch).copied()).collect();
 
         if losses.len() < 2 {
             return false;

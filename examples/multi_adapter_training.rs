@@ -114,9 +114,16 @@ fn run_training(multi: &mut MultiAdapterPipeline, epochs: usize, schedule: Adapt
         println!();
         for epoch in 0..epochs {
             multi.reset_epoch(epoch as u64);
-            println!("Epoch {} | {} adapters scheduled ({schedule:?})", epoch + 1, multi.num_adapters());
+            println!(
+                "Epoch {} | {} adapters scheduled ({schedule:?})",
+                epoch + 1,
+                multi.num_adapters()
+            );
             for i in 0..multi.num_adapters() {
-                println!("  Adapter {i}: {} train samples, cursor=0", multi.adapters[i].train_samples.len());
+                println!(
+                    "  Adapter {i}: {} train samples, cursor=0",
+                    multi.adapters[i].train_samples.len()
+                );
             }
         }
     }
@@ -138,8 +145,16 @@ fn run_real_training(multi: &mut MultiAdapterPipeline, epochs: usize) {
         }
 
         for (i, losses) in epoch_losses.iter().enumerate() {
-            let avg = if losses.is_empty() { 0.0 } else { losses.iter().sum::<f32>() / losses.len() as f32 };
-            println!("Epoch {} | Adapter {i}: avg_loss={avg:.4} ({} steps)", epoch + 1, losses.len());
+            let avg = if losses.is_empty() {
+                0.0
+            } else {
+                losses.iter().sum::<f32>() / losses.len() as f32
+            };
+            println!(
+                "Epoch {} | Adapter {i}: avg_loss={avg:.4} ({} steps)",
+                epoch + 1,
+                losses.len()
+            );
         }
     }
 }
@@ -179,10 +194,7 @@ fn generate_synthetic_samples(seed: usize, count: usize) -> Vec<InstructSample> 
 }
 
 fn parse_arg(args: &[String], flag: &str) -> Option<usize> {
-    args.iter()
-        .position(|a| a == flag)
-        .and_then(|i| args.get(i + 1))
-        .and_then(|v| v.parse().ok())
+    args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).and_then(|v| v.parse().ok())
 }
 
 fn parse_schedule(args: &[String]) -> AdapterSchedule {

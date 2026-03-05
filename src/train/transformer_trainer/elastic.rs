@@ -110,12 +110,7 @@ impl ElasticCoordinator {
     /// Add a new worker to the pool.
     ///
     /// Returns the assigned worker ID, or None if pool is full.
-    pub fn add_worker(
-        &mut self,
-        node_id: String,
-        gpu_count: u32,
-        backend: String,
-    ) -> Option<u32> {
+    pub fn add_worker(&mut self, node_id: String, gpu_count: u32, backend: String) -> Option<u32> {
         if self.active_count() >= self.max_workers {
             return None;
         }
@@ -265,11 +260,7 @@ impl ElasticCoordinator {
                 } else {
                     remainder * (shard_size + 1) + (i - remainder) * shard_size
                 };
-                let end = if i < remainder {
-                    start + shard_size + 1
-                } else {
-                    start + shard_size
-                };
+                let end = if i < remainder { start + shard_size + 1 } else { start + shard_size };
                 (wid, start, end)
             })
             .collect()

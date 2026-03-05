@@ -46,12 +46,20 @@ impl BackwardOp for AttentionBlockBackward {
         // Step 2-4: Scatter per-head grads into full Q/K/V
         scatter_head_grads_q(&self.q, &self.head_q_tensors, self.seq_len, h, self.q_dim);
         scatter_head_grads_kv(
-            &self.k, &self.head_k_tensors, &self.head_kv_indices,
-            self.seq_len, h, self.kv_hidden_size,
+            &self.k,
+            &self.head_k_tensors,
+            &self.head_kv_indices,
+            self.seq_len,
+            h,
+            self.kv_hidden_size,
         );
         scatter_head_grads_kv(
-            &self.v, &self.head_v_tensors, &self.head_kv_indices,
-            self.seq_len, h, self.kv_hidden_size,
+            &self.v,
+            &self.head_v_tensors,
+            &self.head_kv_indices,
+            self.seq_len,
+            h,
+            self.kv_hidden_size,
         );
 
         // Step 5: Propagate backward through Q/K/V matmuls (once each)
@@ -65,14 +73,19 @@ impl BackwardOp for AttentionBlockBackward {
 
 /// Split concat gradient per head and trigger each head's attention backward
 fn split_and_backward_heads(
-    go: &[f32], head_outputs: &[Tensor], seq_len: usize, head_dim: usize, q_dim: usize,
+    go: &[f32],
+    head_outputs: &[Tensor],
+    seq_len: usize,
+    head_dim: usize,
+    q_dim: usize,
 ) {
     for (head_idx, head_out) in head_outputs.iter().enumerate() {
         let mut grad_head = vec![0.0_f32; seq_len * head_dim];
         for s in 0..seq_len {
             let src_base = s * q_dim + head_idx * head_dim;
             let dst_base = s * head_dim;
-            grad_head[dst_base..dst_base + head_dim].copy_from_slice(&go[src_base..src_base + head_dim]);
+            grad_head[dst_base..dst_base + head_dim]
+                .copy_from_slice(&go[src_base..src_base + head_dim]);
         }
         head_out.accumulate_grad(Array1::from(grad_head));
         if let Some(op) = head_out.backward_op() {
@@ -83,9 +96,15 @@ fn split_and_backward_heads(
 
 /// Scatter per-head Q gradients into the full Q projection tensor
 fn scatter_head_grads_q(
-    q: &Tensor, head_q_tensors: &[Tensor], seq_len: usize, head_dim: usize, q_dim: usize,
+    q: &Tensor,
+    head_q_tensors: &[Tensor],
+    seq_len: usize,
+    head_dim: usize,
+    q_dim: usize,
 ) {
-    if !q.requires_grad() { return; }
+    if !q.requires_grad() {
+        return;
+    }
     let mut grad_q = vec![0.0_f32; seq_len * q_dim];
     for (head_idx, head_q) in head_q_tensors.iter().enumerate() {
         if let Some(hgrad) = head_q.grad() {
@@ -104,10 +123,16 @@ fn scatter_head_grads_q(
 
 /// Scatter per-head K or V gradients into the full K/V projection tensor (GQA-correct)
 fn scatter_head_grads_kv(
-    target: &Tensor, head_tensors: &[Tensor], kv_indices: &[usize],
-    seq_len: usize, head_dim: usize, kv_hidden_size: usize,
+    target: &Tensor,
+    head_tensors: &[Tensor],
+    kv_indices: &[usize],
+    seq_len: usize,
+    head_dim: usize,
+    kv_hidden_size: usize,
 ) {
-    if !target.requires_grad() { return; }
+    if !target.requires_grad() {
+        return;
+    }
     let mut grad = vec![0.0_f32; seq_len * kv_hidden_size];
     for (head_idx, head_t) in head_tensors.iter().enumerate() {
         let kv_h = kv_indices[head_idx];
@@ -153,9 +178,7 @@ impl MultiHeadAttention {
         Self {
             config: config.clone(),
             w_q: Tensor::from_vec(
-                (0..q_dim * hidden_size)
-                    .map(|i| ((i as f32 * 0.123).sin() * q_scale))
-                    .collect(),
+                (0..q_dim * hidden_size).map(|i| ((i as f32 * 0.123).sin() * q_scale)).collect(),
                 true,
             ),
             w_k: Tensor::from_vec(
@@ -171,9 +194,7 @@ impl MultiHeadAttention {
                 true,
             ),
             w_o: Tensor::from_vec(
-                (0..hidden_size * q_dim)
-                    .map(|i| ((i as f32 * 0.456).sin() * q_scale))
-                    .collect(),
+                (0..hidden_size * q_dim).map(|i| ((i as f32 * 0.456).sin() * q_scale)).collect(),
                 true,
             ),
         }
@@ -392,7 +413,8 @@ impl MultiHeadAttention {
         // V projection with LoRA (same pattern as Q)
         let v_base = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
         let v_mid = crate::autograd::matmul_nt(x, lora_a_v, seq_len, hidden_size, lora_rank);
-        let v_lora = crate::autograd::matmul_nt(&v_mid, lora_b_v, seq_len, lora_rank, kv_hidden_size);
+        let v_lora =
+            crate::autograd::matmul_nt(&v_mid, lora_b_v, seq_len, lora_rank, kv_hidden_size);
         let v = crate::autograd::add_scaled(&v_base, &v_lora, lora_scale);
 
         let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
@@ -883,9 +905,8 @@ mod tests {
 
         // Non-uniform input: different positions must have different representations
         // so softmax produces non-uniform weights with non-zero score gradients
-        let x_data: Vec<f32> = (0..seq_len * hidden_size)
-            .map(|i| ((i as f32) * 0.17).sin() * 0.5)
-            .collect();
+        let x_data: Vec<f32> =
+            (0..seq_len * hidden_size).map(|i| ((i as f32) * 0.17).sin() * 0.5).collect();
         let x = Tensor::from_vec(x_data, true);
         let mut output = attn.forward(&x, seq_len);
 
@@ -893,16 +914,15 @@ mod tests {
         crate::autograd::backward(&mut output, Some(grad_out));
 
         // All four projection weights must receive gradients
-        for (name, param) in [("w_q", &attn.w_q), ("w_k", &attn.w_k), ("w_v", &attn.w_v), ("w_o", &attn.w_o)] {
+        for (name, param) in
+            [("w_q", &attn.w_q), ("w_k", &attn.w_k), ("w_v", &attn.w_v), ("w_o", &attn.w_o)]
+        {
             assert!(
                 param.grad().is_some(),
                 "ALB-038: {name} must have gradient after full attention forward"
             );
             let grad = param.grad().expect("gradient available");
-            assert!(
-                grad.iter().all(|&v| v.is_finite()),
-                "ALB-038: {name} gradient must be finite"
-            );
+            assert!(grad.iter().all(|&v| v.is_finite()), "ALB-038: {name} gradient must be finite");
             assert!(
                 grad.iter().any(|&v| v.abs() > 1e-10),
                 "ALB-038: {name} gradient must be non-zero"

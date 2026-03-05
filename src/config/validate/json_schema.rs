@@ -156,30 +156,24 @@ fn semantic_checks(value: &serde_json::Value, errors: &mut Vec<String>) {
         return;
     };
 
-    if let Some(lr) = obj
-        .get("optimizer")
-        .and_then(|o| o.get("lr"))
-        .and_then(serde_json::Value::as_f64)
+    if let Some(lr) =
+        obj.get("optimizer").and_then(|o| o.get("lr")).and_then(serde_json::Value::as_f64)
     {
         if lr <= 0.0 || lr > 1.0 {
             errors.push(format!("optimizer.lr must be in (0, 1], got {lr}"));
         }
     }
 
-    if let Some(epochs) = obj
-        .get("training")
-        .and_then(|t| t.get("epochs"))
-        .and_then(serde_json::Value::as_u64)
+    if let Some(epochs) =
+        obj.get("training").and_then(|t| t.get("epochs")).and_then(serde_json::Value::as_u64)
     {
         if epochs == 0 {
             errors.push("training.epochs must be >= 1".to_string());
         }
     }
 
-    if let Some(bs) = obj
-        .get("data")
-        .and_then(|d| d.get("batch_size"))
-        .and_then(serde_json::Value::as_u64)
+    if let Some(bs) =
+        obj.get("data").and_then(|d| d.get("batch_size")).and_then(serde_json::Value::as_u64)
     {
         if bs == 0 {
             errors.push("data.batch_size must be >= 1".to_string());

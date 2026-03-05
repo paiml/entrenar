@@ -13,8 +13,7 @@ use entrenar::finetune::RingAllReduceWorker;
 use entrenar::train::{
     checkpoint_path, hash_weights, should_save_checkpoint, verify_weight_consistency,
     BlockGradientSet, CheckpointPhase, DistributedBackend, DistributedCheckpointCoordinator,
-    DistributedRole, DistributedTrainConfig, PerBlockGradientAccumulator,
-    BLOCK_GRAD_COMPONENTS,
+    DistributedRole, DistributedTrainConfig, PerBlockGradientAccumulator, BLOCK_GRAD_COMPONENTS,
 };
 
 use std::net::{TcpListener, TcpStream};
@@ -27,13 +26,9 @@ use std::time::Instant;
 // =========================================================================
 
 fn setup_ring(n: usize) -> Vec<RingAllReduceWorker> {
-    let listeners: Vec<TcpListener> = (0..n)
-        .map(|_| TcpListener::bind("127.0.0.1:0").expect("bind"))
-        .collect();
-    let addrs: Vec<_> = listeners
-        .iter()
-        .map(|l| l.local_addr().expect("addr"))
-        .collect();
+    let listeners: Vec<TcpListener> =
+        (0..n).map(|_| TcpListener::bind("127.0.0.1:0").expect("bind")).collect();
+    let addrs: Vec<_> = listeners.iter().map(|l| l.local_addr().expect("addr")).collect();
 
     let accept_handles: Vec<_> = listeners
         .into_iter()
@@ -95,11 +90,8 @@ fn test_ddp_full_gradient_allreduce_4_workers() {
     let kv_hidden = 16;
     let intermediate = 128;
 
-    let block_sizes = PerBlockGradientAccumulator::compute_block_sizes(
-        hidden_size,
-        kv_hidden,
-        intermediate,
-    );
+    let block_sizes =
+        PerBlockGradientAccumulator::compute_block_sizes(hidden_size, kv_hidden, intermediate);
 
     let mut workers = setup_ring(world_size);
 
@@ -119,9 +111,7 @@ fn test_ddp_full_gradient_allreduce_4_workers() {
     // Compute expected mean manually
     let vec_len = worker_data[0].len();
     let expected: Vec<f32> = (0..vec_len)
-        .map(|i| {
-            worker_data.iter().map(|d| d[i]).sum::<f32>() / world_size as f32
-        })
+        .map(|i| worker_data.iter().map(|d| d[i]).sum::<f32>() / world_size as f32)
         .collect();
 
     // Run AllReduce in parallel threads
@@ -142,9 +132,7 @@ fn test_ddp_full_gradient_allreduce_4_workers() {
     // Last worker runs in main thread
     let mut main_data = last_data;
     let mut main_worker = last_worker;
-    main_worker
-        .allreduce(&mut main_data)
-        .expect("allreduce main");
+    main_worker.allreduce(&mut main_data).expect("allreduce main");
 
     let results: Vec<Vec<f32>> = handles
         .into_iter()
@@ -155,10 +143,7 @@ fn test_ddp_full_gradient_allreduce_4_workers() {
     // Verify: all workers have identical results
     for (rank, result) in results.iter().enumerate() {
         for (i, (&got, &exp)) in result.iter().zip(&expected).enumerate() {
-            assert!(
-                (got - exp).abs() < 1e-4,
-                "rank {rank} element {i}: got {got}, expected {exp}"
-            );
+            assert!((got - exp).abs() < 1e-4, "rank {rank} element {i}: got {got}, expected {exp}");
         }
     }
 
@@ -187,11 +172,7 @@ fn test_ddp_per_block_allreduce_reverse_order() {
         .map(|b| (0..total_per_block).map(|i| (b * 100 + i) as f32).collect())
         .collect();
     let grads_w1: Vec<Vec<f32>> = (0..num_blocks)
-        .map(|b| {
-            (0..total_per_block)
-                .map(|i| ((b * 100 + i) as f32) * 2.0)
-                .collect()
-        })
+        .map(|b| (0..total_per_block).map(|i| ((b * 100 + i) as f32) * 2.0).collect())
         .collect();
 
     // AllReduce each block in reverse order (mimics backward pass)
@@ -230,18 +211,12 @@ fn test_ddp_per_block_allreduce_reverse_order() {
     // Verify both workers got correct averaged gradients for each block
     for (b, data) in &results_w0 {
         for (i, (&got, &exp)) in data.iter().zip(&expected_blocks[*b]).enumerate() {
-            assert!(
-                (got - exp).abs() < 1e-3,
-                "w0 block {b} elem {i}: {got} != {exp}"
-            );
+            assert!((got - exp).abs() < 1e-3, "w0 block {b} elem {i}: {got} != {exp}");
         }
     }
     for (b, data) in &results_w1 {
         for (i, (&got, &exp)) in data.iter().zip(&expected_blocks[*b]).enumerate() {
-            assert!(
-                (got - exp).abs() < 1e-3,
-                "w1 block {b} elem {i}: {got} != {exp}"
-            );
+            assert!((got - exp).abs() < 1e-3, "w1 block {b} elem {i}: {got} != {exp}");
         }
     }
 }
@@ -305,9 +280,7 @@ fn test_communication_computation_overlap() {
             while compute_start.elapsed().as_millis() < 5 {}
         });
 
-        workers2[0]
-            .allreduce(&mut data)
-            .expect("allreduce overlap");
+        workers2[0].allreduce(&mut data).expect("allreduce overlap");
         compute_handle.join().expect("compute join");
         let _ = handle_comm.join().expect("comm join");
     }
@@ -359,10 +332,7 @@ fn test_multinode_checkpoint_coordination() {
     let hash0 = hash_weights(&weights_node0);
     let hash1 = hash_weights(&weights_node1);
     let hash2 = hash_weights(&weights_node2);
-    assert!(verify_weight_consistency(
-        &hash0,
-        &[hash0, hash1, hash2]
-    ));
+    assert!(verify_weight_consistency(&hash0, &[hash0, hash1, hash2]));
 
     // Phase 5: Complete and resume
     coord.complete();
@@ -372,10 +342,7 @@ fn test_multinode_checkpoint_coordination() {
 
     // Phase 6: Verify checkpoint path generation
     let path = checkpoint_path(std::path::Path::new("/shared/nfs/output"), 1000);
-    assert_eq!(
-        path.to_str().unwrap(),
-        "/shared/nfs/output/checkpoint-1000"
-    );
+    assert_eq!(path.to_str().unwrap(), "/shared/nfs/output/checkpoint-1000");
 }
 
 /// Multi-node wire protocol: simulate block gradient exchange between
@@ -408,9 +375,7 @@ fn test_multinode_block_gradient_exchange() {
             (0..total_per_block)
                 .map(|i| {
                     let sum: f32 = (0..world_size)
-                        .map(|r| {
-                            (r as f32 + 1.0) * (b as f32 + 1.0) * (i as f32 + 1.0)
-                        })
+                        .map(|r| (r as f32 + 1.0) * (b as f32 + 1.0) * (i as f32 + 1.0))
                         .sum();
                     sum / world_size as f32
                 })
@@ -455,13 +420,8 @@ fn test_multinode_block_gradient_exchange() {
     // Verify all nodes have identical averaged results for each block
     for b in 0..num_blocks {
         for rank in 0..world_size {
-            for (i, (&got, &exp)) in
-                all_results[rank][b].iter().zip(&expected[b]).enumerate()
-            {
-                assert!(
-                    (got - exp).abs() < 1e-2,
-                    "node {rank} block {b} elem {i}: {got} != {exp}"
-                );
+            for (i, (&got, &exp)) in all_results[rank][b].iter().zip(&expected[b]).enumerate() {
+                assert!((got - exp).abs() < 1e-2, "node {rank} block {b} elem {i}: {got} != {exp}");
             }
         }
         // All nodes must have identical results (C-DDP-001)
@@ -493,7 +453,8 @@ fn test_multinode_allreduce_with_checkpoint_barrier() {
     let handle = thread::spawn(move || {
         let mut results = Vec::new();
         for step in 1..=steps {
-            let mut data: Vec<f32> = (0..vec_size).map(|i| (step * 1000 + i) as f32 * 2.0).collect();
+            let mut data: Vec<f32> =
+                (0..vec_size).map(|i| (step * 1000 + i) as f32 * 2.0).collect();
             w1.allreduce(&mut data).expect("allreduce");
             results.push(data);
         }
@@ -533,11 +494,7 @@ fn test_multinode_allreduce_with_checkpoint_barrier() {
             step + 1
         );
         for (i, (&v0, &v1)) in results_0[step].iter().zip(&results_1[step]).enumerate() {
-            assert!(
-                (v0 - v1).abs() < 1e-3,
-                "step {} elem {i}: w0={v0} != w1={v1}",
-                step + 1
-            );
+            assert!((v0 - v1).abs() < 1e-3, "step {} elem {i}: w0={v0} != w1={v1}", step + 1);
         }
     }
 }
@@ -550,10 +507,7 @@ fn test_multinode_allreduce_with_checkpoint_barrier() {
 #[test]
 fn test_heterogeneous_device_detection() {
     let devices = entrenar::finetune::ComputeDevice::detect_all_devices();
-    assert!(
-        !devices.is_empty(),
-        "detect_all_devices() must return at least one device"
-    );
+    assert!(!devices.is_empty(), "detect_all_devices() must return at least one device");
 
     // At least CPU fallback
     let has_compute = devices.iter().any(|d| {
@@ -631,9 +585,7 @@ fn test_heterogeneous_gradient_allreduce() {
     // "CPU worker" gradients (scale 3.0)
     let cpu_grads: Vec<f32> = (0..total).map(|i| i as f32 * 3.0).collect();
 
-    let expected: Vec<f32> = (0..total)
-        .map(|i| i as f32 * (1.0 + 2.0 + 3.0) / 3.0)
-        .collect();
+    let expected: Vec<f32> = (0..total).map(|i| i as f32 * (1.0 + 2.0 + 3.0) / 3.0).collect();
 
     let mut w2 = workers.pop().unwrap();
     let mut w1 = workers.pop().unwrap();
@@ -656,21 +608,9 @@ fn test_heterogeneous_gradient_allreduce() {
 
     // All workers must have identical averaged gradients
     for (i, &exp) in expected.iter().enumerate() {
-        assert!(
-            (d0[i] - exp).abs() < 1e-3,
-            "cuda[{i}]: {} != {exp}",
-            d0[i]
-        );
-        assert!(
-            (r1[i] - exp).abs() < 1e-3,
-            "wgpu[{i}]: {} != {exp}",
-            r1[i]
-        );
-        assert!(
-            (r2[i] - exp).abs() < 1e-3,
-            "cpu[{i}]: {} != {exp}",
-            r2[i]
-        );
+        assert!((d0[i] - exp).abs() < 1e-3, "cuda[{i}]: {} != {exp}", d0[i]);
+        assert!((r1[i] - exp).abs() < 1e-3, "wgpu[{i}]: {} != {exp}", r1[i]);
+        assert!((r2[i] - exp).abs() < 1e-3, "cpu[{i}]: {} != {exp}", r2[i]);
     }
 
     // Weight consistency (C-DDP-001)
@@ -720,10 +660,7 @@ fn test_accumulator_micro_batch_cycle() {
         let flat = block.flatten();
         for (i, &val) in flat.iter().enumerate() {
             let expected = 2.5 * (i as f32 + 1.0);
-            assert!(
-                (val - expected).abs() < 1e-4,
-                "block elem {i}: {val} != {expected}"
-            );
+            assert!((val - expected).abs() < 1e-4, "block elem {i}: {val} != {expected}");
         }
     }
 
@@ -750,16 +687,8 @@ fn test_block_gradient_flatten_roundtrip() {
 
     // Verify roundtrip fidelity (C-WIRE-002)
     assert_eq!(grad.total_elements(), reconstructed.total_elements());
-    for (c, (orig, recon)) in grad
-        .components
-        .iter()
-        .zip(&reconstructed.components)
-        .enumerate()
-    {
-        assert_eq!(
-            orig, recon,
-            "component {c} roundtrip mismatch"
-        );
+    for (c, (orig, recon)) in grad.components.iter().zip(&reconstructed.components).enumerate() {
+        assert_eq!(orig, recon, "component {c} roundtrip mismatch");
     }
 }
 

@@ -28,9 +28,8 @@ fn list_experiments(
     format: &OutputFormat,
     _log_level: LogLevel,
 ) -> Result<(), String> {
-    let experiments = store
-        .list_experiments()
-        .map_err(|e| format!("Failed to list experiments: {e}"))?;
+    let experiments =
+        store.list_experiments().map_err(|e| format!("Failed to list experiments: {e}"))?;
 
     if experiments.is_empty() {
         eprintln!("No experiments found in {}", store.path());
@@ -61,14 +60,9 @@ fn list_experiments(
     Ok(())
 }
 
-fn show_experiment(
-    store: &SqliteBackend,
-    id: &str,
-    format: &OutputFormat,
-) -> Result<(), String> {
-    let experiment = store
-        .get_experiment(id)
-        .map_err(|e| format!("Failed to get experiment: {e}"))?;
+fn show_experiment(store: &SqliteBackend, id: &str, format: &OutputFormat) -> Result<(), String> {
+    let experiment =
+        store.get_experiment(id).map_err(|e| format!("Failed to get experiment: {e}"))?;
 
     match format {
         OutputFormat::Json => {
@@ -113,9 +107,7 @@ fn list_runs(
     experiment_id: &str,
     format: &OutputFormat,
 ) -> Result<(), String> {
-    let runs = store
-        .list_runs(experiment_id)
-        .map_err(|e| format!("Failed to list runs: {e}"))?;
+    let runs = store.list_runs(experiment_id).map_err(|e| format!("Failed to list runs: {e}"))?;
 
     if runs.is_empty() {
         eprintln!("No runs found for experiment {experiment_id}");
@@ -133,7 +125,8 @@ fn list_runs(
             println!("{}", "-".repeat(80));
             for run in &runs {
                 let end = run
-                    .end_time.map_or_else(|| "-".to_string(), |t| t.format("%Y-%m-%d %H:%M:%S").to_string());
+                    .end_time
+                    .map_or_else(|| "-".to_string(), |t| t.format("%Y-%m-%d %H:%M:%S").to_string());
                 println!(
                     "{:<20} {:<12} {:<24} {:<24}",
                     truncate(&run.id, 18),
@@ -155,9 +148,8 @@ fn show_metrics(
     key: &str,
     format: &OutputFormat,
 ) -> Result<(), String> {
-    let metrics = store
-        .get_metrics(run_id, key)
-        .map_err(|e| format!("Failed to get metrics: {e}"))?;
+    let metrics =
+        store.get_metrics(run_id, key).map_err(|e| format!("Failed to get metrics: {e}"))?;
 
     if metrics.is_empty() {
         eprintln!("No metrics found for run {run_id}, key '{key}'");
@@ -189,15 +181,9 @@ fn show_metrics(
     Ok(())
 }
 
-fn delete_experiment(
-    store: &SqliteBackend,
-    id: &str,
-    _log_level: LogLevel,
-) -> Result<(), String> {
+fn delete_experiment(store: &SqliteBackend, id: &str, _log_level: LogLevel) -> Result<(), String> {
     // Verify it exists first
-    store
-        .get_experiment(id)
-        .map_err(|e| format!("Failed to find experiment: {e}"))?;
+    store.get_experiment(id).map_err(|e| format!("Failed to find experiment: {e}"))?;
 
     let conn = store.lock_conn().map_err(|e| format!("Lock error: {e}"))?;
 

@@ -14,11 +14,9 @@ impl SqliteBackend {
         let conn = self.lock_conn()?;
 
         let data: Vec<u8> = conn
-            .query_row(
-                "SELECT data FROM artifacts WHERE sha256 = ?1 LIMIT 1",
-                [sha256],
-                |row| row.get(0),
-            )
+            .query_row("SELECT data FROM artifacts WHERE sha256 = ?1 LIMIT 1", [sha256], |row| {
+                row.get(0)
+            })
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
                     StorageError::Backend(format!("Artifact not found: {sha256}"))
@@ -35,11 +33,9 @@ impl SqliteBackend {
 
         // Verify run exists
         let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)",
-                [run_id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM runs WHERE id = ?1)", [run_id], |row| {
+                row.get(0)
+            })
             .map_err(|e| StorageError::Backend(format!("Failed to check run: {e}")))?;
 
         if !exists {
@@ -66,8 +62,8 @@ impl SqliteBackend {
 
         let mut result = Vec::new();
         for row in rows {
-            let (id, run_id, path, size_bytes, sha256, created_str) =
-                row.map_err(|e| StorageError::Backend(format!("Failed to read artifact row: {e}")))?;
+            let (id, run_id, path, size_bytes, sha256, created_str) = row
+                .map_err(|e| StorageError::Backend(format!("Failed to read artifact row: {e}")))?;
             let created_at = created_str.parse().unwrap_or_else(|_| Utc::now());
             result.push(ArtifactRef {
                 id,

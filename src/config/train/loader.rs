@@ -132,10 +132,8 @@ fn build_train_config(
             "wgpu" => DistributedBackend::Wgpu,
             _ => DistributedBackend::Auto,
         };
-        let addr: std::net::SocketAddr = dist
-            .coordinator_addr
-            .parse()
-            .unwrap_or_else(|_| "0.0.0.0:9000".parse().unwrap());
+        let addr: std::net::SocketAddr =
+            dist.coordinator_addr.parse().unwrap_or_else(|_| "0.0.0.0:9000".parse().unwrap());
 
         config = config.with_distributed(DistributedTrainConfig {
             world_size: dist.world_size,
@@ -192,18 +190,13 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     if train_config.use_cuda {
         let cuda_config = train_config.clone();
         let cuda_result = match transformer {
-            Some(loaded_model) => {
-                CudaTransformerTrainer::with_model(loaded_model, cuda_config)
-            }
+            Some(loaded_model) => CudaTransformerTrainer::with_model(loaded_model, cuda_config),
             None => CudaTransformerTrainer::new(cuda_config),
         };
 
         match cuda_result {
             Ok(mut cuda_trainer) => {
-                println!(
-                    "✓ CudaTransformerTrainer initialized (GPU: {})",
-                    cuda_trainer.gpu_name()
-                );
+                println!("✓ CudaTransformerTrainer initialized (GPU: {})", cuda_trainer.gpu_name());
                 // #133: Dispatch to distributed training loop if distributed config present
                 if train_config.distributed.is_some() {
                     return train_loop_cuda_distributed(cuda_trainer, &batches, spec);
@@ -262,9 +255,19 @@ fn train_loop_cpu(
     let mut tracker = PretrainTracker::open(spec, "CPU");
 
     write_training_snapshot(
-        &state, start_ms, 0, total_epochs, 0, num_batches,
-        0.0, &[], 0.0, 0.0,
-        TrainingStatus::Initializing, spec, "CPU",
+        &state,
+        start_ms,
+        0,
+        total_epochs,
+        0,
+        num_batches,
+        0.0,
+        &[],
+        0.0,
+        0.0,
+        TrainingStatus::Initializing,
+        spec,
+        "CPU",
     );
 
     if let Some(max_steps) = spec.training.max_steps {
@@ -275,49 +278,73 @@ fn train_loop_cpu(
 
     for epoch in 0..spec.training.epochs {
         let epoch_start = std::time::Instant::now();
-        let avg_loss = trainer.train_epoch_with_callback(batches, |batch_idx, batch_loss, trainer| {
-            loss_history.push(batch_loss);
-            if loss_history.len() > 100 {
-                loss_history.remove(0);
-            }
+        let avg_loss =
+            trainer.train_epoch_with_callback(batches, |batch_idx, batch_loss, trainer| {
+                loss_history.push(batch_loss);
+                if loss_history.len() > 100 {
+                    loss_history.remove(0);
+                }
 
-            if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
-                let elapsed = epoch_start.elapsed().as_secs_f64();
-                let batches_done = batch_idx + 1;
-                let seq_len = spec.data.seq_len.unwrap_or(128);
-                let tokens_done = batches_done * spec.data.batch_size * seq_len;
-                let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
-                let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
-                let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
-                println!(
-                    "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} eta={:.0}s",
-                    batches_done, num_batches,
-                    trainer.step(), batch_loss, trainer.current_lr(),
-                    tok_per_sec, remaining,
-                );
+                if (batch_idx + 1) % log_interval == 0 || batch_idx == 0 {
+                    let elapsed = epoch_start.elapsed().as_secs_f64();
+                    let batches_done = batch_idx + 1;
+                    let seq_len = spec.data.seq_len.unwrap_or(128);
+                    let tokens_done = batches_done * spec.data.batch_size * seq_len;
+                    let batch_per_sec = batches_done as f64 / elapsed.max(0.001);
+                    let remaining = (num_batches - batches_done) as f64 / batch_per_sec.max(0.001);
+                    let tok_per_sec = tokens_done as f64 / elapsed.max(0.001);
+                    println!(
+                        "  [{}/{} batches] step={} loss={:.4} lr={:.2e} tok/s={:.0} eta={:.0}s",
+                        batches_done,
+                        num_batches,
+                        trainer.step(),
+                        batch_loss,
+                        trainer.current_lr(),
+                        tok_per_sec,
+                        remaining,
+                    );
 
-                // ALB-045: Write snapshot for `apr monitor`
-                write_training_snapshot(
-                    &state, start_ms, epoch + 1, total_epochs,
-                    trainer.step(), num_batches,
-                    batch_loss, &loss_history,
-                    trainer.current_lr(), tok_per_sec as f32,
-                    TrainingStatus::Running, spec, "CPU",
-                );
+                    // ALB-045: Write snapshot for `apr monitor`
+                    write_training_snapshot(
+                        &state,
+                        start_ms,
+                        epoch + 1,
+                        total_epochs,
+                        trainer.step(),
+                        num_batches,
+                        batch_loss,
+                        &loss_history,
+                        trainer.current_lr(),
+                        tok_per_sec as f32,
+                        TrainingStatus::Running,
+                        spec,
+                        "CPU",
+                    );
 
-                // ALB-055/056: Log step metrics to SQLite
-                tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
-            }
-        });
+                    // ALB-055/056: Log step metrics to SQLite
+                    tracker.log_step(
+                        trainer.step() as u64,
+                        batch_loss,
+                        trainer.current_lr(),
+                        tok_per_sec as f32,
+                    );
+                }
+            });
         let ppl = crate::train::perplexity(avg_loss);
         println!(
             "Epoch {}/{}: loss={:.6}, perplexity={:.2}, time={:.1}s",
-            epoch + 1, spec.training.epochs, avg_loss, ppl,
+            epoch + 1,
+            spec.training.epochs,
+            avg_loss,
+            ppl,
             epoch_start.elapsed().as_secs_f64(),
         );
 
         if trainer.reached_max_steps() {
-            println!("Reached max_steps={}, stopping training.", spec.training.max_steps.unwrap_or(0));
+            println!(
+                "Reached max_steps={}, stopping training.",
+                spec.training.max_steps.unwrap_or(0)
+            );
             break;
         }
     }
@@ -329,11 +356,19 @@ fn train_loop_cpu(
     // ALB-045: Write final "Completed" snapshot
     let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
     write_training_snapshot(
-        &state, start_ms, total_epochs, total_epochs,
-        trainer.step(), num_batches,
-        final_loss, &loss_history,
-        trainer.current_lr(), 0.0,
-        TrainingStatus::Completed, spec, "CPU",
+        &state,
+        start_ms,
+        total_epochs,
+        total_epochs,
+        trainer.step(),
+        num_batches,
+        final_loss,
+        &loss_history,
+        trainer.current_lr(),
+        0.0,
+        TrainingStatus::Completed,
+        spec,
+        "CPU",
     );
 
     // ALB-055/056: Mark run as completed in SQLite
@@ -344,10 +379,7 @@ fn train_loop_cpu(
 
 /// Get current Unix timestamp in milliseconds
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 /// Query live GPU telemetry via nvidia-smi CLI (ALB-046)
@@ -420,10 +452,12 @@ fn write_training_snapshot(
         gradient_norm: 0.0, // not tracked per-batch in current trainer
         tokens_per_second,
         start_timestamp_ms: start_ms,
-        gpu: query_gpu_telemetry(gpu_name).or_else(|| Some(crate::monitor::tui::state::GpuTelemetry {
-            device_name: gpu_name.to_string(),
-            ..Default::default()
-        })),
+        gpu: query_gpu_telemetry(gpu_name).or_else(|| {
+            Some(crate::monitor::tui::state::GpuTelemetry {
+                device_name: gpu_name.to_string(),
+                ..Default::default()
+            })
+        }),
         sample: None,
         status,
         experiment_id: spec.training.output_dir.display().to_string(),
@@ -462,10 +496,8 @@ struct PretrainTracker {
 impl PretrainTracker {
     /// Open both local and global SQLite stores, create experiment + run.
     fn open(spec: &TrainSpec, device: &str) -> Self {
-        let exp_name = spec.training.output_dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("pretrain");
+        let exp_name =
+            spec.training.output_dir.file_name().and_then(|n| n.to_str()).unwrap_or("pretrain");
 
         let config_json = serde_json::json!({
             "task": "pretrain",
@@ -484,12 +516,10 @@ impl PretrainTracker {
         let local = SqliteBackend::open_project(&spec.training.output_dir).ok();
 
         // Global store: ~/.entrenar/experiments.db
-        let global = dirs::home_dir()
-            .map(|h| h.join(".entrenar"))
-            .and_then(|p| {
-                fs::create_dir_all(&p).ok()?;
-                SqliteBackend::open(p.join("experiments.db").to_string_lossy().as_ref()).ok()
-            });
+        let global = dirs::home_dir().map(|h| h.join(".entrenar")).and_then(|p| {
+            fs::create_dir_all(&p).ok()?;
+            SqliteBackend::open(p.join("experiments.db").to_string_lossy().as_ref()).ok()
+        });
 
         let mut tracker = Self { local, global, run_id: None, global_run_id: None };
 
@@ -561,13 +591,26 @@ impl PretrainTracker {
 /// Log hyperparameters for a pretrain run (ALB-055/056)
 fn log_run_params(store: &SqliteBackend, run_id: &str, spec: &TrainSpec, device: &str) {
     let _ = store.log_param(run_id, "task", ParameterValue::String("pretrain".into()));
-    let _ = store.log_param(run_id, "model", ParameterValue::String(spec.model.path.display().to_string()));
-    let _ = store.log_param(run_id, "optimizer", ParameterValue::String(spec.optimizer.name.clone()));
-    let _ = store.log_param(run_id, "learning_rate", ParameterValue::Float(f64::from(spec.optimizer.lr)));
+    let _ = store.log_param(
+        run_id,
+        "model",
+        ParameterValue::String(spec.model.path.display().to_string()),
+    );
+    let _ =
+        store.log_param(run_id, "optimizer", ParameterValue::String(spec.optimizer.name.clone()));
+    let _ = store.log_param(
+        run_id,
+        "learning_rate",
+        ParameterValue::Float(f64::from(spec.optimizer.lr)),
+    );
     let _ = store.log_param(run_id, "epochs", ParameterValue::Int(spec.training.epochs as i64));
     let _ = store.log_param(run_id, "batch_size", ParameterValue::Int(spec.data.batch_size as i64));
     let _ = store.log_param(run_id, "device", ParameterValue::String(device.to_string()));
-    let _ = store.log_param(run_id, "output_dir", ParameterValue::String(spec.training.output_dir.display().to_string()));
+    let _ = store.log_param(
+        run_id,
+        "output_dir",
+        ParameterValue::String(spec.training.output_dir.display().to_string()),
+    );
     if let Some(seq_len) = spec.data.seq_len {
         let _ = store.log_param(run_id, "seq_len", ParameterValue::Int(seq_len as i64));
     }
@@ -620,20 +663,23 @@ fn train_loop_cuda(
     // R-014: Open JSONL experiment log
     let jsonl_path = spec.training.output_dir.join("training_log.jsonl");
     std::fs::create_dir_all(&spec.training.output_dir).ok();
-    let mut jsonl_file = std::fs::OpenOptions::new()
-        .create(true).append(true).open(&jsonl_path).ok();
+    let mut jsonl_file =
+        std::fs::OpenOptions::new().create(true).append(true).open(&jsonl_path).ok();
     // Write config header
-    write_jsonl_event_json(&mut jsonl_file, &serde_json::json!({
-        "type": "config",
-        "num_params": num_params,
-        "batch_size": spec.data.batch_size,
-        "seq_len": seq_len,
-        "max_steps": spec.training.max_steps,
-        "epochs": spec.training.epochs,
-        "lr": spec.optimizer.lr,
-        "gpu": &gpu_name,
-        "timestamp": now_ms(),
-    }));
+    write_jsonl_event_json(
+        &mut jsonl_file,
+        &serde_json::json!({
+            "type": "config",
+            "num_params": num_params,
+            "batch_size": spec.data.batch_size,
+            "seq_len": seq_len,
+            "max_steps": spec.training.max_steps,
+            "epochs": spec.training.epochs,
+            "lr": spec.optimizer.lr,
+            "gpu": &gpu_name,
+            "timestamp": now_ms(),
+        }),
+    );
 
     // R-008: Graceful shutdown signal handler
     let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -647,9 +693,19 @@ fn train_loop_cuda(
 
     // Write initial "Initializing" snapshot
     write_training_snapshot(
-        &state, start_ms, 0, total_epochs, 0, num_batches,
-        0.0, &[], 0.0, 0.0,
-        TrainingStatus::Initializing, spec, &gpu_name,
+        &state,
+        start_ms,
+        0,
+        total_epochs,
+        0,
+        num_batches,
+        0.0,
+        &[],
+        0.0,
+        0.0,
+        TrainingStatus::Initializing,
+        spec,
+        &gpu_name,
     );
 
     if let Some(max_steps) = spec.training.max_steps {
@@ -660,7 +716,10 @@ fn train_loop_cuda(
     let mut loss_history: Vec<f32> = Vec::new();
     let mut last_save_step: usize = 0;
 
-    let model_name = spec.model.path.file_name()
+    let model_name = spec
+        .model
+        .path
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("entrenar-model")
         .to_string();
@@ -716,10 +775,20 @@ fn train_loop_cuda(
             // R-008: Check graceful shutdown flag
             if shutdown_flag.load(Ordering::SeqCst) {
                 handle_graceful_shutdown(
-                    trainer, spec, &state, &mut tracker, start_ms,
-                    epoch, iter_idx, total_epochs, num_batches,
-                    &loss_history, &model_name, &gpu_name,
-                    seed, loss_ema,
+                    trainer,
+                    spec,
+                    &state,
+                    &mut tracker,
+                    start_ms,
+                    epoch,
+                    iter_idx,
+                    total_epochs,
+                    num_batches,
+                    &loss_history,
+                    &model_name,
+                    &gpu_name,
+                    seed,
+                    loss_ema,
                 );
                 return Ok(());
             }
@@ -731,7 +800,10 @@ fn train_loop_cuda(
 
             // R-023: Check curriculum stage transition
             curriculum_stage = check_curriculum_transition(
-                curriculum, curriculum_stage, trainer.step(), &mut jsonl_file,
+                curriculum,
+                curriculum_stage,
+                trainer.step(),
+                &mut jsonl_file,
             );
 
             let batch = &batches[batch_idx];
@@ -743,7 +815,11 @@ fn train_loop_cuda(
             // R-018: NaN/Inf detection — skip step if loss is non-finite
             if !batch_loss.is_finite() {
                 nan_skips += 1;
-                println!("  [WARN] NaN/Inf loss at step {} (skip #{}) — skipping", trainer.step(), nan_skips);
+                println!(
+                    "  [WARN] NaN/Inf loss at step {} (skip #{}) — skipping",
+                    trainer.step(),
+                    nan_skips
+                );
                 continue;
             }
             total_loss += batch_loss;
@@ -751,20 +827,33 @@ fn train_loop_cuda(
 
             // R-016b: Loss spike detection + rollback
             detect_loss_spike(
-                batch_loss, trainer.step(), &mut loss_ema, loss_ema_alpha,
-                loss_spike_threshold, &mut rollback_count, max_rollbacks, &mut jsonl_file,
+                batch_loss,
+                trainer.step(),
+                &mut loss_ema,
+                loss_ema_alpha,
+                loss_spike_threshold,
+                &mut rollback_count,
+                max_rollbacks,
+                &mut jsonl_file,
             );
 
             // R-017: ZClip — update EMA and detect gradient spikes
             zclip_update(
-                trainer.last_grad_norm() as f64, trainer.step(),
-                &mut gnorm_ema, &mut gnorm_ema_sq, zclip_alpha, zclip_threshold,
+                trainer.last_grad_norm() as f64,
+                trainer.step(),
+                &mut gnorm_ema,
+                &mut gnorm_ema_sq,
+                zclip_alpha,
+                zclip_threshold,
             );
 
             // R-029: Track grad norm for noise scale estimation
             update_noise_scale(
-                trainer.last_grad_norm() as f64, trainer.step(),
-                &mut gnorm_window, noise_scale_interval, &mut jsonl_file,
+                trainer.last_grad_norm() as f64,
+                trainer.step(),
+                &mut gnorm_window,
+                noise_scale_interval,
+                &mut jsonl_file,
             );
 
             // R-003: Write heartbeat for crash detection
@@ -776,11 +865,25 @@ fn train_loop_cuda(
             // Logging at log_interval boundaries
             if should_log(iter_idx, log_interval) {
                 log_step_metrics(
-                    trainer, &state, &mut tracker, &mut jsonl_file,
-                    &epoch_start, &start_time, &step_elapsed,
-                    epoch, total_epochs, iter_idx, num_batches,
-                    tokens_per_batch, num_params, gpu_peak_tflops,
-                    start_ms, batch_loss, &loss_history, spec, &gpu_name,
+                    trainer,
+                    &state,
+                    &mut tracker,
+                    &mut jsonl_file,
+                    &epoch_start,
+                    &start_time,
+                    &step_elapsed,
+                    epoch,
+                    total_epochs,
+                    iter_idx,
+                    num_batches,
+                    tokens_per_batch,
+                    num_params,
+                    gpu_peak_tflops,
+                    start_ms,
+                    batch_loss,
+                    &loss_history,
+                    spec,
+                    &gpu_name,
                 );
             }
 
@@ -788,9 +891,17 @@ fn train_loop_cuda(
             let current_step = trainer.step();
             if should_save_checkpoint(current_step, last_save_step, save_interval) {
                 save_and_validate_checkpoint(
-                    trainer, spec, &val_batches, &model_name,
-                    current_step, epoch, iter_idx, max_checkpoints,
-                    &mut jsonl_file, seed, loss_ema,
+                    trainer,
+                    spec,
+                    &val_batches,
+                    &model_name,
+                    current_step,
+                    epoch,
+                    iter_idx,
+                    max_checkpoints,
+                    &mut jsonl_file,
+                    seed,
+                    loss_ema,
                 );
                 last_save_step = current_step;
             }
@@ -800,7 +911,10 @@ fn train_loop_cuda(
         let ppl = crate::train::perplexity(avg_loss);
         println!(
             "Epoch {}/{}: loss={:.6}, perplexity={:.2}, time={:.1}s",
-            epoch + 1, spec.training.epochs, avg_loss, ppl,
+            epoch + 1,
+            spec.training.epochs,
+            avg_loss,
+            ppl,
             epoch_start.elapsed().as_secs_f64(),
         );
 
@@ -815,24 +929,35 @@ fn train_loop_cuda(
     // ALB-045: Write final "Completed" snapshot
     let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
     write_training_snapshot(
-        &state, start_ms, total_epochs, total_epochs,
-        trainer.step(), num_batches,
-        final_loss, &loss_history,
-        trainer.current_lr(), 0.0,
-        TrainingStatus::Completed, spec, &gpu_name,
+        &state,
+        start_ms,
+        total_epochs,
+        total_epochs,
+        trainer.step(),
+        num_batches,
+        final_loss,
+        &loss_history,
+        trainer.current_lr(),
+        0.0,
+        TrainingStatus::Completed,
+        spec,
+        &gpu_name,
     );
 
     // ALB-055/056: Mark run as completed in SQLite
     tracker.complete();
 
     // R-014: Write completion entry
-    write_jsonl_event_json(&mut jsonl_file, &serde_json::json!({
-        "type": "complete",
-        "step": trainer.step(),
-        "final_loss": final_loss,
-        "total_time_s": total_time.as_secs_f64(),
-        "timestamp": now_ms(),
-    }));
+    write_jsonl_event_json(
+        &mut jsonl_file,
+        &serde_json::json!({
+            "type": "complete",
+            "step": trainer.step(),
+            "final_loss": final_loss,
+            "total_time_s": total_time.as_secs_f64(),
+            "timestamp": now_ms(),
+        }),
+    );
 
     save_trained_model_cuda(trainer, spec)
 }
@@ -852,8 +977,8 @@ fn spawn_coordinator_thread(
     num_blocks: usize,
     total_steps: usize,
 ) -> Result<std::thread::JoinHandle<()>> {
-    use crate::finetune::GradientServer;
     use crate::finetune::distributed::DistributedConfig;
+    use crate::finetune::GradientServer;
 
     let server_config = DistributedConfig::coordinator(coord_addr, world_size);
     let mut server = GradientServer::bind(server_config)
@@ -866,20 +991,13 @@ fn spawn_coordinator_thread(
 
         for _step in 0..total_steps {
             for block_idx in (0..num_blocks).rev() {
-                let result = server
-                    .collect_and_reduce_block(_step as u64, block_idx as u32)
-                    .unwrap();
-                server
-                    .broadcast_averaged_block(_step as u64, &result)
-                    .unwrap();
+                let result =
+                    server.collect_and_reduce_block(_step as u64, block_idx as u32).unwrap();
+                server.broadcast_averaged_block(_step as u64, &result).unwrap();
             }
             for component in [0u8, 1, 2] {
-                let result = server
-                    .collect_and_reduce_non_block(_step as u64, component)
-                    .unwrap();
-                server
-                    .broadcast_averaged_non_block(_step as u64, &result)
-                    .unwrap();
+                let result = server.collect_and_reduce_non_block(_step as u64, component).unwrap();
+                server.broadcast_averaged_non_block(_step as u64, &result).unwrap();
             }
         }
         eprintln!("[coordinator] Training complete ({total_steps} steps)");
@@ -892,9 +1010,9 @@ fn train_loop_cuda_distributed(
     batches: &[LMBatch],
     spec: &TrainSpec,
 ) -> Result<()> {
-    use crate::finetune::WorkerClient;
     use crate::finetune::distributed::DistributedConfig;
-    use crate::train::{DistributedCudaTrainer, DistributedComm, shard_batches};
+    use crate::finetune::WorkerClient;
+    use crate::train::{shard_batches, DistributedComm, DistributedCudaTrainer};
 
     let dist_config = cuda_trainer
         .config()
@@ -912,10 +1030,7 @@ fn train_loop_cuda_distributed(
 
     cuda_trainer.ensure_grad_accum();
 
-    let num_blocks = cuda_trainer
-        .grad_accum_ref()
-        .map(|a| a.num_blocks())
-        .unwrap_or(0);
+    let num_blocks = cuda_trainer.grad_accum_ref().map(|a| a.num_blocks()).unwrap_or(0);
 
     // Step 1: If rank 0, spawn GradientServer in background thread
     let server_handle = if rank == 0 {
@@ -1086,9 +1201,12 @@ fn reached_max_steps(max_steps: Option<usize>, current_step: usize) -> bool {
 
 /// R-017: ZClip gradient spike detection — update EMA and log spikes.
 fn zclip_update(
-    gnorm: f64, step: usize,
-    ema: &mut f64, ema_sq: &mut f64,
-    alpha: f64, threshold: f64,
+    gnorm: f64,
+    step: usize,
+    ema: &mut f64,
+    ema_sq: &mut f64,
+    alpha: f64,
+    threshold: f64,
 ) {
     *ema = alpha * gnorm + (1.0 - alpha) * *ema;
     *ema_sq = alpha * gnorm * gnorm + (1.0 - alpha) * *ema_sq;
@@ -1096,8 +1214,10 @@ fn zclip_update(
     if std > 1e-8 {
         let z_score = (gnorm - *ema) / std;
         if z_score > threshold {
-            println!("  [ZClip] gradient spike at step {}: z={:.1} gnorm={:.2e} ema={:.2e}",
-                step, z_score, gnorm, *ema);
+            println!(
+                "  [ZClip] gradient spike at step {}: z={:.1} gnorm={:.2e} ema={:.2e}",
+                step, z_score, gnorm, *ema
+            );
         }
     }
 }
@@ -1122,8 +1242,10 @@ fn push_capped_f64(window: &mut Vec<f64>, value: f64, max_len: usize) {
 /// B_noise = Var(||g||) / Mean(||g||)² — proxy for critical batch size.
 #[allow(clippy::incompatible_msrv)]
 fn update_noise_scale(
-    grad_norm: f64, step: usize,
-    window: &mut Vec<f64>, interval: usize,
+    grad_norm: f64,
+    step: usize,
+    window: &mut Vec<f64>,
+    interval: usize,
     jsonl_file: &mut Option<std::fs::File>,
 ) {
     push_capped_f64(window, grad_norm, 100);
@@ -1138,30 +1260,39 @@ fn update_noise_scale(
     let variance = window.iter().map(|&g| (g - mean).powi(2)).sum::<f64>() / (n - 1.0);
     let b_noise = variance / (mean * mean);
     println!("  [noise-scale] step={} B_noise={:.4} (window={})", step, b_noise, window.len());
-    write_jsonl_event_json(jsonl_file, &serde_json::json!({
-        "type": "noise_scale",
-        "step": step,
-        "b_noise": b_noise,
-        "gnorm_mean": mean,
-        "gnorm_var": variance,
-        "window_size": window.len(),
-        "timestamp": now_ms(),
-    }));
+    write_jsonl_event_json(
+        jsonl_file,
+        &serde_json::json!({
+            "type": "noise_scale",
+            "step": step,
+            "b_noise": b_noise,
+            "gnorm_mean": mean,
+            "gnorm_var": variance,
+            "window_size": window.len(),
+            "timestamp": now_ms(),
+        }),
+    );
 }
 
 /// R-016b: Detect loss spikes and log rollback events.
 #[allow(clippy::too_many_arguments)]
 fn detect_loss_spike(
-    loss: f32, step: usize,
-    ema: &mut f64, alpha: f64, threshold: f64,
-    rollback_count: &mut usize, max_rollbacks: usize,
+    loss: f32,
+    step: usize,
+    ema: &mut f64,
+    alpha: f64,
+    threshold: f64,
+    rollback_count: &mut usize,
+    max_rollbacks: usize,
     jsonl_file: &mut Option<std::fs::File>,
 ) {
     let bl = f64::from(loss);
     if *ema > 0.0 && bl > threshold * *ema && *rollback_count < max_rollbacks {
         *rollback_count += 1;
-        println!("  [ROLLBACK] loss spike at step {}: {:.4} > {:.1}×EMA({:.4}), rollback #{}/{}",
-            step, loss, threshold, *ema, *rollback_count, max_rollbacks);
+        println!(
+            "  [ROLLBACK] loss spike at step {}: {:.4} > {:.1}×EMA({:.4}), rollback #{}/{}",
+            step, loss, threshold, *ema, *rollback_count, max_rollbacks
+        );
         write_jsonl_event(jsonl_file, "rollback", step, loss, *ema as f32);
     }
     *ema = alpha * bl + (1.0 - alpha) * *ema;
@@ -1170,7 +1301,10 @@ fn detect_loss_spike(
 /// Write a generic event entry to the JSONL experiment log.
 fn write_jsonl_event(
     jsonl_file: &mut Option<std::fs::File>,
-    event_type: &str, step: usize, loss: f32, loss_ema: f32,
+    event_type: &str,
+    step: usize,
+    loss: f32,
+    loss_ema: f32,
 ) {
     use std::io::Write;
     if let Some(ref mut f) = jsonl_file {
@@ -1186,10 +1320,7 @@ fn write_jsonl_event(
 }
 
 /// Write an arbitrary JSON event to the JSONL log (generic version).
-fn write_jsonl_event_json(
-    jsonl_file: &mut Option<std::fs::File>,
-    entry: &serde_json::Value,
-) {
+fn write_jsonl_event_json(jsonl_file: &mut Option<std::fs::File>, entry: &serde_json::Value) {
     use std::io::Write;
     if let Some(ref mut f) = jsonl_file {
         let _ = writeln!(f, "{entry}");
@@ -1258,8 +1389,14 @@ fn load_val_batches(spec: &TrainSpec) -> Vec<LMBatch> {
     if val_path.is_dir() {
         if let Some(tok) = tokenizer_ref {
             let column = spec.data.input_column.as_deref().unwrap_or("text");
-            if let Ok(batches) = load_lm_batches_from_parquet(val_path, tok, batch_size, seq_len, column) {
-                println!("  ✓ {} validation batches loaded from {}", batches.len(), val_path.display());
+            if let Ok(batches) =
+                load_lm_batches_from_parquet(val_path, tok, batch_size, seq_len, column)
+            {
+                println!(
+                    "  ✓ {} validation batches loaded from {}",
+                    batches.len(),
+                    val_path.display()
+                );
                 return batches;
             }
         }
@@ -1292,7 +1429,10 @@ fn run_validation_eval(
     }
     let val_loss = total_loss / count as f32;
     let val_ppl = crate::train::perplexity(val_loss);
-    println!("  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches)", step, val_loss, val_ppl, count);
+    println!(
+        "  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches)",
+        step, val_loss, val_ppl, count
+    );
 
     // Log to JSONL
     use std::io::Write;
@@ -1375,9 +1515,7 @@ fn shuffled_batch_order(num_batches: usize, shuffle: bool, seed: u64, epoch: usi
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);
     for i in (1..indices.len()).rev() {
-        rng_state = rng_state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         let j = (rng_state >> 33) as usize % (i + 1);
         indices.swap(i, j);
     }
@@ -1409,15 +1547,30 @@ fn handle_graceful_shutdown(
         println!("  [WARN] Emergency save failed: {}", e);
     } else {
         println!("  [checkpoint] emergency save to {}", ckpt_path.display());
-        save_training_state(&spec.training.output_dir, trainer.step(), epoch, iter_idx, seed, loss_ema);
+        save_training_state(
+            &spec.training.output_dir,
+            trainer.step(),
+            epoch,
+            iter_idx,
+            seed,
+            loss_ema,
+        );
     }
     let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0);
     write_training_snapshot(
-        state, start_ms, epoch + 1, total_epochs,
-        trainer.step(), num_batches,
-        final_loss, loss_history,
-        trainer.current_lr(), 0.0,
-        TrainingStatus::Completed, spec, gpu_name,
+        state,
+        start_ms,
+        epoch + 1,
+        total_epochs,
+        trainer.step(),
+        num_batches,
+        final_loss,
+        loss_history,
+        trainer.current_lr(),
+        0.0,
+        TrainingStatus::Completed,
+        spec,
+        gpu_name,
     );
     tracker.complete();
     println!("[SIGINT] Shutdown complete.");
@@ -1443,15 +1596,22 @@ fn check_curriculum_transition(
 ) -> usize {
     let Some(stages) = curriculum else { return current_stage };
     let Some(next) = advance_curriculum(stages, current_stage, step) else { return current_stage };
-    println!("  [Curriculum] → Stage {} at step {} (data: {})",
-        next, step, stages[next].data.display());
-    write_jsonl_event_json(jsonl_file, &serde_json::json!({
-        "type": "curriculum_transition",
-        "stage": next,
-        "step": step,
-        "data": stages[next].data.to_string_lossy(),
-        "timestamp": now_ms(),
-    }));
+    println!(
+        "  [Curriculum] → Stage {} at step {} (data: {})",
+        next,
+        step,
+        stages[next].data.display()
+    );
+    write_jsonl_event_json(
+        jsonl_file,
+        &serde_json::json!({
+            "type": "curriculum_transition",
+            "stage": next,
+            "step": step,
+            "data": stages[next].data.to_string_lossy(),
+            "timestamp": now_ms(),
+        }),
+    );
     next
 }
 
@@ -1478,9 +1638,15 @@ fn advance_curriculum(
 #[allow(clippy::too_many_arguments)]
 fn write_jsonl_step(
     jsonl_file: &mut Option<std::fs::File>,
-    step: usize, loss: f32, lr: f32, tok_s: f64,
-    mfu: f64, grad_norm: f32, embed_grad_norm: f32,
-    epoch: usize, elapsed_s: f64,
+    step: usize,
+    loss: f32,
+    lr: f32,
+    tok_s: f64,
+    mfu: f64,
+    grad_norm: f32,
+    embed_grad_norm: f32,
+    epoch: usize,
+    elapsed_s: f64,
 ) {
     use std::io::Write;
     if let Some(ref mut f) = jsonl_file {
@@ -1508,11 +1674,7 @@ fn checkpoint_path(output_dir: &Path, step: usize) -> PathBuf {
 
 /// Parse step number from a checkpoint filename like "model-step-123.safetensors".
 fn parse_checkpoint_step(filename: &str) -> Option<usize> {
-    filename
-        .strip_prefix("model-step-")?
-        .strip_suffix(".safetensors")?
-        .parse()
-        .ok()
+    filename.strip_prefix("model-step-")?.strip_suffix(".safetensors")?.parse().ok()
 }
 
 /// Log step metrics: console output, IPC snapshot, SQLite, JSONL.
@@ -1526,12 +1688,18 @@ fn log_step_metrics(
     epoch_start: &std::time::Instant,
     start_time: &std::time::Instant,
     step_elapsed: &std::time::Duration,
-    epoch: usize, total_epochs: usize,
-    iter_idx: usize, num_batches: usize,
-    tokens_per_batch: usize, num_params: usize,
-    gpu_peak_tflops: f64, start_ms: u64,
-    batch_loss: f32, loss_history: &[f32],
-    spec: &TrainSpec, gpu_name: &str,
+    epoch: usize,
+    total_epochs: usize,
+    iter_idx: usize,
+    num_batches: usize,
+    tokens_per_batch: usize,
+    num_params: usize,
+    gpu_peak_tflops: f64,
+    start_ms: u64,
+    batch_loss: f32,
+    loss_history: &[f32],
+    spec: &TrainSpec,
+    gpu_name: &str,
 ) {
     let elapsed = epoch_start.elapsed().as_secs_f64();
     let batches_done = iter_idx + 1;
@@ -1561,20 +1729,37 @@ fn log_step_metrics(
 
     // ALB-045: Write snapshot for `apr monitor`
     write_training_snapshot(
-        state, start_ms, epoch + 1, total_epochs,
-        trainer.step(), num_batches,
-        batch_loss, loss_history,
-        trainer.current_lr(), tok_per_sec as f32,
-        TrainingStatus::Running, spec, gpu_name,
+        state,
+        start_ms,
+        epoch + 1,
+        total_epochs,
+        trainer.step(),
+        num_batches,
+        batch_loss,
+        loss_history,
+        trainer.current_lr(),
+        tok_per_sec as f32,
+        TrainingStatus::Running,
+        spec,
+        gpu_name,
     );
 
     // ALB-055/056: Log step metrics to SQLite
     tracker.log_step(trainer.step() as u64, batch_loss, trainer.current_lr(), tok_per_sec as f32);
 
     // R-014: Write JSONL log entry
-    write_jsonl_step(jsonl_file, trainer.step(), batch_loss,
-        trainer.current_lr(), tok_per_sec, mfu, grad_norm, embed_grad_norm,
-        epoch, start_time.elapsed().as_secs_f64());
+    write_jsonl_step(
+        jsonl_file,
+        trainer.step(),
+        batch_loss,
+        trainer.current_lr(),
+        tok_per_sec,
+        mfu,
+        grad_norm,
+        embed_grad_norm,
+        epoch,
+        start_time.elapsed().as_secs_f64(),
+    );
 }
 
 /// R-009: Prune old checkpoints, keeping the most recent `max_keep`.
@@ -1607,8 +1792,12 @@ fn prune_checkpoints(output_dir: &Path, max_keep: usize) {
 
 /// R-006/R-007: Save training state metadata alongside checkpoint.
 fn save_training_state(
-    output_dir: &Path, step: usize, epoch: usize, batch_idx: usize,
-    seed: u64, loss_ema: f64,
+    output_dir: &Path,
+    step: usize,
+    epoch: usize,
+    batch_idx: usize,
+    seed: u64,
+    loss_ema: f64,
 ) {
     let state = serde_json::json!({
         "step": step,
@@ -1624,7 +1813,6 @@ fn save_training_state(
     }
 }
 
-
 /// Save trained model from CPU trainer
 fn save_trained_model_cpu(trainer: &TransformerTrainer, spec: &TrainSpec) -> Result<()> {
     println!();
@@ -1637,9 +1825,8 @@ fn save_trained_model_cpu(trainer: &TransformerTrainer, spec: &TrainSpec) -> Res
     std::fs::create_dir_all(&spec.training.output_dir).ok();
 
     let weights_path = spec.training.output_dir.join("model.safetensors");
-    let model_name = spec.model.path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("entrenar-model");
+    let model_name =
+        spec.model.path.file_name().and_then(|n| n.to_str()).unwrap_or("entrenar-model");
     println!("Saving model weights to {}...", weights_path.display());
     trainer.save(&weights_path, model_name, "LlamaForCausalLM")?;
     println!(
@@ -1647,8 +1834,13 @@ fn save_trained_model_cpu(trainer: &TransformerTrainer, spec: &TrainSpec) -> Res
         std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
     );
 
-    save_config_and_metadata(trainer.model().config(), trainer.step(),
-        &trainer.metrics, &weights_path, spec)
+    save_config_and_metadata(
+        trainer.model().config(),
+        trainer.step(),
+        &trainer.metrics,
+        &weights_path,
+        spec,
+    )
 }
 
 /// Save trained model from CUDA trainer (syncs GPU→CPU first)
@@ -1664,9 +1856,8 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
     std::fs::create_dir_all(&spec.training.output_dir).ok();
 
     let weights_path = spec.training.output_dir.join("model.safetensors");
-    let model_name = spec.model.path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("entrenar-model");
+    let model_name =
+        spec.model.path.file_name().and_then(|n| n.to_str()).unwrap_or("entrenar-model");
     println!("Saving model weights to {}...", weights_path.display());
     trainer.save(&weights_path, model_name, "LlamaForCausalLM")?;
     println!(
@@ -1681,8 +1872,13 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
         println!("✓ Optimizer state saved (CPU embedding m/v buffers)");
     }
 
-    save_config_and_metadata(trainer.model().config(), trainer.step(),
-        &trainer.metrics, &weights_path, spec)
+    save_config_and_metadata(
+        trainer.model().config(),
+        trainer.step(),
+        &trainer.metrics,
+        &weights_path,
+        spec,
+    )
 }
 
 /// Save config.json and metadata (shared by CPU and CUDA paths)
@@ -1989,7 +2185,9 @@ fn build_transformer_config_from_spec(spec: &TrainSpec) -> Result<TransformerCon
 
 /// Build a TransformerConfig directly from architecture overrides if all required fields are present.
 /// Required: hidden_size, num_attention_heads, num_hidden_layers, vocab_size, intermediate_size.
-fn config_from_overrides(overrides: &crate::config::ArchitectureOverrides) -> Option<TransformerConfig> {
+fn config_from_overrides(
+    overrides: &crate::config::ArchitectureOverrides,
+) -> Option<TransformerConfig> {
     let hidden_size = overrides.hidden_size?;
     let num_attention_heads = overrides.num_attention_heads?;
     let num_hidden_layers = overrides.num_hidden_layers?;
@@ -2095,9 +2293,7 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         1e-6
     }) as f32;
     let use_bias = hf_config["attention_bias"].as_bool().unwrap_or(false);
-    let head_dim_override = hf_config["head_dim"]
-        .as_u64()
-        .map(|v| v as usize);
+    let head_dim_override = hf_config["head_dim"].as_u64().map(|v| v as usize);
 
     Ok(TransformerConfig {
         hidden_size,
@@ -2455,17 +2651,10 @@ fn load_lm_batches_from_parquet_dir(
     parquet_files.sort();
 
     if parquet_files.is_empty() {
-        return Err(Error::ConfigError(format!(
-            "No .parquet files found in {}",
-            dir.display()
-        )));
+        return Err(Error::ConfigError(format!("No .parquet files found in {}", dir.display())));
     }
 
-    println!(
-        "  Loading {} Parquet shard(s) from {}",
-        parquet_files.len(),
-        dir.display()
-    );
+    println!("  Loading {} Parquet shard(s) from {}", parquet_files.len(), dir.display());
 
     let mut all_batches = Vec::new();
     for file in &parquet_files {
@@ -2488,10 +2677,8 @@ fn try_extract_pretokenized(
 ) -> Option<Vec<Vec<u32>>> {
     use alimentar::Dataset;
 
-    let token_col = column_names
-        .iter()
-        .find(|&&n| n == "input_ids" || n == "token_ids")
-        .copied()?;
+    let token_col =
+        column_names.iter().find(|&&n| n == "input_ids" || n == "token_ids").copied()?;
 
     let schema = dataset.schema();
     let col_idx = schema.index_of(token_col).ok()?;
@@ -2503,15 +2690,16 @@ fn try_extract_pretokenized(
         extract_sequences_from_column(col, &mut all_sequences);
     }
 
-    if all_sequences.is_empty() { None } else { Some(all_sequences) }
+    if all_sequences.is_empty() {
+        None
+    } else {
+        Some(all_sequences)
+    }
 }
 
 /// Extract token sequences from a single Arrow column (List or flat integer types)
 #[cfg(all(not(target_arch = "wasm32"), feature = "parquet"))]
-fn extract_sequences_from_column(
-    col: &arrow::array::ArrayRef,
-    sequences: &mut Vec<Vec<u32>>,
-) {
+fn extract_sequences_from_column(col: &arrow::array::ArrayRef, sequences: &mut Vec<Vec<u32>>) {
     use arrow::array::{Array, ListArray};
 
     if let Some(list_arr) = col.as_any().downcast_ref::<ListArray>() {
@@ -2581,9 +2769,9 @@ fn extract_text_column(
     let col_name = resolve_text_column_name(text_column, column_names)?;
 
     let schema = dataset.schema();
-    let col_idx = schema.index_of(&col_name).map_err(|e| {
-        Error::ConfigError(format!("Column '{col_name}' not found: {e}"))
-    })?;
+    let col_idx = schema
+        .index_of(&col_name)
+        .map_err(|e| Error::ConfigError(format!("Column '{col_name}' not found: {e}")))?;
 
     let mut texts = Vec::new();
     for batch in dataset.iter() {
@@ -2630,10 +2818,7 @@ fn load_lm_batches_from_parquet(
     text_column: &str,
 ) -> Result<Vec<LMBatch>> {
     if !path.exists() {
-        return Err(Error::Io(format!(
-            "Parquet path does not exist: {}",
-            path.display()
-        )));
+        return Err(Error::Io(format!("Parquet path does not exist: {}", path.display())));
     }
     eprintln!(
         "Warning: Parquet LM loading requires the 'parquet' feature. \
@@ -3287,9 +3472,7 @@ optimizer:
         let dir = tempfile::tempdir().expect("temp dir should succeed");
         let parquet_path = dir.path().join("train.parquet");
 
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("text", DataType::Utf8, false),
-        ]));
+        let schema = Arc::new(Schema::new(vec![Field::new("text", DataType::Utf8, false)]));
         let texts = StringArray::from(vec![
             "def hello():\n    print('hello world')",
             "def add(a, b):\n    return a + b",
@@ -3307,14 +3490,8 @@ optimizer:
 
         // Load via our new implementation
         let tokenizer = HfTokenizer::qwen2();
-        let batches = load_lm_batches_from_parquet(
-            &parquet_path,
-            &tokenizer,
-            2,
-            64,
-            "text",
-        )
-        .expect("parquet loading should succeed");
+        let batches = load_lm_batches_from_parquet(&parquet_path, &tokenizer, 2, 64, "text")
+            .expect("parquet loading should succeed");
 
         assert!(!batches.is_empty());
         // 4 texts with batch_size=2 → at least 2 batches
@@ -3335,17 +3512,13 @@ optimizer:
         let shard_dir = dir.path().join("shards");
         std::fs::create_dir_all(&shard_dir).expect("dir creation should succeed");
 
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("text", DataType::Utf8, false),
-        ]));
+        let schema = Arc::new(Schema::new(vec![Field::new("text", DataType::Utf8, false)]));
 
         // Write two shard files
-        for (i, texts) in [
-            vec!["def foo(): pass", "def bar(): return 1"],
-            vec!["class A: pass", "import sys"],
-        ]
-        .iter()
-        .enumerate()
+        for (i, texts) in
+            [vec!["def foo(): pass", "def bar(): return 1"], vec!["class A: pass", "import sys"]]
+                .iter()
+                .enumerate()
         {
             let arr = StringArray::from(texts.clone());
             let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(arr)])
@@ -3359,14 +3532,8 @@ optimizer:
         }
 
         let tokenizer = HfTokenizer::qwen2();
-        let batches = load_lm_batches_from_parquet(
-            &shard_dir,
-            &tokenizer,
-            2,
-            64,
-            "text",
-        )
-        .expect("directory loading should succeed");
+        let batches = load_lm_batches_from_parquet(&shard_dir, &tokenizer, 2, 64, "text")
+            .expect("directory loading should succeed");
 
         assert!(!batches.is_empty());
         // 4 total texts across 2 shards
@@ -3385,9 +3552,7 @@ optimizer:
         let dir = tempfile::tempdir().expect("temp dir should succeed");
         let path = dir.path().join("numeric.parquet");
 
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("numbers", DataType::Int32, false),
-        ]));
+        let schema = Arc::new(Schema::new(vec![Field::new("numbers", DataType::Int32, false)]));
         let arr = Int32Array::from(vec![1, 2, 3]);
         let batch = RecordBatch::try_new(schema.clone(), vec![Arc::new(arr)])
             .expect("batch should succeed");

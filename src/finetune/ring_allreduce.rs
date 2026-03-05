@@ -52,12 +52,7 @@ impl RingAllReduceWorker {
     ) -> Self {
         assert!(world_size >= 2, "ring AllReduce requires >= 2 workers");
         assert!(rank < world_size, "rank must be < world_size");
-        Self {
-            rank,
-            world_size,
-            send_stream,
-            recv_stream,
-        }
+        Self { rank, world_size, send_stream, recv_stream }
     }
 
     /// Perform AllReduce on `data`, returning the averaged result.
@@ -118,11 +113,8 @@ impl RingAllReduceWorker {
 
             // Element-wise add received chunk into local chunk
             for i in 0..recv_len {
-                let received = f32::from_le_bytes(
-                    recv_buf[i * 4..(i + 1) * 4]
-                        .try_into()
-                        .expect("4 bytes"),
-                );
+                let received =
+                    f32::from_le_bytes(recv_buf[i * 4..(i + 1) * 4].try_into().expect("4 bytes"));
                 data[recv_start + i] += received;
             }
         }
@@ -148,11 +140,8 @@ impl RingAllReduceWorker {
 
             // Copy received chunk into place (no addition — just replace)
             for i in 0..recv_len {
-                data[recv_start + i] = f32::from_le_bytes(
-                    recv_buf[i * 4..(i + 1) * 4]
-                        .try_into()
-                        .expect("4 bytes"),
-                );
+                data[recv_start + i] =
+                    f32::from_le_bytes(recv_buf[i * 4..(i + 1) * 4].try_into().expect("4 bytes"));
             }
         }
 
@@ -192,16 +181,11 @@ pub fn allreduce_pair(
 
     f32_slice_to_bytes(data, &mut send_buf);
 
-    send_stream
-        .write_all(&send_buf)
-        .map_err(|e| format!("pair send error: {e}"))?;
-    recv_stream
-        .read_exact(&mut recv_buf)
-        .map_err(|e| format!("pair recv error: {e}"))?;
+    send_stream.write_all(&send_buf).map_err(|e| format!("pair send error: {e}"))?;
+    recv_stream.read_exact(&mut recv_buf).map_err(|e| format!("pair recv error: {e}"))?;
 
     for i in 0..data.len() {
-        let remote =
-            f32::from_le_bytes(recv_buf[i * 4..(i + 1) * 4].try_into().expect("4 bytes"));
+        let remote = f32::from_le_bytes(recv_buf[i * 4..(i + 1) * 4].try_into().expect("4 bytes"));
         data[i] = (data[i] + remote) * 0.5;
     }
 
@@ -218,9 +202,8 @@ mod tests {
     /// Returns N `RingAllReduceWorker` instances.
     fn setup_ring(n: usize) -> Vec<RingAllReduceWorker> {
         // Create N listeners
-        let listeners: Vec<TcpListener> = (0..n)
-            .map(|_| TcpListener::bind("127.0.0.1:0").expect("bind"))
-            .collect();
+        let listeners: Vec<TcpListener> =
+            (0..n).map(|_| TcpListener::bind("127.0.0.1:0").expect("bind")).collect();
         let addrs: Vec<_> = listeners.iter().map(|l| l.local_addr().expect("addr")).collect();
 
         // Each worker connects to its right neighbor
@@ -383,7 +366,8 @@ mod tests {
         let r2 = h2.join().expect("join");
 
         // Expected: (d0 + d1 + d2) / 3
-        let expected: Vec<f32> = vec![8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0];
+        let expected: Vec<f32> =
+            vec![8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0, 8.0 / 3.0];
         for (i, (&v, &e)) in d0.iter().zip(&expected).enumerate() {
             assert!((v - e).abs() < 1e-5, "w0[{i}]: {v} != {e}");
         }
@@ -410,10 +394,7 @@ mod tests {
 
         let expected = (d as f32 - 1.0) / 2.0;
         for (i, &v) in d0.iter().enumerate() {
-            assert!(
-                (v - expected).abs() < 1e-2,
-                "w0[{i}]: {v} != {expected}"
-            );
+            assert!((v - expected).abs() < 1e-2, "w0[{i}]: {v} != {expected}");
         }
         assert_eq!(d0, r1, "results must be identical");
     }

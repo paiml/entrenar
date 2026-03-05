@@ -5,18 +5,18 @@
 mod activations;
 mod attention;
 mod basic;
-mod matmul;
-mod normalize;
 #[cfg(test)]
 mod correctness_tests;
+mod matmul;
+mod normalize;
 
 // Re-export all public operations
 pub use activations::{gelu, relu, softmax, swish};
 pub use attention::attention;
 pub use basic::{add, add_scaled, mul, scale, sum};
-pub use matmul::{matmul, matmul_compute, matmul_nt, transpose, transpose_tracked};
 #[cfg(feature = "cuda")]
 pub use matmul::pre_warm_realizador_gemm;
+pub use matmul::{matmul, matmul_compute, matmul_nt, transpose, transpose_tracked};
 #[cfg(feature = "gpu")]
 pub use matmul::{suppress_per_op_wgpu, unsuppress_per_op_wgpu};
 pub use normalize::layer_norm;

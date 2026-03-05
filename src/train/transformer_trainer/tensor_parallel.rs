@@ -86,15 +86,7 @@ impl TensorParallelConfig {
 
         let head_dim = hidden_size / num_heads;
 
-        Self {
-            tp_rank,
-            tp_size,
-            hidden_size,
-            intermediate_size,
-            num_heads,
-            num_kv_heads,
-            head_dim,
-        }
+        Self { tp_rank, tp_size, hidden_size, intermediate_size, num_heads, num_kv_heads, head_dim }
     }
 
     /// Number of Q heads on this GPU.
@@ -153,12 +145,7 @@ impl ColumnParallelShard {
         let col_start = tp_rank * local_output_dim;
         let col_end = col_start + local_output_dim;
 
-        Self {
-            input_dim,
-            local_output_dim,
-            col_start,
-            col_end,
-        }
+        Self { input_dim, local_output_dim, col_start, col_end }
     }
 
     /// Number of elements in the local weight shard.
@@ -205,12 +192,7 @@ impl RowParallelShard {
         let row_start = tp_rank * local_input_dim;
         let row_end = row_start + local_input_dim;
 
-        Self {
-            local_input_dim,
-            output_dim,
-            row_start,
-            row_end,
-        }
+        Self { local_input_dim, output_dim, row_start, row_end }
     }
 
     /// Number of elements in the local weight shard.

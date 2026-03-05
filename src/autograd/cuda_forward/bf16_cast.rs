@@ -144,11 +144,8 @@ pub fn cast_f32_to_bf16_gpu(
     let src_ptr = src.as_ptr();
     let dst_ptr = dst.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 3] = [
-        &src_ptr as *const _ as *mut _,
-        &dst_ptr as *const _ as *mut _,
-        &n as *const _ as *mut _,
-    ];
+    let mut args: [*mut std::ffi::c_void; 3] =
+        [&src_ptr as *const _ as *mut _, &dst_ptr as *const _ as *mut _, &n as *const _ as *mut _];
 
     // SAFETY: Kernel launch requires FFI. src and dst are valid GPU allocations,
     // src has n*4 bytes readable, dst has n*2 bytes writable.
@@ -194,11 +191,8 @@ pub fn cast_bf16_to_f32_gpu(
     let src_ptr = src.as_ptr();
     let dst_ptr = dst.as_ptr();
 
-    let mut args: [*mut std::ffi::c_void; 3] = [
-        &src_ptr as *const _ as *mut _,
-        &dst_ptr as *const _ as *mut _,
-        &n as *const _ as *mut _,
-    ];
+    let mut args: [*mut std::ffi::c_void; 3] =
+        [&src_ptr as *const _ as *mut _, &dst_ptr as *const _ as *mut _, &n as *const _ as *mut _];
 
     // SAFETY: src and dst are valid GPU allocations, src has n*2 bytes, dst has n*4 bytes.
     unsafe {

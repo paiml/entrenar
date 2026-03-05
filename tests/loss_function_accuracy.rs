@@ -38,10 +38,7 @@ fn test_cross_entropy_matches_reference_3class() {
     let actual = loss.data()[0];
 
     let diff = (actual - reference).abs();
-    assert!(
-        diff < 1e-5,
-        "CE mismatch: actual={actual}, reference={reference}, diff={diff}"
-    );
+    assert!(diff < 1e-5, "CE mismatch: actual={actual}, reference={reference}, diff={diff}");
 }
 
 #[test]
@@ -112,12 +109,9 @@ fn test_mse_loss_matches_reference() {
     let target_vals = vec![1.5_f32, 2.5, 2.5, 4.5];
 
     // Reference: mean((pred - target)^2)
-    let reference: f32 = pred_vals
-        .iter()
-        .zip(&target_vals)
-        .map(|(p, t)| (p - t) * (p - t))
-        .sum::<f32>()
-        / pred_vals.len() as f32;
+    let reference: f32 =
+        pred_vals.iter().zip(&target_vals).map(|(p, t)| (p - t) * (p - t)).sum::<f32>()
+            / pred_vals.len() as f32;
 
     let mse = MSELoss;
     let pred = Tensor::from_vec(pred_vals, false);
@@ -126,10 +120,7 @@ fn test_mse_loss_matches_reference() {
     let actual = loss.data()[0];
 
     let diff = (actual - reference).abs();
-    assert!(
-        diff < 1e-6,
-        "MSE mismatch: actual={actual}, reference={reference}, diff={diff}"
-    );
+    assert!(diff < 1e-6, "MSE mismatch: actual={actual}, reference={reference}, diff={diff}");
 }
 
 #[test]
@@ -140,11 +131,7 @@ fn test_mse_loss_zero_for_identical() {
     let tgt = Tensor::from_vec(vals, false);
     let loss = mse.forward(&pred, &tgt);
 
-    assert!(
-        loss.data()[0].abs() < 1e-10,
-        "MSE of identical should be 0, got {}",
-        loss.data()[0]
-    );
+    assert!(loss.data()[0].abs() < 1e-10, "MSE of identical should be 0, got {}", loss.data()[0]);
 }
 
 #[test]
@@ -168,10 +155,7 @@ fn test_bce_with_logits_matches_reference() {
     let actual = loss.data()[0];
 
     let diff = (actual - reference).abs();
-    assert!(
-        diff < 1e-5,
-        "BCE mismatch: actual={actual}, reference={reference}, diff={diff}"
-    );
+    assert!(diff < 1e-5, "BCE mismatch: actual={actual}, reference={reference}, diff={diff}");
 }
 
 #[test]
@@ -180,9 +164,7 @@ fn test_causal_lm_loss_finite_for_valid_input() {
     let seq_len = 10;
 
     // Create logits: seq_len * vocab_size values
-    let logits: Vec<f32> = (0..seq_len * vocab_size)
-        .map(|i| ((i as f32) * 0.01).sin())
-        .collect();
+    let logits: Vec<f32> = (0..seq_len * vocab_size).map(|i| ((i as f32) * 0.01).sin()).collect();
 
     // Create targets: token IDs as floats (CausalLMLoss expects seq_len target values)
     let targets: Vec<f32> = (0..seq_len).map(|s| (s % vocab_size) as f32).collect();
@@ -192,14 +174,6 @@ fn test_causal_lm_loss_finite_for_valid_input() {
     let tgt = Tensor::from_vec(targets, false);
     let loss = lm_loss.forward(&pred, &tgt);
 
-    assert!(
-        loss.data()[0].is_finite(),
-        "CausalLM loss should be finite, got {}",
-        loss.data()[0]
-    );
-    assert!(
-        loss.data()[0] > 0.0,
-        "CausalLM loss should be positive, got {}",
-        loss.data()[0]
-    );
+    assert!(loss.data()[0].is_finite(), "CausalLM loss should be finite, got {}", loss.data()[0]);
+    assert!(loss.data()[0] > 0.0, "CausalLM loss should be positive, got {}", loss.data()[0]);
 }

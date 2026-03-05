@@ -44,19 +44,19 @@ use crate::autograd::cuda_backward::{gemm_backward_a, gemm_backward_b, rms_norm_
 use crate::autograd::cuda_forward::{gemm_forward, pre_warm_forward_kernels, rms_norm_forward};
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_optim::{
-    adamw_step_cuda, fused_cross_entropy_cuda, gradient_clip_cuda,
-    squared_sum_cuda, squared_sum_launch_cuda, squared_sum_collect,
+    adamw_step_cuda, fused_cross_entropy_cuda, gradient_clip_cuda, squared_sum_collect,
+    squared_sum_cuda, squared_sum_launch_cuda,
 };
 #[cfg(feature = "cuda")]
 use crate::autograd::cuda_training::{cuda_training_available, CudaTrainer};
+#[cfg(feature = "cuda")]
+use crate::autograd::precision::GradScaler;
 #[cfg(feature = "cuda")]
 use crate::autograd::Tensor;
 #[cfg(feature = "cuda")]
 use crate::io::{save_model, Model, ModelFormat, ModelMetadata, SaveConfig};
 #[cfg(feature = "cuda")]
 use crate::optim::{AdamW, Optimizer};
-#[cfg(feature = "cuda")]
-use crate::autograd::precision::GradScaler;
 #[cfg(feature = "cuda")]
 use crate::train::MetricsTracker;
 #[cfg(feature = "cuda")]
@@ -86,9 +86,15 @@ fn compute_workspace_clip_scale_gpu(
     use crate::autograd::cuda_optim::PendingSquaredSum;
 
     let all_bufs: [&GpuBuffer<f32>; 9] = [
-        &ws.grad_w_q, &ws.grad_w_k, &ws.grad_w_v, &ws.grad_w_o,
-        &ws.grad_gate, &ws.grad_up, &ws.grad_down,
-        &ws.grad_input_norm, &ws.grad_post_attn_norm,
+        &ws.grad_w_q,
+        &ws.grad_w_k,
+        &ws.grad_w_v,
+        &ws.grad_w_o,
+        &ws.grad_gate,
+        &ws.grad_up,
+        &ws.grad_down,
+        &ws.grad_input_norm,
+        &ws.grad_post_attn_norm,
     ];
 
     // KAIZEN-055: Launch all 9 squared_sum kernels back-to-back without syncing.
@@ -119,11 +125,7 @@ fn compute_workspace_clip_scale_gpu(
     }
 
     let grad_norm = total_sq.sqrt() as f32;
-    let scale = if grad_norm > max_norm {
-        max_norm / grad_norm
-    } else {
-        1.0
-    };
+    let scale = if grad_norm > max_norm { max_norm / grad_norm } else { 1.0 };
     (scale, grad_norm)
 }
 
@@ -339,9 +341,7 @@ impl CudaTransformerTrainer {
     /// Returns `Err` if CUDA initialization fails.
     pub fn with_model(model: Transformer, config: TransformerTrainConfig) -> crate::Result<Self> {
         if !cuda_training_available() {
-            return Err(crate::error::Error::ConfigError(
-                "CUDA not available".into(),
-            ));
+            return Err(crate::error::Error::ConfigError("CUDA not available".into()));
         }
 
         let mc = &config.model_config;
@@ -374,9 +374,7 @@ impl CudaTransformerTrainer {
             mc.head_dim(),
             max_seq_len,
         )
-        .map_err(|e| {
-            crate::error::Error::ConfigError(format!("Kernel pre-warm failed: {e:?}"))
-        })?;
+        .map_err(|e| crate::error::Error::ConfigError(format!("Kernel pre-warm failed: {e:?}")))?;
 
         // Step 3: Upload transformer blocks to GPU
         let mut cuda_blocks = Vec::with_capacity(num_layers);
@@ -422,17 +420,14 @@ impl CudaTransformerTrainer {
         } else {
             1 // Every layer is a checkpoint (no recomputation)
         };
-        let saved_layer_mask: Vec<bool> = (0..num_layers)
-            .map(|i| !checkpointing || i % segment_size == 0)
-            .collect();
+        let saved_layer_mask: Vec<bool> =
+            (0..num_layers).map(|i| !checkpointing || i % segment_size == 0).collect();
 
         let mut layer_inputs = Vec::with_capacity(num_layers);
         for _ in 0..num_layers {
-            layer_inputs.push(
-                GpuBuffer::new(&ctx, buf_size).map_err(|e| {
-                    crate::error::Error::ConfigError(format!("Layer input alloc failed: {e:?}"))
-                })?,
-            );
+            layer_inputs.push(GpuBuffer::new(&ctx, buf_size).map_err(|e| {
+                crate::error::Error::ConfigError(format!("Layer input alloc failed: {e:?}"))
+            })?);
         }
 
         // Allocate recompute buffer if checkpointing is enabled
@@ -506,11 +501,7 @@ impl CudaTransformerTrainer {
 
         // Step 6: Upload LM head weight to GPU
         // Use tied weights (embed_tokens.weight) or separate lm_head
-        let lm_head_data = model
-            .lm_head
-            .as_ref()
-            .unwrap_or(&model.embed_tokens.weight)
-            .data();
+        let lm_head_data = model.lm_head.as_ref().unwrap_or(&model.embed_tokens.weight).data();
         let lm_head_slice = lm_head_data.as_slice().expect("contiguous");
         let lm_head_weight_gpu = GpuBuffer::from_host(&ctx, lm_head_slice).map_err(|e| {
             crate::error::Error::ConfigError(format!("LM head upload failed: {e:?}"))
@@ -520,12 +511,14 @@ impl CudaTransformerTrainer {
         })?;
         // CRITICAL: Must zero-initialize m/v buffers. GpuBuffer::new() does NOT
         // zero memory (cuMemAlloc returns uninitialized VRAM).
-        let lm_head_m = GpuBuffer::from_host(&ctx, &vec![0.0f32; vocab_size * hidden_size]).map_err(|e| {
-            crate::error::Error::ConfigError(format!("LM head m alloc failed: {e:?}"))
-        })?;
-        let lm_head_v = GpuBuffer::from_host(&ctx, &vec![0.0f32; vocab_size * hidden_size]).map_err(|e| {
-            crate::error::Error::ConfigError(format!("LM head v alloc failed: {e:?}"))
-        })?;
+        let lm_head_m = GpuBuffer::from_host(&ctx, &vec![0.0f32; vocab_size * hidden_size])
+            .map_err(|e| {
+                crate::error::Error::ConfigError(format!("LM head m alloc failed: {e:?}"))
+            })?;
+        let lm_head_v = GpuBuffer::from_host(&ctx, &vec![0.0f32; vocab_size * hidden_size])
+            .map_err(|e| {
+                crate::error::Error::ConfigError(format!("LM head v alloc failed: {e:?}"))
+            })?;
 
         // Final norm optimizer states
         let final_norm_m = GpuBuffer::from_host(&ctx, &vec![0.0f32; hidden_size]).map_err(|e| {
@@ -545,9 +538,9 @@ impl CudaTransformerTrainer {
         })?;
 
         // Sync to ensure all uploads completed
-        stream.synchronize().map_err(|e| {
-            crate::error::Error::ConfigError(format!("Stream sync failed: {e:?}"))
-        })?;
+        stream
+            .synchronize()
+            .map_err(|e| crate::error::Error::ConfigError(format!("Stream sync failed: {e:?}")))?;
 
         println!(
             "  ✓ GPU training state allocated (LM head: {:.1} MB)",
@@ -556,23 +549,24 @@ impl CudaTransformerTrainer {
 
         // KAIZEN-050: loss_fn removed — cross-entropy computed by fused GPU kernel
         // C-EMBED-GRAD-001: CPU optimizer must match YAML hyperparams (not defaults)
-        let embed_optimizer = AdamW::new(
-            config.lr,
-            config.beta1,
-            config.beta2,
-            1e-8,
-            config.weight_decay,
-        );
+        let embed_optimizer =
+            AdamW::new(config.lr, config.beta1, config.beta2, 1e-8, config.weight_decay);
 
         // R-038: Allocate per-block gradient accumulation buffers (CPU-side)
         // when accumulation_steps > 1 for true gradient accumulation.
         let grad_accum = if config.accumulation_steps > 1 {
             let kv_hidden = mc.num_kv_heads * mc.head_dim();
-            let block_sizes = super::grad_accumulator::PerBlockGradientAccumulator::compute_block_sizes(
-                hidden_size, kv_hidden, mc.intermediate_size,
-            );
+            let block_sizes =
+                super::grad_accumulator::PerBlockGradientAccumulator::compute_block_sizes(
+                    hidden_size,
+                    kv_hidden,
+                    mc.intermediate_size,
+                );
             let accum = super::grad_accumulator::PerBlockGradientAccumulator::new(
-                num_layers, block_sizes, vocab_size, hidden_size,
+                num_layers,
+                block_sizes,
+                vocab_size,
+                hidden_size,
             );
             println!(
                 "  ✓ Gradient accumulation: {} steps, CPU buffers ({:.1} MB)",
@@ -580,7 +574,9 @@ impl CudaTransformerTrainer {
                 (accum.block_grads.iter().map(|b| b.total_elements()).sum::<usize>()
                     + accum.lm_head_grad.len()
                     + accum.final_norm_grad.len()
-                    + accum.embedding_grad.len()) as f64 * 4.0 / 1e6,
+                    + accum.embedding_grad.len()) as f64
+                    * 4.0
+                    / 1e6,
             );
             Some(accum)
         } else {
@@ -700,7 +696,8 @@ impl CudaTransformerTrainer {
             vocab_size as u32,
             loss_scale,
             stream,
-        ).ok()?;
+        )
+        .ok()?;
 
         // NaN guard (replaces logits NaN check — NaN logits → NaN loss via kernel)
         if !loss_val.is_finite() {
@@ -762,11 +759,18 @@ impl CudaTransformerTrainer {
         for (i, block) in self.cuda_blocks.iter_mut().enumerate() {
             // Use raw pointers for the ping-pong to avoid borrow conflicts
             // with self.gpu_training.layer_inputs
-            let (input_ptr, output_ptr): (*const GpuBuffer<f32>, *mut GpuBuffer<f32>) = if input_is_a {
-                (std::ptr::from_ref(&self.fwd_scratch_a), std::ptr::from_mut(&mut self.fwd_scratch_b))
-            } else {
-                (std::ptr::from_ref(&self.fwd_scratch_b), std::ptr::from_mut(&mut self.fwd_scratch_a))
-            };
+            let (input_ptr, output_ptr): (*const GpuBuffer<f32>, *mut GpuBuffer<f32>) =
+                if input_is_a {
+                    (
+                        std::ptr::from_ref(&self.fwd_scratch_a),
+                        std::ptr::from_mut(&mut self.fwd_scratch_b),
+                    )
+                } else {
+                    (
+                        std::ptr::from_ref(&self.fwd_scratch_b),
+                        std::ptr::from_mut(&mut self.fwd_scratch_a),
+                    )
+                };
             if self.gpu_training.saved_layer_mask[i] {
                 // SAFETY: Both buffers are valid GPU allocations with matching max_seq_len size.
                 // Copy completes before block.forward() reads from input (same stream ordering).
@@ -785,16 +789,14 @@ impl CudaTransformerTrainer {
         self.profiler.end(StepProfiler::FORWARD);
 
         // After the loop, input_is_a tells us which buffer has the final output
-        let final_output: &GpuBuffer<f32> = if input_is_a { &self.fwd_scratch_a } else { &self.fwd_scratch_b };
+        let final_output: &GpuBuffer<f32> =
+            if input_is_a { &self.fwd_scratch_a } else { &self.fwd_scratch_b };
 
         // Save blocks output for final norm backward
         // SAFETY: Disjoint GPU buffers with matching max_seq_len sizes.
         self.profiler.begin(StepProfiler::NORM_LM);
         unsafe {
-            self.gpu_training
-                .blocks_output
-                .copy_from_buffer_async(final_output, stream)
-                .ok()?;
+            self.gpu_training.blocks_output.copy_from_buffer_async(final_output, stream).ok()?;
         }
 
         // Final RMSNorm forward (GPU)
@@ -854,9 +856,7 @@ impl CudaTransformerTrainer {
         stream: &CudaStream,
     ) -> Option<()> {
         // Find nearest saved checkpoint at or before target
-        let seg_start = (0..=target_layer)
-            .rev()
-            .find(|&i| gpu_training.saved_layer_mask[i])?;
+        let seg_start = (0..=target_layer).rev().find(|&i| gpu_training.saved_layer_mask[i])?;
 
         if seg_start == target_layer {
             return Some(()); // Already saved
@@ -867,10 +867,7 @@ impl CudaTransformerTrainer {
         let recompute_buf = gpu_training.recompute_buf.as_mut()?;
         unsafe {
             recompute_buf
-                .copy_from_buffer_async(
-                    &gpu_training.layer_inputs[seg_start],
-                    stream,
-                )
+                .copy_from_buffer_async(&gpu_training.layer_inputs[seg_start], stream)
                 .ok()?;
         }
 
@@ -898,9 +895,7 @@ impl CudaTransformerTrainer {
                 // Input = layer_inputs[i], output = layer_inputs[i+1]
                 let li = &mut gpu_training.layer_inputs;
                 let (left, right) = li.split_at_mut(i + 1);
-                cuda_blocks[i]
-                    .forward(&left[i], &mut right[0], seq_len, stream)
-                    .ok()?;
+                cuda_blocks[i].forward(&left[i], &mut right[0], seq_len, stream).ok()?;
             }
         }
 
@@ -944,24 +939,31 @@ impl CudaTransformerTrainer {
             &self.gpu_training.logits_buf,
             &self.lm_head_weight_gpu,
             &mut self.gpu_training.lm_head_grad_hidden,
-            seq_len as u32, hidden_size as u32, vocab_size as u32,
+            seq_len as u32,
+            hidden_size as u32,
+            vocab_size as u32,
             stream,
-        ).ok()?;
+        )
+        .ok()?;
 
         gemm_backward_b(
             &self.gpu_training.norm_output,
             &self.gpu_training.logits_buf,
             &mut self.lm_head_grad_gpu,
-            seq_len as u32, hidden_size as u32, vocab_size as u32,
+            seq_len as u32,
+            hidden_size as u32,
+            vocab_size as u32,
             stream,
-        ).ok()?;
+        )
+        .ok()?;
 
         // Clip LM head weight gradient
         // KAIZEN-049: GPU norm reduction.
         // KAIZEN-051: No explicit sync needed — same stream ordering.
         // ALB-071: Always compute LM head grad norm for observability (R-004).
-        let lm_norm = squared_sum_cuda(&self.lm_head_grad_gpu, self.lm_head_grad_gpu.len() as u32, stream)
-            .unwrap_or(0.0);
+        let lm_norm =
+            squared_sum_cuda(&self.lm_head_grad_gpu, self.lm_head_grad_gpu.len() as u32, stream)
+                .unwrap_or(0.0);
         self.last_grad_norm = lm_norm; // R-004: capture for observability (now on unscaled grads)
         if let Some(max_norm) = max_grad_norm {
             let clip_scale = if lm_norm > max_norm { max_norm / lm_norm } else { 1.0 };
@@ -978,15 +980,24 @@ impl CudaTransformerTrainer {
             &self.gpu_training.lm_head_grad_hidden,
             &mut self.gpu_training.grad_buf_a,
             &mut self.gpu_training.grad_final_norm_weight,
-            seq_len as u32, hidden_size as u32, 1e-5_f32, stream,
-        ).ok()?;
+            seq_len as u32,
+            hidden_size as u32,
+            1e-5_f32,
+            stream,
+        )
+        .ok()?;
 
         // Clip final norm weight gradient
         // KAIZEN-051: No explicit sync needed — same stream ordering as LM head clip.
         if let Some(max_norm) = max_grad_norm {
-            let (scale, _) = Self::compute_clip_scale_with_norm(&self.gpu_training.grad_final_norm_weight, max_norm, stream);
+            let (scale, _) = Self::compute_clip_scale_with_norm(
+                &self.gpu_training.grad_final_norm_weight,
+                max_norm,
+                stream,
+            );
             let n = self.gpu_training.grad_final_norm_weight.len() as u32;
-            let _ = gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
+            let _ =
+                gradient_clip_cuda(&mut self.gpu_training.grad_final_norm_weight, scale, n, stream);
         }
         self.profiler.end(StepProfiler::NORM_BWD);
 
@@ -1002,10 +1013,17 @@ impl CudaTransformerTrainer {
         } else {
             Self::run_nonblock_optimizer_step(
                 &mut self.gpu_training,
-                &mut self.lm_head_weight_gpu, &self.lm_head_grad_gpu,
-                &mut self.lm_head_m, &mut self.lm_head_v,
-                &mut self.final_norm_m, &mut self.final_norm_v,
-                lr, beta1, beta2, weight_decay, stream,
+                &mut self.lm_head_weight_gpu,
+                &self.lm_head_grad_gpu,
+                &mut self.lm_head_m,
+                &mut self.lm_head_v,
+                &mut self.final_norm_m,
+                &mut self.final_norm_v,
+                lr,
+                beta1,
+                beta2,
+                weight_decay,
+                stream,
             );
         }
 
@@ -1041,11 +1059,16 @@ impl CudaTransformerTrainer {
                     (&*grad_b_ptr, &mut *grad_a_ptr)
                 }
             };
-            self.cuda_blocks[layer_idx].backward(
-                &self.gpu_training.layer_inputs[layer_idx],
-                grad_output, grad_input, seq_len, stream,
-                &mut self.cuda_grad_workspace,
-            ).ok()?;
+            self.cuda_blocks[layer_idx]
+                .backward(
+                    &self.gpu_training.layer_inputs[layer_idx],
+                    grad_output,
+                    grad_input,
+                    seq_len,
+                    stream,
+                    &mut self.cuda_grad_workspace,
+                )
+                .ok()?;
 
             // KAIZEN-054: Per-block gradient clipping re-enabled via GPU-side norm.
             // squared_sum_cuda computes L2 norm on GPU (~1KB D2H per buffer, 9 buffers).
@@ -1065,7 +1088,9 @@ impl CudaTransformerTrainer {
                 stream.synchronize().ok()?;
                 if let Some(accum) = &mut self.grad_accum {
                     Self::download_workspace_to_accum(
-                        &self.cuda_grad_workspace, accum, layer_idx,
+                        &self.cuda_grad_workspace,
+                        accum,
+                        layer_idx,
                         &mut self.d2h_staging,
                     )?;
                 }
@@ -1074,7 +1099,13 @@ impl CudaTransformerTrainer {
                 let step = self.gpu_training.step;
                 let _ = self.cuda_blocks[layer_idx].optimizer_step(
                     &mut self.gpu_training.optimizer_states[layer_idx],
-                    step, lr, beta1, beta2, 1e-8, weight_decay, stream,
+                    step,
+                    lr,
+                    beta1,
+                    beta2,
+                    1e-8,
+                    weight_decay,
+                    stream,
                     &self.cuda_grad_workspace,
                 );
             }
@@ -1141,7 +1172,14 @@ impl CudaTransformerTrainer {
             lm_head_grad_gpu,
             lm_head_m,
             lm_head_v,
-            lr, beta1, beta2, 1e-8, weight_decay, step, n_lm, stream,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_lm,
+            stream,
         );
 
         let n_norm = gpu_training.final_norm_weight.len() as u32;
@@ -1150,7 +1188,14 @@ impl CudaTransformerTrainer {
             &gpu_training.grad_final_norm_weight,
             final_norm_m,
             final_norm_v,
-            lr, beta1, beta2, 1e-8, weight_decay, step, n_norm, stream,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_norm,
+            stream,
         );
     }
 
@@ -1225,21 +1270,54 @@ impl CudaTransformerTrainer {
 
             // Upload accumulated gradients to shared workspace
             unsafe {
-                self.cuda_grad_workspace.grad_w_q.copy_from_host_async(&bg.components[component::W_Q], stream).ok()?;
-                self.cuda_grad_workspace.grad_w_k.copy_from_host_async(&bg.components[component::W_K], stream).ok()?;
-                self.cuda_grad_workspace.grad_w_v.copy_from_host_async(&bg.components[component::W_V], stream).ok()?;
-                self.cuda_grad_workspace.grad_w_o.copy_from_host_async(&bg.components[component::W_O], stream).ok()?;
-                self.cuda_grad_workspace.grad_gate.copy_from_host_async(&bg.components[component::GATE], stream).ok()?;
-                self.cuda_grad_workspace.grad_up.copy_from_host_async(&bg.components[component::UP], stream).ok()?;
-                self.cuda_grad_workspace.grad_down.copy_from_host_async(&bg.components[component::DOWN], stream).ok()?;
-                self.cuda_grad_workspace.grad_input_norm.copy_from_host_async(&bg.components[component::INPUT_NORM], stream).ok()?;
-                self.cuda_grad_workspace.grad_post_attn_norm.copy_from_host_async(&bg.components[component::POST_ATTN_NORM], stream).ok()?;
+                self.cuda_grad_workspace
+                    .grad_w_q
+                    .copy_from_host_async(&bg.components[component::W_Q], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_w_k
+                    .copy_from_host_async(&bg.components[component::W_K], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_w_v
+                    .copy_from_host_async(&bg.components[component::W_V], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_w_o
+                    .copy_from_host_async(&bg.components[component::W_O], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_gate
+                    .copy_from_host_async(&bg.components[component::GATE], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_up
+                    .copy_from_host_async(&bg.components[component::UP], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_down
+                    .copy_from_host_async(&bg.components[component::DOWN], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_input_norm
+                    .copy_from_host_async(&bg.components[component::INPUT_NORM], stream)
+                    .ok()?;
+                self.cuda_grad_workspace
+                    .grad_post_attn_norm
+                    .copy_from_host_async(&bg.components[component::POST_ATTN_NORM], stream)
+                    .ok()?;
             }
 
             // Run optimizer step with uploaded averaged gradients
             let _ = self.cuda_blocks[layer_idx].optimizer_step(
                 &mut self.gpu_training.optimizer_states[layer_idx],
-                step, lr, beta1, beta2, 1e-8, weight_decay, stream,
+                step,
+                lr,
+                beta1,
+                beta2,
+                1e-8,
+                weight_decay,
+                stream,
                 &self.cuda_grad_workspace,
             );
         }
@@ -1254,13 +1332,22 @@ impl CudaTransformerTrainer {
             &self.lm_head_grad_gpu,
             &mut self.lm_head_m,
             &mut self.lm_head_v,
-            lr, beta1, beta2, 1e-8, weight_decay, step, n_lm, stream,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_lm,
+            stream,
         );
 
         // Upload and optimize final norm
         unsafe {
-            self.gpu_training.grad_final_norm_weight
-                .copy_from_host_async(&accum.final_norm_grad, stream).ok()?;
+            self.gpu_training
+                .grad_final_norm_weight
+                .copy_from_host_async(&accum.final_norm_grad, stream)
+                .ok()?;
         }
         let n_norm = self.gpu_training.final_norm_weight.len() as u32;
         let _ = adamw_step_cuda(
@@ -1268,7 +1355,14 @@ impl CudaTransformerTrainer {
             &self.gpu_training.grad_final_norm_weight,
             &mut self.final_norm_m,
             &mut self.final_norm_v,
-            lr, beta1, beta2, 1e-8, weight_decay, step, n_norm, stream,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_norm,
+            stream,
         );
 
         stream.synchronize().ok()?;
@@ -1309,14 +1403,9 @@ impl CudaTransformerTrainer {
                 sq_sum.sqrt() as f32
             }
         };
-        let scale = if grad_norm > max_norm {
-            max_norm / grad_norm
-        } else {
-            1.0
-        };
+        let scale = if grad_norm > max_norm { max_norm / grad_norm } else { 1.0 };
         (scale, grad_norm)
     }
-
 
     /// Download embedding gradient from GPU, clip, and scatter-add into CPU weight.
     ///
@@ -1339,7 +1428,11 @@ impl CudaTransformerTrainer {
         let grad_a_ptr: *const GpuBuffer<f32> = &self.gpu_training.grad_buf_a;
         let grad_b_ptr: *const GpuBuffer<f32> = &self.gpu_training.grad_buf_b;
         let embed_grad_buf = unsafe {
-            if grad_output_is_a { &*grad_a_ptr } else { &*grad_b_ptr }
+            if grad_output_is_a {
+                &*grad_a_ptr
+            } else {
+                &*grad_b_ptr
+            }
         };
         let mut embed_grad_data = self.cuda_trainer.download(embed_grad_buf).ok()?;
 
@@ -1430,8 +1523,7 @@ impl CudaTransformerTrainer {
 
         if self.accumulated_batches == 0 {
             // Zero embedding gradients at start of accumulation window
-            self.embed_optimizer
-                .zero_grad_refs(&mut vec![&mut self.model.embed_tokens.weight]);
+            self.embed_optimizer.zero_grad_refs(&mut vec![&mut self.model.embed_tokens.weight]);
         }
 
         let mut total_loss = 0.0;
@@ -1459,11 +1551,7 @@ impl CudaTransformerTrainer {
             }
         }
 
-        let avg_loss = if valid_count > 0 {
-            total_loss / valid_count as f32
-        } else {
-            0.0
-        };
+        let avg_loss = if valid_count > 0 { total_loss / valid_count as f32 } else { 0.0 };
 
         self.accumulated_loss += avg_loss / self.config.accumulation_steps as f32;
         self.accumulated_batches += 1;
@@ -1489,18 +1577,27 @@ impl CudaTransformerTrainer {
         let mut total_loss = 0.0;
         let mut valid_count = 0;
         for i in 0..batch.batch_size {
-            if let Some(loss) = self.eval_single_sequence(batch, i, max_sl, hidden_size, vocab_size) {
+            if let Some(loss) = self.eval_single_sequence(batch, i, max_sl, hidden_size, vocab_size)
+            {
                 total_loss += loss;
                 valid_count += 1;
             }
         }
-        if valid_count > 0 { total_loss / valid_count as f32 } else { 0.0 }
+        if valid_count > 0 {
+            total_loss / valid_count as f32
+        } else {
+            0.0
+        }
     }
 
     /// Evaluate a single sequence from a batch. Returns None if invalid.
     fn eval_single_sequence(
-        &mut self, batch: &LMBatch, i: usize, max_sl: usize,
-        hidden_size: usize, vocab_size: usize,
+        &mut self,
+        batch: &LMBatch,
+        i: usize,
+        max_sl: usize,
+        hidden_size: usize,
+        vocab_size: usize,
     ) -> Option<f32> {
         let input_ids = batch.get_input(i)?;
         let target_ids = batch.get_target(i)?;
@@ -1518,8 +1615,13 @@ impl CudaTransformerTrainer {
             vocab_size as u32,
             scale,
             stream,
-        ).ok()?;
-        if loss.is_finite() { Some(loss) } else { None }
+        )
+        .ok()?;
+        if loss.is_finite() {
+            Some(loss)
+        } else {
+            None
+        }
     }
 
     /// Train for one epoch over batches.
@@ -1576,7 +1678,9 @@ impl CudaTransformerTrainer {
         let hidden_size = mc.hidden_size;
         let kv_hidden = mc.num_kv_heads * mc.head_dim();
         let block_sizes = super::grad_accumulator::PerBlockGradientAccumulator::compute_block_sizes(
-            hidden_size, kv_hidden, mc.intermediate_size,
+            hidden_size,
+            kv_hidden,
+            mc.intermediate_size,
         );
         self.grad_accum = Some(super::grad_accumulator::PerBlockGradientAccumulator::new(
             self.cuda_blocks.len(),
@@ -1596,8 +1700,7 @@ impl CudaTransformerTrainer {
         }
 
         if self.accumulated_batches == 0 {
-            self.embed_optimizer
-                .zero_grad_refs(&mut vec![&mut self.model.embed_tokens.weight]);
+            self.embed_optimizer.zero_grad_refs(&mut vec![&mut self.model.embed_tokens.weight]);
         }
 
         let mut total_loss = 0.0;
@@ -1637,12 +1740,16 @@ impl CudaTransformerTrainer {
     }
 
     /// Get a reference to the gradient accumulator (for DDP AllReduce).
-    pub(crate) fn grad_accum_ref(&self) -> Option<&super::grad_accumulator::PerBlockGradientAccumulator> {
+    pub(crate) fn grad_accum_ref(
+        &self,
+    ) -> Option<&super::grad_accumulator::PerBlockGradientAccumulator> {
         self.grad_accum.as_ref()
     }
 
     /// Get a mutable reference to the gradient accumulator (for DDP AllReduce).
-    pub(crate) fn grad_accum_mut(&mut self) -> Option<&mut super::grad_accumulator::PerBlockGradientAccumulator> {
+    pub(crate) fn grad_accum_mut(
+        &mut self,
+    ) -> Option<&mut super::grad_accumulator::PerBlockGradientAccumulator> {
         self.grad_accum.as_mut()
     }
 
@@ -1658,10 +1765,7 @@ impl CudaTransformerTrainer {
 
     /// Set CPU embedding gradient from AllReduced flat Vec.
     pub(crate) fn set_embed_grad(&mut self, grad: Vec<f32>) {
-        self.model
-            .embed_tokens
-            .weight
-            .set_grad(ndarray::Array1::from(grad));
+        self.model.embed_tokens.weight.set_grad(ndarray::Array1::from(grad));
     }
 
     /// Returns true if max_steps has been reached.
@@ -1750,8 +1854,7 @@ impl CudaTransformerTrainer {
                 layer.ffn.w_up = Tensor::from_vec(weights.w_up, false);
                 layer.ffn.w_down = Tensor::from_vec(weights.w_down, false);
 
-                layer.input_norm.weight =
-                    Tensor::from_vec(weights.input_norm_weight, false);
+                layer.input_norm.weight = Tensor::from_vec(weights.input_norm_weight, false);
                 layer.post_attn_norm.weight =
                     Tensor::from_vec(weights.post_attn_norm_weight, false);
             }
@@ -1815,9 +1918,7 @@ impl CudaTransformerTrainer {
 
         for layer in 0..num_layers {
             names.push(format!("model.layers.{layer}.input_layernorm.weight"));
-            names.push(format!(
-                "model.layers.{layer}.post_attention_layernorm.weight"
-            ));
+            names.push(format!("model.layers.{layer}.post_attention_layernorm.weight"));
             names.push(format!("model.layers.{layer}.self_attn.q_proj.weight"));
             names.push(format!("model.layers.{layer}.self_attn.k_proj.weight"));
             names.push(format!("model.layers.{layer}.self_attn.v_proj.weight"));
@@ -1877,20 +1978,15 @@ impl CudaTransformerTrainer {
         }
 
         // Snapshot raw Vec<f32> data — Send-safe (Tensor contains Rc, not Send)
-        let param_data: Vec<(String, Vec<f32>)> = names
-            .into_iter()
-            .zip(model_params)
-            .map(|(n, t)| (n, t.data().to_vec()))
-            .collect();
+        let param_data: Vec<(String, Vec<f32>)> =
+            names.into_iter().zip(model_params).map(|(n, t)| (n, t.data().to_vec())).collect();
 
         let name = name.to_string();
         let architecture = architecture.to_string();
 
         Box::new(move |path: &std::path::Path| {
-            let params: Vec<(String, Tensor)> = param_data
-                .into_iter()
-                .map(|(n, d)| (n, Tensor::from_vec(d, false)))
-                .collect();
+            let params: Vec<(String, Tensor)> =
+                param_data.into_iter().map(|(n, d)| (n, Tensor::from_vec(d, false))).collect();
             let metadata = ModelMetadata::new(&name, &architecture);
             let model = Model::new(metadata, params);
             let config = SaveConfig::new(ModelFormat::SafeTensors);
@@ -1909,11 +2005,15 @@ impl CudaTransformerTrainer {
     /// states remain on-device (D2H for 20 buffers × N blocks is deferred).
     pub fn save_optimizer_state(&self, dir: &std::path::Path) -> crate::Result<()> {
         let path = dir.join("optimizer_state.json");
-        let m_data: Vec<Option<Vec<f32>>> = self.embed_optimizer.first_moments()
+        let m_data: Vec<Option<Vec<f32>>> = self
+            .embed_optimizer
+            .first_moments()
             .iter()
             .map(|opt| opt.as_ref().map(|a| a.to_vec()))
             .collect();
-        let v_data: Vec<Option<Vec<f32>>> = self.embed_optimizer.second_moments()
+        let v_data: Vec<Option<Vec<f32>>> = self
+            .embed_optimizer
+            .second_moments()
             .iter()
             .map(|opt| opt.as_ref().map(|a| a.to_vec()))
             .collect();
@@ -1923,10 +2023,12 @@ impl CudaTransformerTrainer {
             "m": m_data,
             "v": v_data,
         });
-        let json_str = serde_json::to_string(&state)
-            .map_err(|e| crate::error::Error::ConfigError(format!("serialize optimizer state: {}", e)))?;
-        std::fs::write(&path, json_str)
-            .map_err(|e| crate::error::Error::ConfigError(format!("write optimizer state: {}", e)))?;
+        let json_str = serde_json::to_string(&state).map_err(|e| {
+            crate::error::Error::ConfigError(format!("serialize optimizer state: {}", e))
+        })?;
+        std::fs::write(&path, json_str).map_err(|e| {
+            crate::error::Error::ConfigError(format!("write optimizer state: {}", e))
+        })?;
         Ok(())
     }
 
@@ -1965,9 +2067,7 @@ fn restore_moment_buffers(
     let Some(arr) = json_arr.as_array() else { return };
     for (idx, val) in arr.iter().enumerate() {
         let Some(inner) = val.as_array() else { continue };
-        let floats: Vec<f32> = inner.iter()
-            .filter_map(|v| v.as_f64().map(|f| f as f32))
-            .collect();
+        let floats: Vec<f32> = inner.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect();
         if !floats.is_empty() {
             set_fn(idx, ndarray::Array1::from_vec(floats));
         }
@@ -1981,9 +2081,7 @@ pub struct CudaTransformerTrainer;
 
 #[cfg(not(feature = "cuda"))]
 impl CudaTransformerTrainer {
-    pub fn new(
-        _config: super::config::TransformerTrainConfig,
-    ) -> crate::Result<Self> {
+    pub fn new(_config: super::config::TransformerTrainConfig) -> crate::Result<Self> {
         Err(crate::error::Error::ConfigError(
             "CUDA not available (compiled without cuda feature)".into(),
         ))

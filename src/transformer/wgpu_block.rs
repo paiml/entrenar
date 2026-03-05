@@ -131,13 +131,15 @@ impl WgpuForwardPass {
 
         for (i, layer) in model.layers.iter().enumerate() {
             let gate_data = layer.ffn.w_gate.data();
-            let gate_slice = gate_data.as_slice()
+            let gate_slice = gate_data
+                .as_slice()
                 .ok_or_else(|| format!("Layer {i}: gate weight not contiguous"))?;
             let up_data = layer.ffn.w_up.data();
-            let up_slice = up_data.as_slice()
-                .ok_or_else(|| format!("Layer {i}: up weight not contiguous"))?;
+            let up_slice =
+                up_data.as_slice().ok_or_else(|| format!("Layer {i}: up weight not contiguous"))?;
             let down_data = layer.ffn.w_down.data();
-            let down_slice = down_data.as_slice()
+            let down_slice = down_data
+                .as_slice()
                 .ok_or_else(|| format!("Layer {i}: down weight not contiguous"))?;
 
             let w_gate = Arc::new(device.device.create_buffer(&wgpu::BufferDescriptor {
@@ -185,7 +187,13 @@ impl WgpuForwardPass {
         let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
         eprintln!("[wgpu] GPU-resident FFN weights: {num_layers} layers, {total_mb:.1} MB");
 
-        Ok(Self { device, config, num_layers, ffn_weights, pipeline_cache: RefCell::new(PipelineCache::new()) })
+        Ok(Self {
+            device,
+            config,
+            num_layers,
+            ffn_weights,
+            pipeline_cache: RefCell::new(PipelineCache::new()),
+        })
     }
 
     /// Execute forward pass through all transformer layers on GPU
@@ -279,8 +287,7 @@ impl WgpuForwardPass {
 
             // Upload input (always from CPU — small: seq_len * hidden_size)
             let input_data = input.data();
-            let input_slice = input_data.as_slice()
-                .ok_or("Input tensor not contiguous")?;
+            let input_slice = input_data.as_slice().ok_or("Input tensor not contiguous")?;
             let buf_input = batch.upload(input_slice);
 
             // KAIZEN-015: Import GPU-resident weights or fall back to CPU upload
@@ -293,14 +300,11 @@ impl WgpuForwardPass {
             } else {
                 // Fallback: upload weights from CPU tensors (original path)
                 let gate_data = w_gate.data();
-                let gate_slice = gate_data.as_slice()
-                    .ok_or("Gate weight not contiguous")?;
+                let gate_slice = gate_data.as_slice().ok_or("Gate weight not contiguous")?;
                 let up_data = w_up.data();
-                let up_slice = up_data.as_slice()
-                    .ok_or("Up weight not contiguous")?;
+                let up_slice = up_data.as_slice().ok_or("Up weight not contiguous")?;
                 let down_data = w_down.data();
-                let down_slice = down_data.as_slice()
-                    .ok_or("Down weight not contiguous")?;
+                let down_slice = down_data.as_slice().ok_or("Down weight not contiguous")?;
                 let g = batch.upload(gate_slice);
                 let u = batch.upload(up_slice);
                 let d = batch.upload(down_slice);
@@ -374,10 +378,8 @@ impl WgpuForwardPass {
         let n = batch_token_ids.len();
 
         // Step 1: Embed all samples on CPU
-        let mut hiddens: Vec<Tensor> = batch_token_ids
-            .iter()
-            .map(|ids| model.embed_tokens.forward(ids))
-            .collect();
+        let mut hiddens: Vec<Tensor> =
+            batch_token_ids.iter().map(|ids| model.embed_tokens.forward(ids)).collect();
 
         // Step 2: Layer-at-a-time processing
         // Attention on CPU SIMD (per-sample), FFN on GPU (all samples concatenated)
@@ -481,10 +483,10 @@ impl WgpuForwardPass {
 
     /// Get the adapter info for display
     pub fn adapter_info(&self) -> String {
-        format!("wgpu device ({}x{} model, {} layers)",
-            self.config.hidden_size,
-            self.config.intermediate_size,
-            self.num_layers)
+        format!(
+            "wgpu device ({}x{} model, {} layers)",
+            self.config.hidden_size, self.config.intermediate_size, self.num_layers
+        )
     }
 }
 
@@ -538,8 +540,8 @@ mod tests {
             head_dim_override: None,
         };
 
-        let pass = WgpuForwardPass::new_default(&config)
-            .expect("GPU available but creation failed");
+        let pass =
+            WgpuForwardPass::new_default(&config).expect("GPU available but creation failed");
 
         // Create small test tensors
         let input = Tensor::from_vec(vec![1.0; 8], false); // 1 token × 8 hidden
@@ -548,8 +550,7 @@ mod tests {
         let w_down = Tensor::from_vec(vec![0.1; 16 * 8], false);
 
         let gpu_result = pass.forward_ffn_gpu(
-            &input, &w_gate, &w_up, &w_down,
-            1, 8, 16,
+            &input, &w_gate, &w_up, &w_down, 1, 8, 16,
             None, // No GPU-resident weights for this test
         );
 
