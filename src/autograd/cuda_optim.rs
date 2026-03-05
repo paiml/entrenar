@@ -34,7 +34,8 @@ use trueno_gpu::driver::{CudaContext, CudaModule, CudaStream, GpuBuffer, LaunchC
 #[cfg(feature = "cuda")]
 use trueno_gpu::kernels::backward::{FusedCausalCrossEntropyKernel, FusedCrossEntropyKernel};
 use trueno_gpu::kernels::{
-    AdamStepKernel, AdamWStepKernel, GradientClipKernel, Kernel, SquaredSumKernel,
+    AdamStepKernel, AdamWStepKernel, ClipScaleReduceKernel, GradientClipGpuScaleKernel,
+    GradientClipKernel, Kernel, SquaredSumKernel,
 };
 
 use super::cuda_tensor::{CudaTensorError, Result};
@@ -492,6 +493,223 @@ pub fn squared_sum_collect(pending: &PendingSquaredSum) -> Result<f32> {
     // Sum partials in f64 for precision, then sqrt for L2 norm
     let total: f64 = partials.iter().map(|&x| f64::from(x)).sum();
     Ok(total.sqrt() as f32)
+}
+
+/// Launch a squared sum reduction writing into a pre-allocated output buffer at offset (ALB-078).
+///
+/// Unlike `squared_sum_launch_cuda` which allocates a fresh output buffer, this writes
+/// partial sums to `output_ptr + output_offset_elements * 4` in an existing buffer.
+/// Used by the fused clip pipeline to collect all 9 groups' partials into one contiguous buffer.
+///
+/// # Returns
+///
+/// Number of blocks written (= number of f32 partial sums at the output offset).
+#[cfg(feature = "cuda")]
+pub fn squared_sum_launch_into(
+    input: &GpuBuffer<f32>,
+    n: u32,
+    output_ptr: u64, // raw device pointer with offset already applied
+    stream: &CudaStream,
+) -> Result<u32> {
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let kernel = SquaredSumKernel::new(n);
+    let num_blocks = kernel.num_blocks();
+
+    let key = format!("squared_sum_{n}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    let config = LaunchConfig {
+        grid: (num_blocks, 1, 1),
+        block: (kernel.block_size(), 1, 1),
+        shared_mem: 8 * 4, // 8 warp partials × 4 bytes
+    };
+
+    let input_ptr = input.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &input_ptr as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+        &n as *const _ as *mut _,
+    ];
+
+    // SAFETY: Kernel launch requires FFI. input has n elements, output region has num_blocks elements,
+    // parameters match PTX signature (u64 input_ptr, u64 output_ptr, u32 n).
+    unsafe {
+        stream.launch_kernel(module, "squared_sum_reduce", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Squared sum launch_into failed: {e:?}"))
+        })?;
+    }
+
+    Ok(num_blocks)
+}
+
+/// Launch the clip scale reduction kernel on GPU (ALB-078).
+///
+/// Reads a contiguous buffer of squared-sum partial results, computes the global
+/// L2 norm and clip scale entirely on GPU. Writes `[scale, norm]` to `output`.
+///
+/// # Contract (C-FUSEDCLIP-001)
+///
+/// - output[0] = min(1.0, max_norm / sqrt(sum(partials[0..total_n])))
+/// - output[1] = sqrt(sum(partials[0..total_n]))
+#[cfg(feature = "cuda")]
+pub fn clip_scale_reduce_cuda(
+    partials: &GpuBuffer<f32>,
+    total_n: u32,
+    max_norm: f32,
+    output: &GpuBuffer<f32>,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = "clip_scale_reduce".to_string();
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = ClipScaleReduceKernel;
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    // Single CTA, single thread — partials buffer is tiny (~1800 f32 for 350M)
+    let config = LaunchConfig { grid: (1, 1, 1), block: (1, 1, 1), shared_mem: 0 };
+
+    let partials_ptr = partials.as_ptr();
+    let output_ptr = output.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 4] = [
+        &partials_ptr as *const _ as *mut _,
+        &total_n as *const _ as *mut _,
+        &max_norm as *const _ as *mut _,
+        &output_ptr as *const _ as *mut _,
+    ];
+
+    // SAFETY: partials has total_n elements, output has 2 elements (scale + norm).
+    unsafe {
+        stream.launch_kernel(module, "clip_scale_reduce", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("Clip scale reduce launch failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
+/// Apply gradient clipping with scale read from GPU memory (ALB-078).
+///
+/// Like `gradient_clip_cuda` but reads the scale from a GPU pointer instead of
+/// a host f32. This avoids D2H transfer of the clip scale.
+///
+/// The kernel exits early if scale ≈ 1.0, avoiding unnecessary write bandwidth.
+#[cfg(feature = "cuda")]
+pub fn gradient_clip_gpu_scale_cuda(
+    grads: &mut GpuBuffer<f32>,
+    scale_ptr: u64, // device pointer to f32 scale value
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = OPTIM_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("gradient_clip_gpu_scale_{n}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = GradientClipGpuScaleKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
+
+    let grads_ptr = grads.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 3] = [
+        &grads_ptr as *const _ as *mut _,
+        &scale_ptr as *const _ as *mut _,
+        &n as *const _ as *mut _,
+    ];
+
+    // SAFETY: grads has n elements, scale_ptr points to valid f32 on GPU.
+    unsafe {
+        stream.launch_kernel(module, "gradient_clip_gpu_scale", &config, &mut args).map_err(
+            |e| {
+                CudaTensorError::KernelError(format!(
+                    "Gradient clip GPU scale launch failed: {e:?}"
+                ))
+            },
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Pre-allocated state for fused gradient clipping pipeline (ALB-078).
+///
+/// Holds GPU buffers for the contiguous partial-sum collection and clip scale output.
+/// Initialized once at trainer creation, reused every step.
+#[cfg(feature = "cuda")]
+pub struct FusedClipState {
+    /// Contiguous buffer for all squared-sum partial results across 9 gradient groups
+    pub partials_buf: GpuBuffer<f32>,
+    /// Output buffer: [clip_scale, grad_norm] (2 × f32)
+    pub scale_buf: GpuBuffer<f32>,
+    /// Byte offset into partials_buf for each of the 9 gradient groups
+    pub offsets: [u32; 9],
+    /// Number of partial-sum blocks for each group
+    pub num_blocks: [u32; 9],
+    /// Total number of partial sums across all groups
+    pub total_partials: u32,
+}
+
+#[cfg(feature = "cuda")]
+impl FusedClipState {
+    /// Create a new fused clip state for the given gradient buffer sizes.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - CUDA context
+    /// * `grad_sizes` - sizes (in elements) of the 9 gradient buffers:
+    ///   [w_q, w_k, w_v, w_o, gate, up, down, input_norm, post_attn_norm]
+    pub fn new(ctx: &std::sync::Arc<CudaContext>, grad_sizes: &[u32; 9]) -> Result<Self> {
+        let mut offsets = [0u32; 9];
+        let mut num_blocks_arr = [0u32; 9];
+        let mut total = 0u32;
+
+        for (i, &n) in grad_sizes.iter().enumerate() {
+            offsets[i] = total;
+            let kernel = SquaredSumKernel::new(n);
+            let nb = kernel.num_blocks();
+            num_blocks_arr[i] = nb;
+            total += nb;
+        }
+
+        let partials_buf = GpuBuffer::<f32>::new(ctx, total as usize).map_err(|e| {
+            CudaTensorError::KernelError(format!("Failed to allocate partials buffer: {e:?}"))
+        })?;
+
+        let scale_buf = GpuBuffer::<f32>::new(ctx, 2).map_err(|e| {
+            CudaTensorError::KernelError(format!("Failed to allocate scale buffer: {e:?}"))
+        })?;
+
+        Ok(Self { partials_buf, scale_buf, offsets, num_blocks: num_blocks_arr, total_partials: total })
+    }
 }
 
 /// Fused GPU cross-entropy loss + softmax backward, in-place (KAIZEN-050 + KAIZEN-052).
