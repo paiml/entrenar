@@ -220,6 +220,12 @@ impl TransformerTrainConfig {
         }
     }
 
+    /// Set step profiler report interval (0 = disabled, N = print every N steps)
+    pub fn with_profile_interval(mut self, interval: usize) -> Self {
+        self.profile_interval = interval;
+        self
+    }
+
     /// Enable distributed training with the given configuration
     pub fn with_distributed(mut self, config: DistributedTrainConfig) -> Self {
         self.distributed = Some(config);

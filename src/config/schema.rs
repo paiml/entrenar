@@ -440,6 +440,11 @@ pub struct TrainingParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curriculum: Option<Vec<CurriculumStage>>,
 
+    // === KAIZEN-047: Step profiler ===
+    /// Print per-phase timing breakdown every N steps (0 = disabled)
+    #[serde(default)]
+    pub profile_interval: usize,
+
     // === R-084: Bitwise deterministic training ===
     /// Enable bitwise deterministic training mode (C-DETERM-001).
     /// Sets CUBLAS_WORKSPACE_CONFIG, cuDNN deterministic mode, disables
@@ -536,6 +541,7 @@ impl Default for TrainingParams {
             max_checkpoints: 5,
             shuffle: true,
             curriculum: None,
+            profile_interval: 0,
             deterministic: false,
             distributed: None,
         }
