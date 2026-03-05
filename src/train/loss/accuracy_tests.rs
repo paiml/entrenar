@@ -8,8 +8,8 @@ use crate::Tensor;
 
 /// Reference softmax (f64 for higher precision)
 fn reference_softmax_f64(logits: &[f32]) -> Vec<f64> {
-    let logits_f64: Vec<f64> = logits.iter().map(|&x| x as f64).collect();
-    let max = logits_f64.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let logits_f64: Vec<f64> = logits.iter().map(|&x| f64::from(x)).collect();
+    let max = logits_f64.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let exp_vals: Vec<f64> = logits_f64.iter().map(|&x| (x - max).exp()).collect();
     let sum: f64 = exp_vals.iter().sum();
     exp_vals.iter().map(|&e| e / sum).collect()
@@ -44,14 +44,14 @@ fn loss_test_mse_reference_loss() {
     let reference: f64 = pred_vals
         .iter()
         .zip(&target_vals)
-        .map(|(p, t)| (*p as f64 - *t as f64).powi(2))
+        .map(|(p, t)| (f64::from(*p) - f64::from(*t)).powi(2))
         .sum::<f64>()
         / pred_vals.len() as f64;
     let mse = MSELoss;
     let pred = Tensor::from_vec(pred_vals, false);
     let tgt = Tensor::from_vec(target_vals, false);
     let loss = mse.forward(&pred, &tgt);
-    let diff = (loss.data()[0] as f64 - reference).abs();
+    let diff = (f64::from(loss.data()[0]) - reference).abs();
     assert!(diff < 1e-6, "MSE accuracy: diff={diff}");
 }
 

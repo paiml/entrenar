@@ -153,7 +153,7 @@ impl ZeroShardMap {
         let mut block_owners = Vec::with_capacity(num_blocks);
 
         for rank in 0..world_size {
-            let count = blocks_per_worker + if rank < remainder { 1 } else { 0 };
+            let count = blocks_per_worker + usize::from(rank < remainder);
             for _ in 0..count {
                 block_owners.push(rank);
             }

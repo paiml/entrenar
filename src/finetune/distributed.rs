@@ -107,9 +107,7 @@ impl DistributedConfig {
     }
 
     fn default_node_id() -> String {
-        let hostname = hostname::get()
-            .map(|h| h.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
+        let hostname = hostname::get().map_or_else(|_| "unknown".to_string(), |h| h.to_string_lossy().to_string());
         let pid = std::process::id();
         format!("{hostname}-{pid}")
     }

@@ -91,7 +91,7 @@ impl VramGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);

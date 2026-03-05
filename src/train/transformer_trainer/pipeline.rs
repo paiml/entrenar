@@ -321,7 +321,7 @@ mod tests {
             PipelineAction::Forward(id) => Some(*id),
             _ => None,
         }).collect();
-        fwd_ids.sort();
+        fwd_ids.sort_unstable();
         assert_eq!(fwd_ids, vec![0, 1, 2, 3]);
     }
 

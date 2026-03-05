@@ -459,23 +459,23 @@ fn audit_data(
         .filter(|(_, &c)| c == 0)
         .map(|(i, _)| i)
         .collect();
-    if !empty_classes.is_empty() {
-        pre_flight.push(PreFlightCheck {
-            name: "class_coverage".to_string(),
-            status: CheckStatus::Fail,
-            detail: format!("Classes with zero samples: {:?}", empty_classes),
-        });
-        issues.push(PlanIssue {
-            severity: CheckStatus::Fail,
-            category: "Data".to_string(),
-            message: format!("Classes {:?} have zero training samples", empty_classes),
-            fix: Some("Add samples for missing classes or reduce num_classes".to_string()),
-        });
-    } else {
+    if empty_classes.is_empty() {
         pre_flight.push(PreFlightCheck {
             name: "class_coverage".to_string(),
             status: CheckStatus::Pass,
             detail: format!("All {} classes have samples", config.num_classes),
+        });
+    } else {
+        pre_flight.push(PreFlightCheck {
+            name: "class_coverage".to_string(),
+            status: CheckStatus::Fail,
+            detail: format!("Classes with zero samples: {empty_classes:?}"),
+        });
+        issues.push(PlanIssue {
+            severity: CheckStatus::Fail,
+            category: "Data".to_string(),
+            message: format!("Classes {empty_classes:?} have zero training samples"),
+            fix: Some("Add samples for missing classes or reduce num_classes".to_string()),
         });
     }
 
@@ -545,8 +545,8 @@ fn audit_data(
     }
 
     // Validate val/test if provided
-    let val_samples = count_file_samples(&config.val_path, config.num_classes);
-    let test_samples = count_file_samples(&config.test_path, config.num_classes);
+    let val_samples = count_file_samples(config.val_path.as_ref(), config.num_classes);
+    let test_samples = count_file_samples(config.test_path.as_ref(), config.num_classes);
 
     Ok(DataAudit {
         train_path: config.data_path.display().to_string(),
@@ -563,8 +563,8 @@ fn audit_data(
 }
 
 /// Count samples in an optional JSONL file.
-fn count_file_samples(path: &Option<PathBuf>, num_classes: usize) -> Option<usize> {
-    path.as_ref().and_then(|p| {
+fn count_file_samples(path: Option<&PathBuf>, num_classes: usize) -> Option<usize> {
+    path.and_then(|p| {
         if p.exists() {
             load_safety_corpus(p, num_classes).ok().map(|c| c.len())
         } else {
@@ -584,7 +584,7 @@ fn resolve_model(config: &PlanConfig, pre_flight: &mut Vec<PreFlightCheck>) -> M
     };
 
     // Check if model weights are available
-    let weights_available = config.model_path.as_ref().map_or(false, |p| p.is_dir());
+    let weights_available = config.model_path.as_ref().is_some_and(|p| p.is_dir());
     if let Some(ref path) = config.model_path {
         if weights_available {
             // Check for key files
@@ -975,8 +975,7 @@ pub fn execute_plan(
         let class_weights = manual
             .class_weights
             .as_deref()
-            .map(|s| resolve_class_weights(s, &plan.data.class_counts, num_classes))
-            .flatten();
+            .and_then(|s| resolve_class_weights(s, &plan.data.class_counts, num_classes));
 
         let classify_config = ClassifyConfig {
             num_classes,
@@ -1007,7 +1006,7 @@ pub fn execute_plan(
         let mut config_map = HashMap::new();
         config_map.insert(
             "learning_rate".to_string(),
-            ParameterValue::Float(manual.learning_rate as f64),
+            ParameterValue::Float(f64::from(manual.learning_rate)),
         );
         config_map.insert(
             "lora_rank".to_string(),
@@ -1020,19 +1019,19 @@ pub fn execute_plan(
 
         let summary = TrialSummary {
             id: 0,
-            val_loss: result.best_val_loss as f64,
+            val_loss: f64::from(result.best_val_loss),
             val_accuracy: result
                 .epoch_metrics
                 .get(result.best_epoch)
-                .map_or(0.0, |m| m.val_accuracy as f64),
+                .map_or(0.0, |m| f64::from(m.val_accuracy)),
             train_loss: result
                 .epoch_metrics
                 .last()
-                .map_or(0.0, |m| m.train_loss as f64),
+                .map_or(0.0, |m| f64::from(m.train_loss)),
             train_accuracy: result
                 .epoch_metrics
                 .last()
-                .map_or(0.0, |m| m.train_accuracy as f64),
+                .map_or(0.0, |m| f64::from(m.train_accuracy)),
             epochs_run: result.epoch_metrics.len(),
             time_ms: trial_start.elapsed().as_millis() as u64,
             config: config_map,
@@ -1153,11 +1152,11 @@ pub fn execute_plan(
 
         match trial_result {
             Ok(result) => {
-                let val_loss = result.best_val_loss as f64;
+                let val_loss = f64::from(result.best_val_loss);
                 let val_accuracy = result
                     .epoch_metrics
                     .get(result.best_epoch)
-                    .map_or(0.0, |m| m.val_accuracy as f64);
+                    .map_or(0.0, |m| f64::from(m.val_accuracy));
 
                 // ── Check scheduler for early stopping ─────────────────
                 let was_pruned = scheduler.should_stop(
@@ -1175,11 +1174,11 @@ pub fn execute_plan(
                     train_loss: result
                         .epoch_metrics
                         .last()
-                        .map_or(0.0, |m| m.train_loss as f64),
+                        .map_or(0.0, |m| f64::from(m.train_loss)),
                     train_accuracy: result
                         .epoch_metrics
                         .last()
-                        .map_or(0.0, |m| m.train_accuracy as f64),
+                        .map_or(0.0, |m| f64::from(m.train_accuracy)),
                     epochs_run: result.epoch_metrics.len(),
                     time_ms: trial_time_ms,
                     config: suggestion.config.clone(),
@@ -1360,6 +1359,7 @@ impl TrainingPlan {
     }
 
     /// Deserialize from a string (auto-detects JSON or YAML).
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> crate::Result<Self> {
         // Try JSON first (faster, more common for programmatic use)
         if let Ok(plan) = serde_json::from_str::<TrainingPlan>(s) {

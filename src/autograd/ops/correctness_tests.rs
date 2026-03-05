@@ -9,14 +9,14 @@ use super::layer_norm;
 /// Reference LayerNorm (f64 precision)
 fn reference_layer_norm_f64(x: &[f32], gamma: &[f32], beta: &[f32], eps: f32) -> Vec<f32> {
     let n = x.len() as f64;
-    let x_f64: Vec<f64> = x.iter().map(|&v| v as f64).collect();
+    let x_f64: Vec<f64> = x.iter().map(|&v| f64::from(v)).collect();
     let mean: f64 = x_f64.iter().sum::<f64>() / n;
     let variance: f64 = x_f64.iter().map(|&v| (v - mean) * (v - mean)).sum::<f64>() / n;
-    let std = (variance + eps as f64).sqrt();
+    let std = (variance + f64::from(eps)).sqrt();
     x_f64
         .iter()
         .enumerate()
-        .map(|(i, &v)| ((v - mean) / std * gamma[i] as f64 + beta[i] as f64) as f32)
+        .map(|(i, &v)| ((v - mean) / std * f64::from(gamma[i]) + f64::from(beta[i])) as f32)
         .collect()
 }
 

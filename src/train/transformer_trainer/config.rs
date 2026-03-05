@@ -7,35 +7,29 @@ use std::net::SocketAddr;
 
 /// Role of a node in distributed pretraining.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DistributedRole {
     /// Coordinates training: AllReduces gradients, manages checkpoints
+    #[default]
     Coordinator,
     /// Computes forward/backward on assigned shard
     Worker,
 }
 
-impl Default for DistributedRole {
-    fn default() -> Self {
-        Self::Coordinator
-    }
-}
 
 /// Compute backend for a distributed worker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DistributedBackend {
     /// NVIDIA CUDA
     Cuda,
     /// wgpu (cross-platform)
     Wgpu,
     /// Auto-detect best available
+    #[default]
     Auto,
 }
 
-impl Default for DistributedBackend {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 
 /// Configuration for distributed pretraining (DDP).
 ///

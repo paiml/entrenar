@@ -2249,10 +2249,10 @@ impl ClassifyPipeline {
         }
 
         // CPU fallback — KAIZEN-011: use LoRA-aware forward when adapters exist
-        if !self.lora_layers.is_empty() {
-            self.model.forward_hidden_with_lora(token_ids, &self.lora_layers)
-        } else {
+        if self.lora_layers.is_empty() {
             self.model.forward_hidden(token_ids)
+        } else {
+            self.model.forward_hidden_with_lora(token_ids, &self.lora_layers)
         }
     }
 
@@ -3351,24 +3351,24 @@ impl ClassifyPipeline {
             if let Some(g) = lora.lora_a().grad() {
                 grads.extend(g.iter());
             } else {
-                grads.extend(std::iter::repeat(0.0f32).take(lora.lora_a().data().len()));
+                grads.extend(std::iter::repeat_n(0.0f32, lora.lora_a().data().len()));
             }
             if let Some(g) = lora.lora_b().grad() {
                 grads.extend(g.iter());
             } else {
-                grads.extend(std::iter::repeat(0.0f32).take(lora.lora_b().data().len()));
+                grads.extend(std::iter::repeat_n(0.0f32, lora.lora_b().data().len()));
             }
         }
 
         if let Some(g) = self.classifier.weight.grad() {
             grads.extend(g.iter());
         } else {
-            grads.extend(std::iter::repeat(0.0f32).take(self.classifier.weight.data().len()));
+            grads.extend(std::iter::repeat_n(0.0f32, self.classifier.weight.data().len()));
         }
         if let Some(g) = self.classifier.bias.grad() {
             grads.extend(g.iter());
         } else {
-            grads.extend(std::iter::repeat(0.0f32).take(self.classifier.bias.data().len()));
+            grads.extend(std::iter::repeat_n(0.0f32, self.classifier.bias.data().len()));
         }
 
         grads

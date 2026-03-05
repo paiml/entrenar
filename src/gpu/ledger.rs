@@ -304,6 +304,7 @@ impl VramLedger {
         let data = read_ledger(&file)?;
         let result = f(&data);
 
+        #[allow(clippy::incompatible_msrv)]
         file.unlock()
             .map_err(|e| GpuError::Io(std::io::Error::other(format!("funlock: {e}"))))?;
 
@@ -344,6 +345,7 @@ impl VramLedger {
 
         // Phase: lock_rel
         self.profiler.begin(GpuProfiler::LOCK_REL);
+        #[allow(clippy::incompatible_msrv)]
         file.unlock()
             .map_err(|e| GpuError::Io(std::io::Error::other(format!("funlock: {e}"))))?;
         self.profiler.end(GpuProfiler::LOCK_REL);
@@ -440,7 +442,7 @@ pub fn detect_memory_type() -> MemoryType {
         .args(["--query-gpu=name", "--format=csv,noheader"])
         .output()
         .ok()
-        .map(|out| {
+        .map_or(MemoryType::Discrete, |out| {
             let name = String::from_utf8_lossy(&out.stdout).to_lowercase();
             if name.contains("jetson") || name.contains("orin") || name.contains("tegra") {
                 MemoryType::Unified
@@ -448,7 +450,6 @@ pub fn detect_memory_type() -> MemoryType {
                 MemoryType::Discrete
             }
         })
-        .unwrap_or(MemoryType::Discrete)
 }
 
 /// GPU memory type.
@@ -506,9 +507,7 @@ pub fn gpu_status_display(ledger: &VramLedger) -> Result<String, GpuError> {
         out.push_str(&format!("  Reservations: {}\n", reservations.len()));
         for r in &reservations {
             let actual = r
-                .actual_mb
-                .map(|a| format!("{a} MB actual"))
-                .unwrap_or_else(|| "measuring...".to_string());
+                .actual_mb.map_or_else(|| "measuring...".to_string(), |a| format!("{a} MB actual"));
             let elapsed = Utc::now().signed_duration_since(r.started);
             let hours = elapsed.num_hours();
             let mins = elapsed.num_minutes() % 60;

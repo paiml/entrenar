@@ -41,6 +41,7 @@ pub struct TrainingDashboard {
     widget_tree: Option<Layout>,
 }
 
+#[allow(clippy::missing_fields_in_debug)]
 impl std::fmt::Debug for TrainingDashboard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TrainingDashboard")
@@ -167,7 +168,7 @@ fn build_metrics_panel(snap: &TrainingSnapshot) -> Border {
     ))
     .with_color(Color::WHITE);
 
-    let meter = Meter::percentage(progress as f64)
+    let meter = Meter::percentage(f64::from(progress))
         .with_label(format!("{progress:.1}%"))
         .with_color(Color::new(0.3, 0.9, 0.3, 1.0));
 
@@ -220,7 +221,7 @@ fn build_gpu_panel(snap: &TrainingSnapshot) -> Border {
 
 /// Build loss history panel: sparkline + range — inside a rounded border.
 fn build_loss_panel(snap: &TrainingSnapshot) -> Border {
-    let values: Vec<f64> = snap.loss_history.iter().map(|v| *v as f64).collect();
+    let values: Vec<f64> = snap.loss_history.iter().map(|v| f64::from(*v)).collect();
     let first = snap.loss_history.first().copied().unwrap_or(0.0);
     let last = snap.loss_history.last().copied().unwrap_or(0.0);
 
@@ -302,7 +303,7 @@ fn format_duration(d: Duration) -> String {
     } else if secs > 60 {
         format!("{}m {}s", secs / 60, secs % 60)
     } else {
-        format!("{}s", secs)
+        format!("{secs}s")
     }
 }
 

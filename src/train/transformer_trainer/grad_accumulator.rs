@@ -1,19 +1,20 @@
-//! Per-block gradient accumulation for distributed data-parallel pretraining.
-//!
-//! The `CudaTransformerTrainer` uses a shared `CudaGradWorkspace` that is
-//! overwritten for each block during backward. For DDP, we need to:
-//!
-//! 1. After block[i]'s backward, copy workspace gradients into `block_grads[i]`
-//! 2. AllReduce `block_grads[i]` across workers
-//! 3. Run optimizer_step for block[i] with averaged gradients
-//!
-//! This module provides CPU-side accumulation buffers that hold the per-block
-//! gradients after they are downloaded from GPU. These buffers are what get
-//! sent over the wire for AllReduce.
-//!
-//! # Contract
-//!
-//! C-DDP-001: Per-block gradient buffers match CudaGradWorkspace component sizes.
+#![allow(dead_code)]
+// Per-block gradient accumulation for distributed data-parallel pretraining.
+//
+// The `CudaTransformerTrainer` uses a shared `CudaGradWorkspace` that is
+// overwritten for each block during backward. For DDP, we need to:
+//
+// 1. After block[i]'s backward, copy workspace gradients into `block_grads[i]`
+// 2. AllReduce `block_grads[i]` across workers
+// 3. Run optimizer_step for block[i] with averaged gradients
+//
+// This module provides CPU-side accumulation buffers that hold the per-block
+// gradients after they are downloaded from GPU. These buffers are what get
+// sent over the wire for AllReduce.
+//
+// # Contract
+//
+// C-DDP-001: Per-block gradient buffers match CudaGradWorkspace component sizes.
 
 /// Number of gradient components per transformer block.
 /// Matches CudaGradWorkspace: w_q, w_k, w_v, w_o, gate, up, down, input_norm, post_attn_norm
@@ -99,7 +100,7 @@ impl BlockGradientSet {
     /// Zero all gradient components (reuse buffers).
     pub fn zero(&mut self) {
         for comp in &mut self.components {
-            comp.iter_mut().for_each(|x| *x = 0.0);
+            for x in comp.iter_mut() { *x = 0.0; }
         }
     }
 
@@ -247,7 +248,7 @@ impl PerBlockGradientAccumulator {
 
     /// Check if any block has NaN or Inf gradients (Jidoka).
     pub fn has_non_finite(&self) -> bool {
-        self.block_grads.iter().any(|bg| bg.has_non_finite())
+        self.block_grads.iter().any(BlockGradientSet::has_non_finite)
             || self.lm_head_grad.iter().any(|x| !x.is_finite())
             || self.final_norm_grad.iter().any(|x| !x.is_finite())
             || self.embedding_grad.iter().any(|x| !x.is_finite())

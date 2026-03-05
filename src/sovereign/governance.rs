@@ -157,9 +157,7 @@ impl AuditTrail {
     ) -> &AuditEntry {
         let prev_hash = self
             .entries
-            .last()
-            .map(|e| e.hash.clone())
-            .unwrap_or_else(|| "genesis".to_string());
+            .last().map_or_else(|| "genesis".to_string(), |e| e.hash.clone());
 
         let sequence = self.next_sequence;
         self.next_sequence += 1;
@@ -232,7 +230,7 @@ impl Default for AuditTrail {
 fn simple_hash(data: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
     for &byte in data {
-        hash ^= byte as u64;
+        hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x100000001b3);
     }
     hash

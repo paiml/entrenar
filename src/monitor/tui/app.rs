@@ -90,11 +90,11 @@ impl TuiMonitor {
             ..Default::default()
         };
         let mut app = presentar_terminal::TuiApp::new(dashboard)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+            .map_err(|e| io::Error::other(e.to_string()))?
             .with_config(config);
 
         app.run()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
 
         eprintln!("\nDetached from training session. Training continues in background.");
         Ok(())
@@ -293,7 +293,7 @@ impl TrainingStateWriter {
             let log_every = (self.snapshot.steps_per_epoch / 10)
                 .max(10)
                 .min(self.snapshot.steps_per_epoch.max(1));
-            if step == 1 || step % log_every == 0 || step == self.snapshot.steps_per_epoch {
+            if step == 1 || step.is_multiple_of(log_every) || step == self.snapshot.steps_per_epoch {
                 self.refresh_gpu_telemetry();
                 self.emit_console_progress();
             }
@@ -329,7 +329,7 @@ impl TrainingStateWriter {
             Some(l) => l.trim(),
             None => return,
         };
-        let fields: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        let fields: Vec<&str> = line.split(',').map(str::trim).collect();
         if fields.len() < 6 {
             return;
         }

@@ -455,7 +455,7 @@ mod tests {
         }
         // Complete
         let mut all: Vec<usize> = shard0.iter().chain(shard1.iter()).copied().collect();
-        all.sort();
+        all.sort_unstable();
         assert_eq!(all, (0..10).collect::<Vec<_>>());
     }
 
@@ -476,7 +476,7 @@ mod tests {
             .chain(shard2.iter())
             .copied()
             .collect();
-        all.sort();
+        all.sort_unstable();
         assert_eq!(all, (0..7).collect::<Vec<_>>());
     }
 

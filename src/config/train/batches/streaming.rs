@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Streaming Parquet data loader with file-level sharding for distributed training.
 //!
 //! # Architecture

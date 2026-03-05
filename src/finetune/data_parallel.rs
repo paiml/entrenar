@@ -181,13 +181,13 @@ impl DataParallelCoordinator {
         for replica in replicas.iter_mut() {
             // Copy LoRA weights directly via assign (single memcpy per matrix)
             for (src_lora, dst_lora) in primary.lora_layers.iter().zip(replica.lora_layers.iter_mut()) {
-                dst_lora.lora_a_mut().data_mut().assign(&src_lora.lora_a().data());
-                dst_lora.lora_b_mut().data_mut().assign(&src_lora.lora_b().data());
+                dst_lora.lora_a_mut().data_mut().assign(src_lora.lora_a().data());
+                dst_lora.lora_b_mut().data_mut().assign(src_lora.lora_b().data());
             }
 
             // Copy classifier head weights
-            replica.classifier.weight.data_mut().assign(&primary.classifier.weight.data());
-            replica.classifier.bias.data_mut().assign(&primary.classifier.bias.data());
+            replica.classifier.weight.data_mut().assign(primary.classifier.weight.data());
+            replica.classifier.bias.data_mut().assign(primary.classifier.bias.data());
         }
     }
 }
@@ -287,7 +287,7 @@ mod tests {
             &[0],
         );
         assert!(coordinator.is_ok());
-        assert_eq!(coordinator.as_ref().map(|c| c.num_gpus()).unwrap_or(0), 1);
+        assert_eq!(coordinator.as_ref().map(super::DataParallelCoordinator::num_gpus).unwrap_or(0), 1);
     }
 
     #[test]

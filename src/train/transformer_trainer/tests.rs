@@ -351,11 +351,11 @@ fn falsify_alb038_training_changes_weights() {
 
     let mut changed_count = 0;
     for (i, (init, final_p)) in init_params.iter().zip(final_params.iter()).enumerate() {
-        if init != final_p {
-            changed_count += 1;
-        } else {
+        if init == final_p {
             // Log which parameter didn't change (for debugging)
             eprintln!("ALB-038 WARNING: parameter {i} unchanged after training (len={})", init.len());
+        } else {
+            changed_count += 1;
         }
     }
 
@@ -465,7 +465,9 @@ fn test_deterministic_disabled_no_env_change() {
     let config = TransformerTrainConfig::new(TransformerConfig::tiny())
         .with_deterministic(false);
     // Clear env first to verify it's not set
-    std::env::remove_var("PYTHONHASHSEED");
+    // SAFETY: test runs single-threaded; remove_var needed to verify no-op behavior
+    #[allow(clippy::disallowed_methods, unsafe_code)]
+    unsafe { std::env::remove_var("PYTHONHASHSEED") };
     config.apply_deterministic_settings();
     // PYTHONHASHSEED should NOT have been set
     assert!(
@@ -521,7 +523,7 @@ fn test_checkpoint_config_segment_calculation() {
     let num_layers = config.model_config.num_hidden_layers;
     assert_eq!(num_layers, 2);
     let ns = config.checkpoint_config.num_segments.max(1);
-    let segment_size = (num_layers + ns - 1) / ns;
+    let segment_size = num_layers.div_ceil(ns);
     assert_eq!(segment_size, 1);
     let mask: Vec<bool> = (0..num_layers)
         .map(|i| i % segment_size == 0)
@@ -541,7 +543,7 @@ fn test_checkpoint_config_fewer_segments() {
     let num_layers = config.model_config.num_hidden_layers;
     assert_eq!(num_layers, 24);
     let ns = config.checkpoint_config.num_segments.max(1);
-    let segment_size = (num_layers + ns - 1) / ns;
+    let segment_size = num_layers.div_ceil(ns);
     assert_eq!(segment_size, 6);
     let mask: Vec<bool> = (0..num_layers)
         .map(|i| i % segment_size == 0)
@@ -621,7 +623,7 @@ fn test_gradient_accumulation_produces_different_weights_than_no_accum() {
         .as_slice().unwrap().to_vec();
 
     // Weights should differ (different optimizer dynamics)
-    let diff: f64 = weights1.iter().zip(&weights2).map(|(a, b)| (*a as f64 - *b as f64).abs()).sum();
+    let diff: f64 = weights1.iter().zip(&weights2).map(|(a, b)| (f64::from(*a) - f64::from(*b)).abs()).sum();
     assert!(diff > 1e-6, "Gradient accumulation should produce different weights (diff={diff})");
 }
 

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Main entry points for YAML-based training
 
 // Default model architecture constants (Qwen2.5-Coder-0.5B)
@@ -75,17 +76,17 @@ fn build_train_config(
     }
 
     // Wire optimizer hyperparameters from YAML (ALB-040)
-    if let Some(v) = spec.optimizer.params.get("beta2").and_then(|v| v.as_f64()) {
+    if let Some(v) = spec.optimizer.params.get("beta2").and_then(serde_json::Value::as_f64) {
         config = config.with_beta2(v as f32);
     }
-    if let Some(v) = spec.optimizer.params.get("weight_decay").and_then(|v| v.as_f64()) {
+    if let Some(v) = spec.optimizer.params.get("weight_decay").and_then(serde_json::Value::as_f64) {
         config = config.with_weight_decay(v as f32);
     }
 
     if let Some(accum) = spec.training.gradient_accumulation {
         config = config.with_accumulation_steps(accum);
         if accum > 1 {
-            println!("  [WARN] gradient_accumulation={} — GPU block optimizer steps are per-sequence (ALB-066)", accum);
+            println!("  [WARN] gradient_accumulation={accum} — GPU block optimizer steps are per-sequence (ALB-066)");
         }
     }
 
@@ -175,7 +176,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     let transformer = load_transformer_model(&resolved_path, &model_config)?;
 
     // Build TransformerTrainConfig from YAML spec fields
-    let mut train_config = build_train_config(model_config, spec);
+    let train_config = build_train_config(model_config, spec);
 
     // Apply deterministic settings before any CUDA operations
     train_config.apply_deterministic_settings();
@@ -267,7 +268,7 @@ fn train_loop_cpu(
     );
 
     if let Some(max_steps) = spec.training.max_steps {
-        println!("  max_steps: {} (will stop early when reached)", max_steps);
+        println!("  max_steps: {max_steps} (will stop early when reached)");
     }
 
     let mut loss_history: Vec<f32> = Vec::new();
@@ -369,7 +370,7 @@ fn query_gpu_telemetry(device_name: &str) -> Option<crate::monitor::tui::state::
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let line = stdout.lines().next()?.trim();
-    let fields: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+    let fields: Vec<&str> = line.split(',').map(str::trim).collect();
     if fields.len() < 6 {
         return None;
     }
@@ -1062,19 +1063,21 @@ fn train_loop_cuda_distributed(
 
 /// Check if max_steps has been reached.
 /// Check if this iteration should log metrics.
+#[allow(clippy::incompatible_msrv)]
 fn should_log(iter_idx: usize, interval: usize) -> bool {
-    (iter_idx + 1) % interval == 0 || iter_idx == 0
+    (iter_idx + 1).is_multiple_of(interval) || iter_idx == 0
 }
 
 /// Check if this step should trigger a checkpoint save.
+#[allow(clippy::incompatible_msrv)]
 fn should_save_checkpoint(step: usize, last_save_step: usize, interval: usize) -> bool {
-    step > 0 && step != last_save_step && step % interval == 0
+    step > 0 && step != last_save_step && step.is_multiple_of(interval)
 }
 
 fn reached_max_steps(max_steps: Option<usize>, current_step: usize) -> bool {
     if let Some(max) = max_steps {
         if current_step >= max {
-            println!("Reached max_steps={}, stopping training.", max);
+            println!("Reached max_steps={max}, stopping training.");
             return true;
         }
     }
@@ -1117,13 +1120,14 @@ fn push_capped_f64(window: &mut Vec<f64>, value: f64, max_len: usize) {
 
 /// R-029: Track gradient norm and estimate noise scale at intervals.
 /// B_noise = Var(||g||) / Mean(||g||)² — proxy for critical batch size.
+#[allow(clippy::incompatible_msrv)]
 fn update_noise_scale(
     grad_norm: f64, step: usize,
     window: &mut Vec<f64>, interval: usize,
     jsonl_file: &mut Option<std::fs::File>,
 ) {
     push_capped_f64(window, grad_norm, 100);
-    if step == 0 || step % interval != 0 || window.len() < 10 {
+    if step == 0 || !step.is_multiple_of(interval) || window.len() < 10 {
         return;
     }
     let n = window.len() as f64;
@@ -1153,7 +1157,7 @@ fn detect_loss_spike(
     rollback_count: &mut usize, max_rollbacks: usize,
     jsonl_file: &mut Option<std::fs::File>,
 ) {
-    let bl = loss as f64;
+    let bl = f64::from(loss);
     if *ema > 0.0 && bl > threshold * *ema && *rollback_count < max_rollbacks {
         *rollback_count += 1;
         println!("  [ROLLBACK] loss spike at step {}: {:.4} > {:.1}×EMA({:.4}), rollback #{}/{}",
@@ -1177,7 +1181,7 @@ fn write_jsonl_event(
             "loss_ema": loss_ema,
             "timestamp": now_ms(),
         });
-        let _ = writeln!(f, "{}", entry);
+        let _ = writeln!(f, "{entry}");
     }
 }
 
@@ -1188,7 +1192,7 @@ fn write_jsonl_event_json(
 ) {
     use std::io::Write;
     if let Some(ref mut f) = jsonl_file {
-        let _ = writeln!(f, "{}", entry);
+        let _ = writeln!(f, "{entry}");
     }
 }
 
@@ -1214,7 +1218,7 @@ fn write_config_provenance(jsonl_file: &mut Option<std::fs::File>, spec: &TrainS
         "seq_len": spec.data.seq_len,
         "timestamp": now_ms(),
     });
-    let _ = writeln!(f, "{}", provenance);
+    let _ = writeln!(f, "{provenance}");
 
     // R-026: Config snapshot for diff tracking
     let config = serde_json::json!({
@@ -1236,7 +1240,7 @@ fn write_config_provenance(jsonl_file: &mut Option<std::fs::File>, spec: &TrainS
         "model_path": spec.model.path.display().to_string(),
         "timestamp": now_ms(),
     });
-    let _ = writeln!(f, "{}", config);
+    let _ = writeln!(f, "{config}");
 }
 
 /// R-005: Load validation batches if val path is configured.
@@ -1350,11 +1354,11 @@ fn verify_checkpoint(path: &std::path::Path) {
             if meta.len() == 0 {
                 println!("  [WARN] Checkpoint file is empty: {}", path.display());
             } else {
-                println!("  [verify] checkpoint OK ({} MB)", size_mb);
+                println!("  [verify] checkpoint OK ({size_mb} MB)");
             }
         }
         Err(e) => {
-            println!("  [WARN] Checkpoint verification failed: {}", e);
+            println!("  [WARN] Checkpoint verification failed: {e}");
         }
     }
 }
@@ -1493,13 +1497,13 @@ fn write_jsonl_step(
             "elapsed_s": elapsed_s,
             "timestamp": now_ms(),
         });
-        let _ = writeln!(f, "{}", entry);
+        let _ = writeln!(f, "{entry}");
     }
 }
 
 /// R-009: Generate step-numbered checkpoint path.
 fn checkpoint_path(output_dir: &Path, step: usize) -> PathBuf {
-    output_dir.join(format!("model-step-{}.safetensors", step))
+    output_dir.join(format!("model-step-{step}.safetensors"))
 }
 
 /// Parse step number from a checkpoint filename like "model-step-123.safetensors".
@@ -1596,7 +1600,7 @@ fn prune_checkpoints(output_dir: &Path, max_keep: usize) {
     let to_remove = ckpts.len() - max_keep;
     for (step, path) in ckpts.into_iter().take(to_remove) {
         if std::fs::remove_file(&path).is_ok() {
-            println!("  [prune] removed old checkpoint step={}", step);
+            println!("  [prune] removed old checkpoint step={step}");
         }
     }
 }

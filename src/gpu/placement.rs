@@ -179,7 +179,7 @@ mod tests {
 
     fn test_cluster() -> ClusterConfig {
         ClusterConfig::from_yaml(
-            r#"
+            r"
 nodes:
   - name: desktop
     host: localhost
@@ -206,7 +206,7 @@ nodes:
     cpu_cores: 16
     ram_mb: 65536
     max_adapters: 1
-"#,
+",
         )
         .unwrap()
     }
