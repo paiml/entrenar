@@ -1165,9 +1165,7 @@ impl CudaTransformerTrainer {
         }
 
         // Backward through blocks in reverse, with interleaved clip + optimizer.
-        //
-        // Each block's backward writes weight gradients to the shared CudaGradWorkspace.
-        // Immediately clip and optimize before the next block overwrites the workspace.
+        // Each block's backward writes weight gradients to shared CudaGradWorkspace.
         //
         // SAFETY: grad_buf_a and grad_buf_b are disjoint fields. Raw pointers
         // allow alternating read/write without violating aliasing rules.
