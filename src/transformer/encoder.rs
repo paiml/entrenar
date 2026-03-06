@@ -84,12 +84,22 @@ impl EncoderModel {
         )?;
 
         // Token type embeddings are optional (RoBERTa has them but sets to zero)
-        let token_type_embeddings = Embedding::from_params(
-            params,
-            "encoder.token_type_embeddings.weight",
-            2,
-            config.hidden_size,
-        );
+        // CodeBERT has type_vocab_size=1, standard BERT/RoBERTa has 2.
+        // Infer from actual tensor shape rather than hardcoding.
+        let token_type_embeddings = params
+            .get("encoder.token_type_embeddings.weight")
+            .and_then(|tensor| {
+                let type_vocab_size = tensor.len() / config.hidden_size;
+                if type_vocab_size == 0 || tensor.len() != type_vocab_size * config.hidden_size {
+                    return None;
+                }
+                Embedding::from_params(
+                    params,
+                    "encoder.token_type_embeddings.weight",
+                    type_vocab_size,
+                    config.hidden_size,
+                )
+            });
 
         let embeddings_layernorm = LayerNorm::from_params(
             params,
