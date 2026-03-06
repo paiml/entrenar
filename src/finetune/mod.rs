@@ -61,8 +61,10 @@ pub use classify_tuner::{
 };
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
 pub use linear_probe::{
-    binary_mcc, bootstrap_mcc_ci, compute_confidence_scores, evaluate as evaluate_classification,
-    BootstrapCI, ClassificationMetrics, ConfidenceScore, LinearProbe,
+    binary_mcc, bootstrap_mcc_ci, check_ship_gate, compare_baselines,
+    compute_confidence_scores, evaluate as evaluate_classification, generalization_test,
+    should_escalate, BaselineComparison, BootstrapCI, ClassificationMetrics, ConfidenceScore,
+    EscalationLevel, GeneralizationResult, LinearProbe, ShipGateResult,
 };
 pub use data_parallel::{
     average_gradients, has_non_finite, shard_samples, DataParallelCoordinator,
