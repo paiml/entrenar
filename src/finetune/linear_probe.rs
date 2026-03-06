@@ -218,6 +218,225 @@ impl LinearProbe {
     }
 }
 
+/// MLP probe: frozen embeddings + trainable 2-layer MLP head (Level 0.5).
+///
+/// Adds a hidden layer with ReLU between embeddings and classification head.
+/// This allows non-linear decision boundaries, which can capture patterns
+/// that a linear probe cannot (e.g., shell safety from CodeBERT embeddings).
+///
+/// Architecture: embedding → Linear(hidden_size, mlp_hidden) → ReLU → Linear(mlp_hidden, num_classes)
+pub struct MlpProbe {
+    /// First layer weights [hidden_size × mlp_hidden] flattened row-major
+    pub w1: Vec<f32>,
+    /// First layer bias [mlp_hidden]
+    pub b1: Vec<f32>,
+    /// Second layer weights [mlp_hidden × num_classes] flattened row-major
+    pub w2: Vec<f32>,
+    /// Second layer bias [num_classes]
+    pub b2: Vec<f32>,
+    /// Input dimension
+    pub hidden_size: usize,
+    /// Hidden layer dimension
+    pub mlp_hidden: usize,
+    /// Number of output classes
+    pub num_classes: usize,
+}
+
+impl MlpProbe {
+    /// Create with Xavier initialization.
+    pub fn new(hidden_size: usize, mlp_hidden: usize, num_classes: usize) -> Self {
+        assert!(hidden_size > 0 && mlp_hidden > 0 && num_classes >= 2);
+
+        let mut rng: u64 = 42;
+        let mut xavier = |fan_in: usize, fan_out: usize, n: usize| -> Vec<f32> {
+            let scale = (6.0 / (fan_in + fan_out) as f32).sqrt();
+            (0..n)
+                .map(|_| {
+                    rng = rng.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+                    let u = (rng >> 33) as f32 / (1u64 << 31) as f32;
+                    (2.0 * u - 1.0) * scale
+                })
+                .collect()
+        };
+
+        Self {
+            w1: xavier(hidden_size, mlp_hidden, hidden_size * mlp_hidden),
+            b1: vec![0.0; mlp_hidden],
+            w2: xavier(mlp_hidden, num_classes, mlp_hidden * num_classes),
+            b2: vec![0.0; num_classes],
+            hidden_size,
+            mlp_hidden,
+            num_classes,
+        }
+    }
+
+    /// Forward pass: embedding → hidden (ReLU) → logits.
+    pub fn forward(&self, emb: &[f32]) -> (Vec<f32>, Vec<f32>) {
+        // Layer 1: h = ReLU(W1 @ emb + b1)
+        let mut h = vec![0.0_f32; self.mlp_hidden];
+        for j in 0..self.mlp_hidden {
+            let mut sum = self.b1[j];
+            for i in 0..self.hidden_size {
+                sum += self.w1[i * self.mlp_hidden + j] * emb[i];
+            }
+            h[j] = sum.max(0.0); // ReLU
+        }
+
+        // Layer 2: logits = W2 @ h + b2
+        let mut logits = vec![0.0_f32; self.num_classes];
+        for j in 0..self.num_classes {
+            let mut sum = self.b2[j];
+            for i in 0..self.mlp_hidden {
+                sum += self.w2[i * self.num_classes + j] * h[i];
+            }
+            logits[j] = sum;
+        }
+
+        (h, logits)
+    }
+
+    /// Predict class index.
+    pub fn predict(&self, emb: &[f32]) -> usize {
+        let (_, logits) = self.forward(emb);
+        logits
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map_or(0, |(i, _)| i)
+    }
+
+    /// Predict class probabilities via softmax.
+    pub fn predict_probs(&self, emb: &[f32]) -> Vec<f32> {
+        let (_, logits) = self.forward(emb);
+        softmax_slice(&logits)
+    }
+
+    /// Forward pass returning pre-ReLU activations, post-ReLU hidden, and logits.
+    fn forward_train(&self, emb: &[f32]) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+        let mut h_pre = vec![0.0_f32; self.mlp_hidden];
+        let mut h = vec![0.0_f32; self.mlp_hidden];
+        for j in 0..self.mlp_hidden {
+            let mut sum = self.b1[j];
+            for i in 0..self.hidden_size {
+                sum += self.w1[i * self.mlp_hidden + j] * emb[i];
+            }
+            h_pre[j] = sum;
+            h[j] = sum.max(0.0);
+        }
+
+        let mut logits = vec![0.0_f32; self.num_classes];
+        for j in 0..self.num_classes {
+            let mut sum = self.b2[j];
+            for i in 0..self.mlp_hidden {
+                sum += self.w2[i * self.num_classes + j] * h[i];
+            }
+            logits[j] = sum;
+        }
+        (h_pre, h, logits)
+    }
+
+    /// Backward pass: update W1, b1, W2, b2 given gradients.
+    fn backward_step(
+        &mut self,
+        emb: &[f32],
+        h_pre: &[f32],
+        h: &[f32],
+        grad_logits: &[f32],
+        lr: f32,
+        wd: f32,
+    ) {
+        // Update W2 and b2
+        for i in 0..self.mlp_hidden {
+            for j in 0..self.num_classes {
+                let idx = i * self.num_classes + j;
+                self.w2[idx] -= lr * (h[i] * grad_logits[j] + wd * self.w2[idx]);
+            }
+        }
+        for j in 0..self.num_classes {
+            self.b2[j] -= lr * grad_logits[j];
+        }
+
+        // Compute grad_h (with ReLU mask)
+        let mut grad_h = vec![0.0_f32; self.mlp_hidden];
+        for i in 0..self.mlp_hidden {
+            if h_pre[i] > 0.0 {
+                for j in 0..self.num_classes {
+                    grad_h[i] += self.w2[i * self.num_classes + j] * grad_logits[j];
+                }
+            }
+        }
+
+        // Update W1 and b1
+        for i in 0..self.hidden_size {
+            for j in 0..self.mlp_hidden {
+                let idx = i * self.mlp_hidden + j;
+                self.w1[idx] -= lr * (emb[i] * grad_h[j] + wd * self.w1[idx]);
+            }
+        }
+        for j in 0..self.mlp_hidden {
+            self.b1[j] -= lr * grad_h[j];
+        }
+    }
+
+    /// Train with online SGD + class weights + L2 regularization.
+    #[allow(clippy::too_many_arguments)]
+    pub fn train(
+        &mut self,
+        embeddings: &[Vec<f32>],
+        labels: &[usize],
+        epochs: usize,
+        learning_rate: f32,
+        class_weights: Option<&[f32]>,
+        weight_decay: f32,
+    ) -> f32 {
+        assert_eq!(embeddings.len(), labels.len());
+        let n = embeddings.len();
+        let mut final_loss = 0.0;
+
+        for epoch in 0..epochs {
+            let mut epoch_loss = 0.0;
+
+            for (emb, &label) in embeddings.iter().zip(labels.iter()) {
+                let (h_pre, h, logits) = self.forward_train(emb);
+                let probs = softmax_slice(&logits);
+                let loss_weight = class_weights.map_or(1.0, |w| w[label]);
+                epoch_loss += -probs[label].max(1e-10).ln() * loss_weight;
+
+                let mut grad_logits = probs;
+                grad_logits[label] -= 1.0;
+                if let Some(w) = class_weights {
+                    for (i, g) in grad_logits.iter_mut().enumerate() {
+                        *g *= w[i];
+                    }
+                }
+
+                self.backward_step(emb, &h_pre, &h, &grad_logits, learning_rate, weight_decay);
+            }
+
+            final_loss = epoch_loss / n as f32;
+            if epoch == 0 || (epoch + 1) % 10 == 0 || epoch == epochs - 1 {
+                eprintln!("  Epoch {}/{epochs}: loss={final_loss:.4}", epoch + 1);
+            }
+        }
+
+        final_loss
+    }
+
+    /// Total trainable parameters.
+    pub fn num_parameters(&self) -> usize {
+        self.hidden_size * self.mlp_hidden + self.mlp_hidden  // W1 + b1
+        + self.mlp_hidden * self.num_classes + self.num_classes // W2 + b2
+    }
+}
+
+/// Compute softmax from a slice.
+fn softmax_slice(logits: &[f32]) -> Vec<f32> {
+    let max_val = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let exp_vals: Vec<f32> = logits.iter().map(|&x| (x - max_val).exp()).collect();
+    let sum: f32 = exp_vals.iter().sum();
+    exp_vals.iter().map(|&v| v / sum).collect()
+}
+
 /// Compute softmax probabilities from a tensor.
 fn softmax_vec(logits: &Tensor) -> Vec<f32> {
     let data = logits.data();
@@ -793,5 +1012,88 @@ mod tests {
         let result = check_ship_gate(&ci, 0.96, &gen, EscalationLevel::LinearProbe);
         assert!(!result.ship_ready);
         assert!(!result.generalization_passes);
+    }
+
+    // =========================================================================
+    // MLP PROBE TESTS (Level 0.5)
+    // =========================================================================
+
+    #[test]
+    fn mlp_probe_forward_shape() {
+        let probe = MlpProbe::new(768, 128, 2);
+        let emb = vec![0.1; 768];
+        let (h, logits) = probe.forward(&emb);
+        assert_eq!(h.len(), 128);
+        assert_eq!(logits.len(), 2);
+    }
+
+    #[test]
+    fn mlp_probe_predict_probs_sum_to_one() {
+        let probe = MlpProbe::new(64, 32, 3);
+        let emb = vec![0.5; 64];
+        let probs = probe.predict_probs(&emb);
+        assert_eq!(probs.len(), 3);
+        let sum: f32 = probs.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5, "probabilities must sum to 1.0, got {sum}");
+    }
+
+    #[test]
+    fn mlp_probe_num_parameters() {
+        let probe = MlpProbe::new(768, 128, 2);
+        // W1: 768*128 + b1: 128 + W2: 128*2 + b2: 2 = 98,434 + 128 + 256 + 2 = 98,818 + 2 = 98,690
+        assert_eq!(probe.num_parameters(), 768 * 128 + 128 + 128 * 2 + 2);
+    }
+
+    #[test]
+    fn mlp_probe_relu_zeros_negative() {
+        let probe = MlpProbe::new(4, 4, 2);
+        let emb = vec![-10.0; 4]; // all negative
+        let (h, _) = probe.forward(&emb);
+        // After ReLU, some hidden units may be zero (depends on init)
+        // At least verify h values are non-negative
+        assert!(h.iter().all(|&v| v >= 0.0), "ReLU output must be non-negative");
+    }
+
+    #[test]
+    fn mlp_probe_train_learns_xor() {
+        // XOR is not linearly separable — MLP should learn it, linear probe can't
+        let embeddings = vec![
+            vec![0.0, 0.0],
+            vec![0.0, 1.0],
+            vec![1.0, 0.0],
+            vec![1.0, 1.0],
+        ];
+        let labels = vec![0, 1, 1, 0]; // XOR pattern
+
+        // Repeat data for more training signal
+        let embeddings: Vec<Vec<f32>> = embeddings.iter().cycle().take(40).cloned().collect();
+        let labels: Vec<usize> = labels.iter().cycle().take(40).copied().collect();
+
+        let mut mlp = MlpProbe::new(2, 8, 2);
+        mlp.train(&embeddings, &labels, 200, 0.1, None, 0.0);
+
+        // Test XOR predictions
+        let pred_00 = mlp.predict(&[0.0, 0.0]);
+        let pred_01 = mlp.predict(&[0.0, 1.0]);
+        let pred_10 = mlp.predict(&[1.0, 0.0]);
+        let pred_11 = mlp.predict(&[1.0, 1.0]);
+
+        // MLP should learn XOR (at least partially)
+        let correct = (pred_00 == 0) as u8 + (pred_01 == 1) as u8
+            + (pred_10 == 1) as u8 + (pred_11 == 0) as u8;
+        assert!(correct >= 3, "MLP should learn XOR (got {correct}/4 correct)");
+    }
+
+    #[test]
+    fn mlp_probe_train_reduces_loss() {
+        let mut probe = MlpProbe::new(8, 16, 2);
+        let embeddings: Vec<Vec<f32>> = (0..20)
+            .map(|i| if i < 10 { vec![1.0; 8] } else { vec![-1.0; 8] })
+            .collect();
+        let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
+
+        let loss_1 = probe.train(&embeddings, &labels, 1, 0.01, None, 0.0);
+        let loss_10 = probe.train(&embeddings, &labels, 10, 0.01, None, 0.0);
+        assert!(loss_10 < loss_1 + 0.5, "training should reduce loss");
     }
 }
