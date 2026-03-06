@@ -147,7 +147,7 @@ impl StepProfiler {
         self.step_count += 1;
         self.step_durations.push(step_wall);
 
-        if self.report_interval > 0 && self.step_count % self.report_interval == 0 {
+        if self.report_interval > 0 && self.step_count.is_multiple_of(self.report_interval) {
             self.print_report();
         }
     }
