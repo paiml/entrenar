@@ -185,6 +185,98 @@ impl RMSNorm {
     }
 }
 
+/// Layer Normalization with bias (used by BERT/RoBERTa/CodeBERT encoders).
+///
+/// Unlike RMSNorm (used by decoders), LayerNorm:
+/// 1. Subtracts the mean (re-centering)
+/// 2. Divides by standard deviation (not RMS)
+/// 3. Has both weight (gamma) AND bias (beta) parameters
+///
+/// LayerNorm(x) = (x - mean(x)) / sqrt(var(x) + eps) * weight + bias
+///
+/// # Contract (ENC-005)
+/// - Output has zero mean and unit variance (before affine transform)
+/// - weight.len() == bias.len() == hidden_size
+pub struct LayerNorm {
+    /// Scale parameter (gamma)
+    pub weight: Tensor,
+    /// Shift parameter (beta)
+    pub bias: Tensor,
+    /// Epsilon for numerical stability
+    eps: f32,
+    /// Hidden size
+    hidden_size: usize,
+}
+
+impl LayerNorm {
+    /// Create new LayerNorm (weight=1, bias=0)
+    pub fn new(hidden_size: usize, eps: f32) -> Self {
+        Self {
+            weight: Tensor::ones(hidden_size, true),
+            bias: Tensor::from_vec(vec![0.0; hidden_size], true),
+            eps,
+            hidden_size,
+        }
+    }
+
+    /// Create from pre-trained parameters
+    pub fn from_params(
+        params: &HashMap<String, Tensor>,
+        prefix: &str,
+        eps: f32,
+        hidden_size: usize,
+    ) -> Option<Self> {
+        let weight = params.get(&format!("{prefix}.weight"))?.clone();
+        let bias = params.get(&format!("{prefix}.bias"))?.clone();
+        if weight.len() != hidden_size || bias.len() != hidden_size {
+            eprintln!(
+                "[ENC-005] {prefix}: shape mismatch — weight={}, bias={}, expected {hidden_size}",
+                weight.len(),
+                bias.len()
+            );
+            return None;
+        }
+        Some(Self { weight, bias, eps, hidden_size })
+    }
+
+    /// Forward pass for batched input (seq_len positions, each of hidden_size)
+    pub fn forward_batched(&self, x: &Tensor, seq_len: usize, hidden_size: usize) -> Tensor {
+        let mut output = vec![0.0_f32; seq_len * hidden_size];
+        let x_data = x.data();
+        let x_slice = x_data.as_slice().expect("input contiguous");
+        let w_data = self.weight.data();
+        let w_slice = w_data.as_slice().expect("weight contiguous");
+        let b_data = self.bias.data();
+        let b_slice = b_data.as_slice().expect("bias contiguous");
+
+        for s in 0..seq_len {
+            let start = s * hidden_size;
+            let end = start + hidden_size;
+            let row = &x_slice[start..end];
+
+            // Mean
+            let mean: f32 = row.iter().sum::<f32>() / hidden_size as f32;
+
+            // Variance
+            let var: f32 =
+                row.iter().map(|&v| (v - mean) * (v - mean)).sum::<f32>() / hidden_size as f32;
+            let inv_std = 1.0 / (var + self.eps).sqrt();
+
+            // Normalize, scale, shift
+            for (i, &val) in row.iter().enumerate() {
+                output[start + i] = (val - mean) * inv_std * w_slice[i] + b_slice[i];
+            }
+        }
+
+        Tensor::from_vec(output, x.requires_grad() || self.weight.requires_grad())
+    }
+
+    /// Get hidden size
+    pub fn hidden_size(&self) -> usize {
+        self.hidden_size
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +418,75 @@ mod tests {
                 wgrad2[i]
             );
         }
+    }
+
+    // =========================================================================
+    // ENC-005: LayerNorm tests
+    // =========================================================================
+
+    #[test]
+    fn enc_005_layernorm_output_shape() {
+        let ln = LayerNorm::new(8, 1e-5);
+        let x = Tensor::from_vec(vec![1.0; 3 * 8], true);
+        let output = ln.forward_batched(&x, 3, 8);
+        assert_eq!(output.len(), 3 * 8);
+    }
+
+    #[test]
+    fn enc_005_layernorm_zero_mean_unit_var() {
+        let ln = LayerNorm::new(8, 1e-12);
+        let x = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], true);
+        let output = ln.forward_batched(&x, 1, 8);
+        let data = output.data();
+        let slice = data.as_slice().expect("contiguous");
+
+        // With weight=1, bias=0: output should have ~zero mean, ~unit variance
+        let mean: f32 = slice.iter().sum::<f32>() / 8.0;
+        assert!(mean.abs() < 1e-5, "LayerNorm output mean={mean}, expected ~0");
+
+        let var: f32 = slice.iter().map(|&v| (v - mean) * (v - mean)).sum::<f32>() / 8.0;
+        assert!((var - 1.0).abs() < 0.01, "LayerNorm output var={var}, expected ~1");
+    }
+
+    #[test]
+    fn enc_005_layernorm_with_bias() {
+        let mut ln = LayerNorm::new(4, 1e-12);
+        // Set bias to shift output by 5.0
+        ln.bias = Tensor::from_vec(vec![5.0; 4], true);
+        let x = Tensor::from_vec(vec![1.0, 1.0, 1.0, 1.0], true);
+        let output = ln.forward_batched(&x, 1, 4);
+        // Constant input → normalized to 0, then shifted by bias → all 5.0
+        let data = output.data();
+        for &v in data.iter() {
+            assert!((v - 5.0).abs() < 1e-3, "Expected ~5.0 with bias, got {v}");
+        }
+    }
+
+    #[test]
+    fn enc_005_layernorm_from_params() {
+        let mut params = HashMap::new();
+        params.insert("ln.weight".to_string(), Tensor::from_vec(vec![1.0; 32], true));
+        params.insert("ln.bias".to_string(), Tensor::from_vec(vec![0.0; 32], true));
+        let ln = LayerNorm::from_params(&params, "ln", 1e-5, 32);
+        assert!(ln.is_some());
+        assert_eq!(ln.expect("should succeed").hidden_size(), 32);
+    }
+
+    #[test]
+    fn enc_005_layernorm_from_params_rejects_mismatch() {
+        let mut params = HashMap::new();
+        params.insert("ln.weight".to_string(), Tensor::from_vec(vec![1.0; 32], true));
+        params.insert("ln.bias".to_string(), Tensor::from_vec(vec![0.0; 16], true)); // wrong size
+        let ln = LayerNorm::from_params(&params, "ln", 1e-5, 32);
+        assert!(ln.is_none());
+    }
+
+    #[test]
+    fn enc_005_layernorm_finite_output() {
+        let ln = LayerNorm::new(4, 1e-5);
+        let x = Tensor::from_vec(vec![1e6, -1e6, 0.0, 1.0], true);
+        let output = ln.forward_batched(&x, 1, 4);
+        assert!(output.data().iter().all(|v| v.is_finite()));
     }
 
     // =========================================================================
