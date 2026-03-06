@@ -381,6 +381,189 @@ pub fn compute_confidence_scores(
         .collect()
 }
 
+// =============================================================================
+// CLF-004: ESCALATION LADDER
+// =============================================================================
+
+/// Escalation level for classifier training (SSC v11 Section 5.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EscalationLevel {
+    /// Level 0: Linear probe on frozen encoder (1,538 params)
+    LinearProbe,
+    /// Level 1: Fine-tune top-2 encoder layers + head (~15M params)
+    TopLayers,
+    /// Level 2: Full fine-tune all encoder layers (125M params)
+    FullFinetune,
+    /// Level 3: Continue-pretrain on shell + fine-tune (125M params)
+    ContinuePretrain,
+}
+
+impl std::fmt::Display for EscalationLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LinearProbe => write!(f, "Level 0: Linear probe"),
+            Self::TopLayers => write!(f, "Level 1: Top-2 layers + head"),
+            Self::FullFinetune => write!(f, "Level 2: Full fine-tune"),
+            Self::ContinuePretrain => write!(f, "Level 3: Continue-pretrain + fine-tune"),
+        }
+    }
+}
+
+/// Decide whether to escalate based on MCC CI (CLF-004).
+///
+/// Returns `Some(next_level)` if escalation needed, `None` if ship gate met.
+pub fn should_escalate(
+    current_level: EscalationLevel,
+    mcc_ci: &BootstrapCI,
+    accuracy: f32,
+) -> Option<EscalationLevel> {
+    match current_level {
+        EscalationLevel::LinearProbe => {
+            if mcc_ci.lower < 0.2 || accuracy <= 0.935 {
+                Some(EscalationLevel::TopLayers)
+            } else {
+                None // Ship gate C-CLF-001 met
+            }
+        }
+        EscalationLevel::TopLayers | EscalationLevel::FullFinetune => {
+            if mcc_ci.lower < 0.3 {
+                match current_level {
+                    EscalationLevel::TopLayers => Some(EscalationLevel::FullFinetune),
+                    _ => Some(EscalationLevel::ContinuePretrain),
+                }
+            } else {
+                None
+            }
+        }
+        EscalationLevel::ContinuePretrain => {
+            // Terminal level — if this fails, classifier adds no value
+            None
+        }
+    }
+}
+
+// =============================================================================
+// CLF-005: BASELINES COMPARISON
+// =============================================================================
+
+/// Baseline comparison result (CLF-005).
+#[derive(Debug, Clone)]
+pub struct BaselineComparison {
+    /// Name of the baseline
+    pub name: String,
+    /// Baseline MCC
+    pub baseline_mcc: f32,
+    /// Model MCC
+    pub model_mcc: f32,
+    /// Whether model beats this baseline
+    pub beats_baseline: bool,
+}
+
+/// Compare model against baselines (CLF-005).
+///
+/// Baselines from SSC v11 Section 5.5:
+/// - Majority class: MCC = 0.0
+/// - Keyword regex: MCC ~0.3-0.5
+/// - bashrs linter: MCC ~0.4-0.6
+pub fn compare_baselines(
+    model_mcc: f32,
+    baseline_mccs: &[(&str, f32)],
+) -> Vec<BaselineComparison> {
+    baseline_mccs
+        .iter()
+        .map(|&(name, baseline_mcc)| BaselineComparison {
+            name: name.to_string(),
+            baseline_mcc,
+            model_mcc,
+            beats_baseline: model_mcc > baseline_mcc,
+        })
+        .collect()
+}
+
+// =============================================================================
+// CLF-006: GENERALIZATION TEST
+// =============================================================================
+
+/// Generalization test result (CLF-006).
+#[derive(Debug, Clone)]
+pub struct GeneralizationResult {
+    /// Number of novel unsafe scripts tested
+    pub total: usize,
+    /// Number correctly classified as unsafe
+    pub detected: usize,
+    /// Detection rate (detected / total)
+    pub detection_rate: f32,
+    /// Meets threshold (>= 50%)
+    pub passes: bool,
+}
+
+/// Run generalization test on novel unsafe scripts (CLF-006).
+///
+/// Tests the classifier on out-of-distribution scripts that have
+/// no lexical overlap with training data.
+pub fn generalization_test(
+    probe: &LinearProbe,
+    novel_embeddings: &[Vec<f32>],
+    unsafe_class: usize,
+) -> GeneralizationResult {
+    let total = novel_embeddings.len();
+    let detected = novel_embeddings
+        .iter()
+        .filter(|emb| {
+            let emb_tensor = Tensor::from_vec((*emb).clone(), false);
+            probe.predict(&emb_tensor) == unsafe_class
+        })
+        .count();
+
+    let detection_rate = if total > 0 { detected as f32 / total as f32 } else { 0.0 };
+
+    GeneralizationResult {
+        total,
+        detected,
+        detection_rate,
+        passes: detection_rate >= 0.5,
+    }
+}
+
+// =============================================================================
+// SHIP GATE (C-CLF-001)
+// =============================================================================
+
+/// Ship gate check result (SSC v11 Section 5.7).
+#[derive(Debug, Clone)]
+pub struct ShipGateResult {
+    /// MCC CI lower bound > 0.2
+    pub mcc_passes: bool,
+    /// Accuracy > 0.935
+    pub accuracy_passes: bool,
+    /// Generalization >= 50%
+    pub generalization_passes: bool,
+    /// All criteria met
+    pub ship_ready: bool,
+    /// Escalation level that achieved these results
+    pub level: EscalationLevel,
+}
+
+/// Check ship gate C-CLF-001 (SSC v11 Section 5.7).
+pub fn check_ship_gate(
+    mcc_ci: &BootstrapCI,
+    accuracy: f32,
+    generalization: &GeneralizationResult,
+    level: EscalationLevel,
+) -> ShipGateResult {
+    let mcc_passes = mcc_ci.lower > 0.2;
+    let accuracy_passes = accuracy > 0.935;
+    let generalization_passes = generalization.passes;
+
+    ShipGateResult {
+        mcc_passes,
+        accuracy_passes,
+        generalization_passes,
+        ship_ready: mcc_passes && accuracy_passes && generalization_passes,
+        level,
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -489,5 +672,126 @@ mod tests {
             let sum: f32 = score.probabilities.iter().sum();
             assert!((sum - 1.0).abs() < 1e-5);
         }
+    }
+
+    // =========================================================================
+    // CLF-004: ESCALATION TESTS
+    // =========================================================================
+
+    #[test]
+    fn clf_004_escalate_from_linear_probe_low_mcc() {
+        let ci = BootstrapCI { estimate: 0.15, lower: 0.10, upper: 0.20, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::LinearProbe, &ci, 0.94);
+        assert_eq!(result, Some(EscalationLevel::TopLayers));
+    }
+
+    #[test]
+    fn clf_004_no_escalate_when_ship_gate_met() {
+        let ci = BootstrapCI { estimate: 0.45, lower: 0.30, upper: 0.60, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::LinearProbe, &ci, 0.96);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn clf_004_escalate_from_top_layers_to_full() {
+        let ci = BootstrapCI { estimate: 0.25, lower: 0.15, upper: 0.35, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::TopLayers, &ci, 0.95);
+        assert_eq!(result, Some(EscalationLevel::FullFinetune));
+    }
+
+    #[test]
+    fn clf_004_terminal_level_no_escalation() {
+        let ci = BootstrapCI { estimate: 0.1, lower: 0.05, upper: 0.15, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::ContinuePretrain, &ci, 0.90);
+        assert_eq!(result, None); // Terminal — can't escalate further
+    }
+
+    #[test]
+    fn clf_004_escalate_on_low_accuracy() {
+        // MCC CI OK but accuracy below threshold
+        let ci = BootstrapCI { estimate: 0.45, lower: 0.30, upper: 0.60, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::LinearProbe, &ci, 0.93);
+        assert_eq!(result, Some(EscalationLevel::TopLayers));
+    }
+
+    // =========================================================================
+    // CLF-005: BASELINES COMPARISON TESTS
+    // =========================================================================
+
+    #[test]
+    fn clf_005_compare_baselines_beats_majority() {
+        let baselines = vec![("majority", 0.0), ("keyword", 0.4), ("linter", 0.5)];
+        let comparisons = compare_baselines(0.35, &baselines);
+        assert!(comparisons[0].beats_baseline); // beats majority (0.35 > 0.0)
+        assert!(!comparisons[1].beats_baseline); // loses to keyword (0.35 < 0.4)
+        assert!(!comparisons[2].beats_baseline); // loses to linter (0.35 < 0.5)
+    }
+
+    #[test]
+    fn clf_005_compare_baselines_beats_all() {
+        let baselines = vec![("majority", 0.0), ("keyword", 0.4), ("linter", 0.5)];
+        let comparisons = compare_baselines(0.65, &baselines);
+        assert!(comparisons.iter().all(|c| c.beats_baseline));
+    }
+
+    // =========================================================================
+    // CLF-006: GENERALIZATION TEST
+    // =========================================================================
+
+    #[test]
+    fn clf_006_generalization_all_detected() {
+        let mut probe = LinearProbe::new(4, 2);
+        // Train probe to always predict unsafe (class 1) for negative embeddings
+        let embeddings: Vec<Vec<f32>> = (0..20)
+            .map(|i| if i < 10 { vec![1.0; 4] } else { vec![-1.0; 4] })
+            .collect();
+        let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
+        probe.train(&embeddings, &labels, 30, 0.1, None);
+
+        let novel = vec![vec![-1.0; 4]; 10]; // all "unsafe" pattern
+        let result = generalization_test(&probe, &novel, 1);
+        assert_eq!(result.total, 10);
+        assert!(result.passes, "trained probe should detect unsafe-pattern embeddings");
+    }
+
+    #[test]
+    fn clf_006_generalization_empty() {
+        let probe = LinearProbe::new(4, 2);
+        let result = generalization_test(&probe, &[], 1);
+        assert_eq!(result.total, 0);
+        assert_eq!(result.detection_rate, 0.0);
+    }
+
+    // =========================================================================
+    // SHIP GATE TESTS
+    // =========================================================================
+
+    #[test]
+    fn clf_ship_gate_passes() {
+        let ci = BootstrapCI { estimate: 0.4, lower: 0.25, upper: 0.55, n_bootstrap: 100 };
+        let gen = GeneralizationResult { total: 50, detected: 30, detection_rate: 0.6, passes: true };
+        let result = check_ship_gate(&ci, 0.96, &gen, EscalationLevel::LinearProbe);
+        assert!(result.ship_ready);
+        assert!(result.mcc_passes);
+        assert!(result.accuracy_passes);
+        assert!(result.generalization_passes);
+    }
+
+    #[test]
+    fn clf_ship_gate_fails_mcc() {
+        let ci = BootstrapCI { estimate: 0.15, lower: 0.10, upper: 0.20, n_bootstrap: 100 };
+        let gen = GeneralizationResult { total: 50, detected: 30, detection_rate: 0.6, passes: true };
+        let result = check_ship_gate(&ci, 0.96, &gen, EscalationLevel::LinearProbe);
+        assert!(!result.ship_ready);
+        assert!(!result.mcc_passes);
+    }
+
+    #[test]
+    fn clf_ship_gate_fails_generalization() {
+        let ci = BootstrapCI { estimate: 0.4, lower: 0.25, upper: 0.55, n_bootstrap: 100 };
+        let gen = GeneralizationResult { total: 50, detected: 20, detection_rate: 0.4, passes: false };
+        let result = check_ship_gate(&ci, 0.96, &gen, EscalationLevel::LinearProbe);
+        assert!(!result.ship_ready);
+        assert!(!result.generalization_passes);
     }
 }
