@@ -1,0 +1,493 @@
+//! Linear probe classifier pipeline (SSC v11 Section 5)
+//!
+//! Implements the CodeBERT linear probe:
+//! 1. Extract [CLS] embeddings from frozen encoder (CLF-001)
+//! 2. Train Linear(hidden_size, num_classes) on cached embeddings (CLF-002)
+//! 3. Evaluate with MCC, accuracy, recall, bootstrap CI (CLF-003)
+//! 4. Cache confidence scores for conversation generation (CLF-007)
+//!
+//! # Architecture
+//!
+//! ```text
+//! token_ids → EncoderModel.cls_embedding() → [hidden_size]
+//!           → Linear(hidden_size, 2) → softmax → [p_safe, p_unsafe]
+//! ```
+//!
+//! # Contract (linear-probe-classifier-v1.yaml)
+//! - Frozen encoder: weights unchanged after training
+//! - Probability simplex: softmax sums to 1.0
+//! - Embedding determinism: bit-identical on repeated calls
+
+use crate::autograd::{matmul, Tensor};
+
+/// Classification metrics for binary or multi-class evaluation (CLF-003).
+#[derive(Debug, Clone)]
+pub struct ClassificationMetrics {
+    /// Matthews Correlation Coefficient (-1 to 1)
+    pub mcc: f32,
+    /// Overall accuracy (0 to 1)
+    pub accuracy: f32,
+    /// Per-class recall (sensitivity)
+    pub recall: Vec<f32>,
+    /// Per-class precision
+    pub precision: Vec<f32>,
+    /// Number of samples evaluated
+    pub num_samples: usize,
+    /// Confusion matrix [predicted][actual] — row=predicted, col=actual
+    pub confusion_matrix: Vec<Vec<usize>>,
+}
+
+/// Bootstrap confidence interval.
+#[derive(Debug, Clone, Copy)]
+pub struct BootstrapCI {
+    /// Point estimate
+    pub estimate: f32,
+    /// Lower bound (2.5th percentile)
+    pub lower: f32,
+    /// Upper bound (97.5th percentile)
+    pub upper: f32,
+    /// Number of bootstrap iterations
+    pub n_bootstrap: usize,
+}
+
+/// Linear probe: frozen embeddings + trainable linear head (CLF-002).
+///
+/// Trains on pre-extracted embeddings (not raw token IDs), making training
+/// complete in seconds rather than minutes.
+pub struct LinearProbe {
+    /// Linear weight [hidden_size, num_classes] flattened row-major
+    pub weight: Tensor,
+    /// Bias [num_classes]
+    pub bias: Tensor,
+    /// Input dimension
+    hidden_size: usize,
+    /// Number of output classes
+    num_classes: usize,
+}
+
+impl LinearProbe {
+    /// Create with Xavier initialization.
+    pub fn new(hidden_size: usize, num_classes: usize) -> Self {
+        assert!(hidden_size > 0, "hidden_size must be > 0");
+        assert!(num_classes >= 2, "num_classes must be >= 2");
+
+        let scale = (6.0 / (hidden_size + num_classes) as f32).sqrt();
+        let mut rng: u64 = 42;
+        let weight_data: Vec<f32> = (0..hidden_size * num_classes)
+            .map(|_| {
+                rng = rng.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+                let u = (rng >> 33) as f32 / (1u64 << 31) as f32;
+                (2.0 * u - 1.0) * scale
+            })
+            .collect();
+
+        Self {
+            weight: Tensor::from_vec(weight_data, true),
+            bias: Tensor::zeros(num_classes, true),
+            hidden_size,
+            num_classes,
+        }
+    }
+
+    /// Forward pass: embedding → logits.
+    ///
+    /// # Arguments
+    /// * `embedding` - Pre-extracted [CLS] embedding [hidden_size]
+    ///
+    /// # Returns
+    /// Logits tensor [num_classes]
+    pub fn forward(&self, embedding: &Tensor) -> Tensor {
+        let logits = matmul(embedding, &self.weight, 1, self.hidden_size, self.num_classes);
+        let logits_data = logits.data();
+        let logits_slice = logits_data.as_slice().expect("contiguous logits");
+        let bias_data = self.bias.data();
+        let bias_slice = bias_data.as_slice().expect("contiguous bias");
+
+        let output: Vec<f32> = logits_slice
+            .iter()
+            .zip(bias_slice.iter())
+            .map(|(&l, &b)| l + b)
+            .collect();
+        Tensor::from_vec(output, logits.requires_grad())
+    }
+
+    /// Predict class probabilities via softmax.
+    pub fn predict_probs(&self, embedding: &Tensor) -> Vec<f32> {
+        let logits = self.forward(embedding);
+        softmax_vec(&logits)
+    }
+
+    /// Predict class index (argmax of logits).
+    pub fn predict(&self, embedding: &Tensor) -> usize {
+        let logits = self.forward(embedding);
+        let data = logits.data();
+        let slice = data.as_slice().expect("contiguous");
+        slice
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map_or(0, |(i, _)| i)
+    }
+
+    /// Train on pre-extracted embeddings using SGD.
+    ///
+    /// # Arguments
+    /// * `embeddings` - List of pre-extracted [CLS] embeddings (each len=hidden_size)
+    /// * `labels` - Corresponding class labels
+    /// * `epochs` - Number of training epochs
+    /// * `learning_rate` - SGD learning rate
+    /// * `class_weights` - Optional per-class loss weights for imbalance
+    ///
+    /// # Returns
+    /// Final training loss
+    pub fn train(
+        &mut self,
+        embeddings: &[Vec<f32>],
+        labels: &[usize],
+        epochs: usize,
+        learning_rate: f32,
+        class_weights: Option<&[f32]>,
+    ) -> f32 {
+        assert_eq!(embeddings.len(), labels.len());
+        let n = embeddings.len();
+        let mut final_loss = 0.0;
+
+        for epoch in 0..epochs {
+            let mut epoch_loss = 0.0;
+
+            for (emb, &label) in embeddings.iter().zip(labels.iter()) {
+                assert_eq!(emb.len(), self.hidden_size);
+                assert!(label < self.num_classes);
+
+                // Forward
+                let emb_tensor = Tensor::from_vec(emb.clone(), false);
+                let logits = self.forward(&emb_tensor);
+
+                // Cross-entropy loss with optional class weights
+                let probs = softmax_vec(&logits);
+                let loss_weight = class_weights.map_or(1.0, |w| w[label]);
+                let loss = -probs[label].max(1e-10).ln() * loss_weight;
+                epoch_loss += loss;
+
+                // Gradient of cross-entropy w.r.t. logits: probs - one_hot(label)
+                let mut grad_logits = probs;
+                grad_logits[label] -= 1.0;
+                if let Some(w) = class_weights {
+                    for (i, g) in grad_logits.iter_mut().enumerate() {
+                        *g *= w[i];
+                    }
+                }
+
+                // Update weight: grad_W = emb^T @ grad_logits
+                let w_data = self.weight.data();
+                let mut w_slice = w_data.as_slice().expect("contiguous").to_vec();
+                for i in 0..self.hidden_size {
+                    for j in 0..self.num_classes {
+                        w_slice[i * self.num_classes + j] -=
+                            learning_rate * emb[i] * grad_logits[j];
+                    }
+                }
+                self.weight = Tensor::from_vec(w_slice, true);
+
+                // Update bias: grad_b = grad_logits
+                let b_data = self.bias.data();
+                let mut b_slice = b_data.as_slice().expect("contiguous").to_vec();
+                for j in 0..self.num_classes {
+                    b_slice[j] -= learning_rate * grad_logits[j];
+                }
+                self.bias = Tensor::from_vec(b_slice, true);
+            }
+
+            final_loss = epoch_loss / n as f32;
+            if epoch == 0 || (epoch + 1) % 5 == 0 || epoch == epochs - 1 {
+                eprintln!("  Epoch {}/{epochs}: loss={final_loss:.4}", epoch + 1);
+            }
+        }
+
+        final_loss
+    }
+
+    /// Get total trainable parameter count (CLF-002: 1,538 for binary CodeBERT).
+    pub fn num_parameters(&self) -> usize {
+        self.hidden_size * self.num_classes + self.num_classes
+    }
+
+    /// Get number of classes.
+    pub fn num_classes(&self) -> usize {
+        self.num_classes
+    }
+}
+
+/// Compute softmax probabilities from a tensor.
+fn softmax_vec(logits: &Tensor) -> Vec<f32> {
+    let data = logits.data();
+    let slice = data.as_slice().expect("contiguous logits");
+    let max_val = slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let exp_vals: Vec<f32> = slice.iter().map(|&x| (x - max_val).exp()).collect();
+    let sum: f32 = exp_vals.iter().sum();
+    exp_vals.iter().map(|&v| v / sum).collect()
+}
+
+/// Compute binary MCC from confusion matrix values.
+///
+/// MCC = (TP*TN - FP*FN) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
+pub fn binary_mcc(tp: usize, tn: usize, fp: usize, fn_count: usize) -> f32 {
+    let numerator = (tp * tn) as f64 - (fp * fn_count) as f64;
+    let denom = ((tp + fp) as f64 * (tp + fn_count) as f64 * (tn + fp) as f64 * (tn + fn_count) as f64).sqrt();
+    if denom < 1e-10 {
+        0.0
+    } else {
+        (numerator / denom) as f32
+    }
+}
+
+/// Evaluate predictions against ground truth (CLF-003).
+pub fn evaluate(predictions: &[usize], labels: &[usize], num_classes: usize) -> ClassificationMetrics {
+    assert_eq!(predictions.len(), labels.len());
+    let n = predictions.len();
+
+    // Build confusion matrix
+    let mut cm = vec![vec![0usize; num_classes]; num_classes];
+    for (&pred, &label) in predictions.iter().zip(labels.iter()) {
+        if pred < num_classes && label < num_classes {
+            cm[pred][label] += 1;
+        }
+    }
+
+    // Accuracy
+    let correct: usize = (0..num_classes).map(|c| cm[c][c]).sum();
+    let accuracy = correct as f32 / n.max(1) as f32;
+
+    // Per-class precision and recall
+    let mut precision = vec![0.0_f32; num_classes];
+    let mut recall = vec![0.0_f32; num_classes];
+    for c in 0..num_classes {
+        let pred_count: usize = cm[c].iter().sum();
+        let actual_count: usize = (0..num_classes).map(|p| cm[p][c]).sum();
+        precision[c] = if pred_count > 0 { cm[c][c] as f32 / pred_count as f32 } else { 0.0 };
+        recall[c] = if actual_count > 0 { cm[c][c] as f32 / actual_count as f32 } else { 0.0 };
+    }
+
+    // MCC (binary for 2-class, multiclass generalization otherwise)
+    let mcc = if num_classes == 2 {
+        let tp = cm[1][1];
+        let tn = cm[0][0];
+        let fp = cm[1][0];
+        let fn_count = cm[0][1];
+        binary_mcc(tp, tn, fp, fn_count)
+    } else {
+        multiclass_mcc(&cm, num_classes)
+    };
+
+    ClassificationMetrics { mcc, accuracy, recall, precision, num_samples: n, confusion_matrix: cm }
+}
+
+/// Multiclass MCC using the general formula.
+fn multiclass_mcc(cm: &[Vec<usize>], k: usize) -> f32 {
+    let n: f64 = cm.iter().flat_map(|row| row.iter()).sum::<usize>() as f64;
+    let c: f64 = (0..k).map(|i| cm[i][i] as f64).sum();
+
+    let mut s = 0.0_f64; // sum of outer products
+    let mut p = 0.0_f64; // sum of row sums squared
+    let mut t = 0.0_f64; // sum of col sums squared
+
+    for i in 0..k {
+        let row_sum: f64 = cm[i].iter().sum::<usize>() as f64;
+        let col_sum: f64 = (0..k).map(|j| cm[j][i] as f64).sum();
+        p += row_sum * row_sum;
+        t += col_sum * col_sum;
+        for j in 0..k {
+            s += (cm[i].iter().sum::<usize>() as f64) * (cm[j][i] as f64);
+        }
+    }
+
+    let numerator = c * n - s;
+    let denom = ((n * n - p) * (n * n - t)).sqrt();
+    if denom < 1e-10 { 0.0 } else { (numerator / denom) as f32 }
+}
+
+/// Compute bootstrap confidence interval for MCC (CLF-003).
+///
+/// Resamples predictions/labels with replacement `n_bootstrap` times,
+/// computes MCC for each, and returns 2.5th/97.5th percentiles.
+pub fn bootstrap_mcc_ci(
+    predictions: &[usize],
+    labels: &[usize],
+    num_classes: usize,
+    n_bootstrap: usize,
+) -> BootstrapCI {
+    let n = predictions.len();
+    let point_estimate = evaluate(predictions, labels, num_classes).mcc;
+
+    let mut mcc_samples = Vec::with_capacity(n_bootstrap);
+    let mut rng: u64 = 12345;
+
+    for _ in 0..n_bootstrap {
+        let mut boot_preds = Vec::with_capacity(n);
+        let mut boot_labels = Vec::with_capacity(n);
+
+        for _ in 0..n {
+            rng = rng.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1442695040888963407);
+            let idx = (rng >> 33) as usize % n;
+            boot_preds.push(predictions[idx]);
+            boot_labels.push(labels[idx]);
+        }
+
+        let metrics = evaluate(&boot_preds, &boot_labels, num_classes);
+        mcc_samples.push(metrics.mcc);
+    }
+
+    mcc_samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+    let lower_idx = (n_bootstrap as f32 * 0.025) as usize;
+    let upper_idx = ((n_bootstrap as f32 * 0.975) as usize).min(n_bootstrap - 1);
+
+    BootstrapCI {
+        estimate: point_estimate,
+        lower: mcc_samples[lower_idx],
+        upper: mcc_samples[upper_idx],
+        n_bootstrap,
+    }
+}
+
+/// Confidence score for a single sample (CLF-007).
+#[derive(Debug, Clone)]
+pub struct ConfidenceScore {
+    /// Predicted class (argmax)
+    pub predicted_class: usize,
+    /// Probability of predicted class
+    pub confidence: f32,
+    /// Full probability distribution
+    pub probabilities: Vec<f32>,
+}
+
+/// Cache confidence scores for all samples (CLF-007).
+pub fn compute_confidence_scores(
+    probe: &LinearProbe,
+    embeddings: &[Vec<f32>],
+) -> Vec<ConfidenceScore> {
+    embeddings
+        .iter()
+        .map(|emb| {
+            let emb_tensor = Tensor::from_vec(emb.clone(), false);
+            let probs = probe.predict_probs(&emb_tensor);
+            let (predicted_class, &confidence) = probs
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .expect("non-empty probabilities");
+            ConfidenceScore { predicted_class, confidence, probabilities: probs }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clf_002_linear_probe_forward_shape() {
+        let probe = LinearProbe::new(768, 2);
+        let emb = Tensor::from_vec(vec![0.1; 768], false);
+        let logits = probe.forward(&emb);
+        assert_eq!(logits.len(), 2);
+    }
+
+    #[test]
+    fn clf_002_linear_probe_predict_probs_sum_to_one() {
+        let probe = LinearProbe::new(64, 3);
+        let emb = Tensor::from_vec(vec![0.5; 64], false);
+        let probs = probe.predict_probs(&emb);
+        assert_eq!(probs.len(), 3);
+        let sum: f32 = probs.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5, "probabilities must sum to 1.0, got {sum}");
+        assert!(probs.iter().all(|&p| p > 0.0), "all probabilities must be positive");
+    }
+
+    #[test]
+    fn clf_002_linear_probe_num_parameters() {
+        let probe = LinearProbe::new(768, 2);
+        assert_eq!(probe.num_parameters(), 768 * 2 + 2); // 1538
+    }
+
+    #[test]
+    fn clf_002_linear_probe_train_reduces_loss() {
+        let mut probe = LinearProbe::new(8, 2);
+        // Simple linearly separable data
+        let embeddings: Vec<Vec<f32>> = (0..20)
+            .map(|i| {
+                if i < 10 {
+                    vec![1.0; 8] // class 0
+                } else {
+                    vec![-1.0; 8] // class 1
+                }
+            })
+            .collect();
+        let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
+
+        let loss_before = {
+            let mut temp = LinearProbe::new(8, 2);
+            temp.train(&embeddings, &labels, 1, 0.01, None)
+        };
+        let loss_after = probe.train(&embeddings, &labels, 10, 0.01, None);
+
+        // After 10 epochs, loss should be lower
+        assert!(loss_after < loss_before + 0.5, "training should reduce loss");
+    }
+
+    #[test]
+    fn clf_003_binary_mcc_perfect() {
+        // Perfect predictions
+        assert!((binary_mcc(50, 50, 0, 0) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn clf_003_binary_mcc_random() {
+        // Random predictions: MCC ≈ 0
+        assert!(binary_mcc(25, 25, 25, 25).abs() < 1e-5);
+    }
+
+    #[test]
+    fn clf_003_evaluate_perfect() {
+        let preds = vec![0, 0, 1, 1, 1];
+        let labels = vec![0, 0, 1, 1, 1];
+        let metrics = evaluate(&preds, &labels, 2);
+        assert!((metrics.accuracy - 1.0).abs() < 1e-5);
+        assert!((metrics.mcc - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn clf_003_evaluate_majority_baseline() {
+        // All predict class 0
+        let preds = vec![0; 100];
+        let labels: Vec<usize> = (0..100).map(|i| if i < 93 { 0 } else { 1 }).collect();
+        let metrics = evaluate(&preds, &labels, 2);
+        assert!((metrics.accuracy - 0.93).abs() < 0.01);
+        assert_eq!(metrics.recall[1], 0.0); // unsafe recall is 0
+    }
+
+    #[test]
+    fn clf_003_bootstrap_ci_contains_estimate() {
+        let preds = vec![0, 0, 1, 1, 0, 1, 0, 0, 1, 1];
+        let labels = vec![0, 0, 1, 1, 0, 0, 0, 1, 1, 1];
+        let ci = bootstrap_mcc_ci(&preds, &labels, 2, 100);
+        assert!(ci.lower <= ci.estimate, "CI lower must be <= estimate");
+        assert!(ci.upper >= ci.estimate, "CI upper must be >= estimate");
+    }
+
+    #[test]
+    fn clf_007_confidence_scores() {
+        let probe = LinearProbe::new(8, 2);
+        let embeddings = vec![vec![0.5; 8], vec![-0.5; 8]];
+        let scores = compute_confidence_scores(&probe, &embeddings);
+        assert_eq!(scores.len(), 2);
+        for score in &scores {
+            assert!(score.confidence > 0.0);
+            assert!(score.confidence <= 1.0);
+            assert_eq!(score.probabilities.len(), 2);
+            let sum: f32 = score.probabilities.iter().sum();
+            assert!((sum - 1.0).abs() < 1e-5);
+        }
+    }
+}

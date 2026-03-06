@@ -33,19 +33,14 @@ const CODEBERT_MAX_POSITION: usize = 514; // 512 + 2 special tokens
 /// Model architecture family.
 ///
 /// Determines position encoding, normalization, FFN activation, and pooling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelArchitecture {
     /// Decoder-only (LLaMA, Qwen, Mistral): RoPE, RMSNorm, SwiGLU, last-token pooling
+    #[default]
     Decoder,
     /// Encoder-only (BERT, RoBERTa, CodeBERT): learned positions, LayerNorm, GELU, CLS pooling
     Encoder,
-}
-
-impl Default for ModelArchitecture {
-    fn default() -> Self {
-        Self::Decoder
-    }
 }
 
 /// Configuration for transformer models
