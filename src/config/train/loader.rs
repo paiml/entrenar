@@ -86,7 +86,8 @@ fn build_train_config(
     if let Some(accum) = spec.training.gradient_accumulation {
         config = config.with_accumulation_steps(accum);
         if accum > 1 {
-            println!("  [WARN] gradient_accumulation={accum} — GPU block optimizer steps are per-sequence (ALB-066)");
+            let eff_batch = spec.data.batch_size * accum * spec.data.seq_len.unwrap_or(1024);
+            println!("  Gradient accumulation: {accum} (effective batch: {eff_batch} tokens/step)");
         }
     }
 
