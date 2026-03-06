@@ -22,6 +22,9 @@ pub mod wgpu_block;
 
 pub use attention::{LoRAProjection, MultiHeadAttention, MultiHeadAttentionWithLoRA};
 pub use config::{ModelArchitecture, TransformerConfig};
+pub use embedding::LearnedPositionEmbedding;
+pub use feedforward::EncoderFeedForward;
+pub use norm::LayerNorm;
 #[cfg(feature = "cuda")]
 pub use cuda_block::{
     BlockWeights, CudaBlock, CudaGradWorkspace, CudaNf4TransformerBlock, CudaTransformerBlock,

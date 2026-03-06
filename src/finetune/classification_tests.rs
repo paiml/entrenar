@@ -426,3 +426,77 @@ fn test_bce_with_logits_loss_all_zeros() {
     let expected = 2.0f32.ln();
     assert!((loss.data()[0] - expected).abs() < 1e-4);
 }
+
+// =========================================================================
+// ENC-007: Pooling strategy tests (CLS, LastToken, Mean)
+// =========================================================================
+
+#[test]
+fn enc_007_cls_pool_extracts_first_token() {
+    let head = ClassificationHead::new(4, 2);
+    // 3 tokens, hidden_size=4
+    // Position 0: [1,2,3,4], Position 1: [5,6,7,8], Position 2: [9,10,11,12]
+    let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0], false);
+    let pooled = head.cls_pool(&hidden);
+    assert_eq!(pooled.len(), 4);
+    let data = pooled.data();
+    assert_eq!(data[0], 1.0);
+    assert_eq!(data[1], 2.0);
+    assert_eq!(data[2], 3.0);
+    assert_eq!(data[3], 4.0);
+}
+
+#[test]
+fn enc_007_last_token_pool_extracts_last() {
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0], false);
+    let pooled = head.last_token_pool(&hidden, 3);
+    assert_eq!(pooled.len(), 4);
+    let data = pooled.data();
+    assert_eq!(data[0], 9.0);
+    assert_eq!(data[1], 10.0);
+    assert_eq!(data[2], 11.0);
+    assert_eq!(data[3], 12.0);
+}
+
+#[test]
+fn enc_007_pooling_strategy_from_architecture() {
+    use crate::transformer::ModelArchitecture;
+    assert_eq!(PoolingStrategy::from_architecture(ModelArchitecture::Encoder), PoolingStrategy::Cls);
+    assert_eq!(PoolingStrategy::from_architecture(ModelArchitecture::Decoder), PoolingStrategy::Mean);
+}
+
+#[test]
+fn enc_007_forward_with_cls_pooling() {
+    let head = ClassificationHead::new(8, 2);
+    let hidden = Tensor::from_vec(vec![0.1f32; 3 * 8], false);
+    let logits = head.forward_with_pooling(&hidden, 3, PoolingStrategy::Cls);
+    assert_eq!(logits.len(), 2);
+    assert!(logits.data().iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn enc_007_forward_with_last_token_pooling() {
+    let head = ClassificationHead::new(8, 2);
+    let hidden = Tensor::from_vec(vec![0.1f32; 3 * 8], false);
+    let logits = head.forward_with_pooling(&hidden, 3, PoolingStrategy::LastToken);
+    assert_eq!(logits.len(), 2);
+    assert!(logits.data().iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn enc_007_pool_dispatch() {
+    let head = ClassificationHead::new(4, 2);
+    let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], false);
+
+    let cls = head.pool(&hidden, 2, PoolingStrategy::Cls);
+    let last = head.pool(&hidden, 2, PoolingStrategy::LastToken);
+    let mean = head.pool(&hidden, 2, PoolingStrategy::Mean);
+
+    // CLS = first token [1,2,3,4]
+    assert_eq!(cls.data()[0], 1.0);
+    // Last = second token [5,6,7,8]
+    assert_eq!(last.data()[0], 5.0);
+    // Mean = average [(1+5)/2, (2+6)/2, (3+7)/2, (4+8)/2] = [3,4,5,6]
+    assert!((mean.data()[0] - 3.0).abs() < 1e-5);
+}
