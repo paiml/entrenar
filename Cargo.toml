@@ -163,7 +163,7 @@ hub-publish = ["hub", "dep:reqwest"]  # HuggingFace Hub publishing + leaderboard
 # Core PAIML stack
 ndarray = "0.16"
 trueno = { version = "0.16", features = ["parallel"] }  # SIMD-accelerated compute
-trueno-gpu = { version = "0.4.26", optional = true }  # CUDA compute for GPU training (0.4.26: TF32 tensor cores for FP32 GEMMs)
+trueno-gpu = { version = "0.4.27", optional = true }  # CUDA compute for GPU training (0.4.27: fused gradient clipping kernels)
 realizar = { version = "0.8", optional = true }  # CUDA inference engine with working GEMM
 aprender = "0.27"  # ML interpret module for explainability + .apr model format + pruning + tokenizers
 trueno-viz = { version = "0.2", features = ["terminal"] }  # Terminal visualization
