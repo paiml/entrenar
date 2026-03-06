@@ -41,6 +41,8 @@ pub mod worker_client;
 mod tests;
 #[cfg(test)]
 mod tests_classification_contract_falsify;
+#[cfg(test)]
+mod tests_ssc_contract_falsify;
 
 pub use classification::{
     bce_with_logits_loss, compute_class_weights, corpus_stats, cross_entropy_loss,
