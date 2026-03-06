@@ -92,7 +92,7 @@ impl TrainingDashboard {
         // Training metrics panel: progress, loss, timing (4 content + 2 border)
         items.push(LayoutItem::new(build_metrics_panel(snap)).fixed(6.0));
 
-        // Shows device, utilization, VRAM, temp/power (3 content + 2 border)
+        // Shows device, utilization, VRAM, thermal/power (3 content + 2 border)
         if snap.gpu.is_some() {
             items.push(LayoutItem::new(build_gpu_panel(snap)).fixed(5.0));
         }
