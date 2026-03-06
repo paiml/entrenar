@@ -247,6 +247,7 @@ pub fn has_non_finite(values: &[f32]) -> bool {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+    use crate::transformer::ModelArchitecture;
 
     fn test_config() -> (TransformerConfig, ClassifyConfig) {
         let model_config = TransformerConfig {
@@ -261,6 +262,7 @@ mod tests {
             rope_theta: 10000.0,
             use_bias: false,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         };
 
         let classify_config =
