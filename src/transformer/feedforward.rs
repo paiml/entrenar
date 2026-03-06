@@ -133,6 +133,134 @@ impl FeedForward {
     }
 }
 
+/// GELU activation function (used by BERT/RoBERTa encoders).
+///
+/// GELU(x) = x * Φ(x) where Φ is the standard normal CDF.
+/// Approximation: 0.5 * x * (1 + tanh(√(2/π) * (x + 0.044715 * x³)))
+fn gelu(x: f32) -> f32 {
+    let c = (2.0_f32 / std::f32::consts::PI).sqrt();
+    0.5 * x * (1.0 + (c * (x + 0.044715 * x * x * x)).tanh())
+}
+
+/// Encoder feed-forward network with GELU activation (BERT/RoBERTa/CodeBERT).
+///
+/// Unlike decoder SwiGLU (3 projections), encoder FFN uses 2 projections:
+///   FFN(x) = W_down * GELU(W_up * x + b_up) + b_down
+///
+/// # Contract (ENC-004)
+/// - Uses GELU activation (not SiLU/SwiGLU)
+/// - 2 projections (up + down), not 3
+/// - Supports bias terms (BERT convention)
+pub struct EncoderFeedForward {
+    config: TransformerConfig,
+    /// Up projection (hidden → intermediate)
+    pub w_up: Tensor,
+    /// Up projection bias
+    pub b_up: Tensor,
+    /// Down projection (intermediate → hidden)
+    pub w_down: Tensor,
+    /// Down projection bias
+    pub b_down: Tensor,
+}
+
+impl EncoderFeedForward {
+    /// Create new encoder FFN with deterministic initialization
+    pub fn new(config: &TransformerConfig) -> Self {
+        let h = config.hidden_size;
+        let inter = config.intermediate_size;
+        let scale_up = (2.0 / (h + inter) as f32).sqrt();
+        let scale_down = (2.0 / (inter + h) as f32).sqrt();
+
+        Self {
+            config: config.clone(),
+            w_up: Tensor::from_vec(
+                (0..h * inter).map(|i| ((i as f32 * 0.567).sin() * scale_up)).collect(),
+                true,
+            ),
+            b_up: Tensor::from_vec(vec![0.0; inter], true),
+            w_down: Tensor::from_vec(
+                (0..inter * h).map(|i| ((i as f32 * 0.789).sin() * scale_down)).collect(),
+                true,
+            ),
+            b_down: Tensor::from_vec(vec![0.0; h], true),
+        }
+    }
+
+    /// Create from pre-trained parameters (BERT/RoBERTa weight names)
+    ///
+    /// Expected keys:
+    /// - `{prefix}.intermediate.dense.weight` (hidden → intermediate)
+    /// - `{prefix}.intermediate.dense.bias`
+    /// - `{prefix}.output.dense.weight` (intermediate → hidden)
+    /// - `{prefix}.output.dense.bias`
+    pub fn from_params(
+        config: &TransformerConfig,
+        params: &HashMap<String, Tensor>,
+        prefix: &str,
+    ) -> Option<Self> {
+        let w_up = params.get(&format!("{prefix}.intermediate.dense.weight"))?.clone();
+        let b_up = params.get(&format!("{prefix}.intermediate.dense.bias"))?.clone();
+        let w_down = params.get(&format!("{prefix}.output.dense.weight"))?.clone();
+        let b_down = params.get(&format!("{prefix}.output.dense.bias"))?.clone();
+
+        let expected_up = config.hidden_size * config.intermediate_size;
+        let expected_down = config.intermediate_size * config.hidden_size;
+
+        if w_up.len() != expected_up {
+            eprintln!(
+                "[ENC-004] {prefix}.intermediate.dense.weight: shape mismatch — \
+                 got {} elements, expected {expected_up}",
+                w_up.len()
+            );
+            return None;
+        }
+        if w_down.len() != expected_down {
+            eprintln!(
+                "[ENC-004] {prefix}.output.dense.weight: shape mismatch — \
+                 got {} elements, expected {expected_down}",
+                w_down.len()
+            );
+            return None;
+        }
+
+        Some(Self { config: config.clone(), w_up, b_up, w_down, b_down })
+    }
+
+    /// Forward pass: FFN(x) = W_down * GELU(W_up * x + b_up) + b_down
+    pub fn forward(&self, x: &Tensor, seq_len: usize) -> Tensor {
+        let h = self.config.hidden_size;
+        let inter = self.config.intermediate_size;
+
+        // Up projection: (seq_len, h) @ (h, inter) + bias = (seq_len, inter)
+        let up = matmul(x, &self.w_up, seq_len, h, inter);
+        let up_data = up.data();
+        let up_slice = up_data.as_slice().expect("contiguous");
+        let b_up_slice = self.b_up.data().as_slice().expect("contiguous");
+
+        // GELU(W_up * x + b_up)
+        let activated: Vec<f32> = (0..seq_len * inter)
+            .map(|i| gelu(up_slice[i] + b_up_slice[i % inter]))
+            .collect();
+        let activated_t = Tensor::from_vec(activated, true);
+
+        // Down projection: (seq_len, inter) @ (inter, h) + bias = (seq_len, h)
+        let down = matmul(&activated_t, &self.w_down, seq_len, inter, h);
+        let down_data = down.data();
+        let down_slice = down_data.as_slice().expect("contiguous");
+        let b_down_slice = self.b_down.data().as_slice().expect("contiguous");
+
+        let output: Vec<f32> = (0..seq_len * h)
+            .map(|i| down_slice[i] + b_down_slice[i % h])
+            .collect();
+        Tensor::from_vec(output, true)
+    }
+
+    /// Get all parameters
+    pub fn parameters(&self) -> Vec<&Tensor> {
+        vec![&self.w_up, &self.b_up, &self.w_down, &self.b_down]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,6 +340,100 @@ mod tests {
         // Missing up_proj, down_proj
 
         let ffn = FeedForward::from_params(&config, &params, "ffn");
+        assert!(ffn.is_none());
+    }
+
+    // =========================================================================
+    // ENC-004: EncoderFeedForward (GELU) tests
+    // =========================================================================
+
+    #[test]
+    fn enc_004_gelu_approximation() {
+        // GELU(0) = 0
+        assert!((gelu(0.0)).abs() < 1e-6);
+        // GELU is approximately identity for large positive x
+        assert!((gelu(3.0) - 3.0).abs() < 0.01);
+        // GELU is approximately 0 for large negative x
+        assert!(gelu(-3.0).abs() < 0.01);
+        // GELU(1) ≈ 0.8412
+        assert!((gelu(1.0) - 0.8412).abs() < 0.01);
+    }
+
+    #[test]
+    fn enc_004_encoder_ffn_output_shape() {
+        let config = TransformerConfig::tiny();
+        let ffn = EncoderFeedForward::new(&config);
+        let x = Tensor::from_vec(vec![0.1; 4 * config.hidden_size], true);
+        let output = ffn.forward(&x, 4);
+        assert_eq!(output.len(), 4 * config.hidden_size);
+    }
+
+    #[test]
+    fn enc_004_encoder_ffn_has_4_params() {
+        let config = TransformerConfig::tiny();
+        let ffn = EncoderFeedForward::new(&config);
+        assert_eq!(ffn.parameters().len(), 4); // w_up, b_up, w_down, b_down
+    }
+
+    #[test]
+    fn enc_004_encoder_ffn_output_finite() {
+        let config = TransformerConfig::tiny();
+        let ffn = EncoderFeedForward::new(&config);
+        let x = Tensor::from_vec(vec![0.5; 2 * config.hidden_size], true);
+        let output = ffn.forward(&x, 2);
+        assert!(output.data().iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn enc_004_encoder_ffn_from_params() {
+        let config = TransformerConfig::tiny();
+        let h = config.hidden_size;
+        let inter = config.intermediate_size;
+
+        let mut params = HashMap::new();
+        params.insert(
+            "layer.intermediate.dense.weight".to_string(),
+            Tensor::from_vec(vec![0.1; h * inter], true),
+        );
+        params.insert(
+            "layer.intermediate.dense.bias".to_string(),
+            Tensor::from_vec(vec![0.0; inter], true),
+        );
+        params.insert(
+            "layer.output.dense.weight".to_string(),
+            Tensor::from_vec(vec![0.1; inter * h], true),
+        );
+        params.insert(
+            "layer.output.dense.bias".to_string(),
+            Tensor::from_vec(vec![0.0; h], true),
+        );
+
+        let ffn = EncoderFeedForward::from_params(&config, &params, "layer");
+        assert!(ffn.is_some());
+    }
+
+    #[test]
+    fn enc_004_encoder_ffn_from_params_rejects_wrong_shape() {
+        let config = TransformerConfig::tiny();
+        let mut params = HashMap::new();
+        params.insert(
+            "layer.intermediate.dense.weight".to_string(),
+            Tensor::from_vec(vec![0.1; 42], true), // wrong size
+        );
+        params.insert(
+            "layer.intermediate.dense.bias".to_string(),
+            Tensor::from_vec(vec![0.0; config.intermediate_size], true),
+        );
+        params.insert(
+            "layer.output.dense.weight".to_string(),
+            Tensor::from_vec(vec![0.1; config.intermediate_size * config.hidden_size], true),
+        );
+        params.insert(
+            "layer.output.dense.bias".to_string(),
+            Tensor::from_vec(vec![0.0; config.hidden_size], true),
+        );
+
+        let ffn = EncoderFeedForward::from_params(&config, &params, "layer");
         assert!(ffn.is_none());
     }
 

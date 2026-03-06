@@ -95,6 +95,94 @@ impl Embedding {
     }
 }
 
+/// Learned absolute position embedding for encoder models (BERT, RoBERTa, CodeBERT).
+///
+/// Unlike RoPE (used by decoders), encoder models learn a position embedding table
+/// of shape (max_position_embeddings × hidden_size) that is added to token embeddings.
+///
+/// # Contract (ENC-003)
+/// - Output shape: seq_len × hidden_size (same as token embedding)
+/// - Positions beyond max_position_embeddings are clamped to max-1
+/// - Output is added element-wise to token embeddings
+pub struct LearnedPositionEmbedding {
+    /// Position embedding weight (max_positions × hidden_size)
+    pub weight: Tensor,
+    /// Maximum number of positions
+    max_positions: usize,
+    /// Hidden dimension
+    hidden_size: usize,
+}
+
+impl LearnedPositionEmbedding {
+    /// Create new learned position embedding with deterministic initialization
+    pub fn new(max_positions: usize, hidden_size: usize) -> Self {
+        let scale = (1.0 / hidden_size as f32).sqrt();
+        Self {
+            weight: Tensor::from_vec(
+                (0..max_positions * hidden_size)
+                    .map(|i| ((i as f32 * 0.0731).sin() * scale))
+                    .collect(),
+                true,
+            ),
+            max_positions,
+            hidden_size,
+        }
+    }
+
+    /// Create from pre-trained parameters
+    pub fn from_params(
+        params: &HashMap<String, Tensor>,
+        name: &str,
+        max_positions: usize,
+        hidden_size: usize,
+    ) -> Option<Self> {
+        let weight = params.get(name)?.clone();
+        let expected = max_positions * hidden_size;
+        if weight.len() != expected {
+            eprintln!(
+                "[ENC-003] LearnedPositionEmbedding '{name}': shape mismatch — \
+                 got {} elements, expected {expected} ({max_positions}×{hidden_size})",
+                weight.len()
+            );
+            return None;
+        }
+        Some(Self { weight, max_positions, hidden_size })
+    }
+
+    /// Forward pass: return position embeddings for positions 0..seq_len
+    ///
+    /// Output is (seq_len × hidden_size, flattened) — add element-wise to token embeddings.
+    pub fn forward(&self, seq_len: usize) -> Tensor {
+        let clamped_len = seq_len.min(self.max_positions);
+        let weight_slice =
+            &self.weight.data().as_slice().expect("position weight contiguous")[..clamped_len * self.hidden_size];
+        // For positions beyond max, repeat the last position embedding
+        if seq_len <= self.max_positions {
+            Tensor::from_vec(weight_slice.to_vec(), true)
+        } else {
+            let mut output = weight_slice.to_vec();
+            let last_start = (self.max_positions - 1) * self.hidden_size;
+            let last_end = last_start + self.hidden_size;
+            let last_pos =
+                &self.weight.data().as_slice().expect("position weight contiguous")[last_start..last_end];
+            for _ in self.max_positions..seq_len {
+                output.extend_from_slice(last_pos);
+            }
+            Tensor::from_vec(output, true)
+        }
+    }
+
+    /// Get maximum positions
+    pub fn max_positions(&self) -> usize {
+        self.max_positions
+    }
+
+    /// Get hidden dimension
+    pub fn hidden_size(&self) -> usize {
+        self.hidden_size
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +246,62 @@ mod tests {
         let params: HashMap<String, Tensor> = HashMap::new();
         let embed = Embedding::from_params(&params, "missing.weight", 100, 8);
         assert!(embed.is_none());
+    }
+
+    // =========================================================================
+    // ENC-003: LearnedPositionEmbedding tests
+    // =========================================================================
+
+    #[test]
+    fn enc_003_learned_position_embedding_shape() {
+        let pos_embed = LearnedPositionEmbedding::new(514, 768);
+        assert_eq!(pos_embed.max_positions(), 514);
+        assert_eq!(pos_embed.hidden_size(), 768);
+        let output = pos_embed.forward(10);
+        assert_eq!(output.len(), 10 * 768);
+    }
+
+    #[test]
+    fn enc_003_learned_position_embedding_deterministic() {
+        let pe1 = LearnedPositionEmbedding::new(128, 32);
+        let pe2 = LearnedPositionEmbedding::new(128, 32);
+        let o1 = pe1.forward(10);
+        let o2 = pe2.forward(10);
+        assert_eq!(
+            o1.data().as_slice().expect("contiguous"),
+            o2.data().as_slice().expect("contiguous"),
+        );
+    }
+
+    #[test]
+    fn enc_003_learned_position_embedding_clamp_beyond_max() {
+        let pe = LearnedPositionEmbedding::new(4, 8);
+        let output = pe.forward(6); // 6 > max_positions=4
+        assert_eq!(output.len(), 6 * 8);
+        // Positions 4 and 5 should equal position 3 (clamped)
+        let data = output.data();
+        let slice = data.as_slice().expect("contiguous");
+        let pos3 = &slice[3 * 8..4 * 8];
+        let pos4 = &slice[4 * 8..5 * 8];
+        let pos5 = &slice[5 * 8..6 * 8];
+        assert_eq!(pos3, pos4);
+        assert_eq!(pos3, pos5);
+    }
+
+    #[test]
+    fn enc_003_learned_position_from_params() {
+        let mut params = HashMap::new();
+        params.insert("pos.weight".to_string(), Tensor::from_vec(vec![0.1; 128 * 32], true));
+        let pe = LearnedPositionEmbedding::from_params(&params, "pos.weight", 128, 32);
+        assert!(pe.is_some());
+    }
+
+    #[test]
+    fn enc_003_learned_position_from_params_rejects_wrong_shape() {
+        let mut params = HashMap::new();
+        params.insert("pos.weight".to_string(), Tensor::from_vec(vec![0.1; 50], true));
+        let pe = LearnedPositionEmbedding::from_params(&params, "pos.weight", 128, 32);
+        assert!(pe.is_none());
     }
 
     // =========================================================================

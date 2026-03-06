@@ -364,6 +364,46 @@ mod tests {
         }
     }
 
+    /// ENC-002: Verify attention is bidirectional (no causal mask).
+    ///
+    /// In causal attention, position 0 cannot attend to position 1+.
+    /// In bidirectional attention, every position attends to every position.
+    /// We verify by checking that changing a later token affects earlier outputs.
+    #[test]
+    fn enc_002_attention_is_bidirectional() {
+        let seq_len = 3;
+        let d_k = 4;
+        let d_v = 4;
+
+        let q_data = vec![1.0, 0.5, -0.3, 0.8, -1.0, 0.2, 0.7, -0.5, 0.4, -0.6, 0.3, 0.9];
+        let k_data_a = vec![0.3, -0.7, 1.0, 0.2, -0.5, 0.8, 0.1, -0.3, 0.6, -0.1, 0.4, 0.9];
+        let v_data = vec![10.0, 20.0, 30.0, 40.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+        // Run A: original K
+        let q_a = Tensor::new(Array1::from(q_data.clone()), false);
+        let k_a = Tensor::new(Array1::from(k_data_a.clone()), false);
+        let v_a = Tensor::new(Array1::from(v_data.clone()), false);
+        let out_a = attention(&q_a, &k_a, &v_a, seq_len, d_k, seq_len, d_v);
+        let slice_a = out_a.data().as_slice().expect("contiguous").to_vec();
+
+        // Run B: modify K at position 2 (last token)
+        let mut k_data_b = k_data_a;
+        k_data_b[8] = 99.0; // K[2][0] = 99.0 (was 0.6)
+        let q_b = Tensor::new(Array1::from(q_data), false);
+        let k_b = Tensor::new(Array1::from(k_data_b), false);
+        let v_b = Tensor::new(Array1::from(v_data), false);
+        let out_b = attention(&q_b, &k_b, &v_b, seq_len, d_k, seq_len, d_v);
+        let slice_b = out_b.data().as_slice().expect("contiguous").to_vec();
+
+        // Position 0's output MUST change — it attends bidirectionally to position 2
+        let diff_pos0: f32 = (0..d_v).map(|d| (slice_a[d] - slice_b[d]).abs()).sum();
+        assert!(
+            diff_pos0 > 1e-3,
+            "ENC-002 FAILED: position 0 output unchanged when K[2] modified \
+             (diff={diff_pos0}). Attention has causal mask — encoder requires bidirectional."
+        );
+    }
+
     mod att_proptest_falsify {
         use super::*;
         use proptest::prelude::*;
