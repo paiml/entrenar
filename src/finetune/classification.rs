@@ -20,8 +20,33 @@
 //! ```
 
 use crate::autograd::{matmul, Tensor};
+use crate::transformer::ModelArchitecture;
 use serde::Deserialize;
 use std::path::Path;
+
+/// Pooling strategy for extracting a fixed-size vector from sequence hidden states.
+///
+/// Decoders use last-token pooling (autoregressive — last position sees all context).
+/// Encoders use CLS pooling (bidirectional — first [CLS] token sees all context).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolingStrategy {
+    /// Mean pool across all positions (default, architecture-agnostic)
+    Mean,
+    /// Use last token's hidden state (decoder convention)
+    LastToken,
+    /// Use first token's [CLS] hidden state (encoder convention: BERT/RoBERTa)
+    Cls,
+}
+
+impl PoolingStrategy {
+    /// Select pooling strategy based on model architecture.
+    pub fn from_architecture(arch: ModelArchitecture) -> Self {
+        match arch {
+            ModelArchitecture::Encoder => Self::Cls,
+            ModelArchitecture::Decoder => Self::Mean, // keep backward compat
+        }
+    }
+}
 
 /// Classification head: mean pool + linear projection.
 ///
@@ -122,6 +147,69 @@ impl ClassificationHead {
         }
 
         Tensor::from_vec(pooled, hidden_states.requires_grad())
+    }
+
+    /// CLS pooling: extract the first token's hidden state.
+    ///
+    /// In BERT-family models, position 0 is the [CLS] token which attends
+    /// bidirectionally to all other tokens, making it suitable for classification.
+    ///
+    /// # Contract (ENC-007)
+    /// Output has exactly hidden_size elements (first position of input).
+    pub fn cls_pool(&self, hidden_states: &Tensor) -> Tensor {
+        let data = hidden_states.data();
+        let slice = data.as_slice().expect("contiguous hidden states");
+        let h = self.hidden_size;
+        Tensor::from_vec(slice[..h].to_vec(), hidden_states.requires_grad())
+    }
+
+    /// Last-token pooling: extract the last token's hidden state.
+    ///
+    /// In decoder models, the last token has seen all prior context through
+    /// causal attention, making it suitable for classification.
+    pub fn last_token_pool(&self, hidden_states: &Tensor, seq_len: usize) -> Tensor {
+        let data = hidden_states.data();
+        let slice = data.as_slice().expect("contiguous hidden states");
+        let h = self.hidden_size;
+        let start = (seq_len - 1) * h;
+        Tensor::from_vec(slice[start..start + h].to_vec(), hidden_states.requires_grad())
+    }
+
+    /// Pool hidden states using the specified strategy.
+    pub fn pool(
+        &self,
+        hidden_states: &Tensor,
+        seq_len: usize,
+        strategy: PoolingStrategy,
+    ) -> Tensor {
+        match strategy {
+            PoolingStrategy::Mean => self.mean_pool(hidden_states, seq_len),
+            PoolingStrategy::Cls => self.cls_pool(hidden_states),
+            PoolingStrategy::LastToken => self.last_token_pool(hidden_states, seq_len),
+        }
+    }
+
+    /// Forward pass with configurable pooling strategy.
+    pub fn forward_with_pooling(
+        &self,
+        hidden_states: &Tensor,
+        seq_len: usize,
+        strategy: PoolingStrategy,
+    ) -> Tensor {
+        let pooled = self.pool(hidden_states, seq_len, strategy);
+
+        let logits = matmul(&pooled, &self.weight, 1, self.hidden_size, self.num_classes);
+
+        let logits_data: Vec<f32> = logits
+            .data()
+            .as_slice()
+            .expect("contiguous logits data")
+            .iter()
+            .zip(self.bias.data().as_slice().expect("contiguous bias data").iter())
+            .map(|(&l, &b)| l + b)
+            .collect();
+
+        Tensor::from_vec(logits_data, logits.requires_grad())
     }
 
     /// Get trainable parameters (weight + bias).
