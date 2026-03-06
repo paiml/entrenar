@@ -708,7 +708,13 @@ impl FusedClipState {
             CudaTensorError::KernelError(format!("Failed to allocate scale buffer: {e:?}"))
         })?;
 
-        Ok(Self { partials_buf, scale_buf, offsets, num_blocks: num_blocks_arr, total_partials: total })
+        Ok(Self {
+            partials_buf,
+            scale_buf,
+            offsets,
+            num_blocks: num_blocks_arr,
+            total_partials: total,
+        })
     }
 }
 

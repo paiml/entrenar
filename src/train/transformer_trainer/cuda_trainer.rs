@@ -198,8 +198,7 @@ fn fused_clip_workspace_gradients(
         if n == 0 {
             continue;
         }
-        let output_ptr =
-            state.partials_buf.as_ptr() + u64::from(state.offsets[i]) * 4;
+        let output_ptr = state.partials_buf.as_ptr() + u64::from(state.offsets[i]) * 4;
         let _ = squared_sum_launch_into(buf, n, output_ptr, stream);
     }
 
@@ -1225,11 +1224,7 @@ impl CudaTransformerTrainer {
                         stream,
                     );
                 } else {
-                    clip_workspace_gradients(
-                        &mut self.cuda_grad_workspace,
-                        max_norm,
-                        stream,
-                    );
+                    clip_workspace_gradients(&mut self.cuda_grad_workspace, max_norm, stream);
                 }
             }
 
