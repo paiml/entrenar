@@ -19,6 +19,7 @@ pub mod classification;
 pub mod classify_pipeline;
 pub mod classify_trainer;
 pub mod classify_tuner;
+pub mod linear_probe;
 mod corpus;
 pub mod data_parallel;
 mod device;
@@ -59,6 +60,10 @@ pub use classify_tuner::{
     TrialSummary, TuneConfig, TuneResult, TuneScheduler, TuneSearcher, TuneStrategy,
 };
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
+pub use linear_probe::{
+    binary_mcc, bootstrap_mcc_ci, compute_confidence_scores, evaluate as evaluate_classification,
+    BootstrapCI, ClassificationMetrics, ConfidenceScore, LinearProbe,
+};
 pub use data_parallel::{
     average_gradients, has_non_finite, shard_samples, DataParallelCoordinator,
 };

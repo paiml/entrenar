@@ -13,6 +13,8 @@ mod block;
 mod config;
 pub(crate) mod cuda_block;
 mod embedding;
+mod encoder;
+mod encoder_block;
 mod feedforward;
 mod model;
 mod norm;
@@ -23,6 +25,8 @@ pub mod wgpu_block;
 pub use attention::{LoRAProjection, MultiHeadAttention, MultiHeadAttentionWithLoRA};
 pub use config::{ModelArchitecture, TransformerConfig};
 pub use embedding::LearnedPositionEmbedding;
+pub use encoder::EncoderModel;
+pub use encoder_block::EncoderBlock;
 pub use feedforward::EncoderFeedForward;
 pub use norm::LayerNorm;
 #[cfg(feature = "cuda")]
