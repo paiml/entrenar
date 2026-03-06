@@ -35,6 +35,8 @@ pub enum Architecture {
     Qwen2,
     /// Mistral models
     Mistral,
+    /// RoBERTa / CodeBERT encoder models (ENC-006)
+    RoBERTa,
     /// Auto-detect from weight names
     Auto,
 }

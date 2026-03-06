@@ -506,3 +506,92 @@ fn test_load_safetensors_with_unsupported_dtype() {
     // Unsupported dtype tensors are skipped
     assert!(!weights.contains_key("unsupported_tensor"));
 }
+
+// =========================================================================
+// ENC-006: RoBERTa / CodeBERT weight name mapping tests
+// =========================================================================
+
+#[test]
+fn enc_006_roberta_embedding_mapping() {
+    assert_eq!(
+        map_weight_name("roberta.embeddings.word_embeddings.weight", Architecture::RoBERTa),
+        "encoder.embed_tokens.weight"
+    );
+    assert_eq!(
+        map_weight_name("roberta.embeddings.position_embeddings.weight", Architecture::RoBERTa),
+        "encoder.position_embeddings.weight"
+    );
+    assert_eq!(
+        map_weight_name("roberta.embeddings.LayerNorm.weight", Architecture::RoBERTa),
+        "encoder.embeddings_layernorm.weight"
+    );
+    assert_eq!(
+        map_weight_name("roberta.embeddings.LayerNorm.bias", Architecture::RoBERTa),
+        "encoder.embeddings_layernorm.bias"
+    );
+}
+
+#[test]
+fn enc_006_roberta_attention_mapping() {
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.0.attention.self.query.weight", Architecture::RoBERTa),
+        "encoder.layers.0.self_attn.q_proj.weight"
+    );
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.3.attention.self.key.weight", Architecture::RoBERTa),
+        "encoder.layers.3.self_attn.k_proj.weight"
+    );
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.11.attention.self.value.bias", Architecture::RoBERTa),
+        "encoder.layers.11.self_attn.v_proj.bias"
+    );
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.5.attention.output.dense.weight", Architecture::RoBERTa),
+        "encoder.layers.5.self_attn.o_proj.weight"
+    );
+}
+
+#[test]
+fn enc_006_roberta_layernorm_mapping() {
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.0.attention.output.LayerNorm.weight", Architecture::RoBERTa),
+        "encoder.layers.0.input_layernorm.weight"
+    );
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.0.attention.output.LayerNorm.bias", Architecture::RoBERTa),
+        "encoder.layers.0.input_layernorm.bias"
+    );
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.0.output.LayerNorm.weight", Architecture::RoBERTa),
+        "encoder.layers.0.post_attention_layernorm.weight"
+    );
+}
+
+#[test]
+fn enc_006_roberta_ffn_mapping() {
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.0.intermediate.dense.weight", Architecture::RoBERTa),
+        "encoder.layers.0.mlp.intermediate.dense.weight"
+    );
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.0.intermediate.dense.bias", Architecture::RoBERTa),
+        "encoder.layers.0.mlp.intermediate.dense.bias"
+    );
+    assert_eq!(
+        map_weight_name("roberta.encoder.layer.0.output.dense.weight", Architecture::RoBERTa),
+        "encoder.layers.0.mlp.output.dense.weight"
+    );
+}
+
+#[test]
+fn enc_006_bert_prefix_also_works() {
+    // Some models use "bert." instead of "roberta." prefix
+    assert_eq!(
+        map_weight_name("bert.embeddings.word_embeddings.weight", Architecture::RoBERTa),
+        "encoder.embed_tokens.weight"
+    );
+    assert_eq!(
+        map_weight_name("bert.encoder.layer.0.attention.self.query.weight", Architecture::RoBERTa),
+        "encoder.layers.0.self_attn.q_proj.weight"
+    );
+}

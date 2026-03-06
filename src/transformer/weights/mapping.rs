@@ -2,6 +2,57 @@
 
 use super::Architecture;
 
+/// Map RoBERTa/CodeBERT weight names to entrenar encoder convention (ENC-006).
+fn map_roberta_weight_name(name: &str) -> String {
+    // Strip roberta. or bert. prefix
+    let stripped = name
+        .strip_prefix("roberta.")
+        .or_else(|| name.strip_prefix("bert."))
+        .unwrap_or(name);
+
+    // Embeddings
+    if stripped == "embeddings.word_embeddings.weight" {
+        return "encoder.embed_tokens.weight".to_string();
+    }
+    if stripped == "embeddings.position_embeddings.weight" {
+        return "encoder.position_embeddings.weight".to_string();
+    }
+    if stripped == "embeddings.token_type_embeddings.weight" {
+        return "encoder.token_type_embeddings.weight".to_string();
+    }
+    if stripped == "embeddings.LayerNorm.weight" {
+        return "encoder.embeddings_layernorm.weight".to_string();
+    }
+    if stripped == "embeddings.LayerNorm.bias" {
+        return "encoder.embeddings_layernorm.bias".to_string();
+    }
+
+    // Encoder layers: encoder.layer.{i}.XXX
+    if let Some(rest) = stripped.strip_prefix("encoder.layer.") {
+        if let Some((num, layer_rest)) = rest.split_once('.') {
+            let mapped = layer_rest
+                .replace("attention.self.query", "self_attn.q_proj")
+                .replace("attention.self.key", "self_attn.k_proj")
+                .replace("attention.self.value", "self_attn.v_proj")
+                .replace("attention.output.dense", "self_attn.o_proj")
+                .replace("attention.output.LayerNorm", "input_layernorm")
+                .replace("intermediate.dense", "mlp.intermediate.dense")
+                .replace("output.dense", "mlp.output.dense")
+                .replace("output.LayerNorm", "post_attention_layernorm");
+
+            return format!("encoder.layers.{num}.{mapped}");
+        }
+    }
+
+    // Pooler (optional)
+    if stripped.starts_with("pooler.") {
+        return format!("encoder.{stripped}");
+    }
+
+    // Pass through anything else
+    name.to_string()
+}
+
 /// Map weight name from source architecture to standard LLaMA convention
 ///
 /// Standard names expected by `Transformer::from_params`:
@@ -36,6 +87,7 @@ pub(crate) fn map_weight_name(name: &str, arch: Architecture) -> String {
             // LLaMA and Mistral use same naming convention as our standard
             name.to_string()
         }
+        Architecture::RoBERTa => map_roberta_weight_name(name),
         Architecture::Auto => {
             // Should not reach here after detection
             name.to_string()
