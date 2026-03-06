@@ -1638,6 +1638,8 @@ impl CudaTransformerTrainer {
         // risk. Skip unscaling; just update scaler as successful.
         self.grad_scaler.update(true);
 
+        // ALB-079: Sync CPU embedding optimizer lr with cosine schedule
+        self.embed_optimizer.set_lr(self.current_lr());
         // CPU optimizer step for embedding weight
         let mut embed_params = vec![&mut self.model.embed_tokens.weight];
         self.embed_optimizer.step_refs(&mut embed_params);
@@ -1925,12 +1927,27 @@ impl CudaTransformerTrainer {
         self.step
     }
 
-    /// Get current learning rate (with warmup).
+    /// Get current learning rate (warmup + cosine decay).
+    ///
+    /// ALB-079: Phase 1 = linear warmup (0 → lr_max), Phase 2 = cosine decay
+    /// (lr_max → 0) over remaining steps. Requires `max_steps` for decay;
+    /// without it, falls back to constant lr after warmup.
     pub fn current_lr(&self) -> f32 {
         let base_lr = self.config.lr;
         if self.step < self.config.warmup_steps {
+            // Phase 1: Linear warmup
             base_lr * (self.step as f32 / self.config.warmup_steps.max(1) as f32)
+        } else if let Some(max_steps) = self.config.max_steps {
+            // Phase 2: Cosine decay from lr_max to 0
+            let decay_steps = max_steps.saturating_sub(self.config.warmup_steps);
+            if decay_steps == 0 {
+                return base_lr;
+            }
+            let decay_step = self.step - self.config.warmup_steps;
+            let progress = (decay_step as f32 / decay_steps as f32).min(1.0);
+            0.5 * base_lr * (1.0 + (std::f32::consts::PI * progress).cos())
         } else {
+            // No max_steps: constant lr (legacy behavior)
             base_lr
         }
     }
