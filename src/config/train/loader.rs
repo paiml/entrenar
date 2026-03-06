@@ -22,7 +22,9 @@ use crate::trace::TRACER;
 #[cfg(feature = "cuda")]
 use crate::train::CudaTransformerTrainer;
 use crate::train::{LMBatch, TransformerTrainConfig, TransformerTrainer};
-use crate::transformer::{load_safetensors_weights, Architecture, Transformer, TransformerConfig};
+use crate::transformer::{
+    load_safetensors_weights, Architecture, ModelArchitecture, Transformer, TransformerConfig,
+};
 use crate::yaml_mode;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -2218,6 +2220,7 @@ fn config_from_overrides(
         rope_theta: overrides.rope_theta.unwrap_or(10000.0),
         use_bias: overrides.use_bias.unwrap_or(false),
         head_dim_override: None,
+        architecture: ModelArchitecture::Decoder,
     })
 }
 
@@ -2237,6 +2240,7 @@ fn fallback_demo_config() -> TransformerConfig {
         rope_theta: QWEN_ROPE_THETA as f32,
         use_bias: false,
         head_dim_override: None,
+        architecture: ModelArchitecture::Decoder,
     }
 }
 
@@ -2307,6 +2311,14 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
     let use_bias = hf_config["attention_bias"].as_bool().unwrap_or(false);
     let head_dim_override = hf_config["head_dim"].as_u64().map(|v| v as usize);
 
+    // Detect encoder architectures from HuggingFace model_type
+    let architecture = match hf_config["model_type"].as_str() {
+        Some("bert" | "roberta" | "distilbert" | "albert" | "electra" | "deberta") => {
+            ModelArchitecture::Encoder
+        }
+        _ => ModelArchitecture::Decoder,
+    };
+
     Ok(TransformerConfig {
         hidden_size,
         num_attention_heads,
@@ -2319,6 +2331,7 @@ fn parse_hf_config(hf_config: &serde_json::Value) -> Result<TransformerConfig> {
         rope_theta,
         use_bias,
         head_dim_override,
+        architecture,
     })
 }
 

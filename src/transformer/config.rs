@@ -24,6 +24,30 @@ const QWEN3_5_VOCAB_SIZE: usize = 248320;
 const QWEN3_5_MAX_SEQ_LEN: usize = 262144;
 const DEFAULT_ROPE_THETA: f32 = 10000.0;
 
+// CodeBERT / RoBERTa constants
+const CODEBERT_HIDDEN_SIZE: usize = 768;
+const CODEBERT_INTERMEDIATE_SIZE: usize = 3072;
+const CODEBERT_VOCAB_SIZE: usize = 50265;
+const CODEBERT_MAX_POSITION: usize = 514; // 512 + 2 special tokens
+
+/// Model architecture family.
+///
+/// Determines position encoding, normalization, FFN activation, and pooling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArchitecture {
+    /// Decoder-only (LLaMA, Qwen, Mistral): RoPE, RMSNorm, SwiGLU, last-token pooling
+    Decoder,
+    /// Encoder-only (BERT, RoBERTa, CodeBERT): learned positions, LayerNorm, GELU, CLS pooling
+    Encoder,
+}
+
+impl Default for ModelArchitecture {
+    fn default() -> Self {
+        Self::Decoder
+    }
+}
+
 /// Configuration for transformer models
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformerConfig {
@@ -51,6 +75,10 @@ pub struct TransformerConfig {
     /// Required for Qwen3 where head_dim=128 but hidden_size/num_heads=80.
     #[serde(default)]
     pub head_dim_override: Option<usize>,
+    /// Architecture family: encoder (BERT/RoBERTa) or decoder (LLaMA/Qwen).
+    /// Determines position encoding, normalization, activation, and pooling strategy.
+    #[serde(default)]
+    pub architecture: ModelArchitecture,
 }
 
 impl TransformerConfig {
@@ -68,6 +96,7 @@ impl TransformerConfig {
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         }
     }
 
@@ -85,6 +114,7 @@ impl TransformerConfig {
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         }
     }
 
@@ -102,6 +132,7 @@ impl TransformerConfig {
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         }
     }
 
@@ -119,6 +150,7 @@ impl TransformerConfig {
             rope_theta: QWEN2_ROPE_THETA,
             use_bias: true,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         }
     }
 
@@ -139,6 +171,7 @@ impl TransformerConfig {
             rope_theta: QWEN2_ROPE_THETA,
             use_bias: true,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         }
     }
 
@@ -159,6 +192,7 @@ impl TransformerConfig {
             rope_theta: QWEN2_ROPE_THETA, // 1M theta
             use_bias: false,              // Qwen3: no attention bias
             head_dim_override: Some(128), // Contract: qwen3.yaml §4b.head_dim=128
+            architecture: ModelArchitecture::Decoder,
         }
     }
 
@@ -180,6 +214,7 @@ impl TransformerConfig {
             rope_theta: QWEN2_ROPE_THETA, // Same 1M theta as Qwen2
             use_bias: false,              // KEY: no attention bias (unlike Qwen2)
             head_dim_override: None,      // 4096/16=256, no override needed
+            architecture: ModelArchitecture::Decoder,
         }
     }
 
@@ -237,6 +272,10 @@ impl TransformerConfig {
             rope_theta: rope_theta.unwrap_or(DEFAULT_ROPE_THETA),
             use_bias,
             head_dim_override,
+            architecture: match architecture {
+                Some(a) if a.contains("bert") || a.contains("roberta") => ModelArchitecture::Encoder,
+                _ => ModelArchitecture::Decoder,
+            },
         })
     }
 
@@ -247,13 +286,35 @@ impl TransformerConfig {
     /// Every callsite that previously had its own match table should use this.
     pub fn from_size_str(size: &str) -> Result<Self, String> {
         match size {
+            "codebert" | "codebert-base" | "125M" => Ok(Self::codebert()),
             "0.5B" | "500M" | "qwen2-0.5b" => Ok(Self::qwen2_0_5b()),
             "7B" | "qwen2.5-7b" => Ok(Self::qwen2_7b()),
             "4B" | "qwen3-4b" | "qwen3" => Ok(Self::qwen3_4b()),
             "9B" | "qwen3.5-9b" | "qwen3_5" | "qwen3.5" => Ok(Self::qwen3_5_9b()),
             unknown => {
-                Err(format!("Unknown model size '{unknown}'. Known sizes: 0.5B, 4B, 7B, 9B"))
+                Err(format!("Unknown model size '{unknown}'. Known sizes: codebert, 0.5B, 4B, 7B, 9B"))
             }
+        }
+    }
+
+    /// CodeBERT (microsoft/codebert-base) encoder configuration.
+    ///
+    /// RoBERTa architecture: 12 layers, 768 hidden, 12 heads, GELU, LayerNorm, learned positions.
+    /// SSC v11 Section 4: 125M params, ~20ms CPU inference, WASM-deployable.
+    pub fn codebert() -> Self {
+        Self {
+            hidden_size: CODEBERT_HIDDEN_SIZE,
+            num_attention_heads: 12,
+            num_kv_heads: 12, // No GQA in BERT
+            intermediate_size: CODEBERT_INTERMEDIATE_SIZE,
+            num_hidden_layers: 12,
+            vocab_size: CODEBERT_VOCAB_SIZE,
+            max_position_embeddings: CODEBERT_MAX_POSITION,
+            rms_norm_eps: 1e-5, // LayerNorm eps for RoBERTa
+            rope_theta: 0.0,   // Not used (learned positions)
+            use_bias: true,
+            head_dim_override: None,
+            architecture: ModelArchitecture::Encoder,
         }
     }
 
@@ -271,7 +332,13 @@ impl TransformerConfig {
             rope_theta: DEFAULT_ROPE_THETA,
             use_bias: false,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         }
+    }
+
+    /// Whether this config describes an encoder (BERT/RoBERTa) architecture.
+    pub fn is_encoder(&self) -> bool {
+        self.architecture == ModelArchitecture::Encoder
     }
 
     /// Per-head dimension.

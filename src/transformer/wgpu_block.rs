@@ -18,7 +18,7 @@
 
 use crate::autograd::Tensor;
 use crate::lora::LoRALayer;
-use crate::transformer::config::TransformerConfig;
+use crate::transformer::config::{ModelArchitecture, TransformerConfig};
 use crate::transformer::model::Transformer;
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -513,6 +513,7 @@ mod tests {
             rope_theta: 10000.0,
             use_bias: false,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         };
 
         let pass = WgpuForwardPass::new_default(&config);
@@ -538,6 +539,7 @@ mod tests {
             rope_theta: 10000.0,
             use_bias: false,
             head_dim_override: None,
+            architecture: ModelArchitecture::Decoder,
         };
 
         let pass =
