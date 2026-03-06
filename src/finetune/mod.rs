@@ -66,7 +66,7 @@ pub use linear_probe::{
     binary_mcc, bootstrap_mcc_ci, check_ship_gate, compare_baselines,
     compute_confidence_scores, evaluate as evaluate_classification, generalization_test,
     should_escalate, BaselineComparison, BootstrapCI, ClassificationMetrics, ConfidenceScore,
-    EscalationLevel, GeneralizationResult, LinearProbe, ShipGateResult,
+    EscalationLevel, GeneralizationResult, LinearProbe, MlpProbe, ShipGateResult,
 };
 pub use data_parallel::{
     average_gradients, has_non_finite, shard_samples, DataParallelCoordinator,
