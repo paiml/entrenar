@@ -29,6 +29,10 @@ pub struct QuantizeArgs {
     /// Path to calibration data
     #[arg(long)]
     pub calibration_data: Option<PathBuf>,
+
+    /// Output as SafeTensors with I8 dtype + scale tensors (for WASM deployment)
+    #[arg(long)]
+    pub safetensors: bool,
 }
 
 /// Arguments for the merge command

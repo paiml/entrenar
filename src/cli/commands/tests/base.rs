@@ -933,6 +933,7 @@ fn test_quantize_command_4bit() {
         method: QuantMethod::Symmetric,
         per_channel: false,
         calibration_data: None,
+        safetensors: false,
     };
 
     let result = quantize::run_quantize(args, LogLevel::Quiet);
@@ -953,6 +954,7 @@ fn test_quantize_command_8bit() {
         method: QuantMethod::Symmetric,
         per_channel: false,
         calibration_data: None,
+        safetensors: false,
     };
 
     let result = quantize::run_quantize(args, LogLevel::Quiet);
@@ -973,6 +975,7 @@ fn test_quantize_command_asymmetric() {
         method: QuantMethod::Asymmetric,
         per_channel: false,
         calibration_data: None,
+        safetensors: false,
     };
 
     let result = quantize::run_quantize(args, LogLevel::Quiet);
@@ -993,6 +996,7 @@ fn test_quantize_command_per_channel() {
         method: QuantMethod::Symmetric,
         per_channel: true,
         calibration_data: None,
+        safetensors: false,
     };
 
     let result = quantize::run_quantize(args, LogLevel::Verbose);
@@ -1013,6 +1017,7 @@ fn test_quantize_command_invalid_bits() {
         method: QuantMethod::Symmetric,
         per_channel: false,
         calibration_data: None,
+        safetensors: false,
     };
 
     let result = quantize::run_quantize(args, LogLevel::Quiet);
@@ -1171,6 +1176,7 @@ fn test_run_command_quantize() {
             method: QuantMethod::Symmetric,
             per_channel: false,
             calibration_data: None,
+            safetensors: false,
         }),
     };
 

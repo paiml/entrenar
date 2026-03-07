@@ -980,6 +980,7 @@ fn test_quantize_command_with_calibration() {
         method: QuantMethod::Symmetric,
         per_channel: false,
         calibration_data: Some(calib_path),
+        safetensors: false,
     };
 
     let result = quantize::run_quantize(args, LogLevel::Verbose);
@@ -1195,6 +1196,7 @@ fn test_quantize_command_missing_model() {
         method: QuantMethod::Symmetric,
         per_channel: false,
         calibration_data: None,
+        safetensors: false,
     };
 
     let result = quantize::run_quantize(args, LogLevel::Quiet);

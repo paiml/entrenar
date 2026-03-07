@@ -12,18 +12,76 @@ fn load_safetensors(args: &QuantizeArgs) -> Result<Vec<u8>, String> {
     std::fs::read(&args.model).map_err(|e| format!("Failed to read model file: {e}"))
 }
 
-/// Serialize quantized tensors and write to output path.
-fn save_quantized(
+/// Serialize quantized tensors and write to output path (JSON format).
+fn save_quantized_json(
     quantized_tensors: &HashMap<String, QuantizedTensor>,
     args: &QuantizeArgs,
 ) -> Result<(), String> {
-    // Note: Quantized tensors use custom block formats (Q4_0, Q8_0) that are not
-    // directly compatible with SafeTensors. For SafeTensors output, use GGUF export
-    // or dequantize first. JSON format preserves the quantization parameters.
     let output_data = serde_json::to_vec_pretty(quantized_tensors)
         .map_err(|e| format!("Failed to serialize: {e}"))?;
 
     std::fs::write(&args.output, &output_data)
+        .map_err(|e| format!("Failed to write output: {e}"))?;
+
+    Ok(())
+}
+
+/// Serialize quantized tensors to SafeTensors format with I8 dtype + scale tensors.
+///
+/// For each tensor `name`, outputs:
+/// - `name` → I8 data (the quantized weights)
+/// - `name.__scale` → F32 scale factors (per-tensor or per-channel)
+fn save_quantized_safetensors(
+    quantized_tensors: &HashMap<String, QuantizedTensor>,
+    args: &QuantizeArgs,
+) -> Result<(), String> {
+    use safetensors::tensor::{Dtype, TensorView};
+
+    // Collect data buffers that live long enough for TensorView references
+    let mut i8_buffers: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+    let mut scale_buffers: Vec<(String, Vec<u8>, Vec<usize>)> = Vec::new();
+
+    for (name, qt) in quantized_tensors {
+        // I8 data: reinterpret i8 as u8 for safetensors byte storage
+        let i8_bytes: Vec<u8> = qt.data.iter().map(|&v| v as u8).collect();
+        i8_buffers.push((name.clone(), i8_bytes, qt.shape.clone()));
+
+        // Scale factors as F32
+        let scale_name = format!("{name}.__scale");
+        let scale_bytes: Vec<u8> =
+            qt.params.scales.iter().flat_map(|s| s.to_le_bytes()).collect();
+        let scale_shape = vec![qt.params.scales.len()];
+        scale_buffers.push((scale_name, scale_bytes, scale_shape));
+    }
+
+    // Build TensorViews
+    let mut views: Vec<(&str, TensorView<'_>)> = Vec::new();
+
+    for (name, bytes, shape) in &i8_buffers {
+        let view = TensorView::new(Dtype::I8, shape.clone(), bytes)
+            .map_err(|e| format!("Failed to create I8 TensorView for {name}: {e}"))?;
+        views.push((name.as_str(), view));
+    }
+
+    for (name, bytes, shape) in &scale_buffers {
+        let view = TensorView::new(Dtype::F32, shape.clone(), bytes)
+            .map_err(|e| format!("Failed to create F32 TensorView for {name}: {e}"))?;
+        views.push((name.as_str(), view));
+    }
+
+    // Metadata
+    let mut metadata = HashMap::new();
+    metadata.insert("quantization".to_string(), format!("int{}", args.bits));
+    metadata.insert(
+        "method".to_string(),
+        format!("{:?}", args.method).to_lowercase(),
+    );
+    metadata.insert("num_tensors".to_string(), quantized_tensors.len().to_string());
+
+    let safetensor_bytes = safetensors::serialize(views, Some(metadata))
+        .map_err(|e| format!("SafeTensors serialization failed: {e}"))?;
+
+    std::fs::write(&args.output, safetensor_bytes)
         .map_err(|e| format!("Failed to write output: {e}"))?;
 
     Ok(())
@@ -140,7 +198,11 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
         quantized_tensors.insert((*name).to_string(), quantized);
     }
 
-    save_quantized(&quantized_tensors, &args)?;
+    if args.safetensors {
+        save_quantized_safetensors(&quantized_tensors, &args)?;
+    } else {
+        save_quantized_json(&quantized_tensors, &args)?;
+    }
 
     log(
         level,
@@ -154,4 +216,120 @@ pub fn run_quantize(args: QuantizeArgs, level: LogLevel) -> Result<(), String> {
     log(level, LogLevel::Normal, &format!("  Output: {}", args.output.display()));
 
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use safetensors::tensor::{Dtype, TensorView};
+
+    /// Create a minimal safetensors file with known F32 data for testing.
+    fn create_test_safetensors(path: &std::path::Path) {
+        let data: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) * 0.1).collect();
+        let bytes: Vec<u8> = data.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let view = TensorView::new(Dtype::F32, vec![8, 8], &bytes).unwrap();
+        let views = vec![("test_weight", view)];
+        let serialized = safetensors::serialize(views, None::<HashMap<String, String>>).unwrap();
+        std::fs::write(path, serialized).unwrap();
+    }
+
+    #[test]
+    fn test_wasm002_quantize_safetensors_int8_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_path = dir.path().join("model.safetensors");
+        let output_path = dir.path().join("model_int8.safetensors");
+
+        create_test_safetensors(&input_path);
+
+        let args = QuantizeArgs {
+            model: input_path,
+            output: output_path.clone(),
+            bits: 8,
+            method: crate::config::QuantMethod::Symmetric,
+            per_channel: false,
+            calibration_data: None,
+            safetensors: true,
+        };
+
+        run_quantize(args, crate::cli::LogLevel::Quiet).expect("quantize should succeed");
+
+        // Verify output is valid safetensors with I8 tensors
+        let data = std::fs::read(&output_path).unwrap();
+        let tensors = SafeTensors::deserialize(&data).unwrap();
+
+        // Should have weight tensor (I8) and scale tensor (F32)
+        let names: Vec<&str> = tensors.names().into_iter().collect();
+        assert!(names.contains(&"test_weight"), "Must contain weight tensor");
+        assert!(
+            names.contains(&"test_weight.__scale"),
+            "Must contain scale tensor"
+        );
+
+        // Verify dtype
+        let weight = tensors.tensor("test_weight").unwrap();
+        assert_eq!(weight.dtype(), Dtype::I8);
+        assert_eq!(weight.shape(), &[8, 8]);
+        assert_eq!(weight.data().len(), 64); // 64 i8 values = 64 bytes
+
+        let scale = tensors.tensor("test_weight.__scale").unwrap();
+        assert_eq!(scale.dtype(), Dtype::F32);
+    }
+
+    #[test]
+    fn test_wasm002_quantize_safetensors_compression() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_path = dir.path().join("model.safetensors");
+        let output_path = dir.path().join("model_int8.safetensors");
+
+        create_test_safetensors(&input_path);
+
+        let args = QuantizeArgs {
+            model: input_path.clone(),
+            output: output_path.clone(),
+            bits: 8,
+            method: crate::config::QuantMethod::Symmetric,
+            per_channel: false,
+            calibration_data: None,
+            safetensors: true,
+        };
+
+        run_quantize(args, crate::cli::LogLevel::Quiet).expect("quantize");
+
+        let input_size = std::fs::metadata(&input_path).unwrap().len();
+        let output_size = std::fs::metadata(&output_path).unwrap().len();
+
+        // Int8 should be significantly smaller than F32 (roughly 4x)
+        assert!(
+            output_size < input_size,
+            "Int8 output ({output_size}) must be smaller than F32 input ({input_size})"
+        );
+    }
+
+    #[test]
+    fn test_wasm002_quantize_json_still_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let input_path = dir.path().join("model.safetensors");
+        let output_path = dir.path().join("model_int8.json");
+
+        create_test_safetensors(&input_path);
+
+        let args = QuantizeArgs {
+            model: input_path,
+            output: output_path.clone(),
+            bits: 8,
+            method: crate::config::QuantMethod::Symmetric,
+            per_channel: false,
+            calibration_data: None,
+            safetensors: false,
+        };
+
+        run_quantize(args, crate::cli::LogLevel::Quiet).expect("quantize");
+
+        // Verify JSON output still works
+        let json = std::fs::read_to_string(&output_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.is_object());
+        assert!(parsed.get("test_weight").is_some());
+    }
 }
