@@ -2,6 +2,7 @@
 
 use super::format::{ModelFormat, SaveConfig};
 use super::model::Model;
+use crate::Tensor;
 use crate::{Error, Result};
 use safetensors::tensor::{Dtype, TensorView};
 use std::collections::HashMap;
@@ -71,8 +72,47 @@ fn save_yaml(model: &Model, path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// ALB-086: Infer tensor shapes using config-aware batch analysis.
+/// Scans all parameters to find hidden_size from norm weights, then
+/// computes proper 2D shapes for all weight matrices.
+fn infer_all_tensor_shapes(parameters: &[(String, Tensor)]) -> HashMap<String, Vec<usize>> {
+    let mut shapes = HashMap::new();
+
+    // Find hidden_size from a norm weight (always 1D [H])
+    let hidden_size = parameters
+        .iter()
+        .find(|(n, _)| n.ends_with("layernorm.weight") || n == "model.norm.weight")
+        .map_or(0, |(_, t)| t.len());
+
+    for (name, tensor) in parameters {
+        let numel = tensor.len();
+        let shape = if name.ends_with("layernorm.weight") || name == "model.norm.weight" {
+            vec![numel]
+        } else if hidden_size > 0 && numel % hidden_size == 0 {
+            let other_dim = numel / hidden_size;
+            // For down_proj: [hidden_size, intermediate_size] — hidden is smaller dim
+            // For gate/up_proj: [intermediate_size, hidden_size] — hidden is smaller dim
+            // For q/o_proj: [hidden_size, hidden_size] — square
+            // For k/v_proj: [kv_dim, hidden_size] — kv_dim < hidden
+            // For embed/lm_head: [vocab_size, hidden_size]
+            if name.ends_with("down_proj.weight") {
+                vec![hidden_size, other_dim]
+            } else {
+                vec![other_dim, hidden_size]
+            }
+        } else {
+            vec![numel]
+        };
+        shapes.insert(name.clone(), shape);
+    }
+    shapes
+}
+
 /// Save model in SafeTensors format (HuggingFace compatible)
 fn save_safetensors(model: &Model, path: &Path) -> Result<()> {
+    // ALB-086: Compute proper 2D shapes for HuggingFace compatibility
+    let shapes = infer_all_tensor_shapes(&model.parameters);
+
     // Collect tensor data with proper lifetime management
     let tensor_data: Vec<(String, Vec<u8>, Vec<usize>)> = model
         .parameters
@@ -82,7 +122,7 @@ fn save_safetensors(model: &Model, path: &Path) -> Result<()> {
             let bytes: Vec<u8> =
                 bytemuck::cast_slice(data.as_slice().expect("tensor data must be contiguous"))
                     .to_vec();
-            let shape = vec![tensor.len()];
+            let shape = shapes.get(name).cloned().unwrap_or_else(|| vec![tensor.len()]);
             (name.clone(), bytes, shape)
         })
         .collect();
@@ -421,5 +461,87 @@ mod tests {
         let names = loaded.names();
         assert!(names.contains(&"encoder.layer1.weight"));
         assert!(names.contains(&"decoder.layer1.weight"));
+    }
+
+    /// ALB-086: Verify SafeTensors saves proper 2D shapes for LlamaForCausalLM weights.
+    #[test]
+    fn test_safetensors_saves_2d_shapes() {
+        let hidden = 64;
+        let intermediate = 128;
+        let vocab = 256;
+
+        let params = vec![
+            ("model.embed_tokens.weight".to_string(), Tensor::zeros(vocab * hidden, false)),
+            ("model.norm.weight".to_string(), Tensor::zeros(hidden, false)),
+            ("model.layers.0.input_layernorm.weight".to_string(), Tensor::zeros(hidden, false)),
+            (
+                "model.layers.0.post_attention_layernorm.weight".to_string(),
+                Tensor::zeros(hidden, false),
+            ),
+            (
+                "model.layers.0.self_attn.q_proj.weight".to_string(),
+                Tensor::zeros(hidden * hidden, false),
+            ),
+            (
+                "model.layers.0.self_attn.k_proj.weight".to_string(),
+                Tensor::zeros(16 * hidden, false),
+            ),
+            (
+                "model.layers.0.self_attn.v_proj.weight".to_string(),
+                Tensor::zeros(16 * hidden, false),
+            ),
+            (
+                "model.layers.0.self_attn.o_proj.weight".to_string(),
+                Tensor::zeros(hidden * hidden, false),
+            ),
+            (
+                "model.layers.0.mlp.gate_proj.weight".to_string(),
+                Tensor::zeros(intermediate * hidden, false),
+            ),
+            (
+                "model.layers.0.mlp.up_proj.weight".to_string(),
+                Tensor::zeros(intermediate * hidden, false),
+            ),
+            (
+                "model.layers.0.mlp.down_proj.weight".to_string(),
+                Tensor::zeros(hidden * intermediate, false),
+            ),
+        ];
+
+        let metadata = ModelMetadata::new("test", "LlamaForCausalLM");
+        let model = Model::new(metadata, params);
+        let config =
+            crate::io::format::SaveConfig::new(crate::io::format::ModelFormat::SafeTensors);
+        let temp = NamedTempFile::new().unwrap();
+        save_model(&model, temp.path(), &config).unwrap();
+
+        let data = std::fs::read(temp.path()).unwrap();
+        let loaded = safetensors::SafeTensors::deserialize(&data).unwrap();
+
+        // Norm weights should be 1D
+        assert_eq!(loaded.tensor("model.norm.weight").unwrap().shape(), &[hidden]);
+        assert_eq!(
+            loaded.tensor("model.layers.0.input_layernorm.weight").unwrap().shape(),
+            &[hidden]
+        );
+
+        // Projection weights should be 2D
+        assert_eq!(loaded.tensor("model.embed_tokens.weight").unwrap().shape(), &[vocab, hidden]);
+        assert_eq!(
+            loaded.tensor("model.layers.0.self_attn.q_proj.weight").unwrap().shape(),
+            &[hidden, hidden]
+        );
+        assert_eq!(
+            loaded.tensor("model.layers.0.self_attn.k_proj.weight").unwrap().shape(),
+            &[16, hidden]
+        );
+        assert_eq!(
+            loaded.tensor("model.layers.0.mlp.gate_proj.weight").unwrap().shape(),
+            &[intermediate, hidden]
+        );
+        assert_eq!(
+            loaded.tensor("model.layers.0.mlp.down_proj.weight").unwrap().shape(),
+            &[hidden, intermediate]
+        );
     }
 }
