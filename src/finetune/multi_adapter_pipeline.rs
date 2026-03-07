@@ -175,6 +175,7 @@ pub struct AdapterSlot {
 
     /// Per-adapter GPU LoRA optimizer states.
     #[cfg(feature = "cuda")]
+    #[allow(dead_code)]
     pub(crate) optimizer_states: Option<Vec<crate::transformer::GpuLoraOptimizerState>>,
     /// NF4 LoRA optimizer step counter.
     #[cfg(feature = "cuda")]

@@ -258,12 +258,12 @@ impl ForwardKernelCache {
         // 17-20. NF4 quantized GEMM variants (trueno#108: QLoRA support)
         // Same 4 GEMM shapes but with Nf4GemmKernel instead of GemmKernel.
         // Only compiled if K is divisible by 64 (NF4 block size).
-        if h % 64 == 0 {
+        if h.is_multiple_of(64) {
             warm!(format!("nf4_gemm_forward_{s}_{h}_{h}"), Nf4GemmKernel::new(s, h, h));
-            if kv_h != h && kv_h % 64 == 0 {
+            if kv_h != h && kv_h.is_multiple_of(64) {
                 warm!(format!("nf4_gemm_forward_{s}_{h}_{kv_h}"), Nf4GemmKernel::new(s, kv_h, h));
             }
-            if i % 64 == 0 {
+            if i.is_multiple_of(64) {
                 warm!(format!("nf4_gemm_forward_{s}_{h}_{i}"), Nf4GemmKernel::new(s, i, h));
                 warm!(format!("nf4_gemm_forward_{s}_{i}_{h}"), Nf4GemmKernel::new(s, h, i));
             }

@@ -32,8 +32,6 @@
 //! Eliminated by KAIZEN-052:
 //! - grad_gpu buffer allocation (was seq×V×4 = 77.8MB per step)
 
-#[cfg(feature = "cuda")]
-use std::sync::Arc;
 
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer};
@@ -62,7 +60,7 @@ use crate::optim::{AdamW, Optimizer};
 use crate::train::MetricsTracker;
 #[cfg(feature = "cuda")]
 use crate::transformer::{
-    BlockWeights, CudaGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState, Transformer,
+    CudaGradWorkspace, CudaTransformerBlock, GpuBlockOptimizerState, Transformer,
 };
 
 #[cfg(feature = "cuda")]
@@ -106,14 +104,13 @@ fn compute_workspace_clip_scale_gpu(
         if n == 0 {
             continue;
         }
-        match squared_sum_launch_cuda(buf, n, stream) {
-            Ok(p) => pending.push(p),
-            Err(_) => {} // Skip buffer on error (e.g., if kernel cache not init)
+        if let Ok(p) = squared_sum_launch_cuda(buf, n, stream) {
+            pending.push(p);
         }
     }
 
     // Single sync point for all 9 kernel launches.
-    if let Err(_) = stream.synchronize() {
+    if stream.synchronize().is_err() {
         return (1.0, 0.0);
     }
 
@@ -239,6 +236,7 @@ fn fused_clip_workspace_gradients(
 ///
 /// Uses GPU reduction (KAIZEN-054). Only ~9KB D2H per call.
 #[cfg(feature = "cuda")]
+#[allow(dead_code)]
 fn compute_workspace_grad_norm(ws: &CudaGradWorkspace, stream: &CudaStream) -> f32 {
     let (_, norm) = compute_workspace_clip_scale_gpu(ws, f32::MAX, stream);
     norm
@@ -254,6 +252,7 @@ fn compute_workspace_grad_norm(ws: &CudaGradWorkspace, stream: &CudaStream) -> f
 /// This is the GPU-side equivalent of `GradScaler::unscale_and_check()` used
 /// for CPU embedding gradients.
 #[cfg(feature = "cuda")]
+#[allow(dead_code)]
 fn unscale_workspace_gradients(ws: &mut CudaGradWorkspace, inv_scale: f32, stream: &CudaStream) {
     if (inv_scale - 1.0).abs() < 1e-7 {
         return;
@@ -511,7 +510,7 @@ impl CudaTransformerTrainer {
             })?;
             cuda_blocks.push(block);
         }
-        println!("  ✓ {} transformer blocks uploaded to GPU", num_layers);
+        println!("  ✓ {num_layers} transformer blocks uploaded to GPU");
 
         // Step 4: Allocate shared gradient workspace
         let cuda_grad_workspace = CudaGradWorkspace::new(&ctx, mc).map_err(|e| {
@@ -528,7 +527,7 @@ impl CudaTransformerTrainer {
         let checkpointing = config.checkpoint_config.enabled;
         let segment_size = if checkpointing {
             let ns = config.checkpoint_config.num_segments.max(1);
-            (num_layers + ns - 1) / ns
+            num_layers.div_ceil(ns)
         } else {
             1 // Every layer is a checkpoint (no recomputation)
         };
@@ -683,7 +682,7 @@ impl CudaTransformerTrainer {
             println!(
                 "  ✓ Gradient accumulation: {} steps, CPU buffers ({:.1} MB)",
                 config.accumulation_steps,
-                (accum.block_grads.iter().map(|b| b.total_elements()).sum::<usize>()
+                (accum.block_grads.iter().map(super::grad_accumulator::BlockGradientSet::total_elements).sum::<usize>()
                     + accum.lm_head_grad.len()
                     + accum.final_norm_grad.len()
                     + accum.embedding_grad.len()) as f64
@@ -698,7 +697,7 @@ impl CudaTransformerTrainer {
         // ALB-091: GPU-resident gradient accumulation (eliminates D2H bottleneck).
         // Falls back to CPU accum if GPU allocation fails.
         let gpu_grad_accum = if config.accumulation_steps > 1 {
-            match super::gpu_grad_accumulator::GpuGradientAccumulator::new(&ctx, &mc) {
+            match super::gpu_grad_accumulator::GpuGradientAccumulator::new(&ctx, mc) {
                 Ok(accum) => {
                     println!("  ✓ GPU gradient accumulation enabled (ALB-091)");
                     Some(accum)
@@ -802,7 +801,7 @@ impl CudaTransformerTrainer {
                 println!(
                     "  ✓ Fused gradient clipping: {} partials ({:.1} KB)",
                     state.total_partials,
-                    state.total_partials as f64 * 4.0 / 1024.0,
+                    f64::from(state.total_partials) * 4.0 / 1024.0,
                 );
                 Some(state)
             }
@@ -1258,8 +1257,8 @@ impl CudaTransformerTrainer {
         // SAFETY: grad_buf_a and grad_buf_b are disjoint fields. Raw pointers
         // allow alternating read/write without violating aliasing rules.
         self.profiler.begin(StepProfiler::BLK_BWD);
-        let grad_a_ptr: *mut GpuBuffer<f32> = &mut self.gpu_training.grad_buf_a;
-        let grad_b_ptr: *mut GpuBuffer<f32> = &mut self.gpu_training.grad_buf_b;
+        let grad_a_ptr: *mut GpuBuffer<f32> = &raw mut self.gpu_training.grad_buf_a;
+        let grad_b_ptr: *mut GpuBuffer<f32> = &raw mut self.gpu_training.grad_buf_b;
         let mut grad_output_is_a = true;
 
         for layer_idx in (0..self.cuda_blocks.len()).rev() {
@@ -1721,7 +1720,7 @@ impl CudaTransformerTrainer {
                 if buf.copy_to_host_at(&mut host, 0).is_err() {
                     return (1.0, 0.0);
                 }
-                let sq_sum: f64 = host.iter().map(|&x| (x as f64) * (x as f64)).sum();
+                let sq_sum: f64 = host.iter().map(|&x| f64::from(x) * f64::from(x)).sum();
                 sq_sum.sqrt() as f32
             }
         };
@@ -1747,8 +1746,8 @@ impl CudaTransformerTrainer {
         grad_output_is_a: bool,
     ) -> Option<()> {
         // The final backward output is in whichever buffer was last written
-        let grad_a_ptr: *const GpuBuffer<f32> = &self.gpu_training.grad_buf_a;
-        let grad_b_ptr: *const GpuBuffer<f32> = &self.gpu_training.grad_buf_b;
+        let grad_a_ptr: *const GpuBuffer<f32> = &raw const self.gpu_training.grad_buf_a;
+        let grad_b_ptr: *const GpuBuffer<f32> = &raw const self.gpu_training.grad_buf_b;
         let embed_grad_buf = unsafe {
             if grad_output_is_a {
                 &*grad_a_ptr
@@ -1767,7 +1766,7 @@ impl CudaTransformerTrainer {
         // Uses dedicated max_embed_grad_norm (default 1.0) independent of weight grad_clip.
         let embed_clip_norm = self.config.base.max_grad_norm.unwrap_or(1.0);
         {
-            let sq_sum: f64 = embed_grad_data.iter().map(|&x| (x as f64) * (x as f64)).sum();
+            let sq_sum: f64 = embed_grad_data.iter().map(|&x| f64::from(x) * f64::from(x)).sum();
             let grad_norm = sq_sum.sqrt() as f32;
             self.last_embed_grad_norm = grad_norm; // R-040: per-parameter-group tracking
             if grad_norm > embed_clip_norm {
@@ -2100,7 +2099,7 @@ impl CudaTransformerTrainer {
 
     /// Returns true if max_steps has been reached.
     pub fn reached_max_steps(&self) -> bool {
-        self.config.max_steps.map_or(false, |max| self.step >= max)
+        self.config.max_steps.is_some_and(|max| self.step >= max)
     }
 
     /// Get current step count.
@@ -2354,13 +2353,13 @@ impl CudaTransformerTrainer {
             .embed_optimizer
             .first_moments()
             .iter()
-            .map(|opt| opt.as_ref().map(|a| a.to_vec()))
+            .map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let v_data: Vec<Option<Vec<f32>>> = self
             .embed_optimizer
             .second_moments()
             .iter()
-            .map(|opt| opt.as_ref().map(|a| a.to_vec()))
+            .map(|opt| opt.as_ref().map(ndarray::ArrayBase::to_vec))
             .collect();
         let state = serde_json::json!({
             "type": "adamw_cpu_embed",
@@ -2369,10 +2368,10 @@ impl CudaTransformerTrainer {
             "v": v_data,
         });
         let json_str = serde_json::to_string(&state).map_err(|e| {
-            crate::error::Error::ConfigError(format!("serialize optimizer state: {}", e))
+            crate::error::Error::ConfigError(format!("serialize optimizer state: {e}"))
         })?;
         std::fs::write(&path, json_str).map_err(|e| {
-            crate::error::Error::ConfigError(format!("write optimizer state: {}", e))
+            crate::error::Error::ConfigError(format!("write optimizer state: {e}"))
         })?;
         Ok(())
     }

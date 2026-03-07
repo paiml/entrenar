@@ -1936,7 +1936,7 @@ pub(crate) fn cuda_add_inplace(
     // SAFETY: ResidualAdd kernel is elementwise (output[i] = a[i] + b[i]).
     // Aliasing target as both input and output is safe because each element is
     // independent — the GPU reads a[i] before writing output[i] at the same address.
-    let target_ref: &GpuBuffer<f32> = unsafe { &*(target as *const GpuBuffer<f32>) };
+    let target_ref: &GpuBuffer<f32> = unsafe { &*std::ptr::from_ref::<GpuBuffer<f32>>(target) };
     residual_add_forward(target_ref, source, target, saturating_u32(n), stream)
 }
 
@@ -2112,7 +2112,7 @@ impl CudaBlock {
     }
 
     /// Initialize LoRA optimizer state for NF4 blocks.
-    pub fn init_lora_optimizer_state(&self) -> Result<GpuLoraOptimizerState> {
+    pub(crate) fn init_lora_optimizer_state(&self) -> Result<GpuLoraOptimizerState> {
         match self {
             CudaBlock::Nf4(b) => b.init_lora_optimizer_state(),
             CudaBlock::Fp32(_) => Err(crate::autograd::cuda_tensor::CudaTensorError::KernelError(
@@ -2123,7 +2123,7 @@ impl CudaBlock {
 
     /// LoRA optimizer step for NF4 blocks.
     #[allow(clippy::too_many_arguments)]
-    pub fn lora_optimizer_step(
+    pub(crate) fn lora_optimizer_step(
         &mut self,
         state: &mut GpuLoraOptimizerState,
         step: u32,
@@ -2321,7 +2321,7 @@ impl CudaNf4TransformerBlock {
             |weights: &[f32], total: usize| -> Result<(GpuBuffer<u8>, GpuBuffer<f32>)> {
                 assert_eq!(weights.len(), total, "weight length mismatch");
                 assert!(
-                    total % NF4_BLOCK_SIZE == 0,
+                    total.is_multiple_of(NF4_BLOCK_SIZE),
                     "weight count {total} not divisible by NF4 block size {NF4_BLOCK_SIZE}"
                 );
 
@@ -2403,7 +2403,7 @@ impl CudaNf4TransformerBlock {
     ///
     /// Uses shared scratch buffers (C-SCRATCH-001) — caller allocates once,
     /// passes `&mut` to each layer sequentially. Saves 7.5 GB for Qwen3-4B.
-    pub fn forward(
+    pub(crate) fn forward(
         &self,
         input: &GpuBuffer<f32>,
         output: &mut GpuBuffer<f32>,
@@ -2899,7 +2899,7 @@ impl CudaNf4TransformerBlock {
         scratch: &mut CudaBlockScratch,
         grad_lora: &mut CudaLoraGradWorkspace,
     ) -> Result<()> {
-        use crate::autograd::cuda_forward::gemm_nf4_backward_a;
+        
 
         let hidden_size = self.config.hidden_size;
         let _q_dim = self.config.q_dim();
