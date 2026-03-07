@@ -32,7 +32,6 @@
 //! Eliminated by KAIZEN-052:
 //! - grad_gpu buffer allocation (was seq×V×4 = 77.8MB per step)
 
-
 #[cfg(feature = "cuda")]
 use trueno_gpu::driver::{CudaStream, GpuBuffer};
 
@@ -682,7 +681,11 @@ impl CudaTransformerTrainer {
             println!(
                 "  ✓ Gradient accumulation: {} steps, CPU buffers ({:.1} MB)",
                 config.accumulation_steps,
-                (accum.block_grads.iter().map(super::grad_accumulator::BlockGradientSet::total_elements).sum::<usize>()
+                (accum
+                    .block_grads
+                    .iter()
+                    .map(super::grad_accumulator::BlockGradientSet::total_elements)
+                    .sum::<usize>()
                     + accum.lm_head_grad.len()
                     + accum.final_norm_grad.len()
                     + accum.embedding_grad.len()) as f64
@@ -2370,9 +2373,8 @@ impl CudaTransformerTrainer {
         let json_str = serde_json::to_string(&state).map_err(|e| {
             crate::error::Error::ConfigError(format!("serialize optimizer state: {e}"))
         })?;
-        std::fs::write(&path, json_str).map_err(|e| {
-            crate::error::Error::ConfigError(format!("write optimizer state: {e}"))
-        })?;
+        std::fs::write(&path, json_str)
+            .map_err(|e| crate::error::Error::ConfigError(format!("write optimizer state: {e}")))?;
         Ok(())
     }
 

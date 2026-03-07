@@ -2899,8 +2899,6 @@ impl CudaNf4TransformerBlock {
         scratch: &mut CudaBlockScratch,
         grad_lora: &mut CudaLoraGradWorkspace,
     ) -> Result<()> {
-        
-
         let hidden_size = self.config.hidden_size;
         let _q_dim = self.config.q_dim();
         let _kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();

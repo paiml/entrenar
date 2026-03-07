@@ -1054,7 +1054,9 @@ fn train_loop_cuda_distributed(
 
     cuda_trainer.ensure_grad_accum();
 
-    let num_blocks = cuda_trainer.grad_accum_ref().map_or(0, crate::train::PerBlockGradientAccumulator::num_blocks);
+    let num_blocks = cuda_trainer
+        .grad_accum_ref()
+        .map_or(0, crate::train::PerBlockGradientAccumulator::num_blocks);
 
     // Step 1: If rank 0, spawn GradientServer in background thread
     let server_handle = if rank == 0 {

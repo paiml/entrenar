@@ -129,10 +129,10 @@ pub fn pre_warm_lora_adamw_kernels(
     let target = cache.sm_target().to_string();
 
     let mut sizes: Vec<u32> = vec![
-        (hidden_size * lora_rank) as u32,      // A_q, A_v
-        (lora_rank * q_dim) as u32,            // B_q
-        (lora_rank * kv_hidden_size) as u32,   // B_v
-        hidden_size as u32,                    // norm weights
+        (hidden_size * lora_rank) as u32,    // A_q, A_v
+        (lora_rank * q_dim) as u32,          // B_q
+        (lora_rank * kv_hidden_size) as u32, // B_v
+        hidden_size as u32,                  // norm weights
     ];
 
     // Full fp32 weight sizes (non-NF4 mode: optimizer runs on all block weights)
