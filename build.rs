@@ -106,9 +106,8 @@ fn main() {
     for binding in &bindings.bindings {
         let var_name = env_var_name(&binding.contract, &binding.equation);
         let new_rank = status_rank(&binding.status);
-        let dominated = seen
-            .get(&var_name)
-            .is_some_and(|existing| status_rank(existing) >= new_rank);
+        let dominated =
+            seen.get(&var_name).is_some_and(|existing| status_rank(existing) >= new_rank);
         if !dominated {
             seen.insert(var_name, binding.status.clone());
         }
@@ -160,10 +159,7 @@ fn main() {
     );
 
     println!("cargo:rustc-env=CONTRACT_BINDING_SOURCE=binding.yaml");
-    println!(
-        "cargo:rustc-env=CONTRACT_BINDING_VERSION={}",
-        bindings.version
-    );
+    println!("cargo:rustc-env=CONTRACT_BINDING_VERSION={}", bindings.version);
     println!("cargo:rustc-env=CONTRACT_TOTAL={total}");
     println!("cargo:rustc-env=CONTRACT_IMPLEMENTED={implemented}");
     println!("cargo:rustc-env=CONTRACT_PARTIAL={partial}");

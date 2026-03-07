@@ -374,6 +374,9 @@ pub struct CudaTransformerTrainer {
     /// R-038: Per-block gradient accumulation for true multi-step gradient accumulation.
     /// Only allocated when accumulation_steps > 1. CPU-side buffers (~335 MB for 350M).
     grad_accum: Option<super::grad_accumulator::PerBlockGradientAccumulator>,
+    /// ALB-091: GPU-resident gradient accumulation (replaces CPU accum when available).
+    /// Eliminates 24 × ga stream.synchronize() + D2H transfers per optimizer step.
+    gpu_grad_accum: Option<super::gpu_grad_accumulator::GpuGradientAccumulator>,
     /// R-002: Gradient scaler for mixed-precision training.
     /// For BF16: no-op (scale=1.0, dynamic=false).
     /// For FP16: dynamic loss scaling to prevent gradient underflow.
@@ -692,12 +695,29 @@ impl CudaTransformerTrainer {
             None
         };
 
+        // ALB-091: GPU-resident gradient accumulation (eliminates D2H bottleneck).
+        // Falls back to CPU accum if GPU allocation fails.
+        let gpu_grad_accum = if config.accumulation_steps > 1 {
+            match super::gpu_grad_accumulator::GpuGradientAccumulator::new(&ctx, &mc) {
+                Ok(accum) => {
+                    println!("  ✓ GPU gradient accumulation enabled (ALB-091)");
+                    Some(accum)
+                }
+                Err(e) => {
+                    eprintln!(
+                        "  [WARN] GPU gradient accumulation failed ({e}), using CPU fallback"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         // KAIZEN-059: Pre-allocate D2H staging buffer for gradient accumulation
-        // downloads. Sized to max(largest workspace buffer, lm_head_grad) to cover
-        // both download_workspace_to_accum (36×/micro-batch) and
-        // download_nonblock_grads_to_accum (1×/micro-batch).
-        let d2h_staging = if config.accumulation_steps > 1 {
-            let ws_max = hidden_size * mc.intermediate_size; // gate/up/down are largest
+        // downloads. Only needed when GPU accum is unavailable (CPU fallback path).
+        let d2h_staging = if config.accumulation_steps > 1 && gpu_grad_accum.is_none() {
+            let ws_max = hidden_size * mc.intermediate_size;
             let lm_max = vocab_size * hidden_size;
             vec![0.0f32; ws_max.max(lm_max)]
         } else {
@@ -747,6 +767,7 @@ impl CudaTransformerTrainer {
             last_grad_norm: 0.0,
             last_embed_grad_norm: 0.0,
             grad_accum,
+            gpu_grad_accum,
             grad_scaler,
             fwd_scratch_a,
             fwd_scratch_b,
@@ -1198,13 +1219,22 @@ impl CudaTransformerTrainer {
 
         // R-038: Either accumulate non-block grads or run non-block optimizer.
         if accumulate_only {
-            stream.synchronize().ok()?;
-            Self::download_nonblock_grads_to_accum(
-                &self.lm_head_grad_gpu,
-                &self.gpu_training.grad_final_norm_weight,
-                &mut self.grad_accum,
-                &mut self.d2h_staging,
-            )?;
+            // ALB-091: GPU-resident accumulation (no sync, no D2H) or CPU fallback.
+            if let Some(ref mut gpu_accum) = self.gpu_grad_accum {
+                let _ = gpu_accum.accumulate_nonblock(
+                    &self.lm_head_grad_gpu,
+                    &self.gpu_training.grad_final_norm_weight,
+                    stream,
+                );
+            } else {
+                stream.synchronize().ok()?;
+                Self::download_nonblock_grads_to_accum(
+                    &self.lm_head_grad_gpu,
+                    &self.gpu_training.grad_final_norm_weight,
+                    &mut self.grad_accum,
+                    &mut self.d2h_staging,
+                )?;
+            }
         } else {
             Self::run_nonblock_optimizer_step(
                 &mut self.gpu_training,
@@ -1284,18 +1314,23 @@ impl CudaTransformerTrainer {
                 }
             }
 
-            // R-038: Either accumulate workspace grads (CPU-side) or run optimizer per-block.
+            // R-038: Either accumulate workspace grads or run optimizer per-block.
             if accumulate_only {
-                // Download workspace to CPU accum per-block.
-                // SYNC: Must synchronize before D2H (ALB-065 / Rule 6).
-                stream.synchronize().ok()?;
-                if let Some(accum) = &mut self.grad_accum {
-                    Self::download_workspace_to_accum(
-                        &self.cuda_grad_workspace,
-                        accum,
-                        layer_idx,
-                        &mut self.d2h_staging,
-                    )?;
+                // ALB-091: GPU-resident accumulation (no sync, no D2H) or CPU fallback.
+                if let Some(ref mut gpu_accum) = self.gpu_grad_accum {
+                    let _ =
+                        gpu_accum.accumulate_block(&self.cuda_grad_workspace, layer_idx, stream);
+                } else {
+                    // CPU fallback: SYNC + D2H (ALB-065 / Rule 6).
+                    stream.synchronize().ok()?;
+                    if let Some(accum) = &mut self.grad_accum {
+                        Self::download_workspace_to_accum(
+                            &self.cuda_grad_workspace,
+                            accum,
+                            layer_idx,
+                            &mut self.d2h_staging,
+                        )?;
+                    }
                 }
             } else {
                 // Per-block optimizer step: consume workspace gradients before next block overwrites
@@ -1444,6 +1479,90 @@ impl CudaTransformerTrainer {
     /// optimizer step for all blocks + LM head + final norm.
     ///
     /// Called once after `accumulation_steps` micro-batches have been accumulated.
+    /// ALB-091: Run optimizer step from GPU-resident accumulated gradients.
+    /// D2D copy accum → workspace, then run per-block optimizer. Zero accum after.
+    fn gpu_optimizer_from_gpu_accum(&mut self) -> Option<()> {
+        let stream = self.cuda_trainer.stream();
+        let lr = self.current_lr();
+        let beta1 = self.config.beta1;
+        let beta2 = self.config.beta2;
+        let weight_decay = self.config.weight_decay;
+
+        // Sync once to ensure all accumulation kernels complete
+        stream.synchronize().ok()?;
+
+        self.gpu_training.step += 1;
+        let step = self.gpu_training.step;
+
+        // Upload GPU accum → workspace (D2D) and run optimizer per block
+        let gpu_accum = self.gpu_grad_accum.as_ref()?;
+        for layer_idx in 0..self.cuda_blocks.len() {
+            gpu_accum.upload_to_workspace(&mut self.cuda_grad_workspace, layer_idx).ok()?;
+
+            let _ = self.cuda_blocks[layer_idx].optimizer_step(
+                &mut self.gpu_training.optimizer_states[layer_idx],
+                step,
+                lr,
+                beta1,
+                beta2,
+                1e-8,
+                weight_decay,
+                stream,
+                &self.cuda_grad_workspace,
+            );
+        }
+
+        // LM head: D2D copy accum → grad buffer, then optimizer step
+        gpu_accum
+            .upload_nonblock(
+                &mut self.lm_head_grad_gpu,
+                &mut self.gpu_training.grad_final_norm_weight,
+            )
+            .ok()?;
+
+        let n_lm = self.lm_head_weight_gpu.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.lm_head_weight_gpu,
+            &self.lm_head_grad_gpu,
+            &mut self.lm_head_m,
+            &mut self.lm_head_v,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_lm,
+            stream,
+        );
+
+        // Final norm optimizer step
+        let n_norm = self.gpu_training.final_norm_weight.len() as u32;
+        let _ = adamw_step_cuda(
+            &mut self.gpu_training.final_norm_weight,
+            &self.gpu_training.grad_final_norm_weight,
+            &mut self.final_norm_m,
+            &mut self.final_norm_v,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_norm,
+            stream,
+        );
+
+        stream.synchronize().ok()?;
+
+        // Zero accum for next window
+        if let Some(ref mut gpu_accum) = self.gpu_grad_accum {
+            let _ = gpu_accum.zero_all();
+        }
+
+        Some(())
+    }
+
     #[allow(unsafe_code)]
     fn gpu_optimizer_from_accum(&mut self) -> Option<()> {
         let stream = self.cuda_trainer.stream();
@@ -1724,7 +1843,7 @@ impl CudaTransformerTrainer {
             return 0.0;
         }
 
-        let accumulating = self.grad_accum.is_some();
+        let accumulating = self.grad_accum.is_some() || self.gpu_grad_accum.is_some();
 
         if self.accumulated_batches == 0 {
             // Zero embedding gradients at start of accumulation window
@@ -1749,7 +1868,9 @@ impl CudaTransformerTrainer {
                 total_loss += loss;
                 valid_count += 1;
                 if accumulating {
-                    if let Some(accum) = &mut self.grad_accum {
+                    if let Some(accum) = &mut self.gpu_grad_accum {
+                        accum.accumulated_count += 1;
+                    } else if let Some(accum) = &mut self.grad_accum {
                         accum.accumulated_count += 1;
                     }
                 }
@@ -1763,8 +1884,12 @@ impl CudaTransformerTrainer {
 
         if self.accumulated_batches >= self.config.accumulation_steps {
             if accumulating {
-                // R-038: Average accumulated gradients and run single optimizer step
-                self.gpu_optimizer_from_accum();
+                // ALB-091: Prefer GPU-resident accum path (zero D2H), fall back to CPU.
+                if self.gpu_grad_accum.is_some() {
+                    self.gpu_optimizer_from_gpu_accum();
+                } else {
+                    self.gpu_optimizer_from_accum();
+                }
             }
             self.optimizer_step();
         }

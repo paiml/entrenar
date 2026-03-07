@@ -72,6 +72,60 @@ pub fn residual_add_forward(
     Ok(())
 }
 
+/// In-place GPU buffer addition: dst[i] += src[i]
+///
+/// # Contract (C-IPADD-001)
+///
+/// - **Precondition**: dst.len() >= n, src.len() >= n, n > 0
+/// - **Postcondition**: dst[i] == old_dst[i] + src[i] for all i in [0, n)
+/// - **Invariant**: Zero CPU-side data transfers, zero stream synchronization
+#[cfg(feature = "cuda")]
+pub fn inplace_add_gpu(
+    dst: &mut GpuBuffer<f32>,
+    src: &GpuBuffer<f32>,
+    n: u32,
+    stream: &CudaStream,
+) -> Result<()> {
+    let cache = FORWARD_KERNEL_CACHE.get().ok_or(CudaTensorError::DeviceNotInitialized)?;
+    let mut cache = cache.lock().map_err(|_err| {
+        CudaTensorError::KernelError("Failed to acquire kernel cache lock".to_string())
+    })?;
+
+    let key = format!("inplace_add_{n}");
+    let module = match cache.get_cached(&key) {
+        Some(m) => m,
+        None => {
+            let kernel = ResidualAddKernel::new(n);
+            let ptx = kernel.emit_ptx_for_target(cache.sm_target());
+            cache.get_or_compile(&key, &ptx)?
+        }
+    };
+
+    let config = LaunchConfig { grid: (n.div_ceil(256), 1, 1), block: (256, 1, 1), shared_mem: 0 };
+
+    // Use dst pointer for both input `a` and `output` — in-place accumulation.
+    // SAFETY: ResidualAddKernel computes output[i] = a[i] + b[i] per thread.
+    // With a == output (aliased), each thread reads dst[i], adds src[i], writes dst[i].
+    // No inter-thread data dependency — safe for in-place operation.
+    let dst_ptr = dst.as_ptr();
+    let src_ptr = src.as_ptr();
+
+    let mut args: [*mut std::ffi::c_void; 4] = [
+        &dst_ptr as *const _ as *mut _,
+        &src_ptr as *const _ as *mut _,
+        &dst_ptr as *const _ as *mut _,
+        &n as *const _ as *mut _,
+    ];
+
+    unsafe {
+        stream.launch_kernel(module, "residual_add", &config, &mut args).map_err(|e| {
+            CudaTensorError::KernelError(format!("In-place add launch failed: {e:?}"))
+        })?;
+    }
+
+    Ok(())
+}
+
 /// Element-wise multiplication forward pass on GPU
 ///
 /// Computes: output[i] = a[i] * b[i] for i in [0, n)
