@@ -207,7 +207,10 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
                 // Restore step counter from checkpoint for LR schedule + AdamW bias correction
                 if checkpoint_step > 0 {
                     cuda_trainer.set_initial_step(checkpoint_step);
-                    println!("  Resumed at step {checkpoint_step} (lr={:.2e})", cuda_trainer.current_lr());
+                    println!(
+                        "  Resumed at step {checkpoint_step} (lr={:.2e})",
+                        cuda_trainer.current_lr()
+                    );
                     // Load CPU embedding optimizer state (m/v buffers + step counter)
                     if cuda_trainer.load_optimizer_state(&spec.training.output_dir) {
                         println!("  ✓ Embedding optimizer state restored");
@@ -2304,8 +2307,8 @@ fn load_transformer_model(
                 let (emin, emax, emean) = if embed_slice.is_empty() {
                     (0.0, 0.0, 0.0)
                 } else {
-                    let min = embed_slice.iter().cloned().fold(f32::INFINITY, f32::min);
-                    let max = embed_slice.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    let min = embed_slice.iter().copied().fold(f32::INFINITY, f32::min);
+                    let max = embed_slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
                     let mean = embed_slice.iter().sum::<f32>() / embed_slice.len() as f32;
                     (min, max, mean)
                 };
@@ -2339,11 +2342,7 @@ fn detect_checkpoint_step(model_path: &Path) -> usize {
     }
     // Check for model-step-*.safetensors files
     let Ok(entries) = std::fs::read_dir(model_path) else { return 0 };
-    entries
-        .flatten()
-        .filter_map(|e| parse_checkpoint_step_from_path(&e.path()))
-        .max()
-        .unwrap_or(0)
+    entries.flatten().filter_map(|e| parse_checkpoint_step_from_path(&e.path())).max().unwrap_or(0)
 }
 
 /// Apply architecture overrides to a `TransformerConfig`.
