@@ -179,6 +179,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     let resolved_path = resolve_model_path(&spec.model.path)?;
 
     // Try to load model weights if path exists (ENT-117)
+    #[allow(unused_variables)]
     let (transformer, checkpoint_step) = load_transformer_model(&resolved_path, &model_config)?;
 
     // Build TransformerTrainConfig from YAML spec fields
