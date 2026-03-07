@@ -352,6 +352,8 @@ fn convert_training(
         curriculum: training_cfg.and_then(|t| t.curriculum.clone()),
         profile_interval: 0,
         deterministic,
+        eval_interval: 0,
+        patience: 0,
         distributed: None,
     }
 }
