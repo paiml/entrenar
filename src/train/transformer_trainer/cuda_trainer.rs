@@ -397,6 +397,10 @@ pub struct CudaTransformerTrainer {
     /// ALB-078: Pre-allocated state for fused gradient clipping pipeline.
     /// Eliminates 24 stream.synchronize() calls per step.
     fused_clip: Option<FusedClipState>,
+    /// Pre-allocated host zero buffer for zeroing final norm grad [hidden_size].
+    /// BatchedRmsNormBackwardKernel accumulates grad_gamma via atomicAdd,
+    /// so the buffer must be zeroed before each rms_norm_backward call.
+    final_norm_zero_buf: Vec<f32>,
 }
 
 #[cfg(feature = "cuda")]
@@ -776,6 +780,7 @@ impl CudaTransformerTrainer {
             h2d_staging: vec![0.0f32; max_seq_len * hidden_size],
             d2h_staging,
             fused_clip,
+            final_norm_zero_buf: vec![0.0f32; hidden_size],
         })
     }
 
@@ -1192,6 +1197,11 @@ impl CudaTransformerTrainer {
 
         // Final RMSNorm backward
         self.profiler.begin(StepProfiler::NORM_BWD);
+        // Zero grad_final_norm_weight before backward — kernel accumulates via atomicAdd
+        self.gpu_training
+            .grad_final_norm_weight
+            .copy_from_host(&self.final_norm_zero_buf)
+            .ok()?;
         rms_norm_backward(
             &self.gpu_training.blocks_output,
             &self.gpu_training.final_norm_weight,
@@ -2108,6 +2118,16 @@ impl CudaTransformerTrainer {
     /// Get current step count.
     pub fn step(&self) -> usize {
         self.step
+    }
+
+    /// Set initial step for resume from checkpoint.
+    ///
+    /// Updates both the outer step counter (LR schedule, logging) and the
+    /// GPU-side AdamW step counter (bias correction). Must be called before
+    /// any `train_batch()` calls.
+    pub fn set_initial_step(&mut self, step: usize) {
+        self.step = step;
+        self.gpu_training.step = step as u32;
     }
 
     /// Get current learning rate (warmup + cosine decay).

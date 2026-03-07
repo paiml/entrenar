@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 pub(crate) use convert::tensor_to_f32_vec;
-pub(crate) use detect::{detect_architecture, find_safetensors_files};
+pub(crate) use detect::{detect_architecture, find_safetensors_files, parse_checkpoint_step_from_path};
 pub(crate) use mapping::map_weight_name;
 
 /// Architecture type for weight name mapping

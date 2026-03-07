@@ -3,7 +3,12 @@
 use super::Architecture;
 use crate::error::Result;
 
-/// Find SafeTensors files in a directory or return single file
+/// Find SafeTensors files in a directory or return single file.
+///
+/// For checkpoint directories containing `model-step-*.safetensors` files,
+/// returns only the latest (highest step number) checkpoint to avoid loading
+/// all intermediate checkpoints. For sharded models (e.g. `model-00001-of-00014.safetensors`),
+/// returns all shards.
 pub(crate) fn find_safetensors_files(path: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
     if path.is_file() {
         return Ok(if path.extension().is_some_and(|e| e == "safetensors") {
@@ -23,7 +28,7 @@ pub(crate) fn find_safetensors_files(path: &std::path::Path) -> Result<Vec<std::
         return Ok(vec![single]);
     }
 
-    // Look for sharded files
+    // Collect all .safetensors files
     let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(path)
         .into_iter()
         .flatten()
@@ -32,7 +37,36 @@ pub(crate) fn find_safetensors_files(path: &std::path::Path) -> Result<Vec<std::
         .filter(|p| p.extension().is_some_and(|e| e == "safetensors"))
         .collect();
     files.sort();
+
+    // Check if these are checkpoint files (model-step-*.safetensors).
+    // If so, return only the latest one — loading all checkpoints is wasteful
+    // (each has all 218 tensors, last-write-wins) and was the root cause of
+    // the resume bug where 5x1.5GB of redundant I/O slowed startup.
+    if let Some(latest) = find_latest_checkpoint(&files) {
+        eprintln!("  Resuming from checkpoint: {}", latest.display());
+        return Ok(vec![latest]);
+    }
+
     Ok(files)
+}
+
+/// Find the checkpoint file with the highest step number.
+///
+/// Returns `None` if no files match the `model-step-{N}.safetensors` pattern.
+/// Ignores non-checkpoint files (e.g. `model-best.safetensors`) — only looks
+/// at files matching the `model-step-{N}.safetensors` pattern.
+fn find_latest_checkpoint(files: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+    files
+        .iter()
+        .filter_map(|f| parse_checkpoint_step_from_path(f).map(|step| (step, f)))
+        .max_by_key(|(step, _)| *step)
+        .map(|(_, p)| p.clone())
+}
+
+/// Parse step number from a checkpoint path like `.../model-step-3000.safetensors`.
+pub(crate) fn parse_checkpoint_step_from_path(path: &std::path::Path) -> Option<usize> {
+    let filename = path.file_name()?.to_str()?;
+    filename.strip_prefix("model-step-")?.strip_suffix(".safetensors")?.parse().ok()
 }
 
 /// Auto-detect model architecture from tensor names

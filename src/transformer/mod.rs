@@ -18,7 +18,7 @@ mod encoder_block;
 mod feedforward;
 mod model;
 mod norm;
-mod weights;
+pub(crate) mod weights;
 #[cfg(feature = "gpu")]
 pub mod wgpu_block;
 

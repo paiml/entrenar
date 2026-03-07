@@ -88,6 +88,8 @@ pub struct CudaTransformerBlock {
     ctx: Arc<CudaContext>,
     /// Scratch buffers for intermediate results
     scratch: CudaBlockScratch,
+    /// Pre-allocated host zero buffer for zeroing norm grad buffers [hidden_size]
+    norm_zero_buf: Vec<f32>,
 }
 
 /// Preallocated scratch buffers for transformer forward/backward pass.
@@ -246,7 +248,9 @@ pub struct CudaGradWorkspace {
 impl CudaGradWorkspace {
     /// Allocate shared gradient workspace for the given model config.
     ///
-    /// Called once per training run. All 9 buffers are zero-initialized.
+    /// Called once per training run. GEMM weight gradients are fully overwritten
+    /// by each backward pass. Norm gradients use atomicAdd accumulation and MUST
+    /// be zeroed before each rms_norm_backward call (see `zero_norm_grads`).
     pub fn new(ctx: &Arc<CudaContext>, config: &TransformerConfig) -> Result<Self> {
         let h = config.hidden_size;
         let kv = config.num_kv_heads * config.head_dim();
@@ -263,6 +267,26 @@ impl CudaGradWorkspace {
             grad_w_v: GpuBuffer::new(ctx, h * kv)?,
             grad_w_o: GpuBuffer::new(ctx, h * h)?,
         })
+    }
+
+    /// Zero norm gradient buffers before rms_norm_backward calls.
+    ///
+    /// The BatchedRmsNormBackwardKernel accumulates grad_gamma via atomicAdd,
+    /// so these buffers MUST be zeroed before each backward pass. Without this,
+    /// grad_gamma accumulates across steps → exploding norm gradients.
+    pub fn zero_norm_grads(&mut self, zero_buf: &[f32]) -> Result<()> {
+        let n = self.grad_input_norm.len();
+        self.grad_input_norm.copy_from_host(&zero_buf[..n]).map_err(|e| {
+            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                format!("Failed to zero grad_input_norm: {e:?}"),
+            )
+        })?;
+        self.grad_post_attn_norm.copy_from_host(&zero_buf[..n]).map_err(|e| {
+            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
+                format!("Failed to zero grad_post_attn_norm: {e:?}"),
+            )
+        })?;
+        Ok(())
     }
 }
 
@@ -386,6 +410,7 @@ impl CudaTransformerBlock {
             w_down,
             ctx,
             scratch,
+            norm_zero_buf: vec![0.0f32; hidden_size],
         })
     }
 
@@ -795,6 +820,11 @@ impl CudaTransformerBlock {
         let hidden_size = self.config.hidden_size;
         let intermediate_size = self.config.intermediate_size;
         let eps = 1e-5_f32;
+
+        // Zero norm gradient buffers before backward pass.
+        // BatchedRmsNormBackwardKernel accumulates grad_gamma via atomicAdd,
+        // so buffers must be zeroed before each call to prevent cross-step accumulation.
+        grad_ws.zero_norm_grads(&self.norm_zero_buf)?;
 
         // Backward through final residual: grad_output flows to both residual1 and ffn_out
         self.backward_ffn(grad_output, seq_len, hidden_size, intermediate_size, stream, grad_ws)?;
