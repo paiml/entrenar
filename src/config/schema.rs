@@ -452,6 +452,16 @@ pub struct TrainingParams {
     #[serde(default)]
     pub deterministic: bool,
 
+    // === ALB-087: Auto eval scheduling + best-model tracking ===
+    /// Steps between validation evaluations (defaults to save_interval if 0).
+    /// Decouples eval frequency from checkpoint save frequency.
+    #[serde(default)]
+    pub eval_interval: usize,
+
+    /// Number of eval intervals without improvement before early stop (0 = disabled).
+    #[serde(default)]
+    pub patience: usize,
+
     // === Distributed training (tickets #131-#140) ===
     /// Distributed data-parallel training configuration.
     /// When present, enables multi-GPU / multi-node DDP pretraining.
@@ -543,6 +553,8 @@ impl Default for TrainingParams {
             curriculum: None,
             profile_interval: 0,
             deterministic: false,
+            eval_interval: 0,
+            patience: 0,
             distributed: None,
         }
     }
