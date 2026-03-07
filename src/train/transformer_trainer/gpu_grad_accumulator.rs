@@ -48,10 +48,7 @@ impl GpuBlockGradAccum {
             components.push(GpuBuffer::new(ctx, sz).map_err(gpu_err)?);
         }
         let max_size = sizes.iter().copied().max().unwrap_or(0);
-        Ok(Self {
-            components,
-            zero_host: vec![0.0f32; max_size],
-        })
+        Ok(Self { components, zero_host: vec![0.0f32; max_size] })
     }
 
     fn zero_all(&mut self) -> crate::Result<()> {
@@ -92,16 +89,14 @@ impl GpuGradientAccumulator {
     /// Allocate GPU accumulation buffers matching the model architecture.
     ///
     /// VRAM cost: ~1.55 GB for 350M model (H=1024, I=4096, L=24, V=32768).
-    pub fn new(
-        ctx: &Arc<CudaContext>,
-        config: &TransformerConfig,
-    ) -> crate::Result<Self> {
+    pub fn new(ctx: &Arc<CudaContext>, config: &TransformerConfig) -> crate::Result<Self> {
         let h = config.hidden_size;
         let kv = config.num_kv_heads * config.head_dim();
         let i = config.intermediate_size;
         let v = config.vocab_size;
 
-        let sizes = super::grad_accumulator::PerBlockGradientAccumulator::compute_block_sizes(h, kv, i);
+        let sizes =
+            super::grad_accumulator::PerBlockGradientAccumulator::compute_block_sizes(h, kv, i);
 
         let mut block_accums = Vec::with_capacity(config.num_hidden_layers);
         for _ in 0..config.num_hidden_layers {
@@ -112,8 +107,7 @@ impl GpuGradientAccumulator {
         let final_norm_accum = GpuBuffer::new(ctx, h).map_err(gpu_err)?;
         let embedding_accum = vec![0.0f32; v * h];
 
-        let total_vram_mb = (block_accums.len() as f64
-            * sizes.iter().sum::<usize>() as f64
+        let total_vram_mb = (block_accums.len() as f64 * sizes.iter().sum::<usize>() as f64
             + (v * h) as f64
             + h as f64)
             * 4.0
@@ -121,8 +115,7 @@ impl GpuGradientAccumulator {
 
         eprintln!(
             "  GPU gradient accumulation: {} blocks, {:.1} MB VRAM",
-            config.num_hidden_layers,
-            total_vram_mb,
+            config.num_hidden_layers, total_vram_mb,
         );
 
         Ok(Self {
@@ -166,18 +159,15 @@ impl GpuGradientAccumulator {
         final_norm_grad: &GpuBuffer<f32>,
         stream: &CudaStream,
     ) -> crate::Result<()> {
-        inplace_add_gpu(
-            &mut self.lm_head_accum,
-            lm_head_grad,
-            lm_head_grad.len() as u32,
-            stream,
-        ).map_err(gpu_err)?;
+        inplace_add_gpu(&mut self.lm_head_accum, lm_head_grad, lm_head_grad.len() as u32, stream)
+            .map_err(gpu_err)?;
         inplace_add_gpu(
             &mut self.final_norm_accum,
             final_norm_grad,
             final_norm_grad.len() as u32,
             stream,
-        ).map_err(gpu_err)?;
+        )
+        .map_err(gpu_err)?;
         Ok(())
     }
 
@@ -243,7 +233,9 @@ fn workspace_buffers(ws: &CudaGradWorkspace) -> [&GpuBuffer<f32>; BLOCK_GRAD_COM
 
 /// Get mutable references to workspace gradient buffers in component order.
 #[cfg(feature = "cuda")]
-fn workspace_buffers_mut(ws: &mut CudaGradWorkspace) -> [&mut GpuBuffer<f32>; BLOCK_GRAD_COMPONENTS] {
+fn workspace_buffers_mut(
+    ws: &mut CudaGradWorkspace,
+) -> [&mut GpuBuffer<f32>; BLOCK_GRAD_COMPONENTS] {
     [
         &mut ws.grad_w_q,
         &mut ws.grad_w_k,

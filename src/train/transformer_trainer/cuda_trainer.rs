@@ -704,7 +704,9 @@ impl CudaTransformerTrainer {
                     Some(accum)
                 }
                 Err(e) => {
-                    eprintln!("  [WARN] GPU gradient accumulation failed ({e}), using CPU fallback");
+                    eprintln!(
+                        "  [WARN] GPU gradient accumulation failed ({e}), using CPU fallback"
+                    );
                     None
                 }
             }
@@ -1316,11 +1318,8 @@ impl CudaTransformerTrainer {
             if accumulate_only {
                 // ALB-091: GPU-resident accumulation (no sync, no D2H) or CPU fallback.
                 if let Some(ref mut gpu_accum) = self.gpu_grad_accum {
-                    let _ = gpu_accum.accumulate_block(
-                        &self.cuda_grad_workspace,
-                        layer_idx,
-                        stream,
-                    );
+                    let _ =
+                        gpu_accum.accumulate_block(&self.cuda_grad_workspace, layer_idx, stream);
                 } else {
                     // CPU fallback: SYNC + D2H (ALB-065 / Rule 6).
                     stream.synchronize().ok()?;
@@ -1514,10 +1513,12 @@ impl CudaTransformerTrainer {
         }
 
         // LM head: D2D copy accum → grad buffer, then optimizer step
-        gpu_accum.upload_nonblock(
-            &mut self.lm_head_grad_gpu,
-            &mut self.gpu_training.grad_final_norm_weight,
-        ).ok()?;
+        gpu_accum
+            .upload_nonblock(
+                &mut self.lm_head_grad_gpu,
+                &mut self.gpu_training.grad_final_norm_weight,
+            )
+            .ok()?;
 
         let n_lm = self.lm_head_weight_gpu.len() as u32;
         let _ = adamw_step_cuda(
@@ -1525,8 +1526,14 @@ impl CudaTransformerTrainer {
             &self.lm_head_grad_gpu,
             &mut self.lm_head_m,
             &mut self.lm_head_v,
-            lr, beta1, beta2, 1e-8, weight_decay,
-            step, n_lm, stream,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_lm,
+            stream,
         );
 
         // Final norm optimizer step
@@ -1536,8 +1543,14 @@ impl CudaTransformerTrainer {
             &self.gpu_training.grad_final_norm_weight,
             &mut self.final_norm_m,
             &mut self.final_norm_v,
-            lr, beta1, beta2, 1e-8, weight_decay,
-            step, n_norm, stream,
+            lr,
+            beta1,
+            beta2,
+            1e-8,
+            weight_decay,
+            step,
+            n_norm,
+            stream,
         );
 
         stream.synchronize().ok()?;
