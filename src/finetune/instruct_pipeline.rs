@@ -2166,8 +2166,7 @@ fn sample_token(logits: &[f32], temperature: f32, top_k: usize) -> u32 {
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-            .map(|(idx, _)| idx as u32)
-            .unwrap_or(0);
+            .map_or(0, |(idx, _)| idx as u32);
     }
 
     // Temperature scaling

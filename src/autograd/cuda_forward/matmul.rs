@@ -487,7 +487,7 @@ pub fn gemm_forward_bf16(
 #[cfg(feature = "cuda")]
 fn build_gemm_bf16_compute_ptx(sm_target: &str) -> String {
     format!(
-        r#".version 7.0
+        r".version 7.0
 .target {sm_target}
 .address_size 64
 
@@ -574,7 +574,7 @@ loop_end:
 exit:
     ret;
 }}
-"#
+"
     )
 }
 

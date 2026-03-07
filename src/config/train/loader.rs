@@ -631,7 +631,7 @@ fn log_run_params(store: &SqliteBackend, run_id: &str, spec: &TrainSpec, device:
 ///
 fn print_max_steps(max_steps: Option<usize>) {
     if let Some(ms) = max_steps {
-        println!("  max_steps: {} (will stop early when reached)", ms);
+        println!("  max_steps: {ms} (will stop early when reached)");
     }
 }
 
@@ -858,7 +858,7 @@ fn train_loop_cuda(
 
             // R-017: ZClip — update EMA and detect gradient spikes
             zclip_update(
-                trainer.last_grad_norm() as f64,
+                f64::from(trainer.last_grad_norm()),
                 trainer.step(),
                 &mut gnorm_ema,
                 &mut gnorm_ema_sq,
@@ -868,7 +868,7 @@ fn train_loop_cuda(
 
             // R-029: Track grad norm for noise scale estimation
             update_noise_scale(
-                trainer.last_grad_norm() as f64,
+                f64::from(trainer.last_grad_norm()),
                 trainer.step(),
                 &mut gnorm_window,
                 noise_scale_interval,
@@ -1007,11 +1007,11 @@ fn spawn_coordinator_thread(
     let server_config = DistributedConfig::coordinator(coord_addr, world_size);
     let mut server = GradientServer::bind(server_config)
         .map_err(|e| Error::ConfigError(format!("GradientServer bind failed: {e}")))?;
-    println!("  ✓ GradientServer bound on {}", coord_addr);
+    println!("  ✓ GradientServer bound on {coord_addr}");
 
     Ok(std::thread::spawn(move || {
         server.wait_for_workers().unwrap();
-        eprintln!("[coordinator] All {} workers connected", world_size);
+        eprintln!("[coordinator] All {world_size} workers connected");
 
         for _step in 0..total_steps {
             for block_idx in (0..num_blocks).rev() {
@@ -1049,17 +1049,17 @@ fn train_loop_cuda_distributed(
     let coord_addr = dist_config.coordinator_addr;
 
     println!("Starting distributed training (DDP)...");
-    println!("  rank: {}/{}", rank, world_size);
-    println!("  coordinator: {}", coord_addr);
+    println!("  rank: {rank}/{world_size}");
+    println!("  coordinator: {coord_addr}");
 
     cuda_trainer.ensure_grad_accum();
 
-    let num_blocks = cuda_trainer.grad_accum_ref().map(|a| a.num_blocks()).unwrap_or(0);
+    let num_blocks = cuda_trainer.grad_accum_ref().map_or(0, crate::train::PerBlockGradientAccumulator::num_blocks);
 
     // Step 1: If rank 0, spawn GradientServer in background thread
     let server_handle = if rank == 0 {
         let max_steps = spec.training.max_steps.unwrap_or(usize::MAX);
-        let batches_per_worker = (batches.len() + world_size - 1) / world_size;
+        let batches_per_worker = batches.len().div_ceil(world_size);
         let total_steps = std::cmp::min(spec.training.epochs * batches_per_worker, max_steps);
         Some(spawn_coordinator_thread(coord_addr, world_size, num_blocks, total_steps)?)
     } else {
@@ -1451,7 +1451,7 @@ impl ScalingLawPredictor {
     }
 
     fn record(&mut self, tokens: usize, val_loss: f32) {
-        self.history.push((tokens as f64, val_loss as f64));
+        self.history.push((tokens as f64, f64::from(val_loss)));
     }
 
     /// Fit L(D) = a - b × ln(D) via ordinary least squares.
@@ -1542,12 +1542,11 @@ fn run_validation_eval(
     if let Some((pred_loss, pred_ppl, slope)) = prediction {
         let target_steps = target_tokens / tokens_per_step;
         println!(
-            "  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches) \
-             predicted_ppl={:.1} at step {} (slope={:.4})",
-            step, val_loss, val_ppl, count, pred_ppl, target_steps, slope
+            "  [eval] step={step} val_loss={val_loss:.4} val_ppl={val_ppl:.2} ({count} batches) \
+             predicted_ppl={pred_ppl:.1} at step {target_steps} (slope={slope:.4})"
         );
         // Warn if predicted improvement < 10%
-        let improvement = (val_ppl as f64 - pred_ppl) / val_ppl as f64;
+        let improvement = (f64::from(val_ppl) - pred_ppl) / f64::from(val_ppl);
         if improvement < 0.10 && predictor.history.len() >= 4 {
             println!(
                 "  [WARN] Scaling law predicts only {:.1}% improvement by step {} \
@@ -1564,14 +1563,13 @@ fn run_validation_eval(
         entry["target_steps"] = serde_json::json!(target_steps);
     } else {
         println!(
-            "  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches)",
-            step, val_loss, val_ppl, count
+            "  [eval] step={step} val_loss={val_loss:.4} val_ppl={val_ppl:.2} ({count} batches)"
         );
     }
 
     use std::io::Write;
     if let Some(ref mut f) = jsonl_file {
-        let _ = writeln!(f, "{}", entry);
+        let _ = writeln!(f, "{entry}");
     }
 }
 
@@ -1596,7 +1594,7 @@ fn save_and_validate_checkpoint(
     let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
     // R-001: Save CPU embedding optimizer state (synchronous, small file)
     if let Err(e) = trainer.save_optimizer_state(&spec.training.output_dir) {
-        println!("  [WARN] Failed to save optimizer state: {}", e);
+        println!("  [WARN] Failed to save optimizer state: {e}");
     }
     // R-011: Async checkpointing — prepare data on main thread, write on background thread
     let save_fn = trainer.prepare_async_save(model_name, "LlamaForCausalLM");
@@ -1604,7 +1602,7 @@ fn save_and_validate_checkpoint(
     let async_output_dir = spec.training.output_dir.clone();
     std::thread::spawn(move || {
         if let Err(e) = save_fn(&async_path) {
-            println!("  [WARN] Async checkpoint save failed: {}", e);
+            println!("  [WARN] Async checkpoint save failed: {e}");
         } else {
             verify_checkpoint(&async_path);
             println!("  [checkpoint] step={} saved to {}", step, async_path.display());
@@ -1681,7 +1679,7 @@ fn handle_graceful_shutdown(
     println!("[SIGINT] Emergency checkpoint at step {}...", trainer.step());
     let ckpt_path = checkpoint_path(&spec.training.output_dir, trainer.step());
     if let Err(e) = trainer.save(&ckpt_path, model_name, "LlamaForCausalLM") {
-        println!("  [WARN] Emergency save failed: {}", e);
+        println!("  [WARN] Emergency save failed: {e}");
     } else {
         println!("  [checkpoint] emergency save to {}", ckpt_path.display());
         save_training_state(
@@ -2004,7 +2002,7 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
 
     // R-001: Save CPU embedding optimizer state for resume
     if let Err(e) = trainer.save_optimizer_state(&spec.training.output_dir) {
-        println!("  [WARN] Failed to save optimizer state: {}", e);
+        println!("  [WARN] Failed to save optimizer state: {e}");
     } else {
         println!("✓ Optimizer state saved (CPU embedding m/v buffers)");
     }
@@ -2791,7 +2789,7 @@ fn load_lm_batches_from_parquet_dir(
 ) -> Result<Vec<LMBatch>> {
     let mut parquet_files: Vec<PathBuf> = std::fs::read_dir(dir)
         .map_err(|e| Error::ConfigError(format!("Cannot read directory {}: {e}", dir.display())))?
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .map(|entry| entry.path())
         .filter(|p| p.extension().is_some_and(|ext| ext == "parquet"))
         .collect();
@@ -2900,8 +2898,7 @@ fn resolve_text_column_name(text_column: &str, column_names: &[&str]) -> Result<
         }
     }
     Err(Error::ConfigError(format!(
-        "No text column found in Parquet (tried '{}', 'text', 'content', 'code'). Available: {:?}",
-        text_column, column_names
+        "No text column found in Parquet (tried '{text_column}', 'text', 'content', 'code'). Available: {column_names:?}"
     )))
 }
 

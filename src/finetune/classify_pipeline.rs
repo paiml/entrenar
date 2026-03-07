@@ -530,8 +530,8 @@ impl ClassifyPipeline {
             &model,
             model_config,
             classify_config.max_seq_len,
-            &cuda_trainer,
-            &cuda_blocks,
+            cuda_trainer.as_ref(),
+            cuda_blocks.as_ref(),
         );
 
         // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
@@ -551,8 +551,8 @@ impl ClassifyPipeline {
         let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) =
             if classify_config.quantize_nf4 {
                 Self::try_init_nf4_lora_training(
-                    &cuda_trainer,
-                    &cuda_blocks,
+                    cuda_trainer.as_ref(),
+                    cuda_blocks.as_ref(),
                     model_config,
                     &classify_config,
                 )
@@ -686,8 +686,8 @@ impl ClassifyPipeline {
             &model,
             model_config,
             classify_config.max_seq_len,
-            &cuda_trainer,
-            &cuda_blocks,
+            cuda_trainer.as_ref(),
+            cuda_blocks.as_ref(),
         );
 
         // ── Shared gradient workspace (C-GRADWS-001) ────────────────────
@@ -707,8 +707,8 @@ impl ClassifyPipeline {
         let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) =
             if classify_config.quantize_nf4 {
                 Self::try_init_nf4_lora_training(
-                    &cuda_trainer,
-                    &cuda_blocks,
+                    cuda_trainer.as_ref(),
+                    cuda_blocks.as_ref(),
                     model_config,
                     &classify_config,
                 )
@@ -854,8 +854,8 @@ impl ClassifyPipeline {
             &model,
             model_config,
             classify_config.max_seq_len,
-            &cuda_trainer,
-            &cuda_blocks,
+            cuda_trainer.as_ref(),
+            cuda_blocks.as_ref(),
         );
 
         #[cfg(feature = "cuda")]
@@ -873,8 +873,8 @@ impl ClassifyPipeline {
         let (cuda_lora_grad_workspace, cuda_lora_optimizer_states, cuda_lora_grad_accum) =
             if classify_config.quantize_nf4 {
                 Self::try_init_nf4_lora_training(
-                    &cuda_trainer,
-                    &cuda_blocks,
+                    cuda_trainer.as_ref(),
+                    cuda_blocks.as_ref(),
                     model_config,
                     &classify_config,
                 )
@@ -1541,11 +1541,11 @@ impl ClassifyPipeline {
         model: &Transformer,
         model_config: &TransformerConfig,
         max_seq_len: usize,
-        cuda_trainer: &Option<CudaTrainer>,
-        cuda_blocks: &Option<Vec<CudaBlock>>,
+        cuda_trainer: Option<&CudaTrainer>,
+        cuda_blocks: Option<&Vec<CudaBlock>>,
     ) -> Option<GpuTrainingState> {
-        let trainer = cuda_trainer.as_ref()?;
-        let blocks = cuda_blocks.as_ref()?;
+        let trainer = cuda_trainer?;
+        let blocks = cuda_blocks?;
 
         let hidden_size = model_config.hidden_size;
         let buf_size = max_seq_len * hidden_size;
@@ -1555,7 +1555,7 @@ impl ClassifyPipeline {
         // Pre-compute optimizer state size to avoid OOM that would poison
         // the CUDA context (CUDA_ERROR_ILLEGAL_ADDRESS after failed alloc).
         // NF4 blocks have no per-layer fp32 optimizer — only need layer inputs + grad scratch
-        let is_nf4 = blocks.first().map_or(false, |b| matches!(b, CudaBlock::Nf4(_)));
+        let is_nf4 = blocks.first().is_some_and(|b| matches!(b, CudaBlock::Nf4(_)));
         let per_layer_weights = model_config.per_layer_weight_elements();
         let optimizer_bytes = if is_nf4 { 0 } else { num_layers * per_layer_weights * 2 * 4 };
         let layer_input_bytes = num_layers * buf_size * 4;
@@ -1614,7 +1614,7 @@ impl ClassifyPipeline {
 
         // Initialize per-block optimizer states (fp32 only — NF4 uses separate LoRA optimizer)
         let mut optimizer_states = Vec::with_capacity(num_layers);
-        let is_nf4 = blocks.first().map_or(false, |b| matches!(b, CudaBlock::Nf4(_)));
+        let is_nf4 = blocks.first().is_some_and(|b| matches!(b, CudaBlock::Nf4(_)));
         if !is_nf4 {
             for (i, block) in blocks.iter().enumerate() {
                 match block.init_optimizer_state() {
@@ -1685,8 +1685,8 @@ impl ClassifyPipeline {
     /// - **Invariant**: Returns `(None, None, None)` on any failure (graceful fallback to CPU LoRA)
     #[cfg(feature = "cuda")]
     fn try_init_nf4_lora_training(
-        cuda_trainer: &Option<CudaTrainer>,
-        cuda_blocks: &Option<Vec<CudaBlock>>,
+        cuda_trainer: Option<&CudaTrainer>,
+        cuda_blocks: Option<&Vec<CudaBlock>>,
         model_config: &TransformerConfig,
         classify_config: &ClassifyConfig,
     ) -> (
@@ -1694,11 +1694,11 @@ impl ClassifyPipeline {
         Option<Vec<GpuLoraOptimizerState>>,
         Option<Vec<CudaLoraGradWorkspace>>,
     ) {
-        let trainer = match cuda_trainer.as_ref() {
+        let trainer = match cuda_trainer {
             Some(t) => t,
             None => return (None, None, None),
         };
-        let blocks = match cuda_blocks.as_ref() {
+        let blocks = match cuda_blocks {
             Some(b) => b,
             None => return (None, None, None),
         };
@@ -1805,8 +1805,8 @@ impl ClassifyPipeline {
         // Step 3: Run through CUDA transformer blocks, saving inputs
         // KAIZEN-060: Use pre-allocated ping-pong buffers instead of per-call alloc.
         let stream = trainer.stream();
-        let scratch_a_ptr: *mut GpuBuffer<f32> = &mut training_state.fwd_scratch_a;
-        let scratch_b_ptr: *mut GpuBuffer<f32> = &mut training_state.fwd_scratch_b;
+        let scratch_a_ptr: *mut GpuBuffer<f32> = &raw mut training_state.fwd_scratch_a;
+        let scratch_b_ptr: *mut GpuBuffer<f32> = &raw mut training_state.fwd_scratch_b;
         let mut input_is_a = true;
 
         for (i, block) in cuda_blocks.iter_mut().enumerate() {
@@ -1941,8 +1941,8 @@ impl ClassifyPipeline {
         // We use raw pointers to get disjoint mutable borrows of grad_buf_a/b.
         // SAFETY: grad_buf_a and grad_buf_b are separate heap-allocated GPU buffers
         // (disjoint fields of GpuTrainingState). We never alias them.
-        let grad_a_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_a;
-        let grad_b_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_b;
+        let grad_a_ptr: *mut GpuBuffer<f32> = &raw mut training_state.grad_buf_a;
+        let grad_b_ptr: *mut GpuBuffer<f32> = &raw mut training_state.grad_buf_b;
         let mut grad_output_is_a = true;
 
         for layer_idx in (0..num_layers).rev() {
@@ -2085,12 +2085,12 @@ impl ClassifyPipeline {
         let num_layers = blocks.len();
 
         // Alternate gradient buffers using raw pointers for disjoint mutable borrows
-        let grad_a_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_a;
-        let grad_b_ptr: *mut GpuBuffer<f32> = &mut training_state.grad_buf_b;
+        let grad_a_ptr: *mut GpuBuffer<f32> = &raw mut training_state.grad_buf_a;
+        let grad_b_ptr: *mut GpuBuffer<f32> = &raw mut training_state.grad_buf_b;
         let mut grad_output_is_a = true;
 
         // KAIZEN-045: Use pre-allocated output_scratch from training state
-        let output_scratch_ptr: *mut GpuBuffer<f32> = &mut training_state.output_scratch;
+        let output_scratch_ptr: *mut GpuBuffer<f32> = &raw mut training_state.output_scratch;
 
         for layer_idx in (0..num_layers).rev() {
             // SAFETY: grad_a_ptr and grad_b_ptr point to disjoint fields.
