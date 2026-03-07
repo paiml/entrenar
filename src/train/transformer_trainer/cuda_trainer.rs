@@ -411,6 +411,29 @@ impl CudaTransformerTrainer {
         Self::with_model(model, config)
     }
 
+    /// ALB-089: Load SafeTensors checkpoint for GPU inference (forward-only).
+    ///
+    /// Creates a `CudaTransformerTrainer` in inference mode. The optimizer
+    /// state is allocated (wasteful but simple), but `forward_logits()` only
+    /// uses the forward path. Call `forward_logits(&tokens)` to generate.
+    ///
+    /// # Arguments
+    /// * `checkpoint_dir` - Directory containing model.safetensors + config.json
+    /// * `model_config` - Transformer architecture config
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if SafeTensors loading or CUDA initialization fails.
+    pub fn for_inference(
+        checkpoint_dir: impl AsRef<std::path::Path>,
+        model_config: crate::transformer::TransformerConfig,
+    ) -> crate::Result<Self> {
+        let model = Transformer::from_safetensors(checkpoint_dir.as_ref(), &model_config)?;
+        let mut config = TransformerTrainConfig::new(model_config);
+        config.max_seq_len = config.model_config.max_position_embeddings;
+        Self::with_model(model, config)
+    }
+
     /// Create a GPU-resident trainer from an existing model.
     ///
     /// # Errors
@@ -966,6 +989,44 @@ impl CudaTransformerTrainer {
         self.profiler.end(StepProfiler::NORM_LM);
 
         Some(())
+    }
+
+    /// ALB-089: Forward-only pass that returns last-position logits on CPU.
+    ///
+    /// Runs the same GPU forward as training but downloads only the last
+    /// position's logits (vocab_size floats) for token sampling. No backward
+    /// pass, no loss computation.
+    ///
+    /// # Contract (C-CUDA-INF-001)
+    ///
+    /// - Same forward path as `gpu_forward()` — identical logits
+    /// - Only downloads `logits[seq_len-1, :]` (128 KB for 32K vocab)
+    /// - stream.synchronize() before D2H (C-STREAMSYNC-001)
+    pub fn forward_logits(&mut self, input_ids: &[u32]) -> Option<Vec<f32>> {
+        let seq_len = input_ids.len();
+        let hidden_size = self.config.model_config.hidden_size;
+        let vocab_size = self.config.model_config.vocab_size;
+
+        if seq_len == 0 || seq_len > self.config.max_seq_len {
+            return None;
+        }
+
+        // Reuse gpu_forward for the actual computation
+        self.gpu_forward(input_ids, seq_len, hidden_size, vocab_size)?;
+
+        // C-STREAMSYNC-001: synchronize before D2H
+        let stream = self.cuda_trainer.stream();
+        stream.synchronize().ok()?;
+
+        // Download last position logits only: logits_buf[seq_len-1, :]
+        let offset = (seq_len - 1) * vocab_size;
+        let mut logits = vec![0.0f32; vocab_size];
+        self.gpu_training
+            .logits_buf
+            .copy_to_host_at(&mut logits, offset)
+            .ok()?;
+
+        Some(logits)
     }
 
     /// GPU backward pass with interleaved per-block optimizer step.
