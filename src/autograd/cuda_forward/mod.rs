@@ -49,7 +49,8 @@ pub use cache::{
 };
 pub use elementwise::{
     batched_to_interleaved_forward, batched_transpose_forward, elementwise_mul_forward,
-    expand_kv_heads, interleaved_to_batched_forward, residual_add_forward, scale_forward,
+    expand_kv_heads, inplace_add_gpu, interleaved_to_batched_forward, residual_add_forward,
+    scale_forward,
 };
 #[cfg(feature = "cuda")]
 pub use matmul::gemm_forward_bf16;

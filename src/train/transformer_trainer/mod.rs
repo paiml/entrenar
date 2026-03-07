@@ -10,6 +10,7 @@ pub mod distributed_checkpoint;
 mod distributed_trainer;
 pub mod elastic;
 pub mod grad_accumulator;
+pub mod gpu_grad_accumulator;
 pub mod pipeline;
 pub mod sequence_parallel;
 pub mod step_profiler;
