@@ -408,6 +408,14 @@ impl Transformer {
     pub fn config(&self) -> &TransformerConfig {
         &self.config
     }
+
+    /// Get the language model head weight tensor.
+    ///
+    /// Returns the dedicated `lm_head` weight if present, otherwise falls back
+    /// to tied embedding weights.
+    pub fn lm_head_weight(&self) -> &Tensor {
+        self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight)
+    }
 }
 
 #[cfg(test)]

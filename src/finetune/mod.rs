@@ -85,7 +85,7 @@ pub use instruct_corpus::{
     InstructMetadata, InstructSample,
 };
 pub use instruct_pipeline::{
-    InstructBatchResult, InstructConfig, InstructPipeline, InstructStepResult,
+    GenerateConfig, InstructBatchResult, InstructConfig, InstructPipeline, InstructStepResult,
 };
 pub use instruct_trainer::{
     InstructEpochMetrics, InstructTrainResult, InstructTrainer, InstructTrainingConfig,

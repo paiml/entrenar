@@ -2018,6 +2018,225 @@ impl InstructPipeline {
             if self.config.quantize_nf4 { ", NF4 QLoRA" } else { "" },
         )
     }
+
+    /// Get a reference to the tokenizer, if loaded.
+    #[must_use]
+    pub fn tokenizer(&self) -> Option<&HfTokenizer> {
+        self.tokenizer.as_ref()
+    }
+
+    /// Autoregressive text generation with LoRA adapters (entrenar#246).
+    ///
+    /// Generates tokens one at a time using the transformer + LoRA forward pass.
+    /// Supports greedy decoding (temperature=0) and temperature-scaled sampling
+    /// with optional top-k filtering.
+    ///
+    /// # Arguments
+    /// * `prompt` - Input text to continue from
+    /// * `config` - Generation parameters (max tokens, temperature, top-k)
+    ///
+    /// # Returns
+    /// Generated text (excluding the input prompt)
+    ///
+    /// # Errors
+    /// Returns error if no tokenizer is loaded.
+    pub fn generate(&self, prompt: &str, config: &GenerateConfig) -> crate::Result<String> {
+        let tokenizer = self.tokenizer.as_ref().ok_or_else(|| {
+            crate::Error::ConfigError("No tokenizer loaded — cannot generate text".into())
+        })?;
+
+        let mut token_ids = tokenizer.encode(prompt);
+        let prompt_len = token_ids.len();
+        let eos_token = tokenizer.eos_id().unwrap_or(151643); // Qwen2 default EOS
+
+        let vocab_size = self.model.config().vocab_size;
+
+        for _ in 0..config.max_new_tokens {
+            // Truncate to max_seq_len if needed
+            if token_ids.len() >= self.config.max_seq_len {
+                break;
+            }
+
+            // Forward pass with LoRA
+            let hidden = self.model.forward_hidden_with_lora(&token_ids, &self.lora_layers);
+            let seq_len = token_ids.len();
+            let hidden_size = self.model.config().hidden_size;
+
+            // Apply lm_head to get logits
+            let lm_weight = self.model.lm_head_weight();
+            let logits = crate::autograd::matmul(&hidden, lm_weight, seq_len, hidden_size, vocab_size);
+
+            // Extract logits for last position
+            let logits_data = logits.data();
+            let logits_slice = logits_data.as_slice().unwrap_or(&[]);
+            let last_pos_start = (seq_len - 1) * vocab_size;
+            let last_pos_logits = &logits_slice[last_pos_start..last_pos_start + vocab_size];
+
+            // Sample next token
+            let next_token = sample_token(last_pos_logits, config.temperature, config.top_k);
+
+            if next_token == eos_token {
+                break;
+            }
+
+            // Check stop tokens
+            if config.stop_tokens.contains(&next_token) {
+                break;
+            }
+
+            token_ids.push(next_token);
+        }
+
+        // Decode only the generated part (not the prompt)
+        let generated_ids = &token_ids[prompt_len..];
+        Ok(tokenizer.decode(generated_ids))
+    }
+
+    /// Generate a chat response using ChatML format (entrenar#246).
+    ///
+    /// Formats messages as ChatML (`<|im_start|>` / `<|im_end|>`) and generates
+    /// the assistant's response.
+    ///
+    /// # Arguments
+    /// * `system` - System prompt
+    /// * `user_message` - User's input message
+    /// * `config` - Generation parameters
+    ///
+    /// # Returns
+    /// The assistant's generated response text.
+    ///
+    /// # Errors
+    /// Returns error if no tokenizer is loaded.
+    pub fn generate_chat(
+        &self,
+        system: &str,
+        user_message: &str,
+        config: &GenerateConfig,
+    ) -> crate::Result<String> {
+        let prompt = format!(
+            "<|im_start|>system\n{system}<|im_end|>\n\
+             <|im_start|>user\n{user_message}<|im_end|>\n\
+             <|im_start|>assistant\n"
+        );
+
+        let mut response = self.generate(&prompt, config)?;
+
+        // Strip trailing <|im_end|> if present
+        if let Some(stripped) = response.strip_suffix("<|im_end|>") {
+            response = stripped.to_string();
+        }
+
+        Ok(response)
+    }
+}
+
+/// Configuration for autoregressive text generation.
+#[derive(Debug, Clone)]
+pub struct GenerateConfig {
+    /// Maximum number of new tokens to generate (default: 256)
+    pub max_new_tokens: usize,
+    /// Sampling temperature (0.0 = greedy/argmax, >0 = stochastic)
+    pub temperature: f32,
+    /// Top-k filtering (0 = disabled, >0 = keep only top-k logits)
+    pub top_k: usize,
+    /// Additional stop token IDs (generation stops on EOS or any of these)
+    pub stop_tokens: Vec<u32>,
+}
+
+impl Default for GenerateConfig {
+    fn default() -> Self {
+        Self {
+            max_new_tokens: 256,
+            temperature: 0.7,
+            top_k: 50,
+            stop_tokens: Vec::new(),
+        }
+    }
+}
+
+impl GenerateConfig {
+    /// Create a greedy decoding config (deterministic, always picks highest probability token).
+    #[must_use]
+    pub fn greedy(max_new_tokens: usize) -> Self {
+        Self {
+            max_new_tokens,
+            temperature: 0.0,
+            top_k: 0,
+            stop_tokens: Vec::new(),
+        }
+    }
+}
+
+/// Sample a token from logits with temperature and top-k filtering.
+fn sample_token(logits: &[f32], temperature: f32, top_k: usize) -> u32 {
+    if temperature <= 0.0 || top_k == 1 {
+        // Greedy: argmax
+        return logits
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(idx, _)| idx as u32)
+            .unwrap_or(0);
+    }
+
+    // Temperature scaling
+    let scaled: Vec<f32> = logits.iter().map(|&l| l / temperature).collect();
+
+    // Top-k filtering
+    let mut indices_and_logits: Vec<(usize, f32)> =
+        scaled.iter().copied().enumerate().collect();
+    indices_and_logits.sort_unstable_by(|(_, a), (_, b)| {
+        b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let k = if top_k > 0 && top_k < indices_and_logits.len() {
+        top_k
+    } else {
+        indices_and_logits.len()
+    };
+    let top = &indices_and_logits[..k];
+
+    // Softmax over top-k
+    let max_logit = top[0].1;
+    let exps: Vec<f32> = top.iter().map(|(_, l)| (l - max_logit).exp()).collect();
+    let sum: f32 = exps.iter().sum();
+    let probs: Vec<f32> = exps.iter().map(|e| e / sum).collect();
+
+    // Sample from distribution (simple linear scan)
+    let r: f32 = simple_random();
+    let mut cumulative = 0.0;
+    for (i, &p) in probs.iter().enumerate() {
+        cumulative += p;
+        if r < cumulative {
+            return top[i].0 as u32;
+        }
+    }
+
+    // Fallback to top-1
+    top[0].0 as u32
+}
+
+/// Simple pseudo-random float in [0, 1) using thread-local state.
+/// Not cryptographically secure but sufficient for sampling.
+fn simple_random() -> f32 {
+    use std::cell::Cell;
+    thread_local! {
+        static STATE: Cell<u64> = Cell::new(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(42)
+        );
+    }
+    STATE.with(|s| {
+        // xorshift64
+        let mut x = s.get();
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        s.set(x);
+        (x >> 40) as f32 / (1u64 << 24) as f32
+    })
 }
 
 #[cfg(test)]
@@ -2074,5 +2293,67 @@ mod tests {
         let result = pipeline.train_step(&[0, 1, 2], &[]);
         assert_eq!(result.loss, 0.0);
         assert_eq!(result.num_response_tokens, 0);
+    }
+
+    #[test]
+    fn test_generate_config_default() {
+        let config = GenerateConfig::default();
+        assert_eq!(config.max_new_tokens, 256);
+        assert!((config.temperature - 0.7).abs() < f32::EPSILON);
+        assert_eq!(config.top_k, 50);
+        assert!(config.stop_tokens.is_empty());
+    }
+
+    #[test]
+    fn test_generate_config_greedy() {
+        let config = GenerateConfig::greedy(128);
+        assert_eq!(config.max_new_tokens, 128);
+        assert_eq!(config.temperature, 0.0);
+        assert_eq!(config.top_k, 0);
+    }
+
+    #[test]
+    fn test_sample_token_greedy() {
+        let logits = vec![0.1, 0.5, 0.3, 0.9, 0.2];
+        let token = sample_token(&logits, 0.0, 0);
+        assert_eq!(token, 3); // index of 0.9 (highest)
+    }
+
+    #[test]
+    fn test_sample_token_greedy_top_k_1() {
+        let logits = vec![0.1, 0.5, 0.3, 0.9, 0.2];
+        let token = sample_token(&logits, 1.0, 1);
+        assert_eq!(token, 3); // top-1 is always argmax
+    }
+
+    #[test]
+    fn test_sample_token_temperature_sampling() {
+        // With very high temperature, distribution flattens — token 3 shouldn't always win
+        let logits = vec![0.1, 0.5, 0.3, 0.9, 0.2];
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..100 {
+            let token = sample_token(&logits, 10.0, 0);
+            seen.insert(token);
+        }
+        // With temp=10.0, we should see multiple different tokens
+        assert!(seen.len() > 1, "Expected diversity with high temperature");
+    }
+
+    #[test]
+    fn test_generate_no_tokenizer_errors() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig { lora_rank: 4, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        // Pipeline created with new() has no tokenizer
+        let result = pipeline.generate("hello", &GenerateConfig::greedy(10));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_simple_random_range() {
+        for _ in 0..1000 {
+            let r = simple_random();
+            assert!((0.0..1.0).contains(&r), "Random value {r} out of [0, 1) range");
+        }
     }
 }
