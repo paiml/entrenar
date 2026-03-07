@@ -118,7 +118,7 @@ impl GpuGradientAccumulator {
             config.num_hidden_layers, total_vram_mb,
         );
 
-        Ok(Self {
+        let mut accum = Self {
             block_accums,
             lm_head_accum,
             final_norm_accum,
@@ -127,7 +127,14 @@ impl GpuGradientAccumulator {
             block_component_sizes: sizes,
             lm_head_zero: vec![0.0f32; v * h],
             final_norm_zero: vec![0.0f32; h],
-        })
+        };
+
+        // CRITICAL: GpuBuffer::new() does NOT zero VRAM (cuMemAlloc returns
+        // uninitialized memory). Without this, the first accumulation window
+        // adds real gradients to garbage → corrupted first optimizer step.
+        accum.zero_all()?;
+
+        Ok(accum)
     }
 
     /// Accumulate workspace gradients for a single block into GPU accum buffers.

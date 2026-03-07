@@ -179,7 +179,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     let resolved_path = resolve_model_path(&spec.model.path)?;
 
     // Try to load model weights if path exists (ENT-117)
-    let transformer = load_transformer_model(&resolved_path, &model_config)?;
+    let (transformer, checkpoint_step) = load_transformer_model(&resolved_path, &model_config)?;
 
     // Build TransformerTrainConfig from YAML spec fields
     let train_config = build_train_config(model_config, spec);
@@ -204,6 +204,15 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 
         match cuda_result {
             Ok(mut cuda_trainer) => {
+                // Restore step counter from checkpoint for LR schedule + AdamW bias correction
+                if checkpoint_step > 0 {
+                    cuda_trainer.set_initial_step(checkpoint_step);
+                    println!("  Resumed at step {checkpoint_step} (lr={:.2e})", cuda_trainer.current_lr());
+                    // Load CPU embedding optimizer state (m/v buffers + step counter)
+                    if cuda_trainer.load_optimizer_state(&spec.training.output_dir) {
+                        println!("  ✓ Embedding optimizer state restored");
+                    }
+                }
                 println!("✓ CudaTransformerTrainer initialized (GPU: {})", cuda_trainer.gpu_name());
                 // #133: Dispatch to distributed training loop if distributed config present
                 if train_config.distributed.is_some() {
@@ -1638,7 +1647,7 @@ fn save_best_model(
     model_name: &str,
     step: usize,
 ) {
-    let best_path = spec.training.output_dir.join("model-best");
+    let best_path = spec.training.output_dir.join("model-best.safetensors");
     let save_fn = trainer.prepare_async_save(model_name, "LlamaForCausalLM");
     std::thread::spawn(move || {
         if let Err(e) = save_fn(&best_path) {
@@ -2261,28 +2270,26 @@ fn resolve_model_path(model_path: &Path) -> Result<PathBuf> {
     Ok(model_path.to_path_buf())
 }
 
-/// Load transformer model from SafeTensors weights if available
+/// Load transformer model from SafeTensors weights if available.
 ///
-/// # Arguments
-///
-/// * `model_path` - Path to model directory or SafeTensors file
-/// * `config` - Transformer configuration
-///
-/// # Returns
-///
-/// Transformer model (with loaded weights or randomly initialized).
+/// Returns `(model, checkpoint_step)` where checkpoint_step is the step number
+/// parsed from the checkpoint filename (0 if loading from `model.safetensors`
+/// or random init).
 fn load_transformer_model(
     model_path: &Path,
     config: &TransformerConfig,
-) -> Result<Option<Transformer>> {
+) -> Result<(Option<Transformer>, usize)> {
     // Check if path exists and is a valid SafeTensors location
     if !model_path.exists() {
         println!("  Model path not found, using random initialization");
-        return Ok(None);
+        return Ok((None, 0));
     }
 
     // Try loading SafeTensors weights
     println!("Loading model weights from {}...", model_path.display());
+
+    // Detect checkpoint step from the file that will be loaded
+    let checkpoint_step = detect_checkpoint_step(model_path);
 
     match load_safetensors_weights(model_path, Architecture::Auto) {
         Ok(weights) => {
@@ -2290,18 +2297,53 @@ fn load_transformer_model(
 
             // Try to build transformer from loaded weights
             if let Some(transformer) = Transformer::from_params(config, &weights) {
+                // Diagnostic: print weight statistics to verify correctness
+                let embed = &transformer.embed_tokens.weight;
+                let embed_data = embed.data();
+                let embed_slice = embed_data.as_slice().unwrap_or(&[]);
+                let (emin, emax, emean) = if embed_slice.is_empty() {
+                    (0.0, 0.0, 0.0)
+                } else {
+                    let min = embed_slice.iter().cloned().fold(f32::INFINITY, f32::min);
+                    let max = embed_slice.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    let mean = embed_slice.iter().sum::<f32>() / embed_slice.len() as f32;
+                    (min, max, mean)
+                };
                 println!("✓ Loaded pre-trained weights successfully");
-                return Ok(Some(transformer));
+                if checkpoint_step > 0 {
+                    println!("  Resuming from step {checkpoint_step}");
+                }
+                println!("  embed_tokens stats: min={emin:.4e} max={emax:.4e} mean={emean:.4e}");
+                return Ok((Some(transformer), checkpoint_step));
             }
             eprintln!("Warning: Weight shapes don't match config, using random initialization");
-            Ok(None)
+            Ok((None, 0))
         }
         Err(e) => {
             eprintln!("Warning: Could not load weights from {}: {}", model_path.display(), e);
             eprintln!("Using random initialization instead");
-            Ok(None)
+            Ok((None, 0))
         }
     }
+}
+
+/// Detect the step number from the latest checkpoint in a directory.
+fn detect_checkpoint_step(model_path: &Path) -> usize {
+    use crate::transformer::weights::parse_checkpoint_step_from_path;
+
+    if model_path.is_file() {
+        return parse_checkpoint_step_from_path(model_path).unwrap_or(0);
+    }
+    if !model_path.is_dir() {
+        return 0;
+    }
+    // Check for model-step-*.safetensors files
+    let Ok(entries) = std::fs::read_dir(model_path) else { return 0 };
+    entries
+        .flatten()
+        .filter_map(|e| parse_checkpoint_step_from_path(&e.path()))
+        .max()
+        .unwrap_or(0)
 }
 
 /// Apply architecture overrides to a `TransformerConfig`.
