@@ -106,20 +106,34 @@ pub fn load_safetensors_weights(
     Ok(weights)
 }
 
-/// Get expected weight count for a transformer model
+/// Get expected weight count for a transformer model (minimum — without attention biases)
 pub fn expected_weight_count(num_layers: usize, has_lm_head: bool) -> usize {
-    // Per layer:
+    // Per layer (minimum):
     //   input_layernorm.weight (1)
-    //   self_attn: q_proj, k_proj, v_proj, o_proj (4)
+    //   self_attn: q_proj, k_proj, v_proj, o_proj weights (4)
     //   post_attention_layernorm.weight (1)
     //   mlp: gate_proj, up_proj, down_proj (3)
-    // = 9 per layer
+    // = 9 per layer (without biases)
+    //
+    // Models with attention biases (e.g. Qwen2) have 3 additional per layer:
+    //   self_attn: q_proj.bias, k_proj.bias, v_proj.bias
+    // = 12 per layer (with biases)
     //
     // Global:
     //   embed_tokens.weight (1)
     //   norm.weight (1)
     //   lm_head.weight (optional, 1)
     let base = 2 + (num_layers * 9);
+    if has_lm_head {
+        base + 1
+    } else {
+        base
+    }
+}
+
+/// Get expected weight count including attention biases
+pub fn expected_weight_count_with_biases(num_layers: usize, has_lm_head: bool) -> usize {
+    let base = 2 + (num_layers * 12); // 9 weights + 3 biases per layer
     if has_lm_head {
         base + 1
     } else {

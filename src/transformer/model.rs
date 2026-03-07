@@ -228,6 +228,11 @@ impl Transformer {
             check(&format!("{p}.self_attn.v_proj.weight"), kv_hidden * hidden)?;
             check(&format!("{p}.self_attn.o_proj.weight"), hidden * q_dim)?;
 
+            // Optional attention biases (Qwen2 etc.)
+            check(&format!("{p}.self_attn.q_proj.bias"), q_dim)?;
+            check(&format!("{p}.self_attn.k_proj.bias"), kv_hidden)?;
+            check(&format!("{p}.self_attn.v_proj.bias"), kv_hidden)?;
+
             // MLP projections
             check(&format!("{p}.mlp.gate_proj.weight"), hidden * intermediate)?;
             check(&format!("{p}.mlp.up_proj.weight"), hidden * intermediate)?;
@@ -415,6 +420,25 @@ impl Transformer {
     /// to tied embedding weights.
     pub fn lm_head_weight(&self) -> &Tensor {
         self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight)
+    }
+
+    /// Get named parameters for checkpoint serialization.
+    ///
+    /// Returns (name, tensor) pairs matching HuggingFace weight conventions.
+    /// This handles variable parameter counts (e.g., models with/without attention biases)
+    /// correctly, unlike the hardcoded 9-params-per-layer assumption.
+    pub fn named_parameters(&self) -> Vec<(String, &Tensor)> {
+        let mut params = vec![
+            ("model.embed_tokens.weight".to_string(), &self.embed_tokens.weight),
+            ("model.norm.weight".to_string(), &self.norm.weight),
+        ];
+        for layer in &self.layers {
+            params.extend(layer.named_parameters());
+        }
+        if let Some(ref lm_head) = self.lm_head {
+            params.push(("lm_head.weight".to_string(), lm_head));
+        }
+        params
     }
 }
 

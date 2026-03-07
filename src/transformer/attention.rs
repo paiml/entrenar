@@ -11,6 +11,24 @@ use std::rc::Rc;
 
 use super::config::TransformerConfig;
 
+/// Add a bias vector to a projected tensor: output[s] += bias for each sequence position.
+/// Input shape: (seq_len × dim) flattened. Bias shape: (dim).
+fn add_bias(x: &Tensor, bias: &Tensor, seq_len: usize) -> Tensor {
+    let xd = x.data();
+    let x_slice = xd.as_slice().expect("contiguous projection");
+    let bd = bias.data();
+    let b_slice = bd.as_slice().expect("contiguous bias");
+    let dim = b_slice.len();
+    let mut out = Vec::with_capacity(x_slice.len());
+    for s in 0..seq_len {
+        let base = s * dim;
+        for d in 0..dim {
+            out.push(x_slice[base + d] + b_slice[d]);
+        }
+    }
+    Tensor::from_vec(out, x.requires_grad())
+}
+
 // ---------------------------------------------------------------------------
 // AttentionBlockBackward: combined backward for multi-head attention
 //
@@ -162,6 +180,12 @@ pub struct MultiHeadAttention {
     pub w_v: Tensor,
     /// Output projection weight (hidden_size x hidden_size)
     pub w_o: Tensor,
+    /// Optional query bias (Qwen2 uses attention biases)
+    pub b_q: Option<Tensor>,
+    /// Optional key bias
+    pub b_k: Option<Tensor>,
+    /// Optional value bias
+    pub b_v: Option<Tensor>,
 }
 
 impl MultiHeadAttention {
@@ -197,6 +221,9 @@ impl MultiHeadAttention {
                 (0..hidden_size * q_dim).map(|i| ((i as f32 * 0.456).sin() * q_scale)).collect(),
                 true,
             ),
+            b_q: None,
+            b_k: None,
+            b_v: None,
         }
     }
 
@@ -242,7 +269,12 @@ impl MultiHeadAttention {
             }
         }
 
-        Some(Self { config: config.clone(), w_q, w_k, w_v, w_o })
+        // Optional attention biases (Qwen2 uses Q/K/V biases)
+        let b_q = params.get(&format!("{prefix}.q_proj.bias")).cloned();
+        let b_k = params.get(&format!("{prefix}.k_proj.bias")).cloned();
+        let b_v = params.get(&format!("{prefix}.v_proj.bias")).cloned();
+
+        Some(Self { config: config.clone(), w_q, w_k, w_v, w_o, b_q, b_k, b_v })
     }
 
     /// Forward pass
@@ -262,9 +294,20 @@ impl MultiHeadAttention {
         let kv_hidden_size = num_kv_heads * head_dim;
 
         // Project Q, K, V (autograd-tracked matmuls)
-        let q = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
-        let k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
-        let v = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
+        let mut q = matmul(x, &self.w_q, seq_len, hidden_size, q_dim);
+        let mut k = matmul(x, &self.w_k, seq_len, hidden_size, kv_hidden_size);
+        let mut v = matmul(x, &self.w_v, seq_len, hidden_size, kv_hidden_size);
+
+        // Apply attention biases if present (Qwen2 architecture)
+        if let Some(ref b_q) = self.b_q {
+            q = add_bias(&q, b_q, seq_len);
+        }
+        if let Some(ref b_k) = self.b_k {
+            k = add_bias(&k, b_k, seq_len);
+        }
+        if let Some(ref b_v) = self.b_v {
+            v = add_bias(&v, b_v, seq_len);
+        }
 
         let requires_grad = q.requires_grad() || k.requires_grad() || v.requires_grad();
         let heads_per_kv = num_heads / num_kv_heads;
@@ -512,12 +555,45 @@ impl MultiHeadAttention {
 
     /// Get all parameters as a vector
     pub fn parameters(&self) -> Vec<&Tensor> {
-        vec![&self.w_q, &self.w_k, &self.w_v, &self.w_o]
+        let mut params = vec![&self.w_q, &self.w_k, &self.w_v, &self.w_o];
+        if let Some(ref b) = self.b_q { params.push(b); }
+        if let Some(ref b) = self.b_k { params.push(b); }
+        if let Some(ref b) = self.b_v { params.push(b); }
+        params
     }
 
     /// Get all parameters as mutable references for optimizer
     pub fn parameters_mut(&mut self) -> Vec<&mut Tensor> {
-        vec![&mut self.w_q, &mut self.w_k, &mut self.w_v, &mut self.w_o]
+        let mut params = vec![&mut self.w_q, &mut self.w_k, &mut self.w_v, &mut self.w_o];
+        if let Some(ref mut b) = self.b_q { params.push(b); }
+        if let Some(ref mut b) = self.b_k { params.push(b); }
+        if let Some(ref mut b) = self.b_v { params.push(b); }
+        params
+    }
+
+    /// Whether this attention layer has QKV biases
+    pub fn has_biases(&self) -> bool {
+        self.b_q.is_some()
+    }
+
+    /// Get named parameters for checkpoint serialization
+    pub fn named_parameters(&self, prefix: &str) -> Vec<(String, &Tensor)> {
+        let mut params = vec![
+            (format!("{prefix}.q_proj.weight"), &self.w_q),
+            (format!("{prefix}.k_proj.weight"), &self.w_k),
+            (format!("{prefix}.v_proj.weight"), &self.w_v),
+            (format!("{prefix}.o_proj.weight"), &self.w_o),
+        ];
+        if let Some(ref b) = self.b_q {
+            params.push((format!("{prefix}.q_proj.bias"), b));
+        }
+        if let Some(ref b) = self.b_k {
+            params.push((format!("{prefix}.k_proj.bias"), b));
+        }
+        if let Some(ref b) = self.b_v {
+            params.push((format!("{prefix}.v_proj.bias"), b));
+        }
+        params
     }
 }
 
@@ -1467,5 +1543,73 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_attention_from_params_with_biases() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+
+        let mut params = HashMap::new();
+        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+        params.insert("attn.q_proj.bias".to_string(), Tensor::from_vec(vec![0.01; hidden_size], true));
+        params.insert("attn.k_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
+        params.insert("attn.v_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
+
+        let attn = MultiHeadAttention::from_params(&config, &params, "attn");
+        assert!(attn.is_some());
+        let attn = attn.expect("should load with biases");
+        assert!(attn.has_biases());
+        assert_eq!(attn.parameters().len(), 7);
+    }
+
+    #[test]
+    fn test_attention_named_parameters_with_biases() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+
+        let mut params = HashMap::new();
+        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+        params.insert("attn.q_proj.bias".to_string(), Tensor::from_vec(vec![0.01; hidden_size], true));
+        params.insert("attn.k_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
+        params.insert("attn.v_proj.bias".to_string(), Tensor::from_vec(vec![0.01; kv_hidden_size], true));
+
+        let attn = MultiHeadAttention::from_params(&config, &params, "attn").expect("should load");
+        let named = attn.named_parameters("attn");
+        assert_eq!(named.len(), 7);
+        let names: Vec<&str> = named.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"attn.q_proj.bias"));
+        assert!(names.contains(&"attn.k_proj.bias"));
+        assert!(names.contains(&"attn.v_proj.bias"));
+    }
+
+    #[test]
+    fn test_attention_forward_with_biases() {
+        let config = TransformerConfig::tiny();
+        let hidden_size = config.hidden_size;
+        let kv_hidden_size = config.num_kv_heads * config.head_dim();
+
+        let mut params = HashMap::new();
+        params.insert("attn.q_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+        params.insert("attn.k_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.v_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true));
+        params.insert("attn.o_proj.weight".to_string(), Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true));
+        params.insert("attn.q_proj.bias".to_string(), Tensor::from_vec(vec![0.5; hidden_size], true));
+        params.insert("attn.k_proj.bias".to_string(), Tensor::from_vec(vec![0.5; kv_hidden_size], true));
+        params.insert("attn.v_proj.bias".to_string(), Tensor::from_vec(vec![0.5; kv_hidden_size], true));
+
+        let attn = MultiHeadAttention::from_params(&config, &params, "attn").expect("should load");
+        let x = Tensor::from_vec(vec![0.1; 2 * hidden_size], false);
+        let output = attn.forward(&x, 2);
+        assert_eq!(output.len(), 2 * hidden_size);
+        assert!(output.data().iter().all(|v| v.is_finite()));
     }
 }

@@ -120,6 +120,21 @@ impl TransformerBlock {
         params.extend(self.ffn.parameters_mut());
         params
     }
+
+    /// Get named parameters for checkpoint serialization.
+    /// Returns (name, tensor) pairs matching HuggingFace weight conventions.
+    pub fn named_parameters(&self) -> Vec<(String, &Tensor)> {
+        let prefix = format!("model.layers.{}", self.layer_idx);
+        let mut params = vec![
+            (format!("{prefix}.input_layernorm.weight"), &self.input_norm.weight),
+            (format!("{prefix}.post_attention_layernorm.weight"), &self.post_attn_norm.weight),
+        ];
+        params.extend(self.self_attn.named_parameters(&format!("{prefix}.self_attn")));
+        params.push((format!("{prefix}.mlp.gate_proj.weight"), &self.ffn.w_gate));
+        params.push((format!("{prefix}.mlp.up_proj.weight"), &self.ffn.w_up));
+        params.push((format!("{prefix}.mlp.down_proj.weight"), &self.ffn.w_down));
+        params
+    }
 }
 
 #[cfg(test)]
@@ -147,7 +162,7 @@ mod tests {
         let config = TransformerConfig::tiny();
         let block = TransformerBlock::new(&config, 0);
         let params = block.parameters();
-        // input_norm + post_attn_norm + 4 attn + 3 ffn = 9
+        // input_norm + post_attn_norm + 4 attn weights + 3 ffn = 9 (no biases by default)
         assert_eq!(params.len(), 9);
     }
 
