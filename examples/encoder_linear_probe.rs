@@ -30,7 +30,9 @@ fn create_encoder() -> (TransformerConfig, EncoderModel) {
     let encoder = EncoderModel::new(&config);
     println!(
         "Encoder: {} layers, hidden={}, params={}",
-        config.num_hidden_layers, config.hidden_size, encoder.num_parameters()
+        config.num_hidden_layers,
+        config.hidden_size,
+        encoder.num_parameters()
     );
     (config, encoder)
 }
@@ -45,11 +47,8 @@ fn extract_embeddings(
     let mut labels = Vec::with_capacity(total);
 
     for i in 0..total {
-        let token_ids: Vec<u32> = if i < num_safe {
-            vec![1, 2, 3, 4]
-        } else {
-            vec![50, 60, 70, 80]
-        };
+        let token_ids: Vec<u32> =
+            if i < num_safe { vec![1, 2, 3, 4] } else { vec![50, 60, 70, 80] };
         let cls = encoder.cls_embedding(&token_ids);
         let data = cls.data();
         embeddings.push(data.as_slice().expect("contiguous").to_vec());
@@ -100,7 +99,10 @@ fn evaluate_and_report(probe: &LinearProbe, embeddings: &[Vec<f32>], labels: &[u
     let baselines = vec![("majority", 0.0_f32), ("keyword", 0.35), ("linter", 0.50)];
     for c in compare_baselines(metrics.mcc, &baselines) {
         let status = if c.beats_baseline { "BEATS" } else { "LOSES" };
-        println!("  {} {}: model={:.3} vs baseline={:.3}", status, c.name, c.model_mcc, c.baseline_mcc);
+        println!(
+            "  {} {}: model={:.3} vs baseline={:.3}",
+            status, c.name, c.model_mcc, c.baseline_mcc
+        );
     }
 
     // Generalization
@@ -118,7 +120,8 @@ fn evaluate_and_report(probe: &LinearProbe, embeddings: &[Vec<f32>], labels: &[u
     // Ship gate
     println!("\n=== Ship Gate C-CLF-001 ===");
     let gate = check_ship_gate(&ci, metrics.accuracy, &gen, EscalationLevel::LinearProbe);
-    println!("  MCC: {} | Accuracy: {} | Generalization: {} | Ship: {}",
+    println!(
+        "  MCC: {} | Accuracy: {} | Generalization: {} | Ship: {}",
         if gate.mcc_passes { "PASS" } else { "FAIL" },
         if gate.accuracy_passes { "PASS" } else { "FAIL" },
         if gate.generalization_passes { "PASS" } else { "FAIL" },

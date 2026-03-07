@@ -268,7 +268,9 @@ impl TransformerConfig {
             use_bias,
             head_dim_override,
             architecture: match architecture {
-                Some(a) if a.contains("bert") || a.contains("roberta") => ModelArchitecture::Encoder,
+                Some(a) if a.contains("bert") || a.contains("roberta") => {
+                    ModelArchitecture::Encoder
+                }
                 _ => ModelArchitecture::Decoder,
             },
         })
@@ -286,9 +288,9 @@ impl TransformerConfig {
             "7B" | "qwen2.5-7b" => Ok(Self::qwen2_7b()),
             "4B" | "qwen3-4b" | "qwen3" => Ok(Self::qwen3_4b()),
             "9B" | "qwen3.5-9b" | "qwen3_5" | "qwen3.5" => Ok(Self::qwen3_5_9b()),
-            unknown => {
-                Err(format!("Unknown model size '{unknown}'. Known sizes: codebert, 0.5B, 4B, 7B, 9B"))
-            }
+            unknown => Err(format!(
+                "Unknown model size '{unknown}'. Known sizes: codebert, 0.5B, 4B, 7B, 9B"
+            )),
         }
     }
 
@@ -306,7 +308,7 @@ impl TransformerConfig {
             vocab_size: CODEBERT_VOCAB_SIZE,
             max_position_embeddings: CODEBERT_MAX_POSITION,
             rms_norm_eps: 1e-5, // LayerNorm eps for RoBERTa
-            rope_theta: 0.0,   // Not used (learned positions)
+            rope_theta: 0.0,    // Not used (learned positions)
             use_bias: true,
             head_dim_override: None,
             architecture: ModelArchitecture::Encoder,

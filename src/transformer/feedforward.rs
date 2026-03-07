@@ -238,9 +238,8 @@ impl EncoderFeedForward {
         let b_up_slice = self.b_up.data().as_slice().expect("contiguous");
 
         // GELU(W_up * x + b_up)
-        let activated: Vec<f32> = (0..seq_len * inter)
-            .map(|i| gelu(up_slice[i] + b_up_slice[i % inter]))
-            .collect();
+        let activated: Vec<f32> =
+            (0..seq_len * inter).map(|i| gelu(up_slice[i] + b_up_slice[i % inter])).collect();
         let activated_t = Tensor::from_vec(activated, true);
 
         // Down projection: (seq_len, inter) @ (inter, h) + bias = (seq_len, h)
@@ -249,9 +248,8 @@ impl EncoderFeedForward {
         let down_slice = down_data.as_slice().expect("contiguous");
         let b_down_slice = self.b_down.data().as_slice().expect("contiguous");
 
-        let output: Vec<f32> = (0..seq_len * h)
-            .map(|i| down_slice[i] + b_down_slice[i % h])
-            .collect();
+        let output: Vec<f32> =
+            (0..seq_len * h).map(|i| down_slice[i] + b_down_slice[i % h]).collect();
         Tensor::from_vec(output, true)
     }
 
@@ -403,10 +401,7 @@ mod tests {
             "layer.output.dense.weight".to_string(),
             Tensor::from_vec(vec![0.1; inter * h], true),
         );
-        params.insert(
-            "layer.output.dense.bias".to_string(),
-            Tensor::from_vec(vec![0.0; h], true),
-        );
+        params.insert("layer.output.dense.bias".to_string(), Tensor::from_vec(vec![0.0; h], true));
 
         let ffn = EncoderFeedForward::from_params(&config, &params, "layer");
         assert!(ffn.is_some());

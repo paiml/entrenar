@@ -534,7 +534,10 @@ fn enc_006_roberta_embedding_mapping() {
 #[test]
 fn enc_006_roberta_attention_mapping() {
     assert_eq!(
-        map_weight_name("roberta.encoder.layer.0.attention.self.query.weight", Architecture::RoBERTa),
+        map_weight_name(
+            "roberta.encoder.layer.0.attention.self.query.weight",
+            Architecture::RoBERTa
+        ),
         "encoder.layers.0.self_attn.q_proj.weight"
     );
     assert_eq!(
@@ -542,11 +545,17 @@ fn enc_006_roberta_attention_mapping() {
         "encoder.layers.3.self_attn.k_proj.weight"
     );
     assert_eq!(
-        map_weight_name("roberta.encoder.layer.11.attention.self.value.bias", Architecture::RoBERTa),
+        map_weight_name(
+            "roberta.encoder.layer.11.attention.self.value.bias",
+            Architecture::RoBERTa
+        ),
         "encoder.layers.11.self_attn.v_proj.bias"
     );
     assert_eq!(
-        map_weight_name("roberta.encoder.layer.5.attention.output.dense.weight", Architecture::RoBERTa),
+        map_weight_name(
+            "roberta.encoder.layer.5.attention.output.dense.weight",
+            Architecture::RoBERTa
+        ),
         "encoder.layers.5.self_attn.o_proj.weight"
     );
 }
@@ -554,11 +563,17 @@ fn enc_006_roberta_attention_mapping() {
 #[test]
 fn enc_006_roberta_layernorm_mapping() {
     assert_eq!(
-        map_weight_name("roberta.encoder.layer.0.attention.output.LayerNorm.weight", Architecture::RoBERTa),
+        map_weight_name(
+            "roberta.encoder.layer.0.attention.output.LayerNorm.weight",
+            Architecture::RoBERTa
+        ),
         "encoder.layers.0.input_layernorm.weight"
     );
     assert_eq!(
-        map_weight_name("roberta.encoder.layer.0.attention.output.LayerNorm.bias", Architecture::RoBERTa),
+        map_weight_name(
+            "roberta.encoder.layer.0.attention.output.LayerNorm.bias",
+            Architecture::RoBERTa
+        ),
         "encoder.layers.0.input_layernorm.bias"
     );
     assert_eq!(

@@ -154,8 +154,8 @@ impl LearnedPositionEmbedding {
     /// Output is (seq_len × hidden_size, flattened) — add element-wise to token embeddings.
     pub fn forward(&self, seq_len: usize) -> Tensor {
         let clamped_len = seq_len.min(self.max_positions);
-        let weight_slice =
-            &self.weight.data().as_slice().expect("position weight contiguous")[..clamped_len * self.hidden_size];
+        let weight_slice = &self.weight.data().as_slice().expect("position weight contiguous")
+            [..clamped_len * self.hidden_size];
         // For positions beyond max, repeat the last position embedding
         if seq_len <= self.max_positions {
             Tensor::from_vec(weight_slice.to_vec(), true)
@@ -163,8 +163,8 @@ impl LearnedPositionEmbedding {
             let mut output = weight_slice.to_vec();
             let last_start = (self.max_positions - 1) * self.hidden_size;
             let last_end = last_start + self.hidden_size;
-            let last_pos =
-                &self.weight.data().as_slice().expect("position weight contiguous")[last_start..last_end];
+            let last_pos = &self.weight.data().as_slice().expect("position weight contiguous")
+                [last_start..last_end];
             for _ in self.max_positions..seq_len {
                 output.extend_from_slice(last_pos);
             }

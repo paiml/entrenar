@@ -19,7 +19,6 @@ pub mod classification;
 pub mod classify_pipeline;
 pub mod classify_trainer;
 pub mod classify_tuner;
-pub mod linear_probe;
 mod corpus;
 pub mod data_parallel;
 mod device;
@@ -29,6 +28,7 @@ pub mod gradient_server;
 pub mod instruct_corpus;
 pub mod instruct_pipeline;
 pub mod instruct_trainer;
+pub mod linear_probe;
 pub mod multi_adapter_pipeline;
 mod popperian;
 mod reproducibility;
@@ -62,12 +62,6 @@ pub use classify_tuner::{
     TrialSummary, TuneConfig, TuneResult, TuneScheduler, TuneSearcher, TuneStrategy,
 };
 pub use corpus::{CorpusStats, SampleMetadata, TestGenCorpus, TestGenSample};
-pub use linear_probe::{
-    binary_mcc, bootstrap_mcc_ci, check_ship_gate, compare_baselines,
-    compute_confidence_scores, evaluate as evaluate_classification, generalization_test,
-    should_escalate, BaselineComparison, BootstrapCI, ClassificationMetrics, ConfidenceScore,
-    EscalationLevel, GeneralizationResult, LinearProbe, MlpProbe, ShipGateResult,
-};
 pub use data_parallel::{
     average_gradients, has_non_finite, shard_samples, DataParallelCoordinator,
 };
@@ -89,6 +83,12 @@ pub use instruct_pipeline::{
 };
 pub use instruct_trainer::{
     InstructEpochMetrics, InstructTrainResult, InstructTrainer, InstructTrainingConfig,
+};
+pub use linear_probe::{
+    binary_mcc, bootstrap_mcc_ci, check_ship_gate, compare_baselines, compute_confidence_scores,
+    evaluate as evaluate_classification, generalization_test, should_escalate, BaselineComparison,
+    BootstrapCI, ClassificationMetrics, ConfidenceScore, EscalationLevel, GeneralizationResult,
+    LinearProbe, MlpProbe, ShipGateResult,
 };
 pub use multi_adapter_pipeline::{
     AdapterConfig, AdapterSchedule, AdapterSlot, MultiAdapterPipeline,

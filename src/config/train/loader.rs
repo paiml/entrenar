@@ -729,8 +729,7 @@ fn train_loop_cuda(
 
     // ALB-082: Scaling law predictor for early convergence ceiling detection
     let mut scaling_predictor = ScalingLawPredictor::new();
-    let tokens_per_step = tokens_per_batch
-        * spec.training.gradient_accumulation.unwrap_or(1);
+    let tokens_per_step = tokens_per_batch * spec.training.gradient_accumulation.unwrap_or(1);
 
     // Track loss history for TUI sparkline
     let mut loss_history: Vec<f32> = Vec::new();
@@ -1448,9 +1447,7 @@ struct ScalingLawPredictor {
 
 impl ScalingLawPredictor {
     fn new() -> Self {
-        Self {
-            history: Vec::new(),
-        }
+        Self { history: Vec::new() }
     }
 
     fn record(&mut self, tokens: usize, val_loss: f32) {

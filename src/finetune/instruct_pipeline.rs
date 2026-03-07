@@ -2064,7 +2064,8 @@ impl InstructPipeline {
 
             // Apply lm_head to get logits
             let lm_weight = self.model.lm_head_weight();
-            let logits = crate::autograd::matmul(&hidden, lm_weight, seq_len, hidden_size, vocab_size);
+            let logits =
+                crate::autograd::matmul(&hidden, lm_weight, seq_len, hidden_size, vocab_size);
 
             // Extract logits for last position
             let logits_data = logits.data();
@@ -2145,12 +2146,7 @@ pub struct GenerateConfig {
 
 impl Default for GenerateConfig {
     fn default() -> Self {
-        Self {
-            max_new_tokens: 256,
-            temperature: 0.7,
-            top_k: 50,
-            stop_tokens: Vec::new(),
-        }
+        Self { max_new_tokens: 256, temperature: 0.7, top_k: 50, stop_tokens: Vec::new() }
     }
 }
 
@@ -2158,12 +2154,7 @@ impl GenerateConfig {
     /// Create a greedy decoding config (deterministic, always picks highest probability token).
     #[must_use]
     pub fn greedy(max_new_tokens: usize) -> Self {
-        Self {
-            max_new_tokens,
-            temperature: 0.0,
-            top_k: 0,
-            stop_tokens: Vec::new(),
-        }
+        Self { max_new_tokens, temperature: 0.0, top_k: 0, stop_tokens: Vec::new() }
     }
 }
 
@@ -2183,11 +2174,9 @@ fn sample_token(logits: &[f32], temperature: f32, top_k: usize) -> u32 {
     let scaled: Vec<f32> = logits.iter().map(|&l| l / temperature).collect();
 
     // Top-k filtering
-    let mut indices_and_logits: Vec<(usize, f32)> =
-        scaled.iter().copied().enumerate().collect();
-    indices_and_logits.sort_unstable_by(|(_, a), (_, b)| {
-        b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let mut indices_and_logits: Vec<(usize, f32)> = scaled.iter().copied().enumerate().collect();
+    indices_and_logits
+        .sort_unstable_by(|(_, a), (_, b)| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
 
     let k = if top_k > 0 && top_k < indices_and_logits.len() {
         top_k

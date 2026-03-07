@@ -103,11 +103,8 @@ impl LinearProbe {
         let bias_data = self.bias.data();
         let bias_slice = bias_data.as_slice().expect("contiguous bias");
 
-        let output: Vec<f32> = logits_slice
-            .iter()
-            .zip(bias_slice.iter())
-            .map(|(&l, &b)| l + b)
-            .collect();
+        let output: Vec<f32> =
+            logits_slice.iter().zip(bias_slice.iter()).map(|(&l, &b)| l + b).collect();
         Tensor::from_vec(output, logits.requires_grad())
     }
 
@@ -452,7 +449,9 @@ fn softmax_vec(logits: &Tensor) -> Vec<f32> {
 /// MCC = (TP*TN - FP*FN) / sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
 pub fn binary_mcc(tp: usize, tn: usize, fp: usize, fn_count: usize) -> f32 {
     let numerator = (tp * tn) as f64 - (fp * fn_count) as f64;
-    let denom = ((tp + fp) as f64 * (tp + fn_count) as f64 * (tn + fp) as f64 * (tn + fn_count) as f64).sqrt();
+    let denom =
+        ((tp + fp) as f64 * (tp + fn_count) as f64 * (tn + fp) as f64 * (tn + fn_count) as f64)
+            .sqrt();
     if denom < 1e-10 {
         0.0
     } else {
@@ -461,7 +460,11 @@ pub fn binary_mcc(tp: usize, tn: usize, fp: usize, fn_count: usize) -> f32 {
 }
 
 /// Evaluate predictions against ground truth (CLF-003).
-pub fn evaluate(predictions: &[usize], labels: &[usize], num_classes: usize) -> ClassificationMetrics {
+pub fn evaluate(
+    predictions: &[usize],
+    labels: &[usize],
+    num_classes: usize,
+) -> ClassificationMetrics {
     assert_eq!(predictions.len(), labels.len());
     let n = predictions.len();
 
@@ -522,7 +525,11 @@ fn multiclass_mcc(cm: &[Vec<usize>], k: usize) -> f32 {
 
     let numerator = c * n - s;
     let denom = ((n * n - p) * (n * n - t)).sqrt();
-    if denom < 1e-10 { 0.0 } else { (numerator / denom) as f32 }
+    if denom < 1e-10 {
+        0.0
+    } else {
+        (numerator / denom) as f32
+    }
 }
 
 /// Compute bootstrap confidence interval for MCC (CLF-003).
@@ -684,10 +691,7 @@ pub struct BaselineComparison {
 /// - Majority class: MCC = 0.0
 /// - Keyword regex: MCC ~0.3-0.5
 /// - bashrs linter: MCC ~0.4-0.6
-pub fn compare_baselines(
-    model_mcc: f32,
-    baseline_mccs: &[(&str, f32)],
-) -> Vec<BaselineComparison> {
+pub fn compare_baselines(model_mcc: f32, baseline_mccs: &[(&str, f32)]) -> Vec<BaselineComparison> {
     baseline_mccs
         .iter()
         .map(|&(name, baseline_mcc)| BaselineComparison {
@@ -736,12 +740,7 @@ pub fn generalization_test(
 
     let detection_rate = if total > 0 { detected as f32 / total as f32 } else { 0.0 };
 
-    GeneralizationResult {
-        total,
-        detected,
-        detection_rate,
-        passes: detection_rate >= 0.5,
-    }
+    GeneralizationResult { total, detected, detection_rate, passes: detection_rate >= 0.5 }
 }
 
 // =============================================================================
@@ -961,9 +960,8 @@ mod tests {
     fn clf_006_generalization_all_detected() {
         let mut probe = LinearProbe::new(4, 2);
         // Train probe to always predict unsafe (class 1) for negative embeddings
-        let embeddings: Vec<Vec<f32>> = (0..20)
-            .map(|i| if i < 10 { vec![1.0; 4] } else { vec![-1.0; 4] })
-            .collect();
+        let embeddings: Vec<Vec<f32>> =
+            (0..20).map(|i| if i < 10 { vec![1.0; 4] } else { vec![-1.0; 4] }).collect();
         let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
         probe.train(&embeddings, &labels, 30, 0.1, None);
 
@@ -988,7 +986,8 @@ mod tests {
     #[test]
     fn clf_ship_gate_passes() {
         let ci = BootstrapCI { estimate: 0.4, lower: 0.25, upper: 0.55, n_bootstrap: 100 };
-        let gen = GeneralizationResult { total: 50, detected: 30, detection_rate: 0.6, passes: true };
+        let gen =
+            GeneralizationResult { total: 50, detected: 30, detection_rate: 0.6, passes: true };
         let result = check_ship_gate(&ci, 0.96, &gen, EscalationLevel::LinearProbe);
         assert!(result.ship_ready);
         assert!(result.mcc_passes);
@@ -999,7 +998,8 @@ mod tests {
     #[test]
     fn clf_ship_gate_fails_mcc() {
         let ci = BootstrapCI { estimate: 0.15, lower: 0.10, upper: 0.20, n_bootstrap: 100 };
-        let gen = GeneralizationResult { total: 50, detected: 30, detection_rate: 0.6, passes: true };
+        let gen =
+            GeneralizationResult { total: 50, detected: 30, detection_rate: 0.6, passes: true };
         let result = check_ship_gate(&ci, 0.96, &gen, EscalationLevel::LinearProbe);
         assert!(!result.ship_ready);
         assert!(!result.mcc_passes);
@@ -1008,7 +1008,8 @@ mod tests {
     #[test]
     fn clf_ship_gate_fails_generalization() {
         let ci = BootstrapCI { estimate: 0.4, lower: 0.25, upper: 0.55, n_bootstrap: 100 };
-        let gen = GeneralizationResult { total: 50, detected: 20, detection_rate: 0.4, passes: false };
+        let gen =
+            GeneralizationResult { total: 50, detected: 20, detection_rate: 0.4, passes: false };
         let result = check_ship_gate(&ci, 0.96, &gen, EscalationLevel::LinearProbe);
         assert!(!result.ship_ready);
         assert!(!result.generalization_passes);
@@ -1057,12 +1058,7 @@ mod tests {
     #[test]
     fn mlp_probe_train_learns_xor() {
         // XOR is not linearly separable — MLP should learn it, linear probe can't
-        let embeddings = vec![
-            vec![0.0, 0.0],
-            vec![0.0, 1.0],
-            vec![1.0, 0.0],
-            vec![1.0, 1.0],
-        ];
+        let embeddings = vec![vec![0.0, 0.0], vec![0.0, 1.0], vec![1.0, 0.0], vec![1.0, 1.0]];
         let labels = vec![0, 1, 1, 0]; // XOR pattern
 
         // Repeat data for more training signal
@@ -1079,17 +1075,18 @@ mod tests {
         let pred_11 = mlp.predict(&[1.0, 1.0]);
 
         // MLP should learn XOR (at least partially)
-        let correct = (pred_00 == 0) as u8 + (pred_01 == 1) as u8
-            + (pred_10 == 1) as u8 + (pred_11 == 0) as u8;
+        let correct = (pred_00 == 0) as u8
+            + (pred_01 == 1) as u8
+            + (pred_10 == 1) as u8
+            + (pred_11 == 0) as u8;
         assert!(correct >= 3, "MLP should learn XOR (got {correct}/4 correct)");
     }
 
     #[test]
     fn mlp_probe_train_reduces_loss() {
         let mut probe = MlpProbe::new(8, 16, 2);
-        let embeddings: Vec<Vec<f32>> = (0..20)
-            .map(|i| if i < 10 { vec![1.0; 8] } else { vec![-1.0; 8] })
-            .collect();
+        let embeddings: Vec<Vec<f32>> =
+            (0..20).map(|i| if i < 10 { vec![1.0; 8] } else { vec![-1.0; 8] }).collect();
         let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
 
         let loss_1 = probe.train(&embeddings, &labels, 1, 0.01, None, 0.0);
