@@ -282,39 +282,11 @@ impl TransformerTrainer {
         name: &str,
         architecture: &str,
     ) -> crate::Result<()> {
-        // Collect all model parameters with proper names
-        let model_params = self.model.parameters();
-        let num_total = model_params.len();
-
-        // Build parameter names matching transformer architecture conventions
-        let num_layers = (num_total - 2) / 9;
-        let mut names: Vec<String> = Vec::with_capacity(num_total);
-
-        names.push("model.embed_tokens.weight".to_string());
-        names.push("model.norm.weight".to_string());
-
-        // Each layer has: input_norm, post_attn_norm, 4 attention weights, 3 FFN weights = 9 params
-        for layer in 0..num_layers {
-            names.push(format!("model.layers.{layer}.input_layernorm.weight"));
-            names.push(format!("model.layers.{layer}.post_attention_layernorm.weight"));
-            names.push(format!("model.layers.{layer}.self_attn.q_proj.weight"));
-            names.push(format!("model.layers.{layer}.self_attn.k_proj.weight"));
-            names.push(format!("model.layers.{layer}.self_attn.v_proj.weight"));
-            names.push(format!("model.layers.{layer}.self_attn.o_proj.weight"));
-            names.push(format!("model.layers.{layer}.mlp.gate_proj.weight"));
-            names.push(format!("model.layers.{layer}.mlp.up_proj.weight"));
-            names.push(format!("model.layers.{layer}.mlp.down_proj.weight"));
-        }
-
-        // LM head if present
-        if names.len() < num_total {
-            names.push("lm_head.weight".to_string());
-        }
-
-        // Pair names with cloned parameters (clone outside loop via iterator)
-        let params: Vec<(String, Tensor)> = names
+        // Use named_parameters() for correct name mapping (handles attention biases etc.)
+        let params: Vec<(String, Tensor)> = self
+            .model
+            .named_parameters()
             .into_iter()
-            .zip(model_params)
             .map(|(name, tensor)| (name, tensor.clone()))
             .collect();
 
