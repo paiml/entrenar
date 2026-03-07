@@ -213,6 +213,10 @@ reqwest = { version = "0.12", features = ["json", "blocking"], optional = true }
 zip = "2.2"  # RO-Crate ZIP export (requires native compression, not available on WASM)
 alimentar = { version = "0.2.4", optional = true }  # Dataset loading with parquet/arrow support (gated behind parquet feature)
 
+[build-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml_ng = "0.10"
+
 [dev-dependencies]
 proptest = "1.4"
 approx = "0.5"
