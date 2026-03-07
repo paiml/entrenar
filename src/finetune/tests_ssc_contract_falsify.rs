@@ -9,7 +9,7 @@
 
 use crate::autograd::Tensor;
 use crate::finetune::linear_probe::LinearProbe;
-use crate::transformer::{EncoderModel, TransformerConfig, ModelArchitecture};
+use crate::transformer::{EncoderModel, ModelArchitecture, TransformerConfig};
 
 fn tiny_encoder_config() -> TransformerConfig {
     TransformerConfig {
@@ -167,11 +167,11 @@ fn falsify_probe_002_probability_simplex() {
 
     // Test with realistic embedding patterns (normal range for encoder outputs)
     let test_embeddings = vec![
-        vec![0.0f32; 32],         // zeros
-        vec![1.0f32; 32],         // ones
-        vec![-1.0f32; 32],        // negative
-        vec![0.5f32; 32],         // moderate positive
-        vec![-0.5f32; 32],        // moderate negative
+        vec![0.0f32; 32],                                   // zeros
+        vec![1.0f32; 32],                                   // ones
+        vec![-1.0f32; 32],                                  // negative
+        vec![0.5f32; 32],                                   // moderate positive
+        vec![-0.5f32; 32],                                  // moderate negative
         (0..32).map(|i| (i as f32 - 16.0) * 0.1).collect(), // mixed gradient
     ];
 
@@ -267,8 +267,8 @@ fn falsify_enc_002_no_nan_inf() {
 
     // Test with various token ID patterns
     let test_cases: Vec<Vec<u32>> = vec![
-        vec![0, 0, 0],          // all zeros
-        vec![99, 99, 99],       // near vocab limit
+        vec![0, 0, 0],           // all zeros
+        vec![99, 99, 99],        // near vocab limit
         vec![1],                 // single token
         vec![1, 50, 99, 25, 75], // mixed
     ];

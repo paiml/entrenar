@@ -41,9 +41,7 @@ impl EncoderModel {
     pub fn new(config: &TransformerConfig) -> Self {
         let max_positions = config.max_position_embeddings;
         let eps = config.rms_norm_eps;
-        let layers = (0..config.num_hidden_layers)
-            .map(|i| EncoderBlock::new(config, i))
-            .collect();
+        let layers = (0..config.num_hidden_layers).map(|i| EncoderBlock::new(config, i)).collect();
 
         Self {
             config: config.clone(),
@@ -86,9 +84,8 @@ impl EncoderModel {
         // Token type embeddings are optional (RoBERTa has them but sets to zero)
         // CodeBERT has type_vocab_size=1, standard BERT/RoBERTa has 2.
         // Infer from actual tensor shape rather than hardcoding.
-        let token_type_embeddings = params
-            .get("encoder.token_type_embeddings.weight")
-            .and_then(|tensor| {
+        let token_type_embeddings =
+            params.get("encoder.token_type_embeddings.weight").and_then(|tensor| {
                 let type_vocab_size = tensor.len() / config.hidden_size;
                 if type_vocab_size == 0 || tensor.len() != type_vocab_size * config.hidden_size {
                     return None;

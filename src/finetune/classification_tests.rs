@@ -436,7 +436,10 @@ fn enc_007_cls_pool_extracts_first_token() {
     let head = ClassificationHead::new(4, 2);
     // 3 tokens, hidden_size=4
     // Position 0: [1,2,3,4], Position 1: [5,6,7,8], Position 2: [9,10,11,12]
-    let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0], false);
+    let hidden = Tensor::from_vec(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        false,
+    );
     let pooled = head.cls_pool(&hidden);
     assert_eq!(pooled.len(), 4);
     let data = pooled.data();
@@ -449,7 +452,10 @@ fn enc_007_cls_pool_extracts_first_token() {
 #[test]
 fn enc_007_last_token_pool_extracts_last() {
     let head = ClassificationHead::new(4, 2);
-    let hidden = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0], false);
+    let hidden = Tensor::from_vec(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        false,
+    );
     let pooled = head.last_token_pool(&hidden, 3);
     assert_eq!(pooled.len(), 4);
     let data = pooled.data();
@@ -462,8 +468,14 @@ fn enc_007_last_token_pool_extracts_last() {
 #[test]
 fn enc_007_pooling_strategy_from_architecture() {
     use crate::transformer::ModelArchitecture;
-    assert_eq!(PoolingStrategy::from_architecture(ModelArchitecture::Encoder), PoolingStrategy::Cls);
-    assert_eq!(PoolingStrategy::from_architecture(ModelArchitecture::Decoder), PoolingStrategy::Mean);
+    assert_eq!(
+        PoolingStrategy::from_architecture(ModelArchitecture::Encoder),
+        PoolingStrategy::Cls
+    );
+    assert_eq!(
+        PoolingStrategy::from_architecture(ModelArchitecture::Decoder),
+        PoolingStrategy::Mean
+    );
 }
 
 #[test]

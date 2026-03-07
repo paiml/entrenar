@@ -24,11 +24,6 @@ pub mod wgpu_block;
 
 pub use attention::{LoRAProjection, MultiHeadAttention, MultiHeadAttentionWithLoRA};
 pub use config::{ModelArchitecture, TransformerConfig};
-pub use embedding::LearnedPositionEmbedding;
-pub use encoder::EncoderModel;
-pub use encoder_block::EncoderBlock;
-pub use feedforward::EncoderFeedForward;
-pub use norm::LayerNorm;
 #[cfg(feature = "cuda")]
 pub use cuda_block::{
     BlockWeights, CudaBlock, CudaGradWorkspace, CudaNf4TransformerBlock, CudaTransformerBlock,
@@ -38,7 +33,12 @@ pub use cuda_block::{
 pub use cuda_block::{CudaBlock, CudaTransformerBlock};
 #[cfg(feature = "cuda")]
 pub(crate) use cuda_block::{CudaBlockScratch, CudaLoraGradWorkspace, GpuLoraOptimizerState};
+pub use embedding::LearnedPositionEmbedding;
+pub use encoder::EncoderModel;
+pub use encoder_block::EncoderBlock;
+pub use feedforward::EncoderFeedForward;
 pub use model::Transformer;
+pub use norm::LayerNorm;
 pub use weights::{load_safetensors_weights, validate_weights, Architecture};
 #[cfg(feature = "gpu")]
 pub use wgpu_block::WgpuForwardPass;

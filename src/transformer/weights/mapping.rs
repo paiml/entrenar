@@ -5,10 +5,8 @@ use super::Architecture;
 /// Map RoBERTa/CodeBERT weight names to entrenar encoder convention (ENC-006).
 fn map_roberta_weight_name(name: &str) -> String {
     // Strip roberta. or bert. prefix
-    let stripped = name
-        .strip_prefix("roberta.")
-        .or_else(|| name.strip_prefix("bert."))
-        .unwrap_or(name);
+    let stripped =
+        name.strip_prefix("roberta.").or_else(|| name.strip_prefix("bert.")).unwrap_or(name);
 
     // Embeddings
     if stripped == "embeddings.word_embeddings.weight" {
