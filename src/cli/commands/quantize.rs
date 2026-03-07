@@ -48,8 +48,7 @@ fn save_quantized_safetensors(
 
         // Scale factors as F32
         let scale_name = format!("{name}.__scale");
-        let scale_bytes: Vec<u8> =
-            qt.params.scales.iter().flat_map(|s| s.to_le_bytes()).collect();
+        let scale_bytes: Vec<u8> = qt.params.scales.iter().flat_map(|s| s.to_le_bytes()).collect();
         let scale_shape = vec![qt.params.scales.len()];
         scale_buffers.push((scale_name, scale_bytes, scale_shape));
     }
@@ -72,10 +71,7 @@ fn save_quantized_safetensors(
     // Metadata
     let mut metadata = HashMap::new();
     metadata.insert("quantization".to_string(), format!("int{}", args.bits));
-    metadata.insert(
-        "method".to_string(),
-        format!("{:?}", args.method).to_lowercase(),
-    );
+    metadata.insert("method".to_string(), format!("{:?}", args.method).to_lowercase());
     metadata.insert("num_tensors".to_string(), quantized_tensors.len().to_string());
 
     let safetensor_bytes = safetensors::serialize(views, Some(metadata))
@@ -261,10 +257,7 @@ mod tests {
         // Should have weight tensor (I8) and scale tensor (F32)
         let names: Vec<&str> = tensors.names().into_iter().collect();
         assert!(names.contains(&"test_weight"), "Must contain weight tensor");
-        assert!(
-            names.contains(&"test_weight.__scale"),
-            "Must contain scale tensor"
-        );
+        assert!(names.contains(&"test_weight.__scale"), "Must contain scale tensor");
 
         // Verify dtype
         let weight = tensors.tensor("test_weight").unwrap();

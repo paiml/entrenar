@@ -1021,10 +1021,7 @@ impl CudaTransformerTrainer {
         // Download last position logits only: logits_buf[seq_len-1, :]
         let offset = (seq_len - 1) * vocab_size;
         let mut logits = vec![0.0f32; vocab_size];
-        self.gpu_training
-            .logits_buf
-            .copy_to_host_at(&mut logits, offset)
-            .ok()?;
+        self.gpu_training.logits_buf.copy_to_host_at(&mut logits, offset).ok()?;
 
         Some(logits)
     }
