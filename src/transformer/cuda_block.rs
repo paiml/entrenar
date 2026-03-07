@@ -277,14 +277,14 @@ impl CudaGradWorkspace {
     pub fn zero_norm_grads(&mut self, zero_buf: &[f32]) -> Result<()> {
         let n = self.grad_input_norm.len();
         self.grad_input_norm.copy_from_host(&zero_buf[..n]).map_err(|e| {
-            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                format!("Failed to zero grad_input_norm: {e:?}"),
-            )
+            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                "Failed to zero grad_input_norm: {e:?}"
+            ))
         })?;
         self.grad_post_attn_norm.copy_from_host(&zero_buf[..n]).map_err(|e| {
-            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(
-                format!("Failed to zero grad_post_attn_norm: {e:?}"),
-            )
+            crate::autograd::cuda_tensor::CudaTensorError::TransferFailed(format!(
+                "Failed to zero grad_post_attn_norm: {e:?}"
+            ))
         })?;
         Ok(())
     }
