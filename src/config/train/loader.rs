@@ -629,6 +629,12 @@ fn log_run_params(store: &SqliteBackend, run_id: &str, spec: &TrainSpec, device:
 
 /// Training loop for GPU CudaTransformerTrainer
 ///
+fn print_max_steps(max_steps: Option<usize>) {
+    if let Some(ms) = max_steps {
+        println!("  max_steps: {} (will stop early when reached)", ms);
+    }
+}
+
 /// ALB-068: Manual batch loop for intermediate checkpoint saving.
 /// R-004: Gradient norm logging. R-008: Graceful shutdown.
 /// R-009: Multi-checkpoint retention. R-012: MFU tracking.
@@ -719,9 +725,12 @@ fn train_loop_cuda(
         &gpu_name,
     );
 
-    if let Some(max_steps) = spec.training.max_steps {
-        println!("  max_steps: {} (will stop early when reached)", max_steps);
-    }
+    print_max_steps(spec.training.max_steps);
+
+    // ALB-082: Scaling law predictor for early convergence ceiling detection
+    let mut scaling_predictor = ScalingLawPredictor::new();
+    let tokens_per_step = tokens_per_batch
+        * spec.training.gradient_accumulation.unwrap_or(1);
 
     // Track loss history for TUI sparkline
     let mut loss_history: Vec<f32> = Vec::new();
@@ -913,6 +922,8 @@ fn train_loop_cuda(
                     &mut jsonl_file,
                     seed,
                     loss_ema,
+                    &mut scaling_predictor,
+                    tokens_per_step,
                 );
                 last_save_step = current_step;
             }
@@ -1075,6 +1086,12 @@ fn train_loop_cuda_distributed(
     let max_checkpoints = spec.training.max_checkpoints;
     let seed = spec.training.seed.unwrap_or(42);
 
+    // ALB-082: Scaling law predictor for DDP path
+    let mut scaling_predictor = ScalingLawPredictor::new();
+    let seq_len_ddp = spec.data.seq_len.unwrap_or(128);
+    let grad_accum_ddp = spec.training.gradient_accumulation.unwrap_or(1);
+    let tokens_per_step_ddp = spec.data.batch_size * seq_len_ddp * grad_accum_ddp;
+
     let model_name = spec
         .model
         .path
@@ -1146,6 +1163,8 @@ fn train_loop_cuda_distributed(
                         &mut None,
                         seed,
                         0.0,
+                        &mut scaling_predictor,
+                        tokens_per_step_ddp,
                     );
                     last_save_step = current_step;
                 }
@@ -1418,13 +1437,75 @@ fn load_val_batches(spec: &TrainSpec) -> Vec<LMBatch> {
     Vec::new()
 }
 
+/// ALB-082: Scaling law predictor — fits L(D) = a - b × ln(D) to eval history.
+///
+/// After 3+ eval checkpoints, predicts val_ppl at max_steps. Warns if
+/// predicted improvement < 10% over current val_ppl.
+struct ScalingLawPredictor {
+    /// (cumulative_tokens, val_loss) pairs
+    history: Vec<(f64, f64)>,
+}
+
+impl ScalingLawPredictor {
+    fn new() -> Self {
+        Self {
+            history: Vec::new(),
+        }
+    }
+
+    fn record(&mut self, tokens: usize, val_loss: f32) {
+        self.history.push((tokens as f64, val_loss as f64));
+    }
+
+    /// Fit L(D) = a - b × ln(D) via ordinary least squares.
+    /// Returns (a, b) or None if < 3 data points.
+    fn fit(&self) -> Option<(f64, f64)> {
+        if self.history.len() < 3 {
+            return None;
+        }
+        // OLS: y = a + b*x where x = ln(tokens), y = val_loss, b is negative
+        let n = self.history.len() as f64;
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        let mut sum_xy = 0.0;
+        let mut sum_xx = 0.0;
+        for &(tokens, loss) in &self.history {
+            let x = tokens.ln();
+            sum_x += x;
+            sum_y += loss;
+            sum_xy += x * loss;
+            sum_xx += x * x;
+        }
+        let denom = n * sum_xx - sum_x * sum_x;
+        if denom.abs() < 1e-12 {
+            return None;
+        }
+        let b = (n * sum_xy - sum_x * sum_y) / denom;
+        let a = (sum_y - b * sum_x) / n;
+        // b should be negative (loss decreases with tokens)
+        Some((a, -b)) // Return (a, b) where L(D) = a - b*ln(D), b > 0
+    }
+
+    /// Predict val_loss at given token count using fitted parameters.
+    fn predict(&self, target_tokens: usize) -> Option<(f64, f64, f64)> {
+        let (a, b) = self.fit()?;
+        let predicted_loss = a - b * (target_tokens as f64).ln();
+        let predicted_ppl = predicted_loss.exp();
+        Some((predicted_loss, predicted_ppl, b))
+    }
+}
+
 /// R-005: Run validation evaluation and log results.
+/// ALB-082: Includes scaling law prediction after 3+ eval points.
 #[cfg(feature = "cuda")]
 fn run_validation_eval(
     trainer: &mut CudaTransformerTrainer,
     val_batches: &[LMBatch],
     step: usize,
     jsonl_file: &mut Option<std::fs::File>,
+    predictor: &mut ScalingLawPredictor,
+    tokens_per_step: usize,
+    max_steps: Option<usize>,
 ) {
     if val_batches.is_empty() {
         return;
@@ -1443,21 +1524,56 @@ fn run_validation_eval(
     }
     let val_loss = total_loss / count as f32;
     let val_ppl = crate::train::perplexity(val_loss);
-    println!(
-        "  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches)",
-        step, val_loss, val_ppl, count
-    );
+    let cumulative_tokens = step * tokens_per_step;
 
-    // Log to JSONL
+    // ALB-082: Record eval point and predict
+    predictor.record(cumulative_tokens, val_loss);
+
+    let target_tokens = max_steps.unwrap_or(step * 2) * tokens_per_step;
+    let prediction = predictor.predict(target_tokens);
+
+    // Build JSONL entry (common fields + optional prediction fields)
+    let mut entry = serde_json::json!({
+        "type": "eval",
+        "step": step,
+        "val_loss": val_loss,
+        "val_ppl": val_ppl,
+        "cumulative_tokens": cumulative_tokens,
+        "timestamp": now_ms(),
+    });
+
+    if let Some((pred_loss, pred_ppl, slope)) = prediction {
+        let target_steps = target_tokens / tokens_per_step;
+        println!(
+            "  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches) \
+             predicted_ppl={:.1} at step {} (slope={:.4})",
+            step, val_loss, val_ppl, count, pred_ppl, target_steps, slope
+        );
+        // Warn if predicted improvement < 10%
+        let improvement = (val_ppl as f64 - pred_ppl) / val_ppl as f64;
+        if improvement < 0.10 && predictor.history.len() >= 4 {
+            println!(
+                "  [WARN] Scaling law predicts only {:.1}% improvement by step {} \
+                 (val_ppl {:.1} → {:.1}). Consider: more data, larger model, or stopping.",
+                improvement * 100.0,
+                target_steps,
+                val_ppl,
+                pred_ppl
+            );
+        }
+        entry["predicted_final_loss"] = serde_json::json!(pred_loss);
+        entry["predicted_final_ppl"] = serde_json::json!(pred_ppl);
+        entry["scaling_slope"] = serde_json::json!(slope);
+        entry["target_steps"] = serde_json::json!(target_steps);
+    } else {
+        println!(
+            "  [eval] step={} val_loss={:.4} val_ppl={:.2} ({} batches)",
+            step, val_loss, val_ppl, count
+        );
+    }
+
     use std::io::Write;
     if let Some(ref mut f) = jsonl_file {
-        let entry = serde_json::json!({
-            "type": "eval",
-            "step": step,
-            "val_loss": val_loss,
-            "val_ppl": val_ppl,
-            "timestamp": now_ms(),
-        });
         let _ = writeln!(f, "{}", entry);
     }
 }
@@ -1477,6 +1593,8 @@ fn save_and_validate_checkpoint(
     jsonl_file: &mut Option<std::fs::File>,
     seed: u64,
     loss_ema: f64,
+    predictor: &mut ScalingLawPredictor,
+    tokens_per_step: usize,
 ) {
     let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
     // R-001: Save CPU embedding optimizer state (synchronous, small file)
@@ -1497,7 +1615,15 @@ fn save_and_validate_checkpoint(
             prune_checkpoints(&async_output_dir, max_checkpoints);
         }
     });
-    run_validation_eval(trainer, val_batches, step, jsonl_file);
+    run_validation_eval(
+        trainer,
+        val_batches,
+        step,
+        jsonl_file,
+        predictor,
+        tokens_per_step,
+        spec.training.max_steps,
+    );
 }
 
 /// R-010: Verify checkpoint file integrity after save.
