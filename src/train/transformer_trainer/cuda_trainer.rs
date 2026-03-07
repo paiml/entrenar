@@ -1198,10 +1198,7 @@ impl CudaTransformerTrainer {
         // Final RMSNorm backward
         self.profiler.begin(StepProfiler::NORM_BWD);
         // Zero grad_final_norm_weight before backward — kernel accumulates via atomicAdd
-        self.gpu_training
-            .grad_final_norm_weight
-            .copy_from_host(&self.final_norm_zero_buf)
-            .ok()?;
+        self.gpu_training.grad_final_norm_weight.copy_from_host(&self.final_norm_zero_buf).ok()?;
         rms_norm_backward(
             &self.gpu_training.blocks_output,
             &self.gpu_training.final_norm_weight,
