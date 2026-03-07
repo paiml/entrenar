@@ -661,6 +661,14 @@ fn train_loop_cuda(
     let save_interval = spec.training.save_interval;
     let max_checkpoints = spec.training.max_checkpoints;
 
+    // ALB-087: Auto eval scheduling — eval_interval defaults to save_interval
+    let eval_interval =
+        if spec.training.eval_interval > 0 { spec.training.eval_interval } else { save_interval };
+    let patience = spec.training.patience;
+    let mut best_val_loss: f32 = f32::INFINITY;
+    let mut evals_without_improvement: usize = 0;
+    let mut last_eval_step: usize = 0;
+
     // ALB-045: Initialize training state IPC for `apr monitor`
     let state = TrainingState::new(&spec.training.output_dir);
     let start_ms = now_ms();
@@ -726,6 +734,14 @@ fn train_loop_cuda(
     );
 
     print_max_steps(spec.training.max_steps);
+
+    // ALB-087: Print eval scheduling config
+    if eval_interval != save_interval {
+        println!("  eval_interval: {eval_interval} (decoupled from save_interval={save_interval})");
+    }
+    if patience > 0 {
+        println!("  early_stopping: patience={patience} eval intervals");
+    }
 
     // ALB-082: Scaling law predictor for early convergence ceiling detection
     let mut scaling_predictor = ScalingLawPredictor::new();
@@ -908,23 +924,65 @@ fn train_loop_cuda(
 
             // ALB-068/R-009: Intermediate checkpoint saving at save_interval
             let current_step = trainer.step();
-            if should_save_checkpoint(current_step, last_save_step, save_interval) {
+            let do_save = should_save_checkpoint(current_step, last_save_step, save_interval);
+            let do_eval = current_step > 0
+                && current_step != last_eval_step
+                && current_step.is_multiple_of(eval_interval);
+
+            if do_save {
                 save_and_validate_checkpoint(
                     trainer,
                     spec,
-                    &val_batches,
                     &model_name,
                     current_step,
                     epoch,
                     iter_idx,
                     max_checkpoints,
-                    &mut jsonl_file,
                     seed,
                     loss_ema,
-                    &mut scaling_predictor,
-                    tokens_per_step,
                 );
                 last_save_step = current_step;
+            }
+
+            // ALB-087: Decoupled eval + best-model tracking + early stopping
+            if do_eval {
+                last_eval_step = current_step;
+                let eval_val_loss = run_validation_eval(
+                    trainer,
+                    &val_batches,
+                    current_step,
+                    &mut jsonl_file,
+                    &mut scaling_predictor,
+                    tokens_per_step,
+                    spec.training.max_steps,
+                );
+                if let Some(val_loss) = eval_val_loss {
+                    if val_loss < best_val_loss {
+                        best_val_loss = val_loss;
+                        evals_without_improvement = 0;
+                        save_best_model(trainer, spec, &model_name, current_step);
+                    } else {
+                        evals_without_improvement += 1;
+                    }
+                    if patience > 0 && evals_without_improvement >= patience {
+                        println!(
+                            "  [early-stop] No improvement for {evals_without_improvement} evals (patience={patience}). \
+                             Best val_loss={best_val_loss:.4}. Stopping.",
+                        );
+                        write_jsonl_event_json(
+                            &mut jsonl_file,
+                            &serde_json::json!({
+                                "type": "early_stop",
+                                "step": current_step,
+                                "best_val_loss": best_val_loss,
+                                "evals_without_improvement": evals_without_improvement,
+                                "patience": patience,
+                                "timestamp": now_ms(),
+                            }),
+                        );
+                        break 'outer;
+                    }
+                }
             }
         }
 
@@ -1088,10 +1146,10 @@ fn train_loop_cuda_distributed(
     let seed = spec.training.seed.unwrap_or(42);
 
     // ALB-082: Scaling law predictor for DDP path
-    let mut scaling_predictor = ScalingLawPredictor::new();
+    let _scaling_predictor = ScalingLawPredictor::new();
     let seq_len_ddp = spec.data.seq_len.unwrap_or(128);
     let grad_accum_ddp = spec.training.gradient_accumulation.unwrap_or(1);
-    let tokens_per_step_ddp = spec.data.batch_size * seq_len_ddp * grad_accum_ddp;
+    let _tokens_per_step_ddp = spec.data.batch_size * seq_len_ddp * grad_accum_ddp;
 
     let model_name = spec
         .model
@@ -1102,7 +1160,7 @@ fn train_loop_cuda_distributed(
         .to_string();
 
     // R-005: Load validation batches
-    let val_batches = load_val_batches(spec);
+    let _val_batches = load_val_batches(spec);
 
     let mut loss_history: Vec<f32> = Vec::new();
     let mut last_save_step: usize = 0;
@@ -1155,17 +1213,13 @@ fn train_loop_cuda_distributed(
                     save_and_validate_checkpoint(
                         ddp_trainer.trainer_mut(),
                         spec,
-                        &val_batches,
                         &model_name,
                         current_step,
                         epoch,
                         iter_idx,
                         max_checkpoints,
-                        &mut None,
                         seed,
                         0.0,
-                        &mut scaling_predictor,
-                        tokens_per_step_ddp,
                     );
                     last_save_step = current_step;
                 }
@@ -1505,9 +1559,9 @@ fn run_validation_eval(
     predictor: &mut ScalingLawPredictor,
     tokens_per_step: usize,
     max_steps: Option<usize>,
-) {
+) -> Option<f32> {
     if val_batches.is_empty() {
-        return;
+        return None;
     }
     let mut total_loss = 0.0;
     let mut count = 0;
@@ -1519,7 +1573,7 @@ fn run_validation_eval(
         }
     }
     if count == 0 {
-        return;
+        return None;
     }
     let val_loss = total_loss / count as f32;
     let val_ppl = crate::train::perplexity(val_loss);
@@ -1573,6 +1627,26 @@ fn run_validation_eval(
     if let Some(ref mut f) = jsonl_file {
         let _ = writeln!(f, "{entry}");
     }
+    Some(val_loss)
+}
+
+/// ALB-087: Save best model checkpoint (model-best.safetensors).
+#[cfg(feature = "cuda")]
+fn save_best_model(
+    trainer: &mut CudaTransformerTrainer,
+    spec: &TrainSpec,
+    model_name: &str,
+    step: usize,
+) {
+    let best_path = spec.training.output_dir.join("model-best");
+    let save_fn = trainer.prepare_async_save(model_name, "LlamaForCausalLM");
+    std::thread::spawn(move || {
+        if let Err(e) = save_fn(&best_path) {
+            println!("  [WARN] Failed to save model-best: {e}");
+        } else {
+            println!("  [best-model] step={step} saved to {}", best_path.display());
+        }
+    });
 }
 
 /// Save checkpoint with integrity verification, state persistence, pruning, and validation.
@@ -1581,17 +1655,13 @@ fn run_validation_eval(
 fn save_and_validate_checkpoint(
     trainer: &mut CudaTransformerTrainer,
     spec: &TrainSpec,
-    val_batches: &[LMBatch],
     model_name: &str,
     step: usize,
     epoch: usize,
     batch_idx: usize,
     max_checkpoints: usize,
-    jsonl_file: &mut Option<std::fs::File>,
     seed: u64,
     loss_ema: f64,
-    predictor: &mut ScalingLawPredictor,
-    tokens_per_step: usize,
 ) {
     let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
     // R-001: Save CPU embedding optimizer state (synchronous, small file)
@@ -1612,15 +1682,7 @@ fn save_and_validate_checkpoint(
             prune_checkpoints(&async_output_dir, max_checkpoints);
         }
     });
-    run_validation_eval(
-        trainer,
-        val_batches,
-        step,
-        jsonl_file,
-        predictor,
-        tokens_per_step,
-        spec.training.max_steps,
-    );
+    // ALB-087: Eval is now decoupled from save — handled by the caller.
 }
 
 /// R-010: Verify checkpoint file integrity after save.

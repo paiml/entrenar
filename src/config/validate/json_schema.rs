@@ -84,7 +84,9 @@ pub fn training_config_json_schema() -> Value {
                         "enum": ["bf16", "fp16", "fp32"]
                     },
                     "deterministic": { "type": "boolean" },
-                    "seed": { "type": "integer" }
+                    "seed": { "type": "integer" },
+                    "eval_interval": { "type": "integer", "minimum": 0 },
+                    "patience": { "type": "integer", "minimum": 0 }
                 }
             },
             "lora": {
