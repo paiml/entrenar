@@ -1166,7 +1166,7 @@ max_seq_len = 128
             checkpoint_dir: PathBuf::from("/tmp/ckpt"),
             instruct_config: InstructConfig::default(),
         };
-        let debug = format!("{:?}", config);
+        let debug = format!("{config:?}");
         assert!(debug.contains("AdapterConfig"));
         assert!(debug.contains("test.jsonl"));
     }
@@ -1191,7 +1191,7 @@ data = "a.jsonl"
 checkpoint = "ckpt/a"
 "#;
         let config = AdaptersConfigFile::from_toml(toml).expect("valid");
-        let debug = format!("{:?}", config);
+        let debug = format!("{config:?}");
         assert!(debug.contains("AdaptersConfigFile"));
     }
 

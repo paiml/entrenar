@@ -192,7 +192,7 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     let resolved_path = resolve_model_path(&spec.model.path)?;
 
     // Try to load model weights if path exists (ENT-117)
-    let (transformer, checkpoint_step) = load_transformer_model(&resolved_path, &model_config)?;
+    let (transformer, _checkpoint_step) = load_transformer_model(&resolved_path, &model_config)?;
 
     // Build TransformerTrainConfig from YAML spec fields
     let train_config = build_train_config(model_config, spec);
@@ -4291,7 +4291,7 @@ optimizer:
     fn test_push_capped_f64_basic() {
         let mut window: Vec<f64> = Vec::new();
         for i in 0..5 {
-            push_capped_f64(&mut window, i as f64, 3);
+            push_capped_f64(&mut window, f64::from(i), 3);
         }
         assert_eq!(window, vec![2.0, 3.0, 4.0]);
     }
@@ -4311,7 +4311,7 @@ optimizer:
         let order = shuffled_batch_order(10, true, 42, 0);
         assert_eq!(order.len(), 10);
         let mut sorted = order.clone();
-        sorted.sort();
+        sorted.sort_unstable();
         assert_eq!(sorted, (0..10).collect::<Vec<_>>());
     }
 
@@ -4988,7 +4988,7 @@ optimizer:
         let mut file = None;
         // Add 10+ points, then hit a step that is multiple of interval
         for i in 1..=10 {
-            push_capped_f64(&mut window, 1.0 + 0.01 * i as f64, 100);
+            push_capped_f64(&mut window, 1.0 + 0.01 * f64::from(i), 100);
         }
         update_noise_scale(1.15, 100, &mut window, 100, &mut last_step, &mut file);
         assert_eq!(last_step, 100, "Should have logged at step 100");

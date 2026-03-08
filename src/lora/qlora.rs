@@ -768,7 +768,7 @@ mod tests {
         let output = qlora.forward(&x);
 
         assert_eq!(output.len(), d_out);
-        for val in output.data().iter() {
+        for val in output.data() {
             assert!(val.is_finite(), "Forward output must be finite, got {val}");
         }
     }
@@ -804,7 +804,7 @@ mod tests {
         assert_eq!(stats.lora_bytes, stats_clone.lora_bytes);
         assert_eq!(stats.base_quantized_bytes, stats_clone.base_quantized_bytes);
 
-        let debug_str = format!("{:?}", stats_clone);
+        let debug_str = format!("{stats_clone:?}");
         assert!(debug_str.contains("MemoryStats"));
     }
 

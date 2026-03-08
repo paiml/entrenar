@@ -113,14 +113,14 @@ fn truncated_svd(
             // u = W @ v
             mat_vec_mul(&w_residual, &v, &mut u, d_out, d_in);
             sigma = norm(&u).max(1e-10);
-            for val in u.iter_mut() {
+            for val in &mut u {
                 *val /= sigma;
             }
 
             // v = W^T @ u
             mat_t_vec_mul(&w_residual, &u, &mut v, d_out, d_in);
             let v_norm = norm(&v).max(1e-10);
-            for val in v.iter_mut() {
+            for val in &mut v {
                 *val /= v_norm;
             }
         }
@@ -190,8 +190,8 @@ mod tests {
         assert_eq!(layer.d_out(), 2);
         assert_eq!(layer.d_in(), 3);
         assert_eq!(layer.rank(), 1);
-        assert_eq!(layer.lora_a().len(), 1 * 3);
-        assert_eq!(layer.lora_b().len(), 2 * 1);
+        assert_eq!(layer.lora_a().len(), 3);
+        assert_eq!(layer.lora_b().len(), 2);
     }
 
     #[test]
@@ -243,7 +243,7 @@ mod tests {
         let x = Tensor::from_vec(vec![0.5; 4], true);
         let out = layer.forward(&x);
         assert_eq!(out.len(), 4);
-        for val in out.data().iter() {
+        for val in out.data() {
             assert!(val.is_finite());
         }
     }
@@ -293,7 +293,7 @@ mod tests {
             let x = Tensor::from_vec(vec![0.1; d_in], true);
             let out = layer.forward(&x);
             prop_assert_eq!(out.len(), d_out);
-            for val in out.data().iter() {
+            for val in out.data() {
                 prop_assert!(val.is_finite());
             }
         }

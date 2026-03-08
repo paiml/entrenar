@@ -251,7 +251,7 @@ fn run_lora_adapter_merge(args: &MergeArgs, level: LogLevel) -> Result<(), Strin
         return Err(format!("adapter_model.safetensors not found in {}", adapter_dir.display()));
     }
 
-    log(level, LogLevel::Normal, &format!("LoRA adapter merge:"));
+    log(level, LogLevel::Normal, "LoRA adapter merge:");
     log(level, LogLevel::Normal, &format!("  Base: {}", base_path.display()));
     log(level, LogLevel::Normal, &format!("  Adapter: {}", adapter_dir.display()));
 
@@ -261,8 +261,9 @@ fn run_lora_adapter_merge(args: &MergeArgs, level: LogLevel) -> Result<(), Strin
     let config: serde_json::Value =
         serde_json::from_str(&config_str).map_err(|e| format!("Parse adapter config: {e}"))?;
 
-    let rank = config.get("r").and_then(|v| v.as_u64()).unwrap_or(8) as usize;
-    let alpha = config.get("lora_alpha").and_then(|v| v.as_f64()).unwrap_or(rank as f64 * 2.0);
+    let rank = config.get("r").and_then(serde_json::Value::as_u64).unwrap_or(8) as usize;
+    let alpha =
+        config.get("lora_alpha").and_then(serde_json::Value::as_f64).unwrap_or(rank as f64 * 2.0);
     let scale = alpha as f32 / rank as f32;
 
     log(level, LogLevel::Normal, &format!("  Rank: {rank}, Alpha: {alpha}, Scale: {scale:.4}"));

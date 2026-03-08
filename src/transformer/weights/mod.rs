@@ -132,6 +132,7 @@ pub fn expected_weight_count(num_layers: usize, has_lm_head: bool) -> usize {
 }
 
 /// Get expected weight count including attention biases
+#[allow(dead_code)]
 pub fn expected_weight_count_with_biases(num_layers: usize, has_lm_head: bool) -> usize {
     let base = 2 + (num_layers * 12); // 9 weights + 3 biases per layer
     if has_lm_head {

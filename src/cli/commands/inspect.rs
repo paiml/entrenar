@@ -139,17 +139,22 @@ fn inspect_lora_adapter(dir: &Path, level: LogLevel) -> Result<(), String> {
         let config_str =
             std::fs::read_to_string(&config_path).map_err(|e| format!("Read config: {e}"))?;
         if let Ok(config) = serde_json::from_str::<serde_json::Value>(&config_str) {
-            if let Some(rank) = config.get("r").and_then(|v| v.as_u64()) {
+            if let Some(rank) = config.get("r").and_then(serde_json::Value::as_u64) {
                 log(level, LogLevel::Normal, &format!("  Rank: {rank}"));
             }
-            if let Some(alpha) = config.get("lora_alpha").and_then(|v| v.as_f64()) {
+            if let Some(alpha) = config.get("lora_alpha").and_then(serde_json::Value::as_f64) {
                 log(level, LogLevel::Normal, &format!("  Alpha: {alpha}"));
             }
-            if let Some(modules) = config.get("target_modules").and_then(|v| v.as_array()) {
-                let names: Vec<&str> = modules.iter().filter_map(|v| v.as_str()).collect();
+            if let Some(modules) =
+                config.get("target_modules").and_then(serde_json::Value::as_array)
+            {
+                let names: Vec<&str> =
+                    modules.iter().filter_map(serde_json::Value::as_str).collect();
                 log(level, LogLevel::Normal, &format!("  Target modules: {}", names.join(", ")));
             }
-            if let Some(base) = config.get("base_model_name_or_path").and_then(|v| v.as_str()) {
+            if let Some(base) =
+                config.get("base_model_name_or_path").and_then(serde_json::Value::as_str)
+            {
                 log(level, LogLevel::Normal, &format!("  Base model: {base}"));
             }
         }
