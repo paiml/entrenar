@@ -68,6 +68,7 @@ mod tests {
                 dropout,
                 lora_plus_ratio: 1.0,
                 double_quantize: false,
+                quantize_base: false,
             })
     }
 
@@ -279,6 +280,7 @@ mod tests {
                 dropout: 0.0,
                 lora_plus_ratio: 1.0,
                 double_quantize: false,
+                quantize_base: false,
             });
             let result = validate_config(&spec);
             prop_assert!(matches!(result, Err(ValidationError::InvalidLoRARank(0))));

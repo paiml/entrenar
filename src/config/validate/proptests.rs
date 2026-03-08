@@ -109,6 +109,7 @@ proptest! {
             dropout,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         prop_assert!(validate_config(&spec).is_ok());
     }
@@ -123,6 +124,7 @@ proptest! {
             dropout: 0.0,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -143,6 +145,7 @@ proptest! {
             dropout: 0.0,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -160,6 +163,7 @@ proptest! {
             dropout: 0.0,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -180,6 +184,7 @@ proptest! {
             dropout: 0.0,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -197,6 +202,7 @@ proptest! {
             dropout: 1.0,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         prop_assert!(matches!(
             validate_config(&spec),
@@ -217,6 +223,7 @@ proptest! {
             dropout: neg_dropout,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         prop_assert!(matches!(
             validate_config(&spec),

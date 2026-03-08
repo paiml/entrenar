@@ -359,16 +359,11 @@ fn convert_training(
 }
 
 /// Convert LoRA config from manifest to spec
-fn convert_lora(manifest: &TrainingManifest, warnings: &mut Vec<String>) -> Option<LoRASpec> {
+fn convert_lora(manifest: &TrainingManifest, _warnings: &mut Vec<String>) -> Option<LoRASpec> {
     let lora_cfg = manifest.lora.as_ref()?;
 
     if !lora_cfg.enabled {
         return None;
-    }
-
-    if lora_cfg.quantize_base.unwrap_or(false) {
-        warnings
-            .push("lora.quantize_base (QLoRA) is not fully supported in legacy TrainSpec".into());
     }
 
     Some(LoRASpec {
@@ -378,6 +373,7 @@ fn convert_lora(manifest: &TrainingManifest, warnings: &mut Vec<String>) -> Opti
         dropout: lora_cfg.dropout.map_or(0.0, |d| d as f32),
         lora_plus_ratio: 1.0,
         double_quantize: false,
+        quantize_base: lora_cfg.quantize_base.unwrap_or(false),
     })
 }
 

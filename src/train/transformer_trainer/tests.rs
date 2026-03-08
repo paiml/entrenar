@@ -51,6 +51,33 @@ fn test_transformer_train_config_builders() {
 }
 
 #[test]
+fn test_ent_263_quantize_nf4_default_false() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny());
+    assert!(!config.quantize_nf4);
+    assert!(!config.is_nf4());
+}
+
+#[test]
+fn test_ent_263_quantize_nf4_builder() {
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny())
+        .with_quantize_nf4(true)
+        .with_lora(16, 32.0, vec!["q_proj".into(), "v_proj".into()]);
+    assert!(config.quantize_nf4);
+    assert!(config.is_nf4());
+    assert!(config.is_lora());
+}
+
+#[test]
+fn test_ent_263_quantize_nf4_requires_lora() {
+    // NF4 without LoRA: quantize_nf4 is set but is_lora() is false
+    let config = TransformerTrainConfig::new(TransformerConfig::tiny()).with_quantize_nf4(true);
+    assert!(config.quantize_nf4);
+    assert!(config.is_nf4());
+    assert!(!config.is_lora());
+    // The actual code checks quantize_nf4 && is_lora() for NF4 path
+}
+
+#[test]
 fn test_lm_batch_from_sequences() {
     let sequences = vec![vec![0, 1, 2, 3, 4], vec![0, 5, 6, 7]];
 

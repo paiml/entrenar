@@ -138,6 +138,10 @@ fn build_train_config(
         if lora.double_quantize {
             config = config.with_double_quantize(true);
         }
+        // ENT-263: NF4 quantization for QLoRA pretraining
+        if lora.quantize_base {
+            config = config.with_quantize_nf4(true);
+        }
     }
 
     // Wire distributed config from YAML (#133)
@@ -182,6 +186,9 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
 
     if let Some(lora) = &spec.lora {
         println!("  LoRA: rank={}, alpha={}", lora.rank, lora.alpha);
+        if lora.quantize_base {
+            println!("  QLoRA: NF4 quantized base weights (~8x VRAM compression)");
+        }
     }
     println!();
 
@@ -4148,6 +4155,7 @@ optimizer:
             dropout: 0.0,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_base: false,
         });
         let model_config = minimal_transformer_config();
         let config = build_train_config(model_config, &spec);
@@ -4170,6 +4178,7 @@ optimizer:
             dropout: 0.0,
             lora_plus_ratio: 16.0,
             double_quantize: false,
+            quantize_base: false,
         });
         let model_config = minimal_transformer_config();
         let config = build_train_config(model_config, &spec);
@@ -4187,10 +4196,53 @@ optimizer:
             dropout: 0.0,
             lora_plus_ratio: 1.0,
             double_quantize: true,
+            quantize_base: false,
         });
         let model_config = minimal_transformer_config();
         let config = build_train_config(model_config, &spec);
         assert!(config.double_quantize);
+    }
+
+    #[test]
+    fn test_build_train_config_lora_quantize_base_nf4() {
+        use crate::config::schema::LoRASpec;
+        let mut spec = minimal_spec();
+        spec.lora = Some(LoRASpec {
+            rank: 16,
+            alpha: 32.0,
+            target_modules: vec!["q_proj".to_string(), "v_proj".to_string()],
+            dropout: 0.0,
+            lora_plus_ratio: 1.0,
+            double_quantize: true,
+            quantize_base: true,
+        });
+        let model_config = minimal_transformer_config();
+        let config = build_train_config(model_config, &spec);
+        assert!(config.quantize_nf4, "quantize_nf4 should be true when lora.quantize_base=true");
+        assert!(config.is_nf4());
+        assert!(config.is_lora());
+        assert_eq!(config.lora_rank, Some(16));
+        assert!(config.double_quantize);
+    }
+
+    #[test]
+    fn test_build_train_config_lora_no_quantize_base() {
+        use crate::config::schema::LoRASpec;
+        let mut spec = minimal_spec();
+        spec.lora = Some(LoRASpec {
+            rank: 8,
+            alpha: 16.0,
+            target_modules: vec!["q_proj".to_string()],
+            dropout: 0.0,
+            lora_plus_ratio: 1.0,
+            double_quantize: false,
+            quantize_base: false,
+        });
+        let model_config = minimal_transformer_config();
+        let config = build_train_config(model_config, &spec);
+        assert!(!config.quantize_nf4, "quantize_nf4 should be false when lora.quantize_base=false");
+        assert!(!config.is_nf4());
+        assert!(config.is_lora());
     }
 
     #[test]

@@ -102,6 +102,12 @@ pub struct TransformerTrainConfig {
     /// Double quantization for QLoRA (ENT-LoRA-008)
     /// Quantizes FP32 absmax constants to 8-bit, saving ~0.37 bits/param
     pub double_quantize: bool,
+    /// Quantize frozen base weights to NF4 (4-bit) for QLoRA pretraining (ENT-263)
+    ///
+    /// When enabled with LoRA, uses `CudaNf4TransformerBlock` instead of
+    /// `CudaTransformerBlock`, achieving ~8x VRAM compression on frozen weights.
+    /// Only LoRA adapters and norm weights remain trainable in fp32.
+    pub quantize_nf4: bool,
 }
 
 impl TransformerTrainConfig {
@@ -130,6 +136,7 @@ impl TransformerTrainConfig {
             lora_target_modules: None,
             lora_plus_ratio: 1.0,
             double_quantize: false,
+            quantize_nf4: false,
         }
     }
 
@@ -272,6 +279,22 @@ impl TransformerTrainConfig {
     pub fn with_double_quantize(mut self, enabled: bool) -> Self {
         self.double_quantize = enabled;
         self
+    }
+
+    /// Enable NF4 quantization for QLoRA pretraining (ENT-263)
+    ///
+    /// When enabled with LoRA, frozen base weights are quantized to 4-bit NF4,
+    /// achieving ~8x VRAM compression. Only LoRA adapters and norm weights are
+    /// trainable. Requires `lora_rank` to be set.
+    pub fn with_quantize_nf4(mut self, enabled: bool) -> Self {
+        self.quantize_nf4 = enabled;
+        self
+    }
+
+    /// Check if NF4 quantization is enabled for QLoRA
+    #[must_use]
+    pub fn is_nf4(&self) -> bool {
+        self.quantize_nf4
     }
 
     /// Check if LoRA fine-tuning is enabled
