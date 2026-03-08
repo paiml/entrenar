@@ -74,6 +74,18 @@ pub struct TransformerConfig {
     /// Determines position encoding, normalization, activation, and pooling strategy.
     #[serde(default)]
     pub architecture: ModelArchitecture,
+    /// HuggingFace architecture class name (e.g., "Qwen2ForCausalLM", "LlamaForCausalLM").
+    /// Used for checkpoint config.json compatibility.
+    #[serde(default)]
+    pub hf_architecture: Option<String>,
+    /// HuggingFace model type (e.g., "qwen2", "llama").
+    /// Used for checkpoint config.json compatibility.
+    #[serde(default)]
+    pub hf_model_type: Option<String>,
+    /// Whether to tie input/output embeddings (embed_tokens and lm_head).
+    /// Qwen2: true, LLaMA: false.
+    #[serde(default)]
+    pub tie_word_embeddings: bool,
 }
 
 impl TransformerConfig {
@@ -92,6 +104,9 @@ impl TransformerConfig {
             use_bias: false,
             head_dim_override: None,
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -110,6 +125,9 @@ impl TransformerConfig {
             use_bias: false,
             head_dim_override: None,
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -128,6 +146,9 @@ impl TransformerConfig {
             use_bias: false,
             head_dim_override: None,
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -146,6 +167,9 @@ impl TransformerConfig {
             use_bias: true,
             head_dim_override: None,
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -167,6 +191,9 @@ impl TransformerConfig {
             use_bias: true,
             head_dim_override: None,
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -188,6 +215,9 @@ impl TransformerConfig {
             use_bias: false,              // Qwen3: no attention bias
             head_dim_override: Some(128), // Contract: qwen3.yaml §4b.head_dim=128
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -210,6 +240,9 @@ impl TransformerConfig {
             use_bias: false,              // KEY: no attention bias (unlike Qwen2)
             head_dim_override: None,      // 4096/16=256, no override needed
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -273,6 +306,9 @@ impl TransformerConfig {
                 }
                 _ => ModelArchitecture::Decoder,
             },
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         })
     }
 
@@ -312,6 +348,9 @@ impl TransformerConfig {
             use_bias: true,
             head_dim_override: None,
             architecture: ModelArchitecture::Encoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
@@ -330,12 +369,56 @@ impl TransformerConfig {
             use_bias: false,
             head_dim_override: None,
             architecture: ModelArchitecture::Decoder,
+            hf_architecture: None,
+            hf_model_type: None,
+            tie_word_embeddings: false,
         }
     }
 
     /// Whether this config describes an encoder (BERT/RoBERTa) architecture.
     pub fn is_encoder(&self) -> bool {
         self.architecture == ModelArchitecture::Encoder
+    }
+
+    /// HuggingFace architecture class name for checkpoint config.json.
+    /// Uses explicit override if set, otherwise infers from config.
+    pub fn hf_architecture_name(&self) -> &str {
+        if let Some(ref name) = self.hf_architecture {
+            return name;
+        }
+        // Infer from model characteristics
+        if self.is_encoder() {
+            "BertModel"
+        } else if self.use_bias && self.vocab_size > 150000 {
+            // Qwen2 family: has attention biases + large vocab
+            "Qwen2ForCausalLM"
+        } else {
+            "LlamaForCausalLM"
+        }
+    }
+
+    /// HuggingFace model_type string for checkpoint config.json.
+    pub fn hf_model_type_str(&self) -> &str {
+        if let Some(ref mt) = self.hf_model_type {
+            return mt;
+        }
+        if self.is_encoder() {
+            "roberta"
+        } else if self.use_bias && self.vocab_size > 150000 {
+            "qwen2"
+        } else {
+            "llama"
+        }
+    }
+
+    /// Whether embeddings are tied (embed_tokens == lm_head).
+    /// Uses explicit flag if set, otherwise infers from architecture.
+    pub fn ties_embeddings(&self) -> bool {
+        if self.tie_word_embeddings {
+            return true;
+        }
+        // Qwen2 ties embeddings by default
+        self.use_bias && self.vocab_size > 150000
     }
 
     /// Per-head dimension.
