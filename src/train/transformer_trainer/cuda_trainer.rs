@@ -1445,14 +1445,30 @@ impl CudaTransformerTrainer {
                     )
                     .ok()?;
 
-                // LoRA optimizer step (no gradient accumulation for NF4 in v1)
-                if !accumulate_only {
+                // NF4 LoRA optimizer step — always runs, even during accumulation.
+                //
+                // BUG FIX: Previously gated by `if !accumulate_only`, which meant LoRA
+                // weights were NEVER updated when gradient_accumulation > 1 (since
+                // accumulate_only is always true for micro-batches in that mode).
+                //
+                // Design choice: NF4 LoRA has very few trainable params (~6M) so gradient
+                // accumulation isn't needed for memory savings — it was only used for
+                // effective batch size. We achieve the same effect by scaling lr by
+                // 1/accumulation_steps during micro-batches. Non-block grads (LM head,
+                // final norm) still use the standard accumulation path since they have
+                // vocab_size * hidden_size parameters.
+                {
                     let step = self.gpu_training.step;
+                    let effective_lr = if accumulate_only {
+                        lr / self.config.accumulation_steps as f32
+                    } else {
+                        lr
+                    };
                     if let Some(ref mut opt_states) = self.nf4_lora_optimizer_states {
                         let _ = self.cuda_blocks[layer_idx].lora_optimizer_step(
                             &mut opt_states[layer_idx],
                             step,
-                            lr,
+                            effective_lr,
                             beta1,
                             beta2,
                             1e-8,
@@ -2064,6 +2080,14 @@ impl CudaTransformerTrainer {
         }
 
         let avg_loss = if valid_count > 0 { total_loss / valid_count as f32 } else { 0.0 };
+
+        // Debug: help diagnose loss=0.0 when gradients are non-zero
+        if avg_loss == 0.0 && valid_count > 0 {
+            eprintln!(
+                "[train_batch DEBUG] avg_loss=0.0 but valid_count={}, total_loss={}, batch_size={}",
+                valid_count, total_loss, batch.batch_size
+            );
+        }
 
         self.accumulated_loss += avg_loss / self.config.accumulation_steps as f32;
         self.accumulated_batches += 1;
