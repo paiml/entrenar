@@ -38,15 +38,15 @@ pub struct QuantizeArgs {
 /// Arguments for the merge command
 #[derive(Parser, Debug, Clone, PartialEq)]
 pub struct MergeArgs {
-    /// Paths to models to merge
-    #[arg(value_name = "MODELS", num_args = 2..)]
+    /// Paths to models to merge (for ties/dare/slerp/average)
+    #[arg(value_name = "MODELS", num_args = 0..)]
     pub models: Vec<PathBuf>,
 
     /// Output path for merged model
     #[arg(short, long)]
     pub output: PathBuf,
 
-    /// Merge method (ties, dare, slerp, average)
+    /// Merge method (ties, dare, slerp, average, lora-adapter)
     #[arg(short, long, default_value = "ties")]
     pub method: MergeMethod,
 
@@ -61,6 +61,14 @@ pub struct MergeArgs {
     /// Model weights (comma-separated, for weighted average)
     #[arg(long)]
     pub weights: Option<String>,
+
+    /// Base model path (for lora-adapter merge, ENT-LoRA-017)
+    #[arg(long)]
+    pub base: Option<PathBuf>,
+
+    /// LoRA adapter directory (for lora-adapter merge, ENT-LoRA-017)
+    #[arg(long)]
+    pub adapter: Option<PathBuf>,
 }
 
 /// Quantization method
@@ -93,6 +101,8 @@ pub enum MergeMethod {
     Dare,
     Slerp,
     Average,
+    /// Merge LoRA adapter into base model (ENT-LoRA-017)
+    LoraAdapter,
 }
 
 impl std::str::FromStr for MergeMethod {
@@ -104,8 +114,11 @@ impl std::str::FromStr for MergeMethod {
             "dare" => Ok(MergeMethod::Dare),
             "slerp" => Ok(MergeMethod::Slerp),
             "average" | "avg" => Ok(MergeMethod::Average),
+            "lora-adapter" | "lora" => Ok(MergeMethod::LoraAdapter),
             _ => {
-                Err(format!("Unknown merge method: {s}. Valid methods: ties, dare, slerp, average"))
+                Err(format!(
+                    "Unknown merge method: {s}. Valid: ties, dare, slerp, average, lora-adapter"
+                ))
             }
         }
     }
@@ -157,6 +170,14 @@ mod tests {
         assert_eq!(
             "avg".parse::<MergeMethod>().expect("parsing should succeed"),
             MergeMethod::Average
+        );
+        assert_eq!(
+            "lora-adapter".parse::<MergeMethod>().expect("parsing should succeed"),
+            MergeMethod::LoraAdapter
+        );
+        assert_eq!(
+            "lora".parse::<MergeMethod>().expect("parsing should succeed"),
+            MergeMethod::LoraAdapter
         );
         assert!("invalid".parse::<MergeMethod>().is_err());
     }

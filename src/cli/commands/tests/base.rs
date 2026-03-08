@@ -736,6 +736,8 @@ fn test_merge_command_not_enough_models() {
         weight: None,
         density: None,
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -758,6 +760,8 @@ fn test_merge_command_slerp_wrong_model_count() {
         weight: Some(0.5),
         density: None,
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -779,6 +783,8 @@ fn test_merge_command_average_invalid_weights() {
         weight: None,
         density: None,
         weights: Some("invalid,weights".to_string()),
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -802,6 +808,8 @@ fn test_merge_command_ties() {
         weight: None,
         density: Some(0.2),
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -825,6 +833,8 @@ fn test_merge_command_dare() {
         weight: None,
         density: Some(0.5),
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -846,6 +856,8 @@ fn test_merge_command_slerp() {
         weight: Some(0.5),
         density: None,
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -867,6 +879,8 @@ fn test_merge_command_average_uniform() {
         weight: None,
         density: None,
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -888,6 +902,8 @@ fn test_merge_command_average_weighted() {
         weight: None,
         density: None,
         weights: Some("0.7,0.3".to_string()),
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -909,11 +925,117 @@ fn test_merge_command_safetensors_output() {
         weight: None,
         density: None,
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Verbose);
     assert!(result.is_ok());
     assert!(output.exists());
+}
+
+// ============================================================================
+// LoRA adapter merge tests (ENT-LoRA-017)
+// ============================================================================
+
+#[test]
+fn test_ent_lora_017_merge_adapter_missing_base() {
+    let dir = TempDir::new().expect("temp file creation should succeed");
+    let output = dir.path().join("merged.safetensors");
+
+    let args = MergeArgs {
+        models: vec![],
+        output,
+        method: MergeMethod::LoraAdapter,
+        weight: None,
+        density: None,
+        weights: None,
+        base: None,
+        adapter: Some(dir.path().to_path_buf()),
+    };
+
+    let result = merge::run_merge(args, LogLevel::Quiet);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("--base required"));
+}
+
+#[test]
+fn test_ent_lora_017_merge_adapter_missing_adapter() {
+    let dir = TempDir::new().expect("temp file creation should succeed");
+    let base = create_safetensors_file(&dir, "base.safetensors");
+    let output = dir.path().join("merged.safetensors");
+
+    let args = MergeArgs {
+        models: vec![],
+        output,
+        method: MergeMethod::LoraAdapter,
+        weight: None,
+        density: None,
+        weights: None,
+        base: Some(base),
+        adapter: None,
+    };
+
+    let result = merge::run_merge(args, LogLevel::Quiet);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("--adapter required"));
+}
+
+#[test]
+fn test_ent_lora_017_merge_adapter_nonexistent_base() {
+    let dir = TempDir::new().expect("temp file creation should succeed");
+    let output = dir.path().join("merged.safetensors");
+
+    let args = MergeArgs {
+        models: vec![],
+        output,
+        method: MergeMethod::LoraAdapter,
+        weight: None,
+        density: None,
+        weights: None,
+        base: Some(PathBuf::from("/nonexistent/base.safetensors")),
+        adapter: Some(dir.path().to_path_buf()),
+    };
+
+    let result = merge::run_merge(args, LogLevel::Quiet);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Base model not found"));
+}
+
+#[test]
+fn test_ent_lora_017_merge_adapter_missing_config() {
+    let dir = TempDir::new().expect("temp file creation should succeed");
+    let base = create_safetensors_file(&dir, "base.safetensors");
+    let adapter_dir = dir.path().join("adapter");
+    std::fs::create_dir_all(&adapter_dir).expect("dir creation should succeed");
+    let output = dir.path().join("merged.safetensors");
+
+    let args = MergeArgs {
+        models: vec![],
+        output,
+        method: MergeMethod::LoraAdapter,
+        weight: None,
+        density: None,
+        weights: None,
+        base: Some(base),
+        adapter: Some(adapter_dir),
+    };
+
+    let result = merge::run_merge(args, LogLevel::Quiet);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("adapter_config.json not found"));
+}
+
+#[test]
+fn test_ent_lora_017_merge_method_parse() {
+    assert_eq!(
+        "lora-adapter".parse::<MergeMethod>().expect("parsing should succeed"),
+        MergeMethod::LoraAdapter
+    );
+    assert_eq!(
+        "lora".parse::<MergeMethod>().expect("parsing should succeed"),
+        MergeMethod::LoraAdapter
+    );
 }
 
 // ============================================================================
@@ -1201,6 +1323,8 @@ fn test_run_command_merge() {
             weight: None,
             density: None,
             weights: None,
+            base: None,
+            adapter: None,
         }),
     };
 

@@ -87,6 +87,36 @@ impl LoRAConfig {
         self
     }
 
+    /// Expand shorthand target module names to concrete module lists (ENT-LoRA-005)
+    ///
+    /// Supports:
+    /// - `"all_linear"` → all projection modules (q/k/v/o/gate/up/down)
+    /// - `"attention"` → q/k/v/o projections
+    /// - `"qv"` → q/v projections (default, original paper)
+    /// - `"mlp"` → gate/up/down projections
+    /// - Explicit module names passed through unchanged
+    pub fn expand_shorthand(modules: &[String]) -> Vec<String> {
+        if modules.len() == 1 {
+            match modules[0].as_str() {
+                "all_linear" => return vec![
+                    "q_proj", "k_proj", "v_proj", "o_proj",
+                    "gate_proj", "up_proj", "down_proj",
+                ].into_iter().map(String::from).collect(),
+                "attention" => return vec![
+                    "q_proj", "k_proj", "v_proj", "o_proj",
+                ].into_iter().map(String::from).collect(),
+                "qv" => return vec![
+                    "q_proj", "v_proj",
+                ].into_iter().map(String::from).collect(),
+                "mlp" => return vec![
+                    "gate_proj", "up_proj", "down_proj",
+                ].into_iter().map(String::from).collect(),
+                _ => {}
+            }
+        }
+        modules.to_vec()
+    }
+
     /// Check if a module should have LoRA applied
     ///
     /// # Arguments
@@ -345,6 +375,64 @@ mod tests {
         // Layer 3 - correct layer and module
         assert!(config.should_apply("k_proj", Some(3)));
         assert!(config.should_apply("o_proj", Some(3)));
+    }
+
+    // ========================================================================
+    // ENT-LoRA-005: Shorthand expansion tests
+    // ========================================================================
+
+    #[test]
+    fn test_ent_lora_005_expand_all_linear() {
+        let expanded = LoRAConfig::expand_shorthand(&["all_linear".to_string()]);
+        assert_eq!(expanded.len(), 7);
+        assert!(expanded.contains(&"q_proj".to_string()));
+        assert!(expanded.contains(&"k_proj".to_string()));
+        assert!(expanded.contains(&"v_proj".to_string()));
+        assert!(expanded.contains(&"o_proj".to_string()));
+        assert!(expanded.contains(&"gate_proj".to_string()));
+        assert!(expanded.contains(&"up_proj".to_string()));
+        assert!(expanded.contains(&"down_proj".to_string()));
+    }
+
+    #[test]
+    fn test_ent_lora_005_expand_attention() {
+        let expanded = LoRAConfig::expand_shorthand(&["attention".to_string()]);
+        assert_eq!(expanded.len(), 4);
+        assert!(expanded.contains(&"q_proj".to_string()));
+        assert!(expanded.contains(&"k_proj".to_string()));
+        assert!(expanded.contains(&"v_proj".to_string()));
+        assert!(expanded.contains(&"o_proj".to_string()));
+    }
+
+    #[test]
+    fn test_ent_lora_005_expand_qv() {
+        let expanded = LoRAConfig::expand_shorthand(&["qv".to_string()]);
+        assert_eq!(expanded.len(), 2);
+        assert!(expanded.contains(&"q_proj".to_string()));
+        assert!(expanded.contains(&"v_proj".to_string()));
+    }
+
+    #[test]
+    fn test_ent_lora_005_expand_mlp() {
+        let expanded = LoRAConfig::expand_shorthand(&["mlp".to_string()]);
+        assert_eq!(expanded.len(), 3);
+        assert!(expanded.contains(&"gate_proj".to_string()));
+        assert!(expanded.contains(&"up_proj".to_string()));
+        assert!(expanded.contains(&"down_proj".to_string()));
+    }
+
+    #[test]
+    fn test_ent_lora_005_expand_explicit_passthrough() {
+        let explicit = vec!["q_proj".to_string(), "v_proj".to_string()];
+        let expanded = LoRAConfig::expand_shorthand(&explicit);
+        assert_eq!(expanded, explicit);
+    }
+
+    #[test]
+    fn test_ent_lora_005_expand_unknown_single() {
+        let modules = vec!["custom_proj".to_string()];
+        let expanded = LoRAConfig::expand_shorthand(&modules);
+        assert_eq!(expanded, modules);
     }
 
     #[test]

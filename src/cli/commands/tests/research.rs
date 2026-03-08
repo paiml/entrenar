@@ -1069,6 +1069,8 @@ fn test_merge_command_weights_count_mismatch() {
         weight: None,
         density: None,
         weights: Some("0.5,0.3,0.2".to_string()), // 3 weights for 2 models
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
@@ -1177,6 +1179,8 @@ fn test_merge_command_missing_model() {
         weight: Some(0.5),
         density: None,
         weights: None,
+        base: None,
+        adapter: None,
     };
 
     let result = merge::run_merge(args, LogLevel::Quiet);
