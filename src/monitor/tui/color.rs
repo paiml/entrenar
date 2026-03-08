@@ -646,4 +646,364 @@ mod tests {
         assert_eq!(bar.chars().filter(|&c| c == '█').count(), 5);
         assert_eq!(bar.chars().filter(|&c| c == '░').count(), 5);
     }
+
+    // ── Additional coverage tests ──
+
+    #[test]
+    fn test_clamped_f32_to_u8_boundaries() {
+        assert_eq!(clamped_f32_to_u8(0.0), 0);
+        assert_eq!(clamped_f32_to_u8(255.0), 255);
+        assert_eq!(clamped_f32_to_u8(-10.0), 0);
+        assert_eq!(clamped_f32_to_u8(300.0), 255);
+        assert_eq!(clamped_f32_to_u8(127.5), 127);
+    }
+
+    #[test]
+    fn test_clamped_f32_to_usize_boundaries() {
+        assert_eq!(clamped_f32_to_usize(0.0), 0);
+        assert_eq!(clamped_f32_to_usize(-5.0), 0);
+        assert_eq!(clamped_f32_to_usize(10.0), 10);
+        assert_eq!(clamped_f32_to_usize(100.5), 100);
+    }
+
+    #[test]
+    fn test_color_mode_default() {
+        assert_eq!(ColorMode::default(), ColorMode::Mono);
+    }
+
+    #[test]
+    fn test_color_mode_detect_24bit() {
+        assert_eq!(ColorMode::detect_with_env(Some("24bit"), None, None), ColorMode::TrueColor);
+    }
+
+    #[test]
+    fn test_color_mode_detect_kitty() {
+        assert_eq!(ColorMode::detect_with_env(None, Some("kitty"), None), ColorMode::Color256);
+    }
+
+    #[test]
+    fn test_color_mode_detect_alacritty() {
+        assert_eq!(ColorMode::detect_with_env(None, Some("alacritty"), None), ColorMode::Color256);
+    }
+
+    #[test]
+    fn test_color_mode_detect_screen() {
+        assert_eq!(ColorMode::detect_with_env(None, Some("screen"), None), ColorMode::Color16);
+    }
+
+    #[test]
+    fn test_color_mode_detect_tmux() {
+        assert_eq!(ColorMode::detect_with_env(None, Some("tmux"), None), ColorMode::Color16);
+    }
+
+    #[test]
+    fn test_color_mode_detect_empty_term() {
+        assert_eq!(ColorMode::detect_with_env(None, Some(""), None), ColorMode::Mono);
+    }
+
+    #[test]
+    fn test_color_mode_detect_unknown_term() {
+        assert_eq!(
+            ColorMode::detect_with_env(None, Some("something-unknown"), None),
+            ColorMode::Color16
+        );
+    }
+
+    #[test]
+    fn test_color_mode_detect_no_env() {
+        assert_eq!(ColorMode::detect_with_env(None, None, None), ColorMode::Color16);
+    }
+
+    #[test]
+    fn test_rgb_new() {
+        let c = Rgb::new(10, 20, 30);
+        assert_eq!(c.r, 10);
+        assert_eq!(c.g, 20);
+        assert_eq!(c.b, 30);
+    }
+
+    #[test]
+    fn test_rgb_from_tuple() {
+        let c: Rgb = (100, 200, 50).into();
+        assert_eq!(c.r, 100);
+        assert_eq!(c.g, 200);
+        assert_eq!(c.b, 50);
+    }
+
+    #[test]
+    fn test_rgb_to_256_midrange() {
+        let c = Rgb::new(128, 128, 128);
+        let idx = c.to_256();
+        // Should be in the 216-color cube range (16-231)
+        assert!(idx >= 16 && idx <= 231);
+    }
+
+    #[test]
+    fn test_rgb_to_16_near_black_no_dominant() {
+        // All channels below 40 -> black (0)
+        assert_eq!(Rgb::new(10, 10, 10).to_16(), 0);
+    }
+
+    #[test]
+    fn test_styled_display_256color() {
+        let styled = Styled::new("hello", ColorMode::Color256).fg(Rgb::new(255, 0, 0));
+        let output = styled.to_string();
+        assert!(output.contains("\x1b[38;5;"));
+        assert!(output.contains("hello"));
+        assert!(output.ends_with("\x1b[0m"));
+    }
+
+    #[test]
+    fn test_styled_display_16color_bright() {
+        let styled = Styled::new("bright", ColorMode::Color16).fg(Rgb::new(255, 50, 50));
+        let output = styled.to_string();
+        // Bright red -> code 9 -> \x1b[91m
+        assert!(output.contains("\x1b[9"));
+        assert!(output.contains("bright"));
+    }
+
+    #[test]
+    fn test_styled_display_16color_dark() {
+        let styled = Styled::new("dark", ColorMode::Color16).fg(Rgb::new(0, 0, 100));
+        let output = styled.to_string();
+        // Dark blue -> code 4 -> \x1b[34m
+        assert!(output.contains("\x1b[3"));
+        assert!(output.contains("dark"));
+    }
+
+    #[test]
+    fn test_styled_bold() {
+        let styled = Styled::new("bold", ColorMode::TrueColor).bold();
+        let output = styled.to_string();
+        assert!(output.contains("\x1b[1m"));
+        assert!(output.contains("bold"));
+        assert!(output.ends_with("\x1b[0m"));
+    }
+
+    #[test]
+    fn test_styled_bold_and_fg() {
+        let styled = Styled::new("both", ColorMode::TrueColor).fg(Rgb::new(0, 255, 0)).bold();
+        let output = styled.to_string();
+        assert!(output.contains("\x1b[1m"));
+        assert!(output.contains("\x1b[38;2;0;255;0m"));
+    }
+
+    #[test]
+    fn test_styled_no_color_no_bold() {
+        let styled = Styled::new("plain", ColorMode::TrueColor);
+        let output = styled.to_string();
+        // No styles applied, no escape codes
+        assert_eq!(output, "plain");
+    }
+
+    #[test]
+    fn test_training_palette_new() {
+        let palette = TrainingPalette::new(ColorMode::TrueColor);
+        assert_eq!(palette.mode, ColorMode::TrueColor);
+    }
+
+    #[test]
+    fn test_training_palette_style() {
+        let palette = TrainingPalette::new(ColorMode::Mono);
+        let styled = palette.style("text").fg(TrainingPalette::SUCCESS);
+        let output = styled.to_string();
+        assert_eq!(output, "text"); // Mono mode, no escape codes
+    }
+
+    #[test]
+    fn test_vram_color_thresholds() {
+        assert_eq!(TrainingPalette::vram_color(30.0), TrainingPalette::SUCCESS);
+        assert_eq!(TrainingPalette::vram_color(60.0), TrainingPalette::INFO);
+        assert_eq!(TrainingPalette::vram_color(80.0), TrainingPalette::WARNING);
+        assert_eq!(TrainingPalette::vram_color(95.0), TrainingPalette::ERROR);
+    }
+
+    #[test]
+    fn test_power_color_thresholds() {
+        assert_eq!(TrainingPalette::power_color(40.0), TrainingPalette::SUCCESS);
+        assert_eq!(TrainingPalette::power_color(70.0), TrainingPalette::INFO);
+        assert_eq!(TrainingPalette::power_color(90.0), TrainingPalette::WARNING);
+        assert_eq!(TrainingPalette::power_color(99.0), TrainingPalette::ERROR);
+    }
+
+    #[test]
+    fn test_loss_color_equal_min_max() {
+        // When max <= min, should return INFO
+        let color = TrainingPalette::loss_color(0.5, 1.0, 1.0);
+        assert_eq!(color, TrainingPalette::INFO);
+    }
+
+    #[test]
+    fn test_loss_color_at_min() {
+        let color = TrainingPalette::loss_color(0.0, 0.0, 10.0);
+        // Should be greenish (low loss)
+        assert!(color.g > color.r);
+    }
+
+    #[test]
+    fn test_loss_color_at_max() {
+        let color = TrainingPalette::loss_color(10.0, 0.0, 10.0);
+        // Should be reddish (high loss)
+        assert!(color.r > color.g);
+    }
+
+    #[test]
+    fn test_loss_color_at_midpoint() {
+        let color = TrainingPalette::loss_color(5.0, 0.0, 10.0);
+        // At 0.5 normalized -> yellow range, high R and G
+        assert!(color.r > 200);
+        assert!(color.g > 150);
+    }
+
+    #[test]
+    fn test_loss_trend_color_all_variants() {
+        assert_eq!(
+            TrainingPalette::loss_trend_color(&LossTrend::Decreasing),
+            TrainingPalette::SUCCESS
+        );
+        assert_eq!(TrainingPalette::loss_trend_color(&LossTrend::Stable), TrainingPalette::INFO);
+        assert_eq!(
+            TrainingPalette::loss_trend_color(&LossTrend::Increasing),
+            TrainingPalette::ERROR
+        );
+        assert_eq!(TrainingPalette::loss_trend_color(&LossTrend::Unknown), TrainingPalette::MUTED);
+    }
+
+    #[test]
+    fn test_progress_color_thresholds() {
+        assert_eq!(TrainingPalette::progress_color(50.0), TrainingPalette::INFO);
+        assert_eq!(TrainingPalette::progress_color(75.0), TrainingPalette::INFO);
+        assert_eq!(TrainingPalette::progress_color(90.0), TrainingPalette::SUCCESS);
+        assert_eq!(TrainingPalette::progress_color(100.0), TrainingPalette::PRIMARY);
+    }
+
+    #[test]
+    fn test_progress_color_boundary_at_75() {
+        assert_eq!(TrainingPalette::progress_color(75.0), TrainingPalette::INFO);
+        assert_eq!(TrainingPalette::progress_color(75.01), TrainingPalette::SUCCESS);
+    }
+
+    #[test]
+    fn test_colored_bar_zero_value() {
+        let bar = colored_bar(0.0, 100.0, 10, TrainingPalette::SUCCESS, ColorMode::Mono);
+        assert_eq!(bar.chars().filter(|&c| c == '░').count(), 10);
+        assert_eq!(bar.chars().filter(|&c| c == '█').count(), 0);
+    }
+
+    #[test]
+    fn test_colored_bar_full_value() {
+        let bar = colored_bar(100.0, 100.0, 10, TrainingPalette::SUCCESS, ColorMode::Mono);
+        assert_eq!(bar.chars().filter(|&c| c == '█').count(), 10);
+        assert_eq!(bar.chars().filter(|&c| c == '░').count(), 0);
+    }
+
+    #[test]
+    fn test_colored_bar_zero_max() {
+        let bar = colored_bar(50.0, 0.0, 10, TrainingPalette::SUCCESS, ColorMode::Mono);
+        // Zero max -> 0% fill
+        assert_eq!(bar.chars().filter(|&c| c == '░').count(), 10);
+    }
+
+    #[test]
+    fn test_colored_bar_truecolor() {
+        let bar = colored_bar(50.0, 100.0, 10, TrainingPalette::SUCCESS, ColorMode::TrueColor);
+        // Should contain ANSI escape sequences
+        assert!(bar.contains("\x1b["));
+    }
+
+    #[test]
+    fn test_colored_value_mono() {
+        let s = colored_value(42, Rgb::new(255, 0, 0), ColorMode::Mono);
+        assert_eq!(s, "42");
+    }
+
+    #[test]
+    fn test_colored_value_truecolor() {
+        let s = colored_value(3.14, Rgb::new(0, 255, 0), ColorMode::TrueColor);
+        assert!(s.contains("3.14"));
+        assert!(s.contains("\x1b[38;2;0;255;0m"));
+    }
+
+    #[test]
+    fn test_threshold_color_below_first() {
+        let color = TrainingPalette::threshold_color(
+            5.0,
+            &[(10.0, Rgb::new(1, 2, 3)), (20.0, Rgb::new(4, 5, 6))],
+            Rgb::new(7, 8, 9),
+        );
+        assert_eq!(color, Rgb::new(1, 2, 3));
+    }
+
+    #[test]
+    fn test_threshold_color_between_thresholds() {
+        let color = TrainingPalette::threshold_color(
+            15.0,
+            &[(10.0, Rgb::new(1, 2, 3)), (20.0, Rgb::new(4, 5, 6))],
+            Rgb::new(7, 8, 9),
+        );
+        assert_eq!(color, Rgb::new(4, 5, 6));
+    }
+
+    #[test]
+    fn test_threshold_color_above_all() {
+        let color = TrainingPalette::threshold_color(
+            25.0,
+            &[(10.0, Rgb::new(1, 2, 3)), (20.0, Rgb::new(4, 5, 6))],
+            Rgb::new(7, 8, 9),
+        );
+        assert_eq!(color, Rgb::new(7, 8, 9));
+    }
+
+    #[test]
+    fn test_threshold_color_empty_thresholds() {
+        let color = TrainingPalette::threshold_color(5.0, &[], Rgb::new(7, 8, 9));
+        assert_eq!(color, Rgb::new(7, 8, 9));
+    }
+
+    #[test]
+    fn test_gpu_util_color_clamping() {
+        // Below 0 should clamp
+        assert_eq!(TrainingPalette::gpu_util_color(-10.0), TrainingPalette::MUTED);
+        // Above 100 should clamp
+        assert_eq!(TrainingPalette::gpu_util_color(150.0), TrainingPalette::PRIMARY);
+    }
+
+    #[test]
+    fn test_temp_color_clamping() {
+        assert_eq!(TrainingPalette::temp_color(-20.0), TrainingPalette::SUCCESS);
+        assert_eq!(TrainingPalette::temp_color(250.0), TrainingPalette::ERROR);
+    }
+
+    #[test]
+    fn test_colored_bar_overflow_value() {
+        // Value > max should clamp
+        let bar = colored_bar(200.0, 100.0, 10, TrainingPalette::SUCCESS, ColorMode::Mono);
+        assert_eq!(bar.chars().filter(|&c| c == '█').count(), 10);
+    }
+
+    #[test]
+    fn test_styled_display_mono_with_bold_and_fg() {
+        // In Mono mode, bold and fg are ignored
+        let styled = Styled::new("mono", ColorMode::Mono).fg(Rgb::new(255, 0, 0)).bold();
+        let output = styled.to_string();
+        assert_eq!(output, "mono"); // No escape codes
+    }
+
+    #[test]
+    fn test_semantic_color_constants_distinct() {
+        // Verify all semantic colors are distinct
+        let colors = [
+            TrainingPalette::SUCCESS,
+            TrainingPalette::WARNING,
+            TrainingPalette::ERROR,
+            TrainingPalette::INFO,
+            TrainingPalette::MUTED,
+            TrainingPalette::PRIMARY,
+        ];
+        for i in 0..colors.len() {
+            for j in (i + 1)..colors.len() {
+                assert_ne!(colors[i], colors[j], "colors at {i} and {j} should differ");
+            }
+        }
+    }
 }

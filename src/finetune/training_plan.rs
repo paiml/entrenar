@@ -1999,4 +1999,1640 @@ mod tests {
             "Error should mention model path: {err_msg}"
         );
     }
+
+    // ── resolve_trial_status tests ──────────────────────────────────────
+
+    #[test]
+    fn test_resolve_trial_status_completed() {
+        assert_eq!(resolve_trial_status(false, false), "completed");
+    }
+
+    #[test]
+    fn test_resolve_trial_status_pruned() {
+        assert_eq!(resolve_trial_status(true, false), "pruned");
+    }
+
+    #[test]
+    fn test_resolve_trial_status_stopped_early() {
+        assert_eq!(resolve_trial_status(false, true), "stopped_early");
+    }
+
+    #[test]
+    fn test_resolve_trial_status_pruned_takes_priority() {
+        // When both pruned and stopped_early, pruned wins
+        assert_eq!(resolve_trial_status(true, true), "pruned");
+    }
+
+    // ── estimate_gpu_hours tests ────────────────────────────────────────
+
+    #[test]
+    fn test_estimate_gpu_hours_basic() {
+        let hours = estimate_gpu_hours(128, 1, 1);
+        // 128 samples / 64 batch = 2 steps, 2 * 58 = 116 seconds / 3600 ~ 0.032 hours
+        assert!(hours > 0.0);
+        assert!(hours < 1.0);
+    }
+
+    #[test]
+    fn test_estimate_gpu_hours_scales_with_budget() {
+        let h1 = estimate_gpu_hours(100, 1, 1);
+        let h10 = estimate_gpu_hours(100, 1, 10);
+        assert!((h10 - h1 * 10.0).abs() < 1e-6, "Budget should scale linearly");
+    }
+
+    #[test]
+    fn test_estimate_gpu_hours_scales_with_epochs() {
+        let h1 = estimate_gpu_hours(100, 1, 1);
+        let h5 = estimate_gpu_hours(100, 5, 1);
+        assert!((h5 - h1 * 5.0).abs() < 1e-6, "Epochs should scale linearly");
+    }
+
+    #[test]
+    fn test_estimate_gpu_hours_zero_budget() {
+        let hours = estimate_gpu_hours(100, 5, 0);
+        assert!((hours).abs() < 1e-10);
+    }
+
+    // ── resolve_model tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_model_qwen2_05b() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 5,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 896);
+        assert_eq!(model.num_layers, 24);
+        assert_eq!(model.architecture, "qwen2");
+        assert!(!model.weights_available);
+    }
+
+    #[test]
+    fn test_resolve_model_500m_alias() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "500M".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 896);
+        assert_eq!(model.architecture, "qwen2");
+    }
+
+    #[test]
+    fn test_resolve_model_9b() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "9B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 4096);
+        assert_eq!(model.num_layers, 48);
+        assert_eq!(model.architecture, "qwen3.5");
+    }
+
+    #[test]
+    fn test_resolve_model_7b() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "7B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 4096);
+        assert_eq!(model.num_layers, 32);
+        assert_eq!(model.architecture, "llama2");
+    }
+
+    #[test]
+    fn test_resolve_model_13b() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "13B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 5120);
+        assert_eq!(model.num_layers, 40);
+        assert_eq!(model.architecture, "llama2");
+    }
+
+    #[test]
+    fn test_resolve_model_unknown_size() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "99B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.architecture, "unknown");
+        assert_eq!(model.hidden_size, 896); // defaults to smallest
+    }
+
+    #[test]
+    fn test_resolve_model_with_model_path_dir() {
+        // model_path pointing to an existing directory
+        let dir = tempfile::tempdir().unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: Some(dir.path().to_path_buf()),
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert!(model.weights_available);
+        // Should warn about missing files (no model.safetensors, no tokenizer.json)
+        assert!(pf.iter().any(|c| c.name == "model_weights" && c.status == CheckStatus::Warn));
+    }
+
+    #[test]
+    fn test_resolve_model_with_nonexistent_path() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: Some(PathBuf::from("/nonexistent/model/dir")),
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert!(!model.weights_available);
+        assert!(pf.iter().any(|c| c.name == "model_weights" && c.status == CheckStatus::Fail));
+    }
+
+    #[test]
+    fn test_resolve_model_with_complete_model_dir() {
+        // model_path with model.safetensors and tokenizer.json
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("model.safetensors"), b"fake").unwrap();
+        std::fs::write(dir.path().join("tokenizer.json"), b"{}").unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: Some(dir.path().to_path_buf()),
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert!(model.weights_available);
+        assert!(pf.iter().any(|c| c.name == "model_weights" && c.status == CheckStatus::Pass));
+    }
+
+    #[test]
+    fn test_resolve_model_lora_params_calculation() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 5,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: Some(8),
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        // lora_trainable = 2 * rank * hidden * 2 * layers = 2 * 8 * 896 * 2 * 24
+        assert_eq!(model.lora_trainable_params, 2 * 8 * 896 * 2 * 24);
+        // classifier_params = hidden * num_classes + num_classes = 896 * 5 + 5
+        assert_eq!(model.classifier_params, 896 * 5 + 5);
+    }
+
+    // ── estimate_resources tests ────────────────────────────────────────
+
+    #[test]
+    fn test_estimate_resources_05b() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 5,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 3,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let model = ModelInfo {
+            size: "0.5B".to_string(),
+            hidden_size: 896,
+            num_layers: 24,
+            architecture: "qwen2".to_string(),
+            weights_available: false,
+            lora_trainable_params: 100_000,
+            classifier_params: 4485,
+        };
+        let data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 1000,
+            avg_input_len: 50,
+            class_counts: vec![500, 500],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        let res = estimate_resources(&config, &model, &data, 64);
+        assert!((res.estimated_vram_gb - 2.5).abs() < 0.01);
+        assert!(res.steps_per_epoch > 0);
+        assert!(res.estimated_minutes_per_epoch > 0.0);
+        assert!(res.estimated_total_minutes > 0.0);
+        assert!(res.estimated_checkpoint_mb > 0.0);
+    }
+
+    #[test]
+    fn test_estimate_resources_7b() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "7B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let model = ModelInfo {
+            size: "7B".to_string(),
+            hidden_size: 4096,
+            num_layers: 32,
+            architecture: "llama2".to_string(),
+            weights_available: false,
+            lora_trainable_params: 1_000_000,
+            classifier_params: 8194,
+        };
+        let data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 100,
+            avg_input_len: 50,
+            class_counts: vec![50, 50],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        let res = estimate_resources(&config, &model, &data, 32);
+        assert!((res.estimated_vram_gb - 18.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_estimate_resources_13b() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "13B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let model = ModelInfo {
+            size: "13B".to_string(),
+            hidden_size: 5120,
+            num_layers: 40,
+            architecture: "llama2".to_string(),
+            weights_available: false,
+            lora_trainable_params: 2_000_000,
+            classifier_params: 10242,
+        };
+        let data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 100,
+            avg_input_len: 50,
+            class_counts: vec![50, 50],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        let res = estimate_resources(&config, &model, &data, 32);
+        assert!((res.estimated_vram_gb - 26.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_estimate_resources_unknown_hidden_size() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "custom".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let model = ModelInfo {
+            size: "custom".to_string(),
+            hidden_size: 2048,
+            num_layers: 16,
+            architecture: "custom".to_string(),
+            weights_available: false,
+            lora_trainable_params: 500_000,
+            classifier_params: 4098,
+        };
+        let data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 100,
+            avg_input_len: 50,
+            class_counts: vec![50, 50],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        let res = estimate_resources(&config, &model, &data, 32);
+        // Unknown hidden size falls through to default 3.0 GB
+        assert!((res.estimated_vram_gb - 3.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_estimate_resources_scout_mode() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "tpe".to_string(),
+            budget: 10,
+            scout: true,
+            max_epochs: 5,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let model = ModelInfo {
+            size: "0.5B".to_string(),
+            hidden_size: 896,
+            num_layers: 24,
+            architecture: "qwen2".to_string(),
+            weights_available: false,
+            lora_trainable_params: 100_000,
+            classifier_params: 1794,
+        };
+        let data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 200,
+            avg_input_len: 50,
+            class_counts: vec![100, 100],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        let res = estimate_resources(&config, &model, &data, 64);
+        // Scout: total_epochs = 1, total_trials = 10
+        // Non-scout with same config would be 5 * 10 = 50
+        let non_scout_config = PlanConfig { scout: false, ..config.clone() };
+        let res_full = estimate_resources(&non_scout_config, &model, &data, 64);
+        assert!(res.estimated_total_minutes < res_full.estimated_total_minutes);
+    }
+
+    // ── count_file_samples tests ────────────────────────────────────────
+
+    #[test]
+    fn test_count_file_samples_none() {
+        assert!(count_file_samples(None, 2).is_none());
+    }
+
+    #[test]
+    fn test_count_file_samples_nonexistent() {
+        let p = PathBuf::from("/nonexistent/file.jsonl");
+        assert!(count_file_samples(Some(&p), 2).is_none());
+    }
+
+    #[test]
+    fn test_count_file_samples_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("val.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..10 {
+            lines.push(format!(r#"{{"input": "test {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&path, lines.join("\n")).unwrap();
+        let count = count_file_samples(Some(&path), 2);
+        assert_eq!(count, Some(10));
+    }
+
+    // ── build_hpo_plan tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_build_hpo_plan_manual() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 5,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 5,
+            manual_lr: Some(2e-5),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(16),
+            manual_lora_alpha: Some(16.0),
+            manual_warmup: Some(0.05),
+            manual_gradient_clip: Some(0.5),
+            manual_lr_min_ratio: Some(0.001),
+            manual_class_weights: Some("sqrt_inverse".to_string()),
+            manual_target_modules: Some("qkv".to_string()),
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 1000, &mut issues);
+        assert_eq!(hpo.strategy, "manual");
+        assert_eq!(hpo.budget, 0);
+        assert!(!hpo.scout);
+        assert_eq!(hpo.max_epochs, 5);
+        assert_eq!(hpo.search_space_params, 0);
+        assert!(hpo.sample_configs.is_empty());
+        let manual = hpo.manual.unwrap();
+        assert!((manual.learning_rate - 2e-5).abs() < 1e-10);
+        assert_eq!(manual.lora_rank, 8);
+        assert_eq!(manual.batch_size, 16);
+        assert_eq!(manual.lora_alpha, Some(16.0));
+        assert_eq!(manual.warmup_fraction, Some(0.05));
+        assert_eq!(manual.gradient_clip_norm, Some(0.5));
+        assert_eq!(manual.lr_min_ratio, Some(0.001));
+        assert_eq!(manual.class_weights.as_deref(), Some("sqrt_inverse"));
+        assert_eq!(manual.target_modules.as_deref(), Some("qkv"));
+        // Should have a warning about manual mode
+        assert!(issues.iter().any(|i| i.category == "Hyperparameters"));
+        assert!(hpo.recommendation.is_some());
+    }
+
+    #[test]
+    fn test_build_hpo_plan_manual_defaults() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 100, &mut issues);
+        let manual = hpo.manual.unwrap();
+        // Defaults: lr=1e-4, rank=16, batch=32
+        assert!((manual.learning_rate - 1e-4).abs() < 1e-10);
+        assert_eq!(manual.lora_rank, 16);
+        assert_eq!(manual.batch_size, 32);
+    }
+
+    #[test]
+    fn test_build_hpo_plan_tpe() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 5,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "tpe".to_string(),
+            budget: 20,
+            scout: true,
+            max_epochs: 5,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 1000, &mut issues);
+        assert_eq!(hpo.strategy, "tpe");
+        assert_eq!(hpo.budget, 20);
+        assert!(hpo.scout);
+        assert_eq!(hpo.max_epochs, 1); // scout mode forces 1 epoch
+        assert_eq!(hpo.search_space_params, 9);
+        assert!(!hpo.sample_configs.is_empty());
+        assert!(hpo.manual.is_none());
+    }
+
+    #[test]
+    fn test_build_hpo_plan_grid() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "grid".to_string(),
+            budget: 10,
+            scout: false,
+            max_epochs: 3,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 100, &mut issues);
+        assert_eq!(hpo.strategy, "grid");
+        assert_eq!(hpo.max_epochs, 3);
+    }
+
+    #[test]
+    fn test_build_hpo_plan_random() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "random".to_string(),
+            budget: 5,
+            scout: false,
+            max_epochs: 2,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 100, &mut issues);
+        assert_eq!(hpo.strategy, "random");
+    }
+
+    #[test]
+    fn test_build_hpo_plan_low_budget_warning() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "tpe".to_string(),
+            budget: 3,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut issues = Vec::new();
+        build_hpo_plan(&config, 100, &mut issues);
+        assert!(issues
+            .iter()
+            .any(|i| i.message.contains("TPE budget") && i.message.contains("low")));
+    }
+
+    #[test]
+    fn test_build_hpo_plan_large_dataset_scout_warning() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "tpe".to_string(),
+            budget: 20,
+            scout: false,
+            max_epochs: 5,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let mut issues = Vec::new();
+        build_hpo_plan(&config, 50_000, &mut issues);
+        // Should warn about GPU hours for large dataset without scout
+        assert!(issues.iter().any(|i| i.message.contains("GPU hours")));
+    }
+
+    // ── detect_gpu_device tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_detect_gpu_device_returns_option() {
+        // Just verify it doesn't panic; result depends on hardware
+        let _gpu = detect_gpu_device();
+    }
+
+    // ── TrainingPlan from_str tests ─────────────────────────────────────
+
+    #[test]
+    fn test_training_plan_from_str_invalid() {
+        let result = TrainingPlan::from_str("not valid json or yaml {{{{");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_training_plan_from_str_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        let json = p.to_json();
+        let parsed = TrainingPlan::from_str(&json).unwrap();
+        assert_eq!(parsed.task, "classify");
+    }
+
+    // ── ExperimentTracker tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_experiment_tracker_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan_data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 100,
+            avg_input_len: 50,
+            class_counts: vec![50, 50],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        let test_plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: plan_data,
+            model: ModelInfo {
+                size: "0.5B".to_string(),
+                hidden_size: 896,
+                num_layers: 24,
+                architecture: "qwen2".to_string(),
+                weights_available: false,
+                lora_trainable_params: 100_000,
+                classifier_params: 1794,
+            },
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 4,
+                gpu_device: None,
+            },
+            pre_flight: Vec::new(),
+            output_dir: dir.path().display().to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Ready,
+            issues: Vec::new(),
+        };
+        let tracker = ExperimentTracker::open(dir.path(), &test_plan);
+        // Should either succeed or fail gracefully — no panic
+        drop(tracker);
+    }
+
+    #[test]
+    fn test_experiment_tracker_log_failed_trial_no_store() {
+        let mut tracker = ExperimentTracker { store: None, exp_id: None };
+        // Should be a no-op, not panic
+        tracker.log_failed_trial();
+    }
+
+    // ── PlanConfig serialization tests ──────────────────────────────────
+
+    #[test]
+    fn test_plan_config_serde_roundtrip() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: Some(PathBuf::from("/tmp/val.jsonl")),
+            test_path: Some(PathBuf::from("/tmp/test.jsonl")),
+            model_size: "0.5B".to_string(),
+            model_path: Some(PathBuf::from("/tmp/model")),
+            num_classes: 5,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "tpe".to_string(),
+            budget: 20,
+            scout: true,
+            max_epochs: 10,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(16),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: Some(32.0),
+            manual_warmup: Some(0.1),
+            manual_gradient_clip: Some(1.0),
+            manual_lr_min_ratio: Some(0.01),
+            manual_class_weights: Some("sqrt_inverse".to_string()),
+            manual_target_modules: Some("qkv".to_string()),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: PlanConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.task, "classify");
+        assert_eq!(deserialized.budget, 20);
+        assert_eq!(deserialized.manual_lr, Some(1e-4));
+        assert!(deserialized.val_path.is_some());
+        assert!(deserialized.test_path.is_some());
+    }
+
+    // ── ManualConfig serde defaults test ────────────────────────────────
+
+    #[test]
+    fn test_manual_config_serde_defaults() {
+        let json = r#"{"learning_rate": 0.001, "lora_rank": 8, "batch_size": 32}"#;
+        let mc: ManualConfig = serde_json::from_str(json).unwrap();
+        assert!((mc.learning_rate - 0.001).abs() < 1e-6);
+        assert_eq!(mc.lora_rank, 8);
+        assert_eq!(mc.batch_size, 32);
+        // All optional fields should be None (serde default)
+        assert!(mc.lora_alpha.is_none());
+        assert!(mc.warmup_fraction.is_none());
+        assert!(mc.gradient_clip_norm.is_none());
+        assert!(mc.lr_min_ratio.is_none());
+        assert!(mc.class_weights.is_none());
+        assert!(mc.target_modules.is_none());
+    }
+
+    #[test]
+    fn test_manual_config_serde_all_fields() {
+        let mc = ManualConfig {
+            learning_rate: 5e-5,
+            lora_rank: 4,
+            batch_size: 64,
+            lora_alpha: Some(8.0),
+            warmup_fraction: Some(0.05),
+            gradient_clip_norm: Some(0.5),
+            lr_min_ratio: Some(0.001),
+            class_weights: Some("inverse_freq".to_string()),
+            target_modules: Some("all_linear".to_string()),
+        };
+        let json = serde_json::to_string(&mc).unwrap();
+        let deserialized: ManualConfig = serde_json::from_str(&json).unwrap();
+        assert!((deserialized.learning_rate - 5e-5).abs() < 1e-10);
+        assert_eq!(deserialized.lora_alpha, Some(8.0));
+        assert_eq!(deserialized.class_weights.as_deref(), Some("inverse_freq"));
+    }
+
+    // ── PlanIssue tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_plan_issue_serde() {
+        let issue = PlanIssue {
+            severity: CheckStatus::Warn,
+            category: "Data".to_string(),
+            message: "test issue".to_string(),
+            fix: Some("do this".to_string()),
+        };
+        let json = serde_json::to_string(&issue).unwrap();
+        let deserialized: PlanIssue = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.severity, CheckStatus::Warn);
+        assert_eq!(deserialized.category, "Data");
+        assert_eq!(deserialized.fix.as_deref(), Some("do this"));
+    }
+
+    #[test]
+    fn test_plan_issue_no_fix() {
+        let issue = PlanIssue {
+            severity: CheckStatus::Fail,
+            category: "Model".to_string(),
+            message: "error".to_string(),
+            fix: None,
+        };
+        let json = serde_json::to_string(&issue).unwrap();
+        let deserialized: PlanIssue = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.fix.is_none());
+    }
+
+    // ── TrialPreview serde tests ────────────────────────────────────────
+
+    #[test]
+    fn test_trial_preview_serde() {
+        let tp = TrialPreview {
+            trial: 1,
+            learning_rate: 1e-4,
+            lora_rank: 16,
+            lora_alpha: 32.0,
+            batch_size: 64,
+            warmup: 0.1,
+            gradient_clip: 1.0,
+            class_weights: "sqrt_inverse".to_string(),
+            target_modules: "qv".to_string(),
+            lr_min_ratio: 0.01,
+        };
+        let json = serde_json::to_string(&tp).unwrap();
+        let deserialized: TrialPreview = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.trial, 1);
+        assert_eq!(deserialized.lora_rank, 16);
+        assert!((deserialized.lora_alpha - 32.0).abs() < 1e-6);
+    }
+
+    // ── execute_plan missing data test ──────────────────────────────────
+
+    #[test]
+    fn test_execute_plan_rejects_missing_data() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: DataAudit {
+                train_path: "/tmp/data.jsonl".to_string(),
+                train_samples: 100,
+                avg_input_len: 50,
+                class_counts: vec![50, 50],
+                imbalance_ratio: 1.0,
+                auto_class_weights: false,
+                val_samples: None,
+                test_samples: None,
+                duplicates: 0,
+                preamble_count: 0,
+            },
+            model: ModelInfo {
+                size: "0.5B".to_string(),
+                hidden_size: 896,
+                num_layers: 24,
+                architecture: "qwen2".to_string(),
+                weights_available: true,
+                lora_trainable_params: 1000,
+                classifier_params: 100,
+            },
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: Some(ManualConfig {
+                    learning_rate: 1e-4,
+                    lora_rank: 16,
+                    batch_size: 32,
+                    lora_alpha: None,
+                    warmup_fraction: None,
+                    gradient_clip_norm: None,
+                    lr_min_ratio: None,
+                    class_weights: None,
+                    target_modules: None,
+                }),
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 4,
+                gpu_device: None,
+            },
+            pre_flight: Vec::new(),
+            output_dir: "/tmp/test".to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Ready,
+            issues: Vec::new(),
+        };
+        // Model path is a directory (use tempdir) but data doesn't exist
+        let dir = tempfile::tempdir().unwrap();
+        let apply = ApplyConfig {
+            model_path: dir.path().to_path_buf(),
+            data_path: PathBuf::from("/tmp/nonexistent_data_file.jsonl"),
+            output_dir: PathBuf::from("/tmp/test-apply-missing-data"),
+            on_trial_complete: None,
+        };
+        let result = execute_plan(&plan, &apply);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("not found") || err_msg.contains("data"),
+            "Error should mention data: {err_msg}"
+        );
+    }
+
+    // ── Plan with preamble detection ────────────────────────────────────
+
+    #[test]
+    fn test_plan_detects_preambles() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        // Many entries with shell preamble (> 10% of total)
+        for i in 0..20 {
+            lines.push(format!("{{\"input\": \"#!/bin/bash\\necho {i}\", \"label\": {}}}", i % 2));
+        }
+        for i in 0..5 {
+            lines.push(format!(r#"{{"input": "echo clean {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        assert!(p.data.preamble_count > 0);
+        assert!(p.issues.iter().any(|i| i.message.contains("preamble")));
+    }
+
+    // ── Plan with small dataset warning ─────────────────────────────────
+
+    #[test]
+    fn test_plan_small_dataset_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..30 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        // < 100 samples should generate a warning
+        assert!(p.issues.iter().any(|i| i.message.contains("insufficient")));
+    }
+
+    // ── Plan output_dir with existing checkpoints ───────────────────────
+
+    #[test]
+    fn test_plan_output_dir_existing_checkpoints() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        // Create a metadata.json in output dir to simulate existing checkpoints
+        let output_dir = dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+        std::fs::write(output_dir.join("metadata.json"), "{}").unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir,
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        assert!(p
+            .pre_flight
+            .iter()
+            .any(|c| c.name == "output_dir" && c.status == CheckStatus::Warn));
+        assert!(p.issues.iter().any(|i| i.message.contains("checkpoint")));
+    }
+
+    // ── Plan verdict logic tests ────────────────────────────────────────
+
+    #[test]
+    fn test_plan_verdict_blocked_on_empty_class() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        // Only classes 0 and 1, but num_classes = 3 (class 2 is empty)
+        for i in 0..50 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 3,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        assert_eq!(p.verdict, PlanVerdict::Blocked);
+        assert!(p
+            .pre_flight
+            .iter()
+            .any(|c| c.name == "class_coverage" && c.status == CheckStatus::Fail));
+    }
+
+    // ── DataAudit serde test ────────────────────────────────────────────
+
+    #[test]
+    fn test_data_audit_serde() {
+        let da = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 500,
+            avg_input_len: 42,
+            class_counts: vec![300, 200],
+            imbalance_ratio: 1.5,
+            auto_class_weights: false,
+            val_samples: Some(50),
+            test_samples: Some(25),
+            duplicates: 3,
+            preamble_count: 10,
+        };
+        let json = serde_json::to_string(&da).unwrap();
+        let deserialized: DataAudit = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.train_samples, 500);
+        assert_eq!(deserialized.val_samples, Some(50));
+        assert_eq!(deserialized.test_samples, Some(25));
+        assert_eq!(deserialized.duplicates, 3);
+    }
+
+    // ── ResourceEstimate serde test ─────────────────────────────────────
+
+    #[test]
+    fn test_resource_estimate_serde() {
+        let re = ResourceEstimate {
+            estimated_vram_gb: 6.5,
+            estimated_minutes_per_epoch: 2.0,
+            estimated_total_minutes: 100.0,
+            estimated_checkpoint_mb: 50.0,
+            steps_per_epoch: 32,
+            gpu_device: Some("RTX 4090".to_string()),
+        };
+        let json = serde_json::to_string(&re).unwrap();
+        let deserialized: ResourceEstimate = serde_json::from_str(&json).unwrap();
+        assert!((deserialized.estimated_vram_gb - 6.5).abs() < 1e-6);
+        assert_eq!(deserialized.gpu_device.as_deref(), Some("RTX 4090"));
+    }
+
+    // ── CheckStatus equality ────────────────────────────────────────────
+
+    #[test]
+    fn test_check_status_equality() {
+        assert_eq!(CheckStatus::Pass, CheckStatus::Pass);
+        assert_ne!(CheckStatus::Pass, CheckStatus::Warn);
+        assert_ne!(CheckStatus::Warn, CheckStatus::Fail);
+    }
+
+    // ── PlanVerdict equality ────────────────────────────────────────────
+
+    #[test]
+    fn test_plan_verdict_equality() {
+        assert_eq!(PlanVerdict::Ready, PlanVerdict::Ready);
+        assert_ne!(PlanVerdict::Ready, PlanVerdict::Blocked);
+        assert_ne!(PlanVerdict::WarningsPresent, PlanVerdict::Blocked);
+    }
+
+    // ── Plan with val_path and test_path ────────────────────────────────
+
+    #[test]
+    fn test_plan_with_val_and_test_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let val_path = dir.path().join("val.jsonl");
+        let test_path = dir.path().join("test.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..50 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let mut val_lines = Vec::new();
+        for i in 0..10 {
+            val_lines.push(format!(r#"{{"input": "val {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&val_path, val_lines.join("\n")).unwrap();
+        let mut test_lines = Vec::new();
+        for i in 0..5 {
+            test_lines.push(format!(r#"{{"input": "test {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&test_path, test_lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: Some(val_path),
+            test_path: Some(test_path),
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        assert_eq!(p.data.val_samples, Some(10));
+        assert_eq!(p.data.test_samples, Some(5));
+    }
+
+    // ── Plan with nonexistent val/test paths ────────────────────────────
+
+    #[test]
+    fn test_plan_with_nonexistent_val_test_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..50 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: Some(PathBuf::from("/nonexistent/val.jsonl")),
+            test_path: Some(PathBuf::from("/nonexistent/test.jsonl")),
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        // Nonexistent paths should result in None
+        assert!(p.data.val_samples.is_none());
+        assert!(p.data.test_samples.is_none());
+    }
+
+    // ── execute_plan manual without manual config ───────────────────────
+
+    #[test]
+    fn test_execute_plan_manual_no_manual_config() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create a data file so data check passes
+        let data_path = dir.path().join("data.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: DataAudit {
+                train_path: data_path.display().to_string(),
+                train_samples: 20,
+                avg_input_len: 10,
+                class_counts: vec![10, 10],
+                imbalance_ratio: 1.0,
+                auto_class_weights: false,
+                val_samples: None,
+                test_samples: None,
+                duplicates: 0,
+                preamble_count: 0,
+            },
+            model: ModelInfo {
+                size: "0.5B".to_string(),
+                hidden_size: 896,
+                num_layers: 24,
+                architecture: "qwen2".to_string(),
+                weights_available: true,
+                lora_trainable_params: 100_000,
+                classifier_params: 1794,
+            },
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None, // No manual config!
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 1,
+                gpu_device: None,
+            },
+            pre_flight: Vec::new(),
+            output_dir: dir.path().display().to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Ready,
+            issues: Vec::new(),
+        };
+        let model_dir = dir.path().join("model");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        let apply = ApplyConfig {
+            model_path: model_dir,
+            data_path,
+            output_dir: dir.path().join("out"),
+            on_trial_complete: None,
+        };
+        let result = execute_plan(&plan, &apply);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("manual") || err_msg.contains("Manual"),
+            "Error should mention manual config: {err_msg}"
+        );
+    }
 }

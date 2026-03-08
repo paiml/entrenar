@@ -189,4 +189,124 @@ mod tests {
         ledger.update_actual(6000).expect("should succeed");
         assert_eq!(ledger.total_reserved().expect("should succeed"), 6000);
     }
+
+    // ── Additional coverage tests ──
+
+    #[test]
+    fn test_guard_struct_fields() {
+        let ledger = test_guard_ledger(16000);
+        let guard = VramGuard { ledger, budget_mb: 4000 };
+        assert_eq!(guard.budget_mb(), 4000);
+        assert_eq!(guard.gpu_uuid(), "GPU-test-guard");
+    }
+
+    #[test]
+    fn test_guard_status_returns_string() {
+        let mut ledger = test_guard_ledger(24000);
+        ledger.try_reserve(5000, "status-test").expect("should succeed");
+        let guard = VramGuard { ledger, budget_mb: 5000 };
+        let status = guard.status();
+        assert!(status.is_ok());
+        let status_str = status.unwrap();
+        assert!(status_str.contains("GPU-test-guard"));
+        assert!(status_str.contains("5000 MB budget"));
+    }
+
+    #[test]
+    fn test_guard_status_empty_ledger() {
+        let ledger = test_guard_ledger(24000);
+        let guard = VramGuard { ledger, budget_mb: 0 };
+        let status = guard.status();
+        assert!(status.is_ok());
+        let s = status.unwrap();
+        assert!(s.contains("none") || s.contains("Reservations"));
+    }
+
+    #[test]
+    fn test_guard_update_actual_with_active_reservation() {
+        let mut ledger = test_guard_ledger(24000);
+        ledger.try_reserve(10000, "update-actual").expect("should succeed");
+        let mut guard = VramGuard { ledger, budget_mb: 10000 };
+        let result = guard.update_actual(9500);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_guard_small_gpu() {
+        // Test with small GPU (e.g., embedded GPU)
+        let mut ledger = test_guard_ledger(2048);
+        // Capacity = 2048 * 0.85 = 1740
+        let result = ledger.try_reserve(1740, "small-gpu");
+        assert!(result.is_ok());
+        // One more MB should fail
+        let result2 = ledger.try_reserve(1, "overflow");
+        assert!(result2.is_err());
+    }
+
+    #[test]
+    fn test_guard_capacity_calculation() {
+        let ledger = test_guard_ledger(10000);
+        // 10000 * 0.85 = 8500
+        assert_eq!(ledger.capacity_mb(), 8500);
+    }
+
+    #[test]
+    fn test_guard_available_mb_after_reserve() {
+        let mut ledger = test_guard_ledger(20000);
+        // capacity = 17000
+        ledger.try_reserve(7000, "test").expect("should succeed");
+        let available = ledger.available_mb().expect("should succeed");
+        assert_eq!(available, 10000);
+    }
+
+    #[test]
+    fn test_guard_multiple_sequential_reserve_release() {
+        let mut ledger = test_guard_ledger(24000);
+        // Reserve, release, reserve again
+        ledger.try_reserve(5000, "first").expect("ok");
+        assert_eq!(ledger.total_reserved().expect("ok"), 5000);
+        ledger.release().expect("ok");
+        assert_eq!(ledger.total_reserved().expect("ok"), 0);
+        ledger.try_reserve(8000, "second").expect("ok");
+        assert_eq!(ledger.total_reserved().expect("ok"), 8000);
+    }
+
+    #[test]
+    fn test_guard_profiler_report_accessible() {
+        let ledger = test_guard_ledger(24000);
+        let guard = VramGuard { ledger, budget_mb: 0 };
+        // Can access profiler report through guard's ledger
+        let report = guard.ledger.profiler_report();
+        assert!(report.contains("No operations recorded"));
+    }
+
+    #[test]
+    fn test_guard_drop_does_not_panic() {
+        let ledger = test_guard_ledger(24000);
+        let guard = VramGuard { ledger, budget_mb: 3000 };
+        // Dropping without reservation should not panic
+        drop(guard);
+    }
+
+    #[test]
+    fn test_guard_drop_with_reservation_releases() {
+        let n = TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join("entrenar-guard-test");
+        std::fs::create_dir_all(&dir).expect("dir creation should succeed");
+        let path = dir.join(format!("guard-drop-{n}-{}.json", std::process::id()));
+
+        {
+            let mut ledger =
+                VramLedger::new("GPU-test-guard".into(), 24000, 0.85).with_path(path.clone());
+            ledger.try_reserve(5000, "drop-reserve").expect("ok");
+            let guard = VramGuard { ledger, budget_mb: 5000 };
+            // guard dropped here, should release
+            drop(guard);
+        }
+
+        // Verify reservation was cleaned up
+        let check_ledger = VramLedger::new("GPU-test-guard".into(), 24000, 0.85).with_path(path);
+        let reserved = check_ledger.total_reserved().expect("ok");
+        assert_eq!(reserved, 0);
+    }
 }
