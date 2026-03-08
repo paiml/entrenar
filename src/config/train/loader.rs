@@ -800,6 +800,7 @@ fn train_loop_cuda(
     // R-029: Gradient noise scale estimation — rolling window of grad norms
     let mut gnorm_window: Vec<f64> = Vec::with_capacity(100);
     let noise_scale_interval: usize = 100;
+    let mut last_noise_scale_step: usize = usize::MAX; // Dedup: only log once per optimizer step
 
     // R-026: Save training config hash to JSONL for diff tracking
     write_config_provenance(&mut jsonl_file, spec);
@@ -900,6 +901,7 @@ fn train_loop_cuda(
                 trainer.step(),
                 &mut gnorm_window,
                 noise_scale_interval,
+                &mut last_noise_scale_step,
                 &mut jsonl_file,
             );
 
@@ -1346,12 +1348,15 @@ fn update_noise_scale(
     step: usize,
     window: &mut Vec<f64>,
     interval: usize,
+    last_logged_step: &mut usize,
     jsonl_file: &mut Option<std::fs::File>,
 ) {
     push_capped_f64(window, grad_norm, 100);
-    if step == 0 || !step.is_multiple_of(interval) || window.len() < 10 {
+    if step == 0 || !step.is_multiple_of(interval) || window.len() < 10 || step == *last_logged_step
+    {
         return;
     }
+    *last_logged_step = step;
     let n = window.len() as f64;
     let mean = window.iter().sum::<f64>() / n;
     if mean < 1e-12 {
