@@ -99,6 +99,9 @@ pub struct TransformerTrainConfig {
     /// LoRA+ ratio: LR multiplier for B matrices (ENT-LoRA-006)
     /// Default 1.0 = standard LoRA. 16.0 = LoRA+ (Hayou et al. ICML 2024)
     pub lora_plus_ratio: f32,
+    /// Double quantization for QLoRA (ENT-LoRA-008)
+    /// Quantizes FP32 absmax constants to 8-bit, saving ~0.37 bits/param
+    pub double_quantize: bool,
 }
 
 impl TransformerTrainConfig {
@@ -126,6 +129,7 @@ impl TransformerTrainConfig {
             lora_alpha: None,
             lora_target_modules: None,
             lora_plus_ratio: 1.0,
+            double_quantize: false,
         }
     }
 
@@ -266,6 +270,12 @@ impl TransformerTrainConfig {
     /// 16.0 = LoRA+ (Hayou et al. ICML 2024) — B learns 16x faster than A.
     pub fn with_lora_plus_ratio(mut self, ratio: f32) -> Self {
         self.lora_plus_ratio = ratio;
+        self
+    }
+
+    /// Enable double quantization for QLoRA (ENT-LoRA-008)
+    pub fn with_double_quantize(mut self, enabled: bool) -> Self {
+        self.double_quantize = enabled;
         self
     }
 
