@@ -1600,6 +1600,8 @@ impl CudaTransformerTrainer {
             let bg = &accum.block_grads[layer_idx];
 
             // Upload accumulated gradients to shared workspace
+            // SAFETY: async host-to-device copies within the training stream; host buffers
+            // (bg.components) are stable for the duration of the stream operations.
             unsafe {
                 self.cuda_grad_workspace
                     .grad_w_q
@@ -1654,6 +1656,7 @@ impl CudaTransformerTrainer {
         }
 
         // Upload accumulated LM head gradients and run AdamW step
+        // SAFETY: async host-to-device copy; host buffer (accum.lm_head_grad) is stable.
         unsafe {
             self.lm_head_grad_gpu.copy_from_host_async(&accum.lm_head_grad, stream).ok()?;
         }
@@ -1674,6 +1677,7 @@ impl CudaTransformerTrainer {
         );
 
         // Upload accumulated final norm gradients and run AdamW step
+        // SAFETY: async host-to-device copy; host buffer (accum.final_norm_grad) is stable.
         unsafe {
             self.gpu_training
                 .grad_final_norm_weight
