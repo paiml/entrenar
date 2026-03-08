@@ -23,7 +23,7 @@ pub use adapter::{
     merge_export_publish, merge_qlora_export_publish, MergePublishError, MergePublishResult,
 };
 pub use config::LoRAConfig;
-pub use layer::LoRALayer;
+pub use layer::{LoRALayer, LoRAScaling};
 pub use qlora::{MemoryStats, QLoRALayer};
 
 #[cfg(test)]

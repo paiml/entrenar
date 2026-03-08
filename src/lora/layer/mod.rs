@@ -14,4 +14,4 @@ mod core;
 #[cfg(test)]
 mod tests;
 
-pub use self::core::LoRALayer;
+pub use self::core::{LoRALayer, LoRAScaling};
