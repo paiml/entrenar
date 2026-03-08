@@ -130,6 +130,10 @@ fn build_train_config(
     // ENT-LoRA-001: Wire LoRA config from YAML spec
     if let Some(ref lora) = spec.lora {
         config = config.with_lora(lora.rank, lora.alpha, lora.target_modules.clone());
+        // ENT-LoRA-006: LoRA+ ratio from YAML
+        if lora.lora_plus_ratio != 1.0 {
+            config = config.with_lora_plus_ratio(lora.lora_plus_ratio);
+        }
     }
 
     // Wire distributed config from YAML (#133)

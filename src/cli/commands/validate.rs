@@ -209,6 +209,7 @@ mod tests {
                 alpha: 32.0,
                 dropout: 0.1,
                 target_modules: vec!["q_proj".to_string()],
+                lora_plus_ratio: 1.0,
             }),
             quantize: Some(QuantSpec { bits: 4, symmetric: true, per_channel: true }),
             merge: Some(MergeSpec {

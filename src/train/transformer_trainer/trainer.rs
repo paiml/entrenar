@@ -217,6 +217,17 @@ impl TransformerTrainer {
 
         // ENT-LoRA-002: Only update trainable params (LoRA A/B + norms when active)
         if let Some(ref mut lora) = self.lora_layers {
+            // ENT-LoRA-006: LoRA+ gradient scaling for B matrices
+            let ratio = self.config.lora_plus_ratio;
+            if ratio != 1.0 {
+                for layer in lora.iter_mut() {
+                    if let Some(grad) = layer.lora_b_mut().grad() {
+                        let scaled = grad.mapv(|g| g * ratio);
+                        layer.lora_b_mut().set_grad(scaled);
+                    }
+                }
+            }
+
             let mut params: Vec<&mut Tensor> =
                 lora.iter_mut().flat_map(|l| l.trainable_params()).collect();
             // Also include norm weights (small, critical for adaptation)
@@ -410,24 +421,40 @@ impl TransformerTrainer {
             .clone()
             .unwrap_or_else(|| vec!["q_proj".to_string(), "v_proj".to_string()]);
 
+        // ENT-LoRA-005: Expand shorthand targets for correct naming
+        let expanded = crate::lora::LoRAConfig::expand_shorthand(&target_modules);
         let lora_config = crate::lora::LoRAConfig::new(rank, alpha)
-            .target_modules(&target_modules.iter().map(String::as_str).collect::<Vec<_>>());
+            .target_modules(&expanded.iter().map(String::as_str).collect::<Vec<_>>());
 
-        // Build named adapter pairs: (layer_path, &LoRALayer)
+        // ENT-LoRA-007: Build named adapter pairs with correct PEFT naming
+        // Layers are ordered per build(): [q, k, v, o, gate, up, down] per block
         let num_layers = self.model.layers.len();
-        let layers_per_block = lora.len() / num_layers;
+
+        // Map target module names to their layer path prefix
+        let module_paths: Vec<(&str, &str)> = [
+            ("q_proj", "self_attn.q_proj"),
+            ("k_proj", "self_attn.k_proj"),
+            ("v_proj", "self_attn.v_proj"),
+            ("o_proj", "self_attn.o_proj"),
+            ("gate_proj", "mlp.gate_proj"),
+            ("up_proj", "mlp.up_proj"),
+            ("down_proj", "mlp.down_proj"),
+        ].iter()
+            .filter(|(name, _)| expanded.iter().any(|t| t == *name))
+            .copied()
+            .collect();
+
+        // Generate full path names for each (block, module) pair
+        let all_names: Vec<String> = (0..num_layers)
+            .flat_map(|i| module_paths.iter().map(move |(_, path)| {
+                format!("model.layers.{i}.{path}")
+            }))
+            .collect();
+
         let mut adapters: Vec<(&str, &LoRALayer)> = Vec::new();
-
-        // Use static strings for layer paths to satisfy lifetime requirements
-        let q_names: Vec<String> =
-            (0..num_layers).map(|i| format!("model.layers.{i}.self_attn.q_proj")).collect();
-        let v_names: Vec<String> =
-            (0..num_layers).map(|i| format!("model.layers.{i}.self_attn.v_proj")).collect();
-
-        for (block_idx, chunk) in lora.chunks(layers_per_block).enumerate() {
-            for (j, layer) in chunk.iter().enumerate() {
-                let name = if j == 0 { &q_names[block_idx] } else { &v_names[block_idx] };
-                adapters.push((name, layer));
+        for (idx, layer) in lora.iter().enumerate() {
+            if idx < all_names.len() {
+                adapters.push((&all_names[idx], layer));
             }
         }
 

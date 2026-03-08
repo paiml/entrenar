@@ -343,6 +343,15 @@ pub struct LoRASpec {
     /// Dropout probability
     #[serde(default)]
     pub dropout: f32,
+
+    /// LoRA+ ratio: LR multiplier for B matrices (ENT-LoRA-006)
+    /// Default 1.0 = standard LoRA. 16.0 = LoRA+ (Hayou et al. ICML 2024)
+    #[serde(default = "default_lora_plus_ratio")]
+    pub lora_plus_ratio: f32,
+}
+
+fn default_lora_plus_ratio() -> f32 {
+    1.0
 }
 
 /// Quantization configuration
