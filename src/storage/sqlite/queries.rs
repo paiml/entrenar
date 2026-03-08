@@ -716,4 +716,307 @@ mod tests {
         assert_eq!(ts.month(), 6);
         assert_eq!(ts.day(), 15);
     }
+
+    // ── test_cov4 additional coverage tests ────────────────────────
+
+    #[test]
+    fn test_cov4_str_to_status_all_case_sensitive() {
+        // Verify case sensitivity
+        assert_eq!(str_to_status("Pending"), crate::storage::RunStatus::Failed); // capital P
+        assert_eq!(str_to_status("COMPLETED"), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status("Running"), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status("Cancelled"), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status("FAILED"), crate::storage::RunStatus::Failed);
+    }
+
+    #[test]
+    fn test_cov4_str_to_status_whitespace() {
+        assert_eq!(str_to_status(" pending"), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status("pending "), crate::storage::RunStatus::Failed);
+        assert_eq!(str_to_status("  "), crate::storage::RunStatus::Failed);
+    }
+
+    #[test]
+    fn test_cov4_parse_timestamp_various_formats() {
+        // With timezone offset
+        let ts = parse_timestamp("2024-12-25T00:00:00+05:30");
+        assert_eq!(ts.year(), 2024);
+        assert_eq!(ts.month(), 12);
+
+        // UTC with Z
+        let ts2 = parse_timestamp("2020-01-01T00:00:00Z");
+        assert_eq!(ts2.year(), 2020);
+
+        // Negative offset
+        let ts3 = parse_timestamp("2023-06-15T12:00:00-07:00");
+        assert_eq!(ts3.year(), 2023);
+    }
+
+    #[test]
+    fn test_cov4_parse_timestamp_empty_string() {
+        let ts = parse_timestamp("");
+        let now = chrono::Utc::now();
+        let diff = (now - ts).num_seconds().abs();
+        assert!(diff < 5);
+    }
+
+    #[test]
+    fn test_cov4_parse_timestamp_partial_date() {
+        // Partial date should fail and fall back to now
+        let ts = parse_timestamp("2025-01");
+        let now = chrono::Utc::now();
+        let diff = (now - ts).num_seconds().abs();
+        assert!(diff < 5);
+    }
+
+    #[test]
+    fn test_cov4_row_to_run_all_statuses() {
+        for (status_str, expected) in &[
+            ("pending", crate::storage::RunStatus::Pending),
+            ("running", crate::storage::RunStatus::Running),
+            ("completed", crate::storage::RunStatus::Success),
+            ("failed", crate::storage::RunStatus::Failed),
+            ("cancelled", crate::storage::RunStatus::Cancelled),
+            ("unknown", crate::storage::RunStatus::Failed),
+        ] {
+            let row = (
+                "run-x".to_string(),
+                "exp-x".to_string(),
+                status_str.to_string(),
+                Some("2026-01-01T00:00:00Z".to_string()),
+                None,
+                None,
+            );
+            let run = SqliteBackend::row_to_run(row);
+            assert_eq!(run.status, *expected, "Status for '{status_str}'");
+        }
+    }
+
+    #[test]
+    fn test_cov4_row_to_run_with_end_time() {
+        let row = (
+            "r1".to_string(),
+            "e1".to_string(),
+            "completed".to_string(),
+            Some("2026-01-01T00:00:00Z".to_string()),
+            Some("2026-01-01T01:00:00Z".to_string()),
+            None,
+        );
+        let run = SqliteBackend::row_to_run(row);
+        assert!(run.end_time.is_some());
+        let end = run.end_time.unwrap();
+        assert_eq!(end.hour(), 1);
+    }
+
+    #[test]
+    fn test_cov4_row_to_run_with_complex_tags() {
+        let tags =
+            serde_json::json!({"env": "staging", "model": "qwen2", "version": "1.0"}).to_string();
+        let row = (
+            "r1".to_string(),
+            "e1".to_string(),
+            "running".to_string(),
+            Some("2026-01-01T00:00:00Z".to_string()),
+            None,
+            Some(tags),
+        );
+        let run = SqliteBackend::row_to_run(row);
+        assert_eq!(run.tags.len(), 3);
+        assert_eq!(run.tags.get("env").map(String::as_str), Some("staging"));
+        assert_eq!(run.tags.get("model").map(String::as_str), Some("qwen2"));
+    }
+
+    #[test]
+    fn test_cov4_row_to_run_empty_tags_json() {
+        let row = (
+            "r1".to_string(),
+            "e1".to_string(),
+            "pending".to_string(),
+            None,
+            None,
+            Some("{}".to_string()),
+        );
+        let run = SqliteBackend::row_to_run(row);
+        assert!(run.tags.is_empty());
+    }
+
+    #[test]
+    fn test_cov4_row_to_run_invalid_start_time() {
+        let row = (
+            "r1".to_string(),
+            "e1".to_string(),
+            "completed".to_string(),
+            Some("not-a-date".to_string()),
+            Some("also-not-a-date".to_string()),
+            None,
+        );
+        let run = SqliteBackend::row_to_run(row);
+        // Invalid timestamps fall back to now
+        let now = chrono::Utc::now();
+        let diff = (now - run.start_time).num_seconds().abs();
+        assert!(diff < 5);
+    }
+
+    #[test]
+    fn test_cov4_param_matches_int_contains_false() {
+        let v = ParameterValue::Int(42);
+        assert!(!SqliteBackend::param_matches(&v, &FilterOp::Contains, &v));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_int_starts_with_false() {
+        let v = ParameterValue::Int(42);
+        assert!(!SqliteBackend::param_matches(&v, &FilterOp::StartsWith, &v));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_bool_all_unsupported_ops() {
+        let t = ParameterValue::Bool(true);
+        let f = ParameterValue::Bool(false);
+
+        // Bool only supports Eq and Ne
+        assert!(SqliteBackend::param_matches(&t, &FilterOp::Eq, &t));
+        assert!(!SqliteBackend::param_matches(&t, &FilterOp::Eq, &f));
+        assert!(!SqliteBackend::param_matches(&t, &FilterOp::Ne, &t));
+        assert!(SqliteBackend::param_matches(&t, &FilterOp::Ne, &f));
+
+        // All others unsupported
+        assert!(!SqliteBackend::param_matches(&t, &FilterOp::Gte, &t));
+        assert!(!SqliteBackend::param_matches(&t, &FilterOp::Lte, &t));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_string_all_unsupported_ops() {
+        let s = ParameterValue::String("test".to_string());
+        // String does not support Gt, Lt, Gte, Lte
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Gt, &s));
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Lt, &s));
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Gte, &s));
+        assert!(!SqliteBackend::param_matches(&s, &FilterOp::Lte, &s));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_float_epsilon_boundary() {
+        let a = ParameterValue::Float(1.0);
+        let b = ParameterValue::Float(1.0 + f64::EPSILON * 0.5);
+        // Should be Eq because diff < EPSILON
+        assert!(SqliteBackend::param_matches(&a, &FilterOp::Eq, &b));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_float_ne_different() {
+        let a = ParameterValue::Float(1.0);
+        let b = ParameterValue::Float(1.1);
+        assert!(SqliteBackend::param_matches(&a, &FilterOp::Ne, &b));
+        assert!(!SqliteBackend::param_matches(&a, &FilterOp::Eq, &b));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_string_contains_empty() {
+        let full = ParameterValue::String("hello".to_string());
+        let empty = ParameterValue::String(String::new());
+        // Every string contains empty string
+        assert!(SqliteBackend::param_matches(&full, &FilterOp::Contains, &empty));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_string_starts_with_empty() {
+        let full = ParameterValue::String("hello".to_string());
+        let empty = ParameterValue::String(String::new());
+        assert!(SqliteBackend::param_matches(&full, &FilterOp::StartsWith, &empty));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_string_contains_full() {
+        let s = ParameterValue::String("abcdef".to_string());
+        let s2 = ParameterValue::String("abcdef".to_string());
+        assert!(SqliteBackend::param_matches(&s, &FilterOp::Contains, &s2));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_cross_type_all_combinations() {
+        let float = ParameterValue::Float(1.0);
+        let int = ParameterValue::Int(1);
+        let string = ParameterValue::String("1".to_string());
+        let bool_val = ParameterValue::Bool(true);
+
+        // Float vs Int
+        assert!(!SqliteBackend::param_matches(&float, &FilterOp::Eq, &int));
+        // Float vs String
+        assert!(!SqliteBackend::param_matches(&float, &FilterOp::Eq, &string));
+        // Float vs Bool
+        assert!(!SqliteBackend::param_matches(&float, &FilterOp::Eq, &bool_val));
+        // Int vs String
+        assert!(!SqliteBackend::param_matches(&int, &FilterOp::Eq, &string));
+        // Int vs Bool
+        assert!(!SqliteBackend::param_matches(&int, &FilterOp::Eq, &bool_val));
+        // String vs Bool
+        assert!(!SqliteBackend::param_matches(&string, &FilterOp::Eq, &bool_val));
+    }
+
+    #[test]
+    fn test_cov4_param_matches_list_all_ops() {
+        let list = ParameterValue::List(vec![ParameterValue::Int(1), ParameterValue::Int(2)]);
+        for op in &[
+            FilterOp::Eq,
+            FilterOp::Ne,
+            FilterOp::Gt,
+            FilterOp::Lt,
+            FilterOp::Gte,
+            FilterOp::Lte,
+            FilterOp::Contains,
+            FilterOp::StartsWith,
+        ] {
+            assert!(
+                !SqliteBackend::param_matches(&list, op, &list),
+                "List should not match with {op:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_cov4_param_matches_dict_all_ops() {
+        let dict = ParameterValue::Dict(HashMap::from([("k".to_string(), ParameterValue::Int(1))]));
+        for op in &[
+            FilterOp::Eq,
+            FilterOp::Ne,
+            FilterOp::Gt,
+            FilterOp::Lt,
+            FilterOp::Gte,
+            FilterOp::Lte,
+            FilterOp::Contains,
+            FilterOp::StartsWith,
+        ] {
+            assert!(
+                !SqliteBackend::param_matches(&dict, op, &dict),
+                "Dict should not match with {op:?}"
+            );
+        }
+    }
+
+    use chrono::Timelike;
+
+    #[test]
+    fn test_cov4_row_to_run_params_always_empty() {
+        // row_to_run always initializes params as empty HashMap
+        let row = ("r1".to_string(), "e1".to_string(), "running".to_string(), None, None, None);
+        let run = SqliteBackend::row_to_run(row);
+        assert!(run.params.is_empty());
+    }
+
+    #[test]
+    fn test_cov4_row_to_run_no_start_time_uses_now() {
+        let row = (
+            "r1".to_string(),
+            "e1".to_string(),
+            "pending".to_string(),
+            None, // no start_time → uses now
+            None,
+            None,
+        );
+        let run = SqliteBackend::row_to_run(row);
+        let now = chrono::Utc::now();
+        let diff = (now - run.start_time).num_seconds().abs();
+        assert!(diff < 5, "start_time should be near now when None, diff={diff}");
+    }
 }

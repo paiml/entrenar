@@ -690,6 +690,382 @@ mod tests {
         manager.on_train_end(&CallbackContext::default());
         assert_eq!(count.load(Ordering::SeqCst), 5);
     }
+
+    // ── test_cov4 additional coverage tests ────────────────────────
+
+    #[test]
+    fn test_cov4_manager_full_lifecycle() {
+        // Exercise complete train begin→step begin→step end→epoch begin→epoch end→train end flow
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct LifecycleCallback {
+            events: Arc<std::sync::Mutex<Vec<String>>>,
+        }
+        impl TrainerCallback for LifecycleCallback {
+            fn on_train_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                self.events.lock().unwrap().push(format!("train_begin:{}", ctx.epoch));
+                CallbackAction::Continue
+            }
+            fn on_train_end(&mut self, ctx: &CallbackContext) {
+                self.events.lock().unwrap().push(format!("train_end:{}", ctx.epoch));
+            }
+            fn on_epoch_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                self.events.lock().unwrap().push(format!("epoch_begin:{}", ctx.epoch));
+                CallbackAction::Continue
+            }
+            fn on_epoch_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                self.events.lock().unwrap().push(format!("epoch_end:{}", ctx.epoch));
+                CallbackAction::Continue
+            }
+            fn on_step_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                self.events.lock().unwrap().push(format!("step_begin:{}", ctx.step));
+                CallbackAction::Continue
+            }
+            fn on_step_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                self.events.lock().unwrap().push(format!("step_end:{}", ctx.step));
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "LifecycleCallback"
+            }
+        }
+
+        let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut manager = CallbackManager::new();
+        manager.add(LifecycleCallback { events: events.clone() });
+
+        let mut ctx = CallbackContext::default();
+        ctx.max_epochs = 2;
+        ctx.steps_per_epoch = 3;
+
+        manager.on_train_begin(&ctx);
+        for epoch in 0..2 {
+            ctx.epoch = epoch;
+            manager.on_epoch_begin(&ctx);
+            for step in 0..3 {
+                ctx.step = step;
+                manager.on_step_begin(&ctx);
+                manager.on_step_end(&ctx);
+            }
+            manager.on_epoch_end(&ctx);
+        }
+        manager.on_train_end(&ctx);
+
+        let ev = events.lock().unwrap();
+        assert_eq!(ev[0], "train_begin:0");
+        assert_eq!(ev[1], "epoch_begin:0");
+        assert_eq!(ev[2], "step_begin:0");
+        assert_eq!(ev[3], "step_end:0");
+        assert!(ev.len() >= 16); // 1+2*(1+3*2+1)+1 = 18
+        assert_eq!(*ev.last().unwrap(), "train_end:1");
+    }
+
+    #[test]
+    fn test_cov4_manager_mixed_callbacks_epoch_end() {
+        // Mix callbacks with different epoch_end behaviors: first continues, second stops
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct ContinueTracker {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for ContinueTracker {
+            fn on_epoch_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "ContinueTracker"
+            }
+        }
+
+        struct StopTracker {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for StopTracker {
+            fn on_epoch_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopTracker"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        // First callback continues, second stops → both called, second triggers stop
+        manager.add(ContinueTracker { count: count.clone() });
+        manager.add(StopTracker { count: count.clone() });
+
+        let action = manager.on_epoch_end(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Stop);
+        assert_eq!(count.load(Ordering::SeqCst), 2); // both were called
+    }
+
+    #[test]
+    fn test_cov4_manager_mixed_callbacks_step_end() {
+        // Two continue then stop: all three called
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct ContinueCb {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for ContinueCb {
+            fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "ContinueCb"
+            }
+        }
+
+        struct StopCb {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for StopCb {
+            fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopCb"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(ContinueCb { count: count.clone() });
+        manager.add(ContinueCb { count: count.clone() });
+        manager.add(StopCb { count: count.clone() });
+
+        let action = manager.on_step_end(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Stop);
+        assert_eq!(count.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_cov4_manager_ctx_with_rich_fields() {
+        // Use a context with all fields populated
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct FieldChecker {
+            verified: Arc<std::sync::atomic::AtomicBool>,
+        }
+        impl TrainerCallback for FieldChecker {
+            fn on_step_end(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                if ctx.epoch == 3
+                    && ctx.max_epochs == 10
+                    && ctx.step == 7
+                    && ctx.steps_per_epoch == 100
+                    && ctx.global_step == 307
+                    && (ctx.loss - 0.42).abs() < 1e-5
+                    && (ctx.lr - 1e-4).abs() < 1e-8
+                    && ctx.best_loss == Some(0.30)
+                    && ctx.val_loss == Some(0.50)
+                    && (ctx.elapsed_secs - 123.4).abs() < 0.1
+                {
+                    self.verified.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "FieldChecker"
+            }
+        }
+
+        let verified = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut manager = CallbackManager::new();
+        manager.add(FieldChecker { verified: verified.clone() });
+
+        let ctx = CallbackContext {
+            epoch: 3,
+            max_epochs: 10,
+            step: 7,
+            steps_per_epoch: 100,
+            global_step: 307,
+            loss: 0.42,
+            lr: 1e-4,
+            best_loss: Some(0.30),
+            val_loss: Some(0.50),
+            elapsed_secs: 123.4,
+        };
+
+        manager.on_step_end(&ctx);
+        assert!(verified.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_cov4_manager_multiple_adds() {
+        let mut manager = CallbackManager::new();
+        assert_eq!(manager.len(), 0);
+        assert!(manager.is_empty());
+
+        manager.add(ProgressCallback::new(10));
+        manager.add(ProgressCallback::new(20));
+        manager.add(EarlyStopping::new(5, 0.001));
+        assert_eq!(manager.len(), 3);
+        assert!(!manager.is_empty());
+    }
+
+    #[test]
+    fn test_cov4_manager_train_begin_multiple_continue() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct CountCb {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountCb {
+            fn on_train_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountCb"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(CountCb { count: count.clone() });
+        manager.add(CountCb { count: count.clone() });
+        manager.add(CountCb { count: count.clone() });
+
+        let action = manager.on_train_begin(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Continue);
+        assert_eq!(count.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_cov4_manager_step_begin_multiple_continue() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct CountCb {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountCb {
+            fn on_step_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountCb"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(CountCb { count: count.clone() });
+        manager.add(CountCb { count: count.clone() });
+
+        let action = manager.on_step_begin(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Continue);
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_cov4_manager_epoch_begin_multiple_continue() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct CountCb {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountCb {
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountCb"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(CountCb { count: count.clone() });
+        manager.add(CountCb { count: count.clone() });
+        manager.add(CountCb { count: count.clone() });
+
+        let action = manager.on_epoch_begin(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Continue);
+        assert_eq!(count.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_cov4_manager_train_end_empty() {
+        let mut manager = CallbackManager::new();
+        // Should not panic with no callbacks
+        manager.on_train_end(&CallbackContext::default());
+    }
+
+    #[test]
+    fn test_cov4_manager_early_stopping_with_improvement() {
+        let mut manager = CallbackManager::new();
+        manager.add(EarlyStopping::new(3, 0.001));
+
+        let mut ctx = CallbackContext::default();
+
+        // Epoch 0: loss=1.0
+        ctx.epoch = 0;
+        ctx.loss = 1.0;
+        assert_eq!(manager.on_epoch_end(&ctx), CallbackAction::Continue);
+
+        // Epoch 1: loss improves to 0.5
+        ctx.epoch = 1;
+        ctx.loss = 0.5;
+        assert_eq!(manager.on_epoch_end(&ctx), CallbackAction::Continue);
+
+        // Epoch 2: loss worsens to 0.6 (1 epoch no improvement)
+        ctx.epoch = 2;
+        ctx.loss = 0.6;
+        assert_eq!(manager.on_epoch_end(&ctx), CallbackAction::Continue);
+
+        // Epoch 3: loss improves again to 0.3 — resets patience
+        ctx.epoch = 3;
+        ctx.loss = 0.3;
+        assert_eq!(manager.on_epoch_end(&ctx), CallbackAction::Continue);
+
+        // Epoch 4-6: no improvement
+        for i in 4..7 {
+            ctx.epoch = i;
+            ctx.loss = 0.35;
+            let action = manager.on_epoch_end(&ctx);
+            if i == 6 {
+                assert_eq!(action, CallbackAction::Stop);
+            } else {
+                assert_eq!(action, CallbackAction::Continue);
+            }
+        }
+    }
+
+    #[test]
+    fn test_cov4_manager_default_new_equivalent() {
+        let m1 = CallbackManager::new();
+        let m2 = CallbackManager::default();
+        assert_eq!(m1.len(), m2.len());
+        assert_eq!(m1.is_empty(), m2.is_empty());
+    }
 }
 
 #[cfg(test)]

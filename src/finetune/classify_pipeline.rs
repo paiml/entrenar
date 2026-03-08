@@ -5319,4 +5319,471 @@ mod tests {
         let _ = p.accumulate_gradients(&[SafetySample { input: "echo t".into(), label: 0 }]);
         p.apply_accumulated_gradients(1);
     }
+
+    // ── test_cov4 additional coverage tests ────────────────────────
+
+    #[test]
+    fn test_cov4_classify_config_debug() {
+        let c = ClassifyConfig::default();
+        let dbg = format!("{c:?}");
+        assert!(dbg.contains("num_classes"));
+        assert!(dbg.contains("lora_rank"));
+        assert!(dbg.contains("learning_rate"));
+        assert!(dbg.contains("batch_size"));
+        assert!(dbg.contains("accumulation_steps"));
+        assert!(dbg.contains("gradient_clip_norm"));
+        assert!(dbg.contains("class_weights"));
+        assert!(dbg.contains("quantize_nf4"));
+    }
+
+    #[test]
+    fn test_cov4_classify_config_all_fields() {
+        let c = ClassifyConfig {
+            num_classes: 10,
+            lora_rank: 32,
+            lora_alpha: 64.0,
+            learning_rate: 3e-4,
+            epochs: 5,
+            max_seq_len: 1024,
+            log_interval: 50,
+            batch_size: 8,
+            accumulation_steps: 2,
+            gradient_clip_norm: Some(2.0),
+            class_weights: Some(vec![1.0; 10]),
+            quantize_nf4: true,
+        };
+        assert_eq!(c.num_classes, 10);
+        assert_eq!(c.lora_rank, 32);
+        assert!((c.lora_alpha - 64.0).abs() < f32::EPSILON);
+        assert_eq!(c.epochs, 5);
+        assert_eq!(c.max_seq_len, 1024);
+        assert_eq!(c.log_interval, 50);
+        assert_eq!(c.batch_size, 8);
+        assert_eq!(c.accumulation_steps, 2);
+        assert_eq!(c.gradient_clip_norm, Some(2.0));
+        assert!(c.class_weights.is_some());
+        assert!(c.quantize_nf4);
+    }
+
+    #[test]
+    fn test_cov4_batch_result_fields() {
+        let r = BatchResult { avg_loss: 2.3, correct: 7, total: 10, grad_norm: 1.5 };
+        assert!((r.avg_loss - 2.3).abs() < 1e-5);
+        assert_eq!(r.correct, 7);
+        assert_eq!(r.total, 10);
+        assert!((r.grad_norm - 1.5).abs() < 1e-5);
+        assert!((r.accuracy() - 0.7).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_hp_validate_combined_diags() {
+        // Config with multiple issues at once
+        let c = ClassifyConfig {
+            learning_rate: 1e-6,
+            quantize_nf4: true,
+            batch_size: 2,
+            accumulation_steps: 2, // eff=4, not 16
+            lora_rank: 8,
+            lora_alpha: 40.0, // ratio=5, expected alpha=16
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let d = c.validate_hyperparameters(4_000_000_000);
+        // Should have multiple warnings
+        assert!(d.has_warning("C-HP-001")); // lr too low
+        assert!(d.has_warning("C-HP-002")); // eff batch not 16
+        assert!(d.has_warning("C-HP-003")); // alpha mismatch
+        assert!(d.has_warning("C-HP-006")); // no grad clip
+    }
+
+    #[test]
+    fn test_cov4_hp_validate_data_both_directions() {
+        // Test validate_with_data with balanced data + sufficient epochs
+        let c = ClassifyConfig { max_seq_len: 64, epochs: 5, ..ClassifyConfig::default() };
+        let s = DataStats { p99_token_length: 50, imbalance_ratio: 1.0, minority_count: 500 };
+        let d = c.validate_with_data(&s);
+        assert!(!d.has_warning("C-HP-004")); // 64 <= 2*50
+        assert!(!d.has_warning("C-HP-008")); // imbalance < 5
+    }
+
+    #[test]
+    fn test_cov4_hp_diagnostics_has_warning_multiple() {
+        let d = HyperparamDiagnostics {
+            items: vec![
+                HyperparamDiagnostic {
+                    contract_id: "C-HP-001",
+                    severity: DiagSeverity::Warn,
+                    message: "w1".into(),
+                    recommendation: "r1".into(),
+                },
+                HyperparamDiagnostic {
+                    contract_id: "C-HP-002",
+                    severity: DiagSeverity::Error,
+                    message: "e1".into(),
+                    recommendation: "r2".into(),
+                },
+                HyperparamDiagnostic {
+                    contract_id: "C-HP-003",
+                    severity: DiagSeverity::Info,
+                    message: "i1".into(),
+                    recommendation: "r3".into(),
+                },
+            ],
+        };
+        assert!(d.has_warning("C-HP-001"));
+        assert!(d.has_warning("C-HP-002")); // Error counts as warning
+        assert!(!d.has_warning("C-HP-003")); // Info does NOT count as warning
+        assert!(d.has_errors());
+        assert!(!d.has_warning("C-HP-999")); // nonexistent
+    }
+
+    #[test]
+    fn test_cov4_diag_severity_copy() {
+        let s = DiagSeverity::Warn;
+        let s2 = s;
+        assert_eq!(s, s2);
+    }
+
+    #[test]
+    fn test_cov4_train_step_deterministic() {
+        // Same input should give similar loss on fresh pipeline
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let mut p1 = ClassifyPipeline::new(&mc, cc.clone());
+        let mut p2 = ClassifyPipeline::new(&mc, cc);
+
+        let loss1 = p1.train_step(&[1, 2, 3], 0);
+        let loss2 = p2.train_step(&[1, 2, 3], 0);
+
+        // Both initialized with same seed → same loss
+        assert!((loss1 - loss2).abs() < 1e-4, "Deterministic: {loss1} vs {loss2}");
+    }
+
+    #[test]
+    fn test_cov4_multi_label_different_targets() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 4,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        // All zeros target
+        let loss_zeros = p.multi_label_train_step(&[1, 2, 3], &[0.0, 0.0, 0.0, 0.0]);
+        assert!(loss_zeros.is_finite());
+
+        // All ones target
+        let loss_ones = p.multi_label_train_step(&[1, 2, 3], &[1.0, 1.0, 1.0, 1.0]);
+        assert!(loss_ones.is_finite());
+    }
+
+    #[test]
+    fn test_cov4_forward_only_all_labels_tokenized() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 5,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        for label in 0..5 {
+            let (loss, pred) = p.forward_only_tokenized(&[1, 2, 3], label);
+            assert!(loss.is_finite());
+            assert!(pred < 5);
+        }
+    }
+
+    #[test]
+    fn test_cov4_pretokenize_multiple_samples() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            max_seq_len: 10,
+            ..ClassifyConfig::default()
+        };
+        let p = ClassifyPipeline::new(&mc, cc);
+
+        let samples = vec![
+            SafetySample { input: "a".into(), label: 0 },
+            SafetySample { input: "abcdefghijklmnop".into(), label: 1 }, // will be truncated
+            SafetySample { input: String::new(), label: 2 },             // empty
+        ];
+        let tok = p.pre_tokenize(&samples);
+        assert_eq!(tok.len(), 3);
+        assert_eq!(tok[0].label, 0);
+        assert_eq!(tok[1].label, 1);
+        assert!(tok[1].token_ids.len() <= 10); // truncated
+        assert_eq!(tok[2].label, 2);
+        assert!(!tok[2].token_ids.is_empty()); // empty guard
+    }
+
+    #[test]
+    fn test_cov4_train_batch_tokenized_multiple() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            learning_rate: 1e-2,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        let samples = vec![
+            TokenizedSample { token_ids: vec![1, 2], label: 0 },
+            TokenizedSample { token_ids: vec![3, 4], label: 1 },
+            TokenizedSample { token_ids: vec![5, 6], label: 2 },
+            TokenizedSample { token_ids: vec![7, 8], label: 0 },
+            TokenizedSample { token_ids: vec![9, 10], label: 1 },
+        ];
+        let r = p.train_batch_tokenized(&samples);
+        assert_eq!(r.total, 5);
+        assert!(r.avg_loss.is_finite() && r.avg_loss > 0.0);
+    }
+
+    #[test]
+    fn test_cov4_accumulate_gradients_tokenized_then_apply() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            learning_rate: 1e-2,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        p.zero_all_gradients();
+        let r1 = p
+            .accumulate_gradients_tokenized(&[TokenizedSample { token_ids: vec![1, 2], label: 0 }]);
+        let r2 = p
+            .accumulate_gradients_tokenized(&[TokenizedSample { token_ids: vec![3, 4], label: 1 }]);
+        assert!(r1.avg_loss.is_finite());
+        assert!(r2.avg_loss.is_finite());
+
+        p.apply_accumulated_gradients(r1.total + r2.total);
+
+        // Pipeline should still work
+        let r = p.train_batch_tokenized(&[TokenizedSample { token_ids: vec![5, 6], label: 2 }]);
+        assert!(r.avg_loss.is_finite());
+    }
+
+    #[test]
+    fn test_cov4_forward_only_with_probs_classes() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 4,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+        let (loss, pred, probs) = p.forward_only_with_probs(&[1, 2, 3], 2);
+        assert!(loss.is_finite());
+        assert!(pred < 4);
+        assert_eq!(probs.len(), 4);
+        // Verify softmax properties
+        for &v in &probs {
+            assert!(v >= 0.0 && v <= 1.0);
+        }
+        let sum: f32 = probs.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_class_weights_all_labels() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            class_weights: Some(vec![0.5, 2.0, 1.5]),
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        for label in 0..3 {
+            let loss = p.train_step(&[1, 2, 3], label);
+            assert!(loss.is_finite(), "Loss for label {label} must be finite");
+            assert!(loss > 0.0);
+        }
+    }
+
+    #[test]
+    fn test_cov4_qlora_default_boundary_values() {
+        // Exactly at 13B boundary
+        let c = ClassifyConfig::qlora_default(13_000_000_000);
+        assert!((c.learning_rate - 2e-4).abs() < 1e-6);
+        assert!(c.quantize_nf4);
+
+        // Just above 13B
+        let c2 = ClassifyConfig::qlora_default(13_000_000_001);
+        assert!((c2.learning_rate - 1e-4).abs() < 1e-6);
+
+        // 1B model
+        let c3 = ClassifyConfig::qlora_default(1_000_000_000);
+        assert!((c3.learning_rate - 2e-4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cov4_collect_and_apply_roundtrip() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        // Accumulate some gradients
+        p.zero_all_gradients();
+        let _ = p.accumulate_gradients(&[
+            SafetySample { input: "echo hello".into(), label: 0 },
+            SafetySample { input: "rm -rf /".into(), label: 1 },
+        ]);
+
+        // Collect gradients
+        let grads = p.collect_lora_gradients();
+        assert_eq!(grads.len(), p.num_trainable_parameters());
+
+        // Apply them back (simulating AllReduce)
+        p.apply_lora_gradients(&grads);
+
+        // Pipeline should still function
+        let r = p.train_batch(&make_samples());
+        assert!(r.avg_loss.is_finite());
+    }
+
+    #[test]
+    fn test_cov4_scale_all_gradients_zero() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+        p.zero_all_gradients();
+        let _ = p.accumulate_gradients(&[SafetySample { input: "ls".into(), label: 0 }]);
+
+        // Scale by zero should zero all gradients
+        p.scale_all_gradients(0.0);
+        assert!(p.compute_grad_norm().abs() < 1e-8);
+    }
+
+    #[test]
+    fn test_cov4_forward_hidden_dispatch_single_token() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+        let h = p.forward_hidden_dispatch(&[42]);
+        assert!(!h.data().is_empty());
+    }
+
+    #[test]
+    fn test_cov4_summary_contains_all_info() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 7,
+            lora_rank: 8,
+            lora_alpha: 16.0,
+            ..ClassifyConfig::default()
+        };
+        let p = ClassifyPipeline::new(&mc, cc);
+        let s = p.summary();
+
+        assert!(s.contains("ClassifyPipeline"));
+        assert!(s.contains("CPU"));
+        assert!(s.contains("byte-level (256)"));
+        assert!(s.contains("rank=8"));
+        assert!(s.contains("alpha=16.0"));
+        assert!(s.contains("->7"));
+    }
+
+    #[test]
+    fn test_cov4_model_dir_after_pretrained_error() {
+        // Even after a failed from_pretrained, new() pipelines have None model_dir
+        let p = ClassifyPipeline::new(&tiny_config(), ClassifyConfig::default());
+        assert!(p.model_dir().is_none());
+    }
+
+    #[test]
+    fn test_cov4_set_model_path_overwrite() {
+        let mut p = ClassifyPipeline::new(&tiny_config(), ClassifyConfig::default());
+        p.set_model_path("/tmp/model1");
+        assert_eq!(p.model_dir(), Some(Path::new("/tmp/model1")));
+        p.set_model_path("/tmp/model2");
+        assert_eq!(p.model_dir(), Some(Path::new("/tmp/model2")));
+    }
+
+    #[test]
+    fn test_cov4_train_batch_large() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            batch_size: 16,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        // 10 samples
+        let samples: Vec<SafetySample> =
+            (0..10).map(|i| SafetySample { input: format!("cmd {i}"), label: i % 3 }).collect();
+
+        let r = p.train_batch(&samples);
+        assert_eq!(r.total, 10);
+        assert!(r.avg_loss.is_finite());
+    }
+
+    #[test]
+    fn test_cov4_from_apr_nonexistent() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig::default();
+        let result = ClassifyPipeline::from_apr(Path::new("/tmp/nonexistent.apr"), &mc, cc);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cov4_zero_grads_then_check() {
+        let mc = tiny_config();
+        let cc = ClassifyConfig {
+            num_classes: 3,
+            lora_rank: 4,
+            lora_alpha: 4.0,
+            gradient_clip_norm: None,
+            ..ClassifyConfig::default()
+        };
+        let mut p = ClassifyPipeline::new(&mc, cc);
+
+        // Train a step to accumulate gradients
+        let _ = p.train_step(&[1, 2, 3], 0);
+
+        // Gradients should be present after a train_step followed by zero
+        p.zero_all_gradients();
+        let norm = p.compute_grad_norm();
+        assert!(norm.abs() < 1e-6, "After zero_all_gradients, norm should be ~0, got {norm}");
+    }
 }

@@ -3636,4 +3636,1578 @@ mod tests {
             "Error should mention manual config: {err_msg}"
         );
     }
+
+    // =========================================================================
+    // TrainingPlan::check_counts
+    // =========================================================================
+
+    #[test]
+    fn test_check_counts_empty() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: DataAudit {
+                train_path: "/tmp/data.jsonl".to_string(),
+                train_samples: 100,
+                avg_input_len: 50,
+                class_counts: vec![50, 50],
+                imbalance_ratio: 1.0,
+                auto_class_weights: false,
+                val_samples: None,
+                test_samples: None,
+                duplicates: 0,
+                preamble_count: 0,
+            },
+            model: ModelInfo {
+                size: "0.5B".to_string(),
+                hidden_size: 896,
+                num_layers: 24,
+                architecture: "qwen2".to_string(),
+                weights_available: false,
+                lora_trainable_params: 100_000,
+                classifier_params: 1794,
+            },
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 4,
+                gpu_device: None,
+            },
+            pre_flight: Vec::new(),
+            output_dir: "/tmp/test".to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Ready,
+            issues: Vec::new(),
+        };
+        let (pass, warn, fail) = plan.check_counts();
+        assert_eq!(pass, 0);
+        assert_eq!(warn, 0);
+        assert_eq!(fail, 0);
+    }
+
+    #[test]
+    fn test_check_counts_mixed() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: DataAudit {
+                train_path: "/tmp/data.jsonl".to_string(),
+                train_samples: 100,
+                avg_input_len: 50,
+                class_counts: vec![50, 50],
+                imbalance_ratio: 1.0,
+                auto_class_weights: false,
+                val_samples: None,
+                test_samples: None,
+                duplicates: 0,
+                preamble_count: 0,
+            },
+            model: ModelInfo {
+                size: "0.5B".to_string(),
+                hidden_size: 896,
+                num_layers: 24,
+                architecture: "qwen2".to_string(),
+                weights_available: false,
+                lora_trainable_params: 100_000,
+                classifier_params: 1794,
+            },
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 4,
+                gpu_device: None,
+            },
+            pre_flight: vec![
+                PreFlightCheck {
+                    name: "data".to_string(),
+                    status: CheckStatus::Pass,
+                    detail: String::new(),
+                },
+                PreFlightCheck {
+                    name: "model".to_string(),
+                    status: CheckStatus::Warn,
+                    detail: "missing weights".to_string(),
+                },
+                PreFlightCheck {
+                    name: "output".to_string(),
+                    status: CheckStatus::Fail,
+                    detail: "no space".to_string(),
+                },
+                PreFlightCheck {
+                    name: "deps".to_string(),
+                    status: CheckStatus::Pass,
+                    detail: String::new(),
+                },
+            ],
+            output_dir: "/tmp/test".to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Blocked,
+            issues: Vec::new(),
+        };
+        let (pass, warn, fail) = plan.check_counts();
+        assert_eq!(pass, 2);
+        assert_eq!(warn, 1);
+        assert_eq!(fail, 1);
+    }
+
+    // =========================================================================
+    // TrainingPlan::from_str YAML
+    // =========================================================================
+
+    #[test]
+    fn test_training_plan_from_str_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        let yaml = serde_yaml::to_string(&p).unwrap();
+        let parsed = TrainingPlan::from_str(&yaml).unwrap();
+        assert_eq!(parsed.task, "classify");
+        assert_eq!(parsed.model.size, "0.5B");
+    }
+
+    // =========================================================================
+    // resolve_trial_status
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_trial_status_is_pruned() {
+        assert_eq!(resolve_trial_status(true, false), "pruned");
+    }
+
+    #[test]
+    fn test_resolve_trial_status_is_stopped_early() {
+        assert_eq!(resolve_trial_status(false, true), "stopped_early");
+    }
+
+    #[test]
+    fn test_resolve_trial_status_is_completed() {
+        assert_eq!(resolve_trial_status(false, false), "completed");
+    }
+
+    #[test]
+    fn test_resolve_trial_status_pruned_wins_over_stopped() {
+        assert_eq!(resolve_trial_status(true, true), "pruned");
+    }
+
+    // =========================================================================
+    // ExperimentTracker with store
+    // =========================================================================
+
+    #[test]
+    fn test_experiment_tracker_log_failed_trial_with_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan_data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 100,
+            avg_input_len: 50,
+            class_counts: vec![50, 50],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        let test_plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: plan_data,
+            model: ModelInfo {
+                size: "0.5B".to_string(),
+                hidden_size: 896,
+                num_layers: 24,
+                architecture: "qwen2".to_string(),
+                weights_available: false,
+                lora_trainable_params: 100_000,
+                classifier_params: 1794,
+            },
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 4,
+                gpu_device: None,
+            },
+            pre_flight: Vec::new(),
+            output_dir: dir.path().display().to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Ready,
+            issues: Vec::new(),
+        };
+        let mut tracker = ExperimentTracker::open(dir.path(), &test_plan);
+        // Log a failed trial — should not panic even with a real store
+        tracker.log_failed_trial();
+    }
+
+    // =========================================================================
+    // PreFlightCheck serde
+    // =========================================================================
+
+    #[test]
+    fn test_pre_flight_check_serde() {
+        let check = PreFlightCheck {
+            name: "data_exists".to_string(),
+            status: CheckStatus::Pass,
+            detail: "Found 1000 samples".to_string(),
+        };
+        let json = serde_json::to_string(&check).unwrap();
+        let deserialized: PreFlightCheck = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "data_exists");
+        assert_eq!(deserialized.status, CheckStatus::Pass);
+        assert_eq!(deserialized.detail.as_str(), "Found 1000 samples");
+    }
+
+    #[test]
+    fn test_pre_flight_check_no_detail() {
+        let check = PreFlightCheck {
+            name: "test".to_string(),
+            status: CheckStatus::Fail,
+            detail: String::new(),
+        };
+        let json = serde_json::to_string(&check).unwrap();
+        let deserialized: PreFlightCheck = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.detail.is_empty());
+    }
+
+    // =========================================================================
+    // ModelInfo serde
+    // =========================================================================
+
+    #[test]
+    fn test_model_info_serde() {
+        let mi = ModelInfo {
+            size: "7B".to_string(),
+            hidden_size: 4096,
+            num_layers: 32,
+            architecture: "llama2".to_string(),
+            weights_available: true,
+            lora_trainable_params: 1_000_000,
+            classifier_params: 8194,
+        };
+        let json = serde_json::to_string(&mi).unwrap();
+        let deserialized: ModelInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.size, "7B");
+        assert_eq!(deserialized.hidden_size, 4096);
+        assert_eq!(deserialized.num_layers, 32);
+        assert!(deserialized.weights_available);
+        assert_eq!(deserialized.lora_trainable_params, 1_000_000);
+        assert_eq!(deserialized.classifier_params, 8194);
+    }
+
+    // =========================================================================
+    // HyperparameterPlan serde
+    // =========================================================================
+
+    #[test]
+    fn test_hyperparameter_plan_serde() {
+        let hp = HyperparameterPlan {
+            strategy: "tpe".to_string(),
+            budget: 20,
+            scout: true,
+            max_epochs: 5,
+            search_space_params: 9,
+            sample_configs: vec![TrialPreview {
+                trial: 1,
+                learning_rate: 1e-4,
+                lora_rank: 16,
+                lora_alpha: 32.0,
+                batch_size: 64,
+                warmup: 0.1,
+                gradient_clip: 1.0,
+                class_weights: "sqrt_inverse".to_string(),
+                target_modules: "qv".to_string(),
+                lr_min_ratio: 0.01,
+            }],
+            manual: None,
+            recommendation: Some("Use TPE for 20 trials".to_string()),
+        };
+        let json = serde_json::to_string(&hp).unwrap();
+        let deserialized: HyperparameterPlan = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.strategy, "tpe");
+        assert_eq!(deserialized.budget, 20);
+        assert!(deserialized.scout);
+        assert_eq!(deserialized.sample_configs.len(), 1);
+        assert!(deserialized.manual.is_none());
+        assert!(deserialized.recommendation.is_some());
+    }
+
+    // =========================================================================
+    // PlanVerdict serde
+    // =========================================================================
+
+    #[test]
+    fn test_plan_verdict_serde_roundtrip() {
+        for verdict in &[PlanVerdict::Ready, PlanVerdict::WarningsPresent, PlanVerdict::Blocked] {
+            let json = serde_json::to_string(verdict).unwrap();
+            let deserialized: PlanVerdict = serde_json::from_str(&json).unwrap();
+            assert_eq!(*verdict, deserialized);
+        }
+    }
+
+    // =========================================================================
+    // Plan with duplicates in data
+    // =========================================================================
+
+    #[test]
+    fn test_plan_detects_data_duplicates() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        // Add duplicated entries
+        for _ in 0..10 {
+            lines.push(r#"{"input": "echo hello", "label": 0}"#.to_string());
+        }
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo unique_{i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path,
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: dir.path().to_path_buf(),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: Some(1e-4),
+            manual_lora_rank: Some(8),
+            manual_batch_size: Some(32),
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let p = plan(&config).unwrap();
+        assert!(p.data.duplicates > 0);
+        // Should have a warning about duplicates
+        assert!(p.issues.iter().any(|i| i.message.contains("duplicate")));
+    }
+
+    // =========================================================================
+    // estimate_resources with different batch sizes
+    // =========================================================================
+
+    #[test]
+    fn test_estimate_resources_large_batch_size() {
+        let config = PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: "0.5B".to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        };
+        let model = ModelInfo {
+            size: "0.5B".to_string(),
+            hidden_size: 896,
+            num_layers: 24,
+            architecture: "qwen2".to_string(),
+            weights_available: false,
+            lora_trainable_params: 100_000,
+            classifier_params: 1794,
+        };
+        let data = DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: 10,
+            avg_input_len: 50,
+            class_counts: vec![5, 5],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        };
+        // Batch size larger than dataset — should still compute valid steps
+        let res = estimate_resources(&config, &model, &data, 128);
+        assert!(res.steps_per_epoch >= 1);
+        assert!(res.estimated_total_minutes >= 0.0);
+    }
+
+    // =========================================================================
+    // test_cov2_* — Additional coverage tests
+    // =========================================================================
+
+    /// Helper to build a minimal PlanConfig for tests
+    fn mk_plan_config(model_size: &str, strategy: &str) -> PlanConfig {
+        PlanConfig {
+            task: "classify".to_string(),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            val_path: None,
+            test_path: None,
+            model_size: model_size.to_string(),
+            model_path: None,
+            num_classes: 2,
+            output_dir: PathBuf::from("/tmp/out"),
+            strategy: strategy.to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            manual_lr: None,
+            manual_lora_rank: None,
+            manual_batch_size: None,
+            manual_lora_alpha: None,
+            manual_warmup: None,
+            manual_gradient_clip: None,
+            manual_lr_min_ratio: None,
+            manual_class_weights: None,
+            manual_target_modules: None,
+        }
+    }
+
+    fn mk_model_info(hidden: usize, layers: usize, arch: &str) -> ModelInfo {
+        ModelInfo {
+            size: "test".to_string(),
+            hidden_size: hidden,
+            num_layers: layers,
+            architecture: arch.to_string(),
+            weights_available: false,
+            lora_trainable_params: 100_000,
+            classifier_params: 1000,
+        }
+    }
+
+    fn mk_data_audit(samples: usize) -> DataAudit {
+        DataAudit {
+            train_path: "/tmp/data.jsonl".to_string(),
+            train_samples: samples,
+            avg_input_len: 50,
+            class_counts: vec![samples / 2, samples - samples / 2],
+            imbalance_ratio: 1.0,
+            auto_class_weights: false,
+            val_samples: None,
+            test_samples: None,
+            duplicates: 0,
+            preamble_count: 0,
+        }
+    }
+
+    // ── resolve_model alias coverage ──────────────────────────────────────
+
+    #[test]
+    fn test_cov2_resolve_model_qwen2_05b_alias() {
+        let config = PlanConfig {
+            model_size: "qwen2-0.5b".to_string(),
+            ..mk_plan_config("qwen2-0.5b", "manual")
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 896);
+        assert_eq!(model.num_layers, 24);
+        assert_eq!(model.architecture, "qwen2");
+    }
+
+    #[test]
+    fn test_cov2_resolve_model_qwen35_9b_alias() {
+        let config = PlanConfig {
+            model_size: "qwen3.5-9b".to_string(),
+            ..mk_plan_config("qwen3.5-9b", "manual")
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 4096);
+        assert_eq!(model.num_layers, 48);
+        assert_eq!(model.architecture, "qwen3.5");
+    }
+
+    #[test]
+    fn test_cov2_resolve_model_llama2_7b_alias() {
+        let config = PlanConfig {
+            model_size: "llama2-7b".to_string(),
+            ..mk_plan_config("llama2-7b", "manual")
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 4096);
+        assert_eq!(model.num_layers, 32);
+        assert_eq!(model.architecture, "llama2");
+    }
+
+    #[test]
+    fn test_cov2_resolve_model_llama2_13b_alias() {
+        let config = PlanConfig {
+            model_size: "llama2-13b".to_string(),
+            ..mk_plan_config("llama2-13b", "manual")
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.hidden_size, 5120);
+        assert_eq!(model.num_layers, 40);
+        assert_eq!(model.architecture, "llama2");
+    }
+
+    // ── resolve_model with sharded safetensors ───────────────────────────
+
+    #[test]
+    fn test_cov2_resolve_model_sharded_safetensors() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create sharded file pattern (model-00001-of-00002.safetensors)
+        std::fs::write(dir.path().join("model-00001-of-00002.safetensors"), b"fake").unwrap();
+        std::fs::write(dir.path().join("tokenizer.json"), b"{}").unwrap();
+        let config = PlanConfig {
+            model_path: Some(dir.path().to_path_buf()),
+            ..mk_plan_config("0.5B", "manual")
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert!(model.weights_available);
+        assert!(pf.iter().any(|c| c.name == "model_weights" && c.status == CheckStatus::Pass));
+    }
+
+    // ── resolve_model with missing tokenizer only ────────────────────────
+
+    #[test]
+    fn test_cov2_resolve_model_missing_tokenizer() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("model.safetensors"), b"fake").unwrap();
+        // No tokenizer.json
+        let config = PlanConfig {
+            model_path: Some(dir.path().to_path_buf()),
+            ..mk_plan_config("0.5B", "manual")
+        };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert!(model.weights_available);
+        let warn_check = pf.iter().find(|c| c.name == "model_weights").unwrap();
+        assert_eq!(warn_check.status, CheckStatus::Warn);
+        assert!(warn_check.detail.contains("tokenizer.json"));
+    }
+
+    // ── resolve_model with missing safetensors only ──────────────────────
+
+    #[test]
+    fn test_cov2_resolve_model_missing_safetensors() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("tokenizer.json"), b"{}").unwrap();
+        // No model.safetensors
+        let config = PlanConfig {
+            model_path: Some(dir.path().to_path_buf()),
+            ..mk_plan_config("0.5B", "manual")
+        };
+        let mut pf = Vec::new();
+        let _model = resolve_model(&config, &mut pf);
+        let warn_check = pf.iter().find(|c| c.name == "model_weights").unwrap();
+        assert_eq!(warn_check.status, CheckStatus::Warn);
+        assert!(warn_check.detail.contains("model.safetensors"));
+    }
+
+    // ── resolve_model no model_path → Warn ───────────────────────────────
+
+    #[test]
+    fn test_cov2_resolve_model_no_path_warns() {
+        let config = PlanConfig { model_path: None, ..mk_plan_config("0.5B", "manual") };
+        let mut pf = Vec::new();
+        let _model = resolve_model(&config, &mut pf);
+        let check = pf.iter().find(|c| c.name == "model_weights").unwrap();
+        assert_eq!(check.status, CheckStatus::Warn);
+        assert!(check.detail.contains("default model resolution"));
+    }
+
+    // ── estimate_resources manual vs HPO ─────────────────────────────────
+
+    #[test]
+    fn test_cov2_estimate_resources_manual_one_trial() {
+        let config = PlanConfig {
+            strategy: "manual".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 3,
+            ..mk_plan_config("0.5B", "manual")
+        };
+        let model = mk_model_info(896, 24, "qwen2");
+        let data = mk_data_audit(200);
+        let res = estimate_resources(&config, &model, &data, 32);
+        // manual: total_trials = 1, total_epochs = 3
+        let expected_steps = 200usize.div_ceil(32);
+        assert_eq!(res.steps_per_epoch, expected_steps);
+        // total_minutes = minutes_per_epoch * 3 * 1
+        let minutes_per_epoch = (expected_steps as f64 * 58.0) / 60.0;
+        assert!((res.estimated_total_minutes - minutes_per_epoch * 3.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_cov2_estimate_resources_hpo_multi_trial() {
+        let config = PlanConfig {
+            strategy: "tpe".to_string(),
+            budget: 10,
+            scout: false,
+            max_epochs: 2,
+            ..mk_plan_config("0.5B", "tpe")
+        };
+        let model = mk_model_info(896, 24, "qwen2");
+        let data = mk_data_audit(100);
+        let res = estimate_resources(&config, &model, &data, 64);
+        // HPO: total_trials = 10, total_epochs = 2
+        let steps = 100usize.div_ceil(64);
+        let min_per_epoch = (steps as f64 * 58.0) / 60.0;
+        let expected_total = min_per_epoch * 2.0 * 10.0;
+        assert!((res.estimated_total_minutes - expected_total).abs() < 0.01);
+    }
+
+    // ── estimate_resources time scaling by model size ─────────────────────
+
+    #[test]
+    fn test_cov2_estimate_resources_9b_seconds_per_step() {
+        let config = mk_plan_config("9B", "manual");
+        let model = mk_model_info(4096, 48, "qwen3.5");
+        let data = mk_data_audit(100);
+        let res = estimate_resources(&config, &model, &data, 64);
+        // 4096 hidden → 270 seconds per step
+        let steps = 100usize.div_ceil(64);
+        let expected_min = (steps as f64 * 270.0) / 60.0;
+        assert!((res.estimated_minutes_per_epoch - expected_min).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_cov2_estimate_resources_13b_seconds_per_step() {
+        let config = mk_plan_config("13B", "manual");
+        let model = mk_model_info(5120, 40, "llama2");
+        let data = mk_data_audit(100);
+        let res = estimate_resources(&config, &model, &data, 64);
+        // 5120 hidden → 450 seconds per step
+        let steps = 100usize.div_ceil(64);
+        let expected_min = (steps as f64 * 450.0) / 60.0;
+        assert!((res.estimated_minutes_per_epoch - expected_min).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_cov2_estimate_resources_unknown_hidden_seconds() {
+        let config = mk_plan_config("custom", "manual");
+        let model = mk_model_info(1024, 12, "custom");
+        let data = mk_data_audit(100);
+        let res = estimate_resources(&config, &model, &data, 64);
+        // Unknown hidden → default 90 seconds per step, default 3.0 GB
+        let steps = 100usize.div_ceil(64);
+        let expected_min = (steps as f64 * 90.0) / 60.0;
+        assert!((res.estimated_minutes_per_epoch - expected_min).abs() < 0.01);
+        assert!((res.estimated_vram_gb - 3.0).abs() < 0.01);
+    }
+
+    // ── estimate_resources checkpoint size ────────────────────────────────
+
+    #[test]
+    fn test_cov2_estimate_resources_checkpoint_mb() {
+        let config = mk_plan_config("0.5B", "manual");
+        let model = ModelInfo {
+            size: "0.5B".to_string(),
+            hidden_size: 896,
+            num_layers: 24,
+            architecture: "qwen2".to_string(),
+            weights_available: false,
+            lora_trainable_params: 500_000,
+            classifier_params: 5_000,
+        };
+        let data = mk_data_audit(100);
+        let res = estimate_resources(&config, &model, &data, 64);
+        let expected_mb = (500_000 + 5_000) as f64 * 4.0 / 1_048_576.0;
+        assert!((res.estimated_checkpoint_mb - expected_mb).abs() < 0.001);
+    }
+
+    // ── estimate_gpu_hours edge cases ─────────────────────────────────────
+
+    #[test]
+    fn test_cov2_estimate_gpu_hours_large_dataset() {
+        let hours = estimate_gpu_hours(10_000, 5, 20);
+        // 10000 / 64 = 157 steps, 157 * 58 = 9106 sec/epoch
+        // total = 9106 * 5 * 20 = 910600 sec = 252.9 hours
+        assert!(hours > 200.0);
+        assert!(hours < 300.0);
+    }
+
+    #[test]
+    fn test_cov2_estimate_gpu_hours_single_sample() {
+        let hours = estimate_gpu_hours(1, 1, 1);
+        // 1 / 64 → div_ceil → 1 step, 1 * 58 / 3600 ~ 0.016 hours
+        assert!(hours > 0.01);
+        assert!(hours < 0.02);
+    }
+
+    // ── build_hpo_plan unknown strategy defaults to TPE ──────────────────
+
+    #[test]
+    fn test_cov2_build_hpo_plan_unknown_strategy_defaults_to_tpe() {
+        let config = PlanConfig {
+            strategy: "bogus".to_string(),
+            budget: 5,
+            scout: false,
+            max_epochs: 2,
+            ..mk_plan_config("0.5B", "bogus")
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 100, &mut issues);
+        // Unknown strategy should parse to Tpe (default)
+        assert_eq!(hpo.strategy, "bogus");
+        assert_eq!(hpo.budget, 5);
+        assert!(!hpo.sample_configs.is_empty());
+    }
+
+    // ── build_hpo_plan scout mode forces 1 epoch ─────────────────────────
+
+    #[test]
+    fn test_cov2_build_hpo_plan_scout_forces_1_epoch() {
+        let config = PlanConfig {
+            strategy: "random".to_string(),
+            budget: 10,
+            scout: true,
+            max_epochs: 50,
+            ..mk_plan_config("0.5B", "random")
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 100, &mut issues);
+        assert_eq!(hpo.max_epochs, 1);
+        assert!(hpo.scout);
+    }
+
+    // ── build_hpo_plan no budget warning for grid/random ─────────────────
+
+    #[test]
+    fn test_cov2_build_hpo_plan_low_budget_no_warning_for_grid() {
+        let config = PlanConfig {
+            strategy: "grid".to_string(),
+            budget: 3,
+            scout: false,
+            max_epochs: 1,
+            ..mk_plan_config("0.5B", "grid")
+        };
+        let mut issues = Vec::new();
+        build_hpo_plan(&config, 100, &mut issues);
+        // Low budget warning is only for TPE
+        assert!(!issues.iter().any(|i| i.message.contains("TPE budget")));
+    }
+
+    // ── build_hpo_plan large dataset no warning when scout=true ──────────
+
+    #[test]
+    fn test_cov2_build_hpo_plan_large_dataset_no_scout_warning_when_scout() {
+        let config = PlanConfig {
+            strategy: "tpe".to_string(),
+            budget: 20,
+            scout: true,
+            max_epochs: 5,
+            ..mk_plan_config("0.5B", "tpe")
+        };
+        let mut issues = Vec::new();
+        build_hpo_plan(&config, 50_000, &mut issues);
+        // Should NOT warn about GPU hours when scout is already on
+        assert!(!issues.iter().any(|i| i.message.contains("GPU hours")));
+    }
+
+    // ── resolve_class_weights edge cases ─────────────────────────────────
+
+    #[test]
+    fn test_cov2_resolve_class_weights_inverse_freq_imbalanced() {
+        let weights = resolve_class_weights("inverse_freq", &[900, 100], 2);
+        let w = weights.unwrap();
+        assert_eq!(w.len(), 2);
+        // Class 0 (900 samples) should have smaller weight
+        assert!(w[0] < w[1]);
+    }
+
+    #[test]
+    fn test_cov2_resolve_class_weights_sqrt_inverse_imbalanced() {
+        let weights = resolve_class_weights("sqrt_inverse", &[900, 100], 2);
+        let w = weights.unwrap();
+        assert_eq!(w.len(), 2);
+        assert!(w[0] < w[1]);
+    }
+
+    #[test]
+    fn test_cov2_resolve_class_weights_empty_string() {
+        let weights = resolve_class_weights("", &[50, 50], 2);
+        assert!(weights.is_none());
+    }
+
+    // ── TrainingPlan to_json / to_yaml on complex plan ───────────────────
+
+    #[test]
+    fn test_cov2_training_plan_to_json_contains_fields() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: mk_data_audit(200),
+            model: mk_model_info(896, 24, "qwen2"),
+            hyperparameters: HyperparameterPlan {
+                strategy: "tpe".to_string(),
+                budget: 10,
+                scout: true,
+                max_epochs: 1,
+                search_space_params: 9,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: Some("use tpe".to_string()),
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 5.0,
+                estimated_total_minutes: 50.0,
+                estimated_checkpoint_mb: 10.0,
+                steps_per_epoch: 4,
+                gpu_device: Some("RTX 4090".to_string()),
+            },
+            pre_flight: vec![PreFlightCheck {
+                name: "data".to_string(),
+                status: CheckStatus::Pass,
+                detail: "ok".to_string(),
+            }],
+            output_dir: "/tmp/out".to_string(),
+            auto_diagnose: true,
+            verdict: PlanVerdict::Ready,
+            issues: vec![PlanIssue {
+                severity: CheckStatus::Warn,
+                category: "Data".to_string(),
+                message: "test warning".to_string(),
+                fix: Some("fix it".to_string()),
+            }],
+        };
+        let json = plan.to_json();
+        assert!(json.contains("classify"));
+        assert!(json.contains("RTX 4090"));
+        assert!(json.contains("test warning"));
+
+        let yaml = plan.to_yaml();
+        assert!(yaml.contains("classify"));
+        assert!(yaml.contains("RTX 4090"));
+    }
+
+    // ── TrainingPlan from_str with empty YAML document ───────────────────
+
+    #[test]
+    fn test_cov2_training_plan_from_str_empty() {
+        let result = TrainingPlan::from_str("");
+        assert!(result.is_err());
+    }
+
+    // ── TrainingPlan check_counts with all pass ──────────────────────────
+
+    #[test]
+    fn test_cov2_check_counts_all_pass() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: mk_data_audit(100),
+            model: mk_model_info(896, 24, "qwen2"),
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 2,
+                gpu_device: None,
+            },
+            pre_flight: vec![
+                PreFlightCheck {
+                    name: "a".to_string(),
+                    status: CheckStatus::Pass,
+                    detail: "ok".to_string(),
+                },
+                PreFlightCheck {
+                    name: "b".to_string(),
+                    status: CheckStatus::Pass,
+                    detail: "ok".to_string(),
+                },
+                PreFlightCheck {
+                    name: "c".to_string(),
+                    status: CheckStatus::Pass,
+                    detail: "ok".to_string(),
+                },
+            ],
+            output_dir: "/tmp/test".to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Ready,
+            issues: Vec::new(),
+        };
+        let (pass, warn, fail) = plan.check_counts();
+        assert_eq!(pass, 3);
+        assert_eq!(warn, 0);
+        assert_eq!(fail, 0);
+    }
+
+    #[test]
+    fn test_cov2_check_counts_all_fail() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: mk_data_audit(100),
+            model: mk_model_info(896, 24, "qwen2"),
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 2,
+                gpu_device: None,
+            },
+            pre_flight: vec![
+                PreFlightCheck {
+                    name: "a".to_string(),
+                    status: CheckStatus::Fail,
+                    detail: "bad".to_string(),
+                },
+                PreFlightCheck {
+                    name: "b".to_string(),
+                    status: CheckStatus::Fail,
+                    detail: "bad".to_string(),
+                },
+            ],
+            output_dir: "/tmp/test".to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::Blocked,
+            issues: Vec::new(),
+        };
+        let (pass, warn, fail) = plan.check_counts();
+        assert_eq!(pass, 0);
+        assert_eq!(warn, 0);
+        assert_eq!(fail, 2);
+    }
+
+    #[test]
+    fn test_cov2_check_counts_all_warn() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: mk_data_audit(100),
+            model: mk_model_info(896, 24, "qwen2"),
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 2,
+                gpu_device: None,
+            },
+            pre_flight: vec![
+                PreFlightCheck {
+                    name: "a".to_string(),
+                    status: CheckStatus::Warn,
+                    detail: "meh".to_string(),
+                },
+                PreFlightCheck {
+                    name: "b".to_string(),
+                    status: CheckStatus::Warn,
+                    detail: "meh".to_string(),
+                },
+                PreFlightCheck {
+                    name: "c".to_string(),
+                    status: CheckStatus::Warn,
+                    detail: "meh".to_string(),
+                },
+            ],
+            output_dir: "/tmp/test".to_string(),
+            auto_diagnose: false,
+            verdict: PlanVerdict::WarningsPresent,
+            issues: Vec::new(),
+        };
+        let (pass, warn, fail) = plan.check_counts();
+        assert_eq!(pass, 0);
+        assert_eq!(warn, 3);
+        assert_eq!(fail, 0);
+    }
+
+    // ── PlanConfig clone ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_plan_config_clone() {
+        let config = PlanConfig {
+            manual_lr: Some(2e-5),
+            manual_lora_rank: Some(4),
+            manual_batch_size: Some(16),
+            manual_lora_alpha: Some(8.0),
+            manual_warmup: Some(0.05),
+            manual_gradient_clip: Some(0.5),
+            manual_lr_min_ratio: Some(0.001),
+            manual_class_weights: Some("inverse_freq".to_string()),
+            manual_target_modules: Some("all_linear".to_string()),
+            ..mk_plan_config("0.5B", "manual")
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.manual_lr, Some(2e-5));
+        assert_eq!(cloned.manual_lora_rank, Some(4));
+        assert_eq!(cloned.manual_batch_size, Some(16));
+        assert_eq!(cloned.manual_lora_alpha, Some(8.0));
+        assert_eq!(cloned.manual_warmup, Some(0.05));
+        assert_eq!(cloned.manual_gradient_clip, Some(0.5));
+        assert_eq!(cloned.manual_lr_min_ratio, Some(0.001));
+        assert_eq!(cloned.manual_class_weights.as_deref(), Some("inverse_freq"));
+        assert_eq!(cloned.manual_target_modules.as_deref(), Some("all_linear"));
+    }
+
+    // ── PlanConfig debug ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_plan_config_debug() {
+        let config = mk_plan_config("0.5B", "manual");
+        let debug = format!("{config:?}");
+        assert!(debug.contains("PlanConfig"));
+        assert!(debug.contains("0.5B"));
+    }
+
+    // ── CheckStatus copy/clone/debug ─────────────────────────────────────
+
+    #[test]
+    fn test_cov2_check_status_copy_clone_debug() {
+        let s = CheckStatus::Pass;
+        let c = s; // Copy
+        let cl = s.clone(); // Clone
+        assert_eq!(c, cl);
+        let debug = format!("{s:?}");
+        assert!(debug.contains("Pass"));
+
+        let w = CheckStatus::Warn;
+        let debug_w = format!("{w:?}");
+        assert!(debug_w.contains("Warn"));
+
+        let f = CheckStatus::Fail;
+        let debug_f = format!("{f:?}");
+        assert!(debug_f.contains("Fail"));
+    }
+
+    // ── PlanVerdict copy/clone/debug ─────────────────────────────────────
+
+    #[test]
+    fn test_cov2_plan_verdict_copy_clone_debug() {
+        let v = PlanVerdict::Ready;
+        let c = v; // Copy
+        let cl = v.clone(); // Clone
+        assert_eq!(c, cl);
+        let debug = format!("{v:?}");
+        assert!(debug.contains("Ready"));
+
+        let wp = PlanVerdict::WarningsPresent;
+        let debug_wp = format!("{wp:?}");
+        assert!(debug_wp.contains("WarningsPresent"));
+
+        let b = PlanVerdict::Blocked;
+        let debug_b = format!("{b:?}");
+        assert!(debug_b.contains("Blocked"));
+    }
+
+    // ── TrainingPlan clone ───────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_training_plan_clone() {
+        let plan = TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: mk_data_audit(100),
+            model: mk_model_info(896, 24, "qwen2"),
+            hyperparameters: HyperparameterPlan {
+                strategy: "manual".to_string(),
+                budget: 0,
+                scout: false,
+                max_epochs: 1,
+                search_space_params: 0,
+                sample_configs: Vec::new(),
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 2.5,
+                estimated_minutes_per_epoch: 1.0,
+                estimated_total_minutes: 1.0,
+                estimated_checkpoint_mb: 1.0,
+                steps_per_epoch: 4,
+                gpu_device: None,
+            },
+            pre_flight: Vec::new(),
+            output_dir: "/tmp/test".to_string(),
+            auto_diagnose: true,
+            verdict: PlanVerdict::Ready,
+            issues: Vec::new(),
+        };
+        let cloned = plan.clone();
+        assert_eq!(cloned.version, "1.0");
+        assert_eq!(cloned.task, "classify");
+        assert_eq!(cloned.verdict, PlanVerdict::Ready);
+        assert!(cloned.auto_diagnose);
+    }
+
+    // ── ManualConfig clone ───────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_manual_config_clone() {
+        let mc = ManualConfig {
+            learning_rate: 1e-4,
+            lora_rank: 16,
+            batch_size: 32,
+            lora_alpha: Some(32.0),
+            warmup_fraction: Some(0.1),
+            gradient_clip_norm: Some(1.0),
+            lr_min_ratio: Some(0.01),
+            class_weights: Some("sqrt_inverse".to_string()),
+            target_modules: Some("qv".to_string()),
+        };
+        let cloned = mc.clone();
+        assert!((cloned.learning_rate - 1e-4).abs() < 1e-10);
+        assert_eq!(cloned.lora_rank, 16);
+        assert_eq!(cloned.class_weights.as_deref(), Some("sqrt_inverse"));
+    }
+
+    // ── TrialPreview clone ───────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_trial_preview_clone() {
+        let tp = TrialPreview {
+            trial: 5,
+            learning_rate: 3e-5,
+            lora_rank: 8,
+            lora_alpha: 16.0,
+            batch_size: 64,
+            warmup: 0.2,
+            gradient_clip: 0.5,
+            class_weights: "uniform".to_string(),
+            target_modules: "qkv".to_string(),
+            lr_min_ratio: 0.005,
+        };
+        let cloned = tp.clone();
+        assert_eq!(cloned.trial, 5);
+        assert!((cloned.learning_rate - 3e-5).abs() < 1e-10);
+        assert_eq!(cloned.target_modules, "qkv");
+    }
+
+    // ── DataAudit clone ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_data_audit_clone_debug() {
+        let da = DataAudit {
+            train_path: "/data.jsonl".to_string(),
+            train_samples: 100,
+            avg_input_len: 42,
+            class_counts: vec![60, 40],
+            imbalance_ratio: 1.5,
+            auto_class_weights: false,
+            val_samples: Some(10),
+            test_samples: None,
+            duplicates: 2,
+            preamble_count: 5,
+        };
+        let cloned = da.clone();
+        assert_eq!(cloned.train_samples, 100);
+        assert_eq!(cloned.val_samples, Some(10));
+        assert!(cloned.test_samples.is_none());
+        let debug = format!("{da:?}");
+        assert!(debug.contains("DataAudit"));
+    }
+
+    // ── ResourceEstimate clone ───────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_resource_estimate_clone_debug() {
+        let re = ResourceEstimate {
+            estimated_vram_gb: 2.5,
+            estimated_minutes_per_epoch: 3.0,
+            estimated_total_minutes: 30.0,
+            estimated_checkpoint_mb: 5.0,
+            steps_per_epoch: 10,
+            gpu_device: Some("RTX 4090".to_string()),
+        };
+        let cloned = re.clone();
+        assert!((cloned.estimated_vram_gb - 2.5).abs() < 1e-6);
+        assert_eq!(cloned.gpu_device.as_deref(), Some("RTX 4090"));
+        let debug = format!("{re:?}");
+        assert!(debug.contains("ResourceEstimate"));
+    }
+
+    // ── PreFlightCheck clone ─────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_pre_flight_check_clone_debug() {
+        let c = PreFlightCheck {
+            name: "test_check".to_string(),
+            status: CheckStatus::Pass,
+            detail: "all good".to_string(),
+        };
+        let cloned = c.clone();
+        assert_eq!(cloned.name, "test_check");
+        assert_eq!(cloned.status, CheckStatus::Pass);
+        let debug = format!("{c:?}");
+        assert!(debug.contains("PreFlightCheck"));
+    }
+
+    // ── PlanIssue clone ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_plan_issue_clone_debug() {
+        let issue = PlanIssue {
+            severity: CheckStatus::Warn,
+            category: "Data".to_string(),
+            message: "something".to_string(),
+            fix: Some("do thing".to_string()),
+        };
+        let cloned = issue.clone();
+        assert_eq!(cloned.severity, CheckStatus::Warn);
+        assert_eq!(cloned.fix.as_deref(), Some("do thing"));
+        let debug = format!("{issue:?}");
+        assert!(debug.contains("PlanIssue"));
+    }
+
+    // ── count_file_samples with unreadable file ──────────────────────────
+
+    #[test]
+    fn test_cov2_count_file_samples_invalid_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.jsonl");
+        std::fs::write(&path, "this is not valid jsonl").unwrap();
+        // Should return None because load_safety_corpus fails
+        let result = count_file_samples(Some(&path), 2);
+        assert!(result.is_none());
+    }
+
+    // ── HyperparameterPlan clone ─────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_hyperparameter_plan_clone() {
+        let hp = HyperparameterPlan {
+            strategy: "grid".to_string(),
+            budget: 15,
+            scout: false,
+            max_epochs: 3,
+            search_space_params: 9,
+            sample_configs: vec![],
+            manual: Some(ManualConfig {
+                learning_rate: 1e-4,
+                lora_rank: 8,
+                batch_size: 32,
+                lora_alpha: None,
+                warmup_fraction: None,
+                gradient_clip_norm: None,
+                lr_min_ratio: None,
+                class_weights: None,
+                target_modules: None,
+            }),
+            recommendation: None,
+        };
+        let cloned = hp.clone();
+        assert_eq!(cloned.strategy, "grid");
+        assert_eq!(cloned.budget, 15);
+        assert!(cloned.manual.is_some());
+    }
+
+    // ── build_hpo_plan budget=1 for tpe ──────────────────────────────────
+
+    #[test]
+    fn test_cov2_build_hpo_plan_tpe_budget_1() {
+        let config = PlanConfig {
+            strategy: "tpe".to_string(),
+            budget: 1,
+            scout: false,
+            max_epochs: 1,
+            ..mk_plan_config("0.5B", "tpe")
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 100, &mut issues);
+        assert_eq!(hpo.budget, 1);
+        // Budget 1 < 5, should warn
+        assert!(issues.iter().any(|i| i.message.contains("TPE budget")));
+        // Only 1 preview
+        assert!(hpo.sample_configs.len() <= 1);
+    }
+
+    // ── build_hpo_plan budget=0 for non-manual ───────────────────────────
+
+    #[test]
+    fn test_cov2_build_hpo_plan_tpe_budget_0() {
+        let config = PlanConfig {
+            strategy: "tpe".to_string(),
+            budget: 0,
+            scout: false,
+            max_epochs: 1,
+            ..mk_plan_config("0.5B", "tpe")
+        };
+        let mut issues = Vec::new();
+        let hpo = build_hpo_plan(&config, 100, &mut issues);
+        assert_eq!(hpo.budget, 0);
+        assert!(hpo.sample_configs.is_empty());
+    }
+
+    // ── ModelInfo debug ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_model_info_debug() {
+        let mi = mk_model_info(4096, 32, "llama2");
+        let debug = format!("{mi:?}");
+        assert!(debug.contains("ModelInfo"));
+        assert!(debug.contains("llama2"));
+    }
+
+    // ── resolve_model custom lora rank ───────────────────────────────────
+
+    #[test]
+    fn test_cov2_resolve_model_default_rank_16() {
+        let config = PlanConfig { manual_lora_rank: None, ..mk_plan_config("0.5B", "manual") };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        // Default rank is 16: lora_params = 2 * 16 * 896 * 2 * 24
+        assert_eq!(model.lora_trainable_params, 2 * 16 * 896 * 2 * 24);
+    }
+
+    #[test]
+    fn test_cov2_resolve_model_custom_rank_4() {
+        let config = PlanConfig { manual_lora_rank: Some(4), ..mk_plan_config("0.5B", "manual") };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.lora_trainable_params, 2 * 4 * 896 * 2 * 24);
+    }
+
+    // ── resolve_model classifier_params for different num_classes ────────
+
+    #[test]
+    fn test_cov2_resolve_model_classifier_params_10_classes() {
+        let config = PlanConfig { num_classes: 10, ..mk_plan_config("0.5B", "manual") };
+        let mut pf = Vec::new();
+        let model = resolve_model(&config, &mut pf);
+        assert_eq!(model.classifier_params, 896 * 10 + 10);
+    }
+
+    // ── estimate_resources with scout + non-manual ───────────────────────
+
+    #[test]
+    fn test_cov2_estimate_resources_scout_hpo() {
+        let config = PlanConfig {
+            strategy: "tpe".to_string(),
+            budget: 20,
+            scout: true,
+            max_epochs: 10,
+            ..mk_plan_config("0.5B", "tpe")
+        };
+        let model = mk_model_info(896, 24, "qwen2");
+        let data = mk_data_audit(100);
+        let res = estimate_resources(&config, &model, &data, 64);
+        // scout: total_epochs = 1, budget = 20
+        let steps = 100usize.div_ceil(64);
+        let min_per_epoch = (steps as f64 * 58.0) / 60.0;
+        let expected = min_per_epoch * 1.0 * 20.0;
+        assert!((res.estimated_total_minutes - expected).abs() < 0.01);
+    }
+
+    // ── Plan with output_dir that doesn't exist yet (Pass) ───────────────
+
+    #[test]
+    fn test_cov2_plan_output_dir_will_be_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let output_dir = dir.path().join("nonexistent_output");
+        let config = PlanConfig {
+            data_path,
+            output_dir: output_dir.clone(),
+            ..mk_plan_config("0.5B", "manual")
+        };
+        let p = plan(&config).unwrap();
+        let out_check = p.pre_flight.iter().find(|c| c.name == "output_dir").unwrap();
+        assert_eq!(out_check.status, CheckStatus::Pass);
+        assert!(out_check.detail.contains("will be created"));
+    }
+
+    // ── Plan with existing output_dir no checkpoints (Pass) ──────────────
+
+    #[test]
+    fn test_cov2_plan_output_dir_exists_no_checkpoints() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let output_dir = dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+        // No metadata.json or epoch_001 — clean dir
+        let config = PlanConfig { data_path, output_dir, ..mk_plan_config("0.5B", "manual") };
+        let p = plan(&config).unwrap();
+        let out_check = p.pre_flight.iter().find(|c| c.name == "output_dir").unwrap();
+        assert_eq!(out_check.status, CheckStatus::Pass);
+        assert!(out_check.detail.contains("exists"));
+    }
+
+    // ── Plan output_dir with epoch_001 subdir (Warn) ─────────────────────
+
+    #[test]
+    fn test_cov2_plan_output_dir_has_epoch_subdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let output_dir = dir.path().join("output");
+        std::fs::create_dir_all(output_dir.join("epoch_001")).unwrap();
+        let config = PlanConfig { data_path, output_dir, ..mk_plan_config("0.5B", "manual") };
+        let p = plan(&config).unwrap();
+        let out_check = p.pre_flight.iter().find(|c| c.name == "output_dir").unwrap();
+        assert_eq!(out_check.status, CheckStatus::Warn);
+        assert!(out_check.detail.contains("checkpoints"));
+    }
+
+    // ── Plan class_weights_persist always passes ─────────────────────────
+
+    #[test]
+    fn test_cov2_plan_class_weights_persist_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("train.jsonl");
+        let mut lines = Vec::new();
+        for i in 0..20 {
+            lines.push(format!(r#"{{"input": "echo {i}", "label": {}}}"#, i % 2));
+        }
+        std::fs::write(&data_path, lines.join("\n")).unwrap();
+        let config = PlanConfig {
+            data_path,
+            output_dir: dir.path().to_path_buf(),
+            ..mk_plan_config("0.5B", "manual")
+        };
+        let p = plan(&config).unwrap();
+        let cw_check = p.pre_flight.iter().find(|c| c.name == "class_weights_persist").unwrap();
+        assert_eq!(cw_check.status, CheckStatus::Pass);
+    }
+
+    // ── ExperimentTracker log methods are no-op without store ────────────
+
+    #[test]
+    fn test_cov2_experiment_tracker_no_store_no_panic() {
+        let mut tracker = ExperimentTracker { store: None, exp_id: None };
+        tracker.log_failed_trial();
+        // Should be no-op
+    }
+
+    #[test]
+    fn test_cov2_experiment_tracker_with_store_no_exp_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::storage::SqliteBackend::open_project(dir.path()).ok();
+        let mut tracker = ExperimentTracker { store, exp_id: None };
+        // log_failed_trial with store but no exp_id → early return
+        tracker.log_failed_trial();
+    }
+
+    // ── ApplyConfig debug ────────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_apply_config_debug() {
+        let ac = ApplyConfig {
+            model_path: PathBuf::from("/tmp/model"),
+            data_path: PathBuf::from("/tmp/data.jsonl"),
+            output_dir: PathBuf::from("/tmp/out"),
+            on_trial_complete: None,
+        };
+        let debug = format!("{ac:?}");
+        assert!(debug.contains("ApplyConfig"));
+    }
 }

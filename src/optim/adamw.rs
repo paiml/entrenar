@@ -559,6 +559,51 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_adamw_checkpoint_accessors() {
+        let mut opt = AdamW::default_params(0.01);
+        assert_eq!(opt.step_count(), 0);
+        opt.set_step_count(42);
+        assert_eq!(opt.step_count(), 42);
+        assert_eq!(opt.beta1(), 0.9);
+        assert_eq!(opt.beta2(), 0.999);
+        assert!((opt.weight_decay() - 0.01).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_adamw_moment_set_get() {
+        let mut opt = AdamW::default_params(0.01);
+        // Initially empty
+        assert!(opt.first_moments().is_empty());
+        assert!(opt.second_moments().is_empty());
+        // Set at index 0
+        opt.set_first_moment(0, ndarray::arr1(&[1.0, 2.0]));
+        opt.set_second_moment(0, ndarray::arr1(&[0.5, 0.5]));
+        assert_eq!(opt.first_moments().len(), 1);
+        assert_eq!(opt.second_moments().len(), 1);
+        // Set at index 3 (should resize)
+        opt.set_first_moment(3, ndarray::arr1(&[3.0]));
+        assert_eq!(opt.first_moments().len(), 4);
+        assert!(opt.first_moments()[1].is_none());
+        assert!(opt.first_moments()[3].is_some());
+    }
+
+    #[test]
+    fn test_adamw_scalar_fallback_path() {
+        // Small tensor (<16 elements) triggers scalar fallback
+        let mut params = vec![Tensor::from_vec(vec![2.0, -1.0], true)];
+        let mut optimizer = AdamW::new(0.1, 0.9, 0.999, 1e-8, 0.01);
+
+        // Multi-step to hit all moment update paths
+        for _ in 0..3 {
+            let grad = params[0].data().mapv(|x| 2.0 * x);
+            params[0].set_grad(grad);
+            optimizer.step(&mut params);
+        }
+        // Params should converge toward 0
+        assert!(params[0].data()[0].abs() < 2.0);
+    }
+
     mod aw_proptest_falsify {
         use super::*;
         use proptest::prelude::*;

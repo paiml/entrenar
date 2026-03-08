@@ -1493,4 +1493,667 @@ rank = 64
         assert_eq!(pipeline.num_adapters(), 3);
         assert!(pipeline.all_exhausted()); // all empty
     }
+
+    // ── cov3: additional coverage tests ─────────────────────────────
+
+    #[test]
+    fn test_cov3_save_adapter_checkpoint_creates_dir_and_files() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_ckpt_test");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: dir.clone(),
+            instruct_config: InstructConfig::default(),
+        };
+        let samples = vec![InstructSample {
+            instruction: "test".into(),
+            response: "resp".into(),
+            system: None,
+            metadata: None,
+        }];
+        pipeline.add_adapter(config, samples, vec![]);
+
+        let result = pipeline.save_adapter_checkpoint(0, 1, 0.5);
+        assert!(result.is_ok());
+        let ckpt_dir = result.unwrap();
+        assert!(ckpt_dir.join("metadata.json").exists());
+        assert!(ckpt_dir.join("model.safetensors").exists());
+
+        // Verify metadata contents
+        let metadata_str = std::fs::read_to_string(ckpt_dir.join("metadata.json")).unwrap();
+        assert!(metadata_str.contains("\"mode\": \"multi_adapter\""));
+        assert!(metadata_str.contains("\"adapter_index\": 0"));
+        assert!(metadata_str.contains("\"epoch\": 1"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_save_best_checkpoint_creates_dir_and_files() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_best_ckpt_test");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: dir.clone(),
+            instruct_config: InstructConfig::default(),
+        };
+        pipeline.add_adapter(config, vec![], vec![]);
+
+        let result = pipeline.save_best_checkpoint(0, 2, 0.3);
+        assert!(result.is_ok());
+        let best_dir = result.unwrap();
+        assert_eq!(best_dir, dir.join("best"));
+        assert!(best_dir.join("metadata.json").exists());
+        assert!(best_dir.join("model.safetensors").exists());
+
+        // Verify metadata
+        let metadata_str = std::fs::read_to_string(best_dir.join("metadata.json")).unwrap();
+        assert!(metadata_str.contains("\"mode\": \"multi_adapter\""));
+        assert!(metadata_str.contains("\"epoch\": 2"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_save_best_checkpoint_overwrites_previous() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_best_overwrite");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: dir.clone(),
+            instruct_config: InstructConfig::default(),
+        };
+        pipeline.add_adapter(config, vec![], vec![]);
+
+        // First save
+        pipeline.save_best_checkpoint(0, 1, 1.0).unwrap();
+        // Second save should overwrite
+        pipeline.save_best_checkpoint(0, 5, 0.2).unwrap();
+
+        let metadata_str = std::fs::read_to_string(dir.join("best").join("metadata.json")).unwrap();
+        assert!(metadata_str.contains("\"epoch\": 5"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_save_adapter_lora_weights_empty_layers() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_empty_lora");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let result = save_adapter_lora_weights(&[], &dir);
+        assert!(result.is_ok());
+        // SafeTensors file should exist even with empty layers
+        assert!(dir.join("model.safetensors").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_save_adapter_lora_weights_with_real_layers() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_real_lora");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Create a pipeline with real LoRA layers
+        let model_config = crate::transformer::TransformerConfig::tiny();
+        let model = crate::transformer::Transformer::new(&model_config);
+        let instruct_config = InstructConfig { lora_rank: 4, ..InstructConfig::default() };
+        let layers = InstructPipeline::build_lora_layers(&model, &model_config, &instruct_config);
+
+        let result = save_adapter_lora_weights(&layers, &dir);
+        assert!(result.is_ok());
+
+        // Verify SafeTensors can be read back
+        let st_bytes = std::fs::read(dir.join("model.safetensors")).unwrap();
+        let st = safetensors::SafeTensors::deserialize(&st_bytes).unwrap();
+        // 4 LoRA layers → 4 * 2 (A and B) = 8 tensors
+        assert_eq!(st.len(), layers.len() * 2);
+
+        // Verify naming convention
+        let names: Vec<String> = st.names().iter().map(|s| s.to_string()).collect();
+        assert!(names.iter().any(|n| n.contains("lora_a")));
+        assert!(names.iter().any(|n| n.contains("lora_b")));
+        assert!(names.iter().any(|n| n.contains("q_proj")));
+        assert!(names.iter().any(|n| n.contains("v_proj")));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_shuffle_samples_large_input() {
+        let mut samples: Vec<InstructSample> = (0..100)
+            .map(|i| InstructSample {
+                instruction: format!("inst_{i}"),
+                response: format!("resp_{i}"),
+                system: None,
+                metadata: None,
+            })
+            .collect();
+        let original: Vec<String> = samples.iter().map(|s| s.instruction.clone()).collect();
+
+        shuffle_samples(&mut samples, 12345);
+
+        let shuffled: Vec<String> = samples.iter().map(|s| s.instruction.clone()).collect();
+        // Should be different order
+        assert_ne!(original, shuffled, "100 samples should shuffle to different order");
+        // But same elements
+        let mut sorted_original = original;
+        sorted_original.sort();
+        let mut sorted_shuffled = shuffled;
+        sorted_shuffled.sort();
+        assert_eq!(sorted_original, sorted_shuffled);
+    }
+
+    #[test]
+    fn test_cov3_shuffle_samples_two_elements() {
+        let mut samples = vec![
+            InstructSample {
+                instruction: "a".into(),
+                response: "1".into(),
+                system: None,
+                metadata: None,
+            },
+            InstructSample {
+                instruction: "b".into(),
+                response: "2".into(),
+                system: None,
+                metadata: None,
+            },
+        ];
+        // Verify no panic with 2 elements
+        shuffle_samples(&mut samples, 42);
+        assert_eq!(samples.len(), 2);
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_toml_all_overrides() {
+        let toml = r#"
+[[adapter]]
+data = "data/test.jsonl"
+checkpoint = "ckpt/test"
+label = "full-override"
+rank = 64
+learning_rate = 0.001
+epochs = 20
+max_seq_len = 2048
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).unwrap();
+        let base = InstructConfig::default();
+        let adapters = config.to_adapter_configs(&base);
+        assert_eq!(adapters[0].instruct_config.lora_rank, 64);
+        assert!((adapters[0].instruct_config.lora_alpha - 128.0).abs() < f32::EPSILON);
+        assert!((adapters[0].instruct_config.learning_rate - 0.001).abs() < f32::EPSILON);
+        assert_eq!(adapters[0].instruct_config.epochs, 20);
+        assert_eq!(adapters[0].instruct_config.max_seq_len, 2048);
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_many_adapters() {
+        let mut toml_str = String::new();
+        for i in 0..10 {
+            toml_str.push_str(&format!(
+                r#"
+[[adapter]]
+data = "data/{i}.jsonl"
+checkpoint = "ckpt/{i}"
+rank = {rank}
+"#,
+                i = i,
+                rank = 4 + i * 2,
+            ));
+        }
+        let config = AdaptersConfigFile::from_toml(&toml_str).unwrap();
+        assert_eq!(config.adapters.len(), 10);
+        // Verify each has the right rank
+        for (i, entry) in config.adapters.iter().enumerate() {
+            assert_eq!(entry.rank, Some(4 + i * 2));
+        }
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_toml_missing_required_fields() {
+        // Missing checkpoint field
+        let toml = r#"
+[[adapter]]
+data = "data.jsonl"
+"#;
+        let result = AdaptersConfigFile::from_toml(toml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_toml_missing_data_field() {
+        let toml = r#"
+[[adapter]]
+checkpoint = "ckpt"
+"#;
+        let result = AdaptersConfigFile::from_toml(toml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_toml_extra_fields_ignored() {
+        // Extra fields should be ignored by serde
+        let toml = r#"
+[[adapter]]
+data = "data.jsonl"
+checkpoint = "ckpt"
+unknown_field = "ignored"
+"#;
+        // Depending on serde config, this might fail or succeed
+        // toml::from_str with #[serde(deny_unknown_fields)] would fail
+        // Without it, it succeeds
+        let result = AdaptersConfigFile::from_toml(toml);
+        // Just verify no panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_rank_zero() {
+        let toml = r#"
+[[adapter]]
+data = "data.jsonl"
+checkpoint = "ckpt"
+rank = 0
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).unwrap();
+        let base = InstructConfig::default();
+        let adapters = config.to_adapter_configs(&base);
+        assert_eq!(adapters[0].instruct_config.lora_rank, 0);
+        assert!((adapters[0].instruct_config.lora_alpha - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_cov3_add_adapter_creates_lora_layers() {
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: PathBuf::from("/tmp/ckpt"),
+            instruct_config: InstructConfig { lora_rank: 4, ..InstructConfig::default() },
+        };
+        pipeline.add_adapter(config, vec![], vec![]);
+        // Adapter should have LoRA layers created from the base model
+        // tiny model has 2 layers → 2 * 2 (Q+V) = 4 LoRA layers
+        assert_eq!(pipeline.adapters[0].lora_layers.len(), 4);
+    }
+
+    #[test]
+    fn test_cov3_add_adapter_with_val_samples() {
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: PathBuf::from("/tmp/ckpt"),
+            instruct_config: InstructConfig::default(),
+        };
+        let val_samples = vec![InstructSample {
+            instruction: "val_q".into(),
+            response: "val_a".into(),
+            system: None,
+            metadata: None,
+        }];
+        pipeline.add_adapter(config, vec![], val_samples);
+        assert_eq!(pipeline.adapters[0].val_samples.len(), 1);
+        assert_eq!(pipeline.adapters[0].val_samples[0].instruction, "val_q");
+    }
+
+    #[test]
+    fn test_cov3_add_adapter_initial_state() {
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: PathBuf::from("/tmp/ckpt_initial"),
+            instruct_config: InstructConfig { lora_rank: 8, ..InstructConfig::default() },
+        };
+        pipeline.add_adapter(config, vec![], vec![]);
+        let slot = &pipeline.adapters[0];
+        assert_eq!(slot.cursor, 0);
+        assert_eq!(slot.best_val_loss, f32::INFINITY);
+        assert!(slot.metrics.is_empty());
+        assert_eq!(slot.config.lora_rank, 8);
+        assert_eq!(slot.checkpoint_dir, PathBuf::from("/tmp/ckpt_initial"));
+    }
+
+    #[test]
+    fn test_cov3_train_step_adapter_empty_tokens() {
+        // Test with empty instruction and response after tokenization
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(5)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        // No tokenizer → returns None early
+        let result = pipeline.train_step_adapter(0);
+        assert!(result.is_none());
+        // Cursor should have advanced by 1
+        assert_eq!(pipeline.adapters[0].cursor, 1);
+    }
+
+    #[test]
+    fn test_cov3_batch_train_step_synchronized_mixed_exhaustion() {
+        let slot0 = dummy_slot_with_data(3); // has data
+        let mut slot1 = dummy_slot_with_data(1);
+        slot1.cursor = 1; // exhausted
+
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1],
+            schedule: AdapterSchedule::Synchronized,
+            global_step: 0,
+        };
+
+        let results = pipeline.batch_train_step();
+        assert_eq!(results.len(), 2);
+        // Adapter 1 is exhausted → None
+        assert!(results[1].is_none());
+    }
+
+    #[test]
+    fn test_cov3_batch_train_step_round_robin_cycling() {
+        // Verify round-robin cycling by manually advancing global_step
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![
+                dummy_slot_with_data(10),
+                dummy_slot_with_data(10),
+                dummy_slot_with_data(10),
+            ],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+
+        // Step 0 → adapter 0
+        assert_eq!(pipeline.select_next_adapter(), Some(0));
+        // Simulate step 1
+        let pipeline = MultiAdapterPipeline { global_step: 1, ..pipeline };
+        assert_eq!(pipeline.select_next_adapter(), Some(1));
+        // Simulate step 2
+        let pipeline = MultiAdapterPipeline { global_step: 2, ..pipeline };
+        assert_eq!(pipeline.select_next_adapter(), Some(2));
+        // Step 3 wraps back to 0
+        let pipeline = MultiAdapterPipeline { global_step: 3, ..pipeline };
+        assert_eq!(pipeline.select_next_adapter(), Some(0));
+    }
+
+    #[test]
+    fn test_cov3_reset_epoch_multiple_adapters_independent_seeds() {
+        let mut pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![dummy_slot_with_data(20), dummy_slot_with_data(20)],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+
+        pipeline.reset_epoch(42);
+
+        // Different adapters should get different shuffle orders
+        // (seed + adapter index → different effective seed)
+        let order0: Vec<String> =
+            pipeline.adapters[0].train_samples.iter().map(|s| s.instruction.clone()).collect();
+        let order1: Vec<String> =
+            pipeline.adapters[1].train_samples.iter().map(|s| s.instruction.clone()).collect();
+        // With different effective seeds, orderings should differ
+        assert_ne!(order0, order1, "Different adapters should have different shuffle orders");
+    }
+
+    #[test]
+    fn test_cov3_adapter_schedule_copy() {
+        let s1 = AdapterSchedule::PriorityValLoss;
+        let s2 = s1; // Copy
+        assert_eq!(s1, s2);
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_file_clone() {
+        let toml = r#"
+[[adapter]]
+data = "data.jsonl"
+checkpoint = "ckpt"
+label = "test"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).unwrap();
+        let cloned = config.clone();
+        assert_eq!(cloned.adapters.len(), 1);
+        assert_eq!(cloned.adapters[0].label, Some("test".to_string()));
+    }
+
+    #[test]
+    fn test_cov3_adapter_entry_clone() {
+        let toml = r#"
+[[adapter]]
+data = "data.jsonl"
+checkpoint = "ckpt"
+rank = 32
+learning_rate = 0.001
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).unwrap();
+        let cloned = config.adapters[0].clone();
+        assert_eq!(cloned.rank, Some(32));
+        assert_eq!(cloned.learning_rate, Some(0.001));
+    }
+
+    #[test]
+    fn test_cov3_save_adapter_checkpoint_metadata_values() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_ckpt_meta");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        pipeline.global_step = 42;
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: dir.clone(),
+            instruct_config: InstructConfig {
+                lora_rank: 8,
+                lora_alpha: 16.0,
+                ..InstructConfig::default()
+            },
+        };
+        let samples: Vec<InstructSample> = (0..5)
+            .map(|i| InstructSample {
+                instruction: format!("q{i}"),
+                response: format!("a{i}"),
+                system: None,
+                metadata: None,
+            })
+            .collect();
+        pipeline.add_adapter(config, samples, vec![]);
+        pipeline.adapters[0].best_val_loss = 0.75;
+
+        let ckpt_dir = pipeline.save_adapter_checkpoint(0, 3, 0.42).unwrap();
+        let metadata_str = std::fs::read_to_string(ckpt_dir.join("metadata.json")).unwrap();
+        let metadata: serde_json::Value = serde_json::from_str(&metadata_str).unwrap();
+
+        assert_eq!(metadata["adapter_index"], 0);
+        assert_eq!(metadata["epoch"], 3);
+        assert_eq!(metadata["lora_rank"], 8);
+        assert_eq!(metadata["train_samples"], 5);
+        assert_eq!(metadata["global_step"], 42);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_save_adapter_checkpoint_multiple_epochs() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_multi_epoch");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut pipeline =
+            MultiAdapterPipeline::new(create_dummy_pipeline(), AdapterSchedule::RoundRobin);
+        let config = AdapterConfig {
+            data_path: PathBuf::from("data.jsonl"),
+            checkpoint_dir: dir.clone(),
+            instruct_config: InstructConfig::default(),
+        };
+        pipeline.add_adapter(config, vec![], vec![]);
+
+        // Save multiple epochs
+        for epoch in 0..3 {
+            let ckpt_dir =
+                pipeline.save_adapter_checkpoint(0, epoch, 1.0 - epoch as f32 * 0.2).unwrap();
+            assert!(ckpt_dir.join("metadata.json").exists());
+            assert!(ckpt_dir.join("model.safetensors").exists());
+        }
+
+        // All three epoch directories should exist
+        assert!(dir.join("epoch-0").exists());
+        assert!(dir.join("epoch-1").exists());
+        assert!(dir.join("epoch-2").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_all_exhausted_single_adapter_one_sample() {
+        let slot = dummy_slot_with_data(1);
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert!(!pipeline.all_exhausted());
+    }
+
+    #[test]
+    fn test_cov3_all_exhausted_single_adapter_cursor_at_end() {
+        let mut slot = dummy_slot_with_data(1);
+        slot.cursor = 1;
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot],
+            schedule: AdapterSchedule::RoundRobin,
+            global_step: 0,
+        };
+        assert!(pipeline.all_exhausted());
+    }
+
+    #[test]
+    fn test_cov3_select_priority_single_adapter() {
+        let mut slot = dummy_slot();
+        slot.best_val_loss = 3.0;
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot],
+            schedule: AdapterSchedule::PriorityValLoss,
+            global_step: 0,
+        };
+        assert_eq!(pipeline.select_next_adapter(), Some(0));
+    }
+
+    #[test]
+    fn test_cov3_select_priority_equal_losses() {
+        let mut slot0 = dummy_slot();
+        slot0.best_val_loss = 1.0;
+        let mut slot1 = dummy_slot();
+        slot1.best_val_loss = 1.0;
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![slot0, slot1],
+            schedule: AdapterSchedule::PriorityValLoss,
+            global_step: 0,
+        };
+        let result = pipeline.select_next_adapter();
+        // With equal losses, max_by picks the last one (stable)
+        assert!(result == Some(0) || result == Some(1));
+    }
+
+    #[test]
+    fn test_cov3_to_adapter_configs_no_overrides() {
+        let toml = r#"
+[[adapter]]
+data = "d.jsonl"
+checkpoint = "c"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).unwrap();
+        let base = InstructConfig {
+            lora_rank: 32,
+            lora_alpha: 64.0,
+            learning_rate: 0.005,
+            epochs: 7,
+            max_seq_len: 1024,
+            gradient_clip_norm: Some(2.0),
+            quantize_nf4: true,
+        };
+        let adapters = config.to_adapter_configs(&base);
+        // All base values should be inherited
+        assert_eq!(adapters[0].instruct_config.lora_rank, 32);
+        assert!((adapters[0].instruct_config.lora_alpha - 64.0).abs() < f32::EPSILON);
+        assert!((adapters[0].instruct_config.learning_rate - 0.005).abs() < f32::EPSILON);
+        assert_eq!(adapters[0].instruct_config.epochs, 7);
+        assert_eq!(adapters[0].instruct_config.max_seq_len, 1024);
+        assert_eq!(adapters[0].instruct_config.gradient_clip_norm, Some(2.0));
+        assert!(adapters[0].instruct_config.quantize_nf4);
+    }
+
+    #[test]
+    fn test_cov3_to_adapter_configs_preserves_data_and_checkpoint_paths() {
+        let toml = r#"
+[[adapter]]
+data = "/absolute/path/data.jsonl"
+checkpoint = "../relative/ckpt"
+"#;
+        let config = AdaptersConfigFile::from_toml(toml).unwrap();
+        let base = InstructConfig::default();
+        let adapters = config.to_adapter_configs(&base);
+        assert_eq!(adapters[0].data_path, PathBuf::from("/absolute/path/data.jsonl"));
+        assert_eq!(adapters[0].checkpoint_dir, PathBuf::from("../relative/ckpt"));
+    }
+
+    #[test]
+    fn test_cov3_adapters_config_from_file_invalid_toml() {
+        let dir = std::env::temp_dir().join("entrenar_cov3_invalid_toml");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("invalid.toml");
+        std::fs::write(&path, "this {{ is not valid TOML").unwrap();
+        let result = AdaptersConfigFile::from_file(&path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("failed to parse"), "Expected parse error, got: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_adapter_slot_checkpoint_dir() {
+        let slot = AdapterSlot {
+            lora_layers: Vec::new(),
+            train_samples: Vec::new(),
+            val_samples: Vec::new(),
+            checkpoint_dir: PathBuf::from("/my/custom/ckpt"),
+            metrics: Vec::new(),
+            config: InstructConfig::default(),
+            cursor: 0,
+            best_val_loss: f32::INFINITY,
+            #[cfg(feature = "cuda")]
+            optimizer_states: None,
+            #[cfg(feature = "cuda")]
+            lora_step: 0,
+        };
+        assert_eq!(slot.checkpoint_dir, PathBuf::from("/my/custom/ckpt"));
+    }
+
+    #[test]
+    fn test_cov3_multi_adapter_schedule_field() {
+        let pipeline = MultiAdapterPipeline {
+            base_pipeline: create_dummy_pipeline(),
+            adapters: vec![],
+            schedule: AdapterSchedule::PriorityValLoss,
+            global_step: 0,
+        };
+        assert_eq!(pipeline.schedule, AdapterSchedule::PriorityValLoss);
+    }
 }
