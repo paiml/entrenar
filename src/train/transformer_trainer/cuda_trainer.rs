@@ -999,13 +999,19 @@ impl CudaTransformerTrainer {
         // Steps 8-11: GPU backward pass (with or without optimizer)
         // (sub-phases lm_bwd, norm_bwd, blk_bwd instrumented inside gpu_backward)
         // KAIZEN-050: grad_logits on GPU. KAIZEN-052: grad lives in logits_buf (in-place).
-        let grad_output_is_a =
-            self.gpu_backward(seq_len, hidden_size, vocab_size, accumulate_only)?;
-
-        // Step 12: Embedding backward (CPU scatter-add always accumulates)
-        self.profiler.begin(StepProfiler::EMBED_BWD);
-        self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a)?;
-        self.profiler.end(StepProfiler::EMBED_BWD);
+        //
+        // ENT-263 fix: Capture loss regardless of backward success. The NF4 backward
+        // path may fail (e.g., gemm_nf4_backward_a stub) but the loss was already
+        // computed by fused_cross_entropy_cuda. Dropping the loss silently causes
+        // loss=0.0 reporting despite valid forward passes.
+        if let Some(grad_output_is_a) =
+            self.gpu_backward(seq_len, hidden_size, vocab_size, accumulate_only)
+        {
+            // Step 12: Embedding backward (CPU scatter-add always accumulates)
+            self.profiler.begin(StepProfiler::EMBED_BWD);
+            self.embed_backward(input_ids, seq_len, hidden_size, vocab_size, grad_output_is_a);
+            self.profiler.end(StepProfiler::EMBED_BWD);
+        }
 
         Some(loss_val)
     }
