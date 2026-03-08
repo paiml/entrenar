@@ -178,4 +178,82 @@ mod tests {
         // ffn: 4 (w_up,b_up,w_down,b_down) + ffn_layernorm: 2 (w,b)
         assert_eq!(params.len(), 12);
     }
+
+    #[test]
+    fn test_encoder_block_different_layer_indices() {
+        let config = TransformerConfig::codebert();
+        for idx in [0, 1, 5, 11] {
+            let block = EncoderBlock::new(&config, idx);
+            assert_eq!(block.layer_idx(), idx);
+        }
+    }
+
+    #[test]
+    fn test_encoder_block_forward_preserves_shape() {
+        let config = TransformerConfig::codebert();
+        let block = EncoderBlock::new(&config, 0);
+        for seq_len in [1, 2, 4, 8] {
+            let x = Tensor::from_vec(vec![0.1; seq_len * config.hidden_size], true);
+            let output = block.forward(&x, seq_len);
+            assert_eq!(
+                output.len(),
+                seq_len * config.hidden_size,
+                "Shape mismatch for seq_len={seq_len}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_encoder_block_deterministic() {
+        let config = TransformerConfig::codebert();
+        let block = EncoderBlock::new(&config, 0);
+        let seq_len = 3;
+        let x = Tensor::from_vec(vec![0.3; seq_len * config.hidden_size], true);
+
+        let out1 = block.forward(&x, seq_len);
+        let out2 = block.forward(&x, seq_len);
+
+        let d1 = out1.data();
+        let d2 = out2.data();
+        let s1 = d1.as_slice().unwrap();
+        let s2 = d2.as_slice().unwrap();
+        assert_eq!(s1, s2, "Encoder block should be deterministic");
+    }
+
+    #[test]
+    fn test_encoder_block_from_params_missing() {
+        let config = TransformerConfig::codebert();
+        let empty_params: HashMap<String, Tensor> = HashMap::new();
+        let result = EncoderBlock::from_params(&config, &empty_params, 0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_encoder_block_hidden_size() {
+        let config = TransformerConfig::codebert();
+        let block = EncoderBlock::new(&config, 0);
+        assert_eq!(block.hidden_size, config.hidden_size);
+    }
+
+    #[test]
+    fn test_encoder_block_parameters_nonzero_length() {
+        let config = TransformerConfig::codebert();
+        let block = EncoderBlock::new(&config, 0);
+        let params = block.parameters();
+        for (i, p) in params.iter().enumerate() {
+            assert!(!p.is_empty(), "Parameter {i} should have non-zero length");
+        }
+    }
+
+    #[test]
+    fn test_encoder_block_single_token() {
+        let config = TransformerConfig::codebert();
+        let block = EncoderBlock::new(&config, 3);
+        let x = Tensor::from_vec(vec![0.2; config.hidden_size], true);
+        let output = block.forward(&x, 1);
+        assert_eq!(output.len(), config.hidden_size);
+        let data = output.data();
+        let slice = data.as_slice().unwrap();
+        assert!(slice.iter().all(|v| v.is_finite()));
+    }
 }

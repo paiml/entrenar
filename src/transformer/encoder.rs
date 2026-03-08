@@ -267,4 +267,126 @@ mod tests {
         // Should be > 0 and reasonable
         assert!(count > 1000, "encoder should have substantial params, got {count}");
     }
+
+    #[test]
+    fn test_encoder_forward_single_token() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        let output = model.forward(&[42]);
+        assert_eq!(output.len(), config.hidden_size);
+        let data = output.data();
+        let slice = data.as_slice().unwrap();
+        assert!(slice.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_encoder_cls_embedding_finite() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        let cls = model.cls_embedding(&[1, 2, 3, 4, 5]);
+        let data = cls.data();
+        let slice = data.as_slice().unwrap();
+        assert!(slice.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_encoder_config_stored() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        assert_eq!(model.config.hidden_size, 32);
+        assert_eq!(model.config.num_hidden_layers, 2);
+        assert_eq!(model.config.vocab_size, 100);
+    }
+
+    #[test]
+    fn test_encoder_layers_count() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        assert_eq!(model.layers.len(), 2);
+    }
+
+    #[test]
+    fn test_encoder_token_type_embeddings_present() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        assert!(model.token_type_embeddings.is_some());
+    }
+
+    #[test]
+    fn test_encoder_from_params_missing_weights() {
+        let config = tiny_encoder_config();
+        let empty_params: HashMap<String, Tensor> = HashMap::new();
+        let result = EncoderModel::from_params(&config, &empty_params);
+        assert!(result.is_none(), "from_params should return None with empty params");
+    }
+
+    #[test]
+    fn test_encoder_from_safetensors_missing_file() {
+        let config = tiny_encoder_config();
+        let result = EncoderModel::from_safetensors(&config, std::path::Path::new("/nonexistent"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_encoder_forward_different_seq_lens() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+
+        for seq_len in [1, 2, 4, 8, 16] {
+            let token_ids: Vec<u32> = (0..seq_len as u32).collect();
+            let output = model.forward(&token_ids);
+            assert_eq!(
+                output.len(),
+                seq_len * config.hidden_size,
+                "Output mismatch for seq_len={seq_len}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_encoder_num_params_includes_all_components() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        let total = model.num_parameters();
+
+        // Embedding: vocab_size * hidden_size = 100 * 32 = 3200
+        let embed_params = config.vocab_size * config.hidden_size;
+        // Position: max_pos * hidden = 32 * 32 = 1024
+        let pos_params = config.max_position_embeddings * config.hidden_size;
+        // Token type: 2 * hidden = 64
+        let tte_params = 2 * config.hidden_size;
+        // LayerNorm: hidden * 2 = 64 (weight + bias)
+        let ln_params = config.hidden_size * 2;
+
+        let non_layer_params = embed_params + pos_params + tte_params + ln_params;
+        assert!(
+            total > non_layer_params,
+            "Total params ({total}) should exceed non-layer params ({non_layer_params})"
+        );
+    }
+
+    #[test]
+    fn test_encoder_forward_max_token_id() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        // Use token ID at the edge of vocab
+        let output = model.forward(&[99]); // vocab_size = 100, max valid = 99
+        assert_eq!(output.len(), config.hidden_size);
+    }
+
+    #[test]
+    fn test_encoder_deterministic_across_calls() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        let ids = vec![10, 20, 30, 40];
+
+        let out1 = model.forward(&ids);
+        let out2 = model.forward(&ids);
+
+        let d1 = out1.data();
+        let d2 = out2.data();
+        let s1 = d1.as_slice().unwrap();
+        let s2 = d2.as_slice().unwrap();
+        assert_eq!(s1, s2);
+    }
 }

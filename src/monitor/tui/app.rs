@@ -134,6 +134,48 @@ mod tests {
         assert!(!config.compact);
         assert!(config.exit_on_complete);
     }
+    #[test]
+    fn test_tui_monitor_config_custom() {
+        let config = TuiMonitorConfig {
+            refresh_ms: 1000,
+            width: 120,
+            height: 40,
+            compact: true,
+            exit_on_complete: false,
+        };
+        assert_eq!(config.refresh_ms, 1000);
+        assert_eq!(config.width, 120);
+        assert_eq!(config.height, 40);
+        assert!(config.compact);
+        assert!(!config.exit_on_complete);
+    }
+
+    #[test]
+    fn test_tui_monitor_config_clone() {
+        let config = TuiMonitorConfig::default();
+        let cloned = config.clone();
+        assert_eq!(config.refresh_ms, cloned.refresh_ms);
+        assert_eq!(config.width, cloned.width);
+        assert_eq!(config.compact, cloned.compact);
+    }
+
+    #[test]
+    fn test_tui_monitor_config_debug() {
+        let config = TuiMonitorConfig::default();
+        let debug = format!("{config:?}");
+        assert!(debug.contains("TuiMonitorConfig"));
+        assert!(debug.contains("500"));
+    }
+
+    #[test]
+    fn test_default_refresh_constant() {
+        assert_eq!(DEFAULT_REFRESH_MS, 500);
+    }
+
+    #[test]
+    fn test_loss_history_max_constant() {
+        assert_eq!(LOSS_HISTORY_MAX, 200);
+    }
 } // mod tests (variant coverage)
 
 /// Lightweight state writer for the training loop (Producer)
@@ -499,5 +541,198 @@ mod state_writer_tests {
         assert_eq!(snapshot.loss_history.len(), 5);
         // Should have last 5 values (0.5, 0.6, 0.7, 0.8, 0.9)
         assert!((snapshot.loss_history[0] - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_with_console_progress() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        assert!(!writer.console_progress);
+        let writer = writer.with_console_progress(true);
+        assert!(writer.console_progress);
+        let writer = writer.with_console_progress(false);
+        assert!(!writer.console_progress);
+    }
+
+    #[test]
+    fn test_set_epochs() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.set_epochs(10, 500);
+        assert_eq!(writer.snapshot.total_epochs, 10);
+        assert_eq!(writer.snapshot.steps_per_epoch, 500);
+        assert_eq!(writer.snapshot.epoch, 0);
+        assert_eq!(writer.snapshot.step, 0);
+    }
+
+    #[test]
+    fn test_set_config() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.set_config("AdamW", 32, "/tmp/model", "/tmp/ckpt");
+        assert_eq!(writer.snapshot.optimizer_name, "AdamW");
+        assert_eq!(writer.snapshot.batch_size, 32);
+        assert_eq!(writer.snapshot.model_path, "/tmp/model");
+        assert_eq!(writer.snapshot.checkpoint_path, "/tmp/ckpt");
+        // executable_path should be set from current process
+        assert!(!writer.snapshot.executable_path.is_empty());
+    }
+
+    #[test]
+    fn test_set_gpu() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.set_gpu("RTX 4090", 24.0);
+        let gpu = writer.snapshot.gpu.as_ref().expect("gpu should be set");
+        assert_eq!(gpu.device_name, "RTX 4090");
+        assert!((gpu.vram_total_gb - 24.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_update_step_stores_lr_history() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.set_epochs(2, 3);
+        writer.start().expect("file write should succeed");
+
+        writer.update_step(1, 1, 0.5, 0.001, 1.0, 100.0, 0.8).expect("file write should succeed");
+        writer.update_step(1, 2, 0.4, 0.0005, 0.9, 110.0, 0.85).expect("file write should succeed");
+
+        assert_eq!(writer.snapshot.lr_history.len(), 2);
+        assert!((writer.snapshot.lr_history[0] - 0.001).abs() < 1e-6);
+        assert!((writer.snapshot.lr_history[1] - 0.0005).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_lr_history_truncation() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.history_max = 3;
+        writer.set_epochs(1, 10);
+        writer.start().expect("file write should succeed");
+
+        for i in 0..5 {
+            writer
+                .update_step(1, i, 0.5, i as f32 * 0.001, 1.0, 100.0, 0.8)
+                .expect("file write should succeed");
+        }
+
+        assert_eq!(writer.snapshot.lr_history.len(), 3);
+        // Should have the last 3 values
+        assert!((writer.snapshot.lr_history[0] - 0.002).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_update_gpu() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.start().expect("file write should succeed");
+
+        let gpu = crate::monitor::tui::state::GpuTelemetry {
+            device_name: "Test GPU".to_string(),
+            utilization_percent: 95.0,
+            vram_used_gb: 20.0,
+            vram_total_gb: 24.0,
+            temperature_celsius: 75.0,
+            power_watts: 350.0,
+            power_limit_watts: 400.0,
+            processes: Vec::new(),
+        };
+        writer.update_gpu(gpu).expect("file write should succeed");
+
+        let mut state = TrainingState::new(temp_dir.path());
+        let snapshot =
+            state.read().expect("file read should succeed").expect("file read should succeed");
+        let gpu = snapshot.gpu.expect("gpu should be present");
+        assert_eq!(gpu.device_name, "Test GPU");
+        assert!((gpu.utilization_percent - 95.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_update_sample() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.start().expect("file write should succeed");
+
+        let sample = crate::monitor::tui::state::SamplePeek {
+            input_preview: "def hello():".to_string(),
+            target_preview: "def test_hello():".to_string(),
+            generated_preview: "def test_hello():".to_string(),
+            token_match_percent: 95.0,
+        };
+        writer.update_sample(sample).expect("file write should succeed");
+
+        let mut state = TrainingState::new(temp_dir.path());
+        let snapshot =
+            state.read().expect("file read should succeed").expect("file read should succeed");
+        let sample = snapshot.sample.expect("sample should be present");
+        assert_eq!(sample.input_preview, "def hello():");
+        assert!((sample.token_match_percent - 95.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_state_path() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        let path = writer.state_path();
+        assert!(path.to_str().unwrap_or("").contains("training_state"));
+    }
+
+    #[test]
+    fn test_start_sets_timestamps() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.start().expect("file write should succeed");
+
+        assert_eq!(writer.snapshot.status, TrainingStatus::Running);
+        assert!(writer.snapshot.start_timestamp_ms > 0);
+        assert!(writer.snapshot.timestamp_ms > 0);
+    }
+
+    #[test]
+    fn test_emit_epoch_summary_noop_when_disabled() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        // console_progress is false by default — should be a no-op
+        writer.emit_epoch_summary(1, 10, 0.5, 0.8, 0.4, 0.85, 60.0, 0.001, true);
+        // No panic or output
+    }
+
+    #[test]
+    fn test_emit_info_noop_when_disabled() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.emit_info("Test message");
+        // No panic when console_progress is false
+    }
+
+    #[test]
+    fn test_emit_console_progress_format() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.set_epochs(3, 100);
+        writer.snapshot.epoch = 1;
+        writer.snapshot.step = 50;
+        writer.snapshot.loss = 2.5;
+        writer.snapshot.learning_rate = 0.001;
+        writer.snapshot.gradient_norm = 1.5;
+        writer.snapshot.tokens_per_second = 1200.0;
+        writer.snapshot.accuracy = 0.85;
+        writer.snapshot.status = TrainingStatus::Running;
+        // Just call to verify no panic — output goes to stdout
+        writer.emit_console_progress();
+    }
+
+    #[test]
+    fn test_update_step_updates_timestamp() {
+        let temp_dir = TempDir::new().expect("temp file creation should succeed");
+        let mut writer = TrainingStateWriter::new(temp_dir.path(), "test-001", "test-model");
+        writer.set_epochs(1, 10);
+        writer.start().expect("file write should succeed");
+
+        let ts_before = writer.snapshot.timestamp_ms;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        writer.update_step(1, 1, 0.5, 0.001, 1.0, 100.0, 0.8).expect("file write should succeed");
+        assert!(writer.snapshot.timestamp_ms >= ts_before);
     }
 }

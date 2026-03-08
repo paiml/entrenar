@@ -229,3 +229,192 @@ fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use crate::storage::ExperimentStorage;
+
+    #[test]
+    fn test_truncate_short() {
+        assert_eq!(truncate("hi", 10), "hi");
+    }
+
+    #[test]
+    fn test_truncate_exact() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_long() {
+        assert_eq!(truncate("a very long name", 10), "a very...");
+    }
+
+    #[test]
+    fn test_truncate_boundary() {
+        assert_eq!(truncate("abcde", 4), "a...");
+    }
+
+    #[test]
+    fn test_list_experiments_empty() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        assert!(list_experiments(&store, &OutputFormat::Text, LogLevel::Normal).is_ok());
+    }
+
+    #[test]
+    fn test_list_experiments_with_data() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        s.create_experiment("e1", None).unwrap();
+        s.create_experiment("e2", None).unwrap();
+        assert!(list_experiments(&s, &OutputFormat::Text, LogLevel::Normal).is_ok());
+    }
+
+    #[test]
+    fn test_list_experiments_json() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        s.create_experiment("j", None).unwrap();
+        assert!(list_experiments(&s, &OutputFormat::Json, LogLevel::Normal).is_ok());
+    }
+
+    #[test]
+    fn test_show_experiment_text() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let id = s.create_experiment("sh", None).unwrap();
+        assert!(show_experiment(&s, &id, &OutputFormat::Text).is_ok());
+    }
+
+    #[test]
+    fn test_show_experiment_json() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let id = s.create_experiment("sj", None).unwrap();
+        assert!(show_experiment(&s, &id, &OutputFormat::Json).is_ok());
+    }
+
+    #[test]
+    fn test_show_experiment_not_found() {
+        let s = SqliteBackend::open_in_memory().unwrap();
+        assert!(show_experiment(&s, "x", &OutputFormat::Text).is_err());
+    }
+
+    #[test]
+    fn test_show_experiment_with_runs() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("wr", None).unwrap();
+        s.create_run(&eid).unwrap();
+        assert!(show_experiment(&s, &eid, &OutputFormat::Text).is_ok());
+    }
+
+    #[test]
+    fn test_list_runs_empty() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("nr", None).unwrap();
+        assert!(list_runs(&s, &eid, &OutputFormat::Text).is_ok());
+    }
+
+    #[test]
+    fn test_list_runs_with_data() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("hr", None).unwrap();
+        let rid = s.create_run(&eid).unwrap();
+        s.start_run(&rid).unwrap();
+        assert!(list_runs(&s, &eid, &OutputFormat::Text).is_ok());
+    }
+
+    #[test]
+    fn test_list_runs_json() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("rj", None).unwrap();
+        s.create_run(&eid).unwrap();
+        assert!(list_runs(&s, &eid, &OutputFormat::Json).is_ok());
+    }
+
+    #[test]
+    fn test_list_runs_completed() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("c", None).unwrap();
+        let rid = s.create_run(&eid).unwrap();
+        s.start_run(&rid).unwrap();
+        s.complete_run(&rid, crate::storage::RunStatus::Success).unwrap();
+        assert!(list_runs(&s, &eid, &OutputFormat::Text).is_ok());
+    }
+
+    #[test]
+    fn test_show_metrics_empty() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("me", None).unwrap();
+        let rid = s.create_run(&eid).unwrap();
+        s.start_run(&rid).unwrap();
+        assert!(show_metrics(&s, &rid, "loss", &OutputFormat::Text).is_ok());
+    }
+
+    #[test]
+    fn test_show_metrics_with_data() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("md", None).unwrap();
+        let rid = s.create_run(&eid).unwrap();
+        s.start_run(&rid).unwrap();
+        s.log_metric(&rid, "loss", 0, 0.5).unwrap();
+        s.log_metric(&rid, "loss", 1, 0.3).unwrap();
+        assert!(show_metrics(&s, &rid, "loss", &OutputFormat::Text).is_ok());
+    }
+
+    #[test]
+    fn test_show_metrics_json() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("mj", None).unwrap();
+        let rid = s.create_run(&eid).unwrap();
+        s.start_run(&rid).unwrap();
+        s.log_metric(&rid, "a", 0, 0.9).unwrap();
+        assert!(show_metrics(&s, &rid, "a", &OutputFormat::Json).is_ok());
+    }
+
+    #[test]
+    fn test_delete_experiment_ok() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let id = s.create_experiment("d", None).unwrap();
+        assert!(delete_experiment(&s, &id, LogLevel::Normal).is_ok());
+    }
+
+    #[test]
+    fn test_delete_experiment_not_found() {
+        let s = SqliteBackend::open_in_memory().unwrap();
+        assert!(delete_experiment(&s, "x", LogLevel::Normal).is_err());
+    }
+
+    #[test]
+    fn test_delete_with_data() {
+        let mut s = SqliteBackend::open_in_memory().unwrap();
+        let eid = s.create_experiment("dd", None).unwrap();
+        let rid = s.create_run(&eid).unwrap();
+        s.start_run(&rid).unwrap();
+        s.log_metric(&rid, "l", 0, 0.5).unwrap();
+        assert!(delete_experiment(&s, &eid, LogLevel::Normal).is_ok());
+    }
+
+    #[test]
+    fn test_run_experiments_list() {
+        let d = std::env::temp_dir().join("ent_exp_l");
+        let _ = std::fs::create_dir_all(&d);
+        let a = ExperimentsArgs {
+            command: ExperimentsCommand::List,
+            project: d.clone(),
+            format: OutputFormat::Text,
+        };
+        assert!(run_experiments(a, LogLevel::Normal).is_ok());
+        let _ = std::fs::remove_dir_all(d.join(".entrenar"));
+    }
+
+    #[test]
+    fn test_run_experiments_show_nf() {
+        let d = std::env::temp_dir().join("ent_exp_s");
+        let _ = std::fs::create_dir_all(&d);
+        let a = ExperimentsArgs {
+            command: ExperimentsCommand::Show { id: "x".into() },
+            project: d.clone(),
+            format: OutputFormat::Text,
+        };
+        assert!(run_experiments(a, LogLevel::Normal).is_err());
+        let _ = std::fs::remove_dir_all(d.join(".entrenar"));
+    }
+}
