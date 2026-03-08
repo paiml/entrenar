@@ -114,7 +114,7 @@ pub(crate) struct CudaBlockScratch {
     v: GpuBuffer<f32>,
     /// Attention scores (num_heads * seq_len * seq_len)
     attn_scores: GpuBuffer<f32>,
-    /// Attention output (seq_len * hidden_size)
+    /// Attention output (seq_len * q_dim)
     attn_out: GpuBuffer<f32>,
     /// Output projection result
     o_proj_out: GpuBuffer<f32>,
@@ -234,13 +234,13 @@ pub struct CudaGradWorkspace {
     pub(crate) grad_up: GpuBuffer<f32>,
     /// Gradient for FFN down projection [intermediate_size * hidden_size]
     pub(crate) grad_down: GpuBuffer<f32>,
-    /// Gradient for Q projection weight [hidden_size * hidden_size]
+    /// Gradient for Q projection weight [q_dim * hidden_size]
     pub(crate) grad_w_q: GpuBuffer<f32>,
     /// Gradient for K projection weight [hidden_size * kv_hidden_size]
     pub(crate) grad_w_k: GpuBuffer<f32>,
     /// Gradient for V projection weight [hidden_size * kv_hidden_size]
     pub(crate) grad_w_v: GpuBuffer<f32>,
-    /// Gradient for output projection weight [hidden_size * hidden_size]
+    /// Gradient for output projection weight [hidden_size * q_dim]
     pub(crate) grad_w_o: GpuBuffer<f32>,
 }
 
@@ -253,6 +253,7 @@ impl CudaGradWorkspace {
     /// be zeroed before each rms_norm_backward call (see `zero_norm_grads`).
     pub fn new(ctx: &Arc<CudaContext>, config: &TransformerConfig) -> Result<Self> {
         let h = config.hidden_size;
+        let q = config.q_dim();
         let kv = config.num_kv_heads * config.head_dim();
         let i = config.intermediate_size;
 
@@ -262,10 +263,10 @@ impl CudaGradWorkspace {
             grad_gate: GpuBuffer::new(ctx, h * i)?,
             grad_up: GpuBuffer::new(ctx, h * i)?,
             grad_down: GpuBuffer::new(ctx, i * h)?,
-            grad_w_q: GpuBuffer::new(ctx, h * h)?,
+            grad_w_q: GpuBuffer::new(ctx, q * h)?,
             grad_w_k: GpuBuffer::new(ctx, h * kv)?,
             grad_w_v: GpuBuffer::new(ctx, h * kv)?,
-            grad_w_o: GpuBuffer::new(ctx, h * h)?,
+            grad_w_o: GpuBuffer::new(ctx, h * q)?,
         })
     }
 
@@ -1050,6 +1051,7 @@ impl CudaTransformerBlock {
         grad_ws: &mut CudaGradWorkspace,
     ) -> Result<()> {
         let hidden_size = self.config.hidden_size;
+        let q_dim = self.config.q_dim();
         let kv_hidden_size = self.config.num_kv_heads * self.config.head_dim();
         let num_heads = self.config.num_attention_heads;
         let num_kv_heads = self.config.num_kv_heads;
@@ -1063,31 +1065,32 @@ impl CudaTransformerBlock {
         let hd = saturating_u32(head_dim);
 
         // === Step 4.1: Output projection backward ===
-        // grad_input currently holds gradient from post_attn_norm backward.
-        // grad_attn_out = grad_input @ w_o^T → grad_hidden
+        // Forward: o_proj_out[seq,hidden] = attn_out[seq,q_dim] @ w_o[q_dim,hidden]
+        //   m=seq, k=q_dim, n=hidden
+        // grad_attn_out[seq,q_dim] = grad_o_proj[seq,hidden] @ w_o^T[hidden,q_dim]
         gemm_backward_a(
             grad_input,
             &self.w_o,
             &mut self.scratch.grad_hidden,
             seq,
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             saturating_u32(hidden_size),
             stream,
         )?;
 
-        // grad_w_o = attn_out^T @ grad_input
+        // grad_w_o[q_dim,hidden] = attn_out^T[q_dim,seq] @ grad_o_proj[seq,hidden]
         gemm_backward_b(
             &self.scratch.attn_out,
             grad_input,
             &mut grad_ws.grad_w_o,
             seq,
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             saturating_u32(hidden_size),
             stream,
         )?;
 
         // === Step 4.2: Layout conversion ===
-        // grad_attn_out [seq, hidden] → grad_attn_batched [num_heads, seq, head_dim]
+        // grad_attn_out [seq, q_dim] → grad_attn_batched [num_heads, seq, head_dim]
         // Reuse attn_q_batched for grad_attn_batched
         interleaved_to_batched_forward(
             &self.scratch.grad_hidden,
@@ -1380,18 +1383,22 @@ impl CudaTransformerBlock {
         )?;
 
         // === Step 4.9: Q/K/V projection backward ===
-        // grad_norm1 = grad_q @ w_q^T → grad_hidden
+        // Forward: q[seq,q_dim] = norm1[seq,hidden] @ w_q[hidden,q_dim]
+        //   m=seq, k=hidden, n=q_dim
+        // grad_norm1[seq,hidden] = grad_q[seq,q_dim] @ w_q^T[q_dim,hidden]
         gemm_backward_a(
-            &self.scratch.o_proj_out, // grad_q interleaved
+            &self.scratch.o_proj_out, // grad_q interleaved [seq, q_dim]
             &self.w_q,
             &mut self.scratch.grad_hidden,
             seq,
             saturating_u32(hidden_size),
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             stream,
         )?;
 
         // grad_norm1 += grad_k @ w_k^T
+        // Forward: k[seq,kv_hidden] = norm1[seq,hidden] @ w_k[hidden,kv_hidden]
+        //   m=seq, k=hidden, n=kv_hidden
         // KAIZEN-057: cuda_add_inplace replaces residual_add_forward + D2D copy
         gemm_backward_a(
             &self.scratch.norm2_out, // grad_k interleaved
@@ -1410,6 +1417,8 @@ impl CudaTransformerBlock {
         )?;
 
         // grad_norm1 += grad_v @ w_v^T
+        // Forward: v[seq,kv_hidden] = norm1[seq,hidden] @ w_v[hidden,kv_hidden]
+        //   m=seq, k=hidden, n=kv_hidden
         gemm_backward_a(
             &self.scratch.ffn_out, // grad_v interleaved
             &self.w_v,
@@ -1426,14 +1435,14 @@ impl CudaTransformerBlock {
             stream,
         )?;
 
-        // Weight gradients: grad_w_q = norm1_out^T @ grad_q
+        // Weight gradients: grad_w_q[hidden,q_dim] = norm1_out^T[hidden,seq] @ grad_q[seq,q_dim]
         gemm_backward_b(
             &self.scratch.norm1_out,
-            &self.scratch.o_proj_out, // grad_q
+            &self.scratch.o_proj_out, // grad_q [seq, q_dim]
             &mut grad_ws.grad_w_q,
             seq,
             saturating_u32(hidden_size),
-            saturating_u32(hidden_size),
+            saturating_u32(q_dim),
             stream,
         )?;
 
@@ -1679,6 +1688,7 @@ impl CudaTransformerBlock {
     /// - **Invariant**: Total GPU memory for optimizer state = 2 × sum(weight_sizes) × 4 bytes
     pub fn init_optimizer_state(&self) -> Result<GpuBlockOptimizerState> {
         let hidden = self.config.hidden_size;
+        let q_dim = self.config.q_dim();
         let kv_hidden = self.config.num_kv_heads * self.config.head_dim();
         let intermediate = self.config.intermediate_size;
 
@@ -1689,14 +1699,14 @@ impl CudaTransformerBlock {
             Ok(GpuBuffer::from_host(&self.ctx, &vec![0.0f32; n])?)
         };
         Ok(GpuBlockOptimizerState {
-            m_w_q: z(hidden * hidden)?,
-            v_w_q: z(hidden * hidden)?,
+            m_w_q: z(q_dim * hidden)?,
+            v_w_q: z(q_dim * hidden)?,
             m_w_k: z(hidden * kv_hidden)?,
             v_w_k: z(hidden * kv_hidden)?,
             m_w_v: z(hidden * kv_hidden)?,
             v_w_v: z(hidden * kv_hidden)?,
-            m_w_o: z(hidden * hidden)?,
-            v_w_o: z(hidden * hidden)?,
+            m_w_o: z(hidden * q_dim)?,
+            v_w_o: z(hidden * q_dim)?,
             m_w_gate: z(hidden * intermediate)?,
             v_w_gate: z(hidden * intermediate)?,
             m_w_up: z(hidden * intermediate)?,

@@ -170,6 +170,7 @@ mod tests {
     fn test_transformer_block_from_params_success() {
         let config = TransformerConfig::tiny();
         let hidden_size = config.hidden_size;
+        let q_dim = config.q_dim();
         let kv_hidden_size = config.num_kv_heads * config.head_dim();
         let intermediate_size = config.intermediate_size;
 
@@ -184,19 +185,19 @@ mod tests {
         // Self-attention weights
         params.insert(
             "model.layers.0.self_attn.q_proj.weight".to_string(),
-            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            Tensor::from_vec(vec![0.1; q_dim * hidden_size], true),
         );
         params.insert(
             "model.layers.0.self_attn.k_proj.weight".to_string(),
-            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            Tensor::from_vec(vec![0.1; kv_hidden_size * hidden_size], true),
         );
         params.insert(
             "model.layers.0.self_attn.v_proj.weight".to_string(),
-            Tensor::from_vec(vec![0.1; hidden_size * kv_hidden_size], true),
+            Tensor::from_vec(vec![0.1; kv_hidden_size * hidden_size], true),
         );
         params.insert(
             "model.layers.0.self_attn.o_proj.weight".to_string(),
-            Tensor::from_vec(vec![0.1; hidden_size * hidden_size], true),
+            Tensor::from_vec(vec![0.1; hidden_size * q_dim], true),
         );
 
         // Post-attention norm
