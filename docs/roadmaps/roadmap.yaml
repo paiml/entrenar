@@ -1300,11 +1300,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ENT-LoRA-010: Paged optimizer states — page AdamW m/v to CPU when GPU VRAM pressure detected'
-  status: planned
+  status: inprogress
   priority: low
   assigned_to: null
   created: 2026-03-08T13:35:13Z
-  updated: 2026-03-08T13:35:13Z
+  updated: 2026-03-08T14:28:32.223383017+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -1316,11 +1316,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ENT-LoRA-011: DoRA — Weight-Decomposed LoRA with magnitude/direction decomposition'
-  status: planned
+  status: inprogress
   priority: low
   assigned_to: null
   created: 2026-03-08T13:35:14Z
-  updated: 2026-03-08T13:35:14Z
+  updated: 2026-03-08T14:29:28.741432613+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -1332,11 +1332,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ENT-LoRA-012: PiSSA initialization — SVD-based init from top-r singular components'
-  status: planned
+  status: inprogress
   priority: low
   assigned_to: null
   created: 2026-03-08T13:35:15Z
-  updated: 2026-03-08T13:35:15Z
+  updated: 2026-03-08T14:30:00.156908037+00:00
   spec: null
   acceptance_criteria: []
   phases: []
@@ -1348,11 +1348,11 @@ roadmap:
   github_issue: null
   item_type: task
   title: 'ENT-LoRA-013: Multi-adapter training — N adapters sharing one frozen base model'
-  status: planned
+  status: inprogress
   priority: low
   assigned_to: null
   created: 2026-03-08T13:35:16Z
-  updated: 2026-03-08T13:35:16Z
+  updated: 2026-03-08T14:30:36.235380559+00:00
   spec: null
   acceptance_criteria: []
   phases: []
