@@ -59,10 +59,13 @@ impl TransformerTrainer {
         let lora_layers = if let Some(rank) = config.lora_rank {
             let alpha = config.lora_alpha.unwrap_or(rank as f32 * 2.0);
             let default_targets = vec!["q_proj".to_string(), "v_proj".to_string()];
-            let target_modules = config
+            // ENT-LoRA-005: Expand shorthand targets ("all_linear", "attention", etc.)
+            let raw_targets = config
                 .lora_target_modules
                 .as_deref()
                 .unwrap_or(&default_targets);
+            let expanded = crate::lora::LoRAConfig::expand_shorthand(raw_targets);
+            let target_modules = expanded.as_slice();
 
             let mut layers = Vec::new();
             let hidden_size = config.model_config.hidden_size;
@@ -71,25 +74,44 @@ impl TransformerTrainer {
             let q_dim = config.model_config.q_dim();
             let kv_hidden_size = num_kv_heads * head_dim;
 
+            let intermediate = config.model_config.intermediate_size;
+
             for block in &model.layers {
-                // Q projection LoRA
+                // Attention projections (ENT-LoRA-005: flexible targets)
                 if target_modules.iter().any(|m| m == "q_proj") {
                     layers.push(LoRALayer::new(
-                        block.self_attn.w_q.clone(),
-                        q_dim,
-                        hidden_size,
-                        rank,
-                        alpha,
+                        block.self_attn.w_q.clone(), q_dim, hidden_size, rank, alpha,
                     ));
                 }
-                // V projection LoRA
+                if target_modules.iter().any(|m| m == "k_proj") {
+                    layers.push(LoRALayer::new(
+                        block.self_attn.w_k.clone(), kv_hidden_size, hidden_size, rank, alpha,
+                    ));
+                }
                 if target_modules.iter().any(|m| m == "v_proj") {
                     layers.push(LoRALayer::new(
-                        block.self_attn.w_v.clone(),
-                        kv_hidden_size,
-                        hidden_size,
-                        rank,
-                        alpha,
+                        block.self_attn.w_v.clone(), kv_hidden_size, hidden_size, rank, alpha,
+                    ));
+                }
+                if target_modules.iter().any(|m| m == "o_proj") {
+                    layers.push(LoRALayer::new(
+                        block.self_attn.w_o.clone(), hidden_size, q_dim, rank, alpha,
+                    ));
+                }
+                // MLP projections (ENT-LoRA-005)
+                if target_modules.iter().any(|m| m == "gate_proj") {
+                    layers.push(LoRALayer::new(
+                        block.ffn.w_gate.clone(), intermediate, hidden_size, rank, alpha,
+                    ));
+                }
+                if target_modules.iter().any(|m| m == "up_proj") {
+                    layers.push(LoRALayer::new(
+                        block.ffn.w_up.clone(), intermediate, hidden_size, rank, alpha,
+                    ));
+                }
+                if target_modules.iter().any(|m| m == "down_proj") {
+                    layers.push(LoRALayer::new(
+                        block.ffn.w_down.clone(), hidden_size, intermediate, rank, alpha,
                     ));
                 }
             }
