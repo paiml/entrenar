@@ -368,6 +368,27 @@ impl Transformer {
         self.norm.forward_batched(&hidden, seq_len, hidden_size)
     }
 
+    /// Forward pass with LoRA adapters (ENT-LoRA-001)
+    ///
+    /// Like `forward` but applies LoRA adapters to Q/V projections.
+    /// Returns full logits (seq_len * vocab_size).
+    ///
+    /// # Arguments
+    /// * `token_ids` - Input token IDs
+    /// * `lora_layers` - LoRA layers in [Q_0, V_0, Q_1, V_1, ...] order
+    pub fn forward_with_lora(
+        &self,
+        token_ids: &[u32],
+        lora_layers: &[crate::lora::LoRALayer],
+    ) -> Tensor {
+        let seq_len = token_ids.len();
+        let hidden_size = self.config.hidden_size;
+
+        let hidden = self.forward_hidden_with_lora(token_ids, lora_layers);
+        let lm_weight = self.lm_head.as_ref().unwrap_or(&self.embed_tokens.weight);
+        matmul(&hidden, lm_weight, seq_len, hidden_size, self.config.vocab_size)
+    }
+
     /// Get the last token's logits (for generation)
     pub fn forward_last(&self, token_ids: &[u32]) -> Tensor {
         let logits = self.forward(token_ids);

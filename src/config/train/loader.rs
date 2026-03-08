@@ -127,6 +127,11 @@ fn build_train_config(
         config = config.with_profile_interval(spec.training.profile_interval);
     }
 
+    // ENT-LoRA-001: Wire LoRA config from YAML spec
+    if let Some(ref lora) = spec.lora {
+        config = config.with_lora(lora.rank, lora.alpha, lora.target_modules.clone());
+    }
+
     // Wire distributed config from YAML (#133)
     if let Some(ref dist) = spec.training.distributed {
         use crate::train::{DistributedBackend, DistributedRole, DistributedTrainConfig};

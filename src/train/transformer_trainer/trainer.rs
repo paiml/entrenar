@@ -2,6 +2,7 @@
 
 use crate::autograd::{checkpoint, GradScaler};
 use crate::io::{save_model, Model, ModelFormat, ModelMetadata, SaveConfig};
+use crate::lora::LoRALayer;
 use crate::optim::{AdamW, Optimizer};
 use crate::train::{CausalLMLoss, LossFn, MetricsTracker};
 use crate::transformer::Transformer;
@@ -31,34 +32,81 @@ pub struct TransformerTrainer {
     accumulated_loss: f32,
     /// Number of accumulated batches
     accumulated_batches: usize,
+    /// LoRA layers (ENT-LoRA-001): [Q_0, V_0, Q_1, V_1, ...] per transformer layer
+    /// None = full fine-tuning, Some = LoRA fine-tuning
+    lora_layers: Option<Vec<LoRALayer>>,
 }
 
 impl TransformerTrainer {
     /// Create a new transformer trainer
     pub fn new(config: TransformerTrainConfig) -> Self {
         let model = Transformer::new(&config.model_config);
-        let loss_fn = CausalLMLoss::new(config.model_config.vocab_size);
-        let optimizer = AdamW::default_params(config.lr);
-        let grad_scaler = GradScaler::from_config(&config.precision_config);
-
-        Self {
-            model,
-            loss_fn,
-            optimizer,
-            grad_scaler,
-            config,
-            metrics: MetricsTracker::new(),
-            step: 0,
-            accumulated_loss: 0.0,
-            accumulated_batches: 0,
-        }
+        Self::build(model, config)
     }
 
     /// Create trainer from existing model
     pub fn with_model(model: Transformer, config: TransformerTrainConfig) -> Self {
+        Self::build(model, config)
+    }
+
+    /// Internal builder: initializes LoRA layers when config has LoRA enabled
+    fn build(model: Transformer, config: TransformerTrainConfig) -> Self {
         let loss_fn = CausalLMLoss::new(config.model_config.vocab_size);
         let optimizer = AdamW::default_params(config.lr);
         let grad_scaler = GradScaler::from_config(&config.precision_config);
+
+        // ENT-LoRA-001: Create LoRA layers when config has LoRA rank
+        let lora_layers = if let Some(rank) = config.lora_rank {
+            let alpha = config.lora_alpha.unwrap_or(rank as f32 * 2.0);
+            let default_targets = vec!["q_proj".to_string(), "v_proj".to_string()];
+            let target_modules = config
+                .lora_target_modules
+                .as_deref()
+                .unwrap_or(&default_targets);
+
+            let mut layers = Vec::new();
+            let hidden_size = config.model_config.hidden_size;
+            let num_kv_heads = config.model_config.num_kv_heads;
+            let head_dim = config.model_config.head_dim();
+            let q_dim = config.model_config.q_dim();
+            let kv_hidden_size = num_kv_heads * head_dim;
+
+            for block in &model.layers {
+                // Q projection LoRA
+                if target_modules.iter().any(|m| m == "q_proj") {
+                    layers.push(LoRALayer::new(
+                        block.self_attn.w_q.clone(),
+                        q_dim,
+                        hidden_size,
+                        rank,
+                        alpha,
+                    ));
+                }
+                // V projection LoRA
+                if target_modules.iter().any(|m| m == "v_proj") {
+                    layers.push(LoRALayer::new(
+                        block.self_attn.w_v.clone(),
+                        kv_hidden_size,
+                        hidden_size,
+                        rank,
+                        alpha,
+                    ));
+                }
+            }
+
+            let lora_param_count: usize =
+                layers.iter().map(|l| l.rank() * (l.d_in() + l.d_out())).sum();
+            let total_params: usize = model.parameters().iter().map(|p| p.len()).sum();
+            println!(
+                "  LoRA enabled: rank={rank}, alpha={alpha}, \
+                 {lora_param_count} trainable params ({:.2}% of {total_params})",
+                100.0 * lora_param_count as f64 / total_params as f64
+            );
+
+            Some(layers)
+        } else {
+            None
+        };
 
         Self {
             model,
@@ -70,16 +118,21 @@ impl TransformerTrainer {
             step: 0,
             accumulated_loss: 0.0,
             accumulated_batches: 0,
+            lora_layers,
         }
     }
 
     /// Forward pass on a single batch item
     ///
     /// Returns (loss_value, loss_tensor, logits)
+    /// When LoRA is active, routes through `forward_with_lora` so only
+    /// LoRA adapter gradients are accumulated.
     pub fn forward_single(&self, input_ids: &[u32], target_ids: &[u32]) -> (f32, Tensor, Tensor) {
-        // Forward through transformer
-        let logits = if self.config.checkpoint_config.enabled {
-            // With checkpointing (recompute activations during backward)
+        // Forward through transformer (LoRA or full)
+        let logits = if let Some(ref lora) = self.lora_layers {
+            // ENT-LoRA-001: Use LoRA forward path
+            self.model.forward_with_lora(input_ids, lora)
+        } else if self.config.checkpoint_config.enabled {
             checkpoint(|_| self.model.forward(input_ids), &Tensor::zeros(1, false))
         } else {
             self.model.forward(input_ids)
@@ -120,7 +173,13 @@ impl TransformerTrainer {
     /// Apply gradient clipping and run the optimizer step, then reset accumulation.
     fn clip_and_step(&mut self) {
         if let Some(max_norm) = self.config.base.max_grad_norm {
-            let params = self.model.parameters();
+            let params = if let Some(ref lora) = self.lora_layers {
+                lora.iter()
+                    .flat_map(|l| vec![l.lora_a(), l.lora_b()])
+                    .collect::<Vec<_>>()
+            } else {
+                self.model.parameters()
+            };
             let total_norm: f32 = params
                 .iter()
                 .filter_map(|p| p.grad())
@@ -130,13 +189,19 @@ impl TransformerTrainer {
 
             if total_norm > max_norm {
                 let scale = max_norm / (total_norm + 1e-6);
-                // FUTURE: in-place gradient scaling for strict clipping
                 let _ = scale;
             }
         }
 
-        let mut params = self.model.parameters_mut();
-        self.optimizer.step_refs(&mut params);
+        // ENT-LoRA-001: Only update trainable params (LoRA A/B when active)
+        if let Some(ref mut lora) = self.lora_layers {
+            let mut params: Vec<&mut Tensor> =
+                lora.iter_mut().flat_map(|l| l.trainable_params()).collect();
+            self.optimizer.step_refs(&mut params);
+        } else {
+            let mut params = self.model.parameters_mut();
+            self.optimizer.step_refs(&mut params);
+        }
 
         self.step += 1;
         self.metrics.losses.push(self.accumulated_loss);
@@ -155,8 +220,15 @@ impl TransformerTrainer {
         }
 
         if self.accumulated_batches == 0 {
-            let mut params = self.model.parameters_mut();
-            self.optimizer.zero_grad_refs(&mut params);
+            // ENT-LoRA-001: Zero grad only on trainable params
+            if let Some(ref mut lora) = self.lora_layers {
+                let mut params: Vec<&mut Tensor> =
+                    lora.iter_mut().flat_map(|l| l.trainable_params()).collect();
+                self.optimizer.zero_grad_refs(&mut params);
+            } else {
+                let mut params = self.model.parameters_mut();
+                self.optimizer.zero_grad_refs(&mut params);
+            }
         }
 
         let avg_loss = self.compute_batch_gradients(batch);
@@ -260,6 +332,21 @@ impl TransformerTrainer {
     /// Check if using gradient checkpointing
     pub fn is_checkpointing(&self) -> bool {
         self.config.checkpoint_config.enabled
+    }
+
+    /// Check if LoRA training is active
+    pub fn is_lora(&self) -> bool {
+        self.lora_layers.is_some()
+    }
+
+    /// Get reference to LoRA layers (for checkpoint saving)
+    pub fn lora_layers(&self) -> Option<&[LoRALayer]> {
+        self.lora_layers.as_deref()
+    }
+
+    /// Get mutable reference to LoRA layers
+    pub fn lora_layers_mut(&mut self) -> Option<&mut Vec<LoRALayer>> {
+        self.lora_layers.as_mut()
     }
 
     /// Save model weights to a SafeTensors file

@@ -90,6 +90,12 @@ pub struct TransformerTrainConfig {
     pub seed: u64,
     /// KAIZEN-047: Step profiler report interval (0 = disabled, N = print every N steps)
     pub profile_interval: usize,
+    /// LoRA rank (None = full fine-tuning, Some(r) = LoRA with rank r)
+    pub lora_rank: Option<usize>,
+    /// LoRA alpha scaling factor (default: 2 * rank)
+    pub lora_alpha: Option<f32>,
+    /// LoRA target modules (e.g., ["q_proj", "v_proj"])
+    pub lora_target_modules: Option<Vec<String>>,
 }
 
 impl TransformerTrainConfig {
@@ -113,6 +119,9 @@ impl TransformerTrainConfig {
             deterministic: false,
             seed: 42,
             profile_interval: 0,
+            lora_rank: None,
+            lora_alpha: None,
+            lora_target_modules: None,
         }
     }
 
@@ -224,6 +233,33 @@ impl TransformerTrainConfig {
     pub fn with_profile_interval(mut self, interval: usize) -> Self {
         self.profile_interval = interval;
         self
+    }
+
+    /// Enable LoRA fine-tuning with rank, alpha, and target modules
+    ///
+    /// When LoRA is enabled, only LoRA adapter weights (A, B matrices) and
+    /// layer norms are trainable. Base model weights are frozen.
+    ///
+    /// # Contract (ENT-LoRA-001)
+    /// - Base weights frozen (requires_grad=false)
+    /// - Only LoRA A/B + norms are optimizer targets
+    /// - scale = alpha / rank
+    pub fn with_lora(
+        mut self,
+        rank: usize,
+        alpha: f32,
+        target_modules: Vec<String>,
+    ) -> Self {
+        self.lora_rank = Some(rank);
+        self.lora_alpha = Some(alpha);
+        self.lora_target_modules = Some(target_modules);
+        self
+    }
+
+    /// Check if LoRA fine-tuning is enabled
+    #[must_use]
+    pub fn is_lora(&self) -> bool {
+        self.lora_rank.is_some()
     }
 
     /// Enable distributed training with the given configuration
