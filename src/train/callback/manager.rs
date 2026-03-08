@@ -381,6 +381,315 @@ mod tests {
         assert_eq!(action, CallbackAction::Stop);
         assert_eq!(count.load(Ordering::SeqCst), 1);
     }
+
+    // ── Additional coverage tests ─────────────────────────────────
+
+    #[test]
+    fn test_callback_manager_on_train_begin_continue() {
+        let mut manager = CallbackManager::new();
+        // No callbacks → should return Continue
+        assert_eq!(manager.on_train_begin(&CallbackContext::default()), CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_callback_manager_on_epoch_end_continue() {
+        let mut manager = CallbackManager::new();
+        // No callbacks → should return Continue
+        assert_eq!(manager.on_epoch_end(&CallbackContext::default()), CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_callback_manager_on_step_begin_continue() {
+        let mut manager = CallbackManager::new();
+        assert_eq!(manager.on_step_begin(&CallbackContext::default()), CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_callback_manager_on_step_end_continue() {
+        let mut manager = CallbackManager::new();
+        assert_eq!(manager.on_step_end(&CallbackContext::default()), CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_callback_manager_on_epoch_begin_continue() {
+        let mut manager = CallbackManager::new();
+        assert_eq!(manager.on_epoch_begin(&CallbackContext::default()), CallbackAction::Continue);
+    }
+
+    #[test]
+    fn test_callback_manager_stop_epoch_begin_does_not_call_second() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct StopEpochBegin {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for StopEpochBegin {
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopEpochBegin"
+            }
+        }
+
+        struct CountEpochBegin {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountEpochBegin {
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountEpochBegin"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(StopEpochBegin { count: count.clone() });
+        manager.add(CountEpochBegin { count: count.clone() });
+
+        let action = manager.on_epoch_begin(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Stop);
+        assert_eq!(count.load(Ordering::SeqCst), 1); // second never called
+    }
+
+    #[test]
+    fn test_callback_manager_stop_epoch_end_does_not_call_second() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct StopEpochEnd {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for StopEpochEnd {
+            fn on_epoch_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopEpochEnd"
+            }
+        }
+
+        struct CountEpochEnd {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountEpochEnd {
+            fn on_epoch_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountEpochEnd"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(StopEpochEnd { count: count.clone() });
+        manager.add(CountEpochEnd { count: count.clone() });
+
+        let action = manager.on_epoch_end(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Stop);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_callback_manager_stop_step_begin_does_not_call_second() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct StopStepBegin {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for StopStepBegin {
+            fn on_step_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopStepBegin"
+            }
+        }
+
+        struct CountStepBegin {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountStepBegin {
+            fn on_step_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountStepBegin"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(StopStepBegin { count: count.clone() });
+        manager.add(CountStepBegin { count: count.clone() });
+
+        let action = manager.on_step_begin(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Stop);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_callback_manager_stop_step_end_does_not_call_second() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct StopStepEnd {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for StopStepEnd {
+            fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Stop
+            }
+            fn name(&self) -> &'static str {
+                "StopStepEnd"
+            }
+        }
+
+        struct CountStepEnd {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountStepEnd {
+            fn on_step_end(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "CountStepEnd"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(StopStepEnd { count: count.clone() });
+        manager.add(CountStepEnd { count: count.clone() });
+
+        let action = manager.on_step_end(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::Stop);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_callback_manager_skip_epoch_does_not_call_second() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct SkipCallback {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for SkipCallback {
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::SkipEpoch
+            }
+            fn name(&self) -> &'static str {
+                "SkipCallback"
+            }
+        }
+
+        struct ContinueCallback {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for ContinueCallback {
+            fn on_epoch_begin(&mut self, _: &CallbackContext) -> CallbackAction {
+                self.count.fetch_add(1, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "ContinueCallback"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        manager.add(SkipCallback { count: count.clone() });
+        manager.add(ContinueCallback { count: count.clone() });
+
+        let action = manager.on_epoch_begin(&CallbackContext::default());
+        assert_eq!(action, CallbackAction::SkipEpoch);
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_callback_manager_with_context_values() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct EpochTracker {
+            last_epoch: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for EpochTracker {
+            fn on_epoch_begin(&mut self, ctx: &CallbackContext) -> CallbackAction {
+                self.last_epoch.store(ctx.epoch, Ordering::SeqCst);
+                CallbackAction::Continue
+            }
+            fn name(&self) -> &'static str {
+                "EpochTracker"
+            }
+        }
+
+        let last_epoch = Arc::new(AtomicUsize::new(999));
+        let mut manager = CallbackManager::new();
+        manager.add(EpochTracker { last_epoch: last_epoch.clone() });
+
+        let mut ctx = CallbackContext::default();
+        ctx.epoch = 42;
+        manager.on_epoch_begin(&ctx);
+        assert_eq!(last_epoch.load(Ordering::SeqCst), 42);
+    }
+
+    #[test]
+    fn test_callback_manager_train_end_all_called() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        struct CountCallback {
+            count: Arc<AtomicUsize>,
+        }
+        impl TrainerCallback for CountCallback {
+            fn on_train_end(&mut self, _: &CallbackContext) {
+                self.count.fetch_add(1, Ordering::SeqCst);
+            }
+            fn name(&self) -> &'static str {
+                "CountCallback"
+            }
+        }
+
+        let count = Arc::new(AtomicUsize::new(0));
+        let mut manager = CallbackManager::new();
+        for _ in 0..5 {
+            manager.add(CountCallback { count: count.clone() });
+        }
+        assert_eq!(manager.len(), 5);
+
+        manager.on_train_end(&CallbackContext::default());
+        assert_eq!(count.load(Ordering::SeqCst), 5);
+    }
 }
 
 #[cfg(test)]

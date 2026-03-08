@@ -290,7 +290,7 @@ training:
 
     #[test]
     fn test_train_dry_run_with_lora() {
-        let config_content = r#"
+        let config_content = r"
 model:
   path: /tmp/test_model.gguf
 data:
@@ -307,7 +307,7 @@ lora:
   target_modules:
     - q_proj
     - v_proj
-"#;
+";
         let config_path = "/tmp/test_train_config_lora.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
@@ -382,7 +382,7 @@ quantize:
 
     #[test]
     fn test_train_dry_run_all_features() {
-        let config_content = r#"
+        let config_content = r"
 model:
   path: /tmp/test_model.gguf
 data:
@@ -408,7 +408,7 @@ quantize:
   bits: 4
   symmetric: true
   per_channel: true
-"#;
+";
         let config_path = "/tmp/test_train_config_all.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
@@ -438,7 +438,7 @@ training:
         let config_path = "/tmp/test_train_override_out.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let mut spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let mut spec = load_config(PathBuf::from(config_path)).unwrap();
         let args = TrainArgs {
             config: PathBuf::from(config_path),
             output_dir: Some(PathBuf::from("/tmp/override_output")),
@@ -474,7 +474,7 @@ training:
         let config_path = "/tmp/test_train_override_epochs.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let mut spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let mut spec = load_config(PathBuf::from(config_path)).unwrap();
         let args = TrainArgs {
             config: PathBuf::from(config_path),
             output_dir: None,
@@ -510,7 +510,7 @@ training:
         let config_path = "/tmp/test_train_override_batch.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let mut spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let mut spec = load_config(PathBuf::from(config_path)).unwrap();
         let args = TrainArgs {
             config: PathBuf::from(config_path),
             output_dir: None,
@@ -546,7 +546,7 @@ training:
         let config_path = "/tmp/test_train_override_lr.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let mut spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let mut spec = load_config(PathBuf::from(config_path)).unwrap();
         let args = TrainArgs {
             config: PathBuf::from(config_path),
             output_dir: None,
@@ -582,7 +582,7 @@ training:
         let config_path = "/tmp/test_train_override_save.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let mut spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let mut spec = load_config(PathBuf::from(config_path)).unwrap();
         let args = TrainArgs {
             config: PathBuf::from(config_path),
             output_dir: None,
@@ -618,7 +618,7 @@ training:
         let config_path = "/tmp/test_train_override_all.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let mut spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let mut spec = load_config(PathBuf::from(config_path)).unwrap();
         let args = TrainArgs {
             config: PathBuf::from(config_path),
             output_dir: Some(PathBuf::from("/tmp/all_override")),
@@ -658,7 +658,7 @@ training:
         let config_path = "/tmp/test_train_override_none.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let mut spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let mut spec = load_config(PathBuf::from(config_path)).unwrap();
         let original_epochs = spec.training.epochs;
         let original_batch = spec.data.batch_size;
         let original_lr = spec.optimizer.lr;
@@ -717,7 +717,7 @@ training:
         let config_path = "/tmp/test_train_log_quiet.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let spec = load_config(PathBuf::from(config_path)).unwrap();
         // Should not panic even in quiet mode
         log_dry_run_summary(&spec, LogLevel::Quiet);
 
@@ -741,7 +741,7 @@ training:
         let config_path = "/tmp/test_train_log_sched_none.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let spec = load_config(PathBuf::from(config_path)).unwrap();
         // lr_scheduler should be None — no-op branch
         log_scheduler_info(&spec, LogLevel::Normal);
 
@@ -765,7 +765,7 @@ training:
         let config_path = "/tmp/test_train_log_opt_none.yaml";
         std::fs::write(config_path, config_content).expect("file write should succeed");
 
-        let spec = load_config(&PathBuf::from(config_path)).unwrap();
+        let spec = load_config(PathBuf::from(config_path)).unwrap();
         // No optional features — all branches should be no-ops
         log_optional_features(&spec, LogLevel::Normal);
 

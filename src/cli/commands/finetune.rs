@@ -500,4 +500,232 @@ mod tests {
         ];
         print_plan_summary(&plan, LogLevel::Normal);
     }
+
+    // ── run_finetune dispatch tests ─────────────────────────────────────
+
+    #[test]
+    fn test_run_finetune_plan_with_all_manual_params() {
+        let args = FinetuneArgs {
+            command: FinetuneCommand::Plan {
+                data: std::path::PathBuf::from("/nonexistent/data.jsonl"),
+                model_path: Some(std::path::PathBuf::from("/nonexistent/model")),
+                model_size: "9B".to_string(),
+                num_classes: 5,
+                output_dir: std::path::PathBuf::from("/tmp/ft_test_full"),
+                strategy: "manual".to_string(),
+                budget: 1,
+                scout: false,
+                max_epochs: 3,
+                lr: Some(2e-5),
+                lora_rank: Some(8),
+                batch_size: Some(16),
+                lora_alpha: Some(16.0),
+                warmup: Some(0.05),
+                gradient_clip: Some(0.5),
+                lr_min_ratio: Some(0.001),
+                class_weights: Some("sqrt_inverse".to_string()),
+                target_modules: Some("qkv".to_string()),
+            },
+        };
+        // Should fail because data file doesn't exist
+        let result = run_finetune(args, LogLevel::Quiet);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_finetune_plan_tpe_strategy() {
+        let args = FinetuneArgs {
+            command: FinetuneCommand::Plan {
+                data: std::path::PathBuf::from("/nonexistent/data.jsonl"),
+                model_path: None,
+                model_size: "0.5B".to_string(),
+                num_classes: 2,
+                output_dir: std::path::PathBuf::from("/tmp/ft_test_tpe"),
+                strategy: "tpe".to_string(),
+                budget: 20,
+                scout: true,
+                max_epochs: 5,
+                lr: None,
+                lora_rank: None,
+                batch_size: None,
+                lora_alpha: None,
+                warmup: None,
+                gradient_clip: None,
+                lr_min_ratio: None,
+                class_weights: None,
+                target_modules: None,
+            },
+        };
+        let result = run_finetune(args, LogLevel::Quiet);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_finetune_apply_invalid_plan_content() {
+        // Create a file with invalid YAML/JSON content
+        let path = std::env::temp_dir().join("ent_ft_bad_plan.yaml");
+        std::fs::write(&path, "not valid plan content {{{{").unwrap();
+        let args = FinetuneArgs {
+            command: FinetuneCommand::Apply {
+                plan: path.clone(),
+                model_path: std::path::PathBuf::from("/nonexistent/model"),
+                data: std::path::PathBuf::from("/nonexistent/data.jsonl"),
+                output_dir: std::path::PathBuf::from("/tmp/ft_test_bad"),
+            },
+        };
+        let result = run_finetune(args, LogLevel::Quiet);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to parse plan"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // ── print_plan_summary edge cases ───────────────────────────────────
+
+    #[test]
+    fn test_print_plan_summary_zero_resources() {
+        let mut plan = make_plan();
+        plan.resources = ResourceEstimate {
+            estimated_vram_gb: 0.0,
+            estimated_minutes_per_epoch: 0.0,
+            estimated_total_minutes: 0.0,
+            estimated_checkpoint_mb: 0.0,
+            steps_per_epoch: 0,
+            gpu_device: None,
+        };
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_single_class() {
+        let mut plan = make_plan();
+        plan.data.class_counts = vec![1000];
+        plan.data.imbalance_ratio = 1.0;
+        print_plan_summary(&plan, LogLevel::Verbose);
+    }
+
+    #[test]
+    fn test_print_plan_summary_many_classes() {
+        let mut plan = make_plan();
+        plan.data.class_counts = vec![100, 200, 150, 300, 50, 80, 120, 90, 60, 70];
+        plan.data.imbalance_ratio = 6.0;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_high_imbalance() {
+        let mut plan = make_plan();
+        plan.data.imbalance_ratio = 100.0;
+        plan.data.auto_class_weights = true;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_boundary_imbalance() {
+        let mut plan = make_plan();
+        // Exactly 2.0 should NOT print the imbalance line
+        plan.data.imbalance_ratio = 2.0;
+        plan.data.auto_class_weights = false;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_just_above_imbalance_threshold() {
+        let mut plan = make_plan();
+        plan.data.imbalance_ratio = 2.01;
+        plan.data.auto_class_weights = true;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_with_hpo_tpe() {
+        let mut plan = make_plan();
+        plan.hyperparameters.strategy = "tpe".to_string();
+        plan.hyperparameters.budget = 20;
+        plan.hyperparameters.scout = true;
+        plan.hyperparameters.max_epochs = 1;
+        plan.hyperparameters.search_space_params = 9;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    // ── check_counts comprehensive ──────────────────────────────────────
+
+    #[test]
+    fn test_check_counts_all_fail() {
+        let mut plan = make_plan();
+        plan.pre_flight = vec![
+            PreFlightCheck { name: "a".into(), status: CheckStatus::Fail, detail: "bad".into() },
+            PreFlightCheck { name: "b".into(), status: CheckStatus::Fail, detail: "bad".into() },
+        ];
+        let (p, w, f) = plan.check_counts();
+        assert_eq!(p, 0);
+        assert_eq!(w, 0);
+        assert_eq!(f, 2);
+    }
+
+    #[test]
+    fn test_check_counts_all_warn() {
+        let mut plan = make_plan();
+        plan.pre_flight = vec![
+            PreFlightCheck { name: "a".into(), status: CheckStatus::Warn, detail: "eh".into() },
+            PreFlightCheck { name: "b".into(), status: CheckStatus::Warn, detail: "eh".into() },
+            PreFlightCheck { name: "c".into(), status: CheckStatus::Warn, detail: "eh".into() },
+        ];
+        let (p, w, f) = plan.check_counts();
+        assert_eq!(p, 0);
+        assert_eq!(w, 3);
+        assert_eq!(f, 0);
+    }
+
+    // ── make_plan helper verifications ───────────────────────────────────
+
+    #[test]
+    fn test_make_plan_defaults() {
+        let plan = make_plan();
+        assert_eq!(plan.version, "1.0");
+        assert_eq!(plan.task, "classify");
+        assert_eq!(plan.data.train_samples, 1000);
+        assert_eq!(plan.model.hidden_size, 896);
+        assert_eq!(plan.verdict, PlanVerdict::WarningsPresent);
+        assert!(plan.auto_diagnose);
+    }
+
+    #[test]
+    fn test_plan_to_yaml_and_back() {
+        let plan = make_plan();
+        let yaml = plan.to_yaml();
+        assert!(yaml.contains("classify"));
+        assert!(yaml.contains("1.0"));
+        let parsed = crate::finetune::training_plan::TrainingPlan::from_str(&yaml).unwrap();
+        assert_eq!(parsed.data.train_samples, 1000);
+    }
+
+    #[test]
+    fn test_plan_to_json_and_back() {
+        let plan = make_plan();
+        let json = plan.to_json();
+        assert!(json.contains("classify"));
+        let parsed = crate::finetune::training_plan::TrainingPlan::from_str(&json).unwrap();
+        assert_eq!(parsed.model.architecture, "Qwen2");
+    }
+
+    // ── run_finetune with valid plan file ───────────────────────────────
+
+    #[test]
+    fn test_run_finetune_apply_valid_plan_file_missing_model() {
+        let plan = make_plan();
+        let plan_path = std::env::temp_dir().join("ent_ft_valid_plan.yaml");
+        std::fs::write(&plan_path, plan.to_yaml()).unwrap();
+        let args = FinetuneArgs {
+            command: FinetuneCommand::Apply {
+                plan: plan_path.clone(),
+                model_path: std::path::PathBuf::from("/nonexistent/model"),
+                data: std::path::PathBuf::from("/nonexistent/data.jsonl"),
+                output_dir: std::path::PathBuf::from("/tmp/ft_test_valid"),
+            },
+        };
+        // Should parse plan but fail on model/data path
+        let result = run_finetune(args, LogLevel::Quiet);
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(&plan_path);
+    }
 }

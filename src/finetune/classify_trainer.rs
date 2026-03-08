@@ -5631,8 +5631,8 @@ mod tests {
         assert_eq!(report.calibration_bins.len(), 10);
         assert!(report.baseline_random > 0.0);
         assert!(report.baseline_majority > 0.0);
-        assert_eq!(report.ci_accuracy.0.is_finite(), true);
-        assert_eq!(report.ci_macro_f1.0.is_finite(), true);
-        assert_eq!(report.ci_mcc.0.is_finite(), true);
+        assert!(report.ci_accuracy.0.is_finite());
+        assert!(report.ci_macro_f1.0.is_finite());
+        assert!(report.ci_mcc.0.is_finite());
     }
 }

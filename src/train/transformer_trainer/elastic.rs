@@ -407,4 +407,246 @@ mod tests {
         coord.remove_worker(0);
         assert_eq!(coord.effective_world_size(), 1);
     }
+
+    // ── Additional coverage tests ─────────────────────────────────
+
+    #[test]
+    fn test_elastic_activate_non_syncing_worker() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        // Activating an already-active worker should return false
+        assert!(!coord.activate_worker(0));
+    }
+
+    #[test]
+    fn test_elastic_activate_nonexistent_worker() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        assert!(!coord.activate_worker(999));
+    }
+
+    #[test]
+    fn test_elastic_remove_non_active_worker() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        // Worker is still Syncing, not Active; remove should fail
+        assert!(!coord.remove_worker(0));
+    }
+
+    #[test]
+    fn test_elastic_remove_nonexistent_worker() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        assert!(!coord.remove_worker(999));
+    }
+
+    #[test]
+    fn test_elastic_finalize_removal_not_draining() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        // Worker is Active, not Draining; finalize should fail
+        assert!(!coord.finalize_removal(0));
+    }
+
+    #[test]
+    fn test_elastic_finalize_nonexistent_worker() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        assert!(!coord.finalize_removal(999));
+    }
+
+    #[test]
+    fn test_elastic_update_heartbeat() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        // Should not panic; just update the timestamp
+        coord.update_heartbeat(0);
+        // Nonexistent worker: no-op
+        coord.update_heartbeat(999);
+    }
+
+    #[test]
+    fn test_elastic_check_heartbeats_no_timeout() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        // Immediately checking should not time out (30s timeout)
+        let failed = coord.check_heartbeats();
+        assert!(failed.is_empty());
+    }
+
+    #[test]
+    fn test_elastic_check_heartbeats_instant_timeout() {
+        // Timeout of 0ms means every active worker will immediately fail
+        let mut coord = ElasticCoordinator::new(1, 4, 0);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        coord.add_worker("n2".into(), 1, "cuda".into());
+        coord.activate_worker(1);
+
+        // Small delay to ensure the 0ms timeout is exceeded
+        std::thread::sleep(std::time::Duration::from_millis(1));
+
+        let failed = coord.check_heartbeats();
+        assert_eq!(failed.len(), 2);
+        assert!(coord.needs_reconfig());
+        assert_eq!(coord.active_count(), 0);
+    }
+
+    #[test]
+    fn test_elastic_set_step() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.set_step(42);
+        // Step is used for shard computation joined_at_step
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        assert_eq!(coord.all_workers()[0].joined_at_step, 42);
+    }
+
+    #[test]
+    fn test_elastic_compute_shards_empty() {
+        let coord = ElasticCoordinator::new(1, 4, 30000);
+        let shards = coord.compute_shards(100);
+        assert!(shards.is_empty());
+    }
+
+    #[test]
+    fn test_elastic_compute_shards_single_worker() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        let shards = coord.compute_shards(100);
+        assert_eq!(shards.len(), 1);
+        assert_eq!(shards[0], (0, 0, 100));
+    }
+
+    #[test]
+    fn test_elastic_compute_shards_even_division() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        for i in 0..4 {
+            coord.add_worker(format!("n{i}"), 1, "cuda".into());
+            coord.activate_worker(i as u32);
+        }
+        let shards = coord.compute_shards(100);
+        assert_eq!(shards.len(), 4);
+        // 100 / 4 = 25 each
+        for (_, start, end) in &shards {
+            assert_eq!(end - start, 25);
+        }
+    }
+
+    #[test]
+    fn test_elastic_compute_shards_zero_samples() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        let shards = coord.compute_shards(0);
+        assert_eq!(shards.len(), 1);
+        assert_eq!(shards[0], (0, 0, 0));
+    }
+
+    #[test]
+    fn test_elastic_all_workers() {
+        let mut coord = ElasticCoordinator::new(1, 8, 30000);
+        coord.add_worker("n1".into(), 2, "cuda".into());
+        coord.add_worker("n2".into(), 4, "wgpu".into());
+
+        let all = coord.all_workers();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].node_id, "n1");
+        assert_eq!(all[0].gpu_count, 2);
+        assert_eq!(all[0].backend, "cuda");
+        assert_eq!(all[0].state, WorkerState::Syncing);
+        assert_eq!(all[1].node_id, "n2");
+        assert_eq!(all[1].gpu_count, 4);
+    }
+
+    #[test]
+    fn test_elastic_active_worker_ids() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.add_worker("n2".into(), 1, "cuda".into());
+        coord.add_worker("n3".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        coord.activate_worker(2);
+        // Worker 1 still syncing
+
+        let active = coord.active_worker_ids();
+        assert_eq!(active, vec![0, 2]);
+    }
+
+    #[test]
+    fn test_elastic_worker_state_transitions() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+
+        // Syncing -> Active
+        assert_eq!(coord.all_workers()[0].state, WorkerState::Syncing);
+        coord.activate_worker(0);
+        assert_eq!(coord.all_workers()[0].state, WorkerState::Active);
+
+        // Active -> Draining
+        coord.remove_worker(0);
+        assert_eq!(coord.all_workers()[0].state, WorkerState::Draining);
+
+        // Draining -> Left
+        coord.finalize_removal(0);
+        assert_eq!(coord.all_workers()[0].state, WorkerState::Left);
+    }
+
+    #[test]
+    fn test_elastic_worker_id_increments() {
+        let mut coord = ElasticCoordinator::new(1, 8, 30000);
+        let id0 = coord.add_worker("n1".into(), 1, "cuda".into());
+        let id1 = coord.add_worker("n2".into(), 1, "cuda".into());
+        let id2 = coord.add_worker("n3".into(), 1, "cuda".into());
+        assert_eq!(id0, Some(0));
+        assert_eq!(id1, Some(1));
+        assert_eq!(id2, Some(2));
+    }
+
+    #[test]
+    fn test_elastic_clear_reconfig_then_add() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        assert!(coord.needs_reconfig());
+        coord.clear_reconfig();
+        assert!(!coord.needs_reconfig());
+
+        // Adding another worker sets reconfig again
+        coord.add_worker("n2".into(), 1, "cuda".into());
+        assert!(coord.needs_reconfig());
+    }
+
+    #[test]
+    fn test_elastic_remove_sets_reconfig() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 1, "cuda".into());
+        coord.activate_worker(0);
+        coord.clear_reconfig();
+        assert!(!coord.needs_reconfig());
+
+        coord.remove_worker(0);
+        assert!(coord.needs_reconfig());
+    }
+
+    #[test]
+    fn test_worker_state_eq() {
+        assert_eq!(WorkerState::Active, WorkerState::Active);
+        assert_eq!(WorkerState::Syncing, WorkerState::Syncing);
+        assert_eq!(WorkerState::Draining, WorkerState::Draining);
+        assert_eq!(WorkerState::Failed, WorkerState::Failed);
+        assert_eq!(WorkerState::Left, WorkerState::Left);
+        assert_ne!(WorkerState::Active, WorkerState::Syncing);
+        assert_ne!(WorkerState::Draining, WorkerState::Failed);
+    }
+
+    #[test]
+    fn test_elastic_worker_clone() {
+        let mut coord = ElasticCoordinator::new(1, 4, 30000);
+        coord.add_worker("n1".into(), 2, "wgpu".into());
+        let worker = coord.all_workers()[0].clone();
+        assert_eq!(worker.node_id, "n1");
+        assert_eq!(worker.gpu_count, 2);
+        assert_eq!(worker.backend, "wgpu");
+    }
 }

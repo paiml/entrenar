@@ -389,4 +389,139 @@ mod tests {
         let s2 = d2.as_slice().unwrap();
         assert_eq!(s1, s2);
     }
+
+    // ── Additional coverage tests ─────────────────────────────────
+
+    #[test]
+    fn test_encoder_forward_varying_vocab_ids() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        // Use a range of token IDs
+        let ids: Vec<u32> = (0..20).collect();
+        let output = model.forward(&ids);
+        assert_eq!(output.len(), 20 * config.hidden_size);
+        let data = output.data();
+        let slice = data.as_slice().unwrap();
+        assert!(slice.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_encoder_from_params_partial_weights() {
+        let config = tiny_encoder_config();
+        let h = config.hidden_size;
+        let v = config.vocab_size;
+        let mut params: HashMap<String, Tensor> = HashMap::new();
+
+        // Add only embed_tokens, not position_embeddings → should return None
+        let embed_data = vec![0.0_f32; v * h];
+        params
+            .insert("encoder.embed_tokens.weight".to_string(), Tensor::from_vec(embed_data, false));
+
+        let result = EncoderModel::from_params(&config, &params);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_encoder_cls_embedding_different_inputs_differ() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        let cls1 = model.cls_embedding(&[1, 2, 3]);
+        let cls2 = model.cls_embedding(&[10, 20, 30]);
+        let d1 = cls1.data();
+        let d2 = cls2.data();
+        let s1 = d1.as_slice().unwrap();
+        let s2 = d2.as_slice().unwrap();
+        // Different inputs should (with overwhelming probability) produce different embeddings
+        assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn test_encoder_position_embeddings_present() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        assert_eq!(
+            model.position_embeddings.weight.len(),
+            config.max_position_embeddings * config.hidden_size
+        );
+    }
+
+    #[test]
+    fn test_encoder_embeddings_layernorm_present() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        assert_eq!(model.embeddings_layernorm.weight.len(), config.hidden_size);
+    }
+
+    #[test]
+    fn test_encoder_num_parameters_varies_with_config() {
+        let config1 = tiny_encoder_config();
+        let model1 = EncoderModel::new(&config1);
+
+        let config2 = TransformerConfig {
+            hidden_size: 64,
+            num_hidden_layers: 4,
+            num_attention_heads: 8,
+            num_kv_heads: 8,
+            intermediate_size: 128,
+            vocab_size: 200,
+            max_position_embeddings: 64,
+            rms_norm_eps: 1e-5,
+            architecture: ModelArchitecture::Encoder,
+            ..TransformerConfig::tiny()
+        };
+        let model2 = EncoderModel::new(&config2);
+
+        // Larger model should have more parameters
+        assert!(model2.num_parameters() > model1.num_parameters());
+    }
+
+    #[test]
+    fn test_encoder_forward_two_tokens() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        let output = model.forward(&[5, 10]);
+        assert_eq!(output.len(), 2 * config.hidden_size);
+    }
+
+    #[test]
+    fn test_encoder_forward_at_max_position() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        // Use max_position_embeddings tokens
+        let ids: Vec<u32> = (0..config.max_position_embeddings as u32).collect();
+        let output = model.forward(&ids);
+        assert_eq!(output.len(), config.max_position_embeddings * config.hidden_size);
+    }
+
+    #[test]
+    fn test_encoder_no_token_type_embeddings() {
+        let config = tiny_encoder_config();
+        let mut model = EncoderModel::new(&config);
+        // Remove token type embeddings
+        model.token_type_embeddings = None;
+        let output = model.forward(&[1, 2, 3]);
+        assert_eq!(output.len(), 3 * config.hidden_size);
+        let data = output.data();
+        let slice = data.as_slice().unwrap();
+        assert!(slice.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_encoder_num_parameters_without_tte() {
+        let config = tiny_encoder_config();
+        let mut model = EncoderModel::new(&config);
+        let with_tte = model.num_parameters();
+        model.token_type_embeddings = None;
+        let without_tte = model.num_parameters();
+        assert!(with_tte > without_tte);
+        // Difference should be 2 * hidden_size (token type embedding for 2 types)
+        assert_eq!(with_tte - without_tte, 2 * config.hidden_size);
+    }
+
+    #[test]
+    fn test_encoder_config_is_encoder() {
+        let config = tiny_encoder_config();
+        let model = EncoderModel::new(&config);
+        assert!(model.config.is_encoder());
+    }
 }

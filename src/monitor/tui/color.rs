@@ -735,7 +735,7 @@ mod tests {
         let c = Rgb::new(128, 128, 128);
         let idx = c.to_256();
         // Should be in the 216-color cube range (16-231)
-        assert!(idx >= 16 && idx <= 231);
+        assert!((16..=231).contains(&idx));
     }
 
     #[test]
