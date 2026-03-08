@@ -1,9 +1,9 @@
 # LoRA & QLoRA Enhancement Specification
 
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Date**: 2026-03-08
 **Status**: RESEARCH COMPLETE — ready for implementation
-**Scope**: entrenar LoRA/QLoRA training must work correctly for all paths (CUDA NF4, CUDA FP32/BF16, CPU)
+**Scope**: entrenar LoRA/QLoRA training must work correctly for all paths (CUDA NF4, CUDA FP32/BF16, CPU), fully wired through `apr` CLI
 
 ---
 
@@ -263,7 +263,78 @@ fn build_optimizer(model, lora_config, lr, weight_decay):
 - Config: `optimizer.paged: true`
 - **Test**: Train 7B QLoRA on 16GB GPU without OOM
 
-### Phase 4: Advanced Variants (P2 — future work)
+### Phase 4: apr-cli Wiring (P0 — must ship with Phase 1)
+
+Every LoRA/QLoRA feature MUST be accessible through the `apr` CLI. No dead config.
+
+**ENT-LoRA-014**: `apr train` LoRA integration
+- `apr train --config manifest.yaml` where `lora:` section is fully honored
+- `train_transformer_from_spec()` in `config/train/loader.rs` must:
+  1. Read `spec.lora` (already parsed as `Option<LoRASpec>`)
+  2. Call `build_lora_layers()` to create adapters for target modules
+  3. Set `requires_grad = false` on all base weight tensors
+  4. Pass only LoRA + norm params to optimizer
+  5. Use LoRA-wrapped forward in training loop
+- Print LoRA summary at startup:
+  ```
+  LoRA: rank=16, alpha=32.0, scaling=rsLoRA, targets=[q_proj, v_proj]
+    Trainable: 1,081,344 / 494,032,896 (0.22%)
+    Base weights: FROZEN
+  ```
+- **Test**: `apr train --config lora_test.yaml --dry-run` shows correct LoRA summary
+
+**ENT-LoRA-015**: `apr train` adapter checkpoint flow
+- When `lora.enabled=true`:
+  - `save_every` saves `adapter_model.safetensors` + `adapter_config.json` (NOT full model)
+  - Final save writes both adapter and optionally merged model (`merge_on_save: true`)
+  - `--resume` loads base model + adapter overlay (NOT full checkpoint)
+- Print checkpoint info:
+  ```
+  Saving adapter checkpoint (step 500): adapter_model.safetensors (2.1 MB)
+  ```
+- **Test**: Checkpoint at step 500 is < 50MB; resume produces identical loss at step 501
+
+**ENT-LoRA-016**: `apr finetune plan` LoRA HPO
+- `finetune plan --lora-rank 16 --lora-alpha 32 --target-modules q_proj,v_proj` already accepts LoRA flags
+- Must generate plan YAML with correct `lora:` section
+- HPO grid must include LoRA rank as searchable hyperparameter:
+  ```yaml
+  search_space:
+    lora_rank: [8, 16, 32]
+    lora_alpha: [16, 32, 64]
+    lr: [1e-4, 3e-4, 5e-4]
+  ```
+- `finetune apply --plan plan.yaml` must honor LoRA config per trial
+- **Test**: `apr finetune plan` with LoRA flags generates valid plan; `apply` trains with frozen base
+
+**ENT-LoRA-017**: `apr merge` for LoRA adapters
+- New subcommand or extend existing `merge`:
+  ```
+  apr merge --base /path/to/model --adapter /path/to/adapter --output /path/to/merged
+  ```
+- Computes `W_merged = W_base + scale * B @ A` for each adapted module
+- Outputs standard safetensors (no LoRA, no quantization) ready for inference
+- For QLoRA: `apr merge --base /path/to/nf4_model --adapter /path/to/adapter --output /path/to/merged --dtype f16`
+- **Test**: `merged_model.forward(x) == lora_model.forward(x)` within tolerance
+
+**ENT-LoRA-018**: `apr inspect` LoRA diagnostics
+- Extend existing `inspect` command:
+  ```
+  apr inspect --checkpoint /path/to/adapter/
+  ```
+- Output:
+  ```
+  Adapter: /path/to/adapter/adapter_model.safetensors
+  Format: PEFT-compatible LoRA
+  Base model: Qwen2.5-Coder-0.5B-Instruct
+  Rank: 16, Alpha: 32.0, Scaling: rsLoRA
+  Target modules: q_proj, v_proj (48 adapter tensors)
+  Trainable params: 1,081,344 (0.22% of base)
+  Adapter size: 2.1 MB
+  ```
+- **Test**: `apr inspect` on saved adapter outputs correct metadata
+
+### Phase 5: Advanced Variants (P2 — future work)
 
 **ENT-LoRA-011**: DoRA (Weight-Decomposed LoRA)
 - Decompose W into magnitude `m` and direction `V/||V||`
@@ -351,43 +422,96 @@ Example: Qwen-0.5B, r=16, Q+V targeting:
 
 ---
 
-## 6. Test Matrix
+## 6. Falsification Tests
 
-### Unit Tests
+Every prediction below MUST be tested. If any prediction is falsified, the corresponding
+implementation ticket is blocked until the root cause is fixed. This is the primary
+quality gate — passing unit tests is necessary but not sufficient.
 
-| Test ID | Description | Assertion |
-|---------|-------------|-----------|
-| T-LORA-001 | LoRA layer init | `B` is all zeros, `delta_W = 0` |
-| T-LORA-002 | Base weight frozen | `base_weight.requires_grad == false` after wrapping |
-| T-LORA-003 | Trainable param count | Exactly `2 * num_targets * num_layers` tensors |
-| T-LORA-004 | Forward equivalence at init | `lora_forward(x) == base_forward(x)` (B=0) |
-| T-LORA-005 | Scale factor (standard) | `scale == alpha / r` |
-| T-LORA-006 | Scale factor (rsLoRA) | `scale == alpha / sqrt(r)` |
-| T-LORA-007 | Merge correctness | `merged_forward(x) == lora_forward(x)` |
-| T-LORA-008 | Unmerge roundtrip | `unmerge(merge(layer)).A == original.A` |
-| T-LORA-009 | Adapter save/load | Load adapter, verify `forward(x)` identical |
-| T-LORA-010 | PEFT export format | `adapter_config.json` matches HF PEFT schema |
+### Layer 0: Mathematical Invariants
 
-### Integration Tests
+These test the LoRA equations directly. No training loop, no CLI, no I/O.
 
-| Test ID | Description | Assertion |
-|---------|-------------|-----------|
-| T-INT-001 | YAML config wiring | `lora.enabled=true` → LoRA layers created |
-| T-INT-002 | Base weight checksum | SHA256(W_base) unchanged after 100 training steps |
-| T-INT-003 | Optimizer param count | Optimizer has exactly LoRA + norm params |
-| T-INT-004 | Gradient flow | `grad(lora_a) != 0`, `grad(base_weight) == None` |
-| T-INT-005 | NF4 path parity | NF4 and FP16 LoRA produce similar loss curves (within 5%) |
-| T-INT-006 | Checkpoint size | Adapter checkpoint < 50MB for 0.5B model (vs 1.98GB full) |
+| ID | Prediction | Test | If Falsified |
+|----|-----------|------|-------------|
+| F-MATH-001 | `B @ A = 0` at initialization (B=zeros) | Create LoRALayer(r=16, d_in=896, d_out=896), compute `lora_b.data @ lora_a.data`, assert all zeros | Init bug: B not zero-initialized |
+| F-MATH-002 | `lora_forward(x) == base_forward(x)` when B=0 | Forward with fresh LoRALayer, compare to `W_base @ x` | Forward path adds non-zero LoRA contribution at init |
+| F-MATH-003 | Scale = `alpha / sqrt(r)` for rsLoRA | For r in [4,8,16,32,64,128,256], assert `scale == alpha / r.sqrt()` | Scale formula bug |
+| F-MATH-004 | Scale = `alpha / r` for standard LoRA | Same sweep, assert `scale == alpha / r` | Scale formula bug |
+| F-MATH-005 | Merge produces exact equivalence | `forward(x, W_0 + scale*B@A) == forward_lora(x, W_0, A, B, scale)` for 100 random x | Merge formula incorrect, precision loss |
+| F-MATH-006 | Unmerge is lossless roundtrip | `unmerge(merge(layer)); assert layer.lora_a == original_a, layer.lora_b == original_b` | Floating point accumulation in merge/unmerge |
+| F-MATH-007 | Trainable param count is exact | `2 * num_targets * num_layers * r * (d_in + d_out)` matches `layer.trainable_params().len()` summed | Param counting bug |
+| F-MATH-008 | NF4 dequantize within tolerance | For 1000 random f32 vectors, `max(abs(dequant(quant(x)) - x)) < 0.15 * max(abs(x))` | NF4 codebook or block quantization bug |
 
-### Falsification Tests
+### Layer 1: Weight Freezing (The Critical Bug)
 
-| Test ID | Prediction | If Fails |
-|---------|-----------|----------|
-| F-LORA-001 | Loss decreases over 100 steps | LoRA forward/backward bug |
-| F-LORA-002 | Base weights unchanged after training | `requires_grad` not set correctly |
-| F-LORA-003 | Adapter-only save < 1% of full model size | Saving full weights, not adapter |
-| F-LORA-004 | Merged model matches LoRA model output | Merge formula incorrect |
-| F-LORA-005 | rsLoRA stable at r=128 | Scaling not applied correctly |
+These test the exact bug that caused FALSIFY-CHAT-003. Every training path must pass ALL of these.
+
+| ID | Prediction | Test | If Falsified |
+|----|-----------|------|-------------|
+| F-FREEZE-001 | Base weights unchanged after 100 steps (CUDA FP16 LoRA) | SHA256 of all base weight tensors before and after training. Assert identical. | `requires_grad` not set on CUDA FP16 path |
+| F-FREEZE-002 | Base weights unchanged after 100 steps (CUDA NF4 QLoRA) | Same SHA256 check on NF4-quantized base weights | NF4 path regression |
+| F-FREEZE-003 | Base weights unchanged after 100 steps (CPU LoRA) | Same SHA256 check on CPU path | CPU path doesn't freeze |
+| F-FREEZE-004 | LoRA A matrices CHANGE after 100 steps | Assert `lora_a` tensors differ from initialization | LoRA not receiving gradients |
+| F-FREEZE-005 | LoRA B matrices CHANGE after 100 steps | Assert `lora_b` tensors differ from zero initialization | LoRA not receiving gradients |
+| F-FREEZE-006 | Norm weights CHANGE after 100 steps | Assert `input_norm` and `post_attn_norm` weights differ from init | Norms accidentally frozen |
+| F-FREEZE-007 | Optimizer state has NO entries for base weights | Inspect optimizer m/v buffers, assert no buffer exists for any base weight tensor | Optimizer tracking frozen params (wasting memory + potential update) |
+| F-FREEZE-008 | `grad(base_weight) is None` after backward | After one forward+backward step, check `.grad` field of every base weight | Autograd computing unnecessary base gradients |
+
+### Layer 2: apr-cli Integration
+
+These test end-to-end CLI behavior. Must use actual `apr` binary via `assert_cmd`.
+
+| ID | Prediction | Test | If Falsified |
+|----|-----------|------|-------------|
+| F-CLI-001 | `apr train --config lora.yaml` creates LoRA layers | Run with `--dry-run`, parse stdout for "LoRA: rank=16" and "Trainable:" | YAML `lora:` section not wired to TransformerTrainer |
+| F-CLI-002 | `apr train --config lora.yaml` saves adapter checkpoint | Train 10 steps with `save_every: 5`, verify `adapter_model.safetensors` exists at step 5 and 10 | Checkpoint path still saves full model |
+| F-CLI-003 | Adapter checkpoint < 1% of base model size | `size(adapter_model.safetensors) / size(base_model.safetensors) < 0.01` | Saving full weights instead of adapter |
+| F-CLI-004 | `apr train --resume` loads adapter and continues | Train 50 steps, save. Resume, train 50 more. Assert loss at step 51 is close to loss at step 50. | Resume doesn't load adapter or resets optimizer |
+| F-CLI-005 | `apr train --config qlora.yaml` uses NF4 quantization | Run with QLoRA config, parse stdout for "NF4" or "quantized". Assert VRAM < full FP16 model | QLoRA config ignored, falls back to FP16 |
+| F-CLI-006 | `apr finetune plan --lora-rank 16` generates valid plan | Generate plan, parse YAML, assert `lora.rank == 16` in plan | Finetune plan ignores LoRA flags |
+| F-CLI-007 | `apr finetune apply` with LoRA plan freezes base weights | Run apply with SHA256 base weight check | Finetune apply path doesn't freeze |
+| F-CLI-008 | `apr merge --base X --adapter Y --output Z` produces valid model | Merge, then run inference on merged model. Assert output matches LoRA model. | Merge formula bug or tensor naming mismatch |
+| F-CLI-009 | `apr inspect --checkpoint adapter/` shows correct metadata | Parse inspect output for rank, alpha, target modules, param count | Inspect doesn't read adapter format |
+| F-CLI-010 | `apr train` with NO `lora:` section trains all params | Train without LoRA, verify all weights change. Ensures LoRA code doesn't break normal training. | LoRA changes broke standard training path |
+
+### Layer 3: Training Convergence
+
+These test that LoRA training actually learns. Run on small model (Qwen-0.5B or smaller test model).
+
+| ID | Prediction | Test | If Falsified |
+|----|-----------|------|-------------|
+| F-CONV-001 | Loss decreases over 200 steps (FP16 LoRA) | Train 200 steps, assert `loss[200] < loss[1] * 0.5` | Forward/backward bug in FP16 LoRA path |
+| F-CONV-002 | Loss decreases over 200 steps (NF4 QLoRA) | Same on NF4 path | NF4 dequantization or gradient flow bug |
+| F-CONV-003 | Loss decreases over 200 steps (CPU LoRA) | Same on CPU path | CPU LoRA matmul or autograd bug |
+| F-CONV-004 | FP16 LoRA and NF4 QLoRA converge to similar loss | After 500 steps on same data, assert `abs(loss_fp16 - loss_nf4) / loss_fp16 < 0.10` | Quantization error too large, or path divergence |
+| F-CONV-005 | rsLoRA stable at r=128 | Train 200 steps at r=128 with rsLoRA, assert loss decreases and doesn't diverge | rsLoRA scaling not applied (alpha/r at r=128 ~= 0) |
+| F-CONV-006 | Higher rank = lower loss (given sufficient data) | Train r=4 vs r=16 vs r=64 on same data 500 steps, assert `loss[r=64] <= loss[r=4]` | Rank increase not helping — possible scale bug |
+| F-CONV-007 | LoRA loss < random baseline | After 200 steps LoRA loss < untrained model loss on same test data | Training has no effect |
+| F-CONV-008 | No catastrophic forgetting with LoRA | Train 3 epochs on 17K samples, assert `loss[epoch3] < loss[epoch1]` (unlike full FT which diverges) | LoRA not actually freezing base weights, or norms destabilizing |
+
+### Layer 4: Checkpoint & Serialization
+
+| ID | Prediction | Test | If Falsified |
+|----|-----------|------|-------------|
+| F-CKPT-001 | Adapter save/load roundtrip preserves forward output | Save adapter, create fresh model, load adapter. Assert `forward(x)` identical to 6 decimal places | Tensor naming, shape, or scale mismatch in save/load |
+| F-CKPT-002 | PEFT export loads in HuggingFace | Export `adapter_config.json` + `adapter_model.safetensors`. Validate JSON schema. Load with `peft.PeftModel.from_pretrained()`. Assert forward matches. | Tensor naming convention wrong, or config schema mismatch |
+| F-CKPT-003 | Merged model has no LoRA tensors | After merge, inspect safetensors keys. Assert NO key contains "lora_a" or "lora_b" | Merge didn't fold adapters into base weights |
+| F-CKPT-004 | Merged model is same size as base model | `abs(size(merged) - size(base)) < 1%` | Extra tensors leaked into merged checkpoint |
+| F-CKPT-005 | Resume from adapter checkpoint continues training correctly | Save at step 100. Resume. Assert step counter = 101, optimizer state restored, loss trajectory continuous | Optimizer state not saved/loaded with adapter |
+
+### Layer 5: Edge Cases & Adversarial
+
+| ID | Prediction | Test | If Falsified |
+|----|-----------|------|-------------|
+| F-EDGE-001 | LoRA with rank=1 works | Train 100 steps at r=1, loss decreases | Off-by-one in dimension handling |
+| F-EDGE-002 | LoRA with rank=d_model works (full rank) | Train 100 steps at r=896 (Qwen-0.5B), loss decreases | Dimension mismatch when r equals hidden size |
+| F-EDGE-003 | LoRA on single layer works | `layers: [0]` — only first layer has adapters. Train, verify only layer 0 adapters change | Layer filtering bug |
+| F-EDGE-004 | Empty target_modules fails with clear error | `target_modules: []` — must error at config validation, not crash during training | Validation gap |
+| F-EDGE-005 | Invalid target name fails with clear error | `target_modules: ["nonexistent_proj"]` — must error at config validation | Silent ignore of bad config |
+| F-EDGE-006 | `lora.enabled: false` means full fine-tuning | All weights must change, optimizer has all params | LoRA code path leaks into non-LoRA training |
+| F-EDGE-007 | Gradient accumulation works with LoRA | `gradient_accumulation: 4` — accumulated gradients match 4x larger batch | Accumulation clears LoRA grads incorrectly |
+| F-EDGE-008 | Mixed precision (BF16) LoRA works | Train with `dtype: bfloat16`, assert loss decreases | BF16 precision insufficient for LoRA scale factor |
 
 ---
 
@@ -398,23 +522,52 @@ Phase 1 (P0 — MUST FIX):
   ENT-LoRA-001 (wire YAML) ──────────┐
   ENT-LoRA-002 (param groups) ───────┼──> unblocks all non-NF4 LoRA training
   ENT-LoRA-003 (adapter checkpoint) ─┘
+  Falsification gate: F-FREEZE-001..008, F-MATH-001..008
+
+Phase 1b (P0 — apr-cli, ships WITH Phase 1):
+  ENT-LoRA-014 (apr train LoRA) ─────── depends on ENT-LoRA-001+002
+  ENT-LoRA-015 (adapter ckpt flow) ──── depends on ENT-LoRA-003
+  ENT-LoRA-016 (finetune plan LoRA) ─── depends on ENT-LoRA-001
+  ENT-LoRA-017 (apr merge) ──────────── depends on ENT-LoRA-003
+  ENT-LoRA-018 (apr inspect) ────────── depends on ENT-LoRA-003
+  Falsification gate: F-CLI-001..010, F-CONV-001..008, F-CKPT-001..005
 
 Phase 2 (P1 — world class):
   ENT-LoRA-004 (rsLoRA) ─────── independent
   ENT-LoRA-005 (all_linear) ─── independent
   ENT-LoRA-006 (LoRA+) ──────── depends on ENT-LoRA-002
   ENT-LoRA-007 (PEFT export) ── depends on ENT-LoRA-003
+  Falsification gate: F-CONV-005..006, F-CKPT-002
 
 Phase 3 (P1 — QLoRA complete):
   ENT-LoRA-008 (double quant) ── independent (NF4 path)
   ENT-LoRA-009 (merge export) ── depends on ENT-LoRA-003
   ENT-LoRA-010 (paged optim) ─── stretch goal
+  Falsification gate: F-CONV-002+004, F-MATH-008
 
-Phase 4 (P2 — advanced):
+Phase 5 (P2 — advanced):
   ENT-LoRA-011 (DoRA) ────── depends on Phase 1
   ENT-LoRA-012 (PiSSA) ───── depends on Phase 1
   ENT-LoRA-013 (multi-adapt)── partially exists
+  Falsification gate: F-EDGE-001..008
 ```
+
+### Ship Criteria
+
+Phase 1 + Phase 1b are a **single atomic release**. You cannot ship LoRA without CLI wiring.
+The following falsification tests are **mandatory pass** before any LoRA release:
+
+**Hard gates** (block release):
+- F-FREEZE-001..003: Base weights frozen on ALL three paths
+- F-FREEZE-004..005: LoRA params actually train
+- F-CLI-001..003: apr train creates LoRA layers, saves adapter, adapter is small
+- F-CONV-001: Loss decreases (LoRA learns something)
+- F-CKPT-001: Save/load roundtrip works
+
+**Soft gates** (warn, don't block):
+- F-CONV-004: FP16/NF4 parity within 10%
+- F-EDGE-007: Gradient accumulation
+- F-EDGE-008: BF16 mixed precision
 
 ---
 
