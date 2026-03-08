@@ -339,7 +339,7 @@ mod tests {
         let cm = confusion_matrix(&y_pred, &y_true);
         let display = format!("{cm}");
         // Should contain the counts in the display
-        assert!(display.contains("1"), "Display should contain count values");
+        assert!(display.contains('1'), "Display should contain count values");
     }
 
     #[test]
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_confusion_matrix_debug() {
         let cm = ConfusionMatrix::new(2);
-        let debug = format!("{:?}", cm);
+        let debug = format!("{cm:?}");
         assert!(debug.contains("ConfusionMatrix"));
     }
 

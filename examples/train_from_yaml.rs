@@ -44,6 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             alpha: 16.0,
             target_modules: vec!["q_proj".to_string(), "v_proj".to_string()],
             dropout: 0.1,
+            lora_plus_ratio: 1.0,
+            double_quantize: false,
         }),
         quantize: None,
         merge: None,

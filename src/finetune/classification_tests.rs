@@ -546,7 +546,7 @@ fn test_classification_head_minimum_valid() {
     let head = ClassificationHead::new(1, 2);
     assert_eq!(head.hidden_size(), 1);
     assert_eq!(head.num_classes(), 2);
-    assert_eq!(head.num_parameters(), 1 * 2 + 2);
+    assert_eq!(head.num_parameters(), 2 + 2);
 }
 
 #[test]
@@ -880,7 +880,7 @@ fn test_multi_label_safety_sample_deserialize() {
 #[test]
 fn test_safety_corpus_stats_debug() {
     let stats = SafetyCorpusStats { total: 10, class_counts: vec![5, 5], avg_input_len: 20 };
-    let debug = format!("{:?}", stats);
+    let debug = format!("{stats:?}");
     assert!(debug.contains("SafetyCorpusStats"));
     assert!(debug.contains("10"));
 }

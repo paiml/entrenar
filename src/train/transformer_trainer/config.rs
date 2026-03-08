@@ -94,7 +94,7 @@ pub struct TransformerTrainConfig {
     pub lora_rank: Option<usize>,
     /// LoRA alpha scaling factor (default: 2 * rank)
     pub lora_alpha: Option<f32>,
-    /// LoRA target modules (e.g., ["q_proj", "v_proj"])
+    /// LoRA target modules (e.g., `q_proj`, `v_proj`)
     pub lora_target_modules: Option<Vec<String>>,
     /// LoRA+ ratio: LR multiplier for B matrices (ENT-LoRA-006)
     /// Default 1.0 = standard LoRA. 16.0 = LoRA+ (Hayou et al. ICML 2024)

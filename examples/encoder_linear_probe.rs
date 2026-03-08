@@ -52,9 +52,9 @@ fn extract_embeddings(
         let cls = encoder.cls_embedding(&token_ids);
         let data = cls.data();
         embeddings.push(data.as_slice().expect("contiguous").to_vec());
-        labels.push(if i < num_safe { 0 } else { 1 });
+        labels.push(usize::from(i >= num_safe));
     }
-    println!("  Extracted {} embeddings (safe={}, unsafe={})", total, num_safe, num_unsafe);
+    println!("  Extracted {total} embeddings (safe={num_safe}, unsafe={num_unsafe})");
     (embeddings, labels)
 }
 

@@ -825,7 +825,7 @@ mod tests {
                 }
             })
             .collect();
-        let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
+        let labels: Vec<usize> = (0..20).map(|i| usize::from(i >= 10)).collect();
 
         let loss_before = {
             let mut temp = LinearProbe::new(8, 2);
@@ -862,7 +862,7 @@ mod tests {
     fn clf_003_evaluate_majority_baseline() {
         // All predict class 0
         let preds = vec![0; 100];
-        let labels: Vec<usize> = (0..100).map(|i| if i < 93 { 0 } else { 1 }).collect();
+        let labels: Vec<usize> = (0..100).map(|i| usize::from(i >= 93)).collect();
         let metrics = evaluate(&preds, &labels, 2);
         assert!((metrics.accuracy - 0.93).abs() < 0.01);
         assert_eq!(metrics.recall[1], 0.0); // unsafe recall is 0
@@ -962,7 +962,7 @@ mod tests {
         // Train probe to always predict unsafe (class 1) for negative embeddings
         let embeddings: Vec<Vec<f32>> =
             (0..20).map(|i| if i < 10 { vec![1.0; 4] } else { vec![-1.0; 4] }).collect();
-        let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
+        let labels: Vec<usize> = (0..20).map(|i| usize::from(i >= 10)).collect();
         probe.train(&embeddings, &labels, 30, 0.1, None);
 
         let novel = vec![vec![-1.0; 4]; 10]; // all "unsafe" pattern
@@ -1075,10 +1075,10 @@ mod tests {
         let pred_11 = mlp.predict(&[1.0, 1.0]);
 
         // MLP should learn XOR (at least partially)
-        let correct = (pred_00 == 0) as u8
-            + (pred_01 == 1) as u8
-            + (pred_10 == 1) as u8
-            + (pred_11 == 0) as u8;
+        let correct = u8::from(pred_00 == 0)
+            + u8::from(pred_01 == 1)
+            + u8::from(pred_10 == 1)
+            + u8::from(pred_11 == 0);
         assert!(correct >= 3, "MLP should learn XOR (got {correct}/4 correct)");
     }
 
@@ -1087,7 +1087,7 @@ mod tests {
         let mut probe = MlpProbe::new(8, 16, 2);
         let embeddings: Vec<Vec<f32>> =
             (0..20).map(|i| if i < 10 { vec![1.0; 8] } else { vec![-1.0; 8] }).collect();
-        let labels: Vec<usize> = (0..20).map(|i| if i < 10 { 0 } else { 1 }).collect();
+        let labels: Vec<usize> = (0..20).map(|i| usize::from(i >= 10)).collect();
 
         let loss_1 = probe.train(&embeddings, &labels, 1, 0.01, None, 0.0);
         let loss_10 = probe.train(&embeddings, &labels, 10, 0.01, None, 0.0);

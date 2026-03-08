@@ -457,7 +457,7 @@ mod tests {
         let output = ln.forward_batched(&x, 1, 4);
         // Constant input → normalized to 0, then shifted by bias → all 5.0
         let data = output.data();
-        for &v in data.iter() {
+        for &v in data {
             assert!((v - 5.0).abs() < 1e-3, "Expected ~5.0 with bias, got {v}");
         }
     }

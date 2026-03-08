@@ -119,7 +119,7 @@ impl MultiAdapterManager {
 
     /// Total trainable parameters across all active adapters
     pub fn total_trainable_params(&self) -> usize {
-        self.adapters.iter().filter(|a| a.active).map(|a| a.param_count()).sum()
+        self.adapters.iter().filter(|a| a.active).map(NamedAdapter::param_count).sum()
     }
 
     /// Summary of all adapters

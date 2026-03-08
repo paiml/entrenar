@@ -231,7 +231,7 @@ mod tests {
             let x = Tensor::from_vec(vec![0.1; d_in], true);
             let out = dora.forward(&x);
             prop_assert_eq!(out.len(), d_out);
-            for val in out.data().iter() {
+            for val in out.data() {
                 prop_assert!(val.is_finite(), "Output must be finite, got {val}");
             }
         }
