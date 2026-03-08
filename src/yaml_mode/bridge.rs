@@ -377,6 +377,7 @@ fn convert_lora(manifest: &TrainingManifest, warnings: &mut Vec<String>) -> Opti
         target_modules: lora_cfg.target_modules.clone(),
         dropout: lora_cfg.dropout.map_or(0.0, |d| d as f32),
         lora_plus_ratio: 1.0,
+        double_quantize: false,
     })
 }
 

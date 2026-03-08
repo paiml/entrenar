@@ -67,6 +67,7 @@ mod tests {
                 target_modules,
                 dropout,
                 lora_plus_ratio: 1.0,
+                double_quantize: false,
             })
     }
 
@@ -277,6 +278,7 @@ mod tests {
                 target_modules: vec!["q_proj".to_string()],
                 dropout: 0.0,
                 lora_plus_ratio: 1.0,
+                double_quantize: false,
             });
             let result = validate_config(&spec);
             prop_assert!(matches!(result, Err(ValidationError::InvalidLoRARank(0))));

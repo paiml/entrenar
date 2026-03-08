@@ -11,6 +11,7 @@
 
 mod benchmarks;
 mod calibration;
+mod double_quant;
 mod error_analysis;
 mod fake_quantize;
 mod gguf_quant;
@@ -35,5 +36,8 @@ pub use granularity::{
     calibrate_per_channel, calibrate_per_group, calibrate_per_tensor, compare_granularities,
     dequantize_tensor, dequantize_with_params, quantization_mse, quantize_tensor,
     quantize_with_params, QuantGranularity, QuantMode, QuantParams, QuantizedTensor,
+};
+pub use double_quant::{
+    dequantize_4bit_double, quantize_4bit_double, DoubleQuantized4Bit, DOUBLE_QUANT_BLOCK_SIZE,
 };
 pub use quant4bit::{dequantize_4bit, quantize_4bit, Quantized4Bit, BLOCK_SIZE};

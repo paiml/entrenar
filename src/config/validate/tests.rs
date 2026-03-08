@@ -74,6 +74,7 @@ fn test_invalid_lora_rank() {
         target_modules: vec!["q_proj".to_string()],
         dropout: 0.0,
         lora_plus_ratio: 1.0,
+        double_quantize: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRARank(0)));
@@ -124,6 +125,7 @@ fn test_invalid_lora_alpha() {
         target_modules: vec!["q_proj".to_string()],
         dropout: 0.0,
         lora_plus_ratio: 1.0,
+        double_quantize: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRAAlpha(_)));
@@ -138,6 +140,7 @@ fn test_invalid_lora_dropout() {
         target_modules: vec!["q_proj".to_string()],
         dropout: 1.0,
         lora_plus_ratio: 1.0,
+        double_quantize: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRADropout(_)));
@@ -146,7 +149,7 @@ fn test_invalid_lora_dropout() {
 #[test]
 fn test_empty_lora_targets() {
     let mut spec = create_valid_spec();
-    spec.lora = Some(LoRASpec { rank: 64, alpha: 16.0, target_modules: vec![], dropout: 0.0, lora_plus_ratio: 1.0 });
+    spec.lora = Some(LoRASpec { rank: 64, alpha: 16.0, target_modules: vec![], dropout: 0.0, lora_plus_ratio: 1.0, double_quantize: false });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::EmptyLoRATargets));
 }
@@ -160,6 +163,7 @@ fn test_invalid_lora_rank_too_high() {
         target_modules: vec!["q_proj".to_string()],
         dropout: 0.0,
         lora_plus_ratio: 1.0,
+        double_quantize: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRARank(_)));
@@ -293,6 +297,7 @@ fn test_invalid_lora_dropout_negative() {
         target_modules: vec!["q_proj".to_string()],
         dropout: -0.1,
         lora_plus_ratio: 1.0,
+        double_quantize: false,
     });
     let err = validate_config(&spec).unwrap_err();
     assert!(matches!(err, ValidationError::InvalidLoRADropout(_)));
@@ -311,6 +316,7 @@ fn test_valid_config_with_all_optional_fields() {
         target_modules: vec!["q_proj".to_string(), "v_proj".to_string()],
         dropout: 0.1,
         lora_plus_ratio: 1.0,
+        double_quantize: false,
     });
     spec.quantize = Some(QuantSpec { bits: 4, symmetric: true, per_channel: true });
     spec.merge = Some(MergeSpec { method: "ties".to_string(), params: HashMap::new() });

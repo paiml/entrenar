@@ -134,6 +134,10 @@ fn build_train_config(
         if lora.lora_plus_ratio != 1.0 {
             config = config.with_lora_plus_ratio(lora.lora_plus_ratio);
         }
+        // ENT-LoRA-008: Double quantization from YAML
+        if lora.double_quantize {
+            config = config.with_double_quantize(true);
+        }
     }
 
     // Wire distributed config from YAML (#133)

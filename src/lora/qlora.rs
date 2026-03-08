@@ -8,16 +8,22 @@
 
 use crate::autograd::matmul;
 use crate::lora::LoRALayer;
-use crate::quant::{dequantize_4bit, quantize_4bit, Quantized4Bit};
+use crate::quant::{
+    dequantize_4bit, dequantize_4bit_double, quantize_4bit, quantize_4bit_double,
+    DoubleQuantized4Bit, Quantized4Bit,
+};
 use crate::Tensor;
 
 /// QLoRA layer with 4-bit quantized base weight
 ///
 /// Memory-efficient variant of LoRALayer that stores the frozen base weight
 /// in 4-bit quantized format, reducing memory usage by ~75%.
+/// Optionally uses double quantization (ENT-LoRA-008) for additional savings.
 pub struct QLoRALayer {
-    /// Quantized base weight (4-bit)
+    /// Quantized base weight (4-bit, single quantization)
     base_weight_quantized: Quantized4Bit,
+    /// Double-quantized base weight (ENT-LoRA-008, None if not enabled)
+    base_weight_double: Option<DoubleQuantized4Bit>,
     /// LoRA matrix A [r * d_in] - full precision, trainable
     lora_a: Tensor,
     /// LoRA matrix B [d_out * r] - full precision, trainable
@@ -48,6 +54,26 @@ impl QLoRALayer {
 
         Self {
             base_weight_quantized,
+            base_weight_double: None,
+            lora_a: lora_layer.lora_a().clone(),
+            lora_b: lora_layer.lora_b().clone(),
+            d_out: lora_layer.d_out(),
+            d_in: lora_layer.d_in(),
+            rank: lora_layer.rank(),
+            scale: lora_layer.scale(),
+            merged: false,
+        }
+    }
+
+    /// Create QLoRA layer from LoRALayer with double quantization (ENT-LoRA-008)
+    pub fn from_lora_double_quant(lora_layer: LoRALayer) -> Self {
+        let base_weight_data = lora_layer.base_weight().data().to_vec();
+        let base_weight_quantized = quantize_4bit(&base_weight_data);
+        let base_weight_double = Some(quantize_4bit_double(&base_weight_data));
+
+        Self {
+            base_weight_quantized,
+            base_weight_double,
             lora_a: lora_layer.lora_a().clone(),
             lora_b: lora_layer.lora_b().clone(),
             d_out: lora_layer.d_out(),
@@ -82,8 +108,12 @@ impl QLoRALayer {
     pub fn forward(&self, x: &Tensor) -> Tensor {
         assert_eq!(x.len(), self.d_in, "Input size must match d_in");
 
-        // Dequantize base weight on-the-fly
-        let base_weight_data = dequantize_4bit(&self.base_weight_quantized);
+        // Dequantize base weight on-the-fly (use double quant path if available)
+        let base_weight_data = if let Some(ref dq) = self.base_weight_double {
+            dequantize_4bit_double(dq)
+        } else {
+            dequantize_4bit(&self.base_weight_quantized)
+        };
         let base_weight = Tensor::new(ndarray::arr1(&base_weight_data), false);
 
         // Base forward: W @ x
@@ -159,7 +189,11 @@ impl QLoRALayer {
     /// Get memory usage statistics
     pub fn memory_stats(&self) -> MemoryStats {
         let base_unquantized_bytes = self.d_out * self.d_in * 4; // f32
-        let base_quantized_bytes = self.base_weight_quantized.memory_bytes();
+        let base_quantized_bytes = if let Some(ref dq) = self.base_weight_double {
+            dq.memory_bytes()
+        } else {
+            self.base_weight_quantized.memory_bytes()
+        };
         let lora_a_bytes = self.lora_a.len() * 4;
         let lora_b_bytes = self.lora_b.len() * 4;
 
@@ -168,7 +202,7 @@ impl QLoRALayer {
             base_quantized_bytes,
             lora_bytes: lora_a_bytes + lora_b_bytes,
             total_bytes: base_quantized_bytes + lora_a_bytes + lora_b_bytes,
-            compression_ratio: self.base_weight_quantized.compression_ratio(),
+            compression_ratio: base_unquantized_bytes as f32 / base_quantized_bytes.max(1) as f32,
         }
     }
 
@@ -184,8 +218,12 @@ impl QLoRALayer {
     /// This produces a merged weight matrix that can be exported as SafeTensors or GGUF.
     /// The result is a flat Vec<f32> of shape [d_out, d_in] in row-major layout.
     pub fn merge_to_f32(&self) -> Vec<f32> {
-        // Dequantize base weight
-        let mut merged = dequantize_4bit(&self.base_weight_quantized);
+        // Dequantize base weight (use double quant path if available)
+        let mut merged = if let Some(ref dq) = self.base_weight_double {
+            dequantize_4bit_double(dq)
+        } else {
+            dequantize_4bit(&self.base_weight_quantized)
+        };
 
         // Compute scale * B @ A and add to merged weights
         // A: [rank, d_in], B: [d_out, rank]
@@ -211,6 +249,11 @@ impl QLoRALayer {
     /// Get reference to quantized base weights
     pub fn base_weight_quantized(&self) -> &Quantized4Bit {
         &self.base_weight_quantized
+    }
+
+    /// Check if double quantization is enabled (ENT-LoRA-008)
+    pub fn is_double_quantized(&self) -> bool {
+        self.base_weight_double.is_some()
     }
 }
 
@@ -564,5 +607,77 @@ mod tests {
             (1.0 - stats.base_quantized_bytes as f32 / stats.base_unquantized_bytes as f32) * 100.0;
 
         assert!(savings_percent > 70.0, "Should save > 70% memory, got {savings_percent}%");
+    }
+
+    // ========================================================================
+    // ENT-LoRA-008: Double Quantization Tests
+    // ========================================================================
+
+    #[test]
+    fn test_ent_lora_008_double_quant_creation() {
+        let base_weight = Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], false);
+        let lora = LoRALayer::new(base_weight, 2, 2, 1, 2.0);
+        let qlora = QLoRALayer::from_lora_double_quant(lora);
+
+        assert!(qlora.is_double_quantized());
+        assert_eq!(qlora.d_out(), 2);
+        assert_eq!(qlora.d_in(), 2);
+    }
+
+    #[test]
+    fn test_ent_lora_008_double_quant_forward_close_to_single() {
+        let d = 64;
+        let base_weight = Tensor::from_vec(
+            (0..d * d).map(|i| ((i as f32 * 0.1).sin() * 2.0)).collect(),
+            false,
+        );
+        let lora = LoRALayer::new(base_weight, d, d, 4, 8.0);
+
+        let single = QLoRALayer::from_lora(lora.clone());
+        let double = QLoRALayer::from_lora_double_quant(lora);
+
+        let x = Tensor::from_vec(vec![0.1; d], true);
+        let single_out = single.forward(&x);
+        let double_out = double.forward(&x);
+
+        assert_eq!(single_out.len(), double_out.len());
+        for i in 0..single_out.len() {
+            let diff = (single_out.data()[i] - double_out.data()[i]).abs();
+            let tol = single_out.data()[i].abs() * 0.01 + 0.1;
+            assert!(
+                diff <= tol,
+                "Forward output diverged at [{i}]: single={}, double={}, diff={diff}",
+                single_out.data()[i],
+                double_out.data()[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_ent_lora_008_single_quant_not_double() {
+        let base_weight = Tensor::from_vec(vec![1.0; 16], false);
+        let qlora = QLoRALayer::new(base_weight, 4, 4, 2, 4.0);
+        assert!(!qlora.is_double_quantized());
+    }
+
+    #[test]
+    fn test_ent_lora_008_double_quant_memory_stats() {
+        let d = 256;
+        let base_weight = Tensor::from_vec(vec![1.0; d * d], false);
+        let lora = LoRALayer::new(base_weight, d, d, 16, 32.0);
+
+        let single = QLoRALayer::from_lora(lora.clone());
+        let double = QLoRALayer::from_lora_double_quant(lora);
+
+        let single_stats = single.memory_stats();
+        let double_stats = double.memory_stats();
+
+        // Double quant should use less memory for base weights
+        assert!(
+            double_stats.base_quantized_bytes <= single_stats.base_quantized_bytes,
+            "Double quant ({}) should use <= memory than single ({})",
+            double_stats.base_quantized_bytes,
+            single_stats.base_quantized_bytes
+        );
     }
 }

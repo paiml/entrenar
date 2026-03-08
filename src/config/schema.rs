@@ -348,6 +348,12 @@ pub struct LoRASpec {
     /// Default 1.0 = standard LoRA. 16.0 = LoRA+ (Hayou et al. ICML 2024)
     #[serde(default = "default_lora_plus_ratio")]
     pub lora_plus_ratio: f32,
+
+    /// Double quantization for QLoRA (ENT-LoRA-008)
+    /// Quantizes FP32 absmax constants to 8-bit, saving ~0.37 bits/param
+    /// Default true when quantize_base is true
+    #[serde(default)]
+    pub double_quantize: bool,
 }
 
 fn default_lora_plus_ratio() -> f32 {
