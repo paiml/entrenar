@@ -126,11 +126,73 @@ fn get_extension(path: &Path) -> &str {
     path.extension().and_then(|s| s.to_str()).unwrap_or("")
 }
 
+/// Inspect a LoRA adapter directory (ENT-LoRA-018)
+fn inspect_lora_adapter(dir: &Path, level: LogLevel) -> Result<(), String> {
+    let config_path = dir.join("adapter_config.json");
+    let adapter_path = dir.join("adapter_model.safetensors");
+
+    log(level, LogLevel::Normal, "LoRA Adapter:");
+    log(level, LogLevel::Normal, &format!("  Directory: {}", dir.display()));
+
+    // Read adapter_config.json
+    if config_path.exists() {
+        let config_str =
+            std::fs::read_to_string(&config_path).map_err(|e| format!("Read config: {e}"))?;
+        if let Ok(config) = serde_json::from_str::<serde_json::Value>(&config_str) {
+            if let Some(rank) = config.get("r").and_then(|v| v.as_u64()) {
+                log(level, LogLevel::Normal, &format!("  Rank: {rank}"));
+            }
+            if let Some(alpha) = config.get("lora_alpha").and_then(|v| v.as_f64()) {
+                log(level, LogLevel::Normal, &format!("  Alpha: {alpha}"));
+            }
+            if let Some(modules) = config.get("target_modules").and_then(|v| v.as_array()) {
+                let names: Vec<&str> = modules.iter().filter_map(|v| v.as_str()).collect();
+                log(level, LogLevel::Normal, &format!("  Target modules: {}", names.join(", ")));
+            }
+            if let Some(base) = config.get("base_model_name_or_path").and_then(|v| v.as_str()) {
+                log(level, LogLevel::Normal, &format!("  Base model: {base}"));
+            }
+        }
+    }
+
+    // Read adapter_model.safetensors
+    if adapter_path.exists() {
+        let size = std::fs::metadata(&adapter_path).map(|m| m.len()).unwrap_or(0);
+        log(level, LogLevel::Normal, &format!("  Adapter size: {:.2} MB", size as f64 / 1e6));
+
+        let data =
+            std::fs::read(&adapter_path).map_err(|e| format!("Read adapter: {e}"))?;
+        if let Ok(tensors) = safetensors::SafeTensors::deserialize(&data) {
+            let names: Vec<String> = tensors.names().iter().map(|s| (*s).to_string()).collect();
+            log(level, LogLevel::Normal, &format!("  Adapter tensors: {}", names.len()));
+            let total_params: u64 = names
+                .iter()
+                .filter_map(|n| tensors.tensor(n).ok())
+                .map(|t| t.shape().iter().product::<usize>() as u64)
+                .sum();
+            log(
+                level,
+                LogLevel::Normal,
+                &format!("  Trainable params: {total_params}"),
+            );
+        }
+    } else {
+        log(level, LogLevel::Normal, "  (no adapter_model.safetensors found)");
+    }
+
+    Ok(())
+}
+
 pub fn run_inspect(args: InspectArgs, level: LogLevel) -> Result<(), String> {
     log(level, LogLevel::Normal, &format!("Inspecting: {}", args.input.display()));
 
     if !args.input.exists() {
         return Err(format!("File not found: {}", args.input.display()));
+    }
+
+    // ENT-LoRA-018: Check if this is a LoRA adapter directory
+    if args.input.is_dir() && args.input.join("adapter_config.json").exists() {
+        return inspect_lora_adapter(&args.input, level);
     }
 
     let ext = get_extension(&args.input);
@@ -142,9 +204,18 @@ pub fn run_inspect(args: InspectArgs, level: LogLevel) -> Result<(), String> {
         "parquet" | "csv" => {
             inspect_data_file(&args.input, ext, args.mode, args.z_threshold, level)
         }
-        _ => Err(format!(
-            "Unsupported file format: {ext}. Use .safetensors, .gguf, .parquet, or .csv"
-        )),
+        _ => {
+            if args.input.is_dir() {
+                Err(format!(
+                    "Directory {} does not contain adapter_config.json",
+                    args.input.display()
+                ))
+            } else {
+                Err(format!(
+                    "Unsupported file format: {ext}. Use .safetensors, .gguf, .parquet, or .csv"
+                ))
+            }
+        }
     }
 }
 
