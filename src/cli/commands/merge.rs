@@ -1293,4 +1293,616 @@ mod tests {
         assert_eq!(parsed["w1"].len(), 2);
         let _ = std::fs::remove_file(&t);
     }
+
+    // =========================================================================
+    // test_cov2_* — Additional coverage tests
+    // =========================================================================
+
+    /// Helper to build MergeArgs easily
+    fn mk_args(method: MergeMethod) -> MergeArgs {
+        MergeArgs {
+            models: vec![],
+            output: PathBuf::from("out.json"),
+            method,
+            weight: None,
+            density: None,
+            weights: None,
+            base: None,
+            adapter: None,
+        }
+    }
+
+    // ── bytes_to_f32 with zero-value data ────────────────────────────────
+
+    #[test]
+    fn test_cov2_bytes_to_f32_f32_zeros() {
+        let zeros = vec![0.0f32; 10];
+        let bytes: Vec<u8> = zeros.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F32);
+        assert_eq!(result.len(), 10);
+        assert!(result.iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_f32_negative() {
+        let vals = vec![-1.0f32, -100.0, -0.001];
+        let bytes: Vec<u8> = vals.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F32);
+        assert_eq!(result.len(), 3);
+        assert!((result[0] - (-1.0)).abs() < 1e-6);
+        assert!((result[1] - (-100.0)).abs() < 1e-6);
+        assert!((result[2] - (-0.001)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_f32_large() {
+        let vals = vec![1e30f32, -1e30];
+        let bytes: Vec<u8> = vals.iter().flat_map(|x| x.to_le_bytes()).collect();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F32);
+        assert_eq!(result.len(), 2);
+        assert!((result[0] - 1e30).abs() / 1e30 < 1e-6);
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_f16_zero() {
+        let zero = half::f16::from_f32(0.0);
+        let bytes = zero.to_le_bytes().to_vec();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F16);
+        assert_eq!(result.len(), 1);
+        assert!((result[0]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_bf16_zero() {
+        let zero = half::bf16::from_f32(0.0);
+        let bytes = zero.to_le_bytes().to_vec();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::BF16);
+        assert_eq!(result.len(), 1);
+        assert!((result[0]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_f16_negative() {
+        let neg = half::f16::from_f32(-3.14);
+        let bytes = neg.to_le_bytes().to_vec();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F16);
+        assert_eq!(result.len(), 1);
+        assert!((result[0] - (-3.14)).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_bf16_negative() {
+        let neg = half::bf16::from_f32(-5.0);
+        let bytes = neg.to_le_bytes().to_vec();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::BF16);
+        assert_eq!(result.len(), 1);
+        assert!((result[0] - (-5.0)).abs() < 0.5);
+    }
+
+    // ── bytes_to_f32 with truncated data (not aligned) ──────────────────
+
+    #[test]
+    fn test_cov2_bytes_to_f32_f32_truncated() {
+        // 5 bytes → only 1 full f32 chunk (4 bytes), remainder ignored
+        let bytes: Vec<u8> = vec![0, 0, 128, 63, 99];
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F32);
+        assert_eq!(result.len(), 1);
+        assert!((result[0] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_f16_truncated() {
+        // 3 bytes → only 1 full f16 chunk (2 bytes), remainder ignored
+        let val = half::f16::from_f32(2.0);
+        let mut bytes = val.to_le_bytes().to_vec();
+        bytes.push(0xFF);
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::F16);
+        assert_eq!(result.len(), 1);
+        assert!((result[0] - 2.0).abs() < 0.01);
+    }
+
+    // ── bytes_to_f32 with I64 fallback (other dtype) ────────────────────
+
+    #[test]
+    fn test_cov2_bytes_to_f32_i64_fallback() {
+        let v = 3.14f32;
+        let bytes = v.to_le_bytes().to_vec();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::I64);
+        assert_eq!(result.len(), 1);
+        assert!((result[0] - 3.14).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_cov2_bytes_to_f32_u8_fallback() {
+        let v = 7.0f32;
+        let bytes = v.to_le_bytes().to_vec();
+        let result = bytes_to_f32(&bytes, safetensors::tensor::Dtype::U8);
+        assert_eq!(result.len(), 1);
+        assert!((result[0] - 7.0).abs() < 1e-6);
+    }
+
+    // ── build_ensemble_config with whitespace-padded weights ────────────
+
+    #[test]
+    fn test_cov2_build_ensemble_config_whitespace_weights() {
+        let a = MergeArgs {
+            weights: Some("  0.5 , 0.3 , 0.2  ".to_string()),
+            ..mk_args(MergeMethod::Average)
+        };
+        let config = build_ensemble_config(&a);
+        assert!(config.is_ok());
+    }
+
+    // ── build_ensemble_config with negative weights ─────────────────────
+
+    #[test]
+    fn test_cov2_build_ensemble_config_negative_weights() {
+        let a =
+            MergeArgs { weights: Some("-0.5, 1.5".to_string()), ..mk_args(MergeMethod::Average) };
+        let config = build_ensemble_config(&a);
+        // Parsing should succeed (negative floats are valid f32)
+        assert!(config.is_ok());
+    }
+
+    // ── build_ensemble_config with large number of weights ──────────────
+
+    #[test]
+    fn test_cov2_build_ensemble_config_many_weights() {
+        let w_str = (0..10).map(|_| "0.1").collect::<Vec<_>>().join(",");
+        let a = MergeArgs { weights: Some(w_str), ..mk_args(MergeMethod::Average) };
+        let config = build_ensemble_config(&a);
+        assert!(config.is_ok());
+    }
+
+    // ── build_safetensor_metadata for each method ───────────────────────
+
+    #[test]
+    fn test_cov2_safetensor_metadata_average() {
+        let m = mk(&[("w", &[1.0])]);
+        let a = mk_args(MergeMethod::Average);
+        let md = build_safetensor_metadata(&m, &a);
+        assert!(md["merge_method"].contains("Average"));
+        assert_eq!(md["tensor_count"], "1");
+    }
+
+    #[test]
+    fn test_cov2_safetensor_metadata_dare() {
+        let m = mk(&[("a", &[1.0]), ("b", &[2.0])]);
+        let a = mk_args(MergeMethod::Dare);
+        let md = build_safetensor_metadata(&m, &a);
+        assert!(md["merge_method"].contains("Dare"));
+        assert_eq!(md["tensor_count"], "2");
+    }
+
+    #[test]
+    fn test_cov2_safetensor_metadata_lora() {
+        let m = mk(&[("w", &[1.0])]);
+        let a = mk_args(MergeMethod::LoraAdapter);
+        let md = build_safetensor_metadata(&m, &a);
+        assert!(md["merge_method"].contains("LoraAdapter"));
+    }
+
+    #[test]
+    fn test_cov2_safetensor_metadata_empty_model() {
+        let m: Model = HashMap::new();
+        let a = mk_args(MergeMethod::Ties);
+        let md = build_safetensor_metadata(&m, &a);
+        assert_eq!(md["tensor_count"], "0");
+    }
+
+    // ── validate_model_count edge: exactly 2 ────────────────────────────
+
+    #[test]
+    fn test_cov2_validate_model_count_exactly_2() {
+        let a = MergeArgs {
+            models: vec![PathBuf::from("a"), PathBuf::from("b")],
+            ..mk_args(MergeMethod::Average)
+        };
+        assert!(validate_model_count(&a).is_ok());
+    }
+
+    #[test]
+    fn test_cov2_validate_model_count_large() {
+        let models: Vec<PathBuf> = (0..100).map(|i| PathBuf::from(format!("m{i}"))).collect();
+        let a = MergeArgs { models, ..mk_args(MergeMethod::Average) };
+        assert!(validate_model_count(&a).is_ok());
+    }
+
+    // ── perform_merge LoRA early error message ──────────────────────────
+
+    #[test]
+    fn test_cov2_perform_merge_lora_error_msg() {
+        let a = mk_args(MergeMethod::LoraAdapter);
+        let err = perform_merge(&[], &a).unwrap_err();
+        assert_eq!(err, "LoRA adapter merge uses dedicated path");
+    }
+
+    // ── export_merged_model to bad path ─────────────────────────────────
+
+    #[test]
+    fn test_cov2_export_json_bad_path() {
+        let m = mk(&[("w", &[1.0])]);
+        let a = MergeArgs {
+            output: PathBuf::from("/nonexistent_dir_xxxx/output.json"),
+            ..mk_args(MergeMethod::Average)
+        };
+        let result = export_merged_model(&m, &a);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to write"));
+    }
+
+    #[test]
+    fn test_cov2_export_safetensors_bad_path() {
+        let m = mk(&[("w", &[1.0])]);
+        let a = MergeArgs {
+            output: PathBuf::from("/nonexistent_dir_xxxx/output.safetensors"),
+            ..mk_args(MergeMethod::Average)
+        };
+        let result = export_merged_model(&m, &a);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to write"));
+    }
+
+    // ── export safetensors roundtrip ────────────────────────────────────
+
+    #[test]
+    fn test_cov2_export_safetensors_roundtrip() {
+        let m = mk(&[("layer1", &[1.0, 2.0, 3.0]), ("layer2", &[4.0, 5.0])]);
+        let t = std::env::temp_dir().join("ent_merge_cov2_rt.safetensors");
+        let a = MergeArgs { output: t.clone(), ..mk_args(MergeMethod::Ties) };
+        assert!(export_merged_model(&m, &a).is_ok());
+        // Read back and verify
+        let data = std::fs::read(&t).unwrap();
+        let tensors = SafeTensors::deserialize(&data).unwrap();
+        let names: Vec<&str> = tensors.names().iter().map(|s| *s).collect();
+        assert!(names.contains(&"layer1"));
+        assert!(names.contains(&"layer2"));
+        let _ = std::fs::remove_file(&t);
+    }
+
+    // ── export json with empty model ────────────────────────────────────
+
+    #[test]
+    fn test_cov2_export_json_empty_model() {
+        let m: Model = HashMap::new();
+        let t = std::env::temp_dir().join("ent_merge_cov2_empty.json");
+        let a = MergeArgs { output: t.clone(), ..mk_args(MergeMethod::Average) };
+        assert!(export_merged_model(&m, &a).is_ok());
+        let content = std::fs::read_to_string(&t).unwrap();
+        let parsed: HashMap<String, Vec<f32>> = serde_json::from_str(&content).unwrap();
+        assert!(parsed.is_empty());
+        let _ = std::fs::remove_file(&t);
+    }
+
+    // ── export safetensors with empty model ─────────────────────────────
+
+    #[test]
+    fn test_cov2_export_safetensors_empty_model() {
+        let m: Model = HashMap::new();
+        let t = std::env::temp_dir().join("ent_merge_cov2_empty.safetensors");
+        let a = MergeArgs { output: t.clone(), ..mk_args(MergeMethod::Average) };
+        assert!(export_merged_model(&m, &a).is_ok());
+        let _ = std::fs::remove_file(&t);
+    }
+
+    // ── perform_ties_merge with default density ─────────────────────────
+
+    #[test]
+    fn test_cov2_ties_merge_default_density() {
+        let a = MergeArgs { density: None, ..mk_args(MergeMethod::Ties) };
+        // density defaults to 0.2
+        let models =
+            vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.5, 2.5])]), mk(&[("w", &[1.2, 2.2])])];
+        assert!(perform_ties_merge(&models, &a).is_ok());
+    }
+
+    // ── perform_dare_merge with default density ─────────────────────────
+
+    #[test]
+    fn test_cov2_dare_merge_default_density() {
+        let a = MergeArgs { density: None, ..mk_args(MergeMethod::Dare) };
+        // density defaults to 0.5 → drop_prob = 0.5
+        let models = vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.5, 2.5])])];
+        assert!(perform_dare_merge(&models, &a).is_ok());
+    }
+
+    // ── perform_slerp_merge with default weight ─────────────────────────
+
+    #[test]
+    fn test_cov2_slerp_merge_default_weight() {
+        let a = MergeArgs { weight: None, ..mk_args(MergeMethod::Slerp) };
+        let models = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
+        let result = perform_slerp_merge(&models, &a);
+        assert!(result.is_ok());
+    }
+
+    // ── slerp with single model → error ─────────────────────────────────
+
+    #[test]
+    fn test_cov2_slerp_single_model() {
+        let a = mk_args(MergeMethod::Slerp);
+        let models = vec![mk(&[("w", &[1.0])])];
+        let err = perform_slerp_merge(&models, &a).unwrap_err();
+        assert!(err.contains("SLERP requires exactly 2"));
+    }
+
+    // ── run_merge with LoRA routes to lora function ─────────────────────
+
+    #[test]
+    fn test_cov2_run_merge_lora_missing_both() {
+        let a = MergeArgs {
+            method: MergeMethod::LoraAdapter,
+            base: None,
+            adapter: None,
+            ..mk_args(MergeMethod::LoraAdapter)
+        };
+        let err = run_merge(a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("--base required"));
+    }
+
+    #[test]
+    fn test_cov2_run_merge_lora_has_base_no_adapter() {
+        let a = MergeArgs {
+            method: MergeMethod::LoraAdapter,
+            base: Some(PathBuf::from("/tmp/some_base")),
+            adapter: None,
+            ..mk_args(MergeMethod::LoraAdapter)
+        };
+        let err = run_merge(a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("--adapter required"));
+    }
+
+    // ── load_single_model with empty file ───────────────────────────────
+
+    #[test]
+    fn test_cov2_load_single_model_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.safetensors");
+        std::fs::write(&path, b"").unwrap();
+        let err = load_single_model(&path).unwrap_err();
+        assert!(err.contains("Failed to parse"));
+    }
+
+    // ── load_single_model with garbage data ─────────────────────────────
+
+    #[test]
+    fn test_cov2_load_single_model_garbage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("garbage.safetensors");
+        std::fs::write(&path, b"this is not a safetensors file at all").unwrap();
+        let err = load_single_model(&path).unwrap_err();
+        assert!(err.contains("Failed to parse"));
+    }
+
+    // ── run_merge models don't exist → load error ───────────────────────
+
+    #[test]
+    fn test_cov2_run_merge_first_model_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = MergeArgs {
+            models: vec![
+                dir.path().join("no_exist_1.safetensors"),
+                dir.path().join("no_exist_2.safetensors"),
+            ],
+            output: dir.path().join("out.json"),
+            method: MergeMethod::Average,
+            ..mk_args(MergeMethod::Average)
+        };
+        let err = run_merge(a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("Failed to read"));
+    }
+
+    // ── log functions with all log levels ────────────────────────────────
+
+    #[test]
+    fn test_cov2_log_merge_start_quiet() {
+        let a = MergeArgs {
+            models: vec![PathBuf::from("m1"), PathBuf::from("m2"), PathBuf::from("m3")],
+            output: PathBuf::from("out.safetensors"),
+            ..mk_args(MergeMethod::Dare)
+        };
+        log_merge_start(&a, LogLevel::Quiet);
+    }
+
+    #[test]
+    fn test_cov2_log_merge_complete_quiet() {
+        let m = mk(&[("w", &[1.0, 2.0, 3.0])]);
+        let a = MergeArgs {
+            output: PathBuf::from("merged.safetensors"),
+            ..mk_args(MergeMethod::Average)
+        };
+        log_merge_complete(&m, &a, LogLevel::Quiet);
+    }
+
+    // ── average merge with multiple tensors per model ───────────────────
+
+    #[test]
+    fn test_cov2_average_merge_multi_tensor() {
+        let a = mk_args(MergeMethod::Average);
+        let m1 = mk(&[("a", &[1.0, 2.0]), ("b", &[3.0])]);
+        let m2 = mk(&[("a", &[3.0, 4.0]), ("b", &[5.0])]);
+        let result = perform_average_merge(&[m1, m2], &a).unwrap();
+        let a_vals = result["a"].data().as_slice().unwrap().to_vec();
+        let b_vals = result["b"].data().as_slice().unwrap().to_vec();
+        assert!((a_vals[0] - 2.0).abs() < 1e-6);
+        assert!((a_vals[1] - 3.0).abs() < 1e-6);
+        assert!((b_vals[0] - 4.0).abs() < 1e-6);
+    }
+
+    // ── slerp merge with custom weight ──────────────────────────────────
+
+    #[test]
+    fn test_cov2_slerp_merge_weight_0() {
+        let a = MergeArgs { weight: Some(0.0), ..mk_args(MergeMethod::Slerp) };
+        let models = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
+        let result = perform_slerp_merge(&models, &a).unwrap();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
+        // t=0 should give model 0's values
+        assert!((vals[0] - 1.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_cov2_slerp_merge_weight_1() {
+        let a = MergeArgs { weight: Some(1.0), ..mk_args(MergeMethod::Slerp) };
+        let models = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
+        let result = perform_slerp_merge(&models, &a).unwrap();
+        let vals = result["w"].data().as_slice().unwrap().to_vec();
+        // t=1 should give model 1's values
+        assert!((vals[1] - 1.0).abs() < 0.1);
+    }
+
+    // ── ties merge with explicit density close to 1.0 ───────────────────
+
+    #[test]
+    fn test_cov2_ties_merge_high_density() {
+        let a = MergeArgs { density: Some(0.99), ..mk_args(MergeMethod::Ties) };
+        let models = vec![
+            mk(&[("w", &[1.0, 2.0, 3.0])]),
+            mk(&[("w", &[1.1, 2.1, 3.1])]),
+            mk(&[("w", &[1.2, 2.2, 3.2])]),
+        ];
+        assert!(perform_ties_merge(&models, &a).is_ok());
+    }
+
+    // ── dare merge with density close to 0 ──────────────────────────────
+
+    #[test]
+    fn test_cov2_dare_merge_low_density() {
+        let a = MergeArgs { density: Some(0.01), ..mk_args(MergeMethod::Dare) };
+        let models = vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.5, 2.5])])];
+        assert!(perform_dare_merge(&models, &a).is_ok());
+    }
+
+    // ── LoRA merge: adapter dir exists, has config, but no model.safetensors ─
+
+    #[test]
+    fn test_cov2_lora_adapter_config_exists_no_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base.safetensors");
+        std::fs::write(&base, b"fake").unwrap();
+        let adapter_dir = dir.path().join("adapter");
+        std::fs::create_dir_all(&adapter_dir).unwrap();
+        std::fs::write(adapter_dir.join("adapter_config.json"), r#"{"r":8}"#).unwrap();
+        // No adapter_model.safetensors
+        let a = MergeArgs {
+            base: Some(base),
+            adapter: Some(adapter_dir),
+            ..mk_args(MergeMethod::LoraAdapter)
+        };
+        let err = run_lora_adapter_merge(&a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("adapter_model.safetensors"));
+    }
+
+    // ── LoRA merge: base path doesn't exist ─────────────────────────────
+
+    #[test]
+    fn test_cov2_lora_base_path_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let adapter_dir = dir.path().join("adapter");
+        std::fs::create_dir_all(&adapter_dir).unwrap();
+        let a = MergeArgs {
+            base: Some(PathBuf::from("/definitely/not/exist/base.st")),
+            adapter: Some(adapter_dir),
+            ..mk_args(MergeMethod::LoraAdapter)
+        };
+        let err = run_lora_adapter_merge(&a, LogLevel::Quiet).unwrap_err();
+        assert!(err.contains("Base model not found"));
+    }
+
+    // ── export extension detection ──────────────────────────────────────
+
+    #[test]
+    fn test_cov2_export_extension_safetensors() {
+        let m = mk(&[("w", &[1.0])]);
+        let t = std::env::temp_dir().join("ent_merge_cov2_ext.safetensors");
+        let a = MergeArgs { output: t.clone(), ..mk_args(MergeMethod::Average) };
+        assert!(export_merged_model(&m, &a).is_ok());
+        // Verify file exists and is valid safetensors
+        let data = std::fs::read(&t).unwrap();
+        assert!(SafeTensors::deserialize(&data).is_ok());
+        let _ = std::fs::remove_file(&t);
+    }
+
+    #[test]
+    fn test_cov2_export_extension_json() {
+        let m = mk(&[("w", &[1.0])]);
+        let t = std::env::temp_dir().join("ent_merge_cov2_ext.json");
+        let a = MergeArgs { output: t.clone(), ..mk_args(MergeMethod::Average) };
+        assert!(export_merged_model(&m, &a).is_ok());
+        let content = std::fs::read_to_string(&t).unwrap();
+        assert!(serde_json::from_str::<HashMap<String, Vec<f32>>>(&content).is_ok());
+        let _ = std::fs::remove_file(&t);
+    }
+
+    #[test]
+    fn test_cov2_export_extension_unknown() {
+        let m = mk(&[("w", &[1.0])]);
+        let t = std::env::temp_dir().join("ent_merge_cov2_ext.bin");
+        let a = MergeArgs { output: t.clone(), ..mk_args(MergeMethod::Average) };
+        // Unknown extension → falls through to JSON
+        assert!(export_merged_model(&m, &a).is_ok());
+        let content = std::fs::read_to_string(&t).unwrap();
+        assert!(serde_json::from_str::<HashMap<String, Vec<f32>>>(&content).is_ok());
+        let _ = std::fs::remove_file(&t);
+    }
+
+    // ── mk helper edge cases ────────────────────────────────────────────
+
+    #[test]
+    fn test_cov2_mk_empty_model() {
+        let model = mk(&[]);
+        assert!(model.is_empty());
+    }
+
+    #[test]
+    fn test_cov2_mk_single_empty_tensor() {
+        let model = mk(&[("empty", &[])]);
+        assert_eq!(model.len(), 1);
+        assert_eq!(model["empty"].len(), 0);
+    }
+
+    // ── perform_merge dispatch coverage ─────────────────────────────────
+
+    #[test]
+    fn test_cov2_perform_merge_all_methods() {
+        // Ties
+        let models3 =
+            vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.1, 2.1])]), mk(&[("w", &[1.2, 2.2])])];
+        assert!(perform_merge(&models3, &mk_args(MergeMethod::Ties)).is_ok());
+
+        // Dare
+        let models2 = vec![mk(&[("w", &[1.0, 2.0])]), mk(&[("w", &[1.5, 2.5])])];
+        assert!(perform_merge(&models2, &mk_args(MergeMethod::Dare)).is_ok());
+
+        // Slerp
+        let models_s = vec![mk(&[("w", &[1.0, 0.0])]), mk(&[("w", &[0.0, 1.0])])];
+        assert!(perform_merge(
+            &models_s,
+            &MergeArgs { weight: Some(0.5), ..mk_args(MergeMethod::Slerp) }
+        )
+        .is_ok());
+
+        // Average
+        let models_a = vec![mk(&[("w", &[2.0])]), mk(&[("w", &[4.0])])];
+        assert!(perform_merge(&models_a, &mk_args(MergeMethod::Average)).is_ok());
+
+        // LoraAdapter → error
+        assert!(perform_merge(&[], &mk_args(MergeMethod::LoraAdapter)).is_err());
+    }
+
+    // ── large tensor export/import roundtrip ────────────────────────────
+
+    #[test]
+    fn test_cov2_large_tensor_roundtrip() {
+        let large_data: Vec<f32> = (0..1000).map(|i| i as f32 * 0.001).collect();
+        let m = mk(&[("big", large_data.as_slice())]);
+        let t = std::env::temp_dir().join("ent_merge_cov2_large.json");
+        let a = MergeArgs { output: t.clone(), ..mk_args(MergeMethod::Average) };
+        assert!(export_merged_model(&m, &a).is_ok());
+        let content = std::fs::read_to_string(&t).unwrap();
+        let parsed: HashMap<String, Vec<f32>> = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed["big"].len(), 1000);
+        assert!((parsed["big"][500] - 0.5).abs() < 1e-3);
+        let _ = std::fs::remove_file(&t);
+    }
 }

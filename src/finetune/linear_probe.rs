@@ -1093,4 +1093,425 @@ mod tests {
         let loss_10 = probe.train(&embeddings, &labels, 10, 0.01, None, 0.0);
         assert!(loss_10 < loss_1 + 0.5, "training should reduce loss");
     }
+
+    // ── test_cov4 additional coverage tests ────────────────────────
+
+    #[test]
+    fn test_cov4_multiclass_mcc_perfect_3class() {
+        // Perfect 3-class predictions
+        let preds = vec![0, 0, 1, 1, 2, 2];
+        let labels = vec![0, 0, 1, 1, 2, 2];
+        let metrics = evaluate(&preds, &labels, 3);
+        assert!((metrics.accuracy - 1.0).abs() < 1e-5);
+        assert!(metrics.mcc > 0.9, "Perfect 3-class should have high MCC, got {}", metrics.mcc);
+    }
+
+    #[test]
+    fn test_cov4_multiclass_mcc_random_3class() {
+        // Completely wrong predictions
+        let preds = vec![1, 2, 0, 2, 0, 1];
+        let labels = vec![0, 0, 1, 1, 2, 2];
+        let metrics = evaluate(&preds, &labels, 3);
+        assert!(metrics.mcc < 0.1, "Random 3-class MCC should be near 0, got {}", metrics.mcc);
+    }
+
+    #[test]
+    fn test_cov4_multiclass_mcc_4class() {
+        let preds = vec![0, 1, 2, 3, 0, 1, 2, 3];
+        let labels = vec![0, 1, 2, 3, 0, 1, 2, 3];
+        let metrics = evaluate(&preds, &labels, 4);
+        assert!((metrics.mcc - 1.0).abs() < 1e-5);
+        assert_eq!(metrics.num_samples, 8);
+    }
+
+    #[test]
+    fn test_cov4_binary_mcc_all_tp() {
+        // All positive, all predicted positive
+        assert_eq!(binary_mcc(100, 0, 0, 0), 0.0); // denom = 0
+    }
+
+    #[test]
+    fn test_cov4_binary_mcc_all_tn() {
+        // All negative, all predicted negative
+        assert_eq!(binary_mcc(0, 100, 0, 0), 0.0); // denom = 0
+    }
+
+    #[test]
+    fn test_cov4_binary_mcc_worst() {
+        // All predictions wrong
+        assert!((binary_mcc(0, 0, 50, 50) - (-1.0)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_binary_mcc_asymmetric() {
+        // TP=80, TN=10, FP=5, FN=5
+        let mcc = binary_mcc(80, 10, 5, 5);
+        assert!(mcc > 0.0 && mcc < 1.0, "Asymmetric MCC should be between 0 and 1, got {mcc}");
+    }
+
+    #[test]
+    fn test_cov4_evaluate_all_same_prediction() {
+        // All predict class 0, mixed true labels
+        let preds = vec![0, 0, 0, 0, 0];
+        let labels = vec![0, 0, 1, 1, 1];
+        let metrics = evaluate(&preds, &labels, 2);
+        assert!((metrics.accuracy - 0.4).abs() < 1e-5);
+        assert_eq!(metrics.recall[0], 1.0); // all class-0 detected
+        assert_eq!(metrics.recall[1], 0.0); // no class-1 detected
+    }
+
+    #[test]
+    fn test_cov4_evaluate_empty() {
+        let metrics = evaluate(&[], &[], 2);
+        assert_eq!(metrics.num_samples, 0);
+        assert!((metrics.accuracy - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_evaluate_precision() {
+        let preds = vec![0, 0, 1, 1, 1];
+        let labels = vec![0, 1, 1, 1, 0];
+        let metrics = evaluate(&preds, &labels, 2);
+        // Predicted class 0: [0]=true, [1]=false → precision[0]=1/2=0.5
+        assert!((metrics.precision[0] - 0.5).abs() < 1e-5);
+        // Predicted class 1: [1]=true(2), [0]=false(1) → precision[1]=2/3
+        assert!((metrics.precision[1] - 2.0 / 3.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_evaluate_confusion_matrix() {
+        let preds = vec![0, 1, 0, 1];
+        let labels = vec![0, 1, 1, 0];
+        let metrics = evaluate(&preds, &labels, 2);
+        // cm[pred][actual]
+        assert_eq!(metrics.confusion_matrix[0][0], 1); // TP for class 0
+        assert_eq!(metrics.confusion_matrix[0][1], 1); // FN for class 1 (predicted 0)
+        assert_eq!(metrics.confusion_matrix[1][0], 1); // FP for class 0 (predicted 1)
+        assert_eq!(metrics.confusion_matrix[1][1], 1); // TP for class 1
+    }
+
+    #[test]
+    fn test_cov4_evaluate_out_of_bounds_ignored() {
+        // Labels or predictions >= num_classes should be silently skipped in cm
+        let preds = vec![0, 1, 5]; // 5 is out of bounds for num_classes=2
+        let labels = vec![0, 1, 0];
+        let metrics = evaluate(&preds, &labels, 2);
+        assert_eq!(metrics.num_samples, 3);
+        // cm should only count valid entries
+        assert_eq!(metrics.confusion_matrix[0][0], 1);
+        assert_eq!(metrics.confusion_matrix[1][1], 1);
+    }
+
+    #[test]
+    fn test_cov4_bootstrap_ci_deterministic() {
+        let preds = vec![0, 0, 1, 1, 0, 1, 0, 0, 1, 1];
+        let labels = vec![0, 0, 1, 1, 0, 0, 0, 1, 1, 1];
+        let ci1 = bootstrap_mcc_ci(&preds, &labels, 2, 50);
+        let ci2 = bootstrap_mcc_ci(&preds, &labels, 2, 50);
+        // Same seed should give same result
+        assert!((ci1.lower - ci2.lower).abs() < 1e-5);
+        assert!((ci1.upper - ci2.upper).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_bootstrap_ci_bounds() {
+        let preds = vec![0, 0, 1, 1, 0, 1];
+        let labels = vec![0, 0, 1, 1, 0, 1];
+        let ci = bootstrap_mcc_ci(&preds, &labels, 2, 200);
+        assert!(ci.lower <= ci.upper);
+        assert!(ci.lower >= -1.0);
+        assert!(ci.upper <= 1.0);
+        assert_eq!(ci.n_bootstrap, 200);
+    }
+
+    #[test]
+    fn test_cov4_confidence_scores_deterministic() {
+        let probe = LinearProbe::new(8, 2);
+        let embs = vec![vec![0.5; 8], vec![-0.5; 8]];
+        let scores1 = compute_confidence_scores(&probe, &embs);
+        let scores2 = compute_confidence_scores(&probe, &embs);
+        for (s1, s2) in scores1.iter().zip(scores2.iter()) {
+            assert_eq!(s1.predicted_class, s2.predicted_class);
+            assert!((s1.confidence - s2.confidence).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_cov4_confidence_scores_empty() {
+        let probe = LinearProbe::new(8, 2);
+        let scores = compute_confidence_scores(&probe, &[]);
+        assert!(scores.is_empty());
+    }
+
+    #[test]
+    fn test_cov4_escalation_display() {
+        assert_eq!(format!("{}", EscalationLevel::LinearProbe), "Level 0: Linear probe");
+        assert_eq!(format!("{}", EscalationLevel::TopLayers), "Level 1: Top-2 layers + head");
+        assert_eq!(format!("{}", EscalationLevel::FullFinetune), "Level 2: Full fine-tune");
+        assert_eq!(
+            format!("{}", EscalationLevel::ContinuePretrain),
+            "Level 3: Continue-pretrain + fine-tune"
+        );
+    }
+
+    #[test]
+    fn test_cov4_escalation_debug_clone() {
+        let level = EscalationLevel::TopLayers;
+        let cloned = level;
+        assert_eq!(level, cloned);
+        assert!(format!("{level:?}").contains("TopLayers"));
+    }
+
+    #[test]
+    fn test_cov4_escalate_full_to_continue() {
+        let ci = BootstrapCI { estimate: 0.2, lower: 0.1, upper: 0.3, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::FullFinetune, &ci, 0.95);
+        assert_eq!(result, Some(EscalationLevel::ContinuePretrain));
+    }
+
+    #[test]
+    fn test_cov4_escalate_full_no_escalate() {
+        let ci = BootstrapCI { estimate: 0.5, lower: 0.4, upper: 0.6, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::FullFinetune, &ci, 0.96);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_cov4_escalate_top_layers_no_escalate() {
+        let ci = BootstrapCI { estimate: 0.5, lower: 0.35, upper: 0.65, n_bootstrap: 100 };
+        let result = should_escalate(EscalationLevel::TopLayers, &ci, 0.96);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_cov4_compare_baselines_details() {
+        let comps = compare_baselines(0.5, &[("majority", 0.0), ("keyword", 0.5), ("linter", 0.6)]);
+        assert_eq!(comps[0].name, "majority");
+        assert!(comps[0].beats_baseline);
+        assert!(!comps[1].beats_baseline); // 0.5 > 0.5 is false
+        assert!(!comps[2].beats_baseline);
+        assert!((comps[0].model_mcc - 0.5).abs() < 1e-5);
+        assert!((comps[0].baseline_mcc - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_compare_baselines_empty() {
+        let comps = compare_baselines(0.5, &[]);
+        assert!(comps.is_empty());
+    }
+
+    #[test]
+    fn test_cov4_generalization_result_fields() {
+        let probe = LinearProbe::new(4, 2);
+        let embs: Vec<Vec<f32>> = (0..5).map(|_| vec![0.0; 4]).collect();
+        let result = generalization_test(&probe, &embs, 1);
+        assert_eq!(result.total, 5);
+        assert!(result.detected <= 5);
+        assert!((result.detection_rate - result.detected as f32 / 5.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_ship_gate_all_fail() {
+        let ci = BootstrapCI { estimate: 0.1, lower: 0.05, upper: 0.15, n_bootstrap: 100 };
+        let gen =
+            GeneralizationResult { total: 50, detected: 10, detection_rate: 0.2, passes: false };
+        let result = check_ship_gate(&ci, 0.90, &gen, EscalationLevel::LinearProbe);
+        assert!(!result.ship_ready);
+        assert!(!result.mcc_passes);
+        assert!(!result.accuracy_passes);
+        assert!(!result.generalization_passes);
+        assert_eq!(result.level, EscalationLevel::LinearProbe);
+    }
+
+    #[test]
+    fn test_cov4_ship_gate_fails_accuracy() {
+        let ci = BootstrapCI { estimate: 0.4, lower: 0.25, upper: 0.55, n_bootstrap: 100 };
+        let gen =
+            GeneralizationResult { total: 50, detected: 30, detection_rate: 0.6, passes: true };
+        let result = check_ship_gate(&ci, 0.90, &gen, EscalationLevel::TopLayers);
+        assert!(!result.ship_ready);
+        assert!(result.mcc_passes);
+        assert!(!result.accuracy_passes);
+        assert!(result.generalization_passes);
+        assert_eq!(result.level, EscalationLevel::TopLayers);
+    }
+
+    #[test]
+    fn test_cov4_linear_probe_predict() {
+        let probe = LinearProbe::new(8, 3);
+        let emb = Tensor::from_vec(vec![0.5; 8], false);
+        let predicted = probe.predict(&emb);
+        assert!(predicted < 3);
+    }
+
+    #[test]
+    fn test_cov4_linear_probe_num_classes() {
+        let probe = LinearProbe::new(64, 5);
+        assert_eq!(probe.num_classes(), 5);
+    }
+
+    #[test]
+    fn test_cov4_linear_probe_train_with_class_weights() {
+        let mut probe = LinearProbe::new(4, 2);
+        let embeddings =
+            vec![vec![1.0; 4]; 10].into_iter().chain(vec![vec![-1.0; 4]; 10]).collect::<Vec<_>>();
+        let labels: Vec<usize> = (0..20).map(|i| usize::from(i >= 10)).collect();
+        let weights = vec![1.0, 5.0]; // upweight class 1
+
+        let loss = probe.train(&embeddings, &labels, 5, 0.01, Some(&weights));
+        assert!(loss.is_finite());
+    }
+
+    #[test]
+    fn test_cov4_mlp_probe_predict() {
+        let probe = MlpProbe::new(8, 16, 3);
+        let emb = vec![0.1; 8];
+        let predicted = probe.predict(&emb);
+        assert!(predicted < 3);
+    }
+
+    #[test]
+    fn test_cov4_mlp_probe_predict_probs_all_positive() {
+        let probe = MlpProbe::new(4, 8, 2);
+        let probs = probe.predict_probs(&[0.5, -0.5, 1.0, -1.0]);
+        assert!(probs.iter().all(|&p| p > 0.0));
+        assert!(probs.iter().all(|&p| p <= 1.0));
+    }
+
+    #[test]
+    fn test_cov4_mlp_probe_num_parameters() {
+        let probe = MlpProbe::new(16, 8, 3);
+        // W1: 16*8 + b1: 8 + W2: 8*3 + b2: 3 = 128 + 8 + 24 + 3 = 163
+        assert_eq!(probe.num_parameters(), 16 * 8 + 8 + 8 * 3 + 3);
+    }
+
+    #[test]
+    fn test_cov4_mlp_probe_train_with_class_weights() {
+        let mut probe = MlpProbe::new(4, 8, 2);
+        let embeddings: Vec<Vec<f32>> =
+            (0..20).map(|i| if i < 10 { vec![1.0; 4] } else { vec![-1.0; 4] }).collect();
+        let labels: Vec<usize> = (0..20).map(|i| usize::from(i >= 10)).collect();
+        let weights = vec![1.0, 5.0];
+
+        let loss = probe.train(&embeddings, &labels, 5, 0.01, Some(&weights), 0.0);
+        assert!(loss.is_finite());
+    }
+
+    #[test]
+    fn test_cov4_mlp_probe_train_with_weight_decay() {
+        let mut probe = MlpProbe::new(4, 8, 2);
+        let embeddings: Vec<Vec<f32>> =
+            (0..10).map(|i| if i < 5 { vec![1.0; 4] } else { vec![-1.0; 4] }).collect();
+        let labels: Vec<usize> = (0..10).map(|i| usize::from(i >= 5)).collect();
+
+        let loss = probe.train(&embeddings, &labels, 5, 0.01, None, 0.01);
+        assert!(loss.is_finite());
+    }
+
+    #[test]
+    fn test_cov4_softmax_slice_single() {
+        let result = softmax_slice(&[0.0]);
+        assert_eq!(result.len(), 1);
+        assert!((result[0] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_cov4_softmax_slice_large_values() {
+        // Should not overflow due to max subtraction
+        let result = softmax_slice(&[1000.0, 1001.0]);
+        assert_eq!(result.len(), 2);
+        let sum: f32 = result.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5);
+        assert!(result[1] > result[0]); // higher logit → higher prob
+    }
+
+    #[test]
+    fn test_cov4_softmax_slice_equal() {
+        let result = softmax_slice(&[1.0, 1.0, 1.0]);
+        for &p in &result {
+            assert!((p - 1.0 / 3.0).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn test_cov4_classification_metrics_clone() {
+        let m = ClassificationMetrics {
+            mcc: 0.5,
+            accuracy: 0.9,
+            recall: vec![0.8, 0.7],
+            precision: vec![0.85, 0.75],
+            num_samples: 100,
+            confusion_matrix: vec![vec![40, 10], vec![5, 45]],
+        };
+        let m2 = m.clone();
+        assert!((m2.mcc - 0.5).abs() < 1e-5);
+        assert_eq!(m2.num_samples, 100);
+        assert!(format!("{m2:?}").contains("ClassificationMetrics"));
+    }
+
+    #[test]
+    fn test_cov4_bootstrap_ci_clone() {
+        let ci = BootstrapCI { estimate: 0.5, lower: 0.3, upper: 0.7, n_bootstrap: 1000 };
+        let ci2 = ci;
+        assert!((ci2.estimate - 0.5).abs() < 1e-5);
+        assert!(format!("{ci:?}").contains("BootstrapCI"));
+    }
+
+    #[test]
+    fn test_cov4_confidence_score_clone() {
+        let s =
+            ConfidenceScore { predicted_class: 1, confidence: 0.8, probabilities: vec![0.2, 0.8] };
+        let s2 = s.clone();
+        assert_eq!(s2.predicted_class, 1);
+        assert!((s2.confidence - 0.8).abs() < 1e-5);
+        assert!(format!("{s2:?}").contains("ConfidenceScore"));
+    }
+
+    #[test]
+    fn test_cov4_generalization_result_clone() {
+        let r =
+            GeneralizationResult { total: 20, detected: 15, detection_rate: 0.75, passes: true };
+        let r2 = r.clone();
+        assert!(r2.passes);
+        assert_eq!(r2.total, 20);
+        assert!(format!("{r2:?}").contains("GeneralizationResult"));
+    }
+
+    #[test]
+    fn test_cov4_baseline_comparison_clone() {
+        let b = BaselineComparison {
+            name: "test".to_string(),
+            baseline_mcc: 0.3,
+            model_mcc: 0.5,
+            beats_baseline: true,
+        };
+        let b2 = b.clone();
+        assert!(b2.beats_baseline);
+        assert!(format!("{b2:?}").contains("BaselineComparison"));
+    }
+
+    #[test]
+    fn test_cov4_ship_gate_result_clone() {
+        let r = ShipGateResult {
+            mcc_passes: true,
+            accuracy_passes: true,
+            generalization_passes: false,
+            ship_ready: false,
+            level: EscalationLevel::LinearProbe,
+        };
+        let r2 = r.clone();
+        assert!(!r2.ship_ready);
+        assert!(format!("{r2:?}").contains("ShipGateResult"));
+    }
+
+    #[test]
+    fn test_cov4_multiclass_mcc_single_class() {
+        // Edge case: all predictions and labels same class
+        let preds = vec![0, 0, 0, 0];
+        let labels = vec![0, 0, 0, 0];
+        let metrics = evaluate(&preds, &labels, 3);
+        assert!((metrics.accuracy - 1.0).abs() < 1e-5);
+        // MCC is 0 when only one class is present (denom = 0)
+        assert!(metrics.mcc.abs() < 1e-5 || metrics.mcc.is_finite());
+    }
 }

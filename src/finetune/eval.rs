@@ -538,4 +538,98 @@ fn test_add() {
         assert!(has_edge_case_tests("test min boundary"));
         assert!(has_edge_case_tests("empty string \"\""));
     }
+
+    #[test]
+    fn test_evaluate_with_mutation() {
+        let eval = TestEvaluator::default();
+        let func = "add";
+        let tests = "fn test_add() { assert_eq!(1+1, 2); }";
+        let result = eval.evaluate(func, tests);
+        // Whether it compiles depends on rustfmt, but structure should be valid
+        assert_eq!(result.function, "add");
+        assert!(!result.generated_tests.is_empty());
+    }
+
+    #[test]
+    fn test_evaluate_batch_with_mutation() {
+        let eval = TestEvaluator::default();
+        let samples = vec![("func_a".to_string(), "#[test]\nfn t() {}".to_string())];
+        let metrics = eval.evaluate_batch(&samples);
+        assert!(metrics.compile_rate >= 0.0);
+        assert!(metrics.inference_latency_ms > 0.0);
+    }
+
+    #[test]
+    fn test_check_compile_invalid_code() {
+        let eval = TestEvaluator::new(std::env::temp_dir());
+        let result = eval.evaluate("bad", "this is not valid rust {{{");
+        // Should fail to compile
+        assert!(!result.compile_errors.is_empty() || !result.compiles);
+    }
+
+    #[test]
+    fn test_eval_result_no_compilation() {
+        let result = EvalResult {
+            function: "fn x() {}".into(),
+            generated_tests: String::new(),
+            compiles: false,
+            compile_errors: vec!["error".into()],
+            tests_passed: 0,
+            tests_failed: 0,
+            mutants_killed: 0,
+            mutants_total: 0,
+        };
+        assert!(!result.compilation_success());
+        assert_eq!(result.test_pass_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_eval_metrics_below_minimum() {
+        let metrics = EvalMetrics {
+            compile_rate: 0.5,
+            test_pass_rate: 0.5,
+            mutation_score: 0.5,
+            ..Default::default()
+        };
+        assert!(!metrics.meets_minimum());
+        assert!(!metrics.meets_target());
+        assert!(!metrics.meets_stretch());
+    }
+
+    #[test]
+    fn test_evaluator_default() {
+        let eval = TestEvaluator::default();
+        assert!(eval.run_mutation);
+        assert_eq!(eval.mutation_sample_size, 50);
+    }
+
+    #[test]
+    fn test_run_mutation_tests_mock() {
+        let eval = TestEvaluator::default().mutation_sample(10);
+        let result = eval.evaluate("fn x() {}", "#[test]\nfn t() {}");
+        // mutation_sample_size=10, min(10,20)=10, killed≈72% of 10=7
+        if result.compiles {
+            assert!(result.mutants_total <= 10);
+        }
+    }
+
+    #[test]
+    fn test_has_edge_case_overflow_underflow() {
+        assert!(has_edge_case_tests("test_overflow_handling"));
+        assert!(has_edge_case_tests("check underflow case"));
+        assert!(has_edge_case_tests("boundary conditions"));
+        assert!(has_edge_case_tests("test with &[]"));
+    }
+
+    #[test]
+    fn test_contains_tautology_no_match() {
+        assert!(!contains_tautology("assert_eq!(result, 42)"));
+        assert!(!contains_tautology("let x = compute(); assert!(x > 0);"));
+    }
+
+    #[test]
+    fn test_has_meaningful_assertions_only_tautology() {
+        // Has assertion but it's a tautology
+        assert!(!has_meaningful_assertions("assert!(true); assert_eq!(0, 0)"));
+    }
 }

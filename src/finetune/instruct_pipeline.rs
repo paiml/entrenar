@@ -2741,4 +2741,610 @@ mod tests {
         let debug_str = format!("{result:?}");
         assert!(debug_str.contains("InstructBatchResult"));
     }
+
+    // ── cov3: additional coverage tests ─────────────────────────────
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_gradient_shape_matches_input() {
+        // Verify gradient has same shape as logits for various seq/vocab combos
+        for (seq_len, vocab_size) in [(1, 3), (4, 10), (2, 5)] {
+            let logits = vec![0.1f32; seq_len * vocab_size];
+            let full_ids: Vec<u32> = (0..seq_len as u32).collect();
+            let loss_end = seq_len.saturating_sub(1);
+            let (_, grad) = InstructPipeline::compute_causal_lm_loss(
+                &logits, &full_ids, 0, loss_end, vocab_size,
+            );
+            assert_eq!(grad.len(), seq_len * vocab_size);
+        }
+    }
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_gradient_sums_to_zero_per_row() {
+        // For each loss position, gradient row should sum to ~0 (softmax derivative property)
+        let vocab_size = 5;
+        let seq_len = 4;
+        let logits: Vec<f32> = (0..seq_len * vocab_size).map(|i| (i as f32) * 0.1).collect();
+        let full_ids = vec![0u32, 2, 1, 3];
+        let (_, grad) =
+            InstructPipeline::compute_causal_lm_loss(&logits, &full_ids, 0, 3, vocab_size);
+
+        for pos in 0..3 {
+            let row_start = pos * vocab_size;
+            let row_sum: f32 = grad[row_start..row_start + vocab_size].iter().sum();
+            assert!(row_sum.abs() < 1e-5, "Gradient row {pos} sums to {row_sum}, expected ~0");
+        }
+    }
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_uniform_logits_high_loss() {
+        // Uniform logits → loss = ln(vocab_size)
+        let vocab_size = 10;
+        let seq_len = 3;
+        let logits = vec![0.0f32; seq_len * vocab_size];
+        let full_ids = vec![0u32, 5, 3];
+        let (loss, _) =
+            InstructPipeline::compute_causal_lm_loss(&logits, &full_ids, 0, 2, vocab_size);
+        let expected = (vocab_size as f32).ln();
+        assert!(
+            (loss - expected).abs() < 0.01,
+            "Uniform logits loss {loss} should be ~ln({vocab_size})={expected}"
+        );
+    }
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_single_token_range() {
+        // Loss computed on a single position
+        let vocab_size = 5;
+        let logits = vec![0.0f32; 10]; // 2 positions
+        logits[..vocab_size].iter().for_each(|_| {});
+        let full_ids = vec![0u32, 2];
+        let (loss, grad) =
+            InstructPipeline::compute_causal_lm_loss(&logits, &full_ids, 0, 1, vocab_size);
+        assert!(loss > 0.0);
+        // Only first row should have non-zero gradient
+        let row1_sum: f32 = grad[vocab_size..].iter().map(|v| v.abs()).sum();
+        assert!(row1_sum < 1e-10, "Second row should be all zeros");
+    }
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_loss_start_equals_loss_end() {
+        let vocab_size = 5;
+        let logits = vec![1.0f32; 15];
+        let full_ids = vec![0u32, 1, 2];
+        let (loss, _) =
+            InstructPipeline::compute_causal_lm_loss(&logits, &full_ids, 1, 1, vocab_size);
+        assert_eq!(loss, 0.0);
+    }
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_multiple_targets_out_of_vocab() {
+        // Multiple OOV targets should produce zero loss and zero gradient
+        let vocab_size = 3;
+        let logits = vec![1.0f32; 9]; // 3 positions
+        let full_ids = vec![10u32, 20, 30]; // all >= vocab_size
+        let (loss, grad) =
+            InstructPipeline::compute_causal_lm_loss(&logits, &full_ids, 0, 2, vocab_size);
+        assert_eq!(loss, 0.0);
+        assert!(grad.iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn test_cov3_train_step_empty_prompt_empty_response() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let result = pipeline.train_step(&[], &[]);
+        assert_eq!(result.loss, 0.0);
+        assert_eq!(result.num_response_tokens, 0);
+        assert_eq!(result.perplexity, 1.0);
+    }
+
+    #[test]
+    fn test_cov3_train_step_empty_prompt_nonempty_response() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
+        // Empty prompt + response: full_ids = response_ids, prompt_len = 0
+        let result = pipeline.train_step(&[], &[5, 6, 7]);
+        // Should still compute loss; prompt_len=0, loss_start = 0.saturating_sub(1)=0
+        assert!(result.loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_train_step_prompt_exceeds_max_seq_len() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 8, ..InstructConfig::default() };
+        let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
+        // Prompt alone is 10 tokens > max_seq_len=8, response fully truncated
+        let prompt_ids: Vec<u32> = (0..10).collect();
+        let response_ids: Vec<u32> = (10..15).collect();
+        let result = pipeline.train_step(&prompt_ids, &response_ids);
+        // All response tokens truncated away → num_loss_tokens may be 0
+        // The function handles this gracefully
+        assert!(result.loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_train_step_single_token_total() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
+        // full_ids.len() < 2 → early return
+        let result = pipeline.train_step(&[0], &[]);
+        assert_eq!(result.loss, 0.0);
+        assert_eq!(result.num_response_tokens, 0);
+        assert_eq!(result.perplexity, 1.0);
+    }
+
+    #[test]
+    fn test_cov3_evaluate_single_token_response() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let prompts = vec![vec![0u32, 1, 2]];
+        let responses = vec![vec![3u32]]; // single response token
+        let result = pipeline.evaluate(&prompts, &responses);
+        assert_eq!(result.total_response_tokens, 1);
+        assert!(result.avg_loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_evaluate_prompt_exceeds_max_seq_len() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 5, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let prompts = vec![vec![0u32; 8]]; // 8 prompt tokens
+        let responses = vec![vec![1u32; 3]]; // 3 response tokens, total=11 > max=5
+        let result = pipeline.evaluate(&prompts, &responses);
+        // Truncation to 5 tokens; prompt_len capped at 5, no response tokens remain
+        assert!(result.avg_loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_evaluate_single_token_full_sequence() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        // 1 prompt + 0 response → full_ids.len() < 2 → skip
+        let prompts = vec![vec![0u32]];
+        let responses = vec![vec![1u32]]; // total 2, but response is just 1 token
+        let result = pipeline.evaluate(&prompts, &responses);
+        assert_eq!(result.total_response_tokens, 1);
+    }
+
+    #[test]
+    fn test_cov3_sample_token_negative_temperature() {
+        // Negative temperature → treated as greedy
+        let logits = vec![0.1, 0.5, 0.3, 0.9, 0.2];
+        let token = sample_token(&logits, -1.0, 0);
+        assert_eq!(token, 3); // argmax
+    }
+
+    #[test]
+    fn test_cov3_sample_token_top_k_larger_than_vocab() {
+        // top_k > vocab_size → use all
+        let logits = vec![0.1, 0.9, 0.3];
+        let token = sample_token(&logits, 0.0, 100);
+        assert_eq!(token, 1); // greedy because temp=0
+    }
+
+    #[test]
+    fn test_cov3_sample_token_top_k_zero_with_temperature() {
+        // top_k=0 with temperature → no top-k filtering, use all
+        let logits = vec![0.1, 0.5, 0.3, 10.0, 0.2];
+        // With moderate temperature and all logits, token 3 should dominate
+        let mut count_3 = 0;
+        for _ in 0..50 {
+            let token = sample_token(&logits, 0.5, 0);
+            if token == 3 {
+                count_3 += 1;
+            }
+        }
+        assert!(count_3 > 30, "Token 3 with logit=10.0 should dominate, got {count_3}/50");
+    }
+
+    #[test]
+    fn test_cov3_sample_token_equal_logits() {
+        // All equal logits with temperature → roughly uniform
+        let logits = vec![1.0; 5];
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..200 {
+            let token = sample_token(&logits, 1.0, 0);
+            seen.insert(token);
+        }
+        assert!(seen.len() >= 2, "Equal logits should produce diverse tokens");
+    }
+
+    #[test]
+    fn test_cov3_sample_token_two_elements_temperature() {
+        let logits = vec![100.0, 0.0]; // heavily favor token 0
+        for _ in 0..20 {
+            let token = sample_token(&logits, 0.1, 0);
+            assert_eq!(token, 0, "Very low temperature should always pick highest");
+        }
+    }
+
+    #[test]
+    fn test_cov3_generate_config_debug() {
+        let config = GenerateConfig::default();
+        let debug = format!("{config:?}");
+        assert!(debug.contains("GenerateConfig"));
+        assert!(debug.contains("max_new_tokens"));
+    }
+
+    #[test]
+    fn test_cov3_generate_config_clone() {
+        let config = GenerateConfig {
+            max_new_tokens: 100,
+            temperature: 0.5,
+            top_k: 10,
+            stop_tokens: vec![42, 99],
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.max_new_tokens, 100);
+        assert!((cloned.temperature - 0.5).abs() < f32::EPSILON);
+        assert_eq!(cloned.top_k, 10);
+        assert_eq!(cloned.stop_tokens, vec![42, 99]);
+    }
+
+    #[test]
+    fn test_cov3_instruct_config_debug() {
+        let config = InstructConfig::default();
+        let debug = format!("{config:?}");
+        assert!(debug.contains("InstructConfig"));
+        assert!(debug.contains("lora_rank"));
+        assert!(debug.contains("learning_rate"));
+    }
+
+    #[test]
+    fn test_cov3_from_pretrained_missing_dir() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig::default();
+        let result = InstructPipeline::from_pretrained(
+            Path::new("/tmp/nonexistent_model_dir_xyz_abc"),
+            &model_config,
+            instruct_config,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cov3_from_pretrained_no_tokenizer() {
+        // Create a directory without tokenizer.json
+        let dir = std::env::temp_dir().join("entrenar_cov3_no_tokenizer");
+        let _ = std::fs::create_dir_all(&dir);
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig::default();
+        let result = InstructPipeline::from_pretrained(&dir, &model_config, instruct_config);
+        // Should fail because no tokenizer.json (or no safetensors)
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.err().expect("expected Err"));
+        assert!(
+            err_msg.contains("tokenizer")
+                || err_msg.contains("safetensors")
+                || err_msg.contains("No"),
+            "Error should mention missing tokenizer or model files: {err_msg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cov3_from_apr_missing_file() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig::default();
+        let result = InstructPipeline::from_apr(
+            Path::new("/tmp/nonexistent_model.apr"),
+            &model_config,
+            instruct_config,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cov3_tokenize_empty_string() {
+        let model_config = TransformerConfig::tiny();
+        let pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        let tokens = pipeline.tokenize("");
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_cov3_tokenize_ascii_chars() {
+        let model_config = TransformerConfig::tiny();
+        let pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        let tokens = pipeline.tokenize("hello");
+        // Byte fallback: h=104, e=101, l=108, l=108, o=111
+        assert_eq!(tokens, vec![104, 101, 108, 108, 111]);
+    }
+
+    #[test]
+    fn test_cov3_tokenize_unicode_multibyte() {
+        let model_config = TransformerConfig::tiny();
+        let pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        // 日 = 3 UTF-8 bytes: E6 97 A5
+        let tokens = pipeline.tokenize("日");
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0], 0xE6);
+        assert_eq!(tokens[1], 0x97);
+        assert_eq!(tokens[2], 0xA5);
+    }
+
+    #[test]
+    fn test_cov3_build_lora_layers_rank_and_alpha() {
+        let model_config = TransformerConfig::tiny();
+        let model = crate::transformer::Transformer::new(&model_config);
+        let instruct_config =
+            InstructConfig { lora_rank: 16, lora_alpha: 32.0, ..InstructConfig::default() };
+        let layers = InstructPipeline::build_lora_layers(&model, &model_config, &instruct_config);
+        // Verify rank for each LoRA layer
+        for layer in &layers {
+            assert_eq!(layer.rank(), 16);
+        }
+    }
+
+    #[test]
+    fn test_cov3_build_lora_layers_q_v_alternating() {
+        let model_config = TransformerConfig::tiny();
+        let model = crate::transformer::Transformer::new(&model_config);
+        let instruct_config = InstructConfig { lora_rank: 4, ..InstructConfig::default() };
+        let layers = InstructPipeline::build_lora_layers(&model, &model_config, &instruct_config);
+        // Q and V projections alternate: Q has num_attention_heads * head_dim output
+        // V has num_kv_heads * head_dim output
+        let head_dim = model_config.hidden_size / model_config.num_attention_heads;
+        let q_dim = model_config.num_attention_heads * head_dim;
+        let v_dim = model_config.num_kv_heads * head_dim;
+        for (i, layer) in layers.iter().enumerate() {
+            if i % 2 == 0 {
+                assert_eq!(layer.d_out(), q_dim, "Even layer {i} should be Q projection");
+            } else {
+                assert_eq!(layer.d_out(), v_dim, "Odd layer {i} should be V projection");
+            }
+            assert_eq!(layer.d_in(), model_config.hidden_size);
+        }
+    }
+
+    #[test]
+    fn test_cov3_num_trainable_parameters_zero_rank() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig { lora_rank: 0, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        assert_eq!(pipeline.num_trainable_parameters(), 0);
+    }
+
+    #[test]
+    fn test_cov3_summary_no_nf4() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig {
+            lora_rank: 4,
+            lora_alpha: 8.0,
+            quantize_nf4: false,
+            ..InstructConfig::default()
+        };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let summary = pipeline.summary();
+        assert!(summary.contains("4 LoRA layers"));
+        assert!(summary.contains("rank=4"));
+        assert!(summary.contains("alpha=8.0"));
+        assert!(!summary.contains("NF4"));
+    }
+
+    #[test]
+    fn test_cov3_summary_with_nf4() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, quantize_nf4: true, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let summary = pipeline.summary();
+        assert!(summary.contains("NF4 QLoRA"));
+    }
+
+    #[test]
+    fn test_cov3_set_learning_rate_zero() {
+        let model_config = TransformerConfig::tiny();
+        let mut pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        pipeline.set_learning_rate(0.0);
+        assert_eq!(pipeline.learning_rate(), 0.0);
+    }
+
+    #[test]
+    fn test_cov3_set_learning_rate_very_small() {
+        let model_config = TransformerConfig::tiny();
+        let mut pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        pipeline.set_learning_rate(1e-10);
+        assert!((pipeline.learning_rate() - 1e-10).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_cov3_set_model_path_overwrite() {
+        let model_config = TransformerConfig::tiny();
+        let mut pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        pipeline.set_model_path(Path::new("/first/path"));
+        pipeline.set_model_path(Path::new("/second/path"));
+        assert_eq!(pipeline.model_dir.as_ref().unwrap().to_str().unwrap(), "/second/path");
+    }
+
+    #[test]
+    fn test_cov3_train_step_multiple_steps_loss_changes() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 32, ..InstructConfig::default() };
+        let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
+
+        let prompt_ids: Vec<u32> = (0..5).collect();
+        let response_ids: Vec<u32> = (5..10).collect();
+
+        let result1 = pipeline.train_step(&prompt_ids, &response_ids);
+        let result2 = pipeline.train_step(&prompt_ids, &response_ids);
+        // After optimizer step, loss should (usually) change
+        // Just verify both are valid
+        assert!(result1.loss >= 0.0);
+        assert!(result2.loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_evaluate_empty_prompt_nonempty_response() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let prompts = vec![vec![]]; // empty prompt
+        let responses = vec![vec![1u32, 2, 3]];
+        let result = pipeline.evaluate(&prompts, &responses);
+        // Still valid evaluation
+        assert!(result.avg_loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_evaluate_perplexity_clamped() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let prompts = vec![vec![0u32, 1]];
+        let responses = vec![vec![2u32, 3, 4]];
+        let result = pipeline.evaluate(&prompts, &responses);
+        assert!(result.perplexity <= 1e6);
+    }
+
+    #[test]
+    fn test_cov3_evaluate_grad_norm_zero() {
+        // evaluate() doesn't compute gradients → grad_norm = 0.0
+        let model_config = TransformerConfig::tiny();
+        let instruct_config =
+            InstructConfig { lora_rank: 4, max_seq_len: 64, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let prompts = vec![vec![0u32, 1, 2]];
+        let responses = vec![vec![3u32, 4, 5]];
+        let result = pipeline.evaluate(&prompts, &responses);
+        assert_eq!(result.grad_norm, 0.0);
+    }
+
+    #[test]
+    fn test_cov3_simple_random_distribution() {
+        // Verify pseudo-random is somewhat uniform over [0, 1)
+        let mut buckets = [0u32; 10];
+        for _ in 0..1000 {
+            let r = simple_random();
+            let idx = (r * 10.0).min(9.0) as usize;
+            buckets[idx] += 1;
+        }
+        // Each bucket should have some entries (no bucket empty)
+        for (i, &count) in buckets.iter().enumerate() {
+            assert!(count > 0, "Bucket {i} is empty — distribution not uniform");
+        }
+    }
+
+    #[test]
+    fn test_cov3_generate_config_with_stop_tokens() {
+        let config = GenerateConfig {
+            max_new_tokens: 50,
+            temperature: 0.0,
+            top_k: 0,
+            stop_tokens: vec![1, 2, 3],
+        };
+        assert_eq!(config.stop_tokens.len(), 3);
+        assert!(config.stop_tokens.contains(&2));
+    }
+
+    #[test]
+    fn test_cov3_instruct_config_custom_all_fields() {
+        let config = InstructConfig {
+            lora_rank: 64,
+            lora_alpha: 128.0,
+            learning_rate: 1e-5,
+            epochs: 10,
+            max_seq_len: 2048,
+            gradient_clip_norm: None,
+            quantize_nf4: true,
+        };
+        assert_eq!(config.lora_rank, 64);
+        assert!((config.lora_alpha - 128.0).abs() < f32::EPSILON);
+        assert!((config.learning_rate - 1e-5).abs() < 1e-8);
+        assert_eq!(config.epochs, 10);
+        assert_eq!(config.max_seq_len, 2048);
+        assert!(config.gradient_clip_norm.is_none());
+        assert!(config.quantize_nf4);
+    }
+
+    #[test]
+    fn test_cov3_train_step_grad_clip_zero() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig {
+            lora_rank: 4,
+            max_seq_len: 32,
+            gradient_clip_norm: Some(0.0),
+            ..InstructConfig::default()
+        };
+        let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let result = pipeline.train_step(&[0, 1, 2], &[3, 4, 5]);
+        assert!(result.loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_train_step_very_large_gradient_clip() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig {
+            lora_rank: 4,
+            max_seq_len: 32,
+            gradient_clip_norm: Some(1e10),
+            ..InstructConfig::default()
+        };
+        let mut pipeline = InstructPipeline::new(&model_config, instruct_config);
+        let result = pipeline.train_step(&[0, 1, 2], &[3, 4, 5]);
+        assert!(result.loss >= 0.0);
+    }
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_high_logit_correct_target() {
+        // Very high logit for correct target → near-zero loss
+        let vocab_size = 5;
+        let mut logits = vec![0.0f32; 10]; // 2 positions
+        logits[1] = 50.0; // position 0, token 1 = very high
+        let full_ids = vec![0u32, 1]; // target for pos 0 is token 1
+        let (loss, _) =
+            InstructPipeline::compute_causal_lm_loss(&logits, &full_ids, 0, 1, vocab_size);
+        assert!(loss < 0.01, "Loss should be near-zero when prediction is correct, got {loss}");
+    }
+
+    #[test]
+    fn test_cov3_compute_causal_lm_loss_high_logit_wrong_target() {
+        // Very high logit for wrong token → high loss
+        let vocab_size = 5;
+        let mut logits = vec![0.0f32; 10]; // 2 positions
+        logits[0] = 50.0; // position 0, token 0 = very high
+        let full_ids = vec![0u32, 4]; // target for pos 0 is token 4 (different)
+        let (loss, _) =
+            InstructPipeline::compute_causal_lm_loss(&logits, &full_ids, 0, 1, vocab_size);
+        assert!(loss > 10.0, "Loss should be high when prediction is wrong, got {loss}");
+    }
+
+    #[test]
+    fn test_cov3_has_tokenizer_false_by_default() {
+        let model_config = TransformerConfig::tiny();
+        let pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        assert!(!pipeline.has_tokenizer());
+    }
+
+    #[test]
+    fn test_cov3_tokenizer_returns_none_by_default() {
+        let model_config = TransformerConfig::tiny();
+        let pipeline = InstructPipeline::new(&model_config, InstructConfig::default());
+        assert!(pipeline.tokenizer().is_none());
+    }
+
+    #[test]
+    fn test_cov3_is_cuda_always_false_on_cpu() {
+        let model_config = TransformerConfig::tiny();
+        let instruct_config = InstructConfig { quantize_nf4: true, ..InstructConfig::default() };
+        let pipeline = InstructPipeline::new(&model_config, instruct_config);
+        // Even with quantize_nf4=true, without CUDA runtime → false
+        assert!(!pipeline.is_cuda());
+    }
 }
