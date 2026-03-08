@@ -42,6 +42,9 @@ pub fn load_model(path: impl AsRef<Path>) -> Result<Model> {
     if format == ModelFormat::SafeTensors {
         return load_safetensors(path);
     }
+    if format == ModelFormat::Apr {
+        return load_apr(path);
+    }
     #[cfg(feature = "gguf")]
     if format == ModelFormat::Gguf {
         return load_gguf(path);
@@ -60,6 +63,7 @@ pub fn load_model(path: impl AsRef<Path>) -> Result<Model> {
         ModelFormat::Yaml => serde_yaml::from_str(&content)
             .map_err(|e| Error::Serialization(format!("YAML deserialization failed: {e}")))?,
         ModelFormat::SafeTensors => unreachable!(), // Handled above
+        ModelFormat::Apr => unreachable!(),         // Handled above
         #[cfg(feature = "gguf")]
         ModelFormat::Gguf => unreachable!(), // Handled above
     };
@@ -137,6 +141,44 @@ fn load_safetensors(path: &Path) -> Result<Model> {
             let data: &[f32] = bytemuck::cast_slice(tensor_view.data());
             let tensor = Tensor::from_vec(data.to_vec(), false); // Default to no grad
             (name.to_string(), tensor)
+        })
+        .collect();
+
+    Ok(Model::new(metadata, parameters))
+}
+
+/// ALB-096: Load model from APR format (sovereign stack universal format).
+///
+/// Uses `AprReader` for atomic single-file checkpoints. Skips `__training__.*`
+/// tensors (optimizer state) — those are loaded separately by `CudaTransformerTrainer`.
+fn load_apr(path: &Path) -> Result<Model> {
+    use aprender::serialization::apr::AprReader;
+
+    let reader = AprReader::open(path)
+        .map_err(|e| Error::Serialization(format!("APR parsing failed: {e}")))?;
+
+    // Extract metadata (AprReader maps v2_meta.name → "model_name")
+    let name =
+        reader.get_metadata("model_name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+    let architecture = reader
+        .get_metadata("architecture")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let metadata = ModelMetadata::new(name, architecture);
+
+    // Load model weight tensors, skip __training__.* (optimizer state)
+    let parameters: Vec<(String, Tensor)> = reader
+        .tensors
+        .iter()
+        .filter(|td| !td.name.starts_with("__training__"))
+        .map(|td| {
+            let data = reader
+                .read_tensor_as_f32(&td.name)
+                .map_err(|e| Error::Serialization(format!("APR tensor read failed: {e}")))
+                .expect("tensor listed in descriptors must be readable");
+            (td.name.clone(), Tensor::from_vec(data, false))
         })
         .collect();
 
@@ -453,6 +495,35 @@ mod tests {
 
         // Model loading should complete in reasonable time
         assert!(loading_time.as_millis() < 5000, "load_bench: {loading_time:?}");
+
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn test_apr_round_trip() {
+        let params = vec![
+            ("layer1.weight".to_string(), Tensor::from_vec(vec![1.0, 2.0, 3.0, 4.0], true)),
+            ("layer1.bias".to_string(), Tensor::from_vec(vec![0.5, 0.6], false)),
+        ];
+
+        let original = Model::new(ModelMetadata::new("apr-test", "transformer"), params);
+
+        let temp_file = NamedTempFile::new().expect("temp file creation should succeed");
+        let temp_path = temp_file.path().with_extension("apr");
+
+        let config = SaveConfig::new(ModelFormat::Apr);
+        save_model(&original, &temp_path, &config).expect("APR save should succeed");
+
+        let loaded = load_model(&temp_path).expect("APR load should succeed");
+
+        assert_eq!(loaded.metadata.name, "apr-test");
+        assert_eq!(loaded.metadata.architecture, "transformer");
+        assert_eq!(loaded.parameters.len(), 2);
+
+        for (name, orig_tensor) in &original.parameters {
+            let loaded_tensor = loaded.get_parameter(name).expect("tensor should exist");
+            assert_eq!(orig_tensor.data(), loaded_tensor.data());
+        }
 
         std::fs::remove_file(temp_path).ok();
     }

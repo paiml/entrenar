@@ -192,7 +192,9 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
     let resolved_path = resolve_model_path(&spec.model.path)?;
 
     // Try to load model weights if path exists (ENT-117)
-    let (transformer, checkpoint_step) = load_transformer_model(&resolved_path, &model_config)?;
+    // ALB-097: Check output_dir first for checkpoint resume, then model_path for initial weights
+    let (transformer, checkpoint_step) =
+        load_transformer_model(&resolved_path, &model_config, &spec.training.output_dir)?;
 
     // Build TransformerTrainConfig from YAML spec fields
     let train_config = build_train_config(model_config, spec);
@@ -224,9 +226,13 @@ fn train_transformer_from_spec(spec: &TrainSpec) -> Result<()> {
                         "  Resumed at step {checkpoint_step} (lr={:.2e})",
                         cuda_trainer.current_lr()
                     );
-                    // Load CPU embedding optimizer state (m/v buffers + step counter)
-                    if cuda_trainer.load_optimizer_state(&spec.training.output_dir) {
-                        println!("  ✓ Embedding optimizer state restored");
+                    // ALB-096: Try APR optimizer state first, then fall back to JSON
+                    let apr_loaded = find_latest_apr_checkpoint(&spec.training.output_dir)
+                        .map_or(false, |p| cuda_trainer.load_optimizer_state_apr(&p));
+                    if apr_loaded {
+                        println!("  ✓ Embedding optimizer state restored (APR)");
+                    } else if cuda_trainer.load_optimizer_state(&spec.training.output_dir) {
+                        println!("  ✓ Embedding optimizer state restored (JSON)");
                     }
                 }
                 println!("✓ CudaTransformerTrainer initialized (GPU: {})", cuda_trainer.gpu_name());
@@ -1660,7 +1666,7 @@ fn run_validation_eval(
     Some(val_loss)
 }
 
-/// ALB-087: Save best model checkpoint (model-best.safetensors).
+/// ALB-087/ALB-096: Save best model checkpoint (APR format).
 #[cfg(feature = "cuda")]
 fn save_best_model(
     trainer: &mut CudaTransformerTrainer,
@@ -1668,8 +1674,10 @@ fn save_best_model(
     model_name: &str,
     step: usize,
 ) {
-    let best_path = spec.training.output_dir.join("model-best.safetensors");
-    let save_fn = trainer.prepare_async_save(model_name, "LlamaForCausalLM");
+    let best_path = spec.training.output_dir.join("model-best.apr");
+    let lr = trainer.current_lr();
+    let save_fn =
+        trainer.prepare_async_apr_save(model_name, "LlamaForCausalLM", step, 0.0, lr as f64);
     std::thread::spawn(move || {
         if let Err(e) = save_fn(&best_path) {
             println!("  [WARN] Failed to save model-best: {e}");
@@ -1679,7 +1687,10 @@ fn save_best_model(
     });
 }
 
-/// Save checkpoint with integrity verification, state persistence, pruning, and validation.
+/// ALB-096: Save checkpoint as APR with integrity verification and state persistence.
+///
+/// Single atomic APR file contains model weights + optimizer state + training metadata.
+/// Replaces separate `model-step-N.safetensors` + `optimizer_state.json` files.
 #[cfg(feature = "cuda")]
 #[allow(clippy::too_many_arguments)]
 fn save_and_validate_checkpoint(
@@ -1694,17 +1705,15 @@ fn save_and_validate_checkpoint(
     loss_ema: f64,
 ) {
     let ckpt_path = checkpoint_path(&spec.training.output_dir, step);
-    // R-001: Save CPU embedding optimizer state (synchronous, small file)
-    if let Err(e) = trainer.save_optimizer_state(&spec.training.output_dir) {
-        println!("  [WARN] Failed to save optimizer state: {e}");
-    }
-    // R-011: Async checkpointing — prepare data on main thread, write on background thread
-    let save_fn = trainer.prepare_async_save(model_name, "LlamaForCausalLM");
+    let lr = trainer.current_lr();
+    // ALB-096: Async APR checkpointing — model weights + optimizer state in single atomic file
+    let save_fn =
+        trainer.prepare_async_apr_save(model_name, "LlamaForCausalLM", step, loss_ema, lr as f64);
     let async_path = ckpt_path.clone();
     let async_output_dir = spec.training.output_dir.clone();
     std::thread::spawn(move || {
         if let Err(e) = save_fn(&async_path) {
-            println!("  [WARN] Async checkpoint save failed: {e}");
+            println!("  [WARN] Async APR checkpoint save failed: {e}");
         } else {
             verify_checkpoint(&async_path);
             println!("  [checkpoint] step={} saved to {}", step, async_path.display());
@@ -1772,7 +1781,7 @@ fn handle_graceful_shutdown(
 ) {
     println!("[SIGINT] Emergency checkpoint at step {}...", trainer.step());
     let ckpt_path = checkpoint_path(&spec.training.output_dir, trainer.step());
-    if let Err(e) = trainer.save(&ckpt_path, model_name, "LlamaForCausalLM") {
+    if let Err(e) = trainer.save_apr(&ckpt_path, model_name, "LlamaForCausalLM") {
         println!("  [WARN] Emergency save failed: {e}");
     } else {
         println!("  [checkpoint] emergency save to {}", ckpt_path.display());
@@ -1896,14 +1905,19 @@ fn write_jsonl_step(
     }
 }
 
-/// R-009: Generate step-numbered checkpoint path.
+/// R-009/ALB-096: Generate step-numbered checkpoint path (APR format).
 fn checkpoint_path(output_dir: &Path, step: usize) -> PathBuf {
-    output_dir.join(format!("model-step-{step}.safetensors"))
+    output_dir.join(format!("model-step-{step}.apr"))
 }
 
-/// Parse step number from a checkpoint filename like "model-step-123.safetensors".
+/// Parse step number from a checkpoint filename.
+/// Supports both APR (`model-step-123.apr`) and legacy SafeTensors (`model-step-123.safetensors`).
 fn parse_checkpoint_step(filename: &str) -> Option<usize> {
-    filename.strip_prefix("model-step-")?.strip_suffix(".safetensors")?.parse().ok()
+    filename
+        .strip_prefix("model-step-")?
+        .strip_suffix(".apr")
+        .or_else(|| filename.strip_prefix("model-step-")?.strip_suffix(".safetensors"))
+        .and_then(|s| s.parse().ok())
 }
 
 /// Log step metrics: console output, IPC snapshot, SQLite, JSONL.
@@ -2097,22 +2111,25 @@ fn save_trained_model_cuda(trainer: &mut CudaTransformerTrainer, spec: &TrainSpe
 
     std::fs::create_dir_all(&spec.training.output_dir).ok();
 
-    let weights_path = spec.training.output_dir.join("model.safetensors");
+    // ALB-096: Save final model as APR (atomic, includes optimizer state)
+    let weights_path = spec.training.output_dir.join("model.apr");
     let model_name =
         spec.model.path.file_name().and_then(|n| n.to_str()).unwrap_or("entrenar-model");
+    let final_loss = trainer.metrics.losses.last().copied().unwrap_or(0.0) as f64;
+    let lr = trainer.current_lr();
     println!("Saving model weights to {}...", weights_path.display());
-    trainer.save(&weights_path, model_name, "LlamaForCausalLM")?;
+    let save_fn = trainer.prepare_async_apr_save(
+        model_name,
+        "LlamaForCausalLM",
+        trainer.step(),
+        final_loss,
+        lr as f64,
+    );
+    save_fn(&weights_path)?;
     println!(
-        "✓ Model weights saved ({} bytes)",
+        "✓ Model weights saved ({} bytes, APR)",
         std::fs::metadata(&weights_path).map(|m| m.len()).unwrap_or(0)
     );
-
-    // R-001: Save CPU embedding optimizer state for resume
-    if let Err(e) = trainer.save_optimizer_state(&spec.training.output_dir) {
-        println!("  [WARN] Failed to save optimizer state: {e}");
-    } else {
-        println!("✓ Optimizer state saved (CPU embedding m/v buffers)");
-    }
 
     save_config_and_metadata(
         trainer.model().config(),
@@ -2304,34 +2321,61 @@ fn resolve_model_path(model_path: &Path) -> Result<PathBuf> {
     Ok(model_path.to_path_buf())
 }
 
-/// Load transformer model from SafeTensors weights if available.
+/// ALB-096: Load transformer model from APR or SafeTensors weights.
 ///
-/// Returns `(model, checkpoint_step)` where checkpoint_step is the step number
-/// parsed from the checkpoint filename (0 if loading from `model.safetensors`
-/// or random init).
+/// Tries APR first (sovereign format), then falls back to SafeTensors.
+/// Returns `(model, checkpoint_step)` where checkpoint_step is extracted
+/// from APR metadata or parsed from checkpoint filename.
 fn load_transformer_model(
     model_path: &Path,
     config: &TransformerConfig,
+    output_dir: &Path,
 ) -> Result<(Option<Transformer>, usize)> {
-    // Check if path exists and is a valid SafeTensors location
+    // ALB-097: Check output_dir first for checkpoint resume (APR, then SafeTensors)
+    if output_dir.is_dir() {
+        // Try APR first
+        if let Some(result) = try_load_apr(output_dir, config) {
+            return Ok(result);
+        }
+        // Try SafeTensors from output_dir (backward compat with pre-APR checkpoints)
+        if let Some(result) = try_load_safetensors_dir(output_dir, config) {
+            return Ok(result);
+        }
+    }
+
     if !model_path.exists() {
         println!("  Model path not found, using random initialization");
         return Ok((None, 0));
     }
 
-    // Try loading SafeTensors weights
     println!("Loading model weights from {}...", model_path.display());
 
-    // Detect checkpoint step from the file that will be loaded
-    let checkpoint_step = detect_checkpoint_step(model_path);
+    // ALB-096: Try APR format from model_path (direct .apr file or HF download)
+    if let Some(result) = try_load_apr(model_path, config) {
+        return Ok(result);
+    }
 
-    match load_safetensors_weights(model_path, Architecture::Auto) {
+    // Fallback: SafeTensors from model_path
+    if let Some(result) = try_load_safetensors_dir(model_path, config) {
+        return Ok(result);
+    }
+
+    eprintln!("Warning: No loadable checkpoint found, using random initialization");
+    Ok((None, 0))
+}
+
+/// Try loading SafeTensors checkpoint from a directory.
+/// Returns `Some((model, step))` if successful, `None` to fall back.
+fn try_load_safetensors_dir(
+    dir: &Path,
+    config: &TransformerConfig,
+) -> Option<(Option<Transformer>, usize)> {
+    let checkpoint_step = detect_checkpoint_step(dir);
+
+    match load_safetensors_weights(dir, Architecture::Auto) {
         Ok(weights) => {
-            println!("  Found {} weight tensors", weights.len());
-
-            // Try to build transformer from loaded weights
+            println!("  Found {} weight tensors (SafeTensors)", weights.len());
             if let Some(transformer) = Transformer::from_params(config, &weights) {
-                // Diagnostic: print weight statistics to verify correctness
                 let embed = &transformer.embed_tokens.weight;
                 let embed_data = embed.data();
                 let embed_slice = embed_data.as_slice().unwrap_or(&[]);
@@ -2343,37 +2387,169 @@ fn load_transformer_model(
                     let mean = embed_slice.iter().sum::<f32>() / embed_slice.len() as f32;
                     (min, max, mean)
                 };
-                println!("✓ Loaded pre-trained weights successfully");
+                println!("✓ Loaded pre-trained weights successfully (SafeTensors)");
                 if checkpoint_step > 0 {
                     println!("  Resuming from step {checkpoint_step}");
                 }
                 println!("  embed_tokens stats: min={emin:.4e} max={emax:.4e} mean={emean:.4e}");
-                return Ok((Some(transformer), checkpoint_step));
+                return Some((Some(transformer), checkpoint_step));
             }
-            eprintln!("Warning: Weight shapes don't match config, using random initialization");
-            Ok((None, 0))
+            None
         }
-        Err(e) => {
-            eprintln!("Warning: Could not load weights from {}: {}", model_path.display(), e);
-            eprintln!("Using random initialization instead");
-            Ok((None, 0))
-        }
+        Err(_) => None,
     }
 }
 
+/// ALB-096: Try to load a model from APR format.
+///
+/// Looks for `.apr` files: direct file, `model-best.apr`, or latest `model-step-*.apr`.
+/// Returns `Some((model, step))` if successful, `None` to fall back to SafeTensors.
+fn try_load_apr(
+    model_path: &Path,
+    config: &TransformerConfig,
+) -> Option<(Option<Transformer>, usize)> {
+    use aprender::serialization::apr::AprReader;
+    use std::collections::HashMap;
+
+    // Determine which APR file to load
+    let apr_path =
+        if model_path.is_file() && model_path.extension().and_then(|e| e.to_str()) == Some("apr") {
+            model_path.to_path_buf()
+        } else if model_path.is_dir() {
+            find_latest_apr_checkpoint(model_path)?
+        } else {
+            return None;
+        };
+
+    let reader = match AprReader::open(&apr_path) {
+        Ok(r) => r,
+        Err(_) => return None,
+    };
+
+    // Extract checkpoint step from APR metadata
+    let checkpoint_step = reader
+        .get_metadata("checkpoint_step")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or_else(|| {
+            apr_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(parse_checkpoint_step)
+                .unwrap_or(0)
+        });
+
+    // Load weight tensors (skip __training__.* namespace)
+    let mut weights = HashMap::new();
+    for desc in &reader.tensors {
+        let tensor_name = &desc.name;
+        if tensor_name.starts_with("__training__") {
+            continue;
+        }
+        match reader.read_tensor_as_f32(tensor_name) {
+            Ok(data) => {
+                weights.insert(tensor_name.clone(), crate::Tensor::from_vec(data, false));
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to read APR tensor '{tensor_name}': {e}");
+                return None;
+            }
+        }
+    }
+
+    println!("  Found {} weight tensors (APR)", weights.len());
+
+    let transformer = Transformer::from_params(config, &weights)?;
+
+    let embed = &transformer.embed_tokens.weight;
+    let embed_data = embed.data();
+    let embed_slice = embed_data.as_slice().unwrap_or(&[]);
+    let (emin, emax, emean) = if embed_slice.is_empty() {
+        (0.0, 0.0, 0.0)
+    } else {
+        let min = embed_slice.iter().copied().fold(f32::INFINITY, f32::min);
+        let max = embed_slice.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        let mean = embed_slice.iter().sum::<f32>() / embed_slice.len() as f32;
+        (min, max, mean)
+    };
+    println!("✓ Loaded pre-trained weights successfully (APR)");
+    if checkpoint_step > 0 {
+        println!("  Resuming from step {checkpoint_step}");
+    }
+    println!("  embed_tokens stats: min={emin:.4e} max={emax:.4e} mean={emean:.4e}");
+
+    Some((Some(transformer), checkpoint_step))
+}
+
+/// Find the latest APR checkpoint in a directory.
+///
+/// Priority: latest `model-step-N.apr` by step number. Falls back to `model-best.apr`.
+fn find_latest_apr_checkpoint(dir: &Path) -> Option<std::path::PathBuf> {
+    let mut best_step = 0usize;
+    let mut best_path = None;
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if let Some(step) = parse_checkpoint_step(name) {
+                    if step >= best_step {
+                        best_step = step;
+                        best_path = Some(path);
+                    }
+                }
+            }
+        }
+    }
+
+    if best_path.is_some() {
+        return best_path;
+    }
+
+    // Fallback: model-best.apr, then model.apr (final checkpoint)
+    let best = dir.join("model-best.apr");
+    if best.exists() {
+        return Some(best);
+    }
+    let model = dir.join("model.apr");
+    if model.exists() {
+        return Some(model);
+    }
+
+    None
+}
+
 /// Detect the step number from the latest checkpoint in a directory.
+///
+/// Checks both APR (`.apr`) and legacy SafeTensors (`.safetensors`) checkpoint files.
 fn detect_checkpoint_step(model_path: &Path) -> usize {
     use crate::transformer::weights::parse_checkpoint_step_from_path;
 
     if model_path.is_file() {
+        if let Some(name) = model_path.file_name().and_then(|n| n.to_str()) {
+            if let Some(step) = parse_checkpoint_step(name) {
+                return step;
+            }
+        }
         return parse_checkpoint_step_from_path(model_path).unwrap_or(0);
     }
     if !model_path.is_dir() {
         return 0;
     }
-    // Check for model-step-*.safetensors files
+    // Check for model-step-*.{apr,safetensors} files
     let Ok(entries) = std::fs::read_dir(model_path) else { return 0 };
-    entries.flatten().filter_map(|e| parse_checkpoint_step_from_path(&e.path())).max().unwrap_or(0)
+    let mut max_step = 0usize;
+    for entry in entries.flatten() {
+        if let Some(name) = entry.file_name().to_str() {
+            if let Some(step) = parse_checkpoint_step(name) {
+                max_step = max_step.max(step);
+            }
+        }
+        if let Some(step) = parse_checkpoint_step_from_path(&entry.path()) {
+            max_step = max_step.max(step);
+        }
+    }
+    max_step
 }
 
 /// Apply architecture overrides to a `TransformerConfig`.
@@ -4343,21 +4519,26 @@ optimizer:
     #[test]
     fn test_checkpoint_path() {
         let path = checkpoint_path(Path::new("/output"), 500);
-        assert_eq!(path, PathBuf::from("/output/model-step-500.safetensors"));
+        assert_eq!(path, PathBuf::from("/output/model-step-500.apr"));
     }
 
     #[test]
     fn test_parse_checkpoint_step_valid() {
+        // APR format (primary)
+        assert_eq!(parse_checkpoint_step("model-step-100.apr"), Some(100));
+        assert_eq!(parse_checkpoint_step("model-step-0.apr"), Some(0));
+        assert_eq!(parse_checkpoint_step("model-step-999999.apr"), Some(999_999));
+        // Legacy SafeTensors format (backward compat)
         assert_eq!(parse_checkpoint_step("model-step-100.safetensors"), Some(100));
         assert_eq!(parse_checkpoint_step("model-step-0.safetensors"), Some(0));
-        assert_eq!(parse_checkpoint_step("model-step-999999.safetensors"), Some(999_999));
     }
 
     #[test]
     fn test_parse_checkpoint_step_invalid() {
         assert_eq!(parse_checkpoint_step("model.safetensors"), None);
-        assert_eq!(parse_checkpoint_step("model-step-.safetensors"), None);
-        assert_eq!(parse_checkpoint_step("model-step-abc.safetensors"), None);
+        assert_eq!(parse_checkpoint_step("model.apr"), None);
+        assert_eq!(parse_checkpoint_step("model-step-.apr"), None);
+        assert_eq!(parse_checkpoint_step("model-step-abc.apr"), None);
         assert_eq!(parse_checkpoint_step("other-file.txt"), None);
     }
 

@@ -37,6 +37,7 @@ pub fn save_model(model: &Model, path: impl AsRef<Path>, config: &SaveConfig) ->
 
     match config.format {
         ModelFormat::SafeTensors => save_safetensors(model, path),
+        ModelFormat::Apr => save_apr(model, path),
         ModelFormat::Json => save_json(model, path, config.pretty),
         ModelFormat::Yaml => save_yaml(model, path),
         #[cfg(feature = "gguf")]
@@ -149,6 +150,39 @@ fn save_safetensors(model: &Model, path: &Path) -> Result<()> {
 
     // Write to file
     std::fs::write(path, safetensor_bytes)?;
+
+    Ok(())
+}
+
+/// ALB-096: Save model in APR format (sovereign stack universal format).
+///
+/// Uses `AprWriter` for atomic single-file checkpoints with proper 2D shapes
+/// and model metadata. Supports both model weights and `__training__.*` tensors.
+fn save_apr(model: &Model, path: &Path) -> Result<()> {
+    use aprender::serialization::apr::AprWriter;
+    use serde_json::Value as JsonValue;
+
+    let mut writer = AprWriter::new();
+
+    // Embed model metadata (keys must match AprWriter's well-known key mapping)
+    writer.set_metadata("model_name", JsonValue::String(model.metadata.name.clone()));
+    writer.set_metadata("architecture", JsonValue::String(model.metadata.architecture.clone()));
+    writer.set_metadata("version", JsonValue::String(model.metadata.version.clone()));
+    writer.set_metadata("format", JsonValue::String("entrenar-checkpoint".into()));
+
+    // Compute proper 2D shapes (same logic as SafeTensors — ALB-086)
+    let shapes = infer_all_tensor_shapes(&model.parameters);
+
+    for (name, tensor) in &model.parameters {
+        let data = tensor.data();
+        let slice = data.as_slice().expect("tensor data must be contiguous");
+        let shape = shapes.get(name).cloned().unwrap_or_else(|| vec![tensor.len()]);
+        writer.add_tensor_f32(name, shape, slice);
+    }
+
+    writer
+        .write(path)
+        .map_err(|e| Error::Serialization(format!("APR serialization failed: {e}")))?;
 
     Ok(())
 }
