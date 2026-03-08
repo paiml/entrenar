@@ -43,6 +43,8 @@ mod tests;
 mod tests_classification_contract_falsify;
 #[cfg(test)]
 mod tests_ssc_contract_falsify;
+#[cfg(test)]
+mod training_plan_tests;
 
 pub use classification::{
     bce_with_logits_loss, compute_class_weights, corpus_stats, cross_entropy_loss,

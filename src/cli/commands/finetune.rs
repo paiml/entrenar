@@ -256,3 +256,248 @@ fn print_plan_summary(plan: &crate::finetune::training_plan::TrainingPlan, level
     log(level, LogLevel::Normal, &format!("  Pre-flight: {pass} pass, {warn} warn, {fail} fail"));
     log(level, LogLevel::Normal, &format!("  Verdict: {:?}", plan.verdict));
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use crate::finetune::training_plan::{
+        CheckStatus, DataAudit, HyperparameterPlan, ModelInfo, PlanVerdict, PreFlightCheck,
+        ResourceEstimate, TrainingPlan,
+    };
+
+    fn make_plan() -> TrainingPlan {
+        TrainingPlan {
+            version: "1.0".to_string(),
+            task: "classify".to_string(),
+            data: DataAudit {
+                train_path: "/data/train.jsonl".to_string(),
+                train_samples: 1000,
+                avg_input_len: 50,
+                class_counts: vec![800, 200],
+                imbalance_ratio: 4.0,
+                auto_class_weights: true,
+                val_samples: Some(100),
+                test_samples: None,
+                duplicates: 0,
+                preamble_count: 0,
+            },
+            model: ModelInfo {
+                size: "0.5B".to_string(),
+                hidden_size: 896,
+                num_layers: 24,
+                architecture: "Qwen2".to_string(),
+                weights_available: true,
+                lora_trainable_params: 1_000_000,
+                classifier_params: 1792,
+            },
+            hyperparameters: HyperparameterPlan {
+                strategy: "tpe".to_string(),
+                budget: 10,
+                scout: false,
+                max_epochs: 5,
+                search_space_params: 6,
+                sample_configs: vec![],
+                manual: None,
+                recommendation: None,
+            },
+            resources: ResourceEstimate {
+                estimated_vram_gb: 6.5,
+                estimated_minutes_per_epoch: 2.0,
+                estimated_total_minutes: 100.0,
+                estimated_checkpoint_mb: 50.0,
+                steps_per_epoch: 32,
+                gpu_device: Some("RTX 4090".to_string()),
+            },
+            pre_flight: vec![
+                PreFlightCheck {
+                    name: "data_exists".to_string(),
+                    status: CheckStatus::Pass,
+                    detail: "ok".to_string(),
+                },
+                PreFlightCheck {
+                    name: "vram_check".to_string(),
+                    status: CheckStatus::Warn,
+                    detail: "tight".to_string(),
+                },
+            ],
+            output_dir: "/tmp/output".to_string(),
+            auto_diagnose: true,
+            verdict: PlanVerdict::WarningsPresent,
+            issues: vec![],
+        }
+    }
+
+    #[test]
+    fn test_print_plan_summary_normal() {
+        let plan = make_plan();
+        // Should not panic
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_verbose() {
+        let plan = make_plan();
+        print_plan_summary(&plan, LogLevel::Verbose);
+    }
+
+    #[test]
+    fn test_print_plan_summary_quiet() {
+        let plan = make_plan();
+        print_plan_summary(&plan, LogLevel::Quiet);
+    }
+
+    #[test]
+    fn test_print_plan_summary_no_imbalance() {
+        let mut plan = make_plan();
+        plan.data.imbalance_ratio = 1.0;
+        // imbalance_ratio <= 2.0 should skip the imbalance line
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_ready() {
+        let mut plan = make_plan();
+        plan.verdict = PlanVerdict::Ready;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_blocked() {
+        let mut plan = make_plan();
+        plan.verdict = PlanVerdict::Blocked;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_check_counts_all_pass() {
+        let mut plan = make_plan();
+        plan.pre_flight = vec![
+            PreFlightCheck { name: "a".into(), status: CheckStatus::Pass, detail: "ok".into() },
+            PreFlightCheck { name: "b".into(), status: CheckStatus::Pass, detail: "ok".into() },
+        ];
+        let (p, w, f) = plan.check_counts();
+        assert_eq!(p, 2);
+        assert_eq!(w, 0);
+        assert_eq!(f, 0);
+    }
+
+    #[test]
+    fn test_check_counts_mixed() {
+        let plan = make_plan();
+        let (p, w, f) = plan.check_counts();
+        assert_eq!(p, 1);
+        assert_eq!(w, 1);
+        assert_eq!(f, 0);
+    }
+
+    #[test]
+    fn test_check_counts_with_fail() {
+        let mut plan = make_plan();
+        plan.pre_flight.push(PreFlightCheck {
+            name: "c".into(),
+            status: CheckStatus::Fail,
+            detail: "bad".into(),
+        });
+        let (p, w, f) = plan.check_counts();
+        assert_eq!(p, 1);
+        assert_eq!(w, 1);
+        assert_eq!(f, 1);
+    }
+
+    #[test]
+    fn test_check_counts_empty() {
+        let mut plan = make_plan();
+        plan.pre_flight = vec![];
+        let (p, w, f) = plan.check_counts();
+        assert_eq!(p, 0);
+        assert_eq!(w, 0);
+        assert_eq!(f, 0);
+    }
+
+    #[test]
+    fn test_plan_yaml_roundtrip() {
+        let plan = make_plan();
+        let yaml = plan.to_yaml();
+        assert!(!yaml.is_empty());
+        let parsed = crate::finetune::training_plan::TrainingPlan::from_str(&yaml).unwrap();
+        assert_eq!(parsed.task, "classify");
+        assert_eq!(parsed.version, "1.0");
+        assert_eq!(parsed.data.train_samples, 1000);
+    }
+
+    #[test]
+    fn test_plan_json_roundtrip() {
+        let plan = make_plan();
+        let json = plan.to_json();
+        assert!(!json.is_empty());
+        let parsed = crate::finetune::training_plan::TrainingPlan::from_str(&json).unwrap();
+        assert_eq!(parsed.task, "classify");
+    }
+
+    #[test]
+    fn test_run_finetune_plan_missing_data() {
+        let args = FinetuneArgs {
+            command: FinetuneCommand::Plan {
+                data: std::path::PathBuf::from("/nonexistent/data.jsonl"),
+                model_path: None,
+                model_size: "0.5B".to_string(),
+                num_classes: 2,
+                output_dir: std::path::PathBuf::from("/tmp/ft_test_out"),
+                strategy: "manual".to_string(),
+                budget: 1,
+                scout: false,
+                max_epochs: 1,
+                lr: Some(1e-4),
+                lora_rank: Some(8),
+                batch_size: Some(32),
+                lora_alpha: None,
+                warmup: None,
+                gradient_clip: None,
+                lr_min_ratio: None,
+                class_weights: None,
+                target_modules: None,
+            },
+        };
+        // Should fail because data file doesn't exist
+        let result = run_finetune(args, LogLevel::Quiet);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_finetune_apply_missing_plan() {
+        let args = FinetuneArgs {
+            command: FinetuneCommand::Apply {
+                plan: std::path::PathBuf::from("/nonexistent/plan.yaml"),
+                model_path: std::path::PathBuf::from("/nonexistent/model"),
+                data: std::path::PathBuf::from("/nonexistent/data.jsonl"),
+                output_dir: std::path::PathBuf::from("/tmp/ft_test_out"),
+            },
+        };
+        let result = run_finetune(args, LogLevel::Quiet);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to read plan"));
+    }
+
+    #[test]
+    fn test_print_plan_summary_large_data() {
+        let mut plan = make_plan();
+        plan.data.train_samples = 1_000_000;
+        plan.data.class_counts = vec![500_000, 250_000, 200_000, 50_000];
+        plan.data.imbalance_ratio = 10.0;
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+
+    #[test]
+    fn test_print_plan_summary_many_checks() {
+        let mut plan = make_plan();
+        plan.pre_flight = vec![
+            PreFlightCheck { name: "a".into(), status: CheckStatus::Pass, detail: "ok".into() },
+            PreFlightCheck { name: "b".into(), status: CheckStatus::Pass, detail: "ok".into() },
+            PreFlightCheck { name: "c".into(), status: CheckStatus::Warn, detail: "meh".into() },
+            PreFlightCheck { name: "d".into(), status: CheckStatus::Fail, detail: "bad".into() },
+            PreFlightCheck { name: "e".into(), status: CheckStatus::Fail, detail: "worse".into() },
+        ];
+        print_plan_summary(&plan, LogLevel::Normal);
+    }
+}
