@@ -851,4 +851,428 @@ nodes:
         assert!(dst_path.join("subdir").join("b.txt").exists());
         assert_eq!(fs::read_to_string(dst_path.join("a.txt")).expect("valid"), "hello");
     }
+
+    // ── Additional coverage tests ──
+
+    #[test]
+    fn test_checkpoint_metadata_serde_roundtrip() {
+        let meta = CheckpointMetadata {
+            adapter_idx: 3,
+            epoch: 10,
+            avg_loss: 0.123,
+            val_loss: Some(0.099),
+            node_name: Some("gpu-node-1".to_string()),
+            timestamp: Some("2026-03-08T12:00:00Z".to_string()),
+        };
+        let json = serde_json::to_string(&meta).unwrap();
+        let restored: CheckpointMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.adapter_idx, 3);
+        assert_eq!(restored.epoch, 10);
+        assert!((restored.avg_loss - 0.123).abs() < f32::EPSILON);
+        assert!((restored.val_loss.unwrap() - 0.099).abs() < f32::EPSILON);
+        assert_eq!(restored.node_name.unwrap(), "gpu-node-1");
+        assert_eq!(restored.timestamp.unwrap(), "2026-03-08T12:00:00Z");
+    }
+
+    #[test]
+    fn test_checkpoint_metadata_serde_defaults() {
+        // Test deserialization with missing optional fields
+        let json = r#"{"adapter_idx":0,"epoch":1,"avg_loss":0.5}"#;
+        let meta: CheckpointMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.adapter_idx, 0);
+        assert!(meta.val_loss.is_none());
+        assert!(meta.node_name.is_none());
+        assert!(meta.timestamp.is_none());
+    }
+
+    #[test]
+    fn test_coordinator_custom_checkpoint_dirs() {
+        let cluster = test_cluster();
+        let placements = test_placements();
+        let mut dirs = HashMap::new();
+        dirs.insert(0, PathBuf::from("/custom/path/adapter-0"));
+        dirs.insert(2, PathBuf::from("/custom/path/adapter-2"));
+
+        let coord = CheckpointCoordinator::new(cluster, &placements, &dirs, 600);
+        assert_eq!(coord.adapters[&0].checkpoint_dir, PathBuf::from("/custom/path/adapter-0"));
+        assert_eq!(coord.adapters[&2].checkpoint_dir, PathBuf::from("/custom/path/adapter-2"));
+        // Adapter 1 should have auto-generated path
+        assert_eq!(coord.adapters[&1].checkpoint_dir, PathBuf::from("checkpoints/adapter-1"));
+    }
+
+    #[test]
+    fn test_coordinator_default_checkpoint_dirs() {
+        let cluster = test_cluster();
+        let placements = test_placements();
+        let dirs = HashMap::new();
+
+        let coord = CheckpointCoordinator::new(cluster, &placements, &dirs, 300);
+        for p in &placements {
+            let expected = PathBuf::from(format!("checkpoints/adapter-{}", p.adapter_idx));
+            assert_eq!(coord.adapters[&p.adapter_idx].checkpoint_dir, expected);
+        }
+    }
+
+    #[test]
+    fn test_leaderboard_uses_val_loss_when_available() {
+        let cluster = test_cluster();
+        let mut coord =
+            CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+
+        coord.adapters.get_mut(&0).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 0,
+            epoch: 5,
+            avg_loss: 1.0,
+            val_loss: Some(0.5), // val_loss should be used
+            node_name: None,
+            timestamp: None,
+        });
+
+        let board = coord.leaderboard();
+        assert_eq!(board.len(), 1);
+        assert!((board[0].loss - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_leaderboard_falls_back_to_avg_loss() {
+        let cluster = test_cluster();
+        let mut coord =
+            CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+
+        coord.adapters.get_mut(&0).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 0,
+            epoch: 5,
+            avg_loss: 1.0,
+            val_loss: None, // no val_loss, should fallback to avg_loss
+            node_name: None,
+            timestamp: None,
+        });
+
+        let board = coord.leaderboard();
+        assert_eq!(board.len(), 1);
+        assert!((board[0].loss - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_leaderboard_ranking_three_adapters() {
+        let cluster = test_cluster();
+        let mut coord =
+            CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+
+        // Set losses: adapter 0 = 0.7, adapter 1 = 0.3, adapter 2 = 0.5
+        coord.adapters.get_mut(&0).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 0,
+            epoch: 2,
+            avg_loss: 0.7,
+            val_loss: None,
+            node_name: None,
+            timestamp: None,
+        });
+        coord.adapters.get_mut(&1).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 1,
+            epoch: 3,
+            avg_loss: 0.3,
+            val_loss: None,
+            node_name: None,
+            timestamp: None,
+        });
+        coord.adapters.get_mut(&2).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 2,
+            epoch: 1,
+            avg_loss: 0.5,
+            val_loss: None,
+            node_name: None,
+            timestamp: None,
+        });
+
+        let board = coord.leaderboard();
+        assert_eq!(board.len(), 3);
+        // Ranked by loss ascending
+        assert_eq!(board[0].adapter_idx, 1); // 0.3
+        assert_eq!(board[0].rank, 1);
+        assert_eq!(board[1].adapter_idx, 2); // 0.5
+        assert_eq!(board[1].rank, 2);
+        assert_eq!(board[2].adapter_idx, 0); // 0.7
+        assert_eq!(board[2].rank, 3);
+
+        // best_adapter returns lowest loss
+        let best = coord.best_adapter().unwrap();
+        assert_eq!(best.adapter_idx, 1);
+    }
+
+    #[test]
+    fn test_format_leaderboard_empty() {
+        let cluster = test_cluster();
+        let coord = CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+        let display = coord.format_leaderboard();
+        assert_eq!(display, "No checkpoints available yet.");
+    }
+
+    #[test]
+    fn test_format_leaderboard_multiple_entries() {
+        let cluster = test_cluster();
+        let mut coord =
+            CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+
+        coord.adapters.get_mut(&0).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 0,
+            epoch: 3,
+            avg_loss: 0.5,
+            val_loss: Some(0.45),
+            node_name: None,
+            timestamp: None,
+        });
+        coord.adapters.get_mut(&1).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 1,
+            epoch: 2,
+            avg_loss: 0.8,
+            val_loss: Some(0.75),
+            node_name: None,
+            timestamp: None,
+        });
+
+        let display = coord.format_leaderboard();
+        assert!(display.contains("Adapter Leaderboard"));
+        assert!(display.contains("Rank"));
+        assert!(display.contains("Adapter"));
+        assert!(display.contains("Node"));
+        assert!(display.contains("Epoch"));
+        assert!(display.contains("Loss"));
+        assert!(display.contains("0.4500"));
+        assert!(display.contains("0.7500"));
+    }
+
+    #[test]
+    fn test_adapter_status_fields() {
+        let cluster = test_cluster();
+        let placements = test_placements();
+        let coord = CheckpointCoordinator::new(cluster, &placements, &HashMap::new(), 300);
+
+        let status = &coord.adapters[&0];
+        assert_eq!(status.adapter_idx, 0);
+        assert_eq!(status.node_name, "desktop");
+        assert!(status.latest.is_none());
+    }
+
+    #[test]
+    fn test_build_launch_command_ssh_no_user() {
+        let node = NodeConfig {
+            name: "remote".to_string(),
+            host: "gpu-server.example.com".to_string(),
+            transport: Transport::Ssh,
+            user: None,
+            gpus: vec![],
+            max_adapters: 1,
+            cpu_cores: None,
+            ram_mb: None,
+        };
+        let cmd = build_launch_command(
+            &node,
+            Path::new("/models/qwen.safetensors"),
+            Path::new("/data/train.jsonl"),
+            Path::new("/checkpoints"),
+            32,
+            5,
+        );
+        // Without user, no user@ prefix
+        assert!(cmd.starts_with("ssh gpu-server.example.com"));
+        assert!(cmd.contains("apr finetune"));
+        assert!(cmd.contains("--rank 32"));
+        assert!(cmd.contains("--epochs 5"));
+    }
+
+    #[test]
+    fn test_poll_result_debug_ok() {
+        let result = PollResult::Ok {
+            adapter_idx: 0,
+            metadata: CheckpointMetadata {
+                adapter_idx: 0,
+                epoch: 1,
+                avg_loss: 0.5,
+                val_loss: None,
+                node_name: None,
+                timestamp: None,
+            },
+        };
+        let debug = format!("{result:?}");
+        assert!(debug.contains("Ok"));
+    }
+
+    #[test]
+    fn test_poll_result_debug_error() {
+        let result = PollResult::Error {
+            adapter_idx: 1,
+            node_name: "node1".to_string(),
+            error: "connection refused".to_string(),
+        };
+        let debug = format!("{result:?}");
+        assert!(debug.contains("Error"));
+        assert!(debug.contains("connection refused"));
+    }
+
+    #[test]
+    fn test_node_health_debug() {
+        let health = NodeHealth {
+            node_name: "test-node".to_string(),
+            reachable: true,
+            apr_version: Some("1.0.0".to_string()),
+            error: None,
+        };
+        let debug = format!("{health:?}");
+        assert!(debug.contains("test-node"));
+        assert!(debug.contains("1.0.0"));
+    }
+
+    #[test]
+    fn test_node_health_unreachable() {
+        let health = NodeHealth {
+            node_name: "offline-node".to_string(),
+            reachable: false,
+            apr_version: None,
+            error: Some("connection timeout".to_string()),
+        };
+        assert!(!health.reachable);
+        assert!(health.error.is_some());
+        assert!(health.apr_version.is_none());
+    }
+
+    #[test]
+    fn test_copy_dir_recursive_nested() {
+        let src = tempfile::tempdir().unwrap();
+        let deep = src.path().join("a").join("b").join("c");
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(deep.join("deep.txt"), "deep content").unwrap();
+        fs::write(src.path().join("root.txt"), "root").unwrap();
+
+        let dst = tempfile::tempdir().unwrap();
+        let dst_path = dst.path().join("output");
+        copy_dir_recursive(src.path(), &dst_path).unwrap();
+
+        assert!(dst_path.join("root.txt").exists());
+        assert!(dst_path.join("a").join("b").join("c").join("deep.txt").exists());
+        assert_eq!(
+            fs::read_to_string(dst_path.join("a").join("b").join("c").join("deep.txt")).unwrap(),
+            "deep content"
+        );
+    }
+
+    #[test]
+    fn test_copy_dir_recursive_nonexistent_src() {
+        let dst = tempfile::tempdir().unwrap();
+        let result = copy_dir_recursive(Path::new("/nonexistent/path"), &dst.path().join("out"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_local_metadata_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = read_local_metadata(dir.path());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("failed to read"));
+    }
+
+    #[test]
+    fn test_read_local_metadata_invalid_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let best_dir = dir.path().join("best");
+        fs::create_dir_all(&best_dir).unwrap();
+        fs::write(best_dir.join("metadata.json"), "not valid json").unwrap();
+        let result = read_local_metadata(dir.path());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("failed to parse"));
+    }
+
+    #[test]
+    fn test_read_local_metadata_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let best_dir = dir.path().join("best");
+        fs::create_dir_all(&best_dir).unwrap();
+        let meta = CheckpointMetadata {
+            adapter_idx: 42,
+            epoch: 7,
+            avg_loss: 0.123,
+            val_loss: Some(0.111),
+            node_name: Some("gpu-0".to_string()),
+            timestamp: Some("2026-01-01".to_string()),
+        };
+        fs::write(best_dir.join("metadata.json"), serde_json::to_string(&meta).unwrap()).unwrap();
+        let result = read_local_metadata(dir.path()).unwrap();
+        assert_eq!(result.adapter_idx, 42);
+        assert_eq!(result.epoch, 7);
+    }
+
+    #[test]
+    fn test_poll_all_updates_adapter_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let best_dir = dir.path().join("best");
+        fs::create_dir_all(&best_dir).unwrap();
+        let meta = CheckpointMetadata {
+            adapter_idx: 0,
+            epoch: 10,
+            avg_loss: 0.22,
+            val_loss: Some(0.19),
+            node_name: None,
+            timestamp: None,
+        };
+        fs::write(best_dir.join("metadata.json"), serde_json::to_string(&meta).unwrap()).unwrap();
+
+        let cluster = test_cluster();
+        let placements = vec![PlacementDecision {
+            adapter_idx: 0,
+            node_name: "desktop".to_string(),
+            score: 1.0,
+        }];
+        let mut dirs = HashMap::new();
+        dirs.insert(0, dir.path().to_path_buf());
+        let mut coord = CheckpointCoordinator::new(cluster, &placements, &dirs, 60);
+
+        // Before poll, latest is None
+        assert!(coord.adapters[&0].latest.is_none());
+
+        let results = coord.poll_all();
+        assert_eq!(results.len(), 1);
+
+        // After poll, latest should be populated
+        let latest = coord.adapters[&0].latest.as_ref().unwrap();
+        assert_eq!(latest.epoch, 10);
+        assert!((latest.avg_loss - 0.22).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_leaderboard_entry_fields() {
+        let entry = LeaderboardEntry {
+            rank: 1,
+            adapter_idx: 5,
+            node_name: "gpu-node".to_string(),
+            epoch: 15,
+            loss: 0.123,
+        };
+        assert_eq!(entry.rank, 1);
+        assert_eq!(entry.adapter_idx, 5);
+        assert_eq!(entry.node_name, "gpu-node");
+        assert_eq!(entry.epoch, 15);
+        assert!((entry.loss - 0.123).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_leaderboard_nan_loss_handling() {
+        let cluster = test_cluster();
+        let mut coord =
+            CheckpointCoordinator::new(cluster, &test_placements(), &HashMap::new(), 300);
+
+        // NaN in val_loss should still produce a leaderboard entry
+        coord.adapters.get_mut(&0).unwrap().latest = Some(CheckpointMetadata {
+            adapter_idx: 0,
+            epoch: 1,
+            avg_loss: f32::NAN,
+            val_loss: Some(f32::NAN),
+            node_name: None,
+            timestamp: None,
+        });
+
+        let board = coord.leaderboard();
+        assert_eq!(board.len(), 1);
+    }
 }

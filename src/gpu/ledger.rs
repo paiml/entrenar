@@ -702,4 +702,376 @@ mod tests {
 
         cleanup(&path);
     }
+
+    // ── Additional coverage tests ──
+
+    #[test]
+    fn test_capacity_mb_discrete() {
+        let path = test_ledger_path();
+        let ledger = VramLedger::new("GPU-test".into(), 24000, RESERVE_FACTOR_DISCRETE)
+            .with_path(path.clone());
+        // 24000 * 0.85 = 20400
+        assert_eq!(ledger.capacity_mb(), 20400);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_capacity_mb_unified() {
+        let path = test_ledger_path();
+        let ledger = VramLedger::new("GPU-test".into(), 8192, RESERVE_FACTOR_UNIFIED)
+            .with_path(path.clone());
+        // 8192 * 0.60 = 4915.2 -> 4915
+        assert_eq!(ledger.capacity_mb(), 4915);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_with_lease_hours_custom() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85)
+            .with_path(path.clone())
+            .with_lease_hours(48);
+
+        let id = ledger.try_reserve(1000, "long-lease").expect("should succeed");
+        assert!(id != 0);
+        // After 10ms with 48h lease, reservation should still be active
+        std::thread::sleep(Duration::from_millis(10));
+        assert_eq!(ledger.total_reserved().expect("should succeed"), 1000);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_multiple_reservations_same_gpu() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+
+        ledger.try_reserve(5000, "job-1").expect("should succeed");
+        // Reserved should be 5000, available should be capacity - 5000
+        assert_eq!(ledger.total_reserved().expect("ok"), 5000);
+        assert_eq!(ledger.available_mb().expect("ok"), 15400);
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_read_reservations_returns_our_gpu_only() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+
+        ledger.try_reserve(3000, "gpu-test-job").expect("should succeed");
+        let reservations = ledger.read_reservations().expect("should succeed");
+        assert_eq!(reservations.len(), 1);
+        assert_eq!(reservations[0].budget_mb, 3000);
+        assert_eq!(reservations[0].gpu_uuid, "GPU-test");
+        assert_eq!(reservations[0].task, "gpu-test-job");
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_update_actual_without_reservation_is_noop() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+
+        // No reservation, update_actual is a no-op
+        let result = ledger.update_actual(5000);
+        assert!(result.is_ok());
+        assert_eq!(ledger.total_reserved().expect("ok"), 0);
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_release_without_reservation_is_noop() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+
+        // No reservation, release is a no-op
+        let result = ledger.release();
+        assert!(result.is_ok());
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_drop_releases_reservation() {
+        let path = test_ledger_path();
+        {
+            let mut ledger =
+                VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+            ledger.try_reserve(5000, "drop-test").expect("should succeed");
+            assert_eq!(ledger.total_reserved().expect("ok"), 5000);
+            // Drop happens here
+        }
+
+        // After drop, a new ledger should show the reservation gone
+        // (since the process is still alive, the reservation may or may not be pruned
+        //  depending on timing, but the explicit release in Drop should have removed it)
+        let ledger = VramLedger::new("GPU-test".into(), 24000, 0.85).with_path(path.clone());
+        let reserved = ledger.total_reserved().expect("ok");
+        assert_eq!(reserved, 0);
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_reservation_is_expired_zero_lease() {
+        let now = chrono::Utc::now();
+        let reservation = Reservation {
+            id: 123,
+            pid: std::process::id(),
+            budget_mb: 1000,
+            actual_mb: None,
+            task: "test".to_string(),
+            gpu_uuid: "GPU-test".to_string(),
+            started: now - chrono::Duration::seconds(10),
+            lease_expires: now - chrono::Duration::seconds(1), // already expired
+        };
+        assert!(reservation.is_expired());
+        assert!(reservation.should_prune());
+    }
+
+    #[test]
+    fn test_reservation_is_alive_current_process() {
+        let now = chrono::Utc::now();
+        let reservation = Reservation {
+            id: 123,
+            pid: std::process::id(), // current process is alive
+            budget_mb: 1000,
+            actual_mb: None,
+            task: "test".to_string(),
+            gpu_uuid: "GPU-test".to_string(),
+            started: now,
+            lease_expires: now + chrono::Duration::hours(24),
+        };
+        assert!(reservation.is_alive());
+        assert!(!reservation.is_expired());
+        assert!(!reservation.should_prune());
+    }
+
+    #[test]
+    fn test_reservation_is_alive_dead_process() {
+        let now = chrono::Utc::now();
+        let reservation = Reservation {
+            id: 123,
+            pid: u32::MAX, // extremely unlikely to be a real PID
+            budget_mb: 1000,
+            actual_mb: None,
+            task: "dead-process".to_string(),
+            gpu_uuid: "GPU-test".to_string(),
+            started: now,
+            lease_expires: now + chrono::Duration::hours(24),
+        };
+        assert!(!reservation.is_alive());
+        assert!(reservation.should_prune());
+    }
+
+    #[test]
+    fn test_ledger_data_total_reserved_for() {
+        let now = chrono::Utc::now();
+        let data = LedgerData {
+            reservations: vec![
+                Reservation {
+                    id: 1,
+                    pid: std::process::id(),
+                    budget_mb: 3000,
+                    actual_mb: None,
+                    task: "a".to_string(),
+                    gpu_uuid: "GPU-A".to_string(),
+                    started: now,
+                    lease_expires: now + chrono::Duration::hours(1),
+                },
+                Reservation {
+                    id: 2,
+                    pid: std::process::id(),
+                    budget_mb: 5000,
+                    actual_mb: Some(4500),
+                    task: "b".to_string(),
+                    gpu_uuid: "GPU-A".to_string(),
+                    started: now,
+                    lease_expires: now + chrono::Duration::hours(1),
+                },
+                Reservation {
+                    id: 3,
+                    pid: std::process::id(),
+                    budget_mb: 2000,
+                    actual_mb: None,
+                    task: "c".to_string(),
+                    gpu_uuid: "GPU-B".to_string(),
+                    started: now,
+                    lease_expires: now + chrono::Duration::hours(1),
+                },
+            ],
+        };
+        // GPU-A: 3000 (budget, no actual) + 4500 (actual) = 7500
+        assert_eq!(data.total_reserved_for("GPU-A"), 7500);
+        // GPU-B: 2000
+        assert_eq!(data.total_reserved_for("GPU-B"), 2000);
+        // GPU-C: 0
+        assert_eq!(data.total_reserved_for("GPU-C"), 0);
+    }
+
+    #[test]
+    fn test_ledger_data_prune_dead() {
+        let now = chrono::Utc::now();
+        let mut data = LedgerData {
+            reservations: vec![
+                // This one is expired
+                Reservation {
+                    id: 1,
+                    pid: std::process::id(),
+                    budget_mb: 1000,
+                    actual_mb: None,
+                    task: "expired".to_string(),
+                    gpu_uuid: "GPU-A".to_string(),
+                    started: now - chrono::Duration::hours(2),
+                    lease_expires: now - chrono::Duration::seconds(1),
+                },
+                // This one is alive and not expired
+                Reservation {
+                    id: 2,
+                    pid: std::process::id(),
+                    budget_mb: 2000,
+                    actual_mb: None,
+                    task: "alive".to_string(),
+                    gpu_uuid: "GPU-A".to_string(),
+                    started: now,
+                    lease_expires: now + chrono::Duration::hours(24),
+                },
+                // This one has a dead PID
+                Reservation {
+                    id: 3,
+                    pid: u32::MAX,
+                    budget_mb: 3000,
+                    actual_mb: None,
+                    task: "dead".to_string(),
+                    gpu_uuid: "GPU-A".to_string(),
+                    started: now,
+                    lease_expires: now + chrono::Duration::hours(24),
+                },
+            ],
+        };
+        data.prune_dead();
+        assert_eq!(data.reservations.len(), 1);
+        assert_eq!(data.reservations[0].task, "alive");
+    }
+
+    #[test]
+    fn test_reservation_id_varies_with_pid() {
+        let now = chrono::Utc::now();
+        let id1 = reservation_id("GPU-abc", 100, now);
+        let id2 = reservation_id("GPU-abc", 200, now);
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_reservation_id_varies_with_time() {
+        let now = chrono::Utc::now();
+        let later = now + chrono::Duration::seconds(1);
+        let id1 = reservation_id("GPU-abc", 100, now);
+        let id2 = reservation_id("GPU-abc", 100, later);
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_gpu_status_display_no_reservations() {
+        let path = test_ledger_path();
+        let ledger = VramLedger::new("GPU-no-res".into(), 16000, 0.85).with_path(path.clone());
+
+        let status = gpu_status_display(&ledger).expect("should succeed");
+        assert!(status.contains("GPU-no-res"));
+        assert!(status.contains("16000 MB total"));
+        assert!(status.contains("Reservations: none"));
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_gpu_status_display_with_actual_mb() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-act".into(), 24000, 0.85).with_path(path.clone());
+
+        ledger.try_reserve(8000, "actual-test").expect("should succeed");
+        ledger.update_actual(7500).expect("should succeed");
+
+        let status = gpu_status_display(&ledger).expect("should succeed");
+        assert!(status.contains("7500 MB actual"));
+        assert!(status.contains("actual-test"));
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_memory_type_reserve_factor_values() {
+        assert_eq!(MemoryType::Discrete.reserve_factor(), RESERVE_FACTOR_DISCRETE);
+        assert_eq!(MemoryType::Unified.reserve_factor(), RESERVE_FACTOR_UNIFIED);
+    }
+
+    #[test]
+    fn test_memory_type_equality() {
+        assert_eq!(MemoryType::Discrete, MemoryType::Discrete);
+        assert_eq!(MemoryType::Unified, MemoryType::Unified);
+        assert_ne!(MemoryType::Discrete, MemoryType::Unified);
+    }
+
+    #[test]
+    fn test_ensure_parent_dir_existing() {
+        let dir = tempfile::tempdir().expect("ok");
+        let path = dir.path().join("subdir").join("ledger.json");
+        ensure_parent_dir(&path).expect("should succeed");
+        assert!(path.parent().expect("ok").exists());
+    }
+
+    #[test]
+    fn test_reserve_exact_capacity() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-test".into(), 10000, 0.85).with_path(path.clone());
+        // capacity = 8500
+        let result = ledger.try_reserve(8500, "exact-fit");
+        assert!(result.is_ok());
+        assert_eq!(ledger.available_mb().expect("ok"), 0);
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_reserve_one_over_capacity() {
+        let path = test_ledger_path();
+        let mut ledger = VramLedger::new("GPU-test".into(), 10000, 0.85).with_path(path.clone());
+        // capacity = 8500, request 8501 should fail
+        let result = ledger.try_reserve(8501, "too-big");
+        assert!(result.is_err());
+
+        cleanup(&path);
+    }
+
+    #[test]
+    fn test_ledger_default_path() {
+        let ledger = VramLedger::new("GPU-test".into(), 24000, 0.85);
+        // Default path should be under cache dir
+        let path_str = format!("{}", ledger.path.display());
+        assert!(path_str.contains("gpu-ledger.json"));
+    }
+
+    #[test]
+    fn test_reservation_serde_roundtrip() {
+        let now = chrono::Utc::now();
+        let reservation = Reservation {
+            id: 42,
+            pid: 12345,
+            budget_mb: 8000,
+            actual_mb: Some(7500),
+            task: "serde-test".to_string(),
+            gpu_uuid: "GPU-0000".to_string(),
+            started: now,
+            lease_expires: now + chrono::Duration::hours(24),
+        };
+        let json = serde_json::to_string(&reservation).expect("serialize");
+        let restored: Reservation = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored.id, 42);
+        assert_eq!(restored.pid, 12345);
+        assert_eq!(restored.budget_mb, 8000);
+        assert_eq!(restored.actual_mb, Some(7500));
+        assert_eq!(restored.task, "serde-test");
+    }
 }

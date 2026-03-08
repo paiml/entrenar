@@ -681,4 +681,483 @@ mod tests {
         assert_eq!(log.entries().len(), 1);
         assert!(log.entries()[0].transfer_agreement.contains("adequacy_decision"));
     }
+
+    // ── Additional coverage tests ─────────────────────────────────────
+
+    #[test]
+    fn test_data_classification_display_all_variants() {
+        assert_eq!(DataClassification::Public.to_string(), "PUBLIC");
+        assert_eq!(DataClassification::Internal.to_string(), "INTERNAL");
+        assert_eq!(DataClassification::Confidential.to_string(), "CONFIDENTIAL");
+        assert_eq!(DataClassification::Sovereign.to_string(), "SOVEREIGN");
+    }
+
+    #[test]
+    fn test_residency_config_default() {
+        let config = ResidencyConfig::default();
+        assert!(config.is_region_allowed("local"));
+        assert!(!config.is_region_allowed("us-west-2"));
+        assert!(config.network_isolation);
+        assert!(config.enforce_at_runtime);
+    }
+
+    #[test]
+    fn test_residency_config_multiple_regions() {
+        let config = ResidencyConfig {
+            allowed_regions: vec![
+                "us-east-1".to_string(),
+                "eu-west-1".to_string(),
+                "local".to_string(),
+            ],
+            network_isolation: false,
+            enforce_at_runtime: false,
+        };
+        assert!(config.is_region_allowed("us-east-1"));
+        assert!(config.is_region_allowed("eu-west-1"));
+        assert!(config.is_region_allowed("local"));
+        assert!(!config.is_region_allowed("ap-southeast-1"));
+        assert!(!config.network_isolation);
+        assert!(!config.enforce_at_runtime);
+    }
+
+    #[test]
+    fn test_api_allowlist_default() {
+        let allowlist = ApiAllowlist::default();
+        assert!(allowlist.offline_mode);
+        assert!(allowlist.allowed_endpoints.is_empty());
+        assert!(!allowlist.is_allowed("any-endpoint"));
+    }
+
+    #[test]
+    fn test_api_allowlist_with_endpoints() {
+        let mut endpoints = HashSet::new();
+        endpoints.insert("https://api.example.com".to_string());
+        endpoints.insert("https://api2.example.com".to_string());
+        let allowlist = ApiAllowlist { allowed_endpoints: endpoints, offline_mode: false };
+        assert!(allowlist.is_allowed("https://api.example.com"));
+        assert!(allowlist.is_allowed("https://api2.example.com"));
+        assert!(!allowlist.is_allowed("https://evil.com"));
+    }
+
+    #[test]
+    fn test_api_allowlist_offline_mode_overrides_endpoints() {
+        let mut endpoints = HashSet::new();
+        endpoints.insert("https://api.example.com".to_string());
+        let allowlist = ApiAllowlist { allowed_endpoints: endpoints, offline_mode: true };
+        // Even though endpoint is in allowlist, offline_mode blocks it
+        assert!(!allowlist.is_allowed("https://api.example.com"));
+    }
+
+    #[test]
+    fn test_audit_trail_empty() {
+        let trail = AuditTrail::new();
+        assert!(trail.is_empty());
+        assert_eq!(trail.len(), 0);
+        assert!(trail.verify_integrity()); // empty trail is valid
+        assert!(trail.entries().is_empty());
+    }
+
+    #[test]
+    fn test_audit_trail_default() {
+        let trail = AuditTrail::default();
+        assert!(trail.is_empty());
+        assert_eq!(trail.len(), 0);
+    }
+
+    #[test]
+    fn test_audit_trail_single_entry() {
+        let mut trail = AuditTrail::new();
+        let entry = trail.append("test_event", "test_data", DataClassification::Public);
+        assert_eq!(entry.sequence, 0);
+        assert_eq!(entry.event_type, "test_event");
+        assert_eq!(entry.data, "test_data");
+        assert_eq!(entry.classification, DataClassification::Public);
+        assert_eq!(entry.prev_hash, "genesis");
+        assert!(!entry.hash.is_empty());
+        assert_eq!(trail.len(), 1);
+        assert!(!trail.is_empty());
+        assert!(trail.verify_integrity());
+    }
+
+    #[test]
+    fn test_audit_trail_tamper_hash() {
+        let mut trail = AuditTrail::new();
+        trail.append("event_1", "data_1", DataClassification::Public);
+        trail.append("event_2", "data_2", DataClassification::Internal);
+        assert!(trail.verify_integrity());
+
+        // Tamper with the hash directly
+        trail.entries[0].hash = "tampered_hash".to_string();
+        assert!(!trail.verify_integrity());
+    }
+
+    #[test]
+    fn test_audit_trail_tamper_prev_hash_genesis() {
+        let mut trail = AuditTrail::new();
+        trail.append("event_1", "data_1", DataClassification::Public);
+        assert!(trail.verify_integrity());
+
+        // Tamper with genesis prev_hash
+        trail.entries[0].prev_hash = "not_genesis".to_string();
+        assert!(!trail.verify_integrity());
+    }
+
+    #[test]
+    fn test_audit_trail_tamper_chain_middle() {
+        let mut trail = AuditTrail::new();
+        trail.append("a", "1", DataClassification::Public);
+        trail.append("b", "2", DataClassification::Internal);
+        trail.append("c", "3", DataClassification::Sovereign);
+        assert!(trail.verify_integrity());
+
+        // Break chain between entry 1 and 2
+        trail.entries[2].prev_hash = "wrong_hash".to_string();
+        assert!(!trail.verify_integrity());
+    }
+
+    #[test]
+    fn test_audit_trail_classifications() {
+        let mut trail = AuditTrail::new();
+        trail.append("public_op", "pub", DataClassification::Public);
+        trail.append("internal_op", "int", DataClassification::Internal);
+        trail.append("confidential_op", "conf", DataClassification::Confidential);
+        trail.append("sovereign_op", "sov", DataClassification::Sovereign);
+
+        assert_eq!(trail.len(), 4);
+        assert_eq!(trail.entries()[0].classification, DataClassification::Public);
+        assert_eq!(trail.entries()[1].classification, DataClassification::Internal);
+        assert_eq!(trail.entries()[2].classification, DataClassification::Confidential);
+        assert_eq!(trail.entries()[3].classification, DataClassification::Sovereign);
+        assert!(trail.verify_integrity());
+    }
+
+    #[test]
+    fn test_weight_sovereignty_config_fields() {
+        let config = WeightSovereigntyConfig::default();
+        assert!(!config.encryption_required);
+        assert!(config.access_control);
+        match &config.key_source {
+            KeySource::EnvVar(var) => assert_eq!(var, "ALBOR_ENCRYPT_KEY"),
+            _ => panic!("Expected EnvVar key source"),
+        }
+    }
+
+    #[test]
+    fn test_key_source_variants() {
+        let file_key = KeySource::File("/path/to/key".to_string());
+        let env_key = KeySource::EnvVar("MY_KEY".to_string());
+        let none_key = KeySource::None;
+
+        assert!(matches!(file_key, KeySource::File(_)));
+        assert!(matches!(env_key, KeySource::EnvVar(_)));
+        assert!(matches!(none_key, KeySource::None));
+    }
+
+    #[test]
+    fn test_inherit_classification_all_combinations() {
+        // Output inherits the input classification
+        assert_eq!(
+            inherit_classification(DataClassification::Public, DataClassification::Public),
+            DataClassification::Public
+        );
+        assert_eq!(
+            inherit_classification(DataClassification::Public, DataClassification::Sovereign),
+            DataClassification::Public
+        );
+        assert_eq!(
+            inherit_classification(DataClassification::Confidential, DataClassification::Public),
+            DataClassification::Confidential
+        );
+        assert_eq!(
+            inherit_classification(DataClassification::Internal, DataClassification::Confidential),
+            DataClassification::Internal
+        );
+    }
+
+    #[test]
+    fn test_deletion_cascade_empty_targets() {
+        let cascade = DeletionCascade::full(vec![]);
+        let plan = cascade.plan();
+        assert_eq!(plan.len(), 1); // only unlearning
+        assert!(plan[0].contains("unlearning"));
+    }
+
+    #[test]
+    fn test_deletion_cascade_no_unlearning() {
+        let cascade =
+            DeletionCascade { targets: vec!["storage/".to_string()], requires_unlearning: false };
+        let plan = cascade.plan();
+        assert_eq!(plan.len(), 1); // only delete, no unlearning
+        assert!(plan[0].contains("DELETE"));
+        assert!(plan[0].contains("storage"));
+    }
+
+    #[test]
+    fn test_deletion_cascade_multiple_targets() {
+        let cascade = DeletionCascade::full(vec![
+            "checkpoints/".to_string(),
+            "logs/".to_string(),
+            "cache/".to_string(),
+        ]);
+        let plan = cascade.plan();
+        assert_eq!(plan.len(), 4); // 3 deletes + 1 unlearning
+        assert!(plan[0].contains("checkpoints"));
+        assert!(plan[1].contains("logs"));
+        assert!(plan[2].contains("cache"));
+        assert!(plan[3].contains("unlearning"));
+    }
+
+    #[test]
+    fn test_secure_aggregator_encrypted_flag() {
+        let agg = SecureAggregator::new(5);
+        assert!(agg.encrypted);
+        assert_eq!(agg.num_clients, 5);
+    }
+
+    #[test]
+    fn test_secure_aggregator_aggregate_returns_empty() {
+        let agg = SecureAggregator::new(2);
+        let grads = vec![vec![1.0, 2.0], vec![3.0, 4.0]];
+        let result = agg.aggregate(&grads);
+        assert!(result.is_empty()); // placeholder implementation
+    }
+
+    #[test]
+    fn test_check_classification_all_levels() {
+        // Same level: always true
+        assert!(check_classification(DataClassification::Public, DataClassification::Public));
+        assert!(check_classification(DataClassification::Internal, DataClassification::Internal));
+        assert!(check_classification(
+            DataClassification::Confidential,
+            DataClassification::Confidential
+        ));
+        assert!(check_classification(DataClassification::Sovereign, DataClassification::Sovereign));
+
+        // Higher actual >= lower required: true
+        assert!(check_classification(DataClassification::Sovereign, DataClassification::Public));
+        assert!(check_classification(
+            DataClassification::Confidential,
+            DataClassification::Internal
+        ));
+        assert!(check_classification(DataClassification::Internal, DataClassification::Public));
+
+        // Lower actual < higher required: false
+        assert!(!check_classification(DataClassification::Public, DataClassification::Internal));
+        assert!(!check_classification(
+            DataClassification::Internal,
+            DataClassification::Confidential
+        ));
+        assert!(!check_classification(
+            DataClassification::Confidential,
+            DataClassification::Sovereign
+        ));
+        assert!(!check_classification(DataClassification::Public, DataClassification::Sovereign));
+    }
+
+    #[test]
+    fn test_enforce_tier_all_variants() {
+        assert!(enforce_tier(DataClassification::Public));
+        assert!(enforce_tier(DataClassification::Internal));
+        assert!(enforce_tier(DataClassification::Confidential));
+        assert!(enforce_tier(DataClassification::Sovereign));
+    }
+
+    #[test]
+    fn test_validate_access_level_boundary() {
+        // Exact boundary cases
+        assert!(validate_access_level(DataClassification::Internal, DataClassification::Public));
+        assert!(validate_access_level(DataClassification::Internal, DataClassification::Internal));
+        assert!(!validate_access_level(
+            DataClassification::Internal,
+            DataClassification::Confidential
+        ));
+    }
+
+    #[test]
+    fn test_data_usage_agreement_default() {
+        let agreement = DataUsageAgreement::default();
+        assert!(agreement.records.is_empty());
+        assert!(!agreement.has_consent("anything"));
+    }
+
+    #[test]
+    fn test_data_usage_agreement_multiple_consents() {
+        let mut agreement = DataUsageAgreement::new();
+        agreement.add_consent(ConsentRecord {
+            purpose_id: "training".to_string(),
+            usage_scope: "model".to_string(),
+            purpose_limitation: true,
+            consent_scope: "org".to_string(),
+        });
+        agreement.add_consent(ConsentRecord {
+            purpose_id: "evaluation".to_string(),
+            usage_scope: "benchmark".to_string(),
+            purpose_limitation: false,
+            consent_scope: "public".to_string(),
+        });
+        assert!(agreement.has_consent("training"));
+        assert!(agreement.has_consent("evaluation"));
+        assert!(!agreement.has_consent("marketing"));
+        assert_eq!(agreement.records.len(), 2);
+    }
+
+    #[test]
+    fn test_delete_user_full_cascade() {
+        let cascade = DeletionCascade::full(vec!["checkpoints/".to_string(), "cache/".to_string()]);
+        let actions = delete_user("user-456", &cascade);
+        assert!(actions.len() >= 4); // erasure + rtbf + 2 deletes + unlearning
+        assert!(actions.iter().any(|a| a.contains("user-456")));
+        assert!(actions.iter().any(|a| a.contains("erasure")));
+        assert!(actions.iter().any(|a| a.contains("rtbf")));
+        assert!(actions.iter().any(|a| a.contains("checkpoints")));
+        assert!(actions.iter().any(|a| a.contains("unlearning")));
+    }
+
+    #[test]
+    fn test_cascade_delete_equals_plan() {
+        let cascade = DeletionCascade::full(vec!["db/".to_string()]);
+        let actions = cascade_delete(&cascade);
+        let plan = cascade.plan();
+        assert_eq!(actions, plan);
+    }
+
+    #[test]
+    fn test_transfer_log_default() {
+        let log = TransferLog::default();
+        assert!(log.entries().is_empty());
+    }
+
+    #[test]
+    fn test_transfer_log_multiple_entries() {
+        let mut log = TransferLog::new();
+        log.log_transfer("us-east-1", "eu-west-1", "SCC");
+        log.log_transfer("eu-west-1", "ap-southeast-1", "BCR");
+        log.log_transfer("ap-southeast-1", "local", "consent");
+
+        assert_eq!(log.entries().len(), 3);
+        assert_eq!(log.entries()[0].from, "us-east-1");
+        assert_eq!(log.entries()[0].to, "eu-west-1");
+        assert_eq!(log.entries()[0].legal_basis, "SCC");
+        assert!(log.entries()[0].transfer_agreement.contains("us-east-1->eu-west-1"));
+
+        assert_eq!(log.entries()[1].from, "eu-west-1");
+        assert_eq!(log.entries()[1].legal_basis, "BCR");
+
+        assert_eq!(log.entries()[2].to, "local");
+    }
+
+    #[test]
+    fn test_weight_access_allowed() {
+        let acl = vec!["alice".to_string(), "bob".to_string()];
+        assert!(weight_access(&acl, "alice"));
+        assert!(weight_access(&acl, "bob"));
+        assert!(!weight_access(&acl, "charlie"));
+    }
+
+    #[test]
+    fn test_weight_access_empty_acl() {
+        let acl: Vec<String> = vec![];
+        assert!(!weight_access(&acl, "anyone"));
+    }
+
+    #[test]
+    fn test_encrypt_weights_output_length() {
+        let weights = vec![1.0_f32, 2.0, 3.0, 4.0];
+        let key = b"test_key";
+        let encrypted = encrypt_weights(&weights, key);
+        // Each f32 is 4 bytes
+        assert_eq!(encrypted.len(), weights.len() * 4);
+    }
+
+    #[test]
+    fn test_encrypt_weights_empty() {
+        let encrypted = encrypt_weights(&[], b"key");
+        assert!(encrypted.is_empty());
+    }
+
+    #[test]
+    fn test_key_management_default() {
+        let km = KeyManagement::default();
+        assert_eq!(km.key_rotation_interval, 86400);
+        assert_eq!(km.kms_provider, "local");
+    }
+
+    #[test]
+    fn test_data_lineage_default() {
+        let lineage = DataLineage::default();
+        assert!(lineage.steps.is_empty());
+    }
+
+    #[test]
+    fn test_data_lineage_add_steps() {
+        let mut lineage = DataLineage::new();
+        lineage.add_step("step-1", "raw_data", "clean_data", "preprocessing");
+        lineage.add_step("step-2", "clean_data", "features", "feature_extraction");
+        lineage.add_step("step-3", "features", "model", "training");
+
+        assert_eq!(lineage.steps.len(), 3);
+        assert_eq!(lineage.steps[0].id, "step-1");
+        assert_eq!(lineage.steps[0].input, "raw_data");
+        assert_eq!(lineage.steps[0].output, "clean_data");
+        assert_eq!(lineage.steps[0].transform, "preprocessing");
+        assert_eq!(lineage.steps[2].output, "model");
+    }
+
+    #[test]
+    fn test_simple_hash_deterministic() {
+        let data = b"test data for hashing";
+        let hash1 = simple_hash(data);
+        let hash2 = simple_hash(data);
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_simple_hash_different_inputs() {
+        let hash1 = simple_hash(b"input_a");
+        let hash2 = simple_hash(b"input_b");
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_simple_hash_empty_input() {
+        let hash = simple_hash(b"");
+        // FNV-1a basis value
+        assert_eq!(hash, 0xcbf29ce484222325);
+    }
+
+    #[test]
+    fn test_consent_record_fields() {
+        let record = ConsentRecord {
+            purpose_id: "research".to_string(),
+            usage_scope: "internal-only".to_string(),
+            purpose_limitation: true,
+            consent_scope: "org-wide".to_string(),
+        };
+        assert_eq!(record.purpose_id, "research");
+        assert!(record.purpose_limitation);
+        assert_eq!(record.consent_scope, "org-wide");
+    }
+
+    #[test]
+    fn test_weight_sovereignty_custom() {
+        let config = WeightSovereigntyConfig {
+            encryption_required: true,
+            access_control: false,
+            key_source: KeySource::File("/etc/keys/model.key".to_string()),
+        };
+        assert!(config.encryption_required);
+        assert!(!config.access_control);
+        assert!(matches!(config.key_source, KeySource::File(ref p) if p == "/etc/keys/model.key"));
+    }
+
+    #[test]
+    fn test_transfer_log_entry_fields() {
+        let mut log = TransferLog::new();
+        log.log_transfer("src-region", "dst-region", "adequacy");
+        let entry = &log.entries()[0];
+        assert_eq!(entry.from, "src-region");
+        assert_eq!(entry.to, "dst-region");
+        assert_eq!(entry.legal_basis, "adequacy");
+        assert_eq!(entry.transfer_agreement, "adequacy_decision:src-region->dst-region");
+    }
 }

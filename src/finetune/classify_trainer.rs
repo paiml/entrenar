@@ -4442,4 +4442,1197 @@ mod tests {
         );
         assert!((r.samples_per_sec - 0.0).abs() < 1e-6);
     }
+
+    // =========================================================================
+    // Coverage expansion: report_* sub-methods, card_* sub-methods, edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_report_summary_contains_all_fields() {
+        let report = make_eval_report(
+            &[0, 1, 0, 1, 0],
+            &[0, 1, 1, 1, 0],
+            &[vec![0.8, 0.2], vec![0.2, 0.8], vec![0.7, 0.3], vec![0.3, 0.7], vec![0.9, 0.1]],
+            2,
+        );
+        let text = report.to_report();
+        assert!(text.contains("Accuracy:"));
+        assert!(text.contains("Top-2 accuracy:"));
+        assert!(text.contains("Cohen's kappa:"));
+        assert!(text.contains("MCC:"));
+        assert!(text.contains("Macro F1:"));
+        assert!(text.contains("Avg loss:"));
+        assert!(text.contains("95% CI"));
+    }
+
+    #[test]
+    fn test_report_confidence_section() {
+        let report = make_eval_report(
+            &[0, 1, 0, 1],
+            &[0, 0, 0, 1],
+            &[vec![0.8, 0.2], vec![0.3, 0.7], vec![0.9, 0.1], vec![0.2, 0.8]],
+            2,
+        );
+        let text = report.to_report();
+        assert!(text.contains("Confidence (mean):"));
+        assert!(text.contains("correct preds:"));
+        assert!(text.contains("wrong preds:"));
+        assert!(text.contains("gap (higher=better):"));
+    }
+
+    #[test]
+    fn test_report_scoring_rules_section() {
+        let report = make_eval_report(
+            &[0, 1, 0, 1],
+            &[0, 1, 0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9], vec![0.85, 0.15], vec![0.15, 0.85]],
+            2,
+        );
+        let text = report.to_report();
+        assert!(text.contains("Brier score:"));
+        assert!(text.contains("perfect=0"));
+        assert!(text.contains("Log loss:"));
+        assert!(text.contains("random="));
+    }
+
+    #[test]
+    fn test_report_calibration_section_with_bins() {
+        let report = make_eval_report(
+            &[0, 1, 0, 1, 0, 1, 0, 1],
+            &[0, 1, 0, 1, 0, 1, 0, 1],
+            &[
+                vec![0.95, 0.05],
+                vec![0.05, 0.95],
+                vec![0.85, 0.15],
+                vec![0.15, 0.85],
+                vec![0.75, 0.25],
+                vec![0.25, 0.75],
+                vec![0.65, 0.35],
+                vec![0.35, 0.65],
+            ],
+            2,
+        );
+        let text = report.to_report();
+        assert!(text.contains("ECE (Expected Calibration Error):"));
+        assert!(text.contains("Calibration:"));
+        assert!(text.contains("Bin       Confidence  Accuracy    Count"));
+    }
+
+    #[test]
+    fn test_report_baselines_section() {
+        let report = make_eval_report(
+            &[0, 1, 0, 1, 0],
+            &[0, 1, 0, 1, 0],
+            &[vec![0.9, 0.1], vec![0.1, 0.9], vec![0.9, 0.1], vec![0.1, 0.9], vec![0.9, 0.1]],
+            2,
+        );
+        let text = report.to_report();
+        assert!(text.contains("Baselines:"));
+        assert!(text.contains("random="));
+        assert!(text.contains("majority="));
+        assert!(text.contains("model="));
+        assert!(text.contains("lift="));
+    }
+
+    #[test]
+    fn test_report_throughput_section() {
+        let report = make_eval_report(&[0, 1], &[0, 1], &[vec![0.9, 0.1], vec![0.1, 0.9]], 2);
+        let text = report.to_report();
+        assert!(text.contains("Samples:"));
+        assert!(text.contains("Time:"));
+        assert!(text.contains("samples/sec"));
+    }
+
+    #[test]
+    fn test_report_top_confusions_section() {
+        let report = make_eval_report(
+            &[0, 0, 1, 1, 0, 1],
+            &[1, 1, 0, 0, 0, 1],
+            &[
+                vec![0.6, 0.4],
+                vec![0.6, 0.4],
+                vec![0.4, 0.6],
+                vec![0.4, 0.6],
+                vec![0.7, 0.3],
+                vec![0.3, 0.7],
+            ],
+            2,
+        );
+        let text = report.to_report();
+        assert!(text.contains("Top confusions"));
+    }
+
+    #[test]
+    fn test_to_json_all_fields_present() {
+        let report = make_eval_report(
+            &[0, 1, 0, 1, 0, 1],
+            &[0, 1, 1, 1, 0, 0],
+            &[
+                vec![0.8, 0.2],
+                vec![0.2, 0.8],
+                vec![0.6, 0.4],
+                vec![0.3, 0.7],
+                vec![0.9, 0.1],
+                vec![0.5, 0.5],
+            ],
+            2,
+        );
+        let json_str = report.to_json();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert!(v.get("top2_accuracy").is_some());
+        assert!(v.get("cohens_kappa").is_some());
+        assert!(v.get("brier_score").is_some());
+        assert!(v.get("log_loss").is_some());
+        assert!(v.get("samples_per_sec").is_some());
+        assert!(v.get("eval_time_ms").is_some());
+        assert!(v.get("num_classes").is_some());
+        assert!(v.get("top_confusions").is_some());
+        assert!(v.get("confidence").is_some());
+        let conf = &v["confidence"];
+        assert!(conf.get("mean").is_some());
+        assert!(conf.get("mean_correct").is_some());
+        assert!(conf.get("mean_wrong").is_some());
+        assert!(conf.get("gap").is_some());
+        let baselines = &v["baselines"];
+        assert!(baselines.get("random").is_some());
+        assert!(baselines.get("majority_class").is_some());
+        assert!(baselines.get("lift_over_majority").is_some());
+        let cal = &v["calibration"];
+        assert!(cal.get("ece").is_some());
+        assert!(cal.get("brier_score").is_some());
+        assert!(cal.get("log_loss").is_some());
+        assert!(cal.get("bins").is_some());
+    }
+
+    #[test]
+    fn test_to_json_confusions_labeled() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 0, 1, 1],
+            &[1, 1, 0, 0],
+            &[vec![0.7, 0.3], vec![0.7, 0.3], vec![0.3, 0.7], vec![0.3, 0.7]],
+            4.0,
+            2,
+            &labels,
+            100,
+        );
+        let json_str = report.to_json();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let confusions = v["top_confusions"].as_array().unwrap();
+        assert!(!confusions.is_empty());
+        assert!(confusions[0].get("true_class").is_some());
+        assert!(confusions[0].get("pred_class").is_some());
+        assert!(confusions[0].get("count").is_some());
+    }
+
+    #[test]
+    fn test_to_json_per_class_has_labels() {
+        let labels = vec!["alpha".to_string(), "beta".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let json_str = report.to_json();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let per_class = v["per_class"].as_array().unwrap();
+        assert_eq!(per_class[0]["label"], "alpha");
+        assert_eq!(per_class[1]["label"], "beta");
+        assert!(per_class[0].get("precision").is_some());
+        assert!(per_class[0].get("recall").is_some());
+        assert!(per_class[0].get("f1").is_some());
+        assert!(per_class[0].get("support").is_some());
+    }
+
+    #[test]
+    fn test_to_json_calibration_bins_filtered() {
+        // Only non-zero count bins should appear
+        let labels = vec!["a".to_string(), "b".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.95, 0.05], vec![0.05, 0.95]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let json_str = report.to_json();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let bins = v["calibration"]["bins"].as_array().unwrap();
+        // All bins with count > 0 should have been included
+        for bin in bins {
+            assert!(bin["count"].as_u64().unwrap() > 0);
+        }
+    }
+
+    // =========================================================================
+    // Model card sub-method coverage
+    // =========================================================================
+
+    #[test]
+    fn test_model_card_yaml_front_matter_structure() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 0, 1],
+            &[0, 1, 0, 0],
+            &[vec![0.8, 0.2], vec![0.2, 0.8], vec![0.9, 0.1], vec![0.3, 0.7]],
+            2.0,
+            2,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("my-model", Some("Qwen/Qwen2.5-Coder-0.5B"));
+        // YAML front matter
+        assert!(card.starts_with("---\n"));
+        assert!(card.contains("license: apache-2.0"));
+        assert!(card.contains("language:\n- en"));
+        assert!(card.contains("tags:"));
+        assert!(card.contains("shell-safety"));
+        assert!(card.contains("base_model: Qwen/Qwen2.5-Coder-0.5B"));
+        assert!(card.contains("pipeline_tag: text-classification"));
+        assert!(card.contains("model-index:"));
+        assert!(card.contains("- name: my-model"));
+        assert!(card.contains("type: accuracy"));
+        assert!(card.contains("type: f1"));
+        assert!(card.contains("type: mcc"));
+        assert!(card.contains("type: cohens_kappa"));
+    }
+
+    #[test]
+    fn test_model_card_labels_section() {
+        let labels: Vec<String> = SSC_LABELS.iter().map(ToString::to_string).collect();
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 2, 3, 4],
+            &[0, 1, 2, 3, 4],
+            &(0..5)
+                .map(|i| {
+                    let mut v = vec![0.05; 5];
+                    v[i] = 0.8;
+                    v
+                })
+                .collect::<Vec<_>>(),
+            2.0,
+            5,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("test-5class", None);
+        assert!(card.contains("## Labels"));
+        assert!(card.contains("| ID | Label | Description |"));
+        assert!(card.contains("safe"));
+        assert!(card.contains("needs-quoting"));
+        assert!(card.contains("non-deterministic"));
+        assert!(card.contains("non-idempotent"));
+        assert!(card.contains("unsafe"));
+        assert!(card.contains("destructive"));
+    }
+
+    #[test]
+    fn test_model_card_per_class_metrics_section() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 0, 1],
+            &[0, 1, 0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9], vec![0.9, 0.1], vec![0.1, 0.9]],
+            2.0,
+            2,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Per-Class Metrics"));
+        assert!(card.contains("| Label | Precision | Recall | F1 | Support |"));
+        assert!(card.contains("| safe |"));
+        assert!(card.contains("| unsafe |"));
+    }
+
+    #[test]
+    fn test_model_card_confusion_matrix_section() {
+        let labels = vec!["A".to_string(), "B".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 1, 0],
+            &[0, 1, 0, 1],
+            &[vec![0.8, 0.2], vec![0.2, 0.8], vec![0.3, 0.7], vec![0.6, 0.4]],
+            2.0,
+            2,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Confusion Matrix"));
+        assert!(card.contains("### Raw Counts"));
+        assert!(card.contains("### Normalized (row %)"));
+        assert!(card.contains("Predicted"));
+    }
+
+    #[test]
+    fn test_model_card_calibration_section() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 0, 1, 0, 1],
+            &[0, 1, 0, 1, 0, 1],
+            &[
+                vec![0.9, 0.1],
+                vec![0.1, 0.9],
+                vec![0.8, 0.2],
+                vec![0.2, 0.8],
+                vec![0.7, 0.3],
+                vec![0.3, 0.7],
+            ],
+            3.0,
+            2,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Confidence & Calibration"));
+        assert!(card.contains("| Mean confidence |"));
+        assert!(card.contains("| Confidence (correct) |"));
+        assert!(card.contains("| Confidence (wrong) |"));
+        assert!(card.contains("| Confidence gap |"));
+        assert!(card.contains("| ECE |"));
+        assert!(card.contains("Calibration curve"));
+        assert!(card.contains("Bin         Conf    Acc     Count"));
+    }
+
+    #[test]
+    fn test_model_card_error_analysis_with_errors() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 0, 1, 1],
+            &[1, 1, 0, 0],
+            &[vec![0.7, 0.3], vec![0.6, 0.4], vec![0.4, 0.6], vec![0.3, 0.7]],
+            4.0,
+            2,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Error Analysis"));
+        assert!(card.contains("Most frequent misclassifications"));
+        assert!(card.contains("| True Class | Predicted As | Count |"));
+    }
+
+    #[test]
+    fn test_model_card_error_analysis_empty_when_perfect() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 0, 1],
+            &[0, 1, 0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9], vec![0.9, 0.1], vec![0.1, 0.9]],
+            2.0,
+            2,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("test", None);
+        // No error analysis section when no confusions
+        assert!(!card.contains("## Error Analysis"));
+    }
+
+    #[test]
+    fn test_model_card_intended_use_section() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Intended Use"));
+        assert!(card.contains("CI/CD pipelines"));
+        assert!(card.contains("Shell purification"));
+        assert!(card.contains("Code review"));
+        assert!(card.contains("Interactive shells"));
+    }
+
+    #[test]
+    fn test_model_card_limitations_section() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Limitations"));
+        assert!(card.contains("Not a security oracle"));
+        assert!(card.contains("Context-blind"));
+        assert!(card.contains("Training distribution"));
+    }
+
+    #[test]
+    fn test_model_card_ethical_section() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Ethical Considerations"));
+        assert!(card.contains("False negatives"));
+        assert!(card.contains("Defense in depth"));
+        assert!(card.contains("adversarial-robust"));
+    }
+
+    #[test]
+    fn test_model_card_training_section_with_base() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", Some("base-model-name"));
+        assert!(card.contains("## Training"));
+        assert!(card.contains("| Framework |"));
+        assert!(card.contains("entrenar"));
+        assert!(card.contains("LoRA"));
+        assert!(card.contains("base-model-name"));
+        assert!(card.contains("| Num classes |"));
+    }
+
+    #[test]
+    fn test_model_card_training_section_no_base() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("## Training"));
+        assert!(!card.contains("| Base model |"));
+    }
+
+    #[test]
+    fn test_model_card_footer() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        assert!(card.contains("Generated by [entrenar]"));
+    }
+
+    #[test]
+    fn test_model_card_weak_class_not_shown_when_f1_high() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+            &[0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+            &(0..10)
+                .map(|i| if i % 2 == 0 { vec![0.9, 0.1] } else { vec![0.1, 0.9] })
+                .collect::<Vec<_>>(),
+            5.0,
+            2,
+            &labels,
+            100,
+        );
+        let card = report.to_model_card("test", None);
+        // Perfect predictions, so no weak class
+        assert!(!card.contains("Weak class"));
+    }
+
+    // =========================================================================
+    // card_confusion_* edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_card_confusion_header_long_names() {
+        let labels = vec!["very-long-name-safe".to_string(), "very-long-name-unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        // Names > 8 chars get truncated in header
+        assert!(card.contains("very-lon"));
+    }
+
+    #[test]
+    fn test_card_confusion_row_label_long_name() {
+        let labels =
+            vec!["extremely-long-name-that-exceeds-eighteen".to_string(), "short".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        // Row label > 18 chars gets truncated
+        assert!(card.contains("extremely-long-nam"));
+    }
+
+    #[test]
+    fn test_card_confusion_normalized_zero_row_sum() {
+        // Create a report where confusion matrix has a row with all zeros
+        // This happens when a class has zero support
+        let labels = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 0, 0],
+            &[0, 0, 0],
+            &[vec![0.9, 0.05, 0.05], vec![0.8, 0.1, 0.1], vec![0.85, 0.1, 0.05]],
+            1.0,
+            3,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        // Should handle zero row gracefully in normalized section
+        assert!(card.contains("### Normalized (row %)"));
+        assert!(card.contains("0.0%"));
+    }
+
+    // =========================================================================
+    // to_report() label fallback when label_names is too short
+    // =========================================================================
+
+    #[test]
+    fn test_to_report_missing_label_names_fallback() {
+        // num_classes=3 but only 2 label_names provided
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 2, 0, 1, 2],
+            &[0, 1, 2, 0, 1, 2],
+            &(0..6)
+                .map(|i| {
+                    let mut v = vec![0.1; 3];
+                    v[i % 3] = 0.8;
+                    v
+                })
+                .collect::<Vec<_>>(),
+            3.0,
+            3,
+            &labels,
+            100,
+        );
+        let text = report.to_report();
+        // Should fall back to "Class 2" for the missing label
+        assert!(text.contains("Class 2"));
+    }
+
+    #[test]
+    fn test_to_json_missing_label_names_fallback() {
+        let labels = vec!["safe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1],
+            &[0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9]],
+            1.0,
+            2,
+            &labels,
+            50,
+        );
+        let json_str = report.to_json();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        let per_class = v["per_class"].as_array().unwrap();
+        assert_eq!(per_class[0]["label"], "safe");
+        assert_eq!(per_class[1]["label"], "class_1");
+    }
+
+    // =========================================================================
+    // avg_metric edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_avg_metric_weighted_zero_support() {
+        // All zero support => 0.0
+        let labels = vec!["a".to_string(), "b".to_string()];
+        let mut report =
+            ClassifyEvalReport::from_predictions_with_probs(&[], &[], &[], 0.0, 2, &labels, 50);
+        report.per_class_support = vec![0, 0];
+        use crate::eval::classification::Average;
+        let w = report.avg_metric(&[0.5, 0.8], Average::Weighted);
+        assert!((w - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_avg_metric_none_variant_fallback() {
+        let report = make_eval_report(&[0, 1], &[0, 1], &[vec![0.9, 0.1], vec![0.1, 0.9]], 2);
+        use crate::eval::classification::Average;
+        // Average::None falls through to macro-like fallback
+        let result = report.avg_metric(&report.per_class_precision, Average::None);
+        assert!(result.is_finite());
+    }
+
+    // =========================================================================
+    // compute_* with edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_cohens_kappa_all_same_class() {
+        use crate::eval::classification::ConfusionMatrix;
+        let cm = ConfusionMatrix::from_predictions_with_min_classes(&[0, 0, 0], &[0, 0, 0], 2);
+        // p_e approaches 1.0, kappa should handle gracefully
+        let kappa = ClassifyEvalReport::compute_cohens_kappa(&cm, 3);
+        assert!(kappa.is_finite());
+    }
+
+    #[test]
+    fn test_mcc_single_class_predictions() {
+        use crate::eval::classification::ConfusionMatrix;
+        // All predictions are class 0 but true labels are mixed
+        let cm =
+            ConfusionMatrix::from_predictions_with_min_classes(&[0, 0, 0, 0], &[0, 1, 0, 1], 2);
+        let mcc = ClassifyEvalReport::compute_mcc(&cm, 2, 4);
+        // denom_sq = 0 since all predictions are same class
+        assert!((mcc - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_mcc_three_class() {
+        use crate::eval::classification::ConfusionMatrix;
+        let cm = ConfusionMatrix::from_predictions_with_min_classes(
+            &[0, 1, 2, 0, 1, 2, 0, 1, 2],
+            &[0, 1, 2, 0, 1, 2, 0, 1, 2],
+            3,
+        );
+        let mcc = ClassifyEvalReport::compute_mcc(&cm, 3, 9);
+        assert!((mcc - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_top2_accuracy_single_class() {
+        let probs = vec![vec![1.0]]; // single class
+        let top2 = ClassifyEvalReport::compute_top2_accuracy(&probs, &[0], 1);
+        // With only 1 class, top-2 requires len >= 2, so this should be 0
+        assert!((top2 - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_top2_accuracy_three_class_all_correct_top2() {
+        let probs = vec![
+            vec![0.1, 0.5, 0.4], // top2: [1, 2], true=2 => correct
+            vec![0.6, 0.3, 0.1], // top2: [0, 1], true=0 => correct
+            vec![0.2, 0.3, 0.5], // top2: [2, 1], true=1 => correct
+        ];
+        let top2 = ClassifyEvalReport::compute_top2_accuracy(&probs, &[2, 0, 1], 3);
+        assert!((top2 - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_brier_score_uniform_probs() {
+        // Uniform probabilities for 3-class
+        let probs = vec![vec![1.0 / 3.0; 3], vec![1.0 / 3.0; 3], vec![1.0 / 3.0; 3]];
+        let b = ClassifyEvalReport::compute_brier_score(&probs, &[0, 1, 2], 3);
+        // Each sample: sum_k (1/3 - y_k)^2 = 2*(1/3)^2 + (1/3 - 1)^2 = 2/9 + 4/9 = 6/9 = 2/3
+        assert!((b - 2.0 / 3.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_brier_score_missing_prob_entries() {
+        // Test when probs vector is shorter than num_classes
+        let probs = vec![vec![0.9]]; // only 1 entry, but num_classes=2
+        let b = ClassifyEvalReport::compute_brier_score(&probs, &[0], 2);
+        // class 0: (0.9 - 1)^2 = 0.01, class 1: (0.0 - 0)^2 = 0.0
+        assert!((b - 0.01).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_log_loss_with_zero_prob() {
+        // When prob for true class is 0.0, it gets clamped to eps
+        let ll = ClassifyEvalReport::compute_log_loss(&[vec![0.0, 1.0]], &[0]);
+        // -ln(eps) where eps = 1e-15
+        assert!(ll > 30.0);
+    }
+
+    #[test]
+    fn test_log_loss_missing_true_label_index() {
+        // When true label index exceeds probs length, uses 0.0 (clamped to eps)
+        let ll = ClassifyEvalReport::compute_log_loss(&[vec![0.5, 0.5]], &[5]);
+        assert!(ll > 30.0);
+    }
+
+    #[test]
+    fn test_bootstrap_cis_single_sample() {
+        let (a, f, m) = ClassifyEvalReport::compute_bootstrap_cis(&[0], &[0], 2, 50);
+        assert!((a.0 - 1.0).abs() < 1e-6);
+        assert!((a.1 - 1.0).abs() < 1e-6);
+        // Single sample always correct
+        assert!(f.0.is_finite());
+        assert!(m.0.is_finite());
+    }
+
+    #[test]
+    fn test_bootstrap_cis_all_wrong() {
+        let (a, _f, _m) = ClassifyEvalReport::compute_bootstrap_cis(
+            &[1, 0, 1, 0, 1, 0],
+            &[0, 1, 0, 1, 0, 1],
+            2,
+            100,
+        );
+        // All predictions are wrong
+        assert!(a.0 < 0.1);
+        assert!(a.1 < 0.1);
+    }
+
+    #[test]
+    fn test_baselines_single_class() {
+        let (r, m) = ClassifyEvalReport::compute_baselines(&[100], 100, 1);
+        assert!((r - 1.0).abs() < 1e-6);
+        assert!((m - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_top_confusions_empty_matrix() {
+        let c = ClassifyEvalReport::compute_top_confusions(&[], 5);
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn test_top_confusions_single_class_no_errors() {
+        let c = ClassifyEvalReport::compute_top_confusions(&[vec![10]], 5);
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn test_calibration_all_high_confidence() {
+        let confs = vec![0.99, 0.98, 0.97, 0.96, 0.95];
+        let (bins, ece) =
+            ClassifyEvalReport::compute_calibration(&confs, &[0, 1, 0, 1, 0], &[0, 1, 0, 1, 0], 5);
+        assert_eq!(bins.len(), 10);
+        // All in the top bin, all correct, so ECE should be small
+        assert!(ece < 0.1);
+    }
+
+    #[test]
+    fn test_calibration_all_low_confidence() {
+        let confs = vec![0.05, 0.08, 0.03, 0.06, 0.04];
+        let (bins, ece) =
+            ClassifyEvalReport::compute_calibration(&confs, &[0, 1, 0, 1, 0], &[0, 1, 0, 1, 0], 5);
+        assert_eq!(bins.len(), 10);
+        // Low confidence but all correct => ECE should reflect overconfidence
+        assert!(ece.is_finite());
+    }
+
+    // =========================================================================
+    // Oversample edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_oversample_single_class() {
+        let mut data = vec![
+            SafetySample { input: "a".into(), label: 0 },
+            SafetySample { input: "b".into(), label: 0 },
+        ];
+        let before = data.len();
+        ClassifyTrainer::oversample_training_data(&mut data, 42);
+        // Only one class, no minority => unchanged
+        assert_eq!(data.len(), before);
+    }
+
+    #[test]
+    fn test_oversample_empty() {
+        let mut data: Vec<SafetySample> = vec![];
+        ClassifyTrainer::oversample_training_data(&mut data, 42);
+        assert!(data.is_empty());
+    }
+
+    #[test]
+    fn test_oversample_extreme_imbalance() {
+        let mut data: Vec<SafetySample> = (0..100)
+            .map(|i| SafetySample { input: format!("s{i}"), label: 0 })
+            .chain(std::iter::once(SafetySample { input: "rare".into(), label: 1 }))
+            .collect();
+        ClassifyTrainer::oversample_training_data(&mut data, 42);
+        assert_eq!(data.len(), 200);
+        assert_eq!(data.iter().filter(|s| s.label == 0).count(), 100);
+        assert_eq!(data.iter().filter(|s| s.label == 1).count(), 100);
+    }
+
+    // =========================================================================
+    // Split dataset edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_split_very_small_val_ratio() {
+        let c = make_corpus(100, 3);
+        let (tr, va) = ClassifyTrainer::split_dataset(&c, 0.01, 42);
+        // val_count = ceil(100 * 0.01) = 1, min 1
+        assert_eq!(va.len(), 1);
+        assert_eq!(tr.len(), 99);
+    }
+
+    #[test]
+    fn test_split_max_val_ratio() {
+        let c = make_corpus(10, 2);
+        let (tr, va) = ClassifyTrainer::split_dataset(&c, 0.5, 42);
+        assert_eq!(va.len(), 5);
+        assert_eq!(tr.len(), 5);
+    }
+
+    // =========================================================================
+    // compute_data_hash with varied inputs
+    // =========================================================================
+
+    #[test]
+    fn test_compute_data_hash_single_sample() {
+        let c = vec![SafetySample { input: "hello".into(), label: 0 }];
+        let hash = ClassifyTrainer::compute_data_hash(&c);
+        assert!(hash.starts_with("sha256:"));
+        assert!(hash.len() > 10);
+    }
+
+    #[test]
+    fn test_compute_data_hash_large_corpus() {
+        let c: Vec<SafetySample> =
+            (0..1000).map(|i| SafetySample { input: format!("item_{i}"), label: i % 5 }).collect();
+        let hash = ClassifyTrainer::compute_data_hash(&c);
+        assert!(hash.starts_with("sha256:"));
+    }
+
+    // =========================================================================
+    // TrainingConfig edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_training_config_val_split_boundary() {
+        let p = tiny_pipeline(3);
+        let c = make_corpus(10, 3);
+        // val_split exactly 0.5 should be accepted
+        let cfg = TrainingConfig { val_split: 0.5, epochs: 1, ..TrainingConfig::default() };
+        assert!(ClassifyTrainer::new(p, c, cfg).is_ok());
+    }
+
+    #[test]
+    fn test_training_config_large_corpus_small_val() {
+        let p = tiny_pipeline(2);
+        let c = make_corpus(200, 2);
+        let cfg = TrainingConfig { val_split: 0.1, epochs: 1, ..TrainingConfig::default() };
+        let t = ClassifyTrainer::new(p, c, cfg).expect("valid");
+        // 200 * 0.1 = 20 val samples
+        assert_eq!(t.val_data().len(), 20);
+        assert_eq!(t.train_data().len(), 180);
+    }
+
+    // =========================================================================
+    // Eval report with many classes
+    // =========================================================================
+
+    #[test]
+    fn test_eval_report_ten_classes() {
+        let n = 100;
+        let num_classes = 10;
+        let yp: Vec<usize> = (0..n).map(|i| i % num_classes).collect();
+        let yt: Vec<usize> = (0..n).map(|i| i % num_classes).collect();
+        let probs: Vec<Vec<f32>> = yp
+            .iter()
+            .map(|&p| {
+                let mut v = vec![0.02; num_classes];
+                v[p] = 0.82;
+                v
+            })
+            .collect();
+        let labels: Vec<String> = (0..num_classes).map(|i| format!("class_{i}")).collect();
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &yp,
+            &yt,
+            &probs,
+            10.0,
+            num_classes,
+            &labels,
+            500,
+        );
+        assert_eq!(report.num_classes, 10);
+        assert_eq!(report.total_samples, 100);
+        assert!((report.accuracy - 1.0).abs() < 1e-6);
+        let text = report.to_report();
+        assert!(text.contains("class_0"));
+        assert!(text.contains("class_9"));
+        let json_str = report.to_json();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["per_class"].as_array().unwrap().len(), 10);
+    }
+
+    // =========================================================================
+    // to_model_card with fallback label_names
+    // =========================================================================
+
+    #[test]
+    fn test_model_card_with_few_labels_falls_back() {
+        // num_classes=3 but only 1 label provided
+        let labels = vec!["safe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 2],
+            &[0, 1, 2],
+            &[vec![0.8, 0.1, 0.1], vec![0.1, 0.8, 0.1], vec![0.1, 0.1, 0.8]],
+            1.5,
+            3,
+            &labels,
+            50,
+        );
+        let card = report.to_model_card("test", None);
+        // Should show "class_1" and "class_2" as fallbacks
+        assert!(card.contains("safe"));
+        assert!(card.contains("class_1"));
+        assert!(card.contains("class_2"));
+    }
+
+    // =========================================================================
+    // EpochMetrics edge values
+    // =========================================================================
+
+    #[test]
+    fn test_epoch_metrics_extreme_values() {
+        let m = EpochMetrics {
+            epoch: 0,
+            train_loss: 0.0,
+            train_accuracy: 0.0,
+            val_loss: f32::MAX,
+            val_accuracy: 1.0,
+            learning_rate: 0.0,
+            epoch_time_ms: 0,
+            samples_per_sec: 0.0,
+        };
+        let c = m.clone();
+        assert_eq!(c.epoch, 0);
+        assert!((c.train_loss - 0.0).abs() < 1e-6);
+        assert_eq!(c.val_loss, f32::MAX);
+    }
+
+    // =========================================================================
+    // TrainResult edge values
+    // =========================================================================
+
+    #[test]
+    fn test_train_result_with_metrics() {
+        let metrics = vec![
+            EpochMetrics {
+                epoch: 0,
+                train_loss: 1.0,
+                train_accuracy: 0.5,
+                val_loss: 1.2,
+                val_accuracy: 0.4,
+                learning_rate: 1e-3,
+                epoch_time_ms: 100,
+                samples_per_sec: 50.0,
+            },
+            EpochMetrics {
+                epoch: 1,
+                train_loss: 0.8,
+                train_accuracy: 0.7,
+                val_loss: 0.9,
+                val_accuracy: 0.65,
+                learning_rate: 5e-4,
+                epoch_time_ms: 95,
+                samples_per_sec: 52.0,
+            },
+        ];
+        let result = TrainResult {
+            epoch_metrics: metrics,
+            best_epoch: 1,
+            best_val_loss: 0.9,
+            stopped_early: false,
+            total_time_ms: 195,
+        };
+        assert_eq!(result.epoch_metrics.len(), 2);
+        assert_eq!(result.best_epoch, 1);
+        assert!(!result.stopped_early);
+        let dbg = format!("{result:?}");
+        assert!(dbg.contains("TrainResult"));
+        assert!(dbg.contains("best_epoch: 1"));
+    }
+
+    // =========================================================================
+    // restore_class_weights edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_restore_weights_empty_array() {
+        let dir = std::env::temp_dir().join("entrenar_test_rw_empty_arr");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("metadata.json"),
+            serde_json::to_string(&serde_json::json!({"class_weights": []})).unwrap(),
+        )
+        .unwrap();
+        // Empty array with num_classes=0 should return Some
+        let w = restore_class_weights_from_metadata(&dir, 0);
+        assert!(w.is_some());
+        assert!(w.unwrap().is_empty());
+        // But with num_classes=2 it should return None
+        assert!(restore_class_weights_from_metadata(&dir, 2).is_none());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_restore_weights_five_classes() {
+        let dir = std::env::temp_dir().join("entrenar_test_rw_5class");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("metadata.json"),
+            serde_json::to_string(&serde_json::json!({"class_weights": [0.7, 1.2, 3.0, 2.5, 5.0]}))
+                .unwrap(),
+        )
+        .unwrap();
+        let w = restore_class_weights_from_metadata(&dir, 5).unwrap();
+        assert_eq!(w.len(), 5);
+        assert!((w[0] - 0.7).abs() < 1e-6);
+        assert!((w[4] - 5.0).abs() < 1e-6);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // =========================================================================
+    // auto_balance_classes edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_auto_balance_exact_ratio_2() {
+        let mut p = tiny_pipeline(2);
+        // Ratio exactly 2:1 => imbalance_ratio = 2.0, NOT > 2.0 => no weights
+        let c: Vec<SafetySample> = (0..20)
+            .map(|i| SafetySample { input: format!("a{i}"), label: 0 })
+            .chain((0..10).map(|i| SafetySample { input: format!("b{i}"), label: 1 }))
+            .collect();
+        ClassifyTrainer::auto_balance_classes(&mut p, &c);
+        assert!(p.config.class_weights.is_none());
+    }
+
+    #[test]
+    fn test_auto_balance_ratio_just_above_2() {
+        let mut p = tiny_pipeline(2);
+        // 21 vs 10 => ratio=2.1 => weights applied
+        let c: Vec<SafetySample> = (0..21)
+            .map(|i| SafetySample { input: format!("a{i}"), label: 0 })
+            .chain((0..10).map(|i| SafetySample { input: format!("b{i}"), label: 1 }))
+            .collect();
+        ClassifyTrainer::auto_balance_classes(&mut p, &c);
+        assert!(p.config.class_weights.is_some());
+    }
+
+    #[test]
+    fn test_auto_balance_five_classes() {
+        let mut p = tiny_pipeline(5);
+        let c: Vec<SafetySample> = (0..100)
+            .map(|i| SafetySample { input: format!("s{i}"), label: 0 })
+            .chain((0..10).map(|i| SafetySample { input: format!("n{i}"), label: 1 }))
+            .chain((0..10).map(|i| SafetySample { input: format!("d{i}"), label: 2 }))
+            .chain((0..10).map(|i| SafetySample { input: format!("i{i}"), label: 3 }))
+            .chain((0..10).map(|i| SafetySample { input: format!("u{i}"), label: 4 }))
+            .collect();
+        ClassifyTrainer::auto_balance_classes(&mut p, &c);
+        assert!(p.config.class_weights.is_some());
+        let w = p.config.class_weights.unwrap();
+        assert_eq!(w.len(), 5);
+        // Majority class (0) should have lower weight
+        assert!(w[0] < w[1]);
+    }
+
+    // =========================================================================
+    // Shuffle determinism
+    // =========================================================================
+
+    #[test]
+    fn test_shuffle_deterministic_same_epoch() {
+        let p = tiny_pipeline(3);
+        let c = make_corpus(30, 3);
+        let cfg = TrainingConfig { epochs: 1, val_split: 0.2, ..TrainingConfig::default() };
+
+        let mut t1 = ClassifyTrainer::new(p, c.clone(), cfg.clone()).expect("valid");
+        let p2 = tiny_pipeline(3);
+        let mut t2 = ClassifyTrainer::new(p2, c, cfg).expect("valid");
+
+        t1.shuffle_training_data(5);
+        t2.shuffle_training_data(5);
+
+        let o1: Vec<String> = t1.train_data().iter().map(|s| s.input.clone()).collect();
+        let o2: Vec<String> = t2.train_data().iter().map(|s| s.input.clone()).collect();
+        assert_eq!(o1, o2);
+    }
+
+    // =========================================================================
+    // from_predictions_with_probs comprehensive
+    // =========================================================================
+
+    #[test]
+    fn test_from_predictions_with_probs_all_same_prediction() {
+        let labels = vec!["a".to_string(), "b".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 0, 0, 0, 0],
+            &[0, 0, 0, 1, 1],
+            &(0..5).map(|_| vec![0.8, 0.2]).collect::<Vec<_>>(),
+            5.0,
+            2,
+            &labels,
+            100,
+        );
+        // 3/5 correct
+        assert!((report.accuracy - 0.6).abs() < 1e-6);
+        // MCC should be 0 (all predictions same class)
+        assert!((report.mcc - 0.0).abs() < 1e-6);
+        assert_eq!(report.total_samples, 5);
+    }
+
+    #[test]
+    fn test_from_predictions_with_probs_fields_populated() {
+        let labels = vec!["safe".to_string(), "unsafe".to_string()];
+        let report = ClassifyEvalReport::from_predictions_with_probs(
+            &[0, 1, 0, 1],
+            &[0, 1, 0, 1],
+            &[vec![0.9, 0.1], vec![0.1, 0.9], vec![0.8, 0.2], vec![0.2, 0.8]],
+            2.0,
+            2,
+            &labels,
+            100,
+        );
+        // All metrics should be populated
+        assert!((report.accuracy - 1.0).abs() < 1e-6);
+        assert!(report.mcc > 0.9);
+        assert!(report.cohens_kappa > 0.9);
+        assert!(report.top2_accuracy > 0.9);
+        assert!(report.mean_confidence > 0.7);
+        assert!(report.mean_confidence_correct > 0.7);
+        assert!((report.mean_confidence_wrong - 0.0).abs() < 1e-6);
+        assert!(report.brier_score < 0.1);
+        assert!(report.log_loss < 0.3);
+        assert!(report.ece.is_finite());
+        assert_eq!(report.calibration_bins.len(), 10);
+        assert!(report.baseline_random > 0.0);
+        assert!(report.baseline_majority > 0.0);
+        assert_eq!(report.ci_accuracy.0.is_finite(), true);
+        assert_eq!(report.ci_macro_f1.0.is_finite(), true);
+        assert_eq!(report.ci_mcc.0.is_finite(), true);
+    }
 }
